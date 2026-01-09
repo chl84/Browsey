@@ -155,9 +155,13 @@
   const toggleStar = async (entry: Entry) => {
     try {
       const newState = await invoke<boolean>('toggle_star', { path: entry.path })
-      entries = entries.map((e) =>
-        e.path === entry.path ? { ...e, starred: newState } : e
-      )
+      if (current === 'Starred' && !newState) {
+        entries = entries.filter((e) => e.path !== entry.path)
+      } else {
+        entries = entries.map((e) =>
+          e.path === entry.path ? { ...e, starred: newState } : e
+        )
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     }
@@ -516,6 +520,7 @@
                     <div class="col-star">
                       <span
                         class="star-btn"
+                        class:starred={entry.starred}
                         role="button"
                         tabindex="0"
                         aria-label={entry.starred ? 'Unstar' : 'Star'}
@@ -888,6 +893,17 @@ button.primary {
 
   .star-btn:focus-visible {
     outline: 2px solid var(--border-accent);
+  }
+
+  .star-btn.starred {
+    color: #f6d04d;
+    animation: star-spin 420ms ease;
+  }
+
+  @keyframes star-spin {
+    from { transform: rotate(0deg) scale(0.9); }
+    50% { transform: rotate(180deg) scale(1.1); }
+    to { transform: rotate(360deg) scale(1); }
   }
 
   .muted {

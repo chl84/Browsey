@@ -150,13 +150,14 @@ fn list_dir_with_star(
 
 #[cfg(target_os = "windows")]
 fn list_windows_trash(star_set: &HashSet<String>) -> Result<DirListing, String> {
-    // Aggregate entries from user SID folders under $Recycle.Bin
+    // Aggregate entries from user SID folders under $Recycle.Bin and map $I/$R pairs to original names.
     let system_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
     let recycle_root = PathBuf::from(format!("{}\\$Recycle.Bin", system_drive));
     if !recycle_root.exists() {
         return Ok(DirListing { current: "Trash (unavailable)".into(), entries: Vec::new() });
     }
 
+    use std::collections::HashMap;
     let mut entries = Vec::new();
     let roots = match fs::read_dir(&recycle_root) {
         Ok(r) => r,
@@ -165,18 +166,61 @@ fn list_windows_trash(star_set: &HashSet<String>) -> Result<DirListing, String> 
         }
     };
 
+    #[derive(Clone)]
+    struct TrashItem {
+        original: Option<String>,
+        r_path: Option<PathBuf>,
+    }
+
     for sid_dir in roots.flatten() {
         let sid_path = sid_dir.path();
         if !sid_path.is_dir() {
             continue;
         }
+        let mut map: HashMap<String, TrashItem> = HashMap::new();
+
         if let Ok(rd) = fs::read_dir(&sid_path) {
             for entry in rd.flatten() {
                 let path = entry.path();
-                if let Ok(meta) = fs::symlink_metadata(&path) {
+                if let Some(fname) = path.file_name().and_then(|s| s.to_str()) {
+                    if fname.starts_with("$I") {
+                        // metadata file; parse for original path
+                        if let Ok(bytes) = std::fs::read(&path) {
+                            if bytes.len() > 24 {
+                                let utf16: Vec<u16> = bytes[24..]
+                                    .chunks(2)
+                                    .take_while(|chunk| chunk.len() == 2)
+                                    .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+                                    .take_while(|&c| c != 0)
+                                    .collect();
+                                if let Ok(orig) = String::from_utf16(&utf16) {
+                                    let key = fname.trim_start_matches("$I").to_string();
+                                    let entry = map.entry(key).or_insert(TrashItem { original: None, r_path: None });
+                                    entry.original = Some(orig);
+                                }
+                            }
+                        }
+                    } else if fname.starts_with("$R") {
+                        let key = fname.trim_start_matches("$R").to_string();
+                        let entry = map.entry(key).or_insert(TrashItem { original: None, r_path: None });
+                        entry.r_path = Some(path.clone());
+                    }
+                }
+            }
+        }
+
+        for (_k, item) in map {
+            if let Some(rp) = item.r_path {
+                if let Ok(meta) = fs::symlink_metadata(&rp) {
                     let is_link = meta.file_type().is_symlink();
-                    let starred = star_set.contains(&path.to_string_lossy().to_string());
-                    entries.push(build_entry(&path, &meta, is_link, starred));
+                    let name = item
+                        .original
+                        .as_ref()
+                        .and_then(|p| PathBuf::from(p).file_name().map(|s| s.to_string_lossy().into_owned()))
+                        .unwrap_or_else(|| rp.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
+                    let mut entry = build_entry(&rp, &meta, is_link, star_set.contains(&rp.to_string_lossy().to_string()));
+                    entry.name = name;
+                    entries.push(entry);
                 }
             }
         }
@@ -255,17 +299,15 @@ fn toggle_star(path: String) -> Result<bool, String> {
 #[tauri::command]
 fn list_starred() -> Result<Vec<FsEntry>, String> {
     let conn = db::open()?;
-    let star_set: HashSet<String> = db::starred_set(&conn)?;
+    let entries = db::starred_entries(&conn)?;
     let mut out = Vec::new();
-    for p in db::starred_paths(&conn)? {
-        let pb = PathBuf::from(&p);
+    for (p, _) in &entries {
+        let pb = PathBuf::from(p);
         if let Ok(meta) = fs::symlink_metadata(&pb) {
             let is_link = meta.file_type().is_symlink();
             out.push(build_entry(&pb, &meta, is_link, true));
         }
     }
-    // keep original order (starred_at desc) as queried
-    out.sort_by(|a, b| star_set.contains(&b.path).cmp(&star_set.contains(&a.path)));
     Ok(out)
 }
 
@@ -306,8 +348,10 @@ fn list_trash() -> Result<DirListing, String> {
 
 fn init_logging() {
     static GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
-    let project_dir = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
-    let log_dir = project_dir.join("tmp").join("logs");
+    let log_dir = dirs_next::data_dir()
+        .unwrap_or_else(|| std::env::temp_dir())
+        .join("filey")
+        .join("logs");
     if let Err(e) = std::fs::create_dir_all(&log_dir) {
         eprintln!("Failed to create log dir {:?}: {}", log_dir, e);
         return;

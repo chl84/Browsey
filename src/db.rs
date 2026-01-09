@@ -91,12 +91,12 @@ pub fn recent_paths(conn: &Connection) -> Result<Vec<String>, String> {
     Ok(res)
 }
 
-pub fn starred_paths(conn: &Connection) -> Result<Vec<String>, String> {
+pub fn starred_entries(conn: &Connection) -> Result<Vec<(String, i64)>, String> {
     let mut stmt = conn
-        .prepare("SELECT path FROM starred ORDER BY starred_at DESC")
+        .prepare("SELECT path, starred_at FROM starred ORDER BY starred_at DESC")
         .map_err(|e| format!("Failed to query starred: {e}"))?;
     let rows = stmt
-        .query_map([], |row: &Row| row.get::<_, String>(0))
+        .query_map([], |row: &Row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
         .map_err(|e| format!("Failed to read starred: {e}"))?;
     let mut res = Vec::new();
     for r in rows {
