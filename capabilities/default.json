@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/capabilities.json",
+  "identifier": "default",
+  "description": "Standard capabilities for filey",
+  "windows": ["*"],
+  "webviews": ["*"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:event:allow-listen",
+    "core:event:allow-emit"
+  ]
+}

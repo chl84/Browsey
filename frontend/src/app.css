@@ -1,0 +1,28 @@
+:root {
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: #e5e7eb;
+  background: #0f1115;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0b0d10;
+  min-height: 100vh;
+  color: #e5e7eb;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+}
