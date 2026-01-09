@@ -11,6 +11,7 @@
     ext?: string | null
     size?: number | null
     modified?: string | null
+    starred?: boolean
   }
 
   type Listing = {
@@ -40,8 +41,10 @@
 
   const places = [
     { label: 'Home', path: '~' },
-    { label: 'Desktop', path: '~/Desktop' },
-    { label: 'Documents', path: '~/Documents' },
+    { label: 'Recent', path: '' },
+    { label: 'Starred', path: '' },
+    { label: 'Network', path: '' },
+    { label: 'Wastebasket', path: 'trash://' },
   ]
 
   const bookmarks = [
@@ -93,11 +96,70 @@
     }
   }
 
+  const loadRecent = async () => {
+    loading = true
+    error = ''
+    searchActive = false
+    try {
+      const result = await invoke<Entry[]>('list_recent')
+      current = 'Recent'
+      pathInput = ''
+      entries = result
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      loading = false
+    }
+  }
+
+  const loadStarred = async () => {
+    loading = true
+    error = ''
+    searchActive = false
+    try {
+      const result = await invoke<Entry[]>('list_starred')
+      current = 'Starred'
+      pathInput = ''
+      entries = result
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      loading = false
+    }
+  }
+
+  const loadTrash = async () => {
+    loading = true
+    error = ''
+    searchActive = false
+    try {
+      const result = await invoke<Listing>('list_trash')
+      current = 'Trash'
+      pathInput = ''
+      entries = result.entries
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
+    } finally {
+      loading = false
+    }
+  }
+
   const open = (entry: Entry) => {
     if (entry.kind === 'dir') {
       void load(entry.path)
     } else {
       void invoke('open_entry', { path: entry.path })
+    }
+  }
+
+  const toggleStar = async (entry: Entry) => {
+    try {
+      const newState = await invoke<boolean>('toggle_star', { path: entry.path })
+      entries = entries.map((e) =>
+        e.path === entry.path ? { ...e, starred: newState } : e
+      )
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err)
     }
   }
 
@@ -114,6 +176,24 @@
   const goToPath = () => {
     if (!pathInput.trim()) return
     void load(pathInput.trim())
+  }
+
+  const handlePlace = (label: string, path: string) => {
+    if (label === 'Recent') {
+      void loadRecent()
+      return
+    }
+    if (label === 'Starred') {
+      void loadStarred()
+      return
+    }
+    if (label === 'Wastebasket') {
+      void loadTrash()
+      return
+    }
+    if (path) {
+      void load(path)
+    }
   }
 
   const isHidden = (entry: Entry) => entry.name.startsWith('.')
@@ -312,9 +392,8 @@
       <div class="section">
         <div class="section-title">Places</div>
         {#each places as place}
-          <button class="nav" type="button" on:click={() => load(place.path)}>
+          <button class="nav" type="button" on:click={() => handlePlace(place.label, place.path)}>
             {place.label}
-            <span class="dim">{place.path}</span>
           </button>
         {/each}
       </div>
@@ -434,7 +513,27 @@
                     <div class="col-size">
                       {entry.kind === 'file' ? formatSize(entry.size) : 'Folder'}
                     </div>
-                    <div class="col-star">☆</div>
+                    <div class="col-star">
+                      <span
+                        class="star-btn"
+                        role="button"
+                        tabindex="0"
+                        aria-label={entry.starred ? 'Unstar' : 'Star'}
+                        on:click={(e) => {
+                          e.stopPropagation()
+                          toggleStar(entry)
+                        }}
+                        on:keydown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            toggleStar(entry)
+                          }
+                        }}
+                      >
+                        {entry.starred ? '★' : '☆'}
+                      </span>
+                    </div>
                   </button>
                 {/each}
               </div>
@@ -765,6 +864,30 @@ button.primary {
 
   .col-star {
     text-align: center;
+  }
+  .star-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    min-height: 28px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--fg-muted);
+    padding: 6px;
+    cursor: pointer;
+    font-size: 16px;
+  }
+
+  .star-btn:hover {
+    color: var(--fg-strong);
+    border-color: var(--border);
+    background: var(--bg);
+  }
+
+  .star-btn:focus-visible {
+    outline: 2px solid var(--border-accent);
   }
 
   .muted {

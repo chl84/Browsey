@@ -3,12 +3,16 @@
 mod icons;
 mod search;
 mod watcher;
+mod db;
 mod statusbar;
 
 use serde::Serialize;
 use search::{build_entry, search_recursive, FsEntry};
 use std::{cmp::Ordering, fs, path::PathBuf};
 use watcher::WatchState;
+use std::collections::HashSet;
+use tracing::{error, info, warn};
+use once_cell::sync::OnceCell;
 
 fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
     if let Some(p) = raw {
@@ -50,6 +54,9 @@ fn list_dir(path: Option<String>) -> Result<DirListing, String> {
 
     let target = target.canonicalize().unwrap_or_else(|_| target.clone());
 
+    let star_conn = db::open()?;
+    let star_set: HashSet<String> = db::starred_set(&star_conn)?;
+
     let mut entries = Vec::new();
     let read_dir = fs::read_dir(&target)
         .map_err(|e| format!("{}: {e}", target.display()))?;
@@ -60,7 +67,8 @@ fn list_dir(path: Option<String>) -> Result<DirListing, String> {
         let meta = fs::symlink_metadata(&path)
             .map_err(|e| format!("{}: {e}", path.display()))?;
         let is_link = meta.file_type().is_symlink();
-        entries.push(build_entry(&path, &meta, is_link));
+        let starred = star_set.contains(&path.to_string_lossy().to_string());
+        entries.push(build_entry(&path, &meta, is_link, starred));
     }
 
     entries.sort_by(|a, b| match (a.kind.as_str(), b.kind.as_str()) {
@@ -77,6 +85,107 @@ fn list_dir(path: Option<String>) -> Result<DirListing, String> {
     })
 }
 
+fn resolve_trash_dir() -> Result<Option<PathBuf>, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let base = std::env::var("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .ok()
+            .or_else(|| dirs_next::data_dir())
+            .unwrap_or_else(|| PathBuf::from("~/.local/share"));
+        let path = base.join("Trash").join("files");
+        if path.exists() {
+            return Ok(Some(path));
+        }
+        // Fallback to ~/.local/share/Trash/files
+        if let Some(home) = dirs_next::home_dir() {
+            let fallback = home.join(".local/share/Trash/files");
+            if fallback.exists() {
+                return Ok(Some(fallback));
+            }
+        }
+        Ok(None)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Ok(None)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        Ok(None)
+    }
+}
+
+fn list_dir_with_star(
+    target: PathBuf,
+    star_set: &HashSet<String>,
+) -> Result<DirListing, String> {
+    let mut entries = Vec::new();
+    let read_dir = fs::read_dir(&target)
+        .map_err(|e| format!("{}: {e}", target.display()))?;
+
+    for entry in read_dir {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let meta = fs::symlink_metadata(&path)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let is_link = meta.file_type().is_symlink();
+        let starred = star_set.contains(&path.to_string_lossy().to_string());
+        entries.push(build_entry(&path, &meta, is_link, starred));
+    }
+
+    entries.sort_by(|a, b| match (a.kind.as_str(), b.kind.as_str()) {
+        ("dir", "file") | ("dir", "link") => Ordering::Less,
+        ("link", "dir") | ("file", "dir") => Ordering::Greater,
+        ("link", "file") => Ordering::Less,
+        ("file", "link") => Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+
+    Ok(DirListing {
+        current: target.to_string_lossy().into_owned(),
+        entries,
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn list_windows_trash(star_set: &HashSet<String>) -> Result<DirListing, String> {
+    // Aggregate entries from user SID folders under $Recycle.Bin
+    let system_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
+    let recycle_root = PathBuf::from(format!("{}\\$Recycle.Bin", system_drive));
+    if !recycle_root.exists() {
+        return Ok(DirListing { current: "Trash (unavailable)".into(), entries: Vec::new() });
+    }
+
+    let mut entries = Vec::new();
+    let roots = match fs::read_dir(&recycle_root) {
+        Ok(r) => r,
+        Err(_) => {
+            return Ok(DirListing { current: "Trash (unavailable)".into(), entries: Vec::new() });
+        }
+    };
+
+    for sid_dir in roots.flatten() {
+        let sid_path = sid_dir.path();
+        if !sid_path.is_dir() {
+            continue;
+        }
+        if let Ok(rd) = fs::read_dir(&sid_path) {
+            for entry in rd.flatten() {
+                let path = entry.path();
+                if let Ok(meta) = fs::symlink_metadata(&path) {
+                    let is_link = meta.file_type().is_symlink();
+                    let starred = star_set.contains(&path.to_string_lossy().to_string());
+                    entries.push(build_entry(&path, &meta, is_link, starred));
+                }
+            }
+        }
+    }
+
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(DirListing { current: recycle_root.to_string_lossy().into_owned(), entries })
+}
+
 #[tauri::command]
 fn search(path: Option<String>, query: String) -> Result<Vec<FsEntry>, String> {
     let base_path = expand_path(path)?;
@@ -87,7 +196,15 @@ fn search(path: Option<String>, query: String) -> Result<Vec<FsEntry>, String> {
     } else {
         return Err("Fant ikke startkatalog".to_string());
     };
-    search_recursive(target, query)
+    let star_conn = db::open()?;
+    let star_set: HashSet<String> = db::starred_set(&star_conn)?;
+    let mut res = search_recursive(target, query)?;
+    for item in &mut res {
+        if star_set.contains(&item.path) {
+            item.starred = true;
+        }
+    }
+    Ok(res)
 }
 
 #[tauri::command]
@@ -113,13 +230,115 @@ fn open_entry(path: String) -> Result<(), String> {
     if !pb.exists() {
         return Err("Path does not exist".into());
     }
-    open::that_detached(&pb).map_err(|e| format!("Failed to open: {e}"))
+    let conn = db::open()?;
+    if let Err(e) = db::touch_recent(&conn, &pb.to_string_lossy()) {
+        warn!("Failed to record recent for {:?}: {}", pb, e);
+    }
+    info!("Opening path {:?}", pb);
+    open::that_detached(&pb).map_err(|e| {
+        error!("Failed to open {:?}: {}", pb, e);
+        format!("Failed to open: {e}")
+    })
+}
+
+#[tauri::command]
+fn toggle_star(path: String) -> Result<bool, String> {
+    let conn = db::open()?;
+    let res = db::toggle_star(&conn, &path);
+    match &res {
+        Ok(state) => info!("Toggled star for {} -> {}", path, state),
+        Err(e) => error!("Failed to toggle star for {}: {}", path, e),
+    }
+    res
+}
+
+#[tauri::command]
+fn list_starred() -> Result<Vec<FsEntry>, String> {
+    let conn = db::open()?;
+    let star_set: HashSet<String> = db::starred_set(&conn)?;
+    let mut out = Vec::new();
+    for p in db::starred_paths(&conn)? {
+        let pb = PathBuf::from(&p);
+        if let Ok(meta) = fs::symlink_metadata(&pb) {
+            let is_link = meta.file_type().is_symlink();
+            out.push(build_entry(&pb, &meta, is_link, true));
+        }
+    }
+    // keep original order (starred_at desc) as queried
+    out.sort_by(|a, b| star_set.contains(&b.path).cmp(&star_set.contains(&a.path)));
+    Ok(out)
+}
+
+#[tauri::command]
+fn list_recent() -> Result<Vec<FsEntry>, String> {
+    let conn = db::open()?;
+    let star_set: HashSet<String> = db::starred_set(&conn)?;
+    let mut out = Vec::new();
+    for p in db::recent_paths(&conn)? {
+        let pb = PathBuf::from(&p);
+        if let Ok(meta) = fs::symlink_metadata(&pb) {
+            let is_link = meta.file_type().is_symlink();
+            let starred = star_set.contains(&p);
+            out.push(build_entry(&pb, &meta, is_link, starred));
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn list_trash() -> Result<DirListing, String> {
+    let conn = db::open()?;
+    let star_set: HashSet<String> = db::starred_set(&conn)?;
+    match resolve_trash_dir()? {
+        Some(target) => list_dir_with_star(target, &star_set),
+        None => {
+            #[cfg(target_os = "windows")]
+            {
+                return list_windows_trash(&star_set);
+            }
+            Ok(DirListing {
+                current: "Trash (unavailable)".to_string(),
+                entries: Vec::new(),
+            })
+        }
+    }
+}
+
+fn init_logging() {
+    static GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
+    let project_dir = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+    let log_dir = project_dir.join("tmp").join("logs");
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        eprintln!("Failed to create log dir {:?}: {}", log_dir, e);
+        return;
+    }
+    let file_appender = tracing_appender::rolling::never(&log_dir, "filey.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    let _ = GUARD.set(guard);
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("info".parse().unwrap()),
+        )
+        .with_ansi(false)
+        .with_writer(non_blocking)
+        .try_init();
 }
 
 fn main() {
+    init_logging();
     tauri::Builder::default()
         .manage(WatchState::default())
-        .invoke_handler(tauri::generate_handler![list_dir, search, watch_dir, open_entry])
+        .invoke_handler(tauri::generate_handler![
+            list_dir,
+            search,
+            watch_dir,
+            open_entry,
+            toggle_star,
+            list_starred,
+            list_recent,
+            list_trash
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

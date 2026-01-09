@@ -15,9 +15,10 @@ pub struct FsEntry {
     pub size: Option<u64>,
     pub modified: Option<String>,
     pub icon: String,
+    pub starred: bool,
 }
 
-pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool) -> FsEntry {
+pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -> FsEntry {
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -49,6 +50,7 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool) -> FsEntry {
         size,
         modified,
         icon: icon_for(path, meta, is_link).to_string(),
+        starred,
     }
 }
 
@@ -87,7 +89,7 @@ pub fn search_recursive(root: PathBuf, query: String) -> Result<Vec<FsEntry>, St
             let is_dir = meta.is_dir();
 
             if name_lc.contains(&needle) || path_lc.contains(&needle) {
-                results.push(build_entry(&path, &meta, is_link));
+                results.push(build_entry(&path, &meta, is_link, false));
             }
 
             // Only traverse real directories (not symlinks) to avoid loops.
