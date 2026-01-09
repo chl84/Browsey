@@ -57,18 +57,17 @@ fn list_dir(path: Option<String>) -> Result<DirListing, String> {
     for entry in read_dir {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        let meta = entry
-            .metadata()
+        let meta = fs::symlink_metadata(&path)
             .map_err(|e| format!("{}: {e}", path.display()))?;
-        if meta.file_type().is_symlink() {
-            continue;
-        }
-        entries.push(build_entry(&path, &meta));
+        let is_link = meta.file_type().is_symlink();
+        entries.push(build_entry(&path, &meta, is_link));
     }
 
     entries.sort_by(|a, b| match (a.kind.as_str(), b.kind.as_str()) {
-        ("dir", "file") => Ordering::Less,
-        ("file", "dir") => Ordering::Greater,
+        ("dir", "file") | ("dir", "link") => Ordering::Less,
+        ("link", "dir") | ("file", "dir") => Ordering::Greater,
+        ("link", "file") => Ordering::Less,
+        ("file", "link") => Ordering::Greater,
         _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
 
@@ -108,10 +107,19 @@ fn watch_dir(
     watcher::start_watch(app, target, &state)
 }
 
+#[tauri::command]
+fn open_entry(path: String) -> Result<(), String> {
+    let pb = PathBuf::from(path);
+    if !pb.exists() {
+        return Err("Path does not exist".into());
+    }
+    open::that_detached(&pb).map_err(|e| format!("Failed to open: {e}"))
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(WatchState::default())
-        .invoke_handler(tauri::generate_handler![list_dir, search, watch_dir])
+        .invoke_handler(tauri::generate_handler![list_dir, search, watch_dir, open_entry])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

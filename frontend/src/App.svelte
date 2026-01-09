@@ -2,11 +2,13 @@
   import { onMount } from 'svelte'
   import { invoke } from '@tauri-apps/api/core'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+  import { clampIndex, clearSelection, selectAllPaths, selectRange } from './selection'
 
   type Entry = {
     name: string
     path: string
-    kind: 'dir' | 'file'
+    kind: 'dir' | 'file' | 'link'
+    ext?: string | null
     size?: number | null
     modified?: string | null
   }
@@ -23,6 +25,10 @@
   let filter = ''
   let searchActive = false
   let sidebarCollapsed = false
+  let pathInput = ''
+  let selected = clearSelection()
+  let anchorIndex: number | null = null
+  let caretIndex: number | null = null
   let rowsEl: HTMLDivElement | null = null
   let viewportHeight = 0
   let scrollTop = 0
@@ -33,19 +39,19 @@
   let rowsObserver: ResizeObserver | null = null
 
   const places = [
-    { label: 'Hjem', path: '~' },
+    { label: 'Home', path: '~' },
     { label: 'Desktop', path: '~/Desktop' },
     { label: 'Documents', path: '~/Documents' },
   ]
 
   const bookmarks = [
-    { label: 'Prosjekter', path: '~/projects' },
+    { label: 'Projects', path: '~/projects' },
     { label: 'Downloads', path: '~/Downloads' },
   ]
 
   const partitions = [
     { label: 'Root', path: '/' },
-    { label: 'Tmp', path: '/tmp' },
+    { label: 'Temp', path: '/tmp' },
   ]
 
   const parentPath = (path: string) => {
@@ -76,6 +82,7 @@
     try {
       const result = await invoke<Listing>('list_dir', { path })
       current = result.current
+      pathInput = result.current
       entries = result.entries
       // Start watching this directory for changes.
       await invoke('watch_dir', { path: current })
@@ -89,6 +96,8 @@
   const open = (entry: Entry) => {
     if (entry.kind === 'dir') {
       void load(entry.path)
+    } else {
+      void invoke('open_entry', { path: entry.path })
     }
   }
 
@@ -102,7 +111,19 @@
     void load(undefined)
   }
 
+  const goToPath = () => {
+    if (!pathInput.trim()) return
+    void load(pathInput.trim())
+  }
+
   const isHidden = (entry: Entry) => entry.name.startsWith('.')
+
+  const displayName = (entry: Entry) => {
+    if (entry.kind === 'file' && entry.ext) {
+      return entry.name.replace(new RegExp(`\\.${entry.ext}$`), '')
+    }
+    return entry.name
+  }
 
   const runSearch = async () => {
     if (filter.trim().length === 0) {
@@ -137,6 +158,83 @@
   const handleRowsScroll = () => {
     if (!rowsEl) return
     scrollTop = rowsEl.scrollTop
+  }
+
+  const handleRowsKeydown = (event: KeyboardEvent) => {
+    const key = event.key.toLowerCase()
+    if (event.ctrlKey && key === 'a') {
+      event.preventDefault()
+      event.stopPropagation()
+      selected = selectAllPaths(filteredEntries)
+      anchorIndex = 0
+      caretIndex = filteredEntries.length > 0 ? filteredEntries.length - 1 : null
+    } else if (key === 'escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      selected = clearSelection()
+      anchorIndex = null
+      caretIndex = null
+    } else if ((key === 'arrowdown' || key === 'arrowup') && filteredEntries.length > 0) {
+      event.preventDefault()
+      event.stopPropagation()
+      const delta = key === 'arrowdown' ? 1 : -1
+      // If nothing selected, start at first/last depending on direction.
+      const current = caretIndex ?? anchorIndex ?? (delta > 0 ? 0 : filteredEntries.length - 1)
+      const next = clampIndex(current + delta, filteredEntries)
+
+      if (event.shiftKey) {
+        const anchor = anchorIndex ?? current
+        const rangeSet = selectRange(filteredEntries, anchor, next)
+        selected = rangeSet
+        anchorIndex = anchor
+        caretIndex = next
+      } else {
+        selected = new Set([filteredEntries[next].path])
+        anchorIndex = next
+        caretIndex = next
+      }
+    }
+  }
+
+  const handleRowsClick = (event: MouseEvent) => {
+    // Clear selection only when clicking empty space in the rows container.
+    if (event.target === rowsEl && selected.size > 0) {
+      selected = clearSelection()
+      anchorIndex = null
+      caretIndex = null
+    }
+  }
+
+  const handleRowClick = (entry: Entry, absoluteIndex: number, event: MouseEvent) => {
+    event.stopPropagation()
+    const isToggle = event.ctrlKey || event.metaKey
+    const isRange = event.shiftKey && anchorIndex !== null
+
+    if (isRange && anchorIndex !== null) {
+      const rangeSet = selectRange(filteredEntries, anchorIndex, absoluteIndex)
+      if (isToggle) {
+        const merged = new Set(selected)
+        rangeSet.forEach((p) => merged.add(p))
+        selected = merged
+      } else {
+        selected = rangeSet
+      }
+      caretIndex = absoluteIndex
+    } else if (isToggle) {
+      const next = new Set(selected)
+      if (next.has(entry.path)) {
+        next.delete(entry.path)
+      } else {
+        next.add(entry.path)
+      }
+      selected = next
+      anchorIndex = absoluteIndex
+      caretIndex = absoluteIndex
+    } else {
+      selected = new Set([entry.path])
+      anchorIndex = absoluteIndex
+      caretIndex = absoluteIndex
+    }
   }
 
   $: {
@@ -247,33 +345,37 @@
       <header class="topbar">
         <div class="left">
           <div class="path">
-            <button class="ghost" on:click={goHome} title="Hjem">Hjem</button>
-            <button class="ghost" on:click={goUp} title="Opp">Opp</button>
-            <span class="crumb">{current || '...'}</span>
+            <input
+              class="path-input"
+              bind:value={pathInput}
+              placeholder="Path..."
+              aria-label="Path"
+              on:keydown={(e) => e.key === 'Enter' && goToPath()}
+            />
           </div>
           {#if loading}
-            <span class="pill">Laster…</span>
+            <span class="pill">Loading…</span>
           {/if}
         </div>
         <div class="actions">
           <input
             class="filter"
-            placeholder="Filtrer..."
+            placeholder="Filter..."
             bind:value={filter}
-            aria-label="Filtrer"
+            aria-label="Filter"
             on:keydown={(e) => e.key === 'Enter' && runSearch()}
           />
-          <button class="ghost" on:click={() => load(current)}>Oppdater</button>
-          <button class="primary" on:click={runSearch}>Søk</button>
+          <button class="ghost" on:click={() => load(current)}>Refresh</button>
+          <button class="primary" on:click={runSearch}>Search</button>
         </div>
       </header>
 
       {#if error}
-        <div class="error">Feil: {error}</div>
+        <div class="error">Error: {error}</div>
       {/if}
 
       {#if searchActive}
-        <div class="pill">Søker: "{filter}"</div>
+        <div class="pill">Searching: "{filter}"</div>
       {/if}
 
       <section class="list" class:wide={sidebarCollapsed}>
@@ -285,25 +387,52 @@
           <div class="col-star">⭐</div>
         </div>
         {#if !loading && filteredEntries.length === 0}
-          <div class="muted">Ingen elementer her.</div>
+          <div class="muted">No items here.</div>
         {:else}
           <div
             class="rows"
             bind:this={rowsEl}
             on:scroll={handleRowsScroll}
+            on:keydown={handleRowsKeydown}
+            on:click={handleRowsClick}
+            tabindex="0"
+            role="grid"
+            aria-label="File list"
           >
             <div class="spacer" style={`height:${totalHeight}px`}>
               <div class="row-viewport" style={`transform: translateY(${offsetY}px)`}>
-                {#each visibleEntries as entry (entry.path)}
-                  <button class="row" class:hidden={isHidden(entry)} type="button" on:click={() => open(entry)}>
+                {#each visibleEntries as entry, i (entry.path)}
+                  <button
+                    class="row"
+                    class:hidden={isHidden(entry)}
+                    class:selected={selected.has(entry.path)}
+                    type="button"
+                    on:dblclick={() => open(entry)}
+                    on:keydown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        open(entry)
+                      }
+                    }}
+                    on:click={(e) => handleRowClick(entry, start + i, e)}
+                  >
                     <div class="col-name">
                       <img class="icon" src={entry.icon} alt="" />
-                      <span class="name">{entry.name}</span>
+                      <span class="name">{displayName(entry)}</span>
                     </div>
-                    <div class="col-type">{entry.kind === 'dir' ? 'Folder' : 'File'}</div>
+                    <div class="col-type">
+                      {entry.kind === 'dir'
+                        ? 'Folder'
+                        : entry.kind === 'link'
+                          ? 'Link'
+                          : entry.ext && entry.ext.length > 0
+                            ? `.${entry.ext}`
+                            : 'File'}
+                    </div>
                     <div class="col-modified">{entry.modified ?? '—'}</div>
                     <div class="col-size">
-                      {entry.kind === 'file' ? formatSize(entry.size) : 'Mappe'}
+                      {entry.kind === 'file' ? formatSize(entry.size) : 'Folder'}
                     </div>
                     <div class="col-star">☆</div>
                   </button>
@@ -327,7 +456,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  color: #e5e7eb;
+  color: var(--fg);
   min-height: 100vh;
 }
 
@@ -352,8 +481,8 @@
   }
 
   .sidebar {
-    background: #0d0f13;
-    border: 1px solid #1f242c;
+    background: var(--bg-alt);
+    border: 1px solid var(--border-strong);
     border-radius: 14px;
     padding: 14px;
     display: flex;
@@ -378,7 +507,7 @@
   }
 
   .section-title {
-    color: #9ca3af;
+    color: var(--fg-muted);
     font-size: 12px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -386,11 +515,11 @@
   }
 
   .nav {
-    border: 1px solid #1f242c;
+    border: 1px solid var(--border-strong);
     border-radius: 10px;
     padding: 10px 12px;
-    background: #0f1115;
-    color: #e5e7eb;
+    background: var(--bg);
+    color: var(--fg);
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -400,21 +529,22 @@
   }
 
   .nav:hover {
-    background: #141820;
+    background: var(--bg-hover);
     border-color: #2f333b;
     transform: translateY(-1px);
   }
 
-  .dim {
-    color: #6b7280;
+.dim {
+    color: var(--fg-dim);
     font-size: 12px;
   }
 
-  .content {
+.content {
     display: flex;
     flex-direction: column;
     gap: 12px;
     min-height: 0;
+    color: var(--fg);
   }
 
   .left {
@@ -428,25 +558,33 @@
   gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+  width: 100%;
 }
 
-.crumb {
-  font-weight: 600;
-  color: #e5e7eb;
-  background: #1b1e24;
-  border-radius: 12px;
-  padding: 6px 10px;
-  border: 1px solid #2a2e35;
+.path-input {
+  flex: 1;
+  min-width: 240px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+}
+
+.path-input:focus {
+  outline: 2px solid var(--border-accent);
+  border-color: var(--border-accent-strong);
 }
 
 .pill {
-  background: #1b1e24;
-  color: #cbd5e1;
+  background: var(--bg-raised);
+  color: var(--fg-pill);
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  border: 1px solid #2a2e35;
+  border: 1px solid var(--border);
 }
 
   .actions {
@@ -456,26 +594,26 @@
   }
 
 .filter {
-  border: 1px solid #2a2e35;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 12px;
   min-width: 180px;
-  background: #0f1115;
-  color: #e5e7eb;
+  background: var(--bg);
+  color: var(--fg);
   font-size: 14px;
 }
 
 .filter:focus {
-  outline: 2px solid #3f444c;
-  border-color: #4b5563;
+  outline: 2px solid var(--border-accent);
+  border-color: var(--border-accent-strong);
 }
 
 button {
-  border: 1px solid #2a2e35;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 14px;
-  background: #12151b;
-  color: #e5e7eb;
+  background: var(--bg-button);
+  color: var(--fg);
   font-weight: 600;
   cursor: pointer;
   transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
@@ -484,7 +622,7 @@ button {
 button:hover {
   transform: translateY(-1px);
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.25);
-  border-color: #3f444c;
+  border-color: var(--border-accent);
 }
 
 button:active {
@@ -492,19 +630,19 @@ button:active {
 }
 
 button.ghost {
-  background: #0f1115;
-  border-color: #2a2e35;
+  background: var(--bg);
+  border-color: var(--border);
 }
 
 button.primary {
-  background: #1b1e24;
-  color: #e5e7eb;
-  border-color: #3f444c;
+  background: var(--bg-raised);
+  color: var(--fg);
+  border-color: var(--border-accent);
 }
 
 .error {
-  background: #1b1e24;
-  border: 1px solid #3f444c;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-accent);
   color: #fca5a5;
   padding: 12px 14px;
   border-radius: 12px;
@@ -547,7 +685,7 @@ button.primary {
     height: 32px;
     min-height: 32px;
     transition: background 120ms ease, border-color 120ms ease;
-    cursor: pointer;
+    cursor: default;
   border: none;
   background: transparent;
   width: 100%;
@@ -570,8 +708,13 @@ button.primary {
     opacity: 0.55;
   }
 
+  .row.selected {
+    background: #1c2027;
+    border: 1px solid var(--border-accent);
+  }
+
   .row:focus-visible {
-    outline: 2px solid #3f444c;
+    outline: 2px solid var(--border-accent);
   }
 
   .header-row {
@@ -579,9 +722,9 @@ button.primary {
     grid-template-columns: 1.4fr 0.6fr 0.8fr 0.4fr 0.2fr;
     gap: 10px;
     padding: 6px 12px;
-    border-bottom: 1px solid #1f242c;
-    background: #0d0f13;
-    color: #9ca3af;
+    border-bottom: 1px solid var(--border-strong);
+    background: var(--bg-alt);
+    color: var(--fg-muted);
     font-size: 12px;
     letter-spacing: 0.02em;
     text-transform: uppercase;
@@ -592,7 +735,7 @@ button.primary {
     align-items: center;
     gap: 10px;
     font-weight: 500;
-    color: #f3f4f6;
+    color: var(--fg-strong);
     overflow: hidden;
   }
 
@@ -611,7 +754,7 @@ button.primary {
   .col-modified,
   .col-size,
   .col-star {
-    color: #cbd5e1;
+    color: var(--fg-muted);
     font-size: 13px;
     text-align: left;
   }
@@ -626,7 +769,7 @@ button.primary {
 
   .muted {
     padding: 20px;
-    color: #94a3b8;
+    color: var(--fg-muted);
     text-align: center;
 }
 
@@ -660,8 +803,8 @@ button.primary {
 
   .statusbar {
     height: 32px;
-    border-top: 1px solid #1f242c;
-    background: #0d0f13;
+    border-top: 1px solid var(--border-strong);
+    background: var(--bg-alt);
     border-radius: 12px 12px 0 0;
     margin-top: 12px;
     position: sticky;

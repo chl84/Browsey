@@ -1,7 +1,22 @@
 :root {
+  --bg: #0f1115;
+  --bg-alt: #0d0f13;
+  --bg-raised: #1b1e24;
+  --bg-button: #12151b;
+  --bg-hover: #141820;
+  --border: #2a2e35;
+  --border-strong: #1f242c;
+  --border-accent: #3f444c;
+  --border-accent-strong: #4b5563;
+  --fg: #d5d8dd;
+  --fg-strong: #d8dce1;
+  --fg-muted: #b9c0cb;
+  --fg-dim: #6b7280;
+  --fg-pill: #cbd5e1;
+
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  color: #e5e7eb;
-  background: #0f1115;
+  color: var(--fg);
+  background: var(--bg);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
@@ -16,7 +31,7 @@ body {
   margin: 0;
   background: #0b0d10;
   min-height: 100vh;
-  color: #e5e7eb;
+  color: var(--fg);
 }
 
 #app {

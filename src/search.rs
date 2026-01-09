@@ -11,19 +11,31 @@ pub struct FsEntry {
     pub name: String,
     pub path: String,
     pub kind: String,
+    pub ext: Option<String>,
     pub size: Option<u64>,
     pub modified: Option<String>,
     pub icon: String,
 }
 
-pub fn build_entry(path: &Path, meta: &Metadata) -> FsEntry {
+pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool) -> FsEntry {
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.display().to_string());
 
-    let kind = if meta.is_dir() { "dir" } else { "file" }.to_string();
+    let kind = if is_link {
+        "link"
+    } else if meta.is_dir() {
+        "dir"
+    } else {
+        "file"
+    }
+    .to_string();
     let size = if meta.is_file() { Some(meta.len()) } else { None };
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_string());
     let modified = meta
         .modified()
         .ok()
@@ -33,9 +45,10 @@ pub fn build_entry(path: &Path, meta: &Metadata) -> FsEntry {
         name,
         path: path.to_string_lossy().into_owned(),
         kind,
+        ext,
         size,
         modified,
-        icon: icon_for(path, meta).to_string(),
+        icon: icon_for(path, meta, is_link).to_string(),
     }
 }
 
@@ -65,11 +78,7 @@ pub fn search_recursive(root: PathBuf, query: String) -> Result<Vec<FsEntry>, St
                 Err(_) => continue,
             };
 
-            // Skip symlinks to avoid following links (and potential cycles).
-            if meta.file_type().is_symlink() {
-                continue;
-            }
-
+            let is_link = meta.file_type().is_symlink();
             let name_lc = entry
                 .file_name()
                 .to_string_lossy()
@@ -78,10 +87,11 @@ pub fn search_recursive(root: PathBuf, query: String) -> Result<Vec<FsEntry>, St
             let is_dir = meta.is_dir();
 
             if name_lc.contains(&needle) || path_lc.contains(&needle) {
-                results.push(build_entry(&path, &meta));
+                results.push(build_entry(&path, &meta, is_link));
             }
 
-            if is_dir {
+            // Only traverse real directories (not symlinks) to avoid loops.
+            if is_dir && !is_link {
                 stack.push(path);
             }
         }
@@ -89,8 +99,10 @@ pub fn search_recursive(root: PathBuf, query: String) -> Result<Vec<FsEntry>, St
 
     // Optional: sort folders before files, then name
     results.sort_by(|a, b| match (a.kind.as_str(), b.kind.as_str()) {
-        ("dir", "file") => std::cmp::Ordering::Less,
-        ("file", "dir") => std::cmp::Ordering::Greater,
+        ("dir", "file") | ("dir", "link") => std::cmp::Ordering::Less,
+        ("link", "dir") | ("file", "dir") => std::cmp::Ordering::Greater,
+        ("link", "file") => std::cmp::Ordering::Less,
+        ("file", "link") => std::cmp::Ordering::Greater,
         _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
 

@@ -1,7 +1,11 @@
 use std::fs::Metadata;
 use std::path::Path;
 
-pub fn icon_for(path: &Path, meta: &Metadata) -> &'static str {
+pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> &'static str {
+    if is_link {
+        return "icons/scalable/mimetypes/inode-symlink.svg";
+    }
+
     if meta.is_dir() {
         return "icons/scalable/places/folder.svg";
     }
