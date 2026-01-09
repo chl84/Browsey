@@ -30,6 +30,7 @@
   const overscan = 8
   let unlistenDirChanged: UnlistenFn | null = null
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
+  let rowsObserver: ResizeObserver | null = null
 
   const places = [
     { label: 'Hjem', path: '~' },
@@ -153,6 +154,26 @@
   $: visibleEntries = filteredEntries.slice(start, end)
   $: offsetY = start * rowHeight
 
+  const setupRowsObserver = () => {
+    if (!rowsEl || typeof ResizeObserver === 'undefined') return
+    rowsObserver?.disconnect()
+    rowsObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = entry.contentRect.height
+        if (h > 0 && h !== viewportHeight) {
+          viewportHeight = h
+        }
+      }
+    })
+    rowsObserver.observe(rowsEl)
+  }
+
+  $: {
+    if (rowsEl) {
+      setupRowsObserver()
+    }
+  }
+
   onMount(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
@@ -178,6 +199,7 @@
         clearTimeout(refreshTimer)
         refreshTimer = null
       }
+      rowsObserver?.disconnect()
       if (unlistenDirChanged) {
         unlistenDirChanged()
         unlistenDirChanged = null
@@ -294,6 +316,7 @@
     </section>
   </div>
 </main>
+<footer class="statusbar"></footer>
 
 <style>
 .shell {
@@ -305,6 +328,7 @@
   flex-direction: column;
   gap: 16px;
   color: #e5e7eb;
+  min-height: 100vh;
 }
 
   .topbar {
@@ -320,6 +344,7 @@
     grid-template-columns: 220px 1fr;
     gap: 16px;
     align-items: start;
+    min-height: 0;
   }
 
   .layout.collapsed {
@@ -334,7 +359,11 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    min-height: 70vh;
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    max-height: calc(100vh - 48px);
+    overflow: auto;
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
   }
 
@@ -385,6 +414,7 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    min-height: 0;
   }
 
   .left {
@@ -487,10 +517,13 @@ button.primary {
   border-radius: 0;
   box-shadow: none;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .rows {
-  max-height: calc(100vh - 220px);
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 
@@ -623,5 +656,16 @@ button.primary {
 
   .list.wide .header-row {
     grid-template-columns: 2fr 0.8fr 1fr 0.7fr 0.3fr;
+  }
+
+  .statusbar {
+    height: 32px;
+    border-top: 1px solid #1f242c;
+    background: #0d0f13;
+    border-radius: 12px 12px 0 0;
+    margin-top: 12px;
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
   }
 </style>

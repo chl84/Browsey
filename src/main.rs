@@ -3,6 +3,7 @@
 mod icons;
 mod search;
 mod watcher;
+mod statusbar;
 
 use serde::Serialize;
 use search::{build_entry, search_recursive, FsEntry};

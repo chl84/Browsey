@@ -1,11 +1,28 @@
-use std::path::Path;
-
 use std::fs::Metadata;
+use std::path::Path;
 
 pub fn icon_for(path: &Path, meta: &Metadata) -> &'static str {
     if meta.is_dir() {
         return "icons/scalable/places/folder.svg";
     }
+
+    let name_lc = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+
+    // Detect common multi-part archive extensions (e.g., .tar.gz)
+    let is_tar_combo = name_lc.ends_with(".tar.gz")
+        || name_lc.ends_with(".tar.bz2")
+        || name_lc.ends_with(".tar.xz")
+        || name_lc.ends_with(".tar.zst")
+        || name_lc.ends_with(".tar.lz")
+        || name_lc.ends_with(".tgz")
+        || name_lc.ends_with(".tbz")
+        || name_lc.ends_with(".tbz2")
+        || name_lc.ends_with(".txz")
+        || name_lc.ends_with(".tzst");
 
     let ext = path
         .extension()
@@ -14,9 +31,10 @@ pub fn icon_for(path: &Path, meta: &Metadata) -> &'static str {
         .unwrap_or_default();
 
     match ext.as_str() {
-        // Archives
-        "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" => {
-            "icons/scalable/mimetypes/application-x-archive.svg"
+        // Archives / compressed
+        _ if is_tar_combo => "icons/scalable/mimetypes/package-x-generic.svg",
+        "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "zst" | "lz" => {
+            "icons/scalable/mimetypes/package-x-generic.svg"
         }
         // Executables / scripts
         "exe" | "bin" | "sh" | "bat" | "cmd" => "icons/scalable/mimetypes/application-x-executable.svg",
