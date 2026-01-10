@@ -58,6 +58,14 @@ Tauri bundle:
   cargo tauri build --bundles rpm
   ```
   Output: `target/release/bundle/rpm/filey-<version>.rpm`
+- Install RPM (Fedora/RHEL/openSUSE):
+  ```bash
+  sudo rpm -Uvh target/release/bundle/rpm/filey-0.2.0-1.x86_64.rpm
+  ```
+- Uninstall RPM:
+  ```bash
+  sudo rpm -e filey
+  ```
 - Windows:
   ```bash
   cargo tauri build

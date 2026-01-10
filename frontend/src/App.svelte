@@ -1008,16 +1008,6 @@
   border: 1px solid var(--border);
 }
 
-  .actions {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .actions:empty {
-    display: none;
-  }
-
 button {
   border: 1px solid var(--border);
   border-radius: 10px;
