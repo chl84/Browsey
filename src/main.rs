@@ -17,7 +17,7 @@ use std::collections::HashSet;
 use tracing::{error, info, warn};
 use once_cell::sync::OnceCell;
 use sorting::{sort_entries, SortSpec};
-use db::{save_column_widths, load_column_widths};
+use db::{save_column_widths, load_column_widths, list_bookmarks, upsert_bookmark, delete_bookmark};
 use sysinfo::Disks;
 
 fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
@@ -51,6 +51,12 @@ struct MountInfo {
     path: String,
     fs: String,
     removable: bool,
+}
+
+#[derive(Serialize, Clone)]
+struct Bookmark {
+    label: String,
+    path: String,
 }
 
 #[tauri::command]
@@ -180,6 +186,28 @@ fn list_mounts() -> Vec<MountInfo> {
             })
         })
         .collect()
+}
+
+#[tauri::command]
+fn get_bookmarks() -> Result<Vec<Bookmark>, String> {
+    let conn = db::open()?;
+    let rows = list_bookmarks(&conn)?;
+    Ok(rows
+        .into_iter()
+        .map(|(label, path)| Bookmark { label, path })
+        .collect())
+}
+
+#[tauri::command]
+fn add_bookmark(label: String, path: String) -> Result<(), String> {
+    let conn = db::open()?;
+    upsert_bookmark(&conn, &label, &path)
+}
+
+#[tauri::command]
+fn remove_bookmark(path: String) -> Result<(), String> {
+    let conn = db::open()?;
+    delete_bookmark(&conn, &path)
 }
 
 #[cfg(target_os = "windows")]
@@ -426,6 +454,9 @@ fn main() {
             list_dir,
             search,
             list_mounts,
+            get_bookmarks,
+            add_bookmark,
+            remove_bookmark,
             watch_dir,
             open_entry,
             toggle_star,

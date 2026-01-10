@@ -26,6 +26,10 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
             path TEXT PRIMARY KEY,
             opened_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS bookmarks (
+            path TEXT PRIMARY KEY,
+            label TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
@@ -128,6 +132,37 @@ pub fn touch_recent(conn: &Connection, path: &str) -> Result<(), String> {
         params![MAX_RECENT],
     )
     .map_err(|e| format!("Failed to trim recent: {e}"))?;
+    Ok(())
+}
+
+pub fn list_bookmarks(conn: &Connection) -> Result<Vec<(String, String)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT label, path FROM bookmarks ORDER BY label COLLATE NOCASE ASC")
+        .map_err(|e| format!("Failed to prepare bookmarks query: {e}"))?;
+    let rows = stmt
+        .query_map([], |row: &Row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|e| format!("Failed to read bookmarks: {e}"))?;
+    let mut res = Vec::new();
+    for r in rows {
+        if let Ok(b) = r {
+            res.push(b);
+        }
+    }
+    Ok(res)
+}
+
+pub fn upsert_bookmark(conn: &Connection, label: &str, path: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO bookmarks (path, label) VALUES (?1, ?2)",
+        params![path, label],
+    )
+    .map_err(|e| format!("Failed to upsert bookmark: {e}"))?;
+    Ok(())
+}
+
+pub fn delete_bookmark(conn: &Connection, path: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM bookmarks WHERE path = ?1", params![path])
+        .map_err(|e| format!("Failed to delete bookmark: {e}"))?;
     Ok(())
 }
 

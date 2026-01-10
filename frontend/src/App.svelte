@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { invoke } from '@tauri-apps/api/core'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { clampIndex, clearSelection, selectAllPaths, selectRange } from './selection'
@@ -95,9 +95,7 @@
     { label: 'Wastebasket', path: 'trash://' },
   ]
 
-  const bookmarks = [
-    { label: 'Projects', path: '~/projects' },
-    { label: 'Downloads', path: '~/Downloads' },
+  let bookmarks = [
   ]
 
   type Partition = {
@@ -110,6 +108,10 @@
   let partitions: Partition[] = []
   let partitionsPoll: ReturnType<typeof setInterval> | null = null
   let lastMountPaths: string[] = []
+  let bookmarkModalOpen = false
+  let bookmarkName = ''
+  let bookmarkCandidate: Entry | null = null
+  let bookmarkInputEl: HTMLInputElement | null = null
 
   const iconPath = (file: string) => `/icons/scalable/${file}`
   const navIcon = (label: string) => {
@@ -603,6 +605,7 @@
 
   const handleGlobalKeydown = async (event: KeyboardEvent) => {
     const key = event.key.toLowerCase()
+    if (bookmarkModalOpen) return
     if ((event.ctrlKey || event.metaKey) && key === 'f') {
       event.preventDefault()
       event.stopPropagation()
@@ -611,6 +614,20 @@
         await toggleMode(true)
       }
       focusPathInput()
+      return
+    }
+
+    if ((event.ctrlKey || event.metaKey) && key === 'b') {
+      if (isEditableTarget(event.target)) return
+      event.preventDefault()
+      event.stopPropagation()
+      const selectedPaths = Array.from(selected)
+      if (selectedPaths.length === 1) {
+        const entry = entries.find((e) => e.path === selectedPaths[0])
+        if (entry && entry.kind === 'dir') {
+          await openBookmarkModal(entry)
+        }
+      }
       return
     }
 
@@ -686,6 +703,35 @@
     }
   }
 
+  const openBookmarkModal = async (entry: Entry) => {
+    bookmarkCandidate = entry
+    bookmarkName = entry.name
+    bookmarkModalOpen = true
+    await tick()
+    if (bookmarkInputEl) {
+      bookmarkInputEl.focus()
+      bookmarkInputEl.select()
+    }
+  }
+
+  const closeBookmarkModal = () => {
+    bookmarkModalOpen = false
+    bookmarkCandidate = null
+    bookmarkName = ''
+  }
+
+  const confirmBookmark = () => {
+    if (!bookmarkCandidate) return
+    const label = bookmarkName.trim() || bookmarkCandidate.name
+    const path = bookmarkCandidate.path
+    // Avoid duplicate paths
+    if (!bookmarks.some((b) => normalizePath(b.path) === normalizePath(path))) {
+      void invoke('add_bookmark', { label, path })
+      bookmarks = [...bookmarks, { label, path }]
+    }
+    closeBookmarkModal()
+  }
+
   const loadPartitions = async () => {
     try {
       const result = await invoke<Partition[]>('list_mounts')
@@ -703,10 +749,20 @@
     }
   }
 
+  const loadBookmarks = async () => {
+    try {
+      const rows = await invoke<{ label: string; path: string }[]>('get_bookmarks')
+      bookmarks = rows
+    } catch (err) {
+      console.error('Failed to load bookmarks', err)
+    }
+  }
+
   onMount(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
     void loadSavedWidths()
+    void loadBookmarks()
     void loadPartitions()
     partitionsPoll = setInterval(() => {
       void loadPartitions()
@@ -760,15 +816,41 @@
             {/each}
           </div>
 
-          <div class="section">
-            <div class="section-title">Bookmarks</div>
-            {#each bookmarks as mark}
-              <button class="nav" type="button" on:click={() => load(mark.path)}>
-                <img class="nav-icon" src={navIcon(mark.label)} alt="" />
-                <span class="nav-label">{mark.label}</span>
-              </button>
-            {/each}
-          </div>
+        <div class="section">
+          <div class="section-title">Bookmarks</div>
+          {#each bookmarks as mark}
+            <div class="nav bookmark" role="button" tabindex="0" on:click={() => load(mark.path)} on:keydown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                load(mark.path)
+              }
+            }}>
+              <img class="nav-icon" src={navIcon(mark.label)} alt="" />
+              <span class="nav-label">{mark.label}</span>
+              <span
+                class="remove-bookmark"
+                role="button"
+                tabindex="0"
+                aria-label="Remove bookmark"
+                on:click={(e) => {
+                  e.stopPropagation()
+                  void invoke('remove_bookmark', { path: mark.path })
+                  bookmarks = bookmarks.filter((b) => b.path !== mark.path)
+                }}
+                on:keydown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    void invoke('remove_bookmark', { path: mark.path })
+                    bookmarks = bookmarks.filter((b) => b.path !== mark.path)
+                  }
+                }}
+              >
+                ×
+              </span>
+            </div>
+          {/each}
+        </div>
 
           <div class="section">
             <div class="section-title">Partitions</div>
@@ -947,6 +1029,34 @@
   </div>
 </main>
 
+{#if bookmarkModalOpen}
+  <div class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h2 class="modal-title">Add bookmark</h2>
+      <p class="modal-desc">Name the bookmark for "{bookmarkCandidate?.name}".</p>
+      <input
+        class="modal-input"
+        bind:value={bookmarkName}
+        bind:this={bookmarkInputEl}
+        aria-label="Bookmark name"
+        on:keydown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            confirmBookmark()
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            closeBookmarkModal()
+          }
+        }}
+      />
+      <div class="modal-actions">
+        <button type="button" class="secondary" on:click={closeBookmarkModal}>Cancel</button>
+        <button type="button" on:click={confirmBookmark}>Add</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
 .shell {
   width: 100%;
@@ -1044,6 +1154,10 @@
     box-shadow: none;
   }
 
+  .nav.bookmark {
+    position: relative;
+  }
+
   .nav:hover {
     background: var(--bg-hover);
     transform: none;
@@ -1060,6 +1174,23 @@
     height: 18px;
     object-fit: contain;
     flex-shrink: 0;
+  }
+
+  .remove-bookmark {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: var(--fg-muted);
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease;
+    padding: 0 4px;
+    line-height: 1;
+  }
+
+  .nav.bookmark:hover .remove-bookmark {
+    opacity: 1;
   }
 
   .content {
@@ -1435,14 +1566,83 @@ button:active {
     grid-template-columns: 1.6fr 180px 180px 140px 90px;
   }
 
-  .statusbar {
-    height: 32px;
-    border-top: 1px solid var(--border-strong);
-    background: var(--bg-alt);
-    border-radius: 0;
-    margin-top: 0;
-    position: sticky;
-    bottom: 0;
-    z-index: 1;
-  }
+.statusbar {
+  height: 32px;
+  border-top: 1px solid var(--border-strong);
+  background: var(--bg-alt);
+  border-radius: 0;
+  margin-top: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.modal {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 18px;
+  width: min(420px, 90vw);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.modal-desc {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+
+.modal-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+}
+
+.modal-input:focus {
+  outline: 2px solid var(--border-accent);
+  border-color: var(--border-accent-strong);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-actions button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--bg-button);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.modal-actions button.secondary {
+  background: transparent;
+}
 </style>
