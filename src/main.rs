@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod icons;
+mod entry;
 mod search;
 mod watcher;
 mod db;
@@ -8,7 +9,8 @@ mod statusbar;
 mod sorting;
 
 use serde::Serialize;
-use search::{build_entry, search_recursive, FsEntry};
+use entry::{build_entry, FsEntry};
+use search::search_recursive;
 use std::{fs, path::PathBuf};
 use watcher::WatchState;
 use std::collections::HashSet;
@@ -16,6 +18,7 @@ use tracing::{error, info, warn};
 use once_cell::sync::OnceCell;
 use sorting::{sort_entries, SortSpec};
 use db::{save_column_widths, load_column_widths};
+use sysinfo::Disks;
 
 fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
     if let Some(p) = raw {
@@ -40,6 +43,14 @@ fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
 struct DirListing {
     current: String,
     entries: Vec<FsEntry>,
+}
+
+#[derive(Serialize, Clone)]
+struct MountInfo {
+    label: String,
+    path: String,
+    fs: String,
+    removable: bool,
 }
 
 #[tauri::command]
@@ -138,6 +149,37 @@ fn list_dir_with_star(
         current: target.to_string_lossy().into_owned(),
         entries,
     })
+}
+
+#[tauri::command]
+fn list_mounts() -> Vec<MountInfo> {
+    let disks = Disks::new_with_refreshed_list();
+    disks
+        .iter()
+        .filter_map(|d| {
+            let mount_point = d.mount_point().to_string_lossy().to_string();
+            if mount_point.is_empty() {
+                return None;
+            }
+            let fs = d.file_system().to_string_lossy().to_string();
+            let fs_lc = fs.to_lowercase();
+            if matches!(
+                fs_lc.as_str(),
+                "tmpfs" | "devtmpfs" | "proc" | "sysfs" | "cgroup" | "cgroup2" | "overlay" | "squashfs"
+            ) {
+                return None;
+            }
+
+            let label = mount_point.clone();
+
+            Some(MountInfo {
+                label,
+                path: mount_point,
+                fs,
+                removable: d.is_removable(),
+            })
+        })
+        .collect()
 }
 
 #[cfg(target_os = "windows")]
@@ -383,6 +425,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             list_dir,
             search,
+            list_mounts,
             watch_dir,
             open_entry,
             toggle_star,

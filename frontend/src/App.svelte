@@ -10,6 +10,7 @@
     kind: 'dir' | 'file' | 'link'
     ext?: string | null
     size?: number | null
+    items?: number | null
     modified?: string | null
     starred?: boolean
     icon?: string
@@ -51,14 +52,15 @@
     min: number
     align?: 'left' | 'right' | 'center'
     resizable?: boolean
+    sortable?: boolean
   }
 
   let cols: Column[] = [
     { key: 'name', label: 'Name', sort: 'name', width: 320, min: 220, align: 'left' },
     { key: 'type', label: 'Type', sort: 'type', width: 120, min: 80 },
     { key: 'modified', label: 'Modified', sort: 'modified', width: 90, min: 80 },
-    { key: 'size', label: 'Size', sort: 'size', width: 90, min: 70 },
-    { key: 'star', label: '⭐', sort: 'starred', width: 80, min: 60, resizable: false },
+    { key: 'size', label: 'Size', sort: 'size', width: 90, min: 70, align: 'right' },
+    { key: 'star', label: '', sort: 'starred', width: 80, min: 60, resizable: false, sortable: false },
   ]
 
   let gridTemplate = cols.map((c) => `${Math.max(c.width, c.min)}px`).join(' ')
@@ -98,10 +100,50 @@
     { label: 'Downloads', path: '~/Downloads' },
   ]
 
-  const partitions = [
-    { label: 'Root', path: '/' },
-    { label: 'Temp', path: '/tmp' },
-  ]
+  type Partition = {
+    label: string
+    path: string
+    fs?: string
+    removable?: boolean
+  }
+
+  let partitions: Partition[] = []
+  let partitionsPoll: ReturnType<typeof setInterval> | null = null
+  let lastMountPaths: string[] = []
+
+  const iconPath = (file: string) => `/icons/scalable/${file}`
+  const navIcon = (label: string) => {
+    switch (label) {
+      case 'Home':
+        return iconPath('devices/computer.svg')
+      case 'Recent':
+        return iconPath('places/folder-documents.svg')
+      case 'Starred':
+        return iconPath('mimetypes/application-certificate.svg')
+      case 'Network':
+        return iconPath('places/folder-remote.svg')
+      case 'Wastebasket':
+        return iconPath('status/user-trash-full.svg')
+      default:
+        return iconPath('devices/drive-harddisk.svg')
+    }
+  }
+
+  const partitionIcon = (part: Partition) =>
+    part.removable ? iconPath('devices/drive-removable-media.svg') : iconPath('devices/drive-harddisk.svg')
+
+  const normalizePath = (p: string) => {
+    if (!p) return ''
+    const trimmed = p.replace(/\/+$/, '')
+    return trimmed === '' ? '/' : trimmed
+  }
+
+  const isUnderMount = (path: string, mount: string) => {
+    if (!path || !mount) return false
+    const p = normalizePath(path)
+    const m = normalizePath(mount)
+    return p === m || p.startsWith(`${m}/`)
+  }
 
   const parentPath = (path: string) => {
     if (!path || path === '/') return '/'
@@ -122,6 +164,12 @@
       u++
     }
     return `${value.toFixed(1)} ${units[u]}`
+  }
+
+  const formatItems = (count?: number | null) => {
+    if (count === null || count === undefined) return ''
+    const suffix = count === 1 ? 'item' : 'items'
+    return `${count} ${suffix}`
   }
 
   const sortPayload = () => ({
@@ -638,10 +686,31 @@
     }
   }
 
+  const loadPartitions = async () => {
+    try {
+      const result = await invoke<Partition[]>('list_mounts')
+      partitions = result
+      const nextPaths = result.map((p) => normalizePath(p.path))
+      const removedMount = lastMountPaths.find((p) => !nextPaths.includes(p))
+      lastMountPaths = nextPaths
+
+      if (removedMount && isUnderMount(current, removedMount)) {
+        error = 'Volume disconnected; returning to Home'
+        void load(undefined)
+      }
+    } catch (err) {
+      console.error('Failed to load mounts', err)
+    }
+  }
+
   onMount(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
     void loadSavedWidths()
+    void loadPartitions()
+    partitionsPoll = setInterval(() => {
+      void loadPartitions()
+    }, 2000)
     window.addEventListener('keydown', handleGlobalKeydown)
     void load()
 
@@ -670,6 +739,10 @@
         unlistenDirChanged()
         unlistenDirChanged = null
       }
+      if (partitionsPoll) {
+        clearInterval(partitionsPoll)
+        partitionsPoll = null
+      }
     }
   })
 </script>
@@ -677,32 +750,35 @@
 <main class="shell">
   <div class="layout" class:collapsed={sidebarCollapsed}>
     <aside class:collapsed={sidebarCollapsed} class="sidebar">
-      <div class="section">
-        <div class="section-title">Places</div>
-        {#each places as place}
-          <button class="nav" type="button" on:click={() => handlePlace(place.label, place.path)}>
-            {place.label}
-          </button>
-        {/each}
-      </div>
+          <div class="section">
+            <div class="section-title">Places</div>
+            {#each places as place}
+              <button class="nav" type="button" on:click={() => handlePlace(place.label, place.path)}>
+                <img class="nav-icon" src={navIcon(place.label)} alt="" />
+                <span class="nav-label">{place.label}</span>
+              </button>
+            {/each}
+          </div>
 
-      <div class="section">
-        <div class="section-title">Bookmarks</div>
-        {#each bookmarks as mark}
-          <button class="nav" type="button" on:click={() => load(mark.path)}>
-            {mark.label}
-          </button>
-        {/each}
-      </div>
+          <div class="section">
+            <div class="section-title">Bookmarks</div>
+            {#each bookmarks as mark}
+              <button class="nav" type="button" on:click={() => load(mark.path)}>
+                <img class="nav-icon" src={navIcon(mark.label)} alt="" />
+                <span class="nav-label">{mark.label}</span>
+              </button>
+            {/each}
+          </div>
 
-      <div class="section">
-        <div class="section-title">Partitions</div>
-        {#each partitions as part}
-          <button class="nav" type="button" on:click={() => load(part.path)}>
-            {part.label}
-          </button>
-        {/each}
-      </div>
+          <div class="section">
+            <div class="section-title">Partitions</div>
+            {#each partitions as part}
+              <button class="nav" type="button" on:click={() => load(part.path)}>
+                <img class="nav-icon" src={partitionIcon(part)} alt="" />
+                <span class="nav-label">{part.label}</span>
+              </button>
+            {/each}
+          </div>
 
     </aside>
 
@@ -759,23 +835,35 @@
           <div class="header-row" bind:this={headerEl} style={`grid-template-columns:${gridTemplate};`}>
             {#each cols as col, idx}
               <div class="header-cell">
-                <button
-                  class="header-btn"
-                  type="button"
-                  role="columnheader"
-                  aria-sort={ariaSort(col.sort)}
-                  class:active-sort={sortField === col.sort}
-                  on:click={() => changeSort(col.sort)}
-                >
-                  <span>{col.label}</span>
-                  <span
-                    class="sort-icon"
-                    class:desc={sortField === col.sort && sortDirection === 'desc'}
-                    class:inactive={sortField !== col.sort}
+                {#if col.sortable === false}
+                  <div
+                    class="header-btn inert"
+                    class:align-right={col.align === 'right'}
+                    role="columnheader"
+                    aria-sort="none"
                   >
-                    ▲
-                  </span>
-                </button>
+                    {#if col.label}<span>{col.label}</span>{/if}
+                  </div>
+                {:else}
+                  <button
+                    class="header-btn"
+                    class:align-right={col.align === 'right'}
+                    type="button"
+                    role="columnheader"
+                    aria-sort={ariaSort(col.sort)}
+                    class:active-sort={sortField === col.sort}
+                    on:click={() => changeSort(col.sort)}
+                  >
+                    <span>{col.label}</span>
+                    <span
+                      class="sort-icon"
+                      class:desc={sortField === col.sort && sortDirection === 'desc'}
+                      class:inactive={sortField !== col.sort}
+                    >
+                      ▲
+                    </span>
+                  </button>
+                {/if}
                 {#if col.resizable !== false && idx < cols.length - 1}
                   <span class="resizer" on:pointerdown={(e) => startResize(idx, e)}></span>
                 {/if}
@@ -819,7 +907,11 @@
                     </div>
                     <div class="col-modified">{entry.modified ?? '—'}</div>
                     <div class="col-size">
-                      {entry.kind === 'file' ? formatSize(entry.size) : 'Folder'}
+                      {entry.kind === 'file'
+                        ? formatSize(entry.size)
+                        : entry.kind === 'dir'
+                          ? formatItems(entry.items)
+                          : ''}
                     </div>
                     <div class="col-star">
                       <span
@@ -880,13 +972,13 @@
     top: 0;
     z-index: 2;
     background: var(--bg);
-    padding: 0 0 8px 0;
+    padding: 0;
   }
 
   .layout {
     display: grid;
     grid-template-columns: 220px 1fr;
-    gap: 16px;
+    gap: 0;
     align-items: stretch;
     min-height: 0;
     height: 100%;
@@ -899,8 +991,8 @@
   .sidebar {
     background: var(--bg-alt);
     border: 1px solid var(--border-strong);
-    border-radius: 14px;
-    padding: 14px;
+    border-radius: 0;
+    padding: 5px;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -922,7 +1014,7 @@
   .section {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
   }
 
   .section-title {
@@ -931,32 +1023,49 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     font-weight: 700;
+    padding-left: 10px;
   }
 
   .nav {
-    border: 1px solid var(--border-strong);
+    border: none;
     border-radius: 10px;
-    padding: 10px 12px;
-    background: var(--bg);
+    padding: 5px 12px 5px 22px;
+    background: transparent;
     color: var(--fg);
+    font-size: 14px;
+    font-weight: 500;
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    cursor: pointer;
-    transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    cursor: default;
+    transition: background 120ms ease;
+    transform: none;
+    box-shadow: none;
   }
 
   .nav:hover {
     background: var(--bg-hover);
-    border-color: #2f333b;
-    transform: translateY(-1px);
+    transform: none;
+    box-shadow: none;
+  }
+
+  .nav:active {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .nav-icon {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    flex-shrink: 0;
   }
 
   .content {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0;
     min-height: 0;
     min-width: 0;
     color: var(--fg);
@@ -986,7 +1095,7 @@
   min-width: 0;
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0;
   padding: 10px 12px;
   background: var(--bg);
   color: var(--fg);
@@ -1054,18 +1163,13 @@ button:active {
 .rows {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   width: 100%;
-  direction: rtl; /* place scrollbar on the left */
-  padding-left: 12px; /* add gap between scrollbar and table */
+  direction: ltr; /* place scrollbar on the right */
+  padding-left: 12px;
+  padding-right: 12px;
   padding-bottom: 32px; /* keep rows clear of the status bar */
-}
-
-.rows .header-row,
-.rows .spacer,
-.rows .row-viewport,
-.rows .row {
-  direction: ltr; /* keep content left-to-right while scrollbar stays left */
 }
 
 .spacer {
@@ -1163,6 +1267,17 @@ button:active {
     text-align: left;
   }
 
+  .header-btn.align-right {
+    justify-content: flex-end;
+    text-align: right;
+    margin-right: -10px;
+    padding-right: 10px;
+  }
+  .header-btn.inert {
+    cursor: default;
+    pointer-events: none;
+  }
+
   .header-btn.active-sort {
     color: var(--fg);
   }
@@ -1226,21 +1341,28 @@ button:active {
 
   .col-type,
   .col-modified,
-  .col-size,
-  .col-star {
+  .col-size {
     color: var(--fg-muted);
     font-size: 13px;
     text-align: left;
-    min-width: 120px;
+    min-width: 100px;
   }
 
   .col-size {
     font-weight: 600;
-    min-width: 80px;
+    text-align: right;
+    min-width: 60px;
   }
 
   .col-modified {
     min-width: 100px;
+  }
+
+  .col-star {
+    color: var(--fg-muted);
+    font-size: 13px;
+    text-align: left;
+    min-width: 40px;
   }
 
   .star-btn {
@@ -1253,7 +1375,7 @@ button:active {
     border-radius: 8px;
     background: transparent;
     color: var(--fg-muted);
-    padding: 6px;
+    padding: 0px;
     cursor: pointer;
     font-size: 16px;
   }
@@ -1317,8 +1439,8 @@ button:active {
     height: 32px;
     border-top: 1px solid var(--border-strong);
     background: var(--bg-alt);
-    border-radius: 12px 12px 0 0;
-    margin-top: 12px;
+    border-radius: 0;
+    margin-top: 0;
     position: sticky;
     bottom: 0;
     z-index: 1;

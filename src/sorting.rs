@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::cmp::Ordering;
 
-use crate::search::FsEntry;
+use crate::entry::FsEntry;
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
