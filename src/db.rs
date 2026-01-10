@@ -2,7 +2,8 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, Row};
+use rusqlite::{params, Connection, Row, OptionalExtension};
+use serde::{Deserialize, Serialize};
 
 const MAX_RECENT: i64 = 50;
 
@@ -24,6 +25,10 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
         CREATE TABLE IF NOT EXISTS recent (
             path TEXT PRIMARY KEY,
             opened_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
         );",
     )
     .map_err(|e| format!("Failed to init schema: {e}"))?;
@@ -124,4 +129,42 @@ pub fn touch_recent(conn: &Connection, path: &str) -> Result<(), String> {
     )
     .map_err(|e| format!("Failed to trim recent: {e}"))?;
     Ok(())
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ColumnWidths {
+    pub widths: Vec<f64>,
+}
+
+pub fn save_column_widths(conn: &Connection, widths: &[f64]) -> Result<(), String> {
+    let payload = serde_json::to_string(&ColumnWidths {
+        widths: widths.to_vec(),
+    })
+    .map_err(|e| format!("Failed to serialize widths: {e}"))?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('column_widths', ?1)",
+        params![payload],
+    )
+    .map_err(|e| format!("Failed to store widths: {e}"))?;
+    Ok(())
+}
+
+pub fn load_column_widths(conn: &Connection) -> Result<Option<Vec<f64>>, String> {
+    let val: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'column_widths'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Failed to read settings: {e}"))?;
+
+    if let Some(json) = val {
+        let parsed: ColumnWidths =
+            serde_json::from_str(&json).map_err(|e| format!("Failed to parse widths: {e}"))?;
+        Ok(Some(parsed.widths))
+    } else {
+        Ok(None)
+    }
 }

@@ -15,6 +15,7 @@ use std::collections::HashSet;
 use tracing::{error, info, warn};
 use once_cell::sync::OnceCell;
 use sorting::{sort_entries, SortSpec};
+use db::{save_column_widths, load_column_widths};
 
 fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
     if let Some(p) = raw {
@@ -244,6 +245,18 @@ fn search(path: Option<String>, query: String, sort: Option<SortSpec>) -> Result
 }
 
 #[tauri::command]
+fn store_column_widths(widths: Vec<f64>) -> Result<(), String> {
+    let conn = db::open()?;
+    save_column_widths(&conn, &widths)
+}
+
+#[tauri::command]
+fn load_saved_column_widths() -> Result<Option<Vec<f64>>, String> {
+    let conn = db::open()?;
+    load_column_widths(&conn)
+}
+
+#[tauri::command]
 fn watch_dir(
     path: Option<String>,
     state: tauri::State<WatchState>,
@@ -375,7 +388,9 @@ fn main() {
             toggle_star,
             list_starred,
             list_recent,
-            list_trash
+            list_trash,
+            store_column_widths,
+            load_saved_column_widths
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

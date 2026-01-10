@@ -1068,7 +1068,7 @@ button:active {
   width: 100%;
   direction: rtl; /* place scrollbar on the left */
   padding-left: 12px; /* add gap between scrollbar and table */
-  padding-bottom: 48px; /* keep rows clear of the status bar */
+  padding-bottom: 32px; /* keep rows clear of the status bar */
 }
 
 .rows .header-row,
