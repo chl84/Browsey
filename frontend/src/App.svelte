@@ -43,9 +43,31 @@
   let selected = clearSelection()
   let anchorIndex: number | null = null
   let caretIndex: number | null = null
+  type Column = {
+    key: string
+    label: string
+    sort: SortField
+    width: number
+    min: number
+    align?: 'left' | 'right' | 'center'
+    resizable?: boolean
+  }
+
+  let cols: Column[] = [
+    { key: 'name', label: 'Name', sort: 'name', width: 320, min: 220, align: 'left' },
+    { key: 'type', label: 'Type', sort: 'type', width: 120, min: 80 },
+    { key: 'modified', label: 'Modified', sort: 'modified', width: 90, min: 80 },
+    { key: 'size', label: 'Size', sort: 'size', width: 90, min: 70 },
+    { key: 'star', label: '⭐', sort: 'starred', width: 80, min: 60, resizable: false },
+  ]
+
+  let gridTemplate = cols.map((c) => `${Math.max(c.width, c.min)}px`).join(' ')
+  let resizeState: { index: number; startX: number; startWidth: number } | null = null
   let history: Location[] = []
   let historyIndex = -1
   let rowsEl: HTMLDivElement | null = null
+  let headerEl: HTMLDivElement | null = null
+  let pathInputEl: HTMLInputElement | null = null
   let viewportHeight = 0
   let scrollTop = 0
   const rowHeight = 32
@@ -53,6 +75,15 @@
   let unlistenDirChanged: UnlistenFn | null = null
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
   let rowsObserver: ResizeObserver | null = null
+  const headerHeight = () => headerEl?.offsetHeight ?? 0
+
+  const updateViewportHeight = () => {
+    const containerHeight = rowsEl?.clientHeight ?? 0
+    const next = Math.max(0, containerHeight - headerHeight())
+    if (next !== viewportHeight) {
+      viewportHeight = next
+    }
+  }
 
   const places = [
     { label: 'Home', path: '~' },
@@ -98,6 +129,57 @@
     direction: sortDirection,
   })
 
+  $: gridTemplate = cols.map((c) => `${Math.max(c.width, c.min)}px`).join(' ')
+
+  const startResize = (index: number, event: PointerEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    resizeState = {
+      index,
+      startX: event.clientX,
+      startWidth: cols[index].width,
+    }
+    window.addEventListener('pointermove', handleResizeMove)
+    window.addEventListener('pointerup', handleResizeEnd, { once: true })
+  }
+
+  const handleResizeMove = (event: PointerEvent) => {
+    if (!resizeState) return
+    const delta = event.clientX - resizeState.startX
+    cols = cols.map((c, i) =>
+      i === resizeState!.index
+        ? { ...c, width: Math.max(c.min, resizeState!.startWidth + delta) }
+        : c
+    )
+  }
+
+  const handleResizeEnd = () => {
+    resizeState = null
+    window.removeEventListener('pointermove', handleResizeMove)
+    void persistWidths()
+  }
+
+  const persistWidths = async () => {
+    try {
+      await invoke('store_column_widths', { widths: cols.map((c) => c.width) })
+    } catch (err) {
+      console.error('Failed to store widths', err)
+    }
+  }
+
+  const loadSavedWidths = async () => {
+    try {
+      const saved = await invoke<number[] | null>('load_saved_column_widths')
+      if (saved && Array.isArray(saved)) {
+        cols = cols.map((c, i) =>
+          saved[i] !== undefined ? { ...c, width: Math.max(c.min, saved[i]) } : c
+        )
+      }
+    } catch (err) {
+      console.error('Failed to load widths', err)
+    }
+  }
+
   const ariaSort = (field: SortField) =>
     sortField === field ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'
 
@@ -138,6 +220,7 @@
       current = result.current
       pathInput = result.current
       entries = result.entries
+      resetScrollPosition()
       if (recordHistory) {
         pushHistory({ type: 'dir', path: current })
       }
@@ -159,6 +242,7 @@
       current = 'Recent'
       pathInput = ''
       entries = result
+      resetScrollPosition()
       if (recordHistory) {
         pushHistory({ type: 'recent' })
       }
@@ -178,6 +262,7 @@
       current = 'Starred'
       pathInput = ''
       entries = result
+      resetScrollPosition()
       if (recordHistory) {
         pushHistory({ type: 'starred' })
       }
@@ -197,6 +282,7 @@
       current = 'Trash'
       pathInput = ''
       entries = result.entries
+      resetScrollPosition()
       if (recordHistory) {
         pushHistory({ type: 'trash' })
       }
@@ -286,6 +372,7 @@
         filter = needle
         const result = await invoke<Entry[]>('search', { path: current, query: needle, sort: sortPayload() })
         entries = result
+        resetScrollPosition()
         searchActive = true
       }
     } catch (err) {
@@ -313,12 +400,13 @@
   const handleResize = () => {
     if (typeof window === 'undefined') return
     sidebarCollapsed = window.innerWidth < 700
-    if (rowsEl) viewportHeight = rowsEl.clientHeight
+    if (rowsEl) updateViewportHeight()
   }
 
   const handleRowsScroll = () => {
     if (!rowsEl) return
-    scrollTop = rowsEl.scrollTop
+    const effectiveTop = Math.max(0, rowsEl.scrollTop - headerHeight())
+    scrollTop = effectiveTop
   }
 
   const handleRowsKeydown = (event: KeyboardEvent) => {
@@ -353,6 +441,9 @@
         selected = new Set([filteredEntries[next].path])
         anchorIndex = next
         caretIndex = next
+      }
+      if (caretIndex !== null) {
+        ensureRowVisible(caretIndex)
       }
     }
   }
@@ -455,7 +546,26 @@
     )
   }
 
-  const handleGlobalKeydown = (event: KeyboardEvent) => {
+  const focusPathInput = () => {
+    if (pathInputEl) {
+      pathInputEl.focus()
+      pathInputEl.select()
+    }
+  }
+
+  const handleGlobalKeydown = async (event: KeyboardEvent) => {
+    const key = event.key.toLowerCase()
+    if ((event.ctrlKey || event.metaKey) && key === 'f') {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!searchMode) {
+        pathInput = ''
+        await toggleMode(true)
+      }
+      focusPathInput()
+      return
+    }
+
     if (event.key !== 'Backspace') return
     if (event.ctrlKey || event.metaKey || event.altKey) return
     if (isEditableTarget(event.target)) return
@@ -469,12 +579,7 @@
     }
   }
 
-  $: {
-    const next = rowsEl?.clientHeight ?? 0
-    if (next !== viewportHeight) {
-      viewportHeight = next
-    }
-  }
+  $: updateViewportHeight()
 
   $: totalHeight = filteredEntries.length * rowHeight
   $: visibleCount =
@@ -490,8 +595,8 @@
     rowsObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const h = entry.contentRect.height
-        if (h > 0 && h !== viewportHeight) {
-          viewportHeight = h
+        if (h > 0) {
+          updateViewportHeight()
         }
       }
     })
@@ -501,12 +606,42 @@
   $: {
     if (rowsEl) {
       setupRowsObserver()
+      updateViewportHeight()
+    }
+  }
+
+  const resetScrollPosition = () => {
+    scrollTop = 0
+    if (rowsEl) {
+      rowsEl.scrollTo({ top: 0 })
+    }
+  }
+
+  const ensureRowVisible = (index: number) => {
+    if (!rowsEl) return
+    const headerOffset = headerHeight()
+    const viewport = viewportHeight
+    const currentTop = scrollTop
+    const currentBottom = currentTop + viewport
+    const rowTop = index * rowHeight
+    const rowBottom = rowTop + rowHeight
+    let nextScroll: number | null = null
+
+    if (rowTop < currentTop) {
+      nextScroll = headerOffset + rowTop
+    } else if (rowBottom > currentBottom) {
+      nextScroll = headerOffset + rowBottom - viewport
+    }
+
+    if (nextScroll !== null) {
+      rowsEl.scrollTo({ top: nextScroll })
     }
   }
 
   onMount(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
+    void loadSavedWidths()
     window.addEventListener('keydown', handleGlobalKeydown)
     void load()
 
@@ -523,7 +658,6 @@
         }
       })
     })()
-
     return () => {
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('keydown', handleGlobalKeydown)
@@ -579,9 +713,16 @@
             <input
               class="path-input"
               bind:value={pathInput}
+              bind:this={pathInputEl}
               placeholder={searchMode ? 'Search in current folder…' : 'Path…'}
               aria-label={searchMode ? 'Search' : 'Path'}
               on:keydown={(e) => {
+                if (e.key === 'Escape' && searchMode) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  void toggleMode(false).then(() => focusPathInput())
+                  return
+                }
                 if (e.key === 'Enter' && !searchMode) {
                   goToPath()
                 } else if (e.key === 'Enter' && searchMode) {
@@ -594,19 +735,6 @@
             <span class="pill">Loading…</span>
           {/if}
         </div>
-        <div class="actions">
-          <label class="mode-toggle">
-            <input
-              type="checkbox"
-              bind:checked={searchMode}
-              aria-label="Toggle search mode"
-              on:change={async (e) => {
-                await toggleMode(e.currentTarget.checked)
-              }}
-            />
-            <span class="slider">{searchMode ? 'Search' : 'Path'}</span>
-          </label>
-        </div>
       </header>
 
       {#if error}
@@ -618,111 +746,51 @@
       {/if}
 
       <section class="list" class:wide={sidebarCollapsed}>
-        <div class="header-row">
-          <button
-            class="header-btn"
-            type="button"
-            role="columnheader"
-            aria-sort={ariaSort('name')}
-            class:active-sort={sortField === 'name'}
-            on:click={() => changeSort('name')}
-          >
-            <span>Name</span>
-            <span
-              class="sort-icon"
-              class:desc={sortField === 'name' && sortDirection === 'desc'}
-              class:inactive={sortField !== 'name'}
-            >
-              ▲
-            </span>
-          </button>
-          <button
-            class="header-btn"
-            type="button"
-            role="columnheader"
-            aria-sort={ariaSort('type')}
-            class:active-sort={sortField === 'type'}
-            on:click={() => changeSort('type')}
-          >
-            <span>Type</span>
-            <span
-              class="sort-icon"
-              class:desc={sortField === 'type' && sortDirection === 'desc'}
-              class:inactive={sortField !== 'type'}
-            >
-              ▲
-            </span>
-          </button>
-          <button
-            class="header-btn"
-            type="button"
-            role="columnheader"
-            aria-sort={ariaSort('modified')}
-            class:active-sort={sortField === 'modified'}
-            on:click={() => changeSort('modified')}
-          >
-            <span>Modified</span>
-            <span
-              class="sort-icon"
-              class:desc={sortField === 'modified' && sortDirection === 'desc'}
-              class:inactive={sortField !== 'modified'}
-            >
-              ▲
-            </span>
-          </button>
-          <button
-            class="header-btn"
-            type="button"
-            role="columnheader"
-            aria-sort={ariaSort('size')}
-            class:active-sort={sortField === 'size'}
-            on:click={() => changeSort('size')}
-          >
-            <span>Size</span>
-            <span
-              class="sort-icon"
-              class:desc={sortField === 'size' && sortDirection === 'desc'}
-              class:inactive={sortField !== 'size'}
-            >
-              ▲
-            </span>
-          </button>
-          <button
-            class="header-btn"
-            type="button"
-            role="columnheader"
-            aria-sort={ariaSort('starred')}
-            class:active-sort={sortField === 'starred'}
-            on:click={() => changeSort('starred')}
-          >
-            <span>⭐</span>
-            <span
-              class="sort-icon"
-              class:desc={sortField === 'starred' && sortDirection === 'desc'}
-              class:inactive={sortField !== 'starred'}
-            >
-              ▲
-            </span>
-          </button>
-        </div>
-        {#if !loading && filteredEntries.length === 0}
-          <div class="muted">No items here.</div>
-        {:else}
-          <div
-            class="rows"
-            bind:this={rowsEl}
-            on:scroll={handleRowsScroll}
-            on:keydown={handleRowsKeydown}
-            on:click={handleRowsClick}
-            tabindex="0"
-            role="grid"
-            aria-label="File list"
-          >
+        <div
+          class="rows"
+          bind:this={rowsEl}
+          on:scroll={handleRowsScroll}
+          on:keydown={handleRowsKeydown}
+          on:click={handleRowsClick}
+          tabindex="0"
+          role="grid"
+          aria-label="File list"
+        >
+          <div class="header-row" bind:this={headerEl} style={`grid-template-columns:${gridTemplate};`}>
+            {#each cols as col, idx}
+              <div class="header-cell">
+                <button
+                  class="header-btn"
+                  type="button"
+                  role="columnheader"
+                  aria-sort={ariaSort(col.sort)}
+                  class:active-sort={sortField === col.sort}
+                  on:click={() => changeSort(col.sort)}
+                >
+                  <span>{col.label}</span>
+                  <span
+                    class="sort-icon"
+                    class:desc={sortField === col.sort && sortDirection === 'desc'}
+                    class:inactive={sortField !== col.sort}
+                  >
+                    ▲
+                  </span>
+                </button>
+                {#if col.resizable !== false && idx < cols.length - 1}
+                  <span class="resizer" on:pointerdown={(e) => startResize(idx, e)}></span>
+                {/if}
+              </div>
+            {/each}
+          </div>
+          {#if !loading && filteredEntries.length === 0}
+            <div class="muted">No items here.</div>
+          {:else}
             <div class="spacer" style={`height:${totalHeight}px`}>
               <div class="row-viewport" style={`transform: translateY(${offsetY}px)`}>
                 {#each visibleEntries as entry, i (entry.path)}
                   <button
                     class="row"
+                    style={`grid-template-columns:${gridTemplate};`}
                     class:hidden={isHidden(entry)}
                     class:selected={selected.has(entry.path)}
                     type="button"
@@ -779,13 +847,13 @@
                 {/each}
               </div>
             </div>
-          </div>
-        {/if}
+          {/if}
+        </div>
       </section>
+      <footer class="statusbar"></footer>
     </section>
   </div>
 </main>
-<footer class="statusbar"></footer>
 
 <style>
 .shell {
@@ -839,6 +907,12 @@
     height: 100%;
     overflow: auto;
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+    scrollbar-width: none; /* hide scrollbar */
+    -ms-overflow-style: none; /* IE/Edge */
+  }
+
+  .sidebar::-webkit-scrollbar {
+    display: none;
   }
 
   .sidebar.collapsed {
@@ -884,6 +958,7 @@
     flex-direction: column;
     gap: 12px;
     min-height: 0;
+    min-width: 0;
     color: var(--fg);
     flex: 1;
   }
@@ -893,6 +968,7 @@
     gap: 12px;
     align-items: center;
     flex: 1;
+    min-width: 0;
   }
 
 .path {
@@ -902,11 +978,13 @@
   flex-wrap: wrap;
   width: 100%;
   flex: 1;
+  min-width: 0;
 }
 
 .path-input {
   flex: 1;
-  min-width: 240px;
+  min-width: 0;
+  width: 100%;
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 12px;
@@ -936,33 +1014,8 @@
     align-items: center;
   }
 
-  .mode-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .mode-toggle input {
+  .actions:empty {
     display: none;
-  }
-
-  .slider {
-    min-width: 90px;
-    padding: 8px 12px;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: var(--bg);
-    color: var(--fg);
-    font-weight: 600;
-    text-align: center;
-    transition: background 120ms ease, border-color 120ms ease;
-  }
-
-  .mode-toggle input:checked + .slider {
-    background: var(--bg-raised);
-    border-color: var(--border-accent);
   }
 
 button {
@@ -1000,18 +1053,29 @@ button:active {
     border: none;
     border-radius: 0;
     box-shadow: none;
-    overflow: hidden;
+    overflow: auto;
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    overflow-x: auto;
+    min-width: 0;
   }
 
 .rows {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  width: 100%;
+  direction: rtl; /* place scrollbar on the left */
+  padding-left: 12px; /* add gap between scrollbar and table */
+  padding-bottom: 48px; /* keep rows clear of the status bar */
+}
+
+.rows .header-row,
+.rows .spacer,
+.rows .row-viewport,
+.rows .row {
+  direction: ltr; /* keep content left-to-right while scrollbar stays left */
 }
 
 .spacer {
@@ -1027,7 +1091,6 @@ button:active {
 
   .row {
     display: grid;
-    grid-template-columns: 1.4fr 0.6fr 0.6fr 0.3fr 0.2fr;
     gap: 10px;
     align-items: center;
     padding: 0 12px;
@@ -1068,7 +1131,6 @@ button:active {
 
   .header-row {
     display: grid;
-    grid-template-columns: 1.4fr 0.6fr 0.6fr 0.3fr 0.2fr;
     gap: 10px;
     padding: 6px 12px;
     border-bottom: 1px solid var(--border-strong);
@@ -1082,12 +1144,22 @@ button:active {
     z-index: 1;
   }
 
+  .header-cell {
+    display: flex;
+    align-items: center;
+    position: relative;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
   .header-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     justify-content: flex-start;
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
     height: 100%;
     border: none;
     background: transparent;
@@ -1103,6 +1175,23 @@ button:active {
 
   .header-btn.active-sort {
     color: var(--fg);
+  }
+
+  .resizer {
+    flex: 0 0 10px;
+    min-width: 10px;
+    align-self: stretch;
+    cursor: col-resize;
+    display: inline-block;
+    margin-left: 2px;
+    border-radius: 4px;
+    transition: background 120ms ease;
+    position: relative;
+    z-index: 2;
+  }
+
+  .resizer:hover {
+    background: var(--border);
   }
 
   .header-btn:focus-visible {
@@ -1140,13 +1229,9 @@ button:active {
   .name {
     font-size: 14px;
     font-weight: 500;
-    display: -webkit-box;
-    line-clamp: 2;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    line-height: 1.3;
   }
 
   .col-type,
@@ -1162,16 +1247,12 @@ button:active {
   .col-size {
     font-weight: 600;
     min-width: 80px;
-    text-align: right;
   }
 
   .col-modified {
     min-width: 100px;
   }
 
-  .col-star {
-    text-align: center;
-  }
   .star-btn {
     display: inline-flex;
     align-items: center;
@@ -1223,23 +1304,23 @@ button:active {
 
   @media (max-width: 640px) {
     .row {
-      grid-template-columns: 1.4fr 0.6fr 0.8fr;
+    grid-template-columns: 1.4fr 1fr 0.8fr;
       grid-template-areas:
         'name type size'
         'name modified size';
     }
 
     .header-row {
-      grid-template-columns: 1.4fr 0.6fr 0.8fr;
+      grid-template-columns: 1.4fr 0.8fr 0.6fr;
     }
   }
 
   .list.wide .row {
-    grid-template-columns: 2fr 0.8fr 1fr 0.7fr 0.3fr;
+    grid-template-columns: 1.6fr 140px 90px 110px 80px;
   }
 
   .list.wide .header-row {
-    grid-template-columns: 2fr 0.8fr 1fr 0.7fr 0.3fr;
+    grid-template-columns: 1.6fr 180px 180px 140px 90px;
   }
 
   .statusbar {
