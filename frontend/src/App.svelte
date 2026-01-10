@@ -76,6 +76,7 @@
   let wheelRaf: number | null = null
   const rowHeight = 32
   const overscan = 8
+  const wheelScale = 0.7
   let unlistenDirChanged: UnlistenFn | null = null
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
   let rowsObserver: ResizeObserver | null = null
@@ -463,7 +464,7 @@
 
   const handleWheel = (event: WheelEvent) => {
     if (!rowsEl) return
-    pendingDeltaY += event.deltaY
+    pendingDeltaY += event.deltaY * wheelScale
     if (wheelRaf !== null) return
     wheelRaf = requestAnimationFrame(() => {
       rowsEl!.scrollTop += pendingDeltaY
