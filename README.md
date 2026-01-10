@@ -6,8 +6,11 @@ Minimal file explorer built with Tauri 2 (Rust backend) and Svelte/TypeScript f
 - **Rust-first**: `list_dir` and `search` (see `src/main.rs`, `src/search.rs`) read directories, skip symlinks, sort folders before files, and return fully formatted entries (size, modified, icon path).
 - **Auto-refresh**: A `notify` watcher (`src/watcher.rs`) listens for create/modify/remove in the current directory and emits `dir-changed`; the frontend listens and refreshes with a 300 ms debounce.
 - **Virtualized list**: The file list renders only visible rows for large directories to keep hover/scroll smooth.
+- **Smooth wheel scrolling**: Wheel deltas are coalesced and applied once per animation frame to avoid stutter on fast mouse wheels.
 - **Small binaries**: Release profile in `.cargo/config.toml` uses `opt-level="z"`, thin LTO, `panic=abort`, strip. Uses system WebView (WebKit on Linux, WebView2 on Windows) so bundles stay small.
 - **Icons**: Mapped in Rust (`src/icons.rs`) to `frontend/public/icons/scalable/...` so both Linux and Windows get native-looking glyphs.
+- **Dynamic mounts**: Partitions list uses sysinfo to enumerate mounted volumes, labels by mount point (so `/` and `/home` don’t duplicate a device), marks removable vs. fixed, and polls every 2 s.
+- **Bookmarks & layout prefs**: Stored in SQLite; add via Ctrl+B on a single selected folder (modal lets you rename), remove from sidebar “x”. Column widths are also persisted in the same DB.
 
 ## Dependencies
 Common:
@@ -58,6 +61,10 @@ Tauri bundle:
   cargo tauri build --bundles rpm
   ```
   Output: `target/release/bundle/rpm/filey-<version>.rpm`
+- Helper script with local ccache temp:
+  ```bash
+  ./scripts/build-release.sh
+  ```
 - Install RPM (Fedora/RHEL/openSUSE):
   ```bash
   sudo rpm -Uvh target/release/bundle/rpm/filey-0.2.0-1.x86_64.rpm
@@ -74,13 +81,16 @@ Tauri bundle:
 
 ## Runtime notes
 - Dev port: 5173 (see `tauri.conf.json` and `scripts/start-vite.sh`). If occupied, stop the process or adjust the port.
+- Mounts refresh automatically every 2 s; removable drives get a USB icon, and if you browse a device that disconnects the app falls back to Home with an error message.
 - Hidden files render at half opacity in the list. Sidebar auto-collapses under 700 px width. Fixed 24 px shell padding.
 - Search is recursive, case-insensitive, skips symlinks, and matches on the current path subtree. Empty search returns an empty result and preserves the listing.
+- Data lives in SQLite at the platform data dir (Linux: `~/.local/share/filey/filey.db`) and holds bookmarks, starred, recent, and column widths.
 - Permissions: capability file `capabilities/default.json` grants `core:event` listen/emit so the watcher can refresh the UI.
+- Shortcuts: Ctrl/⌘+F toggles search mode and focuses input; Esc exits search; Ctrl/⌘+B on one selected folder opens bookmark modal and saves to DB.
 
 ## UI
 - Dark, neutral greys (no chroma) defined in `frontend/src/app.css`.
-- Columns: Name, Type, Modified, Size, ⭐; name is line-clamped to 2 lines. Sidebar sections: Places, Bookmarks, Partitions.
+- Columns: Name, Type, Modified, Size, ⭐; name is line-clamped to 2 lines. Sidebar sections: Places, Bookmarks, Partitions. Bookmarks show an “x” on hover to remove; drives use different icons for fixed vs removable.
 - Virtualized scrolling container keeps hover smooth on large folders.
 
 ## Next steps
