@@ -72,6 +72,8 @@
   let pathInputEl: HTMLInputElement | null = null
   let viewportHeight = 0
   let scrollTop = 0
+  let pendingDeltaY = 0
+  let wheelRaf: number | null = null
   const rowHeight = 32
   const overscan = 8
   let unlistenDirChanged: UnlistenFn | null = null
@@ -459,6 +461,17 @@
     scrollTop = effectiveTop
   }
 
+  const handleWheel = (event: WheelEvent) => {
+    if (!rowsEl) return
+    pendingDeltaY += event.deltaY
+    if (wheelRaf !== null) return
+    wheelRaf = requestAnimationFrame(() => {
+      rowsEl!.scrollTop += pendingDeltaY
+      pendingDeltaY = 0
+      wheelRaf = null
+    })
+  }
+
   const handleRowsKeydown = (event: KeyboardEvent) => {
     const key = event.key.toLowerCase()
     if (event.ctrlKey && key === 'a') {
@@ -790,6 +803,10 @@
         clearTimeout(refreshTimer)
         refreshTimer = null
       }
+      if (wheelRaf !== null) {
+        cancelAnimationFrame(wheelRaf)
+        wheelRaf = null
+      }
       rowsObserver?.disconnect()
       if (unlistenDirChanged) {
         unlistenDirChanged()
@@ -908,6 +925,7 @@
           class="rows"
           bind:this={rowsEl}
           on:scroll={handleRowsScroll}
+          on:wheel|passive={handleWheel}
           on:keydown={handleRowsKeydown}
           on:click={handleRowsClick}
           tabindex="0"
@@ -1256,17 +1274,14 @@ button {
   color: var(--fg);
   font-weight: 600;
   cursor: pointer;
-  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease;
 }
 
 button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.25);
   border-color: var(--border-accent);
 }
 
 button:active {
-  transform: translateY(0);
 }
 
 .error {
