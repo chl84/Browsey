@@ -12,6 +12,7 @@
     size?: number | null
     modified?: string | null
     starred?: boolean
+    icon?: string
   }
 
   type Listing = {
@@ -19,17 +20,31 @@
     entries: Entry[]
   }
 
+  type SortField = 'name' | 'type' | 'modified' | 'size' | 'starred'
+  type SortDirection = 'asc' | 'desc'
+
+  type Location =
+    | { type: 'dir'; path: string }
+    | { type: 'recent' }
+    | { type: 'starred' }
+    | { type: 'trash' }
+
   let current = ''
   let entries: Entry[] = []
   let loading = false
   let error = ''
   let filter = ''
+  let searchMode = false
   let searchActive = false
   let sidebarCollapsed = false
   let pathInput = ''
+  let sortField: SortField = 'name'
+  let sortDirection: SortDirection = 'asc'
   let selected = clearSelection()
   let anchorIndex: number | null = null
   let caretIndex: number | null = null
+  let history: Location[] = []
+  let historyIndex = -1
   let rowsEl: HTMLDivElement | null = null
   let viewportHeight = 0
   let scrollTop = 0
@@ -78,15 +93,54 @@
     return `${value.toFixed(1)} ${units[u]}`
   }
 
-  const load = async (path?: string) => {
+  const sortPayload = () => ({
+    field: sortField,
+    direction: sortDirection,
+  })
+
+  const ariaSort = (field: SortField) =>
+    sortField === field ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'
+
+  const changeSort = (field: SortField) => {
+    if (sortField === field) {
+      sortDirection = sortDirection === 'asc' ? 'desc' : 'asc'
+    } else {
+      sortField = field
+      sortDirection = 'asc'
+    }
+    void refreshForSort()
+  }
+
+  const sameLocation = (a?: Location, b?: Location) => {
+    if (!a || !b) return false
+    if (a.type !== b.type) return false
+    if (a.type === 'dir' && b.type === 'dir') {
+      return a.path === b.path
+    }
+    return true
+  }
+
+  const pushHistory = (loc: Location) => {
+    const last = history[historyIndex]
+    if (sameLocation(last, loc)) return
+    history = history.slice(0, historyIndex + 1)
+    history.push(loc)
+    historyIndex = history.length - 1
+  }
+
+  const load = async (path?: string, opts: { recordHistory?: boolean } = {}) => {
+    const { recordHistory = true } = opts
     loading = true
     error = ''
     searchActive = false
     try {
-      const result = await invoke<Listing>('list_dir', { path })
+      const result = await invoke<Listing>('list_dir', { path, sort: sortPayload() })
       current = result.current
       pathInput = result.current
       entries = result.entries
+      if (recordHistory) {
+        pushHistory({ type: 'dir', path: current })
+      }
       // Start watching this directory for changes.
       await invoke('watch_dir', { path: current })
     } catch (err) {
@@ -96,15 +150,18 @@
     }
   }
 
-  const loadRecent = async () => {
+  const loadRecent = async (recordHistory = true) => {
     loading = true
     error = ''
     searchActive = false
     try {
-      const result = await invoke<Entry[]>('list_recent')
+      const result = await invoke<Entry[]>('list_recent', { sort: sortPayload() })
       current = 'Recent'
       pathInput = ''
       entries = result
+      if (recordHistory) {
+        pushHistory({ type: 'recent' })
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -112,15 +169,18 @@
     }
   }
 
-  const loadStarred = async () => {
+  const loadStarred = async (recordHistory = true) => {
     loading = true
     error = ''
     searchActive = false
     try {
-      const result = await invoke<Entry[]>('list_starred')
+      const result = await invoke<Entry[]>('list_starred', { sort: sortPayload() })
       current = 'Starred'
       pathInput = ''
       entries = result
+      if (recordHistory) {
+        pushHistory({ type: 'starred' })
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -128,15 +188,18 @@
     }
   }
 
-  const loadTrash = async () => {
+  const loadTrash = async (recordHistory = true) => {
     loading = true
     error = ''
     searchActive = false
     try {
-      const result = await invoke<Listing>('list_trash')
+      const result = await invoke<Listing>('list_trash', { sort: sortPayload() })
       current = 'Trash'
       pathInput = ''
       entries = result.entries
+      if (recordHistory) {
+        pushHistory({ type: 'trash' })
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
@@ -179,7 +242,9 @@
 
   const goToPath = () => {
     if (!pathInput.trim()) return
-    void load(pathInput.trim())
+    if (pathInput.trim() !== current) {
+      void load(pathInput.trim())
+    }
   }
 
   const handlePlace = (label: string, path: string) => {
@@ -210,21 +275,33 @@
   }
 
   const runSearch = async () => {
-    if (filter.trim().length === 0) {
-      searchActive = false
-      await load(current)
-      return
-    }
     loading = true
     error = ''
-    searchActive = true
     try {
-      const result = await invoke<Entry[]>('search', { path: current, query: filter })
-      entries = result
+      const needle = pathInput.trim()
+      if (needle.length === 0) {
+        searchActive = false
+        await load(current, { recordHistory: false })
+      } else {
+        filter = needle
+        const result = await invoke<Entry[]>('search', { path: current, query: needle, sort: sortPayload() })
+        entries = result
+        searchActive = true
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err)
     } finally {
       loading = false
+    }
+  }
+
+  const toggleMode = async (checked: boolean) => {
+    searchMode = checked
+    if (!searchMode) {
+      filter = ''
+      searchActive = false
+      pathInput = current
+      await load(current, { recordHistory: false })
     }
   }
 
@@ -289,6 +366,23 @@
     }
   }
 
+  const refreshForSort = async () => {
+    if (searchActive && searchMode) {
+      await runSearch()
+      return
+    }
+
+    if (current === 'Recent') {
+      await loadRecent(false)
+    } else if (current === 'Starred') {
+      await loadStarred(false)
+    } else if (current === 'Trash') {
+      await loadTrash(false)
+    } else {
+      await load(current, { recordHistory: false })
+    }
+  }
+
   const handleRowClick = (entry: Entry, absoluteIndex: number, event: MouseEvent) => {
     event.stopPropagation()
     const isToggle = event.ctrlKey || event.metaKey
@@ -318,6 +412,60 @@
       selected = new Set([entry.path])
       anchorIndex = absoluteIndex
       caretIndex = absoluteIndex
+    }
+  }
+
+  const navigateTo = async (loc: Location, recordHistory = false) => {
+    switch (loc.type) {
+      case 'dir':
+        await load(loc.path, { recordHistory })
+        break
+      case 'recent':
+        await loadRecent(recordHistory)
+        break
+      case 'starred':
+        await loadStarred(recordHistory)
+        break
+      case 'trash':
+        await loadTrash(recordHistory)
+        break
+    }
+  }
+
+  const goBack = async () => {
+    if (historyIndex <= 0) return
+    historyIndex -= 1
+    await navigateTo(history[historyIndex], false)
+  }
+
+  const goForward = async () => {
+    if (historyIndex < 0 || historyIndex >= history.length - 1) return
+    historyIndex += 1
+    await navigateTo(history[historyIndex], false)
+  }
+
+  const isEditableTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false
+    const tag = target.tagName.toLowerCase()
+    return (
+      target.isContentEditable ||
+      tag === 'input' ||
+      tag === 'textarea' ||
+      tag === 'select'
+    )
+  }
+
+  const handleGlobalKeydown = (event: KeyboardEvent) => {
+    if (event.key !== 'Backspace') return
+    if (event.ctrlKey || event.metaKey || event.altKey) return
+    if (isEditableTarget(event.target)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.shiftKey) {
+      void goForward()
+    } else {
+      void goBack()
     }
   }
 
@@ -359,6 +507,7 @@
   onMount(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
+    window.addEventListener('keydown', handleGlobalKeydown)
     void load()
 
     // Listen for backend watcher events to refresh the current directory.
@@ -369,7 +518,7 @@
             clearTimeout(refreshTimer)
           }
           refreshTimer = setTimeout(() => {
-            void load(current)
+            void load(current, { recordHistory: false })
           }, 300)
         }
       })
@@ -377,6 +526,7 @@
 
     return () => {
       window.removeEventListener('resize', handleResize)
+      window.removeEventListener('keydown', handleGlobalKeydown)
       if (refreshTimer) {
         clearTimeout(refreshTimer)
         refreshTimer = null
@@ -407,7 +557,6 @@
         {#each bookmarks as mark}
           <button class="nav" type="button" on:click={() => load(mark.path)}>
             {mark.label}
-            <span class="dim">{mark.path}</span>
           </button>
         {/each}
       </div>
@@ -417,7 +566,6 @@
         {#each partitions as part}
           <button class="nav" type="button" on:click={() => load(part.path)}>
             {part.label}
-            <span class="dim">{part.path}</span>
           </button>
         {/each}
       </div>
@@ -431,9 +579,15 @@
             <input
               class="path-input"
               bind:value={pathInput}
-              placeholder="Path..."
-              aria-label="Path"
-              on:keydown={(e) => e.key === 'Enter' && goToPath()}
+              placeholder={searchMode ? 'Search in current folder…' : 'Path…'}
+              aria-label={searchMode ? 'Search' : 'Path'}
+              on:keydown={(e) => {
+                if (e.key === 'Enter' && !searchMode) {
+                  goToPath()
+                } else if (e.key === 'Enter' && searchMode) {
+                  runSearch()
+                }
+              }}
             />
           </div>
           {#if loading}
@@ -441,15 +595,17 @@
           {/if}
         </div>
         <div class="actions">
-          <input
-            class="filter"
-            placeholder="Filter..."
-            bind:value={filter}
-            aria-label="Filter"
-            on:keydown={(e) => e.key === 'Enter' && runSearch()}
-          />
-          <button class="ghost" on:click={() => load(current)}>Refresh</button>
-          <button class="primary" on:click={runSearch}>Search</button>
+          <label class="mode-toggle">
+            <input
+              type="checkbox"
+              bind:checked={searchMode}
+              aria-label="Toggle search mode"
+              on:change={async (e) => {
+                await toggleMode(e.currentTarget.checked)
+              }}
+            />
+            <span class="slider">{searchMode ? 'Search' : 'Path'}</span>
+          </label>
         </div>
       </header>
 
@@ -463,11 +619,91 @@
 
       <section class="list" class:wide={sidebarCollapsed}>
         <div class="header-row">
-          <div class="col-name">Name</div>
-          <div class="col-type">Type</div>
-          <div class="col-modified">Modified</div>
-          <div class="col-size">Size</div>
-          <div class="col-star">⭐</div>
+          <button
+            class="header-btn"
+            type="button"
+            role="columnheader"
+            aria-sort={ariaSort('name')}
+            class:active-sort={sortField === 'name'}
+            on:click={() => changeSort('name')}
+          >
+            <span>Name</span>
+            <span
+              class="sort-icon"
+              class:desc={sortField === 'name' && sortDirection === 'desc'}
+              class:inactive={sortField !== 'name'}
+            >
+              ▲
+            </span>
+          </button>
+          <button
+            class="header-btn"
+            type="button"
+            role="columnheader"
+            aria-sort={ariaSort('type')}
+            class:active-sort={sortField === 'type'}
+            on:click={() => changeSort('type')}
+          >
+            <span>Type</span>
+            <span
+              class="sort-icon"
+              class:desc={sortField === 'type' && sortDirection === 'desc'}
+              class:inactive={sortField !== 'type'}
+            >
+              ▲
+            </span>
+          </button>
+          <button
+            class="header-btn"
+            type="button"
+            role="columnheader"
+            aria-sort={ariaSort('modified')}
+            class:active-sort={sortField === 'modified'}
+            on:click={() => changeSort('modified')}
+          >
+            <span>Modified</span>
+            <span
+              class="sort-icon"
+              class:desc={sortField === 'modified' && sortDirection === 'desc'}
+              class:inactive={sortField !== 'modified'}
+            >
+              ▲
+            </span>
+          </button>
+          <button
+            class="header-btn"
+            type="button"
+            role="columnheader"
+            aria-sort={ariaSort('size')}
+            class:active-sort={sortField === 'size'}
+            on:click={() => changeSort('size')}
+          >
+            <span>Size</span>
+            <span
+              class="sort-icon"
+              class:desc={sortField === 'size' && sortDirection === 'desc'}
+              class:inactive={sortField !== 'size'}
+            >
+              ▲
+            </span>
+          </button>
+          <button
+            class="header-btn"
+            type="button"
+            role="columnheader"
+            aria-sort={ariaSort('starred')}
+            class:active-sort={sortField === 'starred'}
+            on:click={() => changeSort('starred')}
+          >
+            <span>⭐</span>
+            <span
+              class="sort-icon"
+              class:desc={sortField === 'starred' && sortDirection === 'desc'}
+              class:inactive={sortField !== 'starred'}
+            >
+              ▲
+            </span>
+          </button>
         </div>
         {#if !loading && filteredEntries.length === 0}
           <div class="muted">No items here.</div>
@@ -556,12 +792,14 @@
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 24px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
   color: var(--fg);
-  min-height: 100vh;
+  min-height: 100%;
+  height: 100vh;
+  overflow: hidden;
 }
 
   .topbar {
@@ -570,14 +808,20 @@
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg);
+    padding: 0 0 8px 0;
   }
 
   .layout {
     display: grid;
     grid-template-columns: 220px 1fr;
     gap: 16px;
-    align-items: start;
+    align-items: stretch;
     min-height: 0;
+    height: 100%;
   }
 
   .layout.collapsed {
@@ -592,10 +836,7 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    position: sticky;
-    top: 24px;
-    align-self: start;
-    max-height: calc(100vh - 48px);
+    height: 100%;
     overflow: auto;
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
   }
@@ -638,23 +879,20 @@
     transform: translateY(-1px);
   }
 
-.dim {
-    color: var(--fg-dim);
-    font-size: 12px;
-  }
-
-.content {
+  .content {
     display: flex;
     flex-direction: column;
     gap: 12px;
     min-height: 0;
     color: var(--fg);
+    flex: 1;
   }
 
   .left {
     display: flex;
     gap: 12px;
     align-items: center;
+    flex: 1;
   }
 
 .path {
@@ -663,6 +901,7 @@
   align-items: center;
   flex-wrap: wrap;
   width: 100%;
+  flex: 1;
 }
 
 .path-input {
@@ -697,20 +936,34 @@
     align-items: center;
   }
 
-.filter {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 12px;
-  min-width: 180px;
-  background: var(--bg);
-  color: var(--fg);
-  font-size: 14px;
-}
+  .mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
 
-.filter:focus {
-  outline: 2px solid var(--border-accent);
-  border-color: var(--border-accent-strong);
-}
+  .mode-toggle input {
+    display: none;
+  }
+
+  .slider {
+    min-width: 90px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--fg);
+    font-weight: 600;
+    text-align: center;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+
+  .mode-toggle input:checked + .slider {
+    background: var(--bg-raised);
+    border-color: var(--border-accent);
+  }
 
 button {
   border: 1px solid var(--border);
@@ -733,17 +986,6 @@ button:active {
   transform: translateY(0);
 }
 
-button.ghost {
-  background: var(--bg);
-  border-color: var(--border);
-}
-
-button.primary {
-  background: var(--bg-raised);
-  color: var(--fg);
-  border-color: var(--border-accent);
-}
-
 .error {
   background: var(--bg-raised);
   border: 1px solid var(--border-accent);
@@ -753,15 +995,18 @@ button.primary {
   font-weight: 600;
 }
 
-.list {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
+  .list {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow-x: auto;
+  }
 
 .rows {
   flex: 1;
@@ -782,7 +1027,7 @@ button.primary {
 
   .row {
     display: grid;
-    grid-template-columns: 1.4fr 0.6fr 0.8fr 0.4fr 0.2fr;
+    grid-template-columns: 1.4fr 0.6fr 0.6fr 0.3fr 0.2fr;
     gap: 10px;
     align-items: center;
     padding: 0 12px;
@@ -823,7 +1068,7 @@ button.primary {
 
   .header-row {
     display: grid;
-    grid-template-columns: 1.4fr 0.6fr 0.8fr 0.4fr 0.2fr;
+    grid-template-columns: 1.4fr 0.6fr 0.6fr 0.3fr 0.2fr;
     gap: 10px;
     padding: 6px 12px;
     border-bottom: 1px solid var(--border-strong);
@@ -832,6 +1077,54 @@ button.primary {
     font-size: 12px;
     letter-spacing: 0.02em;
     text-transform: uppercase;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .header-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-start;
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 0;
+    text-align: left;
+  }
+
+  .header-btn.active-sort {
+    color: var(--fg);
+  }
+
+  .header-btn:focus-visible {
+    outline: 2px solid var(--border-accent);
+    border-radius: 8px;
+    outline-offset: 2px;
+  }
+
+  .sort-icon {
+    font-size: 11px;
+    opacity: 0.8;
+    display: inline-flex;
+    align-items: center;
+    transition: transform 120ms ease;
+  }
+
+  .sort-icon.inactive {
+    opacity: 0.35;
+  }
+
+  .sort-icon.desc {
+    transform: rotate(180deg);
   }
 
   .col-name {
@@ -841,12 +1134,14 @@ button.primary {
     font-weight: 500;
     color: var(--fg-strong);
     overflow: hidden;
+    min-width: 200px;
   }
 
   .name {
     font-size: 14px;
     font-weight: 500;
     display: -webkit-box;
+    line-clamp: 2;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
@@ -861,10 +1156,17 @@ button.primary {
     color: var(--fg-muted);
     font-size: 13px;
     text-align: left;
+    min-width: 120px;
   }
 
   .col-size {
     font-weight: 600;
+    min-width: 80px;
+    text-align: right;
+  }
+
+  .col-modified {
+    min-width: 100px;
   }
 
   .col-star {

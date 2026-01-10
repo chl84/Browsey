@@ -5,14 +5,16 @@ mod search;
 mod watcher;
 mod db;
 mod statusbar;
+mod sorting;
 
 use serde::Serialize;
 use search::{build_entry, search_recursive, FsEntry};
-use std::{cmp::Ordering, fs, path::PathBuf};
+use std::{fs, path::PathBuf};
 use watcher::WatchState;
 use std::collections::HashSet;
 use tracing::{error, info, warn};
 use once_cell::sync::OnceCell;
+use sorting::{sort_entries, SortSpec};
 
 fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
     if let Some(p) = raw {
@@ -40,7 +42,7 @@ struct DirListing {
 }
 
 #[tauri::command]
-fn list_dir(path: Option<String>) -> Result<DirListing, String> {
+fn list_dir(path: Option<String>, sort: Option<SortSpec>) -> Result<DirListing, String> {
     let base_path = expand_path(path)?;
     let fallback_home = dirs_next::home_dir();
 
@@ -71,13 +73,7 @@ fn list_dir(path: Option<String>) -> Result<DirListing, String> {
         entries.push(build_entry(&path, &meta, is_link, starred));
     }
 
-    entries.sort_by(|a, b| match (a.kind.as_str(), b.kind.as_str()) {
-        ("dir", "file") | ("dir", "link") => Ordering::Less,
-        ("link", "dir") | ("file", "dir") => Ordering::Greater,
-        ("link", "file") => Ordering::Less,
-        ("file", "link") => Ordering::Greater,
-        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-    });
+    sort_entries(&mut entries, sort);
 
     Ok(DirListing {
         current: target.to_string_lossy().into_owned(),
@@ -119,6 +115,7 @@ fn resolve_trash_dir() -> Result<Option<PathBuf>, String> {
 fn list_dir_with_star(
     target: PathBuf,
     star_set: &HashSet<String>,
+    sort: Option<SortSpec>,
 ) -> Result<DirListing, String> {
     let mut entries = Vec::new();
     let read_dir = fs::read_dir(&target)
@@ -134,13 +131,7 @@ fn list_dir_with_star(
         entries.push(build_entry(&path, &meta, is_link, starred));
     }
 
-    entries.sort_by(|a, b| match (a.kind.as_str(), b.kind.as_str()) {
-        ("dir", "file") | ("dir", "link") => Ordering::Less,
-        ("link", "dir") | ("file", "dir") => Ordering::Greater,
-        ("link", "file") => Ordering::Less,
-        ("file", "link") => Ordering::Greater,
-        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-    });
+    sort_entries(&mut entries, sort);
 
     Ok(DirListing {
         current: target.to_string_lossy().into_owned(),
@@ -149,7 +140,7 @@ fn list_dir_with_star(
 }
 
 #[cfg(target_os = "windows")]
-fn list_windows_trash(star_set: &HashSet<String>) -> Result<DirListing, String> {
+fn list_windows_trash(star_set: &HashSet<String>, sort: Option<SortSpec>) -> Result<DirListing, String> {
     // Aggregate entries from user SID folders under $Recycle.Bin and map $I/$R pairs to original names.
     let system_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
     let recycle_root = PathBuf::from(format!("{}\\$Recycle.Bin", system_drive));
@@ -226,12 +217,12 @@ fn list_windows_trash(star_set: &HashSet<String>) -> Result<DirListing, String> 
         }
     }
 
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    sort_entries(&mut entries, sort);
     Ok(DirListing { current: recycle_root.to_string_lossy().into_owned(), entries })
 }
 
 #[tauri::command]
-fn search(path: Option<String>, query: String) -> Result<Vec<FsEntry>, String> {
+fn search(path: Option<String>, query: String, sort: Option<SortSpec>) -> Result<Vec<FsEntry>, String> {
     let base_path = expand_path(path)?;
     let target = if base_path.exists() {
         base_path
@@ -248,6 +239,7 @@ fn search(path: Option<String>, query: String) -> Result<Vec<FsEntry>, String> {
             item.starred = true;
         }
     }
+    sort_entries(&mut res, sort);
     Ok(res)
 }
 
@@ -297,7 +289,7 @@ fn toggle_star(path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn list_starred() -> Result<Vec<FsEntry>, String> {
+fn list_starred(sort: Option<SortSpec>) -> Result<Vec<FsEntry>, String> {
     let conn = db::open()?;
     let entries = db::starred_entries(&conn)?;
     let mut out = Vec::new();
@@ -308,11 +300,12 @@ fn list_starred() -> Result<Vec<FsEntry>, String> {
             out.push(build_entry(&pb, &meta, is_link, true));
         }
     }
+    sort_entries(&mut out, sort);
     Ok(out)
 }
 
 #[tauri::command]
-fn list_recent() -> Result<Vec<FsEntry>, String> {
+fn list_recent(sort: Option<SortSpec>) -> Result<Vec<FsEntry>, String> {
     let conn = db::open()?;
     let star_set: HashSet<String> = db::starred_set(&conn)?;
     let mut out = Vec::new();
@@ -324,19 +317,20 @@ fn list_recent() -> Result<Vec<FsEntry>, String> {
             out.push(build_entry(&pb, &meta, is_link, starred));
         }
     }
+    sort_entries(&mut out, sort);
     Ok(out)
 }
 
 #[tauri::command]
-fn list_trash() -> Result<DirListing, String> {
+fn list_trash(sort: Option<SortSpec>) -> Result<DirListing, String> {
     let conn = db::open()?;
     let star_set: HashSet<String> = db::starred_set(&conn)?;
     match resolve_trash_dir()? {
-        Some(target) => list_dir_with_star(target, &star_set),
+        Some(target) => list_dir_with_star(target, &star_set, sort),
         None => {
             #[cfg(target_os = "windows")]
             {
-                return list_windows_trash(&star_set);
+                return list_windows_trash(&star_set, sort);
             }
             Ok(DirListing {
                 current: "Trash (unavailable)".to_string(),
