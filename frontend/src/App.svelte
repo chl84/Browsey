@@ -333,6 +333,63 @@
     openBookmarkModal: async (entry) => openBookmarkModal(entry as Entry),
     goBack,
     goForward,
+    onCopy: async () => {
+      const paths = Array.from($selected)
+      if (paths.length === 0) return false
+      await copyText(paths.join('\n'))
+      return true
+    },
+    onCut: async () => {
+      const paths = Array.from($selected)
+      if (paths.length === 0) return false
+      await copyText(paths.join('\n'))
+      return true
+    },
+    onRename: async () => {
+      if ($selected.size !== 1) return false
+      const path = Array.from($selected)[0]
+      const entry = $entries.find((e) => e.path === path)
+      if (!entry) return false
+      renameTarget = entry
+      renameValue = entry.name
+      renameModalOpen = true
+      return true
+    },
+    onDelete: async (permanent) => {
+      const paths = Array.from($selected)
+      if (paths.length === 0) return false
+      if (permanent) {
+        if (paths.length !== 1) return false
+        const entry = $entries.find((e) => e.path === paths[0])
+        if (!entry) return false
+        deleteTarget = entry
+        deleteConfirmOpen = true
+        return true
+      }
+      try {
+        for (const p of paths) {
+          await invoke('move_to_trash', { path: p })
+        }
+        await load($current, { recordHistory: false })
+      } catch (err) {
+        console.error('Failed to move to trash', err)
+      }
+      return true
+    },
+    onProperties: async () => {
+      if ($selected.size !== 1) return false
+      const path = Array.from($selected)[0]
+      const entry = $entries.find((e) => e.path === path)
+      if (!entry) return false
+      propertiesEntry = entry
+      propertiesSize =
+        entry.kind === 'dir' && $selected.size === 1 && $selected.has(entry.path)
+          ? selectedDirBytes
+          : entry.size ?? null
+      propertiesOpen = true
+      await loadEntryTimes(entry)
+      return true
+    },
   })
   const { handleGlobalKeydown } = shortcuts
 
