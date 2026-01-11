@@ -505,7 +505,9 @@
     event.preventDefault()
     event.stopPropagation()
     try {
+      const selectionCount = $selected.has(entry.path) ? $selected.size : 1
       const actions = await invoke<ContextAction[]>('context_menu_actions', {
+        count: selectionCount,
         kind: entry.kind,
         starred: Boolean(entry.starred),
       })
@@ -599,10 +601,13 @@
   }
 
   const handleRowContextMenu = (entry: Entry, event: MouseEvent) => {
-    const idx = get(filteredEntries).findIndex((e) => e.path === entry.path)
-    selected.set(new Set([entry.path]))
-    anchorIndex.set(idx >= 0 ? idx : null)
-    caretIndex.set(idx >= 0 ? idx : null)
+    const alreadySelected = $selected.has(entry.path)
+    if (!alreadySelected) {
+      const idx = get(filteredEntries).findIndex((e) => e.path === entry.path)
+      selected.set(new Set([entry.path]))
+      anchorIndex.set(idx >= 0 ? idx : null)
+      caretIndex.set(idx >= 0 ? idx : null)
+    }
     void openContextMenu(entry, event)
   }
 
