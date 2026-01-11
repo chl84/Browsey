@@ -87,13 +87,14 @@ Tauri bundle:
 - Data lives in SQLite at the platform data dir (Linux: `~/.local/share/filey/filey.db`) and holds bookmarks, starred, recent, and column widths.
 - Permissions: capability file `capabilities/default.json` grants `core:event` listen/emit so the watcher can refresh the UI.
 - Shortcuts: see section below.
+- Context menu: right-click rows for “Open with…”, Copy path, Cut/Copy, Rename (F2), Move to wastebasket (Delete), Delete permanently (Shift+Delete with confirmation), Properties (Ctrl+P). Properties lazy-loads accessed/created timestamps; folder sizes reuse the statusbar computation.
 
 ## Shortcuts & modes
 - Modes share ett inputfelt: **adresse** (standard), **filter** (når du begynner å skrive uten fokus), **søk** (etter Ctrl/⌘+F).
 - **Ctrl/⌘+F**: aktiverer søkemodus, fokuserer input. **Esc**: avslutter søk og går til adressemodus.
 - **Filtrering**: når input ikke er fokusert og du taster bokstaver/tall, går vi til filtreringsmodus, fokuserer feltet, og filteret oppdateres mens du skriver og når du sletter. Shift+digit ignoreres.
 - **Ctrl/⌘+B**: åpner bokmerkemodal for én markert mappe.
-- **Ctrl/⌘+A** i fil-listen: marker alt. **Esc** i listen: tømmer markering.
+- **Ctrl/⌘+A** i fil-listen: marker alt. **Esc** tømmer markering/blur i listen og lukker åpne modaler/menyer (før øvrige snarveier).
 
 ## UI
 - Dark, neutral greys (no chroma) defined in `frontend/src/app.css`.

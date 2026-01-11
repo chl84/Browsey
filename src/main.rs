@@ -3,6 +3,7 @@
 mod db;
 mod entry;
 mod icons;
+mod context_menu;
 mod search;
 mod sorting;
 mod statusbar;
@@ -11,14 +12,15 @@ mod watcher;
 use db::{
     delete_bookmark, list_bookmarks, load_column_widths, save_column_widths, upsert_bookmark,
 };
-use entry::{build_entry, FsEntry};
+use entry::{build_entry, entry_times, EntryTimes, FsEntry};
+use context_menu::context_menu_actions;
 use once_cell::sync::OnceCell;
 use search::search_recursive;
 use serde::Serialize;
 use sorting::{sort_entries, SortSpec};
 use statusbar::dir_sizes;
 use std::collections::HashSet;
-use std::{fs, path::PathBuf};
+use std::{fs, path::{Path, PathBuf}};
 use sysinfo::Disks;
 use tracing::{error, info, warn};
 use watcher::WatchState;
@@ -463,6 +465,73 @@ fn list_trash(sort: Option<SortSpec>) -> Result<DirListing, String> {
     }
 }
 
+fn unique_path(dest: &Path) -> PathBuf {
+    if !dest.exists() {
+        return dest.to_path_buf();
+    }
+    let mut idx = 1;
+    let stem = dest
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "item".to_string());
+    let ext = dest.extension().map(|e| e.to_string_lossy().to_string());
+    let parent = dest.parent().unwrap_or_else(|| Path::new("."));
+    loop {
+        let mut candidate = parent.join(format!("{}-{}", stem, idx));
+        if let Some(ext) = &ext {
+            candidate.set_extension(ext);
+        }
+        if !candidate.exists() {
+            return candidate;
+        }
+        idx += 1;
+    }
+}
+
+#[tauri::command]
+fn rename_entry(path: String, new_name: String) -> Result<String, String> {
+    let from = PathBuf::from(path);
+    if new_name.trim().is_empty() {
+        return Err("New name cannot be empty".into());
+    }
+    let parent = from
+        .parent()
+        .ok_or_else(|| "Cannot rename root".to_string())?;
+    let to = parent.join(new_name.trim());
+    fs::rename(&from, &to)
+        .map_err(|e| format!("Failed to rename: {e}"))?;
+    Ok(to.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn move_to_trash(path: String) -> Result<(), String> {
+    let src = PathBuf::from(&path);
+    if !src.exists() {
+        return Err("Path does not exist".into());
+    }
+    let trash_dir = resolve_trash_dir()?.ok_or_else(|| "Trash not available on this platform".to_string())?;
+    std::fs::create_dir_all(&trash_dir).map_err(|e| format!("Failed to create trash dir: {e}"))?;
+    let file_name = src
+        .file_name()
+        .ok_or_else(|| "Invalid path".to_string())?;
+    let dest = unique_path(&trash_dir.join(file_name));
+    fs::rename(&src, &dest).map_err(|e| format!("Failed to move to trash: {e}"))
+}
+
+#[tauri::command]
+fn delete_entry(path: String) -> Result<(), String> {
+    let pb = PathBuf::from(&path);
+    if !pb.exists() {
+        return Err("Path does not exist".into());
+    }
+    let meta = fs::symlink_metadata(&pb).map_err(|e| format!("Failed to read metadata: {e}"))?;
+    if meta.is_dir() {
+        fs::remove_dir_all(&pb).map_err(|e| format!("Failed to delete directory: {e}"))
+    } else {
+        fs::remove_file(&pb).map_err(|e| format!("Failed to delete file: {e}"))
+    }
+}
+
 fn init_logging() {
     static GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
     let log_dir = dirs_next::data_dir()
@@ -505,8 +574,19 @@ fn main() {
             list_trash,
             store_column_widths,
             load_saved_column_widths,
-            dir_sizes
+            dir_sizes,
+            context_menu_actions,
+            rename_entry,
+            move_to_trash,
+            delete_entry,
+            entry_times_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn entry_times_cmd(path: String) -> Result<EntryTimes, String> {
+    let pb = PathBuf::from(path);
+    entry_times(&pb)
 }

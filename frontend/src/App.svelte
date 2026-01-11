@@ -3,7 +3,7 @@
   import { invoke } from '@tauri-apps/api/core'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { get } from 'svelte/store'
-  import { formatItems, formatSelectionLine, formatSize, normalizePath } from './lib/explorer/utils'
+  import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from './lib/explorer/utils'
   import { createListState } from './lib/explorer/stores/listState'
   import Sidebar from './lib/components/explorer/Sidebar.svelte'
   import Topbar from './lib/components/explorer/Topbar.svelte'
@@ -11,6 +11,11 @@
   import FileList from './lib/components/explorer/FileList.svelte'
   import Statusbar from './lib/components/explorer/Statusbar.svelte'
   import Notice from './lib/components/explorer/Notice.svelte'
+  import ContextMenu from './lib/components/explorer/ContextMenu.svelte'
+  import DeleteConfirmModal from './lib/components/explorer/DeleteConfirmModal.svelte'
+  import RenameModal from './lib/components/explorer/RenameModal.svelte'
+  import OpenWithModal from './lib/components/explorer/OpenWithModal.svelte'
+  import PropertiesModal from './lib/components/explorer/PropertiesModal.svelte'
   import { createExplorerState } from './lib/explorer/state'
   import { createColumnResize } from './lib/explorer/hooks/columnWidths'
   import { createGlobalShortcuts } from './lib/explorer/hooks/shortcuts'
@@ -46,6 +51,22 @@
   let bookmarkName = ''
   let bookmarkCandidate: Entry | null = null
   let bookmarkInputEl: HTMLInputElement | null = null
+  type ContextAction = { id: string; label: string; shortcut?: string; dangerous?: boolean }
+  let contextMenuOpen = false
+  let contextMenuX = 0
+  let contextMenuY = 0
+  let contextActions: ContextAction[] = []
+  let contextEntry: Entry | null = null
+  let renameModalOpen = false
+  let renameTarget: Entry | null = null
+  let renameValue = ''
+  let openWithOpen = false
+  let openWithEntry: Entry | null = null
+  let propertiesOpen = false
+  let propertiesEntry: Entry | null = null
+  let propertiesSize: number | null = null
+  let deleteConfirmOpen = false
+  let deleteTarget: Entry | null = null
 
   const explorer = createExplorerState({
     onEntriesChanged: () => resetScrollPosition(),
@@ -311,9 +332,61 @@
     findEntryByPath: (path: string) => $entries.find((e) => e.path === path) ?? null,
     openBookmarkModal: async (entry) => openBookmarkModal(entry as Entry),
     goBack,
-      goForward,
-    })
+    goForward,
+  })
   const { handleGlobalKeydown } = shortcuts
+
+  const handleDocumentKeydown = (event: KeyboardEvent) => {
+    const key = event.key.toLowerCase()
+    if (key === 'escape') {
+      if (deleteConfirmOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeDeleteConfirm()
+        return
+      }
+      if (renameModalOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeRenameModal()
+        return
+      }
+      if (openWithOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeOpenWith()
+        return
+      }
+      if (propertiesOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeProperties()
+        return
+      }
+      if (bookmarkModalOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeBookmarkModal()
+        return
+      }
+      if (contextMenuOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeContextMenu()
+        return
+      }
+      const hasSelection = get(selected).size > 0
+      if (hasSelection) {
+        selected.set(new Set())
+        anchorIndex.set(null)
+        caretIndex.set(null)
+      }
+      if (rowsElRef && document.activeElement === rowsElRef) {
+        rowsElRef.blur()
+      }
+    }
+    void handleGlobalKeydown(event)
+  }
 
   $: updateViewportHeight()
   $: {
@@ -366,6 +439,93 @@
     closeBookmarkModal()
   }
 
+  const closeContextMenu = () => {
+    contextMenuOpen = false
+    contextEntry = null
+  }
+
+  const openContextMenu = async (entry: Entry, event: MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    try {
+      const actions = await invoke<ContextAction[]>('context_menu_actions', {
+        kind: entry.kind,
+        starred: Boolean(entry.starred),
+      })
+      contextMenuOpen = true
+      contextMenuX = event.clientX
+      contextMenuY = event.clientY
+      contextEntry = entry
+      contextActions = actions
+    } catch (err) {
+      console.error('Failed to load context menu actions', err)
+    }
+  }
+
+  const copyText = async (value: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(value)
+      } catch (err) {
+        console.error('Clipboard write failed', err)
+      }
+    }
+  }
+
+  const handleContextAction = async (id: string) => {
+    const entry = contextEntry
+    closeContextMenu()
+    if (id.startsWith('divider')) return
+    if (!entry) return
+    if (id === 'copy-path') {
+      await copyText(entry.path)
+      return
+    }
+    if (id === 'cut' || id === 'copy') {
+      await copyText(entry.path)
+      return
+    }
+    if (id === 'open-with') {
+      openWithEntry = entry
+      openWithOpen = true
+      return
+    }
+    if (id === 'rename') {
+      renameTarget = entry
+      renameValue = entry.name
+      renameModalOpen = true
+      return
+    }
+    if (id === 'compress') {
+      console.warn('Compress not implemented yet')
+      return
+    }
+    if (id === 'move-trash') {
+      try {
+        await invoke('move_to_trash', { path: entry.path })
+        await load($current, { recordHistory: false })
+      } catch (err) {
+        console.error('Failed to move to trash', err)
+      }
+      return
+    }
+    if (id === 'delete-permanent') {
+      deleteTarget = entry
+      deleteConfirmOpen = true
+      return
+    }
+    if (id === 'properties') {
+      propertiesEntry = entry
+      propertiesSize =
+        entry.kind === 'dir' && $selected.size === 1 && $selected.has(entry.path)
+          ? selectedDirBytes
+          : entry.size ?? null
+      propertiesOpen = true
+      void loadEntryTimes(entry)
+      return
+    }
+  }
+
   const handleOpenEntry = async (entry: Entry) => {
     if (entry.kind === 'dir') {
       mode = 'address'
@@ -379,6 +539,69 @@
       return
     }
     open(entry)
+  }
+
+  const handleRowContextMenu = (entry: Entry, event: MouseEvent) => {
+    void openContextMenu(entry, event)
+  }
+
+  const closeRenameModal = () => {
+    renameModalOpen = false
+    renameTarget = null
+  }
+
+  const confirmRename = async (name: string) => {
+    if (!renameTarget) return
+    const trimmed = name.trim()
+    if (!trimmed) return
+    try {
+      await invoke('rename_entry', { path: renameTarget.path, new_name: trimmed })
+      await load(parentPath(renameTarget.path), { recordHistory: false })
+    } catch (err) {
+      console.error('Failed to rename', err)
+    } finally {
+      closeRenameModal()
+    }
+  }
+
+  const closeOpenWith = () => {
+    openWithOpen = false
+    openWithEntry = null
+  }
+
+  const closeProperties = () => {
+    propertiesOpen = false
+    propertiesEntry = null
+    propertiesSize = null
+  }
+
+  const loadEntryTimes = async (entry: Entry) => {
+    try {
+      const times = await invoke<{ accessed?: string | null; created?: string | null; modified?: string | null }>(
+        'entry_times_cmd',
+        { path: entry.path }
+      )
+      propertiesEntry = { ...entry, ...times }
+    } catch (err) {
+      console.error('Failed to load entry times', err)
+    }
+  }
+
+  const closeDeleteConfirm = () => {
+    deleteConfirmOpen = false
+    deleteTarget = null
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    try {
+      await invoke('delete_entry', { path: deleteTarget.path })
+      await load($current, { recordHistory: false })
+    } catch (err) {
+      console.error('Failed to delete', err)
+    } finally {
+      closeDeleteConfirm()
+    }
   }
 
   onMount(() => {
@@ -426,7 +649,7 @@
   })
 </script>
 
-<svelte:document on:keydown|capture={handleGlobalKeydown} />
+<svelte:document on:keydown|capture={handleDocumentKeydown} />
 <main class="shell">
   <div class="layout" class:collapsed={sidebarCollapsed}>
     <Sidebar
@@ -490,12 +713,47 @@
         ariaSort={ariaSort}
         onRowClick={rowClickHandler}
         onOpen={handleOpenEntry}
+        onContextMenu={handleRowContextMenu}
         onToggleStar={toggleStar}
       />
       <Statusbar {selectionText} />
     </section>
   </div>
 </main>
+
+<ContextMenu
+  open={contextMenuOpen}
+  x={contextMenuX}
+  y={contextMenuY}
+  actions={contextActions}
+  onSelect={handleContextAction}
+  onClose={closeContextMenu}
+/>
+<DeleteConfirmModal
+  open={deleteConfirmOpen}
+  entryName={deleteTarget?.path ?? ''}
+  onConfirm={confirmDelete}
+  onCancel={closeDeleteConfirm}
+/>
+<RenameModal
+  open={renameModalOpen}
+  entryName={renameTarget?.path ?? ''}
+  bind:value={renameValue}
+  onConfirm={confirmRename}
+  onCancel={closeRenameModal}
+/>
+<OpenWithModal
+  open={openWithOpen}
+  path={openWithEntry?.path ?? ''}
+  onClose={closeOpenWith}
+/>
+<PropertiesModal
+  open={propertiesOpen}
+  entry={propertiesEntry}
+  size={propertiesSize}
+  {formatSize}
+  onClose={closeProperties}
+/>
 
 {#if bookmarkModalOpen}
   <BookmarkModal

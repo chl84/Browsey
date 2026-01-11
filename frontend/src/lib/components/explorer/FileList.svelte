@@ -32,6 +32,7 @@
   export let onRowClick: (entry: Entry, absoluteIndex: number, event: MouseEvent) => void = () => {}
   export let onOpen: (entry: Entry) => void = () => {}
   export let onToggleStar: (entry: Entry) => void = () => {}
+  export let onContextMenu: (entry: Entry, event: MouseEvent) => void = () => {}
 </script>
 
 <section class="list" class:wide={wide}>
@@ -73,6 +74,7 @@
               onOpen={onOpen}
               onClick={(event) => onRowClick(entry, start + i, event)}
               onToggleStar={onToggleStar}
+              onContextMenu={(event) => onContextMenu(entry, event)}
             />
           {/each}
         </div>

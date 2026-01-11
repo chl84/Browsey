@@ -11,6 +11,7 @@
   export let onOpen: (entry: Entry) => void = () => {}
   export let onClick: (event: MouseEvent) => void = () => {}
   export let onToggleStar: (entry: Entry) => void = () => {}
+  export let onContextMenu: (event: MouseEvent) => void = () => {}
 </script>
 
 <button
@@ -28,6 +29,11 @@
     }
   }}
   on:click={onClick}
+  on:contextmenu={(event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    onContextMenu(event)
+  }}
 >
   <div class="col-name">
     <img class="icon" src={entry.icon} alt="" />

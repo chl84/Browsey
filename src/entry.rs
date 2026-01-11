@@ -19,6 +19,13 @@ pub struct FsEntry {
     pub starred: bool,
 }
 
+#[derive(Serialize, Clone)]
+pub struct EntryTimes {
+    pub accessed: Option<String>,
+    pub created: Option<String>,
+    pub modified: Option<String>,
+}
+
 fn dir_item_count(path: &Path) -> Option<u64> {
     match fs::read_dir(path) {
         Ok(iter) => {
@@ -32,6 +39,15 @@ fn dir_item_count(path: &Path) -> Option<u64> {
         }
         Err(_) => None,
     }
+}
+
+fn fmt_time(value: Option<SystemTime>) -> Option<String> {
+    value.and_then(|t| {
+        DateTime::<Local>::from(t)
+            .format("%Y-%m-%d %H:%M")
+            .to_string()
+            .into()
+    })
 }
 
 pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -> FsEntry {
@@ -63,12 +79,7 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -
         .extension()
         .and_then(|e| e.to_str())
         .map(|s| s.to_string());
-    let modified = meta.modified().ok().and_then(|t: SystemTime| {
-        DateTime::<Local>::from(t)
-            .format("%Y-%m-%d %H:%M")
-            .to_string()
-            .into()
-    });
+    let modified = fmt_time(meta.modified().ok());
 
     FsEntry {
         name,
@@ -81,4 +92,13 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -
         icon: icon_for(path, meta, is_link).to_string(),
         starred,
     }
+}
+
+pub fn entry_times(path: &Path) -> Result<EntryTimes, String> {
+    let meta = fs::symlink_metadata(path).map_err(|e| format!("Failed to read metadata: {e}"))?;
+    Ok(EntryTimes {
+        accessed: fmt_time(meta.accessed().ok()),
+        created: fmt_time(meta.created().ok()),
+        modified: fmt_time(meta.modified().ok()),
+    })
 }
