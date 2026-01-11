@@ -1,33 +1,35 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod icons;
-mod entry;
-mod search;
-mod watcher;
 mod db;
-mod statusbar;
+mod entry;
+mod icons;
+mod search;
 mod sorting;
+mod statusbar;
+mod watcher;
 
-use serde::Serialize;
+use db::{
+    delete_bookmark, list_bookmarks, load_column_widths, save_column_widths, upsert_bookmark,
+};
 use entry::{build_entry, FsEntry};
-use search::search_recursive;
-use std::{fs, path::PathBuf};
-use watcher::WatchState;
-use std::collections::HashSet;
-use tracing::{error, info, warn};
 use once_cell::sync::OnceCell;
+use search::search_recursive;
+use serde::Serialize;
 use sorting::{sort_entries, SortSpec};
-use db::{save_column_widths, load_column_widths, list_bookmarks, upsert_bookmark, delete_bookmark};
+use statusbar::dir_sizes;
+use std::collections::HashSet;
+use std::{fs, path::PathBuf};
 use sysinfo::Disks;
+use tracing::{error, info, warn};
+use watcher::WatchState;
 
 fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
     if let Some(p) = raw {
         if p == "~" {
-            dirs_next::home_dir()
-                .ok_or_else(|| "Fant ikke hjemmekatalog".to_string())
+            dirs_next::home_dir().ok_or_else(|| "Fant ikke hjemmekatalog".to_string())
         } else if let Some(stripped) = p.strip_prefix("~/") {
-            let home = dirs_next::home_dir()
-                .ok_or_else(|| "Fant ikke hjemmekatalog".to_string())?;
+            let home =
+                dirs_next::home_dir().ok_or_else(|| "Fant ikke hjemmekatalog".to_string())?;
             Ok(home.join(stripped))
         } else {
             Ok(PathBuf::from(p))
@@ -78,14 +80,12 @@ fn list_dir(path: Option<String>, sort: Option<SortSpec>) -> Result<DirListing, 
     let star_set: HashSet<String> = db::starred_set(&star_conn)?;
 
     let mut entries = Vec::new();
-    let read_dir = fs::read_dir(&target)
-        .map_err(|e| format!("{}: {e}", target.display()))?;
+    let read_dir = fs::read_dir(&target).map_err(|e| format!("{}: {e}", target.display()))?;
 
     for entry in read_dir {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        let meta = fs::symlink_metadata(&path)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let meta = fs::symlink_metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let is_link = meta.file_type().is_symlink();
         let starred = star_set.contains(&path.to_string_lossy().to_string());
         entries.push(build_entry(&path, &meta, is_link, starred));
@@ -136,14 +136,12 @@ fn list_dir_with_star(
     sort: Option<SortSpec>,
 ) -> Result<DirListing, String> {
     let mut entries = Vec::new();
-    let read_dir = fs::read_dir(&target)
-        .map_err(|e| format!("{}: {e}", target.display()))?;
+    let read_dir = fs::read_dir(&target).map_err(|e| format!("{}: {e}", target.display()))?;
 
     for entry in read_dir {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
-        let meta = fs::symlink_metadata(&path)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let meta = fs::symlink_metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let is_link = meta.file_type().is_symlink();
         let starred = star_set.contains(&path.to_string_lossy().to_string());
         entries.push(build_entry(&path, &meta, is_link, starred));
@@ -171,7 +169,14 @@ fn list_mounts() -> Vec<MountInfo> {
             let fs_lc = fs.to_lowercase();
             if matches!(
                 fs_lc.as_str(),
-                "tmpfs" | "devtmpfs" | "proc" | "sysfs" | "cgroup" | "cgroup2" | "overlay" | "squashfs"
+                "tmpfs"
+                    | "devtmpfs"
+                    | "proc"
+                    | "sysfs"
+                    | "cgroup"
+                    | "cgroup2"
+                    | "overlay"
+                    | "squashfs"
             ) {
                 return None;
             }
@@ -211,12 +216,18 @@ fn remove_bookmark(path: String) -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn list_windows_trash(star_set: &HashSet<String>, sort: Option<SortSpec>) -> Result<DirListing, String> {
+fn list_windows_trash(
+    star_set: &HashSet<String>,
+    sort: Option<SortSpec>,
+) -> Result<DirListing, String> {
     // Aggregate entries from user SID folders under $Recycle.Bin and map $I/$R pairs to original names.
     let system_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
     let recycle_root = PathBuf::from(format!("{}\\$Recycle.Bin", system_drive));
     if !recycle_root.exists() {
-        return Ok(DirListing { current: "Trash (unavailable)".into(), entries: Vec::new() });
+        return Ok(DirListing {
+            current: "Trash (unavailable)".into(),
+            entries: Vec::new(),
+        });
     }
 
     use std::collections::HashMap;
@@ -224,7 +235,10 @@ fn list_windows_trash(star_set: &HashSet<String>, sort: Option<SortSpec>) -> Res
     let roots = match fs::read_dir(&recycle_root) {
         Ok(r) => r,
         Err(_) => {
-            return Ok(DirListing { current: "Trash (unavailable)".into(), entries: Vec::new() });
+            return Ok(DirListing {
+                current: "Trash (unavailable)".into(),
+                entries: Vec::new(),
+            });
         }
     };
 
@@ -257,14 +271,20 @@ fn list_windows_trash(star_set: &HashSet<String>, sort: Option<SortSpec>) -> Res
                                     .collect();
                                 if let Ok(orig) = String::from_utf16(&utf16) {
                                     let key = fname.trim_start_matches("$I").to_string();
-                                    let entry = map.entry(key).or_insert(TrashItem { original: None, r_path: None });
+                                    let entry = map.entry(key).or_insert(TrashItem {
+                                        original: None,
+                                        r_path: None,
+                                    });
                                     entry.original = Some(orig);
                                 }
                             }
                         }
                     } else if fname.starts_with("$R") {
                         let key = fname.trim_start_matches("$R").to_string();
-                        let entry = map.entry(key).or_insert(TrashItem { original: None, r_path: None });
+                        let entry = map.entry(key).or_insert(TrashItem {
+                            original: None,
+                            r_path: None,
+                        });
                         entry.r_path = Some(path.clone());
                     }
                 }
@@ -278,9 +298,22 @@ fn list_windows_trash(star_set: &HashSet<String>, sort: Option<SortSpec>) -> Res
                     let name = item
                         .original
                         .as_ref()
-                        .and_then(|p| PathBuf::from(p).file_name().map(|s| s.to_string_lossy().into_owned()))
-                        .unwrap_or_else(|| rp.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
-                    let mut entry = build_entry(&rp, &meta, is_link, star_set.contains(&rp.to_string_lossy().to_string()));
+                        .and_then(|p| {
+                            PathBuf::from(p)
+                                .file_name()
+                                .map(|s| s.to_string_lossy().into_owned())
+                        })
+                        .unwrap_or_else(|| {
+                            rp.file_name()
+                                .map(|s| s.to_string_lossy().into_owned())
+                                .unwrap_or_default()
+                        });
+                    let mut entry = build_entry(
+                        &rp,
+                        &meta,
+                        is_link,
+                        star_set.contains(&rp.to_string_lossy().to_string()),
+                    );
                     entry.name = name;
                     entries.push(entry);
                 }
@@ -289,11 +322,18 @@ fn list_windows_trash(star_set: &HashSet<String>, sort: Option<SortSpec>) -> Res
     }
 
     sort_entries(&mut entries, sort);
-    Ok(DirListing { current: recycle_root.to_string_lossy().into_owned(), entries })
+    Ok(DirListing {
+        current: recycle_root.to_string_lossy().into_owned(),
+        entries,
+    })
 }
 
 #[tauri::command]
-fn search(path: Option<String>, query: String, sort: Option<SortSpec>) -> Result<Vec<FsEntry>, String> {
+fn search(
+    path: Option<String>,
+    query: String,
+    sort: Option<SortSpec>,
+) -> Result<Vec<FsEntry>, String> {
     let base_path = expand_path(path)?;
     let target = if base_path.exists() {
         base_path
@@ -464,7 +504,8 @@ fn main() {
             list_recent,
             list_trash,
             store_column_widths,
-            load_saved_column_widths
+            load_saved_column_widths,
+            dir_sizes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

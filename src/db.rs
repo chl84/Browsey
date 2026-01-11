@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, Row, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 
 const MAX_RECENT: i64 = 50;
@@ -66,7 +66,9 @@ pub fn toggle_star(conn: &Connection, path: &str) -> Result<bool, String> {
     let mut stmt = conn
         .prepare("SELECT 1 FROM starred WHERE path = ?1")
         .map_err(|e| format!("Failed to prepare starred exists: {e}"))?;
-    let exists = stmt.exists(params![path]).map_err(|e: rusqlite::Error| e.to_string())?;
+    let exists = stmt
+        .exists(params![path])
+        .map_err(|e: rusqlite::Error| e.to_string())?;
     if exists {
         conn.execute("DELETE FROM starred WHERE path = ?1", params![path])
             .map_err(|e| format!("Failed to delete star: {e}"))?;
@@ -105,7 +107,9 @@ pub fn starred_entries(conn: &Connection) -> Result<Vec<(String, i64)>, String> 
         .prepare("SELECT path, starred_at FROM starred ORDER BY starred_at DESC")
         .map_err(|e| format!("Failed to query starred: {e}"))?;
     let rows = stmt
-        .query_map([], |row: &Row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+        .query_map([], |row: &Row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
         .map_err(|e| format!("Failed to read starred: {e}"))?;
     let mut res = Vec::new();
     for r in rows {
@@ -140,7 +144,9 @@ pub fn list_bookmarks(conn: &Connection) -> Result<Vec<(String, String)>, String
         .prepare("SELECT label, path FROM bookmarks ORDER BY label COLLATE NOCASE ASC")
         .map_err(|e| format!("Failed to prepare bookmarks query: {e}"))?;
     let rows = stmt
-        .query_map([], |row: &Row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .query_map([], |row: &Row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(|e| format!("Failed to read bookmarks: {e}"))?;
     let mut res = Vec::new();
     for r in rows {

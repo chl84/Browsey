@@ -49,16 +49,26 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -
     }
     .to_string();
 
-    let size = if meta.is_file() { Some(meta.len()) } else { None };
-    let items = if meta.is_dir() { dir_item_count(path) } else { None };
+    let size = if meta.is_file() {
+        Some(meta.len())
+    } else {
+        None
+    };
+    let items = if meta.is_dir() {
+        dir_item_count(path)
+    } else {
+        None
+    };
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
         .map(|s| s.to_string());
-    let modified = meta
-        .modified()
-        .ok()
-        .and_then(|t: SystemTime| DateTime::<Local>::from(t).format("%Y-%m-%d %H:%M").to_string().into());
+    let modified = meta.modified().ok().and_then(|t: SystemTime| {
+        DateTime::<Local>::from(t)
+            .format("%Y-%m-%d %H:%M")
+            .to_string()
+            .into()
+    });
 
     FsEntry {
         name,

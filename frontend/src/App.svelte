@@ -124,7 +124,7 @@
       case 'Recent':
         return iconPath('places/folder-documents.svg')
       case 'Starred':
-        return iconPath('mimetypes/application-certificate.svg')
+        return iconPath('places/user-starred.svg')
       case 'Network':
         return iconPath('places/folder-remote.svg')
       case 'Wastebasket':
@@ -177,6 +177,13 @@
     return `${count} ${suffix}`
   }
 
+  const formatSelectionLine = (count: number, noun: string, bytes?: number) => {
+    if (count === 0) return ''
+    const sizePart = bytes && bytes > 0 ? ` (${formatSize(bytes)})` : ''
+    const suffix = count === 1 ? noun : `${noun}s`
+    return `${count} ${suffix} selected${sizePart}`
+  }
+
   const sortPayload = () => ({
     field: sortField,
     direction: sortDirection,
@@ -210,6 +217,50 @@
     resizeState = null
     window.removeEventListener('pointermove', handleResizeMove)
     void persistWidths()
+  }
+
+  let dirSizeAbort = 0
+  let selectedDirBytes = 0
+  let selectionText = ''
+
+  const refreshSelectionSizes = async () => {
+    const selectedPaths = Array.from(selected)
+    const dirs = entries.filter((e) => selected.has(e.path) && e.kind === 'dir').map((d) => d.path)
+    if (dirs.length === 0) {
+      selectedDirBytes = 0
+      dirSizeAbort++
+      return
+    }
+    const token = ++dirSizeAbort
+    try {
+      const result = await invoke<{ total: number }>('dir_sizes', { paths: dirs })
+      if (token !== dirSizeAbort) return
+      selectedDirBytes = result.total ?? 0
+    } catch (err) {
+      console.error('Failed to compute dir sizes', err)
+      if (token === dirSizeAbort) {
+        selectedDirBytes = 0
+      }
+    }
+  }
+
+  $: {
+    const selectedEntries = entries.filter((e) => selected.has(e.path))
+    const files = selectedEntries.filter((e) => e.kind === 'file')
+    const dirs = selectedEntries.filter((e) => e.kind === 'dir')
+    const fileBytes = files.reduce((sum, f) => sum + (f.size ?? 0), 0)
+
+    if (dirs.length > 0) {
+      void refreshSelectionSizes()
+    } else {
+      selectedDirBytes = 0
+    }
+
+    const dirLine = formatSelectionLine(dirs.length, 'folder', selectedDirBytes)
+    const fileLine = formatSelectionLine(files.length, 'file', fileBytes)
+
+    const parts = [dirLine, fileLine].filter((p) => p.length > 0)
+    selectionText = parts.join(' | ')
   }
 
   const persistWidths = async () => {
@@ -817,6 +868,7 @@
         clearInterval(partitionsPoll)
         partitionsPoll = null
       }
+      dirSizeAbort++
     }
   })
 </script>
@@ -1043,7 +1095,11 @@
           {/if}
         </div>
       </section>
-      <footer class="statusbar"></footer>
+      <footer class="statusbar">
+        {#if selectionText}
+          <span class="status-text">{selectionText}</span>
+        {/if}
+      </footer>
     </section>
   </div>
 </main>
@@ -1591,6 +1647,15 @@ button:active {
   position: sticky;
   bottom: 0;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+}
+
+.status-text {
+  color: var(--fg-muted);
+  font-size: 12px;
 }
 
 .modal-backdrop {

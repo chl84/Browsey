@@ -29,10 +29,7 @@ pub fn search_recursive(root: PathBuf, query: String) -> Result<Vec<FsEntry>, St
             };
 
             let is_link = meta.file_type().is_symlink();
-            let name_lc = entry
-                .file_name()
-                .to_string_lossy()
-                .to_lowercase();
+            let name_lc = entry.file_name().to_string_lossy().to_lowercase();
             let path_lc = path.to_string_lossy().to_lowercase();
             let is_dir = meta.is_dir();
 

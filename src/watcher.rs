@@ -21,7 +21,11 @@ pub fn start_watch(app: tauri::AppHandle, path: PathBuf, state: &WatchState) -> 
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
         if let Ok(event) = res {
             match event.kind {
-                EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) | EventKind::Any | EventKind::Other => {
+                EventKind::Create(_)
+                | EventKind::Modify(_)
+                | EventKind::Remove(_)
+                | EventKind::Any
+                | EventKind::Other => {
                     let _ = app.emit("dir-changed", watched_path.clone());
                 }
                 _ => {}
