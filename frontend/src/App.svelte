@@ -1395,17 +1395,14 @@ button:active {
     min-height: 32px;
     transition: background 120ms ease, border-color 120ms ease;
     cursor: default;
-  border: none;
-  background: transparent;
-  width: 100%;
-  text-align: left;
-  border-radius: 10px;
-  box-shadow: none;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+    border-radius: 10px;
+    box-shadow: none;
 }
-
-  .row:last-child {
-    border-bottom: none;
-  }
 
   .row:hover {
     background: #161a20;
