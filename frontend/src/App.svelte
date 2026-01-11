@@ -542,6 +542,10 @@
   }
 
   const handleRowContextMenu = (entry: Entry, event: MouseEvent) => {
+    const idx = get(filteredEntries).findIndex((e) => e.path === entry.path)
+    selected.set(new Set([entry.path]))
+    anchorIndex.set(idx >= 0 ? idx : null)
+    caretIndex.set(idx >= 0 ? idx : null)
     void openContextMenu(entry, event)
   }
 

@@ -32,6 +32,8 @@
   on:contextmenu={(event) => {
     event.preventDefault()
     event.stopPropagation()
+    const target = event.currentTarget as HTMLElement
+    target.focus()
     onContextMenu(event)
   }}
 >
