@@ -86,12 +86,24 @@ Tauri bundle:
 - Search is recursive, case-insensitive, skips symlinks, and matches on the current path subtree. Empty search returns an empty result and preserves the listing.
 - Data lives in SQLite at the platform data dir (Linux: `~/.local/share/filey/filey.db`) and holds bookmarks, starred, recent, and column widths.
 - Permissions: capability file `capabilities/default.json` grants `core:event` listen/emit so the watcher can refresh the UI.
-- Shortcuts: Ctrl/⌘+F toggles search mode and focuses input; Esc exits search; Ctrl/⌘+B on one selected folder opens bookmark modal and saves to DB.
+- Shortcuts: see section below.
+
+## Shortcuts & modes
+- Modes share ett inputfelt: **adresse** (standard), **filter** (når du begynner å skrive uten fokus), **søk** (etter Ctrl/⌘+F).
+- **Ctrl/⌘+F**: aktiverer søkemodus, fokuserer input. **Esc**: avslutter søk og går til adressemodus.
+- **Filtrering**: når input ikke er fokusert og du taster bokstaver/tall, går vi til filtreringsmodus, fokuserer feltet, og filteret oppdateres mens du skriver og når du sletter. Shift+digit ignoreres.
+- **Ctrl/⌘+B**: åpner bokmerkemodal for én markert mappe.
+- **Ctrl/⌘+A** i fil-listen: marker alt. **Esc** i listen: tømmer markering.
 
 ## UI
 - Dark, neutral greys (no chroma) defined in `frontend/src/app.css`.
 - Columns: Name, Type, Modified, Size, ⭐; name is line-clamped to 2 lines. Sidebar sections: Places, Bookmarks, Partitions. Bookmarks show an “x” on hover to remove; drives use different icons for fixed vs removable.
 - Virtualized scrolling container keeps hover smooth on large folders.
+
+## Frontend structure
+- `frontend/src/App.svelte`: page shell, wiring stores to components (sidebar, topbar, file list, status bar, bookmark modal).
+- Stores: `lib/explorer/state.ts` (Tauri I/O: listings, search, bookmarks, partitions, sort), `lib/explorer/stores/listState.ts` (selection, virtual scroll, DOM refs for rows/header).
+- Components: `lib/components/explorer/` (Sidebar + sections, Topbar, FileList with header/row/resizer, Statusbar, Notice, BookmarkModal).
 
 ## Next steps
 - Add Rust commands for copy/move/delete/rename to keep FS ops native.

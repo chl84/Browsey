@@ -1,0 +1,70 @@
+import type { Partition } from './types'
+
+export const iconPath = (file: string) => `/icons/scalable/${file}`
+
+export const navIcon = (label: string) => {
+  switch (label) {
+    case 'Home':
+      return iconPath('devices/computer.svg')
+    case 'Recent':
+      return iconPath('places/folder-documents.svg')
+    case 'Starred':
+      return iconPath('places/user-starred.svg')
+    case 'Network':
+      return iconPath('places/folder-remote.svg')
+    case 'Wastebasket':
+      return iconPath('status/user-trash-full.svg')
+    default:
+      return iconPath('devices/drive-harddisk.svg')
+  }
+}
+
+export const partitionIcon = (part: Partition) =>
+  part.removable ? iconPath('devices/drive-removable-media.svg') : iconPath('devices/drive-harddisk.svg')
+
+export const normalizePath = (p: string) => {
+  if (!p) return ''
+  const trimmed = p.replace(/\/+$/, '')
+  return trimmed === '' ? '/' : trimmed
+}
+
+export const isUnderMount = (path: string, mount: string) => {
+  if (!path || !mount) return false
+  const p = normalizePath(path)
+  const m = normalizePath(mount)
+  return p === m || p.startsWith(`${m}/`)
+}
+
+export const parentPath = (path: string) => {
+  if (!path || path === '/') return '/'
+  const trimmed = path.replace(/\/+$/, '')
+  const idx = trimmed.lastIndexOf('/')
+  if (idx <= 0) return '/'
+  return trimmed.slice(0, idx)
+}
+
+export const formatSize = (size?: number | null) => {
+  if (size === null || size === undefined) return ''
+  if (size < 1024) return `${size} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = size / 1024
+  let u = 0
+  while (value >= 1024 && u < units.length - 1) {
+    value /= 1024
+    u++
+  }
+  return `${value.toFixed(1)} ${units[u]}`
+}
+
+export const formatItems = (count?: number | null) => {
+  if (count === null || count === undefined) return ''
+  const suffix = count === 1 ? 'item' : 'items'
+  return `${count} ${suffix}`
+}
+
+export const formatSelectionLine = (count: number, noun: string, bytes?: number) => {
+  if (count === 0) return ''
+  const sizePart = bytes && bytes > 0 ? ` (${formatSize(bytes)})` : ''
+  const suffix = count === 1 ? noun : `${noun}s`
+  return `${count} ${suffix} selected${sizePart}`
+}

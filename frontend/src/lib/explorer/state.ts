@@ -1,0 +1,400 @@
+import { invoke } from '@tauri-apps/api/core'
+import { derived, get, writable } from 'svelte/store'
+import type {
+  Column,
+  Entry,
+  Listing,
+  Location,
+  Partition,
+  SortDirection,
+  SortField,
+} from './types'
+import { isUnderMount, normalizePath, parentPath } from './utils'
+
+type ExplorerCallbacks = {
+  onEntriesChanged?: () => void
+  onCurrentChange?: (path: string) => void
+}
+
+const defaultColumns: Column[] = [
+  { key: 'name', label: 'Name', sort: 'name', width: 320, min: 220, align: 'left' },
+  { key: 'type', label: 'Type', sort: 'type', width: 120, min: 80 },
+  { key: 'modified', label: 'Modified', sort: 'modified', width: 90, min: 80 },
+  { key: 'size', label: 'Size', sort: 'size', width: 90, min: 70, align: 'right' },
+  { key: 'star', label: '', sort: 'starred', width: 80, min: 60, resizable: false, sortable: false },
+]
+
+const sameLocation = (a?: Location, b?: Location) => {
+  if (!a || !b) return false
+  if (a.type !== b.type) return false
+  if (a.type === 'dir' && b.type === 'dir') {
+    return a.path === b.path
+  }
+  return true
+}
+
+export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
+  const cols = writable<Column[]>(defaultColumns)
+  const gridTemplate = derived(cols, ($cols) => $cols.map((c) => `${Math.max(c.width, c.min)}px`).join(' '))
+
+  const current = writable('')
+  const entries = writable<Entry[]>([])
+  const loading = writable(false)
+  const error = writable('')
+  const filter = writable('')
+  const searchMode = writable(false)
+  const searchActive = writable(false)
+  const sortField = writable<SortField>('name')
+  const sortDirection = writable<SortDirection>('asc')
+  const bookmarks = writable<{ label: string; path: string }[]>([])
+  const partitions = writable<Partition[]>([])
+  const history = writable<Location[]>([])
+  const historyIndex = writable(-1)
+
+  const filteredEntries = derived([entries, filter], ([$entries, $filter]) =>
+    $filter.trim().length === 0
+      ? $entries
+      : $entries.filter((e) => e.name.toLowerCase().includes($filter.trim().toLowerCase()))
+  )
+
+  const sortPayload = () => ({
+    field: get(sortField),
+    direction: get(sortDirection),
+  })
+
+  const pushHistory = (loc: Location) => {
+    const list = get(history)
+    const idx = get(historyIndex)
+    const last = list[idx]
+    if (sameLocation(last, loc)) return
+    const next = [...list.slice(0, idx + 1), loc]
+    history.set(next)
+    historyIndex.set(next.length - 1)
+  }
+
+  const load = async (path?: string, opts: { recordHistory?: boolean } = {}) => {
+    const { recordHistory = true } = opts
+    loading.set(true)
+    error.set('')
+    searchActive.set(false)
+    try {
+      const result = await invoke<Listing>('list_dir', { path, sort: sortPayload() })
+      current.set(result.current)
+      entries.set(result.entries)
+      callbacks.onEntriesChanged?.()
+      callbacks.onCurrentChange?.(result.current)
+      if (recordHistory) {
+        pushHistory({ type: 'dir', path: result.current })
+      }
+      await invoke('watch_dir', { path: result.current })
+    } catch (err) {
+      error.set(err instanceof Error ? err.message : String(err))
+    } finally {
+      loading.set(false)
+    }
+  }
+
+  const loadRecent = async (recordHistory = true) => {
+    loading.set(true)
+    error.set('')
+    searchActive.set(false)
+    try {
+      const result = await invoke<Entry[]>('list_recent', { sort: sortPayload() })
+      current.set('Recent')
+      entries.set(result)
+      callbacks.onEntriesChanged?.()
+      callbacks.onCurrentChange?.('')
+      if (recordHistory) {
+        pushHistory({ type: 'recent' })
+      }
+    } catch (err) {
+      error.set(err instanceof Error ? err.message : String(err))
+    } finally {
+      loading.set(false)
+    }
+  }
+
+  const loadStarred = async (recordHistory = true) => {
+    loading.set(true)
+    error.set('')
+    searchActive.set(false)
+    try {
+      const result = await invoke<Entry[]>('list_starred', { sort: sortPayload() })
+      current.set('Starred')
+      entries.set(result)
+      callbacks.onEntriesChanged?.()
+      callbacks.onCurrentChange?.('')
+      if (recordHistory) {
+        pushHistory({ type: 'starred' })
+      }
+    } catch (err) {
+      error.set(err instanceof Error ? err.message : String(err))
+    } finally {
+      loading.set(false)
+    }
+  }
+
+  const loadTrash = async (recordHistory = true) => {
+    loading.set(true)
+    error.set('')
+    searchActive.set(false)
+    try {
+      const result = await invoke<Listing>('list_trash', { sort: sortPayload() })
+      current.set('Trash')
+      entries.set(result.entries)
+      callbacks.onEntriesChanged?.()
+      callbacks.onCurrentChange?.('')
+      if (recordHistory) {
+        pushHistory({ type: 'trash' })
+      }
+    } catch (err) {
+      error.set(err instanceof Error ? err.message : String(err))
+    } finally {
+      loading.set(false)
+    }
+  }
+
+  const navigateTo = async (loc: Location, recordHistory = false) => {
+    switch (loc.type) {
+      case 'dir':
+        await load(loc.path, { recordHistory })
+        break
+      case 'recent':
+        await loadRecent(recordHistory)
+        break
+      case 'starred':
+        await loadStarred(recordHistory)
+        break
+      case 'trash':
+        await loadTrash(recordHistory)
+        break
+    }
+  }
+
+  const goBack = async () => {
+    const idx = get(historyIndex)
+    if (idx <= 0) return
+    historyIndex.set(idx - 1)
+    const loc = get(history)[idx - 1]
+    await navigateTo(loc, false)
+  }
+
+  const goForward = async () => {
+    const list = get(history)
+    const idx = get(historyIndex)
+    if (idx < 0 || idx >= list.length - 1) return
+    historyIndex.set(idx + 1)
+    await navigateTo(list[idx + 1], false)
+  }
+
+  const changeSort = async (field: SortField) => {
+    const currentField = get(sortField)
+    const currentDir = get(sortDirection)
+    if (currentField === field) {
+      sortDirection.set(currentDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      sortField.set(field)
+      sortDirection.set('asc')
+    }
+    await refreshForSort()
+  }
+
+  const refreshForSort = async () => {
+    const isSearchActive = get(searchActive)
+    const isSearchMode = get(searchMode)
+    if (isSearchActive && isSearchMode) {
+      await runSearch(get(filter))
+      return
+    }
+    const where = get(current)
+    if (where === 'Recent') {
+      await loadRecent(false)
+    } else if (where === 'Starred') {
+      await loadStarred(false)
+    } else if (where === 'Trash') {
+      await loadTrash(false)
+    } else {
+      await load(where, { recordHistory: false })
+    }
+  }
+
+  const open = (entry: Entry) => {
+    if (entry.kind === 'dir') {
+      void load(entry.path)
+    } else {
+      void invoke('open_entry', { path: entry.path })
+    }
+  }
+
+  const toggleStar = async (entry: Entry) => {
+    try {
+      const newState = await invoke<boolean>('toggle_star', { path: entry.path })
+      const where = get(current)
+      if (where === 'Starred' && !newState) {
+        entries.update((list) => list.filter((e) => e.path !== entry.path))
+      } else {
+        entries.update((list) =>
+          list.map((e) => (e.path === entry.path ? { ...e, starred: newState } : e))
+        )
+      }
+    } catch (err) {
+      error.set(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const goUp = () => {
+    searchActive.set(false)
+    return load(parentPath(get(current)))
+  }
+
+  const goHome = () => {
+    searchActive.set(false)
+    return load(undefined)
+  }
+
+  const goToPath = (path: string) => {
+    const trimmed = path.trim()
+    if (!trimmed) return
+    if (trimmed !== get(current)) {
+      void load(trimmed)
+    }
+  }
+
+  const handlePlace = (label: string, path: string) => {
+    if (label === 'Recent') {
+      void loadRecent()
+      return
+    }
+    if (label === 'Starred') {
+      void loadStarred()
+      return
+    }
+    if (label === 'Wastebasket') {
+      void loadTrash()
+      return
+    }
+    if (path) {
+      void load(path)
+    }
+  }
+
+  const runSearch = async (needleRaw: string) => {
+    const needle = needleRaw.trim()
+    loading.set(true)
+    error.set('')
+    try {
+      if (needle.length === 0) {
+        searchActive.set(false)
+        await load(get(current), { recordHistory: false })
+      } else {
+        filter.set(needle)
+        const result = await invoke<Entry[]>('search', {
+          path: get(current),
+          query: needle,
+          sort: sortPayload(),
+        })
+        entries.set(result)
+        callbacks.onEntriesChanged?.()
+        searchActive.set(true)
+      }
+    } catch (err) {
+      error.set(err instanceof Error ? err.message : String(err))
+    } finally {
+      loading.set(false)
+    }
+  }
+
+  const toggleMode = async (checked: boolean) => {
+    searchMode.set(checked)
+    if (!checked) {
+      filter.set('')
+      searchActive.set(false)
+      await load(get(current), { recordHistory: false })
+    }
+  }
+
+  let lastMountPaths: string[] = []
+  const loadPartitions = async () => {
+    try {
+      const result = await invoke<Partition[]>('list_mounts')
+      partitions.set(result)
+      const nextPaths = result.map((p) => normalizePath(p.path))
+      const removedMount = lastMountPaths.find((p) => !nextPaths.includes(p))
+      lastMountPaths = nextPaths
+
+      if (removedMount && isUnderMount(get(current), removedMount)) {
+        error.set('Volume disconnected; returning to Home')
+        void load(undefined)
+      }
+    } catch (err) {
+      console.error('Failed to load mounts', err)
+    }
+  }
+
+  const loadBookmarks = async () => {
+    try {
+      const rows = await invoke<{ label: string; path: string }[]>('get_bookmarks')
+      bookmarks.set(rows)
+    } catch (err) {
+      console.error('Failed to load bookmarks', err)
+    }
+  }
+
+  const persistWidths = async () => {
+    try {
+      await invoke('store_column_widths', { widths: get(cols).map((c) => c.width) })
+    } catch (err) {
+      console.error('Failed to store widths', err)
+    }
+  }
+
+  const loadSavedWidths = async () => {
+    try {
+      const saved = await invoke<number[] | null>('load_saved_column_widths')
+      if (saved && Array.isArray(saved)) {
+        cols.update((list) =>
+          list.map((c, i) => (saved[i] !== undefined ? { ...c, width: Math.max(c.min, saved[i]) } : c))
+        )
+      }
+    } catch (err) {
+      console.error('Failed to load widths', err)
+    }
+  }
+
+  return {
+    cols,
+    gridTemplate,
+    current,
+    entries,
+    loading,
+    error,
+    filter,
+    searchMode,
+    searchActive,
+    sortField,
+    sortDirection,
+    bookmarks,
+    partitions,
+    filteredEntries,
+    load,
+    loadRecent,
+    loadStarred,
+    loadTrash,
+    runSearch,
+    toggleMode,
+    changeSort,
+    refreshForSort,
+    open,
+    toggleStar,
+    handlePlace,
+    goUp,
+    goHome,
+    goToPath,
+    goBack,
+    goForward,
+    loadBookmarks,
+    loadPartitions,
+    loadSavedWidths,
+    persistWidths,
+  }
+}

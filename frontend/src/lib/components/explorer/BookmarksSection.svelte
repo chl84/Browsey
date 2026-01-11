@@ -1,0 +1,121 @@
+<script lang="ts">
+  import { navIcon } from '../../explorer/utils'
+
+  export let bookmarks: { label: string; path: string }[] = []
+  export let onSelect: (path: string) => void = () => {}
+  export let onRemove: (path: string) => void = () => {}
+</script>
+
+<div class="section">
+  <div class="section-title">Bookmarks</div>
+  {#each bookmarks as mark}
+    <div
+      class="nav bookmark"
+      role="button"
+      tabindex="0"
+      on:click={() => onSelect(mark.path)}
+      on:keydown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect(mark.path)
+        }
+      }}
+    >
+      <img class="nav-icon" src={navIcon(mark.label)} alt="" />
+      <span class="nav-label">{mark.label}</span>
+      <span
+        class="remove-bookmark"
+        role="button"
+        tabindex="0"
+        aria-label="Remove bookmark"
+        on:click={(e) => {
+          e.stopPropagation()
+          onRemove(mark.path)
+        }}
+        on:keydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            e.stopPropagation()
+            onRemove(mark.path)
+          }
+        }}
+      >
+        ×
+      </span>
+    </div>
+  {/each}
+</div>
+
+<style>
+  .section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .section-title {
+    color: var(--fg-muted);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding-left: 10px;
+  }
+
+  .nav {
+    border: none;
+    border-radius: 10px;
+    padding: 5px 12px 5px 22px;
+    background: transparent;
+    color: var(--fg);
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    cursor: default;
+    transition: background 120ms ease;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .nav.bookmark {
+    position: relative;
+  }
+
+  .nav:hover {
+    background: var(--bg-hover);
+    transform: none;
+    box-shadow: none;
+  }
+
+  .nav:active {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .nav-icon {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  .remove-bookmark {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: var(--fg-muted);
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease;
+    padding: 0 4px;
+    line-height: 1;
+  }
+
+  .nav.bookmark:hover .remove-bookmark {
+    opacity: 1;
+  }
+</style>
