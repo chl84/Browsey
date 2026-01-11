@@ -66,7 +66,7 @@
   let propertiesEntry: Entry | null = null
   let propertiesSize: number | null = null
   let deleteConfirmOpen = false
-  let deleteTarget: Entry | null = null
+  let deleteTargets: Entry[] = []
 
   const explorer = createExplorerState({
     onEntriesChanged: () => resetScrollPosition(),
@@ -359,10 +359,8 @@
       const paths = Array.from($selected)
       if (paths.length === 0) return false
       if (permanent) {
-        if (paths.length !== 1) return false
-        const entry = $entries.find((e) => e.path === paths[0])
-        if (!entry) return false
-        deleteTarget = entry
+        deleteTargets = $filteredEntries.filter((e) => paths.includes(e.path))
+        if (deleteTargets.length === 0) return false
         deleteConfirmOpen = true
         return true
       }
@@ -536,12 +534,19 @@
     closeContextMenu()
     if (id.startsWith('divider')) return
     if (!entry) return
+
+    const selectionPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
+    const selectionEntries =
+      selectionPaths.length > 1
+        ? $filteredEntries.filter((e) => selectionPaths.includes(e.path))
+        : [entry]
+
     if (id === 'copy-path') {
-      await copyText(entry.path)
+      await copyText(selectionPaths.join('\n'))
       return
     }
     if (id === 'cut' || id === 'copy') {
-      await copyText(entry.path)
+      await copyText(selectionPaths.join('\n'))
       return
     }
     if (id === 'open-with') {
@@ -561,7 +566,9 @@
     }
     if (id === 'move-trash') {
       try {
-        await invoke('move_to_trash', { path: entry.path })
+        for (const e of selectionEntries) {
+          await invoke('move_to_trash', { path: e.path })
+        }
         await load($current, { recordHistory: false })
       } catch (err) {
         console.error('Failed to move to trash', err)
@@ -569,18 +576,19 @@
       return
     }
     if (id === 'delete-permanent') {
-      deleteTarget = entry
+      deleteTargets = selectionEntries
       deleteConfirmOpen = true
       return
     }
-    if (id === 'properties') {
-      propertiesEntry = entry
+    if (id === 'properties' && selectionEntries.length === 1) {
+      const e = selectionEntries[0]
+      propertiesEntry = e
       propertiesSize =
-        entry.kind === 'dir' && $selected.size === 1 && $selected.has(entry.path)
+        e.kind === 'dir' && $selected.size === 1 && $selected.has(e.path)
           ? selectedDirBytes
-          : entry.size ?? null
+          : e.size ?? null
       propertiesOpen = true
-      void loadEntryTimes(entry)
+      void loadEntryTimes(e)
       return
     }
   }
@@ -655,13 +663,15 @@
 
   const closeDeleteConfirm = () => {
     deleteConfirmOpen = false
-    deleteTarget = null
+    deleteTargets = []
   }
 
   const confirmDelete = async () => {
-    if (!deleteTarget) return
+    if (deleteTargets.length === 0) return
     try {
-      await invoke('delete_entry', { path: deleteTarget.path })
+      for (const target of deleteTargets) {
+        await invoke('delete_entry', { path: target.path })
+      }
       await load($current, { recordHistory: false })
     } catch (err) {
       console.error('Failed to delete', err)
@@ -797,7 +807,7 @@
 />
 <DeleteConfirmModal
   open={deleteConfirmOpen}
-  entryName={deleteTarget?.path ?? ''}
+  targetLabel={deleteTargets.length === 1 ? deleteTargets[0].path : `${deleteTargets.length} items`}
   onConfirm={confirmDelete}
   onCancel={closeDeleteConfirm}
 />

@@ -1,6 +1,6 @@
 <script lang="ts">
   export let open = false
-  export let entryName = ''
+  export let targetLabel = ''
   export let onConfirm: () => void = () => {}
   export let onCancel: () => void = () => {}
 </script>
@@ -33,7 +33,7 @@
     >
       <header>Delete permanently?</header>
       <p class="muted">This cannot be undone.</p>
-      <p class="path">{entryName}</p>
+      <p class="path">{targetLabel}</p>
       <div class="actions">
         <button type="button" class="secondary" on:click={onCancel}>Cancel</button>
         <button
