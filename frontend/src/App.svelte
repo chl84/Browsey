@@ -817,8 +817,8 @@
   })
 </script>
 
-<svelte:document on:keydown|capture={handleDocumentKeydown} />
 <svelte:document
+  on:keydown|capture={handleDocumentKeydown}
   on:cut|capture={(e) => {
     const target = e.target as HTMLElement | null
     if (target && (target.isContentEditable || ['input', 'textarea'].includes(target.tagName.toLowerCase()))) {
