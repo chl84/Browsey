@@ -21,6 +21,8 @@
   export let displayName: (entry: Entry) => string = (e) => e.name
   export let formatSize: (size?: number | null) => string = () => ''
   export let formatItems: (count?: number | null) => string = () => ''
+  export let clipboardMode: 'copy' | 'cut' = 'copy'
+  export let clipboardPaths: Set<string> = new Set()
 
   export let onRowsScroll: (event: Event) => void = () => {}
   export let onWheel: (event: WheelEvent) => void = () => {}
@@ -70,6 +72,7 @@
               gridTemplate={gridTemplate}
               hidden={isHidden(entry)}
               selected={selected.has(entry.path)}
+              cutting={clipboardMode === 'cut' && clipboardPaths.has(entry.path)}
               displayName={displayName}
               {formatSize}
               {formatItems}

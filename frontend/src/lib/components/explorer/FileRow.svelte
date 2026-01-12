@@ -12,6 +12,7 @@
   export let onClick: (event: MouseEvent) => void = () => {}
   export let onToggleStar: (entry: Entry) => void = () => {}
   export let onContextMenu: (event: MouseEvent) => void = () => {}
+  export let cutting = false
 </script>
 
 <button
@@ -19,6 +20,7 @@
   style={`grid-template-columns:${gridTemplate};`}
   class:hidden={hidden}
   class:selected={selected}
+  class:cut={cutting}
   type="button"
   on:dblclick={() => onOpen(entry)}
   on:keydown={(e) => {
@@ -114,6 +116,10 @@
   .row.selected {
     background: #1c2027;
     border: 1px solid var(--border-accent);
+  }
+
+  .row.cut {
+    opacity: 0.55;
   }
 
   .row:focus-visible {

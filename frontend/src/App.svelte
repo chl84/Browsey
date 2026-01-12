@@ -21,6 +21,11 @@
   import { createGlobalShortcuts } from './lib/explorer/hooks/shortcuts'
   import { createBookmarkModal } from './lib/explorer/hooks/bookmarkModal'
   import type { Entry, Partition, SortField } from './lib/explorer/types'
+  import Toast from './lib/components/explorer/Toast.svelte'
+  import { toast, showToast } from './lib/explorer/hooks/useToast'
+  import { createClipboard } from './lib/explorer/hooks/useClipboard'
+  import { createContextMenus } from './lib/explorer/hooks/useContextMenus'
+  import type { ContextAction } from './lib/explorer/hooks/useContextMenus'
   import './lib/explorer/ExplorerLayout.css'
 
   let sidebarCollapsed = false
@@ -51,12 +56,6 @@
   let bookmarkName = ''
   let bookmarkCandidate: Entry | null = null
   let bookmarkInputEl: HTMLInputElement | null = null
-  type ContextAction = { id: string; label: string; shortcut?: string; dangerous?: boolean }
-  let contextMenuOpen = false
-  let contextMenuX = 0
-  let contextMenuY = 0
-  let contextActions: ContextAction[] = []
-  let contextEntry: Entry | null = null
   let renameModalOpen = false
   let renameTarget: Entry | null = null
   let renameValue = ''
@@ -67,9 +66,18 @@
   let propertiesSize: number | null = null
   let deleteConfirmOpen = false
   let deleteTargets: Entry[] = []
-  let blankContextOpen = false
-  let blankContextX = 0
-  let blankContextY = 0
+  let clipboardMode: 'copy' | 'cut' = 'copy'
+  let clipboardPaths = new Set<string>()
+  const clipboard = createClipboard()
+  const clipboardStore = clipboard.state
+  const {
+    contextMenu,
+    blankMenu,
+    openContextMenu,
+    closeContextMenu,
+    openBlankContextMenu,
+    closeBlankContextMenu,
+  } = createContextMenus()
 
   const explorer = createExplorerState({
     onEntriesChanged: () => resetScrollPosition(),
@@ -143,6 +151,11 @@
 
   $: bookmarks = $bookmarksStore
   $: partitions = $partitionsStore
+  $: {
+    const state = $clipboardStore
+    clipboardMode = state.mode
+    clipboardPaths = state.paths
+  }
   $: currentView =
     $current === 'Recent'
       ? 'recent'
@@ -350,25 +363,27 @@
     onCopy: async () => {
       const paths = Array.from($selected)
       if (paths.length === 0) return false
-      await invoke('set_clipboard_cmd', { paths, mode: 'copy' })
-      await copyText(paths.join('\n'), { suppressError: true })
+      const entries = $filteredEntries.filter((e) => paths.includes(e.path))
+      const result = await clipboard.copy(entries, { writeText: true })
+      if (!result.ok) {
+        showToast(`Copy failed: ${result.error}`)
+        return false
+      }
       return true
     },
     onCut: async () => {
       const paths = Array.from($selected)
       if (paths.length === 0) return false
-      await invoke('set_clipboard_cmd', { paths, mode: 'cut' })
+      const entries = $filteredEntries.filter((e) => paths.includes(e.path))
+      const result = await clipboard.cut(entries)
+      if (!result.ok) {
+        showToast(`Cut failed: ${result.error}`)
+        return false
+      }
       return true
     },
     onPaste: async () => {
-      try {
-        await invoke('paste_clipboard_cmd', { dest: $current })
-        await reloadCurrent()
-        return true
-      } catch (err) {
-        console.error('Paste failed', err)
-        return false
-      }
+      return pasteIntoCurrent()
     },
     onRename: async () => {
       if ($selected.size !== 1) return false
@@ -455,7 +470,7 @@
         closeBookmarkModal()
         return
       }
-      if (contextMenuOpen) {
+      if ($contextMenu.open) {
         event.preventDefault()
         event.stopPropagation()
         closeContextMenu()
@@ -525,16 +540,7 @@
     closeBookmarkModal()
   }
 
-  const closeContextMenu = () => {
-    contextMenuOpen = false
-    contextEntry = null
-  }
-
-  const closeBlankContextMenu = () => {
-    blankContextOpen = false
-  }
-
-  const openContextMenu = async (entry: Entry, event: MouseEvent) => {
+  const loadAndOpenContextMenu = async (entry: Entry, event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
     try {
@@ -544,29 +550,20 @@
         kind: entry.kind,
         starred: Boolean(entry.starred),
       })
-      contextMenuOpen = true
-      contextMenuX = event.clientX
-      contextMenuY = event.clientY
-      contextEntry = entry
-      contextActions = actions
+      openContextMenu(entry, actions, event.clientX, event.clientY)
     } catch (err) {
       console.error('Failed to load context menu actions', err)
     }
   }
 
-  const copyText = async (value: string, opts: { suppressError?: boolean } = {}) => {
-    const { suppressError = false } = opts
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(value)
-        return true
-      } catch (err) {
-        if (!suppressError) {
-          console.error('Clipboard write failed', err)
-        }
-      }
+  const pasteIntoCurrent = async () => {
+    const result = await clipboard.paste($current)
+    if (!result.ok) {
+      showToast(`Paste failed: ${result.error}`)
+      return false
     }
-    return false
+    await reloadCurrent()
+    return true
   }
 
   const reloadCurrent = async () => {
@@ -586,7 +583,7 @@
   }
 
   const handleContextAction = async (id: string) => {
-    const entry = contextEntry
+    const entry = $contextMenu.entry
     closeContextMenu()
     if (id.startsWith('divider')) return
     if (!entry) return
@@ -598,17 +595,23 @@
         : [entry]
 
     if (id === 'copy-path') {
-      await invoke('set_clipboard_cmd', { paths: selectionPaths, mode: 'copy' })
-      await copyText(selectionPaths.join('\n'), { suppressError: true })
+      const result = await clipboard.copy(selectionEntries, { writeText: true })
+      if (!result.ok) {
+        showToast(`Copy failed: ${result.error}`)
+      }
       return
     }
     if (id === 'cut' || id === 'copy') {
-      await invoke('set_clipboard_cmd', {
-        paths: selectionPaths,
-        mode: id === 'cut' ? 'cut' : 'copy',
-      })
-      if (id === 'copy') {
-        await copyText(selectionPaths.join('\n'), { suppressError: true })
+      if (id === 'cut') {
+        const result = await clipboard.cut(selectionEntries)
+        if (!result.ok) {
+          showToast(`Cut failed: ${result.error}`)
+        }
+        return
+      }
+      const result = await clipboard.copy(selectionEntries, { writeText: true })
+      if (!result.ok) {
+        showToast(`Copy failed: ${result.error}`)
       }
       return
     }
@@ -685,7 +688,7 @@
       anchorIndex.set(idx >= 0 ? idx : null)
       caretIndex.set(idx >= 0 ? idx : null)
     }
-    void openContextMenu(entry, event)
+    void loadAndOpenContextMenu(entry, event)
   }
 
   const handleBlankContextMenu = (event: MouseEvent) => {
@@ -694,20 +697,13 @@
     selected.set(new Set())
     anchorIndex.set(null)
     caretIndex.set(null)
-    blankContextOpen = true
-    blankContextX = event.clientX
-    blankContextY = event.clientY
+    openBlankContextMenu(event.clientX, event.clientY)
   }
 
   const handleBlankContextAction = async (id: string) => {
     closeBlankContextMenu()
     if (id === 'paste') {
-      try {
-        await invoke('paste_clipboard_cmd', { dest: $current })
-        await reloadCurrent()
-      } catch (err) {
-        console.error('Paste failed', err)
-      }
+      await pasteIntoCurrent()
     }
   }
 
@@ -882,6 +878,8 @@
         displayName={displayName}
         {formatSize}
         {formatItems}
+        clipboardMode={clipboardMode}
+        clipboardPaths={clipboardPaths}
         onRowsScroll={handleRowsScroll}
         onWheel={handleWheel}
         onRowsKeydown={rowsKeydownHandler}
@@ -901,17 +899,17 @@
 </main>
 
   <ContextMenu
-    open={contextMenuOpen}
-    x={contextMenuX}
-    y={contextMenuY}
-    actions={contextActions}
+    open={$contextMenu.open}
+    x={$contextMenu.x}
+    y={$contextMenu.y}
+    actions={$contextMenu.actions}
     onSelect={handleContextAction}
     onClose={closeContextMenu}
   />
   <ContextMenu
-    open={blankContextOpen}
-    x={blankContextX}
-    y={blankContextY}
+    open={$blankMenu.open}
+    x={$blankMenu.x}
+    y={$blankMenu.y}
     actions={[{ id: 'paste', label: 'Paste' }]}
     onSelect={handleBlankContextAction}
     onClose={closeBlankContextMenu}
@@ -952,3 +950,5 @@
     onCancel={closeBookmarkModal}
   />
 {/if}
+
+<Toast message={$toast} />
