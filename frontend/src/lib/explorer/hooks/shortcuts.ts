@@ -105,32 +105,33 @@ export const createGlobalShortcuts = ({
       return
     }
 
-    if ((event.ctrlKey || event.metaKey) && key === 'c' && onCopy) {
+    if ((event.ctrlKey || event.metaKey) && key === 'c') {
       if (isEditableTarget(event.target)) return
-      const handled = await onCopy()
-      if (handled) {
-        event.preventDefault()
-        event.stopPropagation()
+      if (onCopy) {
+        await onCopy()
       }
-      return
-    }
-
-    if ((event.ctrlKey || event.metaKey) && key === 'x' && onCut) {
-      if (isEditableTarget(event.target)) return
-      const handled = await onCut()
-      // Swallow even if not handled to avoid native "beep"
       event.preventDefault()
       event.stopPropagation()
       return
     }
 
-    if ((event.ctrlKey || event.metaKey) && key === 'v' && onPaste) {
+    if ((event.ctrlKey || event.metaKey) && key === 'x') {
       if (isEditableTarget(event.target)) return
-      const handled = await onPaste()
-      if (handled) {
-        event.preventDefault()
-        event.stopPropagation()
+      if (onCut) {
+        await onCut()
       }
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+
+    if ((event.ctrlKey || event.metaKey) && key === 'v') {
+      if (isEditableTarget(event.target)) return
+      if (onPaste) {
+        await onPaste()
+      }
+      event.preventDefault()
+      event.stopPropagation()
       return
     }
 
