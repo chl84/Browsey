@@ -26,6 +26,7 @@
   export let onWheel: (event: WheelEvent) => void = () => {}
   export let onRowsKeydown: (event: KeyboardEvent) => void = () => {}
   export let onRowsClick: (event: MouseEvent) => void = () => {}
+  export let onRowsContextMenu: (event: MouseEvent) => void = () => {}
   export let onChangeSort: (field: SortField) => void = () => {}
   export let onStartResize: (index: number, event: PointerEvent) => void = () => {}
   export let ariaSort: (field: SortField) => 'ascending' | 'descending' | 'none' = () => 'none'
@@ -43,6 +44,7 @@
     on:wheel|passive={onWheel}
     on:keydown={onRowsKeydown}
     on:click={onRowsClick}
+    on:contextmenu={onRowsContextMenu}
     tabindex="0"
     role="grid"
     aria-label="File list"

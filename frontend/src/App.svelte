@@ -67,6 +67,9 @@
   let propertiesSize: number | null = null
   let deleteConfirmOpen = false
   let deleteTargets: Entry[] = []
+  let blankContextOpen = false
+  let blankContextX = 0
+  let blankContextY = 0
 
   const explorer = createExplorerState({
     onEntriesChanged: () => resetScrollPosition(),
@@ -516,6 +519,10 @@
     contextEntry = null
   }
 
+  const closeBlankContextMenu = () => {
+    blankContextOpen = false
+  }
+
   const openContextMenu = async (entry: Entry, event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
@@ -656,6 +663,29 @@
       caretIndex.set(idx >= 0 ? idx : null)
     }
     void openContextMenu(entry, event)
+  }
+
+  const handleBlankContextMenu = (event: MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    selected.set(new Set())
+    anchorIndex.set(null)
+    caretIndex.set(null)
+    blankContextOpen = true
+    blankContextX = event.clientX
+    blankContextY = event.clientY
+  }
+
+  const handleBlankContextAction = async (id: string) => {
+    closeBlankContextMenu()
+    if (id === 'paste') {
+      try {
+        const text = await navigator.clipboard.readText()
+        console.warn('Paste not implemented yet; clipboard content:', text)
+      } catch (err) {
+        console.error('Paste failed', err)
+      }
+    }
   }
 
   const closeRenameModal = () => {
@@ -836,14 +866,22 @@
   </div>
 </main>
 
-<ContextMenu
-  open={contextMenuOpen}
-  x={contextMenuX}
-  y={contextMenuY}
-  actions={contextActions}
-  onSelect={handleContextAction}
-  onClose={closeContextMenu}
-/>
+  <ContextMenu
+    open={contextMenuOpen}
+    x={contextMenuX}
+    y={contextMenuY}
+    actions={contextActions}
+    onSelect={handleContextAction}
+    onClose={closeContextMenu}
+  />
+  <ContextMenu
+    open={blankContextOpen}
+    x={blankContextX}
+    y={blankContextY}
+    actions={[{ id: 'paste', label: 'Paste' }]}
+    onSelect={handleBlankContextAction}
+    onClose={closeBlankContextMenu}
+  />
 <DeleteConfirmModal
   open={deleteConfirmOpen}
   targetLabel={deleteTargets.length === 1 ? deleteTargets[0].path : `${deleteTargets.length} items`}
