@@ -118,10 +118,9 @@ export const createGlobalShortcuts = ({
     if ((event.ctrlKey || event.metaKey) && key === 'x' && onCut) {
       if (isEditableTarget(event.target)) return
       const handled = await onCut()
-      if (handled) {
-        event.preventDefault()
-        event.stopPropagation()
-      }
+      // Swallow even if not handled to avoid native "beep"
+      event.preventDefault()
+      event.stopPropagation()
       return
     }
 
