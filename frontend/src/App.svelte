@@ -91,6 +91,9 @@
     partitions: partitionsStore,
     filteredEntries,
     load,
+    loadRecent,
+    loadStarred,
+    loadTrash,
     runSearch,
     toggleMode,
     changeSort,
@@ -529,6 +532,22 @@
     }
   }
 
+  const reloadCurrent = async () => {
+    if ($current === 'Recent') {
+      await loadRecent(false)
+      return
+    }
+    if ($current === 'Starred') {
+      await loadStarred(false)
+      return
+    }
+    if ($current.startsWith('Trash')) {
+      await loadTrash(false)
+      return
+    }
+    await load($current, { recordHistory: false })
+  }
+
   const handleContextAction = async (id: string) => {
     const entry = contextEntry
     closeContextMenu()
@@ -569,7 +588,7 @@
         for (const e of selectionEntries) {
           await invoke('move_to_trash', { path: e.path })
         }
-        await load($current, { recordHistory: false })
+        await reloadCurrent()
       } catch (err) {
         console.error('Failed to move to trash', err)
       }
@@ -672,7 +691,7 @@
       for (const target of deleteTargets) {
         await invoke('delete_entry', { path: target.path })
       }
-      await load($current, { recordHistory: false })
+      await reloadCurrent()
     } catch (err) {
       console.error('Failed to delete', err)
     } finally {
