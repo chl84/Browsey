@@ -43,7 +43,7 @@ fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
     }
 }
 
-fn sanitize_destructive_path(raw: &str) -> Result<PathBuf, String> {
+fn sanitize_path_follow(raw: &str, forbid_root: bool) -> Result<PathBuf, String> {
     let pb = PathBuf::from(raw);
     if !pb.exists() {
         return Err("Path does not exist".into());
@@ -51,10 +51,22 @@ fn sanitize_destructive_path(raw: &str) -> Result<PathBuf, String> {
     let canon = pb
         .canonicalize()
         .map_err(|e| format!("Failed to canonicalize path: {e}"))?;
-    if canon.parent().is_none() {
+    if forbid_root && canon.parent().is_none() {
         return Err("Refusing to operate on filesystem root".into());
     }
     Ok(canon)
+}
+
+fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, String> {
+    let pb = PathBuf::from(raw);
+    let meta = fs::symlink_metadata(&pb).map_err(|e| format!("Path does not exist or unreadable: {e}"))?;
+    // We only check existence; operate on the symlink itself.
+    if forbid_root && pb.parent().is_none() {
+        return Err("Refusing to operate on filesystem root".into());
+    }
+    // prevent treating a symlink to root as root? we keep caller-driven policy by not following.
+    let _ = meta; // silence unused warning if not inspected further
+    Ok(pb)
 }
 
 #[derive(Serialize)]
@@ -401,7 +413,7 @@ fn watch_dir(
 
 #[tauri::command]
 fn open_entry(path: String) -> Result<(), String> {
-    let pb = sanitize_destructive_path(&path)?;
+    let pb = sanitize_path_follow(&path, false)?;
     let conn = db::open()?;
     if let Err(e) = db::touch_recent(&conn, &pb.to_string_lossy()) {
         warn!("Failed to record recent for {:?}: {}", pb, e);
@@ -501,7 +513,7 @@ fn unique_path(dest: &Path) -> PathBuf {
 
 #[tauri::command]
 fn rename_entry(path: String, new_name: String) -> Result<String, String> {
-    let from = sanitize_destructive_path(&path)?;
+    let from = sanitize_path_nofollow(&path, true)?;
     if new_name.trim().is_empty() {
         return Err("New name cannot be empty".into());
     }
@@ -514,7 +526,7 @@ fn rename_entry(path: String, new_name: String) -> Result<String, String> {
 
 #[tauri::command]
 fn move_to_trash(path: String) -> Result<(), String> {
-    let src = sanitize_destructive_path(&path)?;
+    let src = sanitize_path_nofollow(&path, true)?;
     let trash_dir = resolve_trash_dir()?.ok_or_else(|| "Trash not available on this platform".to_string())?;
     std::fs::create_dir_all(&trash_dir).map_err(|e| format!("Failed to create trash dir: {e}"))?;
     let file_name = src
@@ -526,7 +538,7 @@ fn move_to_trash(path: String) -> Result<(), String> {
 
 #[tauri::command]
 fn delete_entry(path: String) -> Result<(), String> {
-    let pb = sanitize_destructive_path(&path)?;
+    let pb = sanitize_path_nofollow(&path, true)?;
     let meta = fs::symlink_metadata(&pb).map_err(|e| format!("Failed to read metadata: {e}"))?;
     if meta.is_dir() {
         fs::remove_dir_all(&pb).map_err(|e| format!("Failed to delete directory: {e}"))
