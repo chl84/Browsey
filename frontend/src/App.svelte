@@ -376,8 +376,14 @@
         return true
       }
       try {
-        for (const p of paths) {
-          await invoke('move_to_trash', { path: p })
+        if (currentView === 'trash') {
+          for (const p of paths) {
+            await invoke('delete_entry', { path: p })
+          }
+        } else {
+          for (const p of paths) {
+            await invoke('move_to_trash', { path: p })
+          }
         }
         await reloadCurrent()
       } catch (err) {
@@ -593,8 +599,14 @@
     }
     if (id === 'move-trash') {
       try {
-        for (const e of selectionEntries) {
-          await invoke('move_to_trash', { path: e.path })
+        if (currentView === 'trash') {
+          for (const e of selectionEntries) {
+            await invoke('delete_entry', { path: e.path })
+          }
+        } else {
+          for (const e of selectionEntries) {
+            await invoke('move_to_trash', { path: e.path })
+          }
         }
         await reloadCurrent()
       } catch (err) {
