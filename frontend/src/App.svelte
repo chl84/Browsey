@@ -5,27 +5,17 @@
   import { get } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from './lib/explorer/utils'
   import { createListState } from './lib/explorer/stores/listState'
-  import Sidebar from './lib/components/explorer/Sidebar.svelte'
-  import Topbar from './lib/components/explorer/Topbar.svelte'
-  import BookmarkModal from './lib/components/explorer/BookmarkModal.svelte'
-  import FileList from './lib/components/explorer/FileList.svelte'
-  import Statusbar from './lib/components/explorer/Statusbar.svelte'
-  import Notice from './lib/components/explorer/Notice.svelte'
-  import ContextMenu from './lib/components/explorer/ContextMenu.svelte'
-  import DeleteConfirmModal from './lib/components/explorer/DeleteConfirmModal.svelte'
-  import RenameModal from './lib/components/explorer/RenameModal.svelte'
-  import OpenWithModal from './lib/components/explorer/OpenWithModal.svelte'
-  import PropertiesModal from './lib/components/explorer/PropertiesModal.svelte'
+  import ExplorerShell from './lib/components/explorer/ExplorerShell.svelte'
   import { createExplorerState } from './lib/explorer/state'
   import { createColumnResize } from './lib/explorer/hooks/columnWidths'
   import { createGlobalShortcuts } from './lib/explorer/hooks/shortcuts'
   import { createBookmarkModal } from './lib/explorer/hooks/bookmarkModal'
   import type { Entry, Partition, SortField } from './lib/explorer/types'
-  import Toast from './lib/components/explorer/Toast.svelte'
   import { toast, showToast } from './lib/explorer/hooks/useToast'
   import { createClipboard } from './lib/explorer/hooks/useClipboard'
   import { createContextMenus } from './lib/explorer/hooks/useContextMenus'
   import type { ContextAction } from './lib/explorer/hooks/useContextMenus'
+  import { createContextActions } from './lib/explorer/hooks/useContextActions'
   import './lib/explorer/ExplorerLayout.css'
 
   let sidebarCollapsed = false
@@ -582,88 +572,35 @@
     await load($current, { recordHistory: false })
   }
 
-  const handleContextAction = async (id: string) => {
-    const entry = $contextMenu.entry
-    closeContextMenu()
-    if (id.startsWith('divider')) return
-    if (!entry) return
-
-    const selectionPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
-    const selectionEntries =
-      selectionPaths.length > 1
-        ? $filteredEntries.filter((e) => selectionPaths.includes(e.path))
-        : [entry]
-
-    if (id === 'copy-path') {
-      const result = await clipboard.copy(selectionEntries, { writeText: true })
-      if (!result.ok) {
-        showToast(`Copy failed: ${result.error}`)
-      }
-      return
-    }
-    if (id === 'cut' || id === 'copy') {
-      if (id === 'cut') {
-        const result = await clipboard.cut(selectionEntries)
-        if (!result.ok) {
-          showToast(`Cut failed: ${result.error}`)
-        }
-        return
-      }
-      const result = await clipboard.copy(selectionEntries, { writeText: true })
-      if (!result.ok) {
-        showToast(`Copy failed: ${result.error}`)
-      }
-      return
-    }
-    if (id === 'open-with') {
+  const contextActions = createContextActions({
+    getSelectedPaths: () => Array.from($selected),
+    getSelectedSet: () => $selected,
+    getFilteredEntries: () => $filteredEntries,
+    currentView: () => currentView,
+    selectedDirBytes: () => selectedDirBytes,
+    reloadCurrent,
+    clipboard,
+    showToast,
+    openWith: (entry) => {
       openWithEntry = entry
       openWithOpen = true
-      return
-    }
-    if (id === 'rename') {
+    },
+    startRename: (entry) => {
       renameTarget = entry
       renameValue = entry.name
       renameModalOpen = true
-      return
-    }
-    if (id === 'compress') {
-      console.warn('Compress not implemented yet')
-      return
-    }
-    if (id === 'move-trash') {
-      try {
-        if (currentView === 'trash') {
-          for (const e of selectionEntries) {
-            await invoke('delete_entry', { path: e.path })
-          }
-        } else {
-          for (const e of selectionEntries) {
-            await invoke('move_to_trash', { path: e.path })
-          }
-        }
-        await reloadCurrent()
-      } catch (err) {
-        console.error('Failed to move to trash', err)
-      }
-      return
-    }
-    if (id === 'delete-permanent') {
-      deleteTargets = selectionEntries
+    },
+    confirmDelete: (entries) => {
+      deleteTargets = entries
       deleteConfirmOpen = true
-      return
-    }
-    if (id === 'properties' && selectionEntries.length === 1) {
-      const e = selectionEntries[0]
-      propertiesEntry = e
-      propertiesSize =
-        e.kind === 'dir' && $selected.size === 1 && $selected.has(e.path)
-          ? selectedDirBytes
-          : e.size ?? null
+    },
+    openProperties: async (entry, size) => {
+      propertiesEntry = entry
+      propertiesSize = size
       propertiesOpen = true
-      void loadEntryTimes(e)
-      return
-    }
-  }
+      await loadEntryTimes(entry)
+    },
+  })
 
   const handleOpenEntry = async (entry: Entry) => {
     if (entry.kind === 'dir') {
@@ -707,6 +644,12 @@
     }
   }
 
+  const handleContextSelect = async (id: string) => {
+    const entry = $contextMenu.entry
+    closeContextMenu()
+    await contextActions(id, entry)
+  }
+
   const closeRenameModal = () => {
     renameModalOpen = false
     renameTarget = null
@@ -717,7 +660,7 @@
     const trimmed = name.trim()
     if (!trimmed) return
     try {
-      await invoke('rename_entry', { path: renameTarget.path, new_name: trimmed })
+      await invoke('rename_entry', { path: renameTarget.path, newName: trimmed })
       await load(parentPath(renameTarget.path), { recordHistory: false })
     } catch (err) {
       console.error('Failed to rename', err)
@@ -824,131 +767,90 @@
     e.stopPropagation()
   }}
 />
-<main class="shell">
-  <div class="layout" class:collapsed={sidebarCollapsed}>
-    <Sidebar
-      places={places}
-      bookmarks={bookmarks}
-      partitions={partitions}
-      collapsed={sidebarCollapsed}
-      onPlaceSelect={handlePlace}
-      onBookmarkSelect={(path) => void load(path)}
-      onRemoveBookmark={(path) => {
-        void invoke('remove_bookmark', { path })
-        bookmarksStore.update((list) => list.filter((b) => b.path !== path))
-      }}
-      onPartitionSelect={(path) => void load(path)}
-    />
-
-    <section class="content">
-      <Topbar
-        bind:pathInput
-        bind:pathInputEl
-        searchMode={$searchMode}
-        loading={$loading}
-        onFocus={handleInputFocus}
-        onBlur={handleInputBlur}
-        onSubmitPath={submitPath}
-        onSearch={() => runSearch(pathInput)}
-        onExitSearch={() => void setSearchModeState(false).then(() => blurPathInput())}
-      />
-
-      <Notice message={$error} />
-
-      {#if $searchActive}
-        <div class="pill">{mode === 'filter' ? 'Filtering' : 'Searching'}: "{$filter}"</div>
-      {/if}
-
-      <FileList
-        cols={$cols}
-        gridTemplate={$gridTemplate}
-        bind:rowsEl={rowsElRef}
-        bind:headerEl={headerElRef}
-        loading={$loading}
-        filteredEntries={$filteredEntries}
-        visibleEntries={$visibleEntries}
-        start={$start}
-        offsetY={$offsetY}
-        totalHeight={$totalHeight}
-        wide={sidebarCollapsed}
-        selected={$selected}
-        sortField={$sortField}
-        sortDirection={$sortDirection}
-        isHidden={isHidden}
-        displayName={displayName}
-        {formatSize}
-        {formatItems}
-        clipboardMode={clipboardMode}
-        clipboardPaths={clipboardPaths}
-        onRowsScroll={handleRowsScroll}
-        onWheel={handleWheel}
-        onRowsKeydown={rowsKeydownHandler}
-        onRowsClick={handleRowsClick}
-        onRowsContextMenu={handleBlankContextMenu}
-        onChangeSort={changeSort}
-        onStartResize={startResize}
-        ariaSort={ariaSort}
-        onRowClick={rowClickHandler}
-        onOpen={handleOpenEntry}
-        onContextMenu={handleRowContextMenu}
-        onToggleStar={toggleStar}
-      />
-      <Statusbar {selectionText} />
-    </section>
-  </div>
-</main>
-
-  <ContextMenu
-    open={$contextMenu.open}
-    x={$contextMenu.x}
-    y={$contextMenu.y}
-    actions={$contextMenu.actions}
-    onSelect={handleContextAction}
-    onClose={closeContextMenu}
-  />
-  <ContextMenu
-    open={$blankMenu.open}
-    x={$blankMenu.x}
-    y={$blankMenu.y}
-    actions={[{ id: 'paste', label: 'Paste' }]}
-    onSelect={handleBlankContextAction}
-    onClose={closeBlankContextMenu}
-  />
-<DeleteConfirmModal
-  open={deleteConfirmOpen}
-  targetLabel={deleteTargets.length === 1 ? deleteTargets[0].path : `${deleteTargets.length} items`}
-  onConfirm={confirmDelete}
-  onCancel={closeDeleteConfirm}
-/>
-<RenameModal
-  open={renameModalOpen}
-  entryName={renameTarget?.path ?? ''}
-  bind:value={renameValue}
-  onConfirm={confirmRename}
-  onCancel={closeRenameModal}
-/>
-<OpenWithModal
-  open={openWithOpen}
-  path={openWithEntry?.path ?? ''}
-  onClose={closeOpenWith}
-/>
-<PropertiesModal
-  open={propertiesOpen}
-  entry={propertiesEntry}
-  size={propertiesSize}
+<ExplorerShell
+  bind:pathInput
+  bind:pathInputEl
+  bind:rowsEl={rowsElRef}
+  bind:headerEl={headerElRef}
+  bind:bookmarkName
+  bind:bookmarkInputEl
+  {sidebarCollapsed}
+  {places}
+  {bookmarks}
+  {partitions}
+  onPlaceSelect={handlePlace}
+  onBookmarkSelect={(path) => void load(path)}
+  onRemoveBookmark={(path) => {
+    void invoke('remove_bookmark', { path })
+    bookmarksStore.update((list) => list.filter((b) => b.path !== path))
+  }}
+  onPartitionSelect={(path) => void load(path)}
+  searchMode={$searchMode}
+  loading={$loading}
+  onFocus={handleInputFocus}
+  onBlur={handleInputBlur}
+  onSubmitPath={submitPath}
+  onSearch={() => runSearch(pathInput)}
+  onExitSearch={() => void setSearchModeState(false).then(() => blurPathInput())}
+  noticeMessage={$error}
+  searchActive={$searchActive}
+  {mode}
+  filterValue={$filter}
+  cols={$cols}
+  gridTemplate={$gridTemplate}
+  filteredEntries={$filteredEntries}
+  visibleEntries={$visibleEntries}
+  start={$start}
+  offsetY={$offsetY}
+  totalHeight={$totalHeight}
+  wide={sidebarCollapsed}
+  selected={$selected}
+  sortField={$sortField}
+  sortDirection={$sortDirection}
+  isHidden={isHidden}
+  displayName={displayName}
   {formatSize}
-  onClose={closeProperties}
+  {formatItems}
+  clipboardMode={clipboardMode}
+  clipboardPaths={clipboardPaths}
+  onRowsScroll={handleRowsScroll}
+  onWheel={handleWheel}
+  onRowsKeydown={rowsKeydownHandler}
+  onRowsClick={handleRowsClick}
+  onRowsContextMenu={handleBlankContextMenu}
+  onChangeSort={changeSort}
+  onStartResize={startResize}
+  ariaSort={ariaSort}
+  onRowClick={rowClickHandler}
+  onOpen={handleOpenEntry}
+  onContextMenu={handleRowContextMenu}
+  onToggleStar={toggleStar}
+  {selectionText}
+  contextMenu={$contextMenu}
+  blankMenu={$blankMenu}
+  onContextSelect={handleContextSelect}
+  onBlankContextSelect={handleBlankContextAction}
+  onCloseContextMenu={closeContextMenu}
+  onCloseBlankContextMenu={closeBlankContextMenu}
+  deleteConfirmOpen={deleteConfirmOpen}
+  {deleteTargets}
+  onConfirmDelete={confirmDelete}
+  onCancelDelete={closeDeleteConfirm}
+  renameModalOpen={renameModalOpen}
+  {renameTarget}
+  bind:renameValue
+  onConfirmRename={confirmRename}
+  onCancelRename={closeRenameModal}
+  openWithOpen={openWithOpen}
+  {openWithEntry}
+  onCloseOpenWith={closeOpenWith}
+  propertiesOpen={propertiesOpen}
+  {propertiesEntry}
+  {propertiesSize}
+  onCloseProperties={closeProperties}
+  bookmarkModalOpen={bookmarkModalOpen}
+  {bookmarkCandidate}
+  onConfirmBookmark={confirmBookmark}
+  onCancelBookmark={closeBookmarkModal}
+  toastMessage={$toast}
 />
-
-{#if bookmarkModalOpen}
-  <BookmarkModal
-    open={bookmarkModalOpen}
-    entryName={bookmarkCandidate?.name ?? ''}
-    bind:bookmarkName
-    bind:bookmarkInputEl
-    onConfirm={confirmBookmark}
-    onCancel={closeBookmarkModal}
-  />
-{/if}
-
-<Toast message={$toast} />
