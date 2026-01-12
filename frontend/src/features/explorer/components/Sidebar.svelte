@@ -2,7 +2,7 @@
   import BookmarksSection from './BookmarksSection.svelte'
   import PartitionsSection from './PartitionsSection.svelte'
   import PlacesSection from './PlacesSection.svelte'
-  import type { Partition } from '../../explorer/types'
+  import type { Partition } from '../types'
 
   export let places: { label: string; path: string }[] = []
   export let bookmarks: { label: string; path: string }[] = []

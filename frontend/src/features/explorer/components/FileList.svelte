@@ -1,7 +1,7 @@
 <script lang="ts">
   import FileListHeader from './FileListHeader.svelte'
   import FileRow from './FileRow.svelte'
-  import type { Column, Entry, SortDirection, SortField } from '../../explorer/types'
+  import type { Column, Entry, SortDirection, SortField } from '../types'
 
   export let cols: Column[] = []
   export let gridTemplate = ''
@@ -69,6 +69,7 @@
           {#each visibleEntries as entry, i (entry.path)}
             <FileRow
               {entry}
+              index={start + i}
               gridTemplate={gridTemplate}
               hidden={isHidden(entry)}
               selected={selected.has(entry.path)}

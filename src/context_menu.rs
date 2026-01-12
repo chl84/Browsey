@@ -43,6 +43,8 @@ pub fn context_menu_actions(count: usize, kind: Option<String>, starred: Option<
             "Delete permanently…",
             "Shift+Delete",
         ));
+        items.push(ContextAction::new("divider-1", "---"));
+        items.push(ContextAction::with_shortcut("properties", "Properties", "Ctrl+P"));
         return items;
     }
 

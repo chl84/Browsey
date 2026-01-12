@@ -63,3 +63,5 @@ export const createClipboard = () => {
     clear: clearClipboardState,
   }
 }
+
+export type ClipboardApi = ReturnType<typeof createClipboard>

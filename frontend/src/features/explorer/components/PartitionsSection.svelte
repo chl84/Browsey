@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { partitionIcon } from '../../explorer/utils'
-  import type { Partition } from '../../explorer/types'
+  import { partitionIcon } from '../utils'
+  import type { Partition } from '../types'
 
   export let partitions: Partition[] = []
   export let onSelect: (path: string) => void = () => {}

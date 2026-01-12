@@ -2,21 +2,20 @@ import { invoke } from '@tauri-apps/api/core'
 import type { Entry } from '../types'
 import type { ClipboardApi } from './useClipboard'
 
-type CurrentView = 'recent' | 'starred' | 'trash' | 'dir'
+export type CurrentView = 'recent' | 'starred' | 'trash' | 'dir'
 
 type Deps = {
   getSelectedPaths: () => string[]
   getSelectedSet: () => Set<string>
   getFilteredEntries: () => Entry[]
   currentView: () => CurrentView
-  selectedDirBytes: () => number
   reloadCurrent: () => Promise<void>
   clipboard: ClipboardApi
   showToast: (msg: string) => void
   openWith: (entry: Entry) => void
   startRename: (entry: Entry) => void
   confirmDelete: (entries: Entry[]) => void
-  openProperties: (entry: Entry, size: number | null) => Promise<void> | void
+  openProperties: (entries: Entry[]) => Promise<void> | void
 }
 
 export const createContextActions = (deps: Deps) => {
@@ -25,7 +24,6 @@ export const createContextActions = (deps: Deps) => {
     getSelectedSet,
     getFilteredEntries,
     currentView,
-    selectedDirBytes,
     reloadCurrent,
     clipboard,
     showToast,
@@ -100,12 +98,8 @@ export const createContextActions = (deps: Deps) => {
       return
     }
 
-    if (id === 'properties' && selectionEntries.length === 1) {
-      const e = selectionEntries[0]
-      const isDir = e.kind === 'dir'
-      const selectedOnlyThis = getSelectedSet().size === 1 && getSelectedSet().has(e.path)
-      const size = isDir && selectedOnlyThis ? selectedDirBytes() : e.size ?? null
-      await openProperties(e, size)
+    if (id === 'properties') {
+      await openProperties(selectionEntries)
       return
     }
   }

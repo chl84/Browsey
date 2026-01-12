@@ -1,7 +1,8 @@
 <script lang="ts">
-  import type { Entry } from '../../explorer/types'
+  import type { Entry } from '../types'
 
   export let entry: Entry
+  export let index = 0
   export let gridTemplate = ''
   export let hidden = false
   export let selected = false
@@ -17,6 +18,7 @@
 
 <button
   class="row"
+  data-index={index}
   style={`grid-template-columns:${gridTemplate};`}
   class:hidden={hidden}
   class:selected={selected}

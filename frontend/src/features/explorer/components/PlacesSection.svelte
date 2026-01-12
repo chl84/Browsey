@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { navIcon } from '../../explorer/utils'
+  import { navIcon } from '../utils'
 
   export let places: { label: string; path: string }[] = []
   export let onSelect: (label: string, path: string) => void = () => {}

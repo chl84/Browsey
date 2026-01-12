@@ -1,5 +1,5 @@
 import { get, writable } from 'svelte/store'
-import { clampIndex, clearSelection, selectAllPaths, selectRange } from '../../../selection'
+import { clampIndex, clearSelection, selectAllPaths, selectRange } from '../selection'
 import type { Entry } from '../types'
 
 const rowHeight = 32
@@ -37,6 +37,13 @@ export const createListState = () => {
   const handleResize = () => {
     if (typeof window === 'undefined') return
     updateViewportHeight()
+  }
+
+  const focusRow = (index: number) => {
+    const el = get(rowsEl)
+    if (!el) return
+    const row = el.querySelector<HTMLButtonElement>(`.row[data-index="${index}"]`)
+    row?.focus()
   }
 
   const handleRowsScroll = () => {
@@ -86,10 +93,12 @@ export const createListState = () => {
         selected.set(rangeSet)
         anchorIndex.set(anchor)
         caretIndex.set(next)
+        focusRow(next)
       } else {
         selected.set(new Set([filteredEntries[next].path]))
         anchorIndex.set(next)
         caretIndex.set(next)
+        focusRow(next)
       }
       if (get(caretIndex) !== null) {
         ensureRowVisible(get(caretIndex)!)

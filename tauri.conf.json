@@ -21,6 +21,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["rpm"]
+    "targets": ["rpm"],
+    "icon": ["resources/icons/icon.png"]
   }
 }

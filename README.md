@@ -85,7 +85,7 @@ Tauri bundle:
 - Hidden files render at half opacity in the list. Sidebar auto-collapses under 700 px width. Fixed 24 px shell padding.
 - Search is recursive, case-insensitive, skips symlinks, and matches on the current path subtree. Empty search returns an empty result and preserves the listing.
 - Data lives in SQLite at the platform data dir (Linux: `~/.local/share/filey/filey.db`) and holds bookmarks, starred, recent, and column widths.
-- Permissions: capability file `capabilities/default.json` grants `core:event` listen/emit so the watcher can refresh the UI.
+- Permissions: capability file `resources/capabilities/default.json` grants `core:event` listen/emit so the watcher can refresh the UI.
 - Shortcuts: see section below.
 - Context menu: right-click rows for “Open with…”, Copy path, Cut/Copy, Rename (F2), Move to wastebasket (Delete), Delete permanently (Shift+Delete with confirmation), Properties (Ctrl+P). Properties lazy-loads accessed/created timestamps; folder sizes reuse the statusbar computation.
 
@@ -101,10 +101,10 @@ Tauri bundle:
 - Columns: Name, Type, Modified, Size, ⭐; name is line-clamped to 2 lines. Sidebar sections: Places, Bookmarks, Partitions. Bookmarks show an “x” on hover to remove; drives use different icons for fixed vs removable.
 - Virtualized scrolling container keeps hover smooth on large folders.
 
-## Frontend structure
-- `frontend/src/App.svelte`: page shell, wiring stores to components (sidebar, topbar, file list, status bar, bookmark modal).
-- Stores: `lib/explorer/state.ts` (Tauri I/O: listings, search, bookmarks, partitions, sort), `lib/explorer/stores/listState.ts` (selection, virtual scroll, DOM refs for rows/header).
-- Components: `lib/components/explorer/` (Sidebar + sections, Topbar, FileList with header/row/resizer, Statusbar, Notice, BookmarkModal).
+## Structure
+- Frontend: `frontend/src/features/explorer` (components, hooks, stores, utils, selection), shared UI atoms in `frontend/src/ui/`, app shell in `frontend/src/App.svelte`.
+- Backend: Tauri commands grouped under `src/commands/` (fs, bookmarks, library, search, settings, meta) and wired in `src/main.rs`.
+- Resources: `resources/icons` (bundle icons), `resources/schemas` (generated schema refs), capabilities at repository root `capabilities/`.
 
 ## Next steps
 - Add Rust commands for copy/move/delete/rename to keep FS ops native.

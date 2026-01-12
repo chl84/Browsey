@@ -1,6 +1,6 @@
 <script lang="ts">
-  import ColumnResizer from './ColumnResizer.svelte'
-  import type { Column, SortDirection, SortField } from '../../explorer/types'
+  import ColumnResizer from '../../../ui/ColumnResizer.svelte'
+  import type { Column, SortDirection, SortField } from '../types'
 
   export let cols: Column[] = []
   export let gridTemplate = ''

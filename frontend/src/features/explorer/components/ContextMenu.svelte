@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  export type ContextAction = { id: string; label: string; shortcut?: string; dangerous?: boolean }
+  type ContextAction = { id: string; label: string; shortcut?: string; dangerous?: boolean }
 
   export let open = false
   export let x = 0

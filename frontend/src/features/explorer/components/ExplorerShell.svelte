@@ -1,24 +1,24 @@
 <script lang="ts">
   import Sidebar from './Sidebar.svelte'
   import Topbar from './Topbar.svelte'
-  import Notice from './Notice.svelte'
+  import Notice from '../../../ui/Notice.svelte'
   import FileList from './FileList.svelte'
-  import Statusbar from './Statusbar.svelte'
+  import Statusbar from '../../../ui/Statusbar.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import DeleteConfirmModal from './DeleteConfirmModal.svelte'
   import RenameModal from './RenameModal.svelte'
   import OpenWithModal from './OpenWithModal.svelte'
   import PropertiesModal from './PropertiesModal.svelte'
   import BookmarkModal from './BookmarkModal.svelte'
-  import Toast from './Toast.svelte'
-  import type { Entry, Partition, SortField } from '../../explorer/types'
-  import type { ContextAction } from '../../explorer/hooks/useContextMenus'
+  import Toast from '../../../ui/Toast.svelte'
+  import type { Column, Entry, Partition, SortField } from '../types'
+  import type { ContextAction } from '../hooks/useContextMenus'
 
   export let sidebarCollapsed = false
   export let places: { label: string; path: string }[] = []
   export let bookmarks: { label: string; path: string }[] = []
   export let partitions: Partition[] = []
-  export let onPlaceSelect: (path: string) => void = () => {}
+  export let onPlaceSelect: (label: string, path: string) => void = () => {}
   export let onBookmarkSelect: (path: string) => void = () => {}
   export let onRemoveBookmark: (path: string) => void = () => {}
   export let onPartitionSelect: (path: string) => void = () => {}
@@ -33,12 +33,12 @@
   export let onSearch: () => void = () => {}
   export let onExitSearch: () => void = () => {}
 
-  export let noticeMessage: string | null = null
+  export let noticeMessage = ''
   export let searchActive = false
   export let mode: 'address' | 'filter' | 'search' = 'address'
   export let filterValue = ''
 
-  export let cols: Record<SortField, number[]> = {} as any
+  export let cols: Column[] = []
   export let gridTemplate = ''
   export let rowsEl: HTMLDivElement | null = null
   export let headerEl: HTMLDivElement | null = null
@@ -54,7 +54,7 @@
   export let isHidden: (entry: Entry) => boolean = () => false
   export let displayName: (entry: Entry) => string = (e) => e.name
   export let formatSize: (n: number | null | undefined) => string = (n) => String(n ?? '')
-  export let formatItems: (n: number) => string = (n) => String(n)
+  export let formatItems: (n?: number | null) => string = (n) => String(n ?? '')
   export let clipboardMode: 'copy' | 'cut' = 'copy'
   export let clipboardPaths: Set<string> = new Set()
   export let onRowsScroll: (e: Event) => void = () => {}
@@ -63,9 +63,9 @@
   export let onRowsClick: (e: MouseEvent) => void = () => {}
   export let onRowsContextMenu: (e: MouseEvent) => void = () => {}
   export let onChangeSort: (field: SortField) => void = () => {}
-  export let onStartResize: (col: number) => void = () => {}
+  export let onStartResize: (col: number, event: PointerEvent) => void = () => {}
   export let ariaSort: (field: SortField) => 'ascending' | 'descending' | 'none' = () => 'none'
-  export let onRowClick: (entry: Entry, event: MouseEvent) => void = () => {}
+  export let onRowClick: (entry: Entry, absoluteIndex: number, event: MouseEvent) => void = () => {}
   export let onOpen: (entry: Entry) => void = () => {}
   export let onContextMenu: (entry: Entry, event: MouseEvent) => void = () => {}
   export let onToggleStar: (entry: Entry) => void = () => {}
@@ -101,6 +101,7 @@
 
   export let propertiesOpen = false
   export let propertiesEntry: Entry | null = null
+  export let propertiesCount = 1
   export let propertiesSize: number | null = null
   export let onCloseProperties: () => void = () => {}
 
@@ -120,7 +121,7 @@
       {places}
       {bookmarks}
       {partitions}
-      {sidebarCollapsed}
+      collapsed={sidebarCollapsed}
       onPlaceSelect={onPlaceSelect}
       onBookmarkSelect={onBookmarkSelect}
       onRemoveBookmark={onRemoveBookmark}
@@ -218,6 +219,7 @@
 <PropertiesModal
   open={propertiesOpen}
   entry={propertiesEntry}
+  count={propertiesCount}
   size={propertiesSize}
   {formatSize}
   onClose={onCloseProperties}

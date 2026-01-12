@@ -3,20 +3,20 @@
   import { invoke } from '@tauri-apps/api/core'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { get } from 'svelte/store'
-  import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from './lib/explorer/utils'
-  import { createListState } from './lib/explorer/stores/listState'
-  import ExplorerShell from './lib/components/explorer/ExplorerShell.svelte'
-  import { createExplorerState } from './lib/explorer/state'
-  import { createColumnResize } from './lib/explorer/hooks/columnWidths'
-  import { createGlobalShortcuts } from './lib/explorer/hooks/shortcuts'
-  import { createBookmarkModal } from './lib/explorer/hooks/bookmarkModal'
-  import type { Entry, Partition, SortField } from './lib/explorer/types'
-  import { toast, showToast } from './lib/explorer/hooks/useToast'
-  import { createClipboard } from './lib/explorer/hooks/useClipboard'
-  import { createContextMenus } from './lib/explorer/hooks/useContextMenus'
-  import type { ContextAction } from './lib/explorer/hooks/useContextMenus'
-  import { createContextActions } from './lib/explorer/hooks/useContextActions'
-  import './lib/explorer/ExplorerLayout.css'
+  import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from './features/explorer/utils'
+  import { createListState } from './features/explorer/stores/listState'
+  import ExplorerShell from './features/explorer/components/ExplorerShell.svelte'
+  import { createExplorerState } from './features/explorer/state'
+  import { createColumnResize } from './features/explorer/hooks/columnWidths'
+  import { createGlobalShortcuts } from './features/explorer/hooks/shortcuts'
+  import { createBookmarkModal } from './features/explorer/hooks/bookmarkModal'
+  import type { Entry, Partition, SortField } from './features/explorer/types'
+  import { toast, showToast } from './features/explorer/hooks/useToast'
+  import { createClipboard } from './features/explorer/hooks/useClipboard'
+  import { createContextMenus } from './features/explorer/hooks/useContextMenus'
+  import type { ContextAction } from './features/explorer/hooks/useContextMenus'
+  import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
+  import './features/explorer/ExplorerLayout.css'
 
   let sidebarCollapsed = false
   let pathInput = ''
@@ -53,11 +53,19 @@
   let openWithEntry: Entry | null = null
   let propertiesOpen = false
   let propertiesEntry: Entry | null = null
+  let propertiesCount = 1
   let propertiesSize: number | null = null
   let deleteConfirmOpen = false
   let deleteTargets: Entry[] = []
   let clipboardMode: 'copy' | 'cut' = 'copy'
   let clipboardPaths = new Set<string>()
+  let currentView: CurrentView = 'dir'
+
+  const isEditableTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false
+    const tag = target.tagName.toLowerCase()
+    return target.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select'
+  }
   const clipboard = createClipboard()
   const clipboardStore = clipboard.state
   const {
@@ -176,26 +184,30 @@
   const { startResize } = createColumnResize(cols, persistWidths)
 
   let dirSizeAbort = 0
-  let selectedDirBytes = 0
+  let propertiesToken = 0
   let selectionText = ''
 
-  const refreshSelectionSizes = async () => {
-    const selectedPaths = Array.from($selected)
-    const dirs = $entries.filter((e) => $selected.has(e.path) && e.kind === 'dir').map((d) => d.path)
-    if (dirs.length === 0) {
-      selectedDirBytes = 0
-      dirSizeAbort++
-      return
-    }
+  const computeDirBytes = async (paths: string[], onProgress?: (bytes: number) => void) => {
+    if (paths.length === 0) return 0
     const token = ++dirSizeAbort
+    const progressEvent = `dir-size-progress-${token}-${Math.random().toString(16).slice(2)}`
+    let unlisten: UnlistenFn | null = null
     try {
-      const result = await invoke<{ total: number }>('dir_sizes', { paths: dirs })
-      if (token !== dirSizeAbort) return
-      selectedDirBytes = result.total ?? 0
+      if (onProgress) {
+        unlisten = await listen<{ path: string; bytes: number }>(progressEvent, (event) => {
+          if (token !== dirSizeAbort) return
+          onProgress(event.payload.bytes)
+        })
+      }
+      const result = await invoke<{ total: number }>('dir_sizes', { paths, progressEvent })
+      if (token !== dirSizeAbort) return 0
+      return result.total ?? 0
     } catch (err) {
       console.error('Failed to compute dir sizes', err)
-      if (token === dirSizeAbort) {
-        selectedDirBytes = 0
+      return 0
+    } finally {
+      if (unlisten) {
+        await unlisten()
       }
     }
   }
@@ -206,13 +218,7 @@
     const dirs = selectedEntries.filter((e) => e.kind === 'dir')
     const fileBytes = files.reduce((sum, f) => sum + (f.size ?? 0), 0)
 
-    if (dirs.length > 0) {
-      void refreshSelectionSizes()
-    } else {
-      selectedDirBytes = 0
-    }
-
-    const dirLine = formatSelectionLine(dirs.length, 'folder', selectedDirBytes)
+    const dirLine = formatSelectionLine(dirs.length, 'folder')
     const fileLine = formatSelectionLine(files.length, 'file', fileBytes)
 
     const parts = [dirLine, fileLine].filter((p) => p.length > 0)
@@ -317,7 +323,7 @@
       return true
     },
     onRemoveChar: async () => {
-      if (mode === 'address' || (inputFocused && mode === 'address')) {
+      if (mode === 'address') {
         return false
       }
       if (mode === 'search') {
@@ -411,17 +417,10 @@
       return true
     },
     onProperties: async () => {
-      if ($selected.size !== 1) return false
-      const path = Array.from($selected)[0]
-      const entry = $entries.find((e) => e.path === path)
-      if (!entry) return false
-      propertiesEntry = entry
-      propertiesSize =
-        entry.kind === 'dir' && $selected.size === 1 && $selected.has(entry.path)
-          ? selectedDirBytes
-          : entry.size ?? null
-      propertiesOpen = true
-      await loadEntryTimes(entry)
+      if ($selected.size === 0) return false
+      const selection = $entries.filter((e) => $selected.has(e.path))
+      if (selection.length === 0) return false
+      void openPropertiesModal(selection)
       return true
     },
   })
@@ -429,6 +428,24 @@
 
   const handleDocumentKeydown = (event: KeyboardEvent) => {
     const key = event.key.toLowerCase()
+    const inRows = rowsElRef?.contains(event.target as Node) ?? false
+    if (key === 'arrowdown' && !isEditableTarget(event.target) && rowsElRef && !inRows) {
+      const list = get(filteredEntries)
+      if (list.length > 0) {
+        event.preventDefault()
+        event.stopPropagation()
+        selected.set(new Set([list[0].path]))
+        anchorIndex.set(0)
+        caretIndex.set(0)
+        const firstRow = rowsElRef.querySelector<HTMLButtonElement>('.row-viewport .row')
+        if (firstRow) {
+          firstRow.focus()
+        } else {
+          rowsElRef.focus()
+        }
+        return
+      }
+    }
     if (key === 'escape') {
       if (deleteConfirmOpen) {
         event.preventDefault()
@@ -577,7 +594,6 @@
     getSelectedSet: () => $selected,
     getFilteredEntries: () => $filteredEntries,
     currentView: () => currentView,
-    selectedDirBytes: () => selectedDirBytes,
     reloadCurrent,
     clipboard,
     showToast,
@@ -594,11 +610,8 @@
       deleteTargets = entries
       deleteConfirmOpen = true
     },
-    openProperties: async (entry, size) => {
-      propertiesEntry = entry
-      propertiesSize = size
-      propertiesOpen = true
-      await loadEntryTimes(entry)
+    openProperties: (entries) => {
+      void openPropertiesModal(entries)
     },
   })
 
@@ -680,13 +693,15 @@
     propertiesSize = null
   }
 
-  const loadEntryTimes = async (entry: Entry) => {
+  const loadEntryTimes = async (entry: Entry, token: number) => {
     try {
       const times = await invoke<{ accessed?: string | null; created?: string | null; modified?: string | null }>(
         'entry_times_cmd',
         { path: entry.path }
       )
-      propertiesEntry = { ...entry, ...times }
+      if (token === propertiesToken) {
+        propertiesEntry = { ...entry, ...times }
+      }
     } catch (err) {
       console.error('Failed to load entry times', err)
     }
@@ -708,6 +723,39 @@
       console.error('Failed to delete', err)
     } finally {
       closeDeleteConfirm()
+    }
+  }
+
+  const openPropertiesModal = async (entries: Entry[]) => {
+    const token = ++propertiesToken
+    propertiesEntry = entries.length === 1 ? entries[0] : null
+    propertiesCount = entries.length
+    propertiesOpen = true
+    const files = entries.filter((e) => e.kind === 'file')
+    const dirs = entries.filter((e) => e.kind === 'dir')
+    const fileBytes = files.reduce((sum, f) => sum + (f.size ?? 0), 0)
+    propertiesSize = fileBytes
+    let loadingDirs = dirs.length > 0
+
+    if (dirs.length > 0) {
+      const bytes = await computeDirBytes(
+        dirs.map((d) => d.path),
+        (partial) => {
+          if (token === propertiesToken) {
+            propertiesSize = fileBytes + partial
+          }
+        }
+      )
+      if (token === propertiesToken) {
+        propertiesSize = fileBytes + bytes
+        loadingDirs = false
+      }
+    } else {
+      loadingDirs = false
+    }
+
+    if (entries.length === 1 && propertiesEntry) {
+      void loadEntryTimes(propertiesEntry, token)
     }
   }
 
@@ -844,10 +892,11 @@
   openWithOpen={openWithOpen}
   {openWithEntry}
   onCloseOpenWith={closeOpenWith}
-  propertiesOpen={propertiesOpen}
-  {propertiesEntry}
-  {propertiesSize}
-  onCloseProperties={closeProperties}
+    propertiesOpen={propertiesOpen}
+    {propertiesEntry}
+    {propertiesCount}
+    {propertiesSize}
+    onCloseProperties={closeProperties}
   bookmarkModalOpen={bookmarkModalOpen}
   {bookmarkCandidate}
   onConfirmBookmark={confirmBookmark}
