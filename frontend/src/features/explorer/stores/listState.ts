@@ -2,7 +2,7 @@ import { get, writable } from 'svelte/store'
 import { clampIndex, clearSelection, selectAllPaths, selectRange } from '../selection'
 import type { Entry } from '../types'
 
-const rowHeight = 32
+export const rowHeight = 32
 const overscan = 8
 const wheelScale = 0.7
 

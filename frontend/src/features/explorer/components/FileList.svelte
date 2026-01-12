@@ -1,6 +1,7 @@
 <script lang="ts">
   import FileListHeader from './FileListHeader.svelte'
   import FileRow from './FileRow.svelte'
+  import SelectionBox from '../../../ui/SelectionBox.svelte'
   import type { Column, Entry, SortDirection, SortField } from '../types'
 
   export let cols: Column[] = []
@@ -27,6 +28,7 @@
   export let onRowsScroll: (event: Event) => void = () => {}
   export let onWheel: (event: WheelEvent) => void = () => {}
   export let onRowsKeydown: (event: KeyboardEvent) => void = () => {}
+  export let onRowsMousedown: (event: MouseEvent) => void = () => {}
   export let onRowsClick: (event: MouseEvent) => void = () => {}
   export let onRowsContextMenu: (event: MouseEvent) => void = () => {}
   export let onChangeSort: (field: SortField) => void = () => {}
@@ -36,6 +38,13 @@
   export let onOpen: (entry: Entry) => void = () => {}
   export let onToggleStar: (entry: Entry) => void = () => {}
   export let onContextMenu: (entry: Entry, event: MouseEvent) => void = () => {}
+  export let selectionActive = false
+  export let selectionRect: { x: number; y: number; width: number; height: number } = {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+  }
 </script>
 
 <section class="list" class:wide={wide}>
@@ -45,6 +54,7 @@
     on:scroll={onRowsScroll}
     on:wheel|passive={onWheel}
     on:keydown={onRowsKeydown}
+    on:mousedown={onRowsMousedown}
     on:click={onRowsClick}
     on:contextmenu={onRowsContextMenu}
     tabindex="0"
@@ -86,6 +96,7 @@
         </div>
       </div>
     {/if}
+    <SelectionBox active={selectionActive} rect={selectionRect} />
   </div>
 </section>
 
@@ -113,6 +124,9 @@
     padding-left: 12px;
     padding-right: 12px;
     padding-bottom: 32px;
+    position: relative;
+    user-select: none;
+    cursor: default;
   }
 
   .spacer {

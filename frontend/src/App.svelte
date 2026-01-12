@@ -16,6 +16,7 @@
   import { createContextMenus } from './features/explorer/hooks/useContextMenus'
   import type { ContextAction } from './features/explorer/hooks/useContextMenus'
   import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
+  import { createSelectionBox } from './features/explorer/hooks/selectionBox'
   import './features/explorer/ExplorerLayout.css'
 
   let sidebarCollapsed = false
@@ -76,6 +77,7 @@
     openBlankContextMenu,
     closeBlankContextMenu,
   } = createContextMenus()
+  const selectionBox = createSelectionBox()
 
   const explorer = createExplorerState({
     onEntriesChanged: () => resetScrollPosition(),
@@ -118,10 +120,14 @@
     persistWidths,
   } = explorer
 
+  const selectionActive = selectionBox.active
+  const selectionRect = selectionBox.rect
+
   const {
     selected,
     anchorIndex,
     caretIndex,
+    rowHeight,
     viewportHeight,
     scrollTop,
     rowsEl: rowsElStore,
@@ -174,6 +180,8 @@
     }
   }
 
+  let selectionDrag = false
+
   $: {
     if (mode === 'filter') {
       filter.set(pathInput)
@@ -215,11 +223,13 @@
   $: {
     const selectedEntries = $entries.filter((e) => $selected.has(e.path))
     const files = selectedEntries.filter((e) => e.kind === 'file')
+    const links = selectedEntries.filter((e) => e.kind === 'link')
     const dirs = selectedEntries.filter((e) => e.kind === 'dir')
     const fileBytes = files.reduce((sum, f) => sum + (f.size ?? 0), 0)
+    const fileCount = files.length + links.length
 
     const dirLine = formatSelectionLine(dirs.length, 'folder')
-    const fileLine = formatSelectionLine(files.length, 'file', fileBytes)
+    const fileLine = formatSelectionLine(fileCount, 'file', fileBytes)
 
     const parts = [dirLine, fileLine].filter((p) => p.length > 0)
     selectionText = parts.join(' | ')
@@ -630,6 +640,38 @@
     open(entry)
   }
 
+  const handleRowsMouseDown = (event: MouseEvent) => {
+    if (!rowsElRef) return
+    if (event.target !== rowsElRef) return
+    event.preventDefault()
+    rowsElRef.focus()
+    const list = get(filteredEntries)
+    if (list.length === 0) return
+    selectionDrag = false
+    selectionBox.start(event, {
+      rowsEl: rowsElRef,
+      headerEl: headerElRef,
+      entries: list,
+      rowHeight,
+      onSelect: (paths, anchor, caret) => {
+        selected.set(paths)
+        anchorIndex.set(anchor)
+        caretIndex.set(caret)
+      },
+      onEnd: (didDrag) => {
+        selectionDrag = didDrag
+      },
+    })
+  }
+
+  const handleRowsClickSafe = (event: MouseEvent) => {
+    if (selectionDrag) {
+      selectionDrag = false
+      return
+    }
+    handleRowsClick(event)
+  }
+
   const handleRowContextMenu = (entry: Entry, event: MouseEvent) => {
     const alreadySelected = $selected.has(entry.path)
     if (!alreadySelected) {
@@ -815,11 +857,11 @@
     e.stopPropagation()
   }}
 />
-<ExplorerShell
-  bind:pathInput
-  bind:pathInputEl
-  bind:rowsEl={rowsElRef}
-  bind:headerEl={headerElRef}
+  <ExplorerShell
+    bind:pathInput
+    bind:pathInputEl
+    bind:rowsEl={rowsElRef}
+    bind:headerEl={headerElRef}
   bind:bookmarkName
   bind:bookmarkInputEl
   {sidebarCollapsed}
@@ -861,20 +903,23 @@
   {formatItems}
   clipboardMode={clipboardMode}
   clipboardPaths={clipboardPaths}
-  onRowsScroll={handleRowsScroll}
-  onWheel={handleWheel}
-  onRowsKeydown={rowsKeydownHandler}
-  onRowsClick={handleRowsClick}
-  onRowsContextMenu={handleBlankContextMenu}
-  onChangeSort={changeSort}
-  onStartResize={startResize}
-  ariaSort={ariaSort}
+    onRowsScroll={handleRowsScroll}
+    onWheel={handleWheel}
+    onRowsKeydown={rowsKeydownHandler}
+    onRowsMousedown={handleRowsMouseDown}
+    onRowsClick={handleRowsClickSafe}
+    onRowsContextMenu={handleBlankContextMenu}
+    onChangeSort={changeSort}
+    onStartResize={startResize}
+    ariaSort={ariaSort}
   onRowClick={rowClickHandler}
   onOpen={handleOpenEntry}
-  onContextMenu={handleRowContextMenu}
-  onToggleStar={toggleStar}
-  {selectionText}
-  contextMenu={$contextMenu}
+    onContextMenu={handleRowContextMenu}
+    onToggleStar={toggleStar}
+    {selectionText}
+    selectionActive={$selectionActive}
+    selectionRect={$selectionRect}
+    contextMenu={$contextMenu}
   blankMenu={$blankMenu}
   onContextSelect={handleContextSelect}
   onBlankContextSelect={handleBlankContextAction}

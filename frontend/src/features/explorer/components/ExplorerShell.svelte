@@ -60,6 +60,7 @@
   export let onRowsScroll: (e: Event) => void = () => {}
   export let onWheel: (e: WheelEvent) => void = () => {}
   export let onRowsKeydown: (e: KeyboardEvent) => void = () => {}
+  export let onRowsMousedown: (e: MouseEvent) => void = () => {}
   export let onRowsClick: (e: MouseEvent) => void = () => {}
   export let onRowsContextMenu: (e: MouseEvent) => void = () => {}
   export let onChangeSort: (field: SortField) => void = () => {}
@@ -71,6 +72,13 @@
   export let onToggleStar: (entry: Entry) => void = () => {}
 
   export let selectionText = ''
+  export let selectionActive = false
+  export let selectionRect: { x: number; y: number; width: number; height: number } = {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+  }
 
   export let contextMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
     open: false,
@@ -171,6 +179,7 @@
         onRowsScroll={onRowsScroll}
         onWheel={onWheel}
         onRowsKeydown={onRowsKeydown}
+        onRowsMousedown={onRowsMousedown}
         onRowsClick={onRowsClick}
         onRowsContextMenu={onRowsContextMenu}
         onChangeSort={onChangeSort}
@@ -180,6 +189,8 @@
         onOpen={onOpen}
         onContextMenu={onContextMenu}
         onToggleStar={onToggleStar}
+        selectionActive={selectionActive}
+        selectionRect={selectionRect}
       />
       <Statusbar {selectionText} />
     </section>
