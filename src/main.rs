@@ -8,19 +8,23 @@ mod search;
 mod sorting;
 mod statusbar;
 mod watcher;
+mod fs_utils;
+mod clipboard;
 
 use db::{
     delete_bookmark, list_bookmarks, load_column_widths, save_column_widths, upsert_bookmark,
 };
 use entry::{build_entry, entry_times, EntryTimes, FsEntry};
 use context_menu::context_menu_actions;
+use fs_utils::{sanitize_path_follow, sanitize_path_nofollow, unique_path};
+use clipboard::{set_clipboard_cmd, paste_clipboard_cmd};
 use once_cell::sync::OnceCell;
 use search::search_recursive;
 use serde::Serialize;
 use sorting::{sort_entries, SortSpec};
 use statusbar::dir_sizes;
 use std::collections::HashSet;
-use std::{fs, path::{Path, PathBuf}};
+use std::{fs, path::PathBuf};
 use sysinfo::Disks;
 use tracing::{error, info, warn};
 use watcher::WatchState;
@@ -41,32 +45,6 @@ fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
     } else {
         std::env::current_dir().map_err(|e| format!("Kunne ikke lese arbeidskatalog: {e}"))
     }
-}
-
-fn sanitize_path_follow(raw: &str, forbid_root: bool) -> Result<PathBuf, String> {
-    let pb = PathBuf::from(raw);
-    if !pb.exists() {
-        return Err("Path does not exist".into());
-    }
-    let canon = pb
-        .canonicalize()
-        .map_err(|e| format!("Failed to canonicalize path: {e}"))?;
-    if forbid_root && canon.parent().is_none() {
-        return Err("Refusing to operate on filesystem root".into());
-    }
-    Ok(canon)
-}
-
-fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, String> {
-    let pb = PathBuf::from(raw);
-    let meta = fs::symlink_metadata(&pb).map_err(|e| format!("Path does not exist or unreadable: {e}"))?;
-    // We only check existence; operate on the symlink itself.
-    if forbid_root && pb.parent().is_none() {
-        return Err("Refusing to operate on filesystem root".into());
-    }
-    // prevent treating a symlink to root as root? we keep caller-driven policy by not following.
-    let _ = meta; // silence unused warning if not inspected further
-    Ok(pb)
 }
 
 #[derive(Serialize)]
@@ -488,29 +466,6 @@ fn list_trash(sort: Option<SortSpec>) -> Result<DirListing, String> {
     }
 }
 
-fn unique_path(dest: &Path) -> PathBuf {
-    if !dest.exists() {
-        return dest.to_path_buf();
-    }
-    let mut idx = 1;
-    let stem = dest
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "item".to_string());
-    let ext = dest.extension().map(|e| e.to_string_lossy().to_string());
-    let parent = dest.parent().unwrap_or_else(|| Path::new("."));
-    loop {
-        let mut candidate = parent.join(format!("{}-{}", stem, idx));
-        if let Some(ext) = &ext {
-            candidate.set_extension(ext);
-        }
-        if !candidate.exists() {
-            return candidate;
-        }
-        idx += 1;
-    }
-}
-
 #[tauri::command]
 fn rename_entry(path: String, new_name: String) -> Result<String, String> {
     let from = sanitize_path_nofollow(&path, true)?;
@@ -594,7 +549,9 @@ fn main() {
             rename_entry,
             move_to_trash,
             delete_entry,
-            entry_times_cmd
+            entry_times_cmd,
+            set_clipboard_cmd,
+            paste_clipboard_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

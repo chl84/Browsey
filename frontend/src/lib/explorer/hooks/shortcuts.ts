@@ -13,6 +13,7 @@ type ShortcutArgs = {
   goForward: () => void
   onCopy?: () => Promise<boolean> | boolean
   onCut?: () => Promise<boolean> | boolean
+  onPaste?: () => Promise<boolean> | boolean
   onRename?: () => Promise<boolean> | boolean
   onDelete?: (permanent: boolean) => Promise<boolean> | boolean
   onProperties?: () => Promise<boolean> | boolean
@@ -33,6 +34,7 @@ export const createGlobalShortcuts = ({
   goForward,
   onCopy,
   onCut,
+  onPaste,
   onRename,
   onDelete,
   onProperties,
@@ -116,6 +118,16 @@ export const createGlobalShortcuts = ({
     if ((event.ctrlKey || event.metaKey) && key === 'x' && onCut) {
       if (isEditableTarget(event.target)) return
       const handled = await onCut()
+      if (handled) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      return
+    }
+
+    if ((event.ctrlKey || event.metaKey) && key === 'v' && onPaste) {
+      if (isEditableTarget(event.target)) return
+      const handled = await onPaste()
       if (handled) {
         event.preventDefault()
         event.stopPropagation()

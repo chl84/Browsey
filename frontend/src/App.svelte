@@ -350,14 +350,25 @@
     onCopy: async () => {
       const paths = Array.from($selected)
       if (paths.length === 0) return false
-      await copyText(paths.join('\n'))
+      await invoke('set_clipboard_cmd', { paths, mode: 'copy' })
+      await copyText(paths.join('\n'), { suppressError: true })
       return true
     },
     onCut: async () => {
       const paths = Array.from($selected)
       if (paths.length === 0) return false
-      await copyText(paths.join('\n'))
+      await invoke('set_clipboard_cmd', { paths, mode: 'cut' })
       return true
+    },
+    onPaste: async () => {
+      try {
+        await invoke('paste_clipboard_cmd', { dest: $current })
+        await reloadCurrent()
+        return true
+      } catch (err) {
+        console.error('Paste failed', err)
+        return false
+      }
     },
     onRename: async () => {
       if ($selected.size !== 1) return false
@@ -543,14 +554,19 @@
     }
   }
 
-  const copyText = async (value: string) => {
+  const copyText = async (value: string, opts: { suppressError?: boolean } = {}) => {
+    const { suppressError = false } = opts
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(value)
+        return true
       } catch (err) {
-        console.error('Clipboard write failed', err)
+        if (!suppressError) {
+          console.error('Clipboard write failed', err)
+        }
       }
     }
+    return false
   }
 
   const reloadCurrent = async () => {
@@ -582,11 +598,18 @@
         : [entry]
 
     if (id === 'copy-path') {
-      await copyText(selectionPaths.join('\n'))
+      await invoke('set_clipboard_cmd', { paths: selectionPaths, mode: 'copy' })
+      await copyText(selectionPaths.join('\n'), { suppressError: true })
       return
     }
     if (id === 'cut' || id === 'copy') {
-      await copyText(selectionPaths.join('\n'))
+      await invoke('set_clipboard_cmd', {
+        paths: selectionPaths,
+        mode: id === 'cut' ? 'cut' : 'copy',
+      })
+      if (id === 'copy') {
+        await copyText(selectionPaths.join('\n'), { suppressError: true })
+      }
       return
     }
     if (id === 'open-with') {
@@ -680,8 +703,8 @@
     closeBlankContextMenu()
     if (id === 'paste') {
       try {
-        const text = await navigator.clipboard.readText()
-        console.warn('Paste not implemented yet; clipboard content:', text)
+        await invoke('paste_clipboard_cmd', { dest: $current })
+        await reloadCurrent()
       } catch (err) {
         console.error('Paste failed', err)
       }
@@ -853,6 +876,7 @@
         onWheel={handleWheel}
         onRowsKeydown={rowsKeydownHandler}
         onRowsClick={handleRowsClick}
+        onRowsContextMenu={handleBlankContextMenu}
         onChangeSort={changeSort}
         onStartResize={startResize}
         ariaSort={ariaSort}
