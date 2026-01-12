@@ -379,7 +379,7 @@
         for (const p of paths) {
           await invoke('move_to_trash', { path: p })
         }
-        await load($current, { recordHistory: false })
+        await reloadCurrent()
       } catch (err) {
         console.error('Failed to move to trash', err)
       }
