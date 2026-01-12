@@ -140,6 +140,14 @@
 
   $: bookmarks = $bookmarksStore
   $: partitions = $partitionsStore
+  $: currentView =
+    $current === 'Recent'
+      ? 'recent'
+      : $current === 'Starred'
+        ? 'starred'
+        : $current.startsWith('Trash')
+          ? 'trash'
+          : 'dir'
   $: {
     const state = $bookmarkStore
     bookmarkModalOpen = state.open
@@ -533,15 +541,15 @@
   }
 
   const reloadCurrent = async () => {
-    if ($current === 'Recent') {
+    if (currentView === 'recent') {
       await loadRecent(false)
       return
     }
-    if ($current === 'Starred') {
+    if (currentView === 'starred') {
       await loadStarred(false)
       return
     }
-    if ($current.startsWith('Trash')) {
+    if (currentView === 'trash') {
       await loadTrash(false)
       return
     }
