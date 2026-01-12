@@ -43,6 +43,20 @@ fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
     }
 }
 
+fn sanitize_destructive_path(raw: &str) -> Result<PathBuf, String> {
+    let pb = PathBuf::from(raw);
+    if !pb.exists() {
+        return Err("Path does not exist".into());
+    }
+    let canon = pb
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize path: {e}"))?;
+    if canon.parent().is_none() {
+        return Err("Refusing to operate on filesystem root".into());
+    }
+    Ok(canon)
+}
+
 #[derive(Serialize)]
 struct DirListing {
     current: String,
@@ -387,10 +401,7 @@ fn watch_dir(
 
 #[tauri::command]
 fn open_entry(path: String) -> Result<(), String> {
-    let pb = PathBuf::from(path);
-    if !pb.exists() {
-        return Err("Path does not exist".into());
-    }
+    let pb = sanitize_destructive_path(&path)?;
     let conn = db::open()?;
     if let Err(e) = db::touch_recent(&conn, &pb.to_string_lossy()) {
         warn!("Failed to record recent for {:?}: {}", pb, e);
@@ -490,13 +501,11 @@ fn unique_path(dest: &Path) -> PathBuf {
 
 #[tauri::command]
 fn rename_entry(path: String, new_name: String) -> Result<String, String> {
-    let from = PathBuf::from(path);
+    let from = sanitize_destructive_path(&path)?;
     if new_name.trim().is_empty() {
         return Err("New name cannot be empty".into());
     }
-    let parent = from
-        .parent()
-        .ok_or_else(|| "Cannot rename root".to_string())?;
+    let parent = from.parent().ok_or_else(|| "Cannot rename root".to_string())?;
     let to = parent.join(new_name.trim());
     fs::rename(&from, &to)
         .map_err(|e| format!("Failed to rename: {e}"))?;
@@ -505,10 +514,7 @@ fn rename_entry(path: String, new_name: String) -> Result<String, String> {
 
 #[tauri::command]
 fn move_to_trash(path: String) -> Result<(), String> {
-    let src = PathBuf::from(&path);
-    if !src.exists() {
-        return Err("Path does not exist".into());
-    }
+    let src = sanitize_destructive_path(&path)?;
     let trash_dir = resolve_trash_dir()?.ok_or_else(|| "Trash not available on this platform".to_string())?;
     std::fs::create_dir_all(&trash_dir).map_err(|e| format!("Failed to create trash dir: {e}"))?;
     let file_name = src
@@ -520,10 +526,7 @@ fn move_to_trash(path: String) -> Result<(), String> {
 
 #[tauri::command]
 fn delete_entry(path: String) -> Result<(), String> {
-    let pb = PathBuf::from(&path);
-    if !pb.exists() {
-        return Err("Path does not exist".into());
-    }
+    let pb = sanitize_destructive_path(&path)?;
     let meta = fs::symlink_metadata(&pb).map_err(|e| format!("Failed to read metadata: {e}"))?;
     if meta.is_dir() {
         fs::remove_dir_all(&pb).map_err(|e| format!("Failed to delete directory: {e}"))
