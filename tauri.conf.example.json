@@ -4,8 +4,8 @@
   "version": "0.2.0",
   "identifier": "com.filey",
   "build": {
-    "beforeDevCommand": "/home/chris/programming/rust/filey/scripts/start-vite.sh",
-    "beforeBuildCommand": "npm --prefix /home/chris/programming/rust/filey/frontend run build",
+    "beforeDevCommand": "scripts/start-vite.sh",
+    "beforeBuildCommand": "npm --prefix frontend run build",
     "devUrl": "http://localhost:5173/",
     "frontendDist": "dist"
   },

@@ -41,7 +41,7 @@ fn should_skip(path: &Path, pseudo_roots: &HashSet<&str>) -> bool {
 
 fn dir_size_recursive<F>(
     root: &Path,
-    root_dev: Option<u64>,
+    #[cfg_attr(not(unix), allow(unused_variables))] root_dev: Option<u64>,
     pseudo_roots: &HashSet<&str>,
     mut on_progress: F,
 ) -> u64

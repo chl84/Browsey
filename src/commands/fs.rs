@@ -3,10 +3,12 @@
 use crate::{
     db,
     entry::{build_entry, FsEntry},
-    fs_utils::{sanitize_path_follow, sanitize_path_nofollow, unique_path},
+    fs_utils::{sanitize_path_follow, sanitize_path_nofollow},
     sorting::{sort_entries, SortSpec},
     watcher::{self, WatchState},
 };
+#[cfg(not(target_os = "windows"))]
+use crate::fs_utils::unique_path;
 use serde::Serialize;
 #[cfg(target_os = "windows")]
 use std::collections::HashMap;
@@ -111,30 +113,59 @@ fn list_dir_with_star(
 }
 
 #[cfg(target_os = "windows")]
+fn decode_recycle_original_path(bytes: &[u8]) -> Option<String> {
+    // Windows $I format (NTFS): version + size + time, then an optional path length, then UTF-16LE path.
+    // Real-world files show the UTF-16 path starting at 0x1C (28) for version 2 records,
+    // but older records start at 0x10 (16). Try the likely offsets and validate.
+    const OFFSETS: [usize; 3] = [28, 24, 16];
+    for offset in OFFSETS {
+        if bytes.len() <= offset {
+            continue;
+        }
+        let utf16: Vec<u16> = bytes[offset..]
+            .chunks(2)
+            .take_while(|chunk| chunk.len() == 2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .take_while(|&c| c != 0)
+            .collect();
+        if let Ok(mut s) = String::from_utf16(&utf16) {
+            if s.is_empty() {
+                continue;
+            }
+            // Basic validation: path-like, no control characters.
+            let looks_like_path = s.contains(':') || s.starts_with("\\\\");
+            if !looks_like_path {
+                continue;
+            }
+            s.retain(|c| !c.is_control());
+            if !s.is_empty() {
+                return Some(s);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
 fn list_windows_trash(
     star_set: &HashSet<String>,
     sort: Option<SortSpec>,
 ) -> Result<DirListing, String> {
-    // Aggregate entries from user SID folders under $Recycle.Bin and map $I/$R pairs to original names.
-    let system_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
-    let recycle_root = PathBuf::from(format!("{}\\$Recycle.Bin", system_drive));
-    if !recycle_root.exists() {
-        return Ok(DirListing {
-            current: "Trash (unavailable)".into(),
-            entries: Vec::new(),
-        });
+    // Aggregate entries from user SID folders under $Recycle.Bin (one per drive) and map $I/$R pairs to original names.
+    let mut roots = Vec::new();
+    let disks = Disks::new_with_refreshed_list();
+    for disk in disks.iter() {
+        let mut root = disk.mount_point().to_path_buf();
+        root.push("$Recycle.Bin");
+        roots.push(root);
+    }
+    if roots.is_empty() {
+        let system_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
+        roots.push(PathBuf::from(format!(r"{}\\$Recycle.Bin", system_drive)));
     }
 
     let mut entries = Vec::new();
-    let roots = match fs::read_dir(&recycle_root) {
-        Ok(r) => r,
-        Err(_) => {
-            return Ok(DirListing {
-                current: "Trash (unavailable)".into(),
-                entries: Vec::new(),
-            });
-        }
-    };
+    let mut any_access = false;
 
     #[derive(Clone)]
     struct TrashItem {
@@ -142,74 +173,80 @@ fn list_windows_trash(
         r_path: Option<PathBuf>,
     }
 
-    for sid_dir in roots.flatten() {
-        let sid_path = sid_dir.path();
-        if !sid_path.is_dir() {
-            continue;
-        }
-        let mut map: HashMap<String, TrashItem> = HashMap::new();
+        for recycle_root in roots {
+            if !recycle_root.exists() {
+                continue;
+            }
+        let roots_iter = match fs::read_dir(&recycle_root) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
 
-        if let Ok(rd) = fs::read_dir(&sid_path) {
+        for sid_dir in roots_iter.flatten() {
+            let sid_path = sid_dir.path();
+            if !sid_path.is_dir() {
+                continue;
+            }
+            any_access = true;
+            let mut map: HashMap<String, TrashItem> = HashMap::new();
+
+            let rd = match fs::read_dir(&sid_path) {
+                Ok(rd) => rd,
+                Err(_) => continue,
+            };
+
             for entry in rd.flatten() {
                 let path = entry.path();
-                if let Some(fname) = path.file_name().and_then(|s| s.to_str()) {
-                    if fname.starts_with("$I") {
-                        // metadata file; parse for original path
-                        if let Ok(bytes) = std::fs::read(&path) {
-                            if bytes.len() > 24 {
-                                let utf16: Vec<u16> = bytes[24..]
-                                    .chunks(2)
-                                    .take_while(|chunk| chunk.len() == 2)
-                                    .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-                                    .take_while(|&c| c != 0)
-                                    .collect();
-                                if let Ok(orig) = String::from_utf16(&utf16) {
-                                    let key = fname.trim_start_matches("$I").to_string();
-                                    let entry = map.entry(key).or_insert(TrashItem {
-                                        original: None,
-                                        r_path: None,
-                                    });
-                                    entry.original = Some(orig);
-                                }
-                            }
+                let Some(fname) = path.file_name().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                // Expect file names to start with $I (info) or $R (resource).
+                if !(fname.starts_with("$I") || fname.starts_with("$R")) {
+                    continue;
+                }
+                let key = fname.trim_start_matches(['$','I','R']).to_string();
+                let entry = map.entry(key).or_insert(TrashItem {
+                    original: None,
+                    r_path: None,
+                });
+                if fname.starts_with("$I") {
+                    if let Ok(bytes) = std::fs::read(&path) {
+                        if let Some(orig) = decode_recycle_original_path(&bytes) {
+                            entry.original = Some(orig);
                         }
-                    } else if fname.starts_with("$R") {
-                        let key = fname.trim_start_matches("$R").to_string();
-                        let entry = map.entry(key).or_insert(TrashItem {
-                            original: None,
-                            r_path: None,
-                        });
-                        entry.r_path = Some(path.clone());
                     }
+                } else if fname.starts_with("$R") {
+                    entry.r_path = Some(path.clone());
                 }
             }
-        }
 
-        for (_k, item) in map {
-            if let Some(rp) = item.r_path {
-                if let Ok(meta) = fs::symlink_metadata(&rp) {
-                    let is_link = meta.file_type().is_symlink();
-                    let name = item
-                        .original
-                        .as_ref()
-                        .and_then(|p| {
-                            PathBuf::from(p)
-                                .file_name()
-                                .map(|s| s.to_string_lossy().into_owned())
-                        })
-                        .unwrap_or_else(|| {
-                            rp.file_name()
-                                .map(|s| s.to_string_lossy().into_owned())
-                                .unwrap_or_default()
-                        });
-                    let mut entry = build_entry(
-                        &rp,
-                        &meta,
-                        is_link,
-                        star_set.contains(&rp.to_string_lossy().to_string()),
-                    );
-                    entry.name = name;
-                    entries.push(entry);
+            for (_k, item) in map {
+                if let Some(rp) = item.r_path {
+                    if let Ok(meta) = fs::symlink_metadata(&rp) {
+                        let is_link = meta.file_type().is_symlink();
+                        let name = item
+                            .original
+                            .as_ref()
+                            .and_then(|p| {
+                                PathBuf::from(p)
+                                    .file_name()
+                                    .map(|s| s.to_string_lossy().into_owned())
+                            })
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or_else(|| {
+                                rp.file_name()
+                                    .map(|s| s.to_string_lossy().into_owned())
+                                    .unwrap_or_default()
+                            });
+                        let mut entry = build_entry(
+                            &rp,
+                            &meta,
+                            is_link,
+                            star_set.contains(&rp.to_string_lossy().to_string()),
+                        );
+                        entry.name = name;
+                        entries.push(entry);
+                    }
                 }
             }
         }
@@ -217,7 +254,11 @@ fn list_windows_trash(
 
     sort_entries(&mut entries, sort);
     Ok(DirListing {
-        current: recycle_root.to_string_lossy().into_owned(),
+        current: if any_access {
+            "Recycle Bin".to_string()
+        } else {
+            "Trash (unavailable)".to_string()
+        },
         entries,
     })
 }
@@ -333,6 +374,7 @@ pub fn list_trash(sort: Option<SortSpec>) -> Result<DirListing, String> {
             {
                 return list_windows_trash(&star_set, sort);
             }
+            #[cfg(not(target_os = "windows"))]
             Ok(DirListing {
                 current: "Trash (unavailable)".to_string(),
                 entries: Vec::new(),
@@ -357,13 +399,24 @@ pub fn rename_entry(path: String, new_name: String) -> Result<String, String> {
 #[tauri::command]
 pub fn move_to_trash(path: String) -> Result<(), String> {
     let src = sanitize_path_nofollow(&path, true)?;
-    let trash_dir = resolve_trash_dir()?.ok_or_else(|| "Trash not available on this platform".to_string())?;
-    std::fs::create_dir_all(&trash_dir).map_err(|e| format!("Failed to create trash dir: {e}"))?;
-    let file_name = src
-        .file_name()
-        .ok_or_else(|| "Invalid path".to_string())?;
-    let dest = unique_path(&trash_dir.join(file_name));
-    fs::rename(&src, &dest).map_err(|e| format!("Failed to move to trash: {e}"))
+
+    #[cfg(target_os = "windows")]
+    {
+        return trash::delete(&src).map_err(|e| format!("Failed to move to trash: {e}"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let trash_dir = resolve_trash_dir()?
+            .ok_or_else(|| "Trash not available on this platform".to_string())?;
+        std::fs::create_dir_all(&trash_dir)
+            .map_err(|e| format!("Failed to create trash dir: {e}"))?;
+        let file_name = src
+            .file_name()
+            .ok_or_else(|| "Invalid path".to_string())?;
+        let dest = unique_path(&trash_dir.join(file_name));
+        fs::rename(&src, &dest).map_err(|e| format!("Failed to move to trash: {e}"))
+    }
 }
 
 #[tauri::command]
