@@ -12,6 +12,15 @@
 /frontend/.svelte-kit/
 /frontend/.vite/
 
+# Env / local config
+.env
+.env.local
+.env.*.local
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+tauri.conf.json
+
 # Logs / misc
 .tmp/
 tmp/
