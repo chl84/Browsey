@@ -7,13 +7,19 @@ use crate::{
     sorting::{sort_entries, SortSpec},
     watcher::{self, WatchState},
 };
+#[cfg(target_os = "windows")]
+#[path = "fs_windows.rs"]
+mod fs_windows;
 #[cfg(not(target_os = "windows"))]
 use crate::fs_utils::unique_path;
 use serde::Serialize;
 #[cfg(target_os = "windows")]
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use sysinfo::Disks;
 use tracing::{error, info, warn};
 
@@ -82,7 +88,7 @@ pub fn list_dir(path: Option<String>, sort: Option<SortSpec>) -> Result<DirListi
     sort_entries(&mut entries, sort);
 
     Ok(DirListing {
-        current: target.to_string_lossy().into_owned(),
+        current: display_path(&target),
         entries,
     })
 }
@@ -107,7 +113,7 @@ fn list_dir_with_star(
     sort_entries(&mut entries, sort);
 
     Ok(DirListing {
-        current: target.to_string_lossy().into_owned(),
+        current: display_path(&target),
         entries,
     })
 }
@@ -144,6 +150,23 @@ fn decode_recycle_original_path(bytes: &[u8]) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(target_os = "windows")]
+fn display_path(path: &Path) -> String {
+    let s = path.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    if let Some(rest) = s.strip_prefix(r"\\?\") {
+        return rest.to_string();
+    }
+    s.into_owned()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn display_path(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
 }
 
 #[cfg(target_os = "windows")]
@@ -294,6 +317,13 @@ fn resolve_trash_dir() -> Result<Option<PathBuf>, String> {
     }
 }
 
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn list_mounts() -> Vec<MountInfo> {
+    fs_windows::list_windows_mounts()
+}
+
+#[cfg(not(target_os = "windows"))]
 #[tauri::command]
 pub fn list_mounts() -> Vec<MountInfo> {
     let disks = Disks::new_with_refreshed_list();

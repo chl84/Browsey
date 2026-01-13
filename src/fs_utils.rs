@@ -12,7 +12,7 @@ pub fn sanitize_path_follow(raw: &str, forbid_root: bool) -> Result<PathBuf, Str
     if forbid_root && canon.parent().is_none() {
         return Err("Refusing to operate on filesystem root".into());
     }
-    Ok(canon)
+    Ok(normalize_verbatim(&canon))
 }
 
 pub fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, String> {
@@ -22,7 +22,7 @@ pub fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, S
         return Err("Refusing to operate on filesystem root".into());
     }
     let _ = meta;
-    Ok(pb)
+    Ok(normalize_verbatim(&pb))
 }
 
 pub fn unique_path(dest: &Path) -> PathBuf {
@@ -46,4 +46,21 @@ pub fn unique_path(dest: &Path) -> PathBuf {
         }
         idx += 1;
     }
+}
+
+#[cfg(target_os = "windows")]
+fn normalize_verbatim(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = s.strip_prefix(r"\\?\") {
+        return PathBuf::from(rest);
+    }
+    path.to_path_buf()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn normalize_verbatim(path: &Path) -> PathBuf {
+    path.to_path_buf()
 }
