@@ -16,6 +16,7 @@ type Deps = {
   startRename: (entry: Entry) => void
   confirmDelete: (entries: Entry[]) => void
   openProperties: (entries: Entry[]) => Promise<void> | void
+  openLocation: (entry: Entry) => Promise<void> | void
 }
 
 export const createContextActions = (deps: Deps) => {
@@ -31,6 +32,7 @@ export const createContextActions = (deps: Deps) => {
     startRename,
     confirmDelete,
     openProperties,
+    openLocation,
   } = deps
 
   return async (id: string, entry: Entry | null) => {
@@ -61,6 +63,11 @@ export const createContextActions = (deps: Deps) => {
 
     if (id === 'open-with') {
       openWith(entry)
+      return
+    }
+
+    if (id === 'open-location') {
+      await openLocation(entry)
       return
     }
 

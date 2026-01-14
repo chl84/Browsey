@@ -202,11 +202,15 @@
     const token = ++dirSizeAbort
     const progressEvent = `dir-size-progress-${token}-${Math.random().toString(16).slice(2)}`
     let unlisten: UnlistenFn | null = null
+    const partials = new Map<string, number>()
     try {
       if (onProgress) {
         unlisten = await listen<{ path: string; bytes: number }>(progressEvent, (event) => {
           if (token !== dirSizeAbort) return
-          onProgress(event.payload.bytes)
+          const { path, bytes } = event.payload
+          partials.set(path, bytes)
+          const total = Array.from(partials.values()).reduce((sum, b) => sum + b, 0)
+          onProgress(total)
         })
       }
       const result = await invoke<{ total: number }>('dir_sizes', { paths, progressEvent })
@@ -391,6 +395,7 @@
       return true
     },
     onPaste: async () => {
+      if (currentView === 'recent') return false
       return pasteIntoCurrent()
     },
     onRename: async () => {
@@ -495,6 +500,12 @@
         closeContextMenu()
         return
       }
+      if ($blankMenu.open) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeBlankContextMenu()
+        return
+      }
       const hasSelection = get(selected).size > 0
       if (hasSelection) {
         selected.set(new Set())
@@ -568,6 +579,8 @@
         count: selectionCount,
         kind: entry.kind,
         starred: Boolean(entry.starred),
+        view: currentView,
+        clipboardHasItems: clipboardPaths.size > 0,
       })
       openContextMenu(entry, actions, event.clientX, event.clientY)
     } catch (err) {
@@ -625,6 +638,9 @@
     openProperties: (entries) => {
       void openPropertiesModal(entries)
     },
+    openLocation: (entry) => {
+      void openEntryLocation(entry)
+    },
   })
 
   const handleOpenEntry = async (entry: Entry) => {
@@ -642,9 +658,25 @@
     open(entry)
   }
 
+  const openEntryLocation = async (entry: Entry) => {
+    const dir = parentPath(entry.path)
+    await load(dir)
+    const idx = get(entries).findIndex((e) => e.path === entry.path)
+    if (idx >= 0) {
+      selected.set(new Set([entry.path]))
+      anchorIndex.set(idx)
+      caretIndex.set(idx)
+    } else {
+      selected.set(new Set())
+      anchorIndex.set(null)
+      caretIndex.set(null)
+    }
+  }
+
   const handleRowsMouseDown = (event: MouseEvent) => {
     if (!rowsElRef) return
-    if (event.target !== rowsElRef) return
+    const target = event.target as HTMLElement | null
+    if (target && target.closest('.row')) return
     event.preventDefault()
     rowsElRef.focus()
     const list = get(filteredEntries)
@@ -688,13 +720,25 @@
   const handleBlankContextMenu = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
+    if (currentView === 'recent') {
+      selected.set(new Set())
+      anchorIndex.set(null)
+      caretIndex.set(null)
+      return
+    }
+    const hasClipboardItems = clipboardPaths.size > 0
     selected.set(new Set())
     anchorIndex.set(null)
     caretIndex.set(null)
-    openBlankContextMenu(event.clientX, event.clientY)
+    if (hasClipboardItems) {
+      openBlankContextMenu(event.clientX, event.clientY)
+    } else {
+      closeBlankContextMenu()
+    }
   }
 
   const handleBlankContextAction = async (id: string) => {
+    if (currentView === 'recent') return
     closeBlankContextMenu()
     if (id === 'paste') {
       await pasteIntoCurrent()

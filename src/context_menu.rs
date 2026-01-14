@@ -29,9 +29,42 @@ impl ContextAction {
 }
 
 #[tauri::command]
-pub fn context_menu_actions(count: usize, kind: Option<String>, starred: Option<bool>) -> Vec<ContextAction> {
+pub fn context_menu_actions(
+    count: usize,
+    kind: Option<String>,
+    starred: Option<bool>,
+    view: Option<String>,
+    clipboard_has_items: bool,
+) -> Vec<ContextAction> {
     let mut items = Vec::new();
+    let in_trash = matches!(view.as_deref(), Some("trash"));
+    let in_recent = matches!(view.as_deref(), Some("recent"));
     let _ = (kind, starred); // placeholders for future per-kind menus
+
+    // Disable context menu entirely if no entries are selected and clipboard is empty (no paste).
+    if count == 0 && !clipboard_has_items {
+        return items;
+    }
+
+    if (count >= 1) && in_recent {
+        items.push(ContextAction::new("open-with", "Open with…"));
+        items.push(ContextAction::new("open-location", "Open item location"));
+        items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
+        items.push(ContextAction::with_shortcut("properties", "Properties", "Ctrl+P"));
+        return items;
+    }
+
+    if (count >= 1) && in_trash {
+        items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
+        items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
+        items.push(ContextAction::with_shortcut(
+            "delete-permanent",
+            "Delete permanently…",
+            "Shift+Delete",
+        ));
+        items.push(ContextAction::with_shortcut("properties", "Properties", "Ctrl+P"));
+        return items;
+    }
 
     if count > 1 {
         items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));

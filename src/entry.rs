@@ -2,12 +2,14 @@ use chrono::{DateTime, Local};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs::{self, Metadata};
-use std::path::{Component, Path, Prefix};
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use crate::icons::icon_for;
 
+#[cfg(target_os = "windows")]
+use std::path::{Component, Prefix};
 #[cfg(target_os = "windows")]
 use std::iter;
 #[cfg(target_os = "windows")]
