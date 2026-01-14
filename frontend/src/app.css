@@ -27,6 +27,27 @@
   box-sizing: border-box;
 }
 
+/* Dark scrollbars app-wide; components can override by hiding or customizing. */
+* {
+  scrollbar-color: var(--border-accent) var(--bg);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: var(--bg);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-accent);
+  border-radius: 8px;
+  border: 2px solid var(--bg);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-accent-strong);
+}
+
 body {
   margin: 0;
   background: #0b0d10;

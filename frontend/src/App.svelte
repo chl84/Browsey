@@ -27,6 +27,8 @@
   let headerElRef: HTMLDivElement | null = null
   let pathInputEl: HTMLInputElement | null = null
   let unlistenDirChanged: UnlistenFn | null = null
+  let unlistenEntryMeta: UnlistenFn | null = null
+  let unlistenEntryMetaBatch: UnlistenFn | null = null
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
   let rowsObserver: ResizeObserver | null = null
 
@@ -825,6 +827,22 @@
           }, 300)
         }
       })
+      unlistenEntryMeta = await listen<Entry>('entry-meta', (event) => {
+        const update = event.payload
+        entries.update((list) => {
+          const idx = list.findIndex((e) => e.path === update.path)
+          if (idx === -1) return list
+          const next = [...list]
+          next[idx] = { ...next[idx], ...update }
+          return next
+        })
+      })
+      unlistenEntryMetaBatch = await listen<Entry[]>('entry-meta-batch', (event) => {
+        const updates = event.payload
+        if (!Array.isArray(updates) || updates.length === 0) return
+        const map = new Map(updates.map((u) => [u.path, u]))
+        entries.update((list) => list.map((item) => (map.has(item.path) ? { ...item, ...map.get(item.path)! } : item)))
+      })
     })()
     return () => {
       window.removeEventListener('resize', handleResize)
@@ -836,6 +854,14 @@
       if (unlistenDirChanged) {
         unlistenDirChanged()
         unlistenDirChanged = null
+      }
+      if (unlistenEntryMeta) {
+        unlistenEntryMeta()
+        unlistenEntryMeta = null
+      }
+      if (unlistenEntryMetaBatch) {
+        unlistenEntryMetaBatch()
+        unlistenEntryMetaBatch = null
       }
       if (partitionsPoll) {
         clearInterval(partitionsPoll)

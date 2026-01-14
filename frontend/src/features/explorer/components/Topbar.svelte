@@ -14,6 +14,8 @@
   <div class="left">
     <div class="path">
       <input
+        id="explorer-path-input"
+        name="explorer-path"
         class="path-input"
         bind:value={pathInput}
         bind:this={pathInputEl}

@@ -14,15 +14,16 @@ mod commands;
 
 use commands::*;
 use context_menu::context_menu_actions;
+use fs_utils::debug_log;
 use once_cell::sync::OnceCell;
 use statusbar::dir_sizes;
 use watcher::WatchState;
 
 fn init_logging() {
     static GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
-    let log_dir = dirs_next::data_dir()
-        .unwrap_or_else(|| std::env::temp_dir())
-        .join("filey")
+    let log_dir = std::env::current_dir()
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("temp")
         .join("logs");
     if let Err(e) = std::fs::create_dir_all(&log_dir) {
         eprintln!("Failed to create log dir {:?}: {}", log_dir, e);
@@ -31,14 +32,23 @@ fn init_logging() {
     let file_appender = tracing_appender::rolling::never(&log_dir, "filey.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
     let _ = GUARD.set(guard);
-    let _ = tracing_subscriber::fmt()
+    let subscriber = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("info".parse().unwrap()),
         )
         .with_ansi(false)
-        .with_writer(non_blocking)
-        .try_init();
+        .with_writer(non_blocking);
+    if let Err(e) = subscriber.try_init() {
+        eprintln!("Failed to init tracing subscriber: {e}");
+    }
+
+    debug_log(&format!(
+        "logging initialized: log_dir={:?} temp_dir={:?} cwd={:?}",
+        log_dir,
+        std::env::temp_dir(),
+        std::env::current_dir().ok()
+    ));
 }
 
 fn main() {

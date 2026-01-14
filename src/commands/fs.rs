@@ -2,8 +2,8 @@
 
 use crate::{
     db,
-    entry::{build_entry, FsEntry},
-    fs_utils::{sanitize_path_follow, sanitize_path_nofollow},
+    entry::{build_entry, get_cached_meta, is_network_location, store_cached_meta, CachedMeta, FsEntry},
+    fs_utils::{debug_log, sanitize_path_follow, sanitize_path_nofollow},
     sorting::{sort_entries, SortSpec},
     watcher::{self, WatchState},
 };
@@ -18,10 +18,13 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::{
     fs,
+    io,
     path::{Path, PathBuf},
 };
 use sysinfo::Disks;
 use tracing::{error, info, warn};
+use tauri::Emitter;
+use std::time::Duration;
 
 pub fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
     if let Some(p) = raw {
@@ -55,37 +58,248 @@ pub struct MountInfo {
     pub removable: bool,
 }
 
-#[tauri::command]
-pub fn list_dir(path: Option<String>, sort: Option<SortSpec>) -> Result<DirListing, String> {
-    let base_path = expand_path(path)?;
-    let fallback_home = dirs_next::home_dir();
+const META_CACHE_TTL: Duration = Duration::from_secs(30);
 
-    let target = if base_path.exists() {
-        base_path.clone()
-    } else if let Some(home) = &fallback_home {
-        home.clone()
+fn entry_from_cached(path: &Path, cached: &CachedMeta, starred: bool) -> FsEntry {
+    let kind = if cached.is_link {
+        "link"
+    } else if cached.is_dir {
+        "dir"
     } else {
-        return Err(format!("{}: finnes ikke", base_path.display()));
-    };
+        "file"
+    }
+    .to_string();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string());
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_string());
 
-    let target = target.canonicalize().unwrap_or_else(|_| target.clone());
+    FsEntry {
+        name,
+        path: path.to_string_lossy().into_owned(),
+        kind,
+        ext,
+        size: cached.size,
+        items: None,
+        modified: cached.modified.clone(),
+        icon: cached.icon.clone(),
+        starred,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn read_dir_resilient(target: &Path) -> Result<fs::ReadDir, std::io::Error> {
+    match fs::read_dir(target) {
+        Ok(rd) => Ok(rd),
+        Err(err) => {
+            // Retry with a canonical path for common network-related errors that can show up on DFS-mapped drives.
+            let retry = matches!(
+                err.raw_os_error(),
+                Some(59)   // ERROR_UNEXP_NET_ERR
+                    | Some(64)   // ERROR_NETNAME_DELETED
+                    | Some(67)   // ERROR_BAD_NET_NAME
+                    | Some(1219) // ERROR_SESSION_CREDENTIAL_CONFLICT
+                    | Some(1231) // ERROR_NETWORK_UNREACHABLE
+                    | Some(1232) // ERROR_HOST_UNREACHABLE
+            );
+            if retry {
+                if let Ok(canon) = std::fs::canonicalize(target) {
+                    if canon != target {
+                        debug_log(&format!(
+                            "read_dir retry: orig={} canon={} err={:?}",
+                            target.display(),
+                            canon.display(),
+                            err
+                        ));
+                        if let Ok(rd) = fs::read_dir(&canon) {
+                            return Ok(rd);
+                        }
+                    }
+                }
+            }
+            Err(err)
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn read_dir_resilient(target: &Path) -> Result<fs::ReadDir, std::io::Error> {
+    fs::read_dir(target)
+}
+
+fn stub_entry(path: &Path, file_type: Option<fs::FileType>, starred: bool) -> FsEntry {
+    let is_link = file_type.as_ref().map(|ft| ft.is_symlink()).unwrap_or(false);
+    let is_dir = file_type
+        .as_ref()
+        .map(|ft| ft.is_dir())
+        .unwrap_or(!is_link);
+    let kind = if is_link {
+        "link"
+    } else if is_dir {
+        "dir"
+    } else {
+        "file"
+    }
+    .to_string();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string());
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_string());
+    let icon = if is_link {
+        "icons/scalable/mimetypes/inode-symlink.svg"
+    } else if is_dir {
+        "icons/scalable/places/folder.svg"
+    } else {
+        "icons/scalable/mimetypes/application-x-generic.svg"
+    }
+    .to_string();
+
+    FsEntry {
+        name,
+        path: path.to_string_lossy().into_owned(),
+        kind,
+        ext,
+        size: None,
+        items: None,
+        modified: None,
+        icon,
+        starred,
+    }
+}
+
+fn spawn_meta_refresh(app: tauri::AppHandle, jobs: Vec<(PathBuf, Option<fs::FileType>, bool)>) {
+    if jobs.is_empty() {
+        return;
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut batch: Vec<FsEntry> = Vec::with_capacity(128);
+        for (path, file_type, starred) in jobs {
+            let meta = match fs::symlink_metadata(&path) {
+                Ok(m) => m,
+                Err(e) => {
+                    debug_log(&format!(
+                        "background metadata fetch failed: path={} error={:?}",
+                        path.display(),
+                        e
+                    ));
+                    continue;
+                }
+            };
+            let is_link = meta.file_type().is_symlink();
+            store_cached_meta(&path, &meta, is_link);
+            let mut entry = build_entry(&path, &meta, is_link, starred);
+            if let Some(ft) = file_type {
+                if entry.kind != "link" {
+                    let dir_hint = ft.is_dir();
+                    if dir_hint && entry.kind != "dir" {
+                        entry.kind = "dir".to_string();
+                    }
+                }
+            }
+            batch.push(entry);
+            if batch.len() >= 128 {
+                let _ = app.emit("entry-meta-batch", &batch);
+                batch.clear();
+            }
+        }
+        if !batch.is_empty() {
+            let _ = app.emit("entry-meta-batch", &batch);
+        }
+    });
+}
+
+#[tauri::command]
+pub fn list_dir(
+    path: Option<String>,
+    sort: Option<SortSpec>,
+    app: tauri::AppHandle,
+) -> Result<DirListing, String> {
+    let base_path = expand_path(path)?;
+    let target = sanitize_path_follow(&base_path.to_string_lossy(), false)?;
+    debug_log(&format!(
+        "list_dir read_dir attempt: path={} normalized={}",
+        base_path.display(),
+        target.display()
+    ));
 
     let star_conn = db::open()?;
     let star_set: HashSet<String> = db::starred_set(&star_conn)?;
 
     let mut entries = Vec::new();
-    let read_dir = fs::read_dir(&target).map_err(|e| format!("{}: {e}", target.display()))?;
+    let mut pending_meta = Vec::new();
+    let read_dir = read_dir_resilient(&target).map_err(|e| {
+        tracing::warn!(error = %e, path = %target.to_string_lossy(), "read_dir failed");
+        debug_log(&format!("read_dir failed: path={} error={:?}", target.display(), e));
+        format!("{}: {e}", target.display())
+    })?;
+    debug_log(&format!(
+        "read_dir success: path={} entries_pending",
+        target.display()
+    ));
 
     for entry in read_dir {
-        let entry = entry.map_err(|e| e.to_string())?;
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                debug_log(&format!("read_dir entry failed: error={:?}", e));
+                continue;
+            }
+        };
         let path = entry.path();
-        let meta = fs::symlink_metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let is_link = meta.file_type().is_symlink();
         let starred = star_set.contains(&path.to_string_lossy().to_string());
+        let file_type = entry.file_type().ok();
+        if is_network_location(&path) {
+            if let Some(cached) = get_cached_meta(&path, META_CACHE_TTL) {
+                entries.push(entry_from_cached(&path, &cached, starred));
+                continue;
+            }
+            pending_meta.push((path.clone(), file_type, starred));
+            entries.push(stub_entry(&path, file_type, starred));
+            continue;
+        }
+        let meta = match fs::symlink_metadata(&path) {
+            Ok(m) => m,
+            Err(e) => {
+                let raw = e.raw_os_error();
+                let perm = e.kind() == io::ErrorKind::PermissionDenied
+                    || matches!(raw, Some(5) | Some(32));
+                let recoverable_net = matches!(
+                    raw,
+                    Some(59)   // ERROR_UNEXP_NET_ERR
+                        | Some(64)   // ERROR_NETNAME_DELETED
+                        | Some(67)   // ERROR_BAD_NET_NAME
+                        | Some(1219) // ERROR_SESSION_CREDENTIAL_CONFLICT
+                        | Some(1231) // ERROR_NETWORK_UNREACHABLE
+                        | Some(1232) // ERROR_HOST_UNREACHABLE
+                        | Some(22)   // Mapped to EINVAL from WinError 1232 in some bindings
+                );
+                debug_log(&format!(
+                    "symlink_metadata failed: path={} error={:?}",
+                    path.display(),
+                    e
+                ));
+                if !perm && !recoverable_net {
+                    tracing::warn!(error = %e, path = %path.to_string_lossy(), "symlink_metadata failed");
+                }
+                entries.push(stub_entry(&path, file_type, starred));
+                continue;
+            }
+        };
+        let is_link = meta.file_type().is_symlink();
+        store_cached_meta(&path, &meta, is_link);
         entries.push(build_entry(&path, &meta, is_link, starred));
     }
 
     sort_entries(&mut entries, sort);
+    spawn_meta_refresh(app, pending_meta);
 
     Ok(DirListing {
         current: display_path(&target),
@@ -99,14 +313,60 @@ fn list_dir_with_star(
     sort: Option<SortSpec>,
 ) -> Result<DirListing, String> {
     let mut entries = Vec::new();
-    let read_dir = fs::read_dir(&target).map_err(|e| format!("{}: {e}", target.display()))?;
+    let read_dir = read_dir_resilient(&target).map_err(|e| {
+        tracing::warn!(error = %e, path = %target.to_string_lossy(), "read_dir failed");
+        debug_log(&format!("read_dir failed: path={} error={:?}", target.display(), e));
+        format!("{}: {e}", target.display())
+    })?;
+    debug_log(&format!(
+        "read_dir success: path={} entries_pending",
+        target.display()
+    ));
 
     for entry in read_dir {
-        let entry = entry.map_err(|e| e.to_string())?;
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                debug_log(&format!("read_dir entry failed: error={:?}", e));
+                continue;
+            }
+        };
         let path = entry.path();
-        let meta = fs::symlink_metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let is_link = meta.file_type().is_symlink();
         let starred = star_set.contains(&path.to_string_lossy().to_string());
+        let file_type = entry.file_type().ok();
+        if is_network_location(&path) {
+            entries.push(stub_entry(&path, file_type, starred));
+            continue;
+        }
+        let meta = match fs::symlink_metadata(&path) {
+            Ok(m) => m,
+            Err(e) => {
+                let raw = e.raw_os_error();
+                let perm = e.kind() == io::ErrorKind::PermissionDenied
+                    || matches!(raw, Some(5) | Some(32));
+                let recoverable_net = matches!(
+                    raw,
+                    Some(59)   // ERROR_UNEXP_NET_ERR
+                        | Some(64)   // ERROR_NETNAME_DELETED
+                        | Some(67)   // ERROR_BAD_NET_NAME
+                        | Some(1219) // ERROR_SESSION_CREDENTIAL_CONFLICT
+                        | Some(1231) // ERROR_NETWORK_UNREACHABLE
+                        | Some(1232) // ERROR_HOST_UNREACHABLE
+                        | Some(22)   // Mapped to EINVAL from WinError 1232 in some bindings
+                );
+                debug_log(&format!(
+                    "symlink_metadata failed: path={} error={:?}",
+                    path.display(),
+                    e
+                ));
+                if !perm && !recoverable_net {
+                    tracing::warn!(error = %e, path = %path.to_string_lossy(), "symlink_metadata failed");
+                }
+                entries.push(stub_entry(&path, file_type, starred));
+                continue;
+            }
+        };
+        let is_link = meta.file_type().is_symlink();
         entries.push(build_entry(&path, &meta, is_link, starred));
     }
 
@@ -376,7 +636,21 @@ pub fn watch_dir(
     } else {
         return Err("Fant ikke startkatalog".to_string());
     };
-    watcher::start_watch(app, target, &state)
+
+    if let Err(e) = watcher::start_watch(app, target.clone(), &state) {
+        warn!(
+            error = %e,
+            path = %target.to_string_lossy(),
+            "watch_dir failed; continuing without file watcher"
+        );
+        debug_log(&format!(
+            "watch_dir failed: path={} error={:?}",
+            target.display(),
+            e
+        ));
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
