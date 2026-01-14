@@ -47,7 +47,6 @@ export const createClipboard = () => {
   const paste = async (dest: string): Promise<Result> => {
     try {
       await invoke('paste_clipboard_cmd', { dest })
-      clearClipboardState()
       return { ok: true }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

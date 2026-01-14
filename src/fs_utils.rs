@@ -1,8 +1,11 @@
-use std::path::{Component, Path, PathBuf, Prefix};
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 #[cfg(target_os = "windows")]
 #[allow(unused_imports)]
 use tracing::warn;
+
+#[cfg(target_os = "windows")]
+use std::path::{Component, Prefix};
 
 #[cfg(target_os = "windows")]
 fn normalize_drive_root(raw: &str) -> String {

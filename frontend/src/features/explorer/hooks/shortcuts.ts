@@ -53,8 +53,10 @@ export const createGlobalShortcuts = ({
   const handleGlobalKeydown = async (event: KeyboardEvent) => {
     const key = typeof event.key === 'string' ? event.key.toLowerCase() : ''
     if (isBookmarkModalOpen()) return
+    const editable = isEditableTarget(event.target)
 
     if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (editable) return
       let char = ''
       let isDigit = false
       if (/^[a-z0-9]$/i.test(key)) {

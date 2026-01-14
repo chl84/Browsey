@@ -21,7 +21,7 @@ const defaultColumns: Column[] = [
   { key: 'type', label: 'Type', sort: 'type', width: 120, min: 80 },
   { key: 'modified', label: 'Modified', sort: 'modified', width: 90, min: 80 },
   { key: 'size', label: 'Size', sort: 'size', width: 90, min: 70, align: 'right' },
-  { key: 'star', label: '', sort: 'starred', width: 80, min: 60, resizable: false, sortable: false },
+  { key: 'star', label: '', sort: 'starred', width: 25, min: 25, resizable: false, sortable: false },
 ]
 
 const sameLocation = (a?: Location, b?: Location) => {
@@ -353,7 +353,12 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       const saved = await invoke<number[] | null>('load_saved_column_widths')
       if (saved && Array.isArray(saved)) {
         cols.update((list) =>
-          list.map((c, i) => (saved[i] !== undefined ? { ...c, width: Math.max(c.min, saved[i]) } : c))
+          list.map((c, i) => {
+            if (c.resizable === false) {
+              return { ...c, width: Math.max(c.min, c.width) }
+            }
+            return saved[i] !== undefined ? { ...c, width: Math.max(c.min, saved[i]) } : c
+          })
         )
       }
     } catch (err) {

@@ -34,6 +34,7 @@ export const createSelectionBox = () => {
     const headerHeight = ctx.headerEl?.offsetHeight ?? 0
     const scrollY = ctx.rowsEl.scrollTop
     const contentHeight = ctx.entries.length * ctx.rowHeight
+    const contentWidth = ctx.headerEl?.offsetWidth ?? ctx.rowsEl.scrollWidth
     const maxX = rowsRect.width
     const maxY = rowsRect.height
 
@@ -56,9 +57,10 @@ export const createSelectionBox = () => {
       height: Math.max(0, y2 - y1),
     })
 
+    const intersectsX = Math.min(x1, x2) < contentWidth
     const yStartContent = y1 - headerHeight
     const yEndContent = y2 - headerHeight
-    if (yStartContent > contentHeight || yEndContent < 0) {
+    if (!intersectsX || yStartContent > contentHeight || yEndContent < 0) {
       ctx.onSelect(new Set(), null, null)
       return
     }
@@ -79,6 +81,15 @@ export const createSelectionBox = () => {
 
   const start = (event: MouseEvent, context: Context) => {
     if (event.button !== 0) return
+    const rowsRect = context.rowsEl.getBoundingClientRect()
+    const contentWidth = context.headerEl?.offsetWidth ?? context.rowsEl.scrollWidth
+    const x = event.clientX - rowsRect.left
+
+    // If click is completely past the content area, clear selection but allow drag to start
+    if (x > contentWidth) {
+      context.onSelect(new Set(), null, null)
+    }
+
     ctx = context
     didDrag = false
     startX = event.clientX

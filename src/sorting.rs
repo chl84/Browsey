@@ -52,7 +52,27 @@ pub fn sort_entries(entries: &mut [FsEntry], spec: Option<SortSpec>) {
     entries.sort_by(|a, b| {
         let mut ord = match spec.field {
             SortField::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            SortField::Type => a.kind.cmp(&b.kind),
+            SortField::Type => {
+                let kind_rank = |kind: &str| match kind {
+                    "dir" => 0,
+                    "file" => 1,
+                    "link" => 2,
+                    _ => 3,
+                };
+                let a_ext = a
+                    .ext
+                    .as_ref()
+                    .map(|s| s.to_lowercase())
+                    .unwrap_or_default();
+                let b_ext = b
+                    .ext
+                    .as_ref()
+                    .map(|s| s.to_lowercase())
+                    .unwrap_or_default();
+                let a_key = (kind_rank(&a.kind), a_ext);
+                let b_key = (kind_rank(&b.kind), b_ext);
+                a_key.cmp(&b_key)
+            }
             SortField::Modified => cmp_opt(&a.modified, &b.modified),
             SortField::Size => cmp_opt(&a.size, &b.size),
             SortField::Starred => a.starred.cmp(&b.starred),

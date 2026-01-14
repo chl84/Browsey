@@ -81,7 +81,7 @@
         }
       }}
     >
-      {entry.starred ? '★' : '☆'}
+      <span class="star-glyph">{entry.starred ? '★' : '☆'}</span>
     </span>
   </div>
 </button>
@@ -99,7 +99,7 @@
     box-sizing: border-box;
     border: 1px solid transparent;
     background: transparent;
-    width: 100%;
+    width: max-content;
     text-align: left;
     border-radius: 10px;
     box-shadow: none;
@@ -168,29 +168,39 @@
   .col-star {
     color: var(--fg-muted);
     font-size: 13px;
-    text-align: left;
-    min-width: 40px;
+    text-align: center;
+    min-width: 25px;
+    display: flex;
+    justify-content: center;
   }
 
   .star-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 28px;
-    min-height: 28px;
-    border: 1px solid transparent;
-    border-radius: 8px;
+    width: 22px;
+    height: 22px;
+    border: none;
     background: transparent;
     color: var(--fg-muted);
     padding: 0px;
     cursor: pointer;
     font-size: 16px;
+    line-height: 1;
+    transform-origin: center center;
+  }
+
+  .star-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    transform-origin: center center;
   }
 
   .star-btn:hover {
     color: var(--fg-strong);
-    border-color: var(--border);
-    background: var(--bg);
   }
 
   .star-btn:focus-visible {
@@ -199,7 +209,10 @@
 
   .star-btn.starred {
     color: #f6d04d;
-    animation: star-spin 420ms ease;
+  }
+
+  .star-btn.starred .star-glyph {
+    animation: star-spin 1000ms linear;
   }
 
   @keyframes star-spin {

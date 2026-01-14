@@ -65,6 +65,7 @@
     position: sticky;
     top: 0;
     z-index: 1;
+    width: max-content;
   }
 
   .header-cell {

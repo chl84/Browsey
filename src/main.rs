@@ -21,10 +21,8 @@ use watcher::WatchState;
 
 fn init_logging() {
     static GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
-    let log_dir = std::env::current_dir()
-        .unwrap_or_else(|_| std::env::temp_dir())
-        .join("temp")
-        .join("logs");
+    let base = dirs_next::data_dir().unwrap_or_else(|| std::env::temp_dir());
+    let log_dir = base.join("filey").join("logs");
     if let Err(e) = std::fs::create_dir_all(&log_dir) {
         eprintln!("Failed to create log dir {:?}: {}", log_dir, e);
         return;
