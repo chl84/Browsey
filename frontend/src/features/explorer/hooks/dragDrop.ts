@@ -8,9 +8,21 @@ export type DragState = {
   position: { x: number; y: number }
 }
 
+const normalizePath = (p: string) => {
+  if (!p) return ''
+  const withSlashes = p.replace(/\\/g, '/')
+  const trimmed = withSlashes.replace(/\/+$/, '')
+  if (trimmed.length === 0) {
+    return withSlashes.startsWith('/') ? '/' : ''
+  }
+  return trimmed
+}
+
 const isSubPath = (parent: string, child: string) => {
-  const normParent = parent.endsWith('/') ? parent : `${parent}/`
-  return child === parent || child.startsWith(normParent)
+  const normParentRaw = normalizePath(parent)
+  const normChild = normalizePath(child)
+  const normParent = normParentRaw.endsWith('/') ? normParentRaw : `${normParentRaw}/`
+  return normChild === normParentRaw || normChild.startsWith(normParent)
 }
 
 export const createDragDrop = () => {
