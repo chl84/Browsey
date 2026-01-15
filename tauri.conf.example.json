@@ -15,7 +15,8 @@
         "title": "filey",
         "width": 800,
         "height": 600,
-        "theme": "Dark"
+        "theme": "Dark",
+        "dragDropEnabled": false
       }
     ]
   },
