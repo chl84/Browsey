@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { derived, get, writable } from 'svelte/store'
 import type {
   Column,
@@ -280,27 +281,49 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const runSearch = async (needleRaw: string) => {
     const needle = needleRaw.trim()
+    const progressEvent = `search-progress-${Math.random().toString(16).slice(2)}`
     loading.set(true)
     error.set('')
-    try {
-      if (needle.length === 0) {
-        searchActive.set(false)
-        await load(get(current), { recordHistory: false })
-      } else {
-        filter.set(needle)
-        const result = await invoke<Entry[]>('search', {
-          path: get(current),
-          query: needle,
-          sort: sortPayload(),
-        })
-        entries.set(result)
-        callbacks.onEntriesChanged?.()
-        searchActive.set(true)
-      }
-    } catch (err) {
-      error.set(err instanceof Error ? err.message : String(err))
-    } finally {
+    if (needle.length === 0) {
+      searchActive.set(false)
+      await load(get(current), { recordHistory: false })
       loading.set(false)
+      return
+    }
+    filter.set(needle)
+    searchActive.set(true)
+    entries.set([])
+    callbacks.onEntriesChanged?.()
+
+    const stop = await listen<{ entries: Entry[]; done: boolean; error?: string }>(progressEvent, (evt) => {
+      if (evt.payload.error) {
+        error.set(evt.payload.error)
+      }
+      if (evt.payload.done) {
+        entries.set(evt.payload.entries ?? [])
+        callbacks.onEntriesChanged?.()
+        loading.set(false)
+        return
+      }
+      if (evt.payload.entries && evt.payload.entries.length > 0) {
+        entries.update((list) => [...list, ...evt.payload.entries])
+        callbacks.onEntriesChanged?.()
+      }
+    })
+
+    invoke('search_stream', {
+      path: get(current),
+      query: needle,
+      sort: sortPayload(),
+      progressEvent,
+    }).catch((err) => {
+      error.set(err instanceof Error ? err.message : String(err))
+      loading.set(false)
+      void stop()
+    })
+
+    return async () => {
+      await stop()
     }
   }
 
@@ -309,7 +332,16 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     if (!checked) {
       filter.set('')
       searchActive.set(false)
-      await load(get(current), { recordHistory: false })
+      const curr = get(current)
+      if (curr === 'Recent') {
+        await loadRecent(false)
+      } else if (curr === 'Starred') {
+        await loadStarred(false)
+      } else if (curr.startsWith('Trash')) {
+        await loadTrash(false)
+      } else {
+        await load(curr, { recordHistory: false })
+      }
     }
   }
 

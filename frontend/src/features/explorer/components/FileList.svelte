@@ -38,6 +38,12 @@
   export let onOpen: (entry: Entry) => void = () => {}
   export let onToggleStar: (entry: Entry) => void = () => {}
   export let onContextMenu: (entry: Entry, event: MouseEvent) => void = () => {}
+  export let onRowDragStart: (entry: Entry, event: DragEvent) => void = () => {}
+  export let onRowDragEnd: (event: DragEvent) => void = () => {}
+  export let onRowDragOver: (entry: Entry, event: DragEvent) => void = () => {}
+  export let onRowDragEnter: (entry: Entry, event: DragEvent) => void = () => {}
+  export let onRowDrop: (entry: Entry, event: DragEvent) => void = () => {}
+  export let onRowDragLeave: (entry: Entry, event: DragEvent) => void = () => {}
   export let selectionActive = false
   export let selectionRect: { x: number; y: number; width: number; height: number } = {
     x: 0,
@@ -45,6 +51,8 @@
     width: 0,
     height: 0,
   }
+  export let dragTargetPath: string | null = null
+  export let dragAllowed = false
 </script>
 
 <section class="list" class:wide={wide}>
@@ -76,7 +84,7 @@
     {:else}
       <div class="spacer" style={`height:${totalHeight}px`}>
         <div class="row-viewport" style={`transform: translateY(${offsetY}px)`}>
-          {#each visibleEntries as entry, i (entry.path)}
+          {#each visibleEntries as entry, i (`${entry.path}-${i}`)}
             <FileRow
               {entry}
               index={start + i}
@@ -84,11 +92,19 @@
               hidden={isHidden(entry)}
               selected={selected.has(entry.path)}
               cutting={clipboardMode === 'cut' && clipboardPaths.has(entry.path)}
+              dropActive={dragTargetPath === entry.path}
+              dropAllowed={dragAllowed && dragTargetPath === entry.path}
               displayName={displayName}
               {formatSize}
               {formatItems}
               onOpen={onOpen}
               onClick={(event) => onRowClick(entry, start + i, event)}
+              onDragStart={(event) => onRowDragStart(entry, event)}
+              onDragEnd={onRowDragEnd}
+              onDragEnterRow={(event) => onRowDragEnter(entry, event)}
+              onDragOverRow={(event) => onRowDragOver(entry, event)}
+              onDragLeaveRow={(event) => onRowDragLeave(entry, event)}
+              onDropRow={(event) => onRowDrop(entry, event)}
               onToggleStar={onToggleStar}
               onContextMenu={(event) => onContextMenu(entry, event)}
             />

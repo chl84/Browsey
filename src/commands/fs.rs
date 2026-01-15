@@ -695,6 +695,9 @@ pub fn rename_entry(path: String, new_name: String) -> Result<String, String> {
     }
     let parent = from.parent().ok_or_else(|| "Cannot rename root".to_string())?;
     let to = parent.join(new_name.trim());
+    if to.exists() {
+        return Err("A file or directory with that name already exists".into());
+    }
     fs::rename(&from, &to)
         .map_err(|e| format!("Failed to rename: {e}"))?;
     Ok(to.to_string_lossy().to_string())

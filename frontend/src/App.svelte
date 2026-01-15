@@ -10,6 +10,7 @@
   import { createColumnResize } from './features/explorer/hooks/columnWidths'
   import { createGlobalShortcuts } from './features/explorer/hooks/shortcuts'
   import { createBookmarkModal } from './features/explorer/hooks/bookmarkModal'
+  import { createDragDrop } from './features/explorer/hooks/dragDrop'
   import type { Entry, Partition, SortField } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
@@ -17,6 +18,8 @@
   import type { ContextAction } from './features/explorer/hooks/useContextMenus'
   import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
   import { createSelectionBox } from './features/explorer/hooks/selectionBox'
+  import DragGhost from './ui/DragGhost.svelte'
+  import ConflictModal from './ui/ConflictModal.svelte'
   import './features/explorer/ExplorerLayout.css'
 
   let sidebarCollapsed = false
@@ -44,7 +47,9 @@
   let partitions: Partition[] = []
   let partitionsPoll: ReturnType<typeof setInterval> | null = null
   const bookmarkModal = createBookmarkModal()
+  const dragDrop = createDragDrop()
   const { store: bookmarkStore } = bookmarkModal
+  const dragState = dragDrop.state
   let bookmarkModalOpen = false
   let bookmarkName = ''
   let bookmarkCandidate: Entry | null = null
@@ -58,11 +63,15 @@
   let propertiesEntry: Entry | null = null
   let propertiesCount = 1
   let propertiesSize: number | null = null
+  let conflictModalOpen = false
+  let conflictList: { src: string; target: string; is_dir: boolean }[] = []
+  let conflictDest: string | null = null
   let deleteConfirmOpen = false
   let deleteTargets: Entry[] = []
   let clipboardMode: 'copy' | 'cut' = 'copy'
   let clipboardPaths = new Set<string>()
   let currentView: CurrentView = 'dir'
+  let renameError = ''
 
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
@@ -183,6 +192,8 @@
   }
 
   let selectionDrag = false
+  let cursorX = 0
+  let cursorY = 0
 
   $: {
     if (mode === 'filter') {
@@ -297,7 +308,19 @@
     pathInputEl?.blur()
   }
 
+  const canUseSearch = () => currentView === 'dir'
+
   const setSearchModeState = async (value: boolean) => {
+    if (value && !canUseSearch()) {
+      mode = 'filter'
+      searchActive.set(false)
+      if ($searchMode) {
+        await toggleMode(false)
+      }
+      pathInput = ''
+      filter.set('')
+      return
+    }
     pathInput = ''
     await toggleMode(value)
     mode = value ? 'search' : 'address'
@@ -315,10 +338,10 @@
     focusPath: () => focusPathInput(),
     blurPath: () => blurPathInput(),
     onTypeChar: async (char) => {
-      if (inputFocused && mode === 'address') {
+      if (inputFocused && mode === 'address' && canUseSearch()) {
         return false
       }
-      if ($searchMode || mode === 'search') {
+      if (($searchMode || mode === 'search') && canUseSearch()) {
         mode = 'search'
         pathInput = `${pathInput}${char}`
         searchActive.set(pathInput.length > 0)
@@ -506,6 +529,12 @@
         closeBlankContextMenu()
         return
       }
+      if (mode === 'filter') {
+        event.preventDefault()
+        event.stopPropagation()
+        void enterAddressMode()
+        return
+      }
       const hasSelection = get(selected).size > 0
       if (hasSelection) {
         selected.set(new Set())
@@ -589,13 +618,8 @@
   }
 
   const pasteIntoCurrent = async () => {
-    const result = await clipboard.paste($current)
-    if (!result.ok) {
-      showToast(`Paste failed: ${result.error}`)
-      return false
-    }
-    await reloadCurrent()
-    return true
+    const ok = await handlePasteOrMove($current)
+    return ok
   }
 
   const reloadCurrent = async () => {
@@ -751,9 +775,91 @@
     await contextActions(id, entry)
   }
 
+  let dragPaths: string[] = []
+  const handleRowDragStart = (entry: Entry, event: DragEvent) => {
+    const selectedPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
+    dragPaths = selectedPaths
+    dragDrop.start(selectedPaths, event)
+  }
+
+  const handleRowDragEnd = () => {
+    dragPaths = []
+    dragDrop.end()
+  }
+
+  const handleRowDragOver = (entry: Entry, event: DragEvent) => {
+    if (entry.kind !== 'dir') return
+    const allowed = dragDrop.canDropOn(dragPaths, entry.path)
+    dragDrop.setTarget(allowed ? entry.path : null)
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = allowed ? 'move' : 'none'
+    }
+    dragDrop.setPosition(event.clientX, event.clientY)
+  }
+
+  const handleRowDragEnter = (entry: Entry, event: DragEvent) => {
+    handleRowDragOver(entry, event)
+  }
+
+  const handleRowDrop = async (entry: Entry, event: DragEvent) => {
+    if (entry.kind !== 'dir') return
+    if (!dragDrop.canDropOn(dragPaths, entry.path)) return
+    event.preventDefault()
+    try {
+      if (dragPaths.length > 0) {
+        await invoke('set_clipboard_cmd', { paths: dragPaths, mode: 'cut' })
+      }
+      await handlePasteOrMove(entry.path)
+    } catch (err) {
+      showToast(`Move failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      handleRowDragEnd()
+    }
+  }
+
+  const handleRowDragLeave = () => {
+    dragDrop.setTarget(null)
+  }
+
+  const handlePasteOrMove = async (dest: string) => {
+    try {
+      const conflicts = await invoke<{ src: string; target: string; is_dir: boolean }[]>(
+        'paste_clipboard_preview',
+        { dest }
+      )
+      if (conflicts && conflicts.length > 0) {
+        conflictList = conflicts
+        conflictDest = dest
+        conflictModalOpen = true
+        return false
+      }
+      await invoke('paste_clipboard_cmd', { dest, policy: 'rename' })
+      await reloadCurrent()
+      return true
+    } catch (err) {
+      showToast(`Paste failed: ${err instanceof Error ? err.message : String(err)}`)
+      return false
+    }
+  }
+
+  const resolveConflicts = async (policy: 'rename' | 'overwrite') => {
+    if (!conflictDest) return
+    conflictModalOpen = false
+    try {
+      await invoke('paste_clipboard_cmd', { dest: conflictDest, policy })
+      await reloadCurrent()
+    } catch (err) {
+      showToast(`Paste failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      conflictDest = null
+      conflictList = []
+    }
+  }
+
   const closeRenameModal = () => {
     renameModalOpen = false
     renameTarget = null
+    renameError = ''
   }
 
   const confirmRename = async (name: string) => {
@@ -763,10 +869,11 @@
     try {
       await invoke('rename_entry', { path: renameTarget.path, newName: trimmed })
       await load(parentPath(renameTarget.path), { recordHistory: false })
-    } catch (err) {
-      console.error('Failed to rename', err)
-    } finally {
       closeRenameModal()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      renameError = msg
+      return
     }
   }
 
@@ -927,6 +1034,14 @@
     e.stopPropagation()
   }}
 />
+<DragGhost
+  visible={$dragState.dragging}
+  x={$dragState.position.x}
+  y={$dragState.position.y}
+  count={$dragState.paths.length}
+  allowed={$dragState.target !== null}
+  target={$dragState.target}
+/>
   <ExplorerShell
     bind:pathInput
     bind:pathInputEl
@@ -982,10 +1097,18 @@
     onChangeSort={changeSort}
     onStartResize={startResize}
     ariaSort={ariaSort}
-  onRowClick={rowClickHandler}
-  onOpen={handleOpenEntry}
+    onRowClick={rowClickHandler}
+    onOpen={handleOpenEntry}
     onContextMenu={handleRowContextMenu}
     onToggleStar={toggleStar}
+    onRowDragStart={handleRowDragStart}
+    onRowDragEnd={handleRowDragEnd}
+    onRowDragEnter={handleRowDragEnter}
+    onRowDragOver={handleRowDragOver}
+    onRowDrop={handleRowDrop}
+    onRowDragLeave={handleRowDragLeave}
+    dragTargetPath={$dragState.target}
+    dragAllowed={dragPaths.length > 0}
     {selectionText}
     selectionActive={$selectionActive}
     selectionRect={$selectionRect}
@@ -1001,6 +1124,7 @@
   onCancelDelete={closeDeleteConfirm}
   renameModalOpen={renameModalOpen}
   {renameTarget}
+  renameError={renameError}
   bind:renameValue
   onConfirmRename={confirmRename}
   onCancelRename={closeRenameModal}
@@ -1017,4 +1141,15 @@
   onConfirmBookmark={confirmBookmark}
   onCancelBookmark={closeBookmarkModal}
   toastMessage={$toast}
+/>
+<ConflictModal
+  open={conflictModalOpen}
+  conflicts={conflictList}
+  onCancel={() => {
+    conflictModalOpen = false
+    conflictList = []
+    conflictDest = null
+  }}
+  onRenameAll={() => resolveConflicts('rename')}
+  onOverwrite={() => resolveConflicts('overwrite')}
 />

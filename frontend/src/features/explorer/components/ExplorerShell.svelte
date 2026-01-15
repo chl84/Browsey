@@ -70,6 +70,12 @@
   export let onOpen: (entry: Entry) => void = () => {}
   export let onContextMenu: (entry: Entry, event: MouseEvent) => void = () => {}
   export let onToggleStar: (entry: Entry) => void = () => {}
+  export let onRowDragStart: (entry: Entry, event: DragEvent) => void = () => {}
+  export let onRowDragEnd: (event: DragEvent) => void = () => {}
+  export let onRowDragOver: (entry: Entry, event: DragEvent) => void = () => {}
+  export let onRowDragEnter: (entry: Entry, event: DragEvent) => void = () => {}
+  export let onRowDrop: (entry: Entry, event: DragEvent) => void = () => {}
+  export let onRowDragLeave: (entry: Entry, event: DragEvent) => void = () => {}
 
   export let selectionText = ''
   export let selectionActive = false
@@ -79,6 +85,8 @@
     width: 0,
     height: 0,
   }
+  export let dragTargetPath: string | null = null
+  export let dragAllowed = false
 
   export let contextMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
     open: false,
@@ -100,6 +108,7 @@
   export let renameModalOpen = false
   export let renameTarget: Entry | null = null
   export let renameValue = ''
+  export let renameError = ''
   export let onConfirmRename: (name: string) => void = () => {}
   export let onCancelRename: () => void = () => {}
 
@@ -189,6 +198,14 @@
         onOpen={onOpen}
         onContextMenu={onContextMenu}
         onToggleStar={onToggleStar}
+        onRowDragStart={onRowDragStart}
+        onRowDragEnd={onRowDragEnd}
+        onRowDragEnter={onRowDragEnter}
+        onRowDragOver={onRowDragOver}
+        onRowDrop={onRowDrop}
+        onRowDragLeave={onRowDragLeave}
+        dragTargetPath={dragTargetPath}
+        dragAllowed={dragAllowed}
         selectionActive={selectionActive}
         selectionRect={selectionRect}
       />
@@ -223,6 +240,7 @@
   open={renameModalOpen}
   entryName={renameTarget?.path ?? ''}
   bind:value={renameValue}
+  error={renameError}
   onConfirm={onConfirmRename}
   onCancel={onCancelRename}
 />

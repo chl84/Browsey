@@ -24,7 +24,7 @@
         on:focus={onFocus}
         on:blur={onBlur}
         on:keydown={(e) => {
-          if (e.key === 'Escape' && searchMode) {
+          if (e.key === 'Escape') {
             e.preventDefault()
             e.stopPropagation()
             onExitSearch()
