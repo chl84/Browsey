@@ -91,6 +91,7 @@ pub fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, S
     Ok(normalize_verbatim(&pb))
 }
 
+#[allow(dead_code)]
 pub fn unique_path(dest: &Path) -> PathBuf {
     if !dest.exists() {
         return dest.to_path_buf();

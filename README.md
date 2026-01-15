@@ -1,50 +1,51 @@
 # filey
 
-Minimal file explorer built with Tauri 2 (Rust backend) and Svelte/TypeScript frontend. Heavy work (I/O, sorting, recursive search, metadata) stays in Rust to keep the UI responsive and the bundle small; the frontend handles rendering and simple interactions only.
+A fast, cross-platform file explorer built with Tauri 2 (Rust backend) and a Svelte/TypeScript frontend. Heavy lifting such as directory traversal, sorting, search, and metadata happens natively in Rust; the frontend focuses on rendering, input, and interactions.
 
-## Architecture & performance
-- **Rust-first**: `list_dir` and `search` (see `src/main.rs`, `src/search.rs`) read directories, skip symlinks, sort folders before files, and return fully formatted entries (size, modified, icon path).
-- **Auto-refresh**: A `notify` watcher (`src/watcher.rs`) listens for create/modify/remove in the current directory and emits `dir-changed`; the frontend listens and refreshes with a 300 ms debounce.
-- **Virtualized list**: The file list renders only visible rows for large directories to keep hover/scroll smooth.
-- **Smooth wheel scrolling**: Wheel deltas are coalesced and applied once per animation frame to avoid stutter on fast mouse wheels.
-- **Small binaries**: Release profile in `.cargo/config.toml` uses `opt-level="z"`, thin LTO, `panic=abort`, strip. Uses system WebView (WebKit on Linux, WebView2 on Windows) so bundles stay small.
-- **Icons**: Mapped in Rust (`src/icons.rs`) to `frontend/public/icons/scalable/...` so both Linux and Windows get native-looking glyphs.
-- **Dynamic mounts**: Partitions list uses sysinfo to enumerate mounted volumes, labels by mount point (so `/` and `/home` don’t duplicate a device), marks removable vs. fixed, and polls every 2 s.
-- **Bookmarks & layout prefs**: Stored in SQLite; add via Ctrl+B on a single selected folder (modal lets you rename), remove from sidebar “x”. Column widths are also persisted in the same DB.
+## Highlights
+- **Responsive lists**: Virtualized rows, smooth wheel coalescing, and cached metadata keep large folders responsive.
+- **Live updates**: A `notify` watcher emits `dir-changed` events; the UI refreshes with a short debounce.
+- **Clipboard & conflicts**: Native copy/cut/paste commands with preview. Pasting into the same folder auto-renames without prompting; other conflicts offer overwrite vs auto-rename.
+- **Search**: Recursive, case-insensitive search scoped to the current directory subtree; skips symlinks to avoid loops.
+- **Drives & bookmarks**: Lists mounts/partitions (marks removable), bookmarks, starred, recent, and trash. Mounts are polled every 2s and SQLite stores bookmarks, stars, recents, and column widths.
+- **Context actions**: Open with…, copy path, cut/copy/paste, rename, move to wastebasket (Delete), delete permanently (Shift+Delete), properties with lazy-loaded timestamps, and “open item location” for recents.
+- **Drag & drop**: Internal drag/drop with custom ghost and drop-target highlighting; designed to work on Linux and Windows.
+- **Cross-platform details**: Uses system WebView (WebKit on Linux, WebView2 on Windows). Network locations on Windows delete permanently (Explorer parity) because the recycle bin is unavailable there.
 
-## Dependencies
+## Requirements
 Common:
-- Rust stable (`rustup`).
-- Node.js LTS + npm (frontend build/dev only).
+- Rust (stable) via `rustup`
+- Node.js LTS + npm (frontend build/dev only)
 
-Linux (Fedora names; adjust per distro):
-- `webkit2gtk4.1-devel` `javascriptcoregtk4.1-devel` `libsoup3-devel` `gtk3-devel` `libappindicator-gtk3` `librsvg2-devel` `patchelf` `rpm-build`.
-- RPM build example: `sudo dnf install webkit2gtk4.1-devel javascriptcoregtk4.1-devel libsoup3-devel gtk3-devel libappindicator-gtk3 librsvg2-devel patchelf rpm-build`.
+Linux build deps (Fedora names; adapt to your distro):
+- `webkit2gtk4.1-devel` `javascriptcoregtk4.1-devel` `libsoup3-devel` `gtk3-devel`
+- `libappindicator-gtk3` `librsvg2-devel` `patchelf` `rpm-build`
 
 Windows:
-- WebView2 Runtime (built-in on Win11; otherwise install from Microsoft).
-- Visual Studio Build Tools (C++ workload) or full VS.
-- Rust via `rustup`, Node LTS.
+- WebView2 Runtime (built-in on Win11; otherwise install from Microsoft)
+- Visual Studio Build Tools (C++ workload) or full Visual Studio
+- Rust via `rustup`, Node LTS
 
 ## Development
 1) Install system deps (above).
-2) Frontend deps:
+2) Install frontend deps:
    ```bash
    npm --prefix frontend install
    ```
-3) Run dev (Vite on 5173 via `beforeDevCommand`):
+3) Run dev (Vite on 5173 is started by the Tauri hook):
    ```bash
    cargo tauri dev --no-dev-server
    ```
-   Wrapper: `./scripts/dev-server.sh`
+   Convenience wrappers: `scripts/dev-server.sh` (Unix) or `scripts/dev-server.bat` (Windows).
 
 Quick checks:
 ```bash
 cargo check
+npm --prefix frontend run check
 ```
 
-## Build
-Frontend:
+## Building
+Frontend only:
 ```bash
 npm --prefix frontend run build
 ```
@@ -53,59 +54,52 @@ Rust release binary:
 ```bash
 cargo build --release
 ```
-Result: `target/release/filey`
+Produces `target/release/filey`.
 
-Tauri bundle:
+Tauri bundles:
+- Windows NSIS:
+  ```bash
+  cargo tauri build --bundles nsis
+  ```
+  or use `scripts/build-release.bat` (cleans old bundles, builds frontend, then bundles). Output lands in `target/release/bundle/nsis/`.
 - Linux RPM (smallest on Fedora-like distros):
   ```bash
   cargo tauri build --bundles rpm
   ```
-  Output: `target/release/bundle/rpm/filey-<version>.rpm`
-- Helper script with local ccache temp:
-  ```bash
-  ./scripts/build-release.sh
-  ```
-- Install RPM (Fedora/RHEL/openSUSE):
-  ```bash
-  sudo rpm -Uvh target/release/bundle/rpm/filey-0.2.0-1.x86_64.rpm
-  ```
-- Uninstall RPM:
-  ```bash
-  sudo rpm -e filey
-  ```
-- Windows:
-  ```bash
-  cargo tauri build
-  ```
-  Produces MSI/installer using system WebView2 (no bundled browser).
+  Helper: `scripts/build-release.sh`. Output in `target/release/bundle/rpm/`.
 
-## Runtime notes
-- Dev port: 5173 (see `tauri.conf.json` and `scripts/start-vite.sh`). If occupied, stop the process or adjust the port.
-- Mounts refresh automatically every 2 s; removable drives get a USB icon, and if you browse a device that disconnects the app falls back to Home with an error message.
-- Hidden files render at half opacity in the list. Sidebar auto-collapses under 700 px width. Fixed 24 px shell padding.
-- Search is recursive, case-insensitive, skips symlinks, and matches on the current path subtree. Empty search returns an empty result and preserves the listing.
-- Data lives in SQLite at the platform data dir (Linux: `~/.local/share/filey/filey.db`) and holds bookmarks, starred, recent, and column widths.
-- Permissions: capability file `resources/capabilities/default.json` grants `core:event` listen/emit so the watcher can refresh the UI.
-- Shortcuts: see section below.
-- Context menu: right-click rows for “Open with…”, Copy path, Cut/Copy, Rename (F2), Move to wastebasket (Delete), Delete permanently (Shift+Delete with confirmation), Properties (Ctrl+P). Properties lazy-loads accessed/created timestamps; folder sizes reuse the statusbar computation.
+## Keyboard & interaction map
+- **Typing without focus**: Enters filter mode on the address bar; Esc exits.
+- **Search**: `Ctrl+F` (or `Cmd+F` on macOS keyboards) toggles search mode; Esc leaves search mode.
+- **Bookmarks**: `Ctrl+B` on a single folder opens the bookmark modal; remove via sidebar close icon.
+- **Selection**: `Ctrl+A` selects all. Click-drag draws a selection box.
+- **Clipboard**: `Ctrl+C`/`Ctrl+X` copy/cut; `Ctrl+V` paste. Pasting into the same directory auto-renames duplicates; other conflicts prompt overwrite vs auto-rename.
+- **Rename**: `F2` or context menu.
+- **Delete**: `Delete` moves to wastebasket (or permanently on Windows network paths); `Shift+Delete` deletes permanently with confirmation.
+- **Properties**: `Ctrl+P` opens properties with lazy-loaded timestamps; folder sizes reuse the status bar computation.
 
-## Shortcuts & modes
-- Modes share ett inputfelt: **adresse** (standard), **filter** (når du begynner å skrive uten fokus), **søk** (etter Ctrl/⌘+F).
-- **Ctrl/⌘+F**: aktiverer søkemodus, fokuserer input. **Esc**: avslutter søk og går til adressemodus.
-- **Filtrering**: når input ikke er fokusert og du taster bokstaver/tall, går vi til filtreringsmodus, fokuserer feltet, og filteret oppdateres mens du skriver og når du sletter. Shift+digit ignoreres.
-- **Ctrl/⌘+B**: åpner bokmerkemodal for én markert mappe.
-- **Ctrl/⌘+A** i fil-listen: marker alt. **Esc** tømmer markering/blur i listen og lukker åpne modaler/menyer (før øvrige snarveier).
+## Architecture notes
+- **Backend (`src/`)**: Tauri commands for listing, search, mounts, bookmarks, starring, trash, rename/delete, open with, clipboard preview/execute, and a filesystem watcher. Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) are isolated behind cfg gates.
+- **Frontend (`frontend/src/`)**: Explorer UI in Svelte with virtualized rows, drag/drop hook, clipboard/context-menu helpers, selection box, toast, and conflict modal. Layout and theme live in `frontend/src/app.css`.
+- **Data & persistence**: SQLite DB in the platform data dir stores bookmarks, starred items, recents, and column widths. Capability file `capabilities/default.json` grants event listen/emit so the watcher can signal the UI.
+- **Icons**: Mapped in Rust (`src/icons.rs`) to `frontend/public/icons/scalable/...` for native-looking glyphs on both platforms.
 
-## UI
-- Dark, neutral greys (no chroma) defined in `frontend/src/app.css`.
-- Columns: Name, Type, Modified, Size, ⭐; name is line-clamped to 2 lines. Sidebar sections: Places, Bookmarks, Partitions. Bookmarks show an “x” on hover to remove; drives use different icons for fixed vs removable.
-- Virtualized scrolling container keeps hover smooth on large folders.
+## Project layout
+- `src/commands/` — Tauri command modules (fs, search, bookmarks, settings, meta, library).
+- `src/fs_utils.rs` — Path sanitation, platform helpers, logging.
+- `src/clipboard.rs` — Clipboard state, conflict preview, paste/rename/overwrite handling.
+- `src/watcher.rs` — Notify-based watcher emitting `dir-changed`.
+- `frontend/src/features/explorer/` — Explorer components, hooks, stores, utils, selection.
+- `frontend/src/ui/` — Shared UI atoms (toasts, modals, drag ghost, etc.).
+- `scripts/` — Dev/build helpers for both shells.
+- `resources/` — Icons and generated schemas; `capabilities/` for Tauri permissions.
 
-## Structure
-- Frontend: `frontend/src/features/explorer` (components, hooks, stores, utils, selection), shared UI atoms in `frontend/src/ui/`, app shell in `frontend/src/App.svelte`.
-- Backend: Tauri commands grouped under `src/commands/` (fs, bookmarks, library, search, settings, meta) and wired in `src/main.rs`.
-- Resources: `resources/icons` (bundle icons), `resources/schemas` (generated schema refs), capabilities at repository root `capabilities/`.
+## Behavior specifics
+- Listings sort folders before files and skip symlinks for safety.
+- Search is scoped to the current root; empty queries return no results but preserve the listing.
+- “Open item location” jumps to the parent and reselects the item.
+- Windows network paths delete permanently (recycle bin is unavailable there). Symlink copy/move is rejected.
+- Drag/drop uses a custom ghost image; Tauri window drag/drop is disabled to allow HTML5 DnD on Windows.
 
-## Next steps
-- Add Rust commands for copy/move/delete/rename to keep FS ops native.
-- Optional debounce tuning or batching for watcher events if directories churn heavily.
+## License
+MIT (see `LICENSE`).

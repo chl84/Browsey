@@ -828,6 +828,13 @@
         { dest }
       )
       if (conflicts && conflicts.length > 0) {
+        const destNorm = normalizePath(dest)
+        const selfPaste = conflicts.every((c) => normalizePath(parentPath(c.src)) === destNorm)
+        if (selfPaste) {
+          await invoke('paste_clipboard_cmd', { dest, policy: 'rename' })
+          await reloadCurrent()
+          return true
+        }
         conflictList = conflicts
         conflictDest = dest
         conflictModalOpen = true

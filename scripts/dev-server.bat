@@ -6,3 +6,4 @@ cd /d %~dp0..
 set "PATH=%USERPROFILE%\.cargo\bin;C:\Program Files\nodejs;%PATH%"
 
 cargo tauri dev --no-dev-server %*
+file
