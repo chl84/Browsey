@@ -72,10 +72,12 @@ pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> &'static str {
             "icons/scalable/mimetypes/video-x-generic.svg"
         }
         // Documents
-        "pdf" => "icons/scalable/mimetypes/application-pdf.svg",
-        "csv" | "xls" | "xlsx" => "icons/scalable/mimetypes/text-csv.svg",
+        "pdf" => "icons/scalable/mimetypes/pdf-document.svg",
+        "csv" => "icons/scalable/mimetypes/text-csv.svg",
+        "xls" | "xlsx" | "xlsm" | "xlt" | "xltx" => "icons/scalable/mimetypes/excel-document.svg",
         "ppt" | "pptx" => "icons/scalable/mimetypes/text-x-generic.svg",
-        "doc" | "docx" | "odt" | "rtf" => "icons/scalable/mimetypes/text-x-generic.svg",
+        "doc" | "docx" | "docm" | "dot" | "dotx" => "icons/scalable/mimetypes/ms-word-document.svg",
+        "odt" | "rtf" => "icons/scalable/mimetypes/text-x-generic.svg",
         _ => "icons/scalable/mimetypes/application-x-generic.svg",
     }
 }

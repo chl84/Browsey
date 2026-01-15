@@ -1,6 +1,7 @@
 <script lang="ts">
   export let pathInput = ''
   export let searchMode = false
+  export let mode: 'address' | 'filter' | 'search' = 'address'
   export let loading = false
   export let pathInputEl: HTMLInputElement | null = null
   export let onSubmitPath: () => void = () => {}
@@ -8,6 +9,48 @@
   export let onExitSearch: () => void = () => {}
   export let onFocus: () => void = () => {}
   export let onBlur: () => void = () => {}
+  export let onNavigateSegment: (path: string) => void = () => {}
+
+  let focused = false
+  let suppressMouseUp = false
+
+  const detectSeparator = (path: string) => (path.includes('\\') && !path.includes('/') ? '\\' : '/')
+
+  const buildBreadcrumbs = (path: string) => {
+    if (!path) return []
+    const sep = detectSeparator(path)
+    const driveMatch = path.match(/^[A-Za-z]:/)
+    const crumbs: { label: string; path: string }[] = []
+    let remainder = path
+
+    if (driveMatch) {
+      const drive = driveMatch[0]
+      const drivePath = `${drive}${sep}`
+      crumbs.push({ label: drive, path: drivePath })
+      remainder = path.slice(drive.length)
+      remainder = sep === '\\' ? remainder.replace(/^\\+/, '') : remainder.replace(/^\/+/, '')
+    } else if (path.startsWith(sep)) {
+      crumbs.push({ label: sep, path: sep })
+      remainder = path.slice(1)
+    }
+
+    const parts = remainder.split(/[\\/]+/).filter((p) => p.length > 0)
+    let acc = crumbs.length > 0 ? crumbs[crumbs.length - 1].path : ''
+    for (const part of parts) {
+      acc = acc ? `${acc}${acc.endsWith(sep) ? '' : sep}${part}` : part
+      crumbs.push({ label: part, path: acc })
+    }
+
+    if (crumbs.length === 0) {
+      crumbs.push({ label: path, path })
+    }
+
+    return crumbs
+  }
+
+  $: showBreadcrumbs = !focused && !searchMode && mode === 'address'
+  $: separatorChar = detectSeparator(pathInput)
+  $: breadcrumbs = buildBreadcrumbs(pathInput)
 </script>
 
 <header class="topbar">
@@ -17,12 +60,27 @@
         id="explorer-path-input"
         name="explorer-path"
         class="path-input"
+        class:hidden={showBreadcrumbs}
         bind:value={pathInput}
         bind:this={pathInputEl}
         placeholder={searchMode ? 'Search in current folder…' : 'Path…'}
         aria-label={searchMode ? 'Search' : 'Path'}
-        on:focus={onFocus}
-        on:blur={onBlur}
+        on:focus={() => {
+          focused = true
+          suppressMouseUp = true
+          pathInputEl?.select()
+          onFocus()
+        }}
+        on:blur={() => {
+          focused = false
+          onBlur()
+        }}
+        on:mouseup={(e) => {
+          if (suppressMouseUp) {
+            e.preventDefault()
+            suppressMouseUp = false
+          }
+        }}
         on:keydown={(e) => {
           if (e.key === 'Escape') {
             e.preventDefault()
@@ -37,6 +95,19 @@
           }
         }}
       />
+
+      {#if showBreadcrumbs}
+        <div class="breadcrumb-bar" aria-label="Path breadcrumbs">
+          {#each breadcrumbs as crumb, i}
+            <button class="crumb" type="button" on:click={() => onNavigateSegment(crumb.path)}>
+              {crumb.label || separatorChar}
+            </button>
+            {#if i < breadcrumbs.length - 1}
+              <span class="sep">{separatorChar}</span>
+            {/if}
+          {/each}
+        </div>
+      {/if}
     </div>
     {#if loading}
       <span class="pill">Loading…</span>
@@ -74,6 +145,7 @@
     width: 100%;
     flex: 1;
     min-width: 0;
+    position: relative;
   }
 
   .path-input {
@@ -91,6 +163,51 @@
   .path-input:focus {
     outline: 2px solid var(--border-accent);
     border-color: var(--border-accent-strong);
+  }
+
+  .path-input.hidden {
+    opacity: 0;
+  }
+
+  .breadcrumb-bar {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 10px 12px;
+    color: var(--fg);
+    pointer-events: none;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .crumb {
+    pointer-events: auto;
+    border: none;
+    background: transparent;
+    color: var(--fg);
+    padding: 6px 10px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.2;
+    transition: background 120ms ease;
+  }
+
+  .crumb:focus,
+  .crumb:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .crumb:hover {
+    background: var(--bg-hover);
+  }
+
+  .sep {
+    pointer-events: none;
+    color: var(--fg-muted);
+    font-size: 13px;
   }
 
   .pill {

@@ -25,6 +25,7 @@
 
   export let pathInput = ''
   export let pathInputEl: HTMLInputElement | null = null
+  export let mode: 'address' | 'filter' | 'search' = 'address'
   export let searchMode = false
   export let loading = false
   export let onFocus: () => void = () => {}
@@ -32,10 +33,10 @@
   export let onSubmitPath: () => void = () => {}
   export let onSearch: () => void = () => {}
   export let onExitSearch: () => void = () => {}
+  export let onNavigateSegment: (path: string) => void = () => {}
 
   export let noticeMessage = ''
   export let searchActive = false
-  export let mode: 'address' | 'filter' | 'search' = 'address'
   export let filterValue = ''
 
   export let cols: Column[] = []
@@ -149,6 +150,7 @@
       <Topbar
         bind:pathInput
         bind:pathInputEl
+        {mode}
         {searchMode}
         {loading}
         onFocus={onFocus}
@@ -156,6 +158,7 @@
         onSubmitPath={onSubmitPath}
         onSearch={onSearch}
         onExitSearch={onExitSearch}
+        onNavigateSegment={onNavigateSegment}
       />
 
       <Notice message={noticeMessage} />

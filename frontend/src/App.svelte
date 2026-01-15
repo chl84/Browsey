@@ -72,6 +72,7 @@
   let clipboardPaths = new Set<string>()
   let currentView: CurrentView = 'dir'
   let renameError = ''
+  let lastLocation = ''
 
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
@@ -202,6 +203,21 @@
     }
   }
 
+  const resetInputModeForNavigation = () => {
+    mode = 'address'
+    searchMode.set(false)
+    searchActive.set(false)
+    filter.set('')
+  }
+
+  $: {
+    const curr = $current
+    if (curr !== lastLocation) {
+      lastLocation = curr
+      resetInputModeForNavigation()
+    }
+  }
+
   const { startResize } = createColumnResize(cols, persistWidths)
 
   let dirSizeAbort = 0
@@ -329,6 +345,17 @@
       filter.set('')
       pathInput = $current
     }
+  }
+
+  const navigateToBreadcrumb = async (path: string) => {
+    mode = 'address'
+    searchActive.set(false)
+    filter.set('')
+    if ($searchMode) {
+      await toggleMode(false)
+    }
+    pathInput = path
+    await goToPath(path)
   }
 
   const shortcuts = createGlobalShortcuts({
@@ -469,6 +496,19 @@
   const handleDocumentKeydown = (event: KeyboardEvent) => {
     const key = event.key.toLowerCase()
     const inRows = rowsElRef?.contains(event.target as Node) ?? false
+
+    if ((event.ctrlKey || event.metaKey) && !isEditableTarget(event.target)) {
+      if (event.shiftKey && key === 'i') {
+        return
+      }
+      const allowed = new Set(['f', 'b', 'c', 'x', 'v', 'p', 'a'])
+      if (!allowed.has(key)) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+    }
+
     if (key === 'arrowdown' && !isEditableTarget(event.target) && rowsElRef && !inRows) {
       const list = get(filteredEntries)
       if (list.length > 0) {
@@ -1040,6 +1080,7 @@
     e.preventDefault()
     e.stopPropagation()
   }}
+  on:contextmenu|capture|preventDefault
 />
 <DragGhost
   visible={$dragState.dragging}
@@ -1053,7 +1094,7 @@
     bind:pathInput
     bind:pathInputEl
     bind:rowsEl={rowsElRef}
-    bind:headerEl={headerElRef}
+  bind:headerEl={headerElRef}
   bind:bookmarkName
   bind:bookmarkInputEl
   {sidebarCollapsed}
@@ -1074,6 +1115,7 @@
   onSubmitPath={submitPath}
   onSearch={() => runSearch(pathInput)}
   onExitSearch={() => void setSearchModeState(false).then(() => blurPathInput())}
+  onNavigateSegment={(path) => void navigateToBreadcrumb(path)}
   noticeMessage={$error}
   searchActive={$searchActive}
   {mode}
