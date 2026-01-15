@@ -709,7 +709,22 @@ pub fn move_to_trash(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        return trash::delete(&src).map_err(|e| format!("Failed to move to trash: {e}"));
+        // Windows does not support recycling for network paths; mimic Explorer by deleting permanently.
+        if is_network_location(&src) {
+            return delete_now(&src);
+        }
+        match trash::delete(&src) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // Some network-mapped drives surface as File Not Found (0x80070002); fall back to permanent delete.
+                let msg = e.to_string();
+                let looks_like_network = msg.contains("0x80070002") || msg.contains("cannot find the file specified");
+                if looks_like_network {
+                    return delete_now(&src);
+                }
+                Err(format!("Failed to move to trash: {e}"))
+            }
+        }
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -729,10 +744,14 @@ pub fn move_to_trash(path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn delete_entry(path: String) -> Result<(), String> {
     let pb = sanitize_path_nofollow(&path, true)?;
-    let meta = fs::symlink_metadata(&pb).map_err(|e| format!("Failed to read metadata: {e}"))?;
+    delete_now(&pb)
+}
+
+fn delete_now(pb: &Path) -> Result<(), String> {
+    let meta = fs::symlink_metadata(pb).map_err(|e| format!("Failed to read metadata: {e}"))?;
     if meta.is_dir() {
-        fs::remove_dir_all(&pb).map_err(|e| format!("Failed to delete directory: {e}"))
+        fs::remove_dir_all(pb).map_err(|e| format!("Failed to delete directory: {e}"))
     } else {
-        fs::remove_file(&pb).map_err(|e| format!("Failed to delete file: {e}"))
+        fs::remove_file(pb).map_err(|e| format!("Failed to delete file: {e}"))
     }
 }

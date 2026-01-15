@@ -24,8 +24,11 @@ export const partitionIcon = (part: Partition) =>
 
 export const normalizePath = (p: string) => {
   if (!p) return ''
-  const trimmed = p.replace(/\/+$/, '')
-  return trimmed === '' ? '/' : trimmed
+  const withSlashes = p.replace(/\\/g, '/')
+  const trimmed = withSlashes.replace(/\/+$/, '')
+  if (trimmed === '') return withSlashes.startsWith('/') ? '/' : ''
+  if (/^[A-Za-z]:$/.test(trimmed)) return `${trimmed}/`
+  return trimmed
 }
 
 export const isUnderMount = (path: string, mount: string) => {
@@ -36,11 +39,19 @@ export const isUnderMount = (path: string, mount: string) => {
 }
 
 export const parentPath = (path: string) => {
-  if (!path || path === '/') return '/'
-  const trimmed = path.replace(/\/+$/, '')
-  const idx = trimmed.lastIndexOf('/')
-  if (idx <= 0) return '/'
-  return trimmed.slice(0, idx)
+  const normalized = normalizePath(path)
+  if (!normalized || normalized === '/') return '/'
+  const driveRoot = normalized.match(/^([A-Za-z]:)\/?$/)
+  if (driveRoot) return `${driveRoot[1]}/`
+  const drivePrefix = normalized.match(/^([A-Za-z]:)\//)
+  const idx = normalized.lastIndexOf('/')
+  if (idx <= 0) {
+    return drivePrefix ? `${drivePrefix[1]}/` : '/'
+  }
+  if (drivePrefix && idx === drivePrefix[1].length) {
+    return `${drivePrefix[1]}/`
+  }
+  return normalized.slice(0, idx)
 }
 
 export const formatSize = (size?: number | null) => {

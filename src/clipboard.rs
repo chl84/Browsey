@@ -1,4 +1,4 @@
-use crate::fs_utils::{sanitize_path_follow, unique_path};
+use crate::fs_utils::sanitize_path_follow;
 use once_cell::sync::Lazy;
 use std::{
     fs,
@@ -115,11 +115,34 @@ fn policy_from_str(policy: &str) -> Result<ConflictPolicy, String> {
     }
 }
 
-fn resolve_target(base: &Path, policy: ConflictPolicy) -> Result<PathBuf, String> {
-    Ok(match policy {
-        ConflictPolicy::Rename => unique_path(base),
-        ConflictPolicy::Overwrite => base.to_path_buf(),
-    })
+fn next_unique_name(base: &Path) -> PathBuf {
+    if !base.exists() {
+        return base.to_path_buf();
+    }
+    let parent = base.parent().unwrap_or_else(|| Path::new("."));
+    let original = base
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("item")
+        .to_string();
+    let (stem, ext) = original
+        .rsplit_once('.')
+        .map(|(s, e)| (s.to_string(), Some(e.to_string())))
+        .unwrap_or_else(|| (original.clone(), None));
+
+    // Start at 1 because base is known to already exist in conflict scenarios.
+    let mut idx: usize = 1;
+    loop {
+        let candidate_name = match &ext {
+            Some(ext) => format!("{stem}-{idx}.{ext}"),
+            None => format!("{stem}-{idx}"),
+        };
+        let candidate = parent.join(&candidate_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+        idx = idx.saturating_add(1);
+    }
 }
 
 #[tauri::command]
@@ -202,15 +225,35 @@ pub fn paste_clipboard_cmd(dest: String, policy: Option<String>) -> Result<Vec<S
             .file_name()
             .ok_or_else(|| "Invalid source path".to_string())?;
         let target_base = dest.join(name);
-        let target = resolve_target(&target_base, policy)?;
+        let mut target = match policy {
+            ConflictPolicy::Rename => next_unique_name(&target_base),
+            ConflictPolicy::Overwrite => target_base.clone(),
+        };
 
         if matches!(policy, ConflictPolicy::Overwrite) && target.exists() {
             remove_if_exists(&target)?;
         }
 
-        match state.mode {
-            ClipboardMode::Copy => copy_entry(src, &target)?,
-            ClipboardMode::Cut => move_entry(src, &target)?,
+        let mut attempts = 0usize;
+        loop {
+            let result = match state.mode {
+                ClipboardMode::Copy => copy_entry(src, &target),
+                ClipboardMode::Cut => move_entry(src, &target),
+            };
+
+            match result {
+                Ok(_) => break,
+                Err(err) => {
+                    // If rename policy still collided (e.g., race or unexpected name resolution), retry with next suffix.
+                    let is_exists = err.contains("exists") || err.contains("AlreadyExists");
+                    if matches!(policy, ConflictPolicy::Rename) && is_exists && attempts < 50 {
+                        attempts += 1;
+                        target = next_unique_name(&target);
+                        continue;
+                    }
+                    return Err(err);
+                }
+            }
         }
         created.push(target.to_string_lossy().to_string());
     }
