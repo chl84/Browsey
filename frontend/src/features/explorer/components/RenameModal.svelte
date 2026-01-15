@@ -2,6 +2,7 @@
   export let open = false
   export let entryName = ''
   export let value = ''
+  export let error = ''
   export let onConfirm: (name: string) => void = () => {}
   export let onCancel: () => void = () => {}
   let inputEl: HTMLInputElement | null = null
@@ -40,6 +41,9 @@
     >
       <header>Rename</header>
       <p class="muted">{entryName}</p>
+      {#if error}
+        <div class="pill error">{error}</div>
+      {/if}
       <input
         bind:this={inputEl}
         bind:value={value}
@@ -91,6 +95,23 @@
   .muted {
     color: var(--fg-muted);
     margin: 0;
+  }
+
+  .pill {
+    display: inline-flex;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-accent);
+    background: var(--bg-alt);
+    color: var(--fg);
+    font-weight: 700;
+    font-size: 12px;
+  }
+
+  .pill.error {
+    border-color: #c0392b;
+    background: rgba(192, 57, 43, 0.15);
+    color: #fceaea;
   }
 
   input {

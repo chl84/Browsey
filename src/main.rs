@@ -75,7 +75,9 @@ fn main() {
             delete_entry,
             entry_times_cmd,
             set_clipboard_cmd,
-            paste_clipboard_cmd
+            paste_clipboard_cmd,
+            paste_clipboard_preview,
+            search_stream
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

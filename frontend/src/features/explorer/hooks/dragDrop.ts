@@ -1,0 +1,82 @@
+import { writable } from 'svelte/store'
+import { invoke } from '@tauri-apps/api/core'
+
+export type DragState = {
+  dragging: boolean
+  paths: string[]
+  target: string | null
+  position: { x: number; y: number }
+}
+
+const isSubPath = (parent: string, child: string) => {
+  const normParent = parent.endsWith('/') ? parent : `${parent}/`
+  return child === parent || child.startsWith(normParent)
+}
+
+export const createDragDrop = () => {
+  const state = writable<DragState>({ dragging: false, paths: [], target: null, position: { x: 0, y: 0 } })
+
+  const start = (paths: string[], event: DragEvent) => {
+    if (!event.dataTransfer) return
+    state.set({ dragging: true, paths, target: null, position: { x: event.clientX, y: event.clientY } })
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', paths.join('\n'))
+
+    // Create a tiny custom drag image so we can control visuals
+    const ghost = document.createElement('div')
+    ghost.style.position = 'absolute'
+    ghost.style.pointerEvents = 'none'
+    ghost.style.top = '-999px'
+    ghost.style.left = '-999px'
+    ghost.style.padding = '4px 8px'
+    ghost.style.borderRadius = '10px'
+    ghost.style.background = 'rgba(25,118,210,0.9)'
+    ghost.style.color = '#fff'
+    ghost.style.fontSize = '12px'
+    ghost.style.fontWeight = '600'
+    ghost.style.display = 'inline-flex'
+    ghost.style.alignItems = 'center'
+    ghost.style.gap = '6px'
+    ghost.style.boxShadow = '0 6px 12px rgba(0,0,0,0.25)'
+    const dot = document.createElement('span')
+    dot.style.width = '8px'
+    dot.style.height = '8px'
+    dot.style.borderRadius = '999px'
+    dot.style.background = 'rgba(255,255,255,0.9)'
+    ghost.appendChild(dot)
+    const label = document.createElement('span')
+    label.textContent = `${paths.length} item${paths.length === 1 ? '' : 's'}`
+    ghost.appendChild(label)
+    document.body.appendChild(ghost)
+    event.dataTransfer.setDragImage(ghost, 0, 0)
+
+    requestAnimationFrame(() => {
+      document.body.removeChild(ghost)
+    })
+  }
+
+  const end = () => {
+    state.set({ dragging: false, paths: [], target: null, position: { x: 0, y: 0 } })
+  }
+
+  const canDropOn = (dragPaths: string[], targetPath: string) => {
+    if (dragPaths.length === 0) return false
+    return !dragPaths.some((p) => isSubPath(p, targetPath))
+  }
+
+  const setTarget = (target: string | null) => {
+    state.update((s) => ({ ...s, target }))
+  }
+
+  const setPosition = (x: number, y: number) => {
+    state.update((s) => ({ ...s, position: { x, y } }))
+  }
+
+  const move = async (paths: string[], dest: string) => {
+    if (paths.length === 0) return
+    await invoke('set_clipboard_cmd', { paths, mode: 'cut' })
+    await invoke('paste_clipboard_cmd', { dest })
+  }
+
+  return { state, start, end, canDropOn, move, setTarget, setPosition }
+}

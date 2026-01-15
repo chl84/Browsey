@@ -13,6 +13,14 @@
   export let onClick: (event: MouseEvent) => void = () => {}
   export let onToggleStar: (entry: Entry) => void = () => {}
   export let onContextMenu: (event: MouseEvent) => void = () => {}
+  export let onDragStart: (event: DragEvent) => void = () => {}
+  export let onDragEnd: (event: DragEvent) => void = () => {}
+  export let onDragOverRow: (event: DragEvent) => void = () => {}
+  export let onDragEnterRow: (event: DragEvent) => void = () => {}
+  export let onDropRow: (event: DragEvent) => void = () => {}
+  export let onDragLeaveRow: (event: DragEvent) => void = () => {}
+  export let dropActive = false
+  export let dropAllowed = false
   export let cutting = false
 </script>
 
@@ -23,7 +31,10 @@
   class:hidden={hidden}
   class:selected={selected}
   class:cut={cutting}
+  class:drop-target={dropActive}
+  class:drop-blocked={dropActive && !dropAllowed}
   type="button"
+  draggable="true"
   on:dblclick={() => onOpen(entry)}
   on:keydown={(e) => {
     if (e.key === 'Enter') {
@@ -40,6 +51,12 @@
     target.focus()
     onContextMenu(event)
   }}
+  on:dragstart={onDragStart}
+  on:dragend={onDragEnd}
+  on:dragenter|preventDefault={onDragEnterRow}
+  on:dragover|preventDefault={onDragOverRow}
+  on:dragleave={onDragLeaveRow}
+  on:drop|preventDefault={onDropRow}
 >
   <div class="col-name">
     <img class="icon" src={entry.icon} alt="" />
@@ -122,6 +139,19 @@
 
   .row.cut {
     opacity: 0.55;
+  }
+
+  .row.drop-target {
+    background: rgba(92, 148, 255, 0.08);
+    border-color: var(--border-accent);
+    box-shadow: inset 0 0 0 1px rgba(92, 148, 255, 0.35);
+    position: relative;
+  }
+
+  .row.drop-target.drop-blocked {
+    background: rgba(230, 80, 80, 0.08);
+    border-color: rgba(230, 80, 80, 0.4);
+    box-shadow: inset 0 0 0 1px rgba(230, 80, 80, 0.25);
   }
 
   .row:focus-visible {

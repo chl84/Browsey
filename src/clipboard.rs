@@ -18,6 +18,20 @@ struct ClipboardState {
     mode: ClipboardMode,
 }
 
+#[derive(Clone, Copy)]
+enum ConflictPolicy {
+    Rename,
+    Overwrite,
+}
+
+#[derive(serde::Serialize)]
+pub struct ConflictInfo {
+    pub src: String,
+    pub target: String,
+    pub exists: bool,
+    pub is_dir: bool,
+}
+
 static CLIPBOARD: Lazy<Mutex<Option<ClipboardState>>> = Lazy::new(|| Mutex::new(None));
 
 fn ensure_not_child(src: &Path, dest: &Path) -> Result<(), String> {
@@ -81,6 +95,33 @@ fn move_entry(src: &Path, dest: &Path) -> Result<(), String> {
     }
 }
 
+fn remove_if_exists(target: &Path) -> Result<(), String> {
+    if !target.exists() {
+        return Ok(());
+    }
+    let meta = fs::symlink_metadata(target).map_err(|e| format!("Failed to read metadata: {e}"))?;
+    if meta.is_dir() {
+        fs::remove_dir_all(target).map_err(|e| format!("Failed to remove dir {:?}: {e}", target))
+    } else {
+        fs::remove_file(target).map_err(|e| format!("Failed to remove file {:?}: {e}", target))
+    }
+}
+
+fn policy_from_str(policy: &str) -> Result<ConflictPolicy, String> {
+    match policy.to_lowercase().as_str() {
+        "overwrite" => Ok(ConflictPolicy::Overwrite),
+        "rename" => Ok(ConflictPolicy::Rename),
+        other => Err(format!("Invalid conflict policy: {}", other)),
+    }
+}
+
+fn resolve_target(base: &Path, policy: ConflictPolicy) -> Result<PathBuf, String> {
+    Ok(match policy {
+        ConflictPolicy::Rename => unique_path(base),
+        ConflictPolicy::Overwrite => base.to_path_buf(),
+    })
+}
+
 #[tauri::command]
 pub fn set_clipboard_cmd(paths: Vec<String>, mode: String) -> Result<(), String> {
     if paths.is_empty() {
@@ -110,16 +151,47 @@ pub fn set_clipboard_cmd(paths: Vec<String>, mode: String) -> Result<(), String>
     Ok(())
 }
 
+fn current_clipboard() -> Option<ClipboardState> {
+    let guard = CLIPBOARD.lock().unwrap();
+    guard.clone()
+}
+
 #[tauri::command]
-pub fn paste_clipboard_cmd(dest: String) -> Result<Vec<String>, String> {
+pub fn paste_clipboard_preview(dest: String) -> Result<Vec<ConflictInfo>, String> {
     let dest = sanitize_path_follow(&dest, false)?;
-    let state = {
-        let guard = CLIPBOARD.lock().unwrap();
-        guard.clone()
-    };
-    let Some(state) = state else {
+    let Some(state) = current_clipboard() else {
         return Err("Clipboard is empty".into());
     };
+
+    let mut conflicts = Vec::new();
+    for src in state.entries.iter() {
+        if !src.exists() {
+            return Err(format!("Source does not exist: {:?}", src));
+        }
+        let name = src
+            .file_name()
+            .ok_or_else(|| "Invalid source path".to_string())?;
+        let target = dest.join(name);
+        let exists = target.exists();
+        let is_dir = target.is_dir();
+        conflicts.push(ConflictInfo {
+            src: src.to_string_lossy().to_string(),
+            target: target.to_string_lossy().to_string(),
+            exists,
+            is_dir,
+        });
+    }
+    Ok(conflicts.into_iter().filter(|c| c.exists).collect())
+}
+
+#[tauri::command]
+pub fn paste_clipboard_cmd(dest: String, policy: Option<String>) -> Result<Vec<String>, String> {
+    let dest = sanitize_path_follow(&dest, false)?;
+    let state = current_clipboard().ok_or_else(|| "Clipboard is empty".to_string())?;
+    let policy = policy
+        .map(|p| policy_from_str(&p))
+        .transpose()?
+        .unwrap_or(ConflictPolicy::Rename);
 
     let mut created = Vec::new();
     for src in state.entries.iter() {
@@ -130,7 +202,11 @@ pub fn paste_clipboard_cmd(dest: String) -> Result<Vec<String>, String> {
             .file_name()
             .ok_or_else(|| "Invalid source path".to_string())?;
         let target_base = dest.join(name);
-        let target = unique_path(&target_base);
+        let target = resolve_target(&target_base, policy)?;
+
+        if matches!(policy, ConflictPolicy::Overwrite) && target.exists() {
+            remove_if_exists(&target)?;
+        }
 
         match state.mode {
             ClipboardMode::Copy => copy_entry(src, &target)?,
