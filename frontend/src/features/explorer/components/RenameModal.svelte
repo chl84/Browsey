@@ -9,7 +9,13 @@
 
   $: if (open && inputEl) {
     inputEl.focus()
-    inputEl.select()
+    const name = value ?? ''
+    const dot = name.lastIndexOf('.')
+    if (dot > 0) {
+      inputEl.setSelectionRange(0, dot)
+    } else {
+      inputEl.select()
+    }
   }
 </script>
 
