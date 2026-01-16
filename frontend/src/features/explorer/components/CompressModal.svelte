@@ -10,6 +10,7 @@
 
   let inputEl: HTMLInputElement | null = null
   let selectedThisOpen = false
+  let overlayPointerDown = false
 
   $: {
     if (!open) {
@@ -30,7 +31,16 @@
     class="overlay"
     role="presentation"
     tabindex="-1"
-    on:click={onCancel}
+    on:pointerdown={(e) => {
+      // Only close if the press started on the overlay itself.
+      overlayPointerDown = e.target === e.currentTarget
+    }}
+    on:click={(e) => {
+      if (overlayPointerDown && e.target === e.currentTarget) {
+        onCancel()
+      }
+      overlayPointerDown = false
+    }}
     on:keydown={(e) => {
       if (e.key === 'Escape') {
         e.preventDefault()

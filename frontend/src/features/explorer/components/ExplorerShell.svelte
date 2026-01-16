@@ -30,6 +30,7 @@
   export let mode: 'address' | 'filter' | 'search' = 'address'
   export let searchMode = false
   export let loading = false
+  export let activity: { label: string; percent: number | null } | null = null
   export let onFocus: () => void = () => {}
   export let onBlur: () => void = () => {}
   export let onSubmitPath: () => void = () => {}
@@ -171,6 +172,7 @@
         {mode}
         {searchMode}
         {loading}
+        {activity}
         onFocus={onFocus}
         onBlur={onBlur}
         onSubmitPath={onSubmitPath}

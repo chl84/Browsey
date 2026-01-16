@@ -22,6 +22,8 @@
   import ConflictModal from './ui/ConflictModal.svelte'
   import './features/explorer/ExplorerLayout.css'
 
+  type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
+  type ExtractProgressPayload = { bytes: number; total: number; finished?: boolean }
   let sidebarCollapsed = false
   let pathInput = ''
   let mode: 'address' | 'filter' | 'search' = 'address'
@@ -81,6 +83,9 @@
   let currentView: CurrentView = 'dir'
   let renameError = ''
   let lastLocation = ''
+  let extracting = false
+  let extractActivity: { label: string; percent: number | null } | null = null
+  let extractEventUnlisten: UnlistenFn | null = null
 
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
@@ -105,6 +110,13 @@
       pathInput = path
     },
   })
+
+  const cleanupExtractListener = async () => {
+    if (extractEventUnlisten) {
+      await extractEventUnlisten()
+      extractEventUnlisten = null
+    }
+  }
 
   const {
     cols,
@@ -742,6 +754,69 @@
     },
   })
 
+  const isExtractableArchive = (entry: Entry) => {
+    if (entry.kind !== 'file') return false
+    const name = entry.name.toLowerCase()
+    return (
+      name.endsWith('.zip') ||
+      name.endsWith('.tar') ||
+      name.endsWith('.tar.gz') ||
+      name.endsWith('.tgz') ||
+      name.endsWith('.tar.bz2') ||
+      name.endsWith('.tbz2') ||
+      name.endsWith('.tar.xz') ||
+      name.endsWith('.txz') ||
+      name.endsWith('.tar.zst') ||
+      name.endsWith('.tzst') ||
+      name.endsWith('.gz') ||
+      name.endsWith('.bz2') ||
+      name.endsWith('.xz') ||
+      name.endsWith('.zst')
+    )
+  }
+
+  const extractArchiveEntry = async (entry: Entry) => {
+    if (extracting) return
+    extracting = true
+    const progressEvent = `extract-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    extractActivity = { label: 'Extracting…', percent: 0 }
+    try {
+      extractEventUnlisten = await listen<ExtractProgressPayload>(progressEvent, (event) => {
+        const payload = event.payload
+        const pct =
+          payload.total > 0 ? Math.min(100, Math.round((payload.bytes / payload.total) * 100)) : null
+        if (payload.finished) {
+          extractActivity = { label: 'Finalizing…', percent: pct ?? null }
+        } else {
+          extractActivity = { label: 'Extracting…', percent: pct }
+        }
+      })
+      const result = await invoke<ExtractResult>('extract_archive', {
+        path: entry.path,
+        progressEvent,
+      })
+      await reloadCurrent()
+      const skippedSymlinks = result?.skipped_symlinks ?? 0
+      const skippedOther = result?.skipped_entries ?? 0
+      const skipParts = []
+      if (skippedSymlinks > 0) {
+        skipParts.push(`${skippedSymlinks} symlink${skippedSymlinks === 1 ? '' : 's'}`)
+      }
+      if (skippedOther > 0) {
+        skipParts.push(`${skippedOther} entr${skippedOther === 1 ? 'y' : 'ies'}`)
+      }
+      const suffix = skipParts.length > 0 ? ` (skipped ${skipParts.join(', ')})` : ''
+      showToast(`Extracted to ${result.destination}${suffix}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showToast(`Failed to extract: ${msg}`)
+    } finally {
+      extracting = false
+      extractActivity = null
+      await cleanupExtractListener()
+    }
+  }
+
   const handleOpenEntry = async (entry: Entry) => {
     if (entry.kind === 'dir') {
       mode = 'address'
@@ -752,6 +827,10 @@
       }
       pathInput = entry.path
       await load(entry.path)
+      return
+    }
+    if (isExtractableArchive(entry)) {
+      await extractArchiveEntry(entry)
       return
     }
     open(entry)
@@ -1218,6 +1297,7 @@
   onPartitionSelect={(path) => void load(path)}
   searchMode={$searchMode}
   loading={$loading}
+  activity={extractActivity}
   onFocus={handleInputFocus}
   onBlur={handleInputBlur}
   onSubmitPath={submitPath}

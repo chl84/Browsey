@@ -3,6 +3,7 @@
   export let searchMode = false
   export let mode: 'address' | 'filter' | 'search' = 'address'
   export let loading = false
+  export let activity: { label: string; percent: number | null } | null = null
   export let pathInputEl: HTMLInputElement | null = null
   export let onSubmitPath: () => void = () => {}
   export let onSearch: () => void = () => {}
@@ -115,6 +116,17 @@
     {#if loading}
       <span class="pill">Loading…</span>
     {/if}
+    {#if activity}
+      <div class="pill progress">
+        <span>{activity.label}</span>
+        {#if activity.percent !== null}
+          <div class="progress-bar" aria-hidden="true">
+            <div class="progress-fill" style={`width:${Math.min(100, Math.max(0, activity.percent))}%;`}></div>
+          </div>
+          <span class="percent">{Math.min(100, Math.max(0, activity.percent)).toFixed(0)}%</span>
+        {/if}
+      </div>
+    {/if}
   </div>
 </header>
 
@@ -170,6 +182,37 @@
 
   .path-input.hidden {
     opacity: 0;
+  }
+
+  .pill.progress {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+  }
+
+  .progress-bar {
+    width: 80px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--border);
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--border-accent);
+    border-radius: 999px;
+    transition: width 120ms ease;
+  }
+
+  .percent {
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-muted);
   }
 
   .breadcrumb-bar {
