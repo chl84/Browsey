@@ -3,14 +3,15 @@
 use crate::{
     commands::fs::expand_path,
     db,
-    entry::FsEntry,
+    entry::{normalize_key_for_db, FsEntry},
     search::search_recursive,
     sorting::{sort_entries, SortSpec},
 };
-use std::collections::HashSet;
-use tracing::warn;
-use tauri::Emitter;
 use serde::Serialize;
+use std::collections::HashSet;
+use std::path::Path;
+use tauri::Emitter;
+use tracing::warn;
 
 #[tauri::command]
 pub fn search(
@@ -24,13 +25,13 @@ pub fn search(
     } else if let Some(home) = dirs_next::home_dir() {
         home
     } else {
-        return Err("Fant ikke startkatalog".to_string());
+        return Err("Start directory not found".to_string());
     };
     let star_conn = db::open()?;
     let star_set: HashSet<String> = db::starred_set(&star_conn)?;
     let mut res = search_recursive(target, query)?;
     for item in &mut res {
-        if star_set.contains(&item.path) {
+        if star_set.contains(&normalize_key_for_db(Path::new(&item.path))) {
             item.starred = true;
         }
     }
@@ -75,7 +76,11 @@ pub fn search_stream(
             Ok(_) => match dirs_next::home_dir() {
                 Some(h) => h,
                 None => {
-                    send(Vec::new(), true, Some("Fant ikke startkatalog".to_string()));
+                    send(
+                        Vec::new(),
+                        true,
+                        Some("Start directory not found".to_string()),
+                    );
                     return;
                 }
             },
@@ -103,7 +108,11 @@ pub fn search_stream(
             let iter = match std::fs::read_dir(&dir) {
                 Ok(i) => i,
                 Err(err) => {
-                    warn!("search read_dir failed: dir={} err={:?}", dir.display(), err);
+                    warn!(
+                        "search read_dir failed: dir={} err={:?}",
+                        dir.display(),
+                        err
+                    );
                     continue;
                 }
             };
@@ -124,7 +133,7 @@ pub fn search_stream(
                     let key = path.to_string_lossy().to_string();
                     if seen.insert(key) {
                         let mut item = crate::entry::build_entry(&path, &meta, is_link, false);
-                        if star_set.contains(&item.path) {
+                        if star_set.contains(&normalize_key_for_db(&path)) {
                             item.starred = true;
                         }
                         batch.push(item.clone());

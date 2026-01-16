@@ -10,8 +10,8 @@ pub mod settings;
 pub use crate::clipboard::{paste_clipboard_cmd, paste_clipboard_preview, set_clipboard_cmd};
 pub use bookmarks::{add_bookmark, get_bookmarks, remove_bookmark};
 pub use fs::{
-    delete_entry, list_dir, list_mounts, list_trash, move_to_trash, open_entry, rename_entry,
-    watch_dir,
+    delete_entry, list_dir, list_mounts, list_trash, move_to_trash, open_entry, purge_trash_items,
+    rename_entry, restore_trash_items, watch_dir,
 };
 pub use library::{list_recent, list_starred, toggle_star};
 pub use meta::entry_times_cmd;

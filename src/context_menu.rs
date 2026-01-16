@@ -50,7 +50,11 @@ pub fn context_menu_actions(
         items.push(ContextAction::new("open-with", "Open with…"));
         items.push(ContextAction::new("open-location", "Open item location"));
         items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
-        items.push(ContextAction::with_shortcut("properties", "Properties", "Ctrl+P"));
+        items.push(ContextAction::with_shortcut(
+            "properties",
+            "Properties",
+            "Ctrl+P",
+        ));
         return items;
     }
 
@@ -62,7 +66,12 @@ pub fn context_menu_actions(
             "Delete permanently…",
             "Shift+Delete",
         ));
-        items.push(ContextAction::with_shortcut("properties", "Properties", "Ctrl+P"));
+        items.push(ContextAction::new("restore", "Restore"));
+        items.push(ContextAction::with_shortcut(
+            "properties",
+            "Properties",
+            "Ctrl+P",
+        ));
         return items;
     }
 
@@ -70,14 +79,22 @@ pub fn context_menu_actions(
         items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
         items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
         items.push(ContextAction::new("compress", "Compress…"));
-        items.push(ContextAction::with_shortcut("move-trash", "Move to wastebasket", "Delete"));
+        items.push(ContextAction::with_shortcut(
+            "move-trash",
+            "Move to wastebasket",
+            "Delete",
+        ));
         items.push(ContextAction::with_shortcut(
             "delete-permanent",
             "Delete permanently…",
             "Shift+Delete",
         ));
         items.push(ContextAction::new("divider-1", "---"));
-        items.push(ContextAction::with_shortcut("properties", "Properties", "Ctrl+P"));
+        items.push(ContextAction::with_shortcut(
+            "properties",
+            "Properties",
+            "Ctrl+P",
+        ));
         return items;
     }
 
@@ -88,13 +105,21 @@ pub fn context_menu_actions(
     items.push(ContextAction::new("divider-1", "---"));
     items.push(ContextAction::with_shortcut("rename", "Rename…", "F2"));
     items.push(ContextAction::new("compress", "Compress…"));
-    items.push(ContextAction::with_shortcut("move-trash", "Move to wastebasket", "Delete"));
+    items.push(ContextAction::with_shortcut(
+        "move-trash",
+        "Move to wastebasket",
+        "Delete",
+    ));
     items.push(ContextAction::with_shortcut(
         "delete-permanent",
         "Delete permanently…",
         "Shift+Delete",
     ));
     items.push(ContextAction::new("divider-2", "---"));
-    items.push(ContextAction::with_shortcut("properties", "Properties", "Ctrl+P"));
+    items.push(ContextAction::with_shortcut(
+        "properties",
+        "Properties",
+        "Ctrl+P",
+    ));
     items
 }

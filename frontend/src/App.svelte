@@ -1019,12 +1019,15 @@
     void (async () => {
       unlistenDirChanged = await listen<string>('dir-changed', (event) => {
         const curr = get(current)
-        if (!curr || event.payload === curr) {
+        const payload = event.payload
+        if (!curr || payload === curr) {
           if (refreshTimer) {
             clearTimeout(refreshTimer)
           }
           refreshTimer = setTimeout(() => {
-            void load(curr, { recordHistory: false })
+            const latest = get(current)
+            if (!latest || latest !== payload) return
+            void load(latest, { recordHistory: false })
           }, 300)
         }
       })

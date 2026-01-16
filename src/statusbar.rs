@@ -136,17 +136,18 @@ pub async fn dir_sizes(
             let root_dev: Option<u64> = None;
 
             let mut partial: u64 = 0;
-            let emit_progress = |delta: u64, raw: &str, emitter: &Option<(tauri::AppHandle, String)>| {
-                if let Some((app, evt)) = emitter {
-                    let _ = app.emit(
-                        evt,
-                        DirSizeEntry {
-                            path: raw.to_string(),
-                            bytes: delta,
-                        },
-                    );
-                }
-            };
+            let emit_progress =
+                |delta: u64, raw: &str, emitter: &Option<(tauri::AppHandle, String)>| {
+                    if let Some((app, evt)) = emitter {
+                        let _ = app.emit(
+                            evt,
+                            DirSizeEntry {
+                                path: raw.to_string(),
+                                bytes: delta,
+                            },
+                        );
+                    }
+                };
 
             let size = dir_size_recursive(&path, root_dev, &pseudo_roots, |delta| {
                 partial = partial.saturating_add(delta);

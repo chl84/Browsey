@@ -1,16 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod clipboard;
+mod commands;
+mod context_menu;
 mod db;
 mod entry;
+mod fs_utils;
 mod icons;
-mod context_menu;
 mod search;
 mod sorting;
 mod statusbar;
 mod watcher;
-mod fs_utils;
-mod clipboard;
-mod commands;
 
 use commands::*;
 use context_menu::context_menu_actions;
@@ -88,7 +88,9 @@ fn main() {
             set_clipboard_cmd,
             paste_clipboard_cmd,
             paste_clipboard_preview,
-            search_stream
+            search_stream,
+            restore_trash_items,
+            purge_trash_items
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

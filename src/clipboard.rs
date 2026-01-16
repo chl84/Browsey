@@ -46,7 +46,8 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
     for entry in fs::read_dir(src).map_err(|e| format!("Failed to read dir {:?}: {e}", src))? {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
         let path = entry.path();
-        let meta = fs::symlink_metadata(&path).map_err(|e| format!("Failed to read metadata: {e}"))?;
+        let meta =
+            fs::symlink_metadata(&path).map_err(|e| format!("Failed to read metadata: {e}"))?;
         if meta.file_type().is_symlink() {
             return Err("Refusing to copy symlinks".into());
         }
