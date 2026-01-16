@@ -48,6 +48,11 @@
   background: var(--border-accent-strong);
 }
 
+/* Allow text selection inside controls, even when their parents disable selection. */
+.sidebar :is(input, textarea, select, option, [contenteditable='true']) {
+  user-select: text;
+}
+
 body {
   margin: 0;
   background: #0b0d10;

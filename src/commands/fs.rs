@@ -88,6 +88,8 @@ fn entry_from_cached(path: &Path, cached: &CachedMeta, starred: bool) -> FsEntry
         modified: cached.modified.clone(),
         icon: cached.icon.clone(),
         starred,
+        hidden: cached.hidden,
+        network: cached.network,
     }
 }
 
@@ -172,6 +174,12 @@ fn stub_entry(path: &Path, file_type: Option<fs::FileType>, starred: bool) -> Fs
         modified: None,
         icon,
         starred,
+        hidden: path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with('.'))
+            .unwrap_or(false),
+        network: is_network_location(path),
     }
 }
 

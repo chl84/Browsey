@@ -61,6 +61,9 @@
         name="explorer-path"
         class="path-input"
         class:hidden={showBreadcrumbs}
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck="false"
         bind:value={pathInput}
         bind:this={pathInputEl}
         placeholder={searchMode ? 'Search in current folder…' : 'Path…'}
