@@ -30,6 +30,7 @@
           class:align-right={col.align === 'right'}
           type="button"
           role="columnheader"
+          tabindex="-1"
           aria-sort={ariaSort(col.sort)}
           class:active-sort={sortField === col.sort}
           on:click={() => onChangeSort(col.sort)}

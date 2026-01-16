@@ -49,6 +49,8 @@ pub fn list_recent(sort: Option<SortSpec>) -> Result<Vec<FsEntry>, String> {
             out.push(build_entry(&pb, &meta, is_link, starred));
         }
     }
-    sort_entries(&mut out, sort);
+    if sort.is_some() {
+        sort_entries(&mut out, sort);
+    }
     Ok(out)
 }
