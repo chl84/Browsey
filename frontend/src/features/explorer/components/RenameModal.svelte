@@ -5,9 +5,12 @@
   export let error = ''
   export let onConfirm: (name: string) => void = () => {}
   export let onCancel: () => void = () => {}
+  import { tick } from 'svelte'
   let inputEl: HTMLInputElement | null = null
+  let selectedThisOpen = false
 
-  $: if (open && inputEl) {
+  const selectBaseName = () => {
+    if (!inputEl) return
     inputEl.focus()
     const name = value ?? ''
     const dot = name.lastIndexOf('.')
@@ -15,6 +18,19 @@
       inputEl.setSelectionRange(0, dot)
     } else {
       inputEl.select()
+    }
+  }
+
+  $: {
+    if (!open) {
+      selectedThisOpen = false
+    } else if (inputEl && !selectedThisOpen) {
+      void tick().then(() => {
+        if (open && inputEl && !selectedThisOpen) {
+          selectBaseName()
+          selectedThisOpen = true
+        }
+      })
     }
   }
 </script>

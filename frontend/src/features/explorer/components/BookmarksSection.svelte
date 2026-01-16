@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { navIcon } from '../utils'
+  import { navIcon, iconPath } from '../utils'
 
   export let bookmarks: { label: string; path: string }[] = []
   export let onSelect: (path: string) => void = () => {}
   export let onRemove: (path: string) => void = () => {}
+
+  const bookmarkIcon = iconPath('mimetypes/bookmark.svg')
 </script>
 
 <div class="section">
@@ -21,7 +23,7 @@
         }
       }}
     >
-      <img class="nav-icon" src={navIcon(mark.label)} alt="" />
+      <img class="nav-icon" src={bookmarkIcon} alt="" />
       <span class="nav-label">{mark.label}</span>
       <span
         class="remove-bookmark"

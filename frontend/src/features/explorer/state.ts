@@ -95,12 +95,13 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
-  const loadRecent = async (recordHistory = true) => {
+  const loadRecent = async (recordHistory = true, applySort = false) => {
     loading.set(true)
     error.set('')
     searchActive.set(false)
     try {
-      const result = await invoke<Entry[]>('list_recent', { sort: sortPayload() })
+      const sortArg = applySort ? sortPayload() : null
+      const result = await invoke<Entry[]>('list_recent', { sort: sortArg })
       current.set('Recent')
       entries.set(result)
       callbacks.onEntriesChanged?.()
@@ -209,7 +210,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
     const where = get(current)
     if (where === 'Recent') {
-      await loadRecent(false)
+      await loadRecent(false, true)
     } else if (where === 'Starred') {
       await loadStarred(false)
     } else if (where === 'Trash') {

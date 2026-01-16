@@ -53,6 +53,17 @@ fn main() {
     init_logging();
     tauri::Builder::default()
         .manage(WatchState::default())
+        .setup(|app| {
+            for window in &app.config().app.windows {
+                if window.create {
+                    continue;
+                }
+                tauri::WebviewWindowBuilder::from_config(app, window)?
+                    .enable_clipboard_access()
+                    .build()?;
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             list_dir,
             search,

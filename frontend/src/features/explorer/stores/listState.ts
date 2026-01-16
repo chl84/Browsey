@@ -53,13 +53,17 @@ export const createListState = () => {
     scrollTop.set(effectiveTop)
   }
 
+  let pendingDeltaX = 0
   const handleWheel = (event: WheelEvent) => {
     const el = get(rowsEl)
     if (!el) return
+    pendingDeltaX += event.deltaX * wheelScale
     pendingDeltaY += event.deltaY * wheelScale
     if (wheelRaf !== null) return
     wheelRaf = requestAnimationFrame(() => {
+      el.scrollLeft += pendingDeltaX
       el.scrollTop += pendingDeltaY
+      pendingDeltaX = 0
       pendingDeltaY = 0
       wheelRaf = null
     })

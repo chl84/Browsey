@@ -134,7 +134,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    overflow-x: hidden;
+    overflow-x: auto;
     width: 100%;
     direction: ltr;
     padding-left: 12px;
@@ -143,6 +143,15 @@
     position: relative;
     user-select: none;
     cursor: default;
+    scrollbar-gutter: stable both-edges;
+  }
+
+  .rows::-webkit-scrollbar:horizontal {
+    height: 0;
+  }
+
+  .rows::-webkit-scrollbar-thumb:horizontal {
+    display: none;
   }
 
   .spacer {
