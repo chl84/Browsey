@@ -85,6 +85,7 @@ fn main() {
             move_to_trash,
             delete_entry,
             entry_times_cmd,
+            extract_archive,
             set_clipboard_cmd,
             paste_clipboard_cmd,
             paste_clipboard_preview,
