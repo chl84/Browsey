@@ -17,6 +17,7 @@ type Deps = {
   confirmDelete: (entries: Entry[]) => void
   openProperties: (entries: Entry[]) => Promise<void> | void
   openLocation: (entry: Entry) => Promise<void> | void
+  openCompress: (entries: Entry[]) => void
 }
 
 export const createContextActions = (deps: Deps) => {
@@ -33,6 +34,7 @@ export const createContextActions = (deps: Deps) => {
     confirmDelete,
     openProperties,
     openLocation,
+    openCompress,
   } = deps
 
   return async (id: string, entry: Entry | null) => {
@@ -90,7 +92,7 @@ export const createContextActions = (deps: Deps) => {
     }
 
     if (id === 'compress') {
-      console.warn('Compress not implemented yet')
+      openCompress(selectionEntries)
       return
     }
 

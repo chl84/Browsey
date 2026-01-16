@@ -559,11 +559,32 @@ pub fn rename_entry(path: String, new_name: String) -> Result<String, String> {
         .parent()
         .ok_or_else(|| "Cannot rename root".to_string())?;
     let to = parent.join(new_name.trim());
-    if to.exists() {
+    match fs::rename(&from, &to) {
+        Ok(_) => Ok(to.to_string_lossy().to_string()),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            Err("A file or directory with that name already exists".into())
+        }
+        Err(e) => Err(format!("Failed to rename: {e}")),
+    }
+}
+
+#[tauri::command]
+pub fn create_folder(path: String, name: String) -> Result<String, String> {
+    let base = sanitize_path_follow(&path, true)?;
+    check_no_symlink_components(&base)?;
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Folder name cannot be empty".into());
+    }
+    if trimmed.contains(['/', '\\']) {
+        return Err("Folder name cannot contain path separators".into());
+    }
+    let target = base.join(trimmed);
+    if target.exists() {
         return Err("A file or directory with that name already exists".into());
     }
-    fs::rename(&from, &to).map_err(|e| format!("Failed to rename: {e}"))?;
-    Ok(to.to_string_lossy().to_string())
+    fs::create_dir(&target).map_err(|e| format!("Failed to create folder: {e}"))?;
+    Ok(target.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

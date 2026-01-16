@@ -7,10 +7,12 @@
   import ContextMenu from './ContextMenu.svelte'
   import DeleteConfirmModal from './DeleteConfirmModal.svelte'
   import RenameModal from './RenameModal.svelte'
+  import NewFolderModal from './NewFolderModal.svelte'
   import OpenWithModal from './OpenWithModal.svelte'
   import PropertiesModal from './PropertiesModal.svelte'
   import BookmarkModal from './BookmarkModal.svelte'
   import Toast from '../../../ui/Toast.svelte'
+  import CompressModal from './CompressModal.svelte'
   import type { Column, Entry, Partition, SortField } from '../types'
   import type { ContextAction } from '../hooks/useContextMenus'
 
@@ -95,7 +97,12 @@
     y: 0,
     actions: [],
   }
-  export let blankMenu: { open: boolean; x: number; y: number } = { open: false, x: 0, y: 0 }
+  export let blankMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
+    open: false,
+    x: 0,
+    y: 0,
+    actions: [],
+  }
   export let onContextSelect: (id: string) => void = () => {}
   export let onBlankContextSelect: (id: string) => void = () => {}
   export let onCloseContextMenu: () => void = () => {}
@@ -112,6 +119,17 @@
   export let renameError = ''
   export let onConfirmRename: (name: string) => void = () => {}
   export let onCancelRename: () => void = () => {}
+  export let compressOpen = false
+  export let compressName = ''
+  export let compressLevel = 6
+  export let compressError = ''
+  export let onConfirmCompress: (name: string, level: number) => void = () => {}
+  export let onCancelCompress: () => void = () => {}
+  export let newFolderOpen = false
+  export let newFolderName = ''
+  export let newFolderError = ''
+  export let onConfirmNewFolder: () => void = () => {}
+  export let onCancelNewFolder: () => void = () => {}
 
   export let openWithOpen = false
   export let openWithEntry: Entry | null = null
@@ -229,7 +247,7 @@
   open={blankMenu.open}
   x={blankMenu.x}
   y={blankMenu.y}
-  actions={[{ id: 'paste', label: 'Paste' }]}
+  actions={blankMenu.actions}
   onSelect={onBlankContextSelect}
   onClose={onCloseBlankContextMenu}
 />
@@ -246,6 +264,21 @@
   error={renameError}
   onConfirm={onConfirmRename}
   onCancel={onCancelRename}
+/>
+<CompressModal
+  open={compressOpen}
+  bind:value={compressName}
+  bind:level={compressLevel}
+  error={compressError}
+  onConfirm={onConfirmCompress}
+  onCancel={onCancelCompress}
+/>
+<NewFolderModal
+  open={newFolderOpen}
+  bind:value={newFolderName}
+  error={newFolderError}
+  onConfirm={onConfirmNewFolder}
+  onCancel={onCancelNewFolder}
 />
 <OpenWithModal open={openWithOpen} path={openWithEntry?.path ?? ''} onClose={onCloseOpenWith} />
 <PropertiesModal

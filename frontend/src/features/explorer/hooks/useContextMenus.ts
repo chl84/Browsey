@@ -15,6 +15,7 @@ type BlankMenuState = {
   open: boolean
   x: number
   y: number
+  actions: ContextAction[]
 }
 
 export const createContextMenus = () => {
@@ -30,6 +31,7 @@ export const createContextMenus = () => {
     open: false,
     x: 0,
     y: 0,
+    actions: [],
   })
 
   const openContextMenu = (entry: Entry, actions: ContextAction[], x: number, y: number) => {
@@ -40,12 +42,12 @@ export const createContextMenus = () => {
     contextMenu.update((s) => ({ ...s, open: false, entry: null }))
   }
 
-  const openBlankContextMenu = (x: number, y: number) => {
-    blankMenu.set({ open: true, x, y })
+  const openBlankContextMenu = (actions: ContextAction[], x: number, y: number) => {
+    blankMenu.set({ open: true, x, y, actions })
   }
 
   const closeBlankContextMenu = () => {
-    blankMenu.update((s) => ({ ...s, open: false }))
+    blankMenu.update((s) => ({ ...s, open: false, actions: [] }))
   }
 
   return {

@@ -57,6 +57,14 @@
   let renameModalOpen = false
   let renameTarget: Entry | null = null
   let renameValue = ''
+  let compressOpen = false
+  let compressTargets: Entry[] = []
+  let compressName = 'Archive.zip'
+  let compressLevel = 6
+  let compressError = ''
+  let newFolderOpen = false
+  let newFolderName = 'New folder'
+  let newFolderError = ''
   let openWithOpen = false
   let openWithEntry: Entry | null = null
   let propertiesOpen = false
@@ -554,6 +562,18 @@
         closeProperties()
         return
       }
+      if (compressOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeCompress()
+        return
+      }
+      if (newFolderOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeNewFolderModal()
+        return
+      }
       if (bookmarkModalOpen) {
         event.preventDefault()
         event.stopPropagation()
@@ -693,6 +713,18 @@
       openWithEntry = entry
       openWithOpen = true
     },
+    openCompress: (entries) => {
+      compressTargets = entries
+      if (entries.length === 1) {
+        const name = entries[0].name
+        compressName = name.toLowerCase().endsWith('.zip') ? name : `${name}.zip`
+      } else {
+        compressName = 'Archive.zip'
+      }
+      compressLevel = 6
+      compressError = ''
+      compressOpen = true
+    },
     startRename: (entry) => {
       renameTarget = entry
       renameValue = entry.name
@@ -787,26 +819,33 @@
   const handleBlankContextMenu = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    if (currentView === 'recent') {
+    if (currentView !== 'dir') {
       selected.set(new Set())
       anchorIndex.set(null)
       caretIndex.set(null)
+      closeBlankContextMenu()
       return
     }
     const hasClipboardItems = clipboardPaths.size > 0
     selected.set(new Set())
     anchorIndex.set(null)
     caretIndex.set(null)
+    const actions: ContextAction[] = [{ id: 'new-folder', label: 'New Folder…' }]
     if (hasClipboardItems) {
-      openBlankContextMenu(event.clientX, event.clientY)
-    } else {
-      closeBlankContextMenu()
+      actions.push({ id: 'paste', label: 'Paste', shortcut: 'Ctrl+V' })
     }
+    openBlankContextMenu(actions, event.clientX, event.clientY)
   }
 
   const handleBlankContextAction = async (id: string) => {
-    if (currentView === 'recent') return
+    if (currentView !== 'dir') return
     closeBlankContextMenu()
+    if (id === 'new-folder') {
+      newFolderName = 'New folder'
+      newFolderError = ''
+      newFolderOpen = true
+      return
+    }
     if (id === 'paste') {
       await pasteIntoCurrent()
     }
@@ -815,6 +854,16 @@
   const handleContextSelect = async (id: string) => {
     const entry = $contextMenu.entry
     closeContextMenu()
+    if (id === 'new-folder') {
+      if (currentView !== 'dir') {
+        showToast('Cannot create folder here')
+        return
+      }
+      newFolderName = 'New folder'
+      newFolderError = ''
+      newFolderOpen = true
+      return
+    }
     await contextActions(id, entry)
   }
 
@@ -912,6 +961,36 @@
     renameError = ''
   }
 
+  const closeNewFolderModal = () => {
+    newFolderOpen = false
+    newFolderError = ''
+  }
+
+  const confirmNewFolder = async () => {
+    if (currentView !== 'dir') {
+      closeNewFolderModal()
+      showToast('Cannot create folder here')
+      return
+    }
+    const name = newFolderName.trim()
+    if (!name) {
+      newFolderError = 'Folder name cannot be empty'
+      return
+    }
+    const base = get(current)
+    try {
+      const created: string = await invoke('create_folder', { path: base, name })
+      await load(base, { recordHistory: false })
+      newFolderOpen = false
+      newFolderError = ''
+      selected.set(new Set([created]))
+      anchorIndex.set(null)
+      caretIndex.set(null)
+    } catch (err) {
+      newFolderError = err instanceof Error ? err.message : String(err)
+    }
+  }
+
   const confirmRename = async (name: string) => {
     if (!renameTarget) return
     const trimmed = name.trim()
@@ -930,6 +1009,29 @@
   const closeOpenWith = () => {
     openWithOpen = false
     openWithEntry = null
+  }
+
+  const closeCompress = () => {
+    compressOpen = false
+    compressTargets = []
+    compressError = ''
+  }
+
+  const confirmCompress = async (name: string, level: number) => {
+    if (compressTargets.length === 0) {
+      closeCompress()
+      return
+    }
+    const lvl = Math.min(Math.max(Math.round(level), 0), 9)
+    const paths = compressTargets.map((e) => e.path)
+    const base = get(current)
+    try {
+      await invoke('compress_entries', { paths, name, level: lvl })
+      await load(base, { recordHistory: false })
+      closeCompress()
+    } catch (err) {
+      compressError = err instanceof Error ? err.message : String(err)
+    }
   }
 
   const closeProperties = () => {
@@ -1183,6 +1285,17 @@
   bind:renameValue
   onConfirmRename={confirmRename}
   onCancelRename={closeRenameModal}
+  compressOpen={compressOpen}
+  bind:compressName
+  bind:compressLevel
+  compressError={compressError}
+  onConfirmCompress={confirmCompress}
+  onCancelCompress={closeCompress}
+  newFolderOpen={newFolderOpen}
+  bind:newFolderName
+  newFolderError={newFolderError}
+  onConfirmNewFolder={confirmNewFolder}
+  onCancelNewFolder={closeNewFolderModal}
   openWithOpen={openWithOpen}
   {openWithEntry}
   onCloseOpenWith={closeOpenWith}
