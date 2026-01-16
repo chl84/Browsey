@@ -44,6 +44,19 @@ export const createContextActions = (deps: Deps) => {
     const filtered = getFilteredEntries()
     const selectionEntries = paths.length > 1 ? filtered.filter((e) => paths.includes(e.path)) : [entry]
 
+    if (id === 'restore') {
+      if (currentView() === 'trash') {
+        const ids = selectionEntries.map((e) => e.trash_id ?? e.path)
+        try {
+          await invoke('restore_trash_items', { ids })
+          await reloadCurrent()
+        } catch (err) {
+          showToast(`Restore failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+      return
+    }
+
     if (id === 'copy-path') {
       const result = await clipboard.copy(selectionEntries, { writeText: true })
       if (!result.ok) showToast(`Copy failed: ${result.error}`)
@@ -101,6 +114,16 @@ export const createContextActions = (deps: Deps) => {
     }
 
     if (id === 'delete-permanent') {
+      if (currentView() === 'trash') {
+        const ids = selectionEntries.map((e) => e.trash_id ?? e.path)
+        try {
+          await invoke('purge_trash_items', { ids })
+          await reloadCurrent()
+        } catch (err) {
+          showToast(`Delete failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        return
+      }
       confirmDelete(selectionEntries)
       return
     }

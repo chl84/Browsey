@@ -2,7 +2,7 @@
 
 use crate::{
     db,
-    entry::{build_entry, FsEntry},
+    entry::{build_entry, normalize_key_for_db, FsEntry},
     sorting::{sort_entries, SortSpec},
 };
 use std::collections::HashSet;
@@ -45,7 +45,7 @@ pub fn list_recent(sort: Option<SortSpec>) -> Result<Vec<FsEntry>, String> {
         let pb = PathBuf::from(&p);
         if let Ok(meta) = fs::symlink_metadata(&pb) {
             let is_link = meta.file_type().is_symlink();
-            let starred = star_set.contains(&p);
+            let starred = star_set.contains(&normalize_key_for_db(&pb));
             out.push(build_entry(&pb, &meta, is_link, starred));
         }
     }

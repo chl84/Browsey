@@ -9,9 +9,9 @@ use std::time::{Duration, SystemTime};
 use crate::icons::icon_for;
 
 #[cfg(target_os = "windows")]
-use std::path::{Component, Prefix};
-#[cfg(target_os = "windows")]
 use std::iter;
+#[cfg(target_os = "windows")]
+use std::path::{Component, Prefix};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Storage::FileSystem::GetDriveTypeW;
 #[cfg(target_os = "windows")]
@@ -29,6 +29,25 @@ pub struct CachedMeta {
     stored: SystemTime,
 }
 
+pub fn normalize_key_for_db(path: &Path) -> String {
+    #[cfg(target_os = "windows")]
+    {
+        let mut s = path.to_string_lossy().to_string();
+        if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+            s = format!(r"\\{rest}");
+        } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+            s = rest.to_string();
+        }
+        // Normalize separators and case to avoid duplicate keys for the same path.
+        s = s.replace('/', "\\");
+        s.to_ascii_lowercase()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        path.to_string_lossy().into_owned()
+    }
+}
+
 static META_CACHE: OnceLock<Mutex<HashMap<String, CachedMeta>>> = OnceLock::new();
 
 fn meta_cache() -> &'static Mutex<HashMap<String, CachedMeta>> {
@@ -44,6 +63,8 @@ pub struct FsEntry {
     pub size: Option<u64>,
     pub items: Option<u64>,
     pub modified: Option<String>,
+    pub original_path: Option<String>,
+    pub trash_id: Option<String>,
     pub icon: String,
     pub starred: bool,
     pub hidden: bool,
@@ -99,7 +120,9 @@ pub fn is_network_location(path: &Path) -> bool {
                 let wide: Vec<u16> = drive.encode_utf16().chain(iter::once(0)).collect();
                 let drive_type = unsafe { GetDriveTypeW(wide.as_ptr()) };
                 let is_remote = drive_type == DRIVE_REMOTE;
-                if let Some(mut cache) = DRIVE_REMOTE_CACHE.get_or_init(Default::default).lock().ok() {
+                if let Some(mut cache) =
+                    DRIVE_REMOTE_CACHE.get_or_init(Default::default).lock().ok()
+                {
                     cache.insert(letter, is_remote);
                 }
                 is_remote
@@ -179,6 +202,8 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -
         size,
         items,
         modified,
+        original_path: None,
+        trash_id: None,
         icon: icon_for(path, meta, is_link).to_string(),
         starred,
         hidden: is_hidden(path, meta),
@@ -200,7 +225,11 @@ pub fn store_cached_meta(path: &Path, meta: &Metadata, is_link: bool) {
     let cached = CachedMeta {
         is_dir: meta.is_dir(),
         is_link,
-        size: if meta.is_file() { Some(meta.len()) } else { None },
+        size: if meta.is_file() {
+            Some(meta.len())
+        } else {
+            None
+        },
         modified: fmt_time(meta.modified().ok()),
         icon: icon_for(path, meta, is_link).to_string(),
         hidden: is_hidden(path, meta),

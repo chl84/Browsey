@@ -143,15 +143,11 @@
     position: relative;
     user-select: none;
     cursor: default;
-    scrollbar-gutter: stable both-edges;
+    scrollbar-gutter: stable;
   }
 
-  .rows::-webkit-scrollbar:horizontal {
-    height: 0;
-  }
-
-  .rows::-webkit-scrollbar-thumb:horizontal {
-    display: none;
+  .rows::-webkit-scrollbar-corner {
+    background: var(--bg);
   }
 
   .spacer {

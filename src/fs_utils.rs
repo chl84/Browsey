@@ -1,8 +1,5 @@
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
-#[cfg(target_os = "windows")]
-#[allow(unused_imports)]
-use tracing::warn;
+use std::path::{Component, Path, PathBuf};
+use tracing::debug;
 
 #[cfg(target_os = "windows")]
 use std::path::{Component, Prefix};
@@ -75,15 +72,14 @@ pub fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, S
         is_net
     ));
     if !is_net {
-        let _meta = std::fs::symlink_metadata(&pb)
-            .map_err(|e| {
-                debug_log(&format!(
-                    "symlink_metadata failed: path={} error={:?}",
-                    pb.display(),
-                    e
-                ));
-                format!("Path does not exist or unreadable: {e}")
-            })?;
+        let _meta = std::fs::symlink_metadata(&pb).map_err(|e| {
+            debug_log(&format!(
+                "symlink_metadata failed: path={} error={:?}",
+                pb.display(),
+                e
+            ));
+            format!("Path does not exist or unreadable: {e}")
+        })?;
     }
     if forbid_root && pb.parent().is_none() {
         return Err("Refusing to operate on filesystem root".into());
@@ -135,10 +131,9 @@ fn normalize_verbatim(path: &Path) -> PathBuf {
 #[cfg(target_os = "windows")]
 fn is_network_path(path: &Path) -> bool {
     match path.components().next() {
-        Some(Component::Prefix(prefix)) => matches!(
-            prefix.kind(),
-            Prefix::VerbatimUNC(..) | Prefix::UNC(..)
-        ),
+        Some(Component::Prefix(prefix)) => {
+            matches!(prefix.kind(), Prefix::VerbatimUNC(..) | Prefix::UNC(..))
+        }
         _ => false,
     }
 }
@@ -182,19 +177,42 @@ fn is_special_drive(_letter: Option<u8>) -> bool {
     false
 }
 
-pub fn debug_log(line: &str) {
-    let now = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
-    let log_file = std::env::temp_dir().join("filey-debug.log");
-    let line = format!("{now:.3} {line}\n");
-    if let Err(e) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_file)
-        .and_then(|mut f| std::io::Write::write_all(&mut f, line.as_bytes()))
-    {
-        eprintln!("Failed to write debug log {:?}: {}", log_file, e);
+pub fn check_no_symlink_components(path: &Path) -> Result<(), String> {
+    let mut acc = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            Component::Prefix(p) => {
+                acc.push(p.as_os_str());
+                continue;
+            }
+            Component::RootDir => {
+                acc.push(Component::RootDir.as_os_str());
+                continue;
+            }
+            Component::CurDir => continue,
+            Component::ParentDir => {
+                acc.pop();
+                continue;
+            }
+            Component::Normal(seg) => acc.push(seg),
+        }
+        // Skip empty or just root
+        if acc.as_os_str().is_empty() {
+            continue;
+        }
+        let meta = std::fs::symlink_metadata(&acc)
+            .map_err(|e| format!("Failed to read metadata for {:?}: {e}", acc))?;
+        if meta.file_type().is_symlink() {
+            return Err(format!(
+                "Symlinks are not allowed in path: {}",
+                acc.display()
+            ));
+        }
     }
+    Ok(())
+}
+
+pub fn debug_log(line: &str) {
+    // Route debug traces through the standard tracing backend (configured in init_logging).
+    debug!("{line}");
 }

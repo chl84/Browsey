@@ -6,6 +6,8 @@ export type Entry = {
   size?: number | null
   items?: number | null
   modified?: string | null
+  original_path?: string | null
+  trash_id?: string | null
   accessed?: string | null
   created?: string | null
   starred?: boolean

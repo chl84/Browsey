@@ -1,9 +1,9 @@
-use std::collections::HashSet;
-use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
-
+use crate::entry::normalize_key_for_db;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_RECENT: i64 = 50;
 
@@ -39,10 +39,52 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+fn normalize_starred_paths(conn: &mut Connection) -> Result<(), String> {
+    let mut fixes = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare("SELECT path, starred_at FROM starred")
+            .map_err(|e| format!("Failed to prepare starred scan: {e}"))?;
+        let rows = stmt
+            .query_map([], |row: &Row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| format!("Failed to read starred: {e}"))?;
+
+        for r in rows {
+            if let Ok((raw, ts)) = r {
+                let norm = normalize_key_for_db(Path::new(&raw));
+                if norm != raw {
+                    fixes.push((raw, norm, ts));
+                }
+            }
+        }
+    }
+    if fixes.is_empty() {
+        return Ok(());
+    }
+
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Failed to start transaction: {e}"))?;
+    for (raw, norm, ts) in fixes {
+        tx.execute("DELETE FROM starred WHERE path = ?1", params![raw.as_str()])
+            .map_err(|e| format!("Failed to delete stale star: {e}"))?;
+        tx.execute(
+            "INSERT OR IGNORE INTO starred (path, starred_at) VALUES (?1, ?2)",
+            params![norm.as_str(), ts],
+        )
+        .map_err(|e| format!("Failed to store normalized star: {e}"))?;
+    }
+    tx.commit()
+        .map_err(|e| format!("Failed to commit normalized stars: {e}"))
+}
+
 pub fn open() -> Result<Connection, String> {
     let path = db_path()?;
-    let conn = Connection::open(path).map_err(|e| format!("Failed to open db: {e}"))?;
+    let mut conn = Connection::open(path).map_err(|e| format!("Failed to open db: {e}"))?;
     ensure_schema(&conn)?;
+    normalize_starred_paths(&mut conn)?;
     Ok(conn)
 }
 
@@ -56,22 +98,26 @@ pub fn starred_set(conn: &Connection) -> Result<HashSet<String>, String> {
     let mut set = HashSet::new();
     for r in rows {
         if let Ok(p) = r {
-            set.insert(p);
+            set.insert(normalize_key_for_db(Path::new(&p)));
         }
     }
     Ok(set)
 }
 
 pub fn toggle_star(conn: &Connection, path: &str) -> Result<bool, String> {
+    let norm = normalize_key_for_db(Path::new(path));
     let mut stmt = conn
         .prepare("SELECT 1 FROM starred WHERE path = ?1")
         .map_err(|e| format!("Failed to prepare starred exists: {e}"))?;
     let exists = stmt
-        .exists(params![path])
+        .exists(params![norm.as_str()])
         .map_err(|e: rusqlite::Error| e.to_string())?;
     if exists {
-        conn.execute("DELETE FROM starred WHERE path = ?1", params![path])
-            .map_err(|e| format!("Failed to delete star: {e}"))?;
+        conn.execute(
+            "DELETE FROM starred WHERE path = ?1",
+            params![norm.as_str()],
+        )
+        .map_err(|e| format!("Failed to delete star: {e}"))?;
         return Ok(false);
     }
     let now = SystemTime::now()
@@ -80,7 +126,7 @@ pub fn toggle_star(conn: &Connection, path: &str) -> Result<bool, String> {
         .as_secs() as i64;
     conn.execute(
         "INSERT OR REPLACE INTO starred (path, starred_at) VALUES (?1, ?2)",
-        params![path, now],
+        params![norm.as_str(), now],
     )
     .map_err(|e| format!("Failed to insert star: {e}"))?;
     Ok(true)

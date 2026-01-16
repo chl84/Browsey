@@ -59,16 +59,8 @@ pub fn sort_entries(entries: &mut [FsEntry], spec: Option<SortSpec>) {
                     "link" => 2,
                     _ => 3,
                 };
-                let a_ext = a
-                    .ext
-                    .as_ref()
-                    .map(|s| s.to_lowercase())
-                    .unwrap_or_default();
-                let b_ext = b
-                    .ext
-                    .as_ref()
-                    .map(|s| s.to_lowercase())
-                    .unwrap_or_default();
+                let a_ext = a.ext.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
+                let b_ext = b.ext.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
                 let a_key = (kind_rank(&a.kind), a_ext);
                 let b_key = (kind_rank(&b.kind), b_ext);
                 a_key.cmp(&b_key)
