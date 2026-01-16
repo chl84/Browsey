@@ -287,7 +287,7 @@
     pathInput = $current
   }
 
-  const isHidden = (entry: Entry) => entry.name.startsWith('.')
+  const isHidden = (entry: Entry) => entry.hidden === true || entry.name.startsWith('.')
 
   const displayName = (entry: Entry) => {
     if (entry.kind === 'file' && entry.ext) {
@@ -461,19 +461,22 @@
     onDelete: async (permanent) => {
       const paths = Array.from($selected)
       if (paths.length === 0) return false
-      if (permanent) {
-        deleteTargets = $filteredEntries.filter((e) => paths.includes(e.path))
-        if (deleteTargets.length === 0) return false
+      const entries = $filteredEntries.filter((e) => paths.includes(e.path))
+      if (entries.length === 0) return false
+      const hasNetwork = entries.some((e) => e.network)
+
+      if (permanent || (hasNetwork && currentView !== 'trash')) {
+        deleteTargets = entries
         deleteConfirmOpen = true
         return true
       }
       try {
         if (currentView === 'trash') {
-          for (const p of paths) {
+          for (const p of entries.map((e) => e.path)) {
             await invoke('delete_entry', { path: p })
           }
         } else {
-          for (const p of paths) {
+          for (const p of entries.map((e) => e.path)) {
             await invoke('move_to_trash', { path: p })
           }
         }

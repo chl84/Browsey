@@ -24,6 +24,8 @@ pub struct CachedMeta {
     pub size: Option<u64>,
     pub modified: Option<String>,
     pub icon: String,
+    pub hidden: bool,
+    pub network: bool,
     stored: SystemTime,
 }
 
@@ -44,6 +46,8 @@ pub struct FsEntry {
     pub modified: Option<String>,
     pub icon: String,
     pub starred: bool,
+    pub hidden: bool,
+    pub network: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -111,6 +115,27 @@ pub fn is_network_location(_path: &Path) -> bool {
     false
 }
 
+#[cfg(target_os = "windows")]
+fn is_hidden(path: &Path, meta: &Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+    // Also treat dotfiles as hidden for consistency.
+    meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0
+        || path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with('.'))
+            .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_hidden(path: &Path, _meta: &Metadata) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.starts_with('.'))
+        .unwrap_or(false)
+}
+
 pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -> FsEntry {
     let name = path
         .file_name()
@@ -156,6 +181,8 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -
         modified,
         icon: icon_for(path, meta, is_link).to_string(),
         starred,
+        hidden: is_hidden(path, meta),
+        network: is_network_location(path),
     }
 }
 
@@ -176,6 +203,8 @@ pub fn store_cached_meta(path: &Path, meta: &Metadata, is_link: bool) {
         size: if meta.is_file() { Some(meta.len()) } else { None },
         modified: fmt_time(meta.modified().ok()),
         icon: icon_for(path, meta, is_link).to_string(),
+        hidden: is_hidden(path, meta),
+        network: is_network_location(path),
         stored: SystemTime::now(),
     };
     if let Ok(mut map) = meta_cache().lock() {

@@ -22,6 +22,7 @@
     align-items: center;
     padding: 0 12px;
     gap: 8px;
+    user-select: none;
   }
 
   .status-text {

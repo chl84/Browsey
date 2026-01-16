@@ -10,6 +10,8 @@ export type Entry = {
   created?: string | null
   starred?: boolean
   icon?: string
+  hidden?: boolean
+  network?: boolean
 }
 
 export type Listing = {
