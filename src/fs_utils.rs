@@ -1,8 +1,9 @@
 use std::path::{Component, Path, PathBuf};
+use std::{fs::OpenOptions, io};
 use tracing::debug;
 
 #[cfg(target_os = "windows")]
-use std::path::{Component, Prefix};
+use std::path::Prefix;
 
 #[cfg(target_os = "windows")]
 fn normalize_drive_root(raw: &str) -> String {
@@ -26,35 +27,30 @@ pub fn sanitize_path_follow(raw: &str, forbid_root: bool) -> Result<PathBuf, Str
     let pb = PathBuf::from(&raw);
     let drive = drive_letter(&pb);
     let is_net = is_network_path(&pb) && !is_special_drive(drive);
-    let is_drive = is_drive_path(&pb) && !is_special_drive(drive);
-    debug_log(&format!(
-        "sanitize_follow start: raw={} resolved={} network={}",
-        raw,
-        pb.display(),
-        is_net
-    ));
-    let canon = if is_net || is_drive {
+    debug!(
+        raw = %raw,
+        resolved = %pb.display(),
+        network = is_net,
+        "sanitize_follow start"
+    );
+    let canon = if is_net {
         // Skip canonicalize on UNC to avoid DFS/SMB failures; use resolved path as-is.
         pb.clone()
     } else {
         match pb.canonicalize() {
             Ok(c) => c,
             Err(e) => {
-                debug_log(&format!(
-                    "canonicalize failed: path={} error={:?}",
-                    pb.display(),
-                    e
-                ));
+                debug!(path = %pb.display(), error = ?e, "canonicalize failed");
                 return Err(format!("Failed to canonicalize path: {e}"));
             }
         }
     };
-    debug_log(&format!(
-        "sanitize_follow result: raw={} canon={}",
-        raw,
-        canon.display()
-    ));
-    if forbid_root && canon.parent().is_none() {
+    debug!(
+        raw = %raw,
+        canon = %canon.display(),
+        "sanitize_follow result"
+    );
+    if forbid_root && canon.is_absolute() && canon.parent().is_none() {
         return Err("Refusing to operate on filesystem root".into());
     }
     Ok(normalize_verbatim(&canon))
@@ -65,23 +61,19 @@ pub fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, S
     let pb = PathBuf::from(&raw);
     let drive = drive_letter(&pb);
     let is_net = is_network_path(&pb) && !is_special_drive(drive);
-    debug_log(&format!(
-        "sanitize_nofollow: raw={} resolved={} network={}",
-        raw,
-        pb.display(),
-        is_net
-    ));
+    debug!(
+        raw = %raw,
+        resolved = %pb.display(),
+        network = is_net,
+        "sanitize_nofollow start"
+    );
     if !is_net {
         let _meta = std::fs::symlink_metadata(&pb).map_err(|e| {
-            debug_log(&format!(
-                "symlink_metadata failed: path={} error={:?}",
-                pb.display(),
-                e
-            ));
+            debug!(path = %pb.display(), error = ?e, "symlink_metadata failed");
             format!("Path does not exist or unreadable: {e}")
         })?;
     }
-    if forbid_root && pb.parent().is_none() {
+    if forbid_root && pb.is_absolute() && pb.parent().is_none() {
         return Err("Refusing to operate on filesystem root".into());
     }
     Ok(normalize_verbatim(&pb))
@@ -104,10 +96,31 @@ pub fn unique_path(dest: &Path) -> PathBuf {
         if let Some(ext) = &ext {
             candidate.set_extension(ext);
         }
-        if !candidate.exists() {
-            return candidate;
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => {
+                drop(file);
+                let _ = std::fs::remove_file(&candidate);
+                return candidate;
+            }
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::AlreadyExists | io::ErrorKind::PermissionDenied
+                ) =>
+            {
+                idx += 1;
+                continue;
+            }
+            Err(_) if candidate.exists() => {
+                idx += 1;
+                continue;
+            }
+            Err(_) => return candidate,
         }
-        idx += 1;
     }
 }
 
@@ -144,19 +157,6 @@ fn is_network_path(_path: &Path) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn is_drive_path(path: &Path) -> bool {
-    matches!(
-        path.components().next(),
-        Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
-    )
-}
-
-#[cfg(not(target_os = "windows"))]
-fn is_drive_path(_path: &Path) -> bool {
-    false
-}
-
-#[cfg(target_os = "windows")]
 fn drive_letter(path: &Path) -> Option<u8> {
     match path.components().next() {
         Some(Component::Prefix(p)) => match p.kind() {
@@ -178,6 +178,9 @@ fn is_special_drive(_letter: Option<u8>) -> bool {
 }
 
 pub fn check_no_symlink_components(path: &Path) -> Result<(), String> {
+    if is_network_path(path) {
+        return Ok(());
+    }
     let mut acc = PathBuf::new();
     for comp in path.components() {
         match comp {

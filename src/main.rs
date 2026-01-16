@@ -90,7 +90,9 @@ fn main() {
             paste_clipboard_preview,
             search_stream,
             restore_trash_items,
-            purge_trash_items
+            purge_trash_items,
+            create_folder,
+            compress_entries
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
