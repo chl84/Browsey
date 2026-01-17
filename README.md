@@ -1,6 +1,6 @@
 # Browsey
 
-A fast, cross-platform file explorer built with Tauri 2 (Rust backend) and a Svelte/TypeScript frontend. Heavy lifting such as directory traversal, sorting, search, and metadata happens natively in Rust; the frontend focuses on rendering, input, and interactions.
+Browsey is a minimalist, cross-platform file explorer built with Tauri 2 (Rust backend) and a Svelte/TypeScript frontend. The chrome stays light while Rust handles traversal, sorting, search, and metadata; the frontend focuses on rendering, input, and interactions.
 
 ## Status
 Early beta: core flows (browse, search, clipboard, trash, compress, open with, properties) are in place; expect rapid iteration and some rough edges.
