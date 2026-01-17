@@ -35,6 +35,8 @@
     scrollbar-width: none;
     -ms-overflow-style: none;
     user-select: none;
+    transform: translateX(0);
+    transition: transform 500ms cubic-bezier(0.4, 0.0, 0.2, 1);
   }
 
   .sidebar::-webkit-scrollbar {
@@ -42,6 +44,7 @@
   }
 
   .sidebar.collapsed {
-    display: none;
+    transform: translateX(-110%);
+    pointer-events: none;
   }
 </style>

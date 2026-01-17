@@ -2,7 +2,7 @@ use std::{
     fs::{self, File},
     io::{self, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
-    time::SystemTime,
+    time::{SystemTime, UNIX_EPOCH},
     env,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -20,17 +20,21 @@ use crate::fs_utils::sanitize_path_nofollow;
 
 const CHUNK: usize = 4 * 1024 * 1024;
 const FILE_READ_BUF: usize = 256 * 1024;
-const PROGRESS_EMIT_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 struct EntryMeta {
     path: PathBuf,
     rel_path: PathBuf,
-    is_dir: bool,
-    is_symlink: bool,
+    kind: EntryKind,
     mode: Option<u32>,
     modified: Option<ZipDateTime>,
-    symlink_target: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+enum EntryKind {
+    File { precompressed: bool },
+    Dir,
+    Symlink { target: PathBuf },
 }
 
 #[cfg(unix)]
@@ -55,6 +59,13 @@ fn system_time_to_zip_datetime(time: SystemTime) -> Option<ZipDateTime> {
         dt.second() as u8,
     )
     .ok()
+}
+
+fn current_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 fn ensure_same_parent(paths: &[PathBuf]) -> Result<PathBuf, String> {
@@ -98,10 +109,16 @@ fn safe_name(name: &str) -> Result<String, String> {
 
 fn destination_path(parent: &Path, name: &str, idx: usize) -> Result<PathBuf, String> {
     let mut base = safe_name(name)?;
-    if !base.to_lowercase().ends_with(".zip") {
+    let lower = base.to_lowercase();
+    let has_zip = lower.ends_with(".zip");
+    if !has_zip {
         base.push_str(".zip");
     }
-    let stem = base.trim_end_matches(".zip");
+    let stem = if has_zip {
+        base[..base.len() - 4].to_string()
+    } else {
+        base.trim_end_matches(".zip").to_string()
+    };
     let suffix = if idx == 0 {
         String::new()
     } else {
@@ -119,28 +136,35 @@ fn add_path_to_zip(
     buf: &mut [u8],
 ) -> Result<(), String> {
     let mut rel_name = entry.rel_path.to_string_lossy().replace('\\', "/");
-    if entry.is_dir && !rel_name.ends_with('/') {
-        rel_name.push('/');
+    match &entry.kind {
+        EntryKind::Dir => {
+            if !rel_name.ends_with('/') {
+                rel_name.push('/');
+            }
+            let opts = with_entry_metadata(*stored_opts, entry);
+            zip.add_directory(rel_name, opts)
+                .map_err(|e| format!("Failed to add directory to zip: {e}"))?;
+        }
+        EntryKind::Symlink { target } => {
+            if rel_name.ends_with('/') {
+                rel_name.pop();
+            }
+            let target = target.to_string_lossy().replace('\\', "/");
+            let opts = with_entry_metadata(*stored_opts, entry);
+            zip.add_symlink(rel_name, target, opts)
+                .map_err(|e| format!("Failed to add symlink to zip: {e}"))?;
+        }
+        EntryKind::File { precompressed } => {
+            let base_opts = if *precompressed { *stored_opts } else { *deflated_opts };
+            let opts = with_entry_metadata(base_opts, entry);
+            zip.start_file(rel_name, opts)
+                .map_err(|e| format!("Failed to start zip entry: {e}"))?;
+            let file = File::open(&entry.path).map_err(|e| format!("Failed to open file: {e}"))?;
+            let mut reader = BufReader::with_capacity(FILE_READ_BUF, file);
+            copy_with_progress(&mut reader, zip, progress, buf)
+                .map_err(|e| format!("Failed to write file to zip: {e}"))?;
+        }
     }
-
-    let base_opts = if entry.is_dir || !is_precompressed(&entry.path) {
-        *deflated_opts
-    } else {
-        *stored_opts
-    };
-    let opts = with_entry_metadata(base_opts, entry);
-
-    if entry.is_dir {
-        zip.add_directory(rel_name, opts)
-            .map_err(|e| format!("Failed to add directory to zip: {e}"))?;
-        return Ok(());
-    }
-    zip.start_file(rel_name, opts)
-        .map_err(|e| format!("Failed to start zip entry: {e}"))?;
-    let file = File::open(&entry.path).map_err(|e| format!("Failed to open file: {e}"))?;
-    let mut reader = BufReader::with_capacity(FILE_READ_BUF, file);
-    copy_with_progress(&mut reader, zip, progress, buf)
-        .map_err(|e| format!("Failed to write file to zip: {e}"))?;
     Ok(())
 }
 
@@ -205,31 +229,31 @@ fn collect_entries(base: &Path, input: &[PathBuf]) -> Result<(Vec<EntryMeta>, u6
             .map_err(|_| "Paths must share the same parent")?
             .to_path_buf();
         let file_type = meta.file_type();
-        let is_dir = file_type.is_dir();
-        let is_symlink = file_type.is_symlink();
         if file_type.is_file() {
             total_size = total_size.saturating_add(meta.len());
         }
 
         let modified = meta.modified().ok().and_then(system_time_to_zip_datetime);
         let mode = metadata_mode(&meta);
-        let symlink_target = if is_symlink {
-            Some(
-                fs::read_link(&p)
-                    .map_err(|e| format!("Failed to read symlink target for {}: {e}", p.display()))?,
-            )
+        let kind = if file_type.is_dir() {
+            EntryKind::Dir
+        } else if file_type.is_symlink() {
+            let target = fs::read_link(&p)
+                .map_err(|e| format!("Failed to read symlink target for {}: {e}", p.display()))?;
+            EntryKind::Symlink { target }
         } else {
-            None
+            let precompressed = is_precompressed(&p);
+            EntryKind::File {
+                precompressed,
+            }
         };
 
         out.push(EntryMeta {
             path: p,
             rel_path: rel,
-            is_dir,
-            is_symlink,
+            kind,
             mode,
             modified,
-            symlink_target,
         });
         Ok(())
     };
@@ -239,10 +263,9 @@ fn collect_entries(base: &Path, input: &[PathBuf]) -> Result<(Vec<EntryMeta>, u6
         if meta.is_dir() {
             for entry in WalkDir::new(path).follow_links(false) {
                 let entry = entry.map_err(|e| format!("Failed to read directory: {e}"))?;
-                let p = entry.into_path();
-                let meta = fs::symlink_metadata(&p)
+                let meta = fs::symlink_metadata(entry.path())
                     .map_err(|e| format!("Failed to read metadata: {e}"))?;
-                push_entry(p, meta)?;
+                push_entry(entry.into_path(), meta)?;
             }
         } else {
             push_entry(path.clone(), meta)?;
@@ -266,6 +289,7 @@ struct ProgressEmitter {
     total: u64,
     done: Arc<AtomicU64>,
     last_emit: Arc<AtomicU64>,
+    last_emit_time_ms: Arc<AtomicU64>,
 }
 
 impl ProgressEmitter {
@@ -276,18 +300,24 @@ impl ProgressEmitter {
             total,
             done: Arc::new(AtomicU64::new(0)),
             last_emit: Arc::new(AtomicU64::new(0)),
+            last_emit_time_ms: Arc::new(AtomicU64::new(0)),
         }
     }
 
     fn add(&self, delta: u64) {
         let done = self.done.fetch_add(delta, Ordering::Relaxed).saturating_add(delta);
         let last = self.last_emit.load(Ordering::Relaxed);
-        if done.saturating_sub(last) >= PROGRESS_EMIT_BYTES {
+        let now_ms = current_millis();
+        let last_time = self.last_emit_time_ms.load(Ordering::Relaxed);
+        if done != last && now_ms.saturating_sub(last_time) >= 1000 {
             if self
                 .last_emit
                 .compare_exchange(last, done, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
             {
+                let _ = self
+                    .last_emit_time_ms
+                    .compare_exchange(last_time, now_ms, Ordering::Relaxed, Ordering::Relaxed);
                 let _ = self.app.emit(
                     &self.event,
                     CompressProgressPayload {
@@ -303,6 +333,8 @@ impl ProgressEmitter {
     fn finish(&self) {
         let done = self.done.load(Ordering::Relaxed);
         self.last_emit.store(done, Ordering::Relaxed);
+        self.last_emit_time_ms
+            .store(current_millis(), Ordering::Relaxed);
         let _ = self.app.emit(
             &self.event,
             CompressProgressPayload {
@@ -389,32 +421,18 @@ fn do_compress(
         .compression_method(CompressionMethod::Stored)
         .compression_level(Some(0));
 
+    let mut entries = entries;
+    entries.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
+
     for entry in &entries {
-        if entry.is_symlink {
-            let mut rel_name = entry.rel_path.to_string_lossy().replace('\\', "/");
-            if rel_name.ends_with('/') {
-                rel_name.pop();
-            }
-            let target = entry
-                .symlink_target
-                .as_ref()
-                .ok_or_else(|| "Missing symlink target".to_string())?
-                .to_string_lossy()
-                .replace('\\', "/");
-            let opts = with_entry_metadata(stored_opts, entry);
-            writer
-                .add_symlink(rel_name, target, opts)
-                .map_err(|e| format!("Failed to add symlink to zip: {e}"))?;
-        } else {
-            add_path_to_zip(
-                &mut writer,
-                entry,
-                &deflated_opts,
-                &stored_opts,
-                progress.as_ref(),
-                &mut buf,
-            )?;
-        }
+        add_path_to_zip(
+            &mut writer,
+            entry,
+            &deflated_opts,
+            &stored_opts,
+            progress.as_ref(),
+            &mut buf,
+        )?;
     }
 
     writer

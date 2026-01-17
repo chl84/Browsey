@@ -11,6 +11,10 @@
   let inputEl: HTMLInputElement | null = null
   let selectedThisOpen = false
   let overlayPointerDown = false
+  const confirmAndClose = () => {
+    onConfirm(value, Number(level))
+    onCancel()
+  }
 
   $: {
     if (!open) {
@@ -74,7 +78,7 @@
           on:keydown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
-              onConfirm(value, level)
+              confirmAndClose()
             } else if (e.key === 'Escape') {
               e.preventDefault()
               onCancel()
@@ -89,7 +93,7 @@
       </label>
       <div class="actions">
         <button type="button" class="secondary" on:click={onCancel}>Cancel</button>
-        <button type="button" on:click={() => onConfirm(value, Number(level))}>Create</button>
+        <button type="button" on:click={confirmAndClose}>Create</button>
       </div>
     </div>
   </div>

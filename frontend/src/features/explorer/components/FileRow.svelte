@@ -241,22 +241,6 @@
     color: #f6d04d;
   }
 
-  .star-btn.starred .star-glyph {
-    animation: star-spin 1000ms linear;
-  }
-
-  @keyframes star-spin {
-    from {
-      transform: rotate(0deg) scale(0.9);
-    }
-    50% {
-      transform: rotate(180deg) scale(1.1);
-    }
-    to {
-      transform: rotate(360deg) scale(1);
-    }
-  }
-
   .icon {
     width: 20px;
     height: 20px;
