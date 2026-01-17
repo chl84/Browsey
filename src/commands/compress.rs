@@ -411,6 +411,9 @@ fn do_compress(
     let mut writer = ZipWriter::new(BufWriter::with_capacity(CHUNK, file));
 
     let (entries, total_size) = collect_entries(&parent, &resolved)?;
+    if entries.is_empty() {
+        return Err("Nothing to compress".into());
+    }
     let progress = progress_event.map(|evt| ProgressEmitter::new(app, evt, total_size));
     let mut buf = vec![0u8; CHUNK];
 
@@ -425,9 +428,12 @@ fn do_compress(
 
     let stored_opts = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Stored)
-        .compression_level(Some(0));
+        .compression_level(None);
 
     let mut entries = entries;
+    if entries.is_empty() {
+        return Err("Nothing to compress".into());
+    }
     entries.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
 
     for entry in &entries {
