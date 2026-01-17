@@ -23,7 +23,7 @@
   import './features/explorer/ExplorerLayout.css'
 
   type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
-  type ExtractProgressPayload = { bytes: number; total: number; finished?: boolean }
+  type ProgressPayload = { bytes: number; total: number; finished?: boolean }
   let sidebarCollapsed = false
   let pathInput = ''
   let mode: 'address' | 'filter' | 'search' = 'address'
@@ -84,8 +84,9 @@
   let renameError = ''
   let lastLocation = ''
   let extracting = false
-  let extractActivity: { label: string; percent: number | null } | null = null
-  let extractEventUnlisten: UnlistenFn | null = null
+  let compressing = false
+  let activity: { label: string; percent: number | null } | null = null
+  let activityUnlisten: UnlistenFn | null = null
 
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
@@ -111,10 +112,25 @@
     },
   })
 
-  const cleanupExtractListener = async () => {
-    if (extractEventUnlisten) {
-      await extractEventUnlisten()
-      extractEventUnlisten = null
+  const startActivityListener = async (label: string, eventName: string) => {
+    await cleanupActivityListener()
+    activity = { label, percent: 0 }
+    activityUnlisten = await listen<ProgressPayload>(eventName, (event) => {
+      const payload = event.payload
+      const pct =
+        payload.total > 0 ? Math.min(100, Math.round((payload.bytes / payload.total) * 100)) : null
+      if (payload.finished) {
+        activity = { label: 'Finalizing…', percent: pct ?? null }
+      } else {
+        activity = { label, percent: pct }
+      }
+    })
+  }
+
+  const cleanupActivityListener = async () => {
+    if (activityUnlisten) {
+      await activityUnlisten()
+      activityUnlisten = null
     }
   }
 
@@ -779,18 +795,8 @@
     if (extracting) return
     extracting = true
     const progressEvent = `extract-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    extractActivity = { label: 'Extracting…', percent: 0 }
+    await startActivityListener('Extracting…', progressEvent)
     try {
-      extractEventUnlisten = await listen<ExtractProgressPayload>(progressEvent, (event) => {
-        const payload = event.payload
-        const pct =
-          payload.total > 0 ? Math.min(100, Math.round((payload.bytes / payload.total) * 100)) : null
-        if (payload.finished) {
-          extractActivity = { label: 'Finalizing…', percent: pct ?? null }
-        } else {
-          extractActivity = { label: 'Extracting…', percent: pct }
-        }
-      })
       const result = await invoke<ExtractResult>('extract_archive', {
         path: entry.path,
         progressEvent,
@@ -812,8 +818,8 @@
       showToast(`Failed to extract: ${msg}`)
     } finally {
       extracting = false
-      extractActivity = null
-      await cleanupExtractListener()
+      activity = null
+      await cleanupActivityListener()
     }
   }
 
@@ -1101,15 +1107,29 @@
       closeCompress()
       return
     }
+    if (compressing) return
+    compressing = true
     const lvl = Math.min(Math.max(Math.round(level), 0), 9)
     const paths = compressTargets.map((e) => e.path)
     const base = get(current)
+    const progressEvent = `compress-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
-      await invoke('compress_entries', { paths, name, level: lvl })
+      await startActivityListener('Compressing…', progressEvent)
+      const dest = await invoke<string>('compress_entries', {
+        paths,
+        name,
+        level: lvl,
+        progressEvent,
+      })
       await load(base, { recordHistory: false })
       closeCompress()
+      showToast(`Created ${dest}`)
     } catch (err) {
       compressError = err instanceof Error ? err.message : String(err)
+    } finally {
+      compressing = false
+      activity = null
+      await cleanupActivityListener()
     }
   }
 
@@ -1297,7 +1317,7 @@
   onPartitionSelect={(path) => void load(path)}
   searchMode={$searchMode}
   loading={$loading}
-  activity={extractActivity}
+  activity={activity}
   onFocus={handleInputFocus}
   onBlur={handleInputBlur}
   onSubmitPath={submitPath}
