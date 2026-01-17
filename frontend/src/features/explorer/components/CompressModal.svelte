@@ -68,6 +68,7 @@
       <label class="field">
         <span>Archive name</span>
         <input
+          type="text"
           bind:this={inputEl}
           bind:value={value}
           on:keydown={(e) => {

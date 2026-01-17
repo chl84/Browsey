@@ -23,6 +23,7 @@ use crate::fs_utils::{
 use tauri::Emitter;
 
 const CHUNK: usize = 4 * 1024 * 1024;
+const PROGRESS_EMIT_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy)]
 enum ArchiveKind {
@@ -76,6 +77,7 @@ struct ProgressEmitter {
     event: String,
     total: u64,
     done: Arc<AtomicU64>,
+    last_emit: Arc<AtomicU64>,
 }
 
 impl ProgressEmitter {
@@ -85,23 +87,34 @@ impl ProgressEmitter {
             event,
             total,
             done: Arc::new(AtomicU64::new(0)),
+            last_emit: Arc::new(AtomicU64::new(0)),
         }
     }
 
     fn add(&self, delta: u64) {
         let done = self.done.fetch_add(delta, Ordering::Relaxed).saturating_add(delta);
-        let _ = self.app.emit(
-            &self.event,
-            ExtractProgressPayload {
-                bytes: done,
-                total: self.total,
-                finished: false,
-            },
-        );
+        let last = self.last_emit.load(Ordering::Relaxed);
+        if done.saturating_sub(last) >= PROGRESS_EMIT_BYTES {
+            if self
+                .last_emit
+                .compare_exchange(last, done, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                let _ = self.app.emit(
+                    &self.event,
+                    ExtractProgressPayload {
+                        bytes: done,
+                        total: self.total,
+                        finished: false,
+                    },
+                );
+            }
+        }
     }
 
     fn finish(&self) {
         let done = self.done.load(Ordering::Relaxed);
+        self.last_emit.store(done, Ordering::Relaxed);
         let _ = self.app.emit(
             &self.event,
             ExtractProgressPayload {
@@ -161,7 +174,10 @@ fn do_extract(
         ArchiveKind::Tar => {
             let dest_dir = prepare_output_dir(parent, &archive_path)?;
             extract_tar(
-                File::open(&archive_path).map_err(map_io("open tar"))?,
+                BufReader::with_capacity(
+                    CHUNK,
+                    File::open(&archive_path).map_err(map_io("open tar"))?,
+                ),
                 &dest_dir,
                 &stats,
                 progress.as_ref(),
@@ -170,28 +186,39 @@ fn do_extract(
         }
         ArchiveKind::TarGz => {
             let dest_dir = prepare_output_dir(parent, &archive_path)?;
-            let reader = GzDecoder::new(File::open(&archive_path).map_err(map_io("open tar.gz"))?);
+            let reader = GzDecoder::new(BufReader::with_capacity(
+                CHUNK,
+                File::open(&archive_path).map_err(map_io("open tar.gz"))?,
+            ));
             extract_tar(reader, &dest_dir, &stats, progress.as_ref())?;
             dest_dir
         }
         ArchiveKind::TarBz2 => {
             let dest_dir = prepare_output_dir(parent, &archive_path)?;
-            let reader = BzDecoder::new(File::open(&archive_path).map_err(map_io("open tar.bz2"))?);
+            let reader = BzDecoder::new(BufReader::with_capacity(
+                CHUNK,
+                File::open(&archive_path).map_err(map_io("open tar.bz2"))?,
+            ));
             extract_tar(reader, &dest_dir, &stats, progress.as_ref())?;
             dest_dir
         }
         ArchiveKind::TarXz => {
             let dest_dir = prepare_output_dir(parent, &archive_path)?;
-            let reader = XzDecoder::new(File::open(&archive_path).map_err(map_io("open tar.xz"))?);
+            let reader = XzDecoder::new(BufReader::with_capacity(
+                CHUNK,
+                File::open(&archive_path).map_err(map_io("open tar.xz"))?,
+            ));
             extract_tar(reader, &dest_dir, &stats, progress.as_ref())?;
             dest_dir
         }
         ArchiveKind::TarZstd => {
             let dest_dir = prepare_output_dir(parent, &archive_path)?;
             let reader =
-                ZstdDecoder::new(File::open(&archive_path).map_err(map_io("open tar.zst"))?).map_err(|e| {
-                    format!("Failed to create zstd decoder: {e}")
-                })?;
+                ZstdDecoder::new(BufReader::with_capacity(
+                    CHUNK,
+                    File::open(&archive_path).map_err(map_io("open tar.zst"))?,
+                ))
+                .map_err(|e| format!("Failed to create zstd decoder: {e}"))?;
             extract_tar(reader, &dest_dir, &stats, progress.as_ref())?;
             dest_dir
         }
@@ -388,48 +415,43 @@ fn extract_zip(
             continue;
         }
         let dest_path = dest_dir.join(clean_rel);
-        if let Some(parent) = dest_path.parent() {
-            if parent.exists() && !parent.is_dir() {
-                stats.skip_unsupported(&raw_name, "parent exists as a file");
-                continue;
-            }
-        }
         if entry.is_dir() || raw_name.ends_with('/') {
-            if dest_path.exists() && dest_path.is_file() {
-                stats.skip_unsupported(&raw_name, "destination exists as a file");
-                continue;
+            if let Err(e) = fs::create_dir_all(&dest_path) {
+                stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
             }
-            fs::create_dir_all(&dest_path).map_err(map_io("create zip directory"))?;
             continue;
         }
-        let final_path = finalize_file_path(dest_path);
-        if let Some(parent) = final_path.parent() {
-            fs::create_dir_all(parent).map_err(map_io("create zip parent"))?;
+        if let Some(parent) = dest_path.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
+                continue;
+            }
         }
-        let size_hint = entry.size();
-        work.push((i, final_path, raw_name, size_hint));
+        work.push((i, dest_path, raw_name));
     }
     drop(archive);
 
     let arc_path = path.to_path_buf();
-    work.par_iter().try_for_each(|(idx, dest_path, raw_name, _size)| -> Result<(), String> {
-        let mut archive = ZipArchive::new(File::open(&arc_path).map_err(map_io("open zip chunk"))?)
-            .map_err(|e| format!("Failed to read zip: {e}"))?;
-        let mut entry = archive
-            .by_index(*idx)
-            .map_err(|e| format!("Failed to read zip entry {}: {e}", idx))?;
-        let file = File::options()
-            .write(true)
-            .create_new(true)
-            .open(dest_path)
-            .map_err(map_io("create zip file"))?;
-        let mut out = BufWriter::with_capacity(CHUNK, file);
-        if let Err(e) = copy_with_progress(&mut entry, &mut out, progress) {
-            let msg = format!("Failed to write zip entry {raw_name}: {e}");
-            return Err(msg);
-        }
-        Ok(())
-    })?;
+    work.par_iter().try_for_each_init(
+        || -> Result<(ZipArchive<File>, Vec<u8>), String> {
+            let archive = ZipArchive::new(File::open(&arc_path).map_err(map_io("open zip chunk"))?)
+                .map_err(|e| format!("Failed to read zip: {e}"))?;
+            Ok((archive, vec![0u8; CHUNK]))
+        },
+        |state, (idx, dest_path, raw_name)| -> Result<(), String> {
+            let (archive, buf) = state.as_mut().map_err(|e| e.clone())?;
+            let mut entry = archive
+                .by_index(*idx)
+                .map_err(|e| format!("Failed to read zip entry {}: {e}", idx))?;
+            let (file, _) = open_unique_file(dest_path)?;
+            let mut out = BufWriter::with_capacity(CHUNK, file);
+            if let Err(e) = copy_with_progress(&mut entry, &mut out, progress, buf) {
+                let msg = format!("Failed to write zip entry {raw_name}: {e}");
+                return Err(msg);
+            }
+            Ok(())
+        },
+    )?;
 
     Ok(())
 }
@@ -441,6 +463,7 @@ fn extract_tar<R: Read>(
     progress: Option<&ProgressEmitter>,
 ) -> Result<(), String> {
     let mut archive = Archive::new(reader);
+    let mut buf = vec![0u8; CHUNK];
     for entry_result in archive.entries().map_err(|e| format!("Failed to iterate tar: {e}"))? {
         let mut entry = entry_result.map_err(|e| format!("Failed to read tar entry: {e}"))?;
         let entry_type = entry.header().entry_type();
@@ -470,32 +493,22 @@ fn extract_tar<R: Read>(
         }
 
         let dest_path = dest_dir.join(clean_rel);
-        if let Some(parent) = dest_path.parent() {
-            if parent.exists() && !parent.is_dir() {
-                stats.skip_unsupported(&raw_str, "parent exists as a file");
-                continue;
-            }
-        }
         if entry_type.is_dir() {
-            if dest_path.exists() && dest_path.is_file() {
-                stats.skip_unsupported(&raw_str, "destination exists as a file");
-                continue;
+            if let Err(e) = fs::create_dir_all(&dest_path) {
+                stats.skip_unsupported(&raw_str, &format!("create dir failed: {e}"));
             }
-            fs::create_dir_all(&dest_path).map_err(map_io("create tar dir"))?;
             continue;
         }
 
-        let final_path = finalize_file_path(dest_path);
-        if let Some(parent) = final_path.parent() {
-            fs::create_dir_all(parent).map_err(map_io("create tar parent"))?;
+        if let Some(parent) = dest_path.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                stats.skip_unsupported(&raw_str, &format!("create parent failed: {e}"));
+                continue;
+            }
         }
-        let file = File::options()
-            .write(true)
-            .create_new(true)
-            .open(&final_path)
-            .map_err(map_io("create tar file"))?;
+        let (file, _) = open_unique_file(&dest_path)?;
         let mut out = BufWriter::with_capacity(CHUNK, file);
-        copy_with_progress(&mut entry, &mut out, progress).map_err(map_io("write tar entry"))?;
+        copy_with_progress(&mut entry, &mut out, progress, &mut buf).map_err(map_io("write tar entry"))?;
     }
     Ok(())
 }
@@ -514,26 +527,16 @@ fn decompress_single<R: Read>(
     if dest_name.is_empty() {
         dest_name = "extracted".to_string();
     }
-    let dest_path = finalize_file_path(parent.join(dest_name));
+    let dest_path = parent.join(dest_name);
     if let Some(parent_dir) = dest_path.parent() {
         fs::create_dir_all(parent_dir).map_err(map_io("create output dir"))?;
     }
-    let file = File::options()
-        .write(true)
-        .create_new(true)
-        .open(&dest_path)
-        .map_err(map_io("create output file"))?;
+    let (file, dest_path) = open_unique_file(&dest_path)?;
     let mut out = BufWriter::with_capacity(CHUNK, file);
-    copy_with_progress(&mut reader, &mut out, progress).map_err(map_io("write decompressed file"))?;
+    let mut buf = vec![0u8; CHUNK];
+    copy_with_progress(&mut reader, &mut out, progress, &mut buf)
+        .map_err(map_io("write decompressed file"))?;
     Ok(dest_path)
-}
-
-fn finalize_file_path(dest_path: PathBuf) -> PathBuf {
-    if dest_path.exists() {
-        unique_path(&dest_path)
-    } else {
-        dest_path
-    }
 }
 
 fn clean_relative_path(path: &Path) -> Result<PathBuf, String> {
@@ -552,11 +555,11 @@ fn copy_with_progress<R: Read, W: Write>(
     mut reader: R,
     mut writer: W,
     progress: Option<&ProgressEmitter>,
+    buf: &mut [u8],
 ) -> io::Result<u64> {
-    let mut buf = vec![0u8; CHUNK];
     let mut written: u64 = 0;
     loop {
-        let n = reader.read(&mut buf)?;
+        let n = reader.read(buf)?;
         if n == 0 {
             break;
         }
@@ -567,4 +570,22 @@ fn copy_with_progress<R: Read, W: Write>(
         }
     }
     Ok(written)
+}
+
+fn open_unique_file(dest_path: &Path) -> Result<(File, PathBuf), String> {
+    let mut candidate = dest_path.to_path_buf();
+    loop {
+        match File::options()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(f) => return Ok((f, candidate)),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                candidate = unique_path(&candidate);
+                continue;
+            }
+            Err(e) => return Err(format!("Failed to create file {}: {e}", candidate.display())),
+        }
+    }
 }
