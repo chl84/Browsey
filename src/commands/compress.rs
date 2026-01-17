@@ -20,6 +20,7 @@ use crate::fs_utils::sanitize_path_nofollow;
 
 const CHUNK: usize = 4 * 1024 * 1024;
 const FILE_READ_BUF: usize = 256 * 1024;
+const ZIP64_LIMIT: u64 = 0xFFFF_FFFF;
 
 #[derive(Debug, Clone)]
 struct EntryMeta {
@@ -28,6 +29,7 @@ struct EntryMeta {
     kind: EntryKind,
     mode: Option<u32>,
     modified: Option<ZipDateTime>,
+    size: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -155,7 +157,10 @@ fn add_path_to_zip(
                 .map_err(|e| format!("Failed to add symlink to zip: {e}"))?;
         }
         EntryKind::File { precompressed } => {
-            let base_opts = if *precompressed { *stored_opts } else { *deflated_opts };
+            let mut base_opts = if *precompressed { *stored_opts } else { *deflated_opts };
+            if entry.size >= ZIP64_LIMIT {
+                base_opts = base_opts.large_file(true);
+            }
             let opts = with_entry_metadata(base_opts, entry);
             zip.start_file(rel_name, opts)
                 .map_err(|e| format!("Failed to start zip entry: {e}"))?;
@@ -254,6 +259,7 @@ fn collect_entries(base: &Path, input: &[PathBuf]) -> Result<(Vec<EntryMeta>, u6
             kind,
             mode,
             modified,
+            size: meta.len(),
         });
         Ok(())
     };
