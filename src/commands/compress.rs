@@ -224,7 +224,11 @@ fn is_precompressed(path: &Path) -> bool {
     }
 }
 
-fn collect_entries(base: &Path, input: &[PathBuf]) -> Result<(Vec<EntryMeta>, u64), String> {
+fn collect_entries(
+    base: &Path,
+    input: &[PathBuf],
+    store_precompressed: bool,
+) -> Result<(Vec<EntryMeta>, u64), String> {
     let mut out = Vec::new();
     let mut total_size = 0u64;
 
@@ -247,7 +251,7 @@ fn collect_entries(base: &Path, input: &[PathBuf]) -> Result<(Vec<EntryMeta>, u6
                 .map_err(|e| format!("Failed to read symlink target for {}: {e}", p.display()))?;
             EntryKind::Symlink { target }
         } else {
-            let precompressed = is_precompressed(&p);
+            let precompressed = store_precompressed && is_precompressed(&p);
             EntryKind::File {
                 precompressed,
             }
@@ -410,7 +414,8 @@ fn do_compress(
 
     let mut writer = ZipWriter::new(BufWriter::with_capacity(CHUNK, file));
 
-    let (entries, total_size) = collect_entries(&parent, &resolved)?;
+    let store_precompressed = lvl == 0;
+    let (entries, total_size) = collect_entries(&parent, &resolved, store_precompressed)?;
     if entries.is_empty() {
         return Err("Nothing to compress".into());
     }
@@ -422,9 +427,15 @@ fn do_compress(
     } else {
         CompressionMethod::Deflated
     };
+    let level_opt = if method == CompressionMethod::Stored {
+        None
+    } else {
+        Some(lvl as i64)
+    };
+
     let deflated_opts = SimpleFileOptions::default()
         .compression_method(method)
-        .compression_level(Some(lvl as i64));
+        .compression_level(level_opt);
 
     let stored_opts = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Stored)
