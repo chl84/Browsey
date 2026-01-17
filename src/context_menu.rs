@@ -103,11 +103,11 @@ pub fn context_menu_actions(
         return items;
     }
 
+    items.push(ContextAction::new("open-with", "Open with…"));
     if allow_new_folder {
         items.push(ContextAction::new("new-folder", "New Folder…"));
         items.push(ContextAction::new("divider-0", "---"));
     }
-    items.push(ContextAction::new("open-with", "Open with…"));
     items.push(ContextAction::new("copy-path", "Copy path"));
     items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
     items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));

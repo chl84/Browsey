@@ -15,6 +15,7 @@
   import CompressModal from './CompressModal.svelte'
   import type { Column, Entry, Partition, SortField } from '../types'
   import type { ContextAction } from '../hooks/useContextMenus'
+  import type { OpenWithApp, OpenWithChoice } from '../openWith'
 
   export let sidebarCollapsed = false
   export let places: { label: string; path: string }[] = []
@@ -134,6 +135,12 @@
 
   export let openWithOpen = false
   export let openWithEntry: Entry | null = null
+  export let openWithApps: OpenWithApp[] = []
+  export let openWithLoading = false
+  export let openWithError = ''
+  export let openWithBusy = false
+  export let onReloadOpenWith: () => void = () => {}
+  export let onConfirmOpenWith: (choice: OpenWithChoice) => void = () => {}
   export let onCloseOpenWith: () => void = () => {}
 
   export let propertiesOpen = false
@@ -282,7 +289,17 @@
   onConfirm={onConfirmNewFolder}
   onCancel={onCancelNewFolder}
 />
-<OpenWithModal open={openWithOpen} path={openWithEntry?.path ?? ''} onClose={onCloseOpenWith} />
+<OpenWithModal
+  open={openWithOpen}
+  path={openWithEntry?.path ?? ''}
+  apps={openWithApps}
+  loading={openWithLoading}
+  error={openWithError}
+  busy={openWithBusy}
+  onReload={onReloadOpenWith}
+  onConfirm={onConfirmOpenWith}
+  onClose={onCloseOpenWith}
+/>
 <PropertiesModal
   open={propertiesOpen}
   entry={propertiesEntry}

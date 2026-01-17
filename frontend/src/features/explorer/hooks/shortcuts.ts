@@ -17,6 +17,7 @@ type ShortcutArgs = {
   onRename?: () => Promise<boolean> | boolean
   onDelete?: (permanent: boolean) => Promise<boolean> | boolean
   onProperties?: () => Promise<boolean> | boolean
+  onOpenConsole?: () => Promise<boolean> | boolean
 }
 
 export const createGlobalShortcuts = ({
@@ -38,6 +39,7 @@ export const createGlobalShortcuts = ({
   onRename,
   onDelete,
   onProperties,
+  onOpenConsole,
 }: ShortcutArgs) => {
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
@@ -140,6 +142,16 @@ export const createGlobalShortcuts = ({
     if ((event.ctrlKey || event.metaKey) && key === 'p' && onProperties) {
       if (isEditableTarget(event.target)) return
       const handled = await onProperties()
+      if (handled) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      return
+    }
+
+    if ((event.ctrlKey || event.metaKey) && key === 't' && onOpenConsole) {
+      if (isEditableTarget(event.target)) return
+      const handled = await onOpenConsole()
       if (handled) {
         event.preventDefault()
         event.stopPropagation()

@@ -18,6 +18,13 @@
   import type { ContextAction } from './features/explorer/hooks/useContextMenus'
   import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
   import { createSelectionBox } from './features/explorer/hooks/selectionBox'
+  import {
+    fetchOpenWithApps,
+    openWithSelection,
+    defaultOpenWithApp,
+    type OpenWithApp,
+    type OpenWithChoice,
+  } from './features/explorer/openWith'
   import DragGhost from './ui/DragGhost.svelte'
   import ConflictModal from './ui/ConflictModal.svelte'
   import './features/explorer/ExplorerLayout.css'
@@ -69,6 +76,11 @@
   let newFolderError = ''
   let openWithOpen = false
   let openWithEntry: Entry | null = null
+  let openWithApps: OpenWithApp[] = []
+  let openWithLoading = false
+  let openWithError = ''
+  let openWithSubmitting = false
+  let openWithLoadId = 0
   let propertiesOpen = false
   let propertiesEntry: Entry | null = null
   let propertiesCount = 1
@@ -529,6 +541,16 @@
       void openPropertiesModal(selection)
       return true
     },
+    onOpenConsole: async () => {
+      if (currentView !== 'dir') return false
+      try {
+        await invoke('open_console', { path: get(current) })
+        return true
+      } catch (err) {
+        showToast(`Open console failed: ${err instanceof Error ? err.message : String(err)}`)
+        return false
+      }
+    },
   })
   const { handleGlobalKeydown } = shortcuts
 
@@ -540,7 +562,7 @@
       if (event.shiftKey && key === 'i') {
         return
       }
-      const allowed = new Set(['f', 'b', 'c', 'x', 'v', 'p', 'a'])
+      const allowed = new Set(['f', 'b', 'c', 'x', 'v', 'p', 'a', 't'])
       if (!allowed.has(key)) {
         event.preventDefault()
         event.stopPropagation()
@@ -741,6 +763,11 @@
     clipboard,
     showToast,
     openWith: (entry) => {
+      openWithApps = [defaultOpenWithApp]
+      openWithError = ''
+      openWithLoading = false
+      openWithSubmitting = false
+      openWithLoadId += 1
       openWithEntry = entry
       openWithOpen = true
     },
@@ -918,7 +945,10 @@
     selected.set(new Set())
     anchorIndex.set(null)
     caretIndex.set(null)
-    const actions: ContextAction[] = [{ id: 'new-folder', label: 'New Folder…' }]
+    const actions: ContextAction[] = [
+      { id: 'new-folder', label: 'New Folder…' },
+      { id: 'open-console', label: 'Open in console', shortcut: 'Ctrl+T' },
+    ]
     if (hasClipboardItems) {
       actions.push({ id: 'paste', label: 'Paste', shortcut: 'Ctrl+V' })
     }
@@ -932,6 +962,14 @@
       newFolderName = 'New folder'
       newFolderError = ''
       newFolderOpen = true
+      return
+    }
+    if (id === 'open-console') {
+      try {
+        await invoke('open_console', { path: get(current) })
+      } catch (err) {
+        showToast(`Open console failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
       return
     }
     if (id === 'paste') {
@@ -1094,9 +1132,68 @@
     }
   }
 
+  const loadOpenWithApps = async (targetPath?: string) => {
+    const path = targetPath ?? openWithEntry?.path
+    if (!path) return
+    const requestId = ++openWithLoadId
+    openWithLoading = true
+    openWithError = ''
+    try {
+      const list = await fetchOpenWithApps(path)
+      if (!openWithOpen || !openWithEntry || openWithEntry.path !== path || requestId !== openWithLoadId) {
+        return
+      }
+      openWithApps = [defaultOpenWithApp, ...list]
+    } catch (err) {
+      if (!openWithOpen || !openWithEntry || openWithEntry.path !== path || requestId !== openWithLoadId) {
+        return
+      }
+      openWithApps = [defaultOpenWithApp]
+      openWithError = err instanceof Error ? err.message : String(err)
+    } finally {
+      if (requestId === openWithLoadId) {
+        openWithLoading = false
+      }
+    }
+  }
+
+  $: if (openWithOpen && openWithEntry) {
+    void loadOpenWithApps(openWithEntry.path)
+  }
+
+  const handleOpenWithConfirm = async (choice: OpenWithChoice) => {
+    if (!openWithEntry || openWithSubmitting) return
+    const normalized: OpenWithChoice = {
+      appId: choice.appId ?? undefined,
+      customCommand: choice.customCommand?.trim() || undefined,
+      customArgs: choice.customArgs?.trim() || undefined,
+    }
+    const hasCustom = Boolean(normalized.customCommand)
+    const hasApp = Boolean(normalized.appId)
+    if (!hasCustom && !hasApp) {
+      openWithError = 'Pick an application or enter a command.'
+      return
+    }
+    openWithSubmitting = true
+    openWithError = ''
+    try {
+      await openWithSelection(openWithEntry.path, normalized)
+      showToast(`Opening ${openWithEntry.name}…`)
+      closeOpenWith()
+    } catch (err) {
+      openWithError = err instanceof Error ? err.message : String(err)
+    } finally {
+      openWithSubmitting = false
+    }
+  }
+
   const closeOpenWith = () => {
     openWithOpen = false
     openWithEntry = null
+    openWithApps = []
+    openWithError = ''
+    openWithLoading = false
+    openWithSubmitting = false
   }
 
   const closeCompress = () => {
@@ -1401,6 +1498,12 @@
   onCancelNewFolder={closeNewFolderModal}
   openWithOpen={openWithOpen}
   {openWithEntry}
+  openWithApps={openWithApps}
+  openWithLoading={openWithLoading}
+  openWithError={openWithError}
+  openWithBusy={openWithSubmitting}
+  onReloadOpenWith={() => void loadOpenWithApps(openWithEntry?.path)}
+  onConfirmOpenWith={handleOpenWithConfirm}
   onCloseOpenWith={closeOpenWith}
     propertiesOpen={propertiesOpen}
     {propertiesEntry}
