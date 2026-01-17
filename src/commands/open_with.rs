@@ -2,6 +2,7 @@ use crate::{db, fs_utils::sanitize_path_follow};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::thread;
 use tracing::{info, warn};
 
 #[derive(Debug, Serialize, Clone)]
@@ -100,9 +101,7 @@ fn launch_custom(target: &Path, command: &str, args: &str) -> Result<(), String>
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .args(parsed_args);
-    cmd.spawn()
-        .map(|_| ())
-        .map_err(|e| format!("Failed to launch {program}: {e}"))
+    spawn_detached(cmd).map_err(|e| format!("Failed to launch {program}: {e}"))
 }
 
 #[cfg(target_os = "linux")]
@@ -169,9 +168,19 @@ fn launch_desktop_entry(target: &Path, app_id: &str) -> Result<(), String> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .args(&args);
-    cmd.spawn()
-        .map(|_| ())
-        .map_err(|e| format!("Failed to launch {}: {e}", entry.name))
+    spawn_detached(cmd).map_err(|e| format!("Failed to launch {}: {e}", entry.name))
+}
+
+fn spawn_detached(mut cmd: Command) -> Result<(), String> {
+    match cmd.spawn() {
+        Ok(mut child) => {
+            thread::spawn(move || {
+                let _ = child.wait();
+            });
+            Ok(())
+        }
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 #[cfg(target_os = "linux")]
