@@ -26,7 +26,7 @@ echo "Checking for outdated crates..."
 cargo outdated --depth 1 || true
 
 echo "Upgrading Cargo.toml dependencies..."
-cargo upgrade --workspace
+cargo upgrade
 
 echo "Updating lockfile..."
 cargo update
