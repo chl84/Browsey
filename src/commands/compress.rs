@@ -1,13 +1,17 @@
 use std::{
     fs::{self, File},
-    io::BufWriter,
+    io::{self, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
 };
 
+use serde::Serialize;
+use tauri::Emitter;
 use walkdir::WalkDir;
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 use crate::fs_utils::{check_no_symlink_components, sanitize_path_follow};
+
+const CHUNK: usize = 4 * 1024 * 1024;
 
 fn ensure_same_parent(paths: &[PathBuf]) -> Result<PathBuf, String> {
     let mut parent: Option<PathBuf> = None;
@@ -56,6 +60,7 @@ fn add_path_to_zip(
     path: &Path,
     level: u32,
     options: FileOptions,
+    progress: Option<&ProgressEmitter>,
 ) -> Result<(), String> {
     let meta = fs::symlink_metadata(path).map_err(|e| format!("Failed to read metadata: {e}"))?;
     if meta.file_type().is_symlink() {
@@ -89,8 +94,10 @@ fn add_path_to_zip(
 
     zip.start_file(rel_name, opts)
         .map_err(|e| format!("Failed to start zip entry: {e}"))?;
-    let mut f = File::open(path).map_err(|e| format!("Failed to open file: {e}"))?;
-    std::io::copy(&mut f, zip).map_err(|e| format!("Failed to write file to zip: {e}"))?;
+    let file = File::open(path).map_err(|e| format!("Failed to open file: {e}"))?;
+    let mut reader = BufReader::with_capacity(CHUNK, file);
+    copy_with_progress(&mut reader, zip, progress)
+        .map_err(|e| format!("Failed to write file to zip: {e}"))?;
     Ok(())
 }
 
@@ -120,11 +127,79 @@ fn collect_paths(input: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
+#[derive(Serialize, Clone, Copy)]
+struct CompressProgressPayload {
+    bytes: u64,
+    total: u64,
+    finished: bool,
+}
+
+#[derive(Clone)]
+struct ProgressEmitter {
+    app: tauri::AppHandle,
+    event: String,
+    total: u64,
+    done: std::sync::Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl ProgressEmitter {
+    fn new(app: tauri::AppHandle, event: String, total: u64) -> Self {
+        Self {
+            app,
+            event,
+            total,
+            done: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        }
+    }
+
+    fn add(&self, delta: u64) {
+        let done = self
+            .done
+            .fetch_add(delta, std::sync::atomic::Ordering::Relaxed)
+            .saturating_add(delta);
+        let _ = self.app.emit(
+            &self.event,
+            CompressProgressPayload {
+                bytes: done,
+                total: self.total,
+                finished: false,
+            },
+        );
+    }
+
+    fn finish(&self) {
+        let done = self.done.load(std::sync::atomic::Ordering::Relaxed);
+        let _ = self.app.emit(
+            &self.event,
+            CompressProgressPayload {
+                bytes: done,
+                total: self.total,
+                finished: true,
+            },
+        );
+    }
+}
+
 #[tauri::command]
-pub fn compress_entries(
+pub async fn compress_entries(
+    app: tauri::AppHandle,
     paths: Vec<String>,
     name: Option<String>,
     level: Option<u32>,
+    progress_event: Option<String>,
+) -> Result<String, String> {
+    let task =
+        tauri::async_runtime::spawn_blocking(move || do_compress(app, paths, name, level, progress_event));
+    task.await
+        .map_err(|e| format!("Compression task failed: {e}"))?
+}
+
+fn do_compress(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+    name: Option<String>,
+    level: Option<u32>,
+    progress_event: Option<String>,
 ) -> Result<String, String> {
     if paths.is_empty() {
         return Err("Nothing to compress".into());
@@ -165,13 +240,51 @@ pub fn compress_entries(
     let opts = FileOptions::default();
 
     let all = collect_paths(&resolved)?;
+    let progress = progress_event.map(|evt| ProgressEmitter::new(app, evt, total_size_bytes(&all)));
     for path in all {
-        add_path_to_zip(&mut writer, &parent, &path, lvl, opts.clone())?;
+        add_path_to_zip(&mut writer, &parent, &path, lvl, opts.clone(), progress.as_ref())?;
     }
 
     writer
         .finish()
         .map_err(|e| format!("Failed to finalize zip: {e}"))?;
 
+    if let Some(p) = progress.as_ref() {
+        p.finish();
+    }
+
     Ok(dest.to_string_lossy().into_owned())
+}
+
+fn total_size_bytes(paths: &[PathBuf]) -> u64 {
+    let mut total = 0u64;
+    for p in paths {
+        if let Ok(meta) = fs::symlink_metadata(p) {
+            if meta.is_file() {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    total
+}
+
+fn copy_with_progress<R: Read, W: Write>(
+    mut reader: R,
+    mut writer: W,
+    mut progress: Option<&ProgressEmitter>,
+) -> io::Result<u64> {
+    let mut buf = vec![0u8; CHUNK];
+    let mut written = 0u64;
+    loop {
+        let n = reader.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        writer.write_all(&buf[..n])?;
+        written = written.saturating_add(n as u64);
+        if let Some(p) = progress.as_mut() {
+            p.add(n as u64);
+        }
+    }
+    Ok(written)
 }
