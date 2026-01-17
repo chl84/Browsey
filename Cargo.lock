@@ -161,6 +161,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "browsey"
+version = "0.2.0"
+dependencies = [
+ "bzip2",
+ "chrono",
+ "dirs-next",
+ "flate2",
+ "mime_guess",
+ "notify",
+ "once_cell",
+ "open",
+ "rayon",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "shell-words",
+ "sysinfo",
+ "tar",
+ "tauri",
+ "tauri-build",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "trash",
+ "walkdir",
+ "windows-sys 0.52.0",
+ "xz2",
+ "zip",
+ "zstd",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -786,38 +818,6 @@ dependencies = [
  "libc",
  "libredox",
  "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "filey"
-version = "0.2.0"
-dependencies = [
- "bzip2",
- "chrono",
- "dirs-next",
- "flate2",
- "mime_guess",
- "notify",
- "once_cell",
- "open",
- "rayon",
- "rusqlite",
- "serde",
- "serde_json",
- "shell-words",
- "sysinfo",
- "tar",
- "tauri",
- "tauri-build",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "trash",
- "walkdir",
- "windows-sys 0.52.0",
- "xz2",
- "zip",
- "zstd",
 ]
 
 [[package]]

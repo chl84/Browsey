@@ -1,7 +1,8 @@
 [package]
-name = "filey"
+name = "browsey"
 version = "0.2.0"
 edition = "2021"
+license = "MIT"
 
 [build-dependencies]
 tauri-build = { version = "2.5.3", features = [] }

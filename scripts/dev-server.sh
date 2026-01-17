@@ -4,4 +4,7 @@ set -euo pipefail
 # Tauri config already starts/stops the Vite dev server via beforeDevCommand.
 # This wrapper just runs Tauri dev without spawning an extra server.
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
 exec cargo tauri dev --no-dev-server
