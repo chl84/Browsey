@@ -1,4 +1,5 @@
 @echo off
 setlocal
-cd /d W:\Onedrive\rust\filey\frontend
+pushd "%~dp0\..\frontend"
 npm run build
+popd

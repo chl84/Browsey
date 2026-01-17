@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Standard capabilities for filey","local":true,"windows":["*"],"webviews":["*"],"permissions":["core:default","core:window:default","core:event:allow-listen","core:event:allow-emit"]}}
+{"default":{"identifier":"default","description":"Standard capabilities for Browsey","local":true,"windows":["*"],"webviews":["*"],"permissions":["core:default","core:window:default","core:event:allow-listen","core:event:allow-emit"]}}

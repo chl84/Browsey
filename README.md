@@ -1,6 +1,9 @@
-# filey
+# Browsey
 
 A fast, cross-platform file explorer built with Tauri 2 (Rust backend) and a Svelte/TypeScript frontend. Heavy lifting such as directory traversal, sorting, search, and metadata happens natively in Rust; the frontend focuses on rendering, input, and interactions.
+
+## Status
+Early beta: core flows (browse, search, clipboard, trash, compress, open with, properties) are in place; expect rapid iteration and some rough edges.
 
 ## Highlights
 - **Responsive lists**: Virtualized rows, smooth wheel coalescing, and cached metadata keep large folders responsive.
@@ -26,6 +29,11 @@ Windows:
 - WebView2 Runtime (built-in on Win11; otherwise install from Microsoft)
 - Visual Studio Build Tools (C++ workload) or full Visual Studio
 - Rust via `rustup`, Node LTS
+
+## Install
+- Fedora/RPM: download the latest `browsey-<version>-1.x86_64.rpm` from Releases and install with `sudo rpm -Uvh --replacepkgs browsey-<version>-1.x86_64.rpm`.
+- Windows: grab the NSIS installer from Releases and run it (bundled by `cargo tauri build --bundles nsis`).
+- From source: clone, run `npm --prefix frontend install`, then `cargo tauri dev --no-dev-server` (or `cargo tauri build` for a release bundle).
 
 ## Development
 1) Install system deps (above).
@@ -55,7 +63,7 @@ Rust release binary:
 ```bash
 cargo build --release
 ```
-Produces `target/release/filey`.
+Produces `target/release/browsey`.
 
 Tauri bundles:
 - Windows NSIS:

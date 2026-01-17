@@ -10,9 +10,9 @@ const MAX_RECENT: i64 = 50;
 fn db_path() -> Result<PathBuf, String> {
     let base = dirs_next::data_dir()
         .ok_or_else(|| "Could not resolve data directory".to_string())?
-        .join("filey");
+        .join("browsey");
     std::fs::create_dir_all(&base).map_err(|e| format!("Failed to create data dir: {e}"))?;
-    Ok(base.join("filey.db"))
+    Ok(base.join("browsey.db"))
 }
 
 fn ensure_schema(conn: &Connection) -> Result<(), String> {
