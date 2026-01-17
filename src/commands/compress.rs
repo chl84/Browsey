@@ -14,7 +14,7 @@ use chrono::{DateTime as ChronoDateTime, Datelike, Local, Timelike};
 use serde::Serialize;
 use tauri::Emitter;
 use walkdir::WalkDir;
-use zip::{write::FileOptions, CompressionMethod, DateTime as ZipDateTime, ZipWriter};
+use zip::{write::SimpleFileOptions, CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
 use crate::fs_utils::sanitize_path_nofollow;
 
@@ -132,8 +132,8 @@ fn destination_path(parent: &Path, name: &str, idx: usize) -> Result<PathBuf, St
 fn add_path_to_zip(
     zip: &mut ZipWriter<BufWriter<File>>,
     entry: &EntryMeta,
-    deflated_opts: &FileOptions,
-    stored_opts: &FileOptions,
+    deflated_opts: &SimpleFileOptions,
+    stored_opts: &SimpleFileOptions,
     progress: Option<&ProgressEmitter>,
     buf: &mut [u8],
 ) -> Result<(), String> {
@@ -173,7 +173,7 @@ fn add_path_to_zip(
     Ok(())
 }
 
-fn with_entry_metadata(base: FileOptions, entry: &EntryMeta) -> FileOptions {
+fn with_entry_metadata(base: SimpleFileOptions, entry: &EntryMeta) -> SimpleFileOptions {
     let mut opts = base;
     if let Some(mode) = entry.mode {
         opts = opts.unix_permissions(mode);
@@ -419,11 +419,11 @@ fn do_compress(
     } else {
         CompressionMethod::Deflated
     };
-    let deflated_opts = FileOptions::default()
+    let deflated_opts = SimpleFileOptions::default()
         .compression_method(method)
-        .compression_level(Some(lvl as i32));
+        .compression_level(Some(lvl as i64));
 
-    let stored_opts = FileOptions::default()
+    let stored_opts = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Stored)
         .compression_level(Some(0));
 
