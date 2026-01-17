@@ -702,7 +702,10 @@
         view: currentView,
         clipboardHasItems: clipboardPaths.size > 0,
       })
-      openContextMenu(entry, actions, event.clientX, event.clientY)
+      const filtered = actions.filter((action) => action.id !== 'new-folder')
+      if (filtered.length > 0) {
+        openContextMenu(entry, filtered, event.clientX, event.clientY)
+      }
     } catch (err) {
       console.error('Failed to load context menu actions', err)
     }
@@ -1228,7 +1231,7 @@
           refreshTimer = setTimeout(() => {
             const latest = get(current)
             if (!latest || latest !== payload) return
-            void load(latest, { recordHistory: false })
+            void load(latest, { recordHistory: false, silent: true })
           }, 300)
         }
       })

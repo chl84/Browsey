@@ -2,6 +2,7 @@ use std::{
     fs::{self, File},
     io::{self, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
     sync::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc,
@@ -10,7 +11,6 @@ use std::{
 
 use bzip2::read::BzDecoder;
 use flate2::read::{GzDecoder, MultiGzDecoder};
-use rayon::prelude::*;
 use serde::Serialize;
 use tar::Archive;
 use xz2::read::XzDecoder;
@@ -23,8 +23,6 @@ use crate::fs_utils::{
 use tauri::Emitter;
 
 const CHUNK: usize = 4 * 1024 * 1024;
-const PROGRESS_EMIT_BYTES: u64 = 16 * 1024 * 1024;
-
 #[derive(Debug, Clone, Copy)]
 enum ArchiveKind {
     Zip,
@@ -78,6 +76,7 @@ struct ProgressEmitter {
     total: u64,
     done: Arc<AtomicU64>,
     last_emit: Arc<AtomicU64>,
+    last_emit_time_ms: Arc<AtomicU64>,
 }
 
 impl ProgressEmitter {
@@ -88,18 +87,24 @@ impl ProgressEmitter {
             total,
             done: Arc::new(AtomicU64::new(0)),
             last_emit: Arc::new(AtomicU64::new(0)),
+            last_emit_time_ms: Arc::new(AtomicU64::new(0)),
         }
     }
 
     fn add(&self, delta: u64) {
         let done = self.done.fetch_add(delta, Ordering::Relaxed).saturating_add(delta);
         let last = self.last_emit.load(Ordering::Relaxed);
-        if done.saturating_sub(last) >= PROGRESS_EMIT_BYTES {
+        let now_ms = current_millis();
+        let last_time = self.last_emit_time_ms.load(Ordering::Relaxed);
+        if done != last && now_ms.saturating_sub(last_time) >= 1000 {
             if self
                 .last_emit
                 .compare_exchange(last, done, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
             {
+                let _ = self
+                    .last_emit_time_ms
+                    .compare_exchange(last_time, now_ms, Ordering::Relaxed, Ordering::Relaxed);
                 let _ = self.app.emit(
                     &self.event,
                     ExtractProgressPayload {
@@ -115,6 +120,8 @@ impl ProgressEmitter {
     fn finish(&self) {
         let done = self.done.load(Ordering::Relaxed);
         self.last_emit.store(done, Ordering::Relaxed);
+        self.last_emit_time_ms
+            .store(current_millis(), Ordering::Relaxed);
         let _ = self.app.emit(
             &self.event,
             ExtractProgressPayload {
@@ -160,98 +167,89 @@ fn do_extract(
         .parent()
         .ok_or_else(|| "Cannot extract archive at filesystem root".to_string())?;
 
-    let total_hint = meta.len();
+    let kind = detect_archive(&archive_path)?;
+    let total_hint = match kind {
+        ArchiveKind::Zip => zip_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::Tar => tar_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::TarGz | ArchiveKind::TarBz2 | ArchiveKind::TarXz | ArchiveKind::TarZstd => 0,
+        _ => meta.len(),
+    };
     let progress = progress_event.map(|evt| ProgressEmitter::new(app, evt, total_hint));
 
-    let kind = detect_archive(&archive_path)?;
     let stats = SkipStats::default();
     let destination = match kind {
         ArchiveKind::Zip => {
-            let dest_dir = prepare_output_dir(parent, &archive_path)?;
+            let dest_dir = prepare_output_dir(parent)?;
             extract_zip(&archive_path, &dest_dir, &stats, progress.as_ref())?;
             dest_dir
         }
-        ArchiveKind::Tar => {
-            let dest_dir = prepare_output_dir(parent, &archive_path)?;
-            extract_tar(
-                BufReader::with_capacity(
-                    CHUNK,
-                    File::open(&archive_path).map_err(map_io("open tar"))?,
-                ),
-                &dest_dir,
-                &stats,
-                progress.as_ref(),
-            )?;
-            dest_dir
-        }
-        ArchiveKind::TarGz => {
-            let dest_dir = prepare_output_dir(parent, &archive_path)?;
-            let reader = GzDecoder::new(BufReader::with_capacity(
-                CHUNK,
-                File::open(&archive_path).map_err(map_io("open tar.gz"))?,
-            ));
-            extract_tar(reader, &dest_dir, &stats, progress.as_ref())?;
-            dest_dir
-        }
-        ArchiveKind::TarBz2 => {
-            let dest_dir = prepare_output_dir(parent, &archive_path)?;
-            let reader = BzDecoder::new(BufReader::with_capacity(
-                CHUNK,
-                File::open(&archive_path).map_err(map_io("open tar.bz2"))?,
-            ));
-            extract_tar(reader, &dest_dir, &stats, progress.as_ref())?;
-            dest_dir
-        }
-        ArchiveKind::TarXz => {
-            let dest_dir = prepare_output_dir(parent, &archive_path)?;
-            let reader = XzDecoder::new(BufReader::with_capacity(
-                CHUNK,
-                File::open(&archive_path).map_err(map_io("open tar.xz"))?,
-            ));
-            extract_tar(reader, &dest_dir, &stats, progress.as_ref())?;
-            dest_dir
-        }
-        ArchiveKind::TarZstd => {
-            let dest_dir = prepare_output_dir(parent, &archive_path)?;
-            let reader =
-                ZstdDecoder::new(BufReader::with_capacity(
-                    CHUNK,
-                    File::open(&archive_path).map_err(map_io("open tar.zst"))?,
-                ))
-                .map_err(|e| format!("Failed to create zstd decoder: {e}"))?;
-            extract_tar(reader, &dest_dir, &stats, progress.as_ref())?;
-            dest_dir
-        }
-        ArchiveKind::Gz => {
-            let reader = MultiGzDecoder::new(BufReader::with_capacity(
-                CHUNK,
-                File::open(&archive_path).map_err(map_io("open gz"))?,
-            ));
-            let dest = decompress_single(reader, &archive_path, parent, progress.as_ref())?;
-            dest
-        }
-        ArchiveKind::Bz2 => {
-            let reader = BzDecoder::new(BufReader::with_capacity(
-                CHUNK,
-                File::open(&archive_path).map_err(map_io("open bz2"))?,
-            ));
-            decompress_single(reader, &archive_path, parent, progress.as_ref())?
-        }
-        ArchiveKind::Xz => {
-            let reader = XzDecoder::new(BufReader::with_capacity(
-                CHUNK,
-                File::open(&archive_path).map_err(map_io("open xz"))?,
-            ));
-            decompress_single(reader, &archive_path, parent, progress.as_ref())?
-        }
-        ArchiveKind::Zstd => {
-            let reader = ZstdDecoder::new(BufReader::with_capacity(
-                CHUNK,
-                File::open(&archive_path).map_err(map_io("open zst"))?,
-            ))
-            .map_err(|e| format!("Failed to create zstd decoder: {e}"))?;
-            decompress_single(reader, &archive_path, parent, progress.as_ref())?
-        }
+        ArchiveKind::Tar => extract_tar_with_reader(
+            &archive_path,
+            parent,
+            &stats,
+            progress.as_ref(),
+            |reader| Ok(Box::new(reader) as Box<dyn Read>),
+        )?,
+        ArchiveKind::TarGz => extract_tar_with_reader(
+            &archive_path,
+            parent,
+            &stats,
+            progress.as_ref(),
+            |reader| Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::TarBz2 => extract_tar_with_reader(
+            &archive_path,
+            parent,
+            &stats,
+            progress.as_ref(),
+            |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::TarXz => extract_tar_with_reader(
+            &archive_path,
+            parent,
+            &stats,
+            progress.as_ref(),
+            |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::TarZstd => extract_tar_with_reader(
+            &archive_path,
+            parent,
+            &stats,
+            progress.as_ref(),
+            |reader| {
+                ZstdDecoder::new(reader)
+                    .map(|r| Box::new(r) as Box<dyn Read>)
+                    .map_err(|e| format!("Failed to create zstd decoder: {e}"))
+            },
+        )?,
+        ArchiveKind::Gz => decompress_single_with_reader(
+            &archive_path,
+            parent,
+            progress.as_ref(),
+            |reader| Ok(Box::new(MultiGzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::Bz2 => decompress_single_with_reader(
+            &archive_path,
+            parent,
+            progress.as_ref(),
+            |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::Xz => decompress_single_with_reader(
+            &archive_path,
+            parent,
+            progress.as_ref(),
+            |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::Zstd => decompress_single_with_reader(
+            &archive_path,
+            parent,
+            progress.as_ref(),
+            |reader| {
+                ZstdDecoder::new(reader)
+                    .map(|r| Box::new(r) as Box<dyn Read>)
+                    .map_err(|e| format!("Failed to create zstd decoder: {e}"))
+            },
+        )?,
     };
 
     if let Some(p) = progress.as_ref() {
@@ -275,32 +273,38 @@ fn detect_archive(path: &Path) -> Result<ArchiveKind, String> {
     let n = f.read(&mut buf).map_err(map_io("read archive header"))?;
     let magic = &buf[..n];
 
+    let name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default()
+        .to_lowercase();
+
     if magic.starts_with(b"PK\x03\x04") || magic.starts_with(b"PK\x05\x06") || magic.starts_with(b"PK\x07\x08") {
         return Ok(ArchiveKind::Zip);
     }
     if magic.starts_with(&[0x1F, 0x8B]) {
-        return Ok(if looks_like_tar(path) {
+        return Ok(if has_suffix(&name, &[".tar.gz", ".tgz"]) {
             ArchiveKind::TarGz
         } else {
             ArchiveKind::Gz
         });
     }
     if magic.starts_with(b"BZh") {
-        return Ok(if looks_like_tar(path) {
+        return Ok(if has_suffix(&name, &[".tar.bz2", ".tbz2"]) {
             ArchiveKind::TarBz2
         } else {
             ArchiveKind::Bz2
         });
     }
     if magic.starts_with(&[0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00]) {
-        return Ok(if looks_like_tar(path) {
+        return Ok(if has_suffix(&name, &[".tar.xz", ".txz"]) {
             ArchiveKind::TarXz
         } else {
             ArchiveKind::Xz
         });
     }
     if magic.starts_with(&[0x28, 0xB5, 0x2F, 0xFD]) {
-        return Ok(if looks_like_tar(path) {
+        return Ok(if has_suffix(&name, &[".tar.zst", ".tzst"]) {
             ArchiveKind::TarZstd
         } else {
             ArchiveKind::Zstd
@@ -310,51 +314,69 @@ fn detect_archive(path: &Path) -> Result<ArchiveKind, String> {
         return Ok(ArchiveKind::Tar);
     }
 
-    let name = path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or_default()
-        .to_lowercase();
+    for (suffixes, kind) in [
+        (&[".tar.gz", ".tgz"][..], ArchiveKind::TarGz),
+        (&[".tar.bz2", ".tbz2"][..], ArchiveKind::TarBz2),
+        (&[".tar.xz", ".txz"][..], ArchiveKind::TarXz),
+        (&[".tar.zst", ".tzst"][..], ArchiveKind::TarZstd),
+        (&[".tar"][..], ArchiveKind::Tar),
+        (&[".zip"][..], ArchiveKind::Zip),
+        (&[".gz"][..], ArchiveKind::Gz),
+        (&[".bz2"][..], ArchiveKind::Bz2),
+        (&[".xz"][..], ArchiveKind::Xz),
+        (&[".zst"][..], ArchiveKind::Zstd),
+    ] {
+        if has_suffix(&name, suffixes) {
+            return Ok(kind);
+        }
+    }
 
-    let guess = if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
-        Some(ArchiveKind::TarGz)
-    } else if name.ends_with(".tar.bz2") || name.ends_with(".tbz2") {
-        Some(ArchiveKind::TarBz2)
-    } else if name.ends_with(".tar.xz") || name.ends_with(".txz") {
-        Some(ArchiveKind::TarXz)
-    } else if name.ends_with(".tar.zst") || name.ends_with(".tzst") {
-        Some(ArchiveKind::TarZstd)
-    } else if name.ends_with(".tar") {
-        Some(ArchiveKind::Tar)
-    } else if name.ends_with(".zip") {
-        Some(ArchiveKind::Zip)
-    } else if name.ends_with(".gz") {
-        Some(ArchiveKind::Gz)
-    } else if name.ends_with(".bz2") {
-        Some(ArchiveKind::Bz2)
-    } else if name.ends_with(".xz") {
-        Some(ArchiveKind::Xz)
-    } else if name.ends_with(".zst") {
-        Some(ArchiveKind::Zstd)
-    } else {
-        None
-    };
-
-    guess.ok_or_else(|| "Unsupported archive format".to_string())
+    Err("Unsupported archive format".to_string())
 }
 
-fn looks_like_tar(path: &Path) -> bool {
-    let lower = path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or_default()
-        .to_lowercase();
-    lower.contains(".tar")
+fn has_suffix(name: &str, suffixes: &[&str]) -> bool {
+    suffixes.iter().any(|s| name.ends_with(s))
 }
 
-fn prepare_output_dir(parent: &Path, _archive: &Path) -> Result<PathBuf, String> {
+fn prepare_output_dir(parent: &Path) -> Result<PathBuf, String> {
     fs::create_dir_all(parent).map_err(map_io("ensure parent dir"))?;
     Ok(parent.to_path_buf())
+}
+
+fn open_buffered_file(path: &Path, action: &'static str) -> Result<BufReader<File>, String> {
+    let file = File::open(path).map_err(map_io(action))?;
+    Ok(BufReader::with_capacity(CHUNK, file))
+}
+
+fn extract_tar_with_reader<F>(
+    archive_path: &Path,
+    parent: &Path,
+    stats: &SkipStats,
+    progress: Option<&ProgressEmitter>,
+    wrap: F,
+) -> Result<PathBuf, String>
+where
+    F: FnOnce(BufReader<File>) -> Result<Box<dyn Read>, String>,
+{
+    let dest_dir = prepare_output_dir(parent)?;
+    let reader = open_buffered_file(archive_path, "open tar")?;
+    let reader = wrap(reader)?;
+    extract_tar(reader, &dest_dir, stats, progress)?;
+    Ok(dest_dir)
+}
+
+fn decompress_single_with_reader<F>(
+    archive_path: &Path,
+    parent: &Path,
+    progress: Option<&ProgressEmitter>,
+    wrap: F,
+) -> Result<PathBuf, String>
+where
+    F: FnOnce(BufReader<File>) -> Result<Box<dyn Read>, String>,
+{
+    let reader = open_buffered_file(archive_path, "open compressed file")?;
+    let reader = wrap(reader)?;
+    decompress_single(reader, archive_path, parent, progress)
 }
 
 fn strip_known_suffixes(name: &str) -> String {
@@ -382,9 +404,10 @@ fn extract_zip(
 ) -> Result<(), String> {
     let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip"))?)
         .map_err(|e| format!("Failed to read zip: {e}"))?;
-    let mut work = Vec::new();
+    let mut buf = vec![0u8; CHUNK];
+
     for i in 0..archive.len() {
-        let entry = archive
+        let mut entry = archive
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
         let raw_name = entry.name().to_string();
@@ -427,31 +450,13 @@ fn extract_zip(
                 continue;
             }
         }
-        work.push((i, dest_path, raw_name));
+        let (file, _) = open_unique_file(&dest_path)?;
+        let mut out = BufWriter::with_capacity(CHUNK, file);
+        if let Err(e) = copy_with_progress(&mut entry, &mut out, progress, &mut buf) {
+            let msg = format!("Failed to write zip entry {raw_name}: {e}");
+            return Err(msg);
+        }
     }
-    drop(archive);
-
-    let arc_path = path.to_path_buf();
-    work.par_iter().try_for_each_init(
-        || -> Result<(ZipArchive<File>, Vec<u8>), String> {
-            let archive = ZipArchive::new(File::open(&arc_path).map_err(map_io("open zip chunk"))?)
-                .map_err(|e| format!("Failed to read zip: {e}"))?;
-            Ok((archive, vec![0u8; CHUNK]))
-        },
-        |state, (idx, dest_path, raw_name)| -> Result<(), String> {
-            let (archive, buf) = state.as_mut().map_err(|e| e.clone())?;
-            let mut entry = archive
-                .by_index(*idx)
-                .map_err(|e| format!("Failed to read zip entry {}: {e}", idx))?;
-            let (file, _) = open_unique_file(dest_path)?;
-            let mut out = BufWriter::with_capacity(CHUNK, file);
-            if let Err(e) = copy_with_progress(&mut entry, &mut out, progress, buf) {
-                let msg = format!("Failed to write zip entry {raw_name}: {e}");
-                return Err(msg);
-            }
-            Ok(())
-        },
-    )?;
 
     Ok(())
 }
@@ -588,4 +593,47 @@ fn open_unique_file(dest_path: &Path) -> Result<(File, PathBuf), String> {
             Err(e) => return Err(format!("Failed to create file {}: {e}", candidate.display())),
         }
     }
+}
+
+fn current_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn zip_uncompressed_total(path: &Path) -> Result<u64, String> {
+    let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip for total"))?)
+        .map_err(|e| format!("Failed to read zip: {e}"))?;
+    let mut total = 0u64;
+    for i in 0..archive.len() {
+        let entry = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
+        if entry.is_dir() {
+            continue;
+        }
+        total = total.saturating_add(entry.size());
+    }
+    Ok(total)
+}
+
+fn tar_uncompressed_total(path: &Path) -> Result<u64, String> {
+    let file = File::open(path).map_err(map_io("open tar for total"))?;
+    let reader = BufReader::with_capacity(CHUNK, file);
+    let mut archive = Archive::new(reader);
+    let mut total = 0u64;
+    let entries = archive.entries().map_err(|e| format!("Failed to iterate tar for total: {e}"))?;
+    for entry_result in entries {
+        let entry = entry_result.map_err(|e| format!("Failed to read tar entry for total: {e}"))?;
+        let header = entry.header();
+        if header.entry_type().is_dir() {
+            continue;
+        }
+        let size = header
+            .size()
+            .map_err(|e| format!("Failed to read tar entry size: {e}"))?;
+        total = total.saturating_add(size);
+    }
+    Ok(total)
 }

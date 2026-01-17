@@ -73,9 +73,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     historyIndex.set(next.length - 1)
   }
 
-  const load = async (path?: string, opts: { recordHistory?: boolean } = {}) => {
-    const { recordHistory = true } = opts
-    loading.set(true)
+  const load = async (path?: string, opts: { recordHistory?: boolean; silent?: boolean } = {}) => {
+    const { recordHistory = true, silent = false } = opts
+    if (!silent) {
+      loading.set(true)
+    }
     error.set('')
     searchActive.set(false)
     try {
@@ -91,7 +93,9 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     } catch (err) {
       error.set(err instanceof Error ? err.message : String(err))
     } finally {
-      loading.set(false)
+      if (!silent) {
+        loading.set(false)
+      }
     }
   }
 
