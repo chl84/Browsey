@@ -34,7 +34,7 @@ Windows:
 - Rust via `rustup`, Node LTS
 
 ## Install
-- Fedora/RPM: download the latest `browsey-<version>-1.x86_64.rpm` from Releases and install with `sudo rpm -Uvh --replacepkgs browsey-<version>-1.x86_64.rpm`.
+- Fedora/RPM: download the latest `Browsey-<version>-1.x86_64.rpm` from Releases and install with `sudo rpm -Uvh --replacepkgs Browsey-<version>-1.x86_64.rpm`.
 - Windows: grab the NSIS installer from Releases and run it (bundled by `cargo tauri build --bundles nsis`).
 - From source: clone, run `npm --prefix frontend install`, then `cargo tauri dev --no-dev-server` (or `cargo tauri build` for a release bundle).
 
