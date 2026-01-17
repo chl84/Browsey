@@ -8,28 +8,28 @@ license = "MIT"
 tauri-build = { version = "2.5.3", features = [] }
 
 [dependencies]
-tauri = { version = "2.5.3", features = [] }
-serde = { version = "1.0", features = ["derive"] }
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
-dirs-next = "2"
-notify = "6"
-open = "5"
-rusqlite = { version = "0.31", features = ["bundled"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-tracing-appender = "0.2"
-once_cell = "1.20"
-serde_json = "1.0"
+tauri = { version = "2.9.5", features = [] }
+serde = { version = "1.0.228", features = ["derive"] }
+chrono = { version = "0.4.43", default-features = false, features = ["clock"] }
+dirs-next = "2.0.0"
+notify = "8.2.0"
+open = "5.3.3"
+rusqlite = { version = "0.38.0", features = ["bundled"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["fmt", "env-filter"] }
+tracing-appender = "0.2.4"
+once_cell = "1.21.3"
+serde_json = "1.0.149"
 sysinfo = "0.37.2"
 trash = "5.2.5"
-mime_guess = "2.0"
-shell-words = "1.1"
-windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_NetworkManagement_WNet"] }
-walkdir = "2.4"
-zip = { version = "0.6", default-features = false, features = ["deflate"] }
-tar = "0.4"
-flate2 = { version = "1.0", default-features = false, features = ["rust_backend"] }
-bzip2 = "0.4"
-xz2 = "0.1"
-zstd = "0.13"
-rayon = "1.10"
+mime_guess = "2.0.5"
+shell-words = "1.1.1"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_NetworkManagement_WNet"] }
+walkdir = "2.5.0"
+zip = { version = "7.1.0", default-features = false, features = ["deflate"] }
+tar = "0.4.44"
+flate2 = { version = "1.1.8", default-features = false, features = ["rust_backend"] }
+bzip2 = "0.6.1"
+xz2 = "0.1.7"
+zstd = "0.13.3"
+rayon = "1.11.0"
