@@ -5,7 +5,7 @@
   "identifier": "com.browsey",
   "build": {
     "beforeDevCommand": "bash -lc 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && ./scripts/start-vite.sh'",
-    "beforeBuildCommand": "npm --prefix frontend run build",
+    "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:5173/",
     "frontendDist": "dist"
   },
