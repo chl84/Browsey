@@ -16,6 +16,9 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 - **Cross-platform details**: Uses system WebView (WebKit on Linux, WebView2 on Windows). Network locations on Windows delete permanently (Explorer parity) because the recycle bin is unavailable there.
 - **UI polish**: Address bar shows breadcrumbs when unfocused and selects the full path on focus; renaming pre-selects the filename without its extension; browser default context menu and hotkeys are disabled (except Ctrl+Shift+I), while app shortcuts remain.
 
+## Screenshot
+![Browsey showing a Fedora workspace](resources/screenshot_browsey_fedora.png)
+
 ## Requirements
 Common:
 - Rust (stable) via `rustup`
@@ -81,6 +84,7 @@ Tauri bundles:
 - **Typing without focus**: Enters filter mode on the address bar; Esc exits.
 - **Search**: `Ctrl+F` (or `Cmd+F` on macOS keyboards) toggles search mode; Esc leaves search mode.
 - **Bookmarks**: `Ctrl+B` on a single folder opens the bookmark modal; remove via sidebar close icon.
+- **Open console**: `Ctrl+T` (`Cmd+T` on macOS keyboards) opens a terminal at the current directory when in a folder view.
 - **Selection**: `Ctrl+A` selects all. Click-drag draws a selection box.
 - **Clipboard**: `Ctrl+C`/`Ctrl+X` copy/cut; `Ctrl+V` paste. Pasting into the same directory auto-renames duplicates; other conflicts prompt overwrite vs auto-rename.
 - **Rename**: `F2` or context menu.
@@ -110,6 +114,9 @@ Tauri bundles:
 - Windows network paths delete permanently (recycle bin is unavailable there). Symlink copy/move is rejected.
 - Open with modal lists matching applications (fallbacks included), allows a custom command, uses the system default when chosen, and launches apps detached without console noise.
 - Drag/drop uses a custom ghost image; Tauri window drag/drop is disabled to allow HTML5 DnD on Windows.
+
+## Disclaimer
+Browsey performs file operations (copy, move, rename, compress, trash, delete). Use it at your own risk, keep backups of important data, and verify paths before destructive actions. The software is provided as-is without warranties; contributors are not liable for data loss or other damage.
 
 ## License
 MIT (see `LICENSE`).
