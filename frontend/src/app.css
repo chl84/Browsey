@@ -70,3 +70,277 @@ body {
 a {
   color: inherit;
 }
+
+/* Modal shared styles */
+.modal-overlay, .overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: grid;
+  place-items: center;
+  z-index: 30;
+}
+
+.modal {
+  width: min(var(--modal-width, 420px), 92vw);
+  max-height: 92vh;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal header {
+  font-weight: 700;
+  font-size: 16px;
+  margin: 0;
+}
+
+.modal .muted {
+  color: var(--fg-muted);
+  margin: 0;
+  font-size: 12px;
+}
+
+.modal .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal .field span,
+.modal .label {
+  font-weight: 600;
+}
+
+.modal input[type='text'],
+.modal input[type='search'],
+.modal input[type='range'],
+.modal input:not([type]) {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 8px;
+}
+
+.modal input[type='range'] {
+  width: 100%;
+  padding: 0;
+}
+
+.modal input:focus {
+  outline: 2px solid var(--border-accent);
+}
+
+.modal .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal button {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.modal button.secondary {
+  background: transparent;
+}
+
+.modal button.primary {
+  background: #1e88e5;
+  border-color: #1e88e5;
+  color: #fff;
+}
+
+.modal button.danger {
+  background: #3b1f21;
+  border-color: #7a2f36;
+  color: #ffb7b7;
+}
+
+.modal button:hover {
+  border-color: var(--border-accent);
+}
+
+.modal button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.modal .pill {
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-accent);
+  background: var(--bg-alt);
+  color: var(--fg);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.modal .pill.error {
+  border-color: #c0392b;
+  background: rgba(192, 57, 43, 0.15);
+  color: #fceaea;
+}
+
+/* Modal variants */
+.overlay.conflict-overlay {
+  z-index: 9998;
+}
+
+.overlay.danger-overlay {
+  z-index: 40;
+}
+
+.modal.conflict-modal {
+  min-width: 420px;
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.conflict-modal header {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.conflict-modal p {
+  margin: 0 0 10px;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+
+.conflict-modal .conflicts {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  max-height: 220px;
+  overflow: auto;
+  margin-bottom: 14px;
+  background: var(--bg-alt);
+}
+
+.conflict-modal .row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.conflict-modal .row:last-child {
+  border-bottom: none;
+}
+
+.conflict-modal .name {
+  font-weight: 600;
+}
+
+.conflict-modal .target {
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.modal.properties-modal {
+  width: min(440px, 90vw);
+  gap: 10px;
+}
+
+.properties-modal .row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.properties-modal .label {
+  color: var(--fg-muted);
+}
+
+.properties-modal .value {
+  color: var(--fg);
+}
+
+.properties-modal .value.break {
+  word-break: break-all;
+}
+
+.open-with-modal {
+  width: min(370px, 92vw);
+}
+
+.open-with-modal .small {
+  font-size: 12px;
+}
+
+.open-with-modal .block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.open-with-modal .apps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.open-with-modal .apps button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  text-align: left;
+}
+
+.open-with-modal .apps button:hover {
+  border-color: var(--border-accent);
+}
+
+.open-with-modal .apps button.selected {
+  border-color: var(--border-accent);
+  box-shadow: 0 0 0 1px var(--border-accent);
+}
+
+.open-with-modal .app-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.open-with-modal .app-name {
+  font-weight: 700;
+}
+
+.open-with-modal .pill.small {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.modal .path {
+  word-break: break-all;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  padding: 8px;
+  border-radius: 8px;
+  margin: 0;
+}

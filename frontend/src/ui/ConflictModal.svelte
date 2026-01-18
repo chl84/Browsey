@@ -8,7 +8,7 @@
 
 {#if open}
   <div
-    class="modal-backdrop"
+    class="overlay conflict-overlay"
     role="presentation"
     tabindex="-1"
     on:click={onCancel}
@@ -20,7 +20,7 @@
     }}
   >
     <div
-      class="modal"
+      class="modal conflict-modal"
       role="dialog"
       aria-modal="true"
       tabindex="0"
@@ -54,81 +54,5 @@
 {/if}
 
 <style>
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 9998;
-  }
-  .modal {
-    background: var(--bg);
-    color: var(--fg);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 18px;
-    min-width: 420px;
-    max-height: 70vh;
-    overflow: auto;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  }
-  h2 {
-    margin: 0 0 6px;
-    font-size: 18px;
-  }
-  p {
-    margin: 0 0 10px;
-    color: var(--fg-muted);
-    font-size: 14px;
-  }
-  .conflicts {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 8px;
-    max-height: 220px;
-    overflow: auto;
-    margin-bottom: 14px;
-    background: var(--bg-alt);
-  }
-  .row {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 6px 4px;
-    border-bottom: 1px solid var(--border);
-  }
-  .row:last-child {
-    border-bottom: none;
-  }
-  .name {
-    font-weight: 600;
-  }
-  .target {
-    color: var(--fg-muted);
-    font-size: 13px;
-  }
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-  }
-  button {
-    padding: 8px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--fg);
-    cursor: pointer;
-    font-weight: 700;
-  }
-  button.primary {
-    background: #1e88e5;
-    border-color: #1e88e5;
-    color: #fff;
-  }
-  button.secondary {
-    background: var(--bg-alt);
-  }
+  /* Styling is inherited from global modal rules in app.css */
 </style>
