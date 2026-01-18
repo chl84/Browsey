@@ -157,7 +157,7 @@
   }
 
   .row:focus-visible {
-    outline: 2px solid var(--border-accent);
+    outline: none;
   }
 
   .col-name {
