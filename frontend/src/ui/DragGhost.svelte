@@ -30,7 +30,7 @@
     pointer-events: none;
     z-index: 9999;
     padding: 8px 12px;
-    border-radius: 12px;
+    border-radius: 0;
     color: #fff;
     display: inline-flex;
     align-items: center;
@@ -49,7 +49,7 @@
   .dot {
     width: 10px;
     height: 10px;
-    border-radius: 999px;
+    border-radius: 0;
     background: rgba(255, 255, 255, 0.9);
   }
 

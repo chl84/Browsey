@@ -100,7 +100,7 @@
     background: var(--bg);
     border: 1px solid var(--border);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    border-radius: 8px;
+    border-radius: 0;
     display: flex;
     flex-direction: column;
     padding: 6px;
@@ -114,7 +114,7 @@
     border: 1px solid transparent;
     background: transparent;
     color: var(--fg);
-    border-radius: 6px;
+    border-radius: 0;
     font-size: 14px;
     cursor: pointer;
     display: flex;

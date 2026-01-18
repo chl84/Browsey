@@ -21,7 +21,7 @@
     border: 1px solid var(--border-accent);
     background: rgba(92, 148, 255, 0.12);
     pointer-events: none;
-    border-radius: 6px;
+    border-radius: 0;
     box-shadow: 0 0 0 1px rgba(92, 148, 255, 0.25);
   }
 </style>

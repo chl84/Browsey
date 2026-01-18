@@ -41,7 +41,7 @@ export const createDragDrop = () => {
     ghost.style.top = '-999px'
     ghost.style.left = '-999px'
     ghost.style.padding = '4px 8px'
-    ghost.style.borderRadius = '10px'
+    ghost.style.borderRadius = '0'
     ghost.style.background = 'rgba(25,118,210,0.9)'
     ghost.style.color = '#fff'
     ghost.style.fontSize = '12px'
@@ -53,7 +53,7 @@ export const createDragDrop = () => {
     const dot = document.createElement('span')
     dot.style.width = '8px'
     dot.style.height = '8px'
-    dot.style.borderRadius = '999px'
+    dot.style.borderRadius = '0'
     dot.style.background = 'rgba(255,255,255,0.9)'
     ghost.appendChild(dot)
     const label = document.createElement('span')

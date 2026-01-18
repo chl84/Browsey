@@ -176,7 +176,7 @@
   }
 
   .path-input:focus {
-    outline: 2px solid var(--border-accent);
+    outline: none;
     border-color: var(--border-accent-strong);
   }
 
@@ -191,14 +191,14 @@
     background: var(--bg-alt);
     border: 1px solid var(--border);
     padding: 6px 10px;
-    border-radius: 999px;
+    border-radius: 0;
     font-size: 12px;
   }
 
   .progress-bar {
     width: 80px;
     height: 6px;
-    border-radius: 999px;
+    border-radius: 0;
     background: var(--border);
     overflow: hidden;
   }
@@ -206,7 +206,7 @@
   .progress-fill {
     height: 100%;
     background: var(--border-accent);
-    border-radius: 999px;
+    border-radius: 0;
     transition: width 120ms ease;
   }
 
@@ -234,7 +234,7 @@
     background: transparent;
     color: var(--fg);
     padding: 6px 10px;
-    border-radius: 10px;
+    border-radius: 0;
     font-size: 13px;
     line-height: 1.2;
     transition: background 120ms ease;
@@ -260,7 +260,7 @@
     background: var(--bg-raised);
     color: var(--fg-pill);
     padding: 6px 10px;
-    border-radius: 999px;
+    border-radius: 0;
     font-size: 12px;
     font-weight: 600;
     border: 1px solid var(--border);

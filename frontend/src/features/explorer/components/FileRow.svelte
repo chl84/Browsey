@@ -118,7 +118,7 @@
     background: transparent;
     width: max-content;
     text-align: left;
-    border-radius: 10px;
+    border-radius: 0;
     box-shadow: none;
   }
 

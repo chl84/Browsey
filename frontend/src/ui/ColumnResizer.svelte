@@ -12,7 +12,7 @@
     cursor: col-resize;
     display: inline-block;
     margin-left: 2px;
-    border-radius: 4px;
+    border-radius: 0;
     transition: background 120ms ease;
     position: relative;
     z-index: 2;

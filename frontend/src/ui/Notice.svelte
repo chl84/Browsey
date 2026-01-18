@@ -15,7 +15,7 @@
     border: 1px solid var(--border);
     color: var(--fg);
     padding: 12px 14px;
-    border-radius: 12px;
+    border-radius: 0;
     font-weight: 600;
   }
 
