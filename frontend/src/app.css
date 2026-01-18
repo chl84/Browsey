@@ -14,7 +14,7 @@
   --fg-dim: #6b7280;
   --fg-pill: #cbd5e1;
 
-  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Noto Sans', 'Segoe UI', 'Helvetica Neue', system-ui, -apple-system, sans-serif;
   color: var(--fg);
   background: var(--bg);
   text-rendering: optimizeLegibility;
