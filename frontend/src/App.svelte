@@ -18,7 +18,7 @@
   import type { ContextAction } from './features/explorer/hooks/useContextMenus'
   import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
   import { createSelectionBox } from './features/explorer/hooks/selectionBox'
-  import { hitTestGrid } from './features/explorer/helpers/lassoHitTest'
+  import { hitTestGridVirtualized } from './features/explorer/helpers/lassoHitTest'
   import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
   import { moveCaret } from './features/explorer/helpers/navigationController'
   import {
@@ -1023,16 +1023,23 @@
     const gridEl = event.currentTarget as HTMLDivElement | null
     if (!gridEl) return
     if (target && target.closest('.card')) return
-    const list = get(filteredEntries)
-    if (list.length === 0) return
+    const gridEntries = get(filteredEntries)
+    if (gridEntries.length === 0) return
     event.preventDefault()
     selectionDrag = false
     selectionBox.start(event, {
       rowsEl: gridEl,
       headerEl: null,
-      entries: list,
+      entries: gridEntries,
       rowHeight: 1,
-      hitTest: (rect) => hitTestGrid(rect, gridEl),
+    hitTest: (rect) =>
+      hitTestGridVirtualized(rect, gridEntries, {
+        gridCols,
+        cardWidth: GRID_CARD_WIDTH,
+        cardHeight: GRID_ROW_HEIGHT,
+        gap: GRID_GAP,
+        padding: GRID_GAP,
+      }),
       onSelect: (paths) => {
         selected.set(paths)
         anchorIndex.set(null)

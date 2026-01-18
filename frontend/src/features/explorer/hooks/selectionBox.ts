@@ -114,6 +114,8 @@ export const createSelectionBox = () => {
 
     const boxY1 = Math.max(scrollY + headerHeight, y1)
     const boxY2 = Math.max(boxY1, y2)
+    const hitY1 = Math.max(headerHeight, y1)
+    const hitY2 = Math.max(hitY1, y2)
 
     rect.set({
       x: x1,
@@ -123,7 +125,12 @@ export const createSelectionBox = () => {
     })
 
     if (ctx.hitTest) {
-      const result = ctx.hitTest({ x: x1, y: boxY1, width: Math.max(0, x2 - x1), height: Math.max(0, boxY2 - boxY1) })
+      const result = ctx.hitTest({
+        x: x1,
+        y: hitY1,
+        width: Math.max(0, x2 - x1),
+        height: Math.max(0, hitY2 - hitY1),
+      })
       ctx.onSelect(result.paths, result.anchor, result.caret)
       return
     }

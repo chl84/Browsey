@@ -40,3 +40,47 @@ export const hitTestGrid = (rect: Rect, container: HTMLDivElement) => {
   }
   return { paths, anchor: null, caret: null }
 }
+
+type GridMetrics = {
+  gridCols: number
+  cardWidth: number
+  cardHeight: number
+  gap: number
+  padding: number
+}
+
+export const hitTestGridVirtualized = (rect: Rect, entries: { path: string }[], metrics: GridMetrics) => {
+  const { gridCols, cardWidth, cardHeight, gap, padding } = metrics
+  if (gridCols <= 0 || cardWidth <= 0 || cardHeight <= 0) {
+    return { paths: new Set<string>(), anchor: null, caret: null }
+  }
+  const x0 = Math.max(0, rect.x - padding)
+  // Juster y for scroll/oversettelse: rektangelet gis i viewport-koordinater,
+  // rader starter ved padding og transformeres ikke av translateY i hit-testen.
+  const y0 = Math.max(0, rect.y - padding)
+  const colStride = cardWidth + gap
+  const rowStride = cardHeight + gap
+  // Bruk gulv for start og tak for slutt slik at vi inkluderer nedre rad selv ved avrundingsfeil.
+  const startRow = Math.max(0, Math.floor(y0 / rowStride))
+  const endRow = Math.max(startRow, Math.ceil((y0 + rect.height) / rowStride) - 1)
+  const startCol = Math.max(0, Math.floor(x0 / colStride))
+  const endCol = Math.max(startCol, Math.ceil((x0 + rect.width) / colStride) - 1)
+
+  const paths = new Set<string>()
+  let anchor: number | null = null
+  let caret: number | null = null
+
+  for (let row = startRow; row <= endRow; row++) {
+    for (let col = startCol; col <= endCol; col++) {
+      if (col >= gridCols) continue
+      const idx = row * gridCols + col
+      const entry = entries[idx]
+      if (!entry || !entry.path) continue
+      paths.add(entry.path)
+      if (anchor === null) anchor = idx
+      caret = idx
+    }
+  }
+
+  return { paths, anchor, caret }
+}
