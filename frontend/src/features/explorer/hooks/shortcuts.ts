@@ -18,6 +18,7 @@ type ShortcutArgs = {
   onDelete?: (permanent: boolean) => Promise<boolean> | boolean
   onProperties?: () => Promise<boolean> | boolean
   onOpenConsole?: () => Promise<boolean> | boolean
+  onToggleView?: () => Promise<void> | void
 }
 
 export const createGlobalShortcuts = ({
@@ -40,6 +41,7 @@ export const createGlobalShortcuts = ({
   onDelete,
   onProperties,
   onOpenConsole,
+  onToggleView,
 }: ShortcutArgs) => {
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
@@ -156,6 +158,14 @@ export const createGlobalShortcuts = ({
         event.preventDefault()
         event.stopPropagation()
       }
+      return
+    }
+
+    if ((event.ctrlKey || event.metaKey) && key === 'g' && onToggleView) {
+      if (isEditableTarget(event.target)) return
+      await onToggleView()
+      event.preventDefault()
+      event.stopPropagation()
       return
     }
 

@@ -9,6 +9,7 @@ type Context = {
   headerEl: HTMLDivElement | null
   entries: Entry[]
   rowHeight: number
+  hitTest?: (rect: Rect) => { paths: Set<string>; anchor: number | null; caret: number | null }
   onSelect: (paths: Set<string>, anchor: number | null, caret: number | null) => void
   onEnd?: (didDrag: boolean) => void
 }
@@ -68,7 +69,7 @@ export const createSelectionBox = () => {
     const headerHeight = ctx.headerEl?.offsetHeight ?? 0
     const scrollY = ctx.rowsEl.scrollTop
     const scrollX = ctx.rowsEl.scrollLeft
-    const contentHeight = ctx.entries.length * ctx.rowHeight
+    const contentHeight = ctx.hitTest ? ctx.rowsEl.scrollHeight : ctx.entries.length * ctx.rowHeight
     const contentWidth = ctx.headerEl?.offsetWidth ?? ctx.rowsEl.scrollWidth
     const maxX = rowsRect.width
     const maxY = rowsRect.height
@@ -120,6 +121,12 @@ export const createSelectionBox = () => {
       width: Math.max(0, x2 - x1),
       height: Math.max(0, boxY2 - boxY1),
     })
+
+    if (ctx.hitTest) {
+      const result = ctx.hitTest({ x: x1, y: boxY1, width: Math.max(0, x2 - x1), height: Math.max(0, boxY2 - boxY1) })
+      ctx.onSelect(result.paths, result.anchor, result.caret)
+      return
+    }
 
     const intersectsX = Math.min(x1, x2) < contentWidth
     const yStartContent = y1 - headerHeight

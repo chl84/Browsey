@@ -1,6 +1,7 @@
 import { get, writable } from 'svelte/store'
 import { clampIndex, clearSelection, selectAllPaths, selectRange } from '../selection'
 import type { Entry } from '../types'
+import { applyClickSelection } from '../helpers/selectionController'
 
 export const rowHeight = 32
 const overscan = 8
@@ -120,34 +121,14 @@ export const createListState = () => {
 
   const handleRowClick = (filteredEntries: Entry[]) => (entry: Entry, absoluteIndex: number, event: MouseEvent) => {
     event.stopPropagation()
-    const isToggle = event.ctrlKey || event.metaKey
-    const isRange = event.shiftKey && get(anchorIndex) !== null
-
-    if (isRange && get(anchorIndex) !== null) {
-      const rangeSet = selectRange(filteredEntries, get(anchorIndex)!, absoluteIndex)
-      if (isToggle) {
-        const merged = new Set(get(selected))
-        rangeSet.forEach((p) => merged.add(p))
-        selected.set(merged)
-      } else {
-        selected.set(rangeSet)
-      }
-      caretIndex.set(absoluteIndex)
-    } else if (isToggle) {
-      const next = new Set(get(selected))
-      if (next.has(entry.path)) {
-        next.delete(entry.path)
-      } else {
-        next.add(entry.path)
-      }
-      selected.set(next)
-      anchorIndex.set(absoluteIndex)
-      caretIndex.set(absoluteIndex)
-    } else {
-      selected.set(new Set([entry.path]))
-      anchorIndex.set(absoluteIndex)
-      caretIndex.set(absoluteIndex)
-    }
+    const next = applyClickSelection(filteredEntries, absoluteIndex, event, {
+      selected: get(selected),
+      anchor: get(anchorIndex),
+      caret: get(caretIndex),
+    })
+    selected.set(next.selected)
+    anchorIndex.set(next.anchor)
+    caretIndex.set(next.caret)
   }
 
   const resetScrollPosition = () => {
