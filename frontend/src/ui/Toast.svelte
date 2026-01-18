@@ -14,7 +14,7 @@
     background: #1c2027;
     color: var(--fg);
     padding: 10px 14px;
-    border-radius: 8px;
+    border-radius: 0;
     border: 1px solid var(--border);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
     z-index: 30;

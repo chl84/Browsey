@@ -116,7 +116,7 @@
 
   .header-btn:focus-visible {
     outline: 2px solid var(--border-accent);
-    border-radius: 8px;
+    border-radius: 0;
     outline-offset: 2px;
   }
 

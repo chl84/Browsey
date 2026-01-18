@@ -33,7 +33,7 @@
 
   .nav {
     border: none;
-    border-radius: 10px;
+    border-radius: 0;
     padding: 5px 12px 5px 22px;
     background: transparent;
     color: var(--fg);
