@@ -8,7 +8,7 @@
   }
 </script>
 
-{#if active}
+{#if active && (rect.width > 0 || rect.height > 0)}
   <div
     class="selection-box"
     style={`left:${rect.x}px; top:${rect.y}px; width:${rect.width}px; height:${rect.height}px;`}

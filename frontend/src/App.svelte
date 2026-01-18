@@ -642,6 +642,14 @@
         closeBlankContextMenu()
         return
       }
+      if (inRows) {
+        event.preventDefault()
+        event.stopPropagation()
+        selected.set(new Set())
+        anchorIndex.set(null)
+        caretIndex.set(null)
+        return
+      }
       if (mode === 'filter') {
         event.preventDefault()
         event.stopPropagation()
@@ -653,9 +661,6 @@
         selected.set(new Set())
         anchorIndex.set(null)
         caretIndex.set(null)
-      }
-      if (rowsElRef && document.activeElement === rowsElRef) {
-        rowsElRef.blur()
       }
     }
     void handleGlobalKeydown(event)
