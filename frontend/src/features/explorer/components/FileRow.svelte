@@ -120,6 +120,8 @@
     text-align: left;
     border-radius: 0;
     box-shadow: none;
+    font-size: 14px;
+    font-weight: 300;
   }
 
   .row:hover {
@@ -162,15 +164,12 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    font-weight: 500;
     color: var(--fg-strong);
     overflow: hidden;
     min-width: 200px;
   }
 
   .name {
-    font-size: 14px;
-    font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -180,13 +179,12 @@
   .col-modified,
   .col-size {
     color: var(--fg-muted);
-    font-size: 13px;
     text-align: left;
     min-width: 100px;
   }
 
   .col-size {
-    font-weight: 600;
+    font-weight: 300;
     text-align: right;
     min-width: 60px;
   }
@@ -197,7 +195,6 @@
 
   .col-star {
     color: var(--fg-muted);
-    font-size: 13px;
     text-align: center;
     min-width: 25px;
     display: flex;
