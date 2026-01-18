@@ -3,6 +3,7 @@
   import Topbar from './Topbar.svelte'
   import Notice from '../../../ui/Notice.svelte'
   import FileList from './FileList.svelte'
+  import FileGrid from './FileGrid.svelte'
   import Statusbar from '../../../ui/Statusbar.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import DeleteConfirmModal from './DeleteConfirmModal.svelte'
@@ -31,6 +32,7 @@
   export let mode: 'address' | 'filter' | 'search' = 'address'
   export let searchMode = false
   export let loading = false
+  export let viewMode: 'list' | 'grid' = 'list'
   export let activity: { label: string; percent: number | null } | null = null
   export let onFocus: () => void = () => {}
   export let onBlur: () => void = () => {}
@@ -192,51 +194,85 @@
         <div class="pill">{mode === 'filter' ? 'Filtering' : 'Searching'}: "{filterValue}"</div>
       {/if}
 
-      <FileList
-        {cols}
-        {gridTemplate}
-        bind:rowsEl
-        bind:headerEl
-        {loading}
-        filteredEntries={filteredEntries}
-      visibleEntries={visibleEntries}
-      {start}
-      {offsetY}
-      {totalHeight}
-      {wide}
-      {selected}
-      {sortField}
-      {sortDirection}
-      {isHidden}
-      {displayName}
-        {formatSize}
-        {formatItems}
-        {clipboardMode}
-        {clipboardPaths}
-        onRowsScroll={onRowsScroll}
-        onWheel={onWheel}
-        onRowsKeydown={onRowsKeydown}
-        onRowsMousedown={onRowsMousedown}
-        onRowsClick={onRowsClick}
-        onRowsContextMenu={onRowsContextMenu}
-        onChangeSort={onChangeSort}
-        onStartResize={onStartResize}
-        ariaSort={ariaSort}
-        onRowClick={onRowClick}
-        onOpen={onOpen}
-        onContextMenu={onContextMenu}
-        onToggleStar={onToggleStar}
-        onRowDragStart={onRowDragStart}
-        onRowDragEnd={onRowDragEnd}
-        onRowDragEnter={onRowDragEnter}
-        onRowDragOver={onRowDragOver}
-        onRowDrop={onRowDrop}
-        onRowDragLeave={onRowDragLeave}
-        dragTargetPath={dragTargetPath}
-        dragAllowed={dragAllowed}
-        selectionActive={selectionActive}
-        selectionRect={selectionRect}
-      />
+      {#if viewMode === 'list'}
+        <FileList
+          {cols}
+          {gridTemplate}
+          bind:rowsEl
+          bind:headerEl
+          {loading}
+          filteredEntries={filteredEntries}
+          visibleEntries={visibleEntries}
+          {start}
+          {offsetY}
+          {totalHeight}
+          {wide}
+          {selected}
+          {sortField}
+          {sortDirection}
+          {isHidden}
+          {displayName}
+          {formatSize}
+          {formatItems}
+          {clipboardMode}
+          {clipboardPaths}
+          onRowsScroll={onRowsScroll}
+          onWheel={onWheel}
+          onRowsKeydown={onRowsKeydown}
+          onRowsMousedown={onRowsMousedown}
+          onRowsClick={onRowsClick}
+          onRowsContextMenu={onRowsContextMenu}
+          onChangeSort={onChangeSort}
+          onStartResize={onStartResize}
+          ariaSort={ariaSort}
+          onRowClick={onRowClick}
+          onOpen={onOpen}
+          onContextMenu={onContextMenu}
+          onToggleStar={onToggleStar}
+          onRowDragStart={onRowDragStart}
+          onRowDragEnd={onRowDragEnd}
+          onRowDragEnter={onRowDragEnter}
+          onRowDragOver={onRowDragOver}
+          onRowDrop={onRowDrop}
+          onRowDragLeave={onRowDragLeave}
+          dragTargetPath={dragTargetPath}
+          dragAllowed={dragAllowed}
+          selectionActive={selectionActive}
+          selectionRect={selectionRect}
+        />
+      {:else}
+        <FileGrid
+          entries={filteredEntries}
+          visibleEntries={visibleEntries}
+          {start}
+          {offsetY}
+          {totalHeight}
+          bind:rowsEl
+          {selected}
+          {isHidden}
+          {displayName}
+          {clipboardMode}
+          {clipboardPaths}
+          onRowsContextMenu={onRowsContextMenu}
+          onRowsClick={onRowsClick}
+          onRowsMousedown={onRowsMousedown}
+          onRowsScroll={onRowsScroll}
+          onRowsKeydown={onRowsKeydown}
+          onOpen={onOpen}
+          onRowClick={onRowClick}
+          onContextMenu={onContextMenu}
+          onRowDragStart={onRowDragStart}
+          onRowDragEnd={onRowDragEnd}
+          onRowDragEnter={onRowDragEnter}
+          onRowDragOver={onRowDragOver}
+          onRowDrop={onRowDrop}
+          onRowDragLeave={onRowDragLeave}
+          {dragTargetPath}
+          {dragAllowed}
+          selectionActive={selectionActive}
+          selectionRect={selectionRect}
+        />
+      {/if}
       <Statusbar {selectionText} />
     </section>
   </div>

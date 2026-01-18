@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte'
   import { invoke } from '@tauri-apps/api/core'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-  import { get } from 'svelte/store'
+  import { get, writable } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from './features/explorer/utils'
   import { createListState } from './features/explorer/stores/listState'
   import ExplorerShell from './features/explorer/components/ExplorerShell.svelte'
@@ -18,6 +18,9 @@
   import type { ContextAction } from './features/explorer/hooks/useContextMenus'
   import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
   import { createSelectionBox } from './features/explorer/hooks/selectionBox'
+  import { hitTestGrid } from './features/explorer/helpers/lassoHitTest'
+  import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
+  import { moveCaret } from './features/explorer/helpers/navigationController'
   import {
     fetchOpenWithApps,
     openWithSelection,
@@ -31,11 +34,14 @@
 
   type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
   type ProgressPayload = { bytes: number; total: number; finished?: boolean }
+  type ViewMode = 'list' | 'grid'
   let sidebarCollapsed = false
   let pathInput = ''
   let mode: 'address' | 'filter' | 'search' = 'address'
+  let viewMode: ViewMode = 'list'
   let inputFocused = false
   let rowsElRef: HTMLDivElement | null = null
+  let gridElRef: HTMLDivElement | null = null
   let headerElRef: HTMLDivElement | null = null
   let pathInputEl: HTMLInputElement | null = null
   let unlistenDirChanged: UnlistenFn | null = null
@@ -43,6 +49,9 @@
   let unlistenEntryMetaBatch: UnlistenFn | null = null
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
   let rowsObserver: ResizeObserver | null = null
+  let gridObserver: ResizeObserver | null = null
+  let rowsRaf: number | null = null
+  let gridRaf: number | null = null
 
   const places = [
     { label: 'Home', path: '~' },
@@ -183,6 +192,26 @@
   const selectionActive = selectionBox.active
   const selectionRect = selectionBox.rect
 
+  const toggleViewMode = async () => {
+    const nextMode = viewMode === 'list' ? 'grid' : 'list'
+    const switchingToList = nextMode === 'list'
+
+    if (switchingToList && gridObserver) {
+      gridObserver.disconnect()
+      gridObserver = null
+    }
+
+    viewMode = nextMode
+    selectionBox.active.set(false)
+    selectionBox.rect.set({ x: 0, y: 0, width: 0, height: 0 })
+
+    if (switchingToList) {
+      gridTotalHeight.set(0)
+      await tick()
+      recompute(get(filteredEntries))
+    }
+  }
+
   const {
     selected,
     anchorIndex,
@@ -207,8 +236,15 @@
     recompute,
   } = createListState()
 
-  $: rowsElStore.set(rowsElRef)
-  $: headerElStore.set(headerElRef)
+  $: rowsElStore.set(viewMode === 'list' ? rowsElRef : null)
+  $: headerElStore.set(viewMode === 'list' ? headerElRef : null)
+  $: {
+    gridElRef = viewMode === 'grid' ? rowsElRef : null
+    if (viewMode !== 'grid' && gridObserver) {
+      gridObserver.disconnect()
+      gridObserver = null
+    }
+  }
 
   $: rowsKeydownHandler = handleRowsKeydown($filteredEntries)
   $: rowClickHandler = handleRowClick($filteredEntries)
@@ -241,6 +277,14 @@
   }
 
   let selectionDrag = false
+  const GRID_CARD_WIDTH = 128
+  const GRID_ROW_HEIGHT = 136
+  const GRID_GAP = 6
+  const GRID_OVERSCAN = 2
+  const gridStart = writable(0)
+  const gridOffsetY = writable(0)
+  const gridTotalHeight = writable(0)
+  let gridCols = 1
   let cursorX = 0
   let cursorY = 0
 
@@ -348,6 +392,9 @@
     if (typeof window === 'undefined') return
     sidebarCollapsed = window.innerWidth < 700
     handleListResize()
+    if (viewMode === 'grid') {
+      recomputeGrid()
+    }
   }
 
   const handleInputFocus = () => {
@@ -551,6 +598,7 @@
         return false
       }
     },
+    onToggleView: async () => toggleViewMode(),
   })
   const { handleGlobalKeydown } = shortcuts
 
@@ -562,7 +610,7 @@
       if (event.shiftKey && key === 'i') {
         return
       }
-      const allowed = new Set(['f', 'b', 'c', 'x', 'v', 'p', 'a', 't'])
+      const allowed = new Set(['f', 'b', 'c', 'x', 'v', 'p', 'a', 't', 'g'])
       if (!allowed.has(key)) {
         event.preventDefault()
         event.stopPropagation()
@@ -667,11 +715,37 @@
   }
 
   $: updateViewportHeight()
+  const recomputeGrid = () => {
+    if (!gridElRef || viewMode !== 'grid') return
+    const list = get(filteredEntries)
+    const width = Math.max(0, gridElRef.clientWidth)
+    gridCols = Math.max(1, Math.floor((width + GRID_GAP) / (GRID_CARD_WIDTH + GRID_GAP)))
+    const rowStride = GRID_ROW_HEIGHT + GRID_GAP
+    const totalRows = Math.ceil(list.length / gridCols)
+    const scrollTop = gridElRef.scrollTop
+    const viewport = gridElRef.clientHeight
+    const startRow = Math.max(0, Math.floor(scrollTop / rowStride) - GRID_OVERSCAN)
+    const endRow = Math.min(totalRows, Math.ceil((scrollTop + viewport) / rowStride) + GRID_OVERSCAN)
+    const startIdx = startRow * gridCols
+    const endIdx = Math.min(list.length, endRow * gridCols)
+    gridStart.set(startIdx)
+    gridOffsetY.set(startRow * rowStride)
+    gridTotalHeight.set(totalRows * rowStride)
+    visibleEntries.set(list.slice(startIdx, endIdx))
+    start.set(startIdx)
+    offsetY.set(startRow * rowStride)
+    totalHeight.set(totalRows * rowStride)
+  }
+
   $: {
-    // Recompute virtualization when viewport or scroll changes.
-    $viewportHeight
-    $scrollTop
-    recompute($filteredEntries)
+    if (viewMode === 'list') {
+      // Recompute virtualization when viewport or scroll changes.
+      $viewportHeight
+      $scrollTop
+      recompute($filteredEntries)
+    } else {
+      recomputeGrid()
+    }
   }
 
   const setupRowsObserver = () => {
@@ -680,7 +754,12 @@
     rowsObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         if (entry.contentRect.height > 0) {
-          updateViewportHeight()
+          if (rowsRaf === null) {
+            rowsRaf = requestAnimationFrame(() => {
+              rowsRaf = null
+              updateViewportHeight()
+            })
+          }
         }
       }
     })
@@ -688,9 +767,30 @@
   }
 
   $: {
-    if (rowsElRef) {
+    if (rowsElRef && viewMode === 'list') {
       setupRowsObserver()
       updateViewportHeight()
+    }
+  }
+
+  const setupGridObserver = () => {
+    if (!gridElRef || viewMode !== 'grid' || typeof ResizeObserver === 'undefined') return
+    gridObserver?.disconnect()
+    gridObserver = new ResizeObserver(() => {
+      if (gridRaf === null) {
+        gridRaf = requestAnimationFrame(() => {
+          gridRaf = null
+          recomputeGrid()
+        })
+      }
+    })
+    gridObserver.observe(gridElRef)
+  }
+
+  $: {
+    if (gridElRef && viewMode === 'grid') {
+      setupGridObserver()
+      recomputeGrid()
     }
   }
 
@@ -893,23 +993,50 @@
   }
 
   const handleRowsMouseDown = (event: MouseEvent) => {
-    if (!rowsElRef) return
     const target = event.target as HTMLElement | null
-    if (target && target.closest('.row')) return
-    event.preventDefault()
-    rowsElRef.focus()
+    if (viewMode === 'list') {
+      if (!rowsElRef) return
+      if (target && target.closest('.row')) return
+      event.preventDefault()
+      rowsElRef.focus()
+      const list = get(filteredEntries)
+      if (list.length === 0) return
+      selectionDrag = false
+      selectionBox.start(event, {
+        rowsEl: rowsElRef,
+        headerEl: headerElRef,
+        entries: list,
+        rowHeight,
+        onSelect: (paths, anchor, caret) => {
+          selected.set(paths)
+          anchorIndex.set(anchor)
+          caretIndex.set(caret)
+        },
+        onEnd: (didDrag) => {
+          selectionDrag = didDrag
+        },
+      })
+      return
+    }
+
+    // Grid mode lasso selection
+    const gridEl = event.currentTarget as HTMLDivElement | null
+    if (!gridEl) return
+    if (target && target.closest('.card')) return
     const list = get(filteredEntries)
     if (list.length === 0) return
+    event.preventDefault()
     selectionDrag = false
     selectionBox.start(event, {
-      rowsEl: rowsElRef,
-      headerEl: headerElRef,
+      rowsEl: gridEl,
+      headerEl: null,
       entries: list,
-      rowHeight,
-      onSelect: (paths, anchor, caret) => {
+      rowHeight: 1,
+      hitTest: (rect) => hitTestGrid(rect, gridEl),
+      onSelect: (paths) => {
         selected.set(paths)
-        anchorIndex.set(anchor)
-        caretIndex.set(caret)
+        anchorIndex.set(null)
+        caretIndex.set(null)
       },
       onEnd: (didDrag) => {
         selectionDrag = didDrag
@@ -917,22 +1044,120 @@
     })
   }
 
+  const handleGridScroll = () => {
+    if (viewMode !== 'grid') return
+    recomputeGrid()
+  }
+
+  const handleRowsScrollCombined = (event: Event) => {
+    if (viewMode === 'list') {
+      handleRowsScroll(event)
+    } else {
+      handleGridScroll()
+    }
+  }
+
+  const ensureGridVisible = (index: number) => {
+    if (!gridElRef || gridCols <= 0) return
+    const rowStride = GRID_ROW_HEIGHT + GRID_GAP
+    const row = Math.floor(index / gridCols)
+    const top = row * rowStride
+    const bottom = top + rowStride
+    const currentTop = gridElRef.scrollTop
+    const currentBottom = currentTop + gridElRef.clientHeight
+    if (top < currentTop) {
+      gridElRef.scrollTo({ top })
+    } else if (bottom > currentBottom) {
+      gridElRef.scrollTo({ top: bottom - gridElRef.clientHeight })
+    }
+  }
+
+  const handleGridKeydown = (event: KeyboardEvent) => {
+    if (viewMode !== 'grid') return
+    const list = get(filteredEntries)
+    if (list.length === 0) return
+    const key = event.key.toLowerCase()
+    const ctrl = event.ctrlKey || event.metaKey
+    if (ctrl && key === 'a') {
+      event.preventDefault()
+      event.stopPropagation()
+      selected.set(new Set(list.map((e) => e.path)))
+      anchorIndex.set(0)
+      caretIndex.set(list.length - 1)
+      return
+    }
+
+    const current = get(caretIndex) ?? get(anchorIndex)
+    const rowDelta = Math.max(1, gridCols)
+    let next: number | null = null
+    if (key === 'arrowright') next = moveCaret({ count: list.length, current, delta: 1 })
+    else if (key === 'arrowleft') next = moveCaret({ count: list.length, current, delta: -1 })
+    else if (key === 'arrowdown') next = moveCaret({ count: list.length, current, delta: rowDelta })
+    else if (key === 'arrowup') next = moveCaret({ count: list.length, current, delta: -rowDelta })
+    else if (key === 'home') next = moveCaret({ count: list.length, current, toStart: true })
+    else if (key === 'end') next = moveCaret({ count: list.length, current, toEnd: true })
+    else return
+
+    if (next === null) return
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (event.shiftKey) {
+      const anchor = get(anchorIndex) ?? current ?? next
+      const lo = Math.min(anchor, next)
+      const hi = Math.max(anchor, next)
+      const range = new Set<string>()
+      for (let i = lo; i <= hi; i++) {
+        const path = list[i]?.path
+        if (path) range.add(path)
+      }
+      selected.set(range)
+      anchorIndex.set(anchor)
+      caretIndex.set(next)
+    } else {
+      const path = list[next]?.path
+      if (path) {
+        selected.set(new Set([path]))
+        anchorIndex.set(next)
+        caretIndex.set(next)
+      }
+    }
+    ensureGridVisible(next)
+  }
+
+  const handleRowsKeydownCombined = (event: KeyboardEvent) => {
+    if (viewMode === 'list') {
+      rowsKeydownHandler(event)
+    } else {
+      handleGridKeydown(event)
+    }
+  }
+
   const handleRowsClickSafe = (event: MouseEvent) => {
     if (selectionDrag) {
       selectionDrag = false
+      return
+    }
+    if (viewMode === 'grid') {
+      const target = event.target as HTMLElement | null
+      if (target && target.closest('.card')) return
+      if (get(selected).size > 0) {
+        selected.set(new Set())
+        anchorIndex.set(null)
+        caretIndex.set(null)
+      }
       return
     }
     handleRowsClick(event)
   }
 
   const handleRowContextMenu = (entry: Entry, event: MouseEvent) => {
-    const alreadySelected = $selected.has(entry.path)
-    if (!alreadySelected) {
-      const idx = get(filteredEntries).findIndex((e) => e.path === entry.path)
-      selected.set(new Set([entry.path]))
-      anchorIndex.set(idx >= 0 ? idx : null)
-      caretIndex.set(idx >= 0 ? idx : null)
-    }
+    const idx = get(filteredEntries).findIndex((e) => e.path === entry.path)
+    ensureSelectionBeforeMenu($selected, entry.path, idx, (paths, anchor, caret) => {
+      selected.set(paths)
+      anchorIndex.set(anchor)
+      caretIndex.set(caret)
+    })
     void loadAndOpenContextMenu(entry, event)
   }
 
@@ -1409,6 +1634,7 @@
   bind:headerEl={headerElRef}
   bind:bookmarkName
   bind:bookmarkInputEl
+  {viewMode}
   {sidebarCollapsed}
   {places}
   {bookmarks}
@@ -1450,9 +1676,9 @@
   {formatItems}
   clipboardMode={clipboardMode}
   clipboardPaths={clipboardPaths}
-    onRowsScroll={handleRowsScroll}
+    onRowsScroll={handleRowsScrollCombined}
     onWheel={handleWheel}
-    onRowsKeydown={rowsKeydownHandler}
+    onRowsKeydown={handleRowsKeydownCombined}
     onRowsMousedown={handleRowsMouseDown}
     onRowsClick={handleRowsClickSafe}
     onRowsContextMenu={handleBlankContextMenu}
