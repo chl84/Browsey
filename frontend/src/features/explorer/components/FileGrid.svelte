@@ -80,7 +80,7 @@
               on:dragleave={(event) => onRowDragLeave(entry, event)}
               on:drop|preventDefault={(event) => onRowDrop(entry, event)}
             >
-              <img class="icon" src={entry.icon} alt="" />
+              <img class="icon" src={entry.icon} alt="" draggable="false" />
               <div class="name" title={entry.name}>{displayName(entry)}</div>
             </button>
           {/each}
@@ -108,6 +108,8 @@
     overflow: auto;
     min-height: 0;
     position: relative;
+    user-select: none;
+    cursor: default;
   }
 
   .spacer {
@@ -154,6 +156,7 @@
     font-size: 14px;
     position: relative;
     overflow: hidden;
+    transition: background 120ms ease, border-color 120ms ease;
   }
 
   .card:hover {
@@ -172,15 +175,21 @@
   .card.drop-target {
     background: var(--drop-allowed-bg);
     border-color: var(--drop-allowed-border);
+    box-shadow: var(--drop-allowed-shadow);
   }
 
   .card.drop-target.drop-blocked {
     background: var(--drop-blocked-bg);
     border-color: var(--drop-blocked-border);
+    box-shadow: var(--drop-blocked-shadow);
   }
 
   .card.hidden {
     opacity: 0.55;
+  }
+
+  .card:focus-visible {
+    outline: none;
   }
 
   .icon {
