@@ -134,12 +134,10 @@
   export let onCancelNewFolder: () => void = () => {}
 
   export let openWithOpen = false
-  export let openWithEntry: Entry | null = null
   export let openWithApps: OpenWithApp[] = []
   export let openWithLoading = false
   export let openWithError = ''
   export let openWithBusy = false
-  export let onReloadOpenWith: () => void = () => {}
   export let onConfirmOpenWith: (choice: OpenWithChoice) => void = () => {}
   export let onCloseOpenWith: () => void = () => {}
 
@@ -291,12 +289,10 @@
 />
 <OpenWithModal
   open={openWithOpen}
-  path={openWithEntry?.path ?? ''}
   apps={openWithApps}
   loading={openWithLoading}
   error={openWithError}
   busy={openWithBusy}
-  onReload={onReloadOpenWith}
   onConfirm={onConfirmOpenWith}
   onClose={onCloseOpenWith}
 />

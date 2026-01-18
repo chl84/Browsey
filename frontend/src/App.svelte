@@ -1497,12 +1497,10 @@
   onConfirmNewFolder={confirmNewFolder}
   onCancelNewFolder={closeNewFolderModal}
   openWithOpen={openWithOpen}
-  {openWithEntry}
   openWithApps={openWithApps}
   openWithLoading={openWithLoading}
   openWithError={openWithError}
   openWithBusy={openWithSubmitting}
-  onReloadOpenWith={() => void loadOpenWithApps(openWithEntry?.path)}
   onConfirmOpenWith={handleOpenWithConfirm}
   onCloseOpenWith={closeOpenWith}
     propertiesOpen={propertiesOpen}
