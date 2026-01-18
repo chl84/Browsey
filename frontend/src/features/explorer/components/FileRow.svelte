@@ -125,7 +125,7 @@
   }
 
   .row:hover {
-    background: #161a20;
+    background: var(--bg-hover);
     transform: none !important;
     box-shadow: none !important;
   }
@@ -135,7 +135,7 @@
   }
 
   .row.selected {
-    background: #1c2027;
+    background: var(--bg-raised);
     border: 1px solid var(--border-accent);
   }
 
@@ -144,16 +144,16 @@
   }
 
   .row.drop-target {
-    background: rgba(92, 148, 255, 0.08);
-    border-color: var(--border-accent);
-    box-shadow: inset 0 0 0 1px rgba(92, 148, 255, 0.35);
+    background: var(--drop-allowed-bg);
+    border-color: var(--drop-allowed-border);
+    box-shadow: var(--drop-allowed-shadow);
     position: relative;
   }
 
   .row.drop-target.drop-blocked {
-    background: rgba(230, 80, 80, 0.08);
-    border-color: rgba(230, 80, 80, 0.4);
-    box-shadow: inset 0 0 0 1px rgba(230, 80, 80, 0.25);
+    background: var(--drop-blocked-bg);
+    border-color: var(--drop-blocked-border);
+    box-shadow: var(--drop-blocked-shadow);
   }
 
   .row:focus-visible {
@@ -235,7 +235,7 @@
   }
 
   .star-btn.starred {
-    color: #f6d04d;
+    color: var(--accent-warning);
   }
 
   .icon {

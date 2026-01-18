@@ -18,10 +18,10 @@
 <style>
   .selection-box {
     position: absolute;
-    border: 1px solid var(--border-accent);
-    background: rgba(92, 148, 255, 0.12);
+    border: 1px solid var(--selection-border);
+    background: var(--selection-fill);
     pointer-events: none;
     border-radius: 0;
-    box-shadow: 0 0 0 1px rgba(92, 148, 255, 0.25);
+    box-shadow: var(--selection-shadow);
   }
 </style>

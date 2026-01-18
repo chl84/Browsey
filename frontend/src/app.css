@@ -1,13 +1,36 @@
 :root {
-  --bg: #0f1115;
-  --bg-alt: #0d0f13;
-  --bg-raised: #1b1e24;
-  --bg-button: #12151b;
-  --bg-hover: #141820;
-  --border: #2a2e35;
-  --border-strong: #1f242c;
-  --border-accent: #3f444c;
-  --border-accent-strong: #4b5563;
+  --bg: #101010;
+  --bg-alt: #0d0d0d;
+  --bg-raised: #1a1a1a;
+  --bg-button: #141414;
+  --bg-hover: #181818;
+  --border: #2b2b2b;
+  --border-strong: #232323;
+  --border-accent: #3f3f3f;
+  --border-accent-strong: #4f4f4f;
+  --accent-primary: #1e88e5;
+  --accent-danger: #ff8585;
+  --accent-warning: #f6d04d;
+  --accent-error-text: #fca5a5;
+  --selection-border: rgba(140, 140, 140, 0.6);
+  --selection-fill: rgba(140, 140, 140, 0.12);
+  --selection-shadow: 0 0 0 1px rgba(140, 140, 140, 0.2);
+  --drop-allowed-bg: rgba(160, 160, 160, 0.12);
+  --drop-allowed-border: rgba(180, 180, 180, 0.5);
+  --drop-allowed-shadow: inset 0 0 0 1px rgba(200, 200, 200, 0.3);
+  --drop-blocked-bg: rgba(110, 110, 110, 0.14);
+  --drop-blocked-border: rgba(150, 150, 150, 0.6);
+  --drop-blocked-shadow: inset 0 0 0 1px rgba(150, 150, 150, 0.25);
+  --drag-ghost-text: #ffffff;
+  --drag-ghost-border: rgba(255, 255, 255, 0.1);
+  --drag-ghost-bg: linear-gradient(120deg, rgba(25, 118, 210, 0.95), rgba(55, 158, 255, 0.9));
+  --drag-ghost-dot-bg: rgba(255, 255, 255, 0.9);
+  --shadow-strong: 0 14px 38px rgba(0, 0, 0, 0.45);
+  --shadow-xl: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.4);
+  --shadow-sidebar: 0 10px 24px rgba(0, 0, 0, 0.35);
+  --shadow-ghost: 0 10px 24px rgba(0, 0, 0, 0.25);
+  --shadow-drop: 0 6px 12px rgba(0, 0, 0, 0.25);
   --fg: #d5d8dd;
   --fg-strong: #d8dce1;
   --fg-muted: #b9c0cb;
@@ -55,7 +78,7 @@
 
 body {
   margin: 0;
-  background: #0b0d10;
+  background: var(--bg);
   min-height: 100vh;
   height: 100vh;
   color: var(--fg);
@@ -191,8 +214,8 @@ select:focus {
 }
 
 .modal button.danger {
-  background: #3b1f21;
-  border-color: #7a2f36;
+  background: #1e1e1e;
+  border-color: #4f4f4f;
   color: #ffb7b7;
 }
 
@@ -219,7 +242,7 @@ select:focus {
 
 .modal .pill.error {
   border-color: #c0392b;
-  background: rgba(192, 57, 43, 0.15);
+  background: var(--bg-alt);
   color: #fceaea;
 }
 

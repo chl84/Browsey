@@ -21,6 +21,6 @@
 
   .notice-error {
     border-color: var(--border-accent);
-    color: #fca5a5;
+    color: var(--accent-error-text);
   }
 </style>

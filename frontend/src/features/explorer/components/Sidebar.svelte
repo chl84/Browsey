@@ -31,7 +31,7 @@
     gap: 16px;
     height: 100%;
     overflow: auto;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-sidebar);
     scrollbar-width: none;
     -ms-overflow-style: none;
     user-select: none;

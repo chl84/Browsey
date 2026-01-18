@@ -42,19 +42,19 @@ export const createDragDrop = () => {
     ghost.style.left = '-999px'
     ghost.style.padding = '4px 8px'
     ghost.style.borderRadius = '0'
-    ghost.style.background = 'rgba(25,118,210,0.9)'
-    ghost.style.color = '#fff'
+    ghost.style.background = 'var(--drag-ghost-bg)'
+    ghost.style.color = 'var(--drag-ghost-text)'
     ghost.style.fontSize = '12px'
     ghost.style.fontWeight = '600'
     ghost.style.display = 'inline-flex'
     ghost.style.alignItems = 'center'
     ghost.style.gap = '6px'
-    ghost.style.boxShadow = '0 6px 12px rgba(0,0,0,0.25)'
+    ghost.style.boxShadow = 'var(--shadow-drop)'
     const dot = document.createElement('span')
     dot.style.width = '8px'
     dot.style.height = '8px'
     dot.style.borderRadius = '0'
-    dot.style.background = 'rgba(255,255,255,0.9)'
+    dot.style.background = 'var(--drag-ghost-dot-bg)'
     ghost.appendChild(dot)
     const label = document.createElement('span')
     label.textContent = `${paths.length} item${paths.length === 1 ? '' : 's'}`
