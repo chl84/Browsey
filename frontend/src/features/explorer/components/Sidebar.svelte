@@ -23,7 +23,10 @@
 <style>
   .sidebar {
     background: var(--bg-alt);
-    border: 1px solid var(--border-strong);
+    border-right: 1px solid var(--border-strong);
+    border-top: none;
+    border-bottom: none;
+    border-left: none;
     border-radius: 0;
     padding: 5px;
     display: flex;
@@ -31,7 +34,7 @@
     gap: 16px;
     height: 100%;
     overflow: auto;
-    box-shadow: var(--shadow-sidebar);
+    box-shadow: none;
     scrollbar-width: none;
     -ms-overflow-style: none;
     user-select: none;

@@ -22,6 +22,6 @@
     background: var(--selection-fill);
     pointer-events: none;
     border-radius: 0;
-    box-shadow: var(--selection-shadow);
+    box-shadow: none;
   }
 </style>

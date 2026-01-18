@@ -31,9 +31,9 @@
   --shadow-sidebar: 0 10px 24px rgba(0, 0, 0, 0.35);
   --shadow-ghost: 0 10px 24px rgba(0, 0, 0, 0.25);
   --shadow-drop: 0 6px 12px rgba(0, 0, 0, 0.25);
-  --fg: #d5d8dd;
-  --fg-strong: #d8dce1;
-  --fg-muted: #b9c0cb;
+  --fg: #bfc4cb;
+  --fg-strong: #c5c9cf;
+  --fg-muted: #959ead;
   --fg-dim: #6b7280;
   --fg-pill: #cbd5e1;
 

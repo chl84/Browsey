@@ -167,7 +167,7 @@
     flex: 1;
     min-width: 0;
     width: 100%;
-    border: 1px solid var(--border);
+    border: none;
     border-radius: 0;
     padding: 10px 12px;
     background: var(--bg);
@@ -177,7 +177,7 @@
 
   .path-input:focus {
     outline: none;
-    border-color: var(--border-accent-strong);
+    border-color: transparent;
   }
 
   .path-input.hidden {

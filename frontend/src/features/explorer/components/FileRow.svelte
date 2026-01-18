@@ -136,7 +136,7 @@
 
   .row.selected {
     background: var(--bg-raised);
-    border: 1px solid var(--border-accent);
+    border-color: transparent;
   }
 
   .row.cut {
@@ -146,14 +146,14 @@
   .row.drop-target {
     background: var(--drop-allowed-bg);
     border-color: var(--drop-allowed-border);
-    box-shadow: var(--drop-allowed-shadow);
+    box-shadow: none;
     position: relative;
   }
 
   .row.drop-target.drop-blocked {
     background: var(--drop-blocked-bg);
     border-color: var(--drop-blocked-border);
-    box-shadow: var(--drop-blocked-shadow);
+    box-shadow: none;
   }
 
   .row:focus-visible {

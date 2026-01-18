@@ -57,7 +57,7 @@ export const parentPath = (path: string) => {
 export const formatSize = (size?: number | null) => {
   if (size === null || size === undefined) return ''
   if (size < 1024) return `${size} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
+  const units = ['kB', 'MB', 'GB', 'TB']
   let value = size / 1024
   let u = 0
   while (value >= 1024 && u < units.length - 1) {

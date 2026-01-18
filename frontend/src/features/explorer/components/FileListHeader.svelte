@@ -58,7 +58,7 @@
     gap: 10px;
     padding: 6px 12px;
     border-bottom: 1px solid var(--border-strong);
-    background: var(--bg-alt);
+    background: var(--bg);
     color: var(--fg-muted);
     font-size: 12px;
     letter-spacing: 0.02em;

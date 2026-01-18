@@ -11,8 +11,8 @@
 <style>
   .statusbar {
     height: 32px;
-    border-top: 1px solid var(--border-strong);
-    background: var(--bg-alt);
+    border-top: none;
+    background: var(--bg);
     border-radius: 0;
     margin-top: 0;
     position: sticky;
