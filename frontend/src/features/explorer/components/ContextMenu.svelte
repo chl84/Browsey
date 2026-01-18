@@ -99,7 +99,7 @@
     min-width: 180px;
     background: var(--bg);
     border: 1px solid var(--border);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-xl);
     border-radius: 0;
     display: flex;
     flex-direction: column;
@@ -131,13 +131,13 @@
   }
 
   button.dangerous {
-    color: #ff8585;
+    color: var(--accent-danger);
   }
 
   button.dangerous:hover,
   button.dangerous:focus-visible {
-    background: #402528;
-    border-color: #8c3a42;
+    background: var(--bg-hover);
+    border-color: var(--border);
   }
 
   .divider {
