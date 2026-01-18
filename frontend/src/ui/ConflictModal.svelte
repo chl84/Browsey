@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ModalShell from './ModalShell.svelte'
+
   export let open = false
   export let conflicts: { src: string; target: string; is_dir: boolean }[] = []
   export let onOverwrite: () => void = () => {}
@@ -7,50 +9,30 @@
 </script>
 
 {#if open}
-  <div
-    class="overlay conflict-overlay"
-    role="presentation"
-    tabindex="-1"
-    on:click={onCancel}
-    on:keydown={(e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onCancel()
-      }
-    }}
+  <ModalShell
+    open={open}
+    onClose={onCancel}
+    overlayClass="conflict-overlay"
+    modalClass="conflict-modal"
   >
-    <div
-      class="modal conflict-modal"
-      role="dialog"
-      aria-modal="true"
-      tabindex="0"
-      on:click|stopPropagation
-      on:keydown={(e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          onCancel()
-        }
-      }}
-    >
-      <h2>Items already exist</h2>
-      <p>{conflicts.length} item{conflicts.length === 1 ? '' : 's'} are already present in the destination.</p>
-      <div class="conflicts">
-        {#each conflicts as conflict (conflict.target)}
-          <div class="row">
-            <div class="name">
-              {conflict.is_dir ? '📁' : '📄'} {conflict.src}
-            </div>
-            <div class="target">→ {conflict.target}</div>
+    <svelte:fragment slot="header">Items already exist</svelte:fragment>
+    <p>{conflicts.length} item{conflicts.length === 1 ? '' : 's'} are already present in the destination.</p>
+    <div class="conflicts">
+      {#each conflicts as conflict (conflict.target)}
+        <div class="row">
+          <div class="name">
+            {conflict.is_dir ? '📁' : '📄'} {conflict.src}
           </div>
-        {/each}
-      </div>
-      <div class="actions">
-        <button class="secondary" type="button" on:click={onCancel}>Cancel</button>
-        <button class="secondary" type="button" on:click={onRenameAll}>Auto-rename</button>
-        <button class="primary" type="button" on:click={onOverwrite}>Overwrite</button>
-      </div>
+          <div class="target">→ {conflict.target}</div>
+        </div>
+      {/each}
     </div>
-  </div>
+    <div slot="actions">
+      <button class="secondary" type="button" on:click={onCancel}>Cancel</button>
+      <button class="secondary" type="button" on:click={onRenameAll}>Auto-rename</button>
+      <button class="primary" type="button" on:click={onOverwrite}>Overwrite</button>
+    </div>
+  </ModalShell>
 {/if}
 
 <style>
