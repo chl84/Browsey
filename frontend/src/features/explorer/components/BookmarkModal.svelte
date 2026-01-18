@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ModalShell from '../../../ui/ModalShell.svelte'
+
   export let open = false
   export let entryName = ''
   export let bookmarkName = ''
@@ -8,53 +10,30 @@
 </script>
 
 {#if open}
-  <div
-    class="overlay"
-    role="presentation"
-    tabindex="-1"
-    on:click={onCancel}
-    on:keydown={(e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onCancel()
-      }
-    }}
-  >
-    <div
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      tabindex="0"
-      on:click|stopPropagation
+  <ModalShell open={open} onClose={onCancel} initialFocusSelector="input">
+    <svelte:fragment slot="header">Add bookmark</svelte:fragment>
+
+    <p class="muted">Name the bookmark for "{entryName}".</p>
+    <input
+      bind:value={bookmarkName}
+      bind:this={bookmarkInputEl}
+      aria-label="Bookmark name"
       on:keydown={(e) => {
-        if (e.key === 'Escape') {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          onConfirm()
+        } else if (e.key === 'Escape') {
           e.preventDefault()
           onCancel()
         }
       }}
-    >
-      <header>Add bookmark</header>
-      <p class="muted">Name the bookmark for "{entryName}".</p>
-      <input
-        bind:value={bookmarkName}
-        bind:this={bookmarkInputEl}
-        aria-label="Bookmark name"
-        on:keydown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            onConfirm()
-          } else if (e.key === 'Escape') {
-            e.preventDefault()
-            onCancel()
-          }
-        }}
-      />
-      <div class="actions">
-        <button type="button" class="secondary" on:click={onCancel}>Cancel</button>
-        <button type="button" on:click={onConfirm}>Add</button>
-      </div>
+    />
+
+    <div slot="actions">
+      <button type="button" class="secondary" on:click={onCancel}>Cancel</button>
+      <button type="button" on:click={onConfirm}>Add</button>
     </div>
-  </div>
+  </ModalShell>
 {/if}
 
 <style>

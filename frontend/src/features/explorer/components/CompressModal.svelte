@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import ModalShell from '../../../ui/ModalShell.svelte'
+  import { autoSelectOnOpen } from '../../../ui/modalUtils'
 
   export let open = false
   export let value = ''
@@ -10,91 +11,57 @@
 
   let inputEl: HTMLInputElement | null = null
   let selectedThisOpen = false
-  let overlayPointerDown = false
   const confirmAndClose = () => {
     onConfirm(value, Number(level))
     onCancel()
   }
 
-  $: {
-    if (!open) {
-      selectedThisOpen = false
-    } else if (inputEl && !selectedThisOpen) {
-      void tick().then(() => {
-        if (open && inputEl && !selectedThisOpen) {
-          inputEl.select()
-          selectedThisOpen = true
-        }
-      })
-    }
-  }
+  $: autoSelectOnOpen({
+    open,
+    input: inputEl,
+    selectedThisOpen,
+    setSelected: (v: boolean) => (selectedThisOpen = v),
+    value,
+  })
 </script>
 
 {#if open}
-  <div
-    class="overlay"
-    role="presentation"
-    tabindex="-1"
-    on:pointerdown={(e) => {
-      // Only close if the press started on the overlay itself.
-      overlayPointerDown = e.target === e.currentTarget
-    }}
-    on:click={(e) => {
-      if (overlayPointerDown && e.target === e.currentTarget) {
-        onCancel()
-      }
-      overlayPointerDown = false
-    }}
-    on:keydown={(e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onCancel()
-      }
-    }}
+  <ModalShell
+    open={open}
+    onClose={onCancel}
+    initialFocusSelector="input[type='text']"
+    guardOverlayPointer={true}
   >
-    <div
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      tabindex="0"
-      on:click|stopPropagation
-      on:keydown={(e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          onCancel()
-        }
-      }}
-    >
-      <header>Compress</header>
-      {#if error}
-        <div class="pill error">{error}</div>
-      {/if}
-      <label class="field">
-        <span>Archive name</span>
-        <input
-          type="text"
-          bind:this={inputEl}
-          bind:value={value}
-          on:keydown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              confirmAndClose()
-            } else if (e.key === 'Escape') {
-              e.preventDefault()
-              onCancel()
-            }
-          }}
-        />
-      </label>
-      <label class="field">
-        <span>Compression level</span>
-        <input type="range" min="0" max="9" step="1" bind:value={level} />
-        <div class="muted">0 = store only, 9 = maximum compression</div>
-      </label>
-      <div class="actions">
-        <button type="button" class="secondary" on:click={onCancel}>Cancel</button>
-        <button type="button" on:click={confirmAndClose}>Create</button>
-      </div>
+    <svelte:fragment slot="header">Compress</svelte:fragment>
+
+    {#if error}
+      <div class="pill error">{error}</div>
+    {/if}
+    <label class="field">
+      <span>Archive name</span>
+      <input
+        type="text"
+        bind:this={inputEl}
+        bind:value={value}
+        on:keydown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            confirmAndClose()
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            onCancel()
+          }
+        }}
+      />
+    </label>
+    <label class="field">
+      <span>Compression level</span>
+      <input type="range" min="0" max="9" step="1" bind:value={level} />
+      <div class="muted">0 = store only, 9 = maximum compression</div>
+    </label>
+    <div slot="actions">
+      <button type="button" class="secondary" on:click={onCancel}>Cancel</button>
+      <button type="button" on:click={confirmAndClose}>Create</button>
     </div>
-  </div>
+  </ModalShell>
 {/if}
