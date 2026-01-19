@@ -2,8 +2,8 @@
 
 pub mod bookmarks;
 pub mod compress;
-pub mod decompress;
 pub mod console;
+pub mod decompress;
 pub mod fs;
 pub mod library;
 pub mod meta;
@@ -14,8 +14,8 @@ pub mod settings;
 pub use crate::clipboard::{paste_clipboard_cmd, paste_clipboard_preview, set_clipboard_cmd};
 pub use bookmarks::{add_bookmark, get_bookmarks, remove_bookmark};
 pub use compress::compress_entries;
-pub use decompress::extract_archive;
 pub use console::open_console;
+pub use decompress::extract_archive;
 pub use fs::{
     create_folder, delete_entry, list_dir, list_mounts, list_trash, move_to_trash, open_entry,
     purge_trash_items, rename_entry, restore_trash_items, watch_dir,

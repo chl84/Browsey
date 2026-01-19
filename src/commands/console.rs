@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::path::PathBuf;
+use std::process::Command;
 
 use crate::fs_utils::sanitize_path_follow;
 
@@ -54,7 +54,10 @@ end tell"#,
             .or_else(|_| std::env::var("TERMINAL"))
             .or_else(|_| std::env::var("COLORTERM"))
         {
-            candidates.push((bin, vec!["-e".into(), "sh".into(), "-c".into(), cmd.clone()]));
+            candidates.push((
+                bin,
+                vec!["-e".into(), "sh".into(), "-c".into(), cmd.clone()],
+            ));
         }
 
         // Common Fedora/GTK/KDE terminals
@@ -73,7 +76,10 @@ end tell"#,
             ("ptyxis", vec!["-e", "sh", "-c"]),
         ];
         for (bin, args) in defaults {
-            candidates.push((bin.to_string(), args.iter().map(|s| s.to_string()).collect()));
+            candidates.push((
+                bin.to_string(),
+                args.iter().map(|s| s.to_string()).collect(),
+            ));
         }
 
         let mut tried: Vec<String> = Vec::new();

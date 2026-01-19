@@ -25,6 +25,7 @@ trash = "5.2.5"
 mime_guess = "2.0.5"
 shell-words = "1.1.1"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_NetworkManagement_WNet"] }
+windows = { version = "0.62.0", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Memory", "Win32_UI_Shell", "Win32_UI_Shell_Common"] }
 walkdir = "2.5.0"
 zip = { version = "7.1.0", default-features = false, features = ["deflate"] }
 tar = "0.4.44"

@@ -2,11 +2,11 @@ use std::{
     fs::{self, File},
     io::{self, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
     sync::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc,
     },
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use bzip2::read::BzDecoder;
@@ -18,7 +18,8 @@ use zip::ZipArchive;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::fs_utils::{
-    check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow, unique_path,
+    check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow,
+    unique_path,
 };
 use tauri::Emitter;
 
@@ -92,7 +93,10 @@ impl ProgressEmitter {
     }
 
     fn add(&self, delta: u64) {
-        let done = self.done.fetch_add(delta, Ordering::Relaxed).saturating_add(delta);
+        let done = self
+            .done
+            .fetch_add(delta, Ordering::Relaxed)
+            .saturating_add(delta);
         let last = self.last_emit.load(Ordering::Relaxed);
         let now_ms = current_millis();
         let last_time = self.last_emit_time_ms.load(Ordering::Relaxed);
@@ -102,9 +106,12 @@ impl ProgressEmitter {
                 .compare_exchange(last, done, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
             {
-                let _ = self
-                    .last_emit_time_ms
-                    .compare_exchange(last_time, now_ms, Ordering::Relaxed, Ordering::Relaxed);
+                let _ = self.last_emit_time_ms.compare_exchange(
+                    last_time,
+                    now_ms,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                );
                 let _ = self.app.emit(
                     &self.event,
                     ExtractProgressPayload {
@@ -183,73 +190,55 @@ fn do_extract(
             extract_zip(&archive_path, &dest_dir, &stats, progress.as_ref())?;
             dest_dir
         }
-        ArchiveKind::Tar => extract_tar_with_reader(
-            &archive_path,
-            parent,
-            &stats,
-            progress.as_ref(),
-            |reader| Ok(Box::new(reader) as Box<dyn Read>),
-        )?,
-        ArchiveKind::TarGz => extract_tar_with_reader(
-            &archive_path,
-            parent,
-            &stats,
-            progress.as_ref(),
-            |reader| Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>),
-        )?,
-        ArchiveKind::TarBz2 => extract_tar_with_reader(
-            &archive_path,
-            parent,
-            &stats,
-            progress.as_ref(),
-            |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
-        )?,
-        ArchiveKind::TarXz => extract_tar_with_reader(
-            &archive_path,
-            parent,
-            &stats,
-            progress.as_ref(),
-            |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
-        )?,
-        ArchiveKind::TarZstd => extract_tar_with_reader(
-            &archive_path,
-            parent,
-            &stats,
-            progress.as_ref(),
-            |reader| {
+        ArchiveKind::Tar => {
+            extract_tar_with_reader(&archive_path, parent, &stats, progress.as_ref(), |reader| {
+                Ok(Box::new(reader) as Box<dyn Read>)
+            })?
+        }
+        ArchiveKind::TarGz => {
+            extract_tar_with_reader(&archive_path, parent, &stats, progress.as_ref(), |reader| {
+                Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>)
+            })?
+        }
+        ArchiveKind::TarBz2 => {
+            extract_tar_with_reader(&archive_path, parent, &stats, progress.as_ref(), |reader| {
+                Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>)
+            })?
+        }
+        ArchiveKind::TarXz => {
+            extract_tar_with_reader(&archive_path, parent, &stats, progress.as_ref(), |reader| {
+                Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>)
+            })?
+        }
+        ArchiveKind::TarZstd => {
+            extract_tar_with_reader(&archive_path, parent, &stats, progress.as_ref(), |reader| {
                 ZstdDecoder::new(reader)
                     .map(|r| Box::new(r) as Box<dyn Read>)
                     .map_err(|e| format!("Failed to create zstd decoder: {e}"))
-            },
-        )?,
-        ArchiveKind::Gz => decompress_single_with_reader(
-            &archive_path,
-            parent,
-            progress.as_ref(),
-            |reader| Ok(Box::new(MultiGzDecoder::new(reader)) as Box<dyn Read>),
-        )?,
-        ArchiveKind::Bz2 => decompress_single_with_reader(
-            &archive_path,
-            parent,
-            progress.as_ref(),
-            |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
-        )?,
-        ArchiveKind::Xz => decompress_single_with_reader(
-            &archive_path,
-            parent,
-            progress.as_ref(),
-            |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
-        )?,
-        ArchiveKind::Zstd => decompress_single_with_reader(
-            &archive_path,
-            parent,
-            progress.as_ref(),
-            |reader| {
+            })?
+        }
+        ArchiveKind::Gz => {
+            decompress_single_with_reader(&archive_path, parent, progress.as_ref(), |reader| {
+                Ok(Box::new(MultiGzDecoder::new(reader)) as Box<dyn Read>)
+            })?
+        }
+        ArchiveKind::Bz2 => {
+            decompress_single_with_reader(&archive_path, parent, progress.as_ref(), |reader| {
+                Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>)
+            })?
+        }
+        ArchiveKind::Xz => {
+            decompress_single_with_reader(&archive_path, parent, progress.as_ref(), |reader| {
+                Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>)
+            })?
+        }
+        ArchiveKind::Zstd => {
+            decompress_single_with_reader(&archive_path, parent, progress.as_ref(), |reader| {
                 ZstdDecoder::new(reader)
                     .map(|r| Box::new(r) as Box<dyn Read>)
                     .map_err(|e| format!("Failed to create zstd decoder: {e}"))
-            },
-        )?,
+            })?
+        }
     };
 
     if let Some(p) = progress.as_ref() {
@@ -279,7 +268,10 @@ fn detect_archive(path: &Path) -> Result<ArchiveKind, String> {
         .unwrap_or_default()
         .to_lowercase();
 
-    if magic.starts_with(b"PK\x03\x04") || magic.starts_with(b"PK\x05\x06") || magic.starts_with(b"PK\x07\x08") {
+    if magic.starts_with(b"PK\x03\x04")
+        || magic.starts_with(b"PK\x05\x06")
+        || magic.starts_with(b"PK\x07\x08")
+    {
         return Ok(ArchiveKind::Zip);
     }
     if magic.starts_with(&[0x1F, 0x8B]) {
@@ -469,7 +461,10 @@ fn extract_tar<R: Read>(
 ) -> Result<(), String> {
     let mut archive = Archive::new(reader);
     let mut buf = vec![0u8; CHUNK];
-    for entry_result in archive.entries().map_err(|e| format!("Failed to iterate tar: {e}"))? {
+    for entry_result in archive
+        .entries()
+        .map_err(|e| format!("Failed to iterate tar: {e}"))?
+    {
         let mut entry = entry_result.map_err(|e| format!("Failed to read tar entry: {e}"))?;
         let entry_type = entry.header().entry_type();
         let raw_path = entry
@@ -513,7 +508,8 @@ fn extract_tar<R: Read>(
         }
         let (file, _) = open_unique_file(&dest_path)?;
         let mut out = BufWriter::with_capacity(CHUNK, file);
-        copy_with_progress(&mut entry, &mut out, progress, &mut buf).map_err(map_io("write tar entry"))?;
+        copy_with_progress(&mut entry, &mut out, progress, &mut buf)
+            .map_err(map_io("write tar entry"))?;
     }
     Ok(())
 }
@@ -590,7 +586,12 @@ fn open_unique_file(dest_path: &Path) -> Result<(File, PathBuf), String> {
                 candidate = unique_path(&candidate);
                 continue;
             }
-            Err(e) => return Err(format!("Failed to create file {}: {e}", candidate.display())),
+            Err(e) => {
+                return Err(format!(
+                    "Failed to create file {}: {e}",
+                    candidate.display()
+                ))
+            }
         }
     }
 }
@@ -623,7 +624,9 @@ fn tar_uncompressed_total(path: &Path) -> Result<u64, String> {
     let reader = BufReader::with_capacity(CHUNK, file);
     let mut archive = Archive::new(reader);
     let mut total = 0u64;
-    let entries = archive.entries().map_err(|e| format!("Failed to iterate tar for total: {e}"))?;
+    let entries = archive
+        .entries()
+        .map_err(|e| format!("Failed to iterate tar for total: {e}"))?;
     for entry_result in entries {
         let entry = entry_result.map_err(|e| format!("Failed to read tar entry for total: {e}"))?;
         let header = entry.header();
