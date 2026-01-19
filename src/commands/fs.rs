@@ -403,9 +403,11 @@ fn watch_allowed_roots() -> Vec<PathBuf> {
             }
         }
     }
-    // Allowlisted network path for \u{00C5}lesund2; include both normal and verbatim prefixes.
-    roots.push(PathBuf::from(r"X:\nor\oppdrag\?lesund2"));
-    roots.push(PathBuf::from(r"\?\X:\nor\oppdrag\?lesund2"));
+    let alesund = "\u{00C5}lesund2";
+    // Allowlisted network path for \u{00C5}lesund2; include drive, UNC, and verbatim UNC prefixes.
+    roots.push(PathBuf::from(format!(r"X:\nor\oppdrag\{alesund}")));
+    roots.push(PathBuf::from(format!(r"\\DAALESUND01.norconsultad.com\dfs\nor\oppdrag\{alesund}")));
+    roots.push(PathBuf::from(format!(r"\\?\UNC\DAALESUND01.norconsultad.com\dfs\nor\oppdrag\{alesund}")));
     roots
 }
 
