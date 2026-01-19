@@ -15,6 +15,8 @@
   let focused = false
   let suppressMouseUp = false
 
+  const isWindows = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("windows")
+
   const detectSeparator = (path: string) => (path.includes('\\') && !path.includes('/') ? '\\' : '/')
 
   const buildBreadcrumbs = (path: string) => {
@@ -107,7 +109,7 @@
               {crumb.label || separatorChar}
             </button>
             {#if i < breadcrumbs.length - 1}
-              <span class="sep">{separatorChar}</span>
+              <span class="sep" class:windows={isWindows}>{separatorChar}</span>
             {/if}
           {/each}
         </div>
@@ -237,6 +239,8 @@
     border-radius: 0;
     font-size: 13px;
     line-height: 1.2;
+    display: inline-flex;
+    align-items: center;
     transition: background 120ms ease;
   }
 
@@ -254,6 +258,14 @@
     pointer-events: none;
     color: var(--fg-muted);
     font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+    transform: translateY(0);
+  }
+
+  .sep.windows {
+    transform: translateY(-3px);
   }
 
   .pill {
