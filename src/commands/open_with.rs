@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 #[cfg(target_os = "linux")]
 use std::path::PathBuf;
+#[cfg(target_os = "windows")]
+use winreg::{enums::*, RegKey};
 use std::process::{Command, Stdio};
 use std::thread;
 use tracing::{info, warn};
@@ -87,9 +89,7 @@ pub fn open_with(path: String, choice: OpenWithChoice) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         if let Some(app_id) = app_id {
-            if app_id == "__openas__" {
-                return launch_openas_dialog(&target);
-            }
+            return launch_windows_handler(&target, &app_id);
         }
     }
 
@@ -455,26 +455,177 @@ fn command_from_exec(entry: &DesktopEntry, target: &Path) -> Result<(String, Vec
     Ok((program, args))
 }
 
+
 #[cfg(target_os = "windows")]
-fn list_windows_apps(_target: &Path) -> Vec<OpenWithApp> {
-    vec![OpenWithApp {
-        id: "__openas__".to_string(),
-        name: "Choose app?".to_string(),
-        comment: Some("Pick an app from the system Open With dialog".to_string()),
-        exec: "rundll32.exe shell32.dll,OpenAs_RunDLL".to_string(),
-        icon: None,
-        matches: true,
-        terminal: false,
-    }]
+fn list_windows_apps(target: &Path) -> Vec<OpenWithApp> {
+    use std::collections::HashSet;
+
+    let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
+    let is_dir = target.is_dir();
+    let ext = target
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+
+    let mut apps = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    if is_dir {
+        collect_progids(&hkcr, "Directory", true, &mut apps, &mut seen);
+    }
+
+    if let Some(ext) = &ext {
+        collect_progids(&hkcr, &format!(".{ext}"), false, &mut apps, &mut seen);
+        collect_applications(&hkcr, &format!(".{ext}"), &mut apps, &mut seen);
+    }
+
+    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    apps
 }
 
 #[cfg(target_os = "windows")]
-fn launch_openas_dialog(target: &Path) -> Result<(), String> {
-    let mut cmd = Command::new("rundll32.exe");
-    cmd.arg("shell32.dll,OpenAs_RunDLL")
-        .arg(target)
-        .stdin(Stdio::null())
+fn collect_progids(
+    hkcr: &RegKey,
+    key_name: &str,
+    is_dir: bool,
+    out: &mut Vec<OpenWithApp>,
+    seen: &mut std::collections::HashSet<String>,
+) {
+    if let Ok(key) = hkcr.open_subkey_with_flags(key_name, KEY_READ) {
+        if let Ok(prog) = key.get_value::<String, _>("") {
+            push_prog_id(hkcr, &prog, out, seen);
+        }
+        if let Ok(owp) = key.open_subkey_with_flags("OpenWithProgids", KEY_READ) {
+            for value in owp.enum_values().flatten() {
+                let progid = value.0;
+                push_prog_id(hkcr, &progid, out, seen);
+            }
+        }
+        if is_dir {
+            // Directory may map to Folder
+            push_prog_id(hkcr, "Folder", out, seen);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn push_prog_id(
+    hkcr: &RegKey,
+    progid: &str,
+    out: &mut Vec<OpenWithApp>,
+    seen: &mut std::collections::HashSet<String>,
+) {
+    if progid.is_empty() || !seen.insert(format!("progid:{progid}")) {
+        return;
+    }
+    let cmd_key = format!("{progid}\\shell\\open\\command");
+    if let Ok(key) = hkcr.open_subkey_with_flags(cmd_key, KEY_READ) {
+        if let Ok(command) = key.get_value::<String, _>("") {
+            let name = hkcr
+                .open_subkey_with_flags(progid, KEY_READ)
+                .ok()
+                .and_then(|k| k.get_value::<String, _>("FriendlyTypeName").ok())
+                .unwrap_or_else(|| progid.to_string());
+            out.push(OpenWithApp {
+                id: format!("progid:{progid}"),
+                name,
+                comment: None,
+                exec: command,
+                icon: None,
+                matches: true,
+                terminal: false,
+            });
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn collect_applications(
+    hkcr: &RegKey,
+    ext_key: &str,
+    out: &mut Vec<OpenWithApp>,
+    seen: &mut std::collections::HashSet<String>,
+) {
+    let allowed = open_with_list(hkcr, ext_key);
+    if allowed.is_empty() {
+        return;
+    }
+    if let Ok(apps_key) = hkcr.open_subkey_with_flags("Applications", KEY_READ) {
+        for app in &allowed {
+            if let Ok(app_key) = apps_key.open_subkey_with_flags(app, KEY_READ) {
+                if let Ok(cmd_key) = app_key.open_subkey_with_flags(r"shell\\open\\command", KEY_READ) {
+                    if let Ok(command) = cmd_key.get_value::<String, _>("") {
+                        let id = format!("app:{app}");
+                        if !seen.insert(id.clone()) {
+                            continue;
+                        }
+                        let name = app.trim_end_matches(".exe").to_string();
+                        let comment = app_key
+                            .get_value::<String, _>("FriendlyAppName")
+                            .ok()
+                            .or_else(|| app_key.get_value::<String, _>("FriendlyName").ok());
+                        out.push(OpenWithApp {
+                            id,
+                            name: comment.clone().unwrap_or_else(|| name.clone()),
+                            comment,
+                            exec: command,
+                            icon: None,
+                            matches: true,
+                            terminal: false,
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn open_with_list(hkcr: &RegKey, ext_key: &str) -> Vec<String> {
+    let mut apps = Vec::new();
+    let key_name = format!(r"{ext_key}\OpenWithList");
+    if let Ok(key) = hkcr.open_subkey_with_flags(key_name, KEY_READ) {
+        for value in key.enum_values().flatten() {
+            let name = value.0;
+            if name.to_ascii_lowercase().ends_with(".exe") {
+                apps.push(name);
+            }
+        }
+    }
+    apps
+}
+
+#[cfg(target_os = "windows")]
+fn launch_windows_handler(target: &Path, app_id: &str) -> Result<(), String> {
+    let apps = list_windows_apps(target);
+    let app = apps
+        .into_iter()
+        .find(|a| a.id == app_id)
+        .ok_or_else(|| "Selected application is unavailable".to_string())?;
+    launch_windows_command(&app.exec, target)
+}
+
+#[cfg(target_os = "windows")]
+fn launch_windows_command(template: &str, target: &Path) -> Result<(), String> {
+    let target_str = target.to_string_lossy().to_string();
+    let replaced = template
+        .replace("%1", &target_str)
+        .replace("%l", &target_str)
+        .replace("%L", &target_str)
+        .replace("%*", &target_str);
+    let mut parts = shell_words::split(&replaced)
+        .map_err(|e| format!("Failed to parse command template: {e}"))?;
+    if parts.is_empty() {
+        return Err("Command cannot be empty".into());
+    }
+    if !replaced.contains(&target_str) {
+        parts.push(target_str);
+    }
+    let program = parts.remove(0);
+    let mut cmd = Command::new(&program);
+    cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    spawn_detached(cmd).map_err(|e| format!("Failed to open choose-app dialog: {e}"))
+        .stderr(Stdio::null())
+        .args(parts);
+    spawn_detached(cmd).map_err(|e| format!("Failed to launch {program}: {e}"))
 }
