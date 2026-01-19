@@ -34,7 +34,11 @@ pub fn list_open_with_apps(path: String) -> Result<Vec<OpenWithApp>, String> {
     {
         return Ok(list_linux_apps(&target));
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        return Ok(list_windows_apps(&target));
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         let _ = target;
         Ok(Vec::new())
@@ -78,6 +82,14 @@ pub fn open_with(path: String, choice: OpenWithChoice) -> Result<(), String> {
         if let Some(app_id) = app_id {
             info!("Opening {:?} with desktop entry {}", target, app_id);
             return launch_desktop_entry(&target, &app_id);
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(app_id) = app_id {
+            if app_id == "__openas__" {
+                return launch_openas_dialog(&target);
+            }
         }
     }
 
@@ -441,4 +453,28 @@ fn command_from_exec(entry: &DesktopEntry, target: &Path) -> Result<(String, Vec
         args.push(target_str);
     }
     Ok((program, args))
+}
+
+#[cfg(target_os = "windows")]
+fn list_windows_apps(_target: &Path) -> Vec<OpenWithApp> {
+    vec![OpenWithApp {
+        id: "__openas__".to_string(),
+        name: "Choose app?".to_string(),
+        comment: Some("Pick an app from the system Open With dialog".to_string()),
+        exec: "rundll32.exe shell32.dll,OpenAs_RunDLL".to_string(),
+        icon: None,
+        matches: true,
+        terminal: false,
+    }]
+}
+
+#[cfg(target_os = "windows")]
+fn launch_openas_dialog(target: &Path) -> Result<(), String> {
+    let mut cmd = Command::new("rundll32.exe");
+    cmd.arg("shell32.dll,OpenAs_RunDLL")
+        .arg(target)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    spawn_detached(cmd).map_err(|e| format!("Failed to open choose-app dialog: {e}"))
 }
