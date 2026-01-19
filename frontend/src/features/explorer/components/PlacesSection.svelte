@@ -49,6 +49,11 @@
     box-shadow: none;
   }
 
+  .nav:focus,
+  .nav:focus-visible {
+    outline: none;
+  }
+
   .nav:hover {
     background: var(--bg-hover);
     transform: none;

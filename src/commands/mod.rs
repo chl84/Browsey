@@ -18,7 +18,7 @@ pub use console::open_console;
 pub use decompress::extract_archive;
 pub use fs::{
     create_folder, delete_entry, list_dir, list_mounts, list_trash, move_to_trash, open_entry,
-    purge_trash_items, rename_entry, restore_trash_items, watch_dir,
+    purge_trash_items, rename_entry, restore_trash_items, watch_dir, delete_entries,
 };
 pub use library::{list_recent, list_starred, toggle_star};
 pub use meta::entry_times_cmd;

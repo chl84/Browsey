@@ -18,7 +18,7 @@ mod fs_windows;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::ffi::OsString;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -664,4 +664,71 @@ fn delete_now(pb: &Path) -> Result<(), String> {
     } else {
         fs::remove_file(pb).map_err(|e| format!("Failed to delete file: {e}"))
     }
+}
+
+#[derive(Serialize, Clone)]
+pub struct DeleteProgressPayload {
+    pub bytes: u64,
+    pub total: u64,
+    pub finished: bool,
+}
+
+fn emit_delete_progress(
+    app: &tauri::AppHandle,
+    event: Option<&String>,
+    done: u64,
+    total: u64,
+    finished: bool,
+    last_emit: &mut Instant,
+) {
+    if let Some(evt) = event {
+        let now = Instant::now();
+        if finished || now.duration_since(*last_emit) >= Duration::from_millis(100) {
+            let payload = DeleteProgressPayload {
+                bytes: done,
+                total,
+                finished,
+            };
+            let _ = app.emit(evt, payload);
+            *last_emit = now;
+        }
+    }
+}
+
+fn delete_entries_blocking(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+    progress_event: Option<String>,
+) -> Result<(), String> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let mut resolved: Vec<PathBuf> = Vec::with_capacity(paths.len());
+    for raw in paths {
+        let pb = sanitize_path_nofollow(&raw, true)?;
+        check_no_symlink_components(&pb)?;
+        resolved.push(pb);
+    }
+    let total = resolved.len() as u64;
+    let mut done = 0u64;
+    let mut last_emit = Instant::now();
+    for path in resolved {
+        delete_now(&path)?;
+        done = done.saturating_add(1);
+        emit_delete_progress(&app, progress_event.as_ref(), done, total, false, &mut last_emit);
+    }
+    emit_delete_progress(&app, progress_event.as_ref(), done, total, true, &mut last_emit);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_entries(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+    progress_event: Option<String>,
+) -> Result<(), String> {
+    let task =
+        tauri::async_runtime::spawn_blocking(move || delete_entries_blocking(app, paths, progress_event));
+    task.await
+        .map_err(|e| format!("Delete task failed: {e}"))?
 }

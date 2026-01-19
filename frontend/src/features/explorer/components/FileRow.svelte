@@ -28,6 +28,7 @@
   class="row"
   data-index={index}
   style={`grid-template-columns:${gridTemplate};`}
+  style:webkitUserSelect="text"
   class:hidden={hidden}
   class:selected={selected}
   class:cut={cutting}
@@ -35,6 +36,7 @@
   class:drop-blocked={dropActive && !dropAllowed}
   type="button"
   draggable="true"
+  style:userSelect="text"
   on:dblclick={() => onOpen(entry)}
   on:keydown={(e) => {
     if (e.key === 'Enter') {

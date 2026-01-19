@@ -33,7 +33,6 @@
   export let searchMode = false
   export let loading = false
   export let viewMode: 'list' | 'grid' = 'list'
-  export let activity: { label: string; percent: number | null } | null = null
   export let onFocus: () => void = () => {}
   export let onBlur: () => void = () => {}
   export let onSubmitPath: () => void = () => {}
@@ -85,6 +84,7 @@
   export let onRowDragLeave: (entry: Entry, event: DragEvent) => void = () => {}
 
   export let selectionText = ''
+  export let activity: { label: string; percent: number | null } | null = null
   export let selectionActive = false
   export let selectionRect: { x: number; y: number; width: number; height: number } = {
     x: 0,
@@ -253,6 +253,7 @@
           {displayName}
           {clipboardMode}
           {clipboardPaths}
+          onWheel={onWheel}
           onRowsContextMenu={onRowsContextMenu}
           onRowsClick={onRowsClick}
           onRowsMousedown={onRowsMousedown}

@@ -29,4 +29,5 @@
     color: var(--fg-muted);
     font-size: 12px;
   }
+
 </style>

@@ -97,6 +97,11 @@
     box-shadow: none;
   }
 
+  .nav:focus,
+  .nav:focus-visible {
+    outline: none;
+  }
+
   .nav-icon {
     width: 18px;
     height: 18px;
