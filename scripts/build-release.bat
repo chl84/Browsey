@@ -1,32 +1,13 @@
 @echo off
-setlocal EnableDelayedExpansion
+setlocal EnableExtensions EnableDelayedExpansion
 
-:: Build Windows release bundle (NSIS). Cleans old bundles, builds frontend, then runs Tauri bundler.
-
+:: Build Windows release bundle (NSIS) in one step. Frontend is built by Tauri's beforeBuildCommand.
 set ROOT=%~dp0..
-pushd "%ROOT%"
 
-if exist "target\release\bundle" (
-  echo Removing target\release\bundle ...
-  rmdir /s /q "target\release\bundle"
-)
-if exist "src-tauri\target" (
-  echo Removing src-tauri\target ...
-  rmdir /s /q "src-tauri\target"
-)
-
-echo Building frontend...
-pushd "frontend"
-npm run build
-if errorlevel 1 (
-  echo Frontend build failed ^(npm run build^)
-  popd
-  exit /b 1
-)
-popd
+pushd "%ROOT%" || exit /b 1
 
 echo Building Tauri NSIS bundle...
-cargo tauri build --bundles nsis %*
+cargo tauri build --config "%ROOT%\tauri.conf.json" --bundles nsis %*
 if errorlevel 1 (
   echo Tauri build failed
   popd
