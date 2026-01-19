@@ -1,5 +1,7 @@
 # Rust / Cargo
 /target/
+/target/release/bundle/
+/target/release/**/*.rpm
 **/*.rs.bk
 
 # Tauri / build outputs
