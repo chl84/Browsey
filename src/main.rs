@@ -86,6 +86,7 @@ fn main() {
             rename_entry,
             move_to_trash,
             delete_entry,
+            delete_entries,
             entry_times_cmd,
             extract_archive,
             open_console,

@@ -13,6 +13,7 @@
   export let clipboardPaths: Set<string> = new Set()
   export let isHidden: (entry: Entry) => boolean = () => false
   export let displayName: (entry: Entry) => string = (e) => e.name
+  export let onWheel: (event: WheelEvent) => void = () => {}
   export let selectionActive = false
   export let selectionRect: { x: number; y: number; width: number; height: number } = {
     x: 0,
@@ -44,7 +45,9 @@
     role="grid"
     tabindex="0"
     bind:this={rowsEl}
+    style="user-select:none"
     on:scroll={onRowsScroll}
+    on:wheel|passive={onWheel}
     on:contextmenu={onRowsContextMenu}
     on:click={onRowsClick}
     on:mousedown={onRowsMousedown}
@@ -64,6 +67,7 @@
               class:drop-target={dragTargetPath === entry.path}
               class:drop-blocked={dragTargetPath === entry.path && !dragAllowed}
               type="button"
+              style="user-select:text"
               data-path={entry.path}
               draggable="true"
               on:dblclick={() => onOpen(entry)}
@@ -112,6 +116,11 @@
     cursor: default;
   }
 
+  .grid:focus,
+  .grid:focus-visible {
+    outline: none;
+  }
+
   .spacer {
     position: relative;
     width: 100%;
@@ -154,6 +163,7 @@
     cursor: default;
     color: var(--fg);
     font-size: 14px;
+    font-weight: 300;
     position: relative;
     overflow: hidden;
     transition: background 120ms ease, border-color 120ms ease;

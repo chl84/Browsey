@@ -333,6 +333,9 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   }
 
   const toggleMode = async (checked: boolean) => {
+    if (get(searchMode) === checked) {
+      return
+    }
     searchMode.set(checked)
     if (!checked) {
       filter.set('')

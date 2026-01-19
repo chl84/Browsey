@@ -1,7 +1,7 @@
 :root {
   --bg: #101010;
   --bg-alt: #0d0d0d;
-  --bg-raised: #1a1a1a;
+  --bg-raised: #1f1f1f;
   --bg-button: #141414;
   --bg-hover: #181818;
   --border: #2b2b2b;
@@ -53,6 +53,8 @@
 /* Dark scrollbars app-wide; components can override by hiding or customizing. */
 * {
   scrollbar-color: var(--border-accent) var(--bg);
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 *::-webkit-scrollbar {
@@ -76,6 +78,18 @@
   user-select: text;
 }
 
+/* Allow text selection only where intended: rows/cards and form fields. */
+input,
+textarea,
+select,
+option,
+[contenteditable='true'],
+.row,
+.card {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -83,6 +97,7 @@ body {
   height: 100vh;
   color: var(--fg);
   overflow: hidden;
+  user-select: none;
 }
 
 #app {

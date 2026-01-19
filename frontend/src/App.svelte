@@ -106,8 +106,20 @@
   let lastLocation = ''
   let extracting = false
   let compressing = false
+  let deleting = false
   let activity: { label: string; percent: number | null } | null = null
   let activityUnlisten: UnlistenFn | null = null
+  let activityHideTimer: ReturnType<typeof setTimeout> | null = null
+
+  const queueActivityHide = () => {
+    if (activityHideTimer) {
+      clearTimeout(activityHideTimer)
+    }
+    activityHideTimer = setTimeout(() => {
+      activity = null
+      activityHideTimer = null
+    }, 2000)
+  }
 
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
@@ -135,6 +147,10 @@
 
   const startActivityListener = async (label: string, eventName: string) => {
     await cleanupActivityListener()
+    if (activityHideTimer) {
+      clearTimeout(activityHideTimer)
+      activityHideTimer = null
+    }
     activity = { label, percent: 0 }
     activityUnlisten = await listen<ProgressPayload>(eventName, (event) => {
       const payload = event.payload
@@ -142,16 +158,21 @@
         payload.total > 0 ? Math.min(100, Math.round((payload.bytes / payload.total) * 100)) : null
       if (payload.finished) {
         activity = { label: 'Finalizing…', percent: pct ?? null }
+        queueActivityHide()
       } else {
         activity = { label, percent: pct }
       }
     })
   }
 
-  const cleanupActivityListener = async () => {
+  const cleanupActivityListener = async (preserveTimer = false) => {
     if (activityUnlisten) {
       await activityUnlisten()
       activityUnlisten = null
+    }
+    if (!preserveTimer && activityHideTimer) {
+      clearTimeout(activityHideTimer)
+      activityHideTimer = null
     }
   }
 
@@ -192,6 +213,11 @@
   const selectionActive = selectionBox.active
   const selectionRect = selectionBox.rect
 
+  const focusCurrentView = async () => {
+    await tick()
+    rowsElRef?.focus()
+  }
+
   const toggleViewMode = async () => {
     const nextMode = viewMode === 'list' ? 'grid' : 'list'
     const switchingToList = nextMode === 'list'
@@ -209,7 +235,10 @@
       gridTotalHeight.set(0)
       await tick()
       recompute(get(filteredEntries))
+    } else {
+      await tick()
     }
+    void focusCurrentView()
   }
 
   const {
@@ -285,6 +314,10 @@
   const gridOffsetY = writable(0)
   const gridTotalHeight = writable(0)
   let gridCols = 1
+  const GRID_WHEEL_SCALE = 0.7
+  let gridWheelRaf: number | null = null
+  let gridPendingDeltaX = 0
+  let gridPendingDeltaY = 0
   let cursorX = 0
   let cursorY = 0
 
@@ -565,19 +598,41 @@
         deleteConfirmOpen = true
         return true
       }
+      const label = currentView === 'trash' ? 'Deleting…' : 'Moving to trash…'
+      const total = entries.length
+      await cleanupActivityListener()
+      if (activityHideTimer) {
+        clearTimeout(activityHideTimer)
+        activityHideTimer = null
+      }
+      activity = { label, percent: total > 0 ? 0 : null }
       try {
         if (currentView === 'trash') {
+          let done = 0
           for (const p of entries.map((e) => e.path)) {
             await invoke('delete_entry', { path: p })
+            done += 1
+            activity = {
+              label,
+              percent: total > 0 ? Math.round((done / total) * 100) : null,
+            }
           }
         } else {
+          let done = 0
           for (const p of entries.map((e) => e.path)) {
             await invoke('move_to_trash', { path: p })
+            done += 1
+            activity = {
+              label,
+              percent: total > 0 ? Math.round((done / total) * 100) : null,
+            }
           }
         }
         await reloadCurrent()
       } catch (err) {
         console.error('Failed to move to trash', err)
+      } finally {
+        queueActivityHide()
       }
       return true
     },
@@ -1002,15 +1057,36 @@
       const list = get(filteredEntries)
       if (list.length === 0) return
       selectionDrag = false
+      const additive = event.ctrlKey || event.metaKey
+      const subtractive = !additive && event.shiftKey
+      const baseSelection = get(selected)
+      const baseAnchor = get(anchorIndex)
+      const baseCaret = get(caretIndex)
       selectionBox.start(event, {
         rowsEl: rowsElRef,
         headerEl: headerElRef,
         entries: list,
         rowHeight,
         onSelect: (paths, anchor, caret) => {
-          selected.set(paths)
-          anchorIndex.set(anchor)
-          caretIndex.set(caret)
+          if (subtractive) {
+            const next = new Set(baseSelection)
+            for (const path of paths) next.delete(path)
+            const anchorPath = baseAnchor !== null ? list[baseAnchor]?.path : null
+            const caretPath = baseCaret !== null ? list[baseCaret]?.path : null
+            anchorIndex.set(anchorPath && next.has(anchorPath) ? baseAnchor : null)
+            caretIndex.set(caretPath && next.has(caretPath) ? baseCaret : null)
+            selected.set(next)
+          } else if (additive) {
+            const merged = new Set(baseSelection)
+            for (const path of paths) merged.add(path)
+            selected.set(merged)
+            anchorIndex.set(baseAnchor ?? anchor)
+            caretIndex.set(baseCaret ?? caret)
+          } else {
+            selected.set(paths)
+            anchorIndex.set(anchor)
+            caretIndex.set(caret)
+          }
         },
         onEnd: (didDrag) => {
           selectionDrag = didDrag
@@ -1027,12 +1103,17 @@
     if (gridEntries.length === 0) return
     event.preventDefault()
     selectionDrag = false
+    const additive = event.ctrlKey || event.metaKey
+    const subtractive = !additive && event.shiftKey
+    const baseSelection = get(selected)
+    const baseAnchor = get(anchorIndex)
+    const baseCaret = get(caretIndex)
     selectionBox.start(event, {
       rowsEl: gridEl,
       headerEl: null,
       entries: gridEntries,
       rowHeight: 1,
-    hitTest: (rect) =>
+      hitTest: (rect) =>
       hitTestGridVirtualized(rect, gridEntries, {
         gridCols,
         cardWidth: GRID_CARD_WIDTH,
@@ -1040,10 +1121,26 @@
         gap: GRID_GAP,
         padding: GRID_GAP,
       }),
-      onSelect: (paths) => {
-        selected.set(paths)
-        anchorIndex.set(null)
-        caretIndex.set(null)
+      onSelect: (paths, anchor, caret) => {
+        if (subtractive) {
+          const next = new Set(baseSelection)
+          for (const path of paths) next.delete(path)
+          const anchorPath = baseAnchor !== null ? gridEntries[baseAnchor]?.path : null
+          const caretPath = baseCaret !== null ? gridEntries[baseCaret]?.path : null
+          anchorIndex.set(anchorPath && next.has(anchorPath) ? baseAnchor : null)
+          caretIndex.set(caretPath && next.has(caretPath) ? baseCaret : null)
+          selected.set(next)
+        } else if (additive) {
+          const merged = new Set(baseSelection)
+          for (const path of paths) merged.add(path)
+          selected.set(merged)
+          anchorIndex.set(baseAnchor ?? anchor ?? null)
+          caretIndex.set(baseCaret ?? caret ?? null)
+        } else {
+          selected.set(paths)
+          anchorIndex.set(anchor ?? null)
+          caretIndex.set(caret ?? null)
+        }
       },
       onEnd: (didDrag) => {
         selectionDrag = didDrag
@@ -1054,6 +1151,21 @@
   const handleGridScroll = () => {
     if (viewMode !== 'grid') return
     recomputeGrid()
+  }
+
+  const handleGridWheel = (event: WheelEvent) => {
+    const el = gridElRef
+    if (!el) return
+    gridPendingDeltaX += event.deltaX * GRID_WHEEL_SCALE
+    gridPendingDeltaY += event.deltaY * GRID_WHEEL_SCALE
+    if (gridWheelRaf !== null) return
+    gridWheelRaf = requestAnimationFrame(() => {
+      el.scrollLeft += gridPendingDeltaX
+      el.scrollTop += gridPendingDeltaY
+      gridPendingDeltaX = 0
+      gridPendingDeltaY = 0
+      gridWheelRaf = null
+    })
   }
 
   const handleRowsScrollCombined = (event: Event) => {
@@ -1084,6 +1196,7 @@
     const list = get(filteredEntries)
     if (list.length === 0) return
     const key = event.key.toLowerCase()
+    const selectedSet = get(selected)
     const ctrl = event.ctrlKey || event.metaKey
     if (ctrl && key === 'a') {
       event.preventDefault()
@@ -1091,6 +1204,29 @@
       selected.set(new Set(list.map((e) => e.path)))
       anchorIndex.set(0)
       caretIndex.set(list.length - 1)
+      return
+    }
+    if (key === 'escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      selected.set(new Set())
+      anchorIndex.set(null)
+      caretIndex.set(null)
+      return
+    }
+    if (key === 'enter') {
+      event.preventDefault()
+      event.stopPropagation()
+      const idx =
+        get(caretIndex) ??
+        get(anchorIndex) ??
+        list.findIndex((entry) => selectedSet.has(entry.path))
+      if (idx !== null && idx >= 0) {
+        const entry = list[idx]
+        if (entry) {
+          void handleOpenEntry(entry)
+        }
+      }
       return
     }
 
@@ -1137,6 +1273,14 @@
       rowsKeydownHandler(event)
     } else {
       handleGridKeydown(event)
+    }
+  }
+
+  const handleWheelCombined = (event: WheelEvent) => {
+    if (viewMode === 'list') {
+      handleWheel(event)
+    } else {
+      handleGridWheel(event)
     }
   }
 
@@ -1496,15 +1640,29 @@
   }
 
   const confirmDelete = async () => {
-    if (deleteTargets.length === 0) return
+    if (deleteTargets.length === 0 || deleting) return
+    deleting = true
+    const paths = deleteTargets.map((t) => t.path)
+    const progressEvent = `delete-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
-      for (const target of deleteTargets) {
-        await invoke('delete_entry', { path: target.path })
-      }
+      await startActivityListener('Deleting…', progressEvent)
+      await invoke('delete_entries', { paths, progressEvent })
       await reloadCurrent()
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
       console.error('Failed to delete', err)
+      showToast(`Delete failed: ${msg}`)
     } finally {
+      deleting = false
+      const hadTimer = activityHideTimer !== null
+      await cleanupActivityListener(true)
+      if (!hadTimer) {
+        activity = null
+        if (activityHideTimer) {
+          clearTimeout(activityHideTimer)
+          activityHideTimer = null
+        }
+      }
       closeDeleteConfirm()
     }
   }
@@ -1684,7 +1842,7 @@
   clipboardMode={clipboardMode}
   clipboardPaths={clipboardPaths}
     onRowsScroll={handleRowsScrollCombined}
-    onWheel={handleWheel}
+    onWheel={handleWheelCombined}
     onRowsKeydown={handleRowsKeydownCombined}
     onRowsMousedown={handleRowsMouseDown}
     onRowsClick={handleRowsClickSafe}

@@ -192,8 +192,10 @@ export const createGlobalShortcuts = ({
     if (key === 'escape') {
       event.preventDefault()
       event.stopPropagation()
-      await setSearchMode(false)
-      blurPath()
+      if (searchMode()) {
+        await setSearchMode(false)
+        blurPath()
+      }
       return
     }
 
