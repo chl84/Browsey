@@ -84,7 +84,9 @@
   export let onRowDragLeave: (entry: Entry, event: DragEvent) => void = () => {}
 
   export let selectionText = ''
-  export let activity: { label: string; percent: number | null } | null = null
+  export let activity:
+    | { label: string; percent: number | null; cancel?: (() => void) | null; cancelling?: boolean }
+    | null = null
   export let selectionActive = false
   export let selectionRect: { x: number; y: number; width: number; height: number } = {
     x: 0,
