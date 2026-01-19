@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    io::{self, BufReader, BufWriter, Read, Write},
+    io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
@@ -201,7 +201,10 @@ fn do_extract(
 
     let kind = detect_archive(&archive_path)?;
     let total_hint = match kind {
+        ArchiveKind::Zip => zip_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::Tar => tar_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::TarGz => gzip_uncompressed_size(&archive_path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::Gz => gzip_uncompressed_size(&archive_path).unwrap_or_else(|_| meta.len()),
         _ => meta.len(),
     }
     .max(1);
@@ -710,6 +713,40 @@ fn current_millis() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+fn zip_uncompressed_total(path: &Path) -> Result<u64, String> {
+    let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip for total"))?)
+        .map_err(|e| format!("Failed to read zip: {e}"))?;
+    let mut total = 0u64;
+    for i in 0..archive.len() {
+        let entry = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
+        if entry.is_dir() {
+            continue;
+        }
+        total = total.saturating_add(entry.size());
+    }
+    Ok(total)
+}
+
+fn gzip_uncompressed_size(path: &Path) -> Result<u64, String> {
+    let mut file = File::open(path).map_err(map_io("open gzip for total"))?;
+    let len = file
+        .metadata()
+        .map_err(map_io("read gzip metadata"))?
+        .len();
+    if len < 4 {
+        return Err("gzip too small to contain size footer".into());
+    }
+    file.seek(SeekFrom::End(-4))
+        .map_err(map_io("seek gzip footer"))?;
+    let mut buf = [0u8; 4];
+    file.read_exact(&mut buf)
+        .map_err(map_io("read gzip footer"))?;
+    let size = u32::from_le_bytes(buf) as u64;
+    Ok(size.max(1))
 }
 
 fn tar_uncompressed_total(path: &Path) -> Result<u64, String> {
