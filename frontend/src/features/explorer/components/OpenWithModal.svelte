@@ -66,6 +66,8 @@
     <section class="block">
       <input
         type="search"
+        id="open-with-filter"
+        autocomplete="off"
         placeholder="Filter apps"
         bind:value={filter}
         on:keydown={(e) => {
@@ -109,6 +111,8 @@
       <div class="muted small">Use this if your app is missing from the list. File path is appended.</div>
       <input
         type="text"
+        id="open-with-custom-command"
+        autocomplete="off"
         placeholder="Executable or command"
         bind:value={customCommand}
         on:input={() => {
@@ -117,6 +121,8 @@
       />
       <input
         type="text"
+        id="open-with-custom-args"
+        autocomplete="off"
         placeholder="Optional arguments"
         bind:value={customArgs}
         on:keydown={(e) => {

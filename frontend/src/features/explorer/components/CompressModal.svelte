@@ -41,6 +41,8 @@
       <span>Archive name</span>
       <input
         type="text"
+        id="compress-archive-name"
+        autocomplete="off"
         bind:this={inputEl}
         bind:value={value}
         on:keydown={(e) => {
@@ -56,7 +58,15 @@
     </label>
     <label class="field">
       <span>Compression level</span>
-      <input type="range" min="0" max="9" step="1" bind:value={level} />
+      <input
+        type="range"
+        id="compress-archive-level"
+        autocomplete="off"
+        min="0"
+        max="9"
+        step="1"
+        bind:value={level}
+      />
       <div class="muted">0 = store only, 9 = maximum compression</div>
     </label>
     <div slot="actions">

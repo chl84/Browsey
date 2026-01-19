@@ -34,6 +34,8 @@
       <div class="pill error">{error}</div>
     {/if}
     <input
+      id="rename-entry-name"
+      autocomplete="off"
       bind:this={inputEl}
       bind:value={value}
       on:keydown={(e) => {
