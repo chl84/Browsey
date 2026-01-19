@@ -183,7 +183,10 @@ fn is_remote_drive(path: &Path) -> bool {
 
     if let Some(letter) = drive_letter(path) {
         let root = format!("{}:\\", letter as char);
-        let wide: Vec<u16> = std::ffi::OsStr::new(&root).encode_wide().chain(std::iter::once(0)).collect();
+        let wide: Vec<u16> = std::ffi::OsStr::new(&root)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
         unsafe { GetDriveTypeW(wide.as_ptr()) == 4 }
     } else {
         false

@@ -1,13 +1,31 @@
 use crate::{db, fs_utils::sanitize_path_follow};
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "windows")]
+use std::ffi::c_void;
 use std::path::Path;
 #[cfg(target_os = "linux")]
 use std::path::PathBuf;
-#[cfg(target_os = "windows")]
-use winreg::{enums::*, RegKey};
 use std::process::{Command, Stdio};
 use std::thread;
 use tracing::{info, warn};
+#[cfg(target_os = "windows")]
+use windows::{
+    core::{HSTRING, PWSTR},
+    Win32::{
+        Foundation::{RPC_E_CHANGED_MODE, S_FALSE, S_OK},
+        System::{
+            Com::{
+                CoInitializeEx, CoTaskMemFree, CoUninitialize, IDataObject, COINIT_APARTMENTTHREADED,
+            },
+        },
+        UI::Shell::{
+            BHID_DataObject, IAssocHandler, IShellItem, IShellItemArray, SHAssocEnumHandlers,
+            SHCreateItemFromParsingName, SHCreateShellItemArrayFromShellItem, ASSOC_FILTER,
+        },
+    },
+};
+#[cfg(target_os = "windows")]
+use winreg::{enums::*, RegKey};
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -174,8 +192,8 @@ fn list_linux_apps(target: &Path) -> Vec<OpenWithApp> {
 #[cfg(target_os = "linux")]
 fn launch_desktop_entry(target: &Path, app_id: &str) -> Result<(), String> {
     let path = PathBuf::from(app_id);
-    let entry =
-        parse_desktop_entry(&path).ok_or_else(|| "Selected application is unavailable".to_string())?;
+    let entry = parse_desktop_entry(&path)
+        .ok_or_else(|| "Selected application is unavailable".to_string())?;
     let (program, args) = command_from_exec(&entry, target)?;
     let mut cmd = Command::new(&program);
     cmd.stdin(Stdio::null())
@@ -410,7 +428,10 @@ fn command_from_exec(entry: &DesktopEntry, target: &Path) -> Result<(String, Vec
 
     let mut used_placeholder = false;
     for token in &mut tokens {
-        if token.contains("%f") || token.contains("%F") || token.contains("%u") || token.contains("%U")
+        if token.contains("%f")
+            || token.contains("%F")
+            || token.contains("%u")
+            || token.contains("%U")
         {
             *token = token
                 .replace("%f", &target_str)
@@ -455,9 +476,100 @@ fn command_from_exec(entry: &DesktopEntry, target: &Path) -> Result<(String, Vec
     Ok((program, args))
 }
 
-
 #[cfg(target_os = "windows")]
 fn list_windows_apps(target: &Path) -> Vec<OpenWithApp> {
+    use std::collections::HashSet;
+
+    let mut apps = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    if let Ok(_com_guard) = ComGuard::new() {
+        let query = windows_query_string(target);
+        if let Err(e) = unsafe { collect_assoc_handlers(&query, &mut apps, &mut seen) } {
+            warn!("Failed to enumerate shell handlers: {e}");
+        }
+    } else {
+        warn!("Failed to initialize COM for shell handler enumeration");
+    }
+
+    let mut registry_apps = list_windows_apps_registry(target);
+    for app in registry_apps.drain(..) {
+        if seen.insert(app.id.clone()) {
+            apps.push(app);
+        }
+    }
+
+    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    apps
+}
+
+#[cfg(target_os = "windows")]
+fn launch_windows_handler(target: &Path, app_id: &str) -> Result<(), String> {
+    if app_id.starts_with("progid:") || app_id.starts_with("app:") {
+        return launch_registry_handler(target, app_id);
+    }
+
+    let _com_guard = ComGuard::new().map_err(|e| format!("Failed to initialize COM: {e}"))?;
+    let query = windows_query_string(target);
+    let handler = unsafe {
+        find_assoc_handler(&query, app_id)
+            .map_err(|e| format!("Failed to enumerate handlers: {e}"))?
+    }
+    .ok_or_else(|| "Selected application is unavailable".to_string())?;
+
+    let data_object = create_data_object_for_path(target)?;
+
+    unsafe {
+        if let Ok(invoker) = handler.CreateInvoker(&data_object) {
+            let _ = invoker.SupportsSelection();
+            invoker
+                .Invoke()
+                .map_err(|e| format!("Failed to invoke handler: {e}"))
+        } else {
+            handler
+                .Invoke(&data_object)
+                .map_err(|e| format!("Failed to invoke handler: {e}"))
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn launch_windows_command(template: &str, target: &Path) -> Result<(), String> {
+    let target_str = target.to_string_lossy().to_string();
+    let replaced = template
+        .replace("%1", &target_str)
+        .replace("%l", &target_str)
+        .replace("%L", &target_str)
+        .replace("%*", &target_str);
+    let mut parts = shell_words::split(&replaced)
+        .map_err(|e| format!("Failed to parse command template: {e}"))?;
+    if parts.is_empty() {
+        return Err("Command cannot be empty".into());
+    }
+    if !replaced.contains(&target_str) {
+        parts.push(target_str);
+    }
+    let program = parts.remove(0);
+    let mut cmd = Command::new(&program);
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .args(parts);
+    spawn_detached(cmd).map_err(|e| format!("Failed to launch {program}: {e}"))
+}
+
+#[cfg(target_os = "windows")]
+fn launch_registry_handler(target: &Path, app_id: &str) -> Result<(), String> {
+    let apps = list_windows_apps_registry(target);
+    let app = apps
+        .into_iter()
+        .find(|a| a.id == app_id)
+        .ok_or_else(|| "Selected application is unavailable".to_string())?;
+    launch_windows_command(&app.exec, target)
+}
+
+#[cfg(target_os = "windows")]
+fn list_windows_apps_registry(target: &Path) -> Vec<OpenWithApp> {
     use std::collections::HashSet;
 
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
@@ -479,7 +591,6 @@ fn list_windows_apps(target: &Path) -> Vec<OpenWithApp> {
         collect_applications(&hkcr, &format!(".{ext}"), &mut apps, &mut seen);
     }
 
-    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     apps
 }
 
@@ -502,7 +613,6 @@ fn collect_progids(
             }
         }
         if is_dir {
-            // Directory may map to Folder
             push_prog_id(hkcr, "Folder", out, seen);
         }
     }
@@ -553,7 +663,9 @@ fn collect_applications(
     if let Ok(apps_key) = hkcr.open_subkey_with_flags("Applications", KEY_READ) {
         for app in &allowed {
             if let Ok(app_key) = apps_key.open_subkey_with_flags(app, KEY_READ) {
-                if let Ok(cmd_key) = app_key.open_subkey_with_flags(r"shell\\open\\command", KEY_READ) {
+                if let Ok(cmd_key) =
+                    app_key.open_subkey_with_flags(r"shell\\open\\command", KEY_READ)
+                {
                     if let Ok(command) = cmd_key.get_value::<String, _>("") {
                         let id = format!("app:{app}");
                         if !seen.insert(id.clone()) {
@@ -596,36 +708,184 @@ fn open_with_list(hkcr: &RegKey, ext_key: &str) -> Vec<String> {
 }
 
 #[cfg(target_os = "windows")]
-fn launch_windows_handler(target: &Path, app_id: &str) -> Result<(), String> {
-    let apps = list_windows_apps(target);
-    let app = apps
-        .into_iter()
-        .find(|a| a.id == app_id)
-        .ok_or_else(|| "Selected application is unavailable".to_string())?;
-    launch_windows_command(&app.exec, target)
+unsafe fn collect_assoc_handlers(
+    query: &HSTRING,
+    out: &mut Vec<OpenWithApp>,
+    seen: &mut std::collections::HashSet<String>,
+) -> Result<(), windows::core::Error> {
+    let enum_handlers = SHAssocEnumHandlers(query, ASSOC_FILTER::default())?;
+    let mut buffer: [Option<IAssocHandler>; 8] = Default::default();
+    loop {
+        let mut fetched: u32 = 0;
+        match enum_handlers.Next(&mut buffer, Some(&mut fetched)) {
+            Ok(()) => {
+                if fetched == 0 {
+                    break;
+                }
+                for handler in buffer.iter_mut().take(fetched as usize) {
+                    let Some(handler) = handler.take() else {
+                        continue;
+                    };
+                    if let Some(app) = handler_to_app(handler) {
+                        if seen.insert(app.id.clone()) {
+                            out.push(app);
+                        }
+                    }
+                }
+            }
+            Err(e) if e.code() == S_FALSE => break,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
-fn launch_windows_command(template: &str, target: &Path) -> Result<(), String> {
-    let target_str = target.to_string_lossy().to_string();
-    let replaced = template
-        .replace("%1", &target_str)
-        .replace("%l", &target_str)
-        .replace("%L", &target_str)
-        .replace("%*", &target_str);
-    let mut parts = shell_words::split(&replaced)
-        .map_err(|e| format!("Failed to parse command template: {e}"))?;
-    if parts.is_empty() {
-        return Err("Command cannot be empty".into());
+unsafe fn handler_to_app(handler: IAssocHandler) -> Option<OpenWithApp> {
+    let id = handler
+        .GetName()
+        .ok()
+        .and_then(|ptr| pwstr_to_string(ptr))?;
+    let name = handler
+        .GetUIName()
+        .ok()
+        .and_then(|ptr| pwstr_to_string(ptr))
+        .filter(|ui| !ui.is_empty())
+        .unwrap_or_else(|| id.clone());
+    let mut icon_ptr: PWSTR = PWSTR::null();
+    let mut icon_index: i32 = 0;
+    let icon = handler
+        .GetIconLocation(&mut icon_ptr, &mut icon_index)
+        .ok()
+        .and_then(|_| pwstr_to_string(icon_ptr));
+    let matches = handler.IsRecommended() == S_OK;
+    let comment = if name != id { Some(id.clone()) } else { None };
+    let exec = comment.clone().unwrap_or_else(|| id.clone());
+    Some(OpenWithApp {
+        id,
+        name,
+        comment,
+        exec,
+        icon,
+        matches,
+        terminal: false,
+    })
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn find_assoc_handler(
+    query: &HSTRING,
+    app_id: &str,
+) -> Result<Option<IAssocHandler>, windows::core::Error> {
+    let enum_handlers = SHAssocEnumHandlers(query, ASSOC_FILTER::default())?;
+    let mut buffer: [Option<IAssocHandler>; 8] = Default::default();
+    let target_id = app_id.to_ascii_lowercase();
+    loop {
+        let mut fetched: u32 = 0;
+        match enum_handlers.Next(&mut buffer, Some(&mut fetched)) {
+            Ok(()) => {
+                if fetched == 0 {
+                    break;
+                }
+                for handler in buffer.iter_mut().take(fetched as usize) {
+                    let Some(handler) = handler.take() else {
+                        continue;
+                    };
+                    if let Some(id) = handler
+                        .GetName()
+                        .ok()
+                        .and_then(|ptr| pwstr_to_string(ptr))
+                    {
+                        if id.to_ascii_lowercase() == target_id {
+                            return Ok(Some(handler));
+                        }
+                    }
+                }
+            }
+            Err(e) if e.code() == S_FALSE => break,
+            Err(e) => return Err(e),
+        }
     }
-    if !replaced.contains(&target_str) {
-        parts.push(target_str);
+    Ok(None)
+}
+
+#[cfg(target_os = "windows")]
+fn create_data_object_for_path(target: &Path) -> Result<IDataObject, String> {
+    let path = target.to_string_lossy();
+    unsafe {
+        let item: IShellItem = SHCreateItemFromParsingName(&HSTRING::from(path.as_ref()), None)
+            .map_err(|e| {
+                format!(
+                    "Failed to create shell item for {}: {e}",
+                    target.to_string_lossy()
+                )
+            })?;
+        let array: IShellItemArray = SHCreateShellItemArrayFromShellItem(&item)
+            .map_err(|e| format!("Failed to create shell item array: {e}"))?;
+        array
+            .BindToHandler::<_, IDataObject>(None, &BHID_DataObject)
+            .map_err(|e| format!("Failed to create data object: {e}"))
     }
-    let program = parts.remove(0);
-    let mut cmd = Command::new(&program);
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .args(parts);
-    spawn_detached(cmd).map_err(|e| format!("Failed to launch {program}: {e}"))
+}
+
+#[cfg(target_os = "windows")]
+fn windows_query_string(target: &Path) -> HSTRING {
+    if target.is_dir() {
+        HSTRING::from(target.to_string_lossy().as_ref())
+    } else if let Some(ext) = target.extension().and_then(|e| e.to_str()) {
+        HSTRING::from(format!(".{}", ext.to_ascii_lowercase()))
+    } else {
+        HSTRING::from(target.to_string_lossy().as_ref())
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn pwstr_to_string(pwstr: PWSTR) -> Option<String> {
+    if pwstr.0.is_null() {
+        return None;
+    }
+    let mut len = 0usize;
+    while *pwstr.0.add(len) != 0 {
+        len += 1;
+    }
+    let slice = std::slice::from_raw_parts(pwstr.0, len);
+    let value = String::from_utf16_lossy(slice);
+    CoTaskMemFree(Some(pwstr.0 as *mut c_void));
+    Some(value)
+}
+
+#[cfg(target_os = "windows")]
+struct ComGuard {
+    should_uninit: bool,
+}
+
+#[cfg(target_os = "windows")]
+impl ComGuard {
+    fn new() -> Result<Self, windows::core::Error> {
+        unsafe {
+            let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            if hr == S_OK {
+                Ok(Self { should_uninit: true })
+            } else if hr == RPC_E_CHANGED_MODE {
+                Ok(Self {
+                    should_uninit: false,
+                })
+            } else if hr.is_ok() {
+                Ok(Self { should_uninit: true })
+            } else {
+                Err(hr.into())
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for ComGuard {
+    fn drop(&mut self) {
+        if self.should_uninit {
+            unsafe {
+                CoUninitialize();
+            }
+        }
+    }
 }

@@ -1,13 +1,13 @@
 use std::{
+    env,
     fs::{self, File},
     io::{self, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
-    env,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
     },
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use chrono::{DateTime as ChronoDateTime, Datelike, Local, Timelike};
@@ -157,7 +157,11 @@ fn add_path_to_zip(
                 .map_err(|e| format!("Failed to add symlink to zip: {e}"))?;
         }
         EntryKind::File { precompressed } => {
-            let mut base_opts = if *precompressed { *stored_opts } else { *deflated_opts };
+            let mut base_opts = if *precompressed {
+                *stored_opts
+            } else {
+                *deflated_opts
+            };
             if entry.size >= ZIP64_LIMIT {
                 base_opts = base_opts.large_file(true);
             }
@@ -252,9 +256,7 @@ fn collect_entries(
             EntryKind::Symlink { target }
         } else {
             let precompressed = store_precompressed && is_precompressed(&p);
-            EntryKind::File {
-                precompressed,
-            }
+            EntryKind::File { precompressed }
         };
 
         out.push(EntryMeta {
@@ -269,7 +271,8 @@ fn collect_entries(
     };
 
     for path in input {
-        let meta = fs::symlink_metadata(path).map_err(|e| format!("Failed to read metadata: {e}"))?;
+        let meta =
+            fs::symlink_metadata(path).map_err(|e| format!("Failed to read metadata: {e}"))?;
         if meta.is_dir() {
             for entry in WalkDir::new(path).follow_links(false) {
                 let entry = entry.map_err(|e| format!("Failed to read directory: {e}"))?;
@@ -315,7 +318,10 @@ impl ProgressEmitter {
     }
 
     fn add(&self, delta: u64) {
-        let done = self.done.fetch_add(delta, Ordering::Relaxed).saturating_add(delta);
+        let done = self
+            .done
+            .fetch_add(delta, Ordering::Relaxed)
+            .saturating_add(delta);
         let last = self.last_emit.load(Ordering::Relaxed);
         let now_ms = current_millis();
         let last_time = self.last_emit_time_ms.load(Ordering::Relaxed);
@@ -325,9 +331,12 @@ impl ProgressEmitter {
                 .compare_exchange(last, done, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
             {
-                let _ = self
-                    .last_emit_time_ms
-                    .compare_exchange(last_time, now_ms, Ordering::Relaxed, Ordering::Relaxed);
+                let _ = self.last_emit_time_ms.compare_exchange(
+                    last_time,
+                    now_ms,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                );
                 let _ = self.app.emit(
                     &self.event,
                     CompressProgressPayload {
@@ -364,8 +373,9 @@ pub async fn compress_entries(
     level: Option<u32>,
     progress_event: Option<String>,
 ) -> Result<String, String> {
-    let task =
-        tauri::async_runtime::spawn_blocking(move || do_compress(app, paths, name, level, progress_event));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        do_compress(app, paths, name, level, progress_event)
+    });
     task.await
         .map_err(|e| format!("Compression task failed: {e}"))?
 }
@@ -402,7 +412,11 @@ fn do_compress(
     let mut dest_idx = 0usize;
     let (dest, file) = loop {
         let candidate = destination_path(&parent, &dest_name, dest_idx)?;
-        match File::options().write(true).create_new(true).open(&candidate) {
+        match File::options()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
             Ok(f) => break (candidate, f),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 dest_idx = dest_idx.saturating_add(1);
