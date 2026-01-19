@@ -4,7 +4,7 @@ use std::{
     io::{self, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
     time::{SystemTime, UNIX_EPOCH},
@@ -16,6 +16,7 @@ use tauri::Emitter;
 use walkdir::WalkDir;
 use zip::{write::SimpleFileOptions, CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
+use super::tasks::{CancelGuard, CancelState};
 use crate::fs_utils::sanitize_path_nofollow;
 
 const CHUNK: usize = 4 * 1024 * 1024;
@@ -135,8 +136,10 @@ fn add_path_to_zip(
     deflated_opts: &SimpleFileOptions,
     stored_opts: &SimpleFileOptions,
     progress: Option<&ProgressEmitter>,
+    cancel: Option<&AtomicBool>,
     buf: &mut [u8],
 ) -> Result<(), String> {
+    check_cancel(cancel).map_err(|e| map_copy_err("Compression cancelled", e))?;
     let mut rel_name = entry.rel_path.to_string_lossy().replace('\\', "/");
     match &entry.kind {
         EntryKind::Dir => {
@@ -170,8 +173,8 @@ fn add_path_to_zip(
                 .map_err(|e| format!("Failed to start zip entry: {e}"))?;
             let file = File::open(&entry.path).map_err(|e| format!("Failed to open file: {e}"))?;
             let mut reader = BufReader::with_capacity(FILE_READ_BUF, file);
-            copy_with_progress(&mut reader, zip, progress, buf)
-                .map_err(|e| format!("Failed to write file to zip: {e}"))?;
+            copy_with_progress(&mut reader, zip, progress, cancel, buf)
+                .map_err(|e| map_copy_err("Failed to write file to zip", e))?;
         }
     }
     Ok(())
@@ -365,16 +368,38 @@ impl ProgressEmitter {
     }
 }
 
+fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {
+    cancel.map(|c| c.load(Ordering::Relaxed)).unwrap_or(false)
+}
+
+fn check_cancel(cancel: Option<&AtomicBool>) -> io::Result<()> {
+    if is_cancelled(cancel) {
+        Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"))
+    } else {
+        Ok(())
+    }
+}
+
+fn map_copy_err(context: &str, err: io::Error) -> String {
+    if err.kind() == io::ErrorKind::Interrupted {
+        "Compression cancelled".into()
+    } else {
+        format!("{context}: {err}")
+    }
+}
+
 #[tauri::command]
 pub async fn compress_entries(
     app: tauri::AppHandle,
+    cancel: tauri::State<'_, CancelState>,
     paths: Vec<String>,
     name: Option<String>,
     level: Option<u32>,
     progress_event: Option<String>,
 ) -> Result<String, String> {
+    let cancel_state = cancel.inner().clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        do_compress(app, paths, name, level, progress_event)
+        do_compress(app, cancel_state, paths, name, level, progress_event)
     });
     task.await
         .map_err(|e| format!("Compression task failed: {e}"))?
@@ -382,6 +407,7 @@ pub async fn compress_entries(
 
 fn do_compress(
     app: tauri::AppHandle,
+    cancel_state: CancelState,
     paths: Vec<String>,
     name: Option<String>,
     level: Option<u32>,
@@ -433,7 +459,16 @@ fn do_compress(
     if entries.is_empty() {
         return Err("Nothing to compress".into());
     }
-    let progress = progress_event.map(|evt| ProgressEmitter::new(app, evt, total_size));
+    let progress_id = progress_event;
+    let progress = progress_id
+        .as_ref()
+        .map(|evt| ProgressEmitter::new(app.clone(), evt.clone(), total_size));
+    let cancel_guard: Option<CancelGuard> = progress_id
+        .as_ref()
+        .map(|evt| cancel_state.register(evt.clone()))
+        .transpose()?;
+    let cancel_token = cancel_guard.as_ref().map(|c| c.token());
+    let mut cleanup = CompressionCleanup::new(dest.clone());
     let mut buf = vec![0u8; CHUNK];
 
     let method = if lvl == 0 {
@@ -461,36 +496,74 @@ fn do_compress(
     }
     entries.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
 
-    for entry in &entries {
-        add_path_to_zip(
-            &mut writer,
-            entry,
-            &deflated_opts,
-            &stored_opts,
-            progress.as_ref(),
-            &mut buf,
-        )?;
+    let result: Result<(), String> = (|| {
+        for entry in &entries {
+            check_cancel(cancel_token.as_deref()).map_err(|e| map_copy_err("Compression cancelled", e))?;
+            add_path_to_zip(
+                &mut writer,
+                entry,
+                &deflated_opts,
+                &stored_opts,
+                progress.as_ref(),
+                cancel_token.as_deref(),
+                &mut buf,
+            )?;
+        }
+
+        writer
+            .finish()
+            .map_err(|e| format!("Failed to finalize zip: {e}"))?;
+
+        if let Some(p) = progress.as_ref() {
+            p.finish();
+        }
+        Ok(())
+    })();
+
+    match result {
+        Ok(_) => {
+            cleanup.disarm();
+            Ok(dest.to_string_lossy().into_owned())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+struct CompressionCleanup {
+    dest: PathBuf,
+    active: bool,
+}
+
+impl CompressionCleanup {
+    fn new(dest: PathBuf) -> Self {
+        Self { dest, active: true }
     }
 
-    writer
-        .finish()
-        .map_err(|e| format!("Failed to finalize zip: {e}"))?;
-
-    if let Some(p) = progress.as_ref() {
-        p.finish();
+    fn disarm(&mut self) {
+        self.active = false;
     }
+}
 
-    Ok(dest.to_string_lossy().into_owned())
+impl Drop for CompressionCleanup {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = fs::remove_file(&self.dest);
+        }
+    }
 }
 
 fn copy_with_progress<R: Read, W: Write>(
     mut reader: R,
     mut writer: W,
     mut progress: Option<&ProgressEmitter>,
+    cancel: Option<&AtomicBool>,
     buf: &mut [u8],
 ) -> io::Result<u64> {
     let mut written = 0u64;
     loop {
+        if is_cancelled(cancel) {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+        }
         let n = reader.read(buf)?;
         if n == 0 {
             break;

@@ -10,6 +10,7 @@ pub mod meta;
 pub mod open_with;
 pub mod search;
 pub mod settings;
+pub mod tasks;
 
 pub use crate::clipboard::{paste_clipboard_cmd, paste_clipboard_preview, set_clipboard_cmd};
 pub use bookmarks::{add_bookmark, get_bookmarks, remove_bookmark};
@@ -25,3 +26,4 @@ pub use meta::entry_times_cmd;
 pub use open_with::{list_open_with_apps, open_with};
 pub use search::{search, search_stream};
 pub use settings::{load_saved_column_widths, store_column_widths};
+pub use tasks::{cancel_task, CancelState};

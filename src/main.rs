@@ -53,6 +53,7 @@ fn main() {
     init_logging();
     tauri::Builder::default()
         .manage(WatchState::default())
+        .manage(CancelState::default())
         .setup(|app| {
             for window in &app.config().app.windows {
                 if window.create {
@@ -97,7 +98,8 @@ fn main() {
             restore_trash_items,
             purge_trash_items,
             create_folder,
-            compress_entries
+            compress_entries,
+            cancel_task
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

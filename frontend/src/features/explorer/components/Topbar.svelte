@@ -3,7 +3,9 @@
   export let searchMode = false
   export let mode: 'address' | 'filter' | 'search' = 'address'
   export let loading = false
-  export let activity: { label: string; percent: number | null } | null = null
+  export let activity:
+    | { label: string; percent: number | null; cancel?: (() => void) | null; cancelling?: boolean }
+    | null = null
   export let pathInputEl: HTMLInputElement | null = null
   export let onSubmitPath: () => void = () => {}
   export let onSearch: () => void = () => {}
@@ -119,13 +121,27 @@
       <span class="pill">Loading…</span>
     {/if}
     {#if activity}
-      <div class="pill progress">
+      <div class="pill progress" class:cancelling={activity.cancelling}>
         <span>{activity.label}</span>
         {#if activity.percent !== null}
           <div class="progress-bar" aria-hidden="true">
             <div class="progress-fill" style={`width:${Math.min(100, Math.max(0, activity.percent))}%;`}></div>
           </div>
           <span class="percent">{Math.min(100, Math.max(0, activity.percent)).toFixed(0)}%</span>
+        {/if}
+        {#if activity.cancel}
+          <button
+            class="pill-cancel"
+            type="button"
+            aria-label="Cancel task"
+            on:click={(e) => {
+              e.stopPropagation()
+              activity?.cancel?.()
+            }}
+            disabled={activity.cancelling}
+          >
+            &times;
+          </button>
         {/if}
       </div>
     {/if}
@@ -195,6 +211,32 @@
     padding: 6px 10px;
     border-radius: 0;
     font-size: 12px;
+  }
+
+  .pill.progress.cancelling {
+    opacity: 0.85;
+  }
+
+  .pill-cancel {
+    border: none;
+    background: transparent;
+    color: var(--fg-muted);
+    padding: 2px 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .pill-cancel:hover:not(:disabled) {
+    color: var(--fg);
+  }
+
+  .pill-cancel:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 
   .progress-bar {

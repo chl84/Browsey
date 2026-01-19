@@ -34,6 +34,12 @@
 
   type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
   type ProgressPayload = { bytes: number; total: number; finished?: boolean }
+  type ActivityState = {
+    label: string
+    percent: number | null
+    cancel?: (() => void) | null
+    cancelling?: boolean
+  }
   type ViewMode = 'list' | 'grid'
   let sidebarCollapsed = false
   let pathInput = ''
@@ -107,7 +113,7 @@
   let extracting = false
   let compressing = false
   let deleting = false
-  let activity: { label: string; percent: number | null } | null = null
+  let activity: ActivityState | null = null
   let activityUnlisten: UnlistenFn | null = null
   let activityHideTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -145,22 +151,38 @@
     },
   })
 
-  const startActivityListener = async (label: string, eventName: string) => {
+  const startActivityListener = async (label: string, eventName: string, onCancel?: () => void) => {
     await cleanupActivityListener()
     if (activityHideTimer) {
       clearTimeout(activityHideTimer)
       activityHideTimer = null
     }
-    activity = { label, percent: 0 }
+    activity = { label, percent: 0, cancel: onCancel ?? null, cancelling: false }
     activityUnlisten = await listen<ProgressPayload>(eventName, (event) => {
       const payload = event.payload
-      const pct =
+      let pct =
         payload.total > 0 ? Math.min(100, Math.round((payload.bytes / payload.total) * 100)) : null
+      if (pct === 0 && payload.bytes > 0) {
+        pct = 1
+      }
+      const existing = activity
+      const cancelling = existing?.cancelling ?? false
+      const displayLabel = cancelling ? 'Cancelling…' : label
       if (payload.finished) {
-        activity = { label: 'Finalizing…', percent: pct ?? null }
+        activity = {
+          label: cancelling ? 'Cancelling…' : 'Finalizing…',
+          percent: pct ?? null,
+          cancel: null,
+          cancelling,
+        }
         queueActivityHide()
       } else {
-        activity = { label, percent: pct }
+        activity = {
+          label: displayLabel,
+          percent: pct,
+          cancel: cancelling ? null : existing?.cancel ?? onCancel ?? null,
+          cancelling,
+        }
       }
     })
   }
@@ -173,6 +195,19 @@
     if (!preserveTimer && activityHideTimer) {
       clearTimeout(activityHideTimer)
       activityHideTimer = null
+    }
+  }
+
+  const requestCancel = async (eventName: string) => {
+    if (!activity || activity.cancelling) return
+    activity = { ...activity, label: 'Cancelling…', cancel: null, cancelling: true }
+    try {
+      await invoke('cancel_task', { id: eventName })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showToast(`Cancel failed: ${msg}`)
+      activity = null
+      await cleanupActivityListener()
     }
   }
 
@@ -985,7 +1020,7 @@
     if (extracting) return
     extracting = true
     const progressEvent = `extract-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    await startActivityListener('Extracting…', progressEvent)
+    await startActivityListener('Extracting…', progressEvent, () => requestCancel(progressEvent))
     try {
       const result = await invoke<ExtractResult>('extract_archive', {
         path: entry.path,
@@ -1005,7 +1040,11 @@
       showToast(`Extracted to ${result.destination}${suffix}`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      showToast(`Failed to extract: ${msg}`)
+      if (msg.toLowerCase().includes('cancelled')) {
+        showToast('Extraction cancelled')
+      } else {
+        showToast(`Failed to extract: ${msg}`)
+      }
     } finally {
       extracting = false
       activity = null
@@ -1595,7 +1634,7 @@
     const base = get(current)
     const progressEvent = `compress-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
-      await startActivityListener('Compressing…', progressEvent)
+      await startActivityListener('Compressing…', progressEvent, () => requestCancel(progressEvent))
       const dest = await invoke<string>('compress_entries', {
         paths,
         name,
@@ -1606,7 +1645,14 @@
       closeCompress()
       showToast(`Created ${dest}`)
     } catch (err) {
-      compressError = err instanceof Error ? err.message : String(err)
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.toLowerCase().includes('cancelled')) {
+        compressError = ''
+        closeCompress()
+        showToast('Compression cancelled')
+      } else {
+        compressError = msg
+      }
     } finally {
       compressing = false
       activity = null
