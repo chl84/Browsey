@@ -403,9 +403,16 @@ fn watch_allowed_roots() -> Vec<PathBuf> {
             }
         }
     }
-    let alesund = "\u{00C5}lesund2";
-    // Allowlisted network path for \u{00C5}lesund2; drive mapping only.
-    roots.push(PathBuf::from(format!(r"X:\nor\oppdrag\{alesund}")));
+    if let Ok(conn) = db::open() {
+        if let Ok(bookmarks) = db::list_bookmarks(&conn) {
+            for (_label, path) in bookmarks {
+                match sanitize_path_follow(&path, false) {
+                    Ok(pb) => roots.push(pb),
+                    Err(e) => debug_log(&format!("Skipping bookmark path {path}: {e}")),
+                }
+            }
+        }
+    }
     roots
 }
 
