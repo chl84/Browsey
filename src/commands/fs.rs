@@ -369,8 +369,6 @@ fn display_path(path: &Path) -> String {
     s.into_owned()
 }
 
-#[cfg(not(target_os = "windows"))]
-
 fn watch_allow_all() -> bool {
     matches!(
         std::env::var("FILEY_WATCH_ALLOW_ALL")
@@ -408,6 +406,7 @@ fn watch_allowed_roots() -> Vec<PathBuf> {
     roots
 }
 
+#[cfg(not(target_os = "windows"))]
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
