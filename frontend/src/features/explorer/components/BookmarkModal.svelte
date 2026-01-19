@@ -15,6 +15,8 @@
 
     <p class="muted">Name the bookmark for "{entryName}".</p>
     <input
+      id="bookmark-name-input"
+      autocomplete="off"
       bind:value={bookmarkName}
       bind:this={bookmarkInputEl}
       aria-label="Bookmark name"

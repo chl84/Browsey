@@ -34,6 +34,8 @@
     {/if}
 
     <input
+      id="new-folder-name"
+      autocomplete="off"
       bind:this={inputEl}
       bind:value={value}
       on:keydown={(e) => {
