@@ -84,6 +84,7 @@ Tauri bundles:
 ## Keyboard & interaction map
 - **Typing without focus**: Enters filter mode on the address bar; Esc exits.
 - **Search**: `Ctrl+F` (or `Cmd+F` on macOS keyboards) toggles search mode; Esc leaves search mode.
+- **View toggle**: `Ctrl+G` (`Cmd+G`) toggles between list and grid.
 - **Bookmarks**: `Ctrl+B` on a single folder opens the bookmark modal; remove via sidebar close icon.
 - **Open console**: `Ctrl+T` (`Cmd+T` on macOS keyboards) opens a terminal at the current directory when in a folder view.
 - **Selection**: `Ctrl+A` selects all. Click-drag draws a selection box (works in both list and grid). In grid view, arrow keys + Shift handle range selection; clicking blank space clears selection.
