@@ -403,6 +403,9 @@ fn watch_allowed_roots() -> Vec<PathBuf> {
             }
         }
     }
+    // Allowlisted network path for \u{00C5}lesund2; include both normal and verbatim prefixes.
+    roots.push(PathBuf::from("X:\\nor\\oppdrag\\\u{00C5}lesund2"));
+    roots.push(PathBuf::from("\\?\X:\\nor\\oppdrag\\\u{00C5}lesund2"));
     roots
 }
 
