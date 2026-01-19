@@ -45,6 +45,51 @@ struct SkipStats {
     unsupported: Arc<AtomicUsize>,
 }
 
+struct CreatedPaths {
+    files: Vec<PathBuf>,
+    dirs: Vec<PathBuf>,
+    active: bool,
+}
+
+impl Default for CreatedPaths {
+    fn default() -> Self {
+        Self {
+            files: Vec::new(),
+            dirs: Vec::new(),
+            active: true,
+        }
+    }
+}
+
+impl CreatedPaths {
+    fn record_file(&mut self, path: PathBuf) {
+        self.files.push(path);
+    }
+
+    fn record_dir(&mut self, path: PathBuf) {
+        self.dirs.push(path);
+    }
+
+    fn disarm(&mut self) {
+        self.active = false;
+    }
+}
+
+impl Drop for CreatedPaths {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+        // Remove files first, then dirs in reverse to clean up partially extracted content.
+        for file in self.files.iter().rev() {
+            let _ = fs::remove_file(file);
+        }
+        for dir in self.dirs.iter().rev() {
+            let _ = fs::remove_dir_all(dir);
+        }
+    }
+}
+
 impl SkipStats {
     fn skip_symlink(&self, path: &str) {
         self.symlinks.fetch_add(1, Ordering::Relaxed);
@@ -212,6 +257,7 @@ fn do_extract(
     let progress = progress_id
         .as_ref()
         .map(|evt| ProgressEmitter::new(app.clone(), evt.clone(), total_hint));
+    let mut created = CreatedPaths::default();
     let cancel_guard: Option<CancelGuard> = progress_id
         .as_ref()
         .map(|evt| cancel_state.register(evt.clone()))
@@ -227,6 +273,7 @@ fn do_extract(
                 &dest_dir,
                 &stats,
                 progress.as_ref(),
+                &mut created,
                 cancel_token.as_deref(),
             )?;
             dest_dir
@@ -237,6 +284,7 @@ fn do_extract(
                 parent,
                 &stats,
                 progress.as_ref(),
+                &mut created,
                 cancel_token.as_deref(),
                 |reader| Ok(Box::new(reader) as Box<dyn Read>),
             )?
@@ -247,6 +295,7 @@ fn do_extract(
                 parent,
                 &stats,
                 progress.as_ref(),
+                &mut created,
                 cancel_token.as_deref(),
                 |reader| Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>),
             )?
@@ -257,6 +306,7 @@ fn do_extract(
                 parent,
                 &stats,
                 progress.as_ref(),
+                &mut created,
                 cancel_token.as_deref(),
                 |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
             )?
@@ -267,6 +317,7 @@ fn do_extract(
                 parent,
                 &stats,
                 progress.as_ref(),
+                &mut created,
                 cancel_token.as_deref(),
                 |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
             )?
@@ -277,6 +328,7 @@ fn do_extract(
                 parent,
                 &stats,
                 progress.as_ref(),
+                &mut created,
                 cancel_token.as_deref(),
                 |reader| {
                     ZstdDecoder::new(reader)
@@ -290,6 +342,7 @@ fn do_extract(
                 &archive_path,
                 parent,
                 progress.as_ref(),
+                &mut created,
                 cancel_token.as_deref(),
                 |reader| Ok(Box::new(MultiGzDecoder::new(reader)) as Box<dyn Read>),
             )?
@@ -299,6 +352,7 @@ fn do_extract(
                 &archive_path,
                 parent,
                 progress.as_ref(),
+                &mut created,
                 cancel_token.as_deref(),
                 |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
             )?
@@ -308,6 +362,7 @@ fn do_extract(
                 &archive_path,
                 parent,
                 progress.as_ref(),
+                &mut created,
                 cancel_token.as_deref(),
                 |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
             )?
@@ -317,6 +372,7 @@ fn do_extract(
                 &archive_path,
                 parent,
                 progress.as_ref(),
+                &mut created,
                 cancel_token.as_deref(),
                 |reader| {
                     ZstdDecoder::new(reader)
@@ -330,6 +386,7 @@ fn do_extract(
     if let Some(p) = progress.as_ref() {
         p.finish();
     }
+    created.disarm();
 
     Ok(ExtractResult {
         destination: destination.to_string_lossy().into_owned(),
@@ -431,6 +488,7 @@ fn extract_tar_with_reader<F>(
     parent: &Path,
     stats: &SkipStats,
     progress: Option<&ProgressEmitter>,
+    created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
     wrap: F,
 ) -> Result<PathBuf, String>
@@ -440,7 +498,7 @@ where
     let dest_dir = prepare_output_dir(parent)?;
     let reader = open_buffered_file(archive_path, "open tar")?;
     let reader = wrap(reader)?;
-    extract_tar(reader, &dest_dir, stats, progress, cancel)?;
+    extract_tar(reader, &dest_dir, stats, progress, created, cancel)?;
     Ok(dest_dir)
 }
 
@@ -448,6 +506,7 @@ fn decompress_single_with_reader<F>(
     archive_path: &Path,
     parent: &Path,
     progress: Option<&ProgressEmitter>,
+    created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
     wrap: F,
 ) -> Result<PathBuf, String>
@@ -456,7 +515,7 @@ where
 {
     let reader = open_buffered_file(archive_path, "open compressed file")?;
     let reader = wrap(reader)?;
-    decompress_single(reader, archive_path, parent, progress, cancel)
+    decompress_single(reader, archive_path, parent, progress, created, cancel)
 }
 
 fn strip_known_suffixes(name: &str) -> String {
@@ -481,6 +540,7 @@ fn extract_zip(
     dest_dir: &Path,
     stats: &SkipStats,
     progress: Option<&ProgressEmitter>,
+    created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
 ) -> Result<(), String> {
     let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip"))?)
@@ -521,7 +581,13 @@ fn extract_zip(
         }
         let dest_path = dest_dir.join(clean_rel);
         if entry.is_dir() || raw_name.ends_with('/') {
-            if let Err(e) = fs::create_dir_all(&dest_path) {
+            if !dest_path.exists() {
+                if let Err(e) = fs::create_dir_all(&dest_path) {
+                    stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
+                    continue;
+                }
+                created.record_dir(dest_path.clone());
+            } else if let Err(e) = fs::create_dir_all(&dest_path) {
                 stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
             }
             continue;
@@ -535,12 +601,19 @@ fn extract_zip(
             continue;
         }
         if let Some(parent) = dest_path.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
+            if !parent.exists() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
+                    continue;
+                }
+                created.record_dir(parent.to_path_buf());
+            } else if let Err(e) = fs::create_dir_all(parent) {
                 stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
                 continue;
             }
         }
         let (file, _) = open_unique_file(&dest_path)?;
+        created.record_file(dest_path.clone());
         let mut out = BufWriter::with_capacity(CHUNK, file);
         if let Err(e) =
             copy_with_progress(&mut entry, &mut out, progress, cancel, &mut buf)
@@ -558,6 +631,7 @@ fn extract_tar<R: Read>(
     dest_dir: &Path,
     stats: &SkipStats,
     progress: Option<&ProgressEmitter>,
+    created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
 ) -> Result<(), String> {
     let mut archive = Archive::new(reader);
@@ -596,7 +670,13 @@ fn extract_tar<R: Read>(
 
         let dest_path = dest_dir.join(clean_rel);
         if entry_type.is_dir() {
-            if let Err(e) = fs::create_dir_all(&dest_path) {
+            if !dest_path.exists() {
+                if let Err(e) = fs::create_dir_all(&dest_path) {
+                    stats.skip_unsupported(&raw_str, &format!("create dir failed: {e}"));
+                } else {
+                    created.record_dir(dest_path.clone());
+                }
+            } else if let Err(e) = fs::create_dir_all(&dest_path) {
                 stats.skip_unsupported(&raw_str, &format!("create dir failed: {e}"));
             }
             continue;
@@ -610,12 +690,19 @@ fn extract_tar<R: Read>(
         }
 
         if let Some(parent) = dest_path.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
+            if !parent.exists() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    stats.skip_unsupported(&raw_str, &format!("create parent failed: {e}"));
+                    continue;
+                }
+                created.record_dir(parent.to_path_buf());
+            } else if let Err(e) = fs::create_dir_all(parent) {
                 stats.skip_unsupported(&raw_str, &format!("create parent failed: {e}"));
                 continue;
             }
         }
         let (file, _) = open_unique_file(&dest_path)?;
+        created.record_file(dest_path.clone());
         let mut out = BufWriter::with_capacity(CHUNK, file);
         copy_with_progress(&mut entry, &mut out, progress, cancel, &mut buf)
             .map_err(|e| map_copy_err("write tar entry", e))?;
@@ -628,6 +715,7 @@ fn decompress_single<R: Read>(
     archive: &Path,
     parent: &Path,
     progress: Option<&ProgressEmitter>,
+    created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
 ) -> Result<PathBuf, String> {
     let mut dest_name = archive
@@ -640,9 +728,13 @@ fn decompress_single<R: Read>(
     }
     let dest_path = parent.join(dest_name);
     if let Some(parent_dir) = dest_path.parent() {
-        fs::create_dir_all(parent_dir).map_err(map_io("create output dir"))?;
+        if !parent_dir.exists() {
+            fs::create_dir_all(parent_dir).map_err(map_io("create output dir"))?;
+            created.record_dir(parent_dir.to_path_buf());
+        }
     }
     let (file, dest_path) = open_unique_file(&dest_path)?;
+    created.record_file(dest_path.clone());
     let mut out = BufWriter::with_capacity(CHUNK, file);
     let mut buf = vec![0u8; CHUNK];
     copy_with_progress(&mut reader, &mut out, progress, cancel, &mut buf)
