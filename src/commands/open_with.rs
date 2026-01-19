@@ -1,6 +1,8 @@
 use crate::{db, fs_utils::sanitize_path_follow};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(target_os = "linux")]
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use tracing::{info, warn};
