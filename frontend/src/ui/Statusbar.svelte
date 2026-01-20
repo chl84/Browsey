@@ -26,8 +26,9 @@
   }
 
   .status-text {
-    color: var(--fg-muted);
-    font-size: 12px;
+    color: var(--fg);
+    font-size: 14px;
+    font-weight: 400;
   }
 
 </style>

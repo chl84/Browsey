@@ -14,8 +14,9 @@ type Context = {
   onEnd?: (didDrag: boolean) => void
 }
 
-const AUTOSCROLL_EDGE_PX = 48
-const AUTOSCROLL_STEP = 32
+const AUTOSCROLL_EDGE_PX = 40
+const AUTOSCROLL_BASE = 6
+const AUTOSCROLL_MAX = 48
 
 export const createSelectionBox = () => {
   const active = writable(false)
@@ -26,31 +27,35 @@ export const createSelectionBox = () => {
   let ctx: Context | null = null
   let didDrag = false
   let rafId: number | null = null
-  let pendingScroll = 0
+  let autoscrollSpeed = 0
+  let lastClientX = 0
+  let lastClientY = 0
+  let hasLast = false
 
   const stopAutoscroll = () => {
     if (rafId !== null) {
       cancelAnimationFrame(rafId)
       rafId = null
     }
-    pendingScroll = 0
+    autoscrollSpeed = 0
   }
 
   const scheduleAutoscroll = () => {
     if (rafId !== null) return
     rafId = requestAnimationFrame(() => {
       rafId = null
-      if (!ctx || pendingScroll === 0) return
+      if (!ctx || autoscrollSpeed === 0) return
       const el = ctx.rowsEl
       const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
-      const next = Math.max(0, Math.min(maxScroll, el.scrollTop + pendingScroll))
+      const next = Math.max(0, Math.min(maxScroll, el.scrollTop + autoscrollSpeed))
       if (next === el.scrollTop) {
-        pendingScroll = 0
         stopAutoscroll()
         return
       }
       el.scrollTop = next
-      pendingScroll = 0
+      if (hasLast) {
+        updateSelection(lastClientX, lastClientY)
+      }
       // Continue scrolling if mouse stays at edge
       scheduleAutoscroll()
     })
@@ -62,9 +67,8 @@ export const createSelectionBox = () => {
     stopAutoscroll()
   }
 
-  const handleMove = (event: MouseEvent) => {
+  const updateSelection = (clientX: number, clientY: number) => {
     if (!ctx) return
-    didDrag = true
     const rowsRect = ctx.rowsEl.getBoundingClientRect()
     const headerHeight = ctx.headerEl?.offsetHeight ?? 0
     const scrollY = ctx.rowsEl.scrollTop
@@ -74,8 +78,6 @@ export const createSelectionBox = () => {
     const maxX = rowsRect.width
     const maxY = rowsRect.height
 
-    const clientX = event.clientX
-    const clientY = event.clientY
     const currentContentX = clientX - rowsRect.left + scrollX
     const currentContentY = clientY - rowsRect.top + scrollY
     const rawX1 = Math.min(startContentX, currentContentX)
@@ -91,22 +93,29 @@ export const createSelectionBox = () => {
     const y2 = Math.max(0, Math.min(rawY2, maxContentY))
 
     // Autoscroll near edges while dragging
-    pendingScroll = 0
+    autoscrollSpeed = 0
     const distanceTop = clientY - rowsRect.top
     const distanceBottom = rowsRect.bottom - clientY
     if (distanceTop < AUTOSCROLL_EDGE_PX) {
-      pendingScroll = -AUTOSCROLL_STEP
+      const factor = (AUTOSCROLL_EDGE_PX - distanceTop) / AUTOSCROLL_EDGE_PX
+      autoscrollSpeed = -(
+        AUTOSCROLL_BASE +
+        Math.min(AUTOSCROLL_MAX - AUTOSCROLL_BASE, factor * (AUTOSCROLL_MAX - AUTOSCROLL_BASE))
+      )
     } else if (distanceBottom < AUTOSCROLL_EDGE_PX) {
-      pendingScroll = AUTOSCROLL_STEP
+      const factor = (AUTOSCROLL_EDGE_PX - distanceBottom) / AUTOSCROLL_EDGE_PX
+      autoscrollSpeed =
+        AUTOSCROLL_BASE +
+        Math.min(AUTOSCROLL_MAX - AUTOSCROLL_BASE, factor * (AUTOSCROLL_MAX - AUTOSCROLL_BASE))
     }
-    if (pendingScroll !== 0) {
+    if (autoscrollSpeed !== 0) {
       const el = ctx.rowsEl
       const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
-      if ((pendingScroll < 0 && el.scrollTop <= 0) || (pendingScroll > 0 && el.scrollTop >= maxScroll)) {
-        pendingScroll = 0
+      if ((autoscrollSpeed < 0 && el.scrollTop <= 0) || (autoscrollSpeed > 0 && el.scrollTop >= maxScroll)) {
+        autoscrollSpeed = 0
       }
     }
-    if (pendingScroll !== 0) {
+    if (autoscrollSpeed !== 0) {
       scheduleAutoscroll()
     } else {
       stopAutoscroll()
@@ -148,6 +157,15 @@ export const createSelectionBox = () => {
 
     const rangeSet = selectRange(ctx.entries, lo, hi)
     ctx.onSelect(rangeSet, lo, hi)
+  }
+
+  const handleMove = (event: MouseEvent) => {
+    if (!ctx) return
+    didDrag = true
+    lastClientX = event.clientX
+    lastClientY = event.clientY
+    hasLast = true
+    updateSelection(lastClientX, lastClientY)
   }
 
   const handleUp = () => {

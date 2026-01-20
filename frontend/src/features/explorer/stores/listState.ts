@@ -4,7 +4,7 @@ import type { Entry } from '../types'
 import { applyClickSelection } from '../helpers/selectionController'
 
 export const rowHeight = 32
-const overscan = 8
+const overscan = 16
 const wheelScale = 0.7
 
 export type ListState = ReturnType<typeof createListState>
