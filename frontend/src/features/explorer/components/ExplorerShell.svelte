@@ -149,6 +149,7 @@
   export let propertiesEntry: Entry | null = null
   export let propertiesCount = 1
   export let propertiesSize: number | null = null
+  export let propertiesItemCount: number | null = null
   export let onCloseProperties: () => void = () => {}
 
   export let bookmarkModalOpen = false
@@ -340,6 +341,7 @@
   entry={propertiesEntry}
   count={propertiesCount}
   size={propertiesSize}
+  deepCount={propertiesItemCount}
   {formatSize}
   onClose={onCloseProperties}
 />

@@ -5,6 +5,7 @@
   export let entry: Entry | null = null
   export let count = 1
   export let size: number | null = null
+  export let deepCount: number | null = null
   export let onClose: () => void = () => {}
   export let formatSize: (size?: number | null) => string = () => ''
 </script>
@@ -25,9 +26,9 @@
       <span class="label">Size</span>
       <span class="value">
         {#if size !== null && size !== undefined}
-          {formatSize(size)} ({count} {count === 1 ? 'item' : 'items'})
+          {formatSize(size)}{#if deepCount !== null} {' '}({deepCount} {deepCount === 1 ? 'item' : 'items'}){/if}
         {:else}
-          — ({count} {count === 1 ? 'item' : 'items'})
+          —{#if deepCount !== null} {' '}({deepCount} {deepCount === 1 ? 'item' : 'items'}){/if}
         {/if}
       </span>
     </div>
