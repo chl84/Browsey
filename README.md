@@ -3,7 +3,7 @@
 Browsey is a minimalist and fast, cross-platform file explorer built with Tauri 2 (Rust backend) and a Svelte/TypeScript frontend. The chrome stays light while Rust handles traversal, sorting, search, and metadata; the frontend focuses on rendering, input, and interactions.
 
 ## Status
-Early beta: core flows (browse, search, clipboard, trash, compress, open with, properties) are in place; expect rapid iteration and some rough edges.
+Early beta: core flows (browse, search, clipboard, trash, compress, open with, properties) are in place; expect rapid iteration and some rough edges. Permissions editing (owner/group/other bits) is currently Unix-only; Windows support is planned.
 
 ## Highlights
 - **Responsive lists**: Virtualized rows, smooth wheel coalescing, and cached metadata keep large folders responsive.
@@ -116,6 +116,7 @@ Tauri bundles:
 - Windows network paths delete permanently (recycle bin is unavailable there). Symlink copy/move is rejected.
 - Open with modal lists matching applications (fallbacks included), allows a custom command, uses the system default when chosen, and launches apps detached without console noise.
 - Drag/drop uses a custom ghost image; Tauri window drag/drop is disabled to allow HTML5 DnD on Windows.
+- Permissions editing is available on Unix-like systems; Windows permissions editing is planned for a future release (UI will surface capability when supported).
 
 ## Disclaimer
 Browsey performs file operations (copy, move, rename, compress, trash, delete). Use it at your own risk, keep backups of important data, and verify paths before destructive actions. The software is provided as-is without warranties; contributors are not liable for data loss or other damage.

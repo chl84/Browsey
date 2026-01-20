@@ -383,9 +383,16 @@
   let dirSizeAbort = 0
   let propertiesToken = 0
   let selectionText = ''
+  type Access = { read: boolean; write: boolean; exec: boolean }
+  type PermissionsState = {
+    accessSupported: boolean
+    owner: Access | null
+    group: Access | null
+    other: Access | null
+  }
+
   let propertiesItemCount: number | null = null
-  let propertiesPermissions: { readOnly: boolean; executableSupported: boolean; executable: boolean | null } | null =
-    null
+  let propertiesPermissions: PermissionsState | null = null
 
   const computeDirStats = async (
     paths: string[],
@@ -1763,15 +1770,18 @@
 
     if (entries.length === 1 && propertiesEntry) {
       try {
-        const perms = await invoke<{ read_only: boolean; executable_supported: boolean; executable: boolean | null }>(
-          'get_permissions',
-          { path: propertiesEntry.path },
-        )
+        const perms = await invoke<{
+          access_supported: boolean
+          owner?: Access
+          group?: Access
+          other?: Access
+        }>('get_permissions', { path: propertiesEntry.path })
         if (token === propertiesToken) {
           propertiesPermissions = {
-            readOnly: perms.read_only,
-            executableSupported: perms.executable_supported,
-            executable: perms.executable,
+            accessSupported: perms.access_supported,
+            owner: perms.owner ?? null,
+            group: perms.group ?? null,
+            other: perms.other ?? null,
           }
         }
       } catch (err) {
@@ -1781,7 +1791,11 @@
     }
   }
 
-  const updatePermissions = async (opts: { readOnly?: boolean; executable?: boolean }) => {
+  const updatePermissions = async (opts: {
+    owner?: Partial<Access>
+    group?: Partial<Access>
+    other?: Partial<Access>
+  }) => {
     if (!propertiesEntry) {
       console.warn('updatePermissions called with no propertiesEntry', opts)
       showToast('Permissions are unavailable for this selection.')
@@ -1789,32 +1803,42 @@
     }
     const payload: {
       path: string
-      read_only?: boolean
-      readOnly?: boolean
-      executable?: boolean | null
+      owner?: Partial<Access>
+      group?: Partial<Access>
+      other?: Partial<Access>
     } = { path: propertiesEntry.path }
-    if (opts.readOnly !== undefined) {
-      payload.read_only = opts.readOnly
-      payload.readOnly = opts.readOnly
+    if (opts.owner && Object.keys(opts.owner).length > 0) {
+      payload.owner = { ...opts.owner }
     }
-    if (opts.executable !== undefined) {
-      payload.executable = opts.executable
+    if (opts.group && Object.keys(opts.group).length > 0) {
+      payload.group = { ...opts.group }
+    }
+    if (opts.other && Object.keys(opts.other).length > 0) {
+      payload.other = { ...opts.other }
     }
     try {
-      const perms = await invoke<{ read_only: boolean; executable_supported: boolean; executable: boolean | null }>(
-        'set_permissions',
-        payload,
-      )
+      const perms = await invoke<{
+        access_supported?: boolean
+        owner?: Access
+        group?: Access
+        other?: Access
+      }>('set_permissions', payload)
       propertiesPermissions = {
-        readOnly: perms.read_only,
-        executableSupported: perms.executable_supported,
-        executable: perms.executable,
+        accessSupported: perms.access_supported ?? propertiesPermissions?.accessSupported ?? false,
+        owner: perms.owner ?? propertiesPermissions?.owner ?? null,
+        group: perms.group ?? propertiesPermissions?.group ?? null,
+        other: perms.other ?? propertiesPermissions?.other ?? null,
       }
     } catch (err) {
       console.error('Failed to update permissions', { path: propertiesEntry.path, opts, err })
       const msg = err instanceof Error ? err.message : String(err)
       showToast(`Permissions update failed: ${msg}`)
     }
+  }
+
+  const toggleAccess = (scope: 'owner' | 'group' | 'other', key: 'read' | 'write' | 'exec', next: boolean) => {
+    if (!propertiesPermissions || !propertiesPermissions.accessSupported) return
+    updatePermissions({ [scope]: { [key]: next } })
   }
 
   onMount(() => {
@@ -2042,8 +2066,7 @@
   {propertiesSize}
   {propertiesItemCount}
   propertiesPermissions={propertiesPermissions}
-  onTogglePermissionsReadOnly={(next) => updatePermissions({ readOnly: next })}
-  onTogglePermissionsExecutable={(next) => updatePermissions({ executable: next })}
+  onTogglePermissionsAccess={(scope, key, next) => toggleAccess(scope, key, next)}
   onCloseProperties={closeProperties}
   bookmarkModalOpen={bookmarkModalOpen}
   {bookmarkCandidate}
