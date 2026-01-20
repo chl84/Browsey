@@ -150,6 +150,11 @@
   export let propertiesCount = 1
   export let propertiesSize: number | null = null
   export let propertiesItemCount: number | null = null
+  export let propertiesPermissions:
+    | { readOnly: boolean; executableSupported: boolean; executable: boolean | null }
+    | null = null
+  export let onTogglePermissionsReadOnly: (next: boolean) => void = () => {}
+  export let onTogglePermissionsExecutable: (next: boolean) => void = () => {}
   export let onCloseProperties: () => void = () => {}
 
   export let bookmarkModalOpen = false
@@ -342,6 +347,9 @@
   count={propertiesCount}
   size={propertiesSize}
   deepCount={propertiesItemCount}
+  permissions={propertiesPermissions}
+  onToggleReadOnly={onTogglePermissionsReadOnly}
+  onToggleExecutable={onTogglePermissionsExecutable}
   {formatSize}
   onClose={onCloseProperties}
 />

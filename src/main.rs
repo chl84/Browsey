@@ -99,7 +99,9 @@ fn main() {
             purge_trash_items,
             create_folder,
             compress_entries,
-            cancel_task
+            cancel_task,
+            get_permissions,
+            set_permissions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

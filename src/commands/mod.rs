@@ -8,6 +8,7 @@ pub mod fs;
 pub mod library;
 pub mod meta;
 pub mod open_with;
+pub mod permissions;
 pub mod search;
 pub mod settings;
 pub mod tasks;
@@ -17,6 +18,7 @@ pub use bookmarks::{add_bookmark, get_bookmarks, remove_bookmark};
 pub use compress::compress_entries;
 pub use console::open_console;
 pub use decompress::extract_archive;
+pub use permissions::{get_permissions, set_permissions};
 pub use fs::{
     create_folder, delete_entry, list_dir, list_mounts, list_trash, move_to_trash, open_entry,
     purge_trash_items, rename_entry, restore_trash_items, watch_dir, delete_entries,
