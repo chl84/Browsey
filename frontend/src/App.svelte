@@ -1800,7 +1800,6 @@
     if (opts.executable !== undefined) {
       payload.executable = opts.executable
     }
-    console.debug('Updating permissions', { path: propertiesEntry.path, opts, payload })
     try {
       const perms = await invoke<{ read_only: boolean; executable_supported: boolean; executable: boolean | null }>(
         'set_permissions',

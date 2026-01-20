@@ -1,7 +1,7 @@
 use std::fs::{self, Permissions};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 use crate::fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitize_path_nofollow};
 
@@ -26,7 +26,7 @@ fn is_executable(meta: &fs::Metadata) -> Option<bool> {
 
 #[tauri::command]
 pub fn get_permissions(path: String) -> Result<PermissionInfo, String> {
-    info!(path = %path, "get_permissions start");
+    debug!(path = %path, "get_permissions start");
     let nofollow = sanitize_path_nofollow(&path, true)?;
     let meta = fs::symlink_metadata(&nofollow)
         .map_err(|e| format!("Failed to read metadata: {e}"))?;
@@ -35,7 +35,7 @@ pub fn get_permissions(path: String) -> Result<PermissionInfo, String> {
     }
     let target = sanitize_path_follow(&path, true)?;
     check_no_symlink_components(&target)?;
-    info!(path = %target.display(), "get_permissions resolved target");
+    debug!(path = %target.display(), "get_permissions resolved target");
 
     let read_only = meta.permissions().readonly();
     let executable = is_executable(&meta);
@@ -57,7 +57,7 @@ pub fn set_permissions(
     if read_only.is_none() && executable.is_none() {
         return Err("No permission changes were provided".into());
     }
-    info!(
+    debug!(
         path = %path,
         read_only = ?read_only,
         executable = ?executable,
@@ -71,7 +71,7 @@ pub fn set_permissions(
     }
     let target = sanitize_path_follow(&path, true)?;
     check_no_symlink_components(&target)?;
-    info!(path = %target.display(), "set_permissions resolved target");
+    debug!(path = %target.display(), "set_permissions resolved target");
 
     let mut perms: Permissions = meta.permissions();
     #[cfg(unix)]
@@ -106,7 +106,7 @@ pub fn set_permissions(
         warn!(path = %target.display(), error = %e, "set_permissions failed");
         return Err(format!("Failed to update permissions: {e}"));
     }
-    info!(path = %target.display(), "set_permissions applied");
+    debug!(path = %target.display(), "set_permissions applied");
     get_permissions(path)
 }
 
