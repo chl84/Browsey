@@ -1782,15 +1782,29 @@
   }
 
   const updatePermissions = async (opts: { readOnly?: boolean; executable?: boolean }) => {
-    if (!propertiesEntry) return
+    if (!propertiesEntry) {
+      console.warn('updatePermissions called with no propertiesEntry', opts)
+      showToast('Permissions are unavailable for this selection.')
+      return
+    }
+    const payload: {
+      path: string
+      read_only?: boolean
+      readOnly?: boolean
+      executable?: boolean | null
+    } = { path: propertiesEntry.path }
+    if (opts.readOnly !== undefined) {
+      payload.read_only = opts.readOnly
+      payload.readOnly = opts.readOnly
+    }
+    if (opts.executable !== undefined) {
+      payload.executable = opts.executable
+    }
+    console.debug('Updating permissions', { path: propertiesEntry.path, opts, payload })
     try {
       const perms = await invoke<{ read_only: boolean; executable_supported: boolean; executable: boolean | null }>(
         'set_permissions',
-        {
-          path: propertiesEntry.path,
-          read_only: opts.readOnly,
-          executable: opts.executable,
-        },
+        payload,
       )
       propertiesPermissions = {
         readOnly: perms.read_only,
@@ -1798,7 +1812,9 @@
         executable: perms.executable,
       }
     } catch (err) {
-      console.error('Failed to update permissions', err)
+      console.error('Failed to update permissions', { path: propertiesEntry.path, opts, err })
+      const msg = err instanceof Error ? err.message : String(err)
+      showToast(`Permissions update failed: ${msg}`)
     }
   }
 
@@ -1870,6 +1886,26 @@
         partitionsPoll = null
       }
       dirSizeAbort++
+    }
+  })
+
+  onMount(() => {
+    const handleError = (event: ErrorEvent) => {
+      const msg = event.error instanceof Error ? event.error.message : event.message ?? 'Unknown error'
+      console.error('Unhandled error', event)
+      showToast(`Error: ${msg}`)
+    }
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason
+      const msg = reason instanceof Error ? reason.message : String(reason)
+      console.error('Unhandled rejection', reason)
+      showToast(`Error: ${msg}`)
+    }
+    window.addEventListener('error', handleError)
+    window.addEventListener('unhandledrejection', handleRejection)
+    return () => {
+      window.removeEventListener('error', handleError)
+      window.removeEventListener('unhandledrejection', handleRejection)
     }
   })
 </script>
