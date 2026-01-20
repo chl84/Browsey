@@ -150,11 +150,17 @@
   export let propertiesCount = 1
   export let propertiesSize: number | null = null
   export let propertiesItemCount: number | null = null
+  type Access = { read: boolean; write: boolean; exec: boolean }
   export let propertiesPermissions:
-    | { readOnly: boolean; executableSupported: boolean; executable: boolean | null }
+    | {
+        accessSupported: boolean
+        owner: Access | null
+        group: Access | null
+        other: Access | null
+      }
     | null = null
-  export let onTogglePermissionsReadOnly: (next: boolean) => void = () => {}
-  export let onTogglePermissionsExecutable: (next: boolean) => void = () => {}
+  export let onTogglePermissionsAccess: (scope: 'owner' | 'group' | 'other', key: 'read' | 'write' | 'exec', next: boolean) => void =
+    () => {}
   export let onCloseProperties: () => void = () => {}
 
   export let bookmarkModalOpen = false
@@ -348,8 +354,7 @@
   size={propertiesSize}
   deepCount={propertiesItemCount}
   permissions={propertiesPermissions}
-  onToggleReadOnly={onTogglePermissionsReadOnly}
-  onToggleExecutable={onTogglePermissionsExecutable}
+  onToggleAccess={onTogglePermissionsAccess}
   {formatSize}
   onClose={onCloseProperties}
 />

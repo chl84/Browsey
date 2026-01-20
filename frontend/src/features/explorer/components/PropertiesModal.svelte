@@ -8,21 +8,31 @@
   export let deepCount: number | null = null
   export let onClose: () => void = () => {}
   export let formatSize: (size?: number | null) => string = () => ''
+  type Access = { read: boolean; write: boolean; exec: boolean }
   export let permissions:
     | {
-        readOnly: boolean
-        executableSupported: boolean
-        executable: boolean | null
+        accessSupported: boolean
+        owner: Access | null
+        group: Access | null
+        other: Access | null
       }
     | null = null
-  export let onToggleReadOnly: (next: boolean) => void = () => {}
-  export let onToggleExecutable: (next: boolean) => void = () => {}
+  export let onToggleAccess: (
+    scope: 'owner' | 'group' | 'other',
+    key: 'read' | 'write' | 'exec',
+    next: boolean
+  ) => void = () => {}
 
   const tabLabels = {
     basic: 'Basic',
     extra: 'Extra',
     permissions: 'Permissions',
   } as const
+  const accessLabels: Record<'owner' | 'group' | 'other', string> = {
+    owner: 'Owner',
+    group: 'Group',
+    other: 'Other users',
+  }
 
   let activeTab: 'basic' | 'extra' | 'permissions' = 'basic'
   let availableTabs: Array<'basic' | 'extra' | 'permissions'> = ['basic', 'permissions']
@@ -75,26 +85,61 @@
       <div class="row"><span class="label">Extra</span><span class="value">Coming soon</span></div>
     {:else if activeTab === 'permissions'}
       {#if count === 1 && entry && permissions}
-        <div class="row">
-          <span class="label">Read-only</span>
-          <span class="value">
-            <input
-              type="checkbox"
-              checked={permissions.readOnly}
-              on:change={(e) => onToggleReadOnly((e.currentTarget as HTMLInputElement).checked)}
-            />
-          </span>
-        </div>
-        {#if permissions.executableSupported}
-          <div class="row">
-            <span class="label">Executable</span>
-            <span class="value">
-              <input
-                type="checkbox"
-                checked={permissions.executable ?? false}
-                on:change={(e) => onToggleExecutable((e.currentTarget as HTMLInputElement).checked)}
-              />
-            </span>
+        {#if permissions.accessSupported}
+          <div class="access">
+            <div class="row access-head">
+              <span class="label"></span>
+              <span class="value access-cols">
+                <span>Read</span>
+                <span>Write</span>
+                <span>Exec</span>
+              </span>
+            </div>
+            {#each ['owner', 'group', 'other'] as scope (scope)}
+              {#if permissions[scope]}
+                <div class="row access-row">
+                  <span class="label">{accessLabels[scope]}</span>
+                  <span class="value access-cols">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={permissions[scope].read}
+                        on:change={(e) =>
+                          onToggleAccess(
+                            scope as 'owner' | 'group' | 'other',
+                            'read',
+                            (e.currentTarget as HTMLInputElement).checked
+                          )}
+                      />
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={permissions[scope].write}
+                        on:change={(e) =>
+                          onToggleAccess(
+                            scope as 'owner' | 'group' | 'other',
+                            'write',
+                            (e.currentTarget as HTMLInputElement).checked
+                          )}
+                      />
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={permissions[scope].exec}
+                        on:change={(e) =>
+                          onToggleAccess(
+                            scope as 'owner' | 'group' | 'other',
+                            'exec',
+                            (e.currentTarget as HTMLInputElement).checked
+                          )}
+                      />
+                    </label>
+                  </span>
+                </div>
+              {/if}
+            {/each}
           </div>
         {/if}
       {:else}
@@ -128,5 +173,27 @@
   .tabs button.selected {
     background: var(--bg-raised);
     border-color: var(--border-accent);
+  }
+
+  .access {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .access-head {
+    font-weight: 600;
+  }
+
+  .access-cols {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    align-items: center;
+  }
+
+  .access-row input {
+    transform: translateY(1px);
   }
 </style>
