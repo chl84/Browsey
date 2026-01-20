@@ -218,8 +218,11 @@
     line-height: 1.3;
     text-align: center;
     display: -webkit-box;
+    display: box;
     -webkit-line-clamp: 3;
+    line-clamp: 3;
     -webkit-box-orient: vertical;
+    box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;

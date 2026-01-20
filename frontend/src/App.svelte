@@ -384,6 +384,8 @@
   let propertiesToken = 0
   let selectionText = ''
   let propertiesItemCount: number | null = null
+  let propertiesPermissions: { readOnly: boolean; executableSupported: boolean; executable: boolean | null } | null =
+    null
 
   const computeDirStats = async (
     paths: string[],
@@ -1675,6 +1677,8 @@
     propertiesOpen = false
     propertiesEntry = null
     propertiesSize = null
+    propertiesItemCount = null
+    propertiesPermissions = null
   }
 
   const loadEntryTimes = async (entry: Entry, token: number) => {
@@ -1729,6 +1733,7 @@
     propertiesEntry = entries.length === 1 ? entries[0] : null
     propertiesCount = entries.length
     propertiesItemCount = null
+    propertiesPermissions = null
     propertiesOpen = true
     const files = entries.filter((e) => e.kind === 'file')
     const dirs = entries.filter((e) => e.kind === 'dir')
@@ -1757,7 +1762,43 @@
     }
 
     if (entries.length === 1 && propertiesEntry) {
+      try {
+        const perms = await invoke<{ read_only: boolean; executable_supported: boolean; executable: boolean | null }>(
+          'get_permissions',
+          { path: propertiesEntry.path },
+        )
+        if (token === propertiesToken) {
+          propertiesPermissions = {
+            readOnly: perms.read_only,
+            executableSupported: perms.executable_supported,
+            executable: perms.executable,
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load permissions', err)
+      }
       void loadEntryTimes(propertiesEntry, token)
+    }
+  }
+
+  const updatePermissions = async (opts: { readOnly?: boolean; executable?: boolean }) => {
+    if (!propertiesEntry) return
+    try {
+      const perms = await invoke<{ read_only: boolean; executable_supported: boolean; executable: boolean | null }>(
+        'set_permissions',
+        {
+          path: propertiesEntry.path,
+          read_only: opts.readOnly,
+          executable: opts.executable,
+        },
+      )
+      propertiesPermissions = {
+        readOnly: perms.read_only,
+        executableSupported: perms.executable_supported,
+        executable: perms.executable,
+      }
+    } catch (err) {
+      console.error('Failed to update permissions', err)
     }
   }
 
@@ -1965,6 +2006,9 @@
   {propertiesCount}
   {propertiesSize}
   {propertiesItemCount}
+  propertiesPermissions={propertiesPermissions}
+  onTogglePermissionsReadOnly={(next) => updatePermissions({ readOnly: next })}
+  onTogglePermissionsExecutable={(next) => updatePermissions({ executable: next })}
   onCloseProperties={closeProperties}
   bookmarkModalOpen={bookmarkModalOpen}
   {bookmarkCandidate}
