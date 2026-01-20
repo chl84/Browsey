@@ -15,11 +15,13 @@ pub const HEIGHT: f32 = 48.0;
 pub struct DirSizeEntry {
     pub path: String,
     pub bytes: u64,
+    pub items: u64,
 }
 
 #[derive(Serialize, Clone)]
 pub struct DirSizeResult {
     pub total: u64,
+    pub total_items: u64,
     pub entries: Vec<DirSizeEntry>,
 }
 
@@ -44,13 +46,15 @@ fn dir_size_recursive<F>(
     #[cfg_attr(not(unix), allow(unused_variables))] root_dev: Option<u64>,
     pseudo_roots: &HashSet<&str>,
     mut on_progress: F,
-) -> u64
+) -> (u64, u64)
 where
-    F: FnMut(u64),
+    F: FnMut(u64, u64),
 {
     let mut total: u64 = 0;
+    let mut items: u64 = 0;
     let mut stack = vec![root.to_path_buf()];
     let mut pending: u64 = 0;
+    let mut pending_items: u64 = 0;
     const PROGRESS_BYTES: u64 = 500 * 1024 * 1024; // emit roughly every 500MB
 
     while let Some(path) = stack.pop() {
@@ -63,9 +67,8 @@ where
             Err(_) => continue,
         };
 
-        if meta.file_type().is_symlink() {
-            continue;
-        }
+        items = items.saturating_add(1);
+        pending_items = pending_items.saturating_add(1);
 
         #[cfg(unix)]
         if let Some(dev) = root_dev {
@@ -74,12 +77,25 @@ where
             }
         }
 
+        if meta.file_type().is_symlink() {
+            let len = meta.len();
+            total = total.saturating_add(len);
+            pending = pending.saturating_add(len);
+            if pending >= PROGRESS_BYTES {
+                on_progress(pending, pending_items);
+                pending = 0;
+                pending_items = 0;
+            }
+            continue;
+        }
+
         if meta.is_file() {
             total = total.saturating_add(meta.len());
             pending = pending.saturating_add(meta.len());
             if pending >= PROGRESS_BYTES {
-                on_progress(pending);
+                on_progress(pending, pending_items);
                 pending = 0;
+                pending_items = 0;
             }
             continue;
         }
@@ -96,10 +112,10 @@ where
     }
 
     if pending > 0 {
-        on_progress(pending);
+        on_progress(pending, pending_items);
     }
 
-    total
+    (total, items)
 }
 
 #[tauri::command]
@@ -111,6 +127,7 @@ pub async fn dir_sizes(
     let task = tauri::async_runtime::spawn_blocking(move || {
         let mut entries = Vec::new();
         let mut total: u64 = 0;
+        let mut total_items: u64 = 0;
         let pseudo_roots: HashSet<&str> = [
             "/proc",
             "/sys",
@@ -136,31 +153,43 @@ pub async fn dir_sizes(
             let root_dev: Option<u64> = None;
 
             let mut partial: u64 = 0;
+            let mut partial_items: u64 = 0;
             let emit_progress =
-                |delta: u64, raw: &str, emitter: &Option<(tauri::AppHandle, String)>| {
+                |delta: u64,
+                 items_delta: u64,
+                 raw: &str,
+                 emitter: &Option<(tauri::AppHandle, String)>| {
                     if let Some((app, evt)) = emitter {
                         let _ = app.emit(
                             evt,
                             DirSizeEntry {
                                 path: raw.to_string(),
                                 bytes: delta,
+                                items: items_delta,
                             },
                         );
                     }
                 };
 
-            let size = dir_size_recursive(&path, root_dev, &pseudo_roots, |delta| {
+            let (size, items) = dir_size_recursive(&path, root_dev, &pseudo_roots, |delta, items_delta| {
                 partial = partial.saturating_add(delta);
-                emit_progress(partial, &raw, &emitter);
+                partial_items = partial_items.saturating_add(items_delta);
+                emit_progress(partial, partial_items, &raw, &emitter);
             });
             total = total.saturating_add(size);
+            total_items = total_items.saturating_add(items);
             entries.push(DirSizeEntry {
                 path: raw,
                 bytes: size,
+                items,
             });
         }
 
-        DirSizeResult { total, entries }
+        DirSizeResult {
+            total,
+            total_items,
+            entries,
+        }
     });
 
     task.await

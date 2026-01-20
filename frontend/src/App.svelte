@@ -383,29 +383,40 @@
   let dirSizeAbort = 0
   let propertiesToken = 0
   let selectionText = ''
+  let propertiesItemCount: number | null = null
 
-  const computeDirBytes = async (paths: string[], onProgress?: (bytes: number) => void) => {
-    if (paths.length === 0) return 0
+  const computeDirStats = async (
+    paths: string[],
+    onProgress?: (bytes: number, items: number) => void,
+  ): Promise<{ total: number; items: number }> => {
+    if (paths.length === 0) return { total: 0, items: 0 }
     const token = ++dirSizeAbort
     const progressEvent = `dir-size-progress-${token}-${Math.random().toString(16).slice(2)}`
     let unlisten: UnlistenFn | null = null
-    const partials = new Map<string, number>()
+    const partials = new Map<string, { bytes: number; items: number }>()
     try {
       if (onProgress) {
-        unlisten = await listen<{ path: string; bytes: number }>(progressEvent, (event) => {
+        unlisten = await listen<{ path: string; bytes: number; items: number }>(progressEvent, (event) => {
           if (token !== dirSizeAbort) return
-          const { path, bytes } = event.payload
-          partials.set(path, bytes)
-          const total = Array.from(partials.values()).reduce((sum, b) => sum + b, 0)
-          onProgress(total)
+          const { path, bytes, items } = event.payload
+          partials.set(path, { bytes, items })
+          const totals = Array.from(partials.values()).reduce(
+            (acc, v) => {
+              acc.bytes += v.bytes
+              acc.items += v.items
+              return acc
+            },
+            { bytes: 0, items: 0 },
+          )
+          onProgress(totals.bytes, totals.items)
         })
       }
-      const result = await invoke<{ total: number }>('dir_sizes', { paths, progressEvent })
-      if (token !== dirSizeAbort) return 0
-      return result.total ?? 0
+      const result = await invoke<{ total: number; total_items: number }>('dir_sizes', { paths, progressEvent })
+      if (token !== dirSizeAbort) return { total: 0, items: 0 }
+      return { total: result.total ?? 0, items: result.total_items ?? 0 }
     } catch (err) {
       console.error('Failed to compute dir sizes', err)
-      return 0
+      return { total: 0, items: 0 }
     } finally {
       if (unlisten) {
         await unlisten()
@@ -1209,7 +1220,7 @@
 
   const handleRowsScrollCombined = (event: Event) => {
     if (viewMode === 'list') {
-      handleRowsScroll(event)
+      handleRowsScroll()
     } else {
       handleGridScroll()
     }
@@ -1717,27 +1728,31 @@
     const token = ++propertiesToken
     propertiesEntry = entries.length === 1 ? entries[0] : null
     propertiesCount = entries.length
+    propertiesItemCount = null
     propertiesOpen = true
     const files = entries.filter((e) => e.kind === 'file')
     const dirs = entries.filter((e) => e.kind === 'dir')
     const fileBytes = files.reduce((sum, f) => sum + (f.size ?? 0), 0)
+    const fileCount = files.length
     propertiesSize = fileBytes
     let loadingDirs = dirs.length > 0
 
     if (dirs.length > 0) {
-      const bytes = await computeDirBytes(
+      const { total, items } = await computeDirStats(
         dirs.map((d) => d.path),
-        (partial) => {
+        (partialBytes) => {
           if (token === propertiesToken) {
-            propertiesSize = fileBytes + partial
+            propertiesSize = fileBytes + partialBytes
           }
         }
       )
       if (token === propertiesToken) {
-        propertiesSize = fileBytes + bytes
+        propertiesSize = fileBytes + total
+        propertiesItemCount = fileCount + items
         loadingDirs = false
       }
     } else {
+      propertiesItemCount = fileCount
       loadingDirs = false
     }
 
@@ -1945,11 +1960,12 @@
   openWithBusy={openWithSubmitting}
   onConfirmOpenWith={handleOpenWithConfirm}
   onCloseOpenWith={closeOpenWith}
-    propertiesOpen={propertiesOpen}
-    {propertiesEntry}
-    {propertiesCount}
-    {propertiesSize}
-    onCloseProperties={closeProperties}
+  propertiesOpen={propertiesOpen}
+  {propertiesEntry}
+  {propertiesCount}
+  {propertiesSize}
+  {propertiesItemCount}
+  onCloseProperties={closeProperties}
   bookmarkModalOpen={bookmarkModalOpen}
   {bookmarkCandidate}
   onConfirmBookmark={confirmBookmark}

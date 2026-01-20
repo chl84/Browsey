@@ -11,7 +11,7 @@ type Deps = {
   currentView: () => CurrentView
   reloadCurrent: () => Promise<void>
   clipboard: ClipboardApi
-  showToast: (msg: string) => void
+  showToast: (msg: string, durationMs?: number) => void
   openWith: (entry: Entry) => void
   startRename: (entry: Entry) => void
   confirmDelete: (entries: Entry[]) => void
@@ -61,7 +61,11 @@ export const createContextActions = (deps: Deps) => {
 
     if (id === 'copy-path') {
       const result = await clipboard.copy(selectionEntries, { writeText: true })
-      if (!result.ok) showToast(`Copy failed: ${result.error}`)
+      if (result.ok) {
+        showToast('Path copied', 1500)
+      } else {
+        showToast(`Copy failed: ${result.error}`)
+      }
       return
     }
 
