@@ -3,7 +3,9 @@
 </script>
 
 {#if message}
-  <div class="toast">{message}</div>
+  <div class="toast">
+    <span class="text">{message}</span>
+  </div>
 {/if}
 
 <style>
@@ -20,5 +22,12 @@
     z-index: 30;
     max-width: 300px;
     font-size: 13px;
+    display: inline-block;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .text {
+    display: inline;
   }
 </style>

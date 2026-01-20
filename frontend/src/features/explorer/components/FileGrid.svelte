@@ -103,7 +103,7 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding: var(--grid-gap);
+    padding: 0;
   }
 
   .grid {
@@ -114,6 +114,8 @@
     position: relative;
     user-select: none;
     cursor: default;
+    padding: 12px;
+    box-sizing: border-box;
   }
 
   .grid:focus,
