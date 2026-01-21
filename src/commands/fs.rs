@@ -6,6 +6,7 @@ use crate::{
         build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
         CachedMeta, FsEntry,
     },
+    undo::{temp_backup_path, Action, UndoState},
     fs_utils::{
         check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow,
     },
@@ -567,7 +568,11 @@ pub fn list_trash(sort: Option<SortSpec>) -> Result<DirListing, String> {
 }
 
 #[tauri::command]
-pub fn rename_entry(path: String, new_name: String) -> Result<String, String> {
+pub fn rename_entry(
+    path: String,
+    new_name: String,
+    state: tauri::State<UndoState>,
+) -> Result<String, String> {
     let from = sanitize_path_nofollow(&path, true)?;
     check_no_symlink_components(&from)?;
     if new_name.trim().is_empty() {
@@ -578,7 +583,13 @@ pub fn rename_entry(path: String, new_name: String) -> Result<String, String> {
         .ok_or_else(|| "Cannot rename root".to_string())?;
     let to = parent.join(new_name.trim());
     match fs::rename(&from, &to) {
-        Ok(_) => Ok(to.to_string_lossy().to_string()),
+        Ok(_) => {
+            let _ = state.record_applied(Action::Rename {
+                from: from.clone(),
+                to: to.clone(),
+            });
+            Ok(to.to_string_lossy().to_string())
+        }
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
             Err("A file or directory with that name already exists".into())
         }
@@ -587,7 +598,11 @@ pub fn rename_entry(path: String, new_name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn create_folder(path: String, name: String) -> Result<String, String> {
+pub fn create_folder(
+    path: String,
+    name: String,
+    state: tauri::State<UndoState>,
+) -> Result<String, String> {
     let base = sanitize_path_follow(&path, true)?;
     check_no_symlink_components(&base)?;
     let trimmed = name.trim();
@@ -602,6 +617,9 @@ pub fn create_folder(path: String, name: String) -> Result<String, String> {
         return Err("A file or directory with that name already exists".into());
     }
     fs::create_dir(&target).map_err(|e| format!("Failed to create folder: {e}"))?;
+    let _ = state.record_applied(Action::CreateFolder {
+        path: target.clone(),
+    });
     Ok(target.to_string_lossy().into_owned())
 }
 
@@ -660,19 +678,33 @@ pub fn purge_trash_items(ids: Vec<String>, app: tauri::AppHandle) -> Result<(), 
 }
 
 #[tauri::command]
-pub fn delete_entry(path: String) -> Result<(), String> {
+pub fn delete_entry(path: String, state: tauri::State<UndoState>) -> Result<(), String> {
     let pb = sanitize_path_nofollow(&path, true)?;
     check_no_symlink_components(&pb)?;
-    delete_now(&pb)
+    delete_with_backup(&pb, &state)
 }
 
-fn delete_now(pb: &Path) -> Result<(), String> {
-    let meta = fs::symlink_metadata(pb).map_err(|e| format!("Failed to read metadata: {e}"))?;
-    if meta.is_dir() {
-        fs::remove_dir_all(pb).map_err(|e| format!("Failed to delete directory: {e}"))
-    } else {
-        fs::remove_file(pb).map_err(|e| format!("Failed to delete file: {e}"))
+fn delete_with_backup(path: &Path, state: &UndoState) -> Result<(), String> {
+    let backup = temp_backup_path(path);
+    if let Some(parent) = backup.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create backup dir {}: {e}", parent.display()))?;
     }
+    if backup.exists() {
+        return Err(format!("Backup path already exists: {}", backup.display()));
+    }
+    fs::rename(path, &backup).map_err(|e| {
+        format!(
+            "Failed to move {} to backup {}: {e}",
+            path.display(),
+            backup.display()
+        )
+    })?;
+    let _ = state.record_applied(Action::Delete {
+        path: path.to_path_buf(),
+        backup: backup.clone(),
+    });
+    Ok(())
 }
 
 #[derive(Serialize, Clone)]
@@ -708,6 +740,7 @@ fn delete_entries_blocking(
     app: tauri::AppHandle,
     paths: Vec<String>,
     progress_event: Option<String>,
+    undo: UndoState,
 ) -> Result<(), String> {
     if paths.is_empty() {
         return Ok(());
@@ -722,7 +755,7 @@ fn delete_entries_blocking(
     let mut done = 0u64;
     let mut last_emit = Instant::now();
     for path in resolved {
-        delete_now(&path)?;
+        delete_with_backup(&path, &undo)?;
         done = done.saturating_add(1);
         emit_delete_progress(&app, progress_event.as_ref(), done, total, false, &mut last_emit);
     }
@@ -735,9 +768,12 @@ pub async fn delete_entries(
     app: tauri::AppHandle,
     paths: Vec<String>,
     progress_event: Option<String>,
+    undo: tauri::State<'_, UndoState>,
 ) -> Result<(), String> {
-    let task =
-        tauri::async_runtime::spawn_blocking(move || delete_entries_blocking(app, paths, progress_event));
+    let undo = undo.inner().clone();
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        delete_entries_blocking(app, paths, progress_event, undo)
+    });
     task.await
         .map_err(|e| format!("Delete task failed: {e}"))?
 }

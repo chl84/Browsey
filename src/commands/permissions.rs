@@ -4,7 +4,10 @@ use std::fs::{self, Permissions};
 use std::os::unix::fs::PermissionsExt;
 use tracing::{debug, warn};
 
-use crate::fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitize_path_nofollow};
+use crate::{
+    fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitize_path_nofollow},
+    undo::{permissions_snapshot, Action, PermissionsSnapshot, UndoState},
+};
 
 #[derive(serde::Serialize)]
 pub struct AccessBits {
@@ -92,8 +95,7 @@ pub fn get_permissions(path: String) -> Result<PermissionInfo, String> {
     })
 }
 
-#[tauri::command]
-pub fn set_permissions(
+fn set_permissions_impl(
     path: String,
     #[allow(non_snake_case)] readOnly: Option<bool>,
     read_only: Option<bool>,
@@ -101,6 +103,7 @@ pub fn set_permissions(
     owner: Option<AccessUpdate>,
     group: Option<AccessUpdate>,
     other: Option<AccessUpdate>,
+    undo: Option<&UndoState>,
 ) -> Result<PermissionInfo, String> {
     let read_only = read_only.or(readOnly);
     let has_access_updates = owner.is_some() || group.is_some() || other.is_some();
@@ -122,6 +125,8 @@ pub fn set_permissions(
     let target = sanitize_path_follow(&path, true)?;
     check_no_symlink_components(&target)?;
     debug!(path = %target.display(), "set_permissions resolved target");
+
+    let before = permissions_snapshot(&target)?;
 
     let mut perms: Permissions = meta.permissions();
     #[cfg(unix)]
@@ -229,7 +234,41 @@ pub fn set_permissions(
         return Err(format!("Failed to update permissions: {e}"));
     }
     debug!(path = %target.display(), "set_permissions applied");
-    get_permissions(path)
+    let info = get_permissions(path.clone())?;
+    if let Some(undo) = undo {
+        let after = PermissionsSnapshot {
+            readonly: info.read_only,
+            #[cfg(unix)]
+            mode: {
+                use std::os::unix::fs::PermissionsExt;
+                fs::metadata(&target)
+                    .map(|m| m.permissions().mode())
+                    .unwrap_or(before.mode)
+            },
+        };
+        let _ = undo.record_applied(Action::SetPermissions {
+            path: target,
+            before,
+            after,
+        });
+    }
+    Ok(info)
+}
+
+#[tauri::command]
+pub fn set_permissions(
+    path: String,
+    #[allow(non_snake_case)] readOnly: Option<bool>,
+    read_only: Option<bool>,
+    executable: Option<bool>,
+    owner: Option<AccessUpdate>,
+    group: Option<AccessUpdate>,
+    other: Option<AccessUpdate>,
+    undo: tauri::State<UndoState>,
+) -> Result<PermissionInfo, String> {
+    set_permissions_impl(
+        path, readOnly, read_only, executable, owner, group, other, Some(undo.inner()),
+    )
 }
 
 #[cfg(all(test, unix))]
@@ -257,10 +296,11 @@ mod tests {
         fs::write(&path, b"test").unwrap();
         fs::set_permissions(&path, PermissionsExt::from_mode(0o644)).unwrap();
 
-        set_permissions(
+        set_permissions_impl(
             path.to_string_lossy().to_string(),
             None,
             Some(true),
+            None,
             None,
             None,
             None,
@@ -270,10 +310,11 @@ mod tests {
         let after_ro = fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(after_ro & 0o222, 0);
 
-        set_permissions(
+        set_permissions_impl(
             path.to_string_lossy().to_string(),
             None,
             Some(false),
+            None,
             None,
             None,
             None,
@@ -292,11 +333,12 @@ mod tests {
         fs::write(&path, b"test").unwrap();
         fs::set_permissions(&path, PermissionsExt::from_mode(0o644)).unwrap();
 
-        set_permissions(
+        set_permissions_impl(
             path.to_string_lossy().to_string(),
             None,
             None,
             Some(true),
+            None,
             None,
             None,
             None,
@@ -305,11 +347,12 @@ mod tests {
         let after_exec = fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(after_exec & 0o111, 0o100);
 
-        set_permissions(
+        set_permissions_impl(
             path.to_string_lossy().to_string(),
             None,
             None,
             Some(false),
+            None,
             None,
             None,
             None,
@@ -328,7 +371,7 @@ mod tests {
         fs::set_permissions(&path, PermissionsExt::from_mode(0o640)).unwrap();
 
         // Enable other read + owner exec without reintroducing world write.
-        set_permissions(
+        set_permissions_impl(
             path.to_string_lossy().to_string(),
             None,
             None,
@@ -340,6 +383,7 @@ mod tests {
                 write: Some(false),
                 exec: Some(false),
             }),
+            None,
         )
         .unwrap();
         let mode = fs::metadata(&path).unwrap().permissions().mode();
@@ -347,7 +391,7 @@ mod tests {
         assert_eq!(mode & 0o002, 0);
         assert_eq!(mode & 0o001, 0);
 
-        set_permissions(
+        set_permissions_impl(
             path.to_string_lossy().to_string(),
             None,
             None,
@@ -357,6 +401,7 @@ mod tests {
                 write: None,
                 exec: Some(true),
             }),
+            None,
             None,
             None,
         )

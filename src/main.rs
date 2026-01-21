@@ -11,12 +11,14 @@ mod search;
 mod sorting;
 mod statusbar;
 mod watcher;
+mod undo;
 
 use commands::*;
 use context_menu::context_menu_actions;
 use fs_utils::debug_log;
 use once_cell::sync::OnceCell;
 use statusbar::dir_sizes;
+use undo::{redo_action, undo_action, UndoState};
 use watcher::WatchState;
 
 fn init_logging() {
@@ -54,6 +56,7 @@ fn main() {
     tauri::Builder::default()
         .manage(WatchState::default())
         .manage(CancelState::default())
+        .manage(UndoState::default())
         .setup(|app| {
             for window in &app.config().app.windows {
                 if window.create {
@@ -101,7 +104,9 @@ fn main() {
             compress_entries,
             cancel_task,
             get_permissions,
-            set_permissions
+            set_permissions,
+            undo_action,
+            redo_action
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
