@@ -540,7 +540,16 @@ pub fn list_trash(sort: Option<SortSpec>) -> Result<DirListing, String> {
         };
         let is_link = meta.file_type().is_symlink();
         let mut entry = build_entry(&path, &meta, is_link, false);
-        entry.original_path = Some(item.original_path().to_string_lossy().into_owned());
+        let original_path = item.original_path();
+        entry.name = original_path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| original_path.to_string_lossy().into_owned());
+        entry.ext = original_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_string());
+        entry.original_path = Some(original_path.to_string_lossy().into_owned());
         entry.trash_id = Some(item.id.to_string_lossy().into_owned());
         if let Ok(info) = trash_metadata(&item) {
             match info.size {

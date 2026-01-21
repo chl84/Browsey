@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables)]
 use std::fs::{self, Permissions};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
