@@ -56,7 +56,7 @@ export const hitTestGridVirtualized = (rect: Rect, entries: { path: string }[], 
   }
   const x0 = Math.max(0, rect.x - padding)
   // Juster y for scroll/oversettelse: rektangelet gis i viewport-koordinater,
-  // rader starter ved padding og transformeres ikke av translateY i hit-testen.
+  // rows start at padding and are not transformed by translateY in the hit test.
   const y0 = Math.max(0, rect.y - padding)
   const colStride = cardWidth + gap
   const rowStride = cardHeight + gap

@@ -720,7 +720,7 @@
       if (event.shiftKey && key === 'i') {
         return
       }
-      const allowed = new Set(['f', 'b', 'c', 'x', 'v', 'p', 'a', 't', 'g'])
+      const allowed = new Set(['f', 'b', 'c', 'x', 'v', 'p', 'a', 't', 'g', 'z', 'y'])
       if (!allowed.has(key)) {
         event.preventDefault()
         event.stopPropagation()
@@ -821,6 +821,25 @@
         caretIndex.set(null)
       }
     }
+    if ((event.ctrlKey || event.metaKey) && !isEditableTarget(event.target)) {
+      if (key === 'z') {
+        event.preventDefault()
+        event.stopPropagation()
+        void invoke('undo_action').catch((err) =>
+          showToast(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)
+        )
+        return
+      }
+      if (key === 'y') {
+        event.preventDefault()
+        event.stopPropagation()
+        void invoke('redo_action').catch((err) =>
+          showToast(`Redo failed: ${err instanceof Error ? err.message : String(err)}`)
+        )
+        return
+      }
+    }
+
     void handleGlobalKeydown(event)
   }
 
