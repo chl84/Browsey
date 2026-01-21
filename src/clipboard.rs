@@ -1,4 +1,4 @@
-use crate::fs_utils::sanitize_path_follow;
+use crate::{fs_utils::sanitize_path_follow, undo::Action, UndoState};
 use once_cell::sync::Lazy;
 use std::{
     fs,
@@ -209,7 +209,11 @@ pub fn paste_clipboard_preview(dest: String) -> Result<Vec<ConflictInfo>, String
 }
 
 #[tauri::command]
-pub fn paste_clipboard_cmd(dest: String, policy: Option<String>) -> Result<Vec<String>, String> {
+pub fn paste_clipboard_cmd(
+    dest: String,
+    policy: Option<String>,
+    undo: tauri::State<UndoState>,
+) -> Result<Vec<String>, String> {
     let dest = sanitize_path_follow(&dest, false)?;
     let state = current_clipboard().ok_or_else(|| "Clipboard is empty".to_string())?;
     let policy = policy
@@ -254,6 +258,20 @@ pub fn paste_clipboard_cmd(dest: String, policy: Option<String>) -> Result<Vec<S
                     }
                     return Err(err);
                 }
+            }
+        }
+        match state.mode {
+            ClipboardMode::Copy => {
+                let _ = undo.record_applied(Action::Copy {
+                    from: src.clone(),
+                    to: target.clone(),
+                });
+            }
+            ClipboardMode::Cut => {
+                let _ = undo.record_applied(Action::Move {
+                    from: src.clone(),
+                    to: target.clone(),
+                });
             }
         }
         created.push(target.to_string_lossy().to_string());

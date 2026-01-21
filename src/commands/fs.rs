@@ -624,15 +624,37 @@ pub fn create_folder(
 }
 
 #[tauri::command]
-pub fn move_to_trash(path: String, app: tauri::AppHandle) -> Result<(), String> {
+pub fn move_to_trash(
+    path: String,
+    app: tauri::AppHandle,
+    undo: tauri::State<UndoState>,
+) -> Result<(), String> {
     let src = sanitize_path_nofollow(&path, true)?;
     check_no_symlink_components(&src)?;
 
-    trash_delete(&src)
-        .map_err(|e| format!("Failed to move to trash: {e}"))
-        .map(|_| {
-            let _ = app.emit("trash-changed", ());
-        })
+    let before: HashSet<OsString> = trash_list()
+        .map_err(|e| format!("Failed to list trash: {e}"))?
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+
+    trash_delete(&src).map_err(|e| format!("Failed to move to trash: {e}"))?;
+    let _ = app.emit("trash-changed", ());
+
+    if let Ok(after) = trash_list() {
+        if let Some(item) = after
+            .into_iter()
+            .find(|item| !before.contains(&item.id) && item.original_path() == src)
+        {
+            // Store the performed move (src -> trash_path) so undo can rename back.
+            let trash_path = trash_item_path(&item);
+            let _ = undo.record_applied(Action::Move {
+                from: src.clone(),
+                to: trash_path,
+            });
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
