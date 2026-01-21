@@ -10,6 +10,7 @@ const MAX_HISTORY: usize = 50;
 pub enum Action {
     Rename { from: PathBuf, to: PathBuf },
     Move { from: PathBuf, to: PathBuf },
+    Copy { from: PathBuf, to: PathBuf },
     Delete { path: PathBuf, backup: PathBuf },
     CreateFolder { path: PathBuf },
     SetPermissions {
@@ -151,15 +152,29 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
                 Direction::Forward => (from, to),
                 Direction::Backward => (to, from),
             };
-            ensure_absent(dst)?;
-            fs::rename(&*src, &*dst).map_err(|e| {
-                format!(
+            if dst.exists() {
+                delete_entry_path(dst)?;
+            }
+            match fs::rename(&*src, &*dst) {
+                Ok(_) => Ok(()),
+                Err(e) if is_cross_device(&e) => {
+                    copy_entry(src, dst)?;
+                    delete_entry_path(src)
+                }
+                Err(e) => Err(format!(
                     "Failed to rename {} -> {}: {e}",
                     src.display(),
                     dst.display()
-                )
-            })
+                )),
+            }
         }
+        Action::Copy { from, to } => match direction {
+            Direction::Forward => {
+                ensure_absent(to)?;
+                copy_entry(from, to)
+            }
+            Direction::Backward => delete_entry_path(to),
+        },
         Action::Delete { path, backup } => match direction {
             Direction::Forward => {
                 if !path.exists() {
@@ -258,6 +273,59 @@ pub fn permissions_snapshot(path: &Path) -> Result<PermissionsSnapshot, String> 
     #[cfg(not(unix))]
     {
         Ok(PermissionsSnapshot { readonly })
+    }
+}
+
+fn is_cross_device(err: &std::io::Error) -> bool {
+    err.raw_os_error() == Some(18) // EXDEV
+}
+
+fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
+    let meta = fs::symlink_metadata(src).map_err(|e| format!("Failed to read metadata: {e}"))?;
+    if meta.file_type().is_symlink() {
+        return Err("Refusing to copy symlinks".into());
+    }
+    if meta.is_dir() {
+        copy_dir(src, dest)
+    } else {
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create parent {:?}: {e}", parent))?;
+        }
+        fs::copy(src, dest).map_err(|e| format!("Failed to copy file: {e}")).map(|_| ())
+    }
+}
+
+fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
+    if dest.exists() {
+        return Err(format!("Destination already exists: {}", dest.display()));
+    }
+    fs::create_dir_all(dest).map_err(|e| format!("Failed to create dir {:?}: {e}", dest))?;
+    for entry in fs::read_dir(src).map_err(|e| format!("Failed to read dir {:?}: {e}", src))? {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
+        let path = entry.path();
+        let meta =
+            fs::symlink_metadata(&path).map_err(|e| format!("Failed to read metadata: {e}"))?;
+        if meta.file_type().is_symlink() {
+            return Err("Refusing to copy symlinks".into());
+        }
+        let target = dest.join(entry.file_name());
+        if meta.is_dir() {
+            copy_dir(&path, &target)?;
+        } else {
+            fs::copy(&path, &target)
+                .map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
+        }
+    }
+    Ok(())
+}
+
+fn delete_entry_path(path: &Path) -> Result<(), String> {
+    let meta = fs::symlink_metadata(path).map_err(|e| format!("Failed to read metadata: {e}"))?;
+    if meta.is_dir() {
+        fs::remove_dir_all(path).map_err(|e| format!("Failed to delete directory: {e}"))
+    } else {
+        fs::remove_file(path).map_err(|e| format!("Failed to delete file: {e}"))
     }
 }
 
