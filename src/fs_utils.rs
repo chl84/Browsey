@@ -206,7 +206,7 @@ fn is_remote_drive(path: &Path) -> bool {
 #[cfg(target_os = "windows")]
 fn is_removable_drive(path: &Path) -> bool {
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{GetDriveTypeW, DRIVE_REMOVABLE};
+    use windows_sys::Win32::Storage::FileSystem::GetDriveTypeW;
 
     if let Some(letter) = drive_letter(path) {
         let root = format!("{}:\\", letter as char);
@@ -214,7 +214,8 @@ fn is_removable_drive(path: &Path) -> bool {
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
-        unsafe { GetDriveTypeW(wide.as_ptr()) == DRIVE_REMOVABLE }
+        // 2 == DRIVE_REMOVABLE
+        unsafe { GetDriveTypeW(wide.as_ptr()) == 2 }
     } else {
         false
     }
