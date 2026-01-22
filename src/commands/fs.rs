@@ -6,7 +6,7 @@ use crate::{
         build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
         CachedMeta, FsEntry,
     },
-    undo::{temp_backup_path, Action, UndoState},
+    undo::{run_actions, temp_backup_path, Action, Direction, UndoState, move_with_fallback},
     fs_utils::{
         check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow,
     },
@@ -629,6 +629,35 @@ pub fn move_to_trash(
     app: tauri::AppHandle,
     undo: tauri::State<UndoState>,
 ) -> Result<(), String> {
+    let action = move_single_to_trash(&path, &app, &undo)?;
+    let _ = undo.record_applied(action);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn move_to_trash_many(
+    paths: Vec<String>,
+    app: tauri::AppHandle,
+    undo: tauri::State<UndoState>,
+) -> Result<(), String> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let mut actions = Vec::with_capacity(paths.len());
+    for path in paths {
+        let action = move_single_to_trash(&path, &app, &undo)?;
+        actions.push(action);
+    }
+    let recorded = if actions.len() == 1 {
+        actions.pop().unwrap()
+    } else {
+        Action::Batch(actions)
+    };
+    let _ = undo.record_applied(recorded);
+    Ok(())
+}
+
+fn move_single_to_trash(path: &str, app: &tauri::AppHandle, _undo: &UndoState) -> Result<Action, String> {
     let src = sanitize_path_nofollow(&path, true)?;
     check_no_symlink_components(&src)?;
 
@@ -641,20 +670,20 @@ pub fn move_to_trash(
     trash_delete(&src).map_err(|e| format!("Failed to move to trash: {e}"))?;
     let _ = app.emit("trash-changed", ());
 
-    if let Ok(after) = trash_list() {
-        if let Some(item) = after
-            .into_iter()
-            .find(|item| !before.contains(&item.id) && item.original_path() == src)
-        {
-            // Store the performed move (src -> trash_path) so undo can rename back.
-            let trash_path = trash_item_path(&item);
-            let _ = undo.record_applied(Action::Move {
-                from: src.clone(),
-                to: trash_path,
-            });
-        }
-    }
-    Ok(())
+    let trash_path = trash_list()
+        .ok()
+        .and_then(|after| {
+            after
+                .into_iter()
+                .find(|item| !before.contains(&item.id) && item.original_path() == src)
+                .map(|item| trash_item_path(&item))
+        })
+        .ok_or_else(|| "Failed to locate trashed item for undo".to_string())?;
+
+    Ok(Action::Move {
+        from: src,
+        to: trash_path,
+    })
 }
 
 #[tauri::command]
@@ -703,10 +732,12 @@ pub fn purge_trash_items(ids: Vec<String>, app: tauri::AppHandle) -> Result<(), 
 pub fn delete_entry(path: String, state: tauri::State<UndoState>) -> Result<(), String> {
     let pb = sanitize_path_nofollow(&path, true)?;
     check_no_symlink_components(&pb)?;
-    delete_with_backup(&pb, &state)
+    let action = delete_with_backup(&pb)?;
+    let _ = state.record_applied(action);
+    Ok(())
 }
 
-fn delete_with_backup(path: &Path, state: &UndoState) -> Result<(), String> {
+fn delete_with_backup(path: &Path) -> Result<Action, String> {
     let backup = temp_backup_path(path);
     if let Some(parent) = backup.parent() {
         fs::create_dir_all(parent)
@@ -715,18 +746,12 @@ fn delete_with_backup(path: &Path, state: &UndoState) -> Result<(), String> {
     if backup.exists() {
         return Err(format!("Backup path already exists: {}", backup.display()));
     }
-    fs::rename(path, &backup).map_err(|e| {
-        format!(
-            "Failed to move {} to backup {}: {e}",
-            path.display(),
-            backup.display()
-        )
-    })?;
-    let _ = state.record_applied(Action::Delete {
+    // Bruk samme robuste flytt som undo-systemet (copy+delete fallback)
+    move_with_fallback(path, &backup)?;
+    Ok(Action::Delete {
         path: path.to_path_buf(),
-        backup: backup.clone(),
-    });
-    Ok(())
+        backup,
+    })
 }
 
 #[derive(Serialize, Clone)]
@@ -776,10 +801,37 @@ fn delete_entries_blocking(
     let total = resolved.len() as u64;
     let mut done = 0u64;
     let mut last_emit = Instant::now();
+    let mut performed: Vec<Action> = Vec::with_capacity(resolved.len());
     for path in resolved {
-        delete_with_backup(&path, &undo)?;
-        done = done.saturating_add(1);
-        emit_delete_progress(&app, progress_event.as_ref(), done, total, false, &mut last_emit);
+        match delete_with_backup(&path) {
+            Ok(action) => {
+                performed.push(action);
+                done = done.saturating_add(1);
+                emit_delete_progress(&app, progress_event.as_ref(), done, total, false, &mut last_emit);
+            }
+            Err(err) => {
+                if !performed.is_empty() {
+                    let mut rollback = performed.clone();
+                    if let Err(rb_err) = run_actions(&mut rollback, Direction::Backward) {
+                        return Err(format!(
+                            "Failed to delete {}: {}; rollback also failed: {}",
+                            path.display(),
+                            err,
+                            rb_err
+                        ));
+                    }
+                }
+                return Err(format!("Failed to delete {}: {}", path.display(), err));
+            }
+        }
+    }
+    if !performed.is_empty() {
+        let recorded = if performed.len() == 1 {
+            performed.pop().unwrap()
+        } else {
+            Action::Batch(performed)
+        };
+        let _ = undo.record_applied(recorded);
     }
     emit_delete_progress(&app, progress_event.as_ref(), done, total, true, &mut last_emit);
     Ok(())

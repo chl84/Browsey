@@ -53,6 +53,7 @@ fn init_logging() {
 
 fn main() {
     init_logging();
+    undo::cleanup_stale_backups(None);
     tauri::Builder::default()
         .manage(WatchState::default())
         .manage(CancelState::default())
@@ -89,6 +90,7 @@ fn main() {
             context_menu_actions,
             rename_entry,
             move_to_trash,
+            move_to_trash_many,
             delete_entry,
             delete_entries,
             entry_times_cmd,
