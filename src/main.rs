@@ -10,8 +10,8 @@ mod icons;
 mod search;
 mod sorting;
 mod statusbar;
-mod watcher;
 mod undo;
+mod watcher;
 
 use commands::*;
 use context_menu::context_menu_actions;

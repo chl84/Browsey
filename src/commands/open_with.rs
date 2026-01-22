@@ -13,10 +13,8 @@ use windows::{
     core::{HSTRING, PWSTR},
     Win32::{
         Foundation::{RPC_E_CHANGED_MODE, S_FALSE, S_OK},
-        System::{
-            Com::{
-                CoInitializeEx, CoTaskMemFree, CoUninitialize, IDataObject, COINIT_APARTMENTTHREADED,
-            },
+        System::Com::{
+            CoInitializeEx, CoTaskMemFree, CoUninitialize, IDataObject, COINIT_APARTMENTTHREADED,
         },
         UI::Shell::{
             BHID_DataObject, IAssocHandler, IShellItem, IShellItemArray, SHAssocEnumHandlers,
@@ -791,11 +789,7 @@ unsafe fn find_assoc_handler(
                     let Some(handler) = handler.take() else {
                         continue;
                     };
-                    if let Some(id) = handler
-                        .GetName()
-                        .ok()
-                        .and_then(|ptr| pwstr_to_string(ptr))
-                    {
+                    if let Some(id) = handler.GetName().ok().and_then(|ptr| pwstr_to_string(ptr)) {
                         if id.to_ascii_lowercase() == target_id {
                             return Ok(Some(handler));
                         }
@@ -865,13 +859,17 @@ impl ComGuard {
         unsafe {
             let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
             if hr == S_OK {
-                Ok(Self { should_uninit: true })
+                Ok(Self {
+                    should_uninit: true,
+                })
             } else if hr == RPC_E_CHANGED_MODE {
                 Ok(Self {
                     should_uninit: false,
                 })
             } else if hr.is_ok() {
-                Ok(Self { should_uninit: true })
+                Ok(Self {
+                    should_uninit: true,
+                })
             } else {
                 Err(hr.into())
             }

@@ -171,11 +171,12 @@ pub async fn dir_sizes(
                     }
                 };
 
-            let (size, items) = dir_size_recursive(&path, root_dev, &pseudo_roots, |delta, items_delta| {
-                partial = partial.saturating_add(delta);
-                partial_items = partial_items.saturating_add(items_delta);
-                emit_progress(partial, partial_items, &raw, &emitter);
-            });
+            let (size, items) =
+                dir_size_recursive(&path, root_dev, &pseudo_roots, |delta, items_delta| {
+                    partial = partial.saturating_add(delta);
+                    partial_items = partial_items.saturating_add(items_delta);
+                    emit_progress(partial, partial_items, &raw, &emitter);
+                });
             total = total.saturating_add(size);
             total_items = total_items.saturating_add(items);
             entries.push(DirSizeEntry {

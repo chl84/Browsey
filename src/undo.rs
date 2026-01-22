@@ -7,16 +7,30 @@ use std::{hash::Hash, hash::Hasher};
 use tracing::{debug, warn};
 
 const MAX_HISTORY: usize = 50;
-// Bruk sentral katalog for alle undo-backuper.
+// Use a central directory for all undo backups.
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum Action {
-    Rename { from: PathBuf, to: PathBuf },
-    Move { from: PathBuf, to: PathBuf },
-    Copy { from: PathBuf, to: PathBuf },
-    Delete { path: PathBuf, backup: PathBuf },
-    CreateFolder { path: PathBuf },
+    Rename {
+        from: PathBuf,
+        to: PathBuf,
+    },
+    Move {
+        from: PathBuf,
+        to: PathBuf,
+    },
+    Copy {
+        from: PathBuf,
+        to: PathBuf,
+    },
+    Delete {
+        path: PathBuf,
+        backup: PathBuf,
+    },
+    CreateFolder {
+        path: PathBuf,
+    },
     Batch(Vec<Action>),
     SetPermissions {
         path: PathBuf,
@@ -77,7 +91,10 @@ impl UndoManager {
     }
 
     pub fn undo(&mut self) -> Result<(), String> {
-        let mut action = self.undo_stack.pop_back().ok_or_else(|| "Nothing to undo".to_string())?;
+        let mut action = self
+            .undo_stack
+            .pop_back()
+            .ok_or_else(|| "Nothing to undo".to_string())?;
         match execute_action(&mut action, Direction::Backward) {
             Ok(_) => {
                 self.redo_stack.push_back(action);
@@ -91,7 +108,10 @@ impl UndoManager {
     }
 
     pub fn redo(&mut self) -> Result<(), String> {
-        let mut action = self.redo_stack.pop_back().ok_or_else(|| "Nothing to redo".to_string())?;
+        let mut action = self
+            .redo_stack
+            .pop_back()
+            .ok_or_else(|| "Nothing to redo".to_string())?;
         match execute_action(&mut action, Direction::Forward) {
             Ok(_) => {
                 self.undo_stack.push_back(action);
@@ -168,14 +188,14 @@ pub fn redo_action(state: tauri::State<'_, UndoState>) -> Result<(), String> {
 /// avoid leaving orphaned backups after a crash or restart (undo history is
 /// in-memory only).
 pub fn cleanup_stale_backups(max_age: Option<Duration>) {
-    let _ = max_age; // behold signaturen; vi fjerner alt uansett.
+    let _ = max_age; // keep the signature; we remove everything regardless.
     let base = base_undo_dir();
-    // Fjern hele basen; det er trygt fordi historikken uansett ikke overlever restart.
+    // Remove the entire base; safe because undo history is in-memory only and does not survive restarts.
     if base.exists() {
         if let Err(e) = fs::remove_dir_all(&base) {
-            warn!("Kunne ikke rydde backup-katalog {:?}: {}", base, e);
+            warn!("Failed to clean backup directory {:?}: {}", base, e);
         } else {
-            debug!("Renset backup-katalog {:?}", base);
+            debug!("Cleaned backup directory {:?}", base);
         }
     }
     let _ = fs::create_dir_all(&base);
@@ -213,8 +233,9 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
                 let parent = backup
                     .parent()
                     .ok_or_else(|| "Invalid backup path".to_string())?;
-                fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create backup dir {}: {e}", parent.display()))?;
+                fs::create_dir_all(parent).map_err(|e| {
+                    format!("Failed to create backup dir {}: {e}", parent.display())
+                })?;
                 ensure_absent(backup)?;
                 move_with_fallback(path, backup)
             }
@@ -234,9 +255,8 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
             }
             Direction::Backward => {
                 if path.exists() {
-                    fs::remove_dir_all(&*path).map_err(|e| {
-                        format!("Failed to remove directory {}: {e}", path.display())
-                    })
+                    fs::remove_dir_all(&*path)
+                        .map_err(|e| format!("Failed to remove directory {}: {e}", path.display()))
                 } else {
                     Ok(())
                 }
@@ -268,8 +288,14 @@ fn execute_batch(actions: &mut [Action], direction: Direction) -> Result<(), Str
             let rollback_direction = reverse_direction(direction);
             let mut rollback_errors = Vec::new();
             for rollback_idx in completed.into_iter().rev() {
-                if let Err(rollback_err) = execute_action(&mut actions[rollback_idx], rollback_direction) {
-                    rollback_errors.push(format!("rollback action {} failed: {}", rollback_idx + 1, rollback_err));
+                if let Err(rollback_err) =
+                    execute_action(&mut actions[rollback_idx], rollback_direction)
+                {
+                    rollback_errors.push(format!(
+                        "rollback action {} failed: {}",
+                        rollback_idx + 1,
+                        rollback_err
+                    ));
                 }
             }
             if rollback_errors.is_empty() {
@@ -345,7 +371,9 @@ pub(crate) fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create parent {:?}: {e}", parent))?;
         }
-        fs::copy(src, dest).map_err(|e| format!("Failed to copy file: {e}")).map(|_| ())
+        fs::copy(src, dest)
+            .map_err(|e| format!("Failed to copy file: {e}"))
+            .map(|_| ())
     }
 }
 
@@ -366,8 +394,7 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
         if meta.is_dir() {
             copy_dir(&path, &target)?;
         } else {
-            fs::copy(&path, &target)
-                .map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
+            fs::copy(&path, &target).map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
         }
     }
     Ok(())
@@ -679,7 +706,7 @@ mod tests {
 
         assert!(
             !target.exists(),
-            "backup-basens innhold skal fjernes ved opprydding"
+            "backup base contents should be removed during cleanup"
         );
     }
 }

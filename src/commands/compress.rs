@@ -498,7 +498,8 @@ fn do_compress(
 
     let result: Result<(), String> = (|| {
         for entry in &entries {
-            check_cancel(cancel_token.as_deref()).map_err(|e| map_copy_err("Compression cancelled", e))?;
+            check_cancel(cancel_token.as_deref())
+                .map_err(|e| map_copy_err("Compression cancelled", e))?;
             add_path_to_zip(
                 &mut writer,
                 entry,

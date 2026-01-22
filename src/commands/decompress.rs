@@ -214,8 +214,9 @@ pub async fn extract_archive(
     progress_event: Option<String>,
 ) -> Result<ExtractResult, String> {
     let cancel_state = cancel.inner().clone();
-    let task =
-        tauri::async_runtime::spawn_blocking(move || do_extract(app, cancel_state, path, progress_event));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        do_extract(app, cancel_state, path, progress_event)
+    });
     task.await
         .map_err(|e| format!("Extraction task failed: {e}"))?
 }
@@ -278,109 +279,91 @@ fn do_extract(
             )?;
             dest_dir
         }
-        ArchiveKind::Tar => {
-            extract_tar_with_reader(
-                &archive_path,
-                parent,
-                &stats,
-                progress.as_ref(),
-                &mut created,
-                cancel_token.as_deref(),
-                |reader| Ok(Box::new(reader) as Box<dyn Read>),
-            )?
-        }
-        ArchiveKind::TarGz => {
-            extract_tar_with_reader(
-                &archive_path,
-                parent,
-                &stats,
-                progress.as_ref(),
-                &mut created,
-                cancel_token.as_deref(),
-                |reader| Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>),
-            )?
-        }
-        ArchiveKind::TarBz2 => {
-            extract_tar_with_reader(
-                &archive_path,
-                parent,
-                &stats,
-                progress.as_ref(),
-                &mut created,
-                cancel_token.as_deref(),
-                |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
-            )?
-        }
-        ArchiveKind::TarXz => {
-            extract_tar_with_reader(
-                &archive_path,
-                parent,
-                &stats,
-                progress.as_ref(),
-                &mut created,
-                cancel_token.as_deref(),
-                |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
-            )?
-        }
-        ArchiveKind::TarZstd => {
-            extract_tar_with_reader(
-                &archive_path,
-                parent,
-                &stats,
-                progress.as_ref(),
-                &mut created,
-                cancel_token.as_deref(),
-                |reader| {
-                    ZstdDecoder::new(reader)
-                        .map(|r| Box::new(r) as Box<dyn Read>)
-                        .map_err(|e| format!("Failed to create zstd decoder: {e}"))
-                },
-            )?
-        }
-        ArchiveKind::Gz => {
-            decompress_single_with_reader(
-                &archive_path,
-                parent,
-                progress.as_ref(),
-                &mut created,
-                cancel_token.as_deref(),
-                |reader| Ok(Box::new(MultiGzDecoder::new(reader)) as Box<dyn Read>),
-            )?
-        }
-        ArchiveKind::Bz2 => {
-            decompress_single_with_reader(
-                &archive_path,
-                parent,
-                progress.as_ref(),
-                &mut created,
-                cancel_token.as_deref(),
-                |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
-            )?
-        }
-        ArchiveKind::Xz => {
-            decompress_single_with_reader(
-                &archive_path,
-                parent,
-                progress.as_ref(),
-                &mut created,
-                cancel_token.as_deref(),
-                |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
-            )?
-        }
-        ArchiveKind::Zstd => {
-            decompress_single_with_reader(
-                &archive_path,
-                parent,
-                progress.as_ref(),
-                &mut created,
-                cancel_token.as_deref(),
-                |reader| {
-                    ZstdDecoder::new(reader)
-                        .map(|r| Box::new(r) as Box<dyn Read>)
-                        .map_err(|e| format!("Failed to create zstd decoder: {e}"))
-                },
-            )?
-        }
+        ArchiveKind::Tar => extract_tar_with_reader(
+            &archive_path,
+            parent,
+            &stats,
+            progress.as_ref(),
+            &mut created,
+            cancel_token.as_deref(),
+            |reader| Ok(Box::new(reader) as Box<dyn Read>),
+        )?,
+        ArchiveKind::TarGz => extract_tar_with_reader(
+            &archive_path,
+            parent,
+            &stats,
+            progress.as_ref(),
+            &mut created,
+            cancel_token.as_deref(),
+            |reader| Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::TarBz2 => extract_tar_with_reader(
+            &archive_path,
+            parent,
+            &stats,
+            progress.as_ref(),
+            &mut created,
+            cancel_token.as_deref(),
+            |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::TarXz => extract_tar_with_reader(
+            &archive_path,
+            parent,
+            &stats,
+            progress.as_ref(),
+            &mut created,
+            cancel_token.as_deref(),
+            |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::TarZstd => extract_tar_with_reader(
+            &archive_path,
+            parent,
+            &stats,
+            progress.as_ref(),
+            &mut created,
+            cancel_token.as_deref(),
+            |reader| {
+                ZstdDecoder::new(reader)
+                    .map(|r| Box::new(r) as Box<dyn Read>)
+                    .map_err(|e| format!("Failed to create zstd decoder: {e}"))
+            },
+        )?,
+        ArchiveKind::Gz => decompress_single_with_reader(
+            &archive_path,
+            parent,
+            progress.as_ref(),
+            &mut created,
+            cancel_token.as_deref(),
+            |reader| Ok(Box::new(MultiGzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::Bz2 => decompress_single_with_reader(
+            &archive_path,
+            parent,
+            progress.as_ref(),
+            &mut created,
+            cancel_token.as_deref(),
+            |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::Xz => decompress_single_with_reader(
+            &archive_path,
+            parent,
+            progress.as_ref(),
+            &mut created,
+            cancel_token.as_deref(),
+            |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
+        )?,
+        ArchiveKind::Zstd => decompress_single_with_reader(
+            &archive_path,
+            parent,
+            progress.as_ref(),
+            &mut created,
+            cancel_token.as_deref(),
+            |reader| {
+                ZstdDecoder::new(reader)
+                    .map(|r| Box::new(r) as Box<dyn Read>)
+                    .map_err(|e| format!("Failed to create zstd decoder: {e}"))
+            },
+        )?,
     };
 
     if let Some(p) = progress.as_ref() {
@@ -615,9 +598,7 @@ fn extract_zip(
         let (file, _) = open_unique_file(&dest_path)?;
         created.record_file(dest_path.clone());
         let mut out = BufWriter::with_capacity(CHUNK, file);
-        if let Err(e) =
-            copy_with_progress(&mut entry, &mut out, progress, cancel, &mut buf)
-        {
+        if let Err(e) = copy_with_progress(&mut entry, &mut out, progress, cancel, &mut buf) {
             let msg = map_copy_err(&format!("Failed to write zip entry {raw_name}"), e);
             return Err(msg);
         }
@@ -825,10 +806,7 @@ fn zip_uncompressed_total(path: &Path) -> Result<u64, String> {
 
 fn gzip_uncompressed_size(path: &Path) -> Result<u64, String> {
     let mut file = File::open(path).map_err(map_io("open gzip for total"))?;
-    let len = file
-        .metadata()
-        .map_err(map_io("read gzip metadata"))?
-        .len();
+    let len = file.metadata().map_err(map_io("read gzip metadata"))?.len();
     if len < 4 {
         return Err("gzip too small to contain size footer".into());
     }

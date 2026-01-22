@@ -7,22 +7,20 @@ use std::mem::{size_of, zeroed};
 use std::os::windows::ffi::OsStringExt;
 use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::io::AsRawHandle;
+use std::path::Path;
 use std::process::Command;
 use std::ptr;
-use std::path::Path;
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
-    CM_Request_Device_EjectW, CONFIGRET, CR_REMOVE_VETOED, CR_SUCCESS, DIGCF_DEVICEINTERFACE,
-    DIGCF_PRESENT, HDEVINFO, PNP_VETO_TYPE, PNP_VetoTypeUnknown,
-    SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW,
-    SetupDiGetDeviceInterfaceDetailW, SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W,
-    SP_DEVINFO_DATA,
+    CM_Request_Device_EjectW, PNP_VetoTypeUnknown, SetupDiDestroyDeviceInfoList,
+    SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW, SetupDiGetDeviceInterfaceDetailW, CONFIGRET,
+    CR_REMOVE_VETOED, CR_SUCCESS, DIGCF_DEVICEINTERFACE, DIGCF_PRESENT, HDEVINFO, PNP_VETO_TYPE,
+    SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W, SP_DEVINFO_DATA,
 };
 use windows_sys::Win32::Foundation::{GetLastError, ERROR_NO_MORE_ITEMS, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{
     GetDriveTypeW, GetLogicalDriveStringsW, GetVolumeInformationW, FILE_SHARE_DELETE,
     FILE_SHARE_READ, FILE_SHARE_WRITE,
 };
-use windows_sys::Win32::System::IO::DeviceIoControl;
 use windows_sys::Win32::System::Ioctl::{
     FSCTL_DISMOUNT_VOLUME, FSCTL_LOCK_VOLUME, GUID_DEVINTERFACE_DISK, IOCTL_STORAGE_EJECT_MEDIA,
     IOCTL_STORAGE_GET_DEVICE_NUMBER, IOCTL_STORAGE_MEDIA_REMOVAL, PREVENT_MEDIA_REMOVAL,
@@ -31,6 +29,7 @@ use windows_sys::Win32::System::Ioctl::{
 use windows_sys::Win32::System::WindowsProgramming::{
     DRIVE_CDROM, DRIVE_FIXED, DRIVE_RAMDISK, DRIVE_REMOTE, DRIVE_REMOVABLE,
 };
+use windows_sys::Win32::System::IO::DeviceIoControl;
 
 pub fn list_windows_mounts() -> Vec<MountInfo> {
     // First call to get required buffer length (in WCHARs, including trailing null).
@@ -219,7 +218,9 @@ fn lock_and_eject_media(letter: char) -> Result<(), String> {
         );
         if ok_allow == 0 {
             let err = GetLastError();
-            return Err(format!("IOCTL_STORAGE_MEDIA_REMOVAL failed: Win32 error {err}"));
+            return Err(format!(
+                "IOCTL_STORAGE_MEDIA_REMOVAL failed: Win32 error {err}"
+            ));
         }
 
         let ok_eject = DeviceIoControl(
@@ -234,7 +235,9 @@ fn lock_and_eject_media(letter: char) -> Result<(), String> {
         );
         if ok_eject == 0 {
             let err = GetLastError();
-            return Err(format!("IOCTL_STORAGE_EJECT_MEDIA failed: Win32 error {err}"));
+            return Err(format!(
+                "IOCTL_STORAGE_EJECT_MEDIA failed: Win32 error {err}"
+            ));
         }
         Ok(())
     }
@@ -277,7 +280,9 @@ fn eject_by_device_number(device_number: u32) -> Result<(), String> {
                 if err == ERROR_NO_MORE_ITEMS {
                     break;
                 }
-                return Err(format!("SetupDiEnumDeviceInterfaces failed: Win32 error {err}"));
+                return Err(format!(
+                    "SetupDiEnumDeviceInterfaces failed: Win32 error {err}"
+                ));
             }
             index += 1;
 
@@ -372,7 +377,9 @@ pub fn eject_drive(path: &str) -> Result<(), String> {
     // Expect something like "D:\"; normalize to "D:".
     let drive = path.trim_end_matches(['\\', '/']);
     let mut chars = drive.chars();
-    let letter = chars.next().ok_or_else(|| "Invalid drive path".to_string())?;
+    let letter = chars
+        .next()
+        .ok_or_else(|| "Invalid drive path".to_string())?;
     if !letter.is_ascii_alphabetic() {
         return Err("Invalid drive path".into());
     }
