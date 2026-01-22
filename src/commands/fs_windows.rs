@@ -93,16 +93,14 @@ fn utf16_to_string(buf: &[u16]) -> Option<String> {
 }
 
 pub fn eject_drive(path: &str) -> Result<(), String> {
-    // Expect a drive root like "D:\"
-    let drive = path.trim_end_matches(['\\', '/']).to_string();
-    if drive.len() < 2 {
+    // Expect something like "D:\"; normaliser til "D:" for Shell.Application.
+    let drive = path.trim_end_matches(['\\', '/']);
+    let mut chars = drive.chars();
+    let letter = chars.next().ok_or_else(|| "Invalid drive path".to_string())?;
+    if !letter.is_ascii_alphabetic() {
         return Err("Invalid drive path".into());
     }
-    let target = if drive.ends_with(':') {
-        format!("{drive}:")
-    } else {
-        drive.clone()
-    };
+    let target = format!("{}:", letter.to_ascii_uppercase());
     // Use COM Shell.Application verb "Eject" via PowerShell to avoid extra deps.
     let ps = format!(
         "$d='{target}'; $app=New-Object -ComObject Shell.Application; $item=$app.NameSpace(17).ParseName($d); if($item){{ $item.InvokeVerb('Eject'); exit 0 }} else {{ exit 1 }}"
