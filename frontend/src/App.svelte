@@ -673,14 +673,11 @@
             }
           }
         } else {
-          let done = 0
-          for (const p of entries.map((e) => e.path)) {
-            await invoke('move_to_trash', { path: p })
-            done += 1
-            activity = {
-              label,
-              percent: total > 0 ? Math.round((done / total) * 100) : null,
-            }
+          const paths = entries.map((e) => e.path)
+          await invoke('move_to_trash_many', { paths })
+          activity = {
+            label,
+            percent: total > 0 ? 100 : null,
           }
         }
         await reloadCurrent()

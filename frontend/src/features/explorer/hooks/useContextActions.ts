@@ -107,9 +107,8 @@ export const createContextActions = (deps: Deps) => {
             await invoke('delete_entry', { path: e.path })
           }
         } else {
-          for (const e of selectionEntries) {
-            await invoke('move_to_trash', { path: e.path })
-          }
+          const paths = selectionEntries.map((e) => e.path)
+          await invoke('move_to_trash_many', { paths })
         }
         await reloadCurrent()
       } catch (err) {

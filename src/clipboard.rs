@@ -1,4 +1,7 @@
-use crate::{fs_utils::sanitize_path_follow, undo::Action, UndoState};
+use crate::{
+    fs_utils::sanitize_path_follow,
+    undo::{run_actions, Action, Direction, UndoState},
+};
 use once_cell::sync::Lazy;
 use std::{
     fs,
@@ -222,6 +225,7 @@ pub fn paste_clipboard_cmd(
         .unwrap_or(ConflictPolicy::Rename);
 
     let mut created = Vec::new();
+    let mut performed: Vec<Action> = Vec::with_capacity(state.entries.len());
     for src in state.entries.iter() {
         if !src.exists() {
             return Err(format!("Source does not exist: {:?}", src));
@@ -249,32 +253,46 @@ pub fn paste_clipboard_cmd(
             match result {
                 Ok(_) => break,
                 Err(err) => {
-                    // If rename policy still collided (e.g., race or unexpected name resolution), retry with next suffix.
                     let is_exists = err.contains("exists") || err.contains("AlreadyExists");
                     if matches!(policy, ConflictPolicy::Rename) && is_exists && attempts < 50 {
                         attempts += 1;
                         target = next_unique_name(&target);
                         continue;
                     }
-                    return Err(err);
+                    if !performed.is_empty() {
+                        let mut rollback = performed.clone();
+                        if let Err(rb_err) = run_actions(&mut rollback, Direction::Backward) {
+                            return Err(format!(
+                                "Paste failed for {:?}: {}; rollback also failed: {}",
+                                src, err, rb_err
+                            ));
+                        }
+                    }
+                    return Err(format!("Paste failed for {:?}: {}", src, err));
                 }
             }
         }
-        match state.mode {
-            ClipboardMode::Copy => {
-                let _ = undo.record_applied(Action::Copy {
-                    from: src.clone(),
-                    to: target.clone(),
-                });
-            }
-            ClipboardMode::Cut => {
-                let _ = undo.record_applied(Action::Move {
-                    from: src.clone(),
-                    to: target.clone(),
-                });
-            }
-        }
+        let action = match state.mode {
+            ClipboardMode::Copy => Action::Copy {
+                from: src.clone(),
+                to: target.clone(),
+            },
+            ClipboardMode::Cut => Action::Move {
+                from: src.clone(),
+                to: target.clone(),
+            },
+        };
+        performed.push(action);
         created.push(target.to_string_lossy().to_string());
+    }
+
+    if !performed.is_empty() {
+        let recorded = if performed.len() == 1 {
+            performed.pop().unwrap()
+        } else {
+            Action::Batch(performed)
+        };
+        let _ = undo.record_applied(recorded);
     }
 
     if let ClipboardMode::Cut = state.mode {

@@ -1,9 +1,13 @@
-use std::collections::VecDeque;
+use std::collections::{hash_map::DefaultHasher, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use std::{hash::Hash, hash::Hasher};
+use tracing::{debug, warn};
 
 const MAX_HISTORY: usize = 50;
+// Bruk sentral katalog for alle undo-backuper.
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -13,6 +17,7 @@ pub enum Action {
     Copy { from: PathBuf, to: PathBuf },
     Delete { path: PathBuf, backup: PathBuf },
     CreateFolder { path: PathBuf },
+    Batch(Vec<Action>),
     SetPermissions {
         path: PathBuf,
         before: PermissionsSnapshot,
@@ -73,17 +78,31 @@ impl UndoManager {
 
     pub fn undo(&mut self) -> Result<(), String> {
         let mut action = self.undo_stack.pop_back().ok_or_else(|| "Nothing to undo".to_string())?;
-        execute_action(&mut action, Direction::Backward)?;
-        self.redo_stack.push_back(action);
-        Ok(())
+        match execute_action(&mut action, Direction::Backward) {
+            Ok(_) => {
+                self.redo_stack.push_back(action);
+                Ok(())
+            }
+            Err(err) => {
+                self.undo_stack.push_back(action);
+                Err(err)
+            }
+        }
     }
 
     pub fn redo(&mut self) -> Result<(), String> {
         let mut action = self.redo_stack.pop_back().ok_or_else(|| "Nothing to redo".to_string())?;
-        execute_action(&mut action, Direction::Forward)?;
-        self.undo_stack.push_back(action);
-        self.trim();
-        Ok(())
+        match execute_action(&mut action, Direction::Forward) {
+            Ok(_) => {
+                self.undo_stack.push_back(action);
+                self.trim();
+                Ok(())
+            }
+            Err(err) => {
+                self.redo_stack.push_back(action);
+                Err(err)
+            }
+        }
     }
 
     #[allow(dead_code)]
@@ -145,8 +164,30 @@ pub fn redo_action(state: tauri::State<'_, UndoState>) -> Result<(), String> {
     state.redo()
 }
 
+/// Best-effort cleanup of stale `.browsey-undo` directories. Runs at startup to
+/// avoid leaving orphaned backups after a crash or restart (undo history is
+/// in-memory only).
+pub fn cleanup_stale_backups(max_age: Option<Duration>) {
+    let _ = max_age; // behold signaturen; vi fjerner alt uansett.
+    let base = base_undo_dir();
+    // Fjern hele basen; det er trygt fordi historikken uansett ikke overlever restart.
+    if base.exists() {
+        if let Err(e) = fs::remove_dir_all(&base) {
+            warn!("Kunne ikke rydde backup-katalog {:?}: {}", base, e);
+        } else {
+            debug!("Renset backup-katalog {:?}", base);
+        }
+    }
+    let _ = fs::create_dir_all(&base);
+}
+
+pub(crate) fn run_actions(actions: &mut [Action], direction: Direction) -> Result<(), String> {
+    execute_batch(actions, direction)
+}
+
 fn execute_action(action: &mut Action, direction: Direction) -> Result<(), String> {
     match action {
+        Action::Batch(actions) => execute_batch(actions, direction),
         Action::Rename { from, to } | Action::Move { from, to } => {
             let (src, dst) = match direction {
                 Direction::Forward => (from, to),
@@ -155,18 +196,7 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
             if dst.exists() {
                 delete_entry_path(dst)?;
             }
-            match fs::rename(&*src, &*dst) {
-                Ok(_) => Ok(()),
-                Err(e) if is_cross_device(&e) => {
-                    copy_entry(src, dst)?;
-                    delete_entry_path(src)
-                }
-                Err(e) => Err(format!(
-                    "Failed to rename {} -> {}: {e}",
-                    src.display(),
-                    dst.display()
-                )),
-            }
+            move_with_fallback(src, dst)
         }
         Action::Copy { from, to } => match direction {
             Direction::Forward => {
@@ -186,26 +216,14 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
                 fs::create_dir_all(parent)
                     .map_err(|e| format!("Failed to create backup dir {}: {e}", parent.display()))?;
                 ensure_absent(backup)?;
-                fs::rename(&*path, &*backup).map_err(|e| {
-                    format!(
-                        "Failed to move {} to backup {}: {e}",
-                        path.display(),
-                        backup.display()
-                    )
-                })
+                move_with_fallback(path, backup)
             }
             Direction::Backward => {
                 if !backup.exists() {
                     return Err(format!("Backup missing: {}", backup.display()));
                 }
                 ensure_absent(path)?;
-                fs::rename(&*backup, &*path).map_err(|e| {
-                    format!(
-                        "Failed to restore {} from backup {}: {e}",
-                        path.display(),
-                        backup.display()
-                    )
-                })
+                move_with_fallback(backup, path)
             }
         },
         Action::CreateFolder { path } => match direction {
@@ -235,6 +253,45 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
             };
             apply_permissions(path, snap)
         }
+    }
+}
+
+fn execute_batch(actions: &mut [Action], direction: Direction) -> Result<(), String> {
+    let order: Vec<usize> = match direction {
+        Direction::Forward => (0..actions.len()).collect(),
+        Direction::Backward => (0..actions.len()).rev().collect(),
+    };
+
+    let mut completed: Vec<usize> = Vec::with_capacity(order.len());
+    for idx in order {
+        if let Err(err) = execute_action(&mut actions[idx], direction) {
+            let rollback_direction = reverse_direction(direction);
+            let mut rollback_errors = Vec::new();
+            for rollback_idx in completed.into_iter().rev() {
+                if let Err(rollback_err) = execute_action(&mut actions[rollback_idx], rollback_direction) {
+                    rollback_errors.push(format!("rollback action {} failed: {}", rollback_idx + 1, rollback_err));
+                }
+            }
+            if rollback_errors.is_empty() {
+                return Err(format!("Batch action {} failed: {}", idx + 1, err));
+            } else {
+                return Err(format!(
+                    "Batch action {} failed: {}; additional rollback issues: {}",
+                    idx + 1,
+                    err,
+                    rollback_errors.join("; ")
+                ));
+            }
+        }
+        completed.push(idx);
+    }
+    Ok(())
+}
+
+fn reverse_direction(direction: Direction) -> Direction {
+    match direction {
+        Direction::Forward => Direction::Backward,
+        Direction::Backward => Direction::Forward,
     }
 }
 
@@ -274,10 +331,6 @@ pub fn permissions_snapshot(path: &Path) -> Result<PermissionsSnapshot, String> 
     {
         Ok(PermissionsSnapshot { readonly })
     }
-}
-
-fn is_cross_device(err: &std::io::Error) -> bool {
-    err.raw_os_error() == Some(18) // EXDEV
 }
 
 fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
@@ -329,21 +382,45 @@ fn delete_entry_path(path: &Path) -> Result<(), String> {
     }
 }
 
+pub fn move_with_fallback(src: &Path, dst: &Path) -> Result<(), String> {
+    match fs::rename(src, dst) {
+        Ok(_) => Ok(()),
+        Err(rename_err) => {
+            // Fallback: copy + delete (tåler ulike disker/filsystemer).
+            match copy_entry(src, dst).and_then(|_| delete_entry_path(src)) {
+                Ok(_) => Ok(()),
+                Err(fallback_err) => Err(format!(
+                    "Failed to move {} -> {} (rename error: {}; fallback copy+delete failed: {})",
+                    src.display(),
+                    dst.display(),
+                    rename_err,
+                    fallback_err
+                )),
+            }
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub fn temp_backup_path(original: &Path) -> PathBuf {
+    let base = base_undo_dir();
+    let _ = fs::create_dir_all(&base);
+
+    // Bruk hash av full sti for å gruppere filer fra samme mappe, men unngå lange stinavn.
+    let mut hasher = DefaultHasher::new();
+    original.hash(&mut hasher);
+    let bucket = format!("{:016x}", hasher.finish());
+
     let name = original
         .file_name()
         .map(|n| n.to_string_lossy())
         .unwrap_or_else(|| "item".into());
-    let base = original
-        .parent()
-        .map(|p| p.join(".browsey-undo"))
-        .unwrap_or_else(|| std::env::temp_dir().join("browsey-undo"));
-    let mut candidate = base.join(name.as_ref());
+
+    let mut candidate = base.join(&bucket).join(name.as_ref());
     let mut idx = 1u32;
     while candidate.exists() {
         let with_idx = format!("{}-{}", name, idx);
-        candidate = base.join(with_idx);
+        candidate = base.join(&bucket).join(with_idx);
         idx += 1;
     }
     candidate
@@ -444,6 +521,110 @@ mod tests {
         let _ = fs::remove_dir_all(&path);
     }
 
+    #[test]
+    fn batch_apply_and_undo_redo() {
+        let dir = uniq_path("batch");
+        let _ = fs::create_dir_all(&dir);
+        let source = dir.join("a.txt");
+        let subdir = dir.join("nested");
+        let moved = subdir.join("a.txt");
+        let copied = dir.join("b.txt");
+        write_file(&source, b"hello");
+
+        let mut mgr = UndoManager::new();
+        mgr.apply(Action::Batch(vec![
+            Action::CreateFolder {
+                path: subdir.clone(),
+            },
+            Action::Move {
+                from: source.clone(),
+                to: moved.clone(),
+            },
+            Action::Copy {
+                from: moved.clone(),
+                to: copied.clone(),
+            },
+        ]))
+        .unwrap();
+
+        assert!(!source.exists());
+        assert!(moved.exists());
+        assert!(copied.exists());
+        assert!(subdir.exists());
+
+        mgr.undo().unwrap();
+        assert!(source.exists());
+        assert!(!moved.exists());
+        assert!(!copied.exists());
+        assert!(!subdir.exists());
+
+        mgr.redo().unwrap();
+        assert!(!source.exists());
+        assert!(moved.exists());
+        assert!(copied.exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn batch_rolls_back_on_failure() {
+        let dir = uniq_path("batch-fail");
+        let _ = fs::create_dir_all(&dir);
+        let source = dir.join("source.txt");
+        let existing = dir.join("existing.txt");
+        let new_dir = dir.join("new-dir");
+        write_file(&source, b"hello");
+        write_file(&existing, b"keep");
+
+        let mut mgr = UndoManager::new();
+        let err = mgr
+            .apply(Action::Batch(vec![
+                Action::CreateFolder {
+                    path: new_dir.clone(),
+                },
+                Action::Copy {
+                    from: source.clone(),
+                    to: existing.clone(),
+                },
+            ]))
+            .unwrap_err();
+        assert!(err.contains("Batch action 2 failed"));
+        assert!(source.exists());
+        assert!(existing.exists());
+        assert!(!new_dir.exists());
+        assert!(!mgr.can_undo());
+        assert!(!mgr.can_redo());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn undo_failure_restores_stack() {
+        let dir = uniq_path("undo-fail");
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("file.txt");
+        write_file(&path, b"bye");
+        let backup = temp_backup_path(&path);
+
+        let mut mgr = UndoManager::new();
+        mgr.apply(Action::Delete {
+            path: path.clone(),
+            backup: backup.clone(),
+        })
+        .unwrap();
+        assert!(!path.exists());
+        assert!(backup.exists());
+
+        let _ = fs::remove_file(&backup);
+        let err = mgr.undo().unwrap_err();
+        assert!(err.contains("Backup missing"));
+        assert!(mgr.can_undo());
+        assert!(!mgr.can_redo());
+
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(backup.parent().unwrap_or_else(|| Path::new(".")));
+    }
+
     #[cfg(unix)]
     #[test]
     fn permissions_roundtrip() {
@@ -475,4 +656,25 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn cleanup_prunes_stale_backup_dirs() {
+        let base = base_undo_dir();
+        let target = base.join("dummy");
+        fs::create_dir_all(&target).unwrap();
+
+        cleanup_stale_backups(Some(Duration::from_secs(0)));
+
+        assert!(
+            !target.exists(),
+            "backup-basens innhold skal fjernes ved opprydding"
+        );
+    }
+}
+
+fn base_undo_dir() -> PathBuf {
+    dirs_next::data_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("browsey")
+        .join("undo")
 }

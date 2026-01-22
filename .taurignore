@@ -1,0 +1,5 @@
+# Ignore Vite/Svelte caches and frontend dependencies to prevent dev watcher loops
+frontend/node_modules/**
+node_modules/**
+frontend/.svelte-kit/**
+frontend/.vite/**
