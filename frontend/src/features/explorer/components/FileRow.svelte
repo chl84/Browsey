@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { iconPath } from '../utils'
   import type { Entry } from '../types'
+
+  const readOnlyIcon = iconPath('status/eye-svgrepo-com.svg')
 
   export let entry: Entry
   export let index = 0
@@ -65,7 +68,7 @@
     <span class="name">
       {displayName(entry)}
       {#if entry.readOnly}
-        <span class="ro-icon" title="Read-only" aria-label="Read-only">👓</span>
+        <img class="ro-icon" src={readOnlyIcon} alt="Read-only" title="Read-only" />
       {/if}
     </span>
   </div>
@@ -186,8 +189,10 @@
   }
 
   .ro-icon {
-    font-size: 12px;
-    opacity: 0.75;
+    width: 14px;
+    height: 14px;
+    opacity: 0.8;
+    flex-shrink: 0;
   }
 
   .col-type,
