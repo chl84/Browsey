@@ -68,8 +68,8 @@
     <img class="icon" src={entry.icon} alt="" />
     <span class="name">
       {displayName(entry)}
-      {#if entry.writeDenied}
-        <img class="ro-icon" src={lockIcon} alt="No write permission" title="No write permission" />
+      {#if entry.readDenied}
+        <img class="ro-icon" src={lockIcon} alt="No read permission" title="No read permission" />
       {/if}
       {#if entry.readOnly}
         <img class="ro-icon" src={readOnlyIcon} alt="Read-only" title="Read-only" />

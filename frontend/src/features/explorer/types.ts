@@ -15,7 +15,7 @@ export type Entry = {
   hidden?: boolean
   network?: boolean
   readOnly?: boolean
-  writeDenied?: boolean
+  readDenied?: boolean
 }
 
 export type Listing = {
