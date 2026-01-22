@@ -50,8 +50,8 @@ fn is_executable(meta: &fs::Metadata) -> Option<bool> {
 pub fn get_permissions(path: String) -> Result<PermissionInfo, String> {
     debug!(path = %path, "get_permissions start");
     let nofollow = sanitize_path_nofollow(&path, true)?;
-    let meta = fs::symlink_metadata(&nofollow)
-        .map_err(|e| format!("Failed to read metadata: {e}"))?;
+    let meta =
+        fs::symlink_metadata(&nofollow).map_err(|e| format!("Failed to read metadata: {e}"))?;
     if meta.file_type().is_symlink() {
         return Err("Permissions are not supported on symlinks".into());
     }
@@ -117,8 +117,8 @@ fn set_permissions_impl(
         "set_permissions start"
     );
     let nofollow = sanitize_path_nofollow(&path, true)?;
-    let meta = fs::symlink_metadata(&nofollow)
-        .map_err(|e| format!("Failed to read metadata: {e}"))?;
+    let meta =
+        fs::symlink_metadata(&nofollow).map_err(|e| format!("Failed to read metadata: {e}"))?;
     if meta.file_type().is_symlink() {
         return Err("Permissions are not supported on symlinks".into());
     }
@@ -267,7 +267,14 @@ pub fn set_permissions(
     undo: tauri::State<UndoState>,
 ) -> Result<PermissionInfo, String> {
     set_permissions_impl(
-        path, readOnly, read_only, executable, owner, group, other, Some(undo.inner()),
+        path,
+        readOnly,
+        read_only,
+        executable,
+        owner,
+        group,
+        other,
+        Some(undo.inner()),
     )
 }
 

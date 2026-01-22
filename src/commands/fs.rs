@@ -6,14 +6,14 @@ use crate::{
         build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
         CachedMeta, FsEntry,
     },
-    undo::{
-        copy_entry as undo_copy_entry, delete_entry_path as undo_delete_path, move_with_fallback,
-        run_actions, temp_backup_path, Action, Direction, UndoState,
-    },
     fs_utils::{
         check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow,
     },
     sorting::{sort_entries, SortSpec},
+    undo::{
+        copy_entry as undo_copy_entry, delete_entry_path as undo_delete_path, move_with_fallback,
+        run_actions, temp_backup_path, Action, Direction, UndoState,
+    },
     watcher::{self, WatchState},
 };
 #[cfg(target_os = "windows")]
@@ -22,6 +22,8 @@ mod fs_windows;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::ffi::OsString;
+#[cfg(not(target_os = "windows"))]
+use std::process::Command;
 use std::time::{Duration, Instant};
 use std::{
     fs, io,
@@ -425,6 +427,156 @@ fn display_path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
+#[cfg(not(target_os = "windows"))]
+fn block_device_for_mount(target: &str) -> Option<String> {
+    if let Ok(output) = Command::new("findmnt")
+        .args(["-n", "-o", "SOURCE", "--target", target])
+        .output()
+    {
+        if output.status.success() {
+            let src = String::from_utf8_lossy(&output.stdout);
+            if let Some(first) = src.split_whitespace().next() {
+                if !first.trim().is_empty() {
+                    return Some(first.trim().to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn power_off_device(device: Option<String>) {
+    if let Some(dev) = device {
+        if let Ok(status) = Command::new("udisksctl")
+            .args(["power-off", "-b", &dev])
+            .status()
+        {
+            if !status.success() {
+                debug_log(&format!(
+                    "udisksctl power-off failed for {}: status {:?}",
+                    dev,
+                    status.code()
+                ));
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+struct CmdError {
+    message: String,
+    busy: bool,
+}
+
+#[cfg(not(target_os = "windows"))]
+fn command_output(cmd: &str, args: &[&str]) -> Result<(), CmdError> {
+    let output = Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| CmdError {
+            message: e.to_string(),
+            busy: false,
+        })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let mut parts = Vec::new();
+    if !output.stdout.is_empty() {
+        parts.push(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+    if !output.stderr.is_empty() {
+        parts.push(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    let msg = if parts.is_empty() {
+        format!("exit status {}", output.status)
+    } else {
+        format!("exit status {}: {}", output.status, parts.join(" | "))
+    };
+    let busy = msg.to_lowercase().contains("busy");
+    Err(CmdError { message: msg, busy })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn linux_mounts() -> Vec<MountInfo> {
+    let mut mounts = Vec::new();
+    if let Ok(contents) = fs::read_to_string("/proc/self/mounts") {
+        for line in contents.lines() {
+            let mut parts = line.split_whitespace();
+            let src = match parts.next() {
+                Some(s) => s.replace("\\040", " "),
+                None => continue,
+            };
+            let target = match parts.next() {
+                Some(t) => t.replace("\\040", " "),
+                None => continue,
+            };
+            let fs = match parts.next() {
+                Some(f) => f.to_string(),
+                None => continue,
+            };
+            let fs_lc = fs.to_lowercase();
+
+            // Skip pseudo/system mounts
+            if matches!(
+                fs_lc.as_str(),
+                "proc"
+                    | "sysfs"
+                    | "devtmpfs"
+                    | "devpts"
+                    | "tmpfs"
+                    | "pstore"
+                    | "configfs"
+                    | "debugfs"
+                    | "tracefs"
+                    | "overlay"
+                    | "squashfs"
+                    | "hugetlbfs"
+                    | "mqueue"
+                    | "cgroup"
+                    | "cgroup2"
+            ) {
+                continue;
+            }
+            if target.starts_with("/proc")
+                || target.starts_with("/sys")
+                || target.starts_with("/run/lock")
+                || target.starts_with("/run/user")
+            {
+                continue;
+            }
+
+            let label = std::path::Path::new(&target)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| target.clone());
+
+            let is_user_mount = target.contains("/media/") || target.contains("/run/media/");
+            let is_windows_fs = matches!(
+                fs_lc.as_str(),
+                "vfat" | "exfat" | "ntfs" | "fuseblk" | "fuse.exfat" | "fuse.ntfs-3g" | "fuse.ntfs"
+            );
+            let is_boot = target.starts_with("/boot");
+            let removable_hint = (is_user_mount || is_windows_fs) && !is_boot;
+            // device heuristic: only classic removable prefixes
+            let dev_removable = src.starts_with("/dev/sd")
+                || src.starts_with("/dev/mmc")
+                || src.starts_with("/dev/sg")
+                || src.contains("usb");
+
+            mounts.push(MountInfo {
+                label,
+                path: target,
+                fs,
+                removable: removable_hint || dev_removable,
+            });
+        }
+    }
+    mounts
+}
+
 #[cfg(target_os = "windows")]
 #[tauri::command]
 pub fn list_mounts() -> Vec<MountInfo> {
@@ -442,46 +594,79 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
 pub fn list_mounts() -> Vec<MountInfo> {
-    let disks = Disks::new_with_refreshed_list();
-    disks
-        .iter()
-        .filter_map(|d| {
-            let mount_point = d.mount_point().to_string_lossy().to_string();
-            if mount_point.is_empty() {
-                return None;
-            }
-            let fs = d.file_system().to_string_lossy().to_string();
-            let fs_lc = fs.to_lowercase();
-            if matches!(
-                fs_lc.as_str(),
-                "tmpfs"
-                    | "devtmpfs"
-                    | "proc"
-                    | "sysfs"
-                    | "cgroup"
-                    | "cgroup2"
-                    | "overlay"
-                    | "squashfs"
-            ) {
-                return None;
-            }
-
-            let label = mount_point.clone();
-
-            Some(MountInfo {
-                label,
-                path: mount_point,
-                fs,
-                removable: d.is_removable(),
-            })
-        })
-        .collect()
+    linux_mounts()
 }
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-pub fn eject_drive(_path: String) -> Result<(), String> {
-    Err("Eject is only supported on Windows".into())
+pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<(), String> {
+    // Drop watcher to avoid open handles during unmount
+    watcher.replace(None);
+
+    let device = block_device_for_mount(&path);
+
+    let mut errors: Vec<String> = Vec::new();
+    let mut busy_detected = false;
+
+    // Prefer gio (GVFS) if available; it handles user mounts.
+    match command_output("gio", &["mount", "-u", &path]) {
+        Ok(_) => {
+            power_off_device(device);
+            return Ok(());
+        }
+        Err(e) => {
+            busy_detected |= e.busy;
+            errors.push(format!("gio mount -u: {}", e.message));
+        }
+    }
+
+    // Fallback: plain umount.
+    match command_output("umount", &[&path]) {
+        Ok(_) => {
+            power_off_device(device);
+            return Ok(());
+        }
+        Err(e) => {
+            busy_detected |= e.busy;
+            errors.push(format!("umount: {}", e.message));
+        }
+    }
+
+    // Last resort: udisksctl unmount by block device, if we have one.
+    if let Some(dev) = device.clone() {
+        match command_output("udisksctl", &["unmount", "-b", &dev]) {
+            Ok(_) => {
+                power_off_device(Some(dev));
+                return Ok(());
+            }
+            Err(e) => {
+                busy_detected |= e.busy;
+                errors.push(format!("udisksctl unmount: {}", e.message));
+            }
+        }
+    } else {
+        errors.push("no block device found for this mount".into());
+    }
+
+    // Optional lazy unmount if we only saw busy errors
+    if busy_detected {
+        if let Ok(_) = command_output("umount", &["-l", &path]) {
+            power_off_device(device);
+            return Ok(());
+        }
+    }
+
+    let msg = if busy_detected {
+        "Eject failed: volume is in use. Close file managers or terminals using it and try again."
+    } else {
+        "Eject failed. Please try again."
+    };
+    debug_log(&format!(
+        "eject errors for {}: {}",
+        path,
+        errors.join(" | ")
+    ));
+    Err(msg.into())
 }
 
 #[tauri::command]
@@ -691,7 +876,7 @@ fn move_single_to_trash(
     let src = sanitize_path_nofollow(&path, true)?;
     check_no_symlink_components(&src)?;
 
-    // Sikkerhetskopi i sentral undo-katalog i tilfelle vi ikke finner elementet i OS-trash.
+    // Backup into the central undo directory in case the OS trash item can't be found.
     let backup = temp_backup_path(&src);
     if let Some(parent) = backup.parent() {
         fs::create_dir_all(parent)
@@ -710,14 +895,12 @@ fn move_single_to_trash(
         let _ = app.emit("trash-changed", ());
     }
 
-    let trash_path = trash_list()
-        .ok()
-        .and_then(|after| {
-            after
-                .into_iter()
-                .find(|item| !before.contains(&item.id) && item.original_path() == src)
-                .map(|item| trash_item_path(&item))
-        });
+    let trash_path = trash_list().ok().and_then(|after| {
+        after
+            .into_iter()
+            .find(|item| !before.contains(&item.id) && item.original_path() == src)
+            .map(|item| trash_item_path(&item))
+    });
 
     match trash_path {
         Some(trash_path) => {
@@ -728,10 +911,7 @@ fn move_single_to_trash(
                 to: trash_path,
             })
         }
-        None => Ok(Action::Delete {
-            path: src,
-            backup,
-        }),
+        None => Ok(Action::Delete { path: src, backup }),
     }
 }
 
@@ -856,7 +1036,14 @@ fn delete_entries_blocking(
             Ok(action) => {
                 performed.push(action);
                 done = done.saturating_add(1);
-                emit_delete_progress(&app, progress_event.as_ref(), done, total, false, &mut last_emit);
+                emit_delete_progress(
+                    &app,
+                    progress_event.as_ref(),
+                    done,
+                    total,
+                    false,
+                    &mut last_emit,
+                );
             }
             Err(err) => {
                 if !performed.is_empty() {
@@ -882,7 +1069,14 @@ fn delete_entries_blocking(
         };
         let _ = undo.record_applied(recorded);
     }
-    emit_delete_progress(&app, progress_event.as_ref(), done, total, true, &mut last_emit);
+    emit_delete_progress(
+        &app,
+        progress_event.as_ref(),
+        done,
+        total,
+        true,
+        &mut last_emit,
+    );
     Ok(())
 }
 
@@ -897,6 +1091,5 @@ pub async fn delete_entries(
     let task = tauri::async_runtime::spawn_blocking(move || {
         delete_entries_blocking(app, paths, progress_event, undo)
     });
-    task.await
-        .map_err(|e| format!("Delete task failed: {e}"))?
+    task.await.map_err(|e| format!("Delete task failed: {e}"))?
 }
