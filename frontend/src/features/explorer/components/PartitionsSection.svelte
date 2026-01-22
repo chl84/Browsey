@@ -1,18 +1,36 @@
 <script lang="ts">
+  import { createEventDispatcher } from 'svelte'
   import { partitionIcon } from '../utils'
   import type { Partition } from '../types'
 
+  const dispatch = createEventDispatcher<{ eject: { path: string } }>()
+
   export let partitions: Partition[] = []
   export let onSelect: (path: string) => void = () => {}
+
+  const eject = (path: string) => dispatch('eject', { path })
 </script>
 
 <div class="section">
   <div class="section-title">Partitions</div>
   {#each partitions as part}
-    <button class="nav" type="button" on:click={() => onSelect(part.path)}>
-      <img class="nav-icon" src={partitionIcon(part)} alt="" />
-      <span class="nav-label">{part.label}</span>
-    </button>
+    <div class="row">
+      <button class="nav" type="button" on:click={() => onSelect(part.path)}>
+        <img class="nav-icon" src={partitionIcon(part)} alt="" />
+        <span class="nav-label">{part.label}</span>
+      </button>
+      {#if part.removable}
+        <button class="eject" type="button" title="Eject" on:click={() => eject(part.path)}>
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path
+              d="M10 4.5 3.5 12h13L10 4.5Zm-6 10h12v2H4v-2Z"
+              fill="currentColor"
+              fill-rule="evenodd"
+              clip-rule="evenodd" />
+          </svg>
+        </button>
+      {/if}
+    </div>
   {/each}
 </div>
 
@@ -32,6 +50,12 @@
     padding-left: 10px;
   }
 
+  .row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
   .nav {
     border: none;
     border-radius: 0;
@@ -48,12 +72,11 @@
     transition: background 120ms ease;
     transform: none;
     box-shadow: none;
+    text-align: left;
   }
 
   .nav:hover {
     background: var(--bg-hover);
-    transform: none;
-    box-shadow: none;
   }
 
   .nav:focus,
@@ -71,5 +94,26 @@
     height: 18px;
     object-fit: contain;
     flex-shrink: 0;
+  }
+
+  .eject {
+    border: none;
+    background: transparent;
+    color: var(--fg-muted);
+    padding: 4px 8px 4px 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 120ms ease;
+  }
+
+  .eject:hover {
+    color: var(--fg);
+  }
+
+  .eject svg {
+    width: 16px;
+    height: 16px;
   }
 </style>

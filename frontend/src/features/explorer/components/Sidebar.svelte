@@ -12,12 +12,17 @@
   export let onBookmarkSelect: (path: string) => void = () => {}
   export let onRemoveBookmark: (path: string) => void = () => {}
   export let onPartitionSelect: (path: string) => void = () => {}
+  export let onPartitionEject: (path: string) => void = () => {}
 </script>
 
 <aside class="sidebar" class:collapsed={collapsed}>
   <PlacesSection places={places} onSelect={onPlaceSelect} />
   <BookmarksSection bookmarks={bookmarks} onSelect={onBookmarkSelect} onRemove={onRemoveBookmark} />
-  <PartitionsSection partitions={partitions} onSelect={onPartitionSelect} />
+  <PartitionsSection
+    partitions={partitions}
+    onSelect={onPartitionSelect}
+    on:eject={(e) => onPartitionEject(e.detail.path)}
+  />
 </aside>
 
 <style>
