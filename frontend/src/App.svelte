@@ -98,6 +98,7 @@
   let openWithLoadId = 0
   let propertiesOpen = false
   let propertiesEntry: Entry | null = null
+  let propertiesTargets: Entry[] = []
   let propertiesCount = 1
   let propertiesSize: number | null = null
   let conflictModalOpen = false
@@ -1703,6 +1704,7 @@
   const closeProperties = () => {
     propertiesOpen = false
     propertiesEntry = null
+    propertiesTargets = []
     propertiesSize = null
     propertiesItemCount = null
     propertiesPermissions = null
@@ -1757,6 +1759,7 @@
 
   const openPropertiesModal = async (entries: Entry[]) => {
     const token = ++propertiesToken
+    propertiesTargets = entries
     propertiesEntry = entries.length === 1 ? entries[0] : null
     propertiesCount = entries.length
     propertiesItemCount = null
@@ -1808,25 +1811,36 @@
         console.error('Failed to load permissions', err)
       }
       void loadEntryTimes(propertiesEntry, token)
+    } else {
+      propertiesPermissions = {
+        accessSupported: true,
+        owner: { read: false, write: false, exec: false },
+        group: { read: false, write: false, exec: false },
+        other: { read: false, write: false, exec: false },
+      }
     }
   }
 
-  const updatePermissions = async (opts: {
-    owner?: Partial<Access>
-    group?: Partial<Access>
-    other?: Partial<Access>
-  }) => {
-    if (!propertiesEntry) {
-      console.warn('updatePermissions called with no propertiesEntry', opts)
-      showToast('Permissions are unavailable for this selection.')
+  const updatePermissions = async (
+    opts: { owner?: Partial<Access>; group?: Partial<Access>; other?: Partial<Access> },
+    prevState?: typeof propertiesPermissions
+  ) => {
+    const targets =
+      propertiesTargets.length > 0
+        ? propertiesTargets.map((p) => p.path)
+        : propertiesEntry
+          ? [propertiesEntry.path]
+          : []
+    if (targets.length === 0) {
+      console.warn('updatePermissions called with no targets', opts)
       return
     }
     const payload: {
-      path: string
+      paths: string[]
       owner?: Partial<Access>
       group?: Partial<Access>
       other?: Partial<Access>
-    } = { path: propertiesEntry.path }
+    } = { paths: targets }
     if (opts.owner && Object.keys(opts.owner).length > 0) {
       payload.owner = { ...opts.owner }
     }
@@ -1843,22 +1857,33 @@
         group?: Access
         other?: Access
       }>('set_permissions', payload)
-      propertiesPermissions = {
-        accessSupported: perms.access_supported ?? propertiesPermissions?.accessSupported ?? false,
-        owner: perms.owner ?? propertiesPermissions?.owner ?? null,
-        group: perms.group ?? propertiesPermissions?.group ?? null,
-        other: perms.other ?? propertiesPermissions?.other ?? null,
+      if (propertiesTargets.length === 1 || propertiesEntry) {
+        propertiesPermissions = {
+          accessSupported: perms.access_supported ?? propertiesPermissions?.accessSupported ?? false,
+          owner: perms.owner ?? propertiesPermissions?.owner ?? null,
+          group: perms.group ?? propertiesPermissions?.group ?? null,
+          other: perms.other ?? propertiesPermissions?.other ?? null,
+        }
       }
     } catch (err) {
-      console.error('Failed to update permissions', { path: propertiesEntry.path, opts, err })
-      const msg = err instanceof Error ? err.message : String(err)
-      showToast(`Permissions update failed: ${msg}`)
+      console.error('Failed to update permissions', { targets, opts, err })
+      if (prevState) {
+        propertiesPermissions = prevState
+      }
     }
   }
 
   const toggleAccess = (scope: 'owner' | 'group' | 'other', key: 'read' | 'write' | 'exec', next: boolean) => {
     if (!propertiesPermissions || !propertiesPermissions.accessSupported) return
-    updatePermissions({ [scope]: { [key]: next } })
+    const prev = JSON.parse(JSON.stringify(propertiesPermissions)) as typeof propertiesPermissions
+    const updated = propertiesPermissions[scope]
+      ? { ...propertiesPermissions[scope], [key]: next }
+      : propertiesPermissions[scope]
+    propertiesPermissions = {
+      ...propertiesPermissions,
+      [scope]: updated,
+    }
+    void updatePermissions({ [scope]: { [key]: next } }, prev)
   }
 
   onMount(() => {
