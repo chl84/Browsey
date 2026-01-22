@@ -6,7 +6,10 @@ use crate::{
         build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
         CachedMeta, FsEntry,
     },
-    undo::{move_with_fallback, run_actions, temp_backup_path, Action, Direction, UndoState},
+    undo::{
+        copy_entry as undo_copy_entry, delete_entry_path as undo_delete_path, move_with_fallback,
+        run_actions, temp_backup_path, Action, Direction, UndoState,
+    },
     fs_utils::{
         check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow,
     },
@@ -674,6 +677,14 @@ fn move_single_to_trash(
     let src = sanitize_path_nofollow(&path, true)?;
     check_no_symlink_components(&src)?;
 
+    // Sikkerhetskopi i sentral undo-katalog i tilfelle vi ikke finner elementet i OS-trash.
+    let backup = temp_backup_path(&src);
+    if let Some(parent) = backup.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create backup dir {}: {e}", parent.display()))?;
+    }
+    undo_copy_entry(&src, &backup)?;
+
     let before: HashSet<OsString> = trash_list()
         .map_err(|e| format!("Failed to list trash: {e}"))?
         .into_iter()
@@ -692,13 +703,22 @@ fn move_single_to_trash(
                 .into_iter()
                 .find(|item| !before.contains(&item.id) && item.original_path() == src)
                 .map(|item| trash_item_path(&item))
-        })
-        .ok_or_else(|| "Failed to locate trashed item for undo".to_string())?;
+        });
 
-    Ok(Action::Move {
-        from: src,
-        to: trash_path,
-    })
+    match trash_path {
+        Some(trash_path) => {
+            // rydder backupen når papirkurvstien er kjent
+            let _ = undo_delete_path(&backup);
+            Ok(Action::Move {
+                from: src,
+                to: trash_path,
+            })
+        }
+        None => Ok(Action::Delete {
+            path: src,
+            backup,
+        }),
+    }
 }
 
 #[tauri::command]
