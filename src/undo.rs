@@ -386,19 +386,31 @@ pub fn move_with_fallback(src: &Path, dst: &Path) -> Result<(), String> {
     match fs::rename(src, dst) {
         Ok(_) => Ok(()),
         Err(rename_err) => {
-            // Fallback: copy + delete (tåler ulike disker/filsystemer).
-            match copy_entry(src, dst).and_then(|_| delete_entry_path(src)) {
-                Ok(_) => Ok(()),
-                Err(fallback_err) => Err(format!(
-                    "Failed to move {} -> {} (rename error: {}; fallback copy+delete failed: {})",
+            if !is_cross_device(&rename_err) {
+                return Err(format!(
+                    "Failed to rename {} -> {}: {rename_err}",
                     src.display(),
-                    dst.display(),
-                    rename_err,
-                    fallback_err
-                )),
+                    dst.display()
+                ));
             }
+            // Fallback: copy + delete (tåler ulike disker/filsystemer).
+            copy_entry(src, dst).and_then(|_| {
+                delete_entry_path(src).map_err(|del_err| {
+                    // Best effort: prøv å rydde dest hvis delete feilet for å unngå duplikat.
+                    let _ = delete_entry_path(dst);
+                    format!(
+                        "Copied {} -> {} after cross-device rename error, but failed to delete source: {del_err}",
+                        src.display(),
+                        dst.display()
+                    )
+                })
+            })
         }
     }
+}
+
+fn is_cross_device(err: &std::io::Error) -> bool {
+    matches!(err.raw_os_error(), Some(17) | Some(18))
 }
 
 #[allow(dead_code)]

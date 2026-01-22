@@ -6,7 +6,7 @@ use crate::{
         build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
         CachedMeta, FsEntry,
     },
-    undo::{run_actions, temp_backup_path, Action, Direction, UndoState, move_with_fallback},
+    undo::{move_with_fallback, run_actions, temp_backup_path, Action, Direction, UndoState},
     fs_utils::{
         check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow,
     },
@@ -629,7 +629,7 @@ pub fn move_to_trash(
     app: tauri::AppHandle,
     undo: tauri::State<UndoState>,
 ) -> Result<(), String> {
-    let action = move_single_to_trash(&path, &app, &undo)?;
+    let action = move_single_to_trash(&path, &app, true)?;
     let _ = undo.record_applied(action);
     Ok(())
 }
@@ -645,8 +645,16 @@ pub fn move_to_trash_many(
     }
     let mut actions = Vec::with_capacity(paths.len());
     for path in paths {
-        let action = move_single_to_trash(&path, &app, &undo)?;
-        actions.push(action);
+        match move_single_to_trash(&path, &app, false) {
+            Ok(action) => actions.push(action),
+            Err(err) => {
+                if !actions.is_empty() {
+                    let mut rollback = actions.clone();
+                    let _ = run_actions(&mut rollback, Direction::Backward);
+                }
+                return Err(err);
+            }
+        }
     }
     let recorded = if actions.len() == 1 {
         actions.pop().unwrap()
@@ -654,10 +662,15 @@ pub fn move_to_trash_many(
         Action::Batch(actions)
     };
     let _ = undo.record_applied(recorded);
+    let _ = app.emit("trash-changed", ());
     Ok(())
 }
 
-fn move_single_to_trash(path: &str, app: &tauri::AppHandle, _undo: &UndoState) -> Result<Action, String> {
+fn move_single_to_trash(
+    path: &str,
+    app: &tauri::AppHandle,
+    emit_event: bool,
+) -> Result<Action, String> {
     let src = sanitize_path_nofollow(&path, true)?;
     check_no_symlink_components(&src)?;
 
@@ -668,7 +681,9 @@ fn move_single_to_trash(path: &str, app: &tauri::AppHandle, _undo: &UndoState) -
         .collect();
 
     trash_delete(&src).map_err(|e| format!("Failed to move to trash: {e}"))?;
-    let _ = app.emit("trash-changed", ());
+    if emit_event {
+        let _ = app.emit("trash-changed", ());
+    }
 
     let trash_path = trash_list()
         .ok()
