@@ -1,5 +1,6 @@
 <script lang="ts">
   import SelectionBox from '../../../ui/SelectionBox.svelte'
+  import { iconPath } from '../utils'
   import type { Entry } from '../types'
 
   export let entries: Entry[] = []
@@ -37,6 +38,8 @@
   export let onRowsMousedown: (event: MouseEvent) => void = () => {}
   export let onRowsScroll: (event: Event) => void = () => {}
   export let onRowsKeydown: (event: KeyboardEvent) => void = () => {}
+
+  const readOnlyIcon = iconPath('status/eye-svgrepo-com.svg')
 </script>
 
 <section class="grid-container">
@@ -88,7 +91,7 @@
               <div class="name" title={entry.name}>
                 {displayName(entry)}
                 {#if entry.readOnly}
-                  <span class="ro-icon" title="Read-only" aria-label="Read-only">👓</span>
+                  <img class="ro-icon" src={readOnlyIcon} alt="Read-only" title="Read-only" />
                 {/if}
               </div>
             </button>
@@ -239,7 +242,9 @@
   }
 
   .ro-icon {
-    font-size: 12px;
-    opacity: 0.75;
+    width: 14px;
+    height: 14px;
+    opacity: 0.8;
+    flex-shrink: 0;
   }
 </style>
