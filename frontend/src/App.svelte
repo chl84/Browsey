@@ -1992,6 +1992,7 @@
     bookmarksStore.update((list) => list.filter((b) => b.path !== path))
   }}
   onPartitionSelect={(path) => void load(path)}
+  onPartitionEject={(path) => showToast(`Eject ikke støttet ennå (${path})`)}
   searchMode={$searchMode}
   loading={$loading}
   activity={activity}

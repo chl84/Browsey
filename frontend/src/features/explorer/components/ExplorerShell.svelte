@@ -26,6 +26,7 @@
   export let onBookmarkSelect: (path: string) => void = () => {}
   export let onRemoveBookmark: (path: string) => void = () => {}
   export let onPartitionSelect: (path: string) => void = () => {}
+  export let onPartitionEject: (path: string) => void = () => {}
 
   export let pathInput = ''
   export let pathInputEl: HTMLInputElement | null = null
@@ -184,6 +185,7 @@
       onBookmarkSelect={onBookmarkSelect}
       onRemoveBookmark={onRemoveBookmark}
       onPartitionSelect={onPartitionSelect}
+      onPartitionEject={onPartitionEject}
     />
 
     <section class="content">
