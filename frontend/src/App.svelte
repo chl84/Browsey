@@ -1992,7 +1992,15 @@
     bookmarksStore.update((list) => list.filter((b) => b.path !== path))
   }}
   onPartitionSelect={(path) => void load(path)}
-  onPartitionEject={(path) => showToast(`Eject ikke støttet ennå (${path})`)}
+  onPartitionEject={async (path) => {
+    try {
+      await invoke('eject_drive', { path })
+      showToast(`Ejectet ${path}`)
+      await loadPartitions()
+    } catch (err) {
+      showToast(`Eject feilet: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }}
   searchMode={$searchMode}
   loading={$loading}
   activity={activity}

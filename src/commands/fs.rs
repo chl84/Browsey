@@ -431,6 +431,12 @@ pub fn list_mounts() -> Vec<MountInfo> {
     fs_windows::list_windows_mounts()
 }
 
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn eject_drive(path: String) -> Result<(), String> {
+    fs_windows::eject_drive(&path)
+}
+
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
 pub fn list_mounts() -> Vec<MountInfo> {
@@ -468,6 +474,12 @@ pub fn list_mounts() -> Vec<MountInfo> {
             })
         })
         .collect()
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn eject_drive(_path: String) -> Result<(), String> {
+    Err("Eject is only supported on Windows".into())
 }
 
 #[tauri::command]
