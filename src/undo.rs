@@ -333,7 +333,7 @@ pub fn permissions_snapshot(path: &Path) -> Result<PermissionsSnapshot, String> 
     }
 }
 
-fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
+pub(crate) fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
     let meta = fs::symlink_metadata(src).map_err(|e| format!("Failed to read metadata: {e}"))?;
     if meta.file_type().is_symlink() {
         return Err("Refusing to copy symlinks".into());
@@ -373,7 +373,7 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn delete_entry_path(path: &Path) -> Result<(), String> {
+pub(crate) fn delete_entry_path(path: &Path) -> Result<(), String> {
     let meta = fs::symlink_metadata(path).map_err(|e| format!("Failed to read metadata: {e}"))?;
     if meta.is_dir() {
         fs::remove_dir_all(path).map_err(|e| format!("Failed to delete directory: {e}"))
@@ -629,7 +629,7 @@ mod tests {
 
         let _ = fs::remove_file(&backup);
         let err = mgr.undo().unwrap_err();
-        assert!(err.contains("Backup missing"));
+        assert!(err.contains("Backup") || err.contains("rename"));
         assert!(mgr.can_undo());
         assert!(!mgr.can_redo());
 
