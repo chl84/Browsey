@@ -129,15 +129,16 @@ fn set_permissions_impl(
     let before = permissions_snapshot(&target)?;
 
     let mut perms: Permissions = meta.permissions();
+    let mut changed = false;
     #[cfg(unix)]
     {
         let mut mode = perms.mode();
+        let original_mode = mode;
         if let Some(ro) = read_only {
             if ro {
-                // Strip all write bits when marking read-only.
-                mode &= !0o222;
+                // Clear only owner write; leave group/other untouched.
+                mode &= !0o200;
             } else {
-                // Only re-enable owner write to avoid making the file world-writable.
                 mode |= 0o200;
             }
         }
@@ -146,7 +147,8 @@ fn set_permissions_impl(
                 // Set the owner execute bit; preserve any existing group/other bits.
                 mode |= 0o100;
             } else {
-                mode &= !0o111;
+                // Only clear owner execute; keep group/other as-is to avoid breaking collaborators.
+                mode &= !0o100;
             }
         }
         if let Some(update) = owner {
@@ -218,7 +220,10 @@ fn set_permissions_impl(
                 }
             }
         }
-        perms.set_mode(mode);
+        if mode != original_mode {
+            changed = true;
+            perms.set_mode(mode);
+        }
     }
     #[cfg(not(unix))]
     {
@@ -226,31 +231,37 @@ fn set_permissions_impl(
             return Err("Access control changes are only supported on Unix-like platforms".into());
         }
         if let Some(ro) = read_only {
+            let orig = perms.readonly();
             perms.set_readonly(ro);
+            changed |= orig != ro;
         }
     }
-    if let Err(e) = fs::set_permissions(&target, perms) {
-        warn!(path = %target.display(), error = %e, "set_permissions failed");
-        return Err(format!("Failed to update permissions: {e}"));
+    if changed {
+        if let Err(e) = fs::set_permissions(&target, perms) {
+            warn!(path = %target.display(), error = %e, "set_permissions failed");
+            return Err(format!("Failed to update permissions: {e}"));
+        }
+        debug!(path = %target.display(), "set_permissions applied");
     }
-    debug!(path = %target.display(), "set_permissions applied");
     let info = get_permissions(path.clone())?;
-    if let Some(undo) = undo {
-        let after = PermissionsSnapshot {
-            readonly: info.read_only,
-            #[cfg(unix)]
-            mode: {
-                use std::os::unix::fs::PermissionsExt;
-                fs::metadata(&target)
-                    .map(|m| m.permissions().mode())
-                    .unwrap_or(before.mode)
-            },
-        };
-        let _ = undo.record_applied(Action::SetPermissions {
-            path: target,
-            before,
-            after,
-        });
+    if changed {
+        if let Some(undo) = undo {
+            let after = PermissionsSnapshot {
+                readonly: info.read_only,
+                #[cfg(unix)]
+                mode: {
+                    use std::os::unix::fs::PermissionsExt;
+                    fs::metadata(&target)
+                        .map(|m| m.permissions().mode())
+                        .unwrap_or(before.mode)
+                },
+            };
+            let _ = undo.record_applied(Action::SetPermissions {
+                path: target,
+                before,
+                after,
+            });
+        }
     }
     Ok(info)
 }
@@ -301,7 +312,7 @@ mod tests {
     fn read_only_toggle_does_not_grant_world_write() {
         let path = temp_file("perm-ro");
         fs::write(&path, b"test").unwrap();
-        fs::set_permissions(&path, PermissionsExt::from_mode(0o644)).unwrap();
+        fs::set_permissions(&path, PermissionsExt::from_mode(0o664)).unwrap();
 
         set_permissions_impl(
             path.to_string_lossy().to_string(),
@@ -315,7 +326,7 @@ mod tests {
         )
         .unwrap();
         let after_ro = fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(after_ro & 0o222, 0);
+        assert_eq!(after_ro & 0o222, 0o020); // only owner write cleared
 
         set_permissions_impl(
             path.to_string_lossy().to_string(),
@@ -329,7 +340,7 @@ mod tests {
         )
         .unwrap();
         let after_restore = fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(after_restore & 0o222, 0o200);
+        assert_eq!(after_restore & 0o222, 0o220); // original writes restored
 
         let _ = fs::remove_file(&path);
     }
@@ -338,7 +349,7 @@ mod tests {
     fn executable_toggle_sets_owner_only() {
         let path = temp_file("perm-exec");
         fs::write(&path, b"test").unwrap();
-        fs::set_permissions(&path, PermissionsExt::from_mode(0o644)).unwrap();
+        fs::set_permissions(&path, PermissionsExt::from_mode(0o654)).unwrap(); // owner no exec, group exec
 
         set_permissions_impl(
             path.to_string_lossy().to_string(),
@@ -352,7 +363,7 @@ mod tests {
         )
         .unwrap();
         let after_exec = fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(after_exec & 0o111, 0o100);
+        assert_eq!(after_exec & 0o111, 0o110); // owner + existing group preserved
 
         set_permissions_impl(
             path.to_string_lossy().to_string(),
@@ -366,7 +377,7 @@ mod tests {
         )
         .unwrap();
         let after_clear = fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(after_clear & 0o111, 0);
+        assert_eq!(after_clear & 0o111, 0o010); // only owner exec cleared; group exec stays
 
         let _ = fs::remove_file(&path);
     }
@@ -375,7 +386,7 @@ mod tests {
     fn owner_group_other_bits_update() {
         let path = temp_file("perm-access");
         fs::write(&path, b"test").unwrap();
-        fs::set_permissions(&path, PermissionsExt::from_mode(0o640)).unwrap();
+        fs::set_permissions(&path, PermissionsExt::from_mode(0o750)).unwrap();
 
         // Enable other read + owner exec without reintroducing world write.
         set_permissions_impl(

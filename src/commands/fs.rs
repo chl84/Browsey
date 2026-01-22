@@ -104,6 +104,7 @@ fn entry_from_cached(path: &Path, cached: &CachedMeta, starred: bool) -> FsEntry
         starred,
         hidden: cached.hidden,
         network: cached.network,
+        read_only: cached.read_only,
     }
 }
 
@@ -196,6 +197,7 @@ fn stub_entry(path: &Path, file_type: Option<fs::FileType>, starred: bool) -> Fs
             .map(|n| n.starts_with('.'))
             .unwrap_or(false),
         network: is_network_location(path),
+        read_only: false,
     }
 }
 
