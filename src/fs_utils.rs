@@ -54,7 +54,12 @@ pub fn sanitize_path_follow(raw: &str, forbid_root: bool) -> Result<PathBuf, Str
         canon = %canon.display(),
         "sanitize_follow result"
     );
-    if forbid_root && canon.is_absolute() && canon.parent().is_none() {
+    if forbid_root
+        && canon.is_absolute()
+        && canon.parent().is_none()
+        && !is_removable_drive(&canon)
+        && !is_network_path(&canon)
+    {
         return Err("Refusing to operate on filesystem root".into());
     }
     Ok(normalize_verbatim(&canon))
@@ -77,7 +82,12 @@ pub fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, S
             format!("Path does not exist or unreadable: {e}")
         })?;
     }
-    if forbid_root && pb.is_absolute() && pb.parent().is_none() {
+    if forbid_root
+        && pb.is_absolute()
+        && pb.parent().is_none()
+        && !is_removable_drive(&pb)
+        && !is_network_path(&pb)
+    {
         return Err("Refusing to operate on filesystem root".into());
     }
     Ok(normalize_verbatim(&pb))
@@ -191,6 +201,28 @@ fn is_remote_drive(path: &Path) -> bool {
     } else {
         false
     }
+}
+
+#[cfg(target_os = "windows")]
+fn is_removable_drive(path: &Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{GetDriveTypeW, DRIVE_REMOVABLE};
+
+    if let Some(letter) = drive_letter(path) {
+        let root = format!("{}:\\", letter as char);
+        let wide: Vec<u16> = std::ffi::OsStr::new(&root)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        unsafe { GetDriveTypeW(wide.as_ptr()) == DRIVE_REMOVABLE }
+    } else {
+        false
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_removable_drive(_path: &Path) -> bool {
+    false
 }
 
 fn is_special_drive(_letter: Option<u8>) -> bool {
