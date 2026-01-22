@@ -433,7 +433,9 @@ pub fn list_mounts() -> Vec<MountInfo> {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-pub fn eject_drive(path: String) -> Result<(), String> {
+pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<(), String> {
+    // Drop the active directory watcher before ejecting; open handles can block safe removal.
+    watcher.replace(None);
     fs_windows::eject_drive(&path)
 }
 
@@ -719,7 +721,7 @@ fn move_single_to_trash(
 
     match trash_path {
         Some(trash_path) => {
-            // rydder backupen når papirkurvstien er kjent
+            // Remove the backup once we know the trash location.
             let _ = undo_delete_path(&backup);
             Ok(Action::Move {
                 from: src,
