@@ -84,66 +84,64 @@
     {:else if activeTab === 'extra'}
       <div class="row"><span class="label">Extra</span><span class="value">Coming soon</span></div>
     {:else if activeTab === 'permissions'}
-      {#if count === 1 && entry && permissions}
-        {#if permissions.accessSupported}
-          <div class="access">
-            <div class="row access-head">
-              <span class="label"></span>
-              <span class="value access-cols">
-                <span>Read</span>
-                <span>Write</span>
-                <span>Exec</span>
-              </span>
-            </div>
-            {#each ['owner', 'group', 'other'] as scope (scope)}
-              {#if permissions[scope]}
-                <div class="row access-row">
-                  <span class="label">{accessLabels[scope]}</span>
-                  <span class="value access-cols">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={permissions[scope].read}
-                        on:change={(e) =>
-                          onToggleAccess(
-                            scope as 'owner' | 'group' | 'other',
-                            'read',
-                            (e.currentTarget as HTMLInputElement).checked
-                          )}
-                      />
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={permissions[scope].write}
-                        on:change={(e) =>
-                          onToggleAccess(
-                            scope as 'owner' | 'group' | 'other',
-                            'write',
-                            (e.currentTarget as HTMLInputElement).checked
-                          )}
-                      />
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={permissions[scope].exec}
-                        on:change={(e) =>
-                          onToggleAccess(
-                            scope as 'owner' | 'group' | 'other',
-                            'exec',
-                            (e.currentTarget as HTMLInputElement).checked
-                          )}
-                      />
-                    </label>
-                  </span>
-                </div>
-              {/if}
-            {/each}
+      {#if permissions && permissions.accessSupported}
+        <div class="access">
+          <div class="row access-head">
+            <span class="label"></span>
+            <span class="value access-cols">
+              <span>Read</span>
+              <span>Write</span>
+              <span>Exec</span>
+            </span>
           </div>
-        {/if}
+          {#each ['owner', 'group', 'other'] as scope (scope)}
+            {#if permissions[scope]}
+              <div class="row access-row">
+                <span class="label">{accessLabels[scope]}</span>
+                <span class="value access-cols">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={permissions[scope].read}
+                      on:change={(e) =>
+                        onToggleAccess(
+                          scope as 'owner' | 'group' | 'other',
+                          'read',
+                          (e.currentTarget as HTMLInputElement).checked
+                        )}
+                    />
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={permissions[scope].write}
+                      on:change={(e) =>
+                        onToggleAccess(
+                          scope as 'owner' | 'group' | 'other',
+                          'write',
+                          (e.currentTarget as HTMLInputElement).checked
+                        )}
+                    />
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={permissions[scope].exec}
+                      on:change={(e) =>
+                        onToggleAccess(
+                          scope as 'owner' | 'group' | 'other',
+                          'exec',
+                          (e.currentTarget as HTMLInputElement).checked
+                        )}
+                    />
+                  </label>
+                </span>
+              </div>
+            {/if}
+          {/each}
+        </div>
       {:else}
-        <div class="row"><span class="label">Permissions</span><span class="value">Coming soon</span></div>
+        <div class="row"><span class="label">Permissions</span><span class="value">Not available</span></div>
       {/if}
     {/if}
 

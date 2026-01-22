@@ -6,7 +6,7 @@ use tracing::{debug, warn};
 
 use crate::{
     fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitize_path_nofollow},
-    undo::{permissions_snapshot, Action, PermissionsSnapshot, UndoState},
+    undo::{permissions_snapshot, run_actions, Action, Direction, UndoState},
 };
 
 #[derive(serde::Serialize)]
@@ -16,7 +16,7 @@ pub struct AccessBits {
     pub exec: bool,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct AccessUpdate {
     pub read: Option<bool>,
     pub write: Option<bool>,
@@ -95,9 +95,8 @@ pub fn get_permissions(path: String) -> Result<PermissionInfo, String> {
     })
 }
 
-fn set_permissions_impl(
-    path: String,
-    #[allow(non_snake_case)] readOnly: Option<bool>,
+fn set_permissions_batch(
+    paths: Vec<String>,
     read_only: Option<bool>,
     executable: Option<bool>,
     owner: Option<AccessUpdate>,
@@ -105,170 +104,195 @@ fn set_permissions_impl(
     other: Option<AccessUpdate>,
     undo: Option<&UndoState>,
 ) -> Result<PermissionInfo, String> {
-    let read_only = read_only.or(readOnly);
     let has_access_updates = owner.is_some() || group.is_some() || other.is_some();
     if read_only.is_none() && executable.is_none() && !has_access_updates {
         return Err("No permission changes were provided".into());
     }
-    debug!(
-        path = %path,
-        read_only = ?read_only,
-        executable = ?executable,
-        "set_permissions start"
-    );
-    let nofollow = sanitize_path_nofollow(&path, true)?;
-    let meta =
-        fs::symlink_metadata(&nofollow).map_err(|e| format!("Failed to read metadata: {e}"))?;
-    if meta.file_type().is_symlink() {
-        return Err("Permissions are not supported on symlinks".into());
-    }
-    let target = sanitize_path_follow(&path, true)?;
-    check_no_symlink_components(&target)?;
-    debug!(path = %target.display(), "set_permissions resolved target");
 
-    let before = permissions_snapshot(&target)?;
+    let mut actions: Vec<Action> = Vec::with_capacity(paths.len());
+    let mut first_info: Option<PermissionInfo> = None;
 
-    let mut perms: Permissions = meta.permissions();
-    let mut changed = false;
-    #[cfg(unix)]
-    {
-        let mut mode = perms.mode();
-        let original_mode = mode;
-        if let Some(ro) = read_only {
-            if ro {
-                // Clear only owner write; leave group/other untouched.
-                mode &= !0o200;
-            } else {
-                mode |= 0o200;
-            }
+    for path in paths {
+        let owner_update = owner.clone();
+        let group_update = group.clone();
+        let other_update = other.clone();
+        debug!(
+            path = %path,
+            read_only = ?read_only,
+            executable = ?executable,
+            "set_permissions start"
+        );
+        let nofollow = sanitize_path_nofollow(&path, true)?;
+        let meta =
+            fs::symlink_metadata(&nofollow).map_err(|e| format!("Failed to read metadata: {e}"))?;
+        if meta.file_type().is_symlink() {
+            return Err("Permissions are not supported on symlinks".into());
         }
-        if let Some(exec) = executable {
-            if exec {
-                // Set the owner execute bit; preserve any existing group/other bits.
-                mode |= 0o100;
-            } else {
-                // Only clear owner execute; keep group/other as-is to avoid breaking collaborators.
-                mode &= !0o100;
-            }
-        }
-        if let Some(update) = owner {
-            if let Some(r) = update.read {
-                if r {
-                    mode |= 0o400;
-                } else {
-                    mode &= !0o400;
-                }
-            }
-            if let Some(w) = update.write {
-                if w {
-                    mode |= 0o200;
-                } else {
+        let target = sanitize_path_follow(&path, true)?;
+        check_no_symlink_components(&target)?;
+        debug!(path = %target.display(), "set_permissions resolved target");
+
+        let before = permissions_snapshot(&target)?;
+
+        let mut perms: Permissions = meta.permissions();
+        let mut changed = false;
+        #[cfg(unix)]
+        {
+            let mut mode = perms.mode();
+            let original_mode = mode;
+            if let Some(ro) = read_only {
+                if ro {
+                    // Clear only owner write; leave group/other untouched.
                     mode &= !0o200;
+                } else {
+                    mode |= 0o200;
                 }
             }
-            if let Some(x) = update.exec {
-                if x {
+            if let Some(exec) = executable {
+                if exec {
+                    // Set the owner execute bit; preserve any existing group/other bits.
                     mode |= 0o100;
                 } else {
+                    // Only clear owner execute; keep group/other as-is to avoid breaking collaborators.
                     mode &= !0o100;
                 }
             }
-        }
-        if let Some(update) = group {
-            if let Some(r) = update.read {
-                if r {
-                    mode |= 0o040;
-                } else {
-                    mode &= !0o040;
+            if let Some(update) = owner_update {
+                if let Some(r) = update.read {
+                    if r {
+                        mode |= 0o400;
+                    } else {
+                        mode &= !0o400;
+                    }
+                }
+                if let Some(w) = update.write {
+                    if w {
+                        mode |= 0o200;
+                    } else {
+                        mode &= !0o200;
+                    }
+                }
+                if let Some(x) = update.exec {
+                    if x {
+                        mode |= 0o100;
+                    } else {
+                        mode &= !0o100;
+                    }
                 }
             }
-            if let Some(w) = update.write {
-                if w {
-                    mode |= 0o020;
-                } else {
-                    mode &= !0o020;
+            if let Some(update) = group_update {
+                if let Some(r) = update.read {
+                    if r {
+                        mode |= 0o040;
+                    } else {
+                        mode &= !0o040;
+                    }
+                }
+                if let Some(w) = update.write {
+                    if w {
+                        mode |= 0o020;
+                    } else {
+                        mode &= !0o020;
+                    }
+                }
+                if let Some(x) = update.exec {
+                    if x {
+                        mode |= 0o010;
+                    } else {
+                        mode &= !0o010;
+                    }
                 }
             }
-            if let Some(x) = update.exec {
-                if x {
-                    mode |= 0o010;
-                } else {
-                    mode &= !0o010;
+            if let Some(update) = other_update {
+                if let Some(r) = update.read {
+                    if r {
+                        mode |= 0o004;
+                    } else {
+                        mode &= !0o004;
+                    }
+                }
+                if let Some(w) = update.write {
+                    if w {
+                        mode |= 0o002;
+                    } else {
+                        mode &= !0o002;
+                    }
+                }
+                if let Some(x) = update.exec {
+                    if x {
+                        mode |= 0o001;
+                    } else {
+                        mode &= !0o001;
+                    }
                 }
             }
-        }
-        if let Some(update) = other {
-            if let Some(r) = update.read {
-                if r {
-                    mode |= 0o004;
-                } else {
-                    mode &= !0o004;
-                }
-            }
-            if let Some(w) = update.write {
-                if w {
-                    mode |= 0o002;
-                } else {
-                    mode &= !0o002;
-                }
-            }
-            if let Some(x) = update.exec {
-                if x {
-                    mode |= 0o001;
-                } else {
-                    mode &= !0o001;
-                }
+            if mode != original_mode {
+                changed = true;
+                perms.set_mode(mode);
             }
         }
-        if mode != original_mode {
-            changed = true;
-            perms.set_mode(mode);
+        #[cfg(not(unix))]
+        {
+            if has_access_updates {
+                return Err(
+                    "Access control changes are only supported on Unix-like platforms".into(),
+                );
+            }
+            if let Some(ro) = read_only {
+                let orig = perms.readonly();
+                perms.set_readonly(ro);
+                changed |= orig != ro;
+            }
         }
-    }
-    #[cfg(not(unix))]
-    {
-        if has_access_updates {
-            return Err("Access control changes are only supported on Unix-like platforms".into());
-        }
-        if let Some(ro) = read_only {
-            let orig = perms.readonly();
-            perms.set_readonly(ro);
-            changed |= orig != ro;
-        }
-    }
-    if changed {
-        if let Err(e) = fs::set_permissions(&target, perms) {
-            warn!(path = %target.display(), error = %e, "set_permissions failed");
-            return Err(format!("Failed to update permissions: {e}"));
-        }
-        debug!(path = %target.display(), "set_permissions applied");
-    }
-    let info = get_permissions(path.clone())?;
-    if changed {
-        if let Some(undo) = undo {
-            let after = PermissionsSnapshot {
-                readonly: info.read_only,
-                #[cfg(unix)]
-                mode: {
-                    use std::os::unix::fs::PermissionsExt;
-                    fs::metadata(&target)
-                        .map(|m| m.permissions().mode())
-                        .unwrap_or(before.mode)
-                },
-            };
-            let _ = undo.record_applied(Action::SetPermissions {
-                path: target,
+        if changed {
+            if let Err(e) = fs::set_permissions(&target, perms) {
+                warn!(path = %target.display(), error = %e, "set_permissions failed");
+                // rollback earlier ones
+                if !actions.is_empty() {
+                    let mut rev = actions.clone();
+                    let _ = run_actions(&mut rev, Direction::Backward);
+                }
+                return Err(format!("Failed to update permissions: {e}"));
+            }
+            let after = permissions_snapshot(&target)?;
+            actions.push(Action::SetPermissions {
+                path: target.clone(),
                 before,
                 after,
             });
+            if first_info.is_none() {
+                // refresh info for first target
+                let info = get_permissions(path.clone())?;
+                first_info = Some(info);
+            }
         }
     }
-    Ok(info)
+
+    if let Some(undo) = undo {
+        if !actions.is_empty() {
+            if actions.len() == 1 {
+                let _ = undo.record_applied(actions.pop().unwrap());
+            } else {
+                let _ = undo.record_applied(Action::Batch(actions));
+            }
+        }
+    }
+
+    Ok(first_info.unwrap_or_else(|| PermissionInfo {
+        read_only: false,
+        executable: None,
+        executable_supported: cfg!(unix),
+        access_supported: cfg!(unix),
+        owner: None,
+        group: None,
+        other: None,
+    }))
 }
 
 #[tauri::command]
 pub fn set_permissions(
-    path: String,
+    path: Option<String>,
+    paths: Option<Vec<String>>,
     #[allow(non_snake_case)] readOnly: Option<bool>,
     read_only: Option<bool>,
     executable: Option<bool>,
@@ -277,10 +301,14 @@ pub fn set_permissions(
     other: Option<AccessUpdate>,
     undo: tauri::State<UndoState>,
 ) -> Result<PermissionInfo, String> {
-    set_permissions_impl(
-        path,
-        readOnly,
-        read_only,
+    let targets: Vec<String> = match (paths, path) {
+        (Some(list), _) if !list.is_empty() => list,
+        (_, Some(single)) => vec![single],
+        _ => return Err("No paths provided".into()),
+    };
+    set_permissions_batch(
+        targets,
+        readOnly.or(read_only),
         executable,
         owner,
         group,
@@ -314,9 +342,8 @@ mod tests {
         fs::write(&path, b"test").unwrap();
         fs::set_permissions(&path, PermissionsExt::from_mode(0o664)).unwrap();
 
-        set_permissions_impl(
-            path.to_string_lossy().to_string(),
-            None,
+        set_permissions_batch(
+            vec![path.to_string_lossy().to_string()],
             Some(true),
             None,
             None,
@@ -328,9 +355,8 @@ mod tests {
         let after_ro = fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(after_ro & 0o222, 0o020); // only owner write cleared
 
-        set_permissions_impl(
-            path.to_string_lossy().to_string(),
-            None,
+        set_permissions_batch(
+            vec![path.to_string_lossy().to_string()],
             Some(false),
             None,
             None,
@@ -351,9 +377,8 @@ mod tests {
         fs::write(&path, b"test").unwrap();
         fs::set_permissions(&path, PermissionsExt::from_mode(0o654)).unwrap(); // owner no exec, group exec
 
-        set_permissions_impl(
-            path.to_string_lossy().to_string(),
-            None,
+        set_permissions_batch(
+            vec![path.to_string_lossy().to_string()],
             None,
             Some(true),
             None,
@@ -365,9 +390,8 @@ mod tests {
         let after_exec = fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(after_exec & 0o111, 0o110); // owner + existing group preserved
 
-        set_permissions_impl(
-            path.to_string_lossy().to_string(),
-            None,
+        set_permissions_batch(
+            vec![path.to_string_lossy().to_string()],
             None,
             Some(false),
             None,
@@ -389,9 +413,8 @@ mod tests {
         fs::set_permissions(&path, PermissionsExt::from_mode(0o750)).unwrap();
 
         // Enable other read + owner exec without reintroducing world write.
-        set_permissions_impl(
-            path.to_string_lossy().to_string(),
-            None,
+        set_permissions_batch(
+            vec![path.to_string_lossy().to_string()],
             None,
             None,
             None,
@@ -409,9 +432,8 @@ mod tests {
         assert_eq!(mode & 0o002, 0);
         assert_eq!(mode & 0o001, 0);
 
-        set_permissions_impl(
-            path.to_string_lossy().to_string(),
-            None,
+        set_permissions_batch(
+            vec![path.to_string_lossy().to_string()],
             None,
             None,
             Some(AccessUpdate {
