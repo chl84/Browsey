@@ -3,6 +3,7 @@
   import type { Entry } from '../types'
 
   const readOnlyIcon = iconPath('status/eye-svgrepo-com.svg')
+  const lockIcon = iconPath('status/padlock.svg')
 
   export let entry: Entry
   export let index = 0
@@ -67,6 +68,9 @@
     <img class="icon" src={entry.icon} alt="" />
     <span class="name">
       {displayName(entry)}
+      {#if entry.writeDenied}
+        <img class="ro-icon" src={lockIcon} alt="No write permission" title="No write permission" />
+      {/if}
       {#if entry.readOnly}
         <img class="ro-icon" src={readOnlyIcon} alt="Read-only" title="Read-only" />
       {/if}
@@ -191,7 +195,7 @@
   .ro-icon {
     width: 18px;
     height: 18px;
-    opacity: 0.8;
+    opacity: 0.5;
     flex-shrink: 0;
   }
 
