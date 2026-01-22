@@ -2,6 +2,7 @@ use super::MountInfo;
 use std::ffi::OsString;
 use std::iter;
 use std::os::windows::ffi::OsStringExt;
+use std::process::Command;
 use windows_sys::Win32::Storage::FileSystem::{
     GetDriveTypeW, GetLogicalDriveStringsW, GetVolumeInformationW,
 };
@@ -89,4 +90,32 @@ fn utf16_to_string(buf: &[u16]) -> Option<String> {
         return None;
     }
     Some(String::from_utf16_lossy(&buf[..end]))
+}
+
+pub fn eject_drive(path: &str) -> Result<(), String> {
+    // Expect a drive root like "D:\"
+    let drive = path.trim_end_matches(['\\', '/']).to_string();
+    if drive.len() < 2 {
+        return Err("Invalid drive path".into());
+    }
+    let target = if drive.ends_with(':') {
+        format!("{drive}:")
+    } else {
+        drive.clone()
+    };
+    // Use COM Shell.Application verb "Eject" via PowerShell to avoid extra deps.
+    let ps = format!(
+        "$d='{target}'; $app=New-Object -ComObject Shell.Application; $item=$app.NameSpace(17).ParseName($d); if($item){{ $item.InvokeVerb('Eject'); exit 0 }} else {{ exit 1 }}"
+    );
+    let status = Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(ps)
+        .status()
+        .map_err(|e| format!("Failed to spawn PowerShell: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("Failed to eject drive {target}"))
+    }
 }

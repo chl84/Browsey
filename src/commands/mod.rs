@@ -20,7 +20,7 @@ pub use console::open_console;
 pub use decompress::extract_archive;
 pub use permissions::{get_permissions, set_permissions};
 pub use fs::{
-    create_folder, delete_entry, delete_entries, list_dir, list_mounts, list_trash,
+    create_folder, delete_entry, delete_entries, eject_drive, list_dir, list_mounts, list_trash,
     move_to_trash, move_to_trash_many, open_entry, purge_trash_items, rename_entry,
     restore_trash_items, watch_dir,
 };

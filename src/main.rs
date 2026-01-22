@@ -87,6 +87,7 @@ fn main() {
             store_column_widths,
             load_saved_column_widths,
             dir_sizes,
+            eject_drive,
             context_menu_actions,
             rename_entry,
             move_to_trash,
