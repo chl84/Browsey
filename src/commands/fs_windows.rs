@@ -112,6 +112,16 @@ pub fn eject_drive(path: &str) -> Result<(), String> {
         .status()
         .map_err(|e| format!("Failed to spawn PowerShell: {e}"))?;
     if status.success() {
+        return Ok(());
+    }
+
+    // Fallback: try to dismount using mountvol /p
+    let mv_status = Command::new("mountvol")
+        .arg(format!("{target}\\"))
+        .arg("/p")
+        .status()
+        .map_err(|e| format!("Failed to run mountvol: {e}"))?;
+    if mv_status.success() {
         Ok(())
     } else {
         Err(format!("Failed to eject drive {target}"))

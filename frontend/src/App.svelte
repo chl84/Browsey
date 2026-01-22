@@ -1993,10 +1993,16 @@
   }}
   onPartitionSelect={(path) => void load(path)}
   onPartitionEject={async (path) => {
+    const before = get(partitionsStore)
     try {
       await invoke('eject_drive', { path })
       showToast(`Ejectet ${path}`)
       await loadPartitions()
+      const after = get(partitionsStore)
+      const stillPresent = after.some((p) => p.path.trim().toUpperCase() === path.trim().toUpperCase())
+      if (stillPresent) {
+        showToast(`Volumet er fortsatt montert (${path}) – kan være låst av prosess`)
+      }
     } catch (err) {
       showToast(`Eject feilet: ${err instanceof Error ? err.message : String(err)}`)
     }
