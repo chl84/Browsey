@@ -393,10 +393,10 @@ pub fn move_with_fallback(src: &Path, dst: &Path) -> Result<(), String> {
                     dst.display()
                 ));
             }
-            // Fallback: copy + delete (tåler ulike disker/filsystemer).
+            // Fallback: copy + delete to tolerate different disks/file systems.
             copy_entry(src, dst).and_then(|_| {
                 delete_entry_path(src).map_err(|del_err| {
-                    // Best effort: prøv å rydde dest hvis delete feilet for å unngå duplikat.
+                    // Best effort: clean up destination if delete failed to avoid duplicates.
                     let _ = delete_entry_path(dst);
                     format!(
                         "Copied {} -> {} after cross-device rename error, but failed to delete source: {del_err}",
@@ -418,7 +418,7 @@ pub fn temp_backup_path(original: &Path) -> PathBuf {
     let base = base_undo_dir();
     let _ = fs::create_dir_all(&base);
 
-    // Bruk hash av full sti for å gruppere filer fra samme mappe, men unngå lange stinavn.
+    // Use a hash of the full path to group files from the same directory while avoiding long names.
     let mut hasher = DefaultHasher::new();
     original.hash(&mut hasher);
     let bucket = format!("{:016x}", hasher.finish());
