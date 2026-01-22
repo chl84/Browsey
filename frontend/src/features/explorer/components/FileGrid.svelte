@@ -40,6 +40,7 @@
   export let onRowsKeydown: (event: KeyboardEvent) => void = () => {}
 
   const readOnlyIcon = iconPath('status/eye-svgrepo-com.svg')
+  const lockIcon = iconPath('status/padlock.svg')
 </script>
 
 <section class="grid-container">
@@ -90,6 +91,9 @@
               <img class="icon" src={entry.icon} alt="" draggable="false" />
               <div class="name" title={entry.name}>
                 {displayName(entry)}
+                {#if entry.writeDenied}
+                  <img class="ro-icon" src={lockIcon} alt="No write permission" title="No write permission" />
+                {/if}
                 {#if entry.readOnly}
                   <img class="ro-icon" src={readOnlyIcon} alt="Read-only" title="Read-only" />
                 {/if}
@@ -244,7 +248,7 @@
   .ro-icon {
     width: 18px;
     height: 18px;
-    opacity: 0.8;
+    opacity: 0.5;
     flex-shrink: 0;
   }
 </style>

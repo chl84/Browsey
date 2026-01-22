@@ -7,6 +7,9 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use crate::icons::icon_for;
+use std::ffi::CString;
+#[cfg(not(target_os = "windows"))]
+use std::os::unix::ffi::OsStrExt;
 
 #[cfg(target_os = "windows")]
 use std::iter;
@@ -27,6 +30,7 @@ pub struct CachedMeta {
     pub hidden: bool,
     pub network: bool,
     pub read_only: bool,
+    pub write_denied: bool,
     stored: SystemTime,
 }
 
@@ -72,6 +76,8 @@ pub struct FsEntry {
     pub network: bool,
     #[serde(rename = "readOnly")]
     pub read_only: bool,
+    #[serde(rename = "writeDenied")]
+    pub write_denied: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -139,6 +145,24 @@ pub fn is_network_location(path: &Path) -> bool {
 #[cfg(not(target_os = "windows"))]
 pub fn is_network_location(_path: &Path) -> bool {
     false
+}
+
+#[cfg(not(target_os = "windows"))]
+fn can_write(path: &Path) -> bool {
+    use libc::W_OK;
+    if let Ok(cstr) = CString::new(path.as_os_str().as_bytes()) {
+        unsafe { libc::access(cstr.as_ptr(), W_OK) == 0 }
+    } else {
+        false
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn can_write(path: &Path) -> bool {
+    !path
+        .metadata()
+        .map(|m| m.permissions().readonly())
+        .unwrap_or(true)
 }
 
 #[cfg(target_os = "windows")]
@@ -212,6 +236,7 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -
         hidden: is_hidden(path, meta),
         network: is_network_location(path),
         read_only: meta.permissions().readonly(),
+        write_denied: !can_write(path),
     }
 }
 
@@ -239,6 +264,7 @@ pub fn store_cached_meta(path: &Path, meta: &Metadata, is_link: bool) {
         hidden: is_hidden(path, meta),
         network: is_network_location(path),
         read_only: meta.permissions().readonly(),
+        write_denied: !can_write(path),
         stored: SystemTime::now(),
     };
     if let Ok(mut map) = meta_cache().lock() {
