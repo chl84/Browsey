@@ -115,15 +115,29 @@ pub fn eject_drive(path: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    // Fallback: try to dismount using mountvol /p
+    // Fallback #1: try to dismount using mountvol /p
     let mv_status = Command::new("mountvol")
         .arg(format!("{target}\\"))
         .arg("/p")
         .status()
         .map_err(|e| format!("Failed to run mountvol: {e}"))?;
     if mv_status.success() {
-        Ok(())
-    } else {
-        Err(format!("Failed to eject drive {target}"))
+        return Ok(());
     }
+
+    // Fallback #2: PowerShell Dismount-Volume -Force (may still fail if locked)
+    let ps_force = format!(
+        "$d='{target}'; $dl=$d.TrimEnd(':'); try {{ Dismount-Volume -DriveLetter $dl -Force -Confirm:$false; exit 0 }} catch {{ exit 1 }}"
+    );
+    let force_status = Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(ps_force)
+        .status()
+        .map_err(|e| format!("Failed to spawn PowerShell: {e}"))?;
+    if force_status.success() {
+        return Ok(());
+    }
+
+    Err(format!("Failed to eject drive {target}"))
 }
