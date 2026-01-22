@@ -26,6 +26,7 @@ pub struct CachedMeta {
     pub icon: String,
     pub hidden: bool,
     pub network: bool,
+    pub read_only: bool,
     stored: SystemTime,
 }
 
@@ -69,6 +70,8 @@ pub struct FsEntry {
     pub starred: bool,
     pub hidden: bool,
     pub network: bool,
+    #[serde(rename = "readOnly")]
+    pub read_only: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -208,6 +211,7 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -
         starred,
         hidden: is_hidden(path, meta),
         network: is_network_location(path),
+        read_only: meta.permissions().readonly(),
     }
 }
 
@@ -234,6 +238,7 @@ pub fn store_cached_meta(path: &Path, meta: &Metadata, is_link: bool) {
         icon: icon_for(path, meta, is_link).to_string(),
         hidden: is_hidden(path, meta),
         network: is_network_location(path),
+        read_only: meta.permissions().readonly(),
         stored: SystemTime::now(),
     };
     if let Ok(mut map) = meta_cache().lock() {

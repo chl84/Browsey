@@ -62,7 +62,12 @@
 >
   <div class="col-name">
     <img class="icon" src={entry.icon} alt="" />
-    <span class="name">{displayName(entry)}</span>
+    <span class="name">
+      {displayName(entry)}
+      {#if entry.readOnly}
+        <span class="ro-icon" title="Read-only" aria-label="Read-only">👓</span>
+      {/if}
+    </span>
   </div>
   <div class="col-type">
     {entry.kind === 'dir'
@@ -175,6 +180,14 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ro-icon {
+    font-size: 12px;
+    opacity: 0.75;
   }
 
   .col-type,

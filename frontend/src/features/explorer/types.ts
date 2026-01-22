@@ -14,6 +14,7 @@ export type Entry = {
   icon?: string
   hidden?: boolean
   network?: boolean
+  readOnly?: boolean
 }
 
 export type Listing = {

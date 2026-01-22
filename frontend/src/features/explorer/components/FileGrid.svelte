@@ -85,7 +85,12 @@
               on:drop|preventDefault={(event) => onRowDrop(entry, event)}
             >
               <img class="icon" src={entry.icon} alt="" draggable="false" />
-              <div class="name" title={entry.name}>{displayName(entry)}</div>
+              <div class="name" title={entry.name}>
+                {displayName(entry)}
+                {#if entry.readOnly}
+                  <span class="ro-icon" title="Read-only" aria-label="Read-only">👓</span>
+                {/if}
+              </div>
             </button>
           {/each}
         </div>
@@ -227,5 +232,14 @@
     text-overflow: ellipsis;
     max-width: 100%;
     width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .ro-icon {
+    font-size: 12px;
+    opacity: 0.75;
   }
 </style>
