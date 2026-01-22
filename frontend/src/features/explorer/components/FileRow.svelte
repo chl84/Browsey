@@ -185,12 +185,12 @@
     text-overflow: ellipsis;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 10px;
   }
 
   .ro-icon {
-    width: 14px;
-    height: 14px;
+    width: 18px;
+    height: 18px;
     opacity: 0.8;
     flex-shrink: 0;
   }
