@@ -822,17 +822,21 @@
       if (key === 'z') {
         event.preventDefault()
         event.stopPropagation()
-        void invoke('undo_action').catch((err) =>
-          showToast(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)
-        )
+        void invoke('undo_action')
+          .then(() => reloadCurrent())
+          .catch((err) =>
+            showToast(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)
+          )
         return
       }
       if (key === 'y') {
         event.preventDefault()
         event.stopPropagation()
-        void invoke('redo_action').catch((err) =>
-          showToast(`Redo failed: ${err instanceof Error ? err.message : String(err)}`)
-        )
+        void invoke('redo_action')
+          .then(() => reloadCurrent())
+          .catch((err) =>
+            showToast(`Redo failed: ${err instanceof Error ? err.message : String(err)}`)
+          )
         return
       }
     }
