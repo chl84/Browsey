@@ -17,7 +17,7 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 - **Cross-platform details**: Uses system WebView (WebKit on Linux, WebView2 on Windows). Network locations on Windows delete permanently (Explorer parity) because the recycle bin is unavailable there.
 - **Removable drives**: Detects removable volumes and offers an eject action on Windows (CfgMgr/SetupAPI + IOCTL fallback) and on Linux (`gio`/`umount`/`udisksctl` with lazy fallback); safely-ejected drives are hidden from the list. Busy devices surface a short “in use” hint.
 - **UI polish**: Flat, squared styling across inputs/buttons/modals; address bar shows breadcrumbs when unfocused and selects the full path on focus; renaming pre-selects the filename without its extension; browser default context menu and hotkeys are disabled (except Ctrl+Shift+I), while app shortcuts remain.
-- **Visual cues for access**: Read-only items show an eye icon; items without lesetilgang viser hengelås. Multi-select permissions kan endres i ett rykk med undo/rollback ved feil (Unix).
+- **Visual cues for access**: Read-only items show an eye icon; items without read access show a padlock. Multi-select permission changes apply in one batch with undo/rollback on failure (Unix).
 
 ## Screenshot
 ![Browsey showing a Fedora workspace](resources/screenshot_browsey_fedora.png)
@@ -116,7 +116,7 @@ Tauri bundles:
 - Search is scoped to the current root; empty queries return no results but preserve the listing.
 - “Open item location” jumps to the parent and reselects the item.
 - Windows network paths delete permanently (recycle bin is unavailable there). Symlink copy/move is rejected.
-- Permissions: Unix-lignende systemer støtter endring av eier/gruppe/other bits også for flere valgte elementer i batch; endringen rulles tilbake hvis én feiler. Windows-permissions er planlagt.
+- Permissions: On Unix-like systems you can change owner/group/other bits for multiple selected items in one batch; changes roll back if any target fails. Windows permissions are planned.
 - Removable volumes on Windows expose an eject action; once a device is successfully ejected the UI removes it and filters out NOT_READY/DEVICE_NOT_CONNECTED remnants.
 - Open with modal lists matching applications (fallbacks included), allows a custom command, uses the system default when chosen, and launches apps detached without console noise.
 - Drag/drop uses a custom ghost image; Tauri window drag/drop is disabled to allow HTML5 DnD on Windows.
