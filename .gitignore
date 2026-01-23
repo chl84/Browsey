@@ -1,6 +1,7 @@
 # Rust / Cargo
 /.target/
 /target/
+/target_permcheck/
 /target/release/bundle/
 /target/release/**/*.rpm
 **/*.rs.bk

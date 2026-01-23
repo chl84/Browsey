@@ -387,6 +387,9 @@
   type Access = { read: boolean; write: boolean; exec: boolean }
   type PermissionsState = {
     accessSupported: boolean
+    executableSupported: boolean
+    readOnly: boolean | null
+    executable: boolean | null
     owner: Access | null
     group: Access | null
     other: Access | null
@@ -1795,6 +1798,9 @@
       try {
         const perms = await invoke<{
           access_supported: boolean
+          executable_supported: boolean
+          read_only: boolean
+          executable: boolean | null
           owner?: Access
           group?: Access
           other?: Access
@@ -1802,6 +1808,9 @@
         if (token === propertiesToken) {
           propertiesPermissions = {
             accessSupported: perms.access_supported,
+            executableSupported: perms.executable_supported,
+            readOnly: perms.read_only,
+            executable: perms.executable,
             owner: perms.owner ?? null,
             group: perms.group ?? null,
             other: perms.other ?? null,
@@ -1814,6 +1823,9 @@
     } else {
       propertiesPermissions = {
         accessSupported: true,
+        executableSupported: true,
+        readOnly: false,
+        executable: false,
         owner: { read: false, write: false, exec: false },
         group: { read: false, write: false, exec: false },
         other: { read: false, write: false, exec: false },
@@ -1822,7 +1834,13 @@
   }
 
   const updatePermissions = async (
-    opts: { owner?: Partial<Access>; group?: Partial<Access>; other?: Partial<Access> },
+    opts: {
+      readOnly?: boolean
+      executable?: boolean
+      owner?: Partial<Access>
+      group?: Partial<Access>
+      other?: Partial<Access>
+    },
     prevState?: typeof propertiesPermissions
   ) => {
     const targets =
@@ -1837,10 +1855,18 @@
     }
     const payload: {
       paths: string[]
+      readOnly?: boolean
+      executable?: boolean
       owner?: Partial<Access>
       group?: Partial<Access>
       other?: Partial<Access>
     } = { paths: targets }
+    if (opts.readOnly !== undefined) {
+      payload.readOnly = opts.readOnly
+    }
+    if (opts.executable !== undefined) {
+      payload.executable = opts.executable
+    }
     if (opts.owner && Object.keys(opts.owner).length > 0) {
       payload.owner = { ...opts.owner }
     }
@@ -1853,6 +1879,9 @@
     try {
       const perms = await invoke<{
         access_supported?: boolean
+        executable_supported?: boolean
+        read_only?: boolean
+        executable?: boolean | null
         owner?: Access
         group?: Access
         other?: Access
@@ -1860,6 +1889,10 @@
       if (propertiesTargets.length === 1 || propertiesEntry) {
         propertiesPermissions = {
           accessSupported: perms.access_supported ?? propertiesPermissions?.accessSupported ?? false,
+          executableSupported:
+            perms.executable_supported ?? propertiesPermissions?.executableSupported ?? false,
+          readOnly: perms.read_only ?? propertiesPermissions?.readOnly ?? null,
+          executable: perms.executable ?? propertiesPermissions?.executable ?? null,
           owner: perms.owner ?? propertiesPermissions?.owner ?? null,
           group: perms.group ?? propertiesPermissions?.group ?? null,
           other: perms.other ?? propertiesPermissions?.other ?? null,
@@ -1884,6 +1917,16 @@
       [scope]: updated,
     }
     void updatePermissions({ [scope]: { [key]: next } }, prev)
+  }
+
+  const togglePermissionFlag = (key: 'readOnly' | 'executable', next: boolean) => {
+    if (!propertiesPermissions) return
+    const prev = JSON.parse(JSON.stringify(propertiesPermissions)) as typeof propertiesPermissions
+    propertiesPermissions = { ...propertiesPermissions, [key]: next }
+    void updatePermissions(
+      key === 'readOnly' ? { readOnly: next } : { executable: next },
+      prev,
+    )
   }
 
   onMount(() => {
@@ -2125,6 +2168,7 @@
   {propertiesItemCount}
   propertiesPermissions={propertiesPermissions}
   onTogglePermissionsAccess={(scope, key, next) => toggleAccess(scope, key, next)}
+  onTogglePermissionsFlag={(key, next) => togglePermissionFlag(key, next)}
   onCloseProperties={closeProperties}
   bookmarkModalOpen={bookmarkModalOpen}
   {bookmarkCandidate}

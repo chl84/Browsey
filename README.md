@@ -3,7 +3,7 @@
 Browsey is a minimalist and fast, cross-platform file explorer built with Tauri 2 (Rust backend) and a Svelte/TypeScript frontend. The chrome stays light while Rust handles traversal, sorting, search, and metadata; the frontend focuses on rendering, input, and interactions.
 
 ## Status
-Early beta: core flows (browse, search, clipboard, trash, compress, open with, properties) are in place; expect rapid iteration and some rough edges. Permissions editing (owner/group/other bits) is currently Unix-only; Windows support is planned.
+Early beta: core flows (browse, search, clipboard, trash, compress, open with, properties) are in place; expect rapid iteration and some rough edges. Permissions editing now works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
 
 ## Highlights
 - **Responsive lists**: Virtualized rows, smooth wheel coalescing, and cached metadata keep large folders responsive.
@@ -17,7 +17,7 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 - **Cross-platform details**: Uses system WebView (WebKit on Linux, WebView2 on Windows). Network locations on Windows delete permanently (Explorer parity) because the recycle bin is unavailable there.
 - **Removable drives**: Detects removable volumes and offers an eject action on Windows (CfgMgr/SetupAPI + IOCTL fallback) and on Linux (`gio`/`umount`/`udisksctl` with lazy fallback); safely-ejected drives are hidden from the list. Busy devices surface a short “in use” hint.
 - **UI polish**: Flat, squared styling across inputs/buttons/modals; address bar shows breadcrumbs when unfocused and selects the full path on focus; renaming pre-selects the filename without its extension; browser default context menu and hotkeys are disabled (except Ctrl+Shift+I), while app shortcuts remain.
-- **Visual cues for access**: Read-only items show an eye icon; items without read access show a padlock. Multi-select permission changes apply in one batch with undo/rollback on failure (Unix).
+- **Visual cues for access**: Read-only items show an eye icon; items without read access show a padlock. Multi-select permission changes apply in one batch with undo/rollback on failure (Unix and Windows).
 
 ## Screenshot
 ![Browsey showing a Fedora workspace](resources/screenshot_browsey_fedora.png)
@@ -116,7 +116,7 @@ Tauri bundles:
 - Search is scoped to the current root; empty queries return no results but preserve the listing.
 - “Open item location” jumps to the parent and reselects the item.
 - Windows network paths delete permanently (recycle bin is unavailable there). Symlink copy/move is rejected.
-- Permissions: On Unix-like systems you can change owner/group/other bits for multiple selected items in one batch; changes roll back if any target fails. Windows permissions are planned.
+- Permissions: Owner/group/other (Everyone) access bits can be edited on Unix and Windows; Windows maps to the file DACL and honors read-only and executable toggles. Changes roll back if any target fails.
 - Removable volumes on Windows expose an eject action; once a device is successfully ejected the UI removes it and filters out NOT_READY/DEVICE_NOT_CONNECTED remnants.
 - Open with modal lists matching applications (fallbacks included), allows a custom command, uses the system default when chosen, and launches apps detached without console noise.
 - Drag/drop uses a custom ghost image; Tauri window drag/drop is disabled to allow HTML5 DnD on Windows.

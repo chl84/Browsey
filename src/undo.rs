@@ -4,7 +4,20 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{hash::Hash, hash::Hasher};
+#[cfg(target_os = "windows")]
+use std::{os::windows::ffi::OsStrExt, ptr};
 use tracing::{debug, warn};
+
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Foundation::{LocalFree, ERROR_SUCCESS};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Security::Authorization::{
+    GetNamedSecurityInfoW, SetNamedSecurityInfoW, SE_FILE_OBJECT,
+};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Security::{
+    GetSecurityDescriptorDacl, ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
+};
 
 const MAX_HISTORY: usize = 50;
 // Use a central directory for all undo backups.
@@ -46,12 +59,14 @@ pub enum Direction {
     Backward,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct PermissionsSnapshot {
     pub readonly: bool,
     #[cfg(unix)]
     pub mode: u32,
+    #[cfg(target_os = "windows")]
+    pub dacl: Option<Vec<u8>>,
 }
 
 #[derive(Default)]
@@ -333,6 +348,37 @@ fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> Result<(), Stri
         .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
     let mut perms = meta.permissions();
     perms.set_readonly(snap.readonly);
+    #[cfg(target_os = "windows")]
+    {
+        let mut wide: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let dacl_ptr = snap
+            .dacl
+            .as_ref()
+            .map(|v| v.as_ptr() as *mut ACL)
+            .unwrap_or(ptr::null_mut());
+        let status = unsafe {
+            SetNamedSecurityInfoW(
+                wide.as_mut_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                dacl_ptr,
+                ptr::null_mut(),
+            )
+        };
+        if status != ERROR_SUCCESS {
+            return Err(format!(
+                "Failed to update permissions for {}: Win32 error {}",
+                path.display(),
+                status
+            ));
+        }
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -351,12 +397,64 @@ pub fn permissions_snapshot(path: &Path) -> Result<PermissionsSnapshot, String> 
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = meta.permissions().mode();
-        Ok(PermissionsSnapshot { readonly, mode })
+        return Ok(PermissionsSnapshot { readonly, mode });
     }
-    #[cfg(not(unix))]
+    #[cfg(target_os = "windows")]
     {
-        Ok(PermissionsSnapshot { readonly })
+        let dacl = snapshot_dacl(path)?;
+        return Ok(PermissionsSnapshot { readonly, dacl });
     }
+    #[cfg(not(any(unix, target_os = "windows")))]
+    Ok(PermissionsSnapshot { readonly })
+}
+
+#[cfg(target_os = "windows")]
+fn snapshot_dacl(path: &Path) -> Result<Option<Vec<u8>>, String> {
+    let mut sd: PSECURITY_DESCRIPTOR = ptr::null_mut();
+    let mut dacl: *mut ACL = ptr::null_mut();
+    let mut wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let status = unsafe {
+        GetNamedSecurityInfoW(
+            wide.as_mut_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            &mut dacl,
+            ptr::null_mut(),
+            &mut sd,
+        )
+    };
+    if status != ERROR_SUCCESS {
+        return Err(format!(
+            "GetNamedSecurityInfoW failed for {}: Win32 error {}",
+            path.display(),
+            status
+        ));
+    }
+    let result = unsafe {
+        let mut present = 0i32;
+        let mut defaulted = 0i32;
+        let mut acl_ptr = dacl;
+        let ok = GetSecurityDescriptorDacl(sd, &mut present, &mut acl_ptr, &mut defaulted);
+        if ok == 0 {
+            Err("GetSecurityDescriptorDacl failed".into())
+        } else if present == 0 || acl_ptr.is_null() {
+            Ok(None)
+        } else {
+            let size = (*acl_ptr).AclSize as usize;
+            let bytes = std::slice::from_raw_parts(acl_ptr as *const u8, size).to_vec();
+            Ok(Some(bytes))
+        }
+    };
+    unsafe {
+        LocalFree(sd);
+    }
+    result
 }
 
 pub(crate) fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
