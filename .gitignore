@@ -1,4 +1,5 @@
 # Rust / Cargo
+/.target/
 /target/
 /target/release/bundle/
 /target/release/**/*.rpm
