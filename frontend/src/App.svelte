@@ -686,6 +686,11 @@
         closeBlankContextMenu()
         return
       }
+      if (mode === 'filter') {
+        event.preventDefault()
+        event.stopPropagation()
+        void enterAddressMode()
+      }
       if ($searchMode || mode === 'search') {
         event.preventDefault()
         event.stopPropagation()
@@ -1645,7 +1650,7 @@
   onBlur={handleInputBlur}
   onSubmitPath={submitPath}
   onSearch={() => runSearch(pathInput)}
-  onExitSearch={() => void setSearchModeState(false).then(() => blurPathInput())}
+  onExitSearch={() => void enterAddressMode().then(() => blurPathInput())}
   onNavigateSegment={(path) => void navigateToBreadcrumb(path)}
   noticeMessage={$error}
   searchActive={$searchActive}
