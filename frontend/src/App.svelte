@@ -125,6 +125,7 @@
     filter,
     searchMode,
     searchActive,
+    showHidden,
     sortField,
     sortDirection,
     bookmarks: bookmarksStore,
@@ -136,6 +137,7 @@
     loadTrash,
     runSearch,
     toggleMode,
+    toggleShowHidden,
     changeSort,
     open,
     toggleStar,
@@ -465,6 +467,7 @@
     setSearchMode: async (value: boolean) => setSearchModeState(value),
     focusPath: () => focusPathInput(),
     blurPath: () => blurPathInput(),
+    onToggleHidden: () => Promise.resolve(toggleShowHidden()),
     onTypeChar: async (char) => {
       if (inputFocused && mode === 'address' && canUseSearch()) {
         return false
