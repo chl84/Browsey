@@ -681,6 +681,12 @@
         closeBlankContextMenu()
         return
       }
+      if ($searchMode || mode === 'search') {
+        event.preventDefault()
+        event.stopPropagation()
+        void setSearchModeState(false)
+        return
+      }
       if (inRows) {
         event.preventDefault()
         event.stopPropagation()
