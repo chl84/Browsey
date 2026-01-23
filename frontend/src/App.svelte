@@ -243,6 +243,8 @@
   const GRID_CARD_WIDTH = 128
   const GRID_ROW_HEIGHT = 136
   const GRID_GAP = 6
+  // Keep in sync with .grid padding in FileGrid.svelte
+  const GRID_PADDING = 12
   const GRID_OVERSCAN = 2
   const gridStart = writable(0)
   const gridOffsetY = writable(0)
@@ -736,7 +738,7 @@
   const recomputeGrid = () => {
     if (!gridElRef || viewMode !== 'grid') return
     const list = get(filteredEntries)
-    const width = Math.max(0, gridElRef.clientWidth)
+    const width = Math.max(0, gridElRef.clientWidth - GRID_PADDING * 2)
     gridCols = Math.max(1, Math.floor((width + GRID_GAP) / (GRID_CARD_WIDTH + GRID_GAP)))
     const rowStride = GRID_ROW_HEIGHT + GRID_GAP
     const totalRows = Math.ceil(list.length / gridCols)
@@ -1095,7 +1097,7 @@
         cardWidth: GRID_CARD_WIDTH,
         cardHeight: GRID_ROW_HEIGHT,
         gap: GRID_GAP,
-        padding: GRID_GAP,
+        padding: GRID_PADDING,
       }),
       onSelect: (paths, anchor, caret) => {
         if (subtractive) {
