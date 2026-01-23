@@ -60,6 +60,7 @@ pub enum Direction {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(unix, derive(Copy))]
 #[allow(dead_code)]
 pub struct PermissionsSnapshot {
     pub readonly: bool,
