@@ -210,7 +210,7 @@
 
       <Notice message={noticeMessage} />
 
-      {#if searchActive}
+      {#if searchActive && loading}
         <div class="pill">{mode === 'filter' ? 'Filtering' : 'Searching'}: "{filterValue}"</div>
       {/if}
 
