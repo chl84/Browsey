@@ -106,6 +106,11 @@
   const explorer = createExplorerState({
     onEntriesChanged: () => resetScrollPosition(),
     onCurrentChange: (path) => {
+      const sameLocation = path === lastLocation
+      const typingFilterOrSearch = mode === 'filter' || mode === 'search'
+      if (sameLocation && typingFilterOrSearch) {
+        return
+      }
       pathInput = path
     },
   })
