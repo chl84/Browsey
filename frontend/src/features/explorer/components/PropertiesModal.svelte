@@ -12,6 +12,9 @@
   export let permissions:
     | {
         accessSupported: boolean
+        executableSupported: boolean
+        readOnly: boolean | null
+        executable: boolean | null
         owner: Access | null
         group: Access | null
         other: Access | null
@@ -22,6 +25,7 @@
     key: 'read' | 'write' | 'exec',
     next: boolean
   ) => void = () => {}
+  export let onToggleFlag: (key: 'readOnly' | 'executable', next: boolean) => void = () => {}
 
   const tabLabels = {
     basic: 'Basic',
@@ -84,6 +88,41 @@
     {:else if activeTab === 'extra'}
       <div class="row"><span class="label">Extra</span><span class="value">Coming soon</span></div>
     {:else if activeTab === 'permissions'}
+      {#if permissions}
+        <div class="row">
+          <span class="label">Read-only</span>
+          <span class="value">
+            {#if permissions.readOnly !== null}
+              <label class="toggle">
+                <input
+                  type="checkbox"
+                  checked={permissions.readOnly}
+                  on:change={(e) => onToggleFlag('readOnly', (e.currentTarget as HTMLInputElement).checked)}
+                />
+              </label>
+            {:else}
+              Not available
+            {/if}
+          </span>
+        </div>
+        <div class="row">
+          <span class="label">Executable</span>
+          <span class="value">
+            {#if permissions.executableSupported && permissions.executable !== null}
+              <label class="toggle">
+                <input
+                  type="checkbox"
+                  checked={permissions.executable}
+                  on:change={(e) =>
+                    onToggleFlag('executable', (e.currentTarget as HTMLInputElement).checked)}
+                />
+              </label>
+            {:else}
+              Not available
+            {/if}
+          </span>
+        </div>
+      {/if}
       {#if permissions && permissions.accessSupported}
         <div class="access">
           <div class="row access-head">
