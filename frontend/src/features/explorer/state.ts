@@ -209,7 +209,31 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     const isSearchActive = get(searchActive)
     const isSearchMode = get(searchMode)
     if (isSearchActive && isSearchMode) {
-      await runSearch(get(filter))
+      const list = [...get(entries)]
+      const spec = sortPayload()
+      const dir = spec.direction === 'asc' ? 1 : -1
+      const kindRank = (k: string) => (k === 'dir' ? 0 : k === 'file' ? 1 : 2)
+      list.sort((a, b) => {
+        const cmp = (() => {
+          switch (spec.field) {
+            case 'name':
+              return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+            case 'type':
+              if (a.kind !== b.kind) return kindRank(a.kind) - kindRank(b.kind)
+              return (a.ext ?? '').localeCompare(b.ext ?? '', undefined, { sensitivity: 'base' })
+            case 'modified':
+              return (a.modified ?? '').localeCompare(b.modified ?? '')
+            case 'size':
+              return (a.size ?? 0) - (b.size ?? 0)
+            case 'starred':
+              return Number(b.starred ?? false) - Number(a.starred ?? false)
+            default:
+              return 0
+          }
+        })()
+        return dir * cmp
+      })
+      entries.set(list)
       return
     }
     const where = get(current)
