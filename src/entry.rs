@@ -7,6 +7,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use crate::icons::icon_for;
+#[cfg(not(target_os = "windows"))]
 use std::ffi::CString;
 #[cfg(not(target_os = "windows"))]
 use std::os::unix::ffi::OsStrExt;
