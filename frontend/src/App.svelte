@@ -498,9 +498,9 @@
         return true
       }
       if (mode === 'filter') {
-        if (pathInput.length === 0) {
+        if (pathInput.length <= 1) {
           await enterAddressMode()
-          focusPathInput()
+          blurPathInput()
           return true
         }
         pathInput = pathInput.slice(0, -1)
