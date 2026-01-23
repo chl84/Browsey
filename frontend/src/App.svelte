@@ -21,25 +21,18 @@
   import { hitTestGridVirtualized } from './features/explorer/helpers/lassoHitTest'
   import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
   import { moveCaret } from './features/explorer/helpers/navigationController'
-  import {
-    fetchOpenWithApps,
-    openWithSelection,
-    defaultOpenWithApp,
-    type OpenWithApp,
-    type OpenWithChoice,
-  } from './features/explorer/openWith'
+  import { createActivity } from './features/explorer/hooks/useActivity'
+  import { createDeleteConfirmModal } from './features/explorer/modals/deleteConfirmModal'
+  import { createOpenWithModal } from './features/explorer/modals/openWithModal'
+  import { createPropertiesModal } from './features/explorer/modals/propertiesModal'
+  import { createRenameModal } from './features/explorer/modals/renameModal'
+  import { createNewFolderModal } from './features/explorer/modals/newFolderModal'
+  import { createCompressModal } from './features/explorer/modals/compressModal'
   import DragGhost from './ui/DragGhost.svelte'
   import ConflictModal from './ui/ConflictModal.svelte'
   import './features/explorer/ExplorerLayout.css'
 
   type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
-  type ProgressPayload = { bytes: number; total: number; finished?: boolean }
-  type ActivityState = {
-    label: string
-    percent: number | null
-    cancel?: (() => void) | null
-    cancelling?: boolean
-  }
   type ViewMode = 'list' | 'grid'
   let sidebarCollapsed = false
   let pathInput = ''
@@ -78,55 +71,18 @@
   let bookmarkName = ''
   let bookmarkCandidate: Entry | null = null
   let bookmarkInputEl: HTMLInputElement | null = null
-  let renameModalOpen = false
-  let renameTarget: Entry | null = null
   let renameValue = ''
-  let compressOpen = false
-  let compressTargets: Entry[] = []
   let compressName = 'Archive.zip'
   let compressLevel = 6
-  let compressError = ''
-  let newFolderOpen = false
   let newFolderName = 'New folder'
-  let newFolderError = ''
-  let openWithOpen = false
-  let openWithEntry: Entry | null = null
-  let openWithApps: OpenWithApp[] = []
-  let openWithLoading = false
-  let openWithError = ''
-  let openWithSubmitting = false
-  let openWithLoadId = 0
-  let propertiesOpen = false
-  let propertiesEntry: Entry | null = null
-  let propertiesTargets: Entry[] = []
-  let propertiesCount = 1
-  let propertiesSize: number | null = null
   let conflictModalOpen = false
   let conflictList: { src: string; target: string; is_dir: boolean }[] = []
   let conflictDest: string | null = null
-  let deleteConfirmOpen = false
-  let deleteTargets: Entry[] = []
   let clipboardMode: 'copy' | 'cut' = 'copy'
   let clipboardPaths = new Set<string>()
   let currentView: CurrentView = 'dir'
-  let renameError = ''
   let lastLocation = ''
   let extracting = false
-  let compressing = false
-  let deleting = false
-  let activity: ActivityState | null = null
-  let activityUnlisten: UnlistenFn | null = null
-  let activityHideTimer: ReturnType<typeof setTimeout> | null = null
-
-  const queueActivityHide = () => {
-    if (activityHideTimer) {
-      clearTimeout(activityHideTimer)
-    }
-    activityHideTimer = setTimeout(() => {
-      activity = null
-      activityHideTimer = null
-    }, 2000)
-  }
 
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
@@ -144,6 +100,8 @@
     closeBlankContextMenu,
   } = createContextMenus()
   const selectionBox = createSelectionBox()
+  const activityApi = createActivity({ onError: showToast })
+  const activity = activityApi.activity
 
   const explorer = createExplorerState({
     onEntriesChanged: () => resetScrollPosition(),
@@ -151,66 +109,6 @@
       pathInput = path
     },
   })
-
-  const startActivityListener = async (label: string, eventName: string, onCancel?: () => void) => {
-    await cleanupActivityListener()
-    if (activityHideTimer) {
-      clearTimeout(activityHideTimer)
-      activityHideTimer = null
-    }
-    activity = { label, percent: 0, cancel: onCancel ?? null, cancelling: false }
-    activityUnlisten = await listen<ProgressPayload>(eventName, (event) => {
-      const payload = event.payload
-      let pct =
-        payload.total > 0 ? Math.min(100, Math.round((payload.bytes / payload.total) * 100)) : null
-      if (pct === 0 && payload.bytes > 0) {
-        pct = 1
-      }
-      const existing = activity
-      const cancelling = existing?.cancelling ?? false
-      const displayLabel = cancelling ? 'Cancelling…' : label
-      if (payload.finished) {
-        activity = {
-          label: cancelling ? 'Cancelling…' : 'Finalizing…',
-          percent: pct ?? null,
-          cancel: null,
-          cancelling,
-        }
-        queueActivityHide()
-      } else {
-        activity = {
-          label: displayLabel,
-          percent: pct,
-          cancel: cancelling ? null : existing?.cancel ?? onCancel ?? null,
-          cancelling,
-        }
-      }
-    })
-  }
-
-  const cleanupActivityListener = async (preserveTimer = false) => {
-    if (activityUnlisten) {
-      await activityUnlisten()
-      activityUnlisten = null
-    }
-    if (!preserveTimer && activityHideTimer) {
-      clearTimeout(activityHideTimer)
-      activityHideTimer = null
-    }
-  }
-
-  const requestCancel = async (eventName: string) => {
-    if (!activity || activity.cancelling) return
-    activity = { ...activity, label: 'Cancelling…', cancel: null, cancelling: true }
-    try {
-      await invoke('cancel_task', { id: eventName })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      showToast(`Cancel failed: ${msg}`)
-      activity = null
-      await cleanupActivityListener()
-    }
-  }
 
   const {
     cols,
@@ -382,21 +280,7 @@
   const { startResize } = createColumnResize(cols, persistWidths)
 
   let dirSizeAbort = 0
-  let propertiesToken = 0
   let selectionText = ''
-  type Access = { read: boolean; write: boolean; exec: boolean }
-  type PermissionsState = {
-    accessSupported: boolean
-    executableSupported: boolean
-    readOnly: boolean | null
-    executable: boolean | null
-    owner: Access | null
-    group: Access | null
-    other: Access | null
-  }
-
-  let propertiesItemCount: number | null = null
-  let propertiesPermissions: PermissionsState | null = null
 
   const computeDirStats = async (
     paths: string[],
@@ -640,9 +524,8 @@
       const path = Array.from($selected)[0]
       const entry = $entries.find((e) => e.path === path)
       if (!entry) return false
-      renameTarget = entry
       renameValue = entry.name
-      renameModalOpen = true
+      renameModal.open(entry)
       return true
     },
     onDelete: async (permanent) => {
@@ -653,42 +536,37 @@
       const hasNetwork = entries.some((e) => e.network)
 
       if (permanent || (hasNetwork && currentView !== 'trash')) {
-        deleteTargets = entries
-        deleteConfirmOpen = true
+        deleteModal.open(entries)
         return true
       }
       const label = currentView === 'trash' ? 'Deleting…' : 'Moving to trash…'
       const total = entries.length
-      await cleanupActivityListener()
-      if (activityHideTimer) {
-        clearTimeout(activityHideTimer)
-        activityHideTimer = null
-      }
-      activity = { label, percent: total > 0 ? 0 : null }
+      await activityApi.cleanup()
+      activity.set({ label, percent: total > 0 ? 0 : null })
       try {
         if (currentView === 'trash') {
           let done = 0
           for (const p of entries.map((e) => e.path)) {
             await invoke('delete_entry', { path: p })
             done += 1
-            activity = {
+            activity.set({
               label,
               percent: total > 0 ? Math.round((done / total) * 100) : null,
-            }
+            })
           }
         } else {
           const paths = entries.map((e) => e.path)
           await invoke('move_to_trash_many', { paths })
-          activity = {
+          activity.set({
             label,
             percent: total > 0 ? 100 : null,
-          }
+          })
         }
         await reloadCurrent()
       } catch (err) {
         console.error('Failed to move to trash', err)
       } finally {
-        queueActivityHide()
+        activityApi.hideSoon()
       }
       return true
     },
@@ -696,7 +574,7 @@
       if ($selected.size === 0) return false
       const selection = $entries.filter((e) => $selected.has(e.path))
       if (selection.length === 0) return false
-      void openPropertiesModal(selection)
+      void propertiesModal.open(selection)
       return true
     },
     onOpenConsole: async () => {
@@ -747,40 +625,40 @@
       }
     }
     if (key === 'escape') {
-      if (deleteConfirmOpen) {
+      if ($deleteState.open) {
         event.preventDefault()
         event.stopPropagation()
-        closeDeleteConfirm()
+        deleteModal.close()
         return
       }
-      if (renameModalOpen) {
+      if ($renameState.open) {
         event.preventDefault()
         event.stopPropagation()
-        closeRenameModal()
+        renameModal.close()
         return
       }
-      if (openWithOpen) {
+      if ($openWithState.open) {
         event.preventDefault()
         event.stopPropagation()
-        closeOpenWith()
+        openWithModal.close()
         return
       }
-      if (propertiesOpen) {
+      if ($propertiesState.open) {
         event.preventDefault()
         event.stopPropagation()
-        closeProperties()
+        propertiesModal.close()
         return
       }
-      if (compressOpen) {
+      if ($compressState.open) {
         event.preventDefault()
         event.stopPropagation()
-        closeCompress()
+        compressModal.close()
         return
       }
-      if (newFolderOpen) {
+      if ($newFolderState.open) {
         event.preventDefault()
         event.stopPropagation()
-        closeNewFolderModal()
+        newFolderModal.close()
         return
       }
       if (bookmarkModalOpen) {
@@ -999,6 +877,31 @@
     await load($current, { recordHistory: false })
   }
 
+  const deleteModal = createDeleteConfirmModal({ activityApi, reloadCurrent, showToast })
+  const deleteState = deleteModal.state
+  const openWithModal = createOpenWithModal({ showToast })
+  const openWithState = openWithModal.state
+  const propertiesModal = createPropertiesModal({ computeDirStats })
+  const propertiesState = propertiesModal.state
+  const renameModal = createRenameModal({
+    loadPath: (path: string) => load(path, { recordHistory: false }),
+    parentPath,
+  })
+  const renameState = renameModal.state
+  const newFolderModal = createNewFolderModal({
+    getCurrentPath: () => get(current),
+    loadPath: (path: string) => load(path, { recordHistory: false }),
+    showToast,
+  })
+  const newFolderState = newFolderModal.state
+  const compressModal = createCompressModal({
+    activityApi,
+    getCurrentPath: () => get(current),
+    loadPath: (path: string) => load(path, { recordHistory: false }),
+    showToast,
+  })
+  const compressState = compressModal.state
+
   const contextActions = createContextActions({
     getSelectedPaths: () => Array.from($selected),
     getSelectedSet: () => $selected,
@@ -1008,37 +911,21 @@
     clipboard,
     showToast,
     openWith: (entry) => {
-      openWithApps = [defaultOpenWithApp]
-      openWithError = ''
-      openWithLoading = false
-      openWithSubmitting = false
-      openWithLoadId += 1
-      openWithEntry = entry
-      openWithOpen = true
+      openWithModal.open(entry)
     },
     openCompress: (entries) => {
-      compressTargets = entries
-      if (entries.length === 1) {
-        const name = entries[0].name
-        compressName = name.toLowerCase().endsWith('.zip') ? name : `${name}.zip`
-      } else {
-        compressName = 'Archive.zip'
-      }
+      compressName = compressModal.open(entries)
       compressLevel = 6
-      compressError = ''
-      compressOpen = true
     },
     startRename: (entry) => {
-      renameTarget = entry
       renameValue = entry.name
-      renameModalOpen = true
+      renameModal.open(entry)
     },
     confirmDelete: (entries) => {
-      deleteTargets = entries
-      deleteConfirmOpen = true
+      deleteModal.open(entries)
     },
     openProperties: (entries) => {
-      void openPropertiesModal(entries)
+      void propertiesModal.open(entries)
     },
     openLocation: (entry) => {
       void openEntryLocation(entry)
@@ -1070,7 +957,7 @@
     if (extracting) return
     extracting = true
     const progressEvent = `extract-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    await startActivityListener('Extracting…', progressEvent, () => requestCancel(progressEvent))
+    await activityApi.start('Extracting…', progressEvent, () => activityApi.requestCancel(progressEvent))
     try {
       const result = await invoke<ExtractResult>('extract_archive', {
         path: entry.path,
@@ -1097,8 +984,8 @@
       }
     } finally {
       extracting = false
-      activity = null
-      await cleanupActivityListener()
+      activityApi.clearNow()
+      await activityApi.cleanup()
     }
   }
 
@@ -1429,9 +1316,7 @@
     if (currentView !== 'dir') return
     closeBlankContextMenu()
     if (id === 'new-folder') {
-      newFolderName = 'New folder'
-      newFolderError = ''
-      newFolderOpen = true
+      newFolderName = newFolderModal.open()
       return
     }
     if (id === 'open-console') {
@@ -1455,9 +1340,7 @@
         showToast('Cannot create folder here')
         return
       }
-      newFolderName = 'New folder'
-      newFolderError = ''
-      newFolderOpen = true
+      newFolderName = newFolderModal.open()
       return
     }
     await contextActions(id, entry)
@@ -1552,402 +1435,69 @@
   }
 
   const closeRenameModal = () => {
-    renameModalOpen = false
-    renameTarget = null
-    renameError = ''
+    renameModal.close()
+    renameValue = ''
   }
 
   const closeNewFolderModal = () => {
-    newFolderOpen = false
-    newFolderError = ''
+    newFolderModal.close()
   }
 
   const confirmNewFolder = async () => {
-    if (currentView !== 'dir') {
-      closeNewFolderModal()
-      showToast('Cannot create folder here')
-      return
-    }
-    const name = newFolderName.trim()
-    if (!name) {
-      newFolderError = 'Folder name cannot be empty'
-      return
-    }
-    const base = get(current)
-    try {
-      const created: string = await invoke('create_folder', { path: base, name })
-      await load(base, { recordHistory: false })
-      newFolderOpen = false
-      newFolderError = ''
-      selected.set(new Set([created]))
-      anchorIndex.set(null)
-      caretIndex.set(null)
-    } catch (err) {
-      newFolderError = err instanceof Error ? err.message : String(err)
-    }
+    const created = await newFolderModal.confirm(newFolderName)
+    if (!created) return
+    selected.set(new Set([created]))
+    anchorIndex.set(null)
+    caretIndex.set(null)
   }
 
   const confirmRename = async (name: string) => {
-    if (!renameTarget) return
-    const trimmed = name.trim()
-    if (!trimmed) return
-    try {
-      await invoke('rename_entry', { path: renameTarget.path, newName: trimmed })
-      await load(parentPath(renameTarget.path), { recordHistory: false })
-      closeRenameModal()
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      renameError = msg
-      return
-    }
-  }
-
-  const loadOpenWithApps = async (targetPath?: string) => {
-    const path = targetPath ?? openWithEntry?.path
-    if (!path) return
-    const requestId = ++openWithLoadId
-    openWithLoading = true
-    openWithError = ''
-    try {
-      const list = await fetchOpenWithApps(path)
-      if (!openWithOpen || !openWithEntry || openWithEntry.path !== path || requestId !== openWithLoadId) {
-        return
-      }
-      openWithApps = [defaultOpenWithApp, ...list]
-    } catch (err) {
-      if (!openWithOpen || !openWithEntry || openWithEntry.path !== path || requestId !== openWithLoadId) {
-        return
-      }
-      openWithApps = [defaultOpenWithApp]
-      openWithError = err instanceof Error ? err.message : String(err)
-    } finally {
-      if (requestId === openWithLoadId) {
-        openWithLoading = false
-      }
-    }
-  }
-
-  $: if (openWithOpen && openWithEntry) {
-    void loadOpenWithApps(openWithEntry.path)
-  }
-
-  const handleOpenWithConfirm = async (choice: OpenWithChoice) => {
-    if (!openWithEntry || openWithSubmitting) return
-    const normalized: OpenWithChoice = {
-      appId: choice.appId ?? undefined,
-      customCommand: choice.customCommand?.trim() || undefined,
-      customArgs: choice.customArgs?.trim() || undefined,
-    }
-    const hasCustom = Boolean(normalized.customCommand)
-    const hasApp = Boolean(normalized.appId)
-    if (!hasCustom && !hasApp) {
-      openWithError = 'Pick an application or enter a command.'
-      return
-    }
-    openWithSubmitting = true
-    openWithError = ''
-    try {
-      await openWithSelection(openWithEntry.path, normalized)
-      showToast(`Opening ${openWithEntry.name}…`)
-      closeOpenWith()
-    } catch (err) {
-      openWithError = err instanceof Error ? err.message : String(err)
-    } finally {
-      openWithSubmitting = false
-    }
-  }
-
-  const closeOpenWith = () => {
-    openWithOpen = false
-    openWithEntry = null
-    openWithApps = []
-    openWithError = ''
-    openWithLoading = false
-    openWithSubmitting = false
+    await renameModal.confirm(name)
   }
 
   const closeCompress = () => {
-    compressOpen = false
-    compressTargets = []
-    compressError = ''
+    compressModal.close()
   }
 
   const confirmCompress = async (name: string, level: number) => {
-    if (compressTargets.length === 0) {
-      closeCompress()
-      return
-    }
-    if (compressing) return
-    compressing = true
-    const lvl = Math.min(Math.max(Math.round(level), 0), 9)
-    const paths = compressTargets.map((e) => e.path)
-    const base = get(current)
-    const progressEvent = `compress-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    try {
-      await startActivityListener('Compressing…', progressEvent, () => requestCancel(progressEvent))
-      const dest = await invoke<string>('compress_entries', {
-        paths,
-        name,
-        level: lvl,
-        progressEvent,
-      })
-      await load(base, { recordHistory: false })
-      closeCompress()
-      showToast(`Created ${dest}`)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (msg.toLowerCase().includes('cancelled')) {
-        compressError = ''
-        closeCompress()
-        showToast('Compression cancelled')
-      } else {
-        compressError = msg
-      }
-    } finally {
-      compressing = false
-      activity = null
-      await cleanupActivityListener()
-    }
+    await compressModal.confirm(name, level)
   }
 
-  const closeProperties = () => {
-    propertiesOpen = false
-    propertiesEntry = null
-    propertiesTargets = []
-    propertiesSize = null
-    propertiesItemCount = null
-    propertiesPermissions = null
-  }
 
-  const loadEntryTimes = async (entry: Entry, token: number) => {
-    try {
-      const times = await invoke<{ accessed?: string | null; created?: string | null; modified?: string | null }>(
-        'entry_times_cmd',
-        { path: entry.path }
-      )
-      if (token === propertiesToken) {
-        propertiesEntry = { ...entry, ...times }
-      }
-    } catch (err) {
-      console.error('Failed to load entry times', err)
+  const initLifecycle = () => {
+    const cleanupFns: Array<() => void> = []
+
+    const handleError = (event: ErrorEvent) => {
+      const msg = event.error instanceof Error ? event.error.message : event.message ?? 'Unknown error'
+      console.error('Unhandled error', event)
+      showToast(`Error: ${msg}`)
     }
-  }
-
-  const closeDeleteConfirm = () => {
-    deleteConfirmOpen = false
-    deleteTargets = []
-  }
-
-  const confirmDelete = async () => {
-    if (deleteTargets.length === 0 || deleting) return
-    deleting = true
-    const paths = deleteTargets.map((t) => t.path)
-    const progressEvent = `delete-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    try {
-      await startActivityListener('Deleting…', progressEvent)
-      await invoke('delete_entries', { paths, progressEvent })
-      await reloadCurrent()
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error('Failed to delete', err)
-      showToast(`Delete failed: ${msg}`)
-    } finally {
-      deleting = false
-      const hadTimer = activityHideTimer !== null
-      await cleanupActivityListener(true)
-      if (!hadTimer) {
-        activity = null
-        if (activityHideTimer) {
-          clearTimeout(activityHideTimer)
-          activityHideTimer = null
-        }
-      }
-      closeDeleteConfirm()
-    }
-  }
-
-  const openPropertiesModal = async (entries: Entry[]) => {
-    const token = ++propertiesToken
-    propertiesTargets = entries
-    propertiesEntry = entries.length === 1 ? entries[0] : null
-    propertiesCount = entries.length
-    propertiesItemCount = null
-    propertiesPermissions = null
-    propertiesOpen = true
-    const files = entries.filter((e) => e.kind === 'file')
-    const dirs = entries.filter((e) => e.kind === 'dir')
-    const fileBytes = files.reduce((sum, f) => sum + (f.size ?? 0), 0)
-    const fileCount = files.length
-    propertiesSize = fileBytes
-    let loadingDirs = dirs.length > 0
-
-    if (dirs.length > 0) {
-      const { total, items } = await computeDirStats(
-        dirs.map((d) => d.path),
-        (partialBytes) => {
-          if (token === propertiesToken) {
-            propertiesSize = fileBytes + partialBytes
-          }
-        }
-      )
-      if (token === propertiesToken) {
-        propertiesSize = fileBytes + total
-        propertiesItemCount = fileCount + items
-        loadingDirs = false
-      }
-    } else {
-      propertiesItemCount = fileCount
-      loadingDirs = false
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason
+      const msg = reason instanceof Error ? reason.message : String(reason)
+      console.error('Unhandled rejection', reason)
+      showToast(`Error: ${msg}`)
     }
 
-    if (entries.length === 1 && propertiesEntry) {
-      try {
-        const perms = await invoke<{
-          access_supported: boolean
-          executable_supported: boolean
-          read_only: boolean
-          executable: boolean | null
-          owner?: Access
-          group?: Access
-          other?: Access
-        }>('get_permissions', { path: propertiesEntry.path })
-        if (token === propertiesToken) {
-          propertiesPermissions = {
-            accessSupported: perms.access_supported,
-            executableSupported: perms.executable_supported,
-            readOnly: perms.read_only,
-            executable: perms.executable,
-            owner: perms.owner ?? null,
-            group: perms.group ?? null,
-            other: perms.other ?? null,
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load permissions', err)
-      }
-      void loadEntryTimes(propertiesEntry, token)
-    } else {
-      propertiesPermissions = {
-        accessSupported: true,
-        executableSupported: true,
-        readOnly: false,
-        executable: false,
-        owner: { read: false, write: false, exec: false },
-        group: { read: false, write: false, exec: false },
-        other: { read: false, write: false, exec: false },
-      }
-    }
-  }
+    const setupCore = async () => {
+      handleResize()
+      window.addEventListener('resize', handleResize)
+      cleanupFns.push(() => window.removeEventListener('resize', handleResize))
 
-  const updatePermissions = async (
-    opts: {
-      readOnly?: boolean
-      executable?: boolean
-      owner?: Partial<Access>
-      group?: Partial<Access>
-      other?: Partial<Access>
-    },
-    prevState?: typeof propertiesPermissions
-  ) => {
-    const targets =
-      propertiesTargets.length > 0
-        ? propertiesTargets.map((p) => p.path)
-        : propertiesEntry
-          ? [propertiesEntry.path]
-          : []
-    if (targets.length === 0) {
-      console.warn('updatePermissions called with no targets', opts)
-      return
-    }
-    const payload: {
-      paths: string[]
-      readOnly?: boolean
-      executable?: boolean
-      owner?: Partial<Access>
-      group?: Partial<Access>
-      other?: Partial<Access>
-    } = { paths: targets }
-    if (opts.readOnly !== undefined) {
-      payload.readOnly = opts.readOnly
-    }
-    if (opts.executable !== undefined) {
-      payload.executable = opts.executable
-    }
-    if (opts.owner && Object.keys(opts.owner).length > 0) {
-      payload.owner = { ...opts.owner }
-    }
-    if (opts.group && Object.keys(opts.group).length > 0) {
-      payload.group = { ...opts.group }
-    }
-    if (opts.other && Object.keys(opts.other).length > 0) {
-      payload.other = { ...opts.other }
-    }
-    try {
-      const perms = await invoke<{
-        access_supported?: boolean
-        executable_supported?: boolean
-        read_only?: boolean
-        executable?: boolean | null
-        owner?: Access
-        group?: Access
-        other?: Access
-      }>('set_permissions', payload)
-      if (propertiesTargets.length === 1 || propertiesEntry) {
-        propertiesPermissions = {
-          accessSupported: perms.access_supported ?? propertiesPermissions?.accessSupported ?? false,
-          executableSupported:
-            perms.executable_supported ?? propertiesPermissions?.executableSupported ?? false,
-          readOnly: perms.read_only ?? propertiesPermissions?.readOnly ?? null,
-          executable: perms.executable ?? propertiesPermissions?.executable ?? null,
-          owner: perms.owner ?? propertiesPermissions?.owner ?? null,
-          group: perms.group ?? propertiesPermissions?.group ?? null,
-          other: perms.other ?? propertiesPermissions?.other ?? null,
-        }
-      }
-    } catch (err) {
-      console.error('Failed to update permissions', { targets, opts, err })
-      if (prevState) {
-        propertiesPermissions = prevState
-      }
-    }
-  }
-
-  const toggleAccess = (scope: 'owner' | 'group' | 'other', key: 'read' | 'write' | 'exec', next: boolean) => {
-    if (!propertiesPermissions || !propertiesPermissions.accessSupported) return
-    const prev = JSON.parse(JSON.stringify(propertiesPermissions)) as typeof propertiesPermissions
-    const updated = propertiesPermissions[scope]
-      ? { ...propertiesPermissions[scope], [key]: next }
-      : propertiesPermissions[scope]
-    propertiesPermissions = {
-      ...propertiesPermissions,
-      [scope]: updated,
-    }
-    void updatePermissions({ [scope]: { [key]: next } }, prev)
-  }
-
-  const togglePermissionFlag = (key: 'readOnly' | 'executable', next: boolean) => {
-    if (!propertiesPermissions) return
-    const prev = JSON.parse(JSON.stringify(propertiesPermissions)) as typeof propertiesPermissions
-    propertiesPermissions = { ...propertiesPermissions, [key]: next }
-    void updatePermissions(
-      key === 'readOnly' ? { readOnly: next } : { executable: next },
-      prev,
-    )
-  }
-
-  onMount(() => {
-    handleResize()
-    window.addEventListener('resize', handleResize)
-    void loadSavedWidths()
-    void loadBookmarks()
-    void loadPartitions()
-    partitionsPoll = setInterval(() => {
+      void loadSavedWidths()
+      void loadBookmarks()
       void loadPartitions()
-    }, 2000)
-    void load()
+      partitionsPoll = setInterval(() => {
+        void loadPartitions()
+      }, 2000)
+      cleanupFns.push(() => {
+        if (partitionsPoll) {
+          clearInterval(partitionsPoll)
+          partitionsPoll = null
+        }
+      })
+      void load()
 
-    // Listen for backend watcher events to refresh the current directory.
-    void (async () => {
       unlistenDirChanged = await listen<string>('dir-changed', (event) => {
         const curr = get(current)
         const payload = event.payload
@@ -1962,6 +1512,13 @@
           }, 300)
         }
       })
+      cleanupFns.push(() => {
+        if (unlistenDirChanged) {
+          unlistenDirChanged()
+          unlistenDirChanged = null
+        }
+      })
+
       unlistenEntryMeta = await listen<Entry>('entry-meta', (event) => {
         const update = event.payload
         entries.update((list) => {
@@ -1972,59 +1529,48 @@
           return next
         })
       })
+      cleanupFns.push(() => {
+        if (unlistenEntryMeta) {
+          unlistenEntryMeta()
+          unlistenEntryMeta = null
+        }
+      })
+
       unlistenEntryMetaBatch = await listen<Entry[]>('entry-meta-batch', (event) => {
         const updates = event.payload
         if (!Array.isArray(updates) || updates.length === 0) return
         const map = new Map(updates.map((u) => [u.path, u]))
         entries.update((list) => list.map((item) => (map.has(item.path) ? { ...item, ...map.get(item.path)! } : item)))
       })
-    })()
+      cleanupFns.push(() => {
+        if (unlistenEntryMetaBatch) {
+          unlistenEntryMetaBatch()
+          unlistenEntryMetaBatch = null
+        }
+      })
+
+      window.addEventListener('error', handleError)
+      window.addEventListener('unhandledrejection', handleRejection)
+      cleanupFns.push(() => {
+        window.removeEventListener('error', handleError)
+        window.removeEventListener('unhandledrejection', handleRejection)
+      })
+    }
+
+    void setupCore()
+
     return () => {
-      window.removeEventListener('resize', handleResize)
+      rowsObserver?.disconnect()
       if (refreshTimer) {
         clearTimeout(refreshTimer)
         refreshTimer = null
       }
-      rowsObserver?.disconnect()
-      if (unlistenDirChanged) {
-        unlistenDirChanged()
-        unlistenDirChanged = null
-      }
-      if (unlistenEntryMeta) {
-        unlistenEntryMeta()
-        unlistenEntryMeta = null
-      }
-      if (unlistenEntryMetaBatch) {
-        unlistenEntryMetaBatch()
-        unlistenEntryMetaBatch = null
-      }
-      if (partitionsPoll) {
-        clearInterval(partitionsPoll)
-        partitionsPoll = null
-      }
+      cleanupFns.forEach((fn) => fn())
       dirSizeAbort++
     }
-  })
+  }
 
-  onMount(() => {
-    const handleError = (event: ErrorEvent) => {
-      const msg = event.error instanceof Error ? event.error.message : event.message ?? 'Unknown error'
-      console.error('Unhandled error', event)
-      showToast(`Error: ${msg}`)
-    }
-    const handleRejection = (event: PromiseRejectionEvent) => {
-      const reason = event.reason
-      const msg = reason instanceof Error ? reason.message : String(reason)
-      console.error('Unhandled rejection', reason)
-      showToast(`Error: ${msg}`)
-    }
-    window.addEventListener('error', handleError)
-    window.addEventListener('unhandledrejection', handleRejection)
-    return () => {
-      window.removeEventListener('error', handleError)
-      window.removeEventListener('unhandledrejection', handleRejection)
-    }
-  })
+  onMount(initLifecycle)
 </script>
 
 <svelte:document
@@ -2081,7 +1627,7 @@
   }}
   searchMode={$searchMode}
   loading={$loading}
-  activity={activity}
+  activity={$activity}
   onFocus={handleInputFocus}
   onBlur={handleInputBlur}
   onSubmitPath={submitPath}
@@ -2139,43 +1685,43 @@
   onBlankContextSelect={handleBlankContextAction}
   onCloseContextMenu={closeContextMenu}
   onCloseBlankContextMenu={closeBlankContextMenu}
-  deleteConfirmOpen={deleteConfirmOpen}
-  {deleteTargets}
-  onConfirmDelete={confirmDelete}
-  onCancelDelete={closeDeleteConfirm}
-  renameModalOpen={renameModalOpen}
-  {renameTarget}
-  renameError={renameError}
+  deleteConfirmOpen={$deleteState.open}
+  deleteTargets={$deleteState.targets}
+  onConfirmDelete={deleteModal.confirm}
+  onCancelDelete={deleteModal.close}
+  renameModalOpen={$renameState.open}
+  renameTarget={$renameState.target}
+  renameError={$renameState.error}
   bind:renameValue
   onConfirmRename={confirmRename}
   onCancelRename={closeRenameModal}
-  compressOpen={compressOpen}
+  compressOpen={$compressState.open}
   bind:compressName
   bind:compressLevel
-  compressError={compressError}
+  compressError={$compressState.error}
   onConfirmCompress={confirmCompress}
   onCancelCompress={closeCompress}
-  newFolderOpen={newFolderOpen}
+  newFolderOpen={$newFolderState.open}
   bind:newFolderName
-  newFolderError={newFolderError}
+  newFolderError={$newFolderState.error}
   onConfirmNewFolder={confirmNewFolder}
   onCancelNewFolder={closeNewFolderModal}
-  openWithOpen={openWithOpen}
-  openWithApps={openWithApps}
-  openWithLoading={openWithLoading}
-  openWithError={openWithError}
-  openWithBusy={openWithSubmitting}
-  onConfirmOpenWith={handleOpenWithConfirm}
-  onCloseOpenWith={closeOpenWith}
-  propertiesOpen={propertiesOpen}
-  {propertiesEntry}
-  {propertiesCount}
-  {propertiesSize}
-  {propertiesItemCount}
-  propertiesPermissions={propertiesPermissions}
-  onTogglePermissionsAccess={(scope, key, next) => toggleAccess(scope, key, next)}
-  onTogglePermissionsFlag={(key, next) => togglePermissionFlag(key, next)}
-  onCloseProperties={closeProperties}
+  openWithOpen={$openWithState.open}
+  openWithApps={$openWithState.apps}
+  openWithLoading={$openWithState.loading}
+  openWithError={$openWithState.error}
+  openWithBusy={$openWithState.submitting}
+  onConfirmOpenWith={(choice) => openWithModal.confirm(choice)}
+  onCloseOpenWith={openWithModal.close}
+  propertiesOpen={$propertiesState.open}
+  propertiesEntry={$propertiesState.entry}
+  propertiesCount={$propertiesState.count}
+  propertiesSize={$propertiesState.size}
+  propertiesItemCount={$propertiesState.itemCount}
+  propertiesPermissions={$propertiesState.permissions}
+  onTogglePermissionsAccess={(scope, key, next) => propertiesModal.toggleAccess(scope, key, next)}
+  onTogglePermissionsFlag={(key, next) => propertiesModal.toggleFlag(key, next)}
+  onCloseProperties={propertiesModal.close}
   bookmarkModalOpen={bookmarkModalOpen}
   {bookmarkCandidate}
   onConfirmBookmark={confirmBookmark}
