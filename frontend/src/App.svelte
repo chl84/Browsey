@@ -262,6 +262,22 @@
   let cursorX = 0
   let cursorY = 0
 
+  const isScrollbarClick = (event: MouseEvent, el: HTMLDivElement | null) => {
+    if (!el) return false
+    const rect = el.getBoundingClientRect()
+    const scrollbarX = el.offsetWidth - el.clientWidth
+    const scrollbarY = el.offsetHeight - el.clientHeight
+    if (scrollbarX > 0) {
+      const x = event.clientX - rect.left
+      if (x >= el.clientWidth) return true
+    }
+    if (scrollbarY > 0) {
+      const y = event.clientY - rect.top
+      if (y >= el.clientHeight) return true
+    }
+    return false
+  }
+
   $: {
     if (mode === 'filter') {
       filter.set(pathInput)
@@ -1045,6 +1061,7 @@
     const target = event.target as HTMLElement | null
     if (viewMode === 'list') {
       if (!rowsElRef) return
+      if (isScrollbarClick(event, rowsElRef)) return
       if (target && target.closest('.row')) return
       event.preventDefault()
       rowsElRef.focus()
@@ -1092,6 +1109,7 @@
     // Grid mode lasso selection
     const gridEl = event.currentTarget as HTMLDivElement | null
     if (!gridEl) return
+    if (isScrollbarClick(event, gridEl)) return
     if (target && target.closest('.card')) return
     const gridEntries = get(filteredEntries)
     if (gridEntries.length === 0) return
@@ -1283,6 +1301,7 @@
       selectionDrag = false
       return
     }
+    if (isScrollbarClick(event, rowsElRef)) return
     if (viewMode === 'grid') {
       const target = event.target as HTMLElement | null
       if (target && target.closest('.card')) return
