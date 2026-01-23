@@ -173,7 +173,14 @@
     if (switchingToList) {
       gridTotalHeight.set(0)
       await tick()
+      scrollTop.set(Math.max(0, rowsElRef?.scrollTop ?? 0))
+      updateViewportHeight()
       recompute(get(filteredEntries))
+      requestAnimationFrame(() => {
+        scrollTop.set(Math.max(0, rowsElRef?.scrollTop ?? 0))
+        updateViewportHeight()
+        recompute(get(filteredEntries))
+      })
     } else {
       await tick()
     }
