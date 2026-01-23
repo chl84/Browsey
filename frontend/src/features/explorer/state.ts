@@ -307,6 +307,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       if (evt.payload.done) {
         entries.set(evt.payload.entries ?? [])
         callbacks.onEntriesChanged?.()
+        searchActive.set(false)
         loading.set(false)
         return
       }
@@ -323,6 +324,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       progressEvent,
     }).catch((err) => {
       error.set(err instanceof Error ? err.message : String(err))
+      searchActive.set(false)
       loading.set(false)
       void stop()
     })
