@@ -9,6 +9,22 @@ const wheelScale = 0.7
 
 export type ListState = ReturnType<typeof createListState>
 
+const isScrollbarClick = (event: MouseEvent, el: HTMLDivElement | null) => {
+  if (!el) return false
+  const rect = el.getBoundingClientRect()
+  const scrollbarX = el.offsetWidth - el.clientWidth
+  const scrollbarY = el.offsetHeight - el.clientHeight
+  if (scrollbarX > 0) {
+    const x = event.clientX - rect.left
+    if (x >= el.clientWidth) return true
+  }
+  if (scrollbarY > 0) {
+    const y = event.clientY - rect.top
+    if (y >= el.clientHeight) return true
+  }
+  return false
+}
+
 export const createListState = () => {
   const selected = writable<Set<string>>(clearSelection())
   const anchorIndex = writable<number | null>(null)
@@ -112,7 +128,10 @@ export const createListState = () => {
   }
 
   const handleRowsClick = (event: MouseEvent) => {
-    if (event.target === get(rowsEl) && get(selected).size > 0) {
+    const el = get(rowsEl)
+    if (!el) return
+    if (isScrollbarClick(event, el)) return
+    if (event.target === el && get(selected).size > 0) {
       selected.set(clearSelection())
       anchorIndex.set(null)
       caretIndex.set(null)
