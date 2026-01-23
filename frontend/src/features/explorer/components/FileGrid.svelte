@@ -114,14 +114,16 @@
     --grid-gap: 6px;
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: 0;
   }
 
   .grid {
     display: block;
     height: 100%;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     min-height: 0;
     position: relative;
     user-select: none;

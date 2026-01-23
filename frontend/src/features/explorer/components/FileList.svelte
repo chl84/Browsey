@@ -134,7 +134,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    overflow-x: auto;
+    overflow-x: hidden;
     width: 100%;
     direction: ltr;
     padding-left: 12px;

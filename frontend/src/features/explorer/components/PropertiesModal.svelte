@@ -40,8 +40,15 @@
 
   let activeTab: 'basic' | 'extra' | 'permissions' = 'basic'
   let availableTabs: Array<'basic' | 'extra' | 'permissions'> = ['basic', 'permissions']
+  let wasOpen = false
   $: availableTabs = count === 1 ? ['basic', 'extra', 'permissions'] : ['basic', 'permissions']
   $: if (!availableTabs.includes(activeTab)) activeTab = 'basic'
+  $: {
+    if (open && !wasOpen) {
+      activeTab = 'basic'
+    }
+    wasOpen = open
+  }
 </script>
 
 {#if open}
