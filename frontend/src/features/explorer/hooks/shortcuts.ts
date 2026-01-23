@@ -162,7 +162,6 @@ export const createGlobalShortcuts = ({
     }
 
     if ((event.ctrlKey || event.metaKey) && key === 'g' && onToggleView) {
-      if (isEditableTarget(event.target)) return
       await onToggleView()
       event.preventDefault()
       event.stopPropagation()
