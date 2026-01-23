@@ -882,6 +882,10 @@
         clipboardHasItems: clipboardPaths.size > 0,
       })
       const filtered = actions.filter((action) => action.id !== 'new-folder')
+      const inSearch = $searchMode || mode === 'search'
+      if (inSearch && selectionCount === 1 && !filtered.some((a) => a.id === 'open-location')) {
+        filtered.splice(1, 0, { id: 'open-location', label: 'Open item location' })
+      }
       if (filtered.length > 0) {
         openContextMenu(entry, filtered, event.clientX, event.clientY)
       }
