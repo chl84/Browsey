@@ -45,6 +45,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const filter = writable('')
   const searchMode = writable(false)
   const searchActive = writable(false)
+  const showHidden = writable(false)
   const sortField = writable<SortField>('name')
   const sortDirection = writable<SortDirection>('asc')
   const bookmarks = writable<{ label: string; path: string }[]>([])
@@ -52,11 +53,12 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const history = writable<Location[]>([])
   const historyIndex = writable(-1)
 
-  const filteredEntries = derived([entries, filter], ([$entries, $filter]) =>
-    $filter.trim().length === 0
-      ? $entries
-      : $entries.filter((e) => e.name.toLowerCase().includes($filter.trim().toLowerCase()))
-  )
+  const filteredEntries = derived([entries, filter, showHidden], ([$entries, $filter, $showHidden]) => {
+    const base = $showHidden ? $entries : $entries.filter((e) => !(e.hidden === true || e.name.startsWith('.')))
+    const needle = $filter.trim().toLowerCase()
+    if (needle.length === 0) return base
+    return base.filter((e) => e.name.toLowerCase().includes(needle))
+  })
 
   const sortPayload = () => ({
     field: get(sortField),
@@ -272,6 +274,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const toggleShowHidden = () => {
+    showHidden.update((v) => !v)
+  }
+
   const goUp = () => {
     searchActive.set(false)
     return load(parentPath(get(current)))
@@ -444,6 +450,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     sortDirection,
     bookmarks,
     partitions,
+    showHidden,
     filteredEntries,
     load,
     loadRecent,
@@ -452,6 +459,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     runSearch,
     toggleMode,
     changeSort,
+    toggleShowHidden,
     refreshForSort,
     open,
     toggleStar,
