@@ -90,6 +90,12 @@
           }
         }}
         on:keydown={(e) => {
+          if (e.key === 'Backspace' && mode === 'filter' && pathInput.length <= 1) {
+            e.preventDefault()
+            e.stopPropagation()
+            onExitSearch()
+            return
+          }
           if (e.key === 'Escape') {
             e.preventDefault()
             e.stopPropagation()
