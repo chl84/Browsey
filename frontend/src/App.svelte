@@ -827,7 +827,10 @@
         event.preventDefault()
         event.stopPropagation()
         void invoke('undo_action')
-          .then(() => reloadCurrent())
+          .then(() => {
+            showToast('Undo')
+            return reloadCurrent()
+          })
           .catch((err) =>
             showToast(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)
           )
@@ -837,7 +840,10 @@
         event.preventDefault()
         event.stopPropagation()
         void invoke('redo_action')
-          .then(() => reloadCurrent())
+          .then(() => {
+            showToast('Redo')
+            return reloadCurrent()
+          })
           .catch((err) =>
             showToast(`Redo failed: ${err instanceof Error ? err.message : String(err)}`)
           )
