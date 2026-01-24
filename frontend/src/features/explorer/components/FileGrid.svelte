@@ -259,10 +259,6 @@
     text-align: center;
   }
 
-  .name[data-align='start'] {
-    text-align: left;
-  }
-
   .ro-icon {
     width: 18px;
     height: 18px;
