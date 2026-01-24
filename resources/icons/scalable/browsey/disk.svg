@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- Drive-enhet -->
+  <rect x="22" y="34" width="84" height="60" rx="12" fill="#5F7FD1"></rect>
+
+  <!-- Frontpanel -->
+  <rect x="28" y="44" width="72" height="22" rx="8" fill="rgba(255,255,255,0.22)"></rect>
+
+  <!-- Skillelinje -->
+  <path d="M28 74H100" stroke="rgba(255,255,255,0.25)" stroke-width="2" stroke-linecap="round"></path>
+
+  <!-- Disk-brønn / spor -->
+  <rect x="36" y="80" width="46" height="8" rx="4" fill="rgba(255,255,255,0.55)"></rect>
+
+  <!-- Status-LED -->
+  <circle cx="94" cy="84" r="4" fill="rgba(255,255,255,0.65)"></circle>
+</svg>

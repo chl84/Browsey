@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- Bakre del av mappen -->
+  <path d="M12 36C12 29.372 17.372 24 24 24H52L64 36H104C110.628 36 116 41.372 116 48V52H12V36Z" fill="#6B8FD6"></path>
+
+  <!-- Fremre del av mappen -->
+  <path d="M12 52H116V96C116 102.628 110.628 108 104 108H24C17.372 108 12 102.628 12 96V52Z" fill="#4F6FBF"></path>
+
+  <!-- Music-symbol: note -->
+  <path d="M74 66v20.5c-1.6-.9-3.5-1.5-5.5-1.5-4.4 0-8 2.7-8 6s3.6 6 8 6 8-2.7 8-6V76l14-3.5v14c-1.6-.9-3.5-1.5-5.5-1.5-4.4 0-8 2.7-8 6s3.6 6 8 6 8-2.7 8-6V66L74 70.5V66Z" fill="rgba(255,255,255,0.85)"></path>
+
+  <!-- Diskré kantlinje -->
+  <path d="M12 52H116" stroke="rgba(255,255,255,0.25)" stroke-width="2"></path>
+</svg>

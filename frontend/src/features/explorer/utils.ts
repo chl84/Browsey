@@ -5,22 +5,22 @@ export const iconPath = (file: string) => `/icons/scalable/${file}`
 export const navIcon = (label: string) => {
   switch (label) {
     case 'Home':
-      return iconPath('devices/computer.svg')
+      return iconPath('browsey/home.svg')
     case 'Recent':
-      return iconPath('places/folder-documents.svg')
+      return iconPath('browsey/recent.svg')
     case 'Starred':
-      return iconPath('places/user-starred.svg')
+      return iconPath('browsey/starred.svg')
     case 'Network':
-      return iconPath('places/folder-remote.svg')
+      return iconPath('browsey/network.svg')
     case 'Wastebasket':
-      return iconPath('status/user-trash-full.svg')
+      return iconPath('browsey/trash.svg')
     default:
-      return iconPath('devices/drive-harddisk.svg')
+      return iconPath('browsey/this_computer.svg')
   }
 }
 
 export const partitionIcon = (part: Partition) =>
-  part.removable ? iconPath('devices/drive-removable-media.svg') : iconPath('devices/drive-harddisk.svg')
+  part.removable ? iconPath('browsey/usb_disk.svg') : iconPath('browsey/disk.svg')
 
 export const normalizePath = (p: string) => {
   if (!p) return ''

@@ -14,6 +14,50 @@
   export let onBlur: () => void = () => {}
   export let onNavigateSegment: (path: string) => void = () => {}
 
+  import { getCurrentWindow } from '@tauri-apps/api/window'
+  import { onMount } from 'svelte'
+
+  const appWindow = getCurrentWindow()
+
+  let theme: 'light' | 'dark' = 'dark'
+
+  onMount(() => {
+    const stored = localStorage.getItem('browsey-theme')
+    const current = stored === 'light' ? 'light' : 'dark'
+    applyTheme(current)
+  })
+
+  const applyTheme = (next: 'light' | 'dark') => {
+    theme = next
+    const root = document.documentElement
+    if (next === 'light') {
+      root.dataset.theme = 'light'
+    } else {
+      root.removeAttribute('data-theme')
+    }
+    localStorage.setItem('browsey-theme', next)
+  }
+
+  const toggleTheme = () => {
+    applyTheme(theme === 'dark' ? 'light' : 'dark')
+  }
+
+  const minimize = () => {
+    void appWindow.minimize()
+  }
+
+  const toggleMaximize = async () => {
+    try {
+      await appWindow.toggleMaximize()
+    } catch (err) {
+      console.error('toggleMaximize failed', err)
+    }
+  }
+
+  const closeWindow = () => {
+    void appWindow.close()
+  }
+
   let focused = false
   let suppressMouseUp = false
 
@@ -57,6 +101,23 @@
   $: separatorChar = detectSeparator(pathInput)
   $: breadcrumbs = buildBreadcrumbs(pathInput)
 </script>
+
+<div class="drag-spacer" data-tauri-drag-region>
+  <div class="window-controls" aria-label="Window controls">
+    <button
+      class="theme-toggle"
+      type="button"
+      aria-label="Toggle theme"
+      aria-pressed={theme === 'light'}
+      on:click|stopPropagation={toggleTheme}
+    >
+      <span class:active={theme === 'light'} class="thumb"></span>
+    </button>
+    <button class="win-btn minimize" type="button" aria-label="Minimize window" on:click|stopPropagation={minimize}>–</button>
+    <button class="win-btn maximize" type="button" aria-label="Toggle maximize window" on:click|stopPropagation={toggleMaximize}>⬜</button>
+    <button class="win-btn close" type="button" aria-label="Close window" on:click|stopPropagation={closeWindow}>×</button>
+  </div>
+</div>
 
 <header class="topbar">
   <div class="left">
@@ -152,6 +213,7 @@
       </div>
     {/if}
   </div>
+
 </header>
 
 <style>
@@ -166,6 +228,16 @@
     z-index: 2;
     background: var(--bg);
     padding: 0;
+  }
+
+  .drag-spacer {
+    height: 32px;
+    width: 100%;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 0 0 10px; /* no right padding so buttons align with scrollbar edge */
   }
 
   .left {
@@ -324,5 +396,67 @@
     font-size: 12px;
     font-weight: 600;
     border: 1px solid var(--border);
+  }
+
+  .window-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .theme-toggle {
+    width: 34px;
+    height: 18px;
+    border: 1px solid var(--win-btn-border);
+    background: var(--win-btn-bg);
+    border-radius: 999px;
+    padding: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+
+  .theme-toggle .thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--win-btn-fg);
+    transform: translateX(0);
+    transition: transform 120ms ease, background 120ms ease;
+    display: block;
+  }
+
+  .theme-toggle .thumb.active {
+    transform: translateX(14px);
+    background: var(--accent-primary);
+  }
+
+  .win-btn {
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--win-btn-border);
+    background: var(--win-btn-bg);
+    color: var(--win-btn-fg);
+    font-size: 12px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+    padding: 6;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  }
+
+  .win-btn:hover {
+    background: var(--win-btn-hover-bg);
+  }
+
+  .win-btn.close:hover {
+    background: var(--win-btn-close-hover-bg);
+    color: var(--win-btn-close-hover-fg);
+    border-color: var(--win-btn-close-hover-border);
   }
 </style>

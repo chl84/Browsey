@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- Bakre del av mappen -->
+  <path d="M12 36C12 29.372 17.372 24 24 24H52L64 36H104C110.628 36 116 41.372 116 48V52H12V36Z" fill="#6B8FD6"></path>
+
+  <!-- Fremre del av mappen -->
+  <path d="M12 52H116V96C116 102.628 110.628 108 104 108H24C17.372 108 12 102.628 12 96V52Z" fill="#4F6FBF"></path>
+
+  <!-- Contacts-symbol: adressebok -->
+  <rect x="42" y="64" width="50" height="42" rx="8" fill="rgba(255,255,255,0.22)"></rect>
+
+  <!-- Side-tabber -->
+  <rect x="90" y="72" width="8" height="10" rx="4" fill="rgba(255,255,255,0.35)"></rect>
+  <rect x="90" y="88" width="8" height="10" rx="4" fill="rgba(255,255,255,0.28)"></rect>
+
+  <!-- Person-ikon -->
+  <circle cx="60" cy="80" r="7" fill="rgba(255,255,255,0.85)"></circle>
+  <path d="M48 100c0-6.2 5.4-11.2 12-11.2s12 5 12 11.2v2H48v-2Z" fill="rgba(255,255,255,0.7)"></path>
+
+  <!-- Diskré kantlinje -->
+  <path d="M12 52H116" stroke="rgba(255,255,255,0.25)" stroke-width="2"></path>
+</svg>

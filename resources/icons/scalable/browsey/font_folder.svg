@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- Bakre del av mappen -->
+  <path d="M12 36C12 29.372 17.372 24 24 24H52L64 36H104C110.628 36 116 41.372 116 48V52H12V36Z" fill="#6B8FD6"></path>
+
+  <!-- Fremre del av mappen -->
+  <path d="M12 52H116V96C116 102.628 110.628 108 104 108H24C17.372 108 12 102.628 12 96V52Z" fill="#4F6FBF"></path>
+
+  <!-- Fonts-symbol: stilisert A -->
+  <path d="M64 66 46 104h7.2l3.8-8.6h14l3.8 8.6H82L64 66Zm-4.2 22.6 4.2-9.6 4.2 9.6H59.8Z" fill="rgba(255,255,255,0.85)"></path>
+
+  <!-- Liten tekstlinje -->
+  <rect x="40" y="104" width="48" height="6" rx="3" fill="rgba(255,255,255,0.35)"></rect>
+
+  <!-- Diskré kantlinje -->
+  <path d="M12 52H116" stroke="rgba(255,255,255,0.25)" stroke-width="2"></path>
+</svg>

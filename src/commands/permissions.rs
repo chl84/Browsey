@@ -491,21 +491,20 @@ mod windows_acl {
     use super::AccessBits;
     use std::{os::windows::ffi::OsStrExt, path::Path, ptr};
     use windows_sys::Win32::Foundation::{LocalFree, ERROR_SUCCESS};
-    use windows_sys::Win32::Security::{
-        CreateWellKnownSid, EqualSid, GetAce, GetSecurityDescriptorDacl, MapGenericMask, ACL,
-        ACE_HEADER, ACCESS_ALLOWED_ACE, ACCESS_DENIED_ACE, DACL_SECURITY_INFORMATION,
-        GENERIC_MAPPING, GROUP_SECURITY_INFORMATION, NO_INHERITANCE, OWNER_SECURITY_INFORMATION,
-        PSECURITY_DESCRIPTOR, SECURITY_MAX_SID_SIZE, WinWorldSid,
-    };
     use windows_sys::Win32::Security::Authorization::{
         GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W,
-        NO_MULTIPLE_TRUSTEE, REVOKE_ACCESS, SE_FILE_OBJECT, SET_ACCESS, TRUSTEE_IS_GROUP,
+        NO_MULTIPLE_TRUSTEE, REVOKE_ACCESS, SET_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_GROUP,
         TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_IS_WELL_KNOWN_GROUP, TRUSTEE_TYPE, TRUSTEE_W,
     };
+    use windows_sys::Win32::Security::{
+        CreateWellKnownSid, EqualSid, GetAce, GetSecurityDescriptorDacl, MapGenericMask,
+        WinWorldSid, ACCESS_ALLOWED_ACE, ACCESS_DENIED_ACE, ACE_HEADER, ACL,
+        DACL_SECURITY_INFORMATION, GENERIC_MAPPING, GROUP_SECURITY_INFORMATION, NO_INHERITANCE,
+        OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, SECURITY_MAX_SID_SIZE,
+    };
     use windows_sys::Win32::Storage::FileSystem::{
-        FILE_ALL_ACCESS, FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
-        FILE_APPEND_DATA, FILE_LIST_DIRECTORY, FILE_READ_DATA, FILE_TRAVERSE,
-        FILE_WRITE_DATA,
+        FILE_ALL_ACCESS, FILE_APPEND_DATA, FILE_GENERIC_EXECUTE, FILE_GENERIC_READ,
+        FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY, FILE_READ_DATA, FILE_TRAVERSE, FILE_WRITE_DATA,
     };
 
     const ACE_TYPE_ALLOWED: u8 = 0;
@@ -555,8 +554,15 @@ mod windows_acl {
 
     fn fetch_security(
         path: &Path,
-    ) -> Result<(SecurityDescriptor, *mut ACL, *mut core::ffi::c_void, *mut core::ffi::c_void), String>
-    {
+    ) -> Result<
+        (
+            SecurityDescriptor,
+            *mut ACL,
+            *mut core::ffi::c_void,
+            *mut core::ffi::c_void,
+        ),
+        String,
+    > {
         let mut sd: PSECURITY_DESCRIPTOR = ptr::null_mut();
         let mut dacl: *mut ACL = ptr::null_mut();
         let mut owner: *mut core::ffi::c_void = ptr::null_mut();
@@ -567,9 +573,7 @@ mod windows_acl {
             GetNamedSecurityInfoW(
                 wide.as_mut_ptr(),
                 SE_FILE_OBJECT,
-                DACL_SECURITY_INFORMATION
-                    | OWNER_SECURITY_INFORMATION
-                    | GROUP_SECURITY_INFORMATION,
+                DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION,
                 &mut owner,
                 &mut group,
                 &mut dacl,
@@ -641,7 +645,9 @@ mod windows_acl {
         let mut present = 0i32;
         let mut defaulted = 0i32;
         let mut actual_dacl = dacl;
-        let ok = unsafe { GetSecurityDescriptorDacl(sd.raw, &mut present, &mut actual_dacl, &mut defaulted) };
+        let ok = unsafe {
+            GetSecurityDescriptorDacl(sd.raw, &mut present, &mut actual_dacl, &mut defaulted)
+        };
         if ok == 0 {
             return Err("GetSecurityDescriptorDacl failed".into());
         }
@@ -776,7 +782,8 @@ mod windows_acl {
         });
 
         let mut new_acl: *mut ACL = ptr::null_mut();
-        let set_status = unsafe { SetEntriesInAclW(entries.len() as u32, entries.as_ptr(), dacl, &mut new_acl) };
+        let set_status =
+            unsafe { SetEntriesInAclW(entries.len() as u32, entries.as_ptr(), dacl, &mut new_acl) };
         if set_status != ERROR_SUCCESS {
             return Err(format!("SetEntriesInAclW failed: Win32 error {set_status}"));
         }

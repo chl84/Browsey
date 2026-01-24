@@ -41,6 +41,23 @@
 
   const readOnlyIcon = iconPath('status/eye-svgrepo-com.svg')
   const lockIcon = iconPath('status/padlock.svg')
+
+  const autoAlignName = (node: HTMLElement) => {
+    const update = () => {
+      const overflowsWidth = node.scrollWidth - 1 > node.clientWidth
+      const overflowsHeight = node.scrollHeight - 1 > node.clientHeight
+      node.dataset.align = overflowsWidth || overflowsHeight ? 'start' : 'center'
+    }
+
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(node)
+    return {
+      destroy() {
+        ro.disconnect()
+      },
+    }
+  }
 </script>
 
 <section class="grid-container">
@@ -89,7 +106,7 @@
               on:drop|preventDefault={(event) => onRowDrop(entry, event)}
             >
               <img class="icon" src={entry.icon} alt="" draggable="false" />
-              <div class="name" title={entry.name}>
+              <div class="name" title={entry.name} use:autoAlignName>
                 {displayName(entry)}
                 {#if entry.readDenied}
                   <img class="ro-icon" src={lockIcon} alt="No read permission" title="No read permission" />
@@ -128,7 +145,7 @@
     position: relative;
     user-select: none;
     cursor: default;
-    padding: 12px;
+    padding: 12px 20px 12px 12px; /* extra right padding to offset scrollbar from resize hitbox */
     box-sizing: border-box;
   }
 
@@ -190,8 +207,9 @@
   }
 
   .card.selected {
-    background: var(--bg-raised);
+    background: var(--selection-fill);
     border-color: transparent;
+    box-shadow: none;
   }
 
   .card.cut {
@@ -226,13 +244,10 @@
   }
 
   .name {
-    font-weight: 600;
+    font-weight: 300;
     color: var(--fg-strong);
-    word-break: break-word;
     line-height: 1.3;
-    text-align: center;
     display: -webkit-box;
-    display: box;
     -webkit-line-clamp: 3;
     line-clamp: 3;
     -webkit-box-orient: vertical;
@@ -241,10 +256,11 @@
     text-overflow: ellipsis;
     max-width: 100%;
     width: 100%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
+    text-align: center;
+  }
+
+  .name[data-align='start'] {
+    text-align: left;
   }
 
   .ro-icon {

@@ -5,17 +5,25 @@
   export let onSelect: (label: string, path: string) => void = () => {}
 </script>
 
-<div class="section">
-  <div class="section-title">Places</div>
-  {#each places as place}
-    <button class="nav" type="button" on:click={() => onSelect(place.label, place.path)}>
-      <img class="nav-icon" src={navIcon(place.label)} alt="" />
-      <span class="nav-label">{place.label}</span>
-    </button>
-  {/each}
+<div class="section-wrapper">
+  <div class="section">
+    <div class="section-title">Places</div>
+    {#each places as place}
+      <button class="nav" type="button" on:click={() => onSelect(place.label, place.path)}>
+        <img class="nav-icon" src={navIcon(place.label)} alt="" />
+        <span class="nav-label">{place.label}</span>
+      </button>
+    {/each}
+  </div>
 </div>
 
 <style>
+  .section-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
   .section {
     display: flex;
     flex-direction: column;
@@ -71,4 +79,5 @@
     object-fit: contain;
     flex-shrink: 0;
   }
+
 </style>

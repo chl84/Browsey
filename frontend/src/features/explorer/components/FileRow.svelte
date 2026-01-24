@@ -149,8 +149,9 @@
   }
 
   .row.selected {
-    background: var(--bg-raised);
+    background: var(--selection-fill);
     border-color: transparent;
+    box-shadow: none;
   }
 
   .row.cut {

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- USB-enhet kropp -->
+  <rect x="36" y="22" width="56" height="84" rx="14" fill="#5F7FD1"></rect>
+
+  <!-- Metalltopp / kontakt -->
+  <rect x="40" y="22" width="48" height="22" rx="6" fill="#8FA6E8"></rect>
+
+  <!-- Kontakt-hull -->
+  <rect x="48" y="28" width="10" height="6" rx="3" fill="rgba(255,255,255,0.55)"></rect>
+  <rect x="70" y="28" width="10" height="6" rx="3" fill="rgba(255,255,255,0.55)"></rect>
+
+  <!-- Frontpanel -->
+  <rect x="44" y="54" width="40" height="30" rx="8" fill="rgba(255,255,255,0.22)"></rect>
+
+  <!-- Status-LED -->
+  <circle cx="64" cy="92" r="4" fill="rgba(255,255,255,0.65)"></circle>
+</svg>
