@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <!-- Hovedark -->
+  <path d="M28 16C21.372 16 16 21.372 16 28V100C16 106.628 21.372 112 28 112H100C106.628 112 112 106.628 112 100V44L84 16H28Z" fill="#5F7FD1"></path>
+
+  <!-- Brettet hjørne -->
+  <path d="M84 16V36C84 40.418 87.582 44 92 44H112L84 16Z" fill="#8FA6E8"></path>
+
+  <!-- Tekstlinjer -->
+  <rect x="34" y="60" width="60" height="6" rx="3" fill="rgba(255,255,255,0.55)"></rect>
+  <rect x="34" y="72" width="52" height="6" rx="3" fill="rgba(255,255,255,0.45)"></rect>
+  <rect x="34" y="84" width="58" height="6" rx="3" fill="rgba(255,255,255,0.40)"></rect>
+  <rect x="34" y="96" width="40" height="6" rx="3" fill="rgba(255,255,255,0.32)"></rect>
+</svg>

@@ -176,6 +176,7 @@
   export let onCancelBookmark: () => void = () => {}
 
   export let toastMessage: string | null = null
+
 </script>
 
 <main class="shell">

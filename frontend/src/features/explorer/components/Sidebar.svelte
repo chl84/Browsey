@@ -16,13 +16,16 @@
 </script>
 
 <aside class="sidebar" class:collapsed={collapsed}>
-  <PlacesSection places={places} onSelect={onPlaceSelect} />
-  <BookmarksSection bookmarks={bookmarks} onSelect={onBookmarkSelect} onRemove={onRemoveBookmark} />
-  <PartitionsSection
-    partitions={partitions}
-    onSelect={onPartitionSelect}
-    on:eject={(e) => onPartitionEject(e.detail.path)}
-  />
+  <div class="drag-top" data-tauri-drag-region></div>
+  <div class="sidebar-scroll">
+    <PlacesSection places={places} onSelect={onPlaceSelect} />
+    <BookmarksSection bookmarks={bookmarks} onSelect={onBookmarkSelect} onRemove={onRemoveBookmark} />
+    <PartitionsSection
+      partitions={partitions}
+      onSelect={onPartitionSelect}
+      on:eject={(e) => onPartitionEject(e.detail.path)}
+    />
+  </div>
 </aside>
 
 <style>
@@ -36,9 +39,9 @@
     padding: 5px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 0;
     height: 100%;
-    overflow: auto;
+    overflow: hidden;
     box-shadow: none;
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -54,5 +57,28 @@
   .sidebar.collapsed {
     transform: translateX(-110%);
     pointer-events: none;
+  }
+
+  .drag-top {
+    position: sticky;
+    top: 0;
+    height: 32px;
+    background: var(--bg-alt);
+    z-index: 1;
+  }
+
+  .sidebar-scroll {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar {
+    display: none;
   }
 </style>
