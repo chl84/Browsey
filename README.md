@@ -21,8 +21,9 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 - **UI polish**: Flat, squared styling across inputs/buttons/modals; address bar shows breadcrumbs when unfocused and selects the full path on focus; renaming pre-selects the filename without its extension; browser default context menu and hotkeys are disabled (except Ctrl+Shift+I), while app shortcuts remain.
 - **Visual cues for access**: Read-only items show an eye icon; items without read access show a padlock. Multi-select permission changes apply in one batch with undo/rollback on failure (Unix and Windows).
 
-## Screenshot
-![Browsey showing a Fedora workspace](resources/screenshot_browsey_fedora.png)
+## Screenshots
+![Browsey showing a Fedora workspace](resources/01_screenshot_browsey_fedora.png)
+![Browsey in grid view with thumbnails](resources/02_screenshot_browsey_fedora.png)
 
 ## Requirements
 Common:
