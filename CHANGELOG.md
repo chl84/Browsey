@@ -7,12 +7,12 @@
 - UI tweaks: larger grid icons, tighter card spacing, custom file-name tooltips, and refined theme toggle spacing.
 - Dependency updates and safety hardening around path canonicalization, symlink/device rejection, and symlink-safe temp paths.
 
-## v0.2.0-beta1 — 2025-12-05
+## v0.2.0-beta1 — 2025-01-18
 - New custom icon set for folders/files/status; refreshed bookmarks, network, trash, and drive icons.
 - Theme toggle redesign with clearer affordance and spacing.
 - Grid/list polish: badge placement, spacing adjustments, and smoother scrolling.
 - Maintenance: dependency bumps and minor fixes.
 
-## v0.1.0-beta1 — 2025-10-18
+## v0.1.0-beta1 — 2025-01-11
 - Initial public beta with browsing, search, bookmarks, starring, trash, compression, permissions editing, and virtualized grid/list views.
 - Cross-platform support via Tauri 2 with Svelte/TypeScript frontend and Rust backend.
