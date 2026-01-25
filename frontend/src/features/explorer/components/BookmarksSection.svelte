@@ -5,7 +5,7 @@
   export let onSelect: (path: string) => void = () => {}
   export let onRemove: (path: string) => void = () => {}
 
-  const bookmarkIcon = iconPath('browsey/bookmark.svg')
+const bookmarkIcon = iconPath('browsey/bookmark.svg')
 </script>
 
 <div class="section">

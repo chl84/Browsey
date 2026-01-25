@@ -172,11 +172,11 @@ fn stub_entry(path: &Path, file_type: Option<fs::FileType>, starred: bool) -> Fs
         .and_then(|e| e.to_str())
         .map(|s| s.to_string());
     let icon = if is_link {
-        "icons/scalable/mimetypes/inode-symlink.svg"
+        "icons/scalable/browsey/shortcut.svg"
     } else if is_dir {
-        "icons/scalable/places/folder.svg"
+        "icons/scalable/browsey/folder.svg"
     } else {
-        "icons/scalable/mimetypes/application-x-generic.svg"
+        "icons/scalable/browsey/file.svg"
     }
     .to_string();
 

@@ -139,6 +139,11 @@
   background: var(--bg);
 }
 
+/* Make the recent-icon readable in dark mode (SVG media query isn't applied inside <img>). */
+:root:not([data-theme='light']) img[src*="/recent.svg"] {
+  filter: invert(1);
+}
+
 *::-webkit-scrollbar-thumb {
   background: var(--border-accent);
   border-radius: 0;
