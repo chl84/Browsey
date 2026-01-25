@@ -26,6 +26,8 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 ![Browsey in grid view with thumbnails](resources/02_screenshot_browsey_fedora.png)
 
 ## Requirements
+Supported platforms: Linux and Windows (macOS is not supported yet).
+
 Common:
 - Rust (stable) via `rustup`
 - Node.js LTS + npm (frontend build/dev only)
@@ -88,10 +90,10 @@ Tauri bundles:
 
 ## Keyboard & interaction map
 - **Typing without focus**: Enters filter mode on the address bar; Esc exits.
-- **Search**: `Ctrl+F` (or `Cmd+F` on macOS keyboards) toggles search mode; Esc leaves search mode.
-- **View toggle**: `Ctrl+G` (`Cmd+G`) toggles between list and grid.
+- **Search**: `Ctrl+F` toggles search mode; Esc leaves search mode.
+- **View toggle**: `Ctrl+G` toggles between list and grid.
 - **Bookmarks**: `Ctrl+B` on a single folder opens the bookmark modal; remove via sidebar close icon.
-- **Open console**: `Ctrl+T` (`Cmd+T` on macOS keyboards) opens a terminal at the current directory when in a folder view.
+- **Open console**: `Ctrl+T` opens a terminal at the current directory when in a folder view.
 - **Selection**: `Ctrl+A` selects all. Click-drag draws a selection box (works in both list and grid). In grid view, arrow keys + Shift handle range selection; clicking blank space clears selection.
 - **Clipboard**: `Ctrl+C`/`Ctrl+X` copy/cut; `Ctrl+V` paste. Pasting into the same directory auto-renames duplicates; other conflicts prompt overwrite vs auto-rename.
 - **Rename**: `F2` or context menu.
