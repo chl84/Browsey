@@ -1,22 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
   <!-- Bakre del av mappen -->
-  <path d="M12 36C12 29.372 17.372 24 24 24H52L64 36H104C110.628 36 116 41.372 116 48V52H12V36Z" fill="#6B8FD6"></path>
+  <path d="M12 36V24H52L64 36H116V52H12V36Z" fill="#6B8FD6"></path>
 
   <!-- Fremre del av mappen -->
-  <path d="M12 52H116V96C116 102.628 110.628 108 104 108H24C17.372 108 12 102.628 12 96V52Z" fill="#4F6FBF"></path>
+  <path d="M12 52H116V108H12Z" fill="#4F6FBF"></path>
 
   <!-- Templates-symbol: ark 1 (bak) -->
-  <path d="M46 64c0-2.2 1.8-4 4-4h28l8 8v26c0 2.2-1.8 4-4 4H50c-2.2 0-4-1.8-4-4V64Z" fill="rgba(255,255,255,0.18)"></path>
+  <path d="M46 60c0-2.2 1.8-4 4-4h28l8 8v26c0 2.2-1.8 4-4 4H50c-2.2 0-4-1.8-4-4V60Z" fill="rgba(243,232,210,0.18)"></path>
 
   <!-- Templates-symbol: ark 2 (midten) -->
-  <path d="M42 68c0-2.2 1.8-4 4-4h28l8 8v26c0 2.2-1.8 4-4 4H46c-2.2 0-4-1.8-4-4V68Z" fill="rgba(255,255,255,0.24)"></path>
+  <path d="M42 64c0-2.2 1.8-4 4-4h28l8 8v26c0 2.2-1.8 4-4 4H46c-2.2 0-4-1.8-4-4V64Z" fill="rgba(243,232,210,0.24)"></path>
 
   <!-- Templates-symbol: ark 3 (front) -->
-  <path d="M38 72c0-2.2 1.8-4 4-4h28l8 8v26c0 2.2-1.8 4-4 4H42c-2.2 0-4-1.8-4-4V72Z" fill="rgba(255,255,255,0.75)"></path>
+  <path d="M38 68c0-2.2 1.8-4 4-4h28l8 8v26c0 2.2-1.8 4-4 4H42c-2.2 0-4-1.8-4-4V68Z" fill="rgba(243,232,210,0.75)"></path>
 
   <!-- Brettet hjørne på front-arket -->
-  <path d="M66 68v8c0 2.2 1.8 4 4 4h8L66 68Z" fill="rgba(255,255,255,0.45)"></path>
+  <path d="M66 64v8c0 2.2 1.8 4 4 4h8L66 64Z" fill="rgba(243,232,210,0.45)"></path>
 
   <!-- Diskré kantlinje -->
-  <path d="M12 52H116" stroke="rgba(255,255,255,0.25)" stroke-width="2"></path>
+  <path d="M12 52H116" stroke="rgba(243,232,210,0.25)" stroke-width="2"></path>
 </svg>

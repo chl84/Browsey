@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <g transform="translate(64 64) scale(1.1) translate(-64 -64)">
   <!-- Hus (perfekt symmetri) -->
   <path d="
       M64 20
@@ -7,8 +8,9 @@
       H112
       V60
       Z
-    " fill="#7ED957"></path>
+    " fill="#8ACB88"></path>
 
   <!-- Dør (sentrert) -->
-  <rect x="52" y="72" width="24" height="36" fill="#5CBF45"></rect>
+  <rect x="52" y="72" width="24" height="36" fill="#6AA870"></rect>
+  </g>
 </svg>

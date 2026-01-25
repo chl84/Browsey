@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
-  <g transform="translate(6 -6)">
-    <path d="M28 14h48l24 24v76c0 6.627-5.373 12-12 12H28c-6.627 0-12-5.373-12-12V26c0-6.627 5.373-12 12-12z" fill="#F3E8D2" stroke="#2B2419" stroke-width="6" stroke-linejoin="round" />
-    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="6" stroke-linejoin="round" />
+  <g>
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
 
     <!-- PDF badge -->
-    <rect x="26" y="78" width="72" height="24" rx="10" fill="#D63B3B" stroke="#2B2419" stroke-width="3" />
-    <text x="62" y="95" fill="#FFFFFF" font-family="Inter, 'Noto Sans', sans-serif" font-size="16" font-weight="700" text-anchor="middle">PDF</text>
+    <rect x="28" y="78" width="72" height="24" rx="0" fill="#D63B3B" stroke="#2B2419" stroke-width="2" />
+    <text x="64" y="95" fill="#FFFFFF" font-family="Inter, 'Noto Sans', sans-serif" font-size="16" font-weight="700" text-anchor="middle">PDF</text>
   </g>
 </svg>

@@ -1,22 +1,24 @@
 <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bokmerke ikon">
-  <!-- Hovedform -->
-  <path d="M40 16
-       C40 12 44 8 48 8
-       H80
-       C84 8 88 12 88 16
-       V112
-       L64 96
-       L40 112
-       Z" fill="#C8A874"></path>
+  <g transform="translate(64 64) scale(1.1) translate(-64 -64)">
+  <g transform="translate(0 4)">
+    <!-- Hovedform -->
+    <path d="M36 16
+         H92
+         V112
+         L64 96
+         L36 112
+         Z" fill="#C8A874"></path>
 
-  <!-- Indre flate for dybde -->
-  <path d="M48 20
-       H80
-       V92
-       L64 82
-       L48 92
-       Z" fill="#B89563"></path>
+    <!-- Indre flate for dybde -->
+    <path d="M44 20
+         H84
+         V92
+         L64 82
+         L44 92
+         Z" fill="#B89563"></path>
 
-  <!-- Markeringsfelt -->
-  <rect x="52" y="32" width="24" height="10" rx="5" fill="#9E7C4A"></rect>
+    <!-- Markeringsfelt -->
+    <rect x="50" y="32" width="28" height="10" rx="0" fill="#9E7C4A"></rect>
+  </g>
+  </g>
 </svg>

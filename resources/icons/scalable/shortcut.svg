@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
-  <g transform="translate(6 -6)">
-    <path d="M28 14h48l24 24v76c0 6.627-5.373 12-12 12H28c-6.627 0-12-5.373-12-12V26c0-6.627 5.373-12 12-12z" fill="#F3E8D2" stroke="#2B2419" stroke-width="6" stroke-linejoin="round" />
-    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="6" stroke-linejoin="round" />
+  <g>
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
 
     <!-- Snarvei-pil -->
-    <path d="M58 68 80 86 58 104v-10h-8c-7.18 0-13-5.82-13-13s5.82-13 13-13h8v14Z" fill="#2B2419" fill-opacity="0.85" stroke="#F3E8D2" stroke-width="3" stroke-linejoin="round" />
+    <path d="M56 68 78 86 56 104v-10h-6c-7.18 0-13-5.82-13-13s5.82-13 13-13h6v14Z" fill="#2B2419" fill-opacity="0.85" stroke="#F3E8D2" stroke-width="3" stroke-linejoin="miter" />
   </g>
 </svg>

@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
-  <g transform="translate(6 -6)">
-    <path d="M28 14h48l24 24v76c0 6.627-5.373 12-12 12H28c-6.627 0-12-5.373-12-12V26c0-6.627 5.373-12 12-12z" fill="#F3E8D2" stroke="#2B2419" stroke-width="6" stroke-linejoin="round" />
-    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="6" stroke-linejoin="round" />
+  <g>
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
 
     <!-- Tekstlinjer -->
-    <line x1="36" y1="68" x2="92" y2="68" stroke="#2B2419" stroke-width="5" stroke-linecap="round" stroke-opacity="0.8" />
-    <line x1="36" y1="80" x2="86" y2="80" stroke="#2B2419" stroke-width="5" stroke-linecap="round" stroke-opacity="0.7" />
-    <line x1="36" y1="92" x2="94" y2="92" stroke="#2B2419" stroke-width="5" stroke-linecap="round" stroke-opacity="0.6" />
-    <line x1="36" y1="104" x2="78" y2="104" stroke="#2B2419" stroke-width="5" stroke-linecap="round" stroke-opacity="0.5" />
+    <line x1="36" y1="68" x2="92" y2="68" stroke="#2B2419" stroke-width="5" stroke-linecap="butt" stroke-opacity="0.8" />
+    <line x1="36" y1="80" x2="86" y2="80" stroke="#2B2419" stroke-width="5" stroke-linecap="butt" stroke-opacity="0.7" />
+    <line x1="36" y1="92" x2="94" y2="92" stroke="#2B2419" stroke-width="5" stroke-linecap="butt" stroke-opacity="0.6" />
+    <line x1="36" y1="104" x2="78" y2="104" stroke="#2B2419" stroke-width="5" stroke-linecap="butt" stroke-opacity="0.5" />
   </g>
 </svg>

@@ -1,26 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
-  <g transform="translate(6 -6)">
-    <path d="M28 14h48l24 24v76c0 6.627-5.373 12-12 12H28c-6.627 0-12-5.373-12-12V26c0-6.627 5.373-12 12-12z" fill="#F3E8D2" stroke="#2B2419" stroke-width="6" stroke-linejoin="round" />
-    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="6" stroke-linejoin="round" />
+  <g>
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
 
     <!-- Videoramme -->
-    <rect x="30" y="60" width="72" height="48" rx="8" fill="#E3DBF7" stroke="#2B2419" stroke-width="3" />
+    <rect x="28" y="60" width="72" height="48" rx="0" fill="#E3DBF7" stroke="#2B2419" stroke-width="2" />
     <!-- Filmhull topp/bunn -->
     <g fill="#C7B7F1">
-      <rect x="34" y="62" width="8" height="8" rx="2" />
-      <rect x="46" y="62" width="8" height="8" rx="2" />
-      <rect x="58" y="62" width="8" height="8" rx="2" />
-      <rect x="70" y="62" width="8" height="8" rx="2" />
-      <rect x="82" y="62" width="8" height="8" rx="2" />
+      <rect x="36" y="62" width="8" height="8" rx="0" />
+      <rect x="48" y="62" width="8" height="8" rx="0" />
+      <rect x="60" y="62" width="8" height="8" rx="0" />
+      <rect x="72" y="62" width="8" height="8" rx="0" />
+      <rect x="84" y="62" width="8" height="8" rx="0" />
 
-      <rect x="34" y="100" width="8" height="8" rx="2" />
-      <rect x="46" y="100" width="8" height="8" rx="2" />
-      <rect x="58" y="100" width="8" height="8" rx="2" />
-      <rect x="70" y="100" width="8" height="8" rx="2" />
-      <rect x="82" y="100" width="8" height="8" rx="2" />
+      <rect x="36" y="100" width="8" height="8" rx="0" />
+      <rect x="48" y="100" width="8" height="8" rx="0" />
+      <rect x="60" y="100" width="8" height="8" rx="0" />
+      <rect x="72" y="100" width="8" height="8" rx="0" />
+      <rect x="84" y="100" width="8" height="8" rx="0" />
     </g>
     <!-- Play-knapp -->
-    <circle cx="66" cy="84" r="18" fill="#2B2419" fill-opacity="0.88" stroke="#2B2419" stroke-width="2" />
-    <path d="M60 74v20l16-10-16-10Z" fill="#F3E8D2" />
+    <circle cx="64" cy="84" r="18" fill="#2B2419" fill-opacity="0.88" stroke="#2B2419" stroke-width="2" />
+    <path d="M58 74v20l16-10-16-10Z" fill="#F3E8D2" />
   </g>
 </svg>
