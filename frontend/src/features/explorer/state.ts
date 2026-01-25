@@ -45,7 +45,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const filter = writable('')
   const searchMode = writable(false)
   const searchActive = writable(false)
-  const showHidden = writable(false)
+  const showHidden = writable(true)
   const sortField = writable<SortField>('name')
   const sortDirection = writable<SortDirection>('asc')
   const bookmarks = writable<{ label: string; path: string }[]>([])
