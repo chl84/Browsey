@@ -1,7 +1,22 @@
 <script lang="ts">
   import SelectionBox from '../../../ui/SelectionBox.svelte'
-  import { iconPath } from '../utils'
+  import { iconPath, formatSize } from '../utils'
   import type { Entry } from '../types'
+  import { fullNameTooltip } from '../fullNameTooltip'
+  import { createThumbnailLoader } from '../thumbnailLoader'
+  import { onDestroy } from 'svelte'
+  import { get } from 'svelte/store'
+  import { convertFileSrc } from '@tauri-apps/api/core'
+
+  const thumbLoader = createThumbnailLoader({ maxConcurrent: 3, maxDim: 96 })
+  let thumbMap = new Map<string, string>()
+  const unsubThumbs = thumbLoader.subscribe((m) => {
+    thumbMap = m
+  })
+
+  onDestroy(() => {
+    unsubThumbs()
+  })
 
   export let entries: Entry[] = []
   export let visibleEntries: Entry[] = []
@@ -81,6 +96,7 @@
         <div class="grid-viewport" style={`transform: translateY(${offsetY}px);`}>
           {#each visibleEntries as entry, i (`${entry.path}-${i}`)}
             <button
+              use:thumbLoader.observe={entry.path}
               class="card"
               class:selected={selected.has(entry.path)}
               class:cut={clipboardMode === 'cut' && clipboardPaths.has(entry.path)}
@@ -105,15 +121,39 @@
               on:dragleave={(event) => onRowDragLeave(entry, event)}
               on:drop|preventDefault={(event) => onRowDrop(entry, event)}
             >
-              <img class="icon" src={entry.icon} alt="" draggable="false" />
-              <div class="name" title={entry.name} use:autoAlignName>
-                {displayName(entry)}
+              <div class="badges">
                 {#if entry.readDenied}
-                  <img class="ro-icon" src={lockIcon} alt="No read permission" title="No read permission" />
+                  <img class="badge-icon" src={lockIcon} alt="No read permission" title="No read permission" />
                 {/if}
                 {#if entry.readOnly}
-                  <img class="ro-icon" src={readOnlyIcon} alt="Read-only" title="Read-only" />
+                  <img class="badge-icon" src={readOnlyIcon} alt="Read-only" title="Read-only" />
                 {/if}
+              </div>
+              {#if thumbMap.has(entry.path)}
+                <img
+                  class="icon"
+                  src={convertFileSrc(thumbMap.get(entry.path) || '')}
+                  alt=""
+                  draggable="false"
+                  on:error={(e) => {
+                    e.currentTarget?.setAttribute('src', entry.icon)
+                  }}
+                />
+              {:else}
+                <img class="icon" src={entry.icon} alt="" draggable="false" />
+              {/if}
+              <div
+                class="name"
+                use:autoAlignName
+                use:fullNameTooltip={() => {
+                  const size =
+                    entry.kind === 'file' && entry.size !== null && entry.size !== undefined
+                      ? formatSize(entry.size)
+                      : ''
+                  return size ? `${displayName(entry)} • ${size}` : displayName(entry)
+                }}
+              >
+                {displayName(entry)}
               </div>
             </button>
           {/each}
@@ -187,8 +227,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 12px 10px;
+    gap: 2px;
+    padding: 8px 6px;
     background: transparent;
     border: 1px solid transparent;
     border-radius: 0;
@@ -237,10 +277,27 @@
   }
 
   .icon {
-    width: 48px;
-    height: 48px;
+    width: 96px;
+    height: 96px;
     object-fit: contain;
     display: block;
+  }
+
+  .badges {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: inline-flex;
+    gap: 2px;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .badge-icon {
+    width: 16px;
+    height: 16px;
+    opacity: 0.65;
+    flex-shrink: 0;
   }
 
   .name {
@@ -259,10 +316,4 @@
     text-align: center;
   }
 
-  .ro-icon {
-    width: 18px;
-    height: 18px;
-    opacity: 0.5;
-    flex-shrink: 0;
-  }
 </style>

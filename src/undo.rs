@@ -553,11 +553,12 @@ pub fn temp_backup_path(original: &Path) -> PathBuf {
         .map(|n| n.to_string_lossy())
         .unwrap_or_else(|| "item".into());
 
-    let mut candidate = base.join(&bucket).join(name.as_ref());
+    let name_str: &str = name.as_ref();
+    let mut candidate = base.join(&bucket).join(std::path::Path::new(name_str));
     let mut idx = 1u32;
     while candidate.exists() {
         let with_idx = format!("{}-{}", name, idx);
-        candidate = base.join(&bucket).join(with_idx);
+        candidate = base.join(&bucket).join(std::path::Path::new(&with_idx));
         idx += 1;
     }
     candidate

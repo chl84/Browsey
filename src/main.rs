@@ -109,7 +109,8 @@ fn main() {
             get_permissions,
             set_permissions,
             undo_action,
-            redo_action
+            redo_action,
+            get_thumbnail
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

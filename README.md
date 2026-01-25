@@ -13,6 +13,7 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 - **Drives & bookmarks**: Lists mounts/partitions (marks removable), bookmarks, starred, recent, and trash. Mounts are polled every 2s and SQLite stores bookmarks, stars, recents, and column widths.
 - **Context actions**: New Folder…, Open with (associated apps + custom command), copy path, cut/copy/paste, compress to ZIP (name + level), rename, move to wastebasket (Delete), delete permanently (Shift+Delete), properties with lazy-loaded timestamps, and “open item location” for recents.
 - **Drag & drop**: Internal drag/drop with custom ghost and drop-target highlighting; designed to work on Linux and Windows.
+- **Thumbnails**: Lazy, virtualized thumbnail loading in grid view with caching, per-file permission checks, format allowlist, decode timeouts, and size limits; falls back to icons instantly so UI stays smooth.
 - **Grid view parity**: Fixed-size cards with virtualization, keyboard navigation and range selection, lasso overlay, hidden-item dimming, and consistent click-to-clear selection; names can span up to three lines but stay aligned to show the start.
 - **Theming**: Dark mode by default plus a light mode toggle in the drag bar; all colors centralized in `frontend/src/app.css`.
 - **Cross-platform details**: Uses system WebView (WebKit on Linux, WebView2 on Windows). Network locations on Windows delete permanently (Explorer parity) because the recycle bin is unavailable there.
@@ -98,8 +99,8 @@ Tauri bundles:
 
 ## Architecture notes
 - **Backend (`src/`)**: Tauri commands for listing, search, mounts, bookmarks, starring, trash, rename/delete, open with (desktop entries on Linux, custom commands, and default handler), clipboard preview/execute, compression to ZIP, and a filesystem watcher. Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) are isolated behind cfg gates.
-- **Frontend (`frontend/src/`)**: Explorer UI in Svelte with virtualized rows, drag/drop hook, clipboard/context-menu helpers, selection box, toast, and conflict modal. Layout and theme live in `frontend/src/app.css`. Modals share structure and focus handling via `frontend/src/ui/ModalShell.svelte` and `frontend/src/ui/modalUtils.ts`.
-- **Data & persistence**: SQLite DB in the platform data dir stores bookmarks, starred items, recents, and column widths. Capability file `capabilities/default.json` grants event listen/emit so the watcher can signal the UI.
+- **Frontend (`frontend/src/`)**: Explorer UI in Svelte with virtualized rows, drag/drop hook, clipboard/context-menu helpers, selection box, toast, conflict modal, and thumbnail loader (IntersectionObserver + queue). Layout and theme live in `frontend/src/app.css`. Modals share structure and focus handling via `frontend/src/ui/ModalShell.svelte` and `frontend/src/ui/modalUtils.ts`.
+- **Data & persistence**: SQLite DB in the platform data dir stores bookmarks, starred items, recents, and column widths. Thumbnail cache lives under the user cache dir with trimming (size/file caps). Capability file `capabilities/default.json` grants event listen/emit so the watcher can signal the UI.
 - **Icons**: Uses a custom Browsey icon set in `frontend/public/icons/scalable/browsey/` mapped via `src/icons.rs`, covering sidebar items, folders (incl. templates, public, desktop, etc.), files (images, text, pdf, spreadsheets, presentations), compressed archives, and shortcuts. Removable disks and bookmarks also use the new set.
 
 ## Project layout

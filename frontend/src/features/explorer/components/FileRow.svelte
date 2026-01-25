@@ -190,7 +190,7 @@
     text-overflow: ellipsis;
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
   }
 
   .ro-icon {
@@ -198,6 +198,11 @@
     height: 18px;
     opacity: 0.5;
     flex-shrink: 0;
+  }
+
+  /* pull lock + eye closer together */
+  .name .ro-icon + .ro-icon {
+    margin-left: -4px;
   }
 
   .col-type,
