@@ -106,12 +106,16 @@
   <div class="window-controls" aria-label="Window controls">
     <button
       class="theme-toggle"
+      class:light={theme === 'light'}
       type="button"
       aria-label="Toggle theme"
       aria-pressed={theme === 'light'}
       on:click|stopPropagation={toggleTheme}
     >
-      <span class:active={theme === 'light'} class="thumb"></span>
+      <span class="icon sun" aria-hidden="true">☀</span>
+      <span class="icon moon" aria-hidden="true">☾</span>
+      <span class="thumb" aria-hidden="true"></span>
+      <span class="sr-only">{theme === 'light' ? 'Light mode' : 'Dark mode'}</span>
     </button>
     <button class="win-btn minimize" type="button" aria-label="Minimize window" on:click|stopPropagation={minimize}>–</button>
     <button class="win-btn maximize" type="button" aria-label="Toggle maximize window" on:click|stopPropagation={toggleMaximize}>⬜</button>
@@ -299,7 +303,7 @@
     border: none;
     background: transparent;
     color: var(--fg-muted);
-    padding: 2px 4px;
+    padding: 1px 4px;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -401,42 +405,99 @@
   .window-controls {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     flex-shrink: 0;
   }
 
   .theme-toggle {
-    width: 34px;
-    height: 18px;
+    position: relative;
+    width: 46px;
+    height: 20px;
     border: 1px solid var(--win-btn-border);
-    background: var(--win-btn-bg);
-    border-radius: 999px;
-    padding: 2px;
+    background: linear-gradient(120deg, var(--bg-raised), var(--bg));
+    border-radius: 0;
+    padding: 2px 2px 2px 2px;
     display: inline-flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     cursor: pointer;
-    transition: background 120ms ease, border-color 120ms ease;
+    transition: background 140ms ease, border-color 140ms ease;
+    color: var(--fg-muted);
+    overflow: hidden;
+    margin-right: 10px;
+  }
+
+  .theme-toggle .icon {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.45;
+    z-index: 2;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .theme-toggle .icon.sun {
+    left: 4px;
+  }
+
+  .theme-toggle .icon.moon {
+    right: 6px;
+  }
+
+  .theme-toggle.light .icon.sun {
+    opacity: 1;
+    color: #535353;
+  }
+
+  .theme-toggle.light .icon.moon {
+    opacity: 0.35;
+  }
+
+  .theme-toggle:not(.light) .icon.moon {
+    opacity: 1;
+    color: #cbd5e1;
+  }
+
+  .theme-toggle:not(.light) .icon.sun {
+    opacity: 0.35;
   }
 
   .theme-toggle .thumb {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--win-btn-fg);
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 15px;
+    border-radius: 0;
+    background: #f5ce0b;
     transform: translateX(0);
-    transition: transform 120ms ease, background 120ms ease;
-    display: block;
+    transition: transform 140ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
   }
 
-  .theme-toggle .thumb.active {
-    transform: translateX(14px);
-    background: var(--accent-primary);
+  .theme-toggle:not(.light) .thumb {
+    transform: translateX(24px);
+    background: linear-gradient(135deg, #111827, #1f2937);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .win-btn {
     width: 20px;
     height: 20px;
+    box-sizing: border-box;
     border: 1px solid var(--win-btn-border);
     background: var(--win-btn-bg);
     color: var(--win-btn-fg);
@@ -446,7 +507,7 @@
     align-items: center;
     justify-content: center;
     cursor: default;
-    padding: 6;
+    padding: 0;
     transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
   }
 
