@@ -92,6 +92,7 @@ pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> String {
 fn system_icon(path: &Path, meta: &Metadata, is_link: bool) -> Option<String> {
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD as B64;
+    use std::env;
 
     let mut names: Vec<String> = Vec::new();
 
@@ -110,13 +111,27 @@ fn system_icon(path: &Path, meta: &Metadata, is_link: bool) -> Option<String> {
         names.push("application-octet-stream".into());
     }
 
-    let icon_bases = [
-        "/usr/share/icons/Adwaita",
-        "/usr/share/icons/hicolor",
-        "/usr/share/icons",
-        "/usr/share/pixmaps",
-        "/usr/local/share/icons",
-    ];
+    // Build search roots from XDG_DATA_DIRS plus common defaults.
+    let mut icon_bases: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(xdg_dirs) = env::var("XDG_DATA_DIRS") {
+        for dir in xdg_dirs.split(':') {
+            icon_bases.push(Path::new(dir).join("icons"));
+        }
+    }
+    icon_bases.push(Path::new("/usr/share/icons").into());
+    icon_bases.push(Path::new("/usr/local/share/icons").into());
+    icon_bases.push(Path::new("/usr/share/pixmaps").into());
+
+    // Also scan subdirectories of /usr/share/icons (e.g., Papirus).
+    if let Ok(entries) = fs::read_dir("/usr/share/icons") {
+        for entry in entries.flatten() {
+            if let Ok(ft) = entry.file_type() {
+                if ft.is_dir() {
+                    icon_bases.push(entry.path());
+                }
+            }
+        }
+    }
 
     let sizes = ["64x64", "48x48", "32x32", "scalable"];
     let categories = ["mimetypes", "places", "devices", "apps", "status"];
@@ -128,15 +143,9 @@ fn system_icon(path: &Path, meta: &Metadata, is_link: bool) -> Option<String> {
                 for name in &names {
                     for ext in &exts {
                         let path = if size == "scalable" {
-                            Path::new(base)
-                                .join(size)
-                                .join(cat)
-                                .join(format!("{name}.{ext}"))
+                            base.join(size).join(cat).join(format!("{name}.{ext}"))
                         } else {
-                            Path::new(base)
-                                .join(size)
-                                .join(cat)
-                                .join(format!("{name}.{ext}"))
+                            base.join(size).join(cat).join(format!("{name}.{ext}"))
                         };
 
                         if let Ok(bytes) = fs::read(&path) {
