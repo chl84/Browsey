@@ -136,7 +136,7 @@
                   alt=""
                   draggable="false"
                   on:error={(e) => {
-                    e.currentTarget?.setAttribute('src', entry.icon)
+                    e.currentTarget?.setAttribute('src', entry.icon || '')
                   }}
                 />
               {:else}

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { writable, type Readable } from 'svelte/store'
+import { renderPdfFirstPage } from './pdfThumbnail'
 
 type Options = {
   maxConcurrent?: number
@@ -55,21 +56,20 @@ export function createThumbnailLoader(opts: Options = {}) {
       const path = queue.shift()
       if (!path) break
       active++
-      invoke<{
-        path: string
-        width: number
-        height: number
-        cached: boolean
-      }>('get_thumbnail', { path, max_dim: maxDim })
-        .then((res) => {
+      const ext = path.split('.').pop()?.toLowerCase()
+      const isPdf = ext === 'pdf'
+      const job = isPdf ? loadPdfThumb(path) : loadRegularThumb(path)
+
+      job
+        .then((thumbPath) => {
+          if (!thumbPath) return
           thumbs.update((m) => {
             const next = new Map(m)
-            next.set(path, res.path)
+            next.set(path, thumbPath)
             return next
           })
         })
         .catch(() => {
-          // swallow errors; fallback icon stays and allow future retries
           requested.delete(path)
         })
         .finally(() => {
@@ -77,6 +77,47 @@ export function createThumbnailLoader(opts: Options = {}) {
           pump()
         })
     }
+  }
+
+  async function loadRegularThumb(path: string): Promise<string | null> {
+    const res = await invoke<{
+      path: string
+      width: number
+      height: number
+      cached: boolean
+    }>('get_thumbnail', { path, max_dim: maxDim })
+    return res.path
+  }
+
+  async function loadPdfThumb(path: string): Promise<string | null> {
+    const plan = await invoke<{
+      cache_path: string
+      cached: boolean
+      width: number | null
+      height: number | null
+    }>('plan_pdf_thumbnail', { path, max_dim: maxDim })
+
+    if (plan.cached) return plan.cache_path
+
+    const data = await invoke<Uint8Array>('read_pdf_bytes', { path })
+    const { blob, width, height } = await renderPdfFirstPage(data, maxDim)
+    const arr = new Uint8Array(await blob.arrayBuffer())
+    const pngVec = Array.from(arr)
+
+    const res = await invoke<{
+      path: string
+      width: number
+      height: number
+      cached: boolean
+    }>('store_pdf_thumbnail', {
+      path,
+      max_dim: maxDim,
+      png: pngVec,
+      width,
+      height,
+    })
+
+    return res.path
   }
 
   function observe(node: Element, path: string) {
