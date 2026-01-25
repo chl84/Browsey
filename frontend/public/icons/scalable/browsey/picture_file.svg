@@ -1,14 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
-  <g transform="translate(6 -6)">
-    <path d="M28 14h48l24 24v76c0 6.627-5.373 12-12 12H28c-6.627 0-12-5.373-12-12V26c0-6.627 5.373-12 12-12z" fill="#F3E8D2" stroke="#2B2419" stroke-width="6" stroke-linejoin="round" />
-    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="6" stroke-linejoin="round" />
+  <g>
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
 
     <!-- Bildekort -->
-    <rect x="30" y="60" width="72" height="48" rx="10" fill="#D8EEF9" stroke="#2B2419" stroke-width="3" />
+    <rect x="28" y="60" width="72" height="48" rx="0" fill="#D8EEF9" stroke="#2B2419" stroke-width="2" />
     <!-- Sol -->
-    <circle cx="82" cy="72" r="8" fill="#F4D35E" stroke="#2B2419" stroke-width="3" />
+    <circle cx="77" cy="72" r="8" fill="#F4D35E" stroke="#2B2419" stroke-width="3" />
     <!-- Fjell -->
-    <path d="M36 104 56 82 70 92 80 84 102 104H36Z" fill="#8ACB88" stroke="#2B2419" stroke-width="3" stroke-linejoin="round" />
-    <path d="M56 82 63 90 70 92 64 92 58 86 52 92 46 92 56 82Z" fill="#6AA870" />
+    <path d="M31 104 51 82 65 92 75 84 97 104H31Z" fill="#8ACB88" stroke="#2B2419" stroke-width="3" stroke-linejoin="miter" />
   </g>
 </svg>
