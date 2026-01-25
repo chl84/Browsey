@@ -97,6 +97,7 @@ Tauri bundles:
 - **Rename**: `F2` or context menu.
 - **Delete**: `Delete` moves to wastebasket (or permanently on Windows network paths); `Shift+Delete` deletes permanently with confirmation.
 - **Properties**: `Ctrl+P` opens properties with lazy-loaded timestamps; folder sizes reuse the status bar computation.
+- **Hidden files**: `Ctrl+H` toggles showing hidden files (hidden items are shown by default).
 
 ## Architecture notes
 - **Backend (`src/`)**: Tauri commands for listing, search, mounts, bookmarks, starring, trash, rename/delete, open with (desktop entries on Linux, custom commands, and default handler), clipboard preview/execute, compression to ZIP, and a filesystem watcher. Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) are isolated behind cfg gates.
