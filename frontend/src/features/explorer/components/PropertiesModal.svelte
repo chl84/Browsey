@@ -9,6 +9,8 @@
   export let onClose: () => void = () => {}
   export let formatSize: (size?: number | null) => string = () => ''
   type Access = { read: boolean; write: boolean; exec: boolean }
+  const scopes = ['owner', 'group', 'other'] as const
+  type Scope = (typeof scopes)[number]
   export let permissions:
     | {
         accessSupported: boolean
@@ -21,7 +23,7 @@
       }
     | null = null
   export let onToggleAccess: (
-    scope: 'owner' | 'group' | 'other',
+    scope: Scope,
     key: 'read' | 'write' | 'exec',
     next: boolean
   ) => void = () => {}
@@ -32,7 +34,7 @@
     extra: 'Extra',
     permissions: 'Permissions',
   } as const
-  const accessLabels: Record<'owner' | 'group' | 'other', string> = {
+  const accessLabels: Record<Scope, string> = {
     owner: 'Owner',
     group: 'Group',
     other: 'Other users',
@@ -140,7 +142,7 @@
               <span>Exec</span>
             </span>
           </div>
-          {#each ['owner', 'group', 'other'] as scope (scope)}
+          {#each scopes as scope (scope)}
             {#if permissions[scope]}
               <div class="row access-row">
                 <span class="label">{accessLabels[scope]}</span>
@@ -150,11 +152,7 @@
                       type="checkbox"
                       checked={permissions[scope].read}
                       on:change={(e) =>
-                        onToggleAccess(
-                          scope as 'owner' | 'group' | 'other',
-                          'read',
-                          (e.currentTarget as HTMLInputElement).checked
-                        )}
+                        onToggleAccess(scope, 'read', (e.currentTarget as HTMLInputElement).checked)}
                     />
                   </label>
                   <label>
@@ -162,11 +160,7 @@
                       type="checkbox"
                       checked={permissions[scope].write}
                       on:change={(e) =>
-                        onToggleAccess(
-                          scope as 'owner' | 'group' | 'other',
-                          'write',
-                          (e.currentTarget as HTMLInputElement).checked
-                        )}
+                        onToggleAccess(scope, 'write', (e.currentTarget as HTMLInputElement).checked)}
                     />
                   </label>
                   <label>
@@ -174,11 +168,7 @@
                       type="checkbox"
                       checked={permissions[scope].exec}
                       on:change={(e) =>
-                        onToggleAccess(
-                          scope as 'owner' | 'group' | 'other',
-                          'exec',
-                          (e.currentTarget as HTMLInputElement).checked
-                        )}
+                        onToggleAccess(scope, 'exec', (e.currentTarget as HTMLInputElement).checked)}
                     />
                   </label>
                 </span>

@@ -152,12 +152,12 @@ dependencies = [
 name = "browsey"
 version = "0.2.0"
 dependencies = [
- "base64 0.22.1",
  "bzip2",
  "chrono",
  "dirs-next",
  "flate2",
  "libc",
+ "mime",
  "mime_guess",
  "notify",
  "once_cell",

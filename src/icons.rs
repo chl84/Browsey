@@ -1,13 +1,14 @@
-use std::fs::{self, Metadata};
+use std::fs::Metadata;
 use std::path::Path;
 
-pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> String {
-    if let Some(sys_icon) = system_icon(path, meta, is_link) {
-        return sys_icon;
-    }
+use mime::{APPLICATION, AUDIO, IMAGE, TEXT, VIDEO};
+use mime_guess::MimeGuess;
 
+// Browsey-specific icon mapping. Paths are relative to the packaged assets root
+// (served from /icons/scalable/browsey/...).
+pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> &'static str {
     if is_link {
-        return "icons/scalable/browsey/shortcut.svg".into();
+        return "icons/scalable/browsey/shortcut.svg";
     }
 
     let name_lc = path
@@ -17,21 +18,36 @@ pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> String {
         .unwrap_or_default();
 
     if meta.is_dir() {
-        let dir_icon = match name_lc.as_str() {
-            "downloads" | "download" => Some("icons/scalable/browsey/download_folder.svg"),
-            "documents" | "document" | "docs" => Some("icons/scalable/browsey/document_folder.svg"),
-            "pictures" | "photos" | "images" => Some("icons/scalable/browsey/pictures_folder.svg"),
-            "videos" | "video" | "movies" => Some("icons/scalable/browsey/video_folder.svg"),
-            "music" | "audio" | "songs" => Some("icons/scalable/browsey/music_folder.svg"),
-            "templates" => Some("icons/scalable/browsey/templates_folder.svg"),
-            "public" | "publicshare" => Some("icons/scalable/browsey/public_folder.svg"),
-            "desktop" => Some("icons/scalable/browsey/desktop_folder.svg"),
-            "home" => Some("icons/scalable/browsey/home.svg"),
-            _ => None,
-        };
-        return dir_icon.unwrap_or("icons/scalable/browsey/folder.svg").into();
+        return dir_icon(&name_lc);
     }
 
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+
+    let mime = MimeGuess::from_path(path).first_raw();
+
+    file_icon(&name_lc, &ext, mime)
+}
+
+fn dir_icon(name_lc: &str) -> &'static str {
+    match name_lc {
+        "downloads" | "download" => "icons/scalable/browsey/download_folder.svg",
+        "documents" | "document" | "docs" => "icons/scalable/browsey/document_folder.svg",
+        "pictures" | "photos" | "images" => "icons/scalable/browsey/pictures_folder.svg",
+        "videos" | "video" | "movies" => "icons/scalable/browsey/video_folder.svg",
+        "music" | "audio" | "songs" => "icons/scalable/browsey/music_folder.svg",
+        "templates" => "icons/scalable/browsey/templates_folder.svg",
+        "public" | "publicshare" => "icons/scalable/browsey/public_folder.svg",
+        "desktop" => "icons/scalable/browsey/desktop_folder.svg",
+        "home" => "icons/scalable/browsey/home.svg",
+        _ => "icons/scalable/browsey/folder.svg",
+    }
+}
+
+fn file_icon(name_lc: &str, ext: &str, mime: Option<&str>) -> &'static str {
     // Detect common multi-part archive extensions (e.g., .tar.gz)
     let is_tar_combo = name_lc.ends_with(".tar.gz")
         || name_lc.ends_with(".tar.bz2")
@@ -44,130 +60,75 @@ pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> String {
         || name_lc.ends_with(".txz")
         || name_lc.ends_with(".tzst");
 
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| s.to_lowercase())
-        .unwrap_or_default();
-
-    match ext.as_str() {
+    match ext {
         // Archives / compressed
         _ if is_tar_combo => "icons/scalable/browsey/compressed.svg",
-        "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "zst" | "lz" => {
-            "icons/scalable/browsey/compressed.svg"
-        }
+        "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "zst" | "lz" | "tgz" | "tbz"
+        | "tbz2" | "txz" | "tzst" => "icons/scalable/browsey/compressed.svg",
         // Executables / scripts
-        "exe" | "bin" | "sh" | "bat" | "cmd" => {
-            "icons/scalable/mimetypes/application-x-executable.svg"
-        }
-        "dll" | "so" | "dylib" => "icons/scalable/mimetypes/application-x-sharedlib.svg",
+        "exe" | "bin" | "sh" | "bat" | "cmd" | "msi" => "icons/scalable/browsey/file.svg",
+        "dll" | "so" | "dylib" => "icons/scalable/browsey/file.svg",
         // Code / text
         "rs" | "c" | "cpp" | "h" | "hpp" | "py" | "js" | "ts" | "tsx" | "jsx" | "java" | "go"
         | "rb" | "php" | "lua" | "json" | "toml" | "yaml" | "yml" | "ini" | "cfg" | "md"
-        | "txt" => "icons/scalable/browsey/textfile.svg",
+        | "txt" | "lock" => "icons/scalable/browsey/textfile.svg",
         // Media
-        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "tiff" => {
+        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "tiff" | "avif" | "heic" => {
             "icons/scalable/browsey/picture_file.svg"
         }
-        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" => {
-            "icons/scalable/browsey/music_folder.svg"
-        }
-        "mp4" | "mkv" | "mov" | "avi" | "wmv" | "webm" => {
-            "icons/scalable/browsey/video_folder.svg"
+        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" => "icons/scalable/browsey/file.svg",
+        "mp4" | "mkv" | "mov" | "avi" | "wmv" | "webm" | "flv" | "m4v" => {
+            "icons/scalable/browsey/video_file.svg"
         }
         // Documents
         "pdf" => "icons/scalable/browsey/pdf_file.svg",
-        "csv" | "xls" | "xlsx" | "xlsm" | "xlt" | "xltx" => {
+        "xls" | "xlsx" | "xlsm" | "xlt" | "xltx" | "ods" | "csv" => {
             "icons/scalable/browsey/spreadsheet_file.svg"
         }
-        "ppt" | "pptx" => "icons/scalable/browsey/presentation_file.svg",
-        "doc" | "docx" | "docm" | "dot" | "dotx" => "icons/scalable/browsey/textfile.svg",
-        "odt" | "rtf" => "icons/scalable/browsey/textfile.svg",
-        _ => "icons/scalable/browsey/file.svg",
+        "ppt" | "pptx" | "odp" => "icons/scalable/browsey/presentation_file.svg",
+        "doc" | "docx" | "docm" | "dot" | "dotx" | "odt" | "rtf" => {
+            "icons/scalable/browsey/textfile.svg"
+        }
+        _ => mime_icon(mime),
     }
-    .into()
 }
 
-#[cfg(target_os = "linux")]
-fn system_icon(path: &Path, meta: &Metadata, is_link: bool) -> Option<String> {
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD as B64;
-    use std::env;
-
-    let mut names: Vec<String> = Vec::new();
-
-    if is_link {
-        names.push("emblem-symbolic-link".into());
-        names.push("inode-symlink".into());
-    }
-
-    if meta.is_dir() {
-        names.push("inode-directory".into());
-        names.push("folder".into());
-    } else {
-        if let Some(mime) = mime_guess::from_path(path).first_raw() {
-            names.push(mime.replace('/', "-"));
-        }
-        names.push("application-octet-stream".into());
-    }
-
-    // Build search roots from XDG_DATA_DIRS plus common defaults.
-    let mut icon_bases: Vec<std::path::PathBuf> = Vec::new();
-    if let Ok(xdg_dirs) = env::var("XDG_DATA_DIRS") {
-        for dir in xdg_dirs.split(':') {
-            icon_bases.push(Path::new(dir).join("icons"));
-        }
-    }
-    icon_bases.push(Path::new("/usr/share/icons").into());
-    icon_bases.push(Path::new("/usr/local/share/icons").into());
-    icon_bases.push(Path::new("/usr/share/pixmaps").into());
-
-    // Also scan subdirectories of /usr/share/icons (e.g., Papirus).
-    if let Ok(entries) = fs::read_dir("/usr/share/icons") {
-        for entry in entries.flatten() {
-            if let Ok(ft) = entry.file_type() {
-                if ft.is_dir() {
-                    icon_bases.push(entry.path());
+fn mime_icon(mime: Option<&str>) -> &'static str {
+    if let Some(raw) = mime {
+        if let Ok(parsed) = raw.parse::<mime::Mime>() {
+            let top = parsed.type_();
+            if top == IMAGE {
+                return "icons/scalable/browsey/picture_file.svg";
+            }
+            if top == AUDIO {
+                return "icons/scalable/browsey/file.svg";
+            }
+            if top == VIDEO {
+                return "icons/scalable/browsey/video_file.svg";
+            }
+            if top == TEXT {
+                return "icons/scalable/browsey/textfile.svg";
+            }
+            if top == APPLICATION {
+                let subtype = parsed.subtype();
+                if subtype == "pdf" {
+                    return "icons/scalable/browsey/pdf_file.svg";
+                }
+                if subtype == "zip"
+                    || subtype == "x-7z-compressed"
+                    || subtype == "x-rar-compressed"
+                    || subtype == "x-xz"
+                    || subtype == "x-bzip2"
+                    || subtype == "x-tar"
+                {
+                    return "icons/scalable/browsey/compressed.svg";
+                }
+                if subtype == "x-executable" || subtype == "x-msdownload" {
+                    return "icons/scalable/browsey/file.svg";
                 }
             }
         }
     }
 
-    let sizes = ["64x64", "48x48", "32x32", "scalable"];
-    let categories = ["mimetypes", "places", "devices", "apps", "status"];
-    let exts = ["png", "svg"];
-
-    for base in icon_bases {
-        for size in sizes {
-            for cat in categories {
-                for name in &names {
-                    for ext in &exts {
-                        let path = if size == "scalable" {
-                            base.join(size).join(cat).join(format!("{name}.{ext}"))
-                        } else {
-                            base.join(size).join(cat).join(format!("{name}.{ext}"))
-                        };
-
-                        if let Ok(bytes) = fs::read(&path) {
-                            let mime = if *ext == "svg" {
-                                "image/svg+xml"
-                            } else {
-                                "image/png"
-                            };
-                            let data_url =
-                                format!("data:{mime};base64,{}", B64.encode(bytes));
-                            return Some(data_url);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
-
-#[cfg(not(target_os = "linux"))]
-fn system_icon(_path: &Path, _meta: &Metadata, _is_link: bool) -> Option<String> {
-    None
+    "icons/scalable/browsey/file.svg"
 }
