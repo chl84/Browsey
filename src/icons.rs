@@ -1,9 +1,13 @@
-use std::fs::Metadata;
+use std::fs::{self, Metadata};
 use std::path::Path;
 
-pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> &'static str {
+pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> String {
+    if let Some(sys_icon) = system_icon(path, meta, is_link) {
+        return sys_icon;
+    }
+
     if is_link {
-        return "icons/scalable/browsey/shortcut.svg";
+        return "icons/scalable/browsey/shortcut.svg".into();
     }
 
     let name_lc = path
@@ -25,7 +29,7 @@ pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> &'static str {
             "home" => Some("icons/scalable/browsey/home.svg"),
             _ => None,
         };
-        return dir_icon.unwrap_or("icons/scalable/browsey/folder.svg");
+        return dir_icon.unwrap_or("icons/scalable/browsey/folder.svg").into();
     }
 
     // Detect common multi-part archive extensions (e.g., .tar.gz)
@@ -66,10 +70,10 @@ pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> &'static str {
             "icons/scalable/browsey/picture_file.svg"
         }
         "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" => {
-            "icons/scalable/mimetypes/audio-x-generic.svg"
+            "icons/scalable/browsey/music_folder.svg"
         }
         "mp4" | "mkv" | "mov" | "avi" | "wmv" | "webm" => {
-            "icons/scalable/mimetypes/video-x-generic.svg"
+            "icons/scalable/browsey/video_folder.svg"
         }
         // Documents
         "pdf" => "icons/scalable/browsey/pdf_file.svg",
@@ -81,4 +85,80 @@ pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> &'static str {
         "odt" | "rtf" => "icons/scalable/browsey/textfile.svg",
         _ => "icons/scalable/browsey/file.svg",
     }
+    .into()
+}
+
+#[cfg(target_os = "linux")]
+fn system_icon(path: &Path, meta: &Metadata, is_link: bool) -> Option<String> {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as B64;
+
+    let mut names: Vec<String> = Vec::new();
+
+    if is_link {
+        names.push("emblem-symbolic-link".into());
+        names.push("inode-symlink".into());
+    }
+
+    if meta.is_dir() {
+        names.push("inode-directory".into());
+        names.push("folder".into());
+    } else {
+        if let Some(mime) = mime_guess::from_path(path).first_raw() {
+            names.push(mime.replace('/', "-"));
+        }
+        names.push("application-octet-stream".into());
+    }
+
+    let icon_bases = [
+        "/usr/share/icons/Adwaita",
+        "/usr/share/icons/hicolor",
+        "/usr/share/icons",
+        "/usr/share/pixmaps",
+        "/usr/local/share/icons",
+    ];
+
+    let sizes = ["64x64", "48x48", "32x32", "scalable"];
+    let categories = ["mimetypes", "places", "devices", "apps", "status"];
+    let exts = ["png", "svg"];
+
+    for base in icon_bases {
+        for size in sizes {
+            for cat in categories {
+                for name in &names {
+                    for ext in &exts {
+                        let path = if size == "scalable" {
+                            Path::new(base)
+                                .join(size)
+                                .join(cat)
+                                .join(format!("{name}.{ext}"))
+                        } else {
+                            Path::new(base)
+                                .join(size)
+                                .join(cat)
+                                .join(format!("{name}.{ext}"))
+                        };
+
+                        if let Ok(bytes) = fs::read(&path) {
+                            let mime = if *ext == "svg" {
+                                "image/svg+xml"
+                            } else {
+                                "image/png"
+                            };
+                            let data_url =
+                                format!("data:{mime};base64,{}", B64.encode(bytes));
+                            return Some(data_url);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn system_icon(_path: &Path, _meta: &Metadata, _is_link: bool) -> Option<String> {
+    None
 }
