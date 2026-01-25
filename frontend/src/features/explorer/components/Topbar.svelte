@@ -449,7 +449,7 @@
 
   .theme-toggle.light .icon.sun {
     opacity: 1;
-    color: #535353;
+    color: #686868;
   }
 
   .theme-toggle.light .icon.moon {
@@ -472,7 +472,7 @@
     width: 16px;
     height: 15px;
     border-radius: 0;
-    background: #f5ce0b;
+    background: #f4e185;
     transform: translateX(0);
     transition: transform 140ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
   }
