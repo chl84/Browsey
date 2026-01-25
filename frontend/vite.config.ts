@@ -14,5 +14,15 @@ export default defineConfig({
   build: {
     outDir: '../dist',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          pdfjs: ['pdfjs-dist', 'pdfjs-dist/build/pdf.worker.min.mjs'],
+          svelte: ['svelte', 'svelte/internal'],
+          tauri: ['@tauri-apps/api'],
+        },
+      },
+    },
   },
 })
