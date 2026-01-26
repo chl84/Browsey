@@ -6,6 +6,7 @@ use crate::{
         build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
         CachedMeta, FsEntry,
     },
+    icons::icon_ids::{FILE, GENERIC_FOLDER, SHORTCUT},
     fs_utils::{
         check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow,
     },
@@ -100,7 +101,7 @@ fn entry_from_cached(path: &Path, cached: &CachedMeta, starred: bool) -> FsEntry
         modified: cached.modified.clone(),
         original_path: None,
         trash_id: None,
-        icon: cached.icon.clone(),
+        icon_id: cached.icon_id,
         starred,
         hidden: cached.hidden,
         network: cached.network,
@@ -171,14 +172,13 @@ fn stub_entry(path: &Path, file_type: Option<fs::FileType>, starred: bool) -> Fs
         .extension()
         .and_then(|e| e.to_str())
         .map(|s| s.to_string());
-    let icon = if is_link {
-        "icons/scalable/browsey/shortcut.svg"
+    let icon_id = if is_link {
+        SHORTCUT
     } else if is_dir {
-        "icons/scalable/browsey/folder.svg"
+        GENERIC_FOLDER
     } else {
-        "icons/scalable/browsey/file.svg"
-    }
-    .to_string();
+        FILE
+    };
 
     FsEntry {
         name,
@@ -190,7 +190,7 @@ fn stub_entry(path: &Path, file_type: Option<fs::FileType>, starred: bool) -> Fs
         modified: None,
         original_path: None,
         trash_id: None,
-        icon,
+        icon_id,
         starred,
         hidden: path
             .file_name()

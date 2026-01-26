@@ -1,6 +1,7 @@
 <script lang="ts">
   import SelectionBox from '../../../ui/SelectionBox.svelte'
-  import { iconPath, formatSize } from '../utils'
+  import { iconPath as assetIconPath, formatSize } from '../utils'
+  import { iconPath as iconPathById } from '../icons'
   import type { Entry } from '../types'
   import { fullNameTooltip } from '../fullNameTooltip'
   import { createThumbnailLoader } from '../thumbnailLoader'
@@ -66,8 +67,8 @@
   export let onRowsScroll: (event: Event) => void = () => {}
   export let onRowsKeydown: (event: KeyboardEvent) => void = () => {}
 
-  const readOnlyIcon = iconPath('status/eye-svgrepo-com.svg')
-  const lockIcon = iconPath('status/padlock.svg')
+  const readOnlyIcon = assetIconPath('status/eye-svgrepo-com.svg')
+  const lockIcon = assetIconPath('status/padlock.svg')
 
   const autoAlignName = (node: HTMLElement) => {
     const update = () => {
@@ -148,11 +149,11 @@
                   alt=""
                   draggable="false"
                   on:error={(e) => {
-                    e.currentTarget?.setAttribute('src', entry.icon || '')
+                    e.currentTarget?.setAttribute('src', iconPathById(entry.iconId))
                   }}
                 />
               {:else}
-                <img class="icon" src={entry.icon} alt="" draggable="false" />
+                <img class="icon" src={iconPathById(entry.iconId)} alt="" draggable="false" />
               {/if}
               <div
                 class="name"

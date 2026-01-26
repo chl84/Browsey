@@ -12,7 +12,7 @@ export type Entry = {
   accessed?: string | null
   created?: string | null
   starred?: boolean
-  icon?: string
+  iconId: number
   hidden?: boolean
   network?: boolean
   readOnly?: boolean

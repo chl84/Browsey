@@ -4,11 +4,39 @@ use std::path::Path;
 use mime::{APPLICATION, AUDIO, IMAGE, TEXT, VIDEO};
 use mime_guess::MimeGuess;
 
-// Browsey-specific icon mapping. Paths are relative to the packaged assets root
-// (served from /icons/scalable/browsey/...).
-pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> &'static str {
+pub type IconId = u16;
+
+// Keep the order in sync with frontend mapping.
+pub mod icon_ids {
+    use super::IconId;
+
+    pub const SHORTCUT: IconId = 0;
+    pub const DOWNLOAD_FOLDER: IconId = 1;
+    pub const DOCUMENT_FOLDER: IconId = 2;
+    pub const PICTURES_FOLDER: IconId = 3;
+    pub const VIDEO_FOLDER: IconId = 4;
+    pub const MUSIC_FOLDER: IconId = 5;
+    pub const TEMPLATES_FOLDER: IconId = 6;
+    pub const PUBLIC_FOLDER: IconId = 7;
+    pub const DESKTOP_FOLDER: IconId = 8;
+    pub const HOME_FOLDER: IconId = 9;
+    pub const GENERIC_FOLDER: IconId = 10;
+    pub const COMPRESSED: IconId = 11;
+    pub const FILE: IconId = 12;
+    pub const TEXTFILE: IconId = 13;
+    pub const PICTURE_FILE: IconId = 14;
+    pub const VIDEO_FILE: IconId = 15;
+    pub const PDF_FILE: IconId = 16;
+    pub const SPREADSHEET_FILE: IconId = 17;
+    pub const PRESENTATION_FILE: IconId = 18;
+}
+
+use icon_ids::*;
+
+// Browsey-specific icon mapping. Icons are exposed as small numeric IDs for leaner payloads.
+pub fn icon_id_for(path: &Path, meta: &Metadata, is_link: bool) -> IconId {
     if is_link {
-        return "icons/scalable/browsey/shortcut.svg";
+        return SHORTCUT;
     }
 
     let name_lc = path
@@ -18,7 +46,7 @@ pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> &'static str {
         .unwrap_or_default();
 
     if meta.is_dir() {
-        return dir_icon(&name_lc);
+        return dir_icon_id(&name_lc);
     }
 
     let ext = path
@@ -29,25 +57,25 @@ pub fn icon_for(path: &Path, meta: &Metadata, is_link: bool) -> &'static str {
 
     let mime = MimeGuess::from_path(path).first_raw();
 
-    file_icon(&name_lc, &ext, mime)
+    file_icon_id(&name_lc, &ext, mime)
 }
 
-fn dir_icon(name_lc: &str) -> &'static str {
+fn dir_icon_id(name_lc: &str) -> IconId {
     match name_lc {
-        "downloads" | "download" => "icons/scalable/browsey/download_folder.svg",
-        "documents" | "document" | "docs" => "icons/scalable/browsey/document_folder.svg",
-        "pictures" | "photos" | "images" => "icons/scalable/browsey/pictures_folder.svg",
-        "videos" | "video" | "movies" => "icons/scalable/browsey/video_folder.svg",
-        "music" | "audio" | "songs" => "icons/scalable/browsey/music_folder.svg",
-        "templates" => "icons/scalable/browsey/templates_folder.svg",
-        "public" | "publicshare" => "icons/scalable/browsey/public_folder.svg",
-        "desktop" => "icons/scalable/browsey/desktop_folder.svg",
-        "home" => "icons/scalable/browsey/home.svg",
-        _ => "icons/scalable/browsey/folder.svg",
+        "downloads" | "download" => DOWNLOAD_FOLDER,
+        "documents" | "document" | "docs" => DOCUMENT_FOLDER,
+        "pictures" | "photos" | "images" => PICTURES_FOLDER,
+        "videos" | "video" | "movies" => VIDEO_FOLDER,
+        "music" | "audio" | "songs" => MUSIC_FOLDER,
+        "templates" => TEMPLATES_FOLDER,
+        "public" | "publicshare" => PUBLIC_FOLDER,
+        "desktop" => DESKTOP_FOLDER,
+        "home" => HOME_FOLDER,
+        _ => GENERIC_FOLDER,
     }
 }
 
-fn file_icon(name_lc: &str, ext: &str, mime: Option<&str>) -> &'static str {
+fn file_icon_id(name_lc: &str, ext: &str, mime: Option<&str>) -> IconId {
     // Detect common multi-part archive extensions (e.g., .tar.gz)
     let is_tar_combo = name_lc.ends_with(".tar.gz")
         || name_lc.ends_with(".tar.bz2")
@@ -61,60 +89,51 @@ fn file_icon(name_lc: &str, ext: &str, mime: Option<&str>) -> &'static str {
         || name_lc.ends_with(".tzst");
 
     match ext {
-        // Archives / compressed
-        _ if is_tar_combo => "icons/scalable/browsey/compressed.svg",
+        _ if is_tar_combo => COMPRESSED,
         "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "zst" | "lz" | "tgz" | "tbz"
-        | "tbz2" | "txz" | "tzst" => "icons/scalable/browsey/compressed.svg",
+        | "tbz2" | "txz" | "tzst" => COMPRESSED,
         // Executables / scripts
-        "exe" | "bin" | "sh" | "bat" | "cmd" | "msi" => "icons/scalable/browsey/file.svg",
-        "dll" | "so" | "dylib" => "icons/scalable/browsey/file.svg",
+        "exe" | "bin" | "sh" | "bat" | "cmd" | "msi" => FILE,
+        "dll" | "so" | "dylib" => FILE,
         // Code / text
         "rs" | "c" | "cpp" | "h" | "hpp" | "py" | "js" | "ts" | "tsx" | "jsx" | "java" | "go"
         | "rb" | "php" | "lua" | "json" | "toml" | "yaml" | "yml" | "ini" | "cfg" | "md"
-        | "txt" | "lock" => "icons/scalable/browsey/textfile.svg",
+        | "txt" | "lock" => TEXTFILE,
         // Media
         "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "tiff" | "avif" | "heic" => {
-            "icons/scalable/browsey/picture_file.svg"
+            PICTURE_FILE
         }
-        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" => {
-            "icons/scalable/browsey/file.svg"
-        }
-        "mp4" | "mkv" | "mov" | "avi" | "wmv" | "webm" | "flv" | "m4v" => {
-            "icons/scalable/browsey/video_file.svg"
-        }
+        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" => FILE,
+        "mp4" | "mkv" | "mov" | "avi" | "wmv" | "webm" | "flv" | "m4v" => VIDEO_FILE,
         // Documents
-        "pdf" => "icons/scalable/browsey/pdf_file.svg",
-        "xls" | "xlsx" | "xlsm" | "xlt" | "xltx" | "ods" | "csv" => {
-            "icons/scalable/browsey/spreadsheet_file.svg"
-        }
-        "ppt" | "pptx" | "odp" => "icons/scalable/browsey/presentation_file.svg",
-        "doc" | "docx" | "docm" | "dot" | "dotx" | "odt" | "rtf" => {
-            "icons/scalable/browsey/textfile.svg"
-        }
-        _ => mime_icon(mime),
+        "pdf" => PDF_FILE,
+        "xls" | "xlsx" | "xlsm" | "xlt" | "xltx" | "ods" | "csv" => SPREADSHEET_FILE,
+        "ppt" | "pptx" | "odp" => PRESENTATION_FILE,
+        "doc" | "docx" | "docm" | "dot" | "dotx" | "odt" | "rtf" => TEXTFILE,
+        _ => mime_icon_id(mime),
     }
 }
 
-fn mime_icon(mime: Option<&str>) -> &'static str {
+fn mime_icon_id(mime: Option<&str>) -> IconId {
     if let Some(raw) = mime {
         if let Ok(parsed) = raw.parse::<mime::Mime>() {
             let top = parsed.type_();
             if top == IMAGE {
-                return "icons/scalable/browsey/picture_file.svg";
+                return PICTURE_FILE;
             }
             if top == AUDIO {
-                return "icons/scalable/browsey/file.svg";
+                return FILE;
             }
             if top == VIDEO {
-                return "icons/scalable/browsey/video_file.svg";
+                return VIDEO_FILE;
             }
             if top == TEXT {
-                return "icons/scalable/browsey/textfile.svg";
+                return TEXTFILE;
             }
             if top == APPLICATION {
                 let subtype = parsed.subtype();
                 if subtype == "pdf" {
-                    return "icons/scalable/browsey/pdf_file.svg";
+                    return PDF_FILE;
                 }
                 if subtype == "zip"
                     || subtype == "x-7z-compressed"
@@ -123,14 +142,14 @@ fn mime_icon(mime: Option<&str>) -> &'static str {
                     || subtype == "x-bzip2"
                     || subtype == "x-tar"
                 {
-                    return "icons/scalable/browsey/compressed.svg";
+                    return COMPRESSED;
                 }
                 if subtype == "x-executable" || subtype == "x-msdownload" {
-                    return "icons/scalable/browsey/file.svg";
+                    return FILE;
                 }
             }
         }
     }
 
-    "icons/scalable/browsey/file.svg"
+    FILE
 }
