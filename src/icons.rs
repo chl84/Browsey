@@ -76,7 +76,9 @@ fn file_icon(name_lc: &str, ext: &str, mime: Option<&str>) -> &'static str {
         "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "tiff" | "avif" | "heic" => {
             "icons/scalable/browsey/picture_file.svg"
         }
-        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" => "icons/scalable/browsey/file.svg",
+        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" => {
+            "icons/scalable/browsey/file.svg"
+        }
         "mp4" | "mkv" | "mov" | "avi" | "wmv" | "webm" | "flv" | "m4v" => {
             "icons/scalable/browsey/video_file.svg"
         }
