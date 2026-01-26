@@ -15,6 +15,8 @@ use tokio::sync::oneshot;
 
 mod thumbnails_svg;
 use thumbnails_svg::render_svg_thumbnail;
+mod thumbnails_pdf;
+use thumbnails_pdf::render_pdf_thumbnail;
 
 use crate::fs_utils::debug_log;
 
@@ -50,14 +52,6 @@ pub struct ThumbnailResponse {
     pub cached: bool,
 }
 
-#[derive(Serialize, Clone)]
-pub struct PdfPlanResponse {
-    pub cache_path: String,
-    pub cached: bool,
-    pub width: Option<u32>,
-    pub height: Option<u32>,
-}
-
 #[tauri::command]
 pub async fn get_thumbnail(path: String, max_dim: Option<u32>) -> Result<ThumbnailResponse, String> {
     let max_dim = max_dim
@@ -87,24 +81,6 @@ pub async fn get_thumbnail(path: String, max_dim: Option<u32>) -> Result<Thumbna
 
     let key = cache_key(&target, mtime, max_dim);
     let cache_path = cache_dir.join(format!("{key}.png"));
-
-    if target
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| s.eq_ignore_ascii_case("pdf"))
-        .unwrap_or(false)
-    {
-        // PDF thumbnails are generated client-side via PDF.js. We still honor cache hits here.
-        if let Some((w, h)) = cached_dims(&cache_path) {
-            return Ok(ThumbnailResponse {
-                path: cache_path.to_string_lossy().into_owned(),
-                width: w,
-                height: h,
-                cached: true,
-            });
-        }
-        return Err("PDF thumbnails are generated in the frontend".into());
-    }
 
     if let Some((w, h)) = cached_dims(&cache_path) {
         return Ok(ThumbnailResponse {
@@ -159,133 +135,6 @@ pub async fn get_thumbnail(path: String, max_dim: Option<u32>) -> Result<Thumbna
     res
 }
 
-#[tauri::command]
-pub async fn plan_pdf_thumbnail(
-    path: String,
-    max_dim: Option<u32>,
-) -> Result<PdfPlanResponse, String> {
-    let max_dim = max_dim
-        .unwrap_or(MAX_DIM_DEFAULT)
-        .clamp(MIN_DIM_HARD_LIMIT, MAX_DIM_HARD_LIMIT);
-
-    let target = sanitize_input_path(&path)?;
-    let meta = fs::metadata(&target).map_err(|e| format!("Failed to read metadata: {e}"))?;
-    if !meta.is_file() {
-        return Err("Target is not a file".to_string());
-    }
-    if meta.len() > MAX_FILE_BYTES {
-        return Err(format!(
-            "File too large for thumbnail (>{} MB)",
-            MAX_FILE_BYTES / 1024 / 1024
-        ));
-    }
-    let mtime = meta.modified().ok();
-
-    let cache_dir = cache_dir()?;
-    fs::create_dir_all(&cache_dir)
-        .map_err(|e| format!("Failed to create thumbnail cache dir: {e}"))?;
-
-    let key = cache_key(&target, mtime, max_dim);
-    let cache_path = cache_dir.join(format!("{key}.png"));
-
-    if let Some((w, h)) = cached_dims(&cache_path) {
-        return Ok(PdfPlanResponse {
-            cache_path: cache_path.to_string_lossy().into_owned(),
-            cached: true,
-            width: Some(w),
-            height: Some(h),
-        });
-    }
-
-    Ok(PdfPlanResponse {
-        cache_path: cache_path.to_string_lossy().into_owned(),
-        cached: false,
-        width: None,
-        height: None,
-    })
-}
-
-#[tauri::command]
-pub async fn store_pdf_thumbnail(
-    path: String,
-    max_dim: Option<u32>,
-    png: Vec<u8>,
-    width: u32,
-    height: u32,
-) -> Result<ThumbnailResponse, String> {
-    let max_dim = max_dim
-        .unwrap_or(MAX_DIM_DEFAULT)
-        .clamp(MIN_DIM_HARD_LIMIT, MAX_DIM_HARD_LIMIT);
-
-    if png.len() as u64 > 10 * 1024 * 1024 {
-        return Err("Thumbnail data too large".into());
-    }
-
-    let target = sanitize_input_path(&path)?;
-    let meta = fs::metadata(&target).map_err(|e| format!("Failed to read metadata: {e}"))?;
-    if !meta.is_file() {
-        return Err("Target is not a file".to_string());
-    }
-    if meta.len() > MAX_FILE_BYTES {
-        return Err(format!(
-            "File too large for thumbnail (>{} MB)",
-            MAX_FILE_BYTES / 1024 / 1024
-        ));
-    }
-    let mtime = meta.modified().ok();
-
-    let cache_dir = cache_dir()?;
-    fs::create_dir_all(&cache_dir)
-        .map_err(|e| format!("Failed to create thumbnail cache dir: {e}"))?;
-
-    let key = cache_key(&target, mtime, max_dim);
-    let cache_path = cache_dir.join(format!("{key}.png"));
-
-    fs::write(&cache_path, png).map_err(|e| format!("Failed to write thumbnail: {e}"))?;
-    trim_cache(&cache_dir, CACHE_MAX_BYTES, CACHE_MAX_FILES);
-
-    debug_log(&format!(
-        "pdf thumbnail stored: source={} cache={} size={}x{}",
-        target.display(),
-        cache_path.display(),
-        width,
-        height
-    ));
-
-    Ok(ThumbnailResponse {
-        path: cache_path.to_string_lossy().into_owned(),
-        width,
-        height,
-        cached: false,
-    })
-}
-
-#[tauri::command]
-pub async fn read_pdf_bytes(path: String) -> Result<Vec<u8>, String> {
-    let target = sanitize_input_path(&path)?;
-    if target
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| !s.eq_ignore_ascii_case("pdf"))
-        .unwrap_or(true)
-    {
-        return Err("Not a PDF".into());
-    }
-
-    let meta = fs::metadata(&target).map_err(|e| format!("Failed to read metadata: {e}"))?;
-    if !meta.is_file() {
-        return Err("Target is not a file".to_string());
-    }
-    if meta.len() > MAX_FILE_BYTES {
-        return Err(format!(
-            "File too large for thumbnail (>{} MB)",
-            MAX_FILE_BYTES / 1024 / 1024
-        ));
-    }
-
-    fs::read(&target).map_err(|e| format!("Failed to read PDF: {e}"))
-}
-
 fn try_inc_global_active() -> bool {
     let mut g = GLOBAL_ACTIVE.lock().expect("global active poisoned");
     if *g >= GLOBAL_MAX_INFLIGHT {
@@ -338,6 +187,21 @@ fn generate_thumbnail(
     cache_path: &Path,
     max_dim: u32,
 ) -> Result<ThumbnailResponse, String> {
+    if path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.eq_ignore_ascii_case("pdf"))
+        .unwrap_or(false)
+    {
+        let (w, h) = render_pdf_thumbnail(path, cache_path, max_dim)?;
+        return Ok(ThumbnailResponse {
+            path: cache_path.to_string_lossy().into_owned(),
+            width: w,
+            height: h,
+            cached: false,
+        });
+    }
+
     if path
         .extension()
         .and_then(|e| e.to_str())

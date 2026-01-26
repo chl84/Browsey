@@ -31,4 +31,4 @@ pub use permissions::{get_permissions, set_permissions};
 pub use search::{search, search_stream};
 pub use settings::{load_saved_column_widths, store_column_widths};
 pub use tasks::{cancel_task, CancelState};
-pub use thumbnails::{get_thumbnail, plan_pdf_thumbnail, read_pdf_bytes, store_pdf_thumbnail};
+pub use thumbnails::get_thumbnail;
