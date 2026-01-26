@@ -18,7 +18,6 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          pdfjs: ['pdfjs-dist', 'pdfjs-dist/build/pdf.worker.min.mjs'],
           svelte: ['svelte', 'svelte/internal'],
           tauri: ['@tauri-apps/api'],
         },
