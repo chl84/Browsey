@@ -11,9 +11,9 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::time::Duration;
-use tokio::sync::oneshot;
 use tauri::AppHandle;
 use tauri::Manager;
+use tokio::sync::oneshot;
 
 mod thumbnails_svg;
 use thumbnails_svg::render_svg_thumbnail;
@@ -26,15 +26,25 @@ const MAX_DIM_DEFAULT: u32 = 96;
 const MAX_DIM_HARD_LIMIT: u32 = 512;
 const MIN_DIM_HARD_LIMIT: u32 = 32;
 const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
-const POOL_MAX_THREADS: usize = 4;
+const POOL_MIN_THREADS: usize = 2;
+const POOL_MAX_THREADS: usize = 8;
 const CACHE_MAX_BYTES: u64 = 300 * 1024 * 1024;
 const CACHE_MAX_FILES: usize = 2000;
 const MAX_SOURCE_DIM: u32 = 20000;
-const DECODE_TIMEOUT_MS: u64 = 400;
-const GLOBAL_MAX_INFLIGHT: usize = 16;
+const DECODE_TIMEOUT_MS: u64 = 750;
+const GLOBAL_HARD_MAX_INFLIGHT: usize = 32;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum ThumbKind {
+    Image,
+    Svg,
+    Pdf,
+}
+
+static POOL_THREADS: Lazy<usize> =
+    Lazy::new(|| num_cpus::get().clamp(POOL_MIN_THREADS, POOL_MAX_THREADS));
 static THUMB_POOL: Lazy<ThreadPool> = Lazy::new(|| {
-    let threads = std::cmp::max(2, std::cmp::min(num_cpus::get(), POOL_MAX_THREADS));
+    let threads = *POOL_THREADS;
     ThreadPoolBuilder::new()
         .num_threads(threads)
         .thread_name(|i| format!("thumb-{}", i))
@@ -42,9 +52,13 @@ static THUMB_POOL: Lazy<ThreadPool> = Lazy::new(|| {
         .expect("failed to build thumbnail pool")
 });
 
-static INFLIGHT: Lazy<std::sync::Mutex<HashMap<String, Vec<oneshot::Sender<Result<ThumbnailResponse, String>>>>>> =
-    Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
-static GLOBAL_ACTIVE: Lazy<std::sync::Mutex<usize>> = Lazy::new(|| std::sync::Mutex::new(0usize));
+static INFLIGHT: Lazy<
+    std::sync::Mutex<HashMap<String, Vec<oneshot::Sender<Result<ThumbnailResponse, String>>>>>,
+> = Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
+static LIMITER: Lazy<std::sync::Mutex<ConcurrencyLimiter>> = Lazy::new(|| {
+    let threads = *POOL_THREADS;
+    std::sync::Mutex::new(ConcurrencyLimiter::new(threads))
+});
 
 #[derive(Serialize, Clone)]
 pub struct ThumbnailResponse {
@@ -85,6 +99,9 @@ pub async fn get_thumbnail(
     fs::create_dir_all(&cache_dir)
         .map_err(|e| format!("Failed to create thumbnail cache dir: {e}"))?;
 
+    let kind = thumb_kind(&target);
+    let inflight_limit = limiter_limit_for_kind(kind);
+
     let key = cache_key(&target, mtime, max_dim);
     let cache_path = cache_dir.join(format!("{key}.png"));
 
@@ -111,19 +128,22 @@ pub async fn get_thumbnail(
     let task_path = target.clone();
     let task_cache = cache_path.clone();
 
-    if !try_inc_global_active() {
-        notify_waiters(&key, Err("Too many concurrent thumbnails".into()));
-        return Err("Too many concurrent thumbnails".into());
+    if !try_acquire(kind, inflight_limit) {
+        let msg = format!("Too many concurrent thumbnails (limit {inflight_limit})");
+        notify_waiters(&key, Err(msg.clone()));
+        return Err(msg);
     }
 
     let res = tauri::async_runtime::spawn_blocking(move || {
         let res_dir_opt = app_handle.path().resource_dir().ok();
-        THUMB_POOL.install(|| generate_thumbnail(&task_path, &task_cache, max_dim, res_dir_opt.as_deref()))
+        THUMB_POOL.install(|| {
+            generate_thumbnail(&task_path, &task_cache, max_dim, res_dir_opt.as_deref())
+        })
     })
     .await
     .map_err(|e| format!("Thumbnail task cancelled: {e}"));
 
-    dec_global_active();
+    release(kind);
 
     let res = res?;
 
@@ -142,20 +162,14 @@ pub async fn get_thumbnail(
     res
 }
 
-fn try_inc_global_active() -> bool {
-    let mut g = GLOBAL_ACTIVE.lock().expect("global active poisoned");
-    if *g >= GLOBAL_MAX_INFLIGHT {
-        return false;
-    }
-    *g += 1;
-    true
+fn try_acquire(kind: ThumbKind, kind_limit: usize) -> bool {
+    let mut limiter = LIMITER.lock().expect("limiter poisoned");
+    limiter.try_acquire(kind, kind_limit)
 }
 
-fn dec_global_active() {
-    let mut g = GLOBAL_ACTIVE.lock().expect("global active poisoned");
-    if *g > 0 {
-        *g -= 1;
-    }
+fn release(kind: ThumbKind) {
+    let mut limiter = LIMITER.lock().expect("limiter poisoned");
+    limiter.release(kind);
 }
 
 fn cache_dir() -> Result<PathBuf, String> {
@@ -273,9 +287,7 @@ fn generate_thumbnail(
     })
 }
 
-fn register_or_wait(
-    key: &str,
-) -> Option<oneshot::Receiver<Result<ThumbnailResponse, String>>> {
+fn register_or_wait(key: &str) -> Option<oneshot::Receiver<Result<ThumbnailResponse, String>>> {
     let mut map = INFLIGHT.lock().expect("inflight poisoned");
     if let Some(waiters) = map.get_mut(key) {
         let (tx, rx) = oneshot::channel::<Result<ThumbnailResponse, String>>();
@@ -367,8 +379,8 @@ fn sanitize_input_path(raw: &str) -> Result<PathBuf, String> {
     }
 
     // canonicalize to resolve traversal and detect symlinks
-    let meta = fs::symlink_metadata(&pb)
-        .map_err(|e| format!("Path does not exist or unreadable: {e}"))?;
+    let meta =
+        fs::symlink_metadata(&pb).map_err(|e| format!("Path does not exist or unreadable: {e}"))?;
     if meta.file_type().is_symlink() {
         return Err("Refusing to thumbnail symlinked files".into());
     }
@@ -390,4 +402,83 @@ fn sanitize_input_path(raw: &str) -> Result<PathBuf, String> {
         .map_err(|e| format!("Failed to canonicalize path: {e}"))?;
 
     Ok(canon)
+}
+
+fn thumb_kind(path: &Path) -> ThumbKind {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("pdf") => ThumbKind::Pdf,
+        Some("svg") => ThumbKind::Svg,
+        _ => ThumbKind::Image,
+    }
+}
+
+fn limiter_limit_for_kind(kind: ThumbKind) -> usize {
+    let threads = *POOL_THREADS;
+    let base = match kind {
+        ThumbKind::Image => threads.saturating_mul(4),
+        ThumbKind::Svg | ThumbKind::Pdf => threads.saturating_mul(2),
+    };
+    base.clamp(POOL_MIN_THREADS, GLOBAL_HARD_MAX_INFLIGHT)
+}
+
+#[derive(Debug)]
+struct ConcurrencyLimiter {
+    global_active: usize,
+    image_active: usize,
+    doc_active: usize,
+    threads: usize,
+}
+
+impl ConcurrencyLimiter {
+    fn new(threads: usize) -> Self {
+        Self {
+            global_active: 0,
+            image_active: 0,
+            doc_active: 0,
+            threads,
+        }
+    }
+
+    fn try_acquire(&mut self, kind: ThumbKind, kind_limit: usize) -> bool {
+        let global_limit = GLOBAL_HARD_MAX_INFLIGHT.min(self.threads.saturating_mul(4));
+        if self.global_active >= global_limit {
+            return false;
+        }
+        let kind_ok = match kind {
+            ThumbKind::Image => self.image_active < kind_limit,
+            ThumbKind::Svg | ThumbKind::Pdf => self.doc_active < kind_limit,
+        };
+        if !kind_ok {
+            return false;
+        }
+        self.global_active += 1;
+        match kind {
+            ThumbKind::Image => self.image_active += 1,
+            ThumbKind::Svg | ThumbKind::Pdf => self.doc_active += 1,
+        }
+        true
+    }
+
+    fn release(&mut self, kind: ThumbKind) {
+        if self.global_active > 0 {
+            self.global_active -= 1;
+        }
+        match kind {
+            ThumbKind::Image => {
+                if self.image_active > 0 {
+                    self.image_active -= 1;
+                }
+            }
+            ThumbKind::Svg | ThumbKind::Pdf => {
+                if self.doc_active > 0 {
+                    self.doc_active -= 1;
+                }
+            }
+        }
+    }
 }

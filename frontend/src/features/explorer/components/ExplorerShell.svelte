@@ -44,6 +44,7 @@
   export let noticeMessage = ''
   export let searchActive = false
   export let filterValue = ''
+  export let currentPath = ''
 
   export let cols: Column[] = []
   export let gridTemplate = ''
@@ -262,17 +263,18 @@
           selectionRect={selectionRect}
         />
       {:else}
-        <FileGrid
-          entries={filteredEntries}
-          visibleEntries={visibleEntries}
-          {start}
-          {offsetY}
-          {totalHeight}
-          bind:rowsEl
-          {selected}
-          {isHidden}
-          {displayName}
-          {clipboardMode}
+      <FileGrid
+        entries={filteredEntries}
+        visibleEntries={visibleEntries}
+        {start}
+        {offsetY}
+        {totalHeight}
+        {currentPath}
+        bind:rowsEl
+        {selected}
+        {isHidden}
+        {displayName}
+        {clipboardMode}
           {clipboardPaths}
           onWheel={onWheel}
           onRowsContextMenu={onRowsContextMenu}
