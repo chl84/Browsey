@@ -805,9 +805,9 @@ unsafe fn find_assoc_handler(
 
 #[cfg(target_os = "windows")]
 fn create_data_object_for_path(target: &Path) -> Result<IDataObject, String> {
-    let path = target.to_string_lossy();
+    let path = target.to_string_lossy().into_owned();
     unsafe {
-        let item: IShellItem = SHCreateItemFromParsingName(&HSTRING::from(path.as_ref()), None)
+        let item: IShellItem = SHCreateItemFromParsingName(&HSTRING::from(path.as_str()), None)
             .map_err(|e| {
                 format!(
                     "Failed to create shell item for {}: {e}",
@@ -825,11 +825,11 @@ fn create_data_object_for_path(target: &Path) -> Result<IDataObject, String> {
 #[cfg(target_os = "windows")]
 fn windows_query_string(target: &Path) -> HSTRING {
     if target.is_dir() {
-        HSTRING::from(target.to_string_lossy().as_ref())
+        HSTRING::from(target.to_string_lossy().into_owned())
     } else if let Some(ext) = target.extension().and_then(|e| e.to_str()) {
         HSTRING::from(format!(".{}", ext.to_ascii_lowercase()))
     } else {
-        HSTRING::from(target.to_string_lossy().as_ref())
+        HSTRING::from(target.to_string_lossy().into_owned())
     }
 }
 
