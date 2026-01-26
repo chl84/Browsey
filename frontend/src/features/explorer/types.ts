@@ -1,5 +1,6 @@
 export type Entry = {
   name: string
+  nameLower?: string
   path: string
   kind: 'dir' | 'file' | 'link'
   ext?: string | null

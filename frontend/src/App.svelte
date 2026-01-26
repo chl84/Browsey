@@ -393,7 +393,10 @@
     const dirLine = formatSelectionLine(dirs.length, 'folder')
     const fileLine = formatSelectionLine(fileCount, 'file', fileBytes)
 
-    const parts = [dirLine, fileLine].filter((p) => p.length > 0)
+    const filterActive = $filter.trim().length > 0
+    const filterLine = filterActive ? `${$filteredEntries.length} results` : ''
+
+    const parts = [filterLine, dirLine, fileLine].filter((p) => p.length > 0)
     selectionText = parts.join(' | ')
   }
 
