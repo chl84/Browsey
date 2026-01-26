@@ -1,0 +1,10 @@
+Browsey third-party notices
+===========================
+
+This file lists bundled third-party components and their licenses.
+
+PDFium (BSD-like, Chromium project)
+-----------------------------------
+Included binaries and headers under `resources/pdfium-linux-x64/` and `resources/pdfium-win-x64/`.
+Primary license: BSD-style (see `resources/pdfium-*/LICENSE` and `resources/pdfium-*/licenses/pdfium.txt`).
+Additional third-party licenses for PDFium dependencies are provided in `resources/pdfium-*/licenses/`.
