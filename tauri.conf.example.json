@@ -19,16 +19,13 @@
         "minWidth": 300,
         "minHeight": 300,
         "theme": "Dark",
-        "decorations": false,
-        "dragDropEnabled": false
+        "decorations": false
       }
     ],
     "security": {
       "assetProtocol": {
         "enable": true,
-        "scope": [
-          "__CACHE_DIR__/browsey/**"
-        ]
+        "scope": ["__CACHE_DIR__/browsey/**"]
       }
     }
   },
