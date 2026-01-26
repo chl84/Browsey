@@ -13,7 +13,7 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 - **Drives & bookmarks**: Lists mounts/partitions (marks removable), bookmarks, starred, recent, and trash. Mounts are polled every 2s and SQLite stores bookmarks, stars, recents, and column widths.
 - **Context actions**: New Folder…, Open with (associated apps + custom command), copy path, cut/copy/paste, compress to ZIP (name + level), rename, move to wastebasket (Delete), delete permanently (Shift+Delete), properties with lazy-loaded timestamps, and “open item location” for recents.
 - **Drag & drop**: Internal drag/drop with custom ghost and drop-target highlighting; designed to work on Linux and Windows.
-- **Thumbnails**: Lazy, virtualized thumbnail loading in grid view with caching, per-file permission checks, format allowlist, decode timeouts, and size limits; SVGs rasterized with resvg, PDFs rendered in Rust with PDFium, and everything else falls back to icons instantly so UI stays smooth.
+- **Thumbnails**: Lazy, virtualized thumbnails with caching, per-file permission checks, decode timeouts, and size limits. SVG rasterized via resvg; PDFs via bundled PDFium; images via `image` crate; **videos** via ffmpeg (first-frame @1.5s) with per-type concurrency caps and cancellation on navigation. Cache trims every 10 thumbs.
 - **Grid view parity**: Fixed-size cards with virtualization, keyboard navigation and range selection, lasso overlay, hidden-item dimming, and consistent click-to-clear selection; names can span up to three lines but stay aligned to show the start.
 - **Theming**: Dark mode by default plus a light mode toggle in the drag bar; all colors centralized in `frontend/src/app.css`.
 - **Cross-platform details**: Uses system WebView (WebKit on Linux, WebView2 on Windows). Network locations on Windows delete permanently (Explorer parity) because the recycle bin is unavailable there.
@@ -32,6 +32,7 @@ Common:
 - Rust (stable) via `rustup`
 - Node.js LTS + npm (frontend build/dev only)
 - PDFium is bundled in `resources/pdfium-<platform>/` so no system PDF libs are needed.
+- Optional for video thumbnails: `ffmpeg` in PATH (or `FFMPEG_BIN`), otherwise video files fall back to icons.
 
 Linux build deps (Fedora names; adapt to your distro):
 - `webkit2gtk4.1-devel` `javascriptcoregtk4.1-devel` `libsoup3-devel` `gtk3-devel`
@@ -124,6 +125,7 @@ Tauri bundles:
 - Search is scoped to the current root; empty queries return no results but preserve the listing.
 - “Open item location” jumps to the parent and reselects the item.
 - Windows network paths delete permanently (recycle bin is unavailable there). Symlink copy/move is rejected.
+- Thumbnails: files over 50 MB (images) or 1 GB (videos) are skipped; images over 20 000 px are skipped; image decode timeout is 750 ms; video thumbs are capped to 4 concurrent jobs, cancelled on navigation, and time out after 10 s; cache trims every 10 thumbnails.
 - Permissions: Owner/group/other (Everyone) access bits can be edited on Unix and Windows; Windows maps to the file DACL and honors read-only and executable toggles. Changes roll back if any target fails.
 - Removable volumes on Windows expose an eject action; once a device is successfully ejected the UI removes it and filters out NOT_READY/DEVICE_NOT_CONNECTED remnants.
 - Open with modal lists matching applications (fallbacks included), allows a custom command, uses the system default when chosen, and launches apps detached without console noise.

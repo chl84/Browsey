@@ -169,7 +169,7 @@ pub async fn get_thumbnail(
             notify_waiters(&key, Ok(r.clone()));
             let mut counter = TRIM_COUNTER.lock().expect("trim counter poisoned");
             *counter = counter.wrapping_add(1);
-            if *counter % 50 == 0 {
+            if *counter % 10 == 0 {
                 trim_cache(&cache_dir, CACHE_MAX_BYTES, CACHE_MAX_FILES);
             }
             Ok(r)
