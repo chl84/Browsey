@@ -111,7 +111,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       current.set('Recent')
       entries.set(result)
       callbacks.onEntriesChanged?.()
-      callbacks.onCurrentChange?.('')
+      callbacks.onCurrentChange?.('Recent')
       if (recordHistory) {
         pushHistory({ type: 'recent' })
       }
@@ -131,7 +131,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       current.set('Starred')
       entries.set(result)
       callbacks.onEntriesChanged?.()
-      callbacks.onCurrentChange?.('')
+      callbacks.onCurrentChange?.('Starred')
       if (recordHistory) {
         pushHistory({ type: 'starred' })
       }
@@ -151,7 +151,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       current.set('Trash')
       entries.set(result.entries)
       callbacks.onEntriesChanged?.()
-      callbacks.onCurrentChange?.('')
+      callbacks.onCurrentChange?.('Wastebasket')
       if (recordHistory) {
         pushHistory({ type: 'trash' })
       }
