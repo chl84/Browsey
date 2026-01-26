@@ -23,17 +23,19 @@ pub fn search_recursive(root: PathBuf, query: String) -> Result<Vec<FsEntry>, St
                 Err(_) => continue,
             };
             let path = entry.path();
-            let meta = match fs::symlink_metadata(&path) {
-                Ok(m) => m,
+            let file_type = match entry.file_type() {
+                Ok(ft) => ft,
                 Err(_) => continue,
             };
-
-            let is_link = meta.file_type().is_symlink();
+            let is_dir = file_type.is_dir();
+            let is_link = file_type.is_symlink();
             let name_lc = entry.file_name().to_string_lossy().to_lowercase();
-            let path_lc = path.to_string_lossy().to_lowercase();
-            let is_dir = meta.is_dir();
 
-            if name_lc.contains(&needle) || path_lc.contains(&needle) {
+            if name_lc.contains(&needle) {
+                let meta = match fs::symlink_metadata(&path) {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
                 results.push(build_entry(&path, &meta, is_link, false));
             }
 
@@ -43,15 +45,6 @@ pub fn search_recursive(root: PathBuf, query: String) -> Result<Vec<FsEntry>, St
             }
         }
     }
-
-    // Optional: sort folders before files, then name
-    results.sort_by(|a, b| match (a.kind.as_str(), b.kind.as_str()) {
-        ("dir", "file") | ("dir", "link") => std::cmp::Ordering::Less,
-        ("link", "dir") | ("file", "dir") => std::cmp::Ordering::Greater,
-        ("link", "file") => std::cmp::Ordering::Less,
-        ("file", "link") => std::cmp::Ordering::Greater,
-        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-    });
 
     Ok(results)
 }
