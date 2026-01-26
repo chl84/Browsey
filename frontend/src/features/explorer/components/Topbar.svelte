@@ -79,7 +79,8 @@
       remainder = path.slice(drive.length)
       remainder = sep === '\\' ? remainder.replace(/^\\+/, '') : remainder.replace(/^\/+/, '')
     } else if (path.startsWith(sep)) {
-      crumbs.push({ label: sep, path: sep })
+      const rootLabel = 'Root'
+      crumbs.push({ label: rootLabel, path: sep })
       remainder = path.slice(1)
     }
 
