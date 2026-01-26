@@ -13,6 +13,8 @@ mod statusbar;
 mod undo;
 mod watcher;
 
+use std::io::Write;
+
 use commands::*;
 use context_menu::context_menu_actions;
 use fs_utils::debug_log;
@@ -20,6 +22,58 @@ use once_cell::sync::OnceCell;
 use statusbar::dir_sizes;
 use undo::{redo_action, undo_action, UndoState};
 use watcher::WatchState;
+
+const MAX_LOG_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
+
+struct SizeLimitedWriter {
+    file: std::fs::File,
+    path: std::path::PathBuf,
+    max_bytes: u64,
+}
+
+impl SizeLimitedWriter {
+    fn new(path: std::path::PathBuf, max_bytes: u64) -> std::io::Result<Self> {
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)?;
+        Ok(Self {
+            file,
+            path,
+            max_bytes,
+        })
+    }
+
+    fn rotate_if_needed(&mut self) {
+        if let Ok(meta) = self.file.metadata() {
+            if meta.len() < self.max_bytes {
+                return;
+            }
+        }
+        let _ = self.file.flush();
+        let rotated = self.path.with_extension("log.1");
+        let _ = std::fs::remove_file(&rotated);
+        let _ = std::fs::rename(&self.path, &rotated);
+        if let Ok(new_file) = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .open(&self.path)
+        {
+            self.file = new_file;
+        }
+    }
+}
+
+impl std::io::Write for SizeLimitedWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.rotate_if_needed();
+        self.file.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.file.flush()
+    }
+}
 
 fn init_logging() {
     static GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
@@ -29,8 +83,14 @@ fn init_logging() {
         eprintln!("Failed to create log dir {:?}: {}", log_dir, e);
         return;
     }
-    let file_appender = tracing_appender::rolling::never(&log_dir, "browsey.log");
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    let writer = match SizeLimitedWriter::new(log_dir.join("browsey.log"), MAX_LOG_BYTES) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("Failed to open log file: {e}");
+            return;
+        }
+    };
+    let (non_blocking, guard) = tracing_appender::non_blocking::NonBlockingBuilder::default().finish(writer);
     let _ = GUARD.set(guard);
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(

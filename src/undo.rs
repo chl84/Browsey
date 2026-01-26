@@ -774,19 +774,20 @@ mod tests {
         write_file(&path, b"perm");
 
         let before = permissions_snapshot(&path).unwrap();
-        let mut after = before;
+        let mut after = before.clone();
         // Flip owner exec bit for the test.
         after.mode ^= 0o100;
+        let after_mode = after.mode;
 
         let mut mgr = UndoManager::new();
         mgr.apply(Action::SetPermissions {
             path: path.clone(),
-            before,
+            before: before.clone(),
             after,
         })
         .unwrap();
         let mode = fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o100, after.mode & 0o100);
+        assert_eq!(mode & 0o100, after_mode & 0o100);
 
         mgr.undo().unwrap();
         let mode = fs::metadata(&path).unwrap().permissions().mode();

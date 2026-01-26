@@ -12,10 +12,19 @@ import type {
 } from './types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
 
+const FILTER_DEBOUNCE_MS = 40
+
 type ExplorerCallbacks = {
   onEntriesChanged?: () => void
   onCurrentChange?: (path: string) => void
 }
+
+const withNameLower = (entry: Entry): Entry => ({
+  ...entry,
+  nameLower: entry.nameLower ?? entry.name.toLowerCase(),
+})
+
+const mapNameLower = (list: Entry[]) => list.map(withNameLower)
 
 const defaultColumns: Column[] = [
   { key: 'name', label: 'Name', sort: 'name', width: 320, min: 220, align: 'left' },
@@ -53,12 +62,53 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const history = writable<Location[]>([])
   const historyIndex = writable(-1)
 
-  const filteredEntries = derived([entries, filter, showHidden], ([$entries, $filter, $showHidden]) => {
-    const base = $showHidden ? $entries : $entries.filter((e) => !(e.hidden === true || e.name.startsWith('.')))
-    const needle = $filter.trim().toLowerCase()
-    if (needle.length === 0) return base
-    return base.filter((e) => e.name.toLowerCase().includes(needle))
+  const visibleEntries = derived([entries, showHidden], ([$entries, $showHidden]) => {
+    if ($showHidden) return $entries
+    return $entries.filter((e) => !(e.hidden === true || e.name.startsWith('.')))
   })
+
+  let lastNeedle = ''
+  let lastResult: Entry[] = []
+  let lastVisibleRef: Entry[] = []
+
+  const filteredEntries = derived([visibleEntries, filter], ([$visible, $filter], set) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const needle = $filter.trim().toLowerCase()
+
+    const compute = () => {
+      if (needle.length === 0) {
+        lastNeedle = ''
+        lastVisibleRef = $visible
+        lastResult = $visible
+        set($visible)
+        return
+      }
+
+      if (needle === lastNeedle && $visible === lastVisibleRef) {
+        set(lastResult)
+        return
+      }
+
+      const result = $visible.filter((e) => (e.nameLower ?? e.name.toLowerCase()).includes(needle))
+      lastNeedle = needle
+      lastVisibleRef = $visible
+      lastResult = result
+      set(result)
+    }
+
+    const shouldDebounce = needle.length > 0 && needle !== lastNeedle
+    if (shouldDebounce) {
+      timer = setTimeout(compute, FILTER_DEBOUNCE_MS)
+    } else {
+      compute()
+    }
+
+    return () => {
+      if (timer) {
+        clearTimeout(timer)
+      }
+    }
+  }, [] as Entry[])
 
   const sortPayload = () => ({
     field: get(sortField),
@@ -85,7 +135,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     try {
       const result = await invoke<Listing>('list_dir', { path, sort: sortPayload() })
       current.set(result.current)
-      entries.set(result.entries)
+      entries.set(mapNameLower(result.entries))
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.(result.current)
       if (recordHistory) {
@@ -109,7 +159,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       const sortArg = applySort ? sortPayload() : null
       const result = await invoke<Entry[]>('list_recent', { sort: sortArg })
       current.set('Recent')
-      entries.set(result)
+      entries.set(mapNameLower(result))
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.('Recent')
       if (recordHistory) {
@@ -129,7 +179,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     try {
       const result = await invoke<Entry[]>('list_starred', { sort: sortPayload() })
       current.set('Starred')
-      entries.set(result)
+      entries.set(mapNameLower(result))
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.('Starred')
       if (recordHistory) {
@@ -149,7 +199,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     try {
       const result = await invoke<Listing>('list_trash', { sort: sortPayload() })
       current.set('Trash')
-      entries.set(result.entries)
+      entries.set(mapNameLower(result.entries))
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.('Wastebasket')
       if (recordHistory) {
@@ -235,7 +285,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         })()
         return dir * cmp
       })
-      entries.set(list)
+      entries.set(mapNameLower(list))
       return
     }
     const where = get(current)
@@ -335,13 +385,13 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         error.set(evt.payload.error)
       }
       if (evt.payload.done) {
-        entries.set(evt.payload.entries ?? [])
+        entries.set(mapNameLower(evt.payload.entries ?? []))
         callbacks.onEntriesChanged?.()
         loading.set(false)
         return
       }
       if (evt.payload.entries && evt.payload.entries.length > 0) {
-        entries.update((list) => [...list, ...evt.payload.entries])
+        entries.update((list) => [...list, ...mapNameLower(evt.payload.entries ?? [])])
         callbacks.onEntriesChanged?.()
       }
     })
@@ -451,6 +501,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     bookmarks,
     partitions,
     showHidden,
+    visibleEntries,
     filteredEntries,
     load,
     loadRecent,
