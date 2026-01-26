@@ -19,6 +19,7 @@
   import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
   import { createSelectionBox } from './features/explorer/hooks/selectionBox'
   import { hitTestGridVirtualized } from './features/explorer/helpers/lassoHitTest'
+  import { createViewSwitchAnchor } from './features/explorer/hooks/viewAnchor'
   import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
   import { moveCaret } from './features/explorer/helpers/navigationController'
   import { createActivity } from './features/explorer/hooks/useActivity'
@@ -154,24 +155,19 @@
   const selectionActive = selectionBox.active
   const selectionRect = selectionBox.rect
 
-  const scrollToFirstSelected = async () => {
-    const sel = Array.from(get(selected))
-    if (sel.length === 0) return
-    await tick()
-    const escapeAttr = (s: string) => s.replace(/"/g, '\\"')
-    const selector = `[data-path="${escapeAttr(sel[0])}"]`
-    const el = rowsElRef?.querySelector<HTMLElement>(selector)
-    if (el) {
-      el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    }
-  }
-
   const focusCurrentView = async () => {
     await tick()
     rowsElRef?.focus()
   }
 
   const toggleViewMode = async () => {
+    viewAnchor.capture({
+      viewMode,
+      rowsEl: rowsElRef,
+      headerEl: headerElRef,
+      gridEl: gridElRef,
+      gridCols,
+    })
     const nextMode = viewMode === 'list' ? 'grid' : 'list'
     const switchingToList = nextMode === 'list'
 
@@ -194,11 +190,24 @@
         scrollTop.set(Math.max(0, rowsElRef?.scrollTop ?? 0))
         updateViewportHeight()
         recompute(get(filteredEntries))
+        viewAnchor.scroll({
+          viewMode,
+          rowsEl: rowsElRef,
+          headerEl: headerElRef,
+          gridEl: gridElRef,
+          gridCols,
+        })
       })
     } else {
       await tick()
+      viewAnchor.scroll({
+        viewMode,
+        rowsEl: rowsElRef,
+        headerEl: headerElRef,
+        gridEl: gridElRef,
+        gridCols,
+      })
     }
-    await scrollToFirstSelected()
     void focusCurrentView()
   }
 
@@ -283,6 +292,13 @@
   let gridPendingDeltaY = 0
   let cursorX = 0
   let cursorY = 0
+
+  const viewAnchor = createViewSwitchAnchor({
+    filteredEntries,
+    rowHeight,
+    gridRowHeight: GRID_ROW_HEIGHT,
+    gridGap: GRID_GAP,
+  })
 
   const isScrollbarClick = (event: MouseEvent, el: HTMLDivElement | null) => {
     if (!el) return false
