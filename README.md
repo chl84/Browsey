@@ -31,6 +31,7 @@ Supported platforms: Linux and Windows (macOS is not supported yet).
 Common:
 - Rust (stable) via `rustup`
 - Node.js LTS + npm (frontend build/dev only)
+- PDFium is bundled in `resources/pdfium-<platform>/` so no system PDF libs are needed.
 
 Linux build deps (Fedora names; adapt to your distro):
 - `webkit2gtk4.1-devel` `javascriptcoregtk4.1-devel` `libsoup3-devel` `gtk3-devel`
@@ -102,7 +103,7 @@ Tauri bundles:
 - **Hidden files**: `Ctrl+H` toggles showing hidden files (hidden items are shown by default).
 
 ## Architecture notes
-- **Backend (`src/`)**: Tauri commands for listing, search, mounts, bookmarks, starring, trash, rename/delete, open with (desktop entries on Linux, custom commands, and default handler), clipboard preview/execute, compression to ZIP, and a filesystem watcher. Thumbnail pipeline uses resvg for SVG; PDF thumbnails are rendered in the frontend via PDF.js. Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) are isolated behind cfg gates.
+- **Backend (`src/`)**: Tauri commands for listing, search, mounts, bookmarks, starring, trash, rename/delete, open with (desktop entries on Linux, custom commands, and default handler), clipboard preview/execute, compression to ZIP, and a filesystem watcher. Thumbnail pipeline uses resvg for SVG; PDF thumbnails are rendered in Rust with PDFium (bundled binaries for Linux/Windows). Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) are isolated behind cfg gates.
 - **Frontend (`frontend/src/`)**: Explorer UI in Svelte with virtualized rows, drag/drop hook, clipboard/context-menu helpers, selection box, toast, conflict modal, and thumbnail loader (IntersectionObserver + queue). Layout and theme live in `frontend/src/app.css`. Modals share structure and focus handling via `frontend/src/ui/ModalShell.svelte` and `frontend/src/ui/modalUtils.ts`.
 - **Data & persistence**: SQLite DB in the platform data dir stores bookmarks, starred items, recents, and column widths. Thumbnail cache lives under the user cache dir with trimming (size/file caps). Capability file `capabilities/default.json` grants event listen/emit so the watcher can signal the UI.
 - **Icons**: Uses a custom Browsey icon set in `frontend/public/icons/scalable/browsey/` mapped via `src/icons.rs`, covering sidebar items, folders (incl. templates, public, desktop, etc.), files (images, text, pdf, spreadsheets, presentations), compressed archives, and shortcuts. Removable disks and bookmarks also use the new set.
@@ -116,6 +117,7 @@ Tauri bundles:
 - `frontend/src/ui/` — Shared UI atoms (toasts, modals, drag ghost, etc.).
 - `scripts/` — Dev/build helpers for both shells.
 - `resources/` — Icons and generated schemas; `capabilities/` for Tauri permissions.
+- `resources/pdfium-*/` — Bundled PDFium binaries and licenses for Linux/Windows.
 
 ## Behavior specifics
 - Listings sort folders before files and skip symlinks for safety.
