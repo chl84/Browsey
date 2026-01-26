@@ -119,7 +119,7 @@
       <span class="sr-only">{theme === 'light' ? 'Light mode' : 'Dark mode'}</span>
     </button>
     <button class="win-btn minimize" type="button" aria-label="Minimize window" on:click|stopPropagation={minimize}>–</button>
-    <button class="win-btn maximize" type="button" aria-label="Toggle maximize window" on:click|stopPropagation={toggleMaximize}>⬜</button>
+    <button class="win-btn maximize" type="button" aria-label="Toggle maximize window" on:click|stopPropagation={toggleMaximize}>□</button>
     <button class="win-btn close" type="button" aria-label="Close window" on:click|stopPropagation={closeWindow}>×</button>
   </div>
 </div>
@@ -503,6 +503,7 @@
     background: var(--win-btn-bg);
     color: var(--win-btn-fg);
     font-size: 12px;
+    font-family: 'Segoe UI Symbol', 'Segoe UI', system-ui, sans-serif;
     line-height: 1;
     display: inline-flex;
     align-items: center;
