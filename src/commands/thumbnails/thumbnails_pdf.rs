@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use pdfium_render::prelude::*;
 
-use crate::fs_utils::debug_log;
+use super::thumb_log;
 
 pub fn render_pdf_thumbnail(
     path: &Path,
@@ -11,7 +11,7 @@ pub fn render_pdf_thumbnail(
     resource_dir: Option<&Path>,
 ) -> Result<(u32, u32), String> {
     let bindings = load_pdfium_bindings(resource_dir)?;
-    debug_log(&format!("pdfium: bindings loaded for {}", path.display()));
+    thumb_log(&format!("pdfium: bindings loaded for {}", path.display()));
     let pdfium = Pdfium::new(bindings);
 
     let doc = pdfium
@@ -45,7 +45,7 @@ pub fn render_pdf_thumbnail(
         .save_with_format(cache_path, image::ImageFormat::Png)
         .map_err(|e| format!("Save PDF thumbnail failed: {e}"))?;
 
-    debug_log(&format!(
+    thumb_log(&format!(
         "pdf thumbnail generated: source={} cache={} size={}x{}",
         path.display(),
         cache_path.display(),
@@ -62,10 +62,10 @@ fn load_pdfium_bindings(
     // 1) Explicit override
     if let Ok(path) = std::env::var("PDFIUM_LIB_PATH") {
         if let Ok(b) = Pdfium::bind_to_library(&path) {
-            debug_log(&format!("pdfium: using PDFIUM_LIB_PATH={path}"));
+            thumb_log(&format!("pdfium: using PDFIUM_LIB_PATH={path}"));
             return Ok(b);
         }
-        debug_log(&format!(
+        thumb_log(&format!(
             "pdfium: failed PDFIUM_LIB_PATH={path}, falling back"
         ));
     }
@@ -114,10 +114,10 @@ fn load_pdfium_bindings(
         if cand.exists() {
             let p = cand.to_string_lossy().to_string();
             if let Ok(b) = Pdfium::bind_to_library(&p) {
-                debug_log(&format!("pdfium: using candidate {}", p));
+                thumb_log(&format!("pdfium: using candidate {}", p));
                 return Ok(b);
             }
-            debug_log(&format!("pdfium: failed candidate {}, continuing", p));
+            thumb_log(&format!("pdfium: failed candidate {}, continuing", p));
         }
     }
 
@@ -125,7 +125,7 @@ fn load_pdfium_bindings(
     Pdfium::bind_to_system_library()
         .map_err(|e| format!("Pdfium load failed: {e}"))
         .map(|b| {
-            debug_log("pdfium: using system library search");
+            thumb_log("pdfium: using system library search");
             b
         })
 }

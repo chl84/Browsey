@@ -63,6 +63,8 @@ static LIMITER: Lazy<std::sync::Mutex<ConcurrencyLimiter>> = Lazy::new(|| {
     let threads = *POOL_THREADS;
     std::sync::Mutex::new(ConcurrencyLimiter::new(threads))
 });
+static LOG_THUMBS: Lazy<bool> =
+    Lazy::new(|| std::env::var("BROWSEY_DEBUG_THUMBS").is_ok() || cfg!(debug_assertions));
 
 #[derive(Serialize, Clone)]
 pub struct ThumbnailResponse {
@@ -306,7 +308,7 @@ fn generate_thumbnail(
         .save_with_format(cache_path, ImageFormat::Png)
         .map_err(|e| format!("Save thumbnail failed: {e}"))?;
 
-    debug_log(&format!(
+    thumb_log(&format!(
         "thumbnail generated: source={:?} cache={:?} size={}x{}",
         path, cache_path, w, h
     ));
@@ -317,6 +319,12 @@ fn generate_thumbnail(
         height: h,
         cached: false,
     })
+}
+
+pub(super) fn thumb_log(msg: &str) {
+    if *LOG_THUMBS {
+        debug_log(msg);
+    }
 }
 
 fn register_or_wait(key: &str) -> Option<oneshot::Receiver<Result<ThumbnailResponse, String>>> {

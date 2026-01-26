@@ -102,7 +102,7 @@ export function createThumbnailLoader(opts: Options = {}) {
         width: number
         height: number
         cached: boolean
-      }>('get_thumbnail', { path, max_dim: maxDim })
+      }>('get_thumbnail', { path, max_dim: maxDim, generation })
       if (genAtStart !== generation) return null
       return res.path
     } catch (err) {
