@@ -59,7 +59,7 @@ pub enum Direction {
     Backward,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct PermissionsSnapshot {
     pub readonly: bool,
