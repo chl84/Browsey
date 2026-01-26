@@ -154,8 +154,17 @@
   const selectionActive = selectionBox.active
   const selectionRect = selectionBox.rect
 
-  let listScrollY = 0 // content-only (excludes header height)
-  let gridScrollY = 0
+  const scrollToFirstSelected = async () => {
+    const sel = Array.from(get(selected))
+    if (sel.length === 0) return
+    await tick()
+    const escapeAttr = (s: string) => s.replace(/"/g, '\\"')
+    const selector = `[data-path="${escapeAttr(sel[0])}"]`
+    const el = rowsElRef?.querySelector<HTMLElement>(selector)
+    if (el) {
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+  }
 
   const focusCurrentView = async () => {
     await tick()
@@ -163,14 +172,6 @@
   }
 
   const toggleViewMode = async () => {
-    // capture current scroll position before switching
-    if (viewMode === 'list') {
-      const headerH = headerElRef?.offsetHeight ?? 0
-      listScrollY = Math.max(0, (rowsElRef?.scrollTop ?? 0) - headerH)
-    } else {
-      gridScrollY = rowsElRef?.scrollTop ?? 0
-    }
-
     const nextMode = viewMode === 'list' ? 'grid' : 'list'
     const switchingToList = nextMode === 'list'
 
@@ -186,31 +187,18 @@
     if (switchingToList) {
       gridTotalHeight.set(0)
       await tick()
-      if (rowsElRef) {
-        const headerH = headerElRef?.offsetHeight ?? 0
-        rowsElRef.scrollTop = listScrollY + headerH
-      }
-      const headerH = headerElRef?.offsetHeight ?? 0
-      scrollTop.set(Math.max(0, (rowsElRef?.scrollTop ?? 0) - headerH))
+      scrollTop.set(Math.max(0, rowsElRef?.scrollTop ?? 0))
       updateViewportHeight()
       recompute(get(filteredEntries))
       requestAnimationFrame(() => {
-        if (rowsElRef) {
-          const headerH2 = headerElRef?.offsetHeight ?? 0
-          rowsElRef.scrollTop = listScrollY + headerH2
-        }
-        const headerH2 = headerElRef?.offsetHeight ?? 0
-        scrollTop.set(Math.max(0, (rowsElRef?.scrollTop ?? 0) - headerH2))
+        scrollTop.set(Math.max(0, rowsElRef?.scrollTop ?? 0))
         updateViewportHeight()
         recompute(get(filteredEntries))
       })
     } else {
       await tick()
-      if (rowsElRef) {
-        rowsElRef.scrollTop = gridScrollY
-      }
-      recomputeGrid()
     }
+    await scrollToFirstSelected()
     void focusCurrentView()
   }
 
