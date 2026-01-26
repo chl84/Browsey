@@ -8,3 +8,6 @@ PDFium (BSD-like, Chromium project)
 Included binaries and headers under `resources/pdfium-linux-x64/` and `resources/pdfium-win-x64/`.
 Primary license: BSD-style (see `resources/pdfium-*/LICENSE` and `resources/pdfium-*/licenses/pdfium.txt`).
 Additional third-party licenses for PDFium dependencies are provided in `resources/pdfium-*/licenses/`.
+
+Download source for bundled PDFium binaries:
+- https://github.com/bblanchon/pdfium-binaries/releases/latest
