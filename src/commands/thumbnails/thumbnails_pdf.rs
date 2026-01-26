@@ -76,12 +76,22 @@ fn load_pdfium_bindings(resource_dir: Option<&Path>) -> Result<Box<dyn PdfiumLib
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            // target/debug or release -> project root is two levels up
+            // Common layouts: installed bundle keeps resources beside the exe; dev sits at target/{debug,release}
+            #[cfg(target_os = "linux")]
+            candidates.push(dir.join("resources/pdfium-linux-x64/lib/libpdfium.so"));
+            #[cfg(target_os = "windows")]
+            candidates.push(dir.join("resources/pdfium-win-x64/bin/pdfium.dll"));
+
+            // For dev builds where exe is target/{debug,release}/browsey.exe, project root is two levels up.
             let proj_root = dir.parent().and_then(|p| p.parent()).unwrap_or(dir);
             #[cfg(target_os = "linux")]
             candidates.push(proj_root.join("resources/pdfium-linux-x64/lib/libpdfium.so"));
             #[cfg(target_os = "windows")]
             candidates.push(proj_root.join("resources/pdfium-win-x64/bin/pdfium.dll"));
+
+            // In case pdfium.dll is copied next to the exe (paranoia)
+            #[cfg(target_os = "windows")]
+            candidates.push(dir.join("pdfium.dll"));
         }
     }
 
