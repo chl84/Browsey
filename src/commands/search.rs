@@ -99,9 +99,9 @@ pub fn search_stream(
         };
 
         let mut stack = vec![target];
-        let mut batch = Vec::with_capacity(64);
         let mut all = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
+        let mut last_sent: usize = 0;
         let needle_lc = needle.to_lowercase();
 
         while let Some(dir) = stack.pop() {
@@ -119,27 +119,29 @@ pub fn search_stream(
 
             for entry in iter.flatten() {
                 let path = entry.path();
-                let meta = match std::fs::symlink_metadata(&path) {
-                    Ok(m) => m,
+                let file_type = match entry.file_type() {
+                    Ok(ft) => ft,
                     Err(_) => continue,
                 };
-
-                let is_link = meta.file_type().is_symlink();
+                let is_link = file_type.is_symlink();
                 let name_lc = entry.file_name().to_string_lossy().to_lowercase();
-                let path_lc = path.to_string_lossy().to_lowercase();
-                let is_dir = meta.is_dir();
+                let is_dir = file_type.is_dir();
 
-                if name_lc.contains(&needle_lc) || path_lc.contains(&needle_lc) {
+                if name_lc.contains(&needle_lc) {
+                    let meta = match std::fs::symlink_metadata(&path) {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    };
                     let key = path.to_string_lossy().to_string();
                     if seen.insert(key) {
                         let mut item = crate::entry::build_entry(&path, &meta, is_link, false);
                         if star_set.contains(&normalize_key_for_db(&path)) {
                             item.starred = true;
                         }
-                        batch.push(item.clone());
                         all.push(item);
-                        if batch.len() >= 64 {
-                            send(batch.drain(..).collect(), false, None);
+                        if all.len() - last_sent >= 64 {
+                            send(all[last_sent..].to_vec(), false, None);
+                            last_sent = all.len();
                         }
                     }
                 }
@@ -150,8 +152,8 @@ pub fn search_stream(
             }
         }
 
-        if !batch.is_empty() {
-            send(batch.clone(), false, None);
+        if last_sent < all.len() {
+            send(all[last_sent..].to_vec(), false, None);
         }
 
         sort_entries(&mut all, sort);

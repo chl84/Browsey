@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::cmp::Ordering;
+use std::cmp::Reverse;
 
 use crate::entry::FsEntry;
 
@@ -37,47 +37,47 @@ impl Default for SortSpec {
     }
 }
 
-fn cmp_opt<T: Ord>(a: &Option<T>, b: &Option<T>) -> Ordering {
-    match (a, b) {
-        (Some(la), Some(lb)) => la.cmp(lb),
-        (Some(_), None) => Ordering::Less,
-        (None, Some(_)) => Ordering::Greater,
-        (None, None) => Ordering::Equal,
-    }
-}
-
 pub fn sort_entries(entries: &mut [FsEntry], spec: Option<SortSpec>) {
     let spec = spec.unwrap_or_default();
 
-    entries.sort_by(|a, b| {
-        let mut ord = match spec.field {
-            SortField::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            SortField::Type => {
-                let kind_rank = |kind: &str| match kind {
-                    "dir" => 0,
-                    "file" => 1,
-                    "link" => 2,
-                    _ => 3,
-                };
-                let a_ext = a.ext.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
-                let b_ext = b.ext.as_ref().map(|s| s.to_lowercase()).unwrap_or_default();
-                let a_key = (kind_rank(&a.kind), a_ext);
-                let b_key = (kind_rank(&b.kind), b_ext);
-                a_key.cmp(&b_key)
-            }
-            SortField::Modified => cmp_opt(&a.modified, &b.modified),
-            SortField::Size => cmp_opt(&a.size, &b.size),
-            SortField::Starred => a.starred.cmp(&b.starred),
-        };
+    let desc = spec.direction == SortDirection::Desc;
 
-        if spec.direction == SortDirection::Desc {
-            ord = ord.reverse();
-        }
+    match spec.field {
+        SortField::Name => sort_with(entries, desc, |e| e.name.to_lowercase()),
+        SortField::Type => sort_with(entries, desc, |e| {
+            (
+                kind_rank(&e.kind),
+                e.ext.as_deref().map(str::to_lowercase).unwrap_or_default(),
+                e.name.to_lowercase(),
+            )
+        }),
+        SortField::Modified => sort_with(entries, desc, |e| {
+            (
+                e.modified.is_none(),
+                e.modified.clone(),
+                e.name.to_lowercase(),
+            )
+        }),
+        SortField::Size => sort_with(entries, desc, |e| {
+            (e.size.is_none(), e.size, e.name.to_lowercase())
+        }),
+        SortField::Starred => sort_with(entries, desc, |e| (e.starred, e.name.to_lowercase())),
+    };
+}
 
-        if ord == Ordering::Equal {
-            a.name.to_lowercase().cmp(&b.name.to_lowercase())
-        } else {
-            ord
-        }
-    });
+fn kind_rank(kind: &str) -> u8 {
+    match kind {
+        "dir" => 0,
+        "file" => 1,
+        "link" => 2,
+        _ => 3,
+    }
+}
+
+fn sort_with<K: Ord, F: FnMut(&FsEntry) -> K>(entries: &mut [FsEntry], desc: bool, mut f: F) {
+    if desc {
+        entries.sort_unstable_by_key(|e| Reverse(f(e)));
+    } else {
+        entries.sort_unstable_by_key(|e| f(e));
+    }
 }
