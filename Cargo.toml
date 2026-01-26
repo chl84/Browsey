@@ -40,6 +40,7 @@ num_cpus = "1.17.0"
 tokio = { version = "1.41.1", default-features = false, features = ["sync"] }
 resvg = "0.46.0"
 pdfium-render = "0.8.37"
+which = "8.0.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_NetworkManagement_WNet", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Ioctl", "Win32_System_IO", "Win32_Security", "Win32_Security_Authorization"] }

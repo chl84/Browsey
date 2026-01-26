@@ -31,6 +31,11 @@ export function createThumbnailLoader(opts: Options = {}) {
   const lowQueue: string[] = []
   let active = 0
   const retries = new Map<string, number>()
+  const videoExt = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'])
+  const isVideo = (path: string) => {
+    const ext = path.split('.').pop()?.toLowerCase()
+    return ext ? videoExt.has(ext) : false
+  }
 
   const observer = new IntersectionObserver(
     (entries) => {
@@ -38,7 +43,7 @@ export function createThumbnailLoader(opts: Options = {}) {
         if (entry.isIntersecting) {
           const path = observed.get(entry.target)
           if (path) {
-            enqueue(path, 'high')
+            enqueue(path)
             observer.unobserve(entry.target)
             observed.delete(entry.target)
           }
@@ -50,10 +55,11 @@ export function createThumbnailLoader(opts: Options = {}) {
 
   const observed = new Map<Element, string>()
 
-  function enqueue(path: string, priority: Priority = 'low') {
+  function enqueue(path: string, priority?: Priority) {
     if (requested.has(path)) return
     requested.add(path)
-    if (priority === 'high') {
+    const prio = priority ?? (isVideo(path) ? 'low' : 'high')
+    if (prio === 'high') {
       highQueue.push(path)
     } else {
       lowQueue.push(path)
@@ -118,7 +124,7 @@ export function createThumbnailLoader(opts: Options = {}) {
           retries.set(path, attempt)
           const delay = Math.min(BASE_BACKOFF_MS * Math.pow(2, attempt - 1), 2000)
           requested.delete(path)
-          setTimeout(() => enqueue(path, 'high'), delay)
+          setTimeout(() => enqueue(path), delay)
         } else {
           retries.delete(path)
           requested.delete(path)
