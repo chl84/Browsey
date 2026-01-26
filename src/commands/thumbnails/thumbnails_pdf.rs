@@ -56,14 +56,18 @@ pub fn render_pdf_thumbnail(
     Ok((image.width(), image.height()))
 }
 
-fn load_pdfium_bindings(resource_dir: Option<&Path>) -> Result<Box<dyn PdfiumLibraryBindings>, String> {
+fn load_pdfium_bindings(
+    resource_dir: Option<&Path>,
+) -> Result<Box<dyn PdfiumLibraryBindings>, String> {
     // 1) Explicit override
     if let Ok(path) = std::env::var("PDFIUM_LIB_PATH") {
         if let Ok(b) = Pdfium::bind_to_library(&path) {
             debug_log(&format!("pdfium: using PDFIUM_LIB_PATH={path}"));
             return Ok(b);
         }
-        debug_log(&format!("pdfium: failed PDFIUM_LIB_PATH={path}, falling back"));
+        debug_log(&format!(
+            "pdfium: failed PDFIUM_LIB_PATH={path}, falling back"
+        ));
     }
 
     // 2) Bundled paths (dev + packaged)
