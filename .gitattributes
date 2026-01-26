@@ -1,0 +1,4 @@
+# Treat bundled third-party binaries/headers as vendored so they don't skew GitHub language stats.
+resources/pdfium-win-x64/** linguist-vendored
+resources/pdfium-linux-x64/** linguist-vendored
+resources/icons/scalable/** linguist-vendored
