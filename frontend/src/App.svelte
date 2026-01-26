@@ -154,12 +154,22 @@
   const selectionActive = selectionBox.active
   const selectionRect = selectionBox.rect
 
+  let listScrollY = 0
+  let gridScrollY = 0
+
   const focusCurrentView = async () => {
     await tick()
     rowsElRef?.focus()
   }
 
   const toggleViewMode = async () => {
+    // capture current scroll position before switching
+    if (viewMode === 'list') {
+      listScrollY = rowsElRef?.scrollTop ?? 0
+    } else {
+      gridScrollY = rowsElRef?.scrollTop ?? 0
+    }
+
     const nextMode = viewMode === 'list' ? 'grid' : 'list'
     const switchingToList = nextMode === 'list'
 
@@ -175,16 +185,27 @@
     if (switchingToList) {
       gridTotalHeight.set(0)
       await tick()
-      scrollTop.set(Math.max(0, rowsElRef?.scrollTop ?? 0))
+      if (rowsElRef) {
+        rowsElRef.scrollTop = listScrollY
+      }
+      const headerH = headerElRef?.offsetHeight ?? 0
+      scrollTop.set(Math.max(0, (rowsElRef?.scrollTop ?? 0) - headerH))
       updateViewportHeight()
       recompute(get(filteredEntries))
       requestAnimationFrame(() => {
-        scrollTop.set(Math.max(0, rowsElRef?.scrollTop ?? 0))
+        if (rowsElRef) {
+          rowsElRef.scrollTop = listScrollY
+        }
+        scrollTop.set(Math.max(0, (rowsElRef?.scrollTop ?? 0) - headerH))
         updateViewportHeight()
         recompute(get(filteredEntries))
       })
     } else {
       await tick()
+      if (rowsElRef) {
+        rowsElRef.scrollTop = gridScrollY
+      }
+      recomputeGrid()
     }
     void focusCurrentView()
   }
