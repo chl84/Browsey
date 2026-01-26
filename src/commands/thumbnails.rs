@@ -19,6 +19,8 @@ mod thumbnails_svg;
 use thumbnails_svg::render_svg_thumbnail;
 mod thumbnails_pdf;
 use thumbnails_pdf::render_pdf_thumbnail;
+mod thumbnails_video;
+use thumbnails_video::render_video_thumbnail;
 
 use crate::fs_utils::debug_log;
 
@@ -26,6 +28,7 @@ const MAX_DIM_DEFAULT: u32 = 96;
 const MAX_DIM_HARD_LIMIT: u32 = 512;
 const MIN_DIM_HARD_LIMIT: u32 = 32;
 const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
+const MAX_FILE_BYTES_VIDEO: u64 = 1_000 * 1024 * 1024; // 1 GB
 const POOL_MIN_THREADS: usize = 2;
 const POOL_MAX_THREADS: usize = 8;
 const CACHE_MAX_BYTES: u64 = 300 * 1024 * 1024;
@@ -39,6 +42,7 @@ enum ThumbKind {
     Image,
     Svg,
     Pdf,
+    Video,
 }
 
 static POOL_THREADS: Lazy<usize> =
@@ -73,6 +77,7 @@ pub async fn get_thumbnail(
     app_handle: AppHandle,
     path: String,
     max_dim: Option<u32>,
+    generation: Option<String>,
 ) -> Result<ThumbnailResponse, String> {
     let max_dim = max_dim
         .unwrap_or(MAX_DIM_DEFAULT)
@@ -87,10 +92,15 @@ pub async fn get_thumbnail(
     if !meta.is_file() {
         return Err("Target is not a file".to_string());
     }
-    if meta.len() > MAX_FILE_BYTES {
+    let kind = thumb_kind(&target);
+    let size_limit = match kind {
+        ThumbKind::Video => MAX_FILE_BYTES_VIDEO,
+        _ => MAX_FILE_BYTES,
+    };
+    if meta.len() > size_limit {
         return Err(format!(
             "File too large for thumbnail (>{} MB)",
-            MAX_FILE_BYTES / 1024 / 1024
+            size_limit / 1024 / 1024
         ));
     }
     let mtime = meta.modified().ok();
@@ -99,7 +109,6 @@ pub async fn get_thumbnail(
     fs::create_dir_all(&cache_dir)
         .map_err(|e| format!("Failed to create thumbnail cache dir: {e}"))?;
 
-    let kind = thumb_kind(&target);
     let inflight_limit = limiter_limit_for_kind(kind);
 
     let key = cache_key(&target, mtime, max_dim);
@@ -137,7 +146,13 @@ pub async fn get_thumbnail(
     let res = tauri::async_runtime::spawn_blocking(move || {
         let res_dir_opt = app_handle.path().resource_dir().ok();
         THUMB_POOL.install(|| {
-            generate_thumbnail(&task_path, &task_cache, max_dim, res_dir_opt.as_deref())
+            generate_thumbnail(
+                &task_path,
+                &task_cache,
+                max_dim,
+                res_dir_opt.as_deref(),
+                generation.as_deref(),
+            )
         })
     })
     .await
@@ -147,10 +162,16 @@ pub async fn get_thumbnail(
 
     let res = res?;
 
+    static TRIM_COUNTER: Lazy<std::sync::Mutex<u32>> = Lazy::new(|| std::sync::Mutex::new(0));
+
     let res = match res {
         Ok(r) => {
             notify_waiters(&key, Ok(r.clone()));
-            trim_cache(&cache_dir, CACHE_MAX_BYTES, CACHE_MAX_FILES);
+            let mut counter = TRIM_COUNTER.lock().expect("trim counter poisoned");
+            *counter = counter.wrapping_add(1);
+            if *counter % 50 == 0 {
+                trim_cache(&cache_dir, CACHE_MAX_BYTES, CACHE_MAX_FILES);
+            }
             Ok(r)
         }
         Err(err) => {
@@ -208,7 +229,18 @@ fn generate_thumbnail(
     cache_path: &Path,
     max_dim: u32,
     resource_dir: Option<&Path>,
+    generation: Option<&str>,
 ) -> Result<ThumbnailResponse, String> {
+    if is_video(path) {
+        let (w, h) = render_video_thumbnail(path, cache_path, max_dim, generation)?;
+        return Ok(ThumbnailResponse {
+            path: cache_path.to_string_lossy().into_owned(),
+            width: w,
+            height: h,
+            cached: false,
+        });
+    }
+
     if path
         .extension()
         .and_then(|e| e.to_str())
@@ -413,7 +445,22 @@ fn thumb_kind(path: &Path) -> ThumbKind {
     {
         Some("pdf") => ThumbKind::Pdf,
         Some("svg") => ThumbKind::Svg,
+        Some("mp4") | Some("mov") | Some("m4v") | Some("webm") | Some("mkv") | Some("avi") => {
+            ThumbKind::Video
+        }
         _ => ThumbKind::Image,
+    }
+}
+
+fn is_video(path: &Path) -> bool {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("mp4") | Some("mov") | Some("m4v") | Some("webm") | Some("mkv") | Some("avi") => true,
+        _ => false,
     }
 }
 
@@ -422,6 +469,7 @@ fn limiter_limit_for_kind(kind: ThumbKind) -> usize {
     let base = match kind {
         ThumbKind::Image => threads.saturating_mul(4),
         ThumbKind::Svg | ThumbKind::Pdf => threads.saturating_mul(2),
+        ThumbKind::Video => threads.saturating_mul(2).min(4), // hard cap video parallelisme
     };
     base.clamp(POOL_MIN_THREADS, GLOBAL_HARD_MAX_INFLIGHT)
 }
@@ -451,7 +499,7 @@ impl ConcurrencyLimiter {
         }
         let kind_ok = match kind {
             ThumbKind::Image => self.image_active < kind_limit,
-            ThumbKind::Svg | ThumbKind::Pdf => self.doc_active < kind_limit,
+            ThumbKind::Svg | ThumbKind::Pdf | ThumbKind::Video => self.doc_active < kind_limit,
         };
         if !kind_ok {
             return false;
@@ -459,7 +507,7 @@ impl ConcurrencyLimiter {
         self.global_active += 1;
         match kind {
             ThumbKind::Image => self.image_active += 1,
-            ThumbKind::Svg | ThumbKind::Pdf => self.doc_active += 1,
+            ThumbKind::Svg | ThumbKind::Pdf | ThumbKind::Video => self.doc_active += 1,
         }
         true
     }
@@ -474,7 +522,7 @@ impl ConcurrencyLimiter {
                     self.image_active -= 1;
                 }
             }
-            ThumbKind::Svg | ThumbKind::Pdf => {
+            ThumbKind::Svg | ThumbKind::Pdf | ThumbKind::Video => {
                 if self.doc_active > 0 {
                     self.doc_active -= 1;
                 }
