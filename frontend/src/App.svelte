@@ -1678,6 +1678,7 @@
     bind:pathInputEl
     bind:rowsEl={rowsElRef}
   bind:headerEl={headerElRef}
+  currentPath={$current}
   bind:bookmarkName
   bind:bookmarkInputEl
   {viewMode}
