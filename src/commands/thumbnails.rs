@@ -12,6 +12,8 @@ use std::collections::HashMap;
 use std::sync::mpsc;
 use std::time::Duration;
 use tokio::sync::oneshot;
+use tauri::AppHandle;
+use tauri::Manager;
 
 mod thumbnails_svg;
 use thumbnails_svg::render_svg_thumbnail;
@@ -53,7 +55,11 @@ pub struct ThumbnailResponse {
 }
 
 #[tauri::command]
-pub async fn get_thumbnail(path: String, max_dim: Option<u32>) -> Result<ThumbnailResponse, String> {
+pub async fn get_thumbnail(
+    app_handle: AppHandle,
+    path: String,
+    max_dim: Option<u32>,
+) -> Result<ThumbnailResponse, String> {
     let max_dim = max_dim
         .unwrap_or(MAX_DIM_DEFAULT)
         .clamp(MIN_DIM_HARD_LIMIT, MAX_DIM_HARD_LIMIT);
@@ -111,7 +117,8 @@ pub async fn get_thumbnail(path: String, max_dim: Option<u32>) -> Result<Thumbna
     }
 
     let res = tauri::async_runtime::spawn_blocking(move || {
-        THUMB_POOL.install(|| generate_thumbnail(&task_path, &task_cache, max_dim))
+        let res_dir_opt = app_handle.path().resource_dir().ok();
+        THUMB_POOL.install(|| generate_thumbnail(&task_path, &task_cache, max_dim, res_dir_opt.as_deref()))
     })
     .await
     .map_err(|e| format!("Thumbnail task cancelled: {e}"));
@@ -186,6 +193,7 @@ fn generate_thumbnail(
     path: &Path,
     cache_path: &Path,
     max_dim: u32,
+    resource_dir: Option<&Path>,
 ) -> Result<ThumbnailResponse, String> {
     if path
         .extension()
@@ -193,7 +201,7 @@ fn generate_thumbnail(
         .map(|s| s.eq_ignore_ascii_case("pdf"))
         .unwrap_or(false)
     {
-        let (w, h) = render_pdf_thumbnail(path, cache_path, max_dim)?;
+        let (w, h) = render_pdf_thumbnail(path, cache_path, max_dim, resource_dir)?;
         return Ok(ThumbnailResponse {
             path: cache_path.to_string_lossy().into_owned(),
             width: w,

@@ -8,8 +8,9 @@ pub fn render_pdf_thumbnail(
     path: &Path,
     cache_path: &Path,
     max_dim: u32,
+    resource_dir: Option<&Path>,
 ) -> Result<(u32, u32), String> {
-    let bindings = load_pdfium_bindings()?;
+    let bindings = load_pdfium_bindings(resource_dir)?;
     debug_log(&format!("pdfium: bindings loaded for {}", path.display()));
     let pdfium = Pdfium::new(bindings);
 
@@ -55,7 +56,7 @@ pub fn render_pdf_thumbnail(
     Ok((image.width(), image.height()))
 }
 
-fn load_pdfium_bindings() -> Result<Box<dyn PdfiumLibraryBindings>, String> {
+fn load_pdfium_bindings(resource_dir: Option<&Path>) -> Result<Box<dyn PdfiumLibraryBindings>, String> {
     // 1) Explicit override
     if let Ok(path) = std::env::var("PDFIUM_LIB_PATH") {
         if let Ok(b) = Pdfium::bind_to_library(&path) {
@@ -67,6 +68,12 @@ fn load_pdfium_bindings() -> Result<Box<dyn PdfiumLibraryBindings>, String> {
 
     // 2) Bundled paths (dev + packaged)
     let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(res) = resource_dir {
+        #[cfg(target_os = "linux")]
+        candidates.push(res.join("pdfium-linux-x64/lib/libpdfium.so"));
+        #[cfg(target_os = "windows")]
+        candidates.push(res.join("pdfium-win-x64/bin/pdfium.dll"));
+    }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             // target/debug or release -> project root is two levels up
