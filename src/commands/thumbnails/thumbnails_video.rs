@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
-use crate::fs_utils::debug_log;
+use super::thumb_log;
 
 /// Render a video thumbnail by extracting a single frame using `ffmpeg`.
 /// We rely on an available `ffmpeg` binary in PATH.
@@ -61,7 +61,7 @@ pub fn render_video_thumbnail(
         .into_dimensions()
         .map_err(|e| format!("Read dimensions failed: {e}"))?;
 
-    debug_log(&format!(
+    thumb_log(&format!(
         "video thumbnail generated: source={} cache={} size={}x{}",
         path.display(),
         cache_path.display(),
