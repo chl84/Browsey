@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { iconPath } from '../utils'
+  import { iconPath as assetIconPath } from '../utils'
+  import { iconPath as iconPathById } from '../icons'
   import type { Entry } from '../types'
 
-  const readOnlyIcon = iconPath('status/eye-svgrepo-com.svg')
-  const lockIcon = iconPath('status/padlock.svg')
+  const readOnlyIcon = assetIconPath('status/eye-svgrepo-com.svg')
+  const lockIcon = assetIconPath('status/padlock.svg')
 
   export let entry: Entry
   export let index = 0
@@ -65,7 +66,7 @@
   on:drop|preventDefault={onDropRow}
 >
   <div class="col-name">
-    <img class="icon" src={entry.icon} alt="" />
+    <img class="icon" src={iconPathById(entry.iconId)} alt="" />
     <span class="name">
       {displayName(entry)}
       {#if entry.readDenied}

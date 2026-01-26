@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
-use crate::icons::icon_for;
+use crate::icons::icon_id_for;
 #[cfg(not(target_os = "windows"))]
 use std::ffi::CString;
 #[cfg(not(target_os = "windows"))]
@@ -27,7 +27,7 @@ pub struct CachedMeta {
     pub is_link: bool,
     pub size: Option<u64>,
     pub modified: Option<String>,
-    pub icon: String,
+    pub icon_id: u16,
     pub hidden: bool,
     pub network: bool,
     pub read_only: bool,
@@ -71,7 +71,8 @@ pub struct FsEntry {
     pub modified: Option<String>,
     pub original_path: Option<String>,
     pub trash_id: Option<String>,
-    pub icon: String,
+    #[serde(rename = "iconId")]
+    pub icon_id: u16,
     pub starred: bool,
     pub hidden: bool,
     pub network: bool,
@@ -219,6 +220,7 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -
         .and_then(|e| e.to_str())
         .map(|s| s.to_string());
     let modified = fmt_time(meta.modified().ok());
+    let icon_id = icon_id_for(path, meta, is_link);
 
     FsEntry {
         name,
@@ -230,7 +232,7 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -
         modified,
         original_path: None,
         trash_id: None,
-        icon: icon_for(path, meta, is_link).to_string(),
+        icon_id,
         starred,
         hidden: is_hidden(path, meta),
         network: is_network_location(path),
@@ -259,7 +261,7 @@ pub fn store_cached_meta(path: &Path, meta: &Metadata, is_link: bool) {
             None
         },
         modified: fmt_time(meta.modified().ok()),
-        icon: icon_for(path, meta, is_link).to_string(),
+        icon_id: icon_id_for(path, meta, is_link),
         hidden: is_hidden(path, meta),
         network: is_network_location(path),
         read_only: meta.permissions().readonly(),
