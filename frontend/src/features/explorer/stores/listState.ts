@@ -105,7 +105,8 @@ export const createListState = () => {
       event.preventDefault()
       event.stopPropagation()
       const delta = key === 'arrowdown' ? 1 : -1
-      const currentIdx = get(caretIndex) ?? get(anchorIndex) ?? (delta > 0 ? 0 : filteredEntries.length - 1)
+      const fallback = delta > 0 ? -1 : filteredEntries.length
+      const currentIdx = get(caretIndex) ?? get(anchorIndex) ?? fallback
       const next = clampIndex(currentIdx + delta, filteredEntries)
 
       if (event.shiftKey) {

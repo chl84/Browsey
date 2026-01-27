@@ -39,7 +39,8 @@ pub fn context_menu_actions(
     let mut items = Vec::new();
     let in_trash = matches!(view.as_deref(), Some("trash"));
     let in_recent = matches!(view.as_deref(), Some("recent"));
-    let allow_new_folder = !in_trash && !in_recent;
+    let in_starred = matches!(view.as_deref(), Some("starred"));
+    let allow_new_folder = !in_trash && !in_recent && !in_starred;
     let _ = (kind, starred); // placeholders for future per-kind menus
 
     // Disable context menu entirely if no entries are selected and clipboard is empty (no paste).
@@ -104,6 +105,10 @@ pub fn context_menu_actions(
     }
 
     items.push(ContextAction::new("open-with", "Open with…"));
+    if in_starred {
+        items.push(ContextAction::new("open-location", "Open item location"));
+        items.push(ContextAction::new("divider-0", "---"));
+    }
     if allow_new_folder {
         items.push(ContextAction::new("new-folder", "New Folder…"));
         items.push(ContextAction::new("divider-0", "---"));

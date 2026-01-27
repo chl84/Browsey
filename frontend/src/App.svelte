@@ -22,6 +22,7 @@
   import { createViewSwitchAnchor } from './features/explorer/hooks/viewAnchor'
   import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
   import { moveCaret } from './features/explorer/helpers/navigationController'
+  import { createSelectionMemory } from './features/explorer/selectionMemory'
   import { createActivity } from './features/explorer/hooks/useActivity'
   import { createDeleteConfirmModal } from './features/explorer/modals/deleteConfirmModal'
   import { createOpenWithModal } from './features/explorer/modals/openWithModal'
@@ -132,20 +133,18 @@
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
-    load,
-    loadRecent,
-    loadStarred,
-    loadTrash,
+    load: loadRaw,
+    loadRecent: loadRecentRaw,
+    loadStarred: loadStarredRaw,
+    loadTrash: loadTrashRaw,
     runSearch,
     toggleMode,
     toggleShowHidden,
     changeSort,
     open,
     toggleStar,
-    handlePlace,
-    goToPath,
-    goBack,
-    goForward,
+    goBack: goBackRaw,
+    goForward: goForwardRaw,
     loadBookmarks,
     loadPartitions,
     loadSavedWidths,
@@ -234,6 +233,109 @@
     resetScrollPosition,
     recompute,
   } = createListState()
+
+  const selectionMemory = createSelectionMemory()
+
+  const viewFromPath = (value: string): CurrentView =>
+    value === 'Recent'
+      ? 'recent'
+      : value === 'Starred'
+        ? 'starred'
+        : value.startsWith('Trash')
+          ? 'trash'
+          : 'dir'
+
+  const captureSelectionSnapshot = () => {
+    const curr = get(current)
+    if (!curr || viewFromPath(curr) !== 'dir') return
+    selectionMemory.capture(curr, get(filteredEntries), get(selected), get(anchorIndex), get(caretIndex))
+  }
+
+  const restoreSelectionForCurrent = () => {
+    const curr = get(current)
+    const view = curr ? viewFromPath(curr) : 'dir'
+    if (!curr || view !== 'dir') {
+      selected.set(new Set())
+      anchorIndex.set(null)
+      caretIndex.set(null)
+      return
+    }
+    const restored = selectionMemory.restore(curr, get(filteredEntries))
+    if (restored) {
+      selected.set(restored.selected)
+      anchorIndex.set(restored.anchorIndex)
+      caretIndex.set(restored.caretIndex)
+    } else {
+      selected.set(new Set())
+      anchorIndex.set(null)
+      caretIndex.set(null)
+    }
+  }
+
+  const loadDir = async (path?: string, opts: { recordHistory?: boolean; silent?: boolean } = {}) => {
+    captureSelectionSnapshot()
+    await loadRaw(path, opts)
+    restoreSelectionForCurrent()
+  }
+
+  const loadRecent = async (recordHistory = true, applySort = false) => {
+    captureSelectionSnapshot()
+    await loadRecentRaw(recordHistory, applySort)
+    restoreSelectionForCurrent()
+  }
+
+  const loadStarred = async (recordHistory = true) => {
+    captureSelectionSnapshot()
+    await loadStarredRaw(recordHistory)
+    restoreSelectionForCurrent()
+  }
+
+  const loadTrash = async (recordHistory = true) => {
+    captureSelectionSnapshot()
+    await loadTrashRaw(recordHistory)
+    restoreSelectionForCurrent()
+  }
+
+  const goBack = async () => {
+    captureSelectionSnapshot()
+    await goBackRaw()
+    restoreSelectionForCurrent()
+  }
+
+  const goForward = async () => {
+    captureSelectionSnapshot()
+    await goForwardRaw()
+    restoreSelectionForCurrent()
+  }
+
+  const goToPath = async (path: string) => {
+    const trimmed = path.trim()
+    if (!trimmed) return
+    if (trimmed !== get(current)) {
+      await loadDir(trimmed)
+    }
+  }
+
+  const handlePlace = (label: string, path: string) => {
+    captureSelectionSnapshot()
+    if (label === 'Recent') {
+      void loadRecent()
+      return
+    }
+    if (label === 'Starred') {
+      void loadStarred()
+      return
+    }
+    if (label === 'Wastebasket') {
+      void loadTrash()
+      return
+    }
+    if (path) {
+      void loadDir(path)
+    } else {
+      restoreSelectionForCurrent()
+    }
+  }
 
   $: rowsElStore.set(viewMode === 'list' ? rowsElRef : null)
   $: headerElStore.set(viewMode === 'list' ? headerElRef : null)
@@ -398,6 +500,26 @@
 
     const parts = [filterLine, dirLine, fileLine].filter((p) => p.length > 0)
     selectionText = parts.join(' | ')
+  }
+
+  // Re-anchor keyboard navigation after returning to a view so arrows start from the selected item.
+  $: {
+    const list = $filteredEntries
+    if ($selected.size > 0 && list.length > 0) {
+      const firstIdx = list.findIndex((e) => $selected.has(e.path))
+      if (firstIdx >= 0) {
+        const anchorValid =
+          $anchorIndex !== null &&
+          $anchorIndex < list.length &&
+          $selected.has(list[$anchorIndex].path)
+        const caretValid =
+          $caretIndex !== null &&
+          $caretIndex < list.length &&
+          $selected.has(list[$caretIndex].path)
+        if (!anchorValid) anchorIndex.set(firstIdx)
+        if (!caretValid) caretIndex.set(firstIdx)
+      }
+    }
   }
 
   const ariaSort = (field: SortField) =>
@@ -672,7 +794,14 @@
       }
     }
 
-    if (key === 'arrowdown' && !isEditableTarget(event.target) && rowsElRef && !inRows) {
+    if (
+      key === 'tab' &&
+      mode === 'filter' &&
+      !event.shiftKey &&
+      rowsElRef &&
+      !inRows &&
+      pathInput.length > 0
+    ) {
       const list = get(filteredEntries)
       if (list.length > 0) {
         event.preventDefault()
@@ -680,11 +809,75 @@
         selected.set(new Set([list[0].path]))
         anchorIndex.set(0)
         caretIndex.set(0)
-        const firstRow = rowsElRef.querySelector<HTMLButtonElement>('.row-viewport .row')
-        if (firstRow) {
-          firstRow.focus()
+        const selector =
+          viewMode === 'grid'
+            ? `.card[data-index=\"0\"]`
+            : `.row-viewport .row[data-index=\"0\"]`
+        const targetEl = rowsElRef.querySelector<HTMLElement>(selector)
+        if (targetEl) {
+          targetEl.focus()
+          targetEl.scrollIntoView({ block: 'nearest' })
         } else {
           rowsElRef.focus()
+        }
+        if (viewMode === 'grid') {
+          ensureGridVisible(0)
+        }
+        return
+      }
+    }
+
+    if (key === 'enter' && !isEditableTarget(event.target) && !inRows) {
+      const list = get(filteredEntries)
+      if (list.length > 0 && get(selected).size > 0) {
+        event.preventDefault()
+        event.stopPropagation()
+        const sel = get(selected)
+        let idx = list.findIndex((e) => sel.has(e.path))
+        if (idx < 0) idx = 0
+        anchorIndex.set(idx)
+        caretIndex.set(idx)
+        void handleOpenEntry(list[idx])
+        return
+      }
+    }
+
+    const arrowNav = key === 'arrowdown' || key === 'arrowup'
+    if (arrowNav && !isEditableTarget(event.target) && rowsElRef && !inRows) {
+      const list = get(filteredEntries)
+      if (list.length > 0) {
+        event.preventDefault()
+        event.stopPropagation()
+        const sel = get(selected)
+        const dir = key === 'arrowdown' ? 1 : -1
+        let idx = list.findIndex((e) => sel.has(e.path))
+        if (idx < 0) {
+          idx = dir > 0 ? 0 : list.length - 1
+        }
+
+        if (sel.size === 0) {
+          selected.set(new Set([list[idx].path]))
+        }
+        anchorIndex.set(idx)
+        caretIndex.set(idx)
+
+        const selector =
+          viewMode === 'grid'
+            ? `.card[data-index=\"${idx}\"]`
+            : `.row-viewport .row[data-index=\"${idx}\"]`
+        const targetEl = rowsElRef.querySelector<HTMLElement>(selector)
+        if (targetEl) {
+          targetEl.focus()
+        } else {
+          rowsElRef.focus()
+        }
+
+        if (sel.size > 0) {
+          if (viewMode === 'list') {
+            rowsKeydownHandler(event)
+          } else {
+            handleGridKeydown(event)
+          }
         }
         return
       }
@@ -954,7 +1147,7 @@
       await loadTrash(false)
       return
     }
-    await load($current, { recordHistory: false })
+    await loadRaw($current, { recordHistory: false })
   }
 
   const deleteModal = createDeleteConfirmModal({ activityApi, reloadCurrent, showToast })
@@ -964,20 +1157,20 @@
   const propertiesModal = createPropertiesModal({ computeDirStats })
   const propertiesState = propertiesModal.state
   const renameModal = createRenameModal({
-    loadPath: (path: string) => load(path, { recordHistory: false }),
+    loadPath: (path: string) => loadRaw(path, { recordHistory: false }),
     parentPath,
   })
   const renameState = renameModal.state
   const newFolderModal = createNewFolderModal({
     getCurrentPath: () => get(current),
-    loadPath: (path: string) => load(path, { recordHistory: false }),
+    loadPath: (path: string) => loadRaw(path, { recordHistory: false }),
     showToast,
   })
   const newFolderState = newFolderModal.state
   const compressModal = createCompressModal({
     activityApi,
     getCurrentPath: () => get(current),
-    loadPath: (path: string) => load(path, { recordHistory: false }),
+    loadPath: (path: string) => loadRaw(path, { recordHistory: false }),
     showToast,
   })
   const compressState = compressModal.state
@@ -1078,7 +1271,7 @@
         await toggleMode(false)
       }
       pathInput = entry.path
-      await load(entry.path)
+      await loadDir(entry.path)
       return
     }
     if (isExtractableArchive(entry)) {
@@ -1090,7 +1283,7 @@
 
   const openEntryLocation = async (entry: Entry) => {
     const dir = parentPath(entry.path)
-    await load(dir)
+    await loadDir(dir)
     const idx = get(entries).findIndex((e) => e.path === entry.path)
     if (idx >= 0) {
       selected.set(new Set([entry.path]))
@@ -1579,7 +1772,7 @@
           partitionsPoll = null
         }
       })
-      void load()
+      void loadRaw()
 
       unlistenDirChanged = await listen<string>('dir-changed', (event) => {
         const curr = get(current)
@@ -1591,7 +1784,7 @@
           refreshTimer = setTimeout(() => {
             const latest = get(current)
             if (!latest || latest !== payload) return
-            void load(latest, { recordHistory: false, silent: true })
+            void loadRaw(latest, { recordHistory: false, silent: true })
           }, 300)
         }
       })
@@ -1690,12 +1883,12 @@
   {bookmarks}
   {partitions}
   onPlaceSelect={handlePlace}
-  onBookmarkSelect={(path) => void load(path)}
+  onBookmarkSelect={(path) => void loadDir(path)}
   onRemoveBookmark={(path) => {
     void invoke('remove_bookmark', { path })
     bookmarksStore.update((list) => list.filter((b) => b.path !== path))
   }}
-  onPartitionSelect={(path) => void load(path)}
+  onPartitionSelect={(path) => void loadDir(path)}
   onPartitionEject={async (path) => {
     try {
       await invoke('eject_drive', { path })
