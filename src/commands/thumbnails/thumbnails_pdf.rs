@@ -82,6 +82,8 @@ fn load_pdfium_bindings(
         if let Some(dir) = exe.parent() {
             // Common layouts: installed bundle keeps resources beside the exe; dev sits at target/{debug,release}
             #[cfg(target_os = "linux")]
+            candidates.push(dir.join("libpdfium.so"));
+            #[cfg(target_os = "linux")]
             candidates.push(dir.join("resources/pdfium-linux-x64/lib/libpdfium.so"));
             #[cfg(target_os = "windows")]
             candidates.push(dir.join("resources/pdfium-win-x64/bin/pdfium.dll"));
