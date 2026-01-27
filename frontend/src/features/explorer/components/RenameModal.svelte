@@ -27,6 +27,7 @@
     modalWidth="360px"
     onClose={onCancel}
     initialFocusSelector="input"
+    selectTextOnFocus={false}
   >
     <svelte:fragment slot="header">Rename</svelte:fragment>
     <p class="muted">{entryName}</p>

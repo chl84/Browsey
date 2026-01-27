@@ -86,7 +86,18 @@
           ? `.${entry.ext}`
           : 'File'}
   </div>
-  <div class="col-modified">{entry.modified ?? '—'}</div>
+  <div class="col-modified">
+    {#if entry.modified}
+      {#if entry.modified.includes(' ')}
+        <span class="mod-date">{entry.modified.split(' ')[0]}</span>
+        <span class="mod-time">{entry.modified.slice(entry.modified.indexOf(' ') + 1)}</span>
+      {:else}
+        {entry.modified}
+      {/if}
+    {:else}
+      —
+    {/if}
+  </div>
   <div class="col-size">
     {entry.kind === 'file'
       ? formatSize(entry.size)
@@ -126,7 +137,7 @@
     padding: 0 12px;
     height: 32px;
     min-height: 32px;
-    transition: background 120ms ease, border-color 120ms ease;
+    transition: none;
     cursor: default;
     box-sizing: border-box;
     border: 1px solid transparent;
@@ -143,6 +154,7 @@
     background: var(--bg-hover);
     transform: none !important;
     box-shadow: none !important;
+    z-index: 1;
   }
 
   .row.hidden {
@@ -222,6 +234,17 @@
 
   .col-modified {
     min-width: 100px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+  }
+
+  .mod-time {
+    font-size: 12px;
+    line-height: 1.2;
+    text-align: right;
+    flex-shrink: 0;
   }
 
   .col-star {

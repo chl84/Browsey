@@ -54,3 +54,13 @@ pub fn list_recent(sort: Option<SortSpec>) -> Result<Vec<FsEntry>, String> {
     }
     Ok(out)
 }
+
+#[tauri::command]
+pub fn remove_recent(paths: Vec<String>) -> Result<(), String> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let mut conn = db::open()?;
+    db::delete_recent_paths(&mut conn, &paths)?;
+    Ok(())
+}

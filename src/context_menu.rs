@@ -57,10 +57,14 @@ pub fn context_menu_actions(
             "Properties",
             "Ctrl+P",
         ));
+        items.push(ContextAction::new("divider-recent-remove", "---"));
+        items.push(ContextAction::new("remove-recent", "Remove from Recent"));
         return items;
     }
 
     if (count >= 1) && in_trash {
+        items.push(ContextAction::new("restore", "Restore"));
+        items.push(ContextAction::new("divider-restore", "---"));
         items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
         items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
         items.push(ContextAction::with_shortcut(
@@ -68,7 +72,6 @@ pub fn context_menu_actions(
             "Delete permanently…",
             "Shift+Delete",
         ));
-        items.push(ContextAction::new("restore", "Restore"));
         items.push(ContextAction::with_shortcut(
             "properties",
             "Properties",
@@ -82,9 +85,13 @@ pub fn context_menu_actions(
             items.push(ContextAction::new("new-folder", "New Folder…"));
             items.push(ContextAction::new("divider-0", "---"));
         }
-        items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
+        if !in_starred {
+            items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
+        }
         items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
-        items.push(ContextAction::new("compress", "Compress…"));
+        if !in_starred {
+            items.push(ContextAction::new("compress", "Compress…"));
+        }
         items.push(ContextAction::with_shortcut(
             "move-trash",
             "Move to wastebasket",
@@ -114,11 +121,15 @@ pub fn context_menu_actions(
         items.push(ContextAction::new("divider-0", "---"));
     }
     items.push(ContextAction::new("copy-path", "Copy path"));
-    items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
+    if !in_starred {
+        items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
+    }
     items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
     items.push(ContextAction::new("divider-1", "---"));
-    items.push(ContextAction::with_shortcut("rename", "Rename…", "F2"));
-    items.push(ContextAction::new("compress", "Compress…"));
+    if !in_starred {
+        items.push(ContextAction::with_shortcut("rename", "Rename…", "F2"));
+        items.push(ContextAction::new("compress", "Compress…"));
+    }
     items.push(ContextAction::with_shortcut(
         "move-trash",
         "Move to wastebasket",

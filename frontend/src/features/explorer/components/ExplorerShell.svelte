@@ -326,7 +326,7 @@
 />
 <RenameModal
   open={renameModalOpen}
-  entryName={renameTarget?.path ?? ''}
+  entryName={renameTarget?.name ?? ''}
   bind:value={renameValue}
   error={renameError}
   onConfirm={onConfirmRename}

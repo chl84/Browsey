@@ -256,11 +256,12 @@
     font-weight: 300;
     position: relative;
     overflow: hidden;
-    transition: background 120ms ease, border-color 120ms ease;
+    transition: none;
   }
 
   .card:hover {
     background: var(--bg-hover);
+    z-index: 1;
   }
 
   .card.selected {

@@ -69,6 +69,19 @@ export const createContextActions = (deps: Deps) => {
       return
     }
 
+    if (id === 'remove-recent') {
+      if (currentView() === 'recent') {
+        const paths = selectionEntries.map((e) => e.path)
+        try {
+          await invoke('remove_recent', { paths })
+          await reloadCurrent()
+        } catch (err) {
+          showToast(`Remove failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+      return
+    }
+
     if (id === 'cut' || id === 'copy') {
       if (id === 'cut') {
         const result = await clipboard.cut(selectionEntries)
