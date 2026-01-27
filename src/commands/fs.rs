@@ -788,6 +788,9 @@ pub fn rename_entry(
         .parent()
         .ok_or_else(|| "Cannot rename root".to_string())?;
     let to = parent.join(new_name.trim());
+    if to != from && to.exists() {
+        return Err("A file or directory with that name already exists".into());
+    }
     match fs::rename(&from, &to) {
         Ok(_) => {
             let _ = state.record_applied(Action::Rename {

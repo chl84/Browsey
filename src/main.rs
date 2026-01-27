@@ -142,6 +142,7 @@ fn main() {
             open_with,
             toggle_star,
             list_starred,
+            remove_recent,
             list_recent,
             list_trash,
             store_column_widths,

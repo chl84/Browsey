@@ -24,7 +24,7 @@ pub use fs::{
     move_to_trash, move_to_trash_many, open_entry, purge_trash_items, rename_entry,
     restore_trash_items, watch_dir,
 };
-pub use library::{list_recent, list_starred, toggle_star};
+pub use library::{list_recent, list_starred, remove_recent, toggle_star};
 pub use meta::entry_times_cmd;
 pub use open_with::{list_open_with_apps, open_with};
 pub use permissions::{get_permissions, set_permissions};

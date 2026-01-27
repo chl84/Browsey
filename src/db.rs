@@ -185,6 +185,22 @@ pub fn touch_recent(conn: &Connection, path: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn delete_recent_paths(conn: &mut Connection, paths: &[String]) -> Result<usize, String> {
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Failed to start transaction: {e}"))?;
+    let mut deleted = 0;
+    for path in paths {
+        let changes = tx
+            .execute("DELETE FROM recent WHERE path = ?1", params![path])
+            .map_err(|e| format!("Failed to delete recent entry: {e}"))?;
+        deleted += changes;
+    }
+    tx.commit()
+        .map_err(|e| format!("Failed to commit recent deletion: {e}"))?;
+    Ok(deleted)
+}
+
 pub fn list_bookmarks(conn: &Connection) -> Result<Vec<(String, String)>, String> {
     let mut stmt = conn
         .prepare("SELECT label, path FROM bookmarks ORDER BY label COLLATE NOCASE ASC")

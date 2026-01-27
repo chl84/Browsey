@@ -646,6 +646,9 @@
   }
 
   const navigateToBreadcrumb = async (path: string) => {
+    if (currentView !== 'dir') {
+      return
+    }
     mode = 'address'
     searchActive.set(false)
     filter.set('')
@@ -744,7 +747,7 @@
       return true
     },
     onPaste: async () => {
-      if (currentView === 'recent') return false
+      if (currentView === 'recent' || currentView === 'starred') return false
       return pasteIntoCurrent()
     },
     onRename: async () => {
@@ -1143,6 +1146,10 @@
   }
 
   const pasteIntoCurrent = async () => {
+    if (currentView === 'starred') {
+      showToast('Cannot paste in Starred view')
+      return false
+    }
     const ok = await handlePasteOrMove($current)
     return ok
   }

@@ -39,10 +39,15 @@ export function selectAll(input: HTMLInputElement | null) {
   input.select()
 }
 
-export function selectBaseName(input: HTMLInputElement | null, value: string) {
+export function selectBaseName(input: HTMLInputElement | null, value?: string) {
   if (!input) return
   input.focus()
-  const dot = value.lastIndexOf('.')
+  const text = value ?? input.value ?? ''
+  if (!text) {
+    input.select()
+    return
+  }
+  const dot = text.lastIndexOf('.')
   if (dot > 0) {
     input.setSelectionRange(0, dot)
   } else {

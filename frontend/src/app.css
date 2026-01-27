@@ -13,7 +13,7 @@
   --accent-warning: #f6d04d;
   --accent-error-text: #fca5a5;
   --selection-border: rgba(140, 140, 140, 0.6);
-  --selection-fill: rgba(140, 140, 140, 0.12);
+  --selection-fill: rgba(160, 160, 160, 0.16);
   --selection-shadow: 0 0 0 1px rgba(140, 140, 140, 0.2);
   --drop-allowed-bg: rgba(160, 160, 160, 0.12);
   --drop-allowed-border: rgba(180, 180, 180, 0.5);
@@ -82,7 +82,7 @@ body {
   --accent-warning: #e6b400;
   --accent-error-text: #c92a2a;
   --selection-border: rgba(30, 136, 229, 0.4);
-  --selection-fill: rgba(30, 136, 229, 0.1);
+  --selection-fill: rgba(30, 136, 229, 0.14);
   --selection-shadow: 0 0 0 1px rgba(30, 136, 229, 0.15);
   --drop-allowed-bg: rgba(30, 136, 229, 0.08);
   --drop-allowed-border: rgba(30, 136, 229, 0.45);
