@@ -48,7 +48,7 @@ export function fullNameTooltip(node: HTMLElement, content: TooltipContent) {
     showTimer = window.setTimeout(() => {
       showTimer = null
       show()
-    }, 1000)
+    }, 750)
   }
 
   node.addEventListener('mouseenter', scheduleShow)

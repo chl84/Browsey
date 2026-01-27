@@ -272,40 +272,81 @@
     }
   }
 
+  const centerSelectionIfAny = async () => {
+    const list = get(filteredEntries)
+    const sel = get(selected)
+    if (sel.size === 0 || list.length === 0) return
+    const idx =
+      get(caretIndex) ??
+      get(anchorIndex) ??
+      list.findIndex((e) => sel.has(e.path))
+    if (idx === null || idx < 0) return
+
+    await tick()
+    requestAnimationFrame(() => {
+      if (viewMode === 'list') {
+        const rowsEl = rowsElRef
+        if (!rowsEl) return
+        const headerH = headerElRef?.offsetHeight ?? 0
+        const viewport = rowsEl.clientHeight - headerH
+        const rowH = rowHeight
+        const target = headerH + Math.max(0, idx * rowH - (viewport - rowH) / 2)
+        const maxScroll = Math.max(0, rowsEl.scrollHeight - rowsEl.clientHeight)
+        rowsEl.scrollTo({ top: Math.min(target, maxScroll), behavior: 'auto' })
+      } else {
+        const gridEl = gridElRef
+        if (!gridEl || gridCols <= 0) return
+        const stride = GRID_ROW_HEIGHT + GRID_GAP
+        const row = Math.floor(idx / Math.max(1, gridCols))
+        const viewport = gridEl.clientHeight
+        const target = Math.max(0, row * stride - (viewport - stride) / 2)
+        const maxScroll =
+          Math.max(get(gridTotalHeight) - viewport, gridEl.scrollHeight - gridEl.clientHeight, 0)
+        gridEl.scrollTo({ top: Math.min(target, maxScroll), behavior: 'auto' })
+      }
+    })
+  }
+
   const loadDir = async (path?: string, opts: { recordHistory?: boolean; silent?: boolean } = {}) => {
     captureSelectionSnapshot()
     await loadRaw(path, opts)
     restoreSelectionForCurrent()
+    await centerSelectionIfAny()
   }
 
   const loadRecent = async (recordHistory = true, applySort = false) => {
     captureSelectionSnapshot()
     await loadRecentRaw(recordHistory, applySort)
     restoreSelectionForCurrent()
+    await centerSelectionIfAny()
   }
 
   const loadStarred = async (recordHistory = true) => {
     captureSelectionSnapshot()
     await loadStarredRaw(recordHistory)
     restoreSelectionForCurrent()
+    await centerSelectionIfAny()
   }
 
   const loadTrash = async (recordHistory = true) => {
     captureSelectionSnapshot()
     await loadTrashRaw(recordHistory)
     restoreSelectionForCurrent()
+    await centerSelectionIfAny()
   }
 
   const goBack = async () => {
     captureSelectionSnapshot()
     await goBackRaw()
     restoreSelectionForCurrent()
+    await centerSelectionIfAny()
   }
 
   const goForward = async () => {
     captureSelectionSnapshot()
     await goForwardRaw()
     restoreSelectionForCurrent()
+    await centerSelectionIfAny()
   }
 
   const goToPath = async (path: string) => {
@@ -849,6 +890,7 @@
         event.preventDefault()
         event.stopPropagation()
         const sel = get(selected)
+        const hadSelection = sel.size > 0
         const dir = key === 'arrowdown' ? 1 : -1
         let idx = list.findIndex((e) => sel.has(e.path))
         if (idx < 0) {
@@ -870,6 +912,11 @@
           targetEl.focus()
         } else {
           rowsElRef.focus()
+        }
+
+        if (!hadSelection && viewMode === 'grid') {
+          ensureGridVisible(idx)
+          return
         }
 
         if (sel.size > 0) {
@@ -1481,7 +1528,10 @@
       return
     }
 
-    const current = get(caretIndex) ?? get(anchorIndex)
+    let current = get(caretIndex) ?? get(anchorIndex)
+    if (current === null) {
+      current = key === 'arrowleft' || key === 'arrowup' ? list.length : -1
+    }
     const rowDelta = Math.max(1, gridCols)
     let next: number | null = null
     if (key === 'arrowright') next = moveCaret({ count: list.length, current, delta: 1 })
