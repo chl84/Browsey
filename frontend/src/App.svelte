@@ -884,48 +884,14 @@
     }
 
     const arrowNav = key === 'arrowdown' || key === 'arrowup'
-    if (arrowNav && !isEditableTarget(event.target) && rowsElRef && !inRows) {
+    const arrowHoriz = key === 'arrowleft' || key === 'arrowright'
+    if ((arrowNav || (arrowHoriz && viewMode === 'grid')) && !isEditableTarget(event.target) && rowsElRef && !inRows) {
       const list = get(filteredEntries)
       if (list.length > 0) {
         event.preventDefault()
         event.stopPropagation()
-        const sel = get(selected)
-        const hadSelection = sel.size > 0
-        const dir = key === 'arrowdown' ? 1 : -1
-        let idx = list.findIndex((e) => sel.has(e.path))
-        if (idx < 0) {
-          idx = dir > 0 ? 0 : list.length - 1
-        }
-
-        if (sel.size === 0) {
-          selected.set(new Set([list[idx].path]))
-        }
-        anchorIndex.set(idx)
-        caretIndex.set(idx)
-
-        const selector =
-          viewMode === 'grid'
-            ? `.card[data-index=\"${idx}\"]`
-            : `.row-viewport .row[data-index=\"${idx}\"]`
-        const targetEl = rowsElRef.querySelector<HTMLElement>(selector)
-        if (targetEl) {
-          targetEl.focus()
-        } else {
-          rowsElRef.focus()
-        }
-
-        if (!hadSelection && viewMode === 'grid') {
-          ensureGridVisible(idx)
-          return
-        }
-
-        if (sel.size > 0) {
-          if (viewMode === 'list') {
-            rowsKeydownHandler(event)
-          } else {
-            handleGridKeydown(event)
-          }
-        }
+        rowsElRef.focus()
+        handleRowsKeydownCombined(event)
         return
       }
     }
