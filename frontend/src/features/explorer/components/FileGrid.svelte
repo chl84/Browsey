@@ -1,6 +1,6 @@
 <script lang="ts">
   import SelectionBox from '../../../ui/SelectionBox.svelte'
-  import { iconPath as assetIconPath, formatSize } from '../utils'
+  import { iconPath as assetIconPath, formatSize, formatItems } from '../utils'
   import { iconPath as iconPathById } from '../icons'
   import type { Entry } from '../types'
   import { fullNameTooltip } from '../fullNameTooltip'
@@ -118,6 +118,7 @@
               class:drop-blocked={dragTargetPath === entry.path && !dragAllowed}
               type="button"
               style="user-select:text"
+              data-index={start + i}
               data-path={entry.path}
               draggable="true"
               on:dblclick={() => onOpen(entry)}
@@ -159,11 +160,14 @@
                 class="name"
                 use:autoAlignName
                 use:fullNameTooltip={() => {
-                  const size =
-                    entry.kind === 'file' && entry.size !== null && entry.size !== undefined
-                      ? formatSize(entry.size)
-                      : ''
-                  return size ? `${displayName(entry)} • ${size}` : displayName(entry)
+                  const parts = [entry.name]
+                  if (entry.kind === 'file' && entry.size !== null && entry.size !== undefined) {
+                    parts.push(formatSize(entry.size))
+                  } else if (entry.kind === 'dir' && entry.items !== null && entry.items !== undefined) {
+                    const items = formatItems(entry.items)
+                    if (items) parts.push(items)
+                  }
+                  return parts.join(' • ')
                 }}
               >
                 {displayName(entry)}
@@ -327,6 +331,9 @@
     max-width: 100%;
     width: 100%;
     text-align: center;
+    /* Mykere avkutt på siste linje */
+    mask-image: linear-gradient(180deg, #000 75%, transparent 100%);
+    -webkit-mask-image: linear-gradient(180deg, #000 75%, transparent 100%);
   }
 
 </style>

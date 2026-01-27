@@ -16,6 +16,7 @@ type RestoreResult = {
  * Per-mappe minne for utvalg/anker/caret slik at vi kan gå tilbake uten å miste markering.
  */
 export const createSelectionMemory = () => {
+  const MAX_SELECTION_SNAPSHOTS = 10
   const memory = new Map<string, StoredSelection>()
 
   const capture = (
@@ -31,11 +32,24 @@ export const createSelectionMemory = () => {
     const anchorPath = anchorIndex !== null ? filteredEntries[anchorIndex]?.path ?? null : null
     const caretPath = caretIndex !== null ? filteredEntries[caretIndex]?.path ?? null : null
 
+    // Oppdater rekkefølge for LRU: fjern først om den finnes, så legg inn på nytt.
+    if (memory.has(path)) {
+      memory.delete(path)
+    }
     memory.set(path, {
       paths: filteredSelection,
       anchorPath,
       caretPath,
     })
+
+    while (memory.size > MAX_SELECTION_SNAPSHOTS) {
+      const oldest = memory.keys().next().value
+      if (oldest !== undefined) {
+        memory.delete(oldest)
+      } else {
+        break
+      }
+    }
   }
 
   const restore = (path: string, filteredEntries: Entry[]): RestoreResult | null => {
