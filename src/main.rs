@@ -161,6 +161,7 @@ fn main() {
             set_clipboard_cmd,
             copy_paths_to_system_clipboard,
             system_clipboard_paths,
+            clear_system_clipboard,
             paste_clipboard_cmd,
             paste_clipboard_preview,
             search_stream,

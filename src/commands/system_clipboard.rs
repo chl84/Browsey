@@ -59,21 +59,8 @@ fn run_xclip(mime: &str, payload: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn format_gnome_payload(uris: &[String]) -> String {
-    let mut s = String::from("copy\n");
-    for uri in uris {
-        s.push_str(uri);
-        s.push('\n');
-    }
-    s
-}
-
-fn format_uri_list(uris: &[String]) -> String {
-    uris.join("\r\n")
-}
-
 #[tauri::command]
-pub fn copy_paths_to_system_clipboard(paths: Vec<String>) -> Result<(), String> {
+pub fn copy_paths_to_system_clipboard(paths: Vec<String>, mode: Option<String>) -> Result<(), String> {
     if paths.is_empty() {
         return Err("No paths provided".into());
     }
@@ -81,16 +68,40 @@ pub fn copy_paths_to_system_clipboard(paths: Vec<String>) -> Result<(), String> 
     for p in paths {
         uris.push(file_uri(&p)?);
     }
-    let gnome_payload = format_gnome_payload(&uris);
-    let uri_list = format_uri_list(&uris);
+    let action = match mode.unwrap_or_else(|| "copy".into()).to_lowercase().as_str() {
+        "cut" => "cut",
+        _ => "copy",
+    };
+    let uri_list = {
+        let mut lines = Vec::with_capacity(uris.len() + 1);
+        if action == "cut" {
+            // Hint consumers that this is a move when x-special payload is unavailable.
+            lines.push("#cut".to_string());
+        }
+        lines.extend(uris.iter().cloned());
+        lines.join("\r\n")
+    };
+    let gnome_payload = {
+        let mut s = String::from(action);
+        s.push('\n');
+        for uri in &uris {
+            s.push_str(uri);
+            s.push('\n');
+        }
+        s
+    };
 
+    // Write both payloads: gnome for cut/copy semantics, uri-list for compatibility.
+    let mut wrote = false;
     if run_wl_copy("x-special/gnome-copied-files", &gnome_payload).is_ok() {
         let _ = run_wl_copy("text/uri-list", &uri_list);
-        return Ok(());
+        wrote = true;
+    } else if run_xclip("x-special/gnome-copied-files", &gnome_payload).is_ok() {
+        let _ = run_xclip("text/uri-list", &uri_list);
+        wrote = true;
     }
 
-    if run_xclip("x-special/gnome-copied-files", &gnome_payload).is_ok() {
-        let _ = run_xclip("text/uri-list", &uri_list);
+    if wrote {
         return Ok(());
     }
 
@@ -124,20 +135,27 @@ fn read_xclip(mime: &str) -> Result<Option<String>, String> {
     )
 }
 
-fn parse_uri_list(payload: &str) -> Vec<String> {
-    payload
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                return None;
+fn parse_uri_list(payload: &str) -> (Vec<String>, String) {
+    let mut mode = "copy".to_string();
+    let mut paths = Vec::new();
+    for line in payload.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with('#') {
+            if trimmed.eq_ignore_ascii_case("#cut") {
+                mode = "cut".to_string();
             }
-            Url::parse(trimmed)
-                .ok()
-                .and_then(|u| u.to_file_path().ok())
-                .map(|p| p.to_string_lossy().to_string())
-        })
-        .collect()
+            continue;
+        }
+        if let Ok(url) = Url::parse(trimmed) {
+            if let Ok(path) = url.to_file_path() {
+                paths.push(path.to_string_lossy().to_string());
+            }
+        }
+    }
+    (paths, mode)
 }
 
 fn parse_gnome_payload(payload: &str) -> Option<SystemClipboardContent> {
@@ -174,10 +192,10 @@ pub fn system_clipboard_paths() -> Result<SystemClipboardContent, String> {
         }
     }
     if let Some(text) = read_wl_paste("text/uri-list")? {
-        let paths = parse_uri_list(&text);
+        let (paths, mode) = parse_uri_list(&text);
         if !paths.is_empty() {
             return Ok(SystemClipboardContent {
-                mode: "copy".into(),
+                mode,
                 paths,
             });
         }
@@ -190,14 +208,51 @@ pub fn system_clipboard_paths() -> Result<SystemClipboardContent, String> {
         }
     }
     if let Some(text) = read_xclip("text/uri-list")? {
-        let paths = parse_uri_list(&text);
+        let (paths, mode) = parse_uri_list(&text);
         if !paths.is_empty() {
             return Ok(SystemClipboardContent {
-                mode: "copy".into(),
+                mode,
                 paths,
             });
         }
     }
 
     Err("No file paths found in system clipboard".into())
+}
+
+fn clear_with_wl_copy() -> Result<(), String> {
+    let status = Command::new("wl-copy")
+        .arg("--clear")
+        .status()
+        .map_err(|e| format!("wl-copy --clear failed: {e}"))?;
+    if !status.success() {
+        return Err(format!("wl-copy --clear exited with status {status}"));
+    }
+    Ok(())
+}
+
+fn clear_with_xclip() -> Result<(), String> {
+    let status = Command::new("xclip")
+        .arg("-selection")
+        .arg("clipboard")
+        .arg("-i")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| child.wait())
+        .map_err(|e| format!("xclip clear failed: {e}"))?;
+    if !status.success() {
+        return Err(format!("xclip clear exited with status {status}"));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_system_clipboard() -> Result<(), String> {
+    if clear_with_wl_copy().is_ok() {
+        return Ok(());
+    }
+    if clear_with_xclip().is_ok() {
+        return Ok(());
+    }
+    Err("No compatible clipboard tool found (need wl-copy or xclip)".into())
 }

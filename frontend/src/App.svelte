@@ -14,7 +14,7 @@
   import type { Entry, Partition, SortField } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
-  import { setClipboardState } from './features/explorer/stores/clipboardState'
+  import { setClipboardState, clearClipboardState } from './features/explorer/stores/clipboardState'
   import { createContextMenus } from './features/explorer/hooks/useContextMenus'
   import type { ContextAction } from './features/explorer/hooks/useContextMenus'
   import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
@@ -754,6 +754,15 @@
         showToast(`Cut failed: ${result.error}`)
         return false
       }
+      try {
+        await invoke('copy_paths_to_system_clipboard', { paths, mode: 'cut' })
+        showToast('Cut', 1500)
+      } catch (err) {
+        showToast(
+          `Cut (system clipboard unavailable: ${err instanceof Error ? err.message : String(err)})`,
+          2500
+        )
+      }
       return true
     },
     onPaste: async () => {
@@ -1182,6 +1191,17 @@
     }
 
     const ok = await handlePasteOrMove($current)
+    if (ok && clipboardMode === 'cut') {
+      // Clear internal and system clipboard after a successful move
+      clearClipboardState()
+      try {
+        await invoke('set_clipboard_cmd', { paths: [], mode: 'copy' })
+        await invoke('clear_system_clipboard')
+      } catch {
+        // ignore; move already succeeded
+      }
+      clipboardPaths = new Set()
+    }
     return ok
   }
 
