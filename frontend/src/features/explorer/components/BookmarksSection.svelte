@@ -70,8 +70,8 @@ const bookmarkIcon = iconPath('browsey/bookmark.svg')
     padding: 5px 12px 5px 22px;
     background: transparent;
     color: var(--fg);
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-base);
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -114,7 +114,8 @@ const bookmarkIcon = iconPath('browsey/bookmark.svg')
     background: transparent;
     border: none;
     color: var(--fg-muted);
-    font-size: 14px;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-base);
     cursor: pointer;
     opacity: 0;
     transition: opacity 120ms ease;

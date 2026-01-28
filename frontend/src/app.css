@@ -54,6 +54,9 @@
   --tooltip-fg: #cbd5e1;
   --tooltip-border: #2b2b2b;
   --tooltip-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  --font-size-base: 14px;
+  --font-size-small: 12px;
+  --font-weight-base: 400;
 
   font-family: 'Noto Sans', 'Segoe UI', 'Helvetica Neue', system-ui, -apple-system, sans-serif;
   color: var(--fg);
@@ -123,6 +126,9 @@ body {
   --tooltip-fg: #1f232b;
   --tooltip-border: #d4d7dd;
   --tooltip-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  --font-size-base: 14px;
+  --font-size-small: 12px;
+  --font-weight-base: 400;
 }
 
 *,

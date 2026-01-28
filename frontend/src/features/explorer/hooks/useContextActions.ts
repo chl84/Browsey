@@ -89,7 +89,20 @@ export const createContextActions = (deps: Deps) => {
         return
       }
       const result = await clipboard.copy(selectionEntries, { writeText: true })
-      if (!result.ok) showToast(`Copy failed: ${result.error}`)
+      if (!result.ok) {
+        showToast(`Copy failed: ${result.error}`)
+        return
+      }
+      const paths = selectionEntries.map((e) => e.path)
+      try {
+        await invoke('copy_paths_to_system_clipboard', { paths })
+        showToast('Copied', 1500)
+      } catch (err) {
+        showToast(
+          `Copied (system clipboard unavailable: ${err instanceof Error ? err.message : String(err)})`,
+          2500
+        )
+      }
       return
     }
 

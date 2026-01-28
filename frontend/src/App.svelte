@@ -14,6 +14,7 @@
   import type { Entry, Partition, SortField } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
+  import { setClipboardState } from './features/explorer/stores/clipboardState'
   import { createContextMenus } from './features/explorer/hooks/useContextMenus'
   import type { ContextAction } from './features/explorer/hooks/useContextMenus'
   import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
@@ -733,6 +734,15 @@
         showToast(`Copy failed: ${result.error}`)
         return false
       }
+      try {
+        await invoke('copy_paths_to_system_clipboard', { paths })
+        showToast('Copied', 1500)
+      } catch (err) {
+        showToast(
+          `Copied (system clipboard unavailable: ${err instanceof Error ? err.message : String(err)})`,
+          2500
+        )
+      }
       return true
     },
     onCut: async () => {
@@ -1150,6 +1160,27 @@
       showToast('Cannot paste in Starred view')
       return false
     }
+
+    // Always attempt to sync from system clipboard first, then paste.
+    try {
+      const sys = await invoke<{ mode: 'copy' | 'cut'; paths: string[] }>('system_clipboard_paths')
+      if (sys.paths.length > 0) {
+        await invoke('set_clipboard_cmd', { paths: sys.paths, mode: sys.mode })
+        const stubEntries = sys.paths.map((p) => ({
+          path: p,
+          name: p.split('/').pop() ?? p,
+          kind: 'file',
+          iconId: 12,
+        }))
+        setClipboardState(sys.mode, stubEntries as unknown as Entry[])
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!msg.toLowerCase().includes('no file paths found')) {
+        showToast(`System clipboard unavailable: ${msg}`, 2000)
+      }
+    }
+
     const ok = await handlePasteOrMove($current)
     return ok
   }
