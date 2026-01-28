@@ -159,6 +159,8 @@ fn main() {
             extract_archive,
             open_console,
             set_clipboard_cmd,
+            copy_paths_to_system_clipboard,
+            system_clipboard_paths,
             paste_clipboard_cmd,
             paste_clipboard_preview,
             search_stream,

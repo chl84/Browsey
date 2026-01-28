@@ -45,8 +45,8 @@
     padding: 5px 12px 5px 22px;
     background: transparent;
     color: var(--fg);
-    font-size: 14px;
-    font-weight: 500;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-base);
     display: flex;
     flex-direction: row;
     align-items: center;

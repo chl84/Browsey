@@ -4,9 +4,9 @@
     <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
 
     <!-- Tekstlinjer -->
-    <line x1="36" y1="68" x2="92" y2="68" stroke="#2B2419" stroke-width="5" stroke-linecap="butt" stroke-opacity="0.8" />
-    <line x1="36" y1="80" x2="86" y2="80" stroke="#2B2419" stroke-width="5" stroke-linecap="butt" stroke-opacity="0.7" />
-    <line x1="36" y1="92" x2="94" y2="92" stroke="#2B2419" stroke-width="5" stroke-linecap="butt" stroke-opacity="0.6" />
-    <line x1="36" y1="104" x2="78" y2="104" stroke="#2B2419" stroke-width="5" stroke-linecap="butt" stroke-opacity="0.5" />
+    <line x1="36" y1="68" x2="92" y2="68" stroke="#2B2419" stroke-width="3" stroke-linecap="butt" stroke-opacity="0.8" />
+    <line x1="36" y1="78" x2="86" y2="78" stroke="#2B2419" stroke-width="3" stroke-linecap="butt" stroke-opacity="0.7" />
+    <line x1="36" y1="88" x2="94" y2="88" stroke="#2B2419" stroke-width="3" stroke-linecap="butt" stroke-opacity="0.6" />
+    <line x1="36" y1="98" x2="78" y2="98" stroke="#2B2419" stroke-width="3" stroke-linecap="butt" stroke-opacity="0.5" />
   </g>
 </svg>

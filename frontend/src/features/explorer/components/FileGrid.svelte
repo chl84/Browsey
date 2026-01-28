@@ -252,8 +252,8 @@
     text-align: center;
     cursor: default;
     color: var(--fg);
-    font-size: 14px;
-    font-weight: 300;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-base);
     position: relative;
     overflow: hidden;
     transition: none;
@@ -319,7 +319,7 @@
   }
 
   .name {
-    font-weight: 300;
+    font-weight: var(--font-weight-base);
     color: var(--fg-strong);
     line-height: 1.3;
     display: -webkit-box;

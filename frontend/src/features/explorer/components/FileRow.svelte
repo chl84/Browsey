@@ -146,8 +146,8 @@
     text-align: left;
     border-radius: 0;
     box-shadow: none;
-    font-size: 14px;
-    font-weight: 300;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-base);
   }
 
   .row:hover {
@@ -227,7 +227,7 @@
   }
 
   .col-size {
-    font-weight: 300;
+    font-weight: var(--font-weight-base);
     text-align: right;
     min-width: 60px;
   }
@@ -241,7 +241,7 @@
   }
 
   .mod-time {
-    font-size: 12px;
+    font-size: var(--font-size-small);
     line-height: 1.2;
     text-align: right;
     flex-shrink: 0;

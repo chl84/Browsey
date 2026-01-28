@@ -29,6 +29,8 @@ pub mod icon_ids {
     pub const PDF_FILE: IconId = 16;
     pub const SPREADSHEET_FILE: IconId = 17;
     pub const PRESENTATION_FILE: IconId = 18;
+    pub const AUDIO_FILE: IconId = 19;
+    pub const EXECUTABLE_FILE: IconId = 20;
 }
 
 use icon_ids::*;
@@ -93,8 +95,8 @@ fn file_icon_id(name_lc: &str, ext: &str, mime: Option<&str>) -> IconId {
         "zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "zst" | "lz" | "tgz" | "tbz"
         | "tbz2" | "txz" | "tzst" => COMPRESSED,
         // Executables / scripts
-        "exe" | "bin" | "sh" | "bat" | "cmd" | "msi" => FILE,
-        "dll" | "so" | "dylib" => FILE,
+        "exe" | "bin" | "sh" | "bat" | "cmd" | "msi" => EXECUTABLE_FILE,
+        "dll" | "so" | "dylib" => EXECUTABLE_FILE,
         // Code / text
         "rs" | "c" | "cpp" | "h" | "hpp" | "py" | "js" | "ts" | "tsx" | "jsx" | "java" | "go"
         | "rb" | "php" | "lua" | "json" | "toml" | "yaml" | "yml" | "ini" | "cfg" | "md"
@@ -103,7 +105,7 @@ fn file_icon_id(name_lc: &str, ext: &str, mime: Option<&str>) -> IconId {
         "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "tiff" | "avif" | "heic" => {
             PICTURE_FILE
         }
-        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" => FILE,
+        "mp3" | "wav" | "flac" | "ogg" | "m4a" | "aac" | "opus" => AUDIO_FILE,
         "mp4" | "mkv" | "mov" | "avi" | "wmv" | "webm" | "flv" | "m4v" => VIDEO_FILE,
         // Documents
         "pdf" => PDF_FILE,
@@ -122,7 +124,7 @@ fn mime_icon_id(mime: Option<&str>) -> IconId {
                 return PICTURE_FILE;
             }
             if top == AUDIO {
-                return FILE;
+                return AUDIO_FILE;
             }
             if top == VIDEO {
                 return VIDEO_FILE;
@@ -145,7 +147,7 @@ fn mime_icon_id(mime: Option<&str>) -> IconId {
                     return COMPRESSED;
                 }
                 if subtype == "x-executable" || subtype == "x-msdownload" {
-                    return FILE;
+                    return EXECUTABLE_FILE;
                 }
             }
         }
