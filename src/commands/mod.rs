@@ -35,3 +35,4 @@ pub use tasks::{cancel_task, CancelState};
 pub use thumbnails::get_thumbnail;
 pub use system_clipboard::copy_paths_to_system_clipboard;
 pub use system_clipboard::system_clipboard_paths;
+pub use system_clipboard::clear_system_clipboard;
