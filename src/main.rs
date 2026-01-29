@@ -115,6 +115,7 @@ fn main() {
     init_logging();
     undo::cleanup_stale_backups(None);
     tauri::Builder::default()
+        .plugin(tauri_plugin_drag::init())
         .manage(WatchState::default())
         .manage(CancelState::default())
         .manage(UndoState::default())

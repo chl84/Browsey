@@ -43,6 +43,7 @@
   import TextContextMenu from './ui/TextContextMenu.svelte'
   import NativeDropOverlay from './ui/NativeDropOverlay.svelte'
   import { createNativeFileDrop } from './features/explorer/hooks/useNativeFileDrop'
+  import { startNativeFileDrag } from './features/explorer/services/nativeDrag'
   import ConflictModal from './ui/ConflictModal.svelte'
   import './features/explorer/ExplorerLayout.css'
 
@@ -1768,6 +1769,7 @@
 
   let dragPaths: string[] = []
   let copyModifierActive = false
+  let nativeDragActive = false
   let textMenuOpen = false
   let textMenuX = 0
   let textMenuY = 0
@@ -1786,8 +1788,20 @@
       }
     },
   })
+  const nativeDropHovering = nativeDrop.hovering
+  const nativeDropPosition = nativeDrop.position
   const handleRowDragStart = (entry: Entry, event: DragEvent) => {
     const selectedPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
+    const nativeCopy = event.ctrlKey || event.metaKey
+    if (event.altKey) {
+      nativeDragActive = true
+      void startNativeFileDrag(selectedPaths, nativeCopy ? 'copy' : 'move').then((ok) => {
+        if (!ok) showToast('Native drag failed')
+      })
+      event.preventDefault()
+      return
+    }
+    nativeDragActive = false
     dragPaths = selectedPaths
     dragDrop.start(selectedPaths, event)
     if (!event.ctrlKey && !event.metaKey) {
@@ -1800,6 +1814,7 @@
     dragPaths = []
     dragDrop.end()
     dragAction = null
+    nativeDragActive = false
   }
 
   const handleRowDragOver = (entry: Entry, event: DragEvent) => {
@@ -2015,10 +2030,10 @@
   action={dragAction}
 />
 <NativeDropOverlay
-  visible={$nativeDrop.hovering}
-  x={$nativeDrop.position?.x ?? null}
-  y={$nativeDrop.position?.y ?? null}
-/ >
+  visible={$nativeDropHovering}
+  x={$nativeDropPosition?.x ?? null}
+  y={$nativeDropPosition?.y ?? null}
+/>
 <TextContextMenu
   open={textMenuOpen}
   x={textMenuX}
