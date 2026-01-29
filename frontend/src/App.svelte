@@ -22,6 +22,7 @@
     clearSystemClipboard,
     pasteClipboardCmd,
   } from './features/explorer/services/clipboard'
+  import { deleteEntry, moveToTrashMany } from './features/explorer/services/trash'
   import type { Entry, Partition, SortField } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
@@ -834,7 +835,7 @@
         if (currentView === 'trash') {
           let done = 0
           for (const p of entries.map((e) => e.path)) {
-            await invoke('delete_entry', { path: p })
+            await deleteEntry(p)
             done += 1
             activity.set({
               label,
@@ -843,7 +844,7 @@
           }
         } else {
           const paths = entries.map((e) => e.path)
-          await invoke('move_to_trash_many', { paths })
+          await moveToTrashMany(paths)
           activity.set({
             label,
             percent: total > 0 ? 100 : null,

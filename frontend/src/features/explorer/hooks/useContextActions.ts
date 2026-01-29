@@ -1,7 +1,13 @@
-import { invoke } from '@tauri-apps/api/core'
 import type { Entry } from '../types'
 import type { ClipboardApi } from './useClipboard'
 import { copyPathsToSystemClipboard } from '../services/clipboard'
+import {
+  restoreTrashItems,
+  removeRecent,
+  deleteEntry,
+  moveToTrashMany,
+  purgeTrashItems,
+} from '../services/trash'
 
 export type CurrentView = 'recent' | 'starred' | 'trash' | 'dir'
 
@@ -51,7 +57,7 @@ export const createContextActions = (deps: Deps) => {
       if (currentView() === 'trash') {
         const ids = selectionEntries.map((e) => e.trash_id ?? e.path)
         try {
-          await invoke('restore_trash_items', { ids })
+          await restoreTrashItems(ids)
           await reloadCurrent()
         } catch (err) {
           showToast(`Restore failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -74,7 +80,7 @@ export const createContextActions = (deps: Deps) => {
       if (currentView() === 'recent') {
         const paths = selectionEntries.map((e) => e.path)
         try {
-          await invoke('remove_recent', { paths })
+          await removeRecent(paths)
           await reloadCurrent()
         } catch (err) {
           showToast(`Remove failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -141,11 +147,11 @@ export const createContextActions = (deps: Deps) => {
       try {
         if (currentView() === 'trash') {
           for (const e of selectionEntries) {
-            await invoke('delete_entry', { path: e.path })
+            await deleteEntry(e.path)
           }
         } else {
           const paths = selectionEntries.map((e) => e.path)
-          await invoke('move_to_trash_many', { paths })
+          await moveToTrashMany(paths)
         }
         await reloadCurrent()
       } catch (err) {
@@ -159,7 +165,7 @@ export const createContextActions = (deps: Deps) => {
       if (currentView() === 'trash') {
         const ids = selectionEntries.map((e) => e.trash_id ?? e.path)
         try {
-          await invoke('purge_trash_items', { ids })
+          await purgeTrashItems(ids)
           await reloadCurrent()
         } catch (err) {
           showToast(`Delete failed: ${err instanceof Error ? err.message : String(err)}`)
