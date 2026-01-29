@@ -1807,6 +1807,9 @@
   })
   const nativeDropHovering = nativeDrop.hovering
   const nativeDropPosition = nativeDrop.position
+  $: if ($nativeDropHovering && currentView === 'dir') {
+    showToast('Drop to paste into this folder', 1500)
+  }
   const handleRowDragStart = (entry: Entry, event: DragEvent) => {
     const selectedPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
     const nativeCopy = event.ctrlKey || event.metaKey
@@ -2007,18 +2010,6 @@
         window.removeEventListener('unhandledrejection', handleRejection)
       })
 
-      // Prevent the webview's default "drop to open" behavior; native drop is handled via Tauri events.
-      const preventDefaultDrop = (e: DragEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-      }
-      window.addEventListener('dragover', preventDefaultDrop)
-      window.addEventListener('drop', preventDefaultDrop)
-      cleanupFns.push(() => {
-        window.removeEventListener('dragover', preventDefaultDrop)
-        window.removeEventListener('drop', preventDefaultDrop)
-      })
-
       await nativeDrop.start()
       cleanupFns.push(() => {
         void nativeDrop.stop()
@@ -2208,7 +2199,6 @@
   onConfirmBookmark={confirmBookmark}
   onCancelBookmark={closeBookmarkModal}
   toastMessage={$toast}
-  hintText={$nativeDropHovering && currentView === 'dir' ? 'Drop to paste into this folder' : ''}
 />
 <ConflictModal
   open={conflictModalOpen}

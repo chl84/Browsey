@@ -1,14 +1,10 @@
 <script lang="ts">
   export let selectionText = ''
-  export let hintText = ''
 </script>
 
 <footer class="statusbar">
   {#if selectionText}
     <span class="status-text">{selectionText}</span>
-  {/if}
-  {#if hintText}
-    <span class="pill status-pill">{hintText}</span>
   {/if}
 </footer>
 
@@ -34,11 +30,6 @@
     color: var(--fg);
     font-size: 14px;
     font-weight: 400;
-  }
-
-  .status-pill {
-    margin-left: auto;
-    white-space: nowrap;
   }
 
 </style>
