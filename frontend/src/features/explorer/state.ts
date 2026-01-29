@@ -13,6 +13,7 @@ import type {
 import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files'
 import { listDir, listRecent, listStarred, listTrash, watchDir, listMounts, searchStream } from './services/listing'
+import { storeColumnWidths, loadSavedColumnWidths } from './services/layout'
 
 const FILTER_DEBOUNCE_MS = 40
 
@@ -464,7 +465,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const persistWidths = async () => {
     try {
-      await invoke('store_column_widths', { widths: get(cols).map((c) => c.width) })
+      await storeColumnWidths(get(cols).map((c) => c.width))
     } catch (err) {
       console.error('Failed to store widths', err)
     }
@@ -472,7 +473,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const loadSavedWidths = async () => {
     try {
-      const saved = await invoke<number[] | null>('load_saved_column_widths')
+      const saved = await loadSavedColumnWidths()
       if (saved && Array.isArray(saved)) {
         cols.update((list) =>
           list.map((c, i) => {
