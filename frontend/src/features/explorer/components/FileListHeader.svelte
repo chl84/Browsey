@@ -56,7 +56,7 @@
   .header-row {
     display: grid;
     gap: 10px;
-    padding: 6px 13px;
+    padding: 6px 6px 6px 13px;
     border-bottom: 1px solid var(--border-strong);
     background: var(--bg);
     color: var(--fg-muted);

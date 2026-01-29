@@ -54,9 +54,6 @@
   let gridObserver: ResizeObserver | null = null
   let rowsRaf: number | null = null
   let gridRaf: number | null = null
-  let resizingWindowUntil = 0
-  let suppressLassoUntilMouseUp = false
-  let ignoreNextLasso = false
 
   const places = [
     { label: 'Home', path: '~' },
@@ -157,6 +154,16 @@
 
   const selectionActive = selectionBox.active
   const selectionRect = selectionBox.rect
+
+  function getListMaxWidth(): number | null {
+    // Sørg for at kolonner ikke kan bli bredere enn den synlige listen (inkl. stjernekolonnen).
+    const el = rowsElRef ?? headerElRef
+    if (!el) return null
+    const style = getComputedStyle(el)
+    const paddingLeft = parseFloat(style.paddingLeft) || 0
+    const paddingRight = parseFloat(style.paddingRight) || 0
+    return Math.max(0, el.clientWidth - paddingLeft - paddingRight)
+  }
 
   const focusCurrentView = async () => {
     await tick()
@@ -426,8 +433,8 @@
   const GRID_CARD_WIDTH = 128
   const GRID_ROW_HEIGHT = 136
   const GRID_GAP = 6
-  // Keep in sync with .grid padding in FileGrid.svelte
-  const GRID_PADDING = 12
+  // Keep in sync with the left padding in .grid (FileGrid.svelte)
+  const GRID_PADDING = 15
   const GRID_OVERSCAN = 2
   const gridStart = writable(0)
   const gridOffsetY = writable(0)
@@ -439,6 +446,13 @@
   let gridPendingDeltaY = 0
   let cursorX = 0
   let cursorY = 0
+  const LASSO_GUTTER_WIDTH = 3
+
+  const inLassoGutter = (event: MouseEvent, el: HTMLElement | null) => {
+    if (!el) return false
+    const rect = el.getBoundingClientRect()
+    return event.clientX <= rect.left + LASSO_GUTTER_WIDTH
+  }
 
   const viewAnchor = createViewSwitchAnchor({
     filteredEntries,
@@ -485,7 +499,7 @@
     }
   }
 
-  const { startResize } = createColumnResize(cols, persistWidths)
+  const { startResize } = createColumnResize(cols, persistWidths, getListMaxWidth)
 
   let dirSizeAbort = 0
   let selectionText = ''
@@ -597,9 +611,6 @@
 
   const handleResize = () => {
     if (typeof window === 'undefined') return
-    resizingWindowUntil = performance.now() + 800
-    suppressLassoUntilMouseUp = true
-    ignoreNextLasso = true
     sidebarCollapsed = window.innerWidth < 700
     handleListResize()
     if (viewMode === 'grid') {
@@ -1374,17 +1385,11 @@
   }
 
   const handleRowsMouseDown = (event: MouseEvent) => {
-    if (suppressLassoUntilMouseUp) return
-    if (performance.now() < resizingWindowUntil) return
-    if (ignoreNextLasso) {
-      ignoreNextLasso = false
-      return
-    }
-    if (event.buttons !== 1) return
     const target = event.target as HTMLElement | null
     if (viewMode === 'list') {
       if (!rowsElRef) return
       if (isScrollbarClick(event, rowsElRef)) return
+      if (inLassoGutter(event, rowsElRef)) return
       if (target && target.closest('.row')) return
       event.preventDefault()
       rowsElRef.focus()
@@ -1432,14 +1437,8 @@
     // Grid mode lasso selection
     const gridEl = event.currentTarget as HTMLDivElement | null
     if (!gridEl) return
-    if (suppressLassoUntilMouseUp) return
-    if (performance.now() < resizingWindowUntil) return
-    if (ignoreNextLasso) {
-      ignoreNextLasso = false
-      return
-    }
-    if (event.buttons !== 1) return
     if (isScrollbarClick(event, gridEl)) return
+    if (inLassoGutter(event, gridEl)) return
     if (target && target.closest('.card')) return
     const gridEntries = get(filteredEntries)
     if (gridEntries.length === 0) return
@@ -1762,6 +1761,37 @@
     dragDrop.setTarget(null)
   }
 
+  const handleBreadcrumbDragOver = (path: string, event: DragEvent) => {
+    if (dragPaths.length === 0) return
+    const allowed = dragDrop.canDropOn(dragPaths, path)
+    dragDrop.setTarget(allowed ? path : null)
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = allowed ? 'move' : 'none'
+    }
+    dragDrop.setPosition(event.clientX, event.clientY)
+    event.preventDefault()
+  }
+
+  const handleBreadcrumbDragLeave = (path: string) => {
+    if (get(dragState).target === path) {
+      dragDrop.setTarget(null)
+    }
+  }
+
+  const handleBreadcrumbDrop = async (path: string, event: DragEvent) => {
+    if (dragPaths.length === 0) return
+    if (!dragDrop.canDropOn(dragPaths, path)) return
+    event.preventDefault()
+    try {
+      await invoke('set_clipboard_cmd', { paths: dragPaths, mode: 'cut' })
+      await handlePasteOrMove(path)
+    } catch (err) {
+      showToast(`Move failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      handleRowDragEnd()
+    }
+  }
+
   const handlePasteOrMove = async (dest: string) => {
     try {
       const conflicts = await invoke<{ src: string; target: string; is_dir: boolean }[]>(
@@ -1852,12 +1882,7 @@
     const setupCore = async () => {
       handleResize()
       window.addEventListener('resize', handleResize)
-      const clearSuppress = () => {
-        suppressLassoUntilMouseUp = false
-      }
-      window.addEventListener('mouseup', clearSuppress)
       cleanupFns.push(() => window.removeEventListener('resize', handleResize))
-      cleanupFns.push(() => window.removeEventListener('mouseup', clearSuppress))
 
       void loadSavedWidths()
       void loadBookmarks()
@@ -2052,10 +2077,13 @@
     onRowDragLeave={handleRowDragLeave}
     dragTargetPath={$dragState.target}
     dragAllowed={dragPaths.length > 0}
-    {selectionText}
-    selectionActive={$selectionActive}
-    selectionRect={$selectionRect}
-    contextMenu={$contextMenu}
+    onBreadcrumbDragOver={handleBreadcrumbDragOver}
+    onBreadcrumbDragLeave={handleBreadcrumbDragLeave}
+    onBreadcrumbDrop={handleBreadcrumbDrop}
+  {selectionText}
+  selectionActive={$selectionActive}
+  selectionRect={$selectionRect}
+  contextMenu={$contextMenu}
   blankMenu={$blankMenu}
   onContextSelect={handleContextSelect}
   onBlankContextSelect={handleBlankContextAction}

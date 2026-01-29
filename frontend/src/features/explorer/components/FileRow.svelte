@@ -134,7 +134,7 @@
     display: grid;
     gap: 10px;
     align-items: center;
-    padding: 0 12px;
+    padding: 0 6px 0 12px;
     height: 32px;
     min-height: 32px;
     transition: none;
@@ -236,7 +236,7 @@
     min-width: 100px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     justify-content: space-between;
   }
 
@@ -269,6 +269,7 @@
     font-size: 16px;
     line-height: 1;
     transform-origin: center center;
+    transition: color 240ms ease, transform 140ms ease;
   }
 
   .star-glyph {
@@ -278,6 +279,8 @@
     width: 100%;
     height: 100%;
     transform-origin: center center;
+    opacity: 0.55;
+    transition: opacity 240ms ease;
   }
 
   .star-btn:hover {
@@ -290,6 +293,10 @@
 
   .star-btn.starred {
     color: var(--accent-warning);
+  }
+
+  .star-btn.starred .star-glyph {
+    opacity: 1;
   }
 
   .icon {

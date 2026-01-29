@@ -13,6 +13,10 @@
   export let onFocus: () => void = () => {}
   export let onBlur: () => void = () => {}
   export let onNavigateSegment: (path: string) => void = () => {}
+  export let onBreadcrumbDragOver: (path: string, e: DragEvent) => void = () => {}
+  export let onBreadcrumbDragLeave: (path: string, e: DragEvent) => void = () => {}
+  export let onBreadcrumbDrop: (path: string, e: DragEvent) => void = () => {}
+  export let dragTargetPath: string | null = null
 
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import { onMount } from 'svelte'
@@ -179,7 +183,16 @@
       {#if showBreadcrumbs}
         <div class="breadcrumb-bar" aria-label="Path breadcrumbs">
           {#each breadcrumbs as crumb, i}
-            <button class="crumb" type="button" on:click={() => onNavigateSegment(crumb.path)}>
+            <button
+              class="crumb"
+              class:drop-target={dragTargetPath === crumb.path}
+              type="button"
+              on:click={() => onNavigateSegment(crumb.path)}
+              on:dragenter|preventDefault={(e) => onBreadcrumbDragOver(crumb.path, e)}
+              on:dragover|preventDefault={(e) => onBreadcrumbDragOver(crumb.path, e)}
+              on:dragleave={(e) => onBreadcrumbDragLeave(crumb.path, e)}
+              on:drop|preventDefault={(e) => onBreadcrumbDrop(crumb.path, e)}
+            >
               {crumb.label || separatorChar}
             </button>
             {#if i < breadcrumbs.length - 1}
@@ -262,6 +275,7 @@
     flex: 1;
     min-width: 0;
     position: relative;
+    margin-left: 3px;
   }
 
   .path-input {
@@ -377,6 +391,12 @@
 
   .crumb:hover {
     background: var(--bg-hover);
+  }
+
+  .crumb.drop-target {
+    background: var(--drop-allowed-bg);
+    border: 1px solid var(--drop-allowed-border);
+    padding: 5px 9px;
   }
 
   .sep {

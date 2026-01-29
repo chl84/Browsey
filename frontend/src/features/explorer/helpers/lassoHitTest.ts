@@ -11,7 +11,7 @@ export const hitTestList = (
   const yEndContent = rect.y + rect.height - headerHeight
   if (yEndContent < 0) return { paths: new Set<string>(), anchor: null, caret: null }
   const lo = Math.max(0, Math.floor(yStartContent / rowHeight))
-  const hi = Math.max(0, Math.floor(yEndContent / rowHeight))
+  const hi = Math.max(0, Math.floor((yEndContent - 0.001) / rowHeight))
   const paths = new Set<string>()
   for (let i = lo; i <= hi && i < entries.length; i++) {
     const path = entries[i]?.path
@@ -54,6 +54,9 @@ export const hitTestGridVirtualized = (rect: Rect, entries: { path: string }[], 
   if (gridCols <= 0 || cardWidth <= 0 || cardHeight <= 0) {
     return { paths: new Set<string>(), anchor: null, caret: null }
   }
+
+  const rectRight = rect.x + rect.width
+  const rectBottom = rect.y + rect.height
   const x0 = Math.max(0, rect.x - padding)
   // Juster y for scroll/oversettelse: rektangelet gis i viewport-koordinater,
   // rows start at padding and are not transformed by translateY in the hit test.
@@ -76,6 +79,18 @@ export const hitTestGridVirtualized = (rect: Rect, entries: { path: string }[], 
       const idx = row * gridCols + col
       const entry = entries[idx]
       if (!entry || !entry.path) continue
+
+      const cardLeft = padding + col * colStride
+      const cardRight = cardLeft + cardWidth
+      const cardTop = padding + row * rowStride
+      const cardBottom = cardTop + cardHeight
+      const intersects =
+        cardLeft < rectRight &&
+        cardRight > rect.x &&
+        cardTop < rectBottom &&
+        cardBottom > rect.y
+      if (!intersects) continue
+
       paths.add(entry.path)
       if (anchor === null) anchor = idx
       caret = idx
