@@ -6,7 +6,7 @@
   import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from './features/explorer/utils'
   import { createListState } from './features/explorer/stores/listState'
   import ExplorerShell from './features/explorer/components/ExplorerShell.svelte'
-  import { createExplorerState } from './features/explorer/state'
+  import { useExplorerData } from './features/explorer/hooks/useExplorerData'
   import { createColumnResize } from './features/explorer/hooks/columnWidths'
   import { createGlobalShortcuts } from './features/explorer/hooks/shortcuts'
   import { createBookmarkModal } from './features/explorer/hooks/bookmarkModal'
@@ -46,10 +46,6 @@
   let gridElRef: HTMLDivElement | null = null
   let headerElRef: HTMLDivElement | null = null
   let pathInputEl: HTMLInputElement | null = null
-  let unlistenDirChanged: UnlistenFn | null = null
-  let unlistenEntryMeta: UnlistenFn | null = null
-  let unlistenEntryMetaBatch: UnlistenFn | null = null
-  let refreshTimer: ReturnType<typeof setTimeout> | null = null
   let rowsObserver: ResizeObserver | null = null
   let gridObserver: ResizeObserver | null = null
   let rowsRaf: number | null = null
@@ -65,7 +61,6 @@
 
   let bookmarks: { label: string; path: string }[] = []
   let partitions: Partition[] = []
-  let partitionsPoll: ReturnType<typeof setInterval> | null = null
   const bookmarkModal = createBookmarkModal()
   const dragDrop = createDragDrop()
   const { store: bookmarkStore } = bookmarkModal
@@ -106,7 +101,7 @@
   const activityApi = createActivity({ onError: showToast })
   const activity = activityApi.activity
 
-  const explorer = createExplorerState({
+  const explorer = useExplorerData({
     onEntriesChanged: () => resetScrollPosition(),
     onCurrentChange: (path) => {
       const sameLocation = path === lastLocation
@@ -1884,71 +1879,6 @@
       window.addEventListener('resize', handleResize)
       cleanupFns.push(() => window.removeEventListener('resize', handleResize))
 
-      void loadSavedWidths()
-      void loadBookmarks()
-      void loadPartitions()
-      partitionsPoll = setInterval(() => {
-        void loadPartitions()
-      }, 2000)
-      cleanupFns.push(() => {
-        if (partitionsPoll) {
-          clearInterval(partitionsPoll)
-          partitionsPoll = null
-        }
-      })
-      void loadRaw()
-
-      unlistenDirChanged = await listen<string>('dir-changed', (event) => {
-        const curr = get(current)
-        const payload = event.payload
-        if (!curr || payload === curr) {
-          if (refreshTimer) {
-            clearTimeout(refreshTimer)
-          }
-          refreshTimer = setTimeout(() => {
-            const latest = get(current)
-            if (!latest || latest !== payload) return
-            void loadRaw(latest, { recordHistory: false, silent: true })
-          }, 300)
-        }
-      })
-      cleanupFns.push(() => {
-        if (unlistenDirChanged) {
-          unlistenDirChanged()
-          unlistenDirChanged = null
-        }
-      })
-
-      unlistenEntryMeta = await listen<Entry>('entry-meta', (event) => {
-        const update = event.payload
-        entries.update((list) => {
-          const idx = list.findIndex((e) => e.path === update.path)
-          if (idx === -1) return list
-          const next = [...list]
-          next[idx] = { ...next[idx], ...update }
-          return next
-        })
-      })
-      cleanupFns.push(() => {
-        if (unlistenEntryMeta) {
-          unlistenEntryMeta()
-          unlistenEntryMeta = null
-        }
-      })
-
-      unlistenEntryMetaBatch = await listen<Entry[]>('entry-meta-batch', (event) => {
-        const updates = event.payload
-        if (!Array.isArray(updates) || updates.length === 0) return
-        const map = new Map(updates.map((u) => [u.path, u]))
-        entries.update((list) => list.map((item) => (map.has(item.path) ? { ...item, ...map.get(item.path)! } : item)))
-      })
-      cleanupFns.push(() => {
-        if (unlistenEntryMetaBatch) {
-          unlistenEntryMetaBatch()
-          unlistenEntryMetaBatch = null
-        }
-      })
-
       window.addEventListener('error', handleError)
       window.addEventListener('unhandledrejection', handleRejection)
       cleanupFns.push(() => {
@@ -1961,10 +1891,6 @@
 
     return () => {
       rowsObserver?.disconnect()
-      if (refreshTimer) {
-        clearTimeout(refreshTimer)
-        refreshTimer = null
-      }
       cleanupFns.forEach((fn) => fn())
       dirSizeAbort++
     }
