@@ -13,6 +13,9 @@
   import { useDragDrop } from './features/explorer/hooks/useDragDrop'
   import { useModalsController } from './features/explorer/hooks/useModalsController'
   import { useGridVirtualizer } from './features/explorer/hooks/useGridVirtualizer'
+  import { addBookmark, removeBookmark } from './features/explorer/services/bookmarks'
+  import { ejectDrive } from './features/explorer/services/drives'
+  import { openConsole } from './features/explorer/services/console'
   import type { Entry, Partition, SortField } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
@@ -858,7 +861,7 @@
     onOpenConsole: async () => {
       if (currentView !== 'dir') return false
       try {
-        await invoke('open_console', { path: get(current) })
+        await openConsole(get(current))
         return true
       } catch (err) {
         showToast(`Open console failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -1137,7 +1140,7 @@
 
   const confirmBookmark = () => {
     const add = (label: string, path: string) => {
-      void invoke('add_bookmark', { label, path })
+      void addBookmark(label, path)
       bookmarksStore.update((list) => [...list, { label, path }])
     }
     const { bookmarks: updated } = bookmarkModal.confirm(bookmarks, add)
@@ -1639,7 +1642,7 @@
     }
     if (id === 'open-console') {
       try {
-        await invoke('open_console', { path: get(current) })
+        await openConsole(get(current))
       } catch (err) {
         showToast(`Open console failed: ${err instanceof Error ? err.message : String(err)}`)
       }
@@ -1889,18 +1892,17 @@
   onPlaceSelect={handlePlace}
   onBookmarkSelect={(path) => void loadDir(path)}
   onRemoveBookmark={(path) => {
-    void invoke('remove_bookmark', { path })
+    void removeBookmark(path)
     bookmarksStore.update((list) => list.filter((b) => b.path !== path))
   }}
   onPartitionSelect={(path) => void loadDir(path)}
   onPartitionEject={async (path) => {
     try {
-      await invoke('eject_drive', { path })
+      await ejectDrive(path)
       partitionsStore.update((list) =>
         list.filter((p) => p.path.trim().toUpperCase() !== path.trim().toUpperCase())
       )
       showToast(`Ejected ${path}`)
-      // Reload to reflect OS state; no warning toast unless reload fails.
       await loadPartitions()
     } catch (err) {
       showToast(`Eject failed: ${err instanceof Error ? err.message : String(err)}`)
