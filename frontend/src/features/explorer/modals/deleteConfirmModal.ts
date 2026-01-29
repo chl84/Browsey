@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store'
-import { invoke } from '@tauri-apps/api/core'
 import type { Entry } from '../types'
+import { deleteEntries } from '../services/trash'
 
 type ActivityApi = {
   start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
@@ -39,7 +39,7 @@ export const createDeleteConfirmModal = (deps: Deps) => {
     const progressEvent = `delete-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       await activityApi.start('Deleting…', progressEvent)
-      await invoke('delete_entries', { paths, progressEvent })
+      await deleteEntries(paths, progressEvent)
       await reloadCurrent()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
