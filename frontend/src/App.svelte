@@ -40,6 +40,7 @@
   import { createSelectionMemory } from './features/explorer/selectionMemory'
   import { createActivity } from './features/explorer/hooks/useActivity'
   import DragGhost from './ui/DragGhost.svelte'
+  import TextContextMenu from './ui/TextContextMenu.svelte'
   import ConflictModal from './ui/ConflictModal.svelte'
   import './features/explorer/ExplorerLayout.css'
 
@@ -1141,6 +1142,28 @@
     }
   }
 
+  const isTextTarget = (target: EventTarget | null): target is HTMLElement => {
+    if (!(target instanceof HTMLElement)) return false
+    if (target.isContentEditable) return true
+    if (target instanceof HTMLInputElement) {
+      return !['button', 'submit', 'reset', 'checkbox', 'radio', 'file'].includes(target.type)
+    }
+    return target instanceof HTMLTextAreaElement
+  }
+
+  const handleDocumentContextMenu = (event: MouseEvent) => {
+    if (!isTextTarget(event.target)) return
+    event.preventDefault()
+    event.stopPropagation()
+    textMenuTarget = event.target as HTMLElement
+    textMenuReadonly =
+      (textMenuTarget instanceof HTMLInputElement || textMenuTarget instanceof HTMLTextAreaElement) &&
+      (textMenuTarget.readOnly || textMenuTarget.disabled)
+    textMenuOpen = true
+    textMenuX = event.clientX
+    textMenuY = event.clientY
+  }
+
   $: updateViewportHeight()
   $: {
     if (viewMode === 'list') {
@@ -1743,6 +1766,11 @@
 
   let dragPaths: string[] = []
   let copyModifierActive = false
+  let textMenuOpen = false
+  let textMenuX = 0
+  let textMenuY = 0
+  let textMenuTarget: HTMLElement | null = null
+  let textMenuReadonly = false
   const handleRowDragStart = (entry: Entry, event: DragEvent) => {
     const selectedPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
     dragPaths = selectedPaths
@@ -1935,6 +1963,7 @@
 
     return () => {
       rowsObserver?.disconnect()
+      gridObserver?.disconnect()
       cleanupFns.forEach((fn) => fn())
       dirSizeAbort++
     }
@@ -1946,6 +1975,7 @@
 <svelte:document
   on:keydown|capture={handleDocumentKeydown}
   on:keyup|capture={handleDocumentKeyup}
+  on:contextmenu|capture={handleDocumentContextMenu}
   on:cut|capture={(e) => {
     const target = e.target as HTMLElement | null
     if (target && (target.isContentEditable || ['input', 'textarea'].includes(target.tagName.toLowerCase()))) {
@@ -1954,7 +1984,6 @@
     e.preventDefault()
     e.stopPropagation()
   }}
-  on:contextmenu|capture|preventDefault
 />
 <DragGhost
   visible={$dragState.dragging}
@@ -1964,6 +1993,17 @@
   allowed={$dragState.target !== null}
   target={$dragState.target}
   action={dragAction}
+/>
+<TextContextMenu
+  open={textMenuOpen}
+  x={textMenuX}
+  y={textMenuY}
+  target={textMenuTarget}
+  readonly={textMenuReadonly}
+  onClose={() => {
+    textMenuOpen = false
+    textMenuTarget = null
+  }}
 />
   <ExplorerShell
     bind:pathInput
