@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { Entry } from '../types'
 import type { ClipboardApi } from './useClipboard'
+import { copyPathsToSystemClipboard } from '../services/clipboard'
 
 export type CurrentView = 'recent' | 'starred' | 'trash' | 'dir'
 
@@ -88,7 +89,7 @@ export const createContextActions = (deps: Deps) => {
         if (!result.ok) showToast(`Cut failed: ${result.error}`)
         const paths = selectionEntries.map((e) => e.path)
         try {
-          await invoke('copy_paths_to_system_clipboard', { paths, mode: 'cut' })
+          await copyPathsToSystemClipboard(paths, 'cut')
           showToast('Cut', 1500)
         } catch (err) {
           showToast(
@@ -105,7 +106,7 @@ export const createContextActions = (deps: Deps) => {
       }
       const paths = selectionEntries.map((e) => e.path)
       try {
-        await invoke('copy_paths_to_system_clipboard', { paths })
+        await copyPathsToSystemClipboard(paths)
         showToast('Copied', 1500)
       } catch (err) {
         showToast(

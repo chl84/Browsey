@@ -16,6 +16,12 @@
   import { addBookmark, removeBookmark } from './features/explorer/services/bookmarks'
   import { ejectDrive } from './features/explorer/services/drives'
   import { openConsole } from './features/explorer/services/console'
+  import {
+    copyPathsToSystemClipboard,
+    setClipboardCmd,
+    clearSystemClipboard,
+    pasteClipboardCmd,
+  } from './features/explorer/services/clipboard'
   import type { Entry, Partition, SortField } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
@@ -766,7 +772,7 @@
         return false
       }
       try {
-        await invoke('copy_paths_to_system_clipboard', { paths })
+        await copyPathsToSystemClipboard(paths)
         showToast('Copied', 1500)
       } catch (err) {
         showToast(
@@ -786,7 +792,7 @@
         return false
       }
       try {
-        await invoke('copy_paths_to_system_clipboard', { paths, mode: 'cut' })
+        await copyPathsToSystemClipboard(paths, 'cut')
         showToast('Cut', 1500)
       } catch (err) {
         showToast(
@@ -1183,7 +1189,7 @@
     try {
       const sys = await invoke<{ mode: 'copy' | 'cut'; paths: string[] }>('system_clipboard_paths')
       if (sys.paths.length > 0) {
-        await invoke('set_clipboard_cmd', { paths: sys.paths, mode: sys.mode })
+        await setClipboardCmd(sys.paths, sys.mode)
         const stubEntries = sys.paths.map((p) => ({
           path: p,
           name: p.split('/').pop() ?? p,
@@ -1204,8 +1210,8 @@
       // Clear internal and system clipboard after a successful move
       clearClipboardState()
       try {
-        await invoke('set_clipboard_cmd', { paths: [], mode: 'copy' })
-        await invoke('clear_system_clipboard')
+        await setClipboardCmd([], 'copy')
+        await clearSystemClipboard()
       } catch {
         // ignore; move already succeeded
       }
@@ -1735,7 +1741,7 @@
     if (!dragDrop.canDropOn(dragPaths, path)) return
     event.preventDefault()
     try {
-      await invoke('set_clipboard_cmd', { paths: dragPaths, mode: 'cut' })
+      await setClipboardCmd(dragPaths, 'cut')
       await handlePasteOrMove(path)
     } catch (err) {
       showToast(`Move failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -1754,7 +1760,7 @@
         const destNorm = normalizePath(dest)
         const selfPaste = conflicts.every((c) => normalizePath(parentPath(c.src)) === destNorm)
         if (selfPaste) {
-          await invoke('paste_clipboard_cmd', { dest, policy: 'rename' })
+          await pasteClipboardCmd(dest, 'rename')
           await reloadCurrent()
           return true
         }
@@ -1763,7 +1769,7 @@
         conflictModalOpen = true
         return false
       }
-      await invoke('paste_clipboard_cmd', { dest, policy: 'rename' })
+      await pasteClipboardCmd(dest, 'rename')
       await reloadCurrent()
       return true
     } catch (err) {
