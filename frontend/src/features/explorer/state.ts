@@ -12,6 +12,7 @@ import type {
 } from './types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files'
+import { listDir, listRecent, listStarred, listTrash, watchDir, listMounts, searchStream } from './services/listing'
 
 const FILTER_DEBOUNCE_MS = 40
 
@@ -134,7 +135,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     error.set('')
     searchActive.set(false)
     try {
-      const result = await invoke<Listing>('list_dir', { path, sort: sortPayload() })
+      const result = await listDir(path, sortPayload())
       current.set(result.current)
       entries.set(mapNameLower(result.entries))
       callbacks.onEntriesChanged?.()
@@ -142,7 +143,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       if (recordHistory) {
         pushHistory({ type: 'dir', path: result.current })
       }
-      await invoke('watch_dir', { path: result.current })
+      await watchDir(result.current)
     } catch (err) {
       error.set(err instanceof Error ? err.message : String(err))
     } finally {
@@ -158,7 +159,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     searchActive.set(false)
     try {
       const sortArg = applySort ? sortPayload() : null
-      const result = await invoke<Entry[]>('list_recent', { sort: sortArg })
+      const result = await listRecent(sortArg)
       current.set('Recent')
       entries.set(mapNameLower(result))
       callbacks.onEntriesChanged?.()
@@ -178,7 +179,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     error.set('')
     searchActive.set(false)
     try {
-      const result = await invoke<Entry[]>('list_starred', { sort: sortPayload() })
+      const result = await listStarred(sortPayload())
       current.set('Starred')
       entries.set(mapNameLower(result))
       callbacks.onEntriesChanged?.()
@@ -198,7 +199,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     error.set('')
     searchActive.set(false)
     try {
-      const result = await invoke<Listing>('list_trash', { sort: sortPayload() })
+      const result = await listTrash(sortPayload())
       current.set('Trash')
       entries.set(mapNameLower(result.entries))
       callbacks.onEntriesChanged?.()
@@ -311,7 +312,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const toggleStar = async (entry: Entry) => {
     try {
-      const newState = await invoke<boolean>('toggle_star', { path: entry.path })
+    const newState = await invoke<boolean>('toggle_star', { path: entry.path })
       const where = get(current)
       if (where === 'Starred' && !newState) {
         entries.update((list) => list.filter((e) => e.path !== entry.path))
@@ -397,7 +398,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       }
     })
 
-    invoke('search_stream', {
+    searchStream({
       path: get(current),
       query: needle,
       sort: sortPayload(),
@@ -437,7 +438,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   let lastMountPaths: string[] = []
   const loadPartitions = async () => {
     try {
-      const result = await invoke<Partition[]>('list_mounts')
+      const result = await listMounts()
       partitions.set(result)
       const nextPaths = result.map((p) => normalizePath(p.path))
       const removedMount = lastMountPaths.find((p) => !nextPaths.includes(p))
