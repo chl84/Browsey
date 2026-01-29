@@ -1,6 +1,6 @@
-import { invoke } from '@tauri-apps/api/core'
 import { clipboardState, setClipboardState, clearClipboardState } from '../stores/clipboardState'
 import type { Entry } from '../types'
+import { setClipboardCmd, pasteClipboardCmd } from '../services/clipboard'
 
 type Result = { ok: true } | { ok: false; error: string }
 
@@ -25,7 +25,7 @@ export const createClipboard = () => {
       ? await writeTextIfAvailable(paths.join('\n'))
       : { ok: true }
     try {
-      await invoke('set_clipboard_cmd', { paths, mode: 'copy' })
+      await setClipboardCmd(paths, 'copy')
       setClipboardState('copy', entries)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -41,7 +41,7 @@ export const createClipboard = () => {
     if (entries.length === 0) return { ok: false, error: 'Nothing selected' }
     const paths = entries.map((e) => e.path)
     try {
-      await invoke('set_clipboard_cmd', { paths, mode: 'cut' })
+      await setClipboardCmd(paths, 'cut')
       setClipboardState('cut', entries)
       return { ok: true }
     } catch (err) {
@@ -52,7 +52,7 @@ export const createClipboard = () => {
 
   const paste = async (dest: string): Promise<Result> => {
     try {
-      await invoke('paste_clipboard_cmd', { dest })
+      await pasteClipboardCmd(dest)
       return { ok: true }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
