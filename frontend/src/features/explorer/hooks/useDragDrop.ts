@@ -36,7 +36,8 @@ export const useDragDrop = (options: DragDropOptions = {}) => {
   const start = (paths: string[], event: DragEvent) => {
     if (!event.dataTransfer) return
     state.set({ dragging: true, paths, target: null, position: { x: event.clientX, y: event.clientY } })
-    event.dataTransfer.effectAllowed = 'move'
+    // Allow both copy and move; drop handlers decide which to use.
+    event.dataTransfer.effectAllowed = 'copyMove'
     event.dataTransfer.setData('text/plain', paths.join('\n'))
     const labelText =
       options.getLabel?.(paths) ?? `${paths.length} item${paths.length === 1 ? '' : 's'}`

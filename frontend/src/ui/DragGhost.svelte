@@ -5,6 +5,7 @@
   export let count = 0
   export let allowed = true
   export let target: string | null = null
+  export let action: 'copy' | 'move' | null = null
 </script>
 
 {#if visible}
@@ -15,7 +16,14 @@
     >
       <div class="dot"></div>
       <div class="text">
-        <div class="line">{count} item{count === 1 ? '' : 's'}</div>
+        <div class="line">
+          {#if action === 'copy'}
+            Copy
+          {:else}
+            Move
+          {/if}
+          {count} item{count === 1 ? '' : 's'}
+        </div>
         {#if target}
           <div class="sub">to {target}</div>
         {/if}
