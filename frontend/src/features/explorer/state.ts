@@ -14,6 +14,8 @@ import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files'
 import { listDir, listRecent, listStarred, listTrash, watchDir, listMounts, searchStream } from './services/listing'
 import { storeColumnWidths, loadSavedColumnWidths } from './services/layout'
+import { toggleStar as toggleStarService } from './services/star'
+import { getBookmarks } from './services/bookmarks'
 
 const FILTER_DEBOUNCE_MS = 40
 
@@ -313,7 +315,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const toggleStar = async (entry: Entry) => {
     try {
-    const newState = await invoke<boolean>('toggle_star', { path: entry.path })
+      const newState = await toggleStarService(entry.path)
       const where = get(current)
       if (where === 'Starred' && !newState) {
         entries.update((list) => list.filter((e) => e.path !== entry.path))
@@ -456,7 +458,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const loadBookmarks = async () => {
     try {
-      const rows = await invoke<{ label: string; path: string }[]>('get_bookmarks')
+      const rows = await getBookmarks()
       bookmarks.set(rows)
     } catch (err) {
       console.error('Failed to load bookmarks', err)
