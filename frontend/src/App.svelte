@@ -21,6 +21,7 @@
     setClipboardCmd,
     clearSystemClipboard,
     pasteClipboardCmd,
+    pasteClipboardPreview,
   } from './features/explorer/services/clipboard'
   import { undoAction, redoAction } from './features/explorer/services/history'
   import { deleteEntry, moveToTrashMany } from './features/explorer/services/trash'
@@ -1754,10 +1755,7 @@
 
   const handlePasteOrMove = async (dest: string) => {
     try {
-      const conflicts = await invoke<{ src: string; target: string; is_dir: boolean }[]>(
-        'paste_clipboard_preview',
-        { dest }
-      )
+      const conflicts = await pasteClipboardPreview(dest)
       if (conflicts && conflicts.length > 0) {
         const destNorm = normalizePath(dest)
         const selfPaste = conflicts.every((c) => normalizePath(parentPath(c.src)) === destNorm)
@@ -1784,7 +1782,7 @@
     if (!conflictDest) return
     conflictModalOpen = false
     try {
-      await invoke('paste_clipboard_cmd', { dest: conflictDest, policy })
+      await pasteClipboardCmd(conflictDest, policy)
       await reloadCurrent()
     } catch (err) {
       showToast(`Paste failed: ${err instanceof Error ? err.message : String(err)}`)
