@@ -8,7 +8,7 @@
     <span class="status-text">{selectionText}</span>
   {/if}
   {#if hintText}
-    <span class="hint-pill">{hintText}</span>
+    <span class="pill status-pill">{hintText}</span>
   {/if}
 </footer>
 
@@ -36,16 +36,8 @@
     font-weight: 400;
   }
 
-  .hint-pill {
+  .status-pill {
     margin-left: auto;
-    padding: 6px 10px;
-    border-radius: 12px;
-    background: var(--bg-raised);
-    color: var(--fg);
-    font-size: 13px;
-    font-weight: 600;
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-sm);
     white-space: nowrap;
   }
 
