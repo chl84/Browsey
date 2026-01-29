@@ -1,6 +1,6 @@
-import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { get, writable } from 'svelte/store'
+import { cancelTask } from '../services/activity'
 
 export type ActivityState = {
   label: string
@@ -94,7 +94,7 @@ export const createActivity = (opts: Options = {}) => {
     if (!current || current.cancelling) return
     activity.set({ ...current, label: 'Cancelling…', cancel: null, cancelling: true })
     try {
-      await invoke('cancel_task', { id: eventName })
+      await cancelTask(eventName)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       onError?.(`Cancel failed: ${msg}`)
