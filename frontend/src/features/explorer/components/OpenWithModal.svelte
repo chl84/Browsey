@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { OpenWithApp, OpenWithChoice } from '../openWith'
+  import type { OpenWithApp, OpenWithChoice } from '../services/openWith'
 
   import ModalShell from '../../../ui/ModalShell.svelte'
 

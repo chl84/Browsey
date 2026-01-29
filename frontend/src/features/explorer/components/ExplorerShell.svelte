@@ -16,7 +16,7 @@
   import CompressModal from './CompressModal.svelte'
   import type { Column, Entry, Partition, SortField } from '../types'
   import type { ContextAction } from '../hooks/useContextMenus'
-  import type { OpenWithApp, OpenWithChoice } from '../openWith'
+  import type { OpenWithApp, OpenWithChoice } from '../services/openWith'
 
   export let sidebarCollapsed = false
   export let places: { label: string; path: string }[] = []
