@@ -1776,16 +1776,34 @@
   let textMenuTarget: HTMLElement | null = null
   let textMenuReadonly = false
   const nativeDrop = createNativeFileDrop({
-    onDrop: (paths) => {
+    onDrop: async (paths) => {
       if (!paths || paths.length === 0) return
-      // If a single directory is dropped, navigate into it; otherwise show a toast.
-      const first = paths[0]
-      if (first.endsWith('/') || first.endsWith('\\')) {
-        void loadDir(first)
-      } else {
-        showToast('External drop: opening first item')
-        invoke('open_entry', { path: first }).catch(() => void loadDir(parentPath(first)))
+      const curr = get(current)
+      const view = viewFromPath(curr ?? '')
+      // If we’re in a directory view, treat external drop as a copy-into-current.
+      if (view === 'dir' && curr) {
+        try {
+          await setClipboardCmd(paths, 'copy')
+          await pasteClipboardCmd(curr, 'rename')
+          await reloadCurrent()
+          showToast(`Pasted ${paths.length} item${paths.length === 1 ? '' : 's'}`)
+        } catch (err) {
+          showToast(`Drop failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        return
       }
+      // Otherwise, navigate to the parent of the first path and select it.
+      const first = paths[0]
+      const dest = parentPath(first)
+      await loadDir(dest)
+      const list = get(entries)
+      const match = list.find((e) => normalizePath(e.path) === normalizePath(first))
+      if (match) {
+        selected.set(new Set([match.path]))
+        anchorIndex.set(list.findIndex((e) => e.path === match.path))
+        caretIndex.set(list.findIndex((e) => e.path === match.path))
+      }
+      showToast('Dropped item navigated')
     },
   })
   const nativeDropHovering = nativeDrop.hovering
