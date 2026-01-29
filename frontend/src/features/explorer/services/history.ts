@@ -1,0 +1,7 @@
+import { invoke } from '@tauri-apps/api/core'
+
+export const undoAction = () =>
+  invoke<void>('undo_action')
+
+export const redoAction = () =>
+  invoke<void>('redo_action')

@@ -22,6 +22,7 @@
     clearSystemClipboard,
     pasteClipboardCmd,
   } from './features/explorer/services/clipboard'
+  import { undoAction, redoAction } from './features/explorer/services/history'
   import { deleteEntry, moveToTrashMany } from './features/explorer/services/trash'
   import type { Entry, Partition, SortField } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
@@ -1046,7 +1047,7 @@
       if (key === 'z') {
         event.preventDefault()
         event.stopPropagation()
-        void invoke('undo_action')
+        void undoAction()
           .then(() => {
             showToast('Undo')
             return reloadCurrent()
@@ -1059,7 +1060,7 @@
       if (key === 'y') {
         event.preventDefault()
         event.stopPropagation()
-        void invoke('redo_action')
+        void redoAction()
           .then(() => {
             showToast('Redo')
             return reloadCurrent()
