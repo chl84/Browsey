@@ -12,6 +12,7 @@
   import { createBookmarkModal } from './features/explorer/hooks/bookmarkModal'
   import { useDragDrop } from './features/explorer/hooks/useDragDrop'
   import { useModalsController } from './features/explorer/hooks/useModalsController'
+  import { useGridVirtualizer } from './features/explorer/hooks/useGridVirtualizer'
   import type { Entry, Partition, SortField } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
@@ -166,7 +167,7 @@
       rowsEl: rowsElRef,
       headerEl: headerElRef,
       gridEl: gridElRef,
-      gridCols,
+      gridCols: getGridCols(),
     })
     const nextMode = viewMode === 'list' ? 'grid' : 'list'
     const switchingToList = nextMode === 'list'
@@ -195,7 +196,7 @@
           rowsEl: rowsElRef,
           headerEl: headerElRef,
           gridEl: gridElRef,
-          gridCols,
+          gridCols: getGridCols(),
         })
       })
     } else {
@@ -205,7 +206,7 @@
         rowsEl: rowsElRef,
         headerEl: headerElRef,
         gridEl: gridElRef,
-        gridCols,
+        gridCols: getGridCols(),
       })
     }
     void focusCurrentView()
@@ -296,9 +297,10 @@
         rowsEl.scrollTo({ top: Math.min(target, maxScroll), behavior: 'auto' })
       } else {
         const gridEl = gridElRef
-        if (!gridEl || gridCols <= 0) return
+        const cols = getGridCols()
+        if (!gridEl || cols <= 0) return
         const stride = GRID_ROW_HEIGHT + GRID_GAP
-        const row = Math.floor(idx / Math.max(1, gridCols))
+        const row = Math.floor(idx / Math.max(1, cols))
         const viewport = gridEl.clientHeight
         const target = Math.max(0, row * stride - (viewport - stride) / 2)
         const maxScroll =
@@ -426,14 +428,7 @@
   // Keep in sync with the left padding in .grid (FileGrid.svelte)
   const GRID_PADDING = 15
   const GRID_OVERSCAN = 2
-  const gridStart = writable(0)
-  const gridOffsetY = writable(0)
-  const gridTotalHeight = writable(0)
-  let gridCols = 1
   const GRID_WHEEL_SCALE = 0.7
-  let gridWheelRaf: number | null = null
-  let gridPendingDeltaX = 0
-  let gridPendingDeltaY = 0
   let cursorX = 0
   let cursorY = 0
   const LASSO_GUTTER_WIDTH = 3
@@ -449,6 +444,32 @@
     rowHeight,
     gridRowHeight: GRID_ROW_HEIGHT,
     gridGap: GRID_GAP,
+  })
+
+  const {
+    gridCols,
+    getGridCols,
+    gridTotalHeight,
+    handleGridScroll,
+    handleGridWheel,
+    recomputeGrid,
+    ensureGridVisible,
+  } = useGridVirtualizer({
+    getEntries: () => get(filteredEntries),
+    getViewMode: () => viewMode,
+    getGridEl: () => gridElRef,
+    start,
+    offsetY,
+    totalHeight,
+    visibleEntries,
+    config: {
+      cardWidth: GRID_CARD_WIDTH,
+      rowHeight: GRID_ROW_HEIGHT,
+      gap: GRID_GAP,
+      padding: GRID_PADDING,
+      overscan: GRID_OVERSCAN,
+      wheelScale: GRID_WHEEL_SCALE,
+    },
   })
 
   const isScrollbarClick = (event: MouseEvent, el: HTMLDivElement | null) => {
@@ -1044,28 +1065,6 @@
   }
 
   $: updateViewportHeight()
-  const recomputeGrid = () => {
-    if (!gridElRef || viewMode !== 'grid') return
-    const list = get(filteredEntries)
-    const width = Math.max(0, gridElRef.clientWidth - GRID_PADDING * 2)
-    gridCols = Math.max(1, Math.floor((width + GRID_GAP) / (GRID_CARD_WIDTH + GRID_GAP)))
-    const rowStride = GRID_ROW_HEIGHT + GRID_GAP
-    const totalRows = Math.ceil(list.length / gridCols)
-    const scrollTop = gridElRef.scrollTop
-    const viewport = gridElRef.clientHeight
-    const startRow = Math.max(0, Math.floor(scrollTop / rowStride) - GRID_OVERSCAN)
-    const endRow = Math.min(totalRows, Math.ceil((scrollTop + viewport) / rowStride) + GRID_OVERSCAN)
-    const startIdx = startRow * gridCols
-    const endIdx = Math.min(list.length, endRow * gridCols)
-    gridStart.set(startIdx)
-    gridOffsetY.set(startRow * rowStride)
-    gridTotalHeight.set(totalRows * rowStride)
-    visibleEntries.set(list.slice(startIdx, endIdx))
-    start.set(startIdx)
-    offsetY.set(startRow * rowStride)
-    totalHeight.set(totalRows * rowStride)
-  }
-
   $: {
     if (viewMode === 'list') {
       // Recompute virtualization when viewport or scroll changes.
@@ -1441,7 +1440,7 @@
       rowHeight: 1,
       hitTest: (rect) =>
       hitTestGridVirtualized(rect, gridEntries, {
-        gridCols,
+        gridCols: getGridCols(),
         cardWidth: GRID_CARD_WIDTH,
         cardHeight: GRID_ROW_HEIGHT,
         gap: GRID_GAP,
@@ -1474,46 +1473,11 @@
     })
   }
 
-  const handleGridScroll = () => {
-    if (viewMode !== 'grid') return
-    recomputeGrid()
-  }
-
-  const handleGridWheel = (event: WheelEvent) => {
-    const el = gridElRef
-    if (!el) return
-    gridPendingDeltaX += event.deltaX * GRID_WHEEL_SCALE
-    gridPendingDeltaY += event.deltaY * GRID_WHEEL_SCALE
-    if (gridWheelRaf !== null) return
-    gridWheelRaf = requestAnimationFrame(() => {
-      el.scrollLeft += gridPendingDeltaX
-      el.scrollTop += gridPendingDeltaY
-      gridPendingDeltaX = 0
-      gridPendingDeltaY = 0
-      gridWheelRaf = null
-    })
-  }
-
   const handleRowsScrollCombined = (event: Event) => {
     if (viewMode === 'list') {
       handleRowsScroll()
     } else {
       handleGridScroll()
-    }
-  }
-
-  const ensureGridVisible = (index: number) => {
-    if (!gridElRef || gridCols <= 0) return
-    const rowStride = GRID_ROW_HEIGHT + GRID_GAP
-    const row = Math.floor(index / gridCols)
-    const top = row * rowStride
-    const bottom = top + rowStride
-    const currentTop = gridElRef.scrollTop
-    const currentBottom = currentTop + gridElRef.clientHeight
-    if (top < currentTop) {
-      gridElRef.scrollTo({ top })
-    } else if (bottom > currentBottom) {
-      gridElRef.scrollTo({ top: bottom - gridElRef.clientHeight })
     }
   }
 
@@ -1560,7 +1524,7 @@
     if (current === null) {
       current = key === 'arrowleft' || key === 'arrowup' ? list.length : -1
     }
-    const rowDelta = Math.max(1, gridCols)
+    const rowDelta = Math.max(1, getGridCols())
     let next: number | null = null
     if (key === 'arrowright') next = moveCaret({ count: list.length, current, delta: 1 })
     else if (key === 'arrowleft') next = moveCaret({ count: list.length, current, delta: -1 })
