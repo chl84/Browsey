@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store'
 import { onDestroy } from 'svelte'
-import { invoke } from '@tauri-apps/api/core'
+import { setClipboardCmd, pasteClipboardCmd } from '../services/clipboard'
 
 export type DragState = {
   dragging: boolean
@@ -93,8 +93,8 @@ export const useDragDrop = (options: DragDropOptions = {}) => {
 
   const move = async (paths: string[], dest: string) => {
     if (paths.length === 0) return
-    await invoke('set_clipboard_cmd', { paths, mode: 'cut' })
-    await invoke('paste_clipboard_cmd', { dest })
+    await setClipboardCmd(paths, 'cut')
+    await pasteClipboardCmd(dest)
   }
 
   onDestroy(() => {

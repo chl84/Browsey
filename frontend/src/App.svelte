@@ -1706,7 +1706,7 @@
     event.preventDefault()
     try {
       if (dragPaths.length > 0) {
-        await invoke('set_clipboard_cmd', { paths: dragPaths, mode: 'cut' })
+        await setClipboardCmd(dragPaths, 'cut')
       }
       await handlePasteOrMove(entry.path)
     } catch (err) {
