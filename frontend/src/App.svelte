@@ -73,6 +73,7 @@
   const dragDrop = useDragDrop()
   const { store: bookmarkStore } = bookmarkModal
   const dragState = dragDrop.state
+  let dragAction: 'copy' | 'move' | null = null
   let bookmarkModalOpen = false
   let bookmarkName = ''
   let bookmarkCandidate: Entry | null = null
@@ -249,6 +250,61 @@
   } = createListState()
 
   const selectionMemory = createSelectionMemory()
+  const driveLetter = (path: string): string | null => {
+    const norm = normalizePath(path)
+    const match = norm.match(/^([A-Za-z]):\//)
+    return match ? match[1].toUpperCase() : null
+  }
+  const mountForPath = (path: string): string | null => {
+    const norm = normalizePath(path)
+    const parts = get(partitionsStore)
+    let best: string | null = null
+    for (const part of parts) {
+      const root = normalizePath(part.path)
+      if (!root) continue
+      if (norm === root || norm.startsWith(`${root}/`)) {
+        if (!best || root.length > best.length) {
+          best = root
+        }
+      }
+    }
+    return best
+  }
+  const isCrossVolume = (paths: string[], dest: string): boolean | null => {
+    if (paths.length === 0) return null
+    const destMount = mountForPath(dest)
+    let unknown = false
+    for (const p of paths) {
+      const srcMount = mountForPath(p)
+      if (srcMount && destMount) {
+        if (srcMount !== destMount) return true
+        continue
+      }
+      if (srcMount || destMount) {
+        unknown = true
+        continue
+      }
+      const srcDrive = driveLetter(p)
+      const destDrive = driveLetter(dest)
+      if (srcDrive && destDrive) {
+        if (srcDrive !== destDrive) return true
+        continue
+      }
+      if (srcDrive || destDrive) {
+        unknown = true
+        continue
+      }
+      unknown = true
+    }
+    if (unknown) return null
+    return false
+  }
+  const shouldCopyForDrop = (dest: string, event: DragEvent) => {
+    if (copyModifierActive) return true
+    const cross = isCrossVolume(dragPaths, dest)
+    if (cross === true) return true
+    return false
+  }
 
   const viewFromPath = (value: string): CurrentView =>
     value === 'Recent'
@@ -882,6 +938,9 @@
   const { handleGlobalKeydown } = shortcuts
 
   const handleDocumentKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Control' || event.key === 'Meta') {
+      copyModifierActive = true
+    }
     const key = event.key.toLowerCase()
     const inRows = rowsElRef?.contains(event.target as Node) ?? false
 
@@ -1074,6 +1133,12 @@
     }
 
     void handleGlobalKeydown(event)
+  }
+
+  const handleDocumentKeyup = (event: KeyboardEvent) => {
+    if (event.key === 'Control' || event.key === 'Meta') {
+      copyModifierActive = false
+    }
   }
 
   $: updateViewportHeight()
@@ -1677,15 +1742,21 @@
   }
 
   let dragPaths: string[] = []
+  let copyModifierActive = false
   const handleRowDragStart = (entry: Entry, event: DragEvent) => {
     const selectedPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
     dragPaths = selectedPaths
     dragDrop.start(selectedPaths, event)
+    if (!event.ctrlKey && !event.metaKey) {
+      copyModifierActive = false
+    }
+    dragAction = null
   }
 
   const handleRowDragEnd = () => {
     dragPaths = []
     dragDrop.end()
+    dragAction = null
   }
 
   const handleRowDragOver = (entry: Entry, event: DragEvent) => {
@@ -1693,8 +1764,10 @@
     const allowed = dragDrop.canDropOn(dragPaths, entry.path)
     dragDrop.setTarget(allowed ? entry.path : null)
     if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = allowed ? 'move' : 'none'
+      const copy = allowed ? shouldCopyForDrop(entry.path, event) : false
+      event.dataTransfer.dropEffect = allowed ? (copy ? 'copy' : 'move') : 'none'
     }
+    dragAction = allowed ? (shouldCopyForDrop(entry.path, event) ? 'copy' : 'move') : null
     dragDrop.setPosition(event.clientX, event.clientY)
   }
 
@@ -1707,8 +1780,10 @@
     if (!dragDrop.canDropOn(dragPaths, entry.path)) return
     event.preventDefault()
     try {
+      const copy = shouldCopyForDrop(entry.path, event)
+      const mode: 'copy' | 'cut' = copy ? 'copy' : 'cut'
       if (dragPaths.length > 0) {
-        await setClipboardCmd(dragPaths, 'cut')
+        await setClipboardCmd(dragPaths, mode)
       }
       await handlePasteOrMove(entry.path)
     } catch (err) {
@@ -1720,6 +1795,7 @@
 
   const handleRowDragLeave = () => {
     dragDrop.setTarget(null)
+    dragAction = null
   }
 
   const handleBreadcrumbDragOver = (path: string, event: DragEvent) => {
@@ -1727,8 +1803,10 @@
     const allowed = dragDrop.canDropOn(dragPaths, path)
     dragDrop.setTarget(allowed ? path : null)
     if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = allowed ? 'move' : 'none'
+      const copy = allowed ? shouldCopyForDrop(path, event) : false
+      event.dataTransfer.dropEffect = allowed ? (copy ? 'copy' : 'move') : 'none'
     }
+    dragAction = allowed ? (shouldCopyForDrop(path, event) ? 'copy' : 'move') : null
     dragDrop.setPosition(event.clientX, event.clientY)
     event.preventDefault()
   }
@@ -1737,6 +1815,7 @@
     if (get(dragState).target === path) {
       dragDrop.setTarget(null)
     }
+    dragAction = null
   }
 
   const handleBreadcrumbDrop = async (path: string, event: DragEvent) => {
@@ -1744,7 +1823,9 @@
     if (!dragDrop.canDropOn(dragPaths, path)) return
     event.preventDefault()
     try {
-      await setClipboardCmd(dragPaths, 'cut')
+      const copy = shouldCopyForDrop(path, event)
+      const mode: 'copy' | 'cut' = copy ? 'copy' : 'cut'
+      await setClipboardCmd(dragPaths, mode)
       await handlePasteOrMove(path)
     } catch (err) {
       showToast(`Move failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -1864,6 +1945,7 @@
 
 <svelte:document
   on:keydown|capture={handleDocumentKeydown}
+  on:keyup|capture={handleDocumentKeyup}
   on:cut|capture={(e) => {
     const target = e.target as HTMLElement | null
     if (target && (target.isContentEditable || ['input', 'textarea'].includes(target.tagName.toLowerCase()))) {
@@ -1881,6 +1963,7 @@
   count={$dragState.paths.length}
   allowed={$dragState.target !== null}
   target={$dragState.target}
+  action={dragAction}
 />
   <ExplorerShell
     bind:pathInput
