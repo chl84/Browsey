@@ -67,7 +67,7 @@ const bookmarkIcon = iconPath('browsey/bookmark.svg')
   .nav {
     border: none;
     border-radius: 0;
-    padding: 5px 12px 5px 22px;
+    padding: 5px 22px 5px 22px;
     background: transparent;
     color: var(--fg);
     font-size: var(--font-size-base);
@@ -80,10 +80,6 @@ const bookmarkIcon = iconPath('browsey/bookmark.svg')
     transition: background 120ms ease;
     transform: none;
     box-shadow: none;
-  }
-
-  .nav.bookmark {
-    position: relative;
   }
 
   .nav:hover {
@@ -102,6 +98,10 @@ const bookmarkIcon = iconPath('browsey/bookmark.svg')
     outline: none;
   }
 
+  .nav.bookmark {
+    position: relative;
+  }
+
   .nav-icon {
     width: 18px;
     height: 18px;
@@ -110,7 +110,10 @@ const bookmarkIcon = iconPath('browsey/bookmark.svg')
   }
 
   .remove-bookmark {
-    margin-left: auto;
+    position: absolute;
+    top: 50%;
+    right: 2px;
+    transform: translateY(-50%);
     background: transparent;
     border: none;
     color: var(--fg-muted);
@@ -119,7 +122,7 @@ const bookmarkIcon = iconPath('browsey/bookmark.svg')
     cursor: pointer;
     opacity: 0;
     transition: opacity 120ms ease;
-    padding: 0 4px;
+    padding: 2px 6px;
     line-height: 1;
   }
 

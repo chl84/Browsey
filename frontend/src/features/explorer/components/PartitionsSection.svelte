@@ -51,15 +51,14 @@
   }
 
   .row {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: center;
+    position: relative;
+    width: 100%;
   }
 
   .nav {
     border: none;
     border-radius: 0;
-    padding: 5px 12px 5px 22px;
+    padding: 5px 40px 5px 22px; /* extra right padding so hover bg reaches behind eject */
     background: transparent;
     color: var(--fg);
     font-size: var(--font-size-base);
@@ -68,6 +67,7 @@
     flex-direction: row;
     align-items: center;
     gap: 8px;
+    width: 100%;
     cursor: default;
     transition: background 120ms ease;
     transform: none;
@@ -97,10 +97,14 @@
   }
 
   .eject {
+    position: absolute;
+    top: 50%;
+    right: 2px;
+    transform: translateY(-50%);
     border: none;
     background: transparent;
     color: var(--fg-muted);
-    padding: 4px 8px 4px 4px;
+    padding: 4px 6px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
