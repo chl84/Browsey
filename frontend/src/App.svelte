@@ -10,7 +10,8 @@
   import { createColumnResize } from './features/explorer/hooks/columnWidths'
   import { createGlobalShortcuts } from './features/explorer/hooks/shortcuts'
   import { createBookmarkModal } from './features/explorer/hooks/bookmarkModal'
-  import { createDragDrop } from './features/explorer/hooks/dragDrop'
+  import { useDragDrop } from './features/explorer/hooks/useDragDrop'
+  import { useModalsController } from './features/explorer/hooks/useModalsController'
   import type { Entry, Partition, SortField } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
@@ -25,12 +26,6 @@
   import { moveCaret } from './features/explorer/helpers/navigationController'
   import { createSelectionMemory } from './features/explorer/selectionMemory'
   import { createActivity } from './features/explorer/hooks/useActivity'
-  import { createDeleteConfirmModal } from './features/explorer/modals/deleteConfirmModal'
-  import { createOpenWithModal } from './features/explorer/modals/openWithModal'
-  import { createPropertiesModal } from './features/explorer/modals/propertiesModal'
-  import { createRenameModal } from './features/explorer/modals/renameModal'
-  import { createNewFolderModal } from './features/explorer/modals/newFolderModal'
-  import { createCompressModal } from './features/explorer/modals/compressModal'
   import DragGhost from './ui/DragGhost.svelte'
   import ConflictModal from './ui/ConflictModal.svelte'
   import './features/explorer/ExplorerLayout.css'
@@ -62,7 +57,7 @@
   let bookmarks: { label: string; path: string }[] = []
   let partitions: Partition[] = []
   const bookmarkModal = createBookmarkModal()
-  const dragDrop = createDragDrop()
+  const dragDrop = useDragDrop()
   const { store: bookmarkStore } = bookmarkModal
   const dragState = dragDrop.state
   let bookmarkModalOpen = false
@@ -1233,30 +1228,29 @@
     await loadRaw($current, { recordHistory: false })
   }
 
-  const deleteModal = createDeleteConfirmModal({ activityApi, reloadCurrent, showToast })
-  const deleteState = deleteModal.state
-  const openWithModal = createOpenWithModal({ showToast })
-  const openWithState = openWithModal.state
-  const propertiesModal = createPropertiesModal({ computeDirStats })
-  const propertiesState = propertiesModal.state
-  const renameModal = createRenameModal({
-    loadPath: (path: string) => loadRaw(path, { recordHistory: false }),
-    parentPath,
-  })
-  const renameState = renameModal.state
-  const newFolderModal = createNewFolderModal({
-    getCurrentPath: () => get(current),
-    loadPath: (path: string) => loadRaw(path, { recordHistory: false }),
-    showToast,
-  })
-  const newFolderState = newFolderModal.state
-  const compressModal = createCompressModal({
+  const {
+    deleteModal,
+    deleteState,
+    openWithModal,
+    openWithState,
+    propertiesModal,
+    propertiesState,
+    renameModal,
+    renameState,
+    newFolderModal,
+    newFolderState,
+    compressModal,
+    compressState,
+    actions: modalActions,
+  } = useModalsController({
     activityApi,
-    getCurrentPath: () => get(current),
-    loadPath: (path: string) => loadRaw(path, { recordHistory: false }),
+    reloadCurrent,
     showToast,
+    getCurrentPath: () => get(current),
+    loadPath: (path, opts) => loadRaw(path, opts),
+    parentPath,
+    computeDirStats,
   })
-  const compressState = compressModal.state
 
   const contextActions = createContextActions({
     getSelectedPaths: () => Array.from($selected),
@@ -1266,22 +1260,18 @@
     reloadCurrent,
     clipboard,
     showToast,
-    openWith: (entry) => {
-      openWithModal.open(entry)
-    },
+    openWith: (entry) => modalActions.openWith(entry),
     openCompress: (entries) => {
-      compressName = compressModal.open(entries)
+      compressName = modalActions.openCompress(entries)
       compressLevel = 6
     },
     startRename: (entry) => {
       renameValue = entry.name
-      renameModal.open(entry)
+      modalActions.startRename(entry)
     },
-    confirmDelete: (entries) => {
-      deleteModal.open(entries)
-    },
+    confirmDelete: (entries) => modalActions.confirmDelete(entries),
     openProperties: (entries) => {
-      void propertiesModal.open(entries)
+      void modalActions.openProperties(entries)
     },
     openLocation: (entry) => {
       void openEntryLocation(entry)
