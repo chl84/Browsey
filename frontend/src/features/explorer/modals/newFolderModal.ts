@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core'
 import { writable } from 'svelte/store'
+import { createFolder } from '../services/files'
 
 type Deps = {
   getCurrentPath: () => string | null
@@ -40,7 +40,7 @@ export const createNewFolderModal = (deps: Deps) => {
     if (busy) return null
     busy = true
     try {
-      const created: string = await invoke('create_folder', { path: base, name: trimmed })
+      const created: string = await createFolder(base, trimmed)
       await loadPath(base)
       close()
       return created

@@ -11,6 +11,7 @@ import type {
   SortField,
 } from './types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
+import { openEntry } from './services/files'
 
 const FILTER_DEBOUNCE_MS = 40
 
@@ -304,7 +305,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     if (entry.kind === 'dir') {
       void load(entry.path)
     } else {
-      void invoke('open_entry', { path: entry.path })
+      void openEntry(entry)
     }
   }
 
