@@ -56,6 +56,7 @@
   let gridRaf: number | null = null
   let resizingWindowUntil = 0
   let suppressLassoUntilMouseUp = false
+  let ignoreNextLasso = false
 
   const places = [
     { label: 'Home', path: '~' },
@@ -598,6 +599,7 @@
     if (typeof window === 'undefined') return
     resizingWindowUntil = performance.now() + 800
     suppressLassoUntilMouseUp = true
+    ignoreNextLasso = true
     sidebarCollapsed = window.innerWidth < 700
     handleListResize()
     if (viewMode === 'grid') {
@@ -1374,6 +1376,10 @@
   const handleRowsMouseDown = (event: MouseEvent) => {
     if (suppressLassoUntilMouseUp) return
     if (performance.now() < resizingWindowUntil) return
+    if (ignoreNextLasso) {
+      ignoreNextLasso = false
+      return
+    }
     if (event.buttons !== 1) return
     const target = event.target as HTMLElement | null
     if (viewMode === 'list') {
@@ -1428,6 +1434,10 @@
     if (!gridEl) return
     if (suppressLassoUntilMouseUp) return
     if (performance.now() < resizingWindowUntil) return
+    if (ignoreNextLasso) {
+      ignoreNextLasso = false
+      return
+    }
     if (event.buttons !== 1) return
     if (isScrollbarClick(event, gridEl)) return
     if (target && target.closest('.card')) return
