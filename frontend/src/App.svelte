@@ -41,6 +41,8 @@
   import { createActivity } from './features/explorer/hooks/useActivity'
   import DragGhost from './ui/DragGhost.svelte'
   import TextContextMenu from './ui/TextContextMenu.svelte'
+  import NativeDropOverlay from './ui/NativeDropOverlay.svelte'
+  import { createNativeFileDrop } from './features/explorer/hooks/useNativeFileDrop'
   import ConflictModal from './ui/ConflictModal.svelte'
   import './features/explorer/ExplorerLayout.css'
 
@@ -1771,6 +1773,19 @@
   let textMenuY = 0
   let textMenuTarget: HTMLElement | null = null
   let textMenuReadonly = false
+  const nativeDrop = createNativeFileDrop({
+    onDrop: (paths) => {
+      if (!paths || paths.length === 0) return
+      // If a single directory is dropped, navigate into it; otherwise show a toast.
+      const first = paths[0]
+      if (first.endsWith('/') || first.endsWith('\\')) {
+        void loadDir(first)
+      } else {
+        showToast('External drop: opening first item')
+        invoke('open_entry', { path: first }).catch(() => void loadDir(parentPath(first)))
+      }
+    },
+  })
   const handleRowDragStart = (entry: Entry, event: DragEvent) => {
     const selectedPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
     dragPaths = selectedPaths
@@ -1957,6 +1972,11 @@
         window.removeEventListener('error', handleError)
         window.removeEventListener('unhandledrejection', handleRejection)
       })
+
+      await nativeDrop.start()
+      cleanupFns.push(() => {
+        void nativeDrop.stop()
+      })
     }
 
     void setupCore()
@@ -1994,6 +2014,11 @@
   target={$dragState.target}
   action={dragAction}
 />
+<NativeDropOverlay
+  visible={$nativeDrop.hovering}
+  x={$nativeDrop.position?.x ?? null}
+  y={$nativeDrop.position?.y ?? null}
+/ >
 <TextContextMenu
   open={textMenuOpen}
   x={textMenuX}
