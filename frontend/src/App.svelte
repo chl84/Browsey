@@ -1795,6 +1795,8 @@
     const nativeCopy = event.ctrlKey || event.metaKey
     if (event.altKey) {
       nativeDragActive = true
+      event.preventDefault()
+      event.stopPropagation()
       void startNativeFileDrag(selectedPaths, nativeCopy ? 'copy' : 'move').then((ok) => {
         if (!ok) showToast('Native drag failed')
       })
