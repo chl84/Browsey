@@ -14,16 +14,11 @@
 
 .layout {
   display: grid;
-  grid-template-columns: 220px 1fr;
-  transition: grid-template-columns 500ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  grid-template-columns: auto 1fr;
   gap: 0;
   align-items: stretch;
   min-height: 0;
   height: 100%;
-}
-
-.layout.collapsed {
-  grid-template-columns: 0px 1fr;
 }
 
 .content {
