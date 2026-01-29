@@ -1,6 +1,6 @@
-import { invoke } from '@tauri-apps/api/core'
 import { writable, get } from 'svelte/store'
 import type { Entry } from '../types'
+import { renameEntry } from '../services/files'
 
 type Deps = {
   loadPath: (path: string) => Promise<void>
@@ -33,7 +33,7 @@ export const createRenameModal = (deps: Deps) => {
     if (!current.target || busy) return false
     busy = true
     try {
-      await invoke('rename_entry', { path: current.target.path, newName: trimmed })
+      await renameEntry(current.target.path, trimmed)
       await loadPath(parentPath(current.target.path))
       close()
       return true
