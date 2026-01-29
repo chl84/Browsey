@@ -2007,6 +2007,18 @@
         window.removeEventListener('unhandledrejection', handleRejection)
       })
 
+      // Prevent the webview's default "drop to open" behavior; native drop is handled via Tauri events.
+      const preventDefaultDrop = (e: DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+      window.addEventListener('dragover', preventDefaultDrop)
+      window.addEventListener('drop', preventDefaultDrop)
+      cleanupFns.push(() => {
+        window.removeEventListener('dragover', preventDefaultDrop)
+        window.removeEventListener('drop', preventDefaultDrop)
+      })
+
       await nativeDrop.start()
       cleanupFns.push(() => {
         void nativeDrop.stop()
