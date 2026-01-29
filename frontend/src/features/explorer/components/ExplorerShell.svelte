@@ -115,6 +115,9 @@
   export let onBlankContextSelect: (id: string) => void = () => {}
   export let onCloseContextMenu: () => void = () => {}
   export let onCloseBlankContextMenu: () => void = () => {}
+  export let onBreadcrumbDragOver: (path: string, e: DragEvent) => void = () => {}
+  export let onBreadcrumbDragLeave: (path: string, e: DragEvent) => void = () => {}
+  export let onBreadcrumbDrop: (path: string, e: DragEvent) => void = () => {}
 
   export let deleteConfirmOpen = false
   export let deleteTargets: Entry[] = []
@@ -208,6 +211,10 @@
         onSearch={onSearch}
         onExitSearch={onExitSearch}
         onNavigateSegment={onNavigateSegment}
+        dragTargetPath={dragTargetPath}
+        onBreadcrumbDragOver={onBreadcrumbDragOver}
+        onBreadcrumbDragLeave={onBreadcrumbDragLeave}
+        onBreadcrumbDrop={onBreadcrumbDrop}
       />
 
       <Notice message={noticeMessage} />
