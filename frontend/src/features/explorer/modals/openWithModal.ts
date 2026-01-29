@@ -1,7 +1,7 @@
 import { writable, get } from 'svelte/store'
 import type { Entry } from '../types'
-import type { OpenWithApp, OpenWithChoice } from '../openWith'
-import { fetchOpenWithApps, openWithSelection, defaultOpenWithApp } from '../openWith'
+import type { OpenWithApp, OpenWithChoice } from '../services/openWith'
+import { fetchOpenWithApps, openWithSelection, defaultOpenWithApp } from '../services/openWith'
 
 export type OpenWithState = {
   open: boolean
