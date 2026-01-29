@@ -10,10 +10,11 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 - **Live updates**: A `notify` watcher emits `dir-changed` events; the UI refreshes with a short debounce. Bookmarked paths are automatically allowlisted for watching (handy for mapped network drives).
 - **Clipboard & conflicts**: Native copy/cut/paste commands with preview. Pasting into the same folder auto-renames without prompting; other conflicts offer overwrite vs auto-rename.
 - **Search**: Recursive, case-insensitive search scoped to the current directory subtree; skips symlinks to avoid loops.
+- **Drag targets**: Internal drag/drop supports breadcrumbs as drop targets with visual highlighting.
 - **Drives & bookmarks**: Lists mounts/partitions (marks removable), bookmarks, starred, recent, and trash. Mounts are polled every 2s and SQLite stores bookmarks, stars, recents, and column widths.
 - **Context actions**: New Folder…, Open with (associated apps + custom command), copy path, cut/copy/paste, compress to ZIP (name + level), rename, move to wastebasket (Delete), delete permanently (Shift+Delete), properties with lazy-loaded timestamps, and “open item location” for recents.
 - **Drag & drop**: Internal drag/drop with custom ghost and drop-target highlighting; designed to work on Linux and Windows.
-- **Thumbnails**: Lazy, virtualized thumbnails with caching, per-file permission checks, decode timeouts, and size limits. SVG rasterized via resvg; PDFs via bundled PDFium; images via `image` crate; **videos** via ffmpeg (first-frame @1.5s) with per-type concurrency caps and cancellation on navigation. Cache trims every 10 thumbs.
+- **Thumbnails**: Lazy, virtualized thumbnails with caching and per-file permission checks. SVG rasterized via resvg; PDFs via bundled PDFium; images via `image` crate; **videos** via ffmpeg first-frame grabs with cancellation on navigation.
 - **Grid view parity**: Fixed-size cards with virtualization, keyboard navigation and range selection, lasso overlay, hidden-item dimming, and consistent click-to-clear selection; names can span up to three lines but stay aligned to show the start.
 - **Theming**: Dark mode by default plus a light mode toggle in the drag bar; all colors centralized in `frontend/src/app.css`.
 - **Cross-platform details**: Uses system WebView (WebKit on Linux, WebView2 on Windows). Network locations on Windows delete permanently (Explorer parity) because the recycle bin is unavailable there.
@@ -104,9 +105,9 @@ Tauri bundles:
 - **Hidden files**: `Ctrl+H` toggles showing hidden files (hidden items are shown by default).
 
 ## Architecture notes
-- **Backend (`src/`)**: Tauri commands for listing, search, mounts, bookmarks, starring, trash, rename/delete, open with (desktop entries on Linux, custom commands, and default handler), clipboard preview/execute, compression to ZIP, and a filesystem watcher. Thumbnail pipeline uses resvg for SVG; PDF thumbnails are rendered in Rust with PDFium (bundled binaries for Linux/Windows). Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) are isolated behind cfg gates.
-- **Frontend (`frontend/src/`)**: Explorer UI in Svelte with virtualized rows, drag/drop hook, clipboard/context-menu helpers, selection box, toast, conflict modal, and thumbnail loader (IntersectionObserver + queue). Layout and theme live in `frontend/src/app.css`. Modals share structure and focus handling via `frontend/src/ui/ModalShell.svelte` and `frontend/src/ui/modalUtils.ts`.
-- **Data & persistence**: SQLite DB in the platform data dir stores bookmarks, starred items, recents, and column widths. Thumbnail cache lives under the user cache dir with trimming (size/file caps). Capability file `capabilities/default.json` grants event listen/emit so the watcher can signal the UI.
+- **Backend (`src/`)**: Tauri commands for listing, search, mounts, bookmarks, starring, trash, rename/delete, open with (desktop entries on Linux, custom commands, and default handler), clipboard preview/execute, compression to ZIP, and a filesystem watcher. Thumbnail pipeline uses resvg for SVG and bundled PDFium for PDFs, keeping heavy files in check. Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) sit behind cfg gates.
+- **Frontend (`frontend/src/`)**: Explorer UI in Svelte with virtualized rows/cards, drag/drop, lasso selection, context menus, modals, and a thumbnail loader. All Tauri `invoke` calls are wrapped in `features/explorer/services/` (clipboard, trash, listing, files, layout, history, activity, star, bookmarks). Layout and theming live in `frontend/src/app.css`. Modals share structure via `frontend/src/ui/ModalShell.svelte` and `frontend/src/ui/modalUtils.ts`.
+- **Data & persistence**: SQLite DB in the platform data dir stores bookmarks, starred items, recents, and column widths. Thumbnail cache lives under the user cache dir with periodic trimming. Capability file `capabilities/default.json` grants event listen/emit so the watcher can signal the UI.
 - **Icons**: Uses a custom Browsey icon set in `frontend/public/icons/scalable/browsey/` mapped via `src/icons.rs`, covering sidebar items, folders (incl. templates, public, desktop, etc.), files (images, text, pdf, spreadsheets, presentations), compressed archives, and shortcuts. Removable disks and bookmarks also use the new set.
 
 ## Project layout
@@ -114,7 +115,8 @@ Tauri bundles:
 - `src/fs_utils.rs` — Path sanitation, platform helpers, logging.
 - `src/clipboard.rs` — Clipboard state, conflict preview, paste/rename/overwrite handling.
 - `src/watcher.rs` — Notify-based watcher emitting `dir-changed`.
-- `frontend/src/features/explorer/` — Explorer components, hooks, stores, utils, selection.
+- `frontend/src/features/explorer/` — Explorer components, hooks, stores, services, utils, selection.
+- `frontend/src/features/explorer/services/` — All Tauri API calls wrapped as small modules (clipboard, trash, listing, files, layout, history, activity, star, bookmarks).
 - `frontend/src/ui/` — Shared UI atoms (toasts, modals, drag ghost, etc.).
 - `scripts/` — Dev/build helpers for both shells.
 - `resources/` — Icons and generated schemas; `capabilities/` for Tauri permissions.
@@ -125,7 +127,6 @@ Tauri bundles:
 - Search is scoped to the current root; empty queries return no results but preserve the listing.
 - “Open item location” jumps to the parent and reselects the item.
 - Windows network paths delete permanently (recycle bin is unavailable there). Symlink copy/move is rejected.
-- Thumbnails: files over 50 MB (images) or 1 GB (videos) are skipped; images over 20 000 px are skipped; image decode timeout is 750 ms; video thumbs are capped to 4 concurrent jobs, cancelled on navigation, and time out after 10 s; cache trims every 10 thumbnails.
 - Permissions: Owner/group/other (Everyone) access bits can be edited on Unix and Windows; Windows maps to the file DACL and honors read-only and executable toggles. Changes roll back if any target fails.
 - Removable volumes on Windows expose an eject action; once a device is successfully ejected the UI removes it and filters out NOT_READY/DEVICE_NOT_CONNECTED remnants.
 - Open with modal lists matching applications (fallbacks included), allows a custom command, uses the system default when chosen, and launches apps detached without console noise.
