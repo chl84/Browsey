@@ -55,6 +55,7 @@
   let rowsRaf: number | null = null
   let gridRaf: number | null = null
   let resizingWindowUntil = 0
+  let suppressLassoUntilMouseUp = false
 
   const places = [
     { label: 'Home', path: '~' },
@@ -595,7 +596,8 @@
 
   const handleResize = () => {
     if (typeof window === 'undefined') return
-    resizingWindowUntil = performance.now() + 500
+    resizingWindowUntil = performance.now() + 800
+    suppressLassoUntilMouseUp = true
     sidebarCollapsed = window.innerWidth < 700
     handleListResize()
     if (viewMode === 'grid') {
@@ -1370,6 +1372,7 @@
   }
 
   const handleRowsMouseDown = (event: MouseEvent) => {
+    if (suppressLassoUntilMouseUp) return
     if (performance.now() < resizingWindowUntil) return
     if (event.buttons !== 1) return
     const target = event.target as HTMLElement | null
@@ -1423,6 +1426,7 @@
     // Grid mode lasso selection
     const gridEl = event.currentTarget as HTMLDivElement | null
     if (!gridEl) return
+    if (suppressLassoUntilMouseUp) return
     if (performance.now() < resizingWindowUntil) return
     if (event.buttons !== 1) return
     if (isScrollbarClick(event, gridEl)) return
@@ -1838,7 +1842,12 @@
     const setupCore = async () => {
       handleResize()
       window.addEventListener('resize', handleResize)
+      const clearSuppress = () => {
+        suppressLassoUntilMouseUp = false
+      }
+      window.addEventListener('mouseup', clearSuppress)
       cleanupFns.push(() => window.removeEventListener('resize', handleResize))
+      cleanupFns.push(() => window.removeEventListener('mouseup', clearSuppress))
 
       void loadSavedWidths()
       void loadBookmarks()
