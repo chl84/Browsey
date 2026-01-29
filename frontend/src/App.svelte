@@ -54,6 +54,8 @@
   let gridObserver: ResizeObserver | null = null
   let rowsRaf: number | null = null
   let gridRaf: number | null = null
+  let resizingWindow = false
+  let resizeReset: ReturnType<typeof setTimeout> | null = null
 
   const places = [
     { label: 'Home', path: '~' },
@@ -594,6 +596,11 @@
 
   const handleResize = () => {
     if (typeof window === 'undefined') return
+    resizingWindow = true
+    if (resizeReset) clearTimeout(resizeReset)
+    resizeReset = setTimeout(() => {
+      resizingWindow = false
+    }, 140)
     sidebarCollapsed = window.innerWidth < 700
     handleListResize()
     if (viewMode === 'grid') {
@@ -1368,6 +1375,8 @@
   }
 
   const handleRowsMouseDown = (event: MouseEvent) => {
+    if (resizingWindow) return
+    if (event.buttons !== 1) return
     const target = event.target as HTMLElement | null
     if (viewMode === 'list') {
       if (!rowsElRef) return
@@ -1419,6 +1428,8 @@
     // Grid mode lasso selection
     const gridEl = event.currentTarget as HTMLDivElement | null
     if (!gridEl) return
+    if (resizingWindow) return
+    if (event.buttons !== 1) return
     if (isScrollbarClick(event, gridEl)) return
     if (target && target.closest('.card')) return
     const gridEntries = get(filteredEntries)
