@@ -41,7 +41,6 @@
   import { createActivity } from './features/explorer/hooks/useActivity'
   import DragGhost from './ui/DragGhost.svelte'
   import TextContextMenu from './ui/TextContextMenu.svelte'
-  import NativeDropOverlay from './ui/NativeDropOverlay.svelte'
   import { createNativeFileDrop } from './features/explorer/hooks/useNativeFileDrop'
   import { startNativeFileDrag } from './features/explorer/services/nativeDrag'
   import ConflictModal from './ui/ConflictModal.svelte'
@@ -2049,11 +2048,6 @@
   target={$dragState.target}
   action={dragAction}
 />
-<NativeDropOverlay
-  visible={$nativeDropHovering}
-  x={$nativeDropPosition?.x ?? null}
-  y={$nativeDropPosition?.y ?? null}
-/>
 <TextContextMenu
   open={textMenuOpen}
   x={textMenuX}
@@ -2202,6 +2196,7 @@
   onConfirmBookmark={confirmBookmark}
   onCancelBookmark={closeBookmarkModal}
   toastMessage={$toast}
+  hintText={$nativeDropHovering && currentView === 'dir' ? 'Drop to paste into this folder' : ''}
 />
 <ConflictModal
   open={conflictModalOpen}

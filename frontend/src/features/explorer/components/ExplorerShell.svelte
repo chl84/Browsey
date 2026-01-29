@@ -86,6 +86,7 @@
   export let onRowDragLeave: (entry: Entry, event: DragEvent) => void = () => {}
 
   export let selectionText = ''
+  export let hintText = ''
   export let activity:
     | { label: string; percent: number | null; cancel?: (() => void) | null; cancelling?: boolean }
     | null = null
@@ -304,7 +305,7 @@
           selectionRect={selectionRect}
         />
       {/if}
-      <Statusbar {selectionText} />
+      <Statusbar {selectionText} hintText={hintText} />
     </section>
   </div>
 </main>
