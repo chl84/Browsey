@@ -337,34 +337,38 @@ export const createPropertiesModal = (deps: Deps) => {
       const current = get(state)
       const targets = current.targets.length > 0 ? current.targets : current.entry ? [current.entry] : []
       if (targets.length === 0) return
-      const successes: string[] = []
       const failures: string[] = []
       const newPaths: string[] = []
+      const successFlags: boolean[] = []
       for (const t of targets) {
         try {
           const res = await invoke<string[]>('set_hidden', { paths: [t.path], hidden: next })
           const np = res[0] ?? t.path
           newPaths.push(np)
-          successes.push(t.name)
+          successFlags.push(true)
         } catch (err) {
           console.error('Failed to toggle hidden', err)
           failures.push(t.name)
           newPaths.push(t.path)
+          successFlags.push(false)
         }
       }
       state.update((s) => {
         const updatedTargets = s.targets.map((t, idx) => {
           const np = newPaths[idx] ?? t.path
-          return { ...t, path: np, name: stdPathName(np), hidden: next }
+          return successFlags[idx] ? { ...t, path: np, name: stdPathName(np), hidden: next } : t
         })
         const updatedEntry =
           s.entry && newPaths.length > 0
-            ? { ...s.entry, path: newPaths[0], name: stdPathName(newPaths[0]), hidden: next }
+            ? successFlags[0]
+              ? { ...s.entry, path: newPaths[0], name: stdPathName(newPaths[0]), hidden: next }
+              : s.entry
             : s.entry
-        return { ...s, targets: updatedTargets, entry: updatedEntry, hidden: combine([next]) }
+        const hiddenBits = updatedTargets.map((t) => t.hidden === true)
+        return { ...s, targets: updatedTargets, entry: updatedEntry, hidden: combine(hiddenBits) }
       })
       if (failures.length > 0) {
-        showToast(`Hidden toggle failed for: ${failures.join(', ')}`)
+        showToast(`Hidden toggle skipped for: ${failures.join(', ')}`)
       }
     },
   }
