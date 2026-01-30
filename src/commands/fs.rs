@@ -23,6 +23,8 @@ mod fs_windows;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
+#[cfg(target_os = "windows")]
+use std::os::windows::prelude::*;
 #[cfg(not(target_os = "windows"))]
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -727,6 +729,83 @@ pub fn open_entry(path: String) -> Result<(), String> {
         error!("Failed to open {:?}: {}", pb, e);
         format!("Failed to open: {e}")
     })
+}
+
+#[cfg(target_os = "windows")]
+fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(), String> {
+    use windows_sys::Win32::Storage::FileSystem::{GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN};
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let attrs = unsafe { GetFileAttributesW(wide.as_ptr()) };
+    if attrs == u32::MAX {
+        return Err("GetFileAttributes failed".into());
+    }
+    let mut new_attrs = attrs;
+    if hidden {
+        new_attrs |= FILE_ATTRIBUTE_HIDDEN;
+    } else {
+        new_attrs &= !FILE_ATTRIBUTE_HIDDEN;
+    }
+    let ok = unsafe { SetFileAttributesW(wide.as_ptr(), new_attrs) };
+    if ok == 0 {
+        return Err("SetFileAttributes failed".into());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(), String> {
+    // On Unix, hidden = leading dot. Rename within same directory.
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Invalid file name".to_string())?;
+    let is_dot = file_name.starts_with('.');
+    if hidden == is_dot {
+        return Ok(());
+    }
+    let target_name = if hidden {
+        format!(".{file_name}")
+    } else {
+        file_name.trim_start_matches('.').to_string()
+    };
+    if target_name.is_empty() {
+        return Err("Cannot derive visible name".into());
+    }
+    let parent = path.parent().ok_or_else(|| "Missing parent".to_string())?;
+    let target = parent.join(&target_name);
+    if target.exists() {
+        return Err(format!("Target already exists: {}", target.display()));
+    }
+    fs::rename(path, &target).map_err(|e| format!("Failed to rename: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_hidden(path: String, hidden: bool) -> Result<String, String> {
+    let pb = sanitize_path_nofollow(&path, true)?;
+    check_no_symlink_components(&pb)?;
+    set_hidden_attr(&pb, hidden)?;
+    let new_name = if hidden {
+        format!(
+            ".{}",
+            pb.file_name()
+                .ok_or_else(|| "Missing file name".to_string())?
+                .to_string_lossy()
+        )
+    } else {
+        pb.file_name()
+            .ok_or_else(|| "Missing file name".to_string())?
+            .to_string_lossy()
+            .trim_start_matches('.')
+            .to_string()
+    };
+    let new_path = pb
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join(&new_name)
+        .to_string_lossy()
+        .into_owned();
+    Ok(new_path)
 }
 
 #[tauri::command]

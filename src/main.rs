@@ -158,6 +158,7 @@ fn main() {
             delete_entry,
             delete_entries,
             entry_times_cmd,
+            set_hidden,
             extract_archive,
             open_console,
             set_clipboard_cmd,
