@@ -803,34 +803,6 @@ pub fn set_hidden(path: Option<String>, paths: Option<Vec<String>>, hidden: bool
 }
 
 #[tauri::command]
-pub fn set_hidden(path: String, hidden: bool) -> Result<String, String> {
-    let pb = sanitize_path_nofollow(&path, true)?;
-    check_no_symlink_components(&pb)?;
-    set_hidden_attr(&pb, hidden)?;
-    let new_name = if hidden {
-        format!(
-            ".{}",
-            pb.file_name()
-                .ok_or_else(|| "Missing file name".to_string())?
-                .to_string_lossy()
-        )
-    } else {
-        pb.file_name()
-            .ok_or_else(|| "Missing file name".to_string())?
-            .to_string_lossy()
-            .trim_start_matches('.')
-            .to_string()
-    };
-    let new_path = pb
-        .parent()
-        .unwrap_or_else(|| Path::new(""))
-        .join(&new_name)
-        .to_string_lossy()
-        .into_owned();
-    Ok(new_path)
-}
-
-#[tauri::command]
 pub fn list_trash(sort: Option<SortSpec>) -> Result<DirListing, String> {
     let items = trash_list().map_err(|e| format!("Failed to list trash: {e}"))?;
     let mut entries = Vec::new();
