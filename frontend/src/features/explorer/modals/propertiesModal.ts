@@ -21,6 +21,7 @@ export type PropertiesState = {
   count: number
   size: number | null
   itemCount: number | null
+  hidden: AccessBit | null
   permissions: PermissionsState | null
 }
 
@@ -40,6 +41,7 @@ export const createPropertiesModal = (deps: Deps) => {
     count: 0,
     size: null,
     itemCount: null,
+    hidden: null,
     permissions: null,
   })
   let token = 0
@@ -70,6 +72,7 @@ export const createPropertiesModal = (deps: Deps) => {
       count: entries.length,
       size: fileBytes,
       itemCount: dirs.length === 0 ? fileCount : null,
+      hidden: combine(entries.map((e) => e.hidden == true)),
       permissions: null,
     })
 
@@ -331,21 +334,24 @@ export const createPropertiesModal = (deps: Deps) => {
     toggleAccess,
     async toggleHidden(next: boolean) {
       const current = get(state)
-      if (!current.entry) return
-      const prevPath = current.entry.path
+      const targets = current.targets.length > 0 ? current.targets : current.entry ? [current.entry] : []
+      if (targets.length === 0) return
       try {
-        const newPath = await invoke<string>('set_hidden', { path: prevPath, hidden: next })
-        state.update((s) => ({
-          ...s,
-          entry: s.entry
-            ? {
-                ...s.entry,
-                path: newPath,
-                name: stdPathName(newPath),
-                hidden: next,
-              }
-            : s.entry,
-        }))
+        const newPaths = await invoke<string[]>('set_hidden', {
+          paths: targets.map((t) => t.path),
+          hidden: next,
+        })
+        state.update((s) => {
+          const updatedTargets = s.targets.map((t, idx) => {
+            const np = newPaths[idx] ?? t.path
+            return { ...t, path: np, name: stdPathName(np), hidden: next }
+          })
+          const updatedEntry =
+            s.entry && newPaths.length > 0
+              ? { ...s.entry, path: newPaths[0], name: stdPathName(newPaths[0]), hidden: next }
+              : s.entry
+          return { ...s, targets: updatedTargets, entry: updatedEntry, hidden: next }
+        })
       } catch (err) {
         console.error('Failed to toggle hidden', err)
       }
@@ -353,7 +359,7 @@ export const createPropertiesModal = (deps: Deps) => {
   }
 }
 
-const stdPathName = (p: string) => {
+const stdPathName = (p: string): string => {
   const parts = p.split(/[\\/]/)
   return parts[parts.length - 1] ?? p
 }
