@@ -27,7 +27,6 @@ export const useModalsController = ({
   loadPath,
   parentPath,
   computeDirStats,
-  showToast,
 }: Deps) => {
   const deleteModal = createDeleteConfirmModal({ activityApi, reloadCurrent, showToast })
   const deleteState = deleteModal.state
