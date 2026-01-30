@@ -905,17 +905,27 @@
           }
         } else {
           const paths = entries.map((e) => e.path)
-          await moveToTrashMany(paths)
-          activity.set({
-            label,
-            percent: total > 0 ? 100 : null,
-          })
+          const progressEvent = `trash-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
+          await activityApi.start(label, progressEvent)
+          await moveToTrashMany(paths, progressEvent)
         }
         await reloadCurrent()
       } catch (err) {
         console.error('Failed to move to trash', err)
+        showToast(
+          `Move to trash failed: ${err instanceof Error ? err.message : String(err)}`,
+          3000
+        )
       } finally {
-        activityApi.hideSoon()
+        if (currentView === 'trash') {
+          activityApi.hideSoon()
+        } else {
+          const hadTimer = activityApi.hasHideTimer()
+          await activityApi.cleanup(true)
+          if (!hadTimer) {
+            activityApi.clearNow()
+          }
+        }
       }
       return true
     },
