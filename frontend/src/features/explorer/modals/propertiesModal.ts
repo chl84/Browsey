@@ -2,12 +2,13 @@ import { writable, get } from 'svelte/store'
 import { invoke } from '@tauri-apps/api/core'
 import type { Entry } from '../types'
 
-type Access = { read: boolean; write: boolean; exec: boolean }
+type AccessBit = boolean | 'mixed'
+type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
 export type PermissionsState = {
   accessSupported: boolean
   executableSupported: boolean
-  readOnly: boolean | null
-  executable: boolean | null
+  readOnly: AccessBit | null
+  executable: AccessBit | null
   owner: Access | null
   group: Access | null
   other: Access | null
@@ -93,18 +94,110 @@ export const createPropertiesModal = (deps: Deps) => {
       void loadPermissions(entry, nextToken)
       void loadEntryTimes(entry, nextToken)
     } else {
+      void loadPermissionsMulti(entries, nextToken)
+    }
+  }
+
+  const combine = (values: boolean[]): AccessBit => {
+    if (values.length === 0) return false
+    const allTrue = values.every((v) => v === true)
+    const allFalse = values.every((v) => v === false)
+    if (allTrue) return true
+    if (allFalse) return false
+    return 'mixed'
+  }
+
+  const loadPermissionsMulti = async (entries: Entry[], currToken: number) => {
+    try {
+      const sample = entries.slice(0, 50) // limit to avoid huge bursts
+      const permsList = await Promise.all(
+        sample.map((e) =>
+          invoke<{
+            access_supported: boolean
+            executable_supported: boolean
+            read_only: boolean
+            executable: boolean | null
+            owner?: Access
+            group?: Access
+            other?: Access
+          }>('get_permissions', { path: e.path }),
+        ),
+      )
+      if (currToken !== token) return
+      const accessSupported = permsList.every((p) => p.access_supported)
+      const executableSupported = permsList.every((p) => p.executable_supported)
+
+      const ownerReads = permsList
+        .map((p) => p.owner?.read)
+        .filter((v): v is boolean => v !== undefined)
+      const ownerWrites = permsList
+        .map((p) => p.owner?.write)
+        .filter((v): v is boolean => v !== undefined)
+      const ownerExecs = permsList
+        .map((p) => p.owner?.exec)
+        .filter((v): v is boolean => v !== undefined)
+
+      const groupReads = permsList
+        .map((p) => p.group?.read)
+        .filter((v): v is boolean => v !== undefined)
+      const groupWrites = permsList
+        .map((p) => p.group?.write)
+        .filter((v): v is boolean => v !== undefined)
+      const groupExecs = permsList
+        .map((p) => p.group?.exec)
+        .filter((v): v is boolean => v !== undefined)
+
+      const otherReads = permsList
+        .map((p) => p.other?.read)
+        .filter((v): v is boolean => v !== undefined)
+      const otherWrites = permsList
+        .map((p) => p.other?.write)
+        .filter((v): v is boolean => v !== undefined)
+      const otherExecs = permsList
+        .map((p) => p.other?.exec)
+        .filter((v): v is boolean => v !== undefined)
+
+      const readOnlyVals = permsList.map((p) => p.read_only)
+      const execVals = permsList
+        .map((p) => p.executable)
+        .filter((v): v is boolean => v !== null && v !== undefined)
+
       state.update((s) => ({
         ...s,
-        permissions: {
-          accessSupported: true,
-          executableSupported: true,
-          readOnly: false,
-          executable: false,
-          owner: { read: false, write: false, exec: false },
-          group: { read: false, write: false, exec: false },
-          other: { read: false, write: false, exec: false },
-        },
+        permissions: accessSupported
+          ? {
+              accessSupported,
+              executableSupported,
+              readOnly: combine(readOnlyVals),
+              executable: executableSupported ? combine(execVals) : null,
+              owner: {
+                read: combine(ownerReads),
+                write: combine(ownerWrites),
+                exec: combine(ownerExecs),
+              },
+              group: {
+                read: combine(groupReads),
+                write: combine(groupWrites),
+                exec: combine(groupExecs),
+              },
+              other: {
+                read: combine(otherReads),
+                write: combine(otherWrites),
+                exec: combine(otherExecs),
+              },
+            }
+          : {
+              accessSupported: false,
+              executableSupported,
+              readOnly: null,
+              executable: executableSupported ? combine(execVals) : null,
+              owner: null,
+              group: null,
+              other: null,
+            },
       }))
+    } catch (err) {
+      console.error('Failed to load multi permissions', err)
     }
   }
 
@@ -231,23 +324,10 @@ export const createPropertiesModal = (deps: Deps) => {
     void updatePermissions({ [scope]: { [key]: next } }, prev)
   }
 
-  const toggleFlag = (key: 'readOnly' | 'executable', next: boolean) => {
-    const current = get(state)
-    const perms = current.permissions
-    if (!perms) return
-    const prev = JSON.parse(JSON.stringify(perms)) as PermissionsState
-    state.update((s) => ({
-      ...s,
-      permissions: { ...perms, [key]: next },
-    }))
-    void updatePermissions(key === 'readOnly' ? { readOnly: next } : { executable: next }, prev)
-  }
-
   return {
     state,
     open: openModal,
     close,
     toggleAccess,
-    toggleFlag,
   }
 }

@@ -160,8 +160,8 @@
     | {
         accessSupported: boolean
         executableSupported: boolean
-        readOnly: boolean | null
-        executable: boolean | null
+        readOnly: boolean | 'mixed' | null
+        executable: boolean | 'mixed' | null
         owner: Access | null
         group: Access | null
         other: Access | null
