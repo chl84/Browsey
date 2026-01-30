@@ -90,7 +90,8 @@ fn init_logging() {
             return;
         }
     };
-    let (non_blocking, guard) = tracing_appender::non_blocking::NonBlockingBuilder::default().finish(writer);
+    let (non_blocking, guard) =
+        tracing_appender::non_blocking::NonBlockingBuilder::default().finish(writer);
     let _ = GUARD.set(guard);
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(
