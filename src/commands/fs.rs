@@ -6,10 +6,10 @@ use crate::{
         build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
         CachedMeta, FsEntry,
     },
-    icons::icon_ids::{FILE, GENERIC_FOLDER, SHORTCUT},
     fs_utils::{
         check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow,
     },
+    icons::icon_ids::{FILE, GENERIC_FOLDER, SHORTCUT},
     sorting::{sort_entries, SortSpec},
     undo::{
         copy_entry as undo_copy_entry, delete_entry_path as undo_delete_path, move_with_fallback,
@@ -21,7 +21,7 @@ use crate::{
 #[path = "fs_windows.rs"]
 mod fs_windows;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 #[cfg(not(target_os = "windows"))]
 use std::process::Command;
@@ -833,38 +833,177 @@ pub fn create_folder(
 }
 
 #[tauri::command]
-pub fn move_to_trash(
+pub async fn move_to_trash(
     path: String,
     app: tauri::AppHandle,
-    undo: tauri::State<UndoState>,
+    undo: tauri::State<'_, UndoState>,
 ) -> Result<(), String> {
-    let action = move_single_to_trash(&path, &app, true)?;
-    let _ = undo.record_applied(action);
-    Ok(())
+    let app_handle = app.clone();
+    let undo_state = undo.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let action = move_single_to_trash(&path, &app_handle, true)?;
+        let _ = undo_state.record_applied(action);
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Move to trash task failed: {e}"))?
 }
 
-#[tauri::command]
-pub fn move_to_trash_many(
+fn emit_trash_progress(
+    app: &tauri::AppHandle,
+    event: Option<&String>,
+    done: u64,
+    total: u64,
+    finished: bool,
+    last_emit: &mut Instant,
+) {
+    if let Some(evt) = event {
+        let now = Instant::now();
+        if finished || now.duration_since(*last_emit) >= Duration::from_millis(100) {
+            let payload = DeleteProgressPayload {
+                bytes: done,
+                total,
+                finished,
+            };
+            let _ = app.emit(evt, payload);
+            *last_emit = now;
+        }
+    }
+}
+
+struct PreparedTrashMove {
+    src: std::path::PathBuf,
+    backup: std::path::PathBuf,
+}
+
+fn prepare_trash_move(raw: &str) -> Result<PreparedTrashMove, String> {
+    let src = sanitize_path_nofollow(raw, true)?;
+    check_no_symlink_components(&src)?;
+
+    // Backup into the central undo directory in case we cannot locate the trash item path later.
+    let backup = temp_backup_path(&src);
+    if let Some(parent) = backup.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create backup dir {}: {e}", parent.display()))?;
+    }
+    undo_copy_entry(&src, &backup)?;
+
+    Ok(PreparedTrashMove { src, backup })
+}
+
+fn move_to_trash_many_blocking(
     paths: Vec<String>,
     app: tauri::AppHandle,
-    undo: tauri::State<UndoState>,
+    undo: UndoState,
+    progress_event: Option<String>,
 ) -> Result<(), String> {
-    if paths.is_empty() {
+    let total = paths.len() as u64;
+    if total == 0 {
+        emit_trash_progress(
+            &app,
+            progress_event.as_ref(),
+            0,
+            0,
+            true,
+            &mut Instant::now(),
+        );
         return Ok(());
     }
-    let mut actions = Vec::with_capacity(paths.len());
+    // Capture current trash contents once to avoid O(n^2) directory scans.
+    let before_ids: HashSet<OsString> = trash_list()
+        .map_err(|e| format!("Failed to list trash: {e}"))?
+        .into_iter()
+        .map(|item| item.id)
+        .collect();
+
+    let mut prepared: Vec<PreparedTrashMove> = Vec::with_capacity(paths.len());
+    let mut done = 0u64;
+    let mut last_emit = Instant::now();
     for path in paths {
-        match move_single_to_trash(&path, &app, false) {
-            Ok(action) => actions.push(action),
-            Err(err) => {
-                if !actions.is_empty() {
-                    let mut rollback = actions.clone();
-                    let _ = run_actions(&mut rollback, Direction::Backward);
+        match prepare_trash_move(&path) {
+            Ok(prep) => {
+                match trash_delete(&prep.src) {
+                    Ok(_) => {
+                        done = done.saturating_add(1);
+                        emit_trash_progress(
+                            &app,
+                            progress_event.as_ref(),
+                            done,
+                            total,
+                            done == total,
+                            &mut last_emit,
+                        );
+                        prepared.push(prep);
+                    }
+                    Err(err) => {
+                        // Roll back any already-trashed items using their backups.
+                        let mut rollback: Vec<Action> = prepared
+                            .iter()
+                            .map(|p| Action::Delete {
+                                path: p.src.clone(),
+                                backup: p.backup.clone(),
+                            })
+                            .collect();
+                        let _ = run_actions(&mut rollback, Direction::Backward);
+                        emit_trash_progress(
+                            &app,
+                            progress_event.as_ref(),
+                            done,
+                            total,
+                            true,
+                            &mut last_emit,
+                        );
+                        return Err(format!("Failed to move to trash: {err}"));
+                    }
                 }
+            }
+            Err(err) => {
+                // Nothing was moved for this entry; roll back previous ones.
+                let mut rollback: Vec<Action> = prepared
+                    .iter()
+                    .map(|p| Action::Delete {
+                        path: p.src.clone(),
+                        backup: p.backup.clone(),
+                    })
+                    .collect();
+                let _ = run_actions(&mut rollback, Direction::Backward);
+                emit_trash_progress(
+                    &app,
+                    progress_event.as_ref(),
+                    done,
+                    total,
+                    true,
+                    &mut last_emit,
+                );
                 return Err(err);
             }
         }
     }
+
+    // Identify new trash items with a single post-scan.
+    let mut new_items: HashMap<std::path::PathBuf, std::path::PathBuf> = HashMap::new();
+    if let Ok(after) = trash_list() {
+        for item in after.into_iter().filter(|i| !before_ids.contains(&i.id)) {
+            new_items.insert(item.original_path(), trash_item_path(&item));
+        }
+    }
+
+    let mut actions = Vec::with_capacity(prepared.len());
+    for prep in prepared {
+        if let Some(trash_path) = new_items.remove(&prep.src) {
+            let _ = undo_delete_path(&prep.backup);
+            actions.push(Action::Move {
+                from: prep.src,
+                to: trash_path,
+            });
+        } else {
+            actions.push(Action::Delete {
+                path: prep.src,
+                backup: prep.backup,
+            });
+        }
+    }
+
     let recorded = if actions.len() == 1 {
         actions.pop().unwrap()
     } else {
@@ -873,6 +1012,22 @@ pub fn move_to_trash_many(
     let _ = undo.record_applied(recorded);
     let _ = app.emit("trash-changed", ());
     Ok(())
+}
+
+#[tauri::command]
+pub async fn move_to_trash_many(
+    paths: Vec<String>,
+    app: tauri::AppHandle,
+    undo: tauri::State<'_, UndoState>,
+    progress_event: Option<String>,
+) -> Result<(), String> {
+    let app_handle = app.clone();
+    let undo_state = undo.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        move_to_trash_many_blocking(paths, app_handle, undo_state, progress_event)
+    })
+    .await
+    .map_err(|e| format!("Move to trash task failed: {e}"))?
 }
 
 fn move_single_to_trash(
