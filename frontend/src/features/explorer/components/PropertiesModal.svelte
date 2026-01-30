@@ -48,6 +48,8 @@
     other: 'Other users',
   }
 
+  $: isHidden = entry ? entry.hidden === true || entry.name.startsWith('.') : false
+
   let activeTab: 'basic' | 'extra' | 'permissions' = 'basic'
   let availableTabs: Array<'basic' | 'extra' | 'permissions'> = ['basic', 'permissions']
   let wasOpen = false
@@ -103,7 +105,15 @@
         <div class="row"><span class="label">Created</span><span class="value">{entry.created ?? '—'}</span></div>
       {/if}
     {:else if activeTab === 'extra'}
-      <div class="row"><span class="label">Extra</span><span class="value">Coming soon</span></div>
+      <div class="row">
+        <span class="label">Hidden</span>
+        <span class="value">
+          <label class="toggle">
+            <input type="checkbox" checked={isHidden} disabled title="Viser om filen er skjult" />
+          </label>
+        </span>
+      </div>
+      <div class="row"><span class="label">Extra</span><span class="value">More coming soon</span></div>
     {:else if activeTab === 'permissions'}
       {#if permissions && permissions.accessSupported}
         <div class="access">
