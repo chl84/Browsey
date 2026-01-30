@@ -350,7 +350,8 @@ export const createPropertiesModal = (deps: Deps) => {
             s.entry && newPaths.length > 0
               ? { ...s.entry, path: newPaths[0], name: stdPathName(newPaths[0]), hidden: next }
               : s.entry
-          return { ...s, targets: updatedTargets, entry: updatedEntry, hidden: next }
+          const mixHidden = combine([next])
+          return { ...s, targets: updatedTargets, entry: updatedEntry, hidden: mixHidden }
         })
       } catch (err) {
         console.error('Failed to toggle hidden', err)
