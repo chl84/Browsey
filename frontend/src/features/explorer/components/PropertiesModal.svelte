@@ -9,19 +9,21 @@
   export let onClose: () => void = () => {}
   export let formatSize: (size?: number | null) => string = () => ''
   type Access = { read: boolean | 'mixed'; write: boolean | 'mixed'; exec: boolean | 'mixed' }
+  type HiddenBit = boolean | 'mixed' | null
   const scopes = ['owner', 'group', 'other'] as const
   type Scope = (typeof scopes)[number]
   export let permissions:
     | {
         accessSupported: boolean
         executableSupported: boolean
-        readOnly: boolean | null
-        executable: boolean | null
+        readOnly: boolean | 'mixed' | null
+        executable: boolean | 'mixed' | null
         owner: Access | null
         group: Access | null
         other: Access | null
       }
     | null = null
+  export let hidden: HiddenBit = null
   export let onToggleAccess: (
     scope: Scope,
     key: 'read' | 'write' | 'exec',
@@ -49,12 +51,13 @@
     other: 'Other users',
   }
 
-  $: isHidden = entry ? entry.hidden === true || entry.name.startsWith('.') : false
+  $: hiddenBit =
+    hidden !== null ? hidden : entry ? (entry.hidden === true || entry.name.startsWith('.')) : false
 
   let activeTab: 'basic' | 'extra' | 'permissions' = 'basic'
-  let availableTabs: Array<'basic' | 'extra' | 'permissions'> = ['basic', 'permissions']
+  let availableTabs: Array<'basic' | 'extra' | 'permissions'> = ['basic', 'extra', 'permissions']
   let wasOpen = false
-  $: availableTabs = count === 1 ? ['basic', 'extra', 'permissions'] : ['basic', 'permissions']
+  $: availableTabs = ['basic', 'extra', 'permissions']
   $: if (!availableTabs.includes(activeTab)) activeTab = 'basic'
   $: {
     if (open && !wasOpen) {
@@ -106,21 +109,20 @@
         <div class="row"><span class="label">Created</span><span class="value">{entry.created ?? '—'}</span></div>
       {/if}
     {:else if activeTab === 'extra'}
-      {#if count === 1 && entry}
-        <div class="row">
-          <span class="label">Hidden</span>
-          <span class="value">
-            <label class="toggle">
-              <input
-                type="checkbox"
-                checked={isHidden}
-                title="Hidden attribute"
-                on:change={(e) => onToggleHidden((e.currentTarget as HTMLInputElement).checked)}
-              />
-            </label>
-          </span>
-        </div>
-      {/if}
+      <div class="row">
+        <span class="label">Hidden</span>
+        <span class="value">
+          <label class="toggle">
+            <input
+              type="checkbox"
+              use:indeterminate={hiddenBit}
+              checked={hiddenBit === true}
+              title="Hidden attribute"
+              on:change={(e) => onToggleHidden((e.currentTarget as HTMLInputElement).checked)}
+            />
+          </label>
+        </span>
+      </div>
       <div class="row"><span class="label">Extra</span><span class="value">More coming soon</span></div>
     {:else if activeTab === 'permissions'}
       {#if permissions && permissions.accessSupported}
