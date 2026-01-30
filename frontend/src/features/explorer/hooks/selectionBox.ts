@@ -14,9 +14,10 @@ type Context = {
   onEnd?: (didDrag: boolean) => void
 }
 
-const AUTOSCROLL_EDGE_PX = 40
-const AUTOSCROLL_BASE = 6
-const AUTOSCROLL_MAX = 48
+const AUTOSCROLL_EDGE_PX = 48
+const AUTOSCROLL_MIN_SPEED = 12 // px per frame (≈ 720 px/s)
+const AUTOSCROLL_MAX_SPEED = 192 // px per frame (≈ 11.5 kpx/s)
+const AUTOSCROLL_RAMP_FRAMES = 8 // ~130ms at 60fps
 
 export const createSelectionBox = () => {
   const active = writable(false)
@@ -28,6 +29,8 @@ export const createSelectionBox = () => {
   let didDrag = false
   let rafId: number | null = null
   let autoscrollSpeed = 0
+  let autoscrollDir: -1 | 0 | 1 = 0
+  let edgeFrames = 0
   let lastClientX = 0
   let lastClientY = 0
   let hasLast = false
@@ -38,16 +41,18 @@ export const createSelectionBox = () => {
       rafId = null
     }
     autoscrollSpeed = 0
+    autoscrollDir = 0
+    edgeFrames = 0
   }
 
   const scheduleAutoscroll = () => {
     if (rafId !== null) return
     rafId = requestAnimationFrame(() => {
       rafId = null
-      if (!ctx || autoscrollSpeed === 0) return
+      if (!ctx || autoscrollSpeed === 0 || autoscrollDir === 0) return
       const el = ctx.rowsEl
       const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
-      const next = Math.max(0, Math.min(maxScroll, el.scrollTop + autoscrollSpeed))
+      const next = Math.max(0, Math.min(maxScroll, el.scrollTop + autoscrollSpeed * autoscrollDir))
       if (next === el.scrollTop) {
         stopAutoscroll()
         return
@@ -94,28 +99,51 @@ export const createSelectionBox = () => {
 
     // Autoscroll near edges while dragging
     autoscrollSpeed = 0
+    autoscrollDir = 0
     const distanceTop = clientY - rowsRect.top
     const distanceBottom = rowsRect.bottom - clientY
     if (distanceTop < AUTOSCROLL_EDGE_PX) {
+      autoscrollDir = -1
       const factor = (AUTOSCROLL_EDGE_PX - distanceTop) / AUTOSCROLL_EDGE_PX
-      autoscrollSpeed = -(
-        AUTOSCROLL_BASE +
-        Math.min(AUTOSCROLL_MAX - AUTOSCROLL_BASE, factor * (AUTOSCROLL_MAX - AUTOSCROLL_BASE))
-      )
-    } else if (distanceBottom < AUTOSCROLL_EDGE_PX) {
-      const factor = (AUTOSCROLL_EDGE_PX - distanceBottom) / AUTOSCROLL_EDGE_PX
+      const eased = factor * factor
+      const ramp = Math.min(1, edgeFrames / AUTOSCROLL_RAMP_FRAMES)
       autoscrollSpeed =
-        AUTOSCROLL_BASE +
-        Math.min(AUTOSCROLL_MAX - AUTOSCROLL_BASE, factor * (AUTOSCROLL_MAX - AUTOSCROLL_BASE))
+        AUTOSCROLL_MIN_SPEED +
+        Math.min(
+          AUTOSCROLL_MAX_SPEED - AUTOSCROLL_MIN_SPEED,
+          eased * (AUTOSCROLL_MAX_SPEED - AUTOSCROLL_MIN_SPEED)
+        ) *
+          ramp
+    } else if (distanceBottom < AUTOSCROLL_EDGE_PX) {
+      autoscrollDir = 1
+      const factor = (AUTOSCROLL_EDGE_PX - distanceBottom) / AUTOSCROLL_EDGE_PX
+      const eased = factor * factor
+      const ramp = Math.min(1, edgeFrames / AUTOSCROLL_RAMP_FRAMES)
+      autoscrollSpeed =
+        AUTOSCROLL_MIN_SPEED +
+        Math.min(
+          AUTOSCROLL_MAX_SPEED - AUTOSCROLL_MIN_SPEED,
+          eased * (AUTOSCROLL_MAX_SPEED - AUTOSCROLL_MIN_SPEED)
+        ) *
+          ramp
     }
-    if (autoscrollSpeed !== 0) {
+    if (autoscrollDir !== 0) {
+      // hold counter for ramping up
+      edgeFrames = Math.min(edgeFrames + 1, AUTOSCROLL_RAMP_FRAMES)
+    } else {
+      edgeFrames = 0
+    }
+
+    if (autoscrollSpeed !== 0 && autoscrollDir !== 0) {
       const el = ctx.rowsEl
       const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
-      if ((autoscrollSpeed < 0 && el.scrollTop <= 0) || (autoscrollSpeed > 0 && el.scrollTop >= maxScroll)) {
+      if ((autoscrollDir < 0 && el.scrollTop <= 0) || (autoscrollDir > 0 && el.scrollTop >= maxScroll)) {
         autoscrollSpeed = 0
+        autoscrollDir = 0
+        edgeFrames = 0
       }
     }
-    if (autoscrollSpeed !== 0) {
+    if (autoscrollSpeed !== 0 && autoscrollDir !== 0) {
       scheduleAutoscroll()
     } else {
       stopAutoscroll()
