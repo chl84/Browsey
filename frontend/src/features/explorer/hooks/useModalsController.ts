@@ -27,6 +27,7 @@ export const useModalsController = ({
   loadPath,
   parentPath,
   computeDirStats,
+  showToast,
 }: Deps) => {
   const deleteModal = createDeleteConfirmModal({ activityApi, reloadCurrent, showToast })
   const deleteState = deleteModal.state
@@ -34,7 +35,7 @@ export const useModalsController = ({
   const openWithModal = createOpenWithModal({ showToast })
   const openWithState = openWithModal.state
 
-  const propertiesModal = createPropertiesModal({ computeDirStats })
+  const propertiesModal = createPropertiesModal({ computeDirStats, showToast })
   const propertiesState = propertiesModal.state
 
   const renameModal = createRenameModal({

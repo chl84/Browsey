@@ -30,10 +30,11 @@ type Deps = {
     paths: string[],
     onProgress?: (bytes: number, items: number) => void,
   ) => Promise<{ total: number; items: number }>
+  showToast: (msg: string, timeout?: number) => void
 }
 
 export const createPropertiesModal = (deps: Deps) => {
-  const { computeDirStats } = deps
+  const { computeDirStats, showToast } = deps
   const state = writable<PropertiesState>({
     open: false,
     entry: null,
@@ -336,25 +337,34 @@ export const createPropertiesModal = (deps: Deps) => {
       const current = get(state)
       const targets = current.targets.length > 0 ? current.targets : current.entry ? [current.entry] : []
       if (targets.length === 0) return
-      try {
-        const newPaths = await invoke<string[]>('set_hidden', {
-          paths: targets.map((t) => t.path),
-          hidden: next,
+      const successes: string[] = []
+      const failures: string[] = []
+      const newPaths: string[] = []
+      for (const t of targets) {
+        try {
+          const res = await invoke<string[]>('set_hidden', { paths: [t.path], hidden: next })
+          const np = res[0] ?? t.path
+          newPaths.push(np)
+          successes.push(t.name)
+        } catch (err) {
+          console.error('Failed to toggle hidden', err)
+          failures.push(t.name)
+          newPaths.push(t.path)
+        }
+      }
+      state.update((s) => {
+        const updatedTargets = s.targets.map((t, idx) => {
+          const np = newPaths[idx] ?? t.path
+          return { ...t, path: np, name: stdPathName(np), hidden: next }
         })
-        state.update((s) => {
-          const updatedTargets = s.targets.map((t, idx) => {
-            const np = newPaths[idx] ?? t.path
-            return { ...t, path: np, name: stdPathName(np), hidden: next }
-          })
-          const updatedEntry =
-            s.entry && newPaths.length > 0
-              ? { ...s.entry, path: newPaths[0], name: stdPathName(newPaths[0]), hidden: next }
-              : s.entry
-          const mixHidden = combine([next])
-          return { ...s, targets: updatedTargets, entry: updatedEntry, hidden: mixHidden }
-        })
-      } catch (err) {
-        console.error('Failed to toggle hidden', err)
+        const updatedEntry =
+          s.entry && newPaths.length > 0
+            ? { ...s.entry, path: newPaths[0], name: stdPathName(newPaths[0]), hidden: next }
+            : s.entry
+        return { ...s, targets: updatedTargets, entry: updatedEntry, hidden: combine([next]) }
+      })
+      if (failures.length > 0) {
+        showToast(`Hidden toggle failed for: ${failures.join(', ')}`)
       }
     },
   }
