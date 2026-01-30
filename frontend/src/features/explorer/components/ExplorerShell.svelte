@@ -169,7 +169,6 @@
     | null = null
   export let onTogglePermissionsAccess: (scope: 'owner' | 'group' | 'other', key: 'read' | 'write' | 'exec', next: boolean) => void =
     () => {}
-  export let onTogglePermissionsFlag: (key: 'readOnly' | 'executable', next: boolean) => void = () => {}
   export let onCloseProperties: () => void = () => {}
 
   export let bookmarkModalOpen = false
@@ -371,7 +370,6 @@
   deepCount={propertiesItemCount}
   permissions={propertiesPermissions}
   onToggleAccess={onTogglePermissionsAccess}
-  onToggleFlag={onTogglePermissionsFlag}
   {formatSize}
   onClose={onCloseProperties}
 />
