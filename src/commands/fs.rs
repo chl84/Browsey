@@ -732,8 +732,10 @@ pub fn open_entry(path: String) -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(), String> {
-    use windows_sys::Win32::Storage::FileSystem::{GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN};
+fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN,
+    };
     let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
     let attrs = unsafe { GetFileAttributesW(wide.as_ptr()) };
     if attrs == u32::MAX {
@@ -749,11 +751,11 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(), String> {
     if ok == 0 {
         return Err("SetFileAttributes failed".into());
     }
-    Ok(())
+    Ok(path.to_path_buf())
 }
 
 #[cfg(not(target_os = "windows"))]
-fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(), String> {
+fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
     // On Unix, hidden = leading dot. Rename within same directory.
     let file_name = path
         .file_name()
@@ -761,7 +763,7 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(), String> {
         .ok_or_else(|| "Invalid file name".to_string())?;
     let is_dot = file_name.starts_with('.');
     if hidden == is_dot {
-        return Ok(());
+        return Ok(path.to_path_buf());
     }
     let target_name = if hidden {
         format!(".{file_name}")
@@ -777,7 +779,27 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(), String> {
         return Err(format!("Target already exists: {}", target.display()));
     }
     fs::rename(path, &target).map_err(|e| format!("Failed to rename: {e}"))?;
-    Ok(())
+    Ok(target)
+}
+
+#[tauri::command]
+pub fn set_hidden(path: Option<String>, paths: Option<Vec<String>>, hidden: bool) -> Result<Vec<String>, String> {
+    let targets: Vec<String> = match (paths, path) {
+        (Some(list), _) if !list.is_empty() => list,
+        (_, Some(single)) => vec![single],
+        _ => return Err("No paths provided".into()),
+    };
+    if targets.is_empty() {
+        return Err("No paths provided".into());
+    }
+    let mut results = Vec::with_capacity(targets.len());
+    for raw in targets {
+        let pb = sanitize_path_nofollow(&raw, true)?;
+        check_no_symlink_components(&pb)?;
+        let new_path = set_hidden_attr(&pb, hidden)?;
+        results.push(new_path.to_string_lossy().into_owned());
+    }
+    Ok(results)
 }
 
 #[tauri::command]
