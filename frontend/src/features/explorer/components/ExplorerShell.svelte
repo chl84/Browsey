@@ -155,6 +155,7 @@
   export let propertiesCount = 1
   export let propertiesSize: number | null = null
   export let propertiesItemCount: number | null = null
+  export let propertiesHidden: boolean | 'mixed' | null = null
   type Access = { read: boolean; write: boolean; exec: boolean }
   export let propertiesPermissions:
     | {
@@ -369,6 +370,7 @@
   count={propertiesCount}
   size={propertiesSize}
   deepCount={propertiesItemCount}
+  hidden={propertiesHidden}
   permissions={propertiesPermissions}
   onToggleAccess={onTogglePermissionsAccess}
   onToggleHidden={onToggleHidden}

@@ -2200,6 +2200,7 @@
   propertiesCount={$propertiesState.count}
   propertiesSize={$propertiesState.size}
   propertiesItemCount={$propertiesState.itemCount}
+  propertiesHidden={$propertiesState.hidden}
   propertiesPermissions={$propertiesState.permissions}
   onTogglePermissionsAccess={(scope, key, next) => propertiesModal.toggleAccess(scope, key, next)}
   onToggleHidden={(next) => propertiesModal.toggleHidden(next)}
