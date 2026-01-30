@@ -28,6 +28,15 @@
     next: boolean
   ) => void = () => {}
 
+  const indeterminate = (node: HTMLInputElement, value: boolean | 'mixed' | null | undefined) => {
+    node.indeterminate = value === 'mixed'
+    return {
+      update(next: boolean | 'mixed' | null | undefined) {
+        node.indeterminate = next === 'mixed'
+      },
+    }
+  }
+
   const tabLabels = {
     basic: 'Basic',
     extra: 'Extra',
@@ -114,7 +123,8 @@
                   <label>
                     <input
                       type="checkbox"
-                      checked={permissions[scope].read}
+                      use:indeterminate={permissions[scope].read}
+                      checked={permissions[scope].read === true}
                       on:change={(e) =>
                         onToggleAccess(scope, 'read', (e.currentTarget as HTMLInputElement).checked)}
                     />
@@ -122,7 +132,8 @@
                   <label>
                     <input
                       type="checkbox"
-                      checked={permissions[scope].write}
+                      use:indeterminate={permissions[scope].write}
+                      checked={permissions[scope].write === true}
                       on:change={(e) =>
                         onToggleAccess(scope, 'write', (e.currentTarget as HTMLInputElement).checked)}
                     />
@@ -130,7 +141,8 @@
                   <label>
                     <input
                       type="checkbox"
-                      checked={permissions[scope].exec}
+                      use:indeterminate={permissions[scope].exec}
+                      checked={permissions[scope].exec === true}
                       on:change={(e) =>
                         onToggleAccess(scope, 'exec', (e.currentTarget as HTMLInputElement).checked)}
                     />
