@@ -329,5 +329,31 @@ export const createPropertiesModal = (deps: Deps) => {
     open: openModal,
     close,
     toggleAccess,
+    async toggleHidden(next: boolean) {
+      const current = get(state)
+      if (!current.entry) return
+      const prevPath = current.entry.path
+      try {
+        const newPath = await invoke<string>('set_hidden', { path: prevPath, hidden: next })
+        state.update((s) => ({
+          ...s,
+          entry: s.entry
+            ? {
+                ...s.entry,
+                path: newPath,
+                name: stdPathName(newPath),
+                hidden: next,
+              }
+            : s.entry,
+        }))
+      } catch (err) {
+        console.error('Failed to toggle hidden', err)
+      }
+    },
   }
+}
+
+const stdPathName = (p: string) => {
+  const parts = p.split(/[\\/]/)
+  return parts[parts.length - 1] ?? p
 }

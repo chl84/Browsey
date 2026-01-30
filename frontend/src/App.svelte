@@ -2202,6 +2202,7 @@
   propertiesItemCount={$propertiesState.itemCount}
   propertiesPermissions={$propertiesState.permissions}
   onTogglePermissionsAccess={(scope, key, next) => propertiesModal.toggleAccess(scope, key, next)}
+  onToggleHidden={(next) => propertiesModal.toggleHidden(next)}
   onCloseProperties={propertiesModal.close}
   bookmarkModalOpen={bookmarkModalOpen}
   {bookmarkCandidate}

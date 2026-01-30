@@ -8,7 +8,7 @@
   export let deepCount: number | null = null
   export let onClose: () => void = () => {}
   export let formatSize: (size?: number | null) => string = () => ''
-  type Access = { read: boolean; write: boolean; exec: boolean }
+  type Access = { read: boolean | 'mixed'; write: boolean | 'mixed'; exec: boolean | 'mixed' }
   const scopes = ['owner', 'group', 'other'] as const
   type Scope = (typeof scopes)[number]
   export let permissions:
@@ -27,6 +27,7 @@
     key: 'read' | 'write' | 'exec',
     next: boolean
   ) => void = () => {}
+  export let onToggleHidden: (next: boolean) => void = () => {}
 
   const indeterminate = (node: HTMLInputElement, value: boolean | 'mixed' | null | undefined) => {
     node.indeterminate = value === 'mixed'
@@ -105,14 +106,21 @@
         <div class="row"><span class="label">Created</span><span class="value">{entry.created ?? '—'}</span></div>
       {/if}
     {:else if activeTab === 'extra'}
-      <div class="row">
-        <span class="label">Hidden</span>
-        <span class="value">
-          <label class="toggle">
-            <input type="checkbox" checked={isHidden} disabled title="Viser om filen er skjult" />
-          </label>
-        </span>
-      </div>
+      {#if count === 1 && entry}
+        <div class="row">
+          <span class="label">Hidden</span>
+          <span class="value">
+            <label class="toggle">
+              <input
+                type="checkbox"
+                checked={isHidden}
+                title="Hidden attribute"
+                on:change={(e) => onToggleHidden((e.currentTarget as HTMLInputElement).checked)}
+              />
+            </label>
+          </span>
+        </div>
+      {/if}
       <div class="row"><span class="label">Extra</span><span class="value">More coming soon</span></div>
     {:else if activeTab === 'permissions'}
       {#if permissions && permissions.accessSupported}
