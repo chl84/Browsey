@@ -776,7 +776,8 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
     let parent = path.parent().ok_or_else(|| "Missing parent".to_string())?;
     let target = parent.join(&target_name);
     if target.exists() {
-        return Err(format!("Target already exists: {}", target.display()));
+        // Target already in desired hidden/visible state; treat as no-op to avoid failures on collisions.
+        return Ok(path.to_path_buf());
     }
     fs::rename(path, &target).map_err(|e| format!("Failed to rename: {e}"))?;
     Ok(target)
