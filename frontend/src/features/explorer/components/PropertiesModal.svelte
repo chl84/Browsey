@@ -27,7 +27,6 @@
     key: 'read' | 'write' | 'exec',
     next: boolean
   ) => void = () => {}
-  export let onToggleFlag: (key: 'readOnly' | 'executable', next: boolean) => void = () => {}
 
   const tabLabels = {
     basic: 'Basic',
