@@ -60,7 +60,10 @@ fn run_xclip(mime: &str, payload: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn copy_paths_to_system_clipboard(paths: Vec<String>, mode: Option<String>) -> Result<(), String> {
+pub fn copy_paths_to_system_clipboard(
+    paths: Vec<String>,
+    mode: Option<String>,
+) -> Result<(), String> {
     if paths.is_empty() {
         return Err("No paths provided".into());
     }
@@ -68,7 +71,11 @@ pub fn copy_paths_to_system_clipboard(paths: Vec<String>, mode: Option<String>) 
     for p in paths {
         uris.push(file_uri(&p)?);
     }
-    let action = match mode.unwrap_or_else(|| "copy".into()).to_lowercase().as_str() {
+    let action = match mode
+        .unwrap_or_else(|| "copy".into())
+        .to_lowercase()
+        .as_str()
+    {
         "cut" => "cut",
         _ => "copy",
     };
@@ -109,11 +116,14 @@ pub fn copy_paths_to_system_clipboard(paths: Vec<String>, mode: Option<String>) 
 }
 
 fn read_command_output(cmd: &mut Command) -> Result<Option<String>, String> {
-    let output = cmd.output().map_err(|e| format!("Clipboard read failed: {e}"))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Clipboard read failed: {e}"))?;
     if !output.status.success() {
         return Ok(None);
     }
-    let text = String::from_utf8(output.stdout).map_err(|e| format!("Clipboard text decode failed: {e}"))?;
+    let text = String::from_utf8(output.stdout)
+        .map_err(|e| format!("Clipboard text decode failed: {e}"))?;
     if text.trim().is_empty() {
         return Ok(None);
     }
@@ -194,10 +204,7 @@ pub fn system_clipboard_paths() -> Result<SystemClipboardContent, String> {
     if let Some(text) = read_wl_paste("text/uri-list")? {
         let (paths, mode) = parse_uri_list(&text);
         if !paths.is_empty() {
-            return Ok(SystemClipboardContent {
-                mode,
-                paths,
-            });
+            return Ok(SystemClipboardContent { mode, paths });
         }
     }
 
@@ -210,10 +217,7 @@ pub fn system_clipboard_paths() -> Result<SystemClipboardContent, String> {
     if let Some(text) = read_xclip("text/uri-list")? {
         let (paths, mode) = parse_uri_list(&text);
         if !paths.is_empty() {
-            return Ok(SystemClipboardContent {
-                mode,
-                paths,
-            });
+            return Ok(SystemClipboardContent { mode, paths });
         }
     }
 
