@@ -132,7 +132,6 @@ Tauri bundles:
 - Removable volumes on Windows expose an eject action; once a device is successfully ejected the UI removes it and filters out NOT_READY/DEVICE_NOT_CONNECTED remnants.
 - Open with modal lists matching applications (fallbacks included), allows a custom command, uses the system default when chosen, and launches apps detached without console noise.
 - Drag/drop uses a custom ghost image; Tauri window drag/drop is disabled to allow HTML5 DnD on Windows.
-- Permissions editing is available on Unix-like systems; Windows permissions editing is planned for a future release (UI will surface capability when supported).
 
 ## Disclaimer
 Browsey performs file operations (copy, move, rename, compress, trash, delete). Use it at your own risk, keep backups of important data, and verify paths before destructive actions. The software is provided as-is without warranties; contributors are not liable for data loss or other damage.
