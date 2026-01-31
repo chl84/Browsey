@@ -59,6 +59,7 @@
     onClose={onClose}
     modalClass="settings-modal"
     modalWidth="720px"
+    initialFocusSelector=".tabs button"
   >
     <div class="tabs">
       {#each tabs as tab}
