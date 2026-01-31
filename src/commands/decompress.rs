@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     fs::{self, File},
     io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -11,6 +12,9 @@ use std::{
 
 use bzip2::read::BzDecoder;
 use flate2::read::{GzDecoder, MultiGzDecoder};
+use sevenz_rust2::{
+    decompress_file_with_extract_fn, Archive as SevenZArchive, Error as SevenZError,
+};
 use serde::Serialize;
 use tar::Archive;
 use xz2::read::XzDecoder;
@@ -34,6 +38,7 @@ enum ArchiveKind {
     TarBz2,
     TarXz,
     TarZstd,
+    SevenZ,
     Gz,
     Bz2,
     Xz,
@@ -254,6 +259,7 @@ fn do_extract(
         ArchiveKind::Zip => zip_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::Tar => tar_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::TarGz => gzip_uncompressed_size(&archive_path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::SevenZ => sevenz_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::Gz => gzip_uncompressed_size(&archive_path).unwrap_or_else(|_| meta.len()),
         _ => meta.len(),
     }
@@ -361,6 +367,20 @@ fn do_extract(
                         .map(|r| Box::new(r) as Box<dyn Read>)
                         .map_err(|e| format!("Failed to create zstd decoder: {e}"))
                 },
+            )?;
+            dest_dir
+        }
+        ArchiveKind::SevenZ => {
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
+            created.record_dir(dest_dir.clone());
+            extract_7z(
+                &archive_path,
+                &dest_dir,
+                strip.as_deref(),
+                &stats,
+                progress.as_ref(),
+                &mut created,
+                cancel_token.as_deref(),
             )?;
             dest_dir
         }
@@ -479,6 +499,9 @@ fn detect_archive(path: &Path) -> Result<ArchiveKind, String> {
     {
         return Ok(ArchiveKind::Zip);
     }
+    if magic.starts_with(&[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]) {
+        return Ok(ArchiveKind::SevenZ);
+    }
     if magic.starts_with(&[0x1F, 0x8B]) {
         return Ok(if has_suffix(&name, &[".tar.gz", ".tgz"]) {
             ArchiveKind::TarGz
@@ -518,6 +541,7 @@ fn detect_archive(path: &Path) -> Result<ArchiveKind, String> {
         (&[".tar.zst", ".tzst"][..], ArchiveKind::TarZstd),
         (&[".tar"][..], ArchiveKind::Tar),
         (&[".zip"][..], ArchiveKind::Zip),
+        (&[".7z"][..], ArchiveKind::SevenZ),
         (&[".gz"][..], ArchiveKind::Gz),
         (&[".bz2"][..], ArchiveKind::Bz2),
         (&[".xz"][..], ArchiveKind::Xz),
@@ -550,6 +574,7 @@ fn choose_destination_dir(
         | ArchiveKind::TarBz2
         | ArchiveKind::TarXz
         | ArchiveKind::TarZstd => single_root_in_tar(archive_path, kind)?,
+        ArchiveKind::SevenZ => single_root_in_7z(archive_path)?,
         _ => None,
     };
 
@@ -663,6 +688,38 @@ fn single_root_in_tar(path: &Path, kind: ArchiveKind) -> Result<Option<PathBuf>,
     Ok(root)
 }
 
+fn single_root_in_7z(path: &Path) -> Result<Option<PathBuf>, String> {
+    let archive = SevenZArchive::open(path).map_err(|e| format!("Failed to read 7z: {e}"))?;
+    let mut root: Option<PathBuf> = None;
+    for entry in archive.files {
+        if entry.is_anti_item {
+            continue;
+        }
+        let raw_path = PathBuf::from(entry.name);
+        let clean_rel = match clean_relative_path(&raw_path) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        if clean_rel.as_os_str().is_empty() {
+            continue;
+        }
+        let Some(first) = first_component(&clean_rel) else {
+            continue;
+        };
+        let rest_is_empty = clean_rel.components().count() == 1;
+        let is_dir = entry.is_directory || (!entry.has_stream && rest_is_empty);
+        if !is_dir && rest_is_empty {
+            return Ok(None);
+        }
+        match &root {
+            Some(r) if r != &first => return Ok(None),
+            None => root = Some(first),
+            _ => {}
+        }
+    }
+    Ok(root)
+}
+
 fn open_buffered_file(path: &Path, action: &'static str) -> Result<BufReader<File>, String> {
     let file = File::open(path).map_err(map_io(action))?;
     Ok(BufReader::with_capacity(CHUNK, file))
@@ -687,6 +744,110 @@ where
     Ok(())
 }
 
+fn extract_7z(
+    archive_path: &Path,
+    dest_dir: &Path,
+    strip_prefix: Option<&Path>,
+    stats: &SkipStats,
+    progress: Option<&ProgressEmitter>,
+    created: &mut CreatedPaths,
+    cancel: Option<&AtomicBool>,
+) -> Result<(), String> {
+    let mut buf = vec![0u8; CHUNK];
+    decompress_file_with_extract_fn(archive_path, dest_dir, |entry, reader, _dest_path| {
+        if is_cancelled(cancel) {
+            return Err(SevenZError::Io(
+                io::Error::new(io::ErrorKind::Interrupted, "cancelled"),
+                Cow::Borrowed("Extraction cancelled"),
+            ));
+        }
+
+        if entry.is_anti_item {
+            stats.skip_unsupported(&entry.name, "anti-item entry");
+            return Ok(true);
+        }
+
+        let raw_name = entry.name.clone();
+        let clean_rel = match clean_relative_path(Path::new(&raw_name)) {
+            Ok(p) => p,
+            Err(err) => {
+                stats.skip_unsupported(&raw_name, &err);
+                return Ok(true);
+            }
+        };
+        let clean_rel = if let Some(prefix) = strip_prefix {
+            match clean_rel.strip_prefix(prefix) {
+                Ok(stripped) => stripped.to_path_buf(),
+                Err(_) => clean_rel,
+            }
+        } else {
+            clean_rel
+        };
+        if clean_rel.as_os_str().is_empty() {
+            return Ok(true);
+        }
+        let dest_path = dest_dir.join(clean_rel);
+
+        if entry.is_directory {
+            if !dest_path.exists() {
+                fs::create_dir_all(&dest_path).map_err(|e| {
+                    SevenZError::Io(
+                        e,
+                        Cow::Owned(format!("create dir failed for {}", dest_path.display())),
+                    )
+                })?;
+                created.record_dir(dest_path.clone());
+            } else if let Err(e) = fs::create_dir_all(&dest_path) {
+                stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
+            }
+            return Ok(true);
+        }
+
+        if let Some(parent) = dest_path.parent() {
+            if !parent.exists() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
+                    return Ok(true);
+                }
+                created.record_dir(parent.to_path_buf());
+            } else if let Err(e) = fs::create_dir_all(parent) {
+                stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
+                return Ok(true);
+            }
+        }
+
+        if !entry.has_stream {
+            if dest_path.exists() {
+                return Ok(true);
+            }
+            let (_file, dest_actual) =
+                open_unique_file(&dest_path).map_err(|e| SevenZError::Other(Cow::Owned(e)))?;
+            created.record_file(dest_actual);
+            return Ok(true);
+        }
+
+        if dest_path.exists() {
+            if let Some(p) = progress {
+                p.add(entry.size.max(1));
+            }
+            return Ok(true);
+        }
+
+        let (file, dest_actual) =
+            open_unique_file(&dest_path).map_err(|e| SevenZError::Other(Cow::Owned(e)))?;
+        created.record_file(dest_actual.clone());
+        let mut out = BufWriter::with_capacity(CHUNK, file);
+        copy_with_progress(reader, &mut out, progress, cancel, &mut buf).map_err(|e| {
+            SevenZError::Io(
+                e,
+                Cow::Owned(format!("Failed to write 7z entry {raw_name}")),
+            )
+        })?;
+        Ok(true)
+    })
+    .map_err(|e| format!("Failed to extract 7z: {e}"))
+}
+
 fn decompress_single_with_reader<F>(
     archive_path: &Path,
     parent: &Path,
@@ -707,6 +868,7 @@ fn strip_known_suffixes(name: &str) -> String {
     let lower = name.to_lowercase();
     for suffix in [
         ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar.zst", ".tzst", ".tar",
+        ".7z",
     ] {
         if lower.ends_with(suffix) && name.len() > suffix.len() {
             return name[..name.len() - suffix.len()].to_string();
@@ -1062,6 +1224,19 @@ fn tar_uncompressed_total(path: &Path) -> Result<u64, String> {
             .size()
             .map_err(|e| format!("Failed to read tar entry size: {e}"))?;
         total = total.saturating_add(size);
+    }
+    Ok(total)
+}
+
+fn sevenz_uncompressed_total(path: &Path) -> Result<u64, String> {
+    let archive = SevenZArchive::open(path)
+        .map_err(|e| format!("Failed to read 7z for total size: {e}"))?;
+    let mut total = 0u64;
+    for entry in archive.files {
+        if entry.is_directory || entry.is_anti_item || !entry.has_stream {
+            continue;
+        }
+        total = total.saturating_add(entry.size);
     }
     Ok(total)
 }
