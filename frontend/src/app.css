@@ -508,7 +508,7 @@ select:focus {
   padding: 6px 10px;
   font-size: 12px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 .settings-modal .tabs button.selected {
@@ -565,7 +565,7 @@ select:focus {
   border: 1px solid var(--border);
   background: var(--bg-raised);
   color: var(--fg);
-  border-radius: 4px;
+  border-radius: 0;
   font-size: 13px;
 }
 
@@ -608,7 +608,7 @@ select:focus {
   min-width: 90px;
   padding: 4px 6px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--bg-raised);
   text-align: center;
   font-family: monospace;
