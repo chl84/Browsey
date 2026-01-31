@@ -91,6 +91,7 @@ pub fn context_menu_actions(
         items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
         if !in_starred {
             items.push(ContextAction::new("compress", "Compress…"));
+            items.push(ContextAction::new("extract", "Extract"));
         }
         items.push(ContextAction::with_shortcut(
             "move-trash",
@@ -129,6 +130,7 @@ pub fn context_menu_actions(
     if !in_starred {
         items.push(ContextAction::with_shortcut("rename", "Rename…", "F2"));
         items.push(ContextAction::new("compress", "Compress…"));
+        items.push(ContextAction::new("extract", "Extract"));
     }
     items.push(ContextAction::with_shortcut(
         "move-trash",

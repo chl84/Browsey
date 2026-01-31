@@ -161,6 +161,7 @@ fn main() {
             entry_times_cmd,
             set_hidden,
             extract_archive,
+            extract_archives,
             open_console,
             set_clipboard_cmd,
             copy_paths_to_system_clipboard,

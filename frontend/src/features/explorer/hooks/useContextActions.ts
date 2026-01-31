@@ -25,6 +25,7 @@ type Deps = {
   openProperties: (entries: Entry[]) => Promise<void> | void
   openLocation: (entry: Entry) => Promise<void> | void
   openCompress: (entries: Entry[]) => void
+  extractEntries: (entries: Entry[]) => Promise<void>
 }
 
 export const createContextActions = (deps: Deps) => {
@@ -42,6 +43,7 @@ export const createContextActions = (deps: Deps) => {
     openProperties,
     openLocation,
     openCompress,
+    extractEntries,
   } = deps
 
   return async (id: string, entry: Entry | null) => {
@@ -140,6 +142,11 @@ export const createContextActions = (deps: Deps) => {
 
     if (id === 'compress') {
       openCompress(selectionEntries)
+      return
+    }
+
+    if (id === 'extract') {
+      await extractEntries(selectionEntries)
       return
     }
 
