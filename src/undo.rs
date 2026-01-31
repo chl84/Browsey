@@ -37,6 +37,13 @@ pub enum Action {
         from: PathBuf,
         to: PathBuf,
     },
+    /// Represents a newly created path. Undo (Backward) moves the path to a
+    /// backup location (effectively deleting it while retaining data); redo
+    /// (Forward) moves it back.
+    Create {
+        path: PathBuf,
+        backup: PathBuf,
+    },
     Delete {
         path: PathBuf,
         backup: PathBuf,
@@ -239,6 +246,28 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
                 copy_entry(from, to)
             }
             Direction::Backward => delete_entry_path(to),
+        },
+        Action::Create { path, backup } => match direction {
+            Direction::Forward => {
+                if !backup.exists() {
+                    return Err(format!("Backup missing: {}", backup.display()));
+                }
+                ensure_absent(path)?;
+                move_with_fallback(backup, path)
+            }
+            Direction::Backward => {
+                if !path.exists() {
+                    return Err(format!("Path does not exist: {}", path.display()));
+                }
+                let parent = backup
+                    .parent()
+                    .ok_or_else(|| "Invalid backup path".to_string())?;
+                fs::create_dir_all(parent).map_err(|e| {
+                    format!("Failed to create backup dir {}: {e}", parent.display())
+                })?;
+                ensure_absent(backup)?;
+                move_with_fallback(path, backup)
+            }
         },
         Action::Delete { path, backup } => match direction {
             Direction::Forward => {
@@ -670,6 +699,53 @@ mod tests {
         assert!(!path.exists());
 
         let _ = fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn create_file_action_undo_redo() {
+        let path = uniq_path("create-file").join("file.txt");
+        write_file(&path, b"hello");
+        assert!(path.exists());
+
+        let backup = temp_backup_path(&path);
+        let mut mgr = UndoManager::new();
+        mgr.record_applied(Action::Create {
+            path: path.clone(),
+            backup: backup.clone(),
+        });
+
+        mgr.undo().unwrap();
+        assert!(!path.exists());
+        assert!(backup.exists());
+
+        mgr.redo().unwrap();
+        assert!(path.exists());
+        assert!(!backup.exists());
+
+        let _ = fs::remove_dir_all(path.parent().unwrap_or_else(|| Path::new(".")));
+    }
+
+    #[test]
+    fn create_dir_action_undo_redo() {
+        let dir = uniq_path("create-dir");
+        fs::create_dir_all(&dir).unwrap();
+        let backup = temp_backup_path(&dir);
+
+        let mut mgr = UndoManager::new();
+        mgr.record_applied(Action::Create {
+            path: dir.clone(),
+            backup: backup.clone(),
+        });
+
+        mgr.undo().unwrap();
+        assert!(!dir.exists());
+        assert!(backup.exists());
+
+        mgr.redo().unwrap();
+        assert!(dir.exists());
+        assert!(!backup.exists());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

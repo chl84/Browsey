@@ -22,6 +22,7 @@ use crate::fs_utils::{
     check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow,
     unique_path,
 };
+use crate::undo::{temp_backup_path, Action, UndoState};
 use tauri::Emitter;
 
 const CHUNK: usize = 4 * 1024 * 1024;
@@ -210,12 +211,14 @@ fn map_copy_err(context: &str, err: io::Error) -> String {
 pub async fn extract_archive(
     app: tauri::AppHandle,
     cancel: tauri::State<'_, CancelState>,
+    undo: tauri::State<'_, UndoState>,
     path: String,
     progress_event: Option<String>,
 ) -> Result<ExtractResult, String> {
     let cancel_state = cancel.inner().clone();
+    let undo_state = undo.inner().clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        do_extract(app, cancel_state, path, progress_event)
+        do_extract(app, cancel_state, undo_state, path, progress_event)
     });
     task.await
         .map_err(|e| format!("Extraction task failed: {e}"))?
@@ -224,6 +227,7 @@ pub async fn extract_archive(
 fn do_extract(
     app: tauri::AppHandle,
     cancel_state: CancelState,
+    undo: UndoState,
     path: String,
     progress_event: Option<String>,
 ) -> Result<ExtractResult, String> {
@@ -396,6 +400,12 @@ fn do_extract(
         p.finish();
     }
     created.disarm();
+
+    let backup = temp_backup_path(&destination);
+    let _ = undo.record_applied(Action::Create {
+        path: destination.clone(),
+        backup,
+    });
 
     Ok(ExtractResult {
         destination: destination.to_string_lossy().into_owned(),
