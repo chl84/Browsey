@@ -4,6 +4,8 @@
   export let onClose: () => void
 </script>
 
-<ModalShell title="Settings" open={open} on:close={onClose}>
-  <p>Settings placeholder – coming soon.</p>
-</ModalShell>
+{#if open}
+  <ModalShell title="Settings" open={open} onClose={onClose}>
+    <p>Settings placeholder – coming soon.</p>
+  </ModalShell>
+{/if}
