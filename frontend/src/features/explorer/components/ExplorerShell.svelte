@@ -156,13 +156,14 @@
   export let propertiesSize: number | null = null
   export let propertiesItemCount: number | null = null
   export let propertiesHidden: boolean | 'mixed' | null = null
-  type Access = { read: boolean; write: boolean; exec: boolean }
+  type AccessBit = boolean | 'mixed'
+  type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
   export let propertiesPermissions:
     | {
         accessSupported: boolean
         executableSupported: boolean
-        readOnly: boolean | 'mixed' | null
-        executable: boolean | 'mixed' | null
+        readOnly: AccessBit | null
+        executable: AccessBit | null
         owner: Access | null
         group: Access | null
         other: Access | null

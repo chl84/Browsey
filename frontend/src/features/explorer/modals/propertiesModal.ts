@@ -55,6 +55,7 @@ export const createPropertiesModal = (deps: Deps) => {
       count: 0,
       size: null,
       itemCount: null,
+      hidden: null,
       permissions: null,
     })
   }

@@ -569,6 +569,7 @@ mod tests {
     use super::*;
     use std::fs::{self, OpenOptions};
     use std::io::Write;
+    use std::sync::OnceLock;
     use std::time::{Duration, SystemTime};
 
     fn uniq_path(label: &str) -> PathBuf {
@@ -577,6 +578,17 @@ mod tests {
             .unwrap_or(Duration::from_secs(0))
             .as_nanos();
         std::env::temp_dir().join(format!("browsey-undo-test-{label}-{ts}"))
+    }
+
+    fn test_undo_dir() -> PathBuf {
+        static DIR: OnceLock<PathBuf> = OnceLock::new();
+        DIR.get_or_init(|| {
+            let dir = uniq_path("undo-base");
+            let _ = fs::remove_dir_all(&dir);
+            std::env::set_var("BROWSEY_UNDO_DIR", &dir);
+            dir
+        })
+        .clone()
     }
 
     fn write_file(path: &Path, content: &[u8]) {
@@ -622,6 +634,7 @@ mod tests {
 
     #[test]
     fn delete_and_restore() {
+        let _ = test_undo_dir();
         let dir = uniq_path("delete");
         let _ = fs::create_dir_all(&dir);
         let path = dir.join("file.txt");
@@ -738,6 +751,7 @@ mod tests {
 
     #[test]
     fn undo_failure_restores_stack() {
+        let _ = test_undo_dir();
         let dir = uniq_path("undo-fail");
         let _ = fs::create_dir_all(&dir);
         let path = dir.join("file.txt");
@@ -798,7 +812,7 @@ mod tests {
 
     #[test]
     fn cleanup_prunes_stale_backup_dirs() {
-        let base = base_undo_dir();
+        let base = test_undo_dir();
         let target = base.join("dummy");
         fs::create_dir_all(&target).unwrap();
 
@@ -812,6 +826,9 @@ mod tests {
 }
 
 fn base_undo_dir() -> PathBuf {
+    if let Ok(custom) = std::env::var("BROWSEY_UNDO_DIR") {
+        return PathBuf::from(custom);
+    }
     dirs_next::data_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("browsey")
