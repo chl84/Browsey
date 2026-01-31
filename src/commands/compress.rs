@@ -18,6 +18,7 @@ use zip::{write::SimpleFileOptions, CompressionMethod, DateTime as ZipDateTime, 
 
 use super::tasks::{CancelGuard, CancelState};
 use crate::fs_utils::sanitize_path_nofollow;
+use crate::undo::{temp_backup_path, Action, UndoState};
 
 const CHUNK: usize = 4 * 1024 * 1024;
 const FILE_READ_BUF: usize = 256 * 1024;
@@ -392,14 +393,16 @@ fn map_copy_err(context: &str, err: io::Error) -> String {
 pub async fn compress_entries(
     app: tauri::AppHandle,
     cancel: tauri::State<'_, CancelState>,
+    undo: tauri::State<'_, UndoState>,
     paths: Vec<String>,
     name: Option<String>,
     level: Option<u32>,
     progress_event: Option<String>,
 ) -> Result<String, String> {
     let cancel_state = cancel.inner().clone();
+    let undo_state = undo.inner().clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        do_compress(app, cancel_state, paths, name, level, progress_event)
+        do_compress(app, cancel_state, undo_state, paths, name, level, progress_event)
     });
     task.await
         .map_err(|e| format!("Compression task failed: {e}"))?
@@ -408,6 +411,7 @@ pub async fn compress_entries(
 fn do_compress(
     app: tauri::AppHandle,
     cancel_state: CancelState,
+    undo: UndoState,
     paths: Vec<String>,
     name: Option<String>,
     level: Option<u32>,
@@ -524,6 +528,11 @@ fn do_compress(
     match result {
         Ok(_) => {
             cleanup.disarm();
+            let backup = temp_backup_path(&dest);
+            let _ = undo.record_applied(Action::Create {
+                path: dest.clone(),
+                backup,
+            });
             Ok(dest.to_string_lossy().into_owned())
         }
         Err(e) => Err(e),
