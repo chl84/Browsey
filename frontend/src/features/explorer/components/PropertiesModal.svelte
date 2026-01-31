@@ -185,26 +185,6 @@
 
 <style>
   /* Styling is inherited from global modal rules in app.css */
-  .tabs {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 12px;
-  }
-
-  .tabs button {
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--fg);
-    padding: 6px 10px;
-    font-size: 12px;
-    cursor: pointer;
-  }
-
-  .tabs button.selected {
-    background: var(--bg-raised);
-    border-color: var(--border-accent);
-  }
-
   .access {
     margin-top: 8px;
     display: flex;
