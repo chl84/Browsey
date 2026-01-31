@@ -266,14 +266,125 @@ a {
 .modal input:not([type]),
 .modal select,
 .modal textarea {
-  padding: 11px 12px;
+  padding: 6px 10px;
   border: 1px solid var(--border-accent);
   background: var(--bg);
   color: var(--fg);
   border-radius: 0;
   font-size: 14px;
   line-height: 1.4;
-  min-height: 40px;
+  min-height: 32px;
+}
+
+.modal select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='currentColor' d='M1.41 0 6 4.58 10.59 0 12 1.41 6 7.41 0 1.41z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 42px;
+  cursor: pointer;
+}
+
+.modal select option {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+:root:not([data-theme='light']) .modal select {
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] .modal select {
+  color-scheme: light;
+  background: #ffffff !important;
+  color: #1f232b !important;
+  border-color: #d4d7dd;
+}
+
+:root[data-theme='light'] .modal select,
+:root[data-theme='light'] .modal select option {
+  background: #ffffff !important;
+  color: #1f232b !important;
+}
+
+.modal select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.modal .combo {
+  position: relative;
+}
+
+.modal .combo-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  min-height: 32px;
+  border: 1px solid var(--border-accent);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.modal .combo-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+.modal .combo[data-open='true'] .combo-btn {
+  background: var(--bg-raised);
+  border-color: var(--border-accent-strong);
+}
+
+.modal .combo.disabled .combo-btn {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.modal .combo .placeholder {
+  color: var(--fg-muted);
+}
+
+.modal .combo .chevron {
+  font-size: 12px;
+  padding-left: 8px;
+}
+
+.modal .combo-list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-accent);
+  box-shadow: var(--shadow-drop);
+  max-height: 240px;
+  overflow: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.modal .combo-list li {
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--fg);
+}
+
+.modal .combo-list li.selected {
+  background: var(--bg-hover);
+  font-weight: 600;
+}
+
+.modal .combo-list li.active {
+  background: var(--drop-allowed-bg);
 }
 
 .modal input[type='range'] {
@@ -341,6 +452,18 @@ select:focus {
   background: var(--bg-hover);
 }
 
+.modal button.primary:hover {
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+}
+
+.modal button.danger:hover {
+  background: var(--btn-danger-bg);
+  border-color: var(--btn-danger-border);
+  color: var(--btn-danger-fg);
+}
+
 .modal button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -386,4 +509,51 @@ select:focus {
   z-index: 1000;
   border-radius: 0;
   pointer-events: none;
+}
+
+/* Shared modal subcomponents */
+.modal .tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.modal .tabs button {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  min-height: 34px;
+}
+
+.modal .tabs button.selected {
+  background: var(--bg-raised);
+  border-color: var(--border-accent);
+  color: var(--fg-strong);
+}
+
+.modal .tabs button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.modal .section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal .section h3 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.modal .section p {
+  margin: 0;
+  color: var(--fg-dim, var(--fg-muted));
+  font-size: 13px;
+  line-height: 1.4;
 }
