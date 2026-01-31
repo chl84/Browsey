@@ -98,6 +98,7 @@
   }
   export let dragTargetPath: string | null = null
   export let dragAllowed = false
+  export let dragging = false
 
   export let contextMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
     open: false,
@@ -273,6 +274,7 @@
           onRowDragLeave={onRowDragLeave}
           dragTargetPath={dragTargetPath}
           dragAllowed={dragAllowed}
+          dragging={dragging}
           selectionActive={selectionActive}
           selectionRect={selectionRect}
         />
@@ -307,6 +309,7 @@
           onRowDragLeave={onRowDragLeave}
           {dragTargetPath}
           {dragAllowed}
+          {dragging}
           selectionActive={selectionActive}
           selectionRect={selectionRect}
         />

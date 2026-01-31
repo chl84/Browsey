@@ -53,6 +53,7 @@
   }
   export let dragTargetPath: string | null = null
   export let dragAllowed = false
+  export let dragging = false
 </script>
 
 <section class="list" class:wide={wide}>
@@ -94,6 +95,7 @@
               cutting={clipboardMode === 'cut' && clipboardPaths.has(entry.path)}
               dropActive={dragTargetPath === entry.path}
               dropAllowed={dragAllowed && dragTargetPath === entry.path}
+              dragging={dragging}
               displayName={displayName}
               {formatSize}
               {formatItems}
