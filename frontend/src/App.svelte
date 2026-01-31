@@ -1890,6 +1890,18 @@
     handleRowDragOver(entry, event)
   }
 
+  const handleRowDragLeave = (entry: Entry, event: DragEvent) => {
+    const target = event.currentTarget as HTMLElement | null
+    const related = event.relatedTarget as HTMLElement | null
+    if (target && related && target.contains(related)) {
+      return
+    }
+    if (dragDrop.canDropOn(dragPaths, entry.path)) {
+      dragDrop.setTarget(null)
+      dragAction = null
+    }
+  }
+
   const handleRowDrop = async (entry: Entry, event: DragEvent) => {
     if (entry.kind !== 'dir') return
     if (!dragDrop.canDropOn(dragPaths, entry.path)) return
@@ -1908,10 +1920,6 @@
     }
   }
 
-  const handleRowDragLeave = () => {
-    dragDrop.setTarget(null)
-    dragAction = null
-  }
 
   const handleBreadcrumbDragOver = (path: string, event: DragEvent) => {
     if (dragPaths.length === 0) return
@@ -2192,6 +2200,7 @@
     onRowDragLeave={handleRowDragLeave}
     dragTargetPath={$dragState.target}
     dragAllowed={dragPaths.length > 0}
+    dragging={$dragState.dragging}
     onBreadcrumbDragOver={handleBreadcrumbDragOver}
     onBreadcrumbDragLeave={handleBreadcrumbDragLeave}
     onBreadcrumbDrop={handleBreadcrumbDrop}

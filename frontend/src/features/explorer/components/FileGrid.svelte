@@ -61,6 +61,7 @@
   export let onRowDragLeave: (entry: Entry, event: DragEvent) => void = () => {}
   export let dragTargetPath: string | null = null
   export let dragAllowed = false
+  export let dragging = false
   export let onRowsContextMenu: (event: MouseEvent) => void = () => {}
   export let onRowsClick: (event: MouseEvent) => void = () => {}
   export let onRowsMousedown: (event: MouseEvent) => void = () => {}
@@ -111,6 +112,7 @@
             <button
               use:thumbLoader.observe={entry.path}
               class="card"
+              class:dragging={dragging}
               class:selected={selected.has(entry.path)}
               class:cut={clipboardMode === 'cut' && clipboardPaths.has(entry.path)}
               class:hidden={isHidden(entry)}
@@ -335,6 +337,14 @@
     /* Mykere avkutt på siste linje */
     mask-image: linear-gradient(180deg, #000 75%, transparent 100%);
     -webkit-mask-image: linear-gradient(180deg, #000 75%, transparent 100%);
+  }
+
+  .card.dragging * {
+    pointer-events: none;
+  }
+
+  .card.dragging {
+    pointer-events: auto;
   }
 
 </style>

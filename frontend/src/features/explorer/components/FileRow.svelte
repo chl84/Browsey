@@ -27,10 +27,12 @@
   export let dropActive = false
   export let dropAllowed = false
   export let cutting = false
+  export let dragging = false
 </script>
 
 <button
   class="row"
+  class:dragging={dragging}
   data-index={index}
   style={`grid-template-columns:${gridTemplate};`}
   style:webkitUserSelect="text"
@@ -169,6 +171,14 @@
 
   .row.cut {
     opacity: 0.55;
+  }
+
+  .row.dragging * {
+    pointer-events: none;
+  }
+
+  .row.dragging {
+    pointer-events: auto;
   }
 
   .row.drop-target {
