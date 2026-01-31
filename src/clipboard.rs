@@ -1,6 +1,6 @@
 use crate::{
     fs_utils::sanitize_path_follow,
-    undo::{run_actions, Action, Direction, UndoState},
+    undo::{move_with_fallback, run_actions, temp_backup_path, Action, Direction, UndoState},
 };
 use once_cell::sync::Lazy;
 use std::{
@@ -65,7 +65,22 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn merge_dir(src: &Path, dest: &Path, mode: ClipboardMode) -> Result<(), String> {
+fn backup_existing_target(target: &Path, actions: &mut Vec<Action>) -> Result<(), String> {
+    let backup = temp_backup_path(target);
+    let parent = backup
+        .parent()
+        .ok_or_else(|| "Invalid backup path".to_string())?;
+    fs::create_dir_all(parent)
+        .map_err(|e| format!("Failed to create backup parent {}: {e}", parent.display()))?;
+    move_with_fallback(target, &backup)?;
+    actions.push(Action::Delete {
+        path: target.to_path_buf(),
+        backup,
+    });
+    Ok(())
+}
+
+fn merge_dir(src: &Path, dest: &Path, mode: ClipboardMode, actions: &mut Vec<Action>) -> Result<(), String> {
     // Ensure both exist and are directories.
     let src_meta =
         fs::symlink_metadata(src).map_err(|e| format!("Failed to read source metadata: {e}"))?;
@@ -86,40 +101,67 @@ fn merge_dir(src: &Path, dest: &Path, mode: ClipboardMode) -> Result<(), String>
         let target = dest.join(entry.file_name());
         if meta.is_dir() {
             if target.exists() && target.is_dir() {
-                merge_dir(&path, &target, mode)?;
-                if let ClipboardMode::Cut = mode {
-                    let _ = fs::remove_dir(&path);
-                }
+                merge_dir(&path, &target, mode, actions)?;
             } else {
                 if target.exists() {
-                    remove_if_exists(&target)?;
+                    backup_existing_target(&target, actions)?;
                 }
                 match mode {
-                    ClipboardMode::Copy => copy_dir(&path, &target)?,
+                    ClipboardMode::Copy => {
+                        copy_dir(&path, &target)?;
+                        actions.push(Action::Copy {
+                            from: path.clone(),
+                            to: target.clone(),
+                        });
+                    }
                     ClipboardMode::Cut => {
                         move_entry(&path, &target)?;
+                        actions.push(Action::Move {
+                            from: path.clone(),
+                            to: target.clone(),
+                        });
                     }
                 }
             }
         } else {
             if target.exists() {
-                remove_if_exists(&target)?;
+                backup_existing_target(&target, actions)?;
             }
             match mode {
                 ClipboardMode::Copy => {
                     fs::copy(&path, &target)
                         .map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
+                    actions.push(Action::Copy {
+                        from: path.clone(),
+                        to: target.clone(),
+                    });
                 }
                 ClipboardMode::Cut => {
                     move_entry(&path, &target)?;
+                    actions.push(Action::Move {
+                        from: path.clone(),
+                        to: target.clone(),
+                    });
                 }
             }
         }
     }
 
     if let ClipboardMode::Cut = mode {
-        // Best-effort cleanup of now-empty source directory.
-        let _ = fs::remove_dir(src);
+        // Remove source directory but keep an empty backup so undo can recreate it
+        // before moving items back.
+        let backup = temp_backup_path(src);
+        if let Some(parent) = backup.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create backup parent {}: {e}", parent.display()))?;
+        }
+        fs::create_dir_all(&backup)
+            .map_err(|e| format!("Failed to create backup dir {}: {e}", backup.display()))?;
+        fs::remove_dir_all(src).map_err(|e| format!("Failed to remove source dir: {e}"))?;
+        actions.push(Action::Delete {
+            path: src.to_path_buf(),
+            backup,
+        });
     }
     Ok(())
 }
@@ -155,18 +197,6 @@ fn move_entry(src: &Path, dest: &Path) -> Result<(), String> {
             copy_entry(src, dest)?;
             delete_entry_path(src)
         }
-    }
-}
-
-fn remove_if_exists(target: &Path) -> Result<(), String> {
-    if !target.exists() {
-        return Ok(());
-    }
-    let meta = fs::symlink_metadata(target).map_err(|e| format!("Failed to read metadata: {e}"))?;
-    if meta.is_dir() {
-        fs::remove_dir_all(target).map_err(|e| format!("Failed to remove dir {:?}: {e}", target))
-    } else {
-        fs::remove_file(target).map_err(|e| format!("Failed to remove file {:?}: {e}", target))
     }
 }
 
@@ -284,7 +314,7 @@ pub fn paste_clipboard_cmd(
         .unwrap_or(ConflictPolicy::Rename);
 
     let mut created = Vec::new();
-    let mut performed: Vec<Action> = Vec::with_capacity(state.entries.len());
+    let mut performed: Vec<Action> = Vec::with_capacity(state.entries.len() * 4);
     for src in state.entries.iter() {
         if !src.exists() {
             return Err(format!("Source does not exist: {:?}", src));
@@ -306,16 +336,15 @@ pub fn paste_clipboard_cmd(
         if matches!(policy, ConflictPolicy::Overwrite) && target.exists() {
             // If both are dirs, merge instead of deleting target (Windows Explorer behavior).
             if src_meta.is_dir() && target.is_dir() {
-                merge_dir(src, &target, state.mode)?;
+                merge_dir(src, &target, state.mode, &mut performed)?;
                 created.push(target.to_string_lossy().to_string());
-                // Merged operations are not currently added to undo stack to avoid deleting existing content on undo.
                 continue;
             }
             // Prevent deleting parent/ancestor of the source.
             if src.starts_with(&target) {
                 return Err("Cannot overwrite a parent directory of the source item".into());
             }
-            remove_if_exists(&target)?;
+            backup_existing_target(&target, &mut performed)?;
         }
 
         let mut attempts = 0usize;
@@ -376,4 +405,98 @@ pub fn paste_clipboard_cmd(
     }
 
     Ok(created)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::fs;
+    use std::io::Write;
+    use std::path::Path;
+    use std::sync::OnceLock;
+    use std::time::{Duration, SystemTime};
+
+    fn uniq_path(label: &str) -> PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        env::temp_dir().join(format!("browsey-cliptest-{label}-{ts}"))
+    }
+
+    fn ensure_undo_dir() -> PathBuf {
+        static DIR: OnceLock<PathBuf> = OnceLock::new();
+        DIR.get_or_init(|| {
+            let dir = uniq_path("undo-base");
+            let _ = fs::remove_dir_all(&dir);
+            env::set_var("BROWSEY_UNDO_DIR", &dir);
+            dir
+        })
+        .clone()
+    }
+
+    fn write_file(path: &Path, content: &[u8]) {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let mut f = fs::File::create(path).unwrap();
+        f.write_all(content).unwrap();
+    }
+
+    #[test]
+    fn merge_copy_can_undo_without_touching_existing() {
+        let _ = ensure_undo_dir();
+        let base = uniq_path("merge-copy");
+        let dest = base.join("dest");
+        fs::create_dir_all(&dest).unwrap();
+        write_file(&dest.join("old.txt"), b"old");
+
+        let src = dest.join("child");
+        fs::create_dir_all(&src).unwrap();
+        write_file(&src.join("a.txt"), b"a");
+
+        let mut actions = Vec::new();
+        merge_dir(&src, &dest, ClipboardMode::Copy, &mut actions).unwrap();
+
+        assert!(dest.join("old.txt").exists());
+        assert!(dest.join("a.txt").exists());
+        assert!(src.join("a.txt").exists());
+
+        run_actions(&mut actions, Direction::Backward).unwrap();
+
+        assert!(dest.join("old.txt").exists());
+        assert!(!dest.join("a.txt").exists());
+        assert!(src.join("a.txt").exists());
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn merge_cut_undo_restores_source_and_target() {
+        let _ = ensure_undo_dir();
+        let base = uniq_path("merge-cut");
+        let dest = base.join("dest");
+        fs::create_dir_all(&dest).unwrap();
+        write_file(&dest.join("old.txt"), b"old");
+
+        let src = dest.join("child");
+        fs::create_dir_all(&src).unwrap();
+        write_file(&src.join("a.txt"), b"a");
+
+        let mut actions = Vec::new();
+        merge_dir(&src, &dest, ClipboardMode::Cut, &mut actions).unwrap();
+
+        assert!(dest.join("old.txt").exists());
+        assert!(dest.join("a.txt").exists());
+        assert!(!src.exists());
+
+        run_actions(&mut actions, Direction::Backward).unwrap();
+
+        assert!(src.join("a.txt").exists());
+        assert!(dest.join("old.txt").exists());
+        assert!(!dest.join("a.txt").exists());
+
+        let _ = fs::remove_dir_all(&base);
+    }
 }
