@@ -4,7 +4,6 @@
   export let y = 0
   export let count = 0
   export let allowed = true
-  export let target: string | null = null
   export let action: 'copy' | 'move' | null = null
 </script>
 
@@ -24,9 +23,6 @@
           {/if}
           {count} item{count === 1 ? '' : 's'}
         </div>
-        {#if target}
-          <div class="sub">to {target}</div>
-        {/if}
       </div>
     </div>
   {/if}
@@ -67,8 +63,5 @@
     line-height: 1.2;
   }
 
-  .sub {
-    opacity: 0.8;
-    font-weight: 600;
-  }
+  /* no sub-line when target is hidden */
 </style>

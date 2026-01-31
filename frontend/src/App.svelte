@@ -2103,7 +2103,6 @@
   y={$dragState.position.y}
   count={$dragState.paths.length}
   allowed={$dragState.target !== null}
-  target={$dragState.target}
   action={dragAction}
 />
 <TextContextMenu
