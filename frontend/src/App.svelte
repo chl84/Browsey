@@ -2337,4 +2337,6 @@
   onRenameAll={() => resolveConflicts('rename')}
   onOverwrite={() => resolveConflicts('overwrite')}
 />
-<SettingsModal open={settingsOpen} onClose={() => (settingsOpen = false)} />
+{#if settingsOpen}
+  <SettingsModal open onClose={() => (settingsOpen = false)} />
+{/if}
