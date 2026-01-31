@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -236,7 +236,16 @@ pub async fn extract_archive(
     let cancel_state = cancel.inner().clone();
     let undo_state = undo.inner().clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        do_extract(app, cancel_state, undo_state, path, progress_event, None, None)
+        do_extract(
+            app,
+            cancel_state,
+            undo_state,
+            path,
+            progress_event,
+            None,
+            None,
+            None,
+        )
     });
     task.await
         .map_err(|e| format!("Extraction task failed: {e}"))?
@@ -280,6 +289,7 @@ pub async fn extract_archives(
             .map(|evt| ProgressEmitter::new(app.clone(), evt.clone(), batch_total));
 
         let mut results = Vec::new();
+        let batch_actions: Arc<Mutex<Vec<Action>>> = Arc::new(Mutex::new(Vec::new()));
         for (_idx, path) in paths.into_iter().enumerate() {
             let res = do_extract(
                 app.clone(),
@@ -289,6 +299,7 @@ pub async fn extract_archives(
                 progress_event.clone(), // only used for cancel registration in single mode
                 batch_token.clone(),
                 shared_progress.clone(),
+                Some(batch_actions.clone()),
             );
             match res {
                 Ok(r) => results.push(ExtractBatchItem {
@@ -313,6 +324,11 @@ pub async fn extract_archives(
         }
         // keep guard alive until loop ends
         drop(batch_guard);
+        if let Ok(actions) = batch_actions.lock() {
+            if !actions.is_empty() {
+                let _ = undo_state.record_applied(Action::Batch(actions.clone()));
+            }
+        }
         if let Some(p) = shared_progress {
             p.finish();
         }
@@ -330,6 +346,7 @@ fn do_extract(
     progress_event: Option<String>,
     shared_cancel: Option<Arc<AtomicBool>>,
     shared_progress: Option<ProgressEmitter>,
+    batch_actions: Option<Arc<Mutex<Vec<Action>>>>,
 ) -> Result<ExtractResult, String> {
     let nofollow = sanitize_path_nofollow(&path, true)?;
     let meta = fs::symlink_metadata(&nofollow)
@@ -564,10 +581,17 @@ fn do_extract(
     created.disarm();
 
     let backup = temp_backup_path(&destination);
-    let _ = undo.record_applied(Action::Create {
+    let action = Action::Create {
         path: destination.clone(),
         backup,
-    });
+    };
+    if let Some(list) = batch_actions.as_ref() {
+        if let Ok(mut guard) = list.lock() {
+            guard.push(action);
+        }
+    } else {
+        let _ = undo.record_applied(action);
+    }
 
     Ok(ExtractResult {
         destination: destination.to_string_lossy().into_owned(),
