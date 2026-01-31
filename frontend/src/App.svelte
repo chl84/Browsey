@@ -46,7 +46,6 @@
   import { startNativeFileDrag } from './features/explorer/services/nativeDrag'
   import ConflictModal from './ui/ConflictModal.svelte'
   import SettingsModal from './features/settings/SettingsModal.svelte'
-  import SettingsModal from './features/settings/SettingsModal.svelte'
   import './features/explorer/ExplorerLayout.css'
 
   type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
