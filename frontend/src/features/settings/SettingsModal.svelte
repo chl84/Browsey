@@ -1,5 +1,6 @@
 <script lang="ts">
   import ModalShell from '../../ui/ModalShell.svelte'
+  import { onMount, onDestroy } from 'svelte'
 
   export let open = false
   export let onClose: () => void
@@ -50,6 +51,22 @@
     }
     wasOpen = open
   }
+
+  const handleWindowKeydown = (e: KeyboardEvent) => {
+    if (!open) return
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      onClose()
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('keydown', handleWindowKeydown, { capture: true })
+  })
+
+  onDestroy(() => {
+    window.removeEventListener('keydown', handleWindowKeydown, { capture: true } as any)
+  })
 </script>
 
 {#if open}
