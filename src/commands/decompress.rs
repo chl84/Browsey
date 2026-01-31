@@ -12,6 +12,10 @@ use std::{
 
 use bzip2::read::BzDecoder;
 use flate2::read::{GzDecoder, MultiGzDecoder};
+use rar_stream::{
+    InnerFile as RarInnerFile, LocalFileMedia as RarLocalFileMedia,
+    ParseOptions as RarParseOptions, RarFilesPackage,
+};
 use sevenz_rust2::{
     decompress_file_with_extract_fn, Archive as SevenZArchive, Error as SevenZError,
 };
@@ -39,6 +43,7 @@ enum ArchiveKind {
     TarXz,
     TarZstd,
     SevenZ,
+    Rar,
     Gz,
     Bz2,
     Xz,
@@ -255,11 +260,18 @@ fn do_extract(
         .ok_or_else(|| "Cannot extract archive at filesystem root".to_string())?;
 
     let kind = detect_archive(&archive_path)?;
+    let mut rar_entries: Option<Vec<RarInnerFile>> = None;
     let total_hint = match kind {
         ArchiveKind::Zip => zip_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::Tar => tar_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::TarGz => gzip_uncompressed_size(&archive_path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::SevenZ => sevenz_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::Rar => {
+            let entries = parse_rar_entries(&archive_path)?;
+            let total = rar_uncompressed_total_from_entries(&entries).unwrap_or_else(|_| meta.len());
+            rar_entries = Some(entries);
+            total
+        }
         ArchiveKind::Gz => gzip_uncompressed_size(&archive_path).unwrap_or_else(|_| meta.len()),
         _ => meta.len(),
     }
@@ -384,6 +396,24 @@ fn do_extract(
             )?;
             dest_dir
         }
+        ArchiveKind::Rar => {
+            let entries = match rar_entries {
+                Some(v) => v,
+                None => parse_rar_entries(&archive_path)?,
+            };
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
+            created.record_dir(dest_dir.clone());
+            extract_rar(
+                entries,
+                &dest_dir,
+                strip.as_deref(),
+                &stats,
+                progress.as_ref(),
+                &mut created,
+                cancel_token.as_deref(),
+            )?;
+            dest_dir
+        }
         ArchiveKind::Gz => decompress_single_with_reader(
             &archive_path,
             parent,
@@ -499,6 +529,9 @@ fn detect_archive(path: &Path) -> Result<ArchiveKind, String> {
     {
         return Ok(ArchiveKind::Zip);
     }
+    if magic.starts_with(b"Rar!\x1A\x07\x00") || magic.starts_with(b"Rar!\x1A\x07\x01\x00") {
+        return Ok(ArchiveKind::Rar);
+    }
     if magic.starts_with(&[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]) {
         return Ok(ArchiveKind::SevenZ);
     }
@@ -542,6 +575,7 @@ fn detect_archive(path: &Path) -> Result<ArchiveKind, String> {
         (&[".tar"][..], ArchiveKind::Tar),
         (&[".zip"][..], ArchiveKind::Zip),
         (&[".7z"][..], ArchiveKind::SevenZ),
+        (&[".rar"][..], ArchiveKind::Rar),
         (&[".gz"][..], ArchiveKind::Gz),
         (&[".bz2"][..], ArchiveKind::Bz2),
         (&[".xz"][..], ArchiveKind::Xz),
@@ -575,6 +609,7 @@ fn choose_destination_dir(
         | ArchiveKind::TarXz
         | ArchiveKind::TarZstd => single_root_in_tar(archive_path, kind)?,
         ArchiveKind::SevenZ => single_root_in_7z(archive_path)?,
+        ArchiveKind::Rar => single_root_in_rar(archive_path)?,
         _ => None,
     };
 
@@ -720,6 +755,36 @@ fn single_root_in_7z(path: &Path) -> Result<Option<PathBuf>, String> {
     Ok(root)
 }
 
+fn single_root_in_rar(path: &Path) -> Result<Option<PathBuf>, String> {
+    let entries = parse_rar_entries(path)?;
+    let mut root: Option<PathBuf> = None;
+    for entry in entries {
+        let raw_name = entry.name.replace('\\', "/");
+        let raw_path = PathBuf::from(raw_name.clone());
+        let clean_rel = match clean_relative_path(&raw_path) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        if clean_rel.as_os_str().is_empty() {
+            continue;
+        }
+        let Some(first) = first_component(&clean_rel) else {
+            continue;
+        };
+        let rest_is_empty = clean_rel.components().count() == 1;
+        let is_dir = raw_name.ends_with('/') || raw_name.ends_with('\\') || (entry.length == 0 && rest_is_empty);
+        if !is_dir && rest_is_empty {
+            return Ok(None);
+        }
+        match &root {
+            Some(r) if r != &first => return Ok(None),
+            None => root = Some(first),
+            _ => {}
+        }
+    }
+    Ok(root)
+}
+
 fn open_buffered_file(path: &Path, action: &'static str) -> Result<BufReader<File>, String> {
     let file = File::open(path).map_err(map_io(action))?;
     Ok(BufReader::with_capacity(CHUNK, file))
@@ -848,6 +913,98 @@ fn extract_7z(
     .map_err(|e| format!("Failed to extract 7z: {e}"))
 }
 
+fn extract_rar(
+    entries: Vec<RarInnerFile>,
+    dest_dir: &Path,
+    strip_prefix: Option<&Path>,
+    stats: &SkipStats,
+    progress: Option<&ProgressEmitter>,
+    created: &mut CreatedPaths,
+    cancel: Option<&AtomicBool>,
+) -> Result<(), String> {
+    for entry in entries {
+        check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
+        let raw_name = entry.name.clone();
+        let normalized = raw_name.replace('\\', "/");
+        let raw_path = Path::new(&normalized).to_path_buf();
+        let clean_rel = match clean_relative_path(&raw_path) {
+            Ok(p) => p,
+            Err(err) => {
+                stats.skip_unsupported(&raw_name, &err);
+                continue;
+            }
+        };
+        let clean_rel = if let Some(prefix) = strip_prefix {
+            match clean_rel.strip_prefix(prefix) {
+                Ok(stripped) => stripped.to_path_buf(),
+                Err(_) => clean_rel,
+            }
+        } else {
+            clean_rel
+        };
+        if clean_rel.as_os_str().is_empty() {
+            continue;
+        }
+        let dest_path = dest_dir.join(clean_rel);
+        let is_dir = normalized.ends_with('/') || normalized.ends_with('\\');
+
+        if is_dir {
+            if !dest_path.exists() {
+                if let Err(e) = fs::create_dir_all(&dest_path) {
+                    stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
+                } else {
+                    created.record_dir(dest_path.clone());
+                }
+            } else if let Err(e) = fs::create_dir_all(&dest_path) {
+                stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
+            }
+            continue;
+        }
+
+        if dest_path.exists() {
+            if let Some(p) = progress {
+                p.add(entry.length.max(1));
+            }
+            continue;
+        }
+
+        if let Some(parent) = dest_path.parent() {
+            if !parent.exists() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
+                    continue;
+                }
+                created.record_dir(parent.to_path_buf());
+            } else if let Err(e) = fs::create_dir_all(parent) {
+                stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
+                continue;
+            }
+        }
+
+        let (file, dest_actual) =
+            open_unique_file(&dest_path).map_err(|e| format!("Failed to create file: {e}"))?;
+        created.record_file(dest_actual.clone());
+        let mut out = BufWriter::with_capacity(CHUNK, file);
+
+        let data = tauri::async_runtime::block_on(entry.read_to_end())
+            .map_err(|e| format!("Failed to read rar entry {raw_name}: {e}"))?;
+
+        let mut written = 0usize;
+        while written < data.len() {
+            check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
+            let end = (written + CHUNK).min(data.len());
+            let slice = &data[written..end];
+            out.write_all(slice)
+                .map_err(|e| map_copy_err(&format!("Failed to write {raw_name}"), e))?;
+            if let Some(p) = progress {
+                p.add((end - written) as u64);
+            }
+            written = end;
+        }
+    }
+    Ok(())
+}
+
 fn decompress_single_with_reader<F>(
     archive_path: &Path,
     parent: &Path,
@@ -868,7 +1025,7 @@ fn strip_known_suffixes(name: &str) -> String {
     let lower = name.to_lowercase();
     for suffix in [
         ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar.zst", ".tzst", ".tar",
-        ".7z",
+        ".7z", ".rar",
     ] {
         if lower.ends_with(suffix) && name.len() > suffix.len() {
             return name[..name.len() - suffix.len()].to_string();
@@ -1237,6 +1394,31 @@ fn sevenz_uncompressed_total(path: &Path) -> Result<u64, String> {
             continue;
         }
         total = total.saturating_add(entry.size);
+    }
+    Ok(total)
+}
+
+fn parse_rar_entries(path: &Path) -> Result<Vec<RarInnerFile>, String> {
+    let path_str = path
+        .to_str()
+        .ok_or_else(|| "Archive path is not valid UTF-8".to_string())?;
+    let media = Arc::new(
+        RarLocalFileMedia::new(path_str)
+            .map_err(|e| format!("Failed to open rar archive: {e}"))?,
+    );
+    let package = RarFilesPackage::new(vec![media]);
+    tauri::async_runtime::block_on(async move {
+        package
+            .parse(RarParseOptions::default())
+            .await
+            .map_err(|e| format!("Failed to read rar: {e}"))
+    })
+}
+
+fn rar_uncompressed_total_from_entries(entries: &[RarInnerFile]) -> Result<u64, String> {
+    let mut total = 0u64;
+    for entry in entries {
+        total = total.saturating_add(entry.length);
     }
     Ok(total)
 }

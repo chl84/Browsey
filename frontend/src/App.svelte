@@ -1416,6 +1416,7 @@
       name.endsWith('.tar.zst') ||
       name.endsWith('.tzst') ||
       name.endsWith('.7z') ||
+      name.endsWith('.rar') ||
       name.endsWith('.gz') ||
       name.endsWith('.bz2') ||
       name.endsWith('.xz') ||
