@@ -569,6 +569,19 @@ select:focus {
   font-size: 13px;
 }
 
+.settings-modal input[type='text']:focus,
+.settings-modal input[type='number']:focus,
+.settings-modal input[type='range']:focus,
+.settings-modal select:focus,
+.settings-modal textarea:focus {
+  outline: 1px solid var(--border-accent);
+  border-color: var(--border-accent);
+}
+
+.settings-modal input[type='checkbox'] {
+  accent-color: var(--btn-primary-bg);
+}
+
 .settings-modal input[type='range'] {
   padding: 0;
 }
