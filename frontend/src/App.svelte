@@ -40,6 +40,7 @@
   import { createSelectionMemory } from './features/explorer/selectionMemory'
   import { useContextMenuBlocker } from './features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from './features/explorer/hooks/useActivity'
+  import { allowedCtrlKeys } from './features/explorer/config/hotkeys'
   import DragGhost from './ui/DragGhost.svelte'
   import TextContextMenu from './ui/TextContextMenu.svelte'
   import { createNativeFileDrop } from './features/explorer/hooks/useNativeFileDrop'
@@ -980,8 +981,7 @@
       if (event.shiftKey && key === 'i') {
         return
       }
-      const allowed = new Set(['f', 'b', 'c', 'x', 'v', 'p', 'a', 't', 'g', 'h', 'z', 'y', 's'])
-      if (!allowed.has(key)) {
+      if (!allowedCtrlKeys.has(key)) {
         event.preventDefault()
         event.stopPropagation()
         return
