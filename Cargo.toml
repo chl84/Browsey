@@ -39,11 +39,11 @@ libc = "0.2"
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "gif", "bmp", "ico", "pnm", "tga", "webp", "tiff", "hdr", "dds"] }
 blake3 = "1.8.3"
 num_cpus = "1.17.0"
-tokio = { version = "1.41.1", default-features = false, features = ["sync", "fs", "io-util"] }
+tokio = { version = "1.49.0", default-features = false, features = ["sync", "fs", "io-util"] }
 resvg = "0.46.0"
 pdfium-render = "0.8.37"
 which = "8.0.0"
-url = "2.5.2"
+url = "2.5.8"
 rar-stream = { version = "4.0.0", default-features = false, features = ["async"] }
 
 [target.'cfg(windows)'.dependencies]

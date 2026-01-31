@@ -13,6 +13,7 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 - **Drag targets**: Internal drag/drop supports breadcrumbs as drop targets with visual highlighting.
 - **Drives & bookmarks**: Lists mounts/partitions (marks removable), bookmarks, starred, recent, and trash. Mounts are polled every 2s and SQLite stores bookmarks, stars, recents, and column widths.
 - **Context actions**: New Folder…, Open with (associated apps + custom command), copy path, cut/copy/paste, compress to ZIP (name + level), rename, move to wastebasket (Delete), delete permanently (Shift+Delete), properties with lazy-loaded timestamps, and “open item location” for recents.
+- **Archive extraction**: Zip/Tar(+gz/bz2/xz/zst)/GZ/BZ2/XZ/Zstd/7z and RAR (stored entries); supports multi-archive batch extract with cancel/progress/undo. Unsupported RAR compression methods fail fast instead of writing corrupt data.
 - **Drag & drop**: Internal drag/drop with custom ghost and drop-target highlighting; designed to work on Linux and Windows.
 - **Thumbnails**: Lazy, virtualized thumbnails with caching and per-file permission checks. SVG rasterized via resvg; PDFs via bundled PDFium; images via `image` crate; **videos** via ffmpeg first-frame grabs with cancellation on navigation.
 - **Grid view parity**: Fixed-size cards with virtualization, keyboard navigation and range selection, lasso overlay, hidden-item dimming, and consistent click-to-clear selection; names can span up to three lines but stay aligned to show the start.
