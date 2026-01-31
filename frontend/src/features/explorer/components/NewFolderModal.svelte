@@ -5,6 +5,9 @@
   export let open = false
   export let value = ''
   export let error = ''
+  export let title = 'New folder'
+  export let confirmLabel = 'Create'
+  export let inputId = 'new-folder-name'
   export let onConfirm: (name: string) => void = () => {}
   export let onCancel: () => void = () => {}
 
@@ -27,14 +30,14 @@
     onClose={onCancel}
     initialFocusSelector="input"
   >
-    <svelte:fragment slot="header">New folder</svelte:fragment>
+    <svelte:fragment slot="header">{title}</svelte:fragment>
 
     {#if error}
       <div class="pill error">{error}</div>
     {/if}
 
     <input
-      id="new-folder-name"
+      id={inputId}
       autocomplete="off"
       bind:this={inputEl}
       bind:value={value}
@@ -51,7 +54,7 @@
 
     <div slot="actions">
       <button type="button" class="secondary" on:click={onCancel}>Cancel</button>
-      <button type="button" on:click={() => onConfirm(value)}>Create</button>
+      <button type="button" on:click={() => onConfirm(value)}>{confirmLabel}</button>
     </div>
   </ModalShell>
 {/if}

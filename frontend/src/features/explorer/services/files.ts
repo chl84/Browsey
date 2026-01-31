@@ -9,3 +9,6 @@ export const renameEntry = (path: string, newName: string) =>
 
 export const createFolder = (base: string, name: string) =>
   invoke<string>('create_folder', { path: base, name })
+
+export const createFile = (base: string, name: string) =>
+  invoke<string>('create_file', { path: base, name })

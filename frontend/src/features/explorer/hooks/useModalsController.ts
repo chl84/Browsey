@@ -3,6 +3,7 @@ import { createOpenWithModal } from '../modals/openWithModal'
 import { createPropertiesModal } from '../modals/propertiesModal'
 import { createRenameModal } from '../modals/renameModal'
 import { createNewFolderModal } from '../modals/newFolderModal'
+import { createNewFileModal } from '../modals/newFileModal'
 import { createCompressModal } from '../modals/compressModal'
 import type { Entry } from '../types'
 
@@ -50,6 +51,13 @@ export const useModalsController = ({
   })
   const newFolderState = newFolderModal.state
 
+  const newFileModal = createNewFileModal({
+    getCurrentPath,
+    loadPath: (path: string) => loadPath(path, { recordHistory: false }),
+    showToast,
+  })
+  const newFileState = newFileModal.state
+
   const compressModal = createCompressModal({
     activityApi,
     getCurrentPath,
@@ -75,6 +83,8 @@ export const useModalsController = ({
     propertiesState,
     renameModal,
     renameState,
+    newFileModal,
+    newFileState,
     newFolderModal,
     newFolderState,
     compressModal,
