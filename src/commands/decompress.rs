@@ -272,11 +272,12 @@ fn do_extract(
     let stats = SkipStats::default();
     let destination = match kind {
         ArchiveKind::Zip => {
-            let dest_dir = prepare_output_dir(&archive_path)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
             extract_zip(
                 &archive_path,
                 &dest_dir,
+                strip.as_deref(),
                 &stats,
                 progress.as_ref(),
                 &mut created,
@@ -285,11 +286,12 @@ fn do_extract(
             dest_dir
         }
         ArchiveKind::Tar => {
-            let dest_dir = prepare_output_dir(&archive_path)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
             extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
+                strip.as_deref(),
                 &stats,
                 progress.as_ref(),
                 &mut created,
@@ -299,11 +301,12 @@ fn do_extract(
             dest_dir
         }
         ArchiveKind::TarGz => {
-            let dest_dir = prepare_output_dir(&archive_path)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
             extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
+                strip.as_deref(),
                 &stats,
                 progress.as_ref(),
                 &mut created,
@@ -313,11 +316,12 @@ fn do_extract(
             dest_dir
         }
         ArchiveKind::TarBz2 => {
-            let dest_dir = prepare_output_dir(&archive_path)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
             extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
+                strip.as_deref(),
                 &stats,
                 progress.as_ref(),
                 &mut created,
@@ -327,11 +331,12 @@ fn do_extract(
             dest_dir
         }
         ArchiveKind::TarXz => {
-            let dest_dir = prepare_output_dir(&archive_path)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
             extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
+                strip.as_deref(),
                 &stats,
                 progress.as_ref(),
                 &mut created,
@@ -341,11 +346,12 @@ fn do_extract(
             dest_dir
         }
         ArchiveKind::TarZstd => {
-            let dest_dir = prepare_output_dir(&archive_path)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
             extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
+                strip.as_deref(),
                 &stats,
                 progress.as_ref(),
                 &mut created,
@@ -529,6 +535,134 @@ fn has_suffix(name: &str, suffixes: &[&str]) -> bool {
     suffixes.iter().any(|s| name.ends_with(s))
 }
 
+fn choose_destination_dir(
+    archive_path: &Path,
+    kind: ArchiveKind,
+) -> Result<(PathBuf, Option<PathBuf>), String> {
+    let parent = archive_path
+        .parent()
+        .ok_or_else(|| "Cannot extract archive at filesystem root".to_string())?;
+
+    let single_root = match kind {
+        ArchiveKind::Zip => single_root_in_zip(archive_path)?,
+        ArchiveKind::Tar
+        | ArchiveKind::TarGz
+        | ArchiveKind::TarBz2
+        | ArchiveKind::TarXz
+        | ArchiveKind::TarZstd => single_root_in_tar(archive_path, kind)?,
+        _ => None,
+    };
+
+    if let Some(root) = single_root {
+        let name = root.to_string_lossy();
+        let dir = create_unique_dir(parent, &name)?;
+        Ok((dir, Some(root)))
+    } else {
+        let dir = prepare_output_dir(archive_path)?;
+        Ok((dir, None))
+    }
+}
+
+fn first_component(path: &Path) -> Option<PathBuf> {
+    path.components()
+        .find_map(|c| match c {
+            std::path::Component::Normal(p) => Some(PathBuf::from(p)),
+            _ => None,
+        })
+}
+
+fn single_root_in_zip(path: &Path) -> Result<Option<PathBuf>, String> {
+    let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip for root"))?)
+        .map_err(|e| format!("Failed to read zip: {e}"))?;
+    let mut root: Option<PathBuf> = None;
+    for i in 0..archive.len() {
+        let entry = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
+        let raw_name = entry.name().to_string();
+        let enclosed = entry.enclosed_name().ok_or_else(|| {
+            debug_log(&format!("Skipping zip entry with unsafe name: {raw_name}"));
+            "skipped".to_string()
+        });
+        let enclosed = match enclosed {
+            Ok(p) => p.to_path_buf(),
+            Err(_) => continue,
+        };
+        let clean_rel = match clean_relative_path(&enclosed) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        if clean_rel.as_os_str().is_empty() {
+            continue;
+        }
+        let Some(first) = first_component(&clean_rel) else {
+            continue;
+        };
+        let is_dir = entry.is_dir() || raw_name.ends_with('/');
+        let rest_is_empty = clean_rel.components().count() == 1;
+        if !is_dir && rest_is_empty {
+            // File i roten -> ikke enkel rotmappe.
+            return Ok(None);
+        }
+        match &root {
+            Some(r) if r != &first => return Ok(None),
+            None => root = Some(first),
+            _ => {}
+        }
+    }
+    Ok(root)
+}
+
+fn single_root_in_tar(path: &Path, kind: ArchiveKind) -> Result<Option<PathBuf>, String> {
+    let file = File::open(path).map_err(map_io("open tar for root"))?;
+    let reader = BufReader::with_capacity(CHUNK, file);
+    let reader: Box<dyn Read> = match kind {
+        ArchiveKind::Tar => Box::new(reader),
+        ArchiveKind::TarGz => Box::new(GzDecoder::new(reader)),
+        ArchiveKind::TarBz2 => Box::new(BzDecoder::new(reader)),
+        ArchiveKind::TarXz => Box::new(XzDecoder::new(reader)),
+        ArchiveKind::TarZstd => Box::new(
+            ZstdDecoder::new(reader)
+                .map_err(|e| format!("Failed to create zstd decoder: {e}"))?,
+        ),
+        _ => return Ok(None),
+    };
+    let mut archive = Archive::new(reader);
+    let mut root: Option<PathBuf> = None;
+    for entry_result in archive
+        .entries()
+        .map_err(|e| format!("Failed to iterate tar: {e}"))?
+    {
+        let entry = entry_result.map_err(|e| format!("Failed to read tar entry: {e}"))?;
+        let entry_type = entry.header().entry_type();
+        let raw_path = entry
+            .path()
+            .map_err(|e| format!("Invalid tar entry path: {e}"))?
+            .into_owned();
+        let clean_rel = match clean_relative_path(&raw_path) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        if clean_rel.as_os_str().is_empty() {
+            continue;
+        }
+        let Some(first) = first_component(&clean_rel) else {
+            continue;
+        };
+        let rest_is_empty = clean_rel.components().count() == 1;
+        let is_dir = entry_type.is_dir();
+        if !is_dir && rest_is_empty {
+            return Ok(None);
+        }
+        match &root {
+            Some(r) if r != &first => return Ok(None),
+            None => root = Some(first),
+            _ => {}
+        }
+    }
+    Ok(root)
+}
+
 fn open_buffered_file(path: &Path, action: &'static str) -> Result<BufReader<File>, String> {
     let file = File::open(path).map_err(map_io(action))?;
     Ok(BufReader::with_capacity(CHUNK, file))
@@ -537,6 +671,7 @@ fn open_buffered_file(path: &Path, action: &'static str) -> Result<BufReader<Fil
 fn extract_tar_with_reader<F>(
     archive_path: &Path,
     dest_dir: &Path,
+    strip_prefix: Option<&Path>,
     stats: &SkipStats,
     progress: Option<&ProgressEmitter>,
     created: &mut CreatedPaths,
@@ -548,7 +683,7 @@ where
 {
     let reader = open_buffered_file(archive_path, "open tar")?;
     let reader = wrap(reader)?;
-    extract_tar(reader, dest_dir, stats, progress, created, cancel)?;
+    extract_tar(reader, dest_dir, strip_prefix, stats, progress, created, cancel)?;
     Ok(())
 }
 
@@ -588,6 +723,7 @@ fn strip_known_suffixes(name: &str) -> String {
 fn extract_zip(
     path: &Path,
     dest_dir: &Path,
+    strip_prefix: Option<&Path>,
     stats: &SkipStats,
     progress: Option<&ProgressEmitter>,
     created: &mut CreatedPaths,
@@ -616,6 +752,14 @@ fn extract_zip(
                 stats.skip_unsupported(&raw_name, &err);
                 continue;
             }
+        };
+        let clean_rel = if let Some(prefix) = strip_prefix {
+            match clean_rel.strip_prefix(prefix) {
+                Ok(stripped) => stripped.to_path_buf(),
+                Err(_) => clean_rel,
+            }
+        } else {
+            clean_rel
         };
         check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
         if clean_rel.as_os_str().is_empty() {
@@ -677,6 +821,7 @@ fn extract_zip(
 fn extract_tar<R: Read>(
     reader: R,
     dest_dir: &Path,
+    strip_prefix: Option<&Path>,
     stats: &SkipStats,
     progress: Option<&ProgressEmitter>,
     created: &mut CreatedPaths,
@@ -712,6 +857,19 @@ fn extract_tar<R: Read>(
                 continue;
             }
         };
+        if clean_rel.as_os_str().is_empty() {
+            continue;
+        }
+
+        let clean_rel = if let Some(prefix) = strip_prefix {
+            match clean_rel.strip_prefix(prefix) {
+                Ok(stripped) => stripped.to_path_buf(),
+                Err(_) => clean_rel,
+            }
+        } else {
+            clean_rel
+        };
+
         if clean_rel.as_os_str().is_empty() {
             continue;
         }
