@@ -45,6 +45,8 @@
   import { createNativeFileDrop } from './features/explorer/hooks/useNativeFileDrop'
   import { startNativeFileDrag } from './features/explorer/services/nativeDrag'
   import ConflictModal from './ui/ConflictModal.svelte'
+  import SettingsModal from './features/settings/SettingsModal.svelte'
+  import SettingsModal from './features/settings/SettingsModal.svelte'
   import './features/explorer/ExplorerLayout.css'
 
   type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
@@ -101,6 +103,7 @@
   let currentView: CurrentView = 'dir'
   let lastLocation = ''
   let extracting = false
+  let settingsOpen = false
   useContextMenuBlocker()
 
   const isEditableTarget = (target: EventTarget | null) => {
@@ -184,6 +187,14 @@
   const focusCurrentView = async () => {
     await tick()
     rowsElRef?.focus()
+  }
+
+  const handleSettingsHotkey = (event: KeyboardEvent) => {
+    if (event.ctrlKey && !event.shiftKey && !event.altKey && (event.key === 's' || event.key === 'S')) {
+      if (isEditableTarget(event.target)) return
+      event.preventDefault()
+      settingsOpen = !settingsOpen
+    }
   }
 
   const toggleViewMode = async () => {
@@ -1248,6 +1259,14 @@
       recomputeGrid()
     }
   }
+
+  onMount(() => {
+    window.addEventListener('keydown', handleSettingsHotkey)
+  })
+
+  onDestroy(() => {
+    window.removeEventListener('keydown', handleSettingsHotkey)
+  })
 
   const openBookmarkModal = async (entry: Entry) => {
     bookmarkModal.openModal(entry)
@@ -2318,3 +2337,4 @@
   onRenameAll={() => resolveConflicts('rename')}
   onOverwrite={() => resolveConflicts('overwrite')}
 />
+<SettingsModal open={settingsOpen} onClose={() => (settingsOpen = false)} />
