@@ -53,7 +53,13 @@
 </script>
 
 {#if open}
-  <ModalShell title="Settings" open={open} onClose={onClose} modalClass="settings-modal">
+  <ModalShell
+    title="Settings"
+    open={open}
+    onClose={onClose}
+    modalClass="settings-modal"
+    modalWidth="720px"
+  >
     <div class="tabs">
       {#each tabs as tab}
         <button
@@ -217,6 +223,11 @@
 
 <style>
   /* Inherits global modal styles; light tweaks for tabs and spacing */
+  .settings-modal {
+    max-height: 80vh;
+    min-height: 420px;
+  }
+
   .tabs {
     display: flex;
     gap: 6px;
