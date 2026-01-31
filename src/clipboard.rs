@@ -65,6 +65,65 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn merge_dir(src: &Path, dest: &Path, mode: ClipboardMode) -> Result<(), String> {
+    // Ensure both exist and are directories.
+    let src_meta =
+        fs::symlink_metadata(src).map_err(|e| format!("Failed to read source metadata: {e}"))?;
+    let dest_meta =
+        fs::symlink_metadata(dest).map_err(|e| format!("Failed to read target metadata: {e}"))?;
+    if !src_meta.is_dir() || !dest_meta.is_dir() {
+        return Err("Merge requires both source and target to be directories".into());
+    }
+
+    for entry in fs::read_dir(src).map_err(|e| format!("Failed to read dir {:?}: {e}", src))? {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
+        let path = entry.path();
+        let meta =
+            fs::symlink_metadata(&path).map_err(|e| format!("Failed to read metadata: {e}"))?;
+        if meta.file_type().is_symlink() {
+            return Err("Refusing to copy symlinks".into());
+        }
+        let target = dest.join(entry.file_name());
+        if meta.is_dir() {
+            if target.exists() && target.is_dir() {
+                merge_dir(&path, &target, mode)?;
+                if let ClipboardMode::Cut = mode {
+                    let _ = fs::remove_dir(&path);
+                }
+            } else {
+                if target.exists() {
+                    remove_if_exists(&target)?;
+                }
+                match mode {
+                    ClipboardMode::Copy => copy_dir(&path, &target)?,
+                    ClipboardMode::Cut => {
+                        move_entry(&path, &target)?;
+                    }
+                }
+            }
+        } else {
+            if target.exists() {
+                remove_if_exists(&target)?;
+            }
+            match mode {
+                ClipboardMode::Copy => {
+                    fs::copy(&path, &target)
+                        .map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
+                }
+                ClipboardMode::Cut => {
+                    move_entry(&path, &target)?;
+                }
+            }
+        }
+    }
+
+    if let ClipboardMode::Cut = mode {
+        // Best-effort cleanup of now-empty source directory.
+        let _ = fs::remove_dir(src);
+    }
+    Ok(())
+}
+
 fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
     let meta = fs::symlink_metadata(src).map_err(|e| format!("Failed to read metadata: {e}"))?;
     if meta.file_type().is_symlink() {
@@ -230,6 +289,11 @@ pub fn paste_clipboard_cmd(
         if !src.exists() {
             return Err(format!("Source does not exist: {:?}", src));
         }
+        let src_meta =
+            fs::symlink_metadata(src).map_err(|e| format!("Failed to read metadata: {e}"))?;
+        if src_meta.file_type().is_symlink() {
+            return Err("Symlinks are not supported in clipboard".into());
+        }
         let name = src
             .file_name()
             .ok_or_else(|| "Invalid source path".to_string())?;
@@ -240,6 +304,17 @@ pub fn paste_clipboard_cmd(
         };
 
         if matches!(policy, ConflictPolicy::Overwrite) && target.exists() {
+            // If both are dirs, merge instead of deleting target (Windows Explorer behavior).
+            if src_meta.is_dir() && target.is_dir() {
+                merge_dir(src, &target, state.mode)?;
+                created.push(target.to_string_lossy().to_string());
+                // Merged operations are not currently added to undo stack to avoid deleting existing content on undo.
+                continue;
+            }
+            // Prevent deleting parent/ancestor of the source.
+            if src.starts_with(&target) {
+                return Err("Cannot overwrite a parent directory of the source item".into());
+            }
             remove_if_exists(&target)?;
         }
 

@@ -268,7 +268,8 @@ fn do_extract(
     let stats = SkipStats::default();
     let destination = match kind {
         ArchiveKind::Zip => {
-            let dest_dir = prepare_output_dir(parent)?;
+            let dest_dir = prepare_output_dir(&archive_path)?;
+            created.record_dir(dest_dir.clone());
             extract_zip(
                 &archive_path,
                 &dest_dir,
@@ -279,55 +280,80 @@ fn do_extract(
             )?;
             dest_dir
         }
-        ArchiveKind::Tar => extract_tar_with_reader(
-            &archive_path,
-            parent,
-            &stats,
-            progress.as_ref(),
-            &mut created,
-            cancel_token.as_deref(),
-            |reader| Ok(Box::new(reader) as Box<dyn Read>),
-        )?,
-        ArchiveKind::TarGz => extract_tar_with_reader(
-            &archive_path,
-            parent,
-            &stats,
-            progress.as_ref(),
-            &mut created,
-            cancel_token.as_deref(),
-            |reader| Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>),
-        )?,
-        ArchiveKind::TarBz2 => extract_tar_with_reader(
-            &archive_path,
-            parent,
-            &stats,
-            progress.as_ref(),
-            &mut created,
-            cancel_token.as_deref(),
-            |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
-        )?,
-        ArchiveKind::TarXz => extract_tar_with_reader(
-            &archive_path,
-            parent,
-            &stats,
-            progress.as_ref(),
-            &mut created,
-            cancel_token.as_deref(),
-            |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
-        )?,
-        ArchiveKind::TarZstd => extract_tar_with_reader(
-            &archive_path,
-            parent,
-            &stats,
-            progress.as_ref(),
-            &mut created,
-            cancel_token.as_deref(),
-            |reader| {
-                ZstdDecoder::new(reader)
-                    .map(|r| Box::new(r) as Box<dyn Read>)
-                    .map_err(|e| format!("Failed to create zstd decoder: {e}"))
-            },
-        )?,
+        ArchiveKind::Tar => {
+            let dest_dir = prepare_output_dir(&archive_path)?;
+            created.record_dir(dest_dir.clone());
+            extract_tar_with_reader(
+                &archive_path,
+                &dest_dir,
+                &stats,
+                progress.as_ref(),
+                &mut created,
+                cancel_token.as_deref(),
+                |reader| Ok(Box::new(reader) as Box<dyn Read>),
+            )?;
+            dest_dir
+        }
+        ArchiveKind::TarGz => {
+            let dest_dir = prepare_output_dir(&archive_path)?;
+            created.record_dir(dest_dir.clone());
+            extract_tar_with_reader(
+                &archive_path,
+                &dest_dir,
+                &stats,
+                progress.as_ref(),
+                &mut created,
+                cancel_token.as_deref(),
+                |reader| Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>),
+            )?;
+            dest_dir
+        }
+        ArchiveKind::TarBz2 => {
+            let dest_dir = prepare_output_dir(&archive_path)?;
+            created.record_dir(dest_dir.clone());
+            extract_tar_with_reader(
+                &archive_path,
+                &dest_dir,
+                &stats,
+                progress.as_ref(),
+                &mut created,
+                cancel_token.as_deref(),
+                |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
+            )?;
+            dest_dir
+        }
+        ArchiveKind::TarXz => {
+            let dest_dir = prepare_output_dir(&archive_path)?;
+            created.record_dir(dest_dir.clone());
+            extract_tar_with_reader(
+                &archive_path,
+                &dest_dir,
+                &stats,
+                progress.as_ref(),
+                &mut created,
+                cancel_token.as_deref(),
+                |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
+            )?;
+            dest_dir
+        }
+        ArchiveKind::TarZstd => {
+            let dest_dir = prepare_output_dir(&archive_path)?;
+            created.record_dir(dest_dir.clone());
+            extract_tar_with_reader(
+                &archive_path,
+                &dest_dir,
+                &stats,
+                progress.as_ref(),
+                &mut created,
+                cancel_token.as_deref(),
+                |reader| {
+                    ZstdDecoder::new(reader)
+                        .map(|r| Box::new(r) as Box<dyn Read>)
+                        .map_err(|e| format!("Failed to create zstd decoder: {e}"))
+                },
+            )?;
+            dest_dir
+        }
         ArchiveKind::Gz => decompress_single_with_reader(
             &archive_path,
             parent,
@@ -380,6 +406,43 @@ fn do_extract(
 
 fn map_io(action: &'static str) -> impl FnOnce(io::Error) -> String {
     move |e| format!("Failed to {action}: {e}")
+}
+
+fn archive_root_name(path: &Path) -> String {
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .map(strip_known_suffixes)
+        .map(|s| if s.is_empty() { "extracted".to_string() } else { s })
+        .unwrap_or_else(|| "extracted".to_string())
+}
+
+fn create_unique_dir(parent: &Path, base: &str) -> Result<PathBuf, String> {
+    fs::create_dir_all(parent).map_err(map_io("ensure parent dir"))?;
+    let mut candidate = parent.join(base);
+    let mut idx = 1;
+    loop {
+        match fs::create_dir(&candidate) {
+            Ok(_) => return Ok(candidate),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                candidate = parent.join(format!("{base}-{idx}"));
+                idx += 1;
+            }
+            Err(e) => {
+                return Err(format!(
+                    "Failed to create destination folder {}: {e}",
+                    candidate.display()
+                ))
+            }
+        }
+    }
+}
+
+fn prepare_output_dir(archive_path: &Path) -> Result<PathBuf, String> {
+    let parent = archive_path
+        .parent()
+        .ok_or_else(|| "Cannot extract archive at filesystem root".to_string())?;
+    let base = archive_root_name(archive_path);
+    create_unique_dir(parent, &base)
 }
 
 fn detect_archive(path: &Path) -> Result<ArchiveKind, String> {
@@ -456,11 +519,6 @@ fn has_suffix(name: &str, suffixes: &[&str]) -> bool {
     suffixes.iter().any(|s| name.ends_with(s))
 }
 
-fn prepare_output_dir(parent: &Path) -> Result<PathBuf, String> {
-    fs::create_dir_all(parent).map_err(map_io("ensure parent dir"))?;
-    Ok(parent.to_path_buf())
-}
-
 fn open_buffered_file(path: &Path, action: &'static str) -> Result<BufReader<File>, String> {
     let file = File::open(path).map_err(map_io(action))?;
     Ok(BufReader::with_capacity(CHUNK, file))
@@ -468,21 +526,20 @@ fn open_buffered_file(path: &Path, action: &'static str) -> Result<BufReader<Fil
 
 fn extract_tar_with_reader<F>(
     archive_path: &Path,
-    parent: &Path,
+    dest_dir: &Path,
     stats: &SkipStats,
     progress: Option<&ProgressEmitter>,
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
     wrap: F,
-) -> Result<PathBuf, String>
+) -> Result<(), String>
 where
     F: FnOnce(BufReader<File>) -> Result<Box<dyn Read>, String>,
 {
-    let dest_dir = prepare_output_dir(parent)?;
     let reader = open_buffered_file(archive_path, "open tar")?;
     let reader = wrap(reader)?;
-    extract_tar(reader, &dest_dir, stats, progress, created, cancel)?;
-    Ok(dest_dir)
+    extract_tar(reader, dest_dir, stats, progress, created, cancel)?;
+    Ok(())
 }
 
 fn decompress_single_with_reader<F>(
