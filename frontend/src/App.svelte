@@ -980,7 +980,7 @@
       if (event.shiftKey && key === 'i') {
         return
       }
-      const allowed = new Set(['f', 'b', 'c', 'x', 'v', 'p', 'a', 't', 'g', 'h', 'z', 'y'])
+      const allowed = new Set(['f', 'b', 'c', 'x', 'v', 'p', 'a', 't', 'g', 'h', 'z', 'y', 's'])
       if (!allowed.has(key)) {
         event.preventDefault()
         event.stopPropagation()
