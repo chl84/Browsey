@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte'
+  import { onMount, onDestroy, tick } from 'svelte'
   import { invoke } from '@tauri-apps/api/core'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { get, writable } from 'svelte/store'
@@ -38,6 +38,7 @@
   import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
   import { moveCaret } from './features/explorer/helpers/navigationController'
   import { createSelectionMemory } from './features/explorer/selectionMemory'
+  import { useContextMenuBlocker } from './features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from './features/explorer/hooks/useActivity'
   import DragGhost from './ui/DragGhost.svelte'
   import TextContextMenu from './ui/TextContextMenu.svelte'
@@ -94,6 +95,7 @@
   let currentView: CurrentView = 'dir'
   let lastLocation = ''
   let extracting = false
+  useContextMenuBlocker()
 
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
@@ -1371,6 +1373,7 @@
     parentPath,
     computeDirStats,
   })
+
 
   const contextActions = createContextActions({
     getSelectedPaths: () => Array.from($selected),
