@@ -33,6 +33,7 @@ flate2 = { version = "1.1.8", default-features = false, features = ["rust_backen
 bzip2 = "0.6.1"
 xz2 = "0.1.7"
 zstd = "0.13.3"
+sevenz-rust2 = { version = "0.20.1", default-features = false, features = ["util", "bzip2", "deflate", "lz4", "zstd", "brotli", "ppmd"] }
 rayon = "1.11.0"
 libc = "0.2"
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "gif", "bmp", "ico", "pnm", "tga", "webp", "tiff", "hdr", "dds"] }
