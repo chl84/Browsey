@@ -48,6 +48,12 @@
   import './features/explorer/ExplorerLayout.css'
 
   type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
+  type ExtractBatchItem = {
+    path: string
+    ok: boolean
+    result?: ExtractResult | null
+    error?: string | null
+  }
   type ViewMode = 'list' | 'grid'
   let sidebarCollapsed = false
   let pathInput = ''
@@ -1375,32 +1381,6 @@
   })
 
 
-  const contextActions = createContextActions({
-    getSelectedPaths: () => Array.from($selected),
-    getSelectedSet: () => $selected,
-    getFilteredEntries: () => $filteredEntries,
-    currentView: () => currentView,
-    reloadCurrent,
-    clipboard,
-    showToast,
-    openWith: (entry) => modalActions.openWith(entry),
-    openCompress: (entries) => {
-      compressName = modalActions.openCompress(entries)
-      compressLevel = 6
-    },
-    startRename: (entry) => {
-      renameValue = entry.name
-      modalActions.startRename(entry)
-    },
-    confirmDelete: (entries) => modalActions.confirmDelete(entries),
-    openProperties: (entries) => {
-      void modalActions.openProperties(entries)
-    },
-    openLocation: (entry) => {
-      void openEntryLocation(entry)
-    },
-  })
-
   const isExtractableArchive = (entry: Entry) => {
     if (entry.kind !== 'file') return false
     const name = entry.name.toLowerCase()
@@ -1424,28 +1404,65 @@
     )
   }
 
-  const extractArchiveEntry = async (entry: Entry) => {
+  const extractEntries = async (entriesToExtract: Entry[]) => {
     if (extracting) return
+    const allArchives = entriesToExtract.every(isExtractableArchive)
+    if (!allArchives) {
+      showToast('Extraction available for archive files only')
+      return
+    }
+    if (entriesToExtract.length === 0) return
+
     extracting = true
     const progressEvent = `extract-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    await activityApi.start('Extracting…', progressEvent, () => activityApi.requestCancel(progressEvent))
-    try {
-      const result = await invoke<ExtractResult>('extract_archive', {
-        path: entry.path,
-        progressEvent,
-      })
-      await reloadCurrent()
-      const skippedSymlinks = result?.skipped_symlinks ?? 0
-      const skippedOther = result?.skipped_entries ?? 0
+    await activityApi.start(
+      `Extracting${entriesToExtract.length > 1 ? ` ${entriesToExtract.length} items…` : '…'}`,
+      progressEvent,
+      () => activityApi.requestCancel(progressEvent)
+    )
+
+    const summarize = (skippedSymlinks: number, skippedOther: number) => {
       const skipParts = []
-      if (skippedSymlinks > 0) {
-        skipParts.push(`${skippedSymlinks} symlink${skippedSymlinks === 1 ? '' : 's'}`)
+      if (skippedSymlinks > 0) skipParts.push(`${skippedSymlinks} symlink${skippedSymlinks === 1 ? '' : 's'}`)
+      if (skippedOther > 0) skipParts.push(`${skippedOther} entr${skippedOther === 1 ? 'y' : 'ies'}`)
+      return skipParts.length > 0 ? ` (skipped ${skipParts.join(', ')})` : ''
+    }
+
+    try {
+      if (entriesToExtract.length === 1) {
+        const entry = entriesToExtract[0]
+        const result = await invoke<ExtractResult>('extract_archive', {
+          path: entry.path,
+          progressEvent,
+        })
+        await reloadCurrent()
+        const suffix = summarize(result?.skipped_symlinks ?? 0, result?.skipped_entries ?? 0)
+        showToast(`Extracted to ${result.destination}${suffix}`)
+      } else {
+        const result = await invoke<ExtractBatchItem[]>('extract_archives', {
+          paths: entriesToExtract.map((e) => e.path),
+          progressEvent,
+        })
+        await reloadCurrent()
+        const successes = result.filter((r) => r.ok && r.result)
+        const failures = result.filter((r) => !r.ok)
+        const totalSkippedSymlinks = successes.reduce(
+          (n, r) => n + (r.result?.skipped_symlinks ?? 0),
+          0
+        )
+        const totalSkippedOther = successes.reduce(
+          (n, r) => n + (r.result?.skipped_entries ?? 0),
+          0
+        )
+        const suffix = summarize(totalSkippedSymlinks, totalSkippedOther)
+        if (failures.length === 0) {
+          showToast(`Extracted ${successes.length} archives${suffix}`)
+        } else if (successes.length === 0) {
+          showToast(`Extraction failed for ${failures.length} archives`)
+        } else {
+          showToast(`Extracted ${successes.length} archives, ${failures.length} failed${suffix}`)
+        }
       }
-      if (skippedOther > 0) {
-        skipParts.push(`${skippedOther} entr${skippedOther === 1 ? 'y' : 'ies'}`)
-      }
-      const suffix = skipParts.length > 0 ? ` (skipped ${skipParts.join(', ')})` : ''
-      showToast(`Extracted to ${result.destination}${suffix}`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.toLowerCase().includes('cancelled')) {
@@ -1460,6 +1477,33 @@
     }
   }
 
+  const contextActions = createContextActions({
+    getSelectedPaths: () => Array.from($selected),
+    getSelectedSet: () => $selected,
+    getFilteredEntries: () => $filteredEntries,
+    currentView: () => currentView,
+    reloadCurrent,
+    clipboard,
+    showToast,
+    openWith: (entry) => modalActions.openWith(entry),
+    openCompress: (entries) => {
+      compressName = modalActions.openCompress(entries)
+      compressLevel = 6
+    },
+    extractEntries: (entries) => extractEntries(entries),
+    startRename: (entry) => {
+      renameValue = entry.name
+      modalActions.startRename(entry)
+    },
+    confirmDelete: (entries) => modalActions.confirmDelete(entries),
+    openProperties: (entries) => {
+      void modalActions.openProperties(entries)
+    },
+    openLocation: (entry) => {
+      void openEntryLocation(entry)
+    },
+  })
+
   const handleOpenEntry = async (entry: Entry) => {
     if (entry.kind === 'dir') {
       mode = 'address'
@@ -1473,7 +1517,7 @@
       return
     }
     if (isExtractableArchive(entry)) {
-      await extractArchiveEntry(entry)
+      await extractEntries([entry])
       return
     }
     open(entry)

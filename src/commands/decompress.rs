@@ -120,6 +120,14 @@ pub struct ExtractResult {
     pub skipped_entries: usize,
 }
 
+#[derive(Serialize)]
+pub struct ExtractBatchItem {
+    pub path: String,
+    pub ok: bool,
+    pub result: Option<ExtractResult>,
+    pub error: Option<String>,
+}
+
 #[derive(Serialize, Clone, Copy)]
 struct ExtractProgressPayload {
     bytes: u64,
@@ -228,10 +236,90 @@ pub async fn extract_archive(
     let cancel_state = cancel.inner().clone();
     let undo_state = undo.inner().clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        do_extract(app, cancel_state, undo_state, path, progress_event)
+        do_extract(app, cancel_state, undo_state, path, progress_event, None, None)
     });
     task.await
         .map_err(|e| format!("Extraction task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn extract_archives(
+    app: tauri::AppHandle,
+    cancel: tauri::State<'_, CancelState>,
+    undo: tauri::State<'_, UndoState>,
+    paths: Vec<String>,
+    progress_event: Option<String>,
+) -> Result<Vec<ExtractBatchItem>, String> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    let cancel_state = cancel.inner().clone();
+    let undo_state = undo.inner().clone();
+
+    // Single cancel token for the whole batch if requested.
+    let batch_guard = if let Some(evt) = progress_event.clone() {
+        Some(cancel_state.register(evt).map_err(|e| format!("Failed to register cancel: {e}"))?)
+    } else {
+        None
+    };
+    let batch_token = batch_guard.as_ref().map(|g| g.token());
+
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        // Compute batch total hint inside blocking context to avoid nested runtimes.
+        let mut batch_total: u64 = 0;
+        for path in &paths {
+            let path_buf = PathBuf::from(path);
+            batch_total = batch_total.saturating_add(estimate_total_hint(&path_buf).unwrap_or(1));
+        }
+        if batch_total == 0 {
+            batch_total = 1;
+        }
+
+        let shared_progress = progress_event
+            .as_ref()
+            .map(|evt| ProgressEmitter::new(app.clone(), evt.clone(), batch_total));
+
+        let mut results = Vec::new();
+        for (_idx, path) in paths.into_iter().enumerate() {
+            let res = do_extract(
+                app.clone(),
+                cancel_state.clone(),
+                undo_state.clone(),
+                path.clone(),
+                progress_event.clone(), // only used for cancel registration in single mode
+                batch_token.clone(),
+                shared_progress.clone(),
+            );
+            match res {
+                Ok(r) => results.push(ExtractBatchItem {
+                    path,
+                    ok: true,
+                    result: Some(r),
+                    error: None,
+                }),
+                Err(e) => {
+                    let was_cancel = e.to_lowercase().contains("cancelled");
+                    results.push(ExtractBatchItem {
+                        path,
+                        ok: false,
+                        result: None,
+                        error: Some(e),
+                    });
+                    if was_cancel {
+                        break;
+                    }
+                }
+            }
+        }
+        // keep guard alive until loop ends
+        drop(batch_guard);
+        if let Some(p) = shared_progress {
+            p.finish();
+        }
+        Ok(results)
+    });
+    task.await
+        .map_err(|e| format!("Batch extraction task failed: {e}"))?
 }
 
 fn do_extract(
@@ -240,6 +328,8 @@ fn do_extract(
     undo: UndoState,
     path: String,
     progress_event: Option<String>,
+    shared_cancel: Option<Arc<AtomicBool>>,
+    shared_progress: Option<ProgressEmitter>,
 ) -> Result<ExtractResult, String> {
     let nofollow = sanitize_path_nofollow(&path, true)?;
     let meta = fs::symlink_metadata(&nofollow)
@@ -277,15 +367,29 @@ fn do_extract(
     }
     .max(1);
     let progress_id = progress_event.clone();
-    let progress = progress_id
-        .as_ref()
-        .map(|evt| ProgressEmitter::new(app.clone(), evt.clone(), total_hint));
+    let mut owns_progress = false;
+    let progress = if let Some(p) = shared_progress {
+        Some(p)
+    } else if let Some(evt) = progress_id.as_ref() {
+        owns_progress = true;
+        Some(ProgressEmitter::new(app.clone(), evt.clone(), total_hint))
+    } else {
+        None
+    };
     let mut created = CreatedPaths::default();
-    let cancel_guard: Option<CancelGuard> = progress_id
-        .as_ref()
-        .map(|evt| cancel_state.register(evt.clone()))
-        .transpose()?;
-    let cancel_token = cancel_guard.as_ref().map(|c| c.token());
+
+    let mut _cancel_guard: Option<CancelGuard> = None;
+    let cancel_token_arc: Option<Arc<AtomicBool>> = if let Some(shared) = shared_cancel {
+        Some(shared)
+    } else if let Some(evt) = progress_id.as_ref() {
+        let guard = cancel_state.register(evt.clone())?;
+        let token = guard.token();
+        _cancel_guard = Some(guard);
+        Some(token)
+    } else {
+        None
+    };
+    let cancel_token = cancel_token_arc.as_deref();
 
     let stats = SkipStats::default();
     let destination = match kind {
@@ -452,8 +556,10 @@ fn do_extract(
         )?,
     };
 
-    if let Some(p) = progress.as_ref() {
-        p.finish();
+    if owns_progress {
+        if let Some(p) = progress.as_ref() {
+            p.finish();
+        }
     }
     created.disarm();
 
@@ -1428,5 +1534,28 @@ fn rar_uncompressed_total_from_entries(entries: &[RarInnerFile]) -> Result<u64, 
     for entry in entries {
         total = total.saturating_add(entry.length);
     }
+    Ok(total)
+}
+
+fn estimate_total_hint(path: &Path) -> Result<u64, String> {
+    let meta = fs::metadata(path).map_err(|e| format!("Failed to read archive metadata: {e}"))?;
+    let kind = detect_archive(path)?;
+    let mut rar_entries: Option<Vec<RarInnerFile>> = None;
+    let total = match kind {
+        ArchiveKind::Zip => zip_uncompressed_total(path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::Tar => tar_uncompressed_total(path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::TarGz => gzip_uncompressed_size(path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::SevenZ => sevenz_uncompressed_total(path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::Rar => {
+            let entries = parse_rar_entries(path)?;
+            let total = rar_uncompressed_total_from_entries(&entries).unwrap_or_else(|_| meta.len());
+            rar_entries = Some(entries);
+            total
+        }
+        ArchiveKind::Gz => gzip_uncompressed_size(path).unwrap_or_else(|_| meta.len()),
+        _ => meta.len(),
+    }
+    .max(1);
+    let _ = rar_entries; // parsed only for size
     Ok(total)
 }

@@ -19,7 +19,7 @@ pub use crate::clipboard::{paste_clipboard_cmd, paste_clipboard_preview, set_cli
 pub use bookmarks::{add_bookmark, get_bookmarks, remove_bookmark};
 pub use compress::compress_entries;
 pub use console::open_console;
-pub use decompress::extract_archive;
+pub use decompress::{extract_archive, extract_archives};
 pub use fs::{
     create_file, create_folder, delete_entries, delete_entry, eject_drive, list_dir, list_mounts,
     list_trash, move_to_trash, move_to_trash_many, open_entry, purge_trash_items, rename_entry,
