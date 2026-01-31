@@ -927,6 +927,14 @@ fn extract_rar(
         let raw_name = entry.name.clone();
         let normalized = raw_name.replace('\\', "/");
         let raw_path = Path::new(&normalized).to_path_buf();
+
+        // rar-stream mangler komplett dekoder for komprimerte entries; avbryt heller enn å skrive korrupte data.
+        if entry.is_compressed() {
+            return Err(format!(
+                "RAR entry uses unsupported compression method: {raw_name}"
+            ));
+        }
+
         let clean_rel = match clean_relative_path(&raw_path) {
             Ok(p) => p,
             Err(err) => {
