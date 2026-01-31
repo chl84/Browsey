@@ -223,7 +223,7 @@
 
 <style>
   /* Inherits global modal styles; light tweaks for tabs and spacing */
-  .settings-modal {
+  :global(.settings-modal) {
     max-height: 80vh;
     min-height: 420px;
   }
