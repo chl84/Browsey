@@ -261,8 +261,11 @@ a {
 
 .modal input[type='text'],
 .modal input[type='search'],
+.modal input[type='number'],
 .modal input[type='range'],
-.modal input:not([type]) {
+.modal input:not([type]),
+.modal select,
+.modal textarea {
   padding: 11px 12px;
   border: 1px solid var(--border-accent);
   background: var(--bg);
@@ -278,7 +281,14 @@ a {
   padding: 0;
 }
 
-.modal input:focus {
+.modal textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.modal input:focus,
+.modal select:focus,
+.modal textarea:focus {
   outline: none;
   border-color: var(--border-accent);
   background: var(--bg-raised);

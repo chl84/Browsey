@@ -246,29 +246,6 @@
     min-height: 420px;
   }
 
-  .tabs {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-  }
-
-  .tabs button {
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--fg);
-    padding: 6px 10px;
-    font-size: 12px;
-    cursor: pointer;
-    border-radius: 4px;
-  }
-
-  .tabs button.selected {
-    background: var(--accent-bg, var(--focus));
-    color: var(--accent-fg, var(--fg-strong));
-    border-color: var(--accent-border, var(--focus));
-  }
-
   .section {
     display: flex;
     flex-direction: column;
