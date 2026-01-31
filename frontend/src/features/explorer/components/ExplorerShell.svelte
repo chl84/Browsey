@@ -141,6 +141,11 @@
   export let newFolderError = ''
   export let onConfirmNewFolder: () => void = () => {}
   export let onCancelNewFolder: () => void = () => {}
+  export let newFileOpen = false
+  export let newFileName = ''
+  export let newFileError = ''
+  export let onConfirmNewFile: () => void = () => {}
+  export let onCancelNewFile: () => void = () => {}
 
   export let openWithOpen = false
   export let openWithApps: OpenWithApp[] = []
@@ -355,6 +360,15 @@
   error={newFolderError}
   onConfirm={onConfirmNewFolder}
   onCancel={onCancelNewFolder}
+/>
+<NewFolderModal
+  open={newFileOpen}
+  bind:value={newFileName}
+  error={newFileError}
+  title="New file"
+  inputId="new-file-name"
+  onConfirm={onConfirmNewFile}
+  onCancel={onCancelNewFile}
 />
 <OpenWithModal
   open={openWithOpen}

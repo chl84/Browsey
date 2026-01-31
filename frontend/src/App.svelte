@@ -85,6 +85,7 @@
   let compressName = 'Archive.zip'
   let compressLevel = 6
   let newFolderName = 'New folder'
+  let newFileName = ''
   let conflictModalOpen = false
   let conflictList: { src: string; target: string; is_dir: boolean }[] = []
   let conflictDest: string | null = null
@@ -1066,6 +1067,12 @@
         newFolderModal.close()
         return
       }
+      if ($newFileState.open) {
+        event.preventDefault()
+        event.stopPropagation()
+        newFileModal.close()
+        return
+      }
       if (bookmarkModalOpen) {
         event.preventDefault()
         event.stopPropagation()
@@ -1348,6 +1355,8 @@
     propertiesState,
     renameModal,
     renameState,
+    newFileModal,
+    newFileState,
     newFolderModal,
     newFolderState,
     compressModal,
@@ -1733,6 +1742,7 @@
     anchorIndex.set(null)
     caretIndex.set(null)
     const actions: ContextAction[] = [
+      { id: 'new-file', label: 'New File…' },
       { id: 'new-folder', label: 'New Folder…' },
       { id: 'open-console', label: 'Open in console', shortcut: 'Ctrl+T' },
     ]
@@ -1747,6 +1757,10 @@
     closeBlankContextMenu()
     if (id === 'new-folder') {
       newFolderName = newFolderModal.open()
+      return
+    }
+    if (id === 'new-file') {
+      newFileName = newFileModal.open()
       return
     }
     if (id === 'open-console') {
@@ -1771,6 +1785,14 @@
         return
       }
       newFolderName = newFolderModal.open()
+      return
+    }
+    if (id === 'new-file') {
+      if (currentView !== 'dir') {
+        showToast('Cannot create file here')
+        return
+      }
+      newFileName = newFileModal.open()
       return
     }
     await contextActions(id, entry)
@@ -1972,8 +1994,20 @@
     newFolderModal.close()
   }
 
+  const closeNewFileModal = () => {
+    newFileModal.close()
+  }
+
   const confirmNewFolder = async () => {
     const created = await newFolderModal.confirm(newFolderName)
+    if (!created) return
+    selected.set(new Set([created]))
+    anchorIndex.set(null)
+    caretIndex.set(null)
+  }
+
+  const confirmNewFile = async () => {
+    const created = await newFileModal.confirm(newFileName)
     if (!created) return
     selected.set(new Set([created]))
     anchorIndex.set(null)
@@ -2188,6 +2222,11 @@
   newFolderError={$newFolderState.error}
   onConfirmNewFolder={confirmNewFolder}
   onCancelNewFolder={closeNewFolderModal}
+  newFileOpen={$newFileState.open}
+  bind:newFileName
+  newFileError={$newFileState.error}
+  onConfirmNewFile={confirmNewFile}
+  onCancelNewFile={closeNewFileModal}
   openWithOpen={$openWithState.open}
   openWithApps={$openWithState.apps}
   openWithLoading={$openWithState.loading}

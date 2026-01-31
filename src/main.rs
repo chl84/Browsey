@@ -155,6 +155,7 @@ fn main() {
             rename_entry,
             move_to_trash,
             move_to_trash_many,
+            create_file,
             delete_entry,
             delete_entries,
             entry_times_cmd,

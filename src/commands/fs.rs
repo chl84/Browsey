@@ -909,6 +909,47 @@ pub fn create_folder(
 }
 
 #[tauri::command]
+pub fn create_file(
+    path: String,
+    name: String,
+    state: tauri::State<UndoState>,
+) -> Result<String, String> {
+    let base = sanitize_path_follow(&path, true)?;
+    check_no_symlink_components(&base)?;
+    let meta = fs::metadata(&base).map_err(|e| format!("Cannot read destination: {e}"))?;
+    if !meta.is_dir() {
+        return Err("Destination is not a directory".into());
+    }
+
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("File name cannot be empty".into());
+    }
+    if trimmed.contains(['/', '\\']) {
+        return Err("File name cannot contain path separators".into());
+    }
+
+    let target = base.join(trimmed);
+    if target.exists() {
+        return Err("A file or directory with that name already exists".into());
+    }
+
+    fs::File::options()
+        .write(true)
+        .create_new(true)
+        .open(&target)
+        .map_err(|e| format!("Failed to create file: {e}"))?;
+
+    let backup = temp_backup_path(&target);
+    let _ = state.record_applied(Action::Create {
+        path: target.clone(),
+        backup,
+    });
+
+    Ok(target.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
 pub async fn move_to_trash(
     path: String,
     app: tauri::AppHandle,
