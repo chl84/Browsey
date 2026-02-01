@@ -113,33 +113,68 @@
   $: filteredShortcuts = shortcuts.filter((s) => rowMatches(s.action, s.keys))
 
   $: showGeneral =
-    rowMatches(
-      settings.defaultView,
-      settings.foldersFirst,
-      settings.showHidden,
-      settings.hiddenFilesLast,
-      settings.startDir,
-      settings.confirmDelete,
-    )
+    rowMatches('general') ||
+    showRow('Default view', settings.defaultView) ||
+    showRow('Folders first') ||
+    showRow('Show hidden') ||
+    showRow('Hidden files last') ||
+    showRow('Start directory', settings.startDir) ||
+    showRow('Confirm delete')
 
-  $: showSorting = rowMatches(settings.sortField, settings.sortDirection)
-  $: showAppearance = rowMatches(settings.theme, settings.density, settings.iconSize)
+  $: showSorting =
+    rowMatches('sorting', 'sort') ||
+    showRow('Sort field', settings.sortField) ||
+    showRow('Sort direction', settings.sortDirection)
+
+  $: showAppearance =
+    rowMatches('appearance', 'theme', 'density', 'icon') ||
+    showRow('Theme', settings.theme) ||
+    showRow('Density', settings.density) ||
+    showRow('Icon size', String(settings.iconSize))
+
   $: showArchives =
-    rowMatches(settings.archiveName, settings.archiveLevel, settings.openDestAfterExtract) || rowMatches('rar')
+    rowMatches('archives', 'archive', 'zip', 'rar') ||
+    showRow('Default archive name', settings.archiveName) ||
+    showRow('ZIP level', String(settings.archiveLevel)) ||
+    showRow('After extract', settings.openDestAfterExtract ? 'enabled' : 'disabled') ||
+    showRow('RAR')
+
   $: showThumbnails =
-    rowMatches(
-      settings.videoThumbs,
-      settings.ffmpegPath,
-      settings.thumbCacheMb,
-      settings.thumbTimeoutMs,
-      'thumbnails',
-    )
-  $: showShortcuts = filteredShortcuts.length > 0
-  $: showPerformance = rowMatches(settings.watcherPollMs, settings.ioConcurrency, settings.lazyDirScan)
-  $: showInteraction = rowMatches(settings.doubleClickMs, settings.singleClickOpen)
-  $: showData = rowMatches('thumbnail cache', 'stars', 'bookmarks', 'recents')
-  $: showAccessibility = rowMatches(settings.highContrast, settings.scrollbarWidth)
-  $: showAdvanced = rowMatches(settings.externalTools, settings.logLevel)
+    rowMatches('thumbnails', 'thumbs', 'ffmpeg', 'video') ||
+    showRow('Video thumbs') ||
+    showRow('FFmpeg path', settings.ffmpegPath) ||
+    showRow('Thumbnail cache size', String(settings.thumbCacheMb)) ||
+    showRow('Thumbnail timeout', String(settings.thumbTimeoutMs))
+
+  $: showShortcuts = filteredShortcuts.length > 0 || rowMatches('shortcuts', 'keys')
+
+  $: showPerformance =
+    rowMatches('performance', 'watcher', 'poll', 'io', 'concurrency') ||
+    showRow('Mounts poll', String(settings.watcherPollMs)) ||
+    showRow('IO concurrency', String(settings.ioConcurrency)) ||
+    showRow('Lazy scans')
+
+  $: showInteraction =
+    rowMatches('interaction', 'click') ||
+    showRow('Double-click speed', String(settings.doubleClickMs)) ||
+    showRow('Single click open', settings.singleClickOpen ? 'on' : 'off')
+
+  $: showData =
+    rowMatches('data', 'clear', 'cache', 'stars', 'bookmarks', 'recents') ||
+    showRow('Clear thumbnail cache') ||
+    showRow('Clear stars') ||
+    showRow('Clear bookmarks') ||
+    showRow('Clear recents')
+
+  $: showAccessibility =
+    rowMatches('accessibility', 'contrast', 'scrollbar') ||
+    showRow('High contrast') ||
+    showRow('Scrollbar width', String(settings.scrollbarWidth))
+
+  $: showAdvanced =
+    rowMatches('advanced', 'external tools', 'log') ||
+    showRow('External tools', settings.externalTools) ||
+    showRow('Log level', settings.logLevel)
   $: hiddenFilesLastDisabled = !settings.showHidden
   $: thumbsDisabled = !settings.videoThumbs
 
