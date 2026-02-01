@@ -269,6 +269,7 @@ let inputFocused = false
     anchorIndex,
     caretIndex,
     rowHeight,
+    setRowHeight,
     viewportHeight,
     scrollTop,
     rowsEl: rowsElStore,
@@ -398,7 +399,7 @@ let inputFocused = false
         if (!rowsEl) return
         const headerH = headerElRef?.offsetHeight ?? 0
         const viewport = rowsEl.clientHeight - headerH
-        const rowH = rowHeight
+        const rowH = $rowHeight
         const target = headerH + Math.max(0, idx * rowH - (viewport - rowH) / 2)
         const maxScroll = Math.max(0, rowsEl.scrollHeight - rowsEl.clientHeight)
         rowsEl.scrollTo({ top: Math.min(target, maxScroll), behavior: 'auto' })
@@ -406,7 +407,7 @@ let inputFocused = false
         const gridEl = gridElRef
         const cols = getGridCols()
         if (!gridEl || cols <= 0) return
-        const stride = GRID_ROW_HEIGHT + GRID_GAP
+        const stride = gridRowHeight + gridGap
         const row = Math.floor(idx / Math.max(1, cols))
         const viewport = gridEl.clientHeight
         const target = Math.max(0, row * stride - (viewport - stride) / 2)
@@ -529,6 +530,44 @@ let inputFocused = false
       document.body.classList.add(`density-${d}`)
     }
   }
+
+  const readCssNumber = (name: string, fallback: number) => {
+    if (typeof document === 'undefined') return fallback
+    const raw = getComputedStyle(document.body).getPropertyValue(name)
+    const parsed = parseFloat(raw)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+
+  const applyDensityMetrics = () => {
+    const nextRowHeight = readCssNumber('--row-height', 32)
+    const nextGridGap = readCssNumber('--grid-gap', 6)
+    const nextGridCardWidth = readCssNumber('--grid-card-width', 128)
+    const nextGridRowHeight = readCssNumber('--grid-row-height', 136)
+
+    setRowHeight(nextRowHeight)
+    gridGap = nextGridGap
+    gridCardWidth = nextGridCardWidth
+    gridRowHeight = nextGridRowHeight
+
+    gridConfig.gap = nextGridGap
+    gridConfig.cardWidth = nextGridCardWidth
+    gridConfig.rowHeight = nextGridRowHeight
+
+    viewAnchor = createViewSwitchAnchor({
+      filteredEntries,
+      rowHeight: nextRowHeight,
+      gridRowHeight,
+      gridGap,
+    })
+
+    recomputeGrid()
+    recompute(get(filteredEntries))
+  }
+
+  $: {
+    $density
+    applyDensityMetrics()
+  }
   $: {
     if (bookmarkModalOpen) {
       bookmarkModal.setName(bookmarkName)
@@ -536,9 +575,9 @@ let inputFocused = false
   }
 
   let selectionDrag = false
-  const GRID_CARD_WIDTH = 128
-  const GRID_ROW_HEIGHT = 136
-  const GRID_GAP = 6
+  let gridCardWidth = 128
+  let gridRowHeight = 136
+  let gridGap = 6
   // Keep in sync with the left padding in .grid (FileGrid.svelte)
   const GRID_PADDING = 15
   const GRID_OVERSCAN = 2
@@ -553,12 +592,21 @@ let inputFocused = false
     return event.clientX <= rect.left + LASSO_GUTTER_WIDTH
   }
 
-  const viewAnchor = createViewSwitchAnchor({
+  let viewAnchor = createViewSwitchAnchor({
     filteredEntries,
-    rowHeight,
-    gridRowHeight: GRID_ROW_HEIGHT,
-    gridGap: GRID_GAP,
+    rowHeight: get(rowHeight),
+    gridRowHeight,
+    gridGap,
   })
+
+  const gridConfig = {
+    cardWidth: gridCardWidth,
+    rowHeight: gridRowHeight,
+    gap: gridGap,
+    padding: GRID_PADDING,
+    overscan: GRID_OVERSCAN,
+    wheelScale: GRID_WHEEL_SCALE,
+  }
 
   const {
     gridCols,
@@ -576,14 +624,7 @@ let inputFocused = false
     offsetY,
     totalHeight,
     visibleEntries,
-    config: {
-      cardWidth: GRID_CARD_WIDTH,
-      rowHeight: GRID_ROW_HEIGHT,
-      gap: GRID_GAP,
-      padding: GRID_PADDING,
-      overscan: GRID_OVERSCAN,
-      wheelScale: GRID_WHEEL_SCALE,
-    },
+    config: gridConfig,
   })
 
   const isScrollbarClick = (event: MouseEvent, el: HTMLDivElement | null) => {
@@ -1632,7 +1673,7 @@ let inputFocused = false
         rowsEl: rowsElRef,
         headerEl: headerElRef,
         entries: list,
-        rowHeight,
+        rowHeight: $rowHeight,
         onSelect: (paths, anchor, caret) => {
           if (subtractive) {
             const next = new Set(baseSelection)
@@ -1676,19 +1717,19 @@ let inputFocused = false
     const baseSelection = get(selected)
     const baseAnchor = get(anchorIndex)
     const baseCaret = get(caretIndex)
-    selectionBox.start(event, {
-      rowsEl: gridEl,
-      headerEl: null,
-      entries: gridEntries,
-      rowHeight: 1,
-      hitTest: (rect) =>
-      hitTestGridVirtualized(rect, gridEntries, {
-        gridCols: getGridCols(),
-        cardWidth: GRID_CARD_WIDTH,
-        cardHeight: GRID_ROW_HEIGHT,
-        gap: GRID_GAP,
-        padding: GRID_PADDING,
-      }),
+      selectionBox.start(event, {
+        rowsEl: gridEl,
+        headerEl: null,
+        entries: gridEntries,
+        rowHeight: 1,
+        hitTest: (rect) =>
+        hitTestGridVirtualized(rect, gridEntries, {
+          gridCols: getGridCols(),
+          cardWidth: gridCardWidth,
+          cardHeight: gridRowHeight,
+          gap: gridGap,
+          padding: GRID_PADDING,
+        }),
       onSelect: (paths, anchor, caret) => {
         if (subtractive) {
           const next = new Set(baseSelection)

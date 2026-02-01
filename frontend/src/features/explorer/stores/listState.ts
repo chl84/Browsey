@@ -3,7 +3,7 @@ import { clampIndex, clearSelection, selectAllPaths, selectRange } from '../sele
 import type { Entry } from '../types'
 import { applyClickSelection } from '../helpers/selectionController'
 
-export const rowHeight = 32
+const defaultRowHeight = 32
 const overscan = 16
 const wheelScale = 0.7
 
@@ -25,7 +25,7 @@ const isScrollbarClick = (event: MouseEvent, el: HTMLDivElement | null) => {
   return false
 }
 
-export const createListState = () => {
+export const createListState = (initialRowHeight: number = defaultRowHeight) => {
   const selected = writable<Set<string>>(clearSelection())
   const anchorIndex = writable<number | null>(null)
   const caretIndex = writable<number | null>(null)
@@ -37,6 +37,8 @@ export const createListState = () => {
   const visibleEntries = writable<Entry[]>([])
   const start = writable(0)
   const offsetY = writable(0)
+
+  const rowHeight = writable(initialRowHeight)
 
   let wheelRaf: number | null = null
   let pendingDeltaY = 0
@@ -163,8 +165,9 @@ export const createListState = () => {
     const viewport = get(viewportHeight)
     const currentTop = get(scrollTop)
     const currentBottom = currentTop + viewport
-    const rowTop = index * rowHeight
-    const rowBottom = rowTop + rowHeight
+    const rh = get(rowHeight)
+    const rowTop = index * rh
+    const rowBottom = rowTop + rh
     let nextScroll: number | null = null
 
     if (rowTop < currentTop) {
@@ -179,17 +182,23 @@ export const createListState = () => {
   }
 
   const recompute = (filteredEntries: Entry[]) => {
-    const total = filteredEntries.length * rowHeight
+    const rh = get(rowHeight)
+    const total = filteredEntries.length * rh
     totalHeight.set(total)
     const view = get(viewportHeight)
     const scrolled = get(scrollTop)
-    const visibleCount = Math.ceil((view || 0) / rowHeight) + overscan * 2
-    const startIdx = Math.max(0, Math.floor(scrolled / rowHeight) - overscan)
+    const visibleCount = Math.ceil((view || 0) / rh) + overscan * 2
+    const startIdx = Math.max(0, Math.floor(scrolled / rh) - overscan)
     const endIdx = Math.min(filteredEntries.length, startIdx + visibleCount)
     const slice = filteredEntries.slice(startIdx, endIdx)
     start.set(startIdx)
-    offsetY.set(startIdx * rowHeight)
+    offsetY.set(startIdx * rh)
     visibleEntries.set(slice)
+  }
+
+  const setRowHeight = (value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return
+    rowHeight.set(value)
   }
 
   return {
@@ -216,5 +225,6 @@ export const createListState = () => {
     handleRowClick,
     resetScrollPosition,
     recompute,
+    setRowHeight,
   }
 }

@@ -136,9 +136,9 @@
     display: grid;
     gap: 10px;
     align-items: center;
-    padding: 0 6px 0 12px;
-    height: 32px;
-    min-height: 32px;
+    padding: var(--row-padding-y) var(--row-padding-x);
+    height: var(--row-height);
+    min-height: var(--row-height);
     transition: none;
     cursor: default;
     box-sizing: border-box;
@@ -148,7 +148,7 @@
     text-align: left;
     border-radius: 0;
     box-shadow: none;
-    font-size: var(--font-size-base);
+    font-size: var(--row-font-size, var(--font-size-base));
     font-weight: var(--font-weight-base);
   }
 
@@ -205,6 +205,12 @@
     color: var(--fg-strong);
     overflow: hidden;
     min-width: 200px;
+  }
+
+  .col-name .icon {
+    width: var(--icon-size);
+    height: var(--icon-size);
+    object-fit: contain;
   }
 
   .name {

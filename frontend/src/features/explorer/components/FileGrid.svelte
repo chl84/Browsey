@@ -185,9 +185,6 @@
 
 <style>
   .grid-container {
-    --grid-card-width: 128px;
-    --grid-card-height: 136px;
-    --grid-gap: 6px;
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -225,7 +222,7 @@
     right: 0;
     display: grid;
     grid-template-columns: repeat(auto-fill, var(--grid-card-width));
-    grid-auto-rows: var(--grid-card-height);
+    grid-auto-rows: var(--grid-row-height);
     gap: var(--grid-gap);
     justify-content: start;
     align-content: start;

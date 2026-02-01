@@ -192,6 +192,30 @@ body {
   user-select: none;
 }
 
+# Base density variables — current UI equals "cozy"
+body.density-cozy {
+  --row-height: 32px;
+  --row-padding-y: 4px;
+  --row-padding-x: 10px;
+  --row-font-size: 14px;
+  --icon-size: 24px;
+  --grid-gap: 6px;
+  --grid-card-width: 128px;
+  --grid-row-height: 136px;
+}
+
+/* Placeholder for upcoming compact values; keeps selectors in place */
+body.density-compact {
+  --row-height: 26px;
+  --row-padding-y: 2px;
+  --row-padding-x: 8px;
+  --row-font-size: 13px;
+  --icon-size: 20px;
+  --grid-gap: 4px;
+  --grid-card-width: 116px;
+  --grid-row-height: 120px;
+}
+
 #app {
   min-height: 100vh;
   height: 100vh;
