@@ -75,13 +75,13 @@ pub fn load_start_dir() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub fn store_default_view(value: String) -> Result<(), String> {
+pub fn store_confirm_delete(value: bool) -> Result<(), String> {
     let conn = crate::db::open()?;
-    crate::db::set_setting_string(&conn, "defaultView", &value)
+    crate::db::set_setting_bool(&conn, "confirmDelete", value)
 }
 
 #[tauri::command]
-pub fn load_default_view() -> Result<Option<String>, String> {
+pub fn load_confirm_delete() -> Result<Option<bool>, String> {
     let conn = crate::db::open()?;
-    crate::db::get_setting_string(&conn, "defaultView")
+    crate::db::get_setting_bool(&conn, "confirmDelete")
 }

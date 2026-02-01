@@ -152,6 +152,7 @@ let inputFocused = false
     showHidden,
     hiddenFilesLast,
     foldersFirst,
+    confirmDelete,
     startDirPref,
     sortField,
     sortDirection,
@@ -167,6 +168,7 @@ let inputFocused = false
     toggleShowHidden,
     toggleHiddenFilesLast,
     toggleFoldersFirst,
+    toggleConfirmDelete,
     setStartDirPref,
     changeSort,
     open,
@@ -1508,6 +1510,7 @@ let inputFocused = false
     getSelectedSet: () => $selected,
     getFilteredEntries: () => $filteredEntries,
     currentView: () => currentView,
+    confirmDeleteEnabled: () => get(explorer.confirmDelete),
     reloadCurrent,
     clipboard,
     showToast,
@@ -2357,6 +2360,7 @@ let inputFocused = false
     showHiddenValue={$showHidden}
     hiddenFilesLastValue={$hiddenFilesLast}
     foldersFirstValue={$foldersFirst}
+    confirmDeleteValue={$confirmDelete}
     startDirValue={$startDirPref ?? '~'}
     onChangeDefaultView={(val) => {
       viewMode = val
@@ -2366,6 +2370,7 @@ let inputFocused = false
     onToggleShowHidden={toggleShowHidden}
     onToggleHiddenFilesLast={toggleHiddenFilesLast}
     onToggleFoldersFirst={toggleFoldersFirst}
+    onToggleConfirmDelete={toggleConfirmDelete}
     onChangeStartDir={setStartDirPref}
     onClose={() => (settingsOpen = false)}
   />

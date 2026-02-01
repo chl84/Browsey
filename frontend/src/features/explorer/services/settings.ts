@@ -24,3 +24,8 @@ export const loadStartDir = () => invoke<string | null>('load_start_dir')
 
 export const storeStartDir = (value: string) =>
   invoke<void>('store_start_dir', { value })
+
+export const loadConfirmDelete = () => invoke<boolean | null>('load_confirm_delete')
+
+export const storeConfirmDelete = (value: boolean) =>
+  invoke<void>('store_confirm_delete', { value })
