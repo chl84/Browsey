@@ -63,7 +63,7 @@
     videoThumbs: true,
     ffmpegPath: '',
     thumbCacheMb: 200,
-    thumbTimeoutMs: 3500,
+    thumbTimeoutMs: 750,
     watcherPollMs: 2000,
     ioConcurrency: 4,
     lazyDirScan: true,
