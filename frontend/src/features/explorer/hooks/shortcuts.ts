@@ -16,6 +16,7 @@ type ShortcutArgs = {
   onPaste?: () => Promise<boolean> | boolean
   onRename?: () => Promise<boolean> | boolean
   onDelete?: (permanent: boolean) => Promise<boolean> | boolean
+  onDeletePermanentFast?: () => Promise<boolean> | boolean
   onProperties?: () => Promise<boolean> | boolean
   onOpenConsole?: () => Promise<boolean> | boolean
   onToggleView?: () => Promise<void> | void
@@ -40,6 +41,7 @@ export const createGlobalShortcuts = ({
   onPaste,
   onRename,
   onDelete,
+  onDeletePermanentFast,
   onProperties,
   onOpenConsole,
   onToggleView,
@@ -187,9 +189,17 @@ export const createGlobalShortcuts = ({
       return
     }
 
-    if (key === 'delete' && onDelete) {
+    if (key === 'delete' && (onDeletePermanentFast || onDelete)) {
       if (isEditableTarget(event.target)) return
-      const handled = await onDelete(event.shiftKey)
+      if (event.shiftKey && onDeletePermanentFast) {
+        const handled = await onDeletePermanentFast()
+        if (handled) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+        return
+      }
+      const handled = await onDelete?.(false)
       if (handled) {
         event.preventDefault()
         event.stopPropagation()
