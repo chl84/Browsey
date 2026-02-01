@@ -101,19 +101,23 @@
   ]
 
   $: needle = filter.trim().toLowerCase()
-  const rowMatches = (...texts: (string | number | boolean | null | undefined)[]) => {
-    if (!needle) return true
+  const rowMatches = (
+    n: string,
+    ...texts: (string | number | boolean | null | undefined)[]
+  ) => {
+    if (!n) return true
     return texts.some((t) => {
       if (t === null || t === undefined) return false
-      return String(t).toLowerCase().includes(needle)
+      return String(t).toLowerCase().includes(n)
     })
   }
-  const showRow = rowMatches
+  const showRow = (...texts: (string | number | boolean | null | undefined)[]) =>
+    rowMatches(needle, ...texts)
 
-  $: filteredShortcuts = shortcuts.filter((s) => rowMatches(s.action, s.keys))
+  $: filteredShortcuts = shortcuts.filter((s) => rowMatches(needle, s.action, s.keys))
 
   $: showGeneral =
-    rowMatches('general') ||
+    rowMatches(needle, 'general') ||
     showRow('Default view', settings.defaultView) ||
     showRow('Folders first') ||
     showRow('Show hidden') ||
@@ -122,57 +126,57 @@
     showRow('Confirm delete')
 
   $: showSorting =
-    rowMatches('sorting', 'sort') ||
+    rowMatches(needle, 'sorting', 'sort') ||
     showRow('Sort field', settings.sortField) ||
     showRow('Sort direction', settings.sortDirection)
 
   $: showAppearance =
-    rowMatches('appearance', 'theme', 'density', 'icon') ||
+    rowMatches(needle, 'appearance', 'theme', 'density', 'icon') ||
     showRow('Theme', settings.theme) ||
     showRow('Density', settings.density) ||
     showRow('Icon size', String(settings.iconSize))
 
   $: showArchives =
-    rowMatches('archives', 'archive', 'zip', 'rar') ||
+    rowMatches(needle, 'archives', 'archive', 'zip', 'rar') ||
     showRow('Default archive name', settings.archiveName) ||
     showRow('ZIP level', String(settings.archiveLevel)) ||
     showRow('After extract', settings.openDestAfterExtract ? 'enabled' : 'disabled') ||
     showRow('RAR')
 
   $: showThumbnails =
-    rowMatches('thumbnails', 'thumbs', 'ffmpeg', 'video') ||
+    rowMatches(needle, 'thumbnails', 'thumbs', 'ffmpeg', 'video') ||
     showRow('Video thumbs') ||
     showRow('FFmpeg path', settings.ffmpegPath) ||
     showRow('Thumbnail cache size', String(settings.thumbCacheMb)) ||
     showRow('Thumbnail timeout', String(settings.thumbTimeoutMs))
 
-  $: showShortcuts = filteredShortcuts.length > 0 || rowMatches('shortcuts', 'keys')
+  $: showShortcuts = filteredShortcuts.length > 0 || rowMatches(needle, 'shortcuts', 'keys')
 
   $: showPerformance =
-    rowMatches('performance', 'watcher', 'poll', 'io', 'concurrency') ||
+    rowMatches(needle, 'performance', 'watcher', 'poll', 'io', 'concurrency') ||
     showRow('Mounts poll', String(settings.watcherPollMs)) ||
     showRow('IO concurrency', String(settings.ioConcurrency)) ||
     showRow('Lazy scans')
 
   $: showInteraction =
-    rowMatches('interaction', 'click') ||
+    rowMatches(needle, 'interaction', 'click') ||
     showRow('Double-click speed', String(settings.doubleClickMs)) ||
     showRow('Single click open', settings.singleClickOpen ? 'on' : 'off')
 
   $: showData =
-    rowMatches('data', 'clear', 'cache', 'stars', 'bookmarks', 'recents') ||
+    rowMatches(needle, 'data', 'clear', 'cache', 'stars', 'bookmarks', 'recents') ||
     showRow('Clear thumbnail cache') ||
     showRow('Clear stars') ||
     showRow('Clear bookmarks') ||
     showRow('Clear recents')
 
   $: showAccessibility =
-    rowMatches('accessibility', 'contrast', 'scrollbar') ||
+    rowMatches(needle, 'accessibility', 'contrast', 'scrollbar') ||
     showRow('High contrast') ||
     showRow('Scrollbar width', String(settings.scrollbarWidth))
 
   $: showAdvanced =
-    rowMatches('advanced', 'external tools', 'log') ||
+    rowMatches(needle, 'advanced', 'external tools', 'log') ||
     showRow('External tools', settings.externalTools) ||
     showRow('Log level', settings.logLevel)
   $: hiddenFilesLastDisabled = !settings.showHidden
