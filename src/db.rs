@@ -271,3 +271,33 @@ pub fn load_column_widths(conn: &Connection) -> Result<Option<Vec<f64>>, String>
         Ok(None)
     }
 }
+
+pub fn set_setting_bool(conn: &Connection, key: &str, value: bool) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+        params![key, if value { "true" } else { "false" }],
+    )
+    .map_err(|e| format!("Failed to store setting {key}: {e}"))?;
+    Ok(())
+}
+
+pub fn get_setting_bool(conn: &Connection, key: &str) -> Result<Option<bool>, String> {
+    let val: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Failed to read setting {key}: {e}"))?;
+
+    if let Some(s) = val {
+        match s.as_str() {
+            "true" => Ok(Some(true)),
+            "false" => Ok(Some(false)),
+            _ => Ok(None),
+        }
+    } else {
+        Ok(None)
+    }
+}

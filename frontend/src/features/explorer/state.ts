@@ -14,6 +14,7 @@ import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files'
 import { listDir, listRecent, listStarred, listTrash, watchDir, listMounts, searchStream } from './services/listing'
 import { storeColumnWidths, loadSavedColumnWidths } from './services/layout'
+import { loadShowHidden, storeShowHidden } from './services/settings'
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
 
@@ -330,7 +331,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   }
 
   const toggleShowHidden = () => {
-    showHidden.update((v) => !v)
+    showHidden.update((v) => {
+      const next = !v
+      void storeShowHidden(next)
+      return next
+    })
   }
 
   const goUp = () => {
@@ -491,6 +496,17 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const loadShowHiddenPref = async () => {
+    try {
+      const saved = await loadShowHidden()
+      if (typeof saved === 'boolean') {
+        showHidden.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load showHidden setting', err)
+    }
+  }
+
   return {
     cols,
     gridTemplate,
@@ -527,6 +543,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     goForward,
     loadBookmarks,
     loadPartitions,
+    loadShowHiddenPref,
     loadSavedWidths,
     persistWidths,
   }
