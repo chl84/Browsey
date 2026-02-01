@@ -193,348 +193,370 @@
 
     <div class="settings-panel single">
       <div class="form-rows settings-table">
-        <div class="group-heading">General</div><div class="group-spacer"></div>
-        {#if showRow('Default view', settings.defaultView)}
-          <div class="form-label">Default view</div>
-          <div class="form-control radios">
-            <label class="radio">
-              <input type="radio" name="default-view" value="list" bind:group={settings.defaultView} />
-              <span>List</span>
-            </label>
-            <label class="radio">
-              <input type="radio" name="default-view" value="grid" bind:group={settings.defaultView} />
-              <span>Grid</span>
-            </label>
-          </div>
+        {#if showGeneral}
+          <div class="group-heading">General</div><div class="group-spacer"></div>
+          {#if showRow('Default view', settings.defaultView)}
+            <div class="form-label">Default view</div>
+            <div class="form-control radios">
+              <label class="radio">
+                <input type="radio" name="default-view" value="list" bind:group={settings.defaultView} />
+                <span>List</span>
+              </label>
+              <label class="radio">
+                <input type="radio" name="default-view" value="grid" bind:group={settings.defaultView} />
+                <span>Grid</span>
+              </label>
+            </div>
+          {/if}
+
+          {#if showRow('Folders first')}
+            <div class="form-label">Folders first</div>
+            <div class="form-control checkbox">
+              <input type="checkbox" bind:checked={settings.foldersFirst} />
+              <span>Show folders before files</span>
+            </div>
+          {/if}
+
+          {#if showRow('Show hidden')}
+            <div class="form-label">Show hidden</div>
+            <div class="form-control checkbox">
+              <input type="checkbox" bind:checked={settings.showHidden} />
+              <span>Show hidden files by default</span>
+            </div>
+          {/if}
+
+          {#if showRow('Hidden files last')}
+            <div class="form-label">Hidden files last</div>
+            <div class="form-control checkbox">
+              <input type="checkbox" bind:checked={settings.hiddenFilesLast} disabled={hiddenFilesLastDisabled} />
+              <span>Place hidden items at the end</span>
+              {#if hiddenFilesLastDisabled}
+                <small>Enable "Show hidden" to change this</small>
+              {/if}
+            </div>
+          {/if}
+
+          {#if showRow('Start directory', settings.startDir)}
+            <div class="form-label">Start directory</div>
+            <div class="form-control">
+              <input type="text" bind:value={settings.startDir} placeholder="~ or /path" />
+            </div>
+          {/if}
+
+          {#if showRow('Confirm delete')}
+            <div class="form-label">Confirm delete</div>
+            <div class="form-control checkbox">
+              <input type="checkbox" bind:checked={settings.confirmDelete} />
+              <span>Ask before permanent delete</span>
+            </div>
+          {/if}
         {/if}
 
-        {#if showRow('Folders first')}
-          <div class="form-label">Folders first</div>
-          <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.foldersFirst} />
-            <span>Show folders before files</span>
-          </div>
+        {#if showSorting}
+          <div class="group-heading">Sorting</div><div class="group-spacer"></div>
+          {#if showRow('Sort field', settings.sortField)}
+            <div class="form-label">Default sort field</div>
+            <div class="form-control">
+              <ComboBox
+                bind:value={settings.sortField}
+                options={[
+                  { value: 'name', label: 'Name' },
+                  { value: 'size', label: 'Size' },
+                  { value: 'date', label: 'Date modified' },
+                ] satisfies ComboOption[]}
+              />
+            </div>
+          {/if}
+
+          {#if showRow('Sort direction', settings.sortDirection)}
+            <div class="form-label">Sort direction</div>
+            <div class="form-control radios">
+              <label class="radio">
+                <input type="radio" name="sort-direction" value="asc" bind:group={settings.sortDirection} />
+                <span>Ascending</span>
+              </label>
+              <label class="radio">
+                <input type="radio" name="sort-direction" value="desc" bind:group={settings.sortDirection} />
+                <span>Descending</span>
+              </label>
+            </div>
+          {/if}
         {/if}
 
-        {#if showRow('Show hidden')}
-          <div class="form-label">Show hidden</div>
-          <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.showHidden} />
-            <span>Show hidden files by default</span>
-          </div>
+        {#if showAppearance}
+          <div class="group-heading">Appearance</div><div class="group-spacer"></div>
+          {#if showRow('Theme', settings.theme)}
+            <div class="form-label">Theme</div>
+            <div class="form-control">
+              <ComboBox
+                bind:value={settings.theme}
+                options={[
+                  { value: 'system', label: 'System' },
+                  { value: 'light', label: 'Light' },
+                  { value: 'dark', label: 'Dark' },
+                ] satisfies ComboOption[]}
+              />
+            </div>
+          {/if}
+
+          {#if showRow('Density', settings.density)}
+            <div class="form-label">Density</div>
+            <div class="form-control">
+              <ComboBox
+                bind:value={settings.density}
+                options={[
+                  { value: 'cozy', label: 'Cozy' },
+                  { value: 'compact', label: 'Compact' },
+                ] satisfies ComboOption[]}
+              />
+            </div>
+          {/if}
+
+          {#if showRow('Icon size', String(settings.iconSize))}
+            <div class="form-label">Icon size</div>
+            <div class="form-control">
+              <input type="range" min="16" max="64" bind:value={settings.iconSize} />
+              <small>{settings.iconSize}px</small>
+            </div>
+          {/if}
         {/if}
 
-        {#if showRow('Hidden files last')}
-          <div class="form-label">Hidden files last</div>
-          <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.hiddenFilesLast} disabled={hiddenFilesLastDisabled} />
-            <span>Place hidden items at the end</span>
-            {#if hiddenFilesLastDisabled}
-              <small>Enable "Show hidden" to change this</small>
-            {/if}
-          </div>
+        {#if showArchives}
+          <div class="group-heading">Archives</div><div class="group-spacer"></div>
+          {#if showRow('Default archive name', settings.archiveName)}
+            <div class="form-label">Default archive name</div>
+            <div class="form-control">
+              <input type="text" bind:value={settings.archiveName} />
+            </div>
+          {/if}
+
+          {#if showRow('ZIP level', String(settings.archiveLevel))}
+            <div class="form-label">ZIP level</div>
+            <div class="form-control">
+              <input type="range" min="0" max="9" step="1" bind:value={settings.archiveLevel} />
+              <small>Level {settings.archiveLevel}</small>
+            </div>
+          {/if}
+
+          {#if showRow('After extract', settings.openDestAfterExtract ? 'enabled' : 'disabled')}
+            <div class="form-label">After extract</div>
+            <div class="form-control checkbox">
+              <input type="checkbox" bind:checked={settings.openDestAfterExtract} />
+              <span>Open destination after extract</span>
+            </div>
+          {/if}
+
+          {#if showRow('RAR')}
+            <div class="form-label">Note</div>
+            <div class="form-control">
+              <p class="note">RAR compressed entries are currently unsupported (fail fast).</p>
+            </div>
+          {/if}
         {/if}
 
-        {#if showRow('Start directory', settings.startDir)}
-          <div class="form-label">Start directory</div>
+        {#if showThumbnails}
+          <div class="group-heading">Thumbnails</div><div class="group-spacer"></div>
+          {#if showRow('Video thumbs')}
+            <div class="form-label">Video thumbs</div>
+            <div class="form-control checkbox">
+              <input type="checkbox" bind:checked={settings.videoThumbs} />
+              <span>Enable video thumbnails (requires ffmpeg)</span>
+            </div>
+          {/if}
+
+          {#if showRow('FFmpeg path', settings.ffmpegPath)}
+            <div class="form-label">FFmpeg path</div>
+            <div class="form-control">
+              <input
+                type="text"
+                bind:value={settings.ffmpegPath}
+                placeholder="auto-detect if empty"
+                disabled={thumbsDisabled}
+              />
+            </div>
+          {/if}
+
+          {#if showRow('Thumbnail cache size', String(settings.thumbCacheMb))}
+            <div class="form-label">Cache size</div>
+            <div class="form-control">
+              <input
+                type="range"
+                min="50"
+                max="1000"
+                step="50"
+                value={settings.thumbCacheMb}
+                on:input={onNumberInput('thumbCacheMb')}
+                disabled={thumbsDisabled}
+              />
+              <small>{settings.thumbCacheMb} MB</small>
+            </div>
+          {/if}
+
+          {#if showRow('Thumbnail timeout', String(settings.thumbTimeoutMs))}
+            <div class="form-label">Timeout</div>
+            <div class="form-control">
+              <input
+                type="range"
+                min="500"
+                max="10000"
+                step="100"
+                value={settings.thumbTimeoutMs}
+                on:input={onNumberInput('thumbTimeoutMs')}
+                disabled={thumbsDisabled}
+              />
+              <small>{settings.thumbTimeoutMs} ms</small>
+            </div>
+          {/if}
+        {/if}
+
+        {#if showShortcuts}
+          <div class="group-heading">Shortcuts</div><div class="group-spacer"></div>
+          {#each filteredShortcuts as shortcut (shortcut.action)}
+            <div class="form-label">{shortcut.action}</div>
+            <div class="form-control"><span class="key">{shortcut.keys}</span></div>
+          {/each}
+          <div class="form-label"></div>
           <div class="form-control">
-            <input type="text" bind:value={settings.startDir} placeholder="~ or /path" />
+            <button type="button" class="secondary">Edit shortcuts (coming soon)</button>
           </div>
         {/if}
 
-        {#if showRow('Confirm delete')}
-          <div class="form-label">Confirm delete</div>
-          <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.confirmDelete} />
-            <span>Ask before permanent delete</span>
-          </div>
+        {#if showPerformance}
+          <div class="group-heading">Performance</div><div class="group-spacer"></div>
+          {#if showRow('Mounts poll', String(settings.watcherPollMs))}
+            <div class="form-label">Mounts poll (ms)</div>
+            <div class="form-control">
+              <input
+                type="range"
+                min="500"
+                max="10000"
+                step="100"
+                value={settings.watcherPollMs}
+                on:input={onNumberInput('watcherPollMs')}
+              />
+              <small>{settings.watcherPollMs} ms</small>
+            </div>
+          {/if}
+
+          {#if showRow('IO concurrency', String(settings.ioConcurrency))}
+            <div class="form-label">IO concurrency</div>
+            <div class="form-control">
+              <input
+                type="range"
+                min="1"
+                max="16"
+                step="1"
+                value={settings.ioConcurrency}
+                on:input={onNumberInput('ioConcurrency')}
+              />
+              <small>{settings.ioConcurrency} workers</small>
+            </div>
+          {/if}
+
+          {#if showRow('Lazy scans')}
+            <div class="form-label">Lazy scans</div>
+            <div class="form-control checkbox">
+              <input type="checkbox" bind:checked={settings.lazyDirScan} />
+              <span>Defer deep scans in large folders</span>
+            </div>
+          {/if}
         {/if}
 
-        <div class="group-heading">Sorting</div><div class="group-spacer"></div>
-        {#if showRow('Sort field', settings.sortField)}
-          <div class="form-label">Default sort field</div>
+        {#if showInteraction}
+          <div class="group-heading">Interaction</div><div class="group-spacer"></div>
+          {#if showRow('Double-click speed', String(settings.doubleClickMs))}
+            <div class="form-label">Double-click speed</div>
+            <div class="form-control">
+              <input
+                type="range"
+                min="150"
+                max="600"
+                step="10"
+                value={settings.doubleClickMs}
+                on:input={onNumberInput('doubleClickMs')}
+              />
+              <small>{settings.doubleClickMs} ms</small>
+            </div>
+          {/if}
+
+          {#if showRow('Single click open', settings.singleClickOpen ? 'on' : 'off')}
+            <div class="form-label">Single click to open</div>
+            <div class="form-control checkbox">
+              <input type="checkbox" bind:checked={settings.singleClickOpen} />
+              <span>Open items on single click</span>
+            </div>
+          {/if}
+        {/if}
+
+        {#if showData}
+          <div class="group-heading">Data</div><div class="group-spacer"></div>
+          <div class="form-label">Clear thumbnail cache</div>
           <div class="form-control">
-            <ComboBox
-              bind:value={settings.sortField}
-              options={[
-                { value: 'name', label: 'Name' },
-                { value: 'size', label: 'Size' },
-                { value: 'date', label: 'Date modified' },
-              ] satisfies ComboOption[]}
-            />
+            <button type="button" class="secondary" on:click={() => clearStore('thumb-cache')}>Clear</button>
           </div>
-        {/if}
-
-        {#if showRow('Sort direction', settings.sortDirection)}
-          <div class="form-label">Sort direction</div>
-          <div class="form-control radios">
-            <label class="radio">
-              <input type="radio" name="sort-direction" value="asc" bind:group={settings.sortDirection} />
-              <span>Ascending</span>
-            </label>
-            <label class="radio">
-              <input type="radio" name="sort-direction" value="desc" bind:group={settings.sortDirection} />
-              <span>Descending</span>
-            </label>
-          </div>
-        {/if}
-
-        <div class="group-heading">Appearance</div><div class="group-spacer"></div>
-        {#if showRow('Theme', settings.theme)}
-          <div class="form-label">Theme</div>
+          <div class="form-label">Clear stars</div>
           <div class="form-control">
-            <ComboBox
-              bind:value={settings.theme}
-              options={[
-                { value: 'system', label: 'System' },
-                { value: 'light', label: 'Light' },
-                { value: 'dark', label: 'Dark' },
-              ] satisfies ComboOption[]}
-            />
+            <button type="button" class="secondary" on:click={() => clearStore('stars')}>Clear</button>
           </div>
-        {/if}
-
-        {#if showRow('Density', settings.density)}
-          <div class="form-label">Density</div>
+          <div class="form-label">Clear bookmarks</div>
           <div class="form-control">
-            <ComboBox
-              bind:value={settings.density}
-              options={[
-                { value: 'cozy', label: 'Cozy' },
-                { value: 'compact', label: 'Compact' },
-              ] satisfies ComboOption[]}
-            />
+            <button type="button" class="secondary" on:click={() => clearStore('bookmarks')}>Clear</button>
           </div>
-        {/if}
-
-        {#if showRow('Icon size', String(settings.iconSize))}
-          <div class="form-label">Icon size</div>
+          <div class="form-label">Clear recents</div>
           <div class="form-control">
-            <input type="range" min="16" max="64" bind:value={settings.iconSize} />
-            <small>{settings.iconSize}px</small>
+            <button type="button" class="secondary" on:click={() => clearStore('recents')}>Clear</button>
           </div>
         {/if}
 
-        <div class="group-heading">Archives</div><div class="group-spacer"></div>
-        {#if showRow('Default archive name', settings.archiveName)}
-          <div class="form-label">Default archive name</div>
-          <div class="form-control">
-            <input type="text" bind:value={settings.archiveName} />
-          </div>
+        {#if showAccessibility}
+          <div class="group-heading">Accessibility</div><div class="group-spacer"></div>
+          {#if showRow('High contrast')}
+            <div class="form-label">High contrast</div>
+            <div class="form-control checkbox">
+              <input type="checkbox" bind:checked={settings.highContrast} />
+              <span>Boost contrast for UI elements</span>
+            </div>
+          {/if}
+
+          {#if showRow('Scrollbar width', String(settings.scrollbarWidth))}
+            <div class="form-label">Scrollbar width</div>
+            <div class="form-control">
+              <input
+                type="range"
+                min="6"
+                max="16"
+                step="1"
+                value={settings.scrollbarWidth}
+                on:input={onNumberInput('scrollbarWidth')}
+              />
+              <small>{settings.scrollbarWidth} px</small>
+            </div>
+          {/if}
         {/if}
 
-        {#if showRow('ZIP level', String(settings.archiveLevel))}
-          <div class="form-label">ZIP level</div>
-          <div class="form-control">
-            <input type="range" min="0" max="9" step="1" bind:value={settings.archiveLevel} />
-            <small>Level {settings.archiveLevel}</small>
-          </div>
-        {/if}
+        {#if showAdvanced}
+          <div class="group-heading">Advanced</div><div class="group-spacer"></div>
+          {#if showRow('External tools', settings.externalTools)}
+            <div class="form-label">External tools</div>
+            <div class="form-control column">
+              <textarea rows="2" bind:value={settings.externalTools} placeholder="ffmpeg=/usr/bin/ffmpeg"></textarea>
+            </div>
+          {/if}
 
-        {#if showRow('After extract', settings.openDestAfterExtract ? 'enabled' : 'disabled')}
-          <div class="form-label">After extract</div>
-          <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.openDestAfterExtract} />
-            <span>Open destination after extract</span>
-          </div>
-        {/if}
-
-        {#if showRow('RAR')}
-          <div class="form-label">Note</div>
-          <div class="form-control">
-            <p class="note">RAR compressed entries are currently unsupported (fail fast).</p>
-          </div>
-        {/if}
-
-        <div class="group-heading">Thumbnails</div><div class="group-spacer"></div>
-        {#if showRow('Video thumbs')}
-          <div class="form-label">Video thumbs</div>
-          <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.videoThumbs} />
-            <span>Enable video thumbnails (requires ffmpeg)</span>
-          </div>
-        {/if}
-
-        {#if showRow('FFmpeg path', settings.ffmpegPath)}
-          <div class="form-label">FFmpeg path</div>
-          <div class="form-control">
-            <input
-              type="text"
-              bind:value={settings.ffmpegPath}
-              placeholder="auto-detect if empty"
-              disabled={thumbsDisabled}
-            />
-          </div>
-        {/if}
-
-        {#if showRow('Thumbnail cache size', String(settings.thumbCacheMb))}
-          <div class="form-label">Cache size</div>
-          <div class="form-control">
-            <input
-              type="range"
-              min="50"
-              max="1000"
-              step="50"
-              value={settings.thumbCacheMb}
-              on:input={onNumberInput('thumbCacheMb')}
-              disabled={thumbsDisabled}
-            />
-            <small>{settings.thumbCacheMb} MB</small>
-          </div>
-        {/if}
-
-        {#if showRow('Thumbnail timeout', String(settings.thumbTimeoutMs))}
-          <div class="form-label">Timeout</div>
-          <div class="form-control">
-            <input
-              type="range"
-              min="500"
-              max="10000"
-              step="100"
-              value={settings.thumbTimeoutMs}
-              on:input={onNumberInput('thumbTimeoutMs')}
-              disabled={thumbsDisabled}
-            />
-            <small>{settings.thumbTimeoutMs} ms</small>
-          </div>
-        {/if}
-
-        <div class="group-heading">Shortcuts</div><div class="group-spacer"></div>
-        {#each shortcuts as shortcut (shortcut.action)}
-          <div class="form-label">{shortcut.action}</div>
-          <div class="form-control"><span class="key">{shortcut.keys}</span></div>
-        {/each}
-        <div class="form-label"></div>
-        <div class="form-control">
-          <button type="button" class="secondary">Edit shortcuts (coming soon)</button>
-        </div>
-
-        <div class="group-heading">Performance</div><div class="group-spacer"></div>
-        {#if showRow('Mounts poll', String(settings.watcherPollMs))}
-          <div class="form-label">Mounts poll (ms)</div>
-          <div class="form-control">
-            <input
-              type="range"
-              min="500"
-              max="10000"
-              step="100"
-              value={settings.watcherPollMs}
-              on:input={onNumberInput('watcherPollMs')}
-            />
-            <small>{settings.watcherPollMs} ms</small>
-          </div>
-        {/if}
-
-        {#if showRow('IO concurrency', String(settings.ioConcurrency))}
-          <div class="form-label">IO concurrency</div>
-          <div class="form-control">
-            <input
-              type="range"
-              min="1"
-              max="16"
-              step="1"
-              value={settings.ioConcurrency}
-              on:input={onNumberInput('ioConcurrency')}
-            />
-            <small>{settings.ioConcurrency} workers</small>
-          </div>
-        {/if}
-
-        {#if showRow('Lazy scans')}
-          <div class="form-label">Lazy scans</div>
-          <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.lazyDirScan} />
-            <span>Defer deep scans in large folders</span>
-          </div>
-        {/if}
-
-        <div class="group-heading">Interaction</div><div class="group-spacer"></div>
-        {#if showRow('Double-click speed', String(settings.doubleClickMs))}
-          <div class="form-label">Double-click speed</div>
-          <div class="form-control">
-            <input
-              type="range"
-              min="150"
-              max="600"
-              step="10"
-              value={settings.doubleClickMs}
-              on:input={onNumberInput('doubleClickMs')}
-            />
-            <small>{settings.doubleClickMs} ms</small>
-          </div>
-        {/if}
-
-        {#if showRow('Single click open', settings.singleClickOpen ? 'on' : 'off')}
-          <div class="form-label">Single click to open</div>
-          <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.singleClickOpen} />
-            <span>Open items on single click</span>
-          </div>
-        {/if}
-
-        <div class="group-heading">Data</div><div class="group-spacer"></div>
-        <div class="form-label">Clear thumbnail cache</div>
-        <div class="form-control">
-          <button type="button" class="secondary" on:click={() => clearStore('thumb-cache')}>Clear</button>
-        </div>
-        <div class="form-label">Clear stars</div>
-        <div class="form-control">
-          <button type="button" class="secondary" on:click={() => clearStore('stars')}>Clear</button>
-        </div>
-        <div class="form-label">Clear bookmarks</div>
-        <div class="form-control">
-          <button type="button" class="secondary" on:click={() => clearStore('bookmarks')}>Clear</button>
-        </div>
-        <div class="form-label">Clear recents</div>
-        <div class="form-control">
-          <button type="button" class="secondary" on:click={() => clearStore('recents')}>Clear</button>
-        </div>
-
-        <div class="group-heading">Accessibility</div><div class="group-spacer"></div>
-        {#if showRow('High contrast')}
-          <div class="form-label">High contrast</div>
-          <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.highContrast} />
-            <span>Boost contrast for UI elements</span>
-          </div>
-        {/if}
-
-        {#if showRow('Scrollbar width', String(settings.scrollbarWidth))}
-          <div class="form-label">Scrollbar width</div>
-          <div class="form-control">
-            <input
-              type="range"
-              min="6"
-              max="16"
-              step="1"
-              value={settings.scrollbarWidth}
-              on:input={onNumberInput('scrollbarWidth')}
-            />
-            <small>{settings.scrollbarWidth} px</small>
-          </div>
-        {/if}
-
-        <div class="group-heading">Advanced</div><div class="group-spacer"></div>
-        {#if showRow('External tools', settings.externalTools)}
-          <div class="form-label">External tools</div>
-          <div class="form-control column">
-            <textarea rows="2" bind:value={settings.externalTools} placeholder="ffmpeg=/usr/bin/ffmpeg"></textarea>
-          </div>
-        {/if}
-
-        {#if showRow('Log level', settings.logLevel)}
-          <div class="form-label">Log level</div>
-          <div class="form-control">
-            <ComboBox
-              bind:value={settings.logLevel}
-              options={[
-                { value: 'error', label: 'Error' },
-                { value: 'warn', label: 'Warn' },
-                { value: 'info', label: 'Info' },
-                { value: 'debug', label: 'Debug' },
-              ] satisfies ComboOption[]}
-            />
-          </div>
+          {#if showRow('Log level', settings.logLevel)}
+            <div class="form-label">Log level</div>
+            <div class="form-control">
+              <ComboBox
+                bind:value={settings.logLevel}
+                options={[
+                  { value: 'error', label: 'Error' },
+                  { value: 'warn', label: 'Warn' },
+                  { value: 'info', label: 'Info' },
+                  { value: 'debug', label: 'Debug' },
+                ] satisfies ComboOption[]}
+              />
+            </div>
+          {/if}
         {/if}
       </div>
     </div>
