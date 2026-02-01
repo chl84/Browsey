@@ -171,7 +171,6 @@
   $: logLevelTexts = rowTexts('log level', 'error', 'warn', 'info', 'debug', settings.logLevel)
 
   $: showGeneral = rowMatches(needle, [
-    ...rowTexts('general'),
     ...defaultViewTexts,
     ...foldersFirstTexts,
     ...showHiddenTexts,
@@ -180,21 +179,11 @@
     ...confirmDeleteTexts,
   ])
 
-  $: showSorting = rowMatches(needle, [
-    ...rowTexts('sorting'),
-    ...sortFieldTexts,
-    ...sortDirectionTexts,
-  ])
+  $: showSorting = rowMatches(needle, [...sortFieldTexts, ...sortDirectionTexts])
 
-  $: showAppearance = rowMatches(needle, [
-    ...rowTexts('appearance'),
-    ...themeTexts,
-    ...densityTexts,
-    ...iconSizeTexts,
-  ])
+  $: showAppearance = rowMatches(needle, [...themeTexts, ...densityTexts, ...iconSizeTexts])
 
   $: showArchives = rowMatches(needle, [
-    ...rowTexts('archives'),
     ...archiveNameTexts,
     ...archiveLevelTexts,
     ...afterExtractTexts,
@@ -202,50 +191,32 @@
   ])
 
   $: showThumbnails = rowMatches(needle, [
-    ...rowTexts('thumbnails'),
     ...videoThumbsTexts,
     ...ffmpegPathTexts,
     ...thumbCacheTexts,
     ...thumbTimeoutTexts,
   ])
 
-  $: showShortcuts = rowMatches(needle, [
-    ...shortcutSectionTexts,
-    ...filteredShortcuts.flatMap((s) => rowTexts(s.action, s.keys)),
-  ])
+  $: showShortcuts = rowMatches(needle, filteredShortcuts.flatMap((s) => rowTexts(s.action, s.keys)))
 
   $: showPerformance = rowMatches(needle, [
-    ...rowTexts('performance'),
     ...watcherPollTexts,
     ...ioConcurrencyTexts,
     ...lazyScansTexts,
   ])
 
-  $: showInteraction = rowMatches(needle, [
-    ...rowTexts('interaction'),
-    ...doubleClickTexts,
-    ...singleClickTexts,
-  ])
+  $: showInteraction = rowMatches(needle, [...doubleClickTexts, ...singleClickTexts])
 
   $: showData = rowMatches(needle, [
-    ...rowTexts('data'),
     ...clearThumbTexts,
     ...clearStarsTexts,
     ...clearBookmarksTexts,
     ...clearRecentsTexts,
   ])
 
-  $: showAccessibility = rowMatches(needle, [
-    ...rowTexts('accessibility'),
-    ...highContrastTexts,
-    ...scrollbarWidthTexts,
-  ])
+  $: showAccessibility = rowMatches(needle, [...highContrastTexts, ...scrollbarWidthTexts])
 
-  $: showAdvanced = rowMatches(needle, [
-    ...rowTexts('advanced'),
-    ...externalToolsTexts,
-    ...logLevelTexts,
-  ])
+  $: showAdvanced = rowMatches(needle, [...externalToolsTexts, ...logLevelTexts])
   $: hiddenFilesLastDisabled = !settings.showHidden
   $: thumbsDisabled = !settings.videoThumbs
 
