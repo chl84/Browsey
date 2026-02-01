@@ -165,6 +165,8 @@ fn main() {
             load_sort_field,
             store_sort_direction,
             load_sort_direction,
+            store_density,
+            load_density,
             dir_sizes,
             eject_drive,
             context_menu_actions,

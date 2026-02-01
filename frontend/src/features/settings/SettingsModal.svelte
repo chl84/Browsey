@@ -2,7 +2,7 @@
   import ModalShell from '../../ui/ModalShell.svelte'
   import ComboBox, { type ComboOption } from '../../ui/ComboBox.svelte'
   import { onMount, onDestroy } from 'svelte'
-  import type { DefaultSortField } from '../explorer/types'
+  import type { DefaultSortField, Density } from '../explorer/types'
 
   export let open = false
   export let onClose: () => void
@@ -11,6 +11,7 @@
   export let hiddenFilesLastValue = false
   export let foldersFirstValue = true
   export let confirmDeleteValue = true
+  export let densityValue: Density = 'cozy'
   export let sortFieldValue: DefaultSortField = 'name'
   export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
@@ -22,13 +23,13 @@
   export let onChangeSortField: (value: typeof sortFieldValue) => void = () => {}
   export let onChangeSortDirection: (value: typeof sortDirectionValue) => void = () => {}
   export let onChangeStartDir: (value: string) => void = () => {}
+  export let onChangeDensity: (value: Density) => void = () => {}
 
   let filter = ''
   let needle = ''
 
   type SortField = DefaultSortField
   type SortDirection = 'asc' | 'desc'
-  type Density = 'cozy' | 'compact'
   type LogLevel = 'error' | 'warn' | 'info' | 'debug'
 
   type Settings = {
@@ -139,6 +140,9 @@
   }
   $: if (settings.sortDirection !== sortDirectionValue) {
     settings = { ...settings, sortDirection: sortDirectionValue }
+  }
+  $: if (settings.density !== densityValue) {
+    settings = { ...settings, density: densityValue }
   }
 
   const rowTexts = (
@@ -488,7 +492,12 @@
           <div class="form-label">Density</div>
           <div class="form-control">
               <ComboBox
-                bind:value={settings.density}
+                value={settings.density}
+                on:change={(e) => {
+                  const next = e.detail as Density
+                  settings = { ...settings, density: next }
+                  onChangeDensity(next)
+                }}
                 options={[
                   { value: 'cozy', label: 'Cozy' },
                   { value: 'compact', label: 'Compact' },

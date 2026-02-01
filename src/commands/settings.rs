@@ -127,3 +127,24 @@ pub fn load_sort_direction() -> Result<Option<String>, String> {
         _ => None,
     })
 }
+
+#[tauri::command]
+pub fn store_density(value: String) -> Result<(), String> {
+    match value.as_str() {
+        "cozy" | "compact" => {
+            let conn = crate::db::open()?;
+            crate::db::set_setting_string(&conn, "density", &value)
+        }
+        _ => Err("invalid density".into()),
+    }
+}
+
+#[tauri::command]
+pub fn load_density() -> Result<Option<String>, String> {
+    let conn = crate::db::open()?;
+    let value = crate::db::get_setting_string(&conn, "density")?;
+    Ok(match value.as_deref() {
+        Some("cozy") | Some("compact") => value,
+        _ => None,
+    })
+}

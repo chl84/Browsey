@@ -25,7 +25,7 @@
   } from './features/explorer/services/clipboard'
   import { undoAction, redoAction } from './features/explorer/services/history'
 import { deleteEntry, deleteEntries, moveToTrashMany } from './features/explorer/services/trash'
-  import type { Entry, Partition, SortField } from './features/explorer/types'
+import type { Entry, Partition, SortField, Density } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
   import { setClipboardState, clearClipboardState } from './features/explorer/stores/clipboardState'
@@ -154,12 +154,14 @@ let inputFocused = false
     foldersFirst,
     confirmDelete,
     startDirPref,
+    density,
     sortFieldPref,
     sortDirectionPref,
     sortField,
     sortDirection,
     setSortFieldPref,
     setSortDirectionPref,
+    setDensityPref,
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
@@ -519,6 +521,13 @@ let inputFocused = false
     bookmarkModalOpen = state.open
     bookmarkName = state.name
     bookmarkCandidate = state.candidate as Entry | null
+  }
+  $: {
+    const d = $density
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('density-cozy', 'density-compact')
+      document.body.classList.add(`density-${d}`)
+    }
   }
   $: {
     if (bookmarkModalOpen) {
@@ -2396,6 +2405,7 @@ let inputFocused = false
     hiddenFilesLastValue={$hiddenFilesLast}
     foldersFirstValue={$foldersFirst}
     confirmDeleteValue={$confirmDelete}
+    densityValue={$density}
     startDirValue={$startDirPref ?? '~'}
     sortFieldValue={$sortFieldPref}
     sortDirectionValue={$sortDirectionPref}
@@ -2409,6 +2419,7 @@ let inputFocused = false
     onToggleFoldersFirst={toggleFoldersFirst}
     onToggleConfirmDelete={toggleConfirmDelete}
     onChangeStartDir={setStartDirPref}
+    onChangeDensity={setDensityPref}
     onChangeSortField={setSortFieldPref}
     onChangeSortDirection={setSortDirectionPref}
     onClose={() => (settingsOpen = false)}

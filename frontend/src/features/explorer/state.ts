@@ -10,6 +10,7 @@ import type {
   SortDirection,
   SortField,
   DefaultSortField,
+  Density,
 } from './types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files'
@@ -30,6 +31,8 @@ import {
   storeSortField,
   loadSortDirection,
   storeSortDirection,
+  loadDensity,
+  storeDensity,
 } from './services/settings'
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
@@ -85,6 +88,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const sortDirectionPref = writable<SortDirection>('asc')
   const sortField = writable<SortField>('name')
   const sortDirection = writable<SortDirection>('asc')
+  const density = writable<Density>('cozy')
   const bookmarks = writable<{ label: string; path: string }[]>([])
   const partitions = writable<Partition[]>([])
   const history = writable<Location[]>([])
@@ -664,6 +668,22 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const loadDensityPref = async () => {
+    try {
+      const saved = await loadDensity()
+      if (saved === 'cozy' || saved === 'compact') {
+        density.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load density setting', err)
+    }
+  }
+
+  const setDensityPref = (value: Density) => {
+    density.set(value)
+    void storeDensity(value)
+  }
+
   const loadFoldersFirstPref = async () => {
     try {
       const saved = await loadFoldersFirst()
@@ -698,6 +718,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     showHidden,
     visibleEntries,
     filteredEntries,
+    density,
     load,
     loadRecent,
     loadStarred,
@@ -727,9 +748,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadConfirmDeletePref,
     loadSortPref,
     loadFoldersFirstPref,
+    loadDensityPref,
     loadSavedWidths,
     persistWidths,
     setSortFieldPref,
     setSortDirectionPref,
+    setDensityPref,
   }
 }
