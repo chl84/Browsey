@@ -149,6 +149,8 @@ fn main() {
             list_trash,
             store_column_widths,
             load_saved_column_widths,
+            store_show_hidden,
+            load_show_hidden,
             dir_sizes,
             eject_drive,
             context_menu_actions,

@@ -30,7 +30,7 @@ pub use meta::entry_times_cmd;
 pub use open_with::{list_open_with_apps, open_with};
 pub use permissions::{get_permissions, set_permissions};
 pub use search::{search, search_stream};
-pub use settings::{load_saved_column_widths, store_column_widths};
+pub use settings::{load_saved_column_widths, load_show_hidden, store_column_widths, store_show_hidden};
 pub use system_clipboard::clear_system_clipboard;
 pub use system_clipboard::copy_paths_to_system_clipboard;
 pub use system_clipboard::system_clipboard_paths;
