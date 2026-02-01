@@ -9,3 +9,8 @@ export const loadHiddenFilesLast = () => invoke<boolean | null>('load_hidden_fil
 
 export const storeHiddenFilesLast = (value: boolean) =>
   invoke<void>('store_hidden_files_last', { value })
+
+export const loadFoldersFirst = () => invoke<boolean | null>('load_folders_first')
+
+export const storeFoldersFirst = (value: boolean) =>
+  invoke<void>('store_folders_first', { value })
