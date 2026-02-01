@@ -76,6 +76,11 @@
   }
 
   let settings: Settings = { ...DEFAULT_SETTINGS }
+
+  const onNumberInput = <K extends keyof Settings>(key: K) => (event: Event) => {
+    const target = event.currentTarget as HTMLInputElement
+    settings = { ...settings, [key]: Number(target.value) }
+  }
   const shortcuts = [
     { action: 'Search', keys: 'Ctrl+F' },
     { action: 'Toggle view', keys: 'Ctrl+G' },
@@ -323,7 +328,14 @@
         {#if showRow('Thumbnail cache size', String(settings.thumbCacheMb))}
           <div class="form-label">Cache size</div>
           <div class="form-control">
-            <input type="range" min="50" max="1000" step="50" bind:value={settings.thumbCacheMb} />
+            <input
+              type="range"
+              min="50"
+              max="1000"
+              step="50"
+              value={settings.thumbCacheMb}
+              on:input={onNumberInput('thumbCacheMb')}
+            />
             <small>{settings.thumbCacheMb} MB</small>
           </div>
         {/if}
@@ -331,7 +343,14 @@
         {#if showRow('Thumbnail timeout', String(settings.thumbTimeoutMs))}
           <div class="form-label">Timeout</div>
           <div class="form-control">
-            <input type="range" min="500" max="10000" step="100" bind:value={settings.thumbTimeoutMs} />
+            <input
+              type="range"
+              min="500"
+              max="10000"
+              step="100"
+              value={settings.thumbTimeoutMs}
+              on:input={onNumberInput('thumbTimeoutMs')}
+            />
             <small>{settings.thumbTimeoutMs} ms</small>
           </div>
         {/if}
@@ -350,7 +369,14 @@
         {#if showRow('Mounts poll', String(settings.watcherPollMs))}
           <div class="form-label">Mounts poll (ms)</div>
           <div class="form-control">
-            <input type="range" min="500" max="10000" step="100" bind:value={settings.watcherPollMs} />
+            <input
+              type="range"
+              min="500"
+              max="10000"
+              step="100"
+              value={settings.watcherPollMs}
+              on:input={onNumberInput('watcherPollMs')}
+            />
             <small>{settings.watcherPollMs} ms</small>
           </div>
         {/if}
@@ -358,7 +384,14 @@
         {#if showRow('IO concurrency', String(settings.ioConcurrency))}
           <div class="form-label">IO concurrency</div>
           <div class="form-control">
-            <input type="range" min="1" max="16" step="1" bind:value={settings.ioConcurrency} />
+            <input
+              type="range"
+              min="1"
+              max="16"
+              step="1"
+              value={settings.ioConcurrency}
+              on:input={onNumberInput('ioConcurrency')}
+            />
             <small>{settings.ioConcurrency} workers</small>
           </div>
         {/if}
@@ -375,7 +408,14 @@
         {#if showRow('Double-click speed', String(settings.doubleClickMs))}
           <div class="form-label">Double-click speed</div>
           <div class="form-control">
-            <input type="range" min="150" max="600" step="10" bind:value={settings.doubleClickMs} />
+            <input
+              type="range"
+              min="150"
+              max="600"
+              step="10"
+              value={settings.doubleClickMs}
+              on:input={onNumberInput('doubleClickMs')}
+            />
             <small>{settings.doubleClickMs} ms</small>
           </div>
         {/if}
@@ -418,7 +458,14 @@
         {#if showRow('Scrollbar width', String(settings.scrollbarWidth))}
           <div class="form-label">Scrollbar width</div>
           <div class="form-control">
-            <input type="range" min="6" max="16" step="1" bind:value={settings.scrollbarWidth} />
+            <input
+              type="range"
+              min="6"
+              max="16"
+              step="1"
+              value={settings.scrollbarWidth}
+              on:input={onNumberInput('scrollbarWidth')}
+            />
             <small>{settings.scrollbarWidth} px</small>
           </div>
         {/if}
