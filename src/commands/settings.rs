@@ -25,3 +25,15 @@ pub fn load_show_hidden() -> Result<Option<bool>, String> {
     let conn = crate::db::open()?;
     crate::db::get_setting_bool(&conn, "showHidden")
 }
+
+#[tauri::command]
+pub fn store_hidden_files_last(value: bool) -> Result<(), String> {
+    let conn = crate::db::open()?;
+    crate::db::set_setting_bool(&conn, "hiddenFilesLast", value)
+}
+
+#[tauri::command]
+pub fn load_hidden_files_last() -> Result<Option<bool>, String> {
+    let conn = crate::db::open()?;
+    crate::db::get_setting_bool(&conn, "hiddenFilesLast")
+}

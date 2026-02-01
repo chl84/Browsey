@@ -17,7 +17,16 @@ export const useExplorerData = (options: Options = {}) => {
     onCurrentChange: options.onCurrentChange,
   })
 
-  const { load, loadSavedWidths, loadBookmarks, loadPartitions, loadShowHiddenPref, entries, current } = explorer
+  const {
+    load,
+    loadSavedWidths,
+    loadBookmarks,
+    loadPartitions,
+    loadShowHiddenPref,
+    loadHiddenFilesLastPref,
+    entries,
+    current,
+  } = explorer
 
   let partitionsPoll: ReturnType<typeof setInterval> | null = null
   let unlistenDirChanged: UnlistenFn | null = null
@@ -29,7 +38,7 @@ export const useExplorerData = (options: Options = {}) => {
     void loadSavedWidths()
     void loadBookmarks()
     void loadPartitions()
-    await loadShowHiddenPref()
+    await Promise.all([loadShowHiddenPref(), loadHiddenFilesLastPref()])
 
     const pollMs = options.partitionsPollMs ?? 2000
     if (pollMs > 0) {

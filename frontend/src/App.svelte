@@ -148,6 +148,7 @@
     searchMode,
     searchActive,
     showHidden,
+    hiddenFilesLast,
     sortField,
     sortDirection,
     bookmarks: bookmarksStore,
@@ -160,6 +161,7 @@
     runSearch,
     toggleMode,
     toggleShowHidden,
+    toggleHiddenFilesLast,
     changeSort,
     open,
     toggleStar,
@@ -2340,7 +2342,9 @@
   <SettingsModal
     open
     showHiddenValue={$showHidden}
+    hiddenFilesLastValue={$hiddenFilesLast}
     onToggleShowHidden={toggleShowHidden}
+    onToggleHiddenFilesLast={toggleHiddenFilesLast}
     onClose={() => (settingsOpen = false)}
   />
 {/if}

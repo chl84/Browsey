@@ -14,7 +14,7 @@ import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files'
 import { listDir, listRecent, listStarred, listTrash, watchDir, listMounts, searchStream } from './services/listing'
 import { storeColumnWidths, loadSavedColumnWidths } from './services/layout'
-import { loadShowHidden, storeShowHidden } from './services/settings'
+import { loadShowHidden, storeShowHidden, loadHiddenFilesLast, storeHiddenFilesLast } from './services/settings'
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
 
@@ -61,6 +61,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const searchMode = writable(false)
   const searchActive = writable(false)
   const showHidden = writable(true)
+  const hiddenFilesLast = writable(false)
   const sortField = writable<SortField>('name')
   const sortDirection = writable<SortDirection>('asc')
   const bookmarks = writable<{ label: string; path: string }[]>([])
@@ -68,9 +69,23 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const history = writable<Location[]>([])
   const historyIndex = writable(-1)
 
-  const visibleEntries = derived([entries, showHidden], ([$entries, $showHidden]) => {
-    if ($showHidden) return $entries
-    return $entries.filter((e) => !(e.hidden === true || e.name.startsWith('.')))
+  const visibleEntries = derived([entries, showHidden, hiddenFilesLast], ([$entries, $showHidden, $hiddenLast]) => {
+    const base = $showHidden
+      ? $entries
+      : $entries.filter((e) => !(e.hidden === true || e.name.startsWith('.')))
+    if ($showHidden && $hiddenLast) {
+      const hiddenList: Entry[] = []
+      const visibleList: Entry[] = []
+      for (const e of base) {
+        if (e.hidden === true || e.name.startsWith('.')) {
+          hiddenList.push(e)
+        } else {
+          visibleList.push(e)
+        }
+      }
+      return [...visibleList, ...hiddenList]
+    }
+    return base
   })
 
   let lastNeedle = ''
@@ -338,6 +353,14 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     })
   }
 
+  const toggleHiddenFilesLast = () => {
+    hiddenFilesLast.update((v) => {
+      const next = !v
+      void storeHiddenFilesLast(next)
+      return next
+    })
+  }
+
   const goUp = () => {
     searchActive.set(false)
     return load(parentPath(get(current)))
@@ -507,6 +530,17 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const loadHiddenFilesLastPref = async () => {
+    try {
+      const saved = await loadHiddenFilesLast()
+      if (typeof saved === 'boolean') {
+        hiddenFilesLast.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load hiddenFilesLast setting', err)
+    }
+  }
+
   return {
     cols,
     gridTemplate,
@@ -517,6 +551,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     filter,
     searchMode,
     searchActive,
+    hiddenFilesLast,
     sortField,
     sortDirection,
     bookmarks,
@@ -532,6 +567,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     toggleMode,
     changeSort,
     toggleShowHidden,
+    toggleHiddenFilesLast,
     refreshForSort,
     open,
     toggleStar,
@@ -544,6 +580,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadBookmarks,
     loadPartitions,
     loadShowHiddenPref,
+    loadHiddenFilesLastPref,
     loadSavedWidths,
     persistWidths,
   }
