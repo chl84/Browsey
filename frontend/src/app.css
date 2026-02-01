@@ -1,4 +1,15 @@
 :root {
+  /* Layout defaults (override per density) */
+  --row-height: 32px;
+  --row-padding-y: 4px;
+  --row-padding-x: 10px;
+  --row-font-size: 14px;
+  --list-icon-size: 18px;
+  --grid-gap: 6px;
+  --grid-card-width: 128px;
+  --grid-row-height: 136px;
+  --grid-thumb-size: 96px;
+
   --bg: #101010;
   --bg-alt: #0d0d0d;
   --bg-raised: #1f1f1f;
@@ -198,10 +209,11 @@ body.density-cozy {
   --row-padding-y: 4px;
   --row-padding-x: 10px;
   --row-font-size: 14px;
-  --icon-size: 24px;
+  --list-icon-size: 18px;
   --grid-gap: 6px;
-  --grid-card-width: 128px;
-  --grid-row-height: 136px;
+  --grid-card-width: 120px;
+  --grid-row-height: 126px;
+  --grid-thumb-size: 90px;
 }
 
 /* Placeholder for upcoming compact values; keeps selectors in place */
@@ -210,10 +222,11 @@ body.density-compact {
   --row-padding-y: 2px;
   --row-padding-x: 8px;
   --row-font-size: 13px;
-  --icon-size: 20px;
+  --list-icon-size: 16px;
   --grid-gap: 4px;
-  --grid-card-width: 116px;
-  --grid-row-height: 120px;
+  --grid-card-width: 112px;
+  --grid-row-height: 116px;
+  --grid-thumb-size: 80px;
 }
 
 #app {

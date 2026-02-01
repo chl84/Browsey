@@ -294,8 +294,8 @@
   }
 
   .icon {
-    width: 96px;
-    height: 96px;
+    width: var(--grid-thumb-size);
+    height: var(--grid-thumb-size);
     object-fit: contain;
     display: block;
   }
