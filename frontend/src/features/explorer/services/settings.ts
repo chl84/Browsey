@@ -19,3 +19,8 @@ export const loadDefaultView = () => invoke<'list' | 'grid' | null>('load_defaul
 
 export const storeDefaultView = (value: 'list' | 'grid') =>
   invoke<void>('store_default_view', { value })
+
+export const loadStartDir = () => invoke<string | null>('load_start_dir')
+
+export const storeStartDir = (value: string) =>
+  invoke<void>('store_start_dir', { value })

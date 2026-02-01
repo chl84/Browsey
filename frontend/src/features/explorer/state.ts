@@ -21,6 +21,8 @@ import {
   storeHiddenFilesLast,
   loadFoldersFirst,
   storeFoldersFirst,
+  loadStartDir,
+  storeStartDir,
 } from './services/settings'
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
@@ -70,6 +72,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const showHidden = writable(true)
   const hiddenFilesLast = writable(false)
   const foldersFirst = writable(true)
+  const startDirPref = writable<string | null>(null)
   const sortField = writable<SortField>('name')
   const sortDirection = writable<SortDirection>('asc')
   const bookmarks = writable<{ label: string; path: string }[]>([])
@@ -404,7 +407,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const goHome = () => {
     searchActive.set(false)
-    return load(undefined)
+    const pref = (get(startDirPref) ?? '').trim()
+    return load(pref || undefined)
   }
 
   const goToPath = (path: string) => {
@@ -577,6 +581,23 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const loadStartDirPref = async () => {
+    try {
+      const saved = await loadStartDir()
+      if (typeof saved === 'string' && saved.trim().length > 0) {
+        startDirPref.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load startDir setting', err)
+    }
+  }
+
+  const setStartDirPref = (value: string) => {
+    const next = value.trim()
+    startDirPref.set(next || null)
+    void storeStartDir(next)
+  }
+
   const loadFoldersFirstPref = async () => {
     try {
       const saved = await loadFoldersFirst()
@@ -600,6 +621,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     searchActive,
     hiddenFilesLast,
     foldersFirst,
+    startDirPref,
     sortField,
     sortDirection,
     bookmarks,
@@ -617,6 +639,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     toggleShowHidden,
     toggleHiddenFilesLast,
     toggleFoldersFirst,
+    setStartDirPref,
     refreshForSort,
     open,
     toggleStar,
@@ -630,6 +653,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadPartitions,
     loadShowHiddenPref,
     loadHiddenFilesLastPref,
+    loadStartDirPref,
     loadFoldersFirstPref,
     loadSavedWidths,
     persistWidths,

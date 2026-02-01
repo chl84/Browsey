@@ -61,3 +61,27 @@ pub fn load_default_view() -> Result<Option<String>, String> {
     let conn = crate::db::open()?;
     crate::db::get_setting_string(&conn, "defaultView")
 }
+
+#[tauri::command]
+pub fn store_start_dir(value: String) -> Result<(), String> {
+    let conn = crate::db::open()?;
+    crate::db::set_setting_string(&conn, "startDir", &value)
+}
+
+#[tauri::command]
+pub fn load_start_dir() -> Result<Option<String>, String> {
+    let conn = crate::db::open()?;
+    crate::db::get_setting_string(&conn, "startDir")
+}
+
+#[tauri::command]
+pub fn store_default_view(value: String) -> Result<(), String> {
+    let conn = crate::db::open()?;
+    crate::db::set_setting_string(&conn, "defaultView", &value)
+}
+
+#[tauri::command]
+pub fn load_default_view() -> Result<Option<String>, String> {
+    let conn = crate::db::open()?;
+    crate::db::get_setting_string(&conn, "defaultView")
+}

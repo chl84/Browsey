@@ -152,6 +152,7 @@ let inputFocused = false
     showHidden,
     hiddenFilesLast,
     foldersFirst,
+    startDirPref,
     sortField,
     sortDirection,
     bookmarks: bookmarksStore,
@@ -166,6 +167,7 @@ let inputFocused = false
     toggleShowHidden,
     toggleHiddenFilesLast,
     toggleFoldersFirst,
+    setStartDirPref,
     changeSort,
     open,
     toggleStar,
@@ -2355,6 +2357,7 @@ let inputFocused = false
     showHiddenValue={$showHidden}
     hiddenFilesLastValue={$hiddenFilesLast}
     foldersFirstValue={$foldersFirst}
+    startDirValue={$startDirPref ?? '~'}
     onChangeDefaultView={(val) => {
       viewMode = val
       defaultViewPref = val
@@ -2363,6 +2366,7 @@ let inputFocused = false
     onToggleShowHidden={toggleShowHidden}
     onToggleHiddenFilesLast={toggleHiddenFilesLast}
     onToggleFoldersFirst={toggleFoldersFirst}
+    onChangeStartDir={setStartDirPref}
     onClose={() => (settingsOpen = false)}
   />
 {/if}

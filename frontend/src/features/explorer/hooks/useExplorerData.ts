@@ -25,8 +25,10 @@ export const useExplorerData = (options: Options = {}) => {
     loadShowHiddenPref,
     loadHiddenFilesLastPref,
     loadFoldersFirstPref,
+    loadStartDirPref,
     entries,
     current,
+    startDirPref,
   } = explorer
 
   let partitionsPoll: ReturnType<typeof setInterval> | null = null
@@ -39,7 +41,7 @@ export const useExplorerData = (options: Options = {}) => {
     void loadSavedWidths()
     void loadBookmarks()
     void loadPartitions()
-    await Promise.all([loadShowHiddenPref(), loadHiddenFilesLastPref(), loadFoldersFirstPref()])
+    await Promise.all([loadShowHiddenPref(), loadHiddenFilesLastPref(), loadFoldersFirstPref(), loadStartDirPref()])
 
     const pollMs = options.partitionsPollMs ?? 2000
     if (pollMs > 0) {
@@ -48,7 +50,8 @@ export const useExplorerData = (options: Options = {}) => {
       }, pollMs)
     }
 
-    await load(options.initialPath)
+    const initial = options.initialPath ?? (get(startDirPref) ?? undefined)
+    await load(initial)
 
     unlistenDirChanged = await listen<string>('dir-changed', (event) => {
       const curr = get(current)

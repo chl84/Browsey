@@ -9,10 +9,12 @@
   export let showHiddenValue = true
   export let hiddenFilesLastValue = false
   export let foldersFirstValue = true
+  export let startDirValue = '~'
   export let onChangeDefaultView: (value: 'list' | 'grid') => void = () => {}
   export let onToggleShowHidden: (value: boolean) => void = () => {}
   export let onToggleHiddenFilesLast: (value: boolean) => void = () => {}
   export let onToggleFoldersFirst: (value: boolean) => void = () => {}
+  export let onChangeStartDir: (value: string) => void = () => {}
 
   let filter = ''
   let needle = ''
@@ -121,6 +123,9 @@
   }
   $: if (settings.foldersFirst !== foldersFirstValue) {
     settings = { ...settings, foldersFirst: foldersFirstValue }
+  }
+  $: if (settings.startDir !== startDirValue) {
+    settings = { ...settings, startDir: startDirValue }
   }
 
   const rowTexts = (
@@ -380,7 +385,16 @@
         {#if rowMatches(needle, startDirTexts)}
           <div class="form-label">Start directory</div>
           <div class="form-control">
-            <input type="text" bind:value={settings.startDir} placeholder="~ or /path" />
+            <input
+              type="text"
+              value={settings.startDir}
+              placeholder="~ or /path"
+              on:input={(e) => {
+                const next = (e.currentTarget as HTMLInputElement).value
+                settings = { ...settings, startDir: next }
+                onChangeStartDir(next)
+              }}
+            />
           </div>
         {/if}
 
