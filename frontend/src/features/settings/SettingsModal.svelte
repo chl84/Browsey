@@ -101,85 +101,151 @@
   ]
 
   $: needle = filter.trim().toLowerCase()
-  const rowMatches = (
-    n: string,
-    ...texts: (string | number | boolean | null | undefined)[]
+
+  const rowTexts = (
+    ...parts: (string | number | boolean | null | undefined | (string | number | boolean | null | undefined)[])[]
   ) => {
-    if (!n) return true
-    return texts.some((t) => {
-      if (t === null || t === undefined) return false
-      return String(t).toLowerCase().includes(n)
-    })
+    const out: string[] = []
+    const push = (p: any) => {
+      if (p === null || p === undefined) return
+      if (Array.isArray(p)) {
+        p.forEach(push)
+      } else {
+        out.push(String(p).toLowerCase())
+      }
+    }
+    parts.forEach(push)
+    return out
   }
 
-  let showRow: (...texts: (string | number | boolean | null | undefined)[]) => boolean
-  $: showRow = (...texts) => rowMatches(needle, ...texts)
+  const rowMatches = (texts: string[]) => {
+    if (!needle) return true
+    return texts.some((t) => t.includes(needle))
+  }
 
-  $: filteredShortcuts = shortcuts.filter((s) => rowMatches(needle, s.action, s.keys))
+  const showRow = (texts: string[]) => rowMatches(texts)
 
-  $: showGeneral =
-    rowMatches(needle, 'general') ||
-    showRow('Default view', 'list', 'grid', settings.defaultView) ||
-    showRow('Folders first') ||
-    showRow('Show hidden') ||
-    showRow('Hidden files last') ||
-    showRow('Start directory', settings.startDir) ||
-    showRow('Confirm delete')
+  $: defaultViewTexts = rowTexts('default view', 'list', 'grid', settings.defaultView)
+  $: foldersFirstTexts = rowTexts('folders first', 'show folders before files')
+  $: showHiddenTexts = rowTexts('show hidden', 'show hidden files by default')
+  $: hiddenFilesLastTexts = rowTexts('hidden files last', 'place hidden items at the end')
+  $: startDirTexts = rowTexts('start directory', settings.startDir, '~ or /path')
+  $: confirmDeleteTexts = rowTexts('confirm delete', 'ask before permanent delete')
 
-  $: showSorting =
-    rowMatches(needle, 'sorting', 'sort') ||
-    showRow('Sort field', settings.sortField) ||
-    showRow('Sort direction', settings.sortDirection)
+  $: sortFieldTexts = rowTexts('default sort field', 'sort field', 'name', 'size', 'date modified', settings.sortField)
+  $: sortDirectionTexts = rowTexts('sort direction', 'ascending', 'descending', settings.sortDirection)
 
-  $: showAppearance =
-    rowMatches(needle, 'appearance', 'theme', 'density', 'icon') ||
-    showRow('Theme', settings.theme) ||
-    showRow('Density', settings.density) ||
-    showRow('Icon size', String(settings.iconSize))
+  $: themeTexts = rowTexts('theme', 'system', 'light', 'dark', settings.theme)
+  $: densityTexts = rowTexts('density', 'cozy', 'compact', settings.density)
+  $: iconSizeTexts = rowTexts('icon size', `${settings.iconSize}px`, settings.iconSize)
 
-  $: showArchives =
-    rowMatches(needle, 'archives', 'archive', 'zip', 'rar') ||
-    showRow('Default archive name', settings.archiveName) ||
-    showRow('ZIP level', String(settings.archiveLevel)) ||
-    showRow('After extract', settings.openDestAfterExtract ? 'enabled' : 'disabled') ||
-    showRow('RAR')
+  $: archiveNameTexts = rowTexts('default archive name', settings.archiveName)
+  $: archiveLevelTexts = rowTexts('zip level', `level ${settings.archiveLevel}`, settings.archiveLevel)
+  $: afterExtractTexts = rowTexts('after extract', 'open destination after extract', settings.openDestAfterExtract ? 'enabled' : 'disabled')
+  $: rarNoteTexts = rowTexts('note', 'rar compressed entries are currently unsupported (fail fast)', 'rar')
 
-  $: showThumbnails =
-    rowMatches(needle, 'thumbnails', 'thumbs', 'ffmpeg', 'video') ||
-    showRow('Video thumbs') ||
-    showRow('FFmpeg path', settings.ffmpegPath) ||
-    showRow('Thumbnail cache size', String(settings.thumbCacheMb)) ||
-    showRow('Thumbnail timeout', String(settings.thumbTimeoutMs))
+  $: videoThumbsTexts = rowTexts('video thumbs', 'enable video thumbnails', 'requires ffmpeg', settings.videoThumbs ? 'on' : 'off')
+  $: ffmpegPathTexts = rowTexts('ffmpeg path', settings.ffmpegPath || 'auto-detect if empty', 'ffmpeg')
+  $: thumbCacheTexts = rowTexts('cache size', 'thumbnail cache size', `${settings.thumbCacheMb} mb`)
+  $: thumbTimeoutTexts = rowTexts('timeout', 'thumbnail timeout', `${settings.thumbTimeoutMs} ms`)
 
-  $: showShortcuts = filteredShortcuts.length > 0 || rowMatches(needle, 'shortcuts', 'keys')
+  $: filteredShortcuts = shortcuts.filter((s) => rowMatches(rowTexts('shortcuts', 'keys', s.action, s.keys)))
+  $: shortcutSectionTexts = rowTexts('shortcuts')
 
-  $: showPerformance =
-    rowMatches(needle, 'performance', 'watcher', 'poll', 'io', 'concurrency') ||
-    showRow('Mounts poll', String(settings.watcherPollMs)) ||
-    showRow('IO concurrency', String(settings.ioConcurrency)) ||
-    showRow('Lazy scans')
+  $: watcherPollTexts = rowTexts('mounts poll', 'watcher poll', `${settings.watcherPollMs} ms`)
+  $: ioConcurrencyTexts = rowTexts('io concurrency', `${settings.ioConcurrency} workers`, settings.ioConcurrency)
+  $: lazyScansTexts = rowTexts('lazy scans', 'defer deep scans in large folders')
 
-  $: showInteraction =
-    rowMatches(needle, 'interaction', 'click') ||
-    showRow('Double-click speed', String(settings.doubleClickMs)) ||
-    showRow('Single click open', settings.singleClickOpen ? 'on' : 'off')
+  $: doubleClickTexts = rowTexts('double-click speed', `${settings.doubleClickMs} ms`, 'double click speed')
+  $: singleClickTexts = rowTexts('single click to open', settings.singleClickOpen ? 'on' : 'off', 'single click open')
 
-  $: showData =
-    rowMatches(needle, 'data', 'clear', 'cache', 'stars', 'bookmarks', 'recents') ||
-    showRow('Clear thumbnail cache') ||
-    showRow('Clear stars') ||
-    showRow('Clear bookmarks') ||
-    showRow('Clear recents')
+  $: clearThumbTexts = rowTexts('clear thumbnail cache', 'clear', 'thumbnail cache')
+  $: clearStarsTexts = rowTexts('clear stars', 'clear')
+  $: clearBookmarksTexts = rowTexts('clear bookmarks', 'clear')
+  $: clearRecentsTexts = rowTexts('clear recents', 'clear')
 
-  $: showAccessibility =
-    rowMatches(needle, 'accessibility', 'contrast', 'scrollbar') ||
-    showRow('High contrast') ||
-    showRow('Scrollbar width', String(settings.scrollbarWidth))
+  $: highContrastTexts = rowTexts('high contrast', 'boost contrast for ui elements')
+  $: scrollbarWidthTexts = rowTexts('scrollbar width', `${settings.scrollbarWidth} px`, settings.scrollbarWidth)
 
-  $: showAdvanced =
-    rowMatches(needle, 'advanced', 'external tools', 'log') ||
-    showRow('External tools', settings.externalTools) ||
-    showRow('Log level', settings.logLevel)
+  $: externalToolsTexts = rowTexts('external tools', settings.externalTools, 'ffmpeg=/usr/bin/ffmpeg')
+  $: logLevelTexts = rowTexts('log level', 'error', 'warn', 'info', 'debug', settings.logLevel)
+
+  $: showGeneral = rowMatches([
+    ...rowTexts('general'),
+    ...defaultViewTexts,
+    ...foldersFirstTexts,
+    ...showHiddenTexts,
+    ...hiddenFilesLastTexts,
+    ...startDirTexts,
+    ...confirmDeleteTexts,
+  ])
+
+  $: showSorting = rowMatches([
+    ...rowTexts('sorting'),
+    ...sortFieldTexts,
+    ...sortDirectionTexts,
+  ])
+
+  $: showAppearance = rowMatches([
+    ...rowTexts('appearance'),
+    ...themeTexts,
+    ...densityTexts,
+    ...iconSizeTexts,
+  ])
+
+  $: showArchives = rowMatches([
+    ...rowTexts('archives'),
+    ...archiveNameTexts,
+    ...archiveLevelTexts,
+    ...afterExtractTexts,
+    ...rarNoteTexts,
+  ])
+
+  $: showThumbnails = rowMatches([
+    ...rowTexts('thumbnails'),
+    ...videoThumbsTexts,
+    ...ffmpegPathTexts,
+    ...thumbCacheTexts,
+    ...thumbTimeoutTexts,
+  ])
+
+  $: showShortcuts = rowMatches([
+    ...shortcutSectionTexts,
+    ...filteredShortcuts.flatMap((s) => rowTexts(s.action, s.keys)),
+  ])
+
+  $: showPerformance = rowMatches([
+    ...rowTexts('performance'),
+    ...watcherPollTexts,
+    ...ioConcurrencyTexts,
+    ...lazyScansTexts,
+  ])
+
+  $: showInteraction = rowMatches([
+    ...rowTexts('interaction'),
+    ...doubleClickTexts,
+    ...singleClickTexts,
+  ])
+
+  $: showData = rowMatches([
+    ...rowTexts('data'),
+    ...clearThumbTexts,
+    ...clearStarsTexts,
+    ...clearBookmarksTexts,
+    ...clearRecentsTexts,
+  ])
+
+  $: showAccessibility = rowMatches([
+    ...rowTexts('accessibility'),
+    ...highContrastTexts,
+    ...scrollbarWidthTexts,
+  ])
+
+  $: showAdvanced = rowMatches([
+    ...rowTexts('advanced'),
+    ...externalToolsTexts,
+    ...logLevelTexts,
+  ])
   $: hiddenFilesLastDisabled = !settings.showHidden
   $: thumbsDisabled = !settings.videoThumbs
 
@@ -235,7 +301,7 @@
       <div class="form-rows settings-table">
         {#if showGeneral}
           <div class="group-heading">General</div><div class="group-spacer"></div>
-        {#if showRow('Default view', 'list', 'grid', settings.defaultView)}
+        {#if showRow(defaultViewTexts)}
           <div class="form-label">Default view</div>
           <div class="form-control radios">
             <label class="radio">
@@ -249,26 +315,26 @@
             </div>
           {/if}
 
-          {#if showRow('Folders first')}
-            <div class="form-label">Folders first</div>
-            <div class="form-control checkbox">
-              <input type="checkbox" bind:checked={settings.foldersFirst} />
-              <span>Show folders before files</span>
-            </div>
-          {/if}
+        {#if showRow(foldersFirstTexts)}
+          <div class="form-label">Folders first</div>
+          <div class="form-control checkbox">
+            <input type="checkbox" bind:checked={settings.foldersFirst} />
+            <span>Show folders before files</span>
+          </div>
+        {/if}
 
-          {#if showRow('Show hidden')}
-            <div class="form-label">Show hidden</div>
-            <div class="form-control checkbox">
-              <input type="checkbox" bind:checked={settings.showHidden} />
-              <span>Show hidden files by default</span>
-            </div>
-          {/if}
+        {#if showRow(showHiddenTexts)}
+          <div class="form-label">Show hidden</div>
+          <div class="form-control checkbox">
+            <input type="checkbox" bind:checked={settings.showHidden} />
+            <span>Show hidden files by default</span>
+          </div>
+        {/if}
 
-          {#if showRow('Hidden files last')}
-            <div class="form-label">Hidden files last</div>
-            <div class="form-control checkbox">
-              <input type="checkbox" bind:checked={settings.hiddenFilesLast} disabled={hiddenFilesLastDisabled} />
+        {#if showRow(hiddenFilesLastTexts)}
+          <div class="form-label">Hidden files last</div>
+          <div class="form-control checkbox">
+            <input type="checkbox" bind:checked={settings.hiddenFilesLast} disabled={hiddenFilesLastDisabled} />
               <span>Place hidden items at the end</span>
               {#if hiddenFilesLastDisabled}
                 <small>Enable "Show hidden" to change this</small>
@@ -276,28 +342,28 @@
             </div>
           {/if}
 
-          {#if showRow('Start directory', settings.startDir)}
-            <div class="form-label">Start directory</div>
-            <div class="form-control">
-              <input type="text" bind:value={settings.startDir} placeholder="~ or /path" />
-            </div>
-          {/if}
+        {#if showRow(startDirTexts)}
+          <div class="form-label">Start directory</div>
+          <div class="form-control">
+            <input type="text" bind:value={settings.startDir} placeholder="~ or /path" />
+          </div>
+        {/if}
 
-          {#if showRow('Confirm delete')}
-            <div class="form-label">Confirm delete</div>
-            <div class="form-control checkbox">
-              <input type="checkbox" bind:checked={settings.confirmDelete} />
-              <span>Ask before permanent delete</span>
-            </div>
-          {/if}
+        {#if showRow(confirmDeleteTexts)}
+          <div class="form-label">Confirm delete</div>
+          <div class="form-control checkbox">
+            <input type="checkbox" bind:checked={settings.confirmDelete} />
+            <span>Ask before permanent delete</span>
+          </div>
+        {/if}
         {/if}
 
         {#if showSorting}
           <div class="group-heading">Sorting</div><div class="group-spacer"></div>
-          {#if showRow('Sort field', settings.sortField)}
-            <div class="form-label">Default sort field</div>
-            <div class="form-control">
-              <ComboBox
+        {#if showRow(sortFieldTexts)}
+          <div class="form-label">Default sort field</div>
+          <div class="form-control">
+            <ComboBox
                 bind:value={settings.sortField}
                 options={[
                   { value: 'name', label: 'Name' },
@@ -308,9 +374,9 @@
             </div>
           {/if}
 
-          {#if showRow('Sort direction', settings.sortDirection)}
-            <div class="form-label">Sort direction</div>
-            <div class="form-control radios">
+        {#if showRow(sortDirectionTexts)}
+          <div class="form-label">Sort direction</div>
+          <div class="form-control radios">
               <label class="radio">
                 <input type="radio" name="sort-direction" value="asc" bind:group={settings.sortDirection} />
                 <span>Ascending</span>
@@ -325,10 +391,10 @@
 
         {#if showAppearance}
           <div class="group-heading">Appearance</div><div class="group-spacer"></div>
-          {#if showRow('Theme', settings.theme)}
-            <div class="form-label">Theme</div>
-            <div class="form-control">
-              <ComboBox
+        {#if showRow(themeTexts)}
+          <div class="form-label">Theme</div>
+          <div class="form-control">
+            <ComboBox
                 bind:value={settings.theme}
                 options={[
                   { value: 'system', label: 'System' },
@@ -339,9 +405,9 @@
             </div>
           {/if}
 
-          {#if showRow('Density', settings.density)}
-            <div class="form-label">Density</div>
-            <div class="form-control">
+        {#if showRow(densityTexts)}
+          <div class="form-label">Density</div>
+          <div class="form-control">
               <ComboBox
                 bind:value={settings.density}
                 options={[
@@ -352,9 +418,9 @@
             </div>
           {/if}
 
-          {#if showRow('Icon size', String(settings.iconSize))}
-            <div class="form-label">Icon size</div>
-            <div class="form-control">
+        {#if showRow(iconSizeTexts)}
+          <div class="form-label">Icon size</div>
+          <div class="form-control">
               <input type="range" min="16" max="64" bind:value={settings.iconSize} />
               <small>{settings.iconSize}px</small>
             </div>
@@ -363,51 +429,51 @@
 
         {#if showArchives}
           <div class="group-heading">Archives</div><div class="group-spacer"></div>
-          {#if showRow('Default archive name', settings.archiveName)}
-            <div class="form-label">Default archive name</div>
-            <div class="form-control">
-              <input type="text" bind:value={settings.archiveName} />
-            </div>
-          {/if}
+        {#if showRow(archiveNameTexts)}
+          <div class="form-label">Default archive name</div>
+          <div class="form-control">
+            <input type="text" bind:value={settings.archiveName} />
+          </div>
+        {/if}
 
-          {#if showRow('ZIP level', String(settings.archiveLevel))}
-            <div class="form-label">ZIP level</div>
-            <div class="form-control">
-              <input type="range" min="0" max="9" step="1" bind:value={settings.archiveLevel} />
-              <small>Level {settings.archiveLevel}</small>
-            </div>
-          {/if}
+        {#if showRow(archiveLevelTexts)}
+          <div class="form-label">ZIP level</div>
+          <div class="form-control">
+            <input type="range" min="0" max="9" step="1" bind:value={settings.archiveLevel} />
+            <small>Level {settings.archiveLevel}</small>
+          </div>
+        {/if}
 
-          {#if showRow('After extract', settings.openDestAfterExtract ? 'enabled' : 'disabled')}
-            <div class="form-label">After extract</div>
-            <div class="form-control checkbox">
-              <input type="checkbox" bind:checked={settings.openDestAfterExtract} />
-              <span>Open destination after extract</span>
-            </div>
-          {/if}
+        {#if showRow(afterExtractTexts)}
+          <div class="form-label">After extract</div>
+          <div class="form-control checkbox">
+            <input type="checkbox" bind:checked={settings.openDestAfterExtract} />
+            <span>Open destination after extract</span>
+          </div>
+        {/if}
 
-          {#if showRow('RAR')}
-            <div class="form-label">Note</div>
-            <div class="form-control">
-              <p class="note">RAR compressed entries are currently unsupported (fail fast).</p>
+        {#if showRow(rarNoteTexts)}
+          <div class="form-label">Note</div>
+          <div class="form-control">
+            <p class="note">RAR compressed entries are currently unsupported (fail fast).</p>
             </div>
           {/if}
         {/if}
 
         {#if showThumbnails}
           <div class="group-heading">Thumbnails</div><div class="group-spacer"></div>
-          {#if showRow('Video thumbs')}
-            <div class="form-label">Video thumbs</div>
-            <div class="form-control checkbox">
-              <input type="checkbox" bind:checked={settings.videoThumbs} />
-              <span>Enable video thumbnails (requires ffmpeg)</span>
-            </div>
-          {/if}
+        {#if showRow(videoThumbsTexts)}
+          <div class="form-label">Video thumbs</div>
+          <div class="form-control checkbox">
+            <input type="checkbox" bind:checked={settings.videoThumbs} />
+            <span>Enable video thumbnails (requires ffmpeg)</span>
+          </div>
+        {/if}
 
-          {#if showRow('FFmpeg path', settings.ffmpegPath)}
-            <div class="form-label">FFmpeg path</div>
-            <div class="form-control">
-              <input
+        {#if showRow(ffmpegPathTexts)}
+          <div class="form-label">FFmpeg path</div>
+          <div class="form-control">
+            <input
                 type="text"
                 bind:value={settings.ffmpegPath}
                 placeholder="auto-detect if empty"
@@ -416,10 +482,10 @@
             </div>
           {/if}
 
-          {#if showRow('Thumbnail cache size', String(settings.thumbCacheMb))}
-            <div class="form-label">Cache size</div>
-            <div class="form-control">
-              <input
+        {#if showRow(thumbCacheTexts)}
+          <div class="form-label">Cache size</div>
+          <div class="form-control">
+            <input
                 type="range"
                 min="50"
                 max="1000"
@@ -432,9 +498,9 @@
             </div>
           {/if}
 
-          {#if showRow('Thumbnail timeout', String(settings.thumbTimeoutMs))}
-            <div class="form-label">Timeout</div>
-            <div class="form-control">
+        {#if showRow(thumbTimeoutTexts)}
+          <div class="form-label">Timeout</div>
+          <div class="form-control">
               <input
                 type="range"
                 min="500"
@@ -463,10 +529,10 @@
 
         {#if showPerformance}
           <div class="group-heading">Performance</div><div class="group-spacer"></div>
-          {#if showRow('Mounts poll', String(settings.watcherPollMs))}
-            <div class="form-label">Mounts poll (ms)</div>
-            <div class="form-control">
-              <input
+        {#if showRow(watcherPollTexts)}
+          <div class="form-label">Mounts poll (ms)</div>
+          <div class="form-control">
+            <input
                 type="range"
                 min="500"
                 max="10000"
@@ -478,9 +544,9 @@
             </div>
           {/if}
 
-          {#if showRow('IO concurrency', String(settings.ioConcurrency))}
-            <div class="form-label">IO concurrency</div>
-            <div class="form-control">
+        {#if showRow(ioConcurrencyTexts)}
+          <div class="form-label">IO concurrency</div>
+          <div class="form-control">
               <input
                 type="range"
                 min="1"
@@ -493,9 +559,9 @@
             </div>
           {/if}
 
-          {#if showRow('Lazy scans')}
-            <div class="form-label">Lazy scans</div>
-            <div class="form-control checkbox">
+        {#if showRow(lazyScansTexts)}
+          <div class="form-label">Lazy scans</div>
+          <div class="form-control checkbox">
               <input type="checkbox" bind:checked={settings.lazyDirScan} />
               <span>Defer deep scans in large folders</span>
             </div>
@@ -504,10 +570,10 @@
 
         {#if showInteraction}
           <div class="group-heading">Interaction</div><div class="group-spacer"></div>
-          {#if showRow('Double-click speed', String(settings.doubleClickMs))}
-            <div class="form-label">Double-click speed</div>
-            <div class="form-control">
-              <input
+        {#if showRow(doubleClickTexts)}
+          <div class="form-label">Double-click speed</div>
+          <div class="form-control">
+            <input
                 type="range"
                 min="150"
                 max="600"
@@ -519,9 +585,9 @@
             </div>
           {/if}
 
-          {#if showRow('Single click open', settings.singleClickOpen ? 'on' : 'off')}
-            <div class="form-label">Single click to open</div>
-            <div class="form-control checkbox">
+        {#if showRow(singleClickTexts)}
+          <div class="form-label">Single click to open</div>
+          <div class="form-control checkbox">
               <input type="checkbox" bind:checked={settings.singleClickOpen} />
               <span>Open items on single click</span>
             </div>
@@ -550,18 +616,18 @@
 
         {#if showAccessibility}
           <div class="group-heading">Accessibility</div><div class="group-spacer"></div>
-          {#if showRow('High contrast')}
-            <div class="form-label">High contrast</div>
-            <div class="form-control checkbox">
-              <input type="checkbox" bind:checked={settings.highContrast} />
-              <span>Boost contrast for UI elements</span>
-            </div>
-          {/if}
+        {#if showRow(highContrastTexts)}
+          <div class="form-label">High contrast</div>
+          <div class="form-control checkbox">
+            <input type="checkbox" bind:checked={settings.highContrast} />
+            <span>Boost contrast for UI elements</span>
+          </div>
+        {/if}
 
-          {#if showRow('Scrollbar width', String(settings.scrollbarWidth))}
-            <div class="form-label">Scrollbar width</div>
-            <div class="form-control">
-              <input
+        {#if showRow(scrollbarWidthTexts)}
+          <div class="form-label">Scrollbar width</div>
+          <div class="form-control">
+            <input
                 type="range"
                 min="6"
                 max="16"
@@ -576,16 +642,16 @@
 
         {#if showAdvanced}
           <div class="group-heading">Advanced</div><div class="group-spacer"></div>
-          {#if showRow('External tools', settings.externalTools)}
-            <div class="form-label">External tools</div>
-            <div class="form-control column">
-              <textarea rows="2" bind:value={settings.externalTools} placeholder="ffmpeg=/usr/bin/ffmpeg"></textarea>
-            </div>
-          {/if}
+        {#if showRow(externalToolsTexts)}
+          <div class="form-label">External tools</div>
+          <div class="form-control column">
+            <textarea rows="2" bind:value={settings.externalTools} placeholder="ffmpeg=/usr/bin/ffmpeg"></textarea>
+          </div>
+        {/if}
 
-          {#if showRow('Log level', settings.logLevel)}
-            <div class="form-label">Log level</div>
-            <div class="form-control">
+        {#if showRow(logLevelTexts)}
+          <div class="form-label">Log level</div>
+          <div class="form-control">
               <ComboBox
                 bind:value={settings.logLevel}
                 options={[
