@@ -28,6 +28,7 @@ export const useExplorerData = (options: Options = {}) => {
     loadStartDirPref,
     loadConfirmDeletePref,
     loadSortPref,
+    loadDensityPref,
     entries,
     current,
     startDirPref,
@@ -52,6 +53,7 @@ export const useExplorerData = (options: Options = {}) => {
       loadStartDirPref(),
       loadConfirmDeletePref(),
       loadSortPref(),
+      loadDensityPref(),
     ])
 
     const pollMs = options.partitionsPollMs ?? 2000

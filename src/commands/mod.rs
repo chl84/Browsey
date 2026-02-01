@@ -35,7 +35,7 @@ pub use settings::{
     load_show_hidden, load_start_dir, store_column_widths, store_confirm_delete, store_default_view,
     store_folders_first, store_hidden_files_last, store_show_hidden, store_start_dir,
     load_confirm_delete, store_sort_field, load_sort_field, store_sort_direction,
-    load_sort_direction,
+    load_sort_direction, store_density, load_density,
 };
 pub use system_clipboard::clear_system_clipboard;
 pub use system_clipboard::copy_paths_to_system_clipboard;

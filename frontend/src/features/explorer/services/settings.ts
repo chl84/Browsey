@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { DefaultSortField } from '../types'
+import type { DefaultSortField, Density } from '../types'
 
 export const loadShowHidden = () => invoke<boolean | null>('load_show_hidden')
 
@@ -40,3 +40,7 @@ export const loadSortDirection = () => invoke<'asc' | 'desc' | null>('load_sort_
 
 export const storeSortDirection = (value: 'asc' | 'desc') =>
   invoke<void>('store_sort_direction', { value })
+
+export const loadDensity = () => invoke<Density | null>('load_density')
+
+export const storeDensity = (value: Density) => invoke<void>('store_density', { value })
