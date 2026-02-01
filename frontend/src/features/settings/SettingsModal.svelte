@@ -6,7 +6,9 @@
   export let open = false
   export let onClose: () => void
   export let showHiddenValue = true
+  export let hiddenFilesLastValue = false
   export let onToggleShowHidden: (value: boolean) => void = () => {}
+  export let onToggleHiddenFilesLast: (value: boolean) => void = () => {}
 
   let filter = ''
   let needle = ''
@@ -106,6 +108,9 @@
 
   $: if (settings.showHidden !== showHiddenValue) {
     settings = { ...settings, showHidden: showHiddenValue }
+  }
+  $: if (settings.hiddenFilesLast !== hiddenFilesLastValue) {
+    settings = { ...settings, hiddenFilesLast: hiddenFilesLastValue }
   }
 
   const rowTexts = (
@@ -319,12 +324,21 @@
         {#if rowMatches(needle, hiddenFilesLastTexts)}
           <div class="form-label">Hidden files last</div>
           <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.hiddenFilesLast} disabled={hiddenFilesLastDisabled} />
-              <span>Place hidden items at the end</span>
-              {#if hiddenFilesLastDisabled}
-                <small>Enable "Show hidden" to change this</small>
-              {/if}
-            </div>
+            <input
+              type="checkbox"
+              checked={settings.hiddenFilesLast}
+              disabled={hiddenFilesLastDisabled}
+              on:change={(e) => {
+                const next = (e.currentTarget as HTMLInputElement).checked
+                settings = { ...settings, hiddenFilesLast: next }
+                onToggleHiddenFilesLast(next)
+              }}
+            />
+            <span>Place hidden items at the end</span>
+            {#if hiddenFilesLastDisabled}
+              <small>Enable "Show hidden" to change this</small>
+            {/if}
+          </div>
           {/if}
 
         {#if rowMatches(needle, startDirTexts)}

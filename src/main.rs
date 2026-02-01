@@ -151,6 +151,8 @@ fn main() {
             load_saved_column_widths,
             store_show_hidden,
             load_show_hidden,
+            store_hidden_files_last,
+            load_hidden_files_last,
             dir_sizes,
             eject_drive,
             context_menu_actions,
