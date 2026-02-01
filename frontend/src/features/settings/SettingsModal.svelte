@@ -111,8 +111,9 @@
       return String(t).toLowerCase().includes(n)
     })
   }
-  const showRow = (...texts: (string | number | boolean | null | undefined)[]) =>
-    rowMatches(needle, ...texts)
+
+  let showRow: (...texts: (string | number | boolean | null | undefined)[]) => boolean
+  $: showRow = (...texts) => rowMatches(needle, ...texts)
 
   $: filteredShortcuts = shortcuts.filter((s) => rowMatches(needle, s.action, s.keys))
 
