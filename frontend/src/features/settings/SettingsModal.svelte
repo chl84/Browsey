@@ -140,6 +140,8 @@
   $: showData = rowMatches('thumbnail cache', 'stars', 'bookmarks', 'recents')
   $: showAccessibility = rowMatches(settings.highContrast, settings.scrollbarWidth)
   $: showAdvanced = rowMatches(settings.externalTools, settings.logLevel)
+  $: hiddenFilesLastDisabled = !settings.showHidden
+  $: thumbsDisabled = !settings.videoThumbs
 
   const clearStore = (target: 'thumb-cache' | 'stars' | 'bookmarks' | 'recents') => {
     console.log(`TODO: clear ${target}`)
@@ -225,8 +227,11 @@
         {#if showRow('Hidden files last')}
           <div class="form-label">Hidden files last</div>
           <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.hiddenFilesLast} />
+            <input type="checkbox" bind:checked={settings.hiddenFilesLast} disabled={hiddenFilesLastDisabled} />
             <span>Place hidden items at the end</span>
+            {#if hiddenFilesLastDisabled}
+              <small>Enable "Show hidden" to change this</small>
+            {/if}
           </div>
         {/if}
 
@@ -353,7 +358,12 @@
         {#if showRow('FFmpeg path', settings.ffmpegPath)}
           <div class="form-label">FFmpeg path</div>
           <div class="form-control">
-            <input type="text" bind:value={settings.ffmpegPath} placeholder="auto-detect if empty" />
+            <input
+              type="text"
+              bind:value={settings.ffmpegPath}
+              placeholder="auto-detect if empty"
+              disabled={thumbsDisabled}
+            />
           </div>
         {/if}
 
@@ -367,6 +377,7 @@
               step="50"
               value={settings.thumbCacheMb}
               on:input={onNumberInput('thumbCacheMb')}
+              disabled={thumbsDisabled}
             />
             <small>{settings.thumbCacheMb} MB</small>
           </div>
@@ -382,6 +393,7 @@
               step="100"
               value={settings.thumbTimeoutMs}
               on:input={onNumberInput('thumbTimeoutMs')}
+              disabled={thumbsDisabled}
             />
             <small>{settings.thumbTimeoutMs} ms</small>
           </div>
