@@ -301,3 +301,24 @@ pub fn get_setting_bool(conn: &Connection, key: &str) -> Result<Option<bool>, St
         Ok(None)
     }
 }
+
+pub fn set_setting_string(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+        params![key, value],
+    )
+    .map_err(|e| format!("Failed to store setting {key}: {e}"))?;
+    Ok(())
+}
+
+pub fn get_setting_string(conn: &Connection, key: &str) -> Result<Option<String>, String> {
+    let val: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Failed to read setting {key}: {e}"))?;
+    Ok(val)
+}

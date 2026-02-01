@@ -5,9 +5,11 @@
 
   export let open = false
   export let onClose: () => void
+  export let defaultViewValue: 'list' | 'grid' = 'list'
   export let showHiddenValue = true
   export let hiddenFilesLastValue = false
   export let foldersFirstValue = true
+  export let onChangeDefaultView: (value: 'list' | 'grid') => void = () => {}
   export let onToggleShowHidden: (value: boolean) => void = () => {}
   export let onToggleHiddenFilesLast: (value: boolean) => void = () => {}
   export let onToggleFoldersFirst: (value: boolean) => void = () => {}
@@ -108,6 +110,9 @@
 
   $: needle = filter.trim().toLowerCase()
 
+  $: if (settings.defaultView !== defaultViewValue) {
+    settings = { ...settings, defaultView: defaultViewValue }
+  }
   $: if (settings.showHidden !== showHiddenValue) {
     settings = { ...settings, showHidden: showHiddenValue }
   }
@@ -292,15 +297,33 @@
           <div class="form-label">Default view</div>
           <div class="form-control radios">
             <label class="radio">
-                <input type="radio" name="default-view" value="list" bind:group={settings.defaultView} />
-                <span>List</span>
-              </label>
-              <label class="radio">
-                <input type="radio" name="default-view" value="grid" bind:group={settings.defaultView} />
-                <span>Grid</span>
-              </label>
-            </div>
-          {/if}
+              <input
+                type="radio"
+                name="default-view"
+                value="list"
+                checked={settings.defaultView === 'list'}
+                on:change={() => {
+                  settings = { ...settings, defaultView: 'list' }
+                  onChangeDefaultView('list')
+                }}
+              />
+              <span>List</span>
+            </label>
+            <label class="radio">
+              <input
+                type="radio"
+                name="default-view"
+                value="grid"
+                checked={settings.defaultView === 'grid'}
+                on:change={() => {
+                  settings = { ...settings, defaultView: 'grid' }
+                  onChangeDefaultView('grid')
+                }}
+              />
+              <span>Grid</span>
+            </label>
+          </div>
+        {/if}
 
         {#if rowMatches(needle, foldersFirstTexts)}
           <div class="form-label">Folders first</div>
