@@ -28,7 +28,6 @@
 
   type SortField = DefaultSortField
   type SortDirection = 'asc' | 'desc'
-  type Theme = 'system' | 'light' | 'dark'
   type Density = 'cozy' | 'compact'
   type LogLevel = 'error' | 'warn' | 'info' | 'debug'
 
@@ -41,7 +40,6 @@
     confirmDelete: boolean
     sortField: SortField
     sortDirection: SortDirection
-    theme: Theme
     density: Density
     iconSize: number
     archiveName: string
@@ -71,7 +69,6 @@
     confirmDelete: true,
     sortField: 'name',
     sortDirection: 'asc',
-    theme: 'system',
     density: 'cozy',
     iconSize: 24,
     archiveName: 'Archive.zip',
@@ -175,7 +172,6 @@
   $: sortFieldTexts = rowTexts('default sort field', 'sort field', 'name', 'type', 'modified', 'size', settings.sortField)
   $: sortDirectionTexts = rowTexts('sort direction', 'ascending', 'descending', settings.sortDirection)
 
-  $: themeTexts = rowTexts('theme', 'system', 'light', 'dark', settings.theme)
   $: densityTexts = rowTexts('density', 'cozy', 'compact', settings.density)
   $: iconSizeTexts = rowTexts('icon size', `${settings.iconSize}px`, settings.iconSize)
 
@@ -223,7 +219,7 @@
 
   $: showSorting = rowMatches(needle, [...sortFieldTexts, ...sortDirectionTexts])
 
-  $: showAppearance = rowMatches(needle, [...themeTexts, ...densityTexts, ...iconSizeTexts])
+  $: showAppearance = rowMatches(needle, [...densityTexts, ...iconSizeTexts])
 
   $: showArchives = rowMatches(needle, [
     ...archiveNameTexts,
@@ -488,20 +484,6 @@
 
         {#if showAppearance}
           <div class="group-heading">Appearance</div><div class="group-spacer"></div>
-        {#if rowMatches(needle, themeTexts)}
-          <div class="form-label">Theme</div>
-          <div class="form-control">
-            <ComboBox
-                bind:value={settings.theme}
-                options={[
-                  { value: 'system', label: 'System' },
-                  { value: 'light', label: 'Light' },
-                  { value: 'dark', label: 'Dark' },
-                ] satisfies ComboOption[]}
-              />
-            </div>
-          {/if}
-
         {#if rowMatches(needle, densityTexts)}
           <div class="form-label">Density</div>
           <div class="form-control">
