@@ -59,10 +59,11 @@ import { loadDefaultView, storeDefaultView } from './features/explorer/services/
   }
   type ViewMode = 'list' | 'grid'
   let sidebarCollapsed = false
-  let pathInput = ''
-  let mode: 'address' | 'filter' | 'search' = 'address'
-  let viewMode: ViewMode = 'list'
-  let inputFocused = false
+let pathInput = ''
+let mode: 'address' | 'filter' | 'search' = 'address'
+let viewMode: ViewMode = 'list'
+let defaultViewPref: ViewMode = 'list'
+let inputFocused = false
   let rowsElRef: HTMLDivElement | null = null
   let gridElRef: HTMLDivElement | null = null
   let headerElRef: HTMLDivElement | null = null
@@ -250,7 +251,6 @@ import { loadDefaultView, storeDefaultView } from './features/explorer/services/
         gridCols: getGridCols(),
       })
     }
-    void storeDefaultView(viewMode)
     void focusCurrentView()
   }
 
@@ -2137,6 +2137,7 @@ import { loadDefaultView, storeDefaultView } from './features/explorer/services/
 
       const prefView = await loadDefaultView().catch(() => null)
       if (prefView === 'list' || prefView === 'grid') {
+        defaultViewPref = prefView
         viewMode = prefView
       }
 
@@ -2350,12 +2351,13 @@ import { loadDefaultView, storeDefaultView } from './features/explorer/services/
 {#if settingsOpen}
   <SettingsModal
     open
-    defaultViewValue={viewMode}
+    defaultViewValue={defaultViewPref}
     showHiddenValue={$showHidden}
     hiddenFilesLastValue={$hiddenFilesLast}
     foldersFirstValue={$foldersFirst}
     onChangeDefaultView={(val) => {
       viewMode = val
+      defaultViewPref = val
       void storeDefaultView(val)
     }}
     onToggleShowHidden={toggleShowHidden}
