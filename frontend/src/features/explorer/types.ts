@@ -25,6 +25,7 @@ export type Listing = {
 }
 
 export type SortField = 'name' | 'type' | 'modified' | 'size' | 'starred'
+export type DefaultSortField = Exclude<SortField, 'starred'>
 export type SortDirection = 'asc' | 'desc'
 
 export type Location =

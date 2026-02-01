@@ -27,9 +27,12 @@ export const useExplorerData = (options: Options = {}) => {
     loadFoldersFirstPref,
     loadStartDirPref,
     loadConfirmDeletePref,
+    loadSortPref,
     entries,
     current,
     startDirPref,
+    sortFieldPref,
+    sortDirectionPref,
   } = explorer
 
   let partitionsPoll: ReturnType<typeof setInterval> | null = null
@@ -48,6 +51,7 @@ export const useExplorerData = (options: Options = {}) => {
       loadFoldersFirstPref(),
       loadStartDirPref(),
       loadConfirmDeletePref(),
+      loadSortPref(),
     ])
 
     const pollMs = options.partitionsPollMs ?? 2000
