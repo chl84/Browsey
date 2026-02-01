@@ -5,6 +5,8 @@
 
   export let open = false
   export let onClose: () => void
+  export let showHiddenValue = true
+  export let onToggleShowHidden: (value: boolean) => void = () => {}
 
   let filter = ''
   let needle = ''
@@ -101,6 +103,10 @@
   ]
 
   $: needle = filter.trim().toLowerCase()
+
+  $: if (settings.showHidden !== showHiddenValue) {
+    settings = { ...settings, showHidden: showHiddenValue }
+  }
 
   const rowTexts = (
     ...parts: (string | number | boolean | null | undefined | (string | number | boolean | null | undefined)[])[]
@@ -297,7 +303,15 @@
         {#if rowMatches(needle, showHiddenTexts)}
           <div class="form-label">Show hidden</div>
           <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.showHidden} />
+            <input
+              type="checkbox"
+              checked={settings.showHidden}
+              on:change={(e) => {
+                const next = (e.currentTarget as HTMLInputElement).checked
+                settings = { ...settings, showHidden: next }
+                onToggleShowHidden(next)
+              }}
+            />
             <span>Show hidden files by default</span>
           </div>
         {/if}

@@ -2337,5 +2337,10 @@
   onOverwrite={() => resolveConflicts('overwrite')}
 />
 {#if settingsOpen}
-  <SettingsModal open onClose={() => (settingsOpen = false)} />
+  <SettingsModal
+    open
+    showHiddenValue={$showHidden}
+    onToggleShowHidden={toggleShowHidden}
+    onClose={() => (settingsOpen = false)}
+  />
 {/if}
