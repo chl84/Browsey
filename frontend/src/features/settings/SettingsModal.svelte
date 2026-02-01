@@ -9,11 +9,13 @@
   export let showHiddenValue = true
   export let hiddenFilesLastValue = false
   export let foldersFirstValue = true
+  export let confirmDeleteValue = true
   export let startDirValue = '~'
   export let onChangeDefaultView: (value: 'list' | 'grid') => void = () => {}
   export let onToggleShowHidden: (value: boolean) => void = () => {}
   export let onToggleHiddenFilesLast: (value: boolean) => void = () => {}
   export let onToggleFoldersFirst: (value: boolean) => void = () => {}
+  export let onToggleConfirmDelete: (value: boolean) => void = () => {}
   export let onChangeStartDir: (value: string) => void = () => {}
 
   let filter = ''
@@ -126,6 +128,9 @@
   }
   $: if (settings.startDir !== startDirValue) {
     settings = { ...settings, startDir: startDirValue }
+  }
+  $: if (settings.confirmDelete !== confirmDeleteValue) {
+    settings = { ...settings, confirmDelete: confirmDeleteValue }
   }
 
   const rowTexts = (
@@ -401,7 +406,15 @@
         {#if rowMatches(needle, confirmDeleteTexts)}
           <div class="form-label">Confirm delete</div>
           <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.confirmDelete} />
+            <input
+              type="checkbox"
+              checked={settings.confirmDelete}
+              on:change={(e) => {
+                const next = (e.currentTarget as HTMLInputElement).checked
+                settings = { ...settings, confirmDelete: next }
+                onToggleConfirmDelete(next)
+              }}
+            />
             <span>Ask before permanent delete</span>
           </div>
         {/if}

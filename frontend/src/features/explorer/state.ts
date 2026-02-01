@@ -23,6 +23,8 @@ import {
   storeFoldersFirst,
   loadStartDir,
   storeStartDir,
+  loadConfirmDelete,
+  storeConfirmDelete,
 } from './services/settings'
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
@@ -73,6 +75,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const hiddenFilesLast = writable(false)
   const foldersFirst = writable(true)
   const startDirPref = writable<string | null>(null)
+  const confirmDelete = writable(true)
   const sortField = writable<SortField>('name')
   const sortDirection = writable<SortDirection>('asc')
   const bookmarks = writable<{ label: string; path: string }[]>([])
@@ -598,6 +601,25 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     void storeStartDir(next)
   }
 
+  const loadConfirmDeletePref = async () => {
+    try {
+      const saved = await loadConfirmDelete()
+      if (typeof saved === 'boolean') {
+        confirmDelete.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load confirmDelete setting', err)
+    }
+  }
+
+  const toggleConfirmDelete = () => {
+    confirmDelete.update((v) => {
+      const next = !v
+      void storeConfirmDelete(next)
+      return next
+    })
+  }
+
   const loadFoldersFirstPref = async () => {
     try {
       const saved = await loadFoldersFirst()
@@ -621,6 +643,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     searchActive,
     hiddenFilesLast,
     foldersFirst,
+    confirmDelete,
     startDirPref,
     sortField,
     sortDirection,
@@ -639,6 +662,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     toggleShowHidden,
     toggleHiddenFilesLast,
     toggleFoldersFirst,
+    toggleConfirmDelete,
     setStartDirPref,
     refreshForSort,
     open,
@@ -654,6 +678,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadShowHiddenPref,
     loadHiddenFilesLastPref,
     loadStartDirPref,
+    loadConfirmDeletePref,
     loadFoldersFirstPref,
     loadSavedWidths,
     persistWidths,

@@ -5,6 +5,7 @@ import {
   restoreTrashItems,
   removeRecent,
   deleteEntry,
+  deleteEntries,
   moveToTrashMany,
   purgeTrashItems,
 } from '../services/trash'
@@ -16,6 +17,7 @@ type Deps = {
   getSelectedSet: () => Set<string>
   getFilteredEntries: () => Entry[]
   currentView: () => CurrentView
+  confirmDeleteEnabled: () => boolean
   reloadCurrent: () => Promise<void>
   clipboard: ClipboardApi
   showToast: (msg: string, durationMs?: number) => void
@@ -34,6 +36,7 @@ export const createContextActions = (deps: Deps) => {
     getSelectedSet,
     getFilteredEntries,
     currentView,
+    confirmDeleteEnabled,
     reloadCurrent,
     clipboard,
     showToast,
@@ -176,6 +179,17 @@ export const createContextActions = (deps: Deps) => {
           await reloadCurrent()
         } catch (err) {
           showToast(`Delete failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        return
+      }
+      if (!confirmDeleteEnabled()) {
+        const paths = selectionEntries.map((e) => e.path)
+        try {
+          await deleteEntries(paths)
+          await reloadCurrent()
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          showToast(`Delete failed: ${msg}`)
         }
         return
       }

@@ -159,6 +159,8 @@ fn main() {
             load_start_dir,
             store_folders_first,
             load_folders_first,
+            store_confirm_delete,
+            load_confirm_delete,
             dir_sizes,
             eject_drive,
             context_menu_actions,
