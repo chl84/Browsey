@@ -155,6 +155,8 @@ fn main() {
             load_hidden_files_last,
             store_default_view,
             load_default_view,
+            store_start_dir,
+            load_start_dir,
             store_folders_first,
             load_folders_first,
             dir_sizes,
