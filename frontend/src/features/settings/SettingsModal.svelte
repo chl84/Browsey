@@ -119,7 +119,7 @@
 
   $: showGeneral =
     rowMatches(needle, 'general') ||
-    showRow('Default view', settings.defaultView) ||
+    showRow('Default view', 'list', 'grid', settings.defaultView) ||
     showRow('Folders first') ||
     showRow('Show hidden') ||
     showRow('Hidden files last') ||
@@ -235,10 +235,10 @@
       <div class="form-rows settings-table">
         {#if showGeneral}
           <div class="group-heading">General</div><div class="group-spacer"></div>
-          {#if showRow('Default view', settings.defaultView)}
-            <div class="form-label">Default view</div>
-            <div class="form-control radios">
-              <label class="radio">
+        {#if showRow('Default view', 'list', 'grid', settings.defaultView)}
+          <div class="form-label">Default view</div>
+          <div class="form-control radios">
+            <label class="radio">
                 <input type="radio" name="default-view" value="list" bind:group={settings.defaultView} />
                 <span>List</span>
               </label>
