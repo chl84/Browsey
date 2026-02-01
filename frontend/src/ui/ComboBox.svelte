@@ -1,7 +1,9 @@
+<script lang="ts" context="module">
+  export type ComboOption = { value: string; label: string }
+</script>
+
 <script lang="ts">
   import { createEventDispatcher, onDestroy, onMount } from 'svelte'
-
-  export type ComboOption = { value: string; label: string }
 
   export let options: ComboOption[] = []
   export let value: string = ''
