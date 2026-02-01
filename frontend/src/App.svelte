@@ -560,8 +560,27 @@ let inputFocused = false
       gridGap,
     })
 
-    recomputeGrid()
-    recompute(get(filteredEntries))
+    if (viewMode === 'grid') {
+      recomputeGrid()
+      const entriesList = get(filteredEntries)
+      if (entriesList.length > 0 && get(visibleEntries).length === 0 && gridElRef) {
+        const maxTop = Math.max(0, get(gridTotalHeight) - gridElRef.clientHeight)
+        gridElRef.scrollTop = Math.min(gridElRef.scrollTop, maxTop)
+        recomputeGrid()
+      }
+    } else {
+      const rowsEl = rowsElRef
+      const entriesList = get(filteredEntries)
+      if (rowsEl) {
+        const headerH = headerElRef?.offsetHeight ?? 0
+        const viewport = rowsEl.clientHeight - headerH
+        const maxTop = Math.max(0, get(totalHeight) - viewport)
+        if (rowsEl.scrollTop > maxTop) {
+          rowsEl.scrollTop = maxTop
+        }
+      }
+      recompute(entriesList)
+    }
   }
 
   $: {

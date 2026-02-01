@@ -208,8 +208,8 @@
   }
 
   .col-name .icon {
-    width: var(--icon-size);
-    height: var(--icon-size);
+    width: var(--list-icon-size, var(--icon-size));
+    height: var(--list-icon-size, var(--icon-size));
     object-fit: contain;
   }
 
