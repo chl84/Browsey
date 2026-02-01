@@ -24,6 +24,7 @@ export const useExplorerData = (options: Options = {}) => {
     loadPartitions,
     loadShowHiddenPref,
     loadHiddenFilesLastPref,
+    loadFoldersFirstPref,
     entries,
     current,
   } = explorer
@@ -38,7 +39,7 @@ export const useExplorerData = (options: Options = {}) => {
     void loadSavedWidths()
     void loadBookmarks()
     void loadPartitions()
-    await Promise.all([loadShowHiddenPref(), loadHiddenFilesLastPref()])
+    await Promise.all([loadShowHiddenPref(), loadHiddenFilesLastPref(), loadFoldersFirstPref()])
 
     const pollMs = options.partitionsPollMs ?? 2000
     if (pollMs > 0) {

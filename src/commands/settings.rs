@@ -37,3 +37,15 @@ pub fn load_hidden_files_last() -> Result<Option<bool>, String> {
     let conn = crate::db::open()?;
     crate::db::get_setting_bool(&conn, "hiddenFilesLast")
 }
+
+#[tauri::command]
+pub fn store_folders_first(value: bool) -> Result<(), String> {
+    let conn = crate::db::open()?;
+    crate::db::set_setting_bool(&conn, "foldersFirst", value)
+}
+
+#[tauri::command]
+pub fn load_folders_first() -> Result<Option<bool>, String> {
+    let conn = crate::db::open()?;
+    crate::db::get_setting_bool(&conn, "foldersFirst")
+}

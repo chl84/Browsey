@@ -7,8 +7,10 @@
   export let onClose: () => void
   export let showHiddenValue = true
   export let hiddenFilesLastValue = false
+  export let foldersFirstValue = true
   export let onToggleShowHidden: (value: boolean) => void = () => {}
   export let onToggleHiddenFilesLast: (value: boolean) => void = () => {}
+  export let onToggleFoldersFirst: (value: boolean) => void = () => {}
 
   let filter = ''
   let needle = ''
@@ -111,6 +113,9 @@
   }
   $: if (settings.hiddenFilesLast !== hiddenFilesLastValue) {
     settings = { ...settings, hiddenFilesLast: hiddenFilesLastValue }
+  }
+  $: if (settings.foldersFirst !== foldersFirstValue) {
+    settings = { ...settings, foldersFirst: foldersFirstValue }
   }
 
   const rowTexts = (
@@ -300,7 +305,15 @@
         {#if rowMatches(needle, foldersFirstTexts)}
           <div class="form-label">Folders first</div>
           <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.foldersFirst} />
+            <input
+              type="checkbox"
+              checked={settings.foldersFirst}
+              on:change={(e) => {
+                const next = (e.currentTarget as HTMLInputElement).checked
+                settings = { ...settings, foldersFirst: next }
+                onToggleFoldersFirst(next)
+              }}
+            />
             <span>Show folders before files</span>
           </div>
         {/if}
