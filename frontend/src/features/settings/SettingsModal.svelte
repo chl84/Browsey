@@ -118,12 +118,10 @@
     return out
   }
 
-  const rowMatches = (texts: string[]) => {
-    if (!needle) return true
-    return texts.some((t) => t.includes(needle))
+  const rowMatches = (n: string, texts: string[]) => {
+    if (!n) return true
+    return texts.some((t) => t.includes(n))
   }
-
-  const showRow = (texts: string[]) => rowMatches(texts)
 
   $: defaultViewTexts = rowTexts('default view', 'list', 'grid', settings.defaultView)
   $: foldersFirstTexts = rowTexts('folders first', 'show folders before files')
@@ -149,7 +147,9 @@
   $: thumbCacheTexts = rowTexts('cache size', 'thumbnail cache size', `${settings.thumbCacheMb} mb`)
   $: thumbTimeoutTexts = rowTexts('timeout', 'thumbnail timeout', `${settings.thumbTimeoutMs} ms`)
 
-  $: filteredShortcuts = shortcuts.filter((s) => rowMatches(rowTexts('shortcuts', 'keys', s.action, s.keys)))
+  $: filteredShortcuts = shortcuts.filter((s) =>
+    rowMatches(needle, rowTexts('shortcuts', 'keys', s.action, s.keys)),
+  )
   $: shortcutSectionTexts = rowTexts('shortcuts')
 
   $: watcherPollTexts = rowTexts('mounts poll', 'watcher poll', `${settings.watcherPollMs} ms`)
@@ -170,7 +170,7 @@
   $: externalToolsTexts = rowTexts('external tools', settings.externalTools, 'ffmpeg=/usr/bin/ffmpeg')
   $: logLevelTexts = rowTexts('log level', 'error', 'warn', 'info', 'debug', settings.logLevel)
 
-  $: showGeneral = rowMatches([
+  $: showGeneral = rowMatches(needle, [
     ...rowTexts('general'),
     ...defaultViewTexts,
     ...foldersFirstTexts,
@@ -180,20 +180,20 @@
     ...confirmDeleteTexts,
   ])
 
-  $: showSorting = rowMatches([
+  $: showSorting = rowMatches(needle, [
     ...rowTexts('sorting'),
     ...sortFieldTexts,
     ...sortDirectionTexts,
   ])
 
-  $: showAppearance = rowMatches([
+  $: showAppearance = rowMatches(needle, [
     ...rowTexts('appearance'),
     ...themeTexts,
     ...densityTexts,
     ...iconSizeTexts,
   ])
 
-  $: showArchives = rowMatches([
+  $: showArchives = rowMatches(needle, [
     ...rowTexts('archives'),
     ...archiveNameTexts,
     ...archiveLevelTexts,
@@ -201,7 +201,7 @@
     ...rarNoteTexts,
   ])
 
-  $: showThumbnails = rowMatches([
+  $: showThumbnails = rowMatches(needle, [
     ...rowTexts('thumbnails'),
     ...videoThumbsTexts,
     ...ffmpegPathTexts,
@@ -209,25 +209,25 @@
     ...thumbTimeoutTexts,
   ])
 
-  $: showShortcuts = rowMatches([
+  $: showShortcuts = rowMatches(needle, [
     ...shortcutSectionTexts,
     ...filteredShortcuts.flatMap((s) => rowTexts(s.action, s.keys)),
   ])
 
-  $: showPerformance = rowMatches([
+  $: showPerformance = rowMatches(needle, [
     ...rowTexts('performance'),
     ...watcherPollTexts,
     ...ioConcurrencyTexts,
     ...lazyScansTexts,
   ])
 
-  $: showInteraction = rowMatches([
+  $: showInteraction = rowMatches(needle, [
     ...rowTexts('interaction'),
     ...doubleClickTexts,
     ...singleClickTexts,
   ])
 
-  $: showData = rowMatches([
+  $: showData = rowMatches(needle, [
     ...rowTexts('data'),
     ...clearThumbTexts,
     ...clearStarsTexts,
@@ -235,13 +235,13 @@
     ...clearRecentsTexts,
   ])
 
-  $: showAccessibility = rowMatches([
+  $: showAccessibility = rowMatches(needle, [
     ...rowTexts('accessibility'),
     ...highContrastTexts,
     ...scrollbarWidthTexts,
   ])
 
-  $: showAdvanced = rowMatches([
+  $: showAdvanced = rowMatches(needle, [
     ...rowTexts('advanced'),
     ...externalToolsTexts,
     ...logLevelTexts,
@@ -301,7 +301,7 @@
       <div class="form-rows settings-table">
         {#if showGeneral}
           <div class="group-heading">General</div><div class="group-spacer"></div>
-        {#if showRow(defaultViewTexts)}
+        {#if rowMatches(needle, defaultViewTexts)}
           <div class="form-label">Default view</div>
           <div class="form-control radios">
             <label class="radio">
@@ -315,7 +315,7 @@
             </div>
           {/if}
 
-        {#if showRow(foldersFirstTexts)}
+        {#if rowMatches(needle, foldersFirstTexts)}
           <div class="form-label">Folders first</div>
           <div class="form-control checkbox">
             <input type="checkbox" bind:checked={settings.foldersFirst} />
@@ -323,7 +323,7 @@
           </div>
         {/if}
 
-        {#if showRow(showHiddenTexts)}
+        {#if rowMatches(needle, showHiddenTexts)}
           <div class="form-label">Show hidden</div>
           <div class="form-control checkbox">
             <input type="checkbox" bind:checked={settings.showHidden} />
@@ -331,7 +331,7 @@
           </div>
         {/if}
 
-        {#if showRow(hiddenFilesLastTexts)}
+        {#if rowMatches(needle, hiddenFilesLastTexts)}
           <div class="form-label">Hidden files last</div>
           <div class="form-control checkbox">
             <input type="checkbox" bind:checked={settings.hiddenFilesLast} disabled={hiddenFilesLastDisabled} />
@@ -342,14 +342,14 @@
             </div>
           {/if}
 
-        {#if showRow(startDirTexts)}
+        {#if rowMatches(needle, startDirTexts)}
           <div class="form-label">Start directory</div>
           <div class="form-control">
             <input type="text" bind:value={settings.startDir} placeholder="~ or /path" />
           </div>
         {/if}
 
-        {#if showRow(confirmDeleteTexts)}
+        {#if rowMatches(needle, confirmDeleteTexts)}
           <div class="form-label">Confirm delete</div>
           <div class="form-control checkbox">
             <input type="checkbox" bind:checked={settings.confirmDelete} />
@@ -360,7 +360,7 @@
 
         {#if showSorting}
           <div class="group-heading">Sorting</div><div class="group-spacer"></div>
-        {#if showRow(sortFieldTexts)}
+        {#if rowMatches(needle, sortFieldTexts)}
           <div class="form-label">Default sort field</div>
           <div class="form-control">
             <ComboBox
@@ -374,7 +374,7 @@
             </div>
           {/if}
 
-        {#if showRow(sortDirectionTexts)}
+        {#if rowMatches(needle, sortDirectionTexts)}
           <div class="form-label">Sort direction</div>
           <div class="form-control radios">
               <label class="radio">
@@ -391,7 +391,7 @@
 
         {#if showAppearance}
           <div class="group-heading">Appearance</div><div class="group-spacer"></div>
-        {#if showRow(themeTexts)}
+        {#if rowMatches(needle, themeTexts)}
           <div class="form-label">Theme</div>
           <div class="form-control">
             <ComboBox
@@ -405,7 +405,7 @@
             </div>
           {/if}
 
-        {#if showRow(densityTexts)}
+        {#if rowMatches(needle, densityTexts)}
           <div class="form-label">Density</div>
           <div class="form-control">
               <ComboBox
@@ -418,7 +418,7 @@
             </div>
           {/if}
 
-        {#if showRow(iconSizeTexts)}
+        {#if rowMatches(needle, iconSizeTexts)}
           <div class="form-label">Icon size</div>
           <div class="form-control">
               <input type="range" min="16" max="64" bind:value={settings.iconSize} />
@@ -429,14 +429,14 @@
 
         {#if showArchives}
           <div class="group-heading">Archives</div><div class="group-spacer"></div>
-        {#if showRow(archiveNameTexts)}
+        {#if rowMatches(needle, archiveNameTexts)}
           <div class="form-label">Default archive name</div>
           <div class="form-control">
             <input type="text" bind:value={settings.archiveName} />
           </div>
         {/if}
 
-        {#if showRow(archiveLevelTexts)}
+        {#if rowMatches(needle, archiveLevelTexts)}
           <div class="form-label">ZIP level</div>
           <div class="form-control">
             <input type="range" min="0" max="9" step="1" bind:value={settings.archiveLevel} />
@@ -444,7 +444,7 @@
           </div>
         {/if}
 
-        {#if showRow(afterExtractTexts)}
+        {#if rowMatches(needle, afterExtractTexts)}
           <div class="form-label">After extract</div>
           <div class="form-control checkbox">
             <input type="checkbox" bind:checked={settings.openDestAfterExtract} />
@@ -452,7 +452,7 @@
           </div>
         {/if}
 
-        {#if showRow(rarNoteTexts)}
+        {#if rowMatches(needle, rarNoteTexts)}
           <div class="form-label">Note</div>
           <div class="form-control">
             <p class="note">RAR compressed entries are currently unsupported (fail fast).</p>
@@ -462,7 +462,7 @@
 
         {#if showThumbnails}
           <div class="group-heading">Thumbnails</div><div class="group-spacer"></div>
-        {#if showRow(videoThumbsTexts)}
+        {#if rowMatches(needle, videoThumbsTexts)}
           <div class="form-label">Video thumbs</div>
           <div class="form-control checkbox">
             <input type="checkbox" bind:checked={settings.videoThumbs} />
@@ -470,7 +470,7 @@
           </div>
         {/if}
 
-        {#if showRow(ffmpegPathTexts)}
+        {#if rowMatches(needle, ffmpegPathTexts)}
           <div class="form-label">FFmpeg path</div>
           <div class="form-control">
             <input
@@ -482,7 +482,7 @@
             </div>
           {/if}
 
-        {#if showRow(thumbCacheTexts)}
+        {#if rowMatches(needle, thumbCacheTexts)}
           <div class="form-label">Cache size</div>
           <div class="form-control">
             <input
@@ -498,7 +498,7 @@
             </div>
           {/if}
 
-        {#if showRow(thumbTimeoutTexts)}
+        {#if rowMatches(needle, thumbTimeoutTexts)}
           <div class="form-label">Timeout</div>
           <div class="form-control">
               <input
@@ -529,7 +529,7 @@
 
         {#if showPerformance}
           <div class="group-heading">Performance</div><div class="group-spacer"></div>
-        {#if showRow(watcherPollTexts)}
+        {#if rowMatches(needle, watcherPollTexts)}
           <div class="form-label">Mounts poll (ms)</div>
           <div class="form-control">
             <input
@@ -544,7 +544,7 @@
             </div>
           {/if}
 
-        {#if showRow(ioConcurrencyTexts)}
+        {#if rowMatches(needle, ioConcurrencyTexts)}
           <div class="form-label">IO concurrency</div>
           <div class="form-control">
               <input
@@ -559,7 +559,7 @@
             </div>
           {/if}
 
-        {#if showRow(lazyScansTexts)}
+        {#if rowMatches(needle, lazyScansTexts)}
           <div class="form-label">Lazy scans</div>
           <div class="form-control checkbox">
               <input type="checkbox" bind:checked={settings.lazyDirScan} />
@@ -570,7 +570,7 @@
 
         {#if showInteraction}
           <div class="group-heading">Interaction</div><div class="group-spacer"></div>
-        {#if showRow(doubleClickTexts)}
+        {#if rowMatches(needle, doubleClickTexts)}
           <div class="form-label">Double-click speed</div>
           <div class="form-control">
             <input
@@ -585,7 +585,7 @@
             </div>
           {/if}
 
-        {#if showRow(singleClickTexts)}
+        {#if rowMatches(needle, singleClickTexts)}
           <div class="form-label">Single click to open</div>
           <div class="form-control checkbox">
               <input type="checkbox" bind:checked={settings.singleClickOpen} />
@@ -616,7 +616,7 @@
 
         {#if showAccessibility}
           <div class="group-heading">Accessibility</div><div class="group-spacer"></div>
-        {#if showRow(highContrastTexts)}
+        {#if rowMatches(needle, highContrastTexts)}
           <div class="form-label">High contrast</div>
           <div class="form-control checkbox">
             <input type="checkbox" bind:checked={settings.highContrast} />
@@ -624,7 +624,7 @@
           </div>
         {/if}
 
-        {#if showRow(scrollbarWidthTexts)}
+        {#if rowMatches(needle, scrollbarWidthTexts)}
           <div class="form-label">Scrollbar width</div>
           <div class="form-control">
             <input
@@ -642,14 +642,14 @@
 
         {#if showAdvanced}
           <div class="group-heading">Advanced</div><div class="group-spacer"></div>
-        {#if showRow(externalToolsTexts)}
+        {#if rowMatches(needle, externalToolsTexts)}
           <div class="form-label">External tools</div>
           <div class="form-control column">
             <textarea rows="2" bind:value={settings.externalTools} placeholder="ffmpeg=/usr/bin/ffmpeg"></textarea>
           </div>
         {/if}
 
-        {#if showRow(logLevelTexts)}
+        {#if rowMatches(needle, logLevelTexts)}
           <div class="form-label">Log level</div>
           <div class="form-control">
               <ComboBox
