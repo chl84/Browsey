@@ -101,13 +101,45 @@
   ]
 
   $: needle = filter.trim().toLowerCase()
-  const showRow = (...texts: (string | number | boolean | null | undefined)[]) => {
+  const rowMatches = (...texts: (string | number | boolean | null | undefined)[]) => {
     if (!needle) return true
     return texts.some((t) => {
       if (t === null || t === undefined) return false
       return String(t).toLowerCase().includes(needle)
     })
   }
+  const showRow = rowMatches
+
+  $: filteredShortcuts = shortcuts.filter((s) => rowMatches(s.action, s.keys))
+
+  $: showGeneral =
+    rowMatches(
+      settings.defaultView,
+      settings.foldersFirst,
+      settings.showHidden,
+      settings.hiddenFilesLast,
+      settings.startDir,
+      settings.confirmDelete,
+    )
+
+  $: showSorting = rowMatches(settings.sortField, settings.sortDirection)
+  $: showAppearance = rowMatches(settings.theme, settings.density, settings.iconSize)
+  $: showArchives =
+    rowMatches(settings.archiveName, settings.archiveLevel, settings.openDestAfterExtract) || rowMatches('rar')
+  $: showThumbnails =
+    rowMatches(
+      settings.videoThumbs,
+      settings.ffmpegPath,
+      settings.thumbCacheMb,
+      settings.thumbTimeoutMs,
+      'thumbnails',
+    )
+  $: showShortcuts = filteredShortcuts.length > 0
+  $: showPerformance = rowMatches(settings.watcherPollMs, settings.ioConcurrency, settings.lazyDirScan)
+  $: showInteraction = rowMatches(settings.doubleClickMs, settings.singleClickOpen)
+  $: showData = rowMatches('thumbnail cache', 'stars', 'bookmarks', 'recents')
+  $: showAccessibility = rowMatches(settings.highContrast, settings.scrollbarWidth)
+  $: showAdvanced = rowMatches(settings.externalTools, settings.logLevel)
 
   const clearStore = (target: 'thumb-cache' | 'stars' | 'bookmarks' | 'recents') => {
     console.log(`TODO: clear ${target}`)
