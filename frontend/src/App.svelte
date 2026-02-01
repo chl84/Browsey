@@ -31,13 +31,14 @@
   import { setClipboardState, clearClipboardState } from './features/explorer/stores/clipboardState'
   import { createContextMenus } from './features/explorer/hooks/useContextMenus'
   import type { ContextAction } from './features/explorer/hooks/useContextMenus'
-  import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
-  import { createSelectionBox } from './features/explorer/hooks/selectionBox'
-  import { hitTestGridVirtualized } from './features/explorer/helpers/lassoHitTest'
-  import { createViewSwitchAnchor } from './features/explorer/hooks/viewAnchor'
-  import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
-  import { moveCaret } from './features/explorer/helpers/navigationController'
-  import { createSelectionMemory } from './features/explorer/selectionMemory'
+import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
+import { createSelectionBox } from './features/explorer/hooks/selectionBox'
+import { hitTestGridVirtualized } from './features/explorer/helpers/lassoHitTest'
+import { createViewSwitchAnchor } from './features/explorer/hooks/viewAnchor'
+import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
+import { moveCaret } from './features/explorer/helpers/navigationController'
+import { createSelectionMemory } from './features/explorer/selectionMemory'
+import { loadDefaultView, storeDefaultView } from './features/explorer/services/settings'
   import { useContextMenuBlocker } from './features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from './features/explorer/hooks/useActivity'
   import { allowedCtrlKeys } from './features/explorer/config/hotkeys'
@@ -249,6 +250,7 @@
         gridCols: getGridCols(),
       })
     }
+    void storeDefaultView(viewMode)
     void focusCurrentView()
   }
 
@@ -2133,6 +2135,11 @@
         window.removeEventListener('unhandledrejection', handleRejection)
       })
 
+      const prefView = await loadDefaultView().catch(() => null)
+      if (prefView === 'list' || prefView === 'grid') {
+        viewMode = prefView
+      }
+
       await nativeDrop.start()
       cleanupFns.push(() => {
         void nativeDrop.stop()
@@ -2343,9 +2350,14 @@
 {#if settingsOpen}
   <SettingsModal
     open
+    defaultViewValue={viewMode}
     showHiddenValue={$showHidden}
     hiddenFilesLastValue={$hiddenFilesLast}
     foldersFirstValue={$foldersFirst}
+    onChangeDefaultView={(val) => {
+      viewMode = val
+      void storeDefaultView(val)
+    }}
     onToggleShowHidden={toggleShowHidden}
     onToggleHiddenFilesLast={toggleHiddenFilesLast}
     onToggleFoldersFirst={toggleFoldersFirst}

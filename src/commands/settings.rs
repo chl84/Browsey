@@ -49,3 +49,15 @@ pub fn load_folders_first() -> Result<Option<bool>, String> {
     let conn = crate::db::open()?;
     crate::db::get_setting_bool(&conn, "foldersFirst")
 }
+
+#[tauri::command]
+pub fn store_default_view(value: String) -> Result<(), String> {
+    let conn = crate::db::open()?;
+    crate::db::set_setting_string(&conn, "defaultView", &value)
+}
+
+#[tauri::command]
+pub fn load_default_view() -> Result<Option<String>, String> {
+    let conn = crate::db::open()?;
+    crate::db::get_setting_string(&conn, "defaultView")
+}

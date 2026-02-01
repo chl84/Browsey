@@ -153,6 +153,8 @@ fn main() {
             load_show_hidden,
             store_hidden_files_last,
             load_hidden_files_last,
+            store_default_view,
+            load_default_view,
             store_folders_first,
             load_folders_first,
             dir_sizes,
