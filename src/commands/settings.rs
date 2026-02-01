@@ -85,3 +85,45 @@ pub fn load_confirm_delete() -> Result<Option<bool>, String> {
     let conn = crate::db::open()?;
     crate::db::get_setting_bool(&conn, "confirmDelete")
 }
+
+#[tauri::command]
+pub fn store_sort_field(value: String) -> Result<(), String> {
+    match value.as_str() {
+        "name" | "type" | "modified" | "size" => {
+            let conn = crate::db::open()?;
+            crate::db::set_setting_string(&conn, "sortField", &value)
+        }
+        _ => Err("invalid sort field".into()),
+    }
+}
+
+#[tauri::command]
+pub fn load_sort_field() -> Result<Option<String>, String> {
+    let conn = crate::db::open()?;
+    let value = crate::db::get_setting_string(&conn, "sortField")?;
+    Ok(match value.as_deref() {
+        Some("name") | Some("type") | Some("modified") | Some("size") => value,
+        _ => None,
+    })
+}
+
+#[tauri::command]
+pub fn store_sort_direction(value: String) -> Result<(), String> {
+    match value.as_str() {
+        "asc" | "desc" => {
+            let conn = crate::db::open()?;
+            crate::db::set_setting_string(&conn, "sortDirection", &value)
+        }
+        _ => Err("invalid sort direction".into()),
+    }
+}
+
+#[tauri::command]
+pub fn load_sort_direction() -> Result<Option<String>, String> {
+    let conn = crate::db::open()?;
+    let value = crate::db::get_setting_string(&conn, "sortDirection")?;
+    Ok(match value.as_deref() {
+        Some("asc") | Some("desc") => value,
+        _ => None,
+    })
+}

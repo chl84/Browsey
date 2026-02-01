@@ -2,6 +2,7 @@
   import ModalShell from '../../ui/ModalShell.svelte'
   import ComboBox, { type ComboOption } from '../../ui/ComboBox.svelte'
   import { onMount, onDestroy } from 'svelte'
+  import type { DefaultSortField } from '../explorer/types'
 
   export let open = false
   export let onClose: () => void
@@ -10,18 +11,22 @@
   export let hiddenFilesLastValue = false
   export let foldersFirstValue = true
   export let confirmDeleteValue = true
+  export let sortFieldValue: DefaultSortField = 'name'
+  export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
   export let onChangeDefaultView: (value: 'list' | 'grid') => void = () => {}
   export let onToggleShowHidden: (value: boolean) => void = () => {}
   export let onToggleHiddenFilesLast: (value: boolean) => void = () => {}
   export let onToggleFoldersFirst: (value: boolean) => void = () => {}
   export let onToggleConfirmDelete: (value: boolean) => void = () => {}
+  export let onChangeSortField: (value: typeof sortFieldValue) => void = () => {}
+  export let onChangeSortDirection: (value: typeof sortDirectionValue) => void = () => {}
   export let onChangeStartDir: (value: string) => void = () => {}
 
   let filter = ''
   let needle = ''
 
-  type SortField = 'name' | 'size' | 'date'
+  type SortField = DefaultSortField
   type SortDirection = 'asc' | 'desc'
   type Theme = 'system' | 'light' | 'dark'
   type Density = 'cozy' | 'compact'
@@ -132,6 +137,12 @@
   $: if (settings.confirmDelete !== confirmDeleteValue) {
     settings = { ...settings, confirmDelete: confirmDeleteValue }
   }
+  $: if (settings.sortField !== sortFieldValue) {
+    settings = { ...settings, sortField: sortFieldValue }
+  }
+  $: if (settings.sortDirection !== sortDirectionValue) {
+    settings = { ...settings, sortDirection: sortDirectionValue }
+  }
 
   const rowTexts = (
     ...parts: (string | number | boolean | null | undefined | (string | number | boolean | null | undefined)[])[]
@@ -161,7 +172,7 @@
   $: startDirTexts = rowTexts('start directory', settings.startDir, '~ or /path')
   $: confirmDeleteTexts = rowTexts('confirm delete', 'ask before permanent delete')
 
-  $: sortFieldTexts = rowTexts('default sort field', 'sort field', 'name', 'size', 'date modified', settings.sortField)
+  $: sortFieldTexts = rowTexts('default sort field', 'sort field', 'name', 'type', 'modified', 'size', settings.sortField)
   $: sortDirectionTexts = rowTexts('sort direction', 'ascending', 'descending', settings.sortDirection)
 
   $: themeTexts = rowTexts('theme', 'system', 'light', 'dark', settings.theme)
@@ -426,29 +437,53 @@
           <div class="form-label">Default sort field</div>
           <div class="form-control">
             <ComboBox
-                bind:value={settings.sortField}
-                options={[
-                  { value: 'name', label: 'Name' },
-                  { value: 'size', label: 'Size' },
-                  { value: 'date', label: 'Date modified' },
-                ] satisfies ComboOption[]}
-              />
-            </div>
-          {/if}
+              value={settings.sortField}
+              on:change={(e) => {
+                const next = e.detail as typeof settings.sortField
+                settings = { ...settings, sortField: next }
+                onChangeSortField(next)
+              }}
+              options={[
+                { value: 'name', label: 'Name' },
+                { value: 'type', label: 'Type' },
+                { value: 'modified', label: 'Date modified' },
+                { value: 'size', label: 'Size' },
+              ] satisfies ComboOption[]}
+            />
+          </div>
+        {/if}
 
         {#if rowMatches(needle, sortDirectionTexts)}
           <div class="form-label">Sort direction</div>
           <div class="form-control radios">
-              <label class="radio">
-                <input type="radio" name="sort-direction" value="asc" bind:group={settings.sortDirection} />
-                <span>Ascending</span>
-              </label>
-              <label class="radio">
-                <input type="radio" name="sort-direction" value="desc" bind:group={settings.sortDirection} />
-                <span>Descending</span>
-              </label>
-            </div>
-          {/if}
+            <label class="radio">
+              <input
+                type="radio"
+                name="sort-direction"
+                value="asc"
+                checked={settings.sortDirection === 'asc'}
+                on:change={() => {
+                  settings = { ...settings, sortDirection: 'asc' }
+                  onChangeSortDirection('asc')
+                }}
+              />
+              <span>Ascending</span>
+            </label>
+            <label class="radio">
+              <input
+                type="radio"
+                name="sort-direction"
+                value="desc"
+                checked={settings.sortDirection === 'desc'}
+                on:change={() => {
+                  settings = { ...settings, sortDirection: 'desc' }
+                  onChangeSortDirection('desc')
+                }}
+              />
+              <span>Descending</span>
+            </label>
+          </div>
+        {/if}
         {/if}
 
         {#if showAppearance}

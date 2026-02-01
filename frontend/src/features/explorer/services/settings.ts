@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import type { DefaultSortField } from '../types'
 
 export const loadShowHidden = () => invoke<boolean | null>('load_show_hidden')
 
@@ -29,3 +30,13 @@ export const loadConfirmDelete = () => invoke<boolean | null>('load_confirm_dele
 
 export const storeConfirmDelete = (value: boolean) =>
   invoke<void>('store_confirm_delete', { value })
+
+export const loadSortField = () => invoke<DefaultSortField | null>('load_sort_field')
+
+export const storeSortField = (value: DefaultSortField) =>
+  invoke<void>('store_sort_field', { value })
+
+export const loadSortDirection = () => invoke<'asc' | 'desc' | null>('load_sort_direction')
+
+export const storeSortDirection = (value: 'asc' | 'desc') =>
+  invoke<void>('store_sort_direction', { value })

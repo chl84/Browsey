@@ -9,6 +9,7 @@ import type {
   Partition,
   SortDirection,
   SortField,
+  DefaultSortField,
 } from './types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files'
@@ -25,6 +26,10 @@ import {
   storeStartDir,
   loadConfirmDelete,
   storeConfirmDelete,
+  loadSortField,
+  storeSortField,
+  loadSortDirection,
+  storeSortDirection,
 } from './services/settings'
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
@@ -76,6 +81,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const foldersFirst = writable(true)
   const startDirPref = writable<string | null>(null)
   const confirmDelete = writable(true)
+  const sortFieldPref = writable<DefaultSortField>('name')
+  const sortDirectionPref = writable<SortDirection>('asc')
   const sortField = writable<SortField>('name')
   const sortDirection = writable<SortDirection>('asc')
   const bookmarks = writable<{ label: string; path: string }[]>([])
@@ -309,6 +316,22 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       sortField.set(field)
       sortDirection.set('asc')
     }
+    await refreshForSort()
+  }
+
+  const setSortFieldPref = async (field: DefaultSortField) => {
+    if (get(sortField) === field) return
+    sortField.set(field)
+    sortFieldPref.set(field)
+    void storeSortField(field)
+    await refreshForSort()
+  }
+
+  const setSortDirectionPref = async (dir: SortDirection) => {
+    if (get(sortDirection) === dir) return
+    sortDirection.set(dir)
+    sortDirectionPref.set(dir)
+    void storeSortDirection(dir)
     await refreshForSort()
   }
 
@@ -620,6 +643,27 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     })
   }
 
+  const loadSortPref = async () => {
+    try {
+      const savedField = await loadSortField()
+      if (savedField === 'name' || savedField === 'type' || savedField === 'modified' || savedField === 'size') {
+        sortField.set(savedField)
+        sortFieldPref.set(savedField)
+      } else if (savedField !== null) {
+        await storeSortField('name')
+        sortField.set('name')
+        sortFieldPref.set('name')
+      }
+      const savedDir = await loadSortDirection()
+      if (savedDir === 'asc' || savedDir === 'desc') {
+        sortDirection.set(savedDir)
+        sortDirectionPref.set(savedDir)
+      }
+    } catch (err) {
+      console.error('Failed to load sort settings', err)
+    }
+  }
+
   const loadFoldersFirstPref = async () => {
     try {
       const saved = await loadFoldersFirst()
@@ -647,6 +691,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     startDirPref,
     sortField,
     sortDirection,
+    sortFieldPref,
+    sortDirectionPref,
     bookmarks,
     partitions,
     showHidden,
@@ -679,8 +725,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadHiddenFilesLastPref,
     loadStartDirPref,
     loadConfirmDeletePref,
+    loadSortPref,
     loadFoldersFirstPref,
     loadSavedWidths,
     persistWidths,
+    setSortFieldPref,
+    setSortDirectionPref,
   }
 }

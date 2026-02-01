@@ -154,8 +154,12 @@ let inputFocused = false
     foldersFirst,
     confirmDelete,
     startDirPref,
+    sortFieldPref,
+    sortDirectionPref,
     sortField,
     sortDirection,
+    setSortFieldPref,
+    setSortDirectionPref,
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
@@ -2393,6 +2397,8 @@ let inputFocused = false
     foldersFirstValue={$foldersFirst}
     confirmDeleteValue={$confirmDelete}
     startDirValue={$startDirPref ?? '~'}
+    sortFieldValue={$sortFieldPref}
+    sortDirectionValue={$sortDirectionPref}
     onChangeDefaultView={(val) => {
       viewMode = val
       defaultViewPref = val
@@ -2403,6 +2409,8 @@ let inputFocused = false
     onToggleFoldersFirst={toggleFoldersFirst}
     onToggleConfirmDelete={toggleConfirmDelete}
     onChangeStartDir={setStartDirPref}
+    onChangeSortField={setSortFieldPref}
+    onChangeSortDirection={setSortDirectionPref}
     onClose={() => (settingsOpen = false)}
   />
 {/if}
