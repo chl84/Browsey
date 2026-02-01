@@ -24,7 +24,7 @@
     pasteClipboardPreview,
   } from './features/explorer/services/clipboard'
   import { undoAction, redoAction } from './features/explorer/services/history'
-  import { deleteEntry, moveToTrashMany } from './features/explorer/services/trash'
+import { deleteEntry, deleteEntries, moveToTrashMany } from './features/explorer/services/trash'
   import type { Entry, Partition, SortField } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
@@ -980,6 +980,27 @@ let inputFocused = false
   })
   const { handleGlobalKeydown } = shortcuts
 
+  const handleShiftDelete = async () => {
+    const sel = get(selected)
+    if (sel.size === 0) return false
+    const list = get(filteredEntries).filter((e) => sel.has(e.path))
+    if (list.length === 0) return false
+    if (get(explorer.confirmDelete)) {
+      modalActions.confirmDelete(list)
+      return true
+    }
+    try {
+      const paths = list.map((e) => e.path)
+      await deleteEntries(paths)
+      await reloadCurrent()
+      showToast('Deleted')
+      return true
+    } catch (err) {
+      showToast(`Delete failed: ${err instanceof Error ? err.message : String(err)}`)
+      return false
+    }
+  }
+
   const handleDocumentKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Control' || event.key === 'Meta') {
       copyModifierActive = true
@@ -1058,6 +1079,16 @@ let inputFocused = false
         return
       }
     }
+    if (event.shiftKey && key === 'delete') {
+      void handleShiftDelete().then((handled) => {
+        if (handled) {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+      })
+      return
+    }
+
     if (key === 'escape') {
       if ($deleteState.open) {
         event.preventDefault()
