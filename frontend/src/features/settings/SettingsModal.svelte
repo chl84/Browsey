@@ -62,7 +62,7 @@
     openDestAfterExtract: true,
     videoThumbs: true,
     ffmpegPath: '',
-    thumbCacheMb: 200,
+    thumbCacheMb: 300,
     thumbTimeoutMs: 750,
     watcherPollMs: 2000,
     ioConcurrency: 4,
