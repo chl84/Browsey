@@ -35,6 +35,8 @@ import {
   storeArchiveName,
   loadArchiveLevel,
   storeArchiveLevel,
+  loadOpenDestAfterExtract,
+  storeOpenDestAfterExtract,
   loadDensity,
   storeDensity,
 } from './services/settings'
@@ -95,6 +97,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const density = writable<Density>('cozy')
   const archiveName = writable<string>('Archive')
   const archiveLevel = writable<number>(6)
+  const openDestAfterExtract = writable<boolean>(true)
   const bookmarks = writable<{ label: string; path: string }[]>([])
   const partitions = writable<Partition[]>([])
   const history = writable<Location[]>([])
@@ -713,6 +716,17 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const loadOpenDestAfterExtractPref = async () => {
+    try {
+      const saved = await loadOpenDestAfterExtract()
+      if (typeof saved === 'boolean') {
+        openDestAfterExtract.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load openDestAfterExtract setting', err)
+    }
+  }
+
   const loadDensityPref = async () => {
     try {
       const saved = await loadDensity()
@@ -727,6 +741,14 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const setDensityPref = (value: Density) => {
     density.set(value)
     void storeDensity(value)
+  }
+
+  const toggleOpenDestAfterExtract = () => {
+    openDestAfterExtract.update((v) => {
+      const next = !v
+      void storeOpenDestAfterExtract(next)
+      return next
+    })
   }
 
   const loadFoldersFirstPref = async () => {
@@ -760,6 +782,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     sortDirectionPref,
     archiveName,
     archiveLevel,
+    openDestAfterExtract,
     bookmarks,
     partitions,
     showHidden,
@@ -796,6 +819,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadSortPref,
     loadArchiveNamePref,
     loadArchiveLevelPref,
+    loadOpenDestAfterExtractPref,
     loadFoldersFirstPref,
     loadDensityPref,
     loadSavedWidths,
@@ -805,5 +829,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     setDensityPref,
     setArchiveNamePref,
     setArchiveLevelPref,
+    toggleOpenDestAfterExtract,
   }
 }

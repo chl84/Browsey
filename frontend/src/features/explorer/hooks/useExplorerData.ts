@@ -31,6 +31,7 @@ export const useExplorerData = (options: Options = {}) => {
     loadDensityPref,
     loadArchiveNamePref,
     loadArchiveLevelPref,
+    loadOpenDestAfterExtractPref,
     entries,
     current,
     startDirPref,
@@ -58,6 +59,7 @@ export const useExplorerData = (options: Options = {}) => {
       loadDensityPref(),
       loadArchiveNamePref(),
       loadArchiveLevelPref(),
+      loadOpenDestAfterExtractPref(),
     ])
 
     const pollMs = options.partitionsPollMs ?? 2000
