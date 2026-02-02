@@ -37,6 +37,7 @@ export const useExplorerData = (options: Options = {}) => {
     startDirPref,
     sortFieldPref,
     sortDirectionPref,
+    openDestAfterExtract,
   } = explorer
 
   let partitionsPoll: ReturnType<typeof setInterval> | null = null

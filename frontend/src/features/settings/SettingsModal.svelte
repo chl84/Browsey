@@ -14,6 +14,7 @@
   export let densityValue: Density = 'cozy'
   export let archiveNameValue = 'Archive'
   export let archiveLevelValue = 6
+  export let openDestAfterExtractValue = true
   export let sortFieldValue: DefaultSortField = 'name'
   export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
@@ -28,6 +29,7 @@
   export let onChangeDensity: (value: Density) => void = () => {}
   export let onChangeArchiveName: (value: string) => void = () => {}
   export let onChangeArchiveLevel: (value: number) => void = () => {}
+  export let onToggleOpenDestAfterExtract: (value: boolean) => void = () => {}
 
   let filter = ''
   let needle = ''
@@ -153,6 +155,9 @@
   }
   $: if (settings.archiveLevel !== archiveLevelValue) {
     settings = { ...settings, archiveLevel: archiveLevelValue }
+  }
+  $: if (settings.openDestAfterExtract !== openDestAfterExtractValue) {
+    settings = { ...settings, openDestAfterExtract: openDestAfterExtractValue }
   }
 
   const rowTexts = (
@@ -557,7 +562,15 @@
         {#if rowMatches(needle, afterExtractTexts)}
           <div class="form-label">After extract</div>
           <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.openDestAfterExtract} />
+            <input
+              type="checkbox"
+              checked={settings.openDestAfterExtract}
+              on:change={(e) => {
+                const next = (e.currentTarget as HTMLInputElement).checked
+                settings = { ...settings, openDestAfterExtract: next }
+                onToggleOpenDestAfterExtract(next)
+              }}
+            />
             <span>Open destination after extract</span>
           </div>
         {/if}

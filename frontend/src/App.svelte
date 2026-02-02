@@ -157,6 +157,7 @@ let compressLevel = 6
     density,
     archiveName,
     archiveLevel,
+    openDestAfterExtract,
     sortFieldPref,
     sortDirectionPref,
     sortField,
@@ -166,6 +167,7 @@ let compressLevel = 6
     setDensityPref,
     setArchiveNamePref,
     setArchiveLevelPref,
+    toggleOpenDestAfterExtract,
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
@@ -1571,7 +1573,11 @@ let compressLevel = 6
           path: entry.path,
           progressEvent,
         })
-        await reloadCurrent()
+        if (get(openDestAfterExtract) && result?.destination) {
+          await loadRaw(result.destination, { recordHistory: true })
+        } else {
+          await reloadCurrent()
+        }
         const suffix = summarize(result?.skipped_symlinks ?? 0, result?.skipped_entries ?? 0)
         showToast(`Extracted to ${result.destination}${suffix}`)
       } else {
@@ -1579,9 +1585,18 @@ let compressLevel = 6
           paths: entriesToExtract.map((e) => e.path),
           progressEvent,
         })
-        await reloadCurrent()
         const successes = result.filter((r) => r.ok && r.result)
         const failures = result.filter((r) => !r.ok)
+        if (get(openDestAfterExtract)) {
+          const firstDest = successes.find((r) => r.result?.destination)?.result?.destination
+          if (firstDest) {
+            await loadRaw(firstDest, { recordHistory: true })
+          } else {
+            await reloadCurrent()
+          }
+        } else {
+          await reloadCurrent()
+        }
         const totalSkippedSymlinks = successes.reduce(
           (n, r) => n + (r.result?.skipped_symlinks ?? 0),
           0
@@ -2472,6 +2487,7 @@ let compressLevel = 6
     densityValue={$density}
     archiveNameValue={$archiveName}
     archiveLevelValue={$archiveLevel}
+    openDestAfterExtractValue={$openDestAfterExtract}
     startDirValue={$startDirPref ?? '~'}
     sortFieldValue={$sortFieldPref}
     sortDirectionValue={$sortDirectionPref}
@@ -2488,6 +2504,7 @@ let compressLevel = 6
     onChangeDensity={setDensityPref}
     onChangeArchiveName={setArchiveNamePref}
     onChangeArchiveLevel={setArchiveLevelPref}
+    onToggleOpenDestAfterExtract={toggleOpenDestAfterExtract}
     onChangeSortField={setSortFieldPref}
     onChangeSortDirection={setSortDirectionPref}
     onClose={() => (settingsOpen = false)}
