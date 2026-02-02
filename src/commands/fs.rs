@@ -736,7 +736,11 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
     use windows_sys::Win32::Storage::FileSystem::{
         GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN,
     };
-    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
     let attrs = unsafe { GetFileAttributesW(wide.as_ptr()) };
     if attrs == u32::MAX {
         return Err("GetFileAttributes failed".into());
@@ -786,7 +790,11 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn set_hidden(path: Option<String>, paths: Option<Vec<String>>, hidden: bool) -> Result<Vec<String>, String> {
+pub fn set_hidden(
+    path: Option<String>,
+    paths: Option<Vec<String>>,
+    hidden: bool,
+) -> Result<Vec<String>, String> {
     let targets: Vec<String> = match (paths, path) {
         (Some(list), _) if !list.is_empty() => list,
         (_, Some(single)) => vec![single],

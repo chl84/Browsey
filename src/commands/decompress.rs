@@ -16,10 +16,10 @@ use rar_stream::{
     InnerFile as RarInnerFile, LocalFileMedia as RarLocalFileMedia,
     ParseOptions as RarParseOptions, RarFilesPackage,
 };
+use serde::Serialize;
 use sevenz_rust2::{
     decompress_file_with_extract_fn, Archive as SevenZArchive, Error as SevenZError,
 };
-use serde::Serialize;
 use tar::Archive;
 use xz2::read::XzDecoder;
 use zip::ZipArchive;
@@ -267,7 +267,11 @@ pub async fn extract_archives(
 
     // Single cancel token for the whole batch if requested.
     let batch_guard = if let Some(evt) = progress_event.clone() {
-        Some(cancel_state.register(evt).map_err(|e| format!("Failed to register cancel: {e}"))?)
+        Some(
+            cancel_state
+                .register(evt)
+                .map_err(|e| format!("Failed to register cancel: {e}"))?,
+        )
     } else {
         None
     };
@@ -372,10 +376,13 @@ fn do_extract(
         ArchiveKind::Zip => zip_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::Tar => tar_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::TarGz => gzip_uncompressed_size(&archive_path).unwrap_or_else(|_| meta.len()),
-        ArchiveKind::SevenZ => sevenz_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::SevenZ => {
+            sevenz_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len())
+        }
         ArchiveKind::Rar => {
             let entries = parse_rar_entries(&archive_path)?;
-            let total = rar_uncompressed_total_from_entries(&entries).unwrap_or_else(|_| meta.len());
+            let total =
+                rar_uncompressed_total_from_entries(&entries).unwrap_or_else(|_| meta.len());
             rar_entries = Some(entries);
             total
         }
@@ -608,7 +615,13 @@ fn archive_root_name(path: &Path) -> String {
     path.file_name()
         .and_then(|s| s.to_str())
         .map(strip_known_suffixes)
-        .map(|s| if s.is_empty() { "extracted".to_string() } else { s })
+        .map(|s| {
+            if s.is_empty() {
+                "extracted".to_string()
+            } else {
+                s
+            }
+        })
         .unwrap_or_else(|| "extracted".to_string())
 }
 
@@ -754,11 +767,10 @@ fn choose_destination_dir(
 }
 
 fn first_component(path: &Path) -> Option<PathBuf> {
-    path.components()
-        .find_map(|c| match c {
-            std::path::Component::Normal(p) => Some(PathBuf::from(p)),
-            _ => None,
-        })
+    path.components().find_map(|c| match c {
+        std::path::Component::Normal(p) => Some(PathBuf::from(p)),
+        _ => None,
+    })
 }
 
 fn single_root_in_zip(path: &Path) -> Result<Option<PathBuf>, String> {
@@ -812,8 +824,7 @@ fn single_root_in_tar(path: &Path, kind: ArchiveKind) -> Result<Option<PathBuf>,
         ArchiveKind::TarBz2 => Box::new(BzDecoder::new(reader)),
         ArchiveKind::TarXz => Box::new(XzDecoder::new(reader)),
         ArchiveKind::TarZstd => Box::new(
-            ZstdDecoder::new(reader)
-                .map_err(|e| format!("Failed to create zstd decoder: {e}"))?,
+            ZstdDecoder::new(reader).map_err(|e| format!("Failed to create zstd decoder: {e}"))?,
         ),
         _ => return Ok(None),
     };
@@ -902,7 +913,9 @@ fn single_root_in_rar(path: &Path) -> Result<Option<PathBuf>, String> {
             continue;
         };
         let rest_is_empty = clean_rel.components().count() == 1;
-        let is_dir = raw_name.ends_with('/') || raw_name.ends_with('\\') || (entry.length == 0 && rest_is_empty);
+        let is_dir = raw_name.ends_with('/')
+            || raw_name.ends_with('\\')
+            || (entry.length == 0 && rest_is_empty);
         if !is_dir && rest_is_empty {
             return Ok(None);
         }
@@ -935,7 +948,15 @@ where
 {
     let reader = open_buffered_file(archive_path, "open tar")?;
     let reader = wrap(reader)?;
-    extract_tar(reader, dest_dir, strip_prefix, stats, progress, created, cancel)?;
+    extract_tar(
+        reader,
+        dest_dir,
+        strip_prefix,
+        stats,
+        progress,
+        created,
+        cancel,
+    )?;
     Ok(())
 }
 
@@ -1524,8 +1545,8 @@ fn tar_uncompressed_total(path: &Path) -> Result<u64, String> {
 }
 
 fn sevenz_uncompressed_total(path: &Path) -> Result<u64, String> {
-    let archive = SevenZArchive::open(path)
-        .map_err(|e| format!("Failed to read 7z for total size: {e}"))?;
+    let archive =
+        SevenZArchive::open(path).map_err(|e| format!("Failed to read 7z for total size: {e}"))?;
     let mut total = 0u64;
     for entry in archive.files {
         if entry.is_directory || entry.is_anti_item || !entry.has_stream {
@@ -1541,8 +1562,7 @@ fn parse_rar_entries(path: &Path) -> Result<Vec<RarInnerFile>, String> {
         .to_str()
         .ok_or_else(|| "Archive path is not valid UTF-8".to_string())?;
     let media = Arc::new(
-        RarLocalFileMedia::new(path_str)
-            .map_err(|e| format!("Failed to open rar archive: {e}"))?,
+        RarLocalFileMedia::new(path_str).map_err(|e| format!("Failed to open rar archive: {e}"))?,
     );
     let package = RarFilesPackage::new(vec![media]);
     tauri::async_runtime::block_on(async move {
@@ -1572,7 +1592,8 @@ fn estimate_total_hint(path: &Path) -> Result<u64, String> {
         ArchiveKind::SevenZ => sevenz_uncompressed_total(path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::Rar => {
             let entries = parse_rar_entries(path)?;
-            let total = rar_uncompressed_total_from_entries(&entries).unwrap_or_else(|_| meta.len());
+            let total =
+                rar_uncompressed_total_from_entries(&entries).unwrap_or_else(|_| meta.len());
             rar_entries = Some(entries);
             total
         }

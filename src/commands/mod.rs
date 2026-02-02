@@ -23,7 +23,7 @@ pub use decompress::{extract_archive, extract_archives};
 pub use fs::{
     create_file, create_folder, delete_entries, delete_entry, eject_drive, list_dir, list_mounts,
     list_trash, move_to_trash, move_to_trash_many, open_entry, purge_trash_items, rename_entry,
-    set_hidden, restore_trash_items, watch_dir,
+    restore_trash_items, set_hidden, watch_dir,
 };
 pub use library::{list_recent, list_starred, remove_recent, toggle_star};
 pub use meta::entry_times_cmd;
@@ -31,14 +31,14 @@ pub use open_with::{list_open_with_apps, open_with};
 pub use permissions::{get_permissions, set_permissions};
 pub use search::{search, search_stream};
 pub use settings::{
-    load_default_view, load_folders_first, load_hidden_files_last, load_saved_column_widths,
-    load_show_hidden, load_start_dir, store_column_widths, store_confirm_delete, store_default_view,
-    store_folders_first, store_hidden_files_last, store_show_hidden, store_start_dir,
-    load_confirm_delete, store_sort_field, load_sort_field, store_sort_direction,
-    load_sort_direction, store_density, load_density, store_archive_name, load_archive_name,
-    store_archive_level, load_archive_level, store_open_dest_after_extract, load_open_dest_after_extract,
-    store_ffmpeg_path, load_ffmpeg_path, store_thumb_cache_mb, load_thumb_cache_mb, store_video_thumbs,
-    load_video_thumbs,
+    load_archive_level, load_archive_name, load_confirm_delete, load_default_view, load_density,
+    load_ffmpeg_path, load_folders_first, load_hidden_files_last, load_open_dest_after_extract,
+    load_saved_column_widths, load_show_hidden, load_sort_direction, load_sort_field,
+    load_start_dir, load_thumb_cache_mb, load_video_thumbs, store_archive_level,
+    store_archive_name, store_column_widths, store_confirm_delete, store_default_view,
+    store_density, store_ffmpeg_path, store_folders_first, store_hidden_files_last,
+    store_open_dest_after_extract, store_show_hidden, store_sort_direction, store_sort_field,
+    store_start_dir, store_thumb_cache_mb, store_video_thumbs,
 };
 pub use system_clipboard::clear_system_clipboard;
 pub use system_clipboard::copy_paths_to_system_clipboard;
