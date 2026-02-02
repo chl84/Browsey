@@ -93,8 +93,8 @@ let inputFocused = false
   let bookmarkCandidate: Entry | null = null
   let bookmarkInputEl: HTMLInputElement | null = null
   let renameValue = ''
-  let compressName = 'Archive.zip'
-  let compressLevel = 6
+let compressName = 'Archive'
+let compressLevel = 6
   let newFolderName = 'New folder'
   let newFileName = ''
   let conflictModalOpen = false
@@ -155,6 +155,7 @@ let inputFocused = false
     confirmDelete,
     startDirPref,
     density,
+    archiveName,
     sortFieldPref,
     sortDirectionPref,
     sortField,
@@ -162,6 +163,7 @@ let inputFocused = false
     setSortFieldPref,
     setSortDirectionPref,
     setDensityPref,
+    setArchiveNamePref,
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
@@ -1620,7 +1622,7 @@ let inputFocused = false
     showToast,
     openWith: (entry) => modalActions.openWith(entry),
     openCompress: (entries) => {
-      compressName = modalActions.openCompress(entries)
+      compressName = modalActions.openCompress(entries, get(archiveName))
       compressLevel = 6
     },
     extractEntries: (entries) => extractEntries(entries),
@@ -2466,6 +2468,7 @@ let inputFocused = false
     foldersFirstValue={$foldersFirst}
     confirmDeleteValue={$confirmDelete}
     densityValue={$density}
+    archiveNameValue={$archiveName}
     startDirValue={$startDirPref ?? '~'}
     sortFieldValue={$sortFieldPref}
     sortDirectionValue={$sortDirectionPref}
@@ -2480,6 +2483,7 @@ let inputFocused = false
     onToggleConfirmDelete={toggleConfirmDelete}
     onChangeStartDir={setStartDirPref}
     onChangeDensity={setDensityPref}
+    onChangeArchiveName={setArchiveNamePref}
     onChangeSortField={setSortFieldPref}
     onChangeSortDirection={setSortDirectionPref}
     onClose={() => (settingsOpen = false)}

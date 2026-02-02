@@ -44,3 +44,7 @@ export const storeSortDirection = (value: 'asc' | 'desc') =>
 export const loadDensity = () => invoke<Density | null>('load_density')
 
 export const storeDensity = (value: Density) => invoke<void>('store_density', { value })
+
+export const loadArchiveName = () => invoke<string | null>('load_archive_name')
+
+export const storeArchiveName = (value: string) => invoke<void>('store_archive_name', { value })

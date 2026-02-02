@@ -39,22 +39,25 @@
     {/if}
     <label class="field">
       <span>Archive name</span>
-      <input
-        type="text"
-        id="compress-archive-name"
-        autocomplete="off"
-        bind:this={inputEl}
-        bind:value={value}
-        on:keydown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            confirmAndClose()
-          } else if (e.key === 'Escape') {
-            e.preventDefault()
-            onCancel()
-          }
-        }}
-      />
+      <div class="archive-input">
+        <input
+          type="text"
+          id="compress-archive-name"
+          autocomplete="off"
+          bind:this={inputEl}
+          bind:value={value}
+          on:keydown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              confirmAndClose()
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              onCancel()
+            }
+          }}
+        />
+        <span>.zip</span>
+      </div>
     </label>
     <label class="field">
       <span>Compression level</span>

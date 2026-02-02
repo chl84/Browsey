@@ -129,6 +129,24 @@ pub fn load_sort_direction() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+pub fn store_archive_name(value: String) -> Result<(), String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("archive name cannot be empty".into());
+    }
+    let normalized = trimmed.strip_suffix(".zip").unwrap_or(trimmed).to_string();
+    let conn = crate::db::open()?;
+    crate::db::set_setting_string(&conn, "archiveName", &normalized)
+}
+
+#[tauri::command]
+pub fn load_archive_name() -> Result<Option<String>, String> {
+    let conn = crate::db::open()?;
+    Ok(crate::db::get_setting_string(&conn, "archiveName")?
+        .map(|v| v.strip_suffix(".zip").unwrap_or(&v).to_string()))
+}
+
+#[tauri::command]
 pub fn store_density(value: String) -> Result<(), String> {
     match value.as_str() {
         "cozy" | "compact" => {

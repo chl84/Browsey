@@ -27,16 +27,17 @@ export const createCompressModal = (deps: Deps) => {
   const state = writable<CompressState>({ open: false, targets: [], error: '' })
   let busy = false
 
-  const open = (entries: Entry[]) => {
-    state.set({ open: true, targets: entries, error: '' })
-    const defaultName =
-      entries.length === 1
-        ? entries[0].name.toLowerCase().endsWith('.zip')
-          ? entries[0].name
-          : `${entries[0].name}.zip`
-        : 'Archive.zip'
-    return defaultName
-  }
+const open = (entries: Entry[], defaultBase: string) => {
+  state.set({ open: true, targets: entries, error: '' })
+  const base = defaultBase && defaultBase.trim().length > 0 ? defaultBase.trim() : 'Archive'
+  const defaultName =
+    entries.length === 1
+      ? entries[0].name.toLowerCase().endsWith('.zip')
+        ? entries[0].name.slice(0, -4)
+        : entries[0].name
+      : base
+  return defaultName
+}
 
   const close = () => state.set({ open: false, targets: [], error: '' })
 
@@ -58,9 +59,11 @@ export const createCompressModal = (deps: Deps) => {
     const progressEvent = `compress-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       await activityApi.start('Compressing…', progressEvent, () => activityApi.requestCancel(progressEvent))
+      const base = (name || '').trim().replace(/\.zip$/i, '')
+      const finalName = base.length > 0 ? `${base}.zip` : 'Archive.zip'
       const dest = await invoke<string>('compress_entries', {
         paths,
-        name,
+        name: finalName,
         level: lvl,
         progressEvent,
       })

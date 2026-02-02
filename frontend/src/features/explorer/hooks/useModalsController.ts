@@ -68,7 +68,7 @@ export const useModalsController = ({
 
   const actions = {
     openWith: (entry: Entry) => openWithModal.open(entry),
-    openCompress: (entries: Entry[]) => compressModal.open(entries),
+    openCompress: (entries: Entry[], defaultArchiveBase: string) => compressModal.open(entries, defaultArchiveBase),
     startRename: (entry: Entry) => renameModal.open(entry),
     confirmDelete: (entries: Entry[]) => deleteModal.open(entries),
     openProperties: (entries: Entry[]) => propertiesModal.open(entries),

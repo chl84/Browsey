@@ -31,6 +31,8 @@ import {
   storeSortField,
   loadSortDirection,
   storeSortDirection,
+  loadArchiveName,
+  storeArchiveName,
   loadDensity,
   storeDensity,
 } from './services/settings'
@@ -89,6 +91,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const sortField = writable<SortField>('name')
   const sortDirection = writable<SortDirection>('asc')
   const density = writable<Density>('cozy')
+  const archiveName = writable<string>('Archive')
   const bookmarks = writable<{ label: string; path: string }[]>([])
   const partitions = writable<Partition[]>([])
   const history = writable<Location[]>([])
@@ -337,6 +340,13 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     sortDirectionPref.set(dir)
     void storeSortDirection(dir)
     await refreshForSort()
+  }
+
+  const setArchiveNamePref = (value: string) => {
+    const trimmed = value.trim().replace(/\.zip$/i, '')
+    const next = trimmed.length > 0 ? trimmed : 'Archive'
+    archiveName.set(next)
+    void storeArchiveName(next)
   }
 
   const refreshForSort = async () => {
@@ -668,6 +678,17 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const loadArchiveNamePref = async () => {
+    try {
+      const saved = await loadArchiveName()
+      if (typeof saved === 'string' && saved.trim().length > 0) {
+        archiveName.set(saved.trim())
+      }
+    } catch (err) {
+      console.error('Failed to load archiveName setting', err)
+    }
+  }
+
   const loadDensityPref = async () => {
     try {
       const saved = await loadDensity()
@@ -713,6 +734,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     sortDirection,
     sortFieldPref,
     sortDirectionPref,
+    archiveName,
     bookmarks,
     partitions,
     showHidden,
@@ -747,6 +769,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadStartDirPref,
     loadConfirmDeletePref,
     loadSortPref,
+    loadArchiveNamePref,
     loadFoldersFirstPref,
     loadDensityPref,
     loadSavedWidths,
@@ -754,5 +777,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     setSortFieldPref,
     setSortDirectionPref,
     setDensityPref,
+    setArchiveNamePref,
   }
 }
