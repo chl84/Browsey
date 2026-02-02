@@ -12,7 +12,7 @@ type ActivityApi = {
 type Deps = {
   activityApi: ActivityApi
   getCurrentPath: () => string | null
-  loadPath: (path: string) => Promise<void>
+  reloadCurrent: () => Promise<void>
   showToast: (msg: string) => void
 }
 
@@ -23,7 +23,7 @@ export type CompressState = {
 }
 
 export const createCompressModal = (deps: Deps) => {
-  const { activityApi, getCurrentPath, loadPath, showToast } = deps
+  const { activityApi, getCurrentPath, reloadCurrent, showToast } = deps
   const state = writable<CompressState>({ open: false, targets: [], error: '' })
   let busy = false
 
@@ -50,11 +50,6 @@ const open = (entries: Entry[], defaultBase: string) => {
     busy = true
     const lvl = Math.min(Math.max(Math.round(level), 0), 9)
     const base = getCurrentPath()
-    if (!base) {
-      showToast('No current path')
-      busy = false
-      return false
-    }
     const paths = current.targets.map((e) => e.path)
     const progressEvent = `compress-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
@@ -67,7 +62,9 @@ const open = (entries: Entry[], defaultBase: string) => {
         level: lvl,
         progressEvent,
       })
-      await loadPath(base)
+      if (reloadCurrent) {
+        await reloadCurrent()
+      }
       close()
       showToast(`Created ${dest}`)
       return true
