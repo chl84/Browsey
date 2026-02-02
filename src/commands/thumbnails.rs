@@ -82,11 +82,6 @@ static LOG_THUMBS: Lazy<bool> =
     Lazy::new(|| std::env::var("BROWSEY_DEBUG_THUMBS").is_ok() || cfg!(debug_assertions));
 static BLOCKING_SEM: Lazy<Semaphore> =
     Lazy::new(|| Semaphore::new(GLOBAL_HARD_MAX_INFLIGHT));
-static DOC_SEM: Lazy<Semaphore> = Lazy::new(|| {
-    let threads = *POOL_THREADS;
-    let permits = threads.saturating_mul(2).clamp(POOL_MIN_THREADS, GLOBAL_HARD_MAX_INFLIGHT);
-    Semaphore::new(permits)
-});
 
 #[derive(Serialize, Clone)]
 pub struct ThumbnailResponse {
@@ -173,20 +168,15 @@ pub async fn get_thumbnail(
     let task_path = target.clone();
     let task_cache = cache_path.clone();
 
+    let permits = if matches!(kind, ThumbKind::Svg | ThumbKind::Pdf | ThumbKind::Video) {
+        2
+    } else {
+        1
+    };
     let permit_global = BLOCKING_SEM
-        .acquire()
+        .acquire_many(permits)
         .await
         .map_err(|_| "Semaphore closed".to_string())?;
-    let permit_doc = if matches!(kind, ThumbKind::Svg | ThumbKind::Pdf | ThumbKind::Video) {
-        Some(
-            DOC_SEM
-                .acquire()
-                .await
-                .map_err(|_| "Semaphore closed".to_string())?,
-        )
-    } else {
-        None
-    };
 
     let res = tauri::async_runtime::spawn_blocking(move || {
         let res_dir_opt = app_handle.path().resource_dir().ok();
@@ -207,7 +197,6 @@ pub async fn get_thumbnail(
         notify_waiters(&key, Err(err.clone()));
     }
 
-    drop(permit_doc);
     drop(permit_global);
 
     let res = res?;
@@ -273,7 +262,7 @@ fn generate_thumbnail(
     generation: Option<&str>,
     ffmpeg_override: Option<PathBuf>,
 ) -> Result<ThumbnailResponse, String> {
-    if is_video(path) {
+    if matches!(thumb_kind(path), ThumbKind::Video) {
         let (w, h) = render_video_thumbnail(
             path,
             cache_path,
@@ -562,17 +551,5 @@ fn thumb_kind(path: &Path) -> ThumbKind {
             ThumbKind::Video
         }
         _ => ThumbKind::Image,
-    }
-}
-
-fn is_video(path: &Path) -> bool {
-    match path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| s.to_ascii_lowercase())
-        .as_deref()
-    {
-        Some("mp4") | Some("mov") | Some("m4v") | Some("webm") | Some("mkv") | Some("avi") => true,
-        _ => false,
     }
 }
