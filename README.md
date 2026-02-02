@@ -17,11 +17,12 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 - **Drag & drop**: Internal drag/drop with custom ghost and drop-target highlighting; designed to work on Linux and Windows.
 - **Thumbnails**: Lazy, virtualized thumbnails with caching and per-file permission checks. SVG rasterized via resvg; PDFs via bundled PDFium; images via `image` crate; **videos** via ffmpeg first-frame grabs with cancellation on navigation.
 - **Grid view parity**: Fixed-size cards with virtualization, keyboard navigation and range selection, lasso overlay, hidden-item dimming, and consistent click-to-clear selection; names can span up to three lines but stay aligned to show the start.
-- **Theming**: Dark mode by default plus a light mode toggle in the drag bar; all colors centralized in `frontend/src/app.css`.
+- **Theming & density**: Dark by default plus a light toggle; “cozy” vs “compact” density presets resize rows, grid cards, icons, and even the sidebar, all via CSS variables in `frontend/src/app.css`.
 - **Cross-platform details**: Uses system WebView (WebKit on Linux, WebView2 on Windows). Network locations on Windows delete permanently (Explorer parity) because the recycle bin is unavailable there.
 - **Removable drives**: Detects removable volumes and offers an eject action on Windows (CfgMgr/SetupAPI + IOCTL fallback) and on Linux (`gio`/`umount`/`udisksctl` with lazy fallback); safely-ejected drives are hidden from the list. Busy devices surface a short “in use” hint.
 - **UI polish**: Flat, squared styling across inputs/buttons/modals; address bar shows breadcrumbs when unfocused and selects the full path on focus; renaming pre-selects the filename without its extension; browser default context menu and hotkeys are disabled (except Ctrl+Shift+I), while app shortcuts remain.
 - **Visual cues for access**: Read-only items show an eye icon; items without read access show a padlock. Multi-select permission changes apply in one batch with undo/rollback on failure (Unix and Windows).
+- **User defaults**: Persists show hidden, hidden-last, folders-first, start directory, default view (list/grid), default sort field/direction, and delete confirmation. Defaults load before the first listing so startup respects your prefs.
 
 ## Screenshots
 ![Browsey showing a Fedora workspace](resources/01_screenshot_browsey_fedora.png)
