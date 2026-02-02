@@ -519,7 +519,7 @@
           <div class="form-control archive-name">
             <input
               type="text"
-              bind:value={settings.archiveName}
+              value={settings.archiveName}
               on:input={(e) => {
                 const val = (e.currentTarget as HTMLInputElement).value
                 settings = { ...settings, archiveName: val }
