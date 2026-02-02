@@ -402,7 +402,15 @@ pub async fn compress_entries(
     let cancel_state = cancel.inner().clone();
     let undo_state = undo.inner().clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        do_compress(app, cancel_state, undo_state, paths, name, level, progress_event)
+        do_compress(
+            app,
+            cancel_state,
+            undo_state,
+            paths,
+            name,
+            level,
+            progress_event,
+        )
     });
     task.await
         .map_err(|e| format!("Compression task failed: {e}"))?

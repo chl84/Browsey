@@ -80,7 +80,12 @@ fn backup_existing_target(target: &Path, actions: &mut Vec<Action>) -> Result<()
     Ok(())
 }
 
-fn merge_dir(src: &Path, dest: &Path, mode: ClipboardMode, actions: &mut Vec<Action>) -> Result<(), String> {
+fn merge_dir(
+    src: &Path,
+    dest: &Path,
+    mode: ClipboardMode,
+    actions: &mut Vec<Action>,
+) -> Result<(), String> {
     // Ensure both exist and are directories.
     let src_meta =
         fs::symlink_metadata(src).map_err(|e| format!("Failed to read source metadata: {e}"))?;
