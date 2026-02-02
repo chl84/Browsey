@@ -171,6 +171,8 @@ fn main() {
             load_archive_level,
             store_open_dest_after_extract,
             load_open_dest_after_extract,
+            store_video_thumbs,
+            load_video_thumbs,
             store_density,
             load_density,
             dir_sizes,

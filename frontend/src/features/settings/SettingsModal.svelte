@@ -15,6 +15,7 @@
   export let archiveNameValue = 'Archive'
   export let archiveLevelValue = 6
   export let openDestAfterExtractValue = true
+  export let videoThumbsValue = true
   export let sortFieldValue: DefaultSortField = 'name'
   export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
@@ -30,6 +31,7 @@
   export let onChangeArchiveName: (value: string) => void = () => {}
   export let onChangeArchiveLevel: (value: number) => void = () => {}
   export let onToggleOpenDestAfterExtract: (value: boolean) => void = () => {}
+  export let onToggleVideoThumbs: (value: boolean) => void = () => {}
 
   let filter = ''
   let needle = ''
@@ -158,6 +160,9 @@
   }
   $: if (settings.openDestAfterExtract !== openDestAfterExtractValue) {
     settings = { ...settings, openDestAfterExtract: openDestAfterExtractValue }
+  }
+  $: if (settings.videoThumbs !== videoThumbsValue) {
+    settings = { ...settings, videoThumbs: videoThumbsValue }
   }
 
   const rowTexts = (
@@ -588,7 +593,15 @@
         {#if rowMatches(needle, videoThumbsTexts)}
           <div class="form-label">Video thumbs</div>
           <div class="form-control checkbox">
-            <input type="checkbox" bind:checked={settings.videoThumbs} />
+            <input
+              type="checkbox"
+              checked={settings.videoThumbs}
+              on:change={(e) => {
+                const next = (e.currentTarget as HTMLInputElement).checked
+                settings = { ...settings, videoThumbs: next }
+                onToggleVideoThumbs(next)
+              }}
+            />
             <span>Enable video thumbnails (requires ffmpeg)</span>
           </div>
         {/if}

@@ -5,6 +5,7 @@ type Options = {
   maxConcurrent?: number
   maxDim?: number
   initialGeneration?: string
+  allowVideos?: boolean
 }
 
 type ThumbMap = Map<string, string>
@@ -24,6 +25,7 @@ export function createThumbnailLoader(opts: Options = {}) {
   const maxConcurrent = opts.maxConcurrent ?? DEFAULT_CONCURRENCY
   const maxDim = opts.maxDim ?? DEFAULT_DIM
   let generation = opts.initialGeneration ?? 'init'
+  let allowVideos = opts.allowVideos ?? true
 
   const thumbs = writable<ThumbMap>(new Map())
   const requested = new Set<string>()
@@ -43,9 +45,11 @@ export function createThumbnailLoader(opts: Options = {}) {
         if (entry.isIntersecting) {
           const path = observed.get(entry.target)
           if (path) {
-            enqueue(path)
-            observer.unobserve(entry.target)
-            observed.delete(entry.target)
+            const queued = enqueue(path)
+            if (queued) {
+              observer.unobserve(entry.target)
+              observed.delete(entry.target)
+            }
           }
         }
       }
@@ -56,7 +60,8 @@ export function createThumbnailLoader(opts: Options = {}) {
   const observed = new Map<Element, string>()
 
   function enqueue(path: string, priority?: Priority) {
-    if (requested.has(path)) return
+    if (!allowVideos && isVideo(path)) return false
+    if (requested.has(path)) return false
     requested.add(path)
     const prio = priority ?? (isVideo(path) ? 'low' : 'high')
     if (prio === 'high') {
@@ -65,6 +70,7 @@ export function createThumbnailLoader(opts: Options = {}) {
       lowQueue.push(path)
     }
     pump()
+    return true
   }
 
   function pump() {
@@ -160,6 +166,47 @@ export function createThumbnailLoader(opts: Options = {}) {
       highQueue.length = 0
       lowQueue.length = 0
       thumbs.set(new Map())
+    },
+    setAllowVideos: (value: boolean) => {
+      const wasAllowed = allowVideos
+      allowVideos = value
+      if (!allowVideos) {
+        // Drop queued and cached video thumbnails
+        for (let i = highQueue.length - 1; i >= 0; i--) {
+          if (isVideo(highQueue[i])) highQueue.splice(i, 1)
+        }
+        for (let i = lowQueue.length - 1; i >= 0; i--) {
+          if (isVideo(lowQueue[i])) lowQueue.splice(i, 1)
+        }
+        requested.forEach((p) => {
+          if (isVideo(p)) requested.delete(p)
+        })
+        retries.forEach((_, p) => {
+          if (isVideo(p)) retries.delete(p)
+        })
+        thumbs.update((m) => {
+          const next = new Map(m)
+          for (const [p] of next) {
+            if (isVideo(p)) next.delete(p)
+          }
+          return next
+        })
+      } else if (!wasAllowed && allowVideos) {
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
+        const margin = 200
+        observed.forEach((path, node) => {
+          if (!isVideo(path)) return
+          const rect = node.getBoundingClientRect()
+          const inView = rect.bottom >= -margin && rect.top <= viewportHeight + margin
+          if (inView) {
+            const queued = enqueue(path, 'low')
+            if (queued) {
+              observer.unobserve(node)
+              observed.delete(node)
+            }
+          }
+        })
+      }
     },
     subscribe: thumbs.subscribe as Readable<ThumbMap>['subscribe'],
   }

@@ -39,6 +39,8 @@ import {
   storeOpenDestAfterExtract,
   loadDensity,
   storeDensity,
+  loadVideoThumbs,
+  storeVideoThumbs,
 } from './services/settings'
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
@@ -98,6 +100,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const archiveName = writable<string>('Archive')
   const archiveLevel = writable<number>(6)
   const openDestAfterExtract = writable<boolean>(false)
+  const videoThumbs = writable<boolean>(true)
   const bookmarks = writable<{ label: string; path: string }[]>([])
   const partitions = writable<Partition[]>([])
   const history = writable<Location[]>([])
@@ -727,6 +730,17 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const loadVideoThumbsPref = async () => {
+    try {
+      const saved = await loadVideoThumbs()
+      if (typeof saved === 'boolean') {
+        videoThumbs.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load videoThumbs setting', err)
+    }
+  }
+
   const loadDensityPref = async () => {
     try {
       const saved = await loadDensity()
@@ -747,6 +761,14 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     openDestAfterExtract.update((v) => {
       const next = !v
       void storeOpenDestAfterExtract(next)
+      return next
+    })
+  }
+
+  const toggleVideoThumbs = () => {
+    videoThumbs.update((v) => {
+      const next = !v
+      void storeVideoThumbs(next)
       return next
     })
   }
@@ -783,6 +805,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     archiveName,
     archiveLevel,
     openDestAfterExtract,
+    videoThumbs,
     bookmarks,
     partitions,
     showHidden,
@@ -820,6 +843,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadArchiveNamePref,
     loadArchiveLevelPref,
     loadOpenDestAfterExtractPref,
+    loadVideoThumbsPref,
     loadFoldersFirstPref,
     loadDensityPref,
     loadSavedWidths,
@@ -830,5 +854,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     setArchiveNamePref,
     setArchiveLevelPref,
     toggleOpenDestAfterExtract,
+    toggleVideoThumbs,
   }
 }

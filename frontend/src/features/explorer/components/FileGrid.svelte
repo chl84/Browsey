@@ -10,11 +10,13 @@
   import { convertFileSrc } from '@tauri-apps/api/core'
 
   export let currentPath = ''
+  export let videoThumbs = true
 
   const thumbLoader = createThumbnailLoader({
     maxConcurrent: 3,
     maxDim: 96,
     initialGeneration: currentPath,
+    allowVideos: videoThumbs,
   })
   let thumbMap = new Map<string, string>()
   const unsubThumbs = thumbLoader.subscribe((m) => {
@@ -25,6 +27,13 @@
   $: if (currentPath !== lastPath) {
     thumbLoader.reset(currentPath)
     lastPath = currentPath
+  }
+
+  let lastVideoThumbs = videoThumbs
+  $: if (videoThumbs !== lastVideoThumbs) {
+    thumbLoader.setAllowVideos(videoThumbs)
+    thumbLoader.reset(`${currentPath}-vthumbs-${videoThumbs ? 'on' : 'off'}`)
+    lastVideoThumbs = videoThumbs
   }
 
   onDestroy(() => {

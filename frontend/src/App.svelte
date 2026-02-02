@@ -158,6 +158,7 @@ let compressLevel = 6
     archiveName,
     archiveLevel,
     openDestAfterExtract,
+    videoThumbs,
     sortFieldPref,
     sortDirectionPref,
     sortField,
@@ -168,6 +169,7 @@ let compressLevel = 6
     setArchiveNamePref,
     setArchiveLevelPref,
     toggleOpenDestAfterExtract,
+    toggleVideoThumbs,
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
@@ -2365,6 +2367,7 @@ let compressLevel = 6
   searchActive={$searchActive}
   {mode}
   filterValue={$filter}
+  videoThumbs={$videoThumbs}
   cols={$cols}
   gridTemplate={$gridTemplate}
   filteredEntries={$filteredEntries}
@@ -2488,6 +2491,7 @@ let compressLevel = 6
     archiveNameValue={$archiveName}
     archiveLevelValue={$archiveLevel}
     openDestAfterExtractValue={$openDestAfterExtract}
+    videoThumbsValue={$videoThumbs}
     startDirValue={$startDirPref ?? '~'}
     sortFieldValue={$sortFieldPref}
     sortDirectionValue={$sortDirectionPref}
@@ -2505,6 +2509,7 @@ let compressLevel = 6
     onChangeArchiveName={setArchiveNamePref}
     onChangeArchiveLevel={setArchiveLevelPref}
     onToggleOpenDestAfterExtract={toggleOpenDestAfterExtract}
+    onToggleVideoThumbs={toggleVideoThumbs}
     onChangeSortField={setSortFieldPref}
     onChangeSortDirection={setSortDirectionPref}
     onClose={() => (settingsOpen = false)}

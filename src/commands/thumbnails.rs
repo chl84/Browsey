@@ -23,6 +23,7 @@ mod thumbnails_video;
 use thumbnails_video::render_video_thumbnail;
 
 use crate::fs_utils::debug_log;
+use crate::db;
 
 const MAX_DIM_DEFAULT: u32 = 96;
 const MAX_DIM_HARD_LIMIT: u32 = 512;
@@ -95,6 +96,13 @@ pub async fn get_thumbnail(
         return Err("Target is not a file".to_string());
     }
     let kind = thumb_kind(&target);
+    if matches!(kind, ThumbKind::Video) {
+        if let Ok(conn) = db::open() {
+            if let Ok(Some(false)) = db::get_setting_bool(&conn, "videoThumbs") {
+                return Err("Video thumbnails disabled".to_string());
+            }
+        }
+    }
     let size_limit = match kind {
         ThumbKind::Video => MAX_FILE_BYTES_VIDEO,
         _ => MAX_FILE_BYTES,
