@@ -9,6 +9,11 @@
   --grid-card-width: 128px;
   --grid-row-height: 136px;
   --grid-thumb-size: 96px;
+  --sidebar-max-width: 220px;
+  --sidebar-padding: 5px;
+  --sidebar-gap: 16px;
+  --sidebar-drag-height: 32px;
+  --sidebar-row-height: 28px;
 
   --bg: #101010;
   --bg-alt: #0d0d0d;
@@ -214,6 +219,11 @@ body.density-cozy {
   --grid-card-width: 120px;
   --grid-row-height: 126px;
   --grid-thumb-size: 90px;
+  --sidebar-max-width: 220px;
+  --sidebar-padding: 5px;
+  --sidebar-gap: 16px;
+  --sidebar-drag-height: 32px;
+  --sidebar-row-height: 28px;
 }
 
 /* Placeholder for upcoming compact values; keeps selectors in place */
@@ -227,6 +237,11 @@ body.density-compact {
   --grid-card-width: 112px;
   --grid-row-height: 116px;
   --grid-thumb-size: 80px;
+  --sidebar-max-width: 180px;
+  --sidebar-padding: 3px;
+  --sidebar-gap: 10px;
+  --sidebar-drag-height: 28px;
+  --sidebar-row-height: 24px;
 }
 
 #app {
