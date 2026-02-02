@@ -33,6 +33,8 @@ export const useExplorerData = (options: Options = {}) => {
     loadArchiveLevelPref,
     loadOpenDestAfterExtractPref,
     loadVideoThumbsPref,
+    loadFfmpegPathPref,
+    loadThumbCachePref,
     entries,
     current,
     startDirPref,
@@ -63,6 +65,8 @@ export const useExplorerData = (options: Options = {}) => {
       loadArchiveLevelPref(),
       loadOpenDestAfterExtractPref(),
       loadVideoThumbsPref(),
+      loadFfmpegPathPref(),
+      loadThumbCachePref(),
     ])
 
     const pollMs = options.partitionsPollMs ?? 2000

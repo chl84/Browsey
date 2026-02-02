@@ -14,8 +14,18 @@ pub fn render_video_thumbnail(
     cache_path: &Path,
     max_dim: u32,
     generation: Option<&str>,
+    ffmpeg_override: Option<&Path>,
 ) -> Result<(u32, u32), String> {
-    let ffmpeg = which_ffmpeg().ok_or("ffmpeg not found in PATH")?;
+    let ffmpeg = ffmpeg_override
+        .and_then(|p| {
+            if p.exists() {
+                Some(p.to_path_buf())
+            } else {
+                None
+            }
+        })
+        .or_else(which_ffmpeg)
+        .ok_or("ffmpeg not found in PATH")?;
 
     let tmp_path = cache_path.with_extension("tmp.png");
 

@@ -202,6 +202,42 @@ pub fn load_open_dest_after_extract() -> Result<Option<bool>, String> {
 }
 
 #[tauri::command]
+pub fn store_ffmpeg_path(value: String) -> Result<(), String> {
+    let trimmed = value.trim();
+    let conn = crate::db::open()?;
+    // Empty string means auto-detect; still store so the UI can show what the user chose.
+    crate::db::set_setting_string(&conn, "ffmpegPath", trimmed)
+}
+
+#[tauri::command]
+pub fn load_ffmpeg_path() -> Result<Option<String>, String> {
+    let conn = crate::db::open()?;
+    Ok(crate::db::get_setting_string(&conn, "ffmpegPath")?)
+}
+
+#[tauri::command]
+pub fn store_thumb_cache_mb(value: i64) -> Result<(), String> {
+    if !(50..=1000).contains(&value) {
+        return Err("thumb cache must be 50-1000 MB".into());
+    }
+    let conn = crate::db::open()?;
+    crate::db::set_setting_string(&conn, "thumbCacheMb", &value.to_string())
+}
+
+#[tauri::command]
+pub fn load_thumb_cache_mb() -> Result<Option<i64>, String> {
+    let conn = crate::db::open()?;
+    if let Some(s) = crate::db::get_setting_string(&conn, "thumbCacheMb")? {
+        if let Ok(n) = s.parse::<i64>() {
+            if (50..=1000).contains(&n) {
+                return Ok(Some(n));
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[tauri::command]
 pub fn store_video_thumbs(value: bool) -> Result<(), String> {
     let conn = crate::db::open()?;
     crate::db::set_setting_bool(&conn, "videoThumbs", value)

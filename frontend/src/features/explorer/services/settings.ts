@@ -59,7 +59,17 @@ export const loadOpenDestAfterExtract = () => invoke<boolean | null>('load_open_
 export const storeOpenDestAfterExtract = (value: boolean) =>
   invoke<void>('store_open_dest_after_extract', { value })
 
+export const loadFfmpegPath = () => invoke<string | null>('load_ffmpeg_path')
+
+export const storeFfmpegPath = (value: string) =>
+  invoke<void>('store_ffmpeg_path', { value })
+
 export const loadVideoThumbs = () => invoke<boolean | null>('load_video_thumbs')
 
 export const storeVideoThumbs = (value: boolean) =>
   invoke<void>('store_video_thumbs', { value })
+
+export const loadThumbCacheMb = () => invoke<number | null>('load_thumb_cache_mb')
+
+export const storeThumbCacheMb = (value: number) =>
+  invoke<void>('store_thumb_cache_mb', { value })

@@ -16,6 +16,8 @@
   export let archiveLevelValue = 6
   export let openDestAfterExtractValue = true
   export let videoThumbsValue = true
+  export let ffmpegPathValue = ''
+  export let thumbCacheMbValue = 300
   export let sortFieldValue: DefaultSortField = 'name'
   export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
@@ -32,6 +34,8 @@
   export let onChangeArchiveLevel: (value: number) => void = () => {}
   export let onToggleOpenDestAfterExtract: (value: boolean) => void = () => {}
   export let onToggleVideoThumbs: (value: boolean) => void = () => {}
+  export let onChangeFfmpegPath: (value: string) => void = () => {}
+  export let onChangeThumbCacheMb: (value: number) => void = () => {}
 
   let filter = ''
   let needle = ''
@@ -57,7 +61,6 @@
     videoThumbs: boolean
     ffmpegPath: string
     thumbCacheMb: number
-    thumbTimeoutMs: number
     watcherPollMs: number
     ioConcurrency: number
     lazyDirScan: boolean
@@ -86,7 +89,6 @@
     videoThumbs: true,
     ffmpegPath: '',
     thumbCacheMb: 300,
-    thumbTimeoutMs: 750,
     watcherPollMs: 2000,
     ioConcurrency: 4,
     lazyDirScan: true,
@@ -164,6 +166,12 @@
   $: if (settings.videoThumbs !== videoThumbsValue) {
     settings = { ...settings, videoThumbs: videoThumbsValue }
   }
+  $: if (settings.ffmpegPath !== ffmpegPathValue) {
+    settings = { ...settings, ffmpegPath: ffmpegPathValue }
+  }
+  $: if (settings.thumbCacheMb !== thumbCacheMbValue) {
+    settings = { ...settings, thumbCacheMb: thumbCacheMbValue }
+  }
 
   const rowTexts = (
     ...parts: (string | number | boolean | null | undefined | (string | number | boolean | null | undefined)[])[]
@@ -207,7 +215,6 @@
   $: videoThumbsTexts = rowTexts('video thumbs', 'enable video thumbnails', 'requires ffmpeg', settings.videoThumbs ? 'on' : 'off')
   $: ffmpegPathTexts = rowTexts('ffmpeg path', settings.ffmpegPath || 'auto-detect if empty', 'ffmpeg')
   $: thumbCacheTexts = rowTexts('cache size', 'thumbnail cache size', `${settings.thumbCacheMb} mb`)
-  $: thumbTimeoutTexts = rowTexts('timeout', 'thumbnail timeout', `${settings.thumbTimeoutMs} ms`)
 
   $: filteredShortcuts = shortcuts.filter((s) =>
     rowMatches(needle, rowTexts('shortcuts', 'keys', s.action, s.keys)),
@@ -256,7 +263,6 @@
     ...videoThumbsTexts,
     ...ffmpegPathTexts,
     ...thumbCacheTexts,
-    ...thumbTimeoutTexts,
   ])
 
   $: showShortcuts = rowMatches(needle, filteredShortcuts.flatMap((s) => rowTexts(s.action, s.keys)))
@@ -610,11 +616,16 @@
           <div class="form-label">FFmpeg path</div>
           <div class="form-control">
             <input
-                type="text"
-                bind:value={settings.ffmpegPath}
-                placeholder="auto-detect if empty"
-                disabled={thumbsDisabled}
-              />
+              type="text"
+              value={settings.ffmpegPath}
+              placeholder="auto-detect if empty"
+              disabled={thumbsDisabled}
+              on:input={(e) => {
+                const next = (e.currentTarget as HTMLInputElement).value
+                settings = { ...settings, ffmpegPath: next }
+                onChangeFfmpegPath(next)
+              }}
+            />
             </div>
           {/if}
 
@@ -627,28 +638,17 @@
                 max="1000"
                 step="50"
                 value={settings.thumbCacheMb}
-                on:input={onNumberInput('thumbCacheMb')}
+                on:input={(e) => {
+                  const next = Number((e.currentTarget as HTMLInputElement).value)
+                  settings = { ...settings, thumbCacheMb: next }
+                  onChangeThumbCacheMb(next)
+                }}
                 disabled={thumbsDisabled}
               />
               <small>{settings.thumbCacheMb} MB</small>
             </div>
           {/if}
 
-        {#if rowMatches(needle, thumbTimeoutTexts)}
-          <div class="form-label">Timeout</div>
-          <div class="form-control">
-              <input
-                type="range"
-                min="500"
-                max="10000"
-                step="100"
-                value={settings.thumbTimeoutMs}
-                on:input={onNumberInput('thumbTimeoutMs')}
-                disabled={thumbsDisabled}
-              />
-              <small>{settings.thumbTimeoutMs} ms</small>
-            </div>
-          {/if}
         {/if}
 
         {#if showShortcuts}

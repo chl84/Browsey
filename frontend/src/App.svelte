@@ -159,6 +159,8 @@ let compressLevel = 6
     archiveLevel,
     openDestAfterExtract,
     videoThumbs,
+    ffmpegPath,
+    thumbCacheMb,
     sortFieldPref,
     sortDirectionPref,
     sortField,
@@ -170,6 +172,8 @@ let compressLevel = 6
     setArchiveLevelPref,
     toggleOpenDestAfterExtract,
     toggleVideoThumbs,
+    setFfmpegPathPref,
+    setThumbCachePref,
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
@@ -2492,6 +2496,8 @@ let compressLevel = 6
     archiveLevelValue={$archiveLevel}
     openDestAfterExtractValue={$openDestAfterExtract}
     videoThumbsValue={$videoThumbs}
+    ffmpegPathValue={$ffmpegPath}
+    thumbCacheMbValue={$thumbCacheMb}
     startDirValue={$startDirPref ?? '~'}
     sortFieldValue={$sortFieldPref}
     sortDirectionValue={$sortDirectionPref}
@@ -2510,6 +2516,8 @@ let compressLevel = 6
     onChangeArchiveLevel={setArchiveLevelPref}
     onToggleOpenDestAfterExtract={toggleOpenDestAfterExtract}
     onToggleVideoThumbs={toggleVideoThumbs}
+    onChangeFfmpegPath={setFfmpegPathPref}
+    onChangeThumbCacheMb={setThumbCachePref}
     onChangeSortField={setSortFieldPref}
     onChangeSortDirection={setSortDirectionPref}
     onClose={() => (settingsOpen = false)}

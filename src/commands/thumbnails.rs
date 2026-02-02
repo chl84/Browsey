@@ -32,11 +32,26 @@ const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
 const MAX_FILE_BYTES_VIDEO: u64 = 1_000 * 1024 * 1024; // 1 GB
 const POOL_MIN_THREADS: usize = 2;
 const POOL_MAX_THREADS: usize = 8;
-const CACHE_MAX_BYTES: u64 = 300 * 1024 * 1024;
 const CACHE_MAX_FILES: usize = 2000;
 const MAX_SOURCE_DIM: u32 = 20000;
 const DECODE_TIMEOUT_MS: u64 = 750;
 const GLOBAL_HARD_MAX_INFLIGHT: usize = 32;
+const CACHE_DEFAULT_MB: u64 = 300;
+const CACHE_MIN_MB: u64 = 50;
+const CACHE_MAX_MB: u64 = 1000;
+
+fn cache_max_bytes() -> u64 {
+    if let Ok(conn) = db::open() {
+        if let Ok(Some(s)) = db::get_setting_string(&conn, "thumbCacheMb") {
+            if let Ok(n) = s.parse::<u64>() {
+                if (CACHE_MIN_MB..=CACHE_MAX_MB).contains(&n) {
+                    return n * 1024 * 1024;
+                }
+            }
+        }
+    }
+    CACHE_DEFAULT_MB * 1024 * 1024
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum ThumbKind {
@@ -96,10 +111,17 @@ pub async fn get_thumbnail(
         return Err("Target is not a file".to_string());
     }
     let kind = thumb_kind(&target);
+    let mut ffmpeg_override: Option<PathBuf> = None;
     if matches!(kind, ThumbKind::Video) {
         if let Ok(conn) = db::open() {
             if let Ok(Some(false)) = db::get_setting_bool(&conn, "videoThumbs") {
                 return Err("Video thumbnails disabled".to_string());
+            }
+            if let Ok(Some(path)) = db::get_setting_string(&conn, "ffmpegPath") {
+                let trimmed = path.trim();
+                if !trimmed.is_empty() {
+                    ffmpeg_override = Some(PathBuf::from(trimmed));
+                }
             }
         }
     }
@@ -162,6 +184,7 @@ pub async fn get_thumbnail(
                 max_dim,
                 res_dir_opt.as_deref(),
                 generation.as_deref(),
+                ffmpeg_override.clone(),
             )
         })
     })
@@ -180,7 +203,8 @@ pub async fn get_thumbnail(
             let mut counter = TRIM_COUNTER.lock().expect("trim counter poisoned");
             *counter = counter.wrapping_add(1);
             if *counter % 10 == 0 {
-                trim_cache(&cache_dir, CACHE_MAX_BYTES, CACHE_MAX_FILES);
+                let max_bytes = cache_max_bytes();
+                trim_cache(&cache_dir, max_bytes, CACHE_MAX_FILES);
             }
             Ok(r)
         }
@@ -240,9 +264,10 @@ fn generate_thumbnail(
     max_dim: u32,
     resource_dir: Option<&Path>,
     generation: Option<&str>,
+    ffmpeg_override: Option<PathBuf>,
 ) -> Result<ThumbnailResponse, String> {
     if is_video(path) {
-        let (w, h) = render_video_thumbnail(path, cache_path, max_dim, generation)?;
+        let (w, h) = render_video_thumbnail(path, cache_path, max_dim, generation, ffmpeg_override.as_deref())?;
         return Ok(ThumbnailResponse {
             path: cache_path.to_string_lossy().into_owned(),
             width: w,
