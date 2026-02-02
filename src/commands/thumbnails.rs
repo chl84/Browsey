@@ -22,38 +22,8 @@ use thumbnails_pdf::render_pdf_thumbnail;
 mod thumbnails_video;
 use thumbnails_video::render_video_thumbnail;
 
-use crate::db;
 use crate::fs_utils::debug_log;
-
-#[derive(Debug)]
-struct CacheState {
-    hot_bytes: u64,
-    hot_files: usize,
-    cold_bytes: u64,
-    cold_files: usize,
-    initialized: bool,
-    rotating: bool,
-}
-
-impl CacheState {
-    fn new() -> Self {
-        CacheState {
-            hot_bytes: 0,
-            hot_files: 0,
-            cold_bytes: 0,
-            cold_files: 0,
-            initialized: false,
-            rotating: false,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct CachePaths {
-    base: PathBuf,
-    hot: PathBuf,
-    cold: PathBuf,
-}
+use crate::db;
 
 const MAX_DIM_DEFAULT: u32 = 96;
 const MAX_DIM_HARD_LIMIT: u32 = 512;
@@ -81,125 +51,6 @@ fn cache_max_bytes() -> u64 {
         }
     }
     CACHE_DEFAULT_MB * 1024 * 1024
-}
-
-fn ensure_cache_dirs() -> Result<CachePaths, String> {
-    let base = cache_dir()?;
-    let hot = base.join("hot");
-    let cold = base.join("cold");
-    fs::create_dir_all(&hot).map_err(|e| format!("Failed to create thumbnail cache dir: {e}"))?;
-    fs::create_dir_all(&cold).map_err(|e| format!("Failed to create thumbnail cache dir: {e}"))?;
-    Ok(CachePaths { base, hot, cold })
-}
-
-fn scan_dir_counts(dir: &Path) -> (u64, usize) {
-    let mut bytes: u64 = 0;
-    let mut files = 0;
-    if let Ok(read_dir) = fs::read_dir(dir) {
-        for entry in read_dir.flatten() {
-            if let Ok(md) = entry.metadata() {
-                if md.is_file() {
-                    bytes = bytes.saturating_add(md.len());
-                    files += 1;
-                }
-            }
-        }
-    }
-    (bytes, files)
-}
-
-fn init_cache_state(paths: &CachePaths, state: &mut CacheState) {
-    if state.initialized {
-        return;
-    }
-    let (hot_bytes, hot_files) = scan_dir_counts(&paths.hot);
-    let (cold_bytes, cold_files) = scan_dir_counts(&paths.cold);
-    state.hot_bytes = hot_bytes;
-    state.hot_files = hot_files;
-    state.cold_bytes = cold_bytes;
-    state.cold_files = cold_files;
-    state.initialized = true;
-}
-
-fn cache_paths_for_key(paths: &CachePaths, key: &str) -> (PathBuf, PathBuf) {
-    let file = format!("{key}.png");
-    (paths.hot.join(&file), paths.cold.join(&file))
-}
-
-fn remove_existing_for_key(paths: &CachePaths, state: &mut CacheState, key: &str) {
-    let (hot_path, cold_path) = cache_paths_for_key(paths, key);
-    if let Ok(md) = fs::metadata(&hot_path) {
-        let _ = fs::remove_file(&hot_path);
-        state.hot_bytes = state.hot_bytes.saturating_sub(md.len());
-        state.hot_files = state.hot_files.saturating_sub(1);
-    }
-    if let Ok(md) = fs::metadata(&cold_path) {
-        let _ = fs::remove_file(&cold_path);
-        state.cold_bytes = state.cold_bytes.saturating_sub(md.len());
-        state.cold_files = state.cold_files.saturating_sub(1);
-    }
-}
-
-fn cached_thumbnail(paths: &CachePaths, key: &str) -> Option<ThumbnailResponse> {
-    let (hot_path, cold_path) = cache_paths_for_key(paths, key);
-    if let Some((w, h)) = cached_dims(&hot_path) {
-        return Some(ThumbnailResponse {
-            path: hot_path.to_string_lossy().into_owned(),
-            width: w,
-            height: h,
-            cached: true,
-        });
-    }
-    if let Some((w, h)) = cached_dims(&cold_path) {
-        return Some(ThumbnailResponse {
-            path: cold_path.to_string_lossy().into_owned(),
-            width: w,
-            height: h,
-            cached: true,
-        });
-    }
-    None
-}
-
-fn maybe_rotate(paths: &CachePaths, state: &mut CacheState, limit_bytes: u64, limit_files: usize) {
-    if state.rotating {
-        return;
-    }
-    if state.hot_bytes <= limit_bytes && state.hot_files <= limit_files {
-        return;
-    }
-
-    state.rotating = true;
-
-    let cold_old = paths.base.join("cold.old");
-    let _ = fs::remove_dir_all(&cold_old);
-    let _ = fs::rename(&paths.cold, &cold_old);
-
-    if let Err(e) = fs::rename(&paths.hot, &paths.cold) {
-        thumb_log(&format!("thumb cache rotate failed (hot->cold): {e}"));
-        let _ = fs::create_dir_all(&paths.hot);
-        state.rotating = false;
-        state.initialized = false; // force rescan next time
-        return;
-    }
-
-    if let Err(e) = fs::create_dir_all(&paths.hot) {
-        thumb_log(&format!("thumb cache recreate hot failed: {e}"));
-        state.rotating = false;
-        state.initialized = false;
-        return;
-    }
-
-    // Move counts: previous hot becomes cold; previous cold discarded.
-    state.cold_bytes = state.hot_bytes;
-    state.cold_files = state.hot_files;
-    state.hot_bytes = 0;
-    state.hot_files = 0;
-    state.rotating = false;
-
-    std::thread::spawn(move || {
-        let _ = fs::remove_dir_all(cold_old);
-    });
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -230,8 +81,6 @@ static LIMITER: Lazy<std::sync::Mutex<ConcurrencyLimiter>> = Lazy::new(|| {
 });
 static LOG_THUMBS: Lazy<bool> =
     Lazy::new(|| std::env::var("BROWSEY_DEBUG_THUMBS").is_ok() || cfg!(debug_assertions));
-static CACHE_STATE: Lazy<std::sync::Mutex<CacheState>> =
-    Lazy::new(|| std::sync::Mutex::new(CacheState::new()));
 
 #[derive(Serialize, Clone)]
 pub struct ThumbnailResponse {
@@ -288,21 +137,23 @@ pub async fn get_thumbnail(
     }
     let mtime = meta.modified().ok();
 
-    let paths = ensure_cache_dirs()?;
-
-    {
-        let mut state = CACHE_STATE.lock().expect("cache state poisoned");
-        init_cache_state(&paths, &mut state);
-    }
+    let cache_dir = cache_dir()?;
+    fs::create_dir_all(&cache_dir)
+        .map_err(|e| format!("Failed to create thumbnail cache dir: {e}"))?;
 
     let inflight_limit = limiter_limit_for_kind(kind);
 
     let key = cache_key(&target, mtime, max_dim);
-    if let Some(hit) = cached_thumbnail(&paths, &key) {
-        return Ok(hit);
-    }
+    let cache_path = cache_dir.join(format!("{key}.png"));
 
-    let (cache_path, _) = cache_paths_for_key(&paths, &key);
+    if let Some((w, h)) = cached_dims(&cache_path) {
+        return Ok(ThumbnailResponse {
+            path: cache_path.to_string_lossy().into_owned(),
+            width: w,
+            height: h,
+            cached: true,
+        });
+    }
 
     // In-flight deduplication
     if let Some(rx) = register_or_wait(&key) {
@@ -313,12 +164,6 @@ pub async fn get_thumbnail(
                 r.cached = true;
                 r
             });
-    }
-
-    {
-        let mut state = CACHE_STATE.lock().expect("cache state poisoned");
-        init_cache_state(&paths, &mut state);
-        remove_existing_for_key(&paths, &mut state, &key);
     }
 
     let task_path = target.clone();
@@ -350,17 +195,17 @@ pub async fn get_thumbnail(
 
     let res = res?;
 
+    static TRIM_COUNTER: Lazy<std::sync::Mutex<u32>> = Lazy::new(|| std::sync::Mutex::new(0));
+
     let res = match res {
         Ok(r) => {
-            if let Ok(md) = fs::metadata(&cache_path) {
-                let limit_bytes = cache_max_bytes();
-                let mut state = CACHE_STATE.lock().expect("cache state poisoned");
-                init_cache_state(&paths, &mut state);
-                state.hot_bytes = state.hot_bytes.saturating_add(md.len());
-                state.hot_files = state.hot_files.saturating_add(1);
-                maybe_rotate(&paths, &mut state, limit_bytes, CACHE_MAX_FILES);
-            }
             notify_waiters(&key, Ok(r.clone()));
+            let mut counter = TRIM_COUNTER.lock().expect("trim counter poisoned");
+            *counter = counter.wrapping_add(1);
+            if *counter % 10 == 0 {
+                let max_bytes = cache_max_bytes();
+                trim_cache(&cache_dir, max_bytes, CACHE_MAX_FILES);
+            }
             Ok(r)
         }
         Err(err) => {
@@ -422,13 +267,7 @@ fn generate_thumbnail(
     ffmpeg_override: Option<PathBuf>,
 ) -> Result<ThumbnailResponse, String> {
     if is_video(path) {
-        let (w, h) = render_video_thumbnail(
-            path,
-            cache_path,
-            max_dim,
-            generation,
-            ffmpeg_override.as_deref(),
-        )?;
+        let (w, h) = render_video_thumbnail(path, cache_path, max_dim, generation, ffmpeg_override.as_deref())?;
         return Ok(ThumbnailResponse {
             path: cache_path.to_string_lossy().into_owned(),
             width: w,
@@ -540,6 +379,38 @@ fn notify_waiters(key: &str, result: Result<ThumbnailResponse, String>) {
     if let Some(waiters) = waiters {
         for tx in waiters {
             let _ = tx.send(result.clone());
+        }
+    }
+}
+
+fn trim_cache(dir: &Path, max_bytes: u64, max_files: usize) {
+    let mut entries: Vec<(PathBuf, u64, std::time::SystemTime)> = Vec::new();
+    if let Ok(read_dir) = fs::read_dir(dir) {
+        for entry in read_dir.flatten() {
+            if let Ok(md) = entry.metadata() {
+                let modified = md.modified().unwrap_or(std::time::UNIX_EPOCH);
+                entries.push((entry.path(), md.len(), modified));
+            }
+        }
+    }
+
+    let total_bytes: u64 = entries.iter().map(|e| e.1).sum();
+    let total_files = entries.len();
+    if total_bytes <= max_bytes && total_files <= max_files {
+        return;
+    }
+
+    // sort by oldest first
+    entries.sort_by_key(|e| e.2);
+    let mut bytes = total_bytes;
+    let mut files = total_files;
+    for (path, size, _) in entries {
+        if bytes <= max_bytes && files <= max_files {
+            break;
+        }
+        if fs::remove_file(&path).is_ok() {
+            bytes = bytes.saturating_sub(size);
+            files -= 1;
         }
     }
 }
