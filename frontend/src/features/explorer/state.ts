@@ -97,7 +97,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const density = writable<Density>('cozy')
   const archiveName = writable<string>('Archive')
   const archiveLevel = writable<number>(6)
-  const openDestAfterExtract = writable<boolean>(true)
+  const openDestAfterExtract = writable<boolean>(false)
   const bookmarks = writable<{ label: string; path: string }[]>([])
   const partitions = writable<Partition[]>([])
   const history = writable<Location[]>([])
