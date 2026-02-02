@@ -3,10 +3,9 @@ use std::path::{Path, PathBuf};
 
 use blake3::Hasher;
 use image::ImageReader;
+use image::Limits;
 use image::{imageops::FilterType, GenericImageView, ImageFormat};
 use once_cell::sync::Lazy;
-use rayon::ThreadPool;
-use rayon::ThreadPoolBuilder;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::mpsc;
@@ -22,8 +21,8 @@ use thumbnails_pdf::render_pdf_thumbnail;
 mod thumbnails_video;
 use thumbnails_video::render_video_thumbnail;
 
-use crate::fs_utils::debug_log;
 use crate::db;
+use crate::fs_utils::debug_log;
 
 const MAX_DIM_DEFAULT: u32 = 96;
 const MAX_DIM_HARD_LIMIT: u32 = 512;
@@ -39,6 +38,7 @@ const GLOBAL_HARD_MAX_INFLIGHT: usize = 32;
 const CACHE_DEFAULT_MB: u64 = 300;
 const CACHE_MIN_MB: u64 = 50;
 const CACHE_MAX_MB: u64 = 1000;
+const MAX_DECODE_BYTES: u64 = (MAX_SOURCE_DIM as u64) * (MAX_SOURCE_DIM as u64) * 4;
 
 fn cache_max_bytes() -> u64 {
     if let Ok(conn) = db::open() {
@@ -63,14 +63,6 @@ enum ThumbKind {
 
 static POOL_THREADS: Lazy<usize> =
     Lazy::new(|| num_cpus::get().clamp(POOL_MIN_THREADS, POOL_MAX_THREADS));
-static THUMB_POOL: Lazy<ThreadPool> = Lazy::new(|| {
-    let threads = *POOL_THREADS;
-    ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .thread_name(|i| format!("thumb-{}", i))
-        .build()
-        .expect("failed to build thumbnail pool")
-});
 
 static INFLIGHT: Lazy<
     std::sync::Mutex<HashMap<String, Vec<oneshot::Sender<Result<ThumbnailResponse, String>>>>>,
@@ -177,19 +169,22 @@ pub async fn get_thumbnail(
 
     let res = tauri::async_runtime::spawn_blocking(move || {
         let res_dir_opt = app_handle.path().resource_dir().ok();
-        THUMB_POOL.install(|| {
-            generate_thumbnail(
-                &task_path,
-                &task_cache,
-                max_dim,
-                res_dir_opt.as_deref(),
-                generation.as_deref(),
-                ffmpeg_override.clone(),
-            )
-        })
+        generate_thumbnail(
+            &task_path,
+            &task_cache,
+            max_dim,
+            res_dir_opt.as_deref(),
+            generation.as_deref(),
+            ffmpeg_override.clone(),
+        )
     })
     .await
     .map_err(|e| format!("Thumbnail task cancelled: {e}"));
+
+    if let Err(err) = res.as_ref() {
+        // Make sure callers waiting on the same key get released even on panics/JoinError.
+        notify_waiters(&key, Err(err.clone()));
+    }
 
     release(kind);
 
@@ -202,7 +197,7 @@ pub async fn get_thumbnail(
             notify_waiters(&key, Ok(r.clone()));
             let mut counter = TRIM_COUNTER.lock().expect("trim counter poisoned");
             *counter = counter.wrapping_add(1);
-            if *counter % 10 == 0 {
+            if *counter % 100 == 0 {
                 let max_bytes = cache_max_bytes();
                 trim_cache(&cache_dir, max_bytes, CACHE_MAX_FILES);
             }
@@ -267,7 +262,13 @@ fn generate_thumbnail(
     ffmpeg_override: Option<PathBuf>,
 ) -> Result<ThumbnailResponse, String> {
     if is_video(path) {
-        let (w, h) = render_video_thumbnail(path, cache_path, max_dim, generation, ffmpeg_override.as_deref())?;
+        let (w, h) = render_video_thumbnail(
+            path,
+            cache_path,
+            max_dim,
+            generation,
+            ffmpeg_override.as_deref(),
+        )?;
         return Ok(ThumbnailResponse {
             path: cache_path.to_string_lossy().into_owned(),
             width: w,
@@ -305,6 +306,9 @@ fn generate_thumbnail(
             cached: false,
         });
     }
+
+    // Lightweight preflight: reject huge dimensions before full decode.
+    preflight_dimensions(path)?;
 
     let reader = ImageReader::open(path)
         .map_err(|e| format!("Open failed: {e}"))?
@@ -358,6 +362,24 @@ pub(super) fn thumb_log(msg: &str) {
     if *LOG_THUMBS {
         debug_log(msg);
     }
+}
+
+fn preflight_dimensions(path: &Path) -> Result<(), String> {
+    let dims_reader = ImageReader::open(path)
+        .map_err(|e| format!("Open failed: {e}"))?
+        .with_guessed_format()
+        .map_err(|e| format!("Failed to guess format: {e}"))?;
+
+    // into_dimensions performs a header-only parse for most codecs; cheap compared to full decode.
+    let (w, h) = dims_reader
+        .into_dimensions()
+        .map_err(|e| format!("Failed to read image dimensions: {e}"))?;
+
+    if w > MAX_SOURCE_DIM || h > MAX_SOURCE_DIM {
+        return Err("Image dimensions too large for thumbnail".into());
+    }
+
+    Ok(())
 }
 
 fn register_or_wait(key: &str) -> Option<oneshot::Receiver<Result<ThumbnailResponse, String>>> {
@@ -416,10 +438,18 @@ fn trim_cache(dir: &Path, max_bytes: u64, max_files: usize) {
 }
 
 fn decode_with_timeout<R: std::io::BufRead + std::io::Seek + Send + 'static>(
-    reader: ImageReader<R>,
+    mut reader: ImageReader<R>,
     timeout: Duration,
 ) -> Result<image::DynamicImage, String> {
+    // Apply codec limits to guard against pathological inputs.
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(MAX_SOURCE_DIM);
+    limits.max_image_height = Some(MAX_SOURCE_DIM);
+    limits.max_alloc = Some(MAX_DECODE_BYTES);
+    reader.limits(limits);
+
     let (tx, rx) = mpsc::channel();
+
     std::thread::spawn(move || {
         let res = reader.decode();
         let _ = tx.send(res);
