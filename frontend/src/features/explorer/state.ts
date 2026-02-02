@@ -344,9 +344,13 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const setArchiveNamePref = (value: string) => {
     const trimmed = value.trim().replace(/\.zip$/i, '')
-    const next = trimmed.length > 0 ? trimmed : 'Archive'
-    archiveName.set(next)
-    void storeArchiveName(next)
+    if (trimmed.length === 0) {
+      // Allow empty in UI; keep last persisted value until user provides one.
+      archiveName.set('')
+      return
+    }
+    archiveName.set(trimmed)
+    void storeArchiveName(trimmed)
   }
 
   const refreshForSort = async () => {
