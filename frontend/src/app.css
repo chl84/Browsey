@@ -208,7 +208,7 @@ body {
   user-select: none;
 }
 
-# Base density variables — current UI equals "cozy"
+/* Base density variables — current UI equals "cozy" */
 body.density-cozy {
   --row-height: 32px;
   --row-padding-y: 4px;
@@ -224,6 +224,23 @@ body.density-cozy {
   --sidebar-gap: 16px;
   --sidebar-drag-height: 32px;
   --sidebar-row-height: 28px;
+  /* Modal (cozy) */
+  --modal-padding: 20px;
+  --modal-gap: 16px;
+  --modal-font-size: 14px;
+  --modal-line-height: 1.5;
+  --modal-header-size: 18px;
+  --modal-header-line: 1.4;
+  --modal-muted-size: 13px;
+  --modal-field-gap: 8px;
+  --modal-label-size: 13px;
+  --modal-input-padding-y: 6px;
+  --modal-input-padding-x: 10px;
+  --modal-input-min-height: 32px;
+  --modal-actions-gap: 12px;
+  --modal-button-padding-y: 10px;
+  --modal-button-padding-x: 14px;
+  --modal-button-min-height: 38px;
 }
 
 /* Placeholder for upcoming compact values; keeps selectors in place */
@@ -242,6 +259,23 @@ body.density-compact {
   --sidebar-gap: 10px;
   --sidebar-drag-height: 28px;
   --sidebar-row-height: 24px;
+  /* Modal (compact) */
+  --modal-padding: 14px;
+  --modal-gap: 12px;
+  --modal-font-size: 13px;
+  --modal-line-height: 1.45;
+  --modal-header-size: 16px;
+  --modal-header-line: 1.35;
+  --modal-muted-size: 12px;
+  --modal-field-gap: 6px;
+  --modal-label-size: 12px;
+  --modal-input-padding-y: 5px;
+  --modal-input-padding-x: 9px;
+  --modal-input-min-height: 30px;
+  --modal-actions-gap: 10px;
+  --modal-button-padding-y: 8px;
+  --modal-button-padding-x: 12px;
+  --modal-button-min-height: 34px;
 }
 
 #app {
@@ -270,19 +304,19 @@ a {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 0;
-  padding: 20px;
+  padding: var(--modal-padding);
   box-shadow: 0 14px 38px rgba(0, 0, 0, 0.45);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  font-size: 14px;
-  line-height: 1.5;
+  gap: var(--modal-gap);
+  font-size: var(--modal-font-size);
+  line-height: var(--modal-line-height);
 }
 
 .modal header {
   font-weight: 700;
-  font-size: 18px;
-  line-height: 1.4;
+  font-size: var(--modal-header-size);
+  line-height: var(--modal-header-line);
   margin: 0;
 }
 
@@ -294,20 +328,20 @@ a {
 .modal .muted {
   color: var(--fg-muted);
   margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: var(--modal-muted-size);
+  line-height: var(--modal-line-height);
 }
 
 .modal .field {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--modal-field-gap);
 }
 
 .modal .field span,
 .modal .label {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--modal-label-size);
   color: var(--fg-muted);
 }
 
@@ -318,14 +352,14 @@ a {
 .modal input:not([type]),
 .modal select,
 .modal textarea {
-  padding: 6px 10px;
+  padding: var(--modal-input-padding-y) var(--modal-input-padding-x);
   border: 1px solid var(--border-accent);
   background: var(--bg);
   color: var(--fg);
   border-radius: 0;
-  font-size: 14px;
-  line-height: 1.4;
-  min-height: 32px;
+  font-size: var(--modal-font-size);
+  line-height: var(--modal-line-height);
+  min-height: var(--modal-input-min-height);
 }
 
 .modal select {
@@ -374,14 +408,14 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
-  min-height: 32px;
+  padding: var(--modal-input-padding-y) var(--modal-input-padding-x);
+  min-height: var(--modal-input-min-height);
   border: 1px solid var(--border-accent);
   background: var(--bg);
   color: var(--fg);
   cursor: pointer;
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: var(--modal-font-size);
+  line-height: var(--modal-line-height);
 }
 
 .modal .combo-btn:focus-visible {
@@ -425,7 +459,7 @@ a {
 }
 
 .modal .combo-list li {
-  padding: 6px 10px;
+  padding: var(--modal-input-padding-y) var(--modal-input-padding-x);
   cursor: pointer;
   color: var(--fg);
 }
@@ -466,21 +500,21 @@ select:focus {
 .modal .actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: var(--modal-actions-gap);
   padding-top: 4px;
 }
 
 .modal button {
-  padding: 10px 14px;
-  min-height: 38px;
+  padding: var(--modal-button-padding-y) var(--modal-button-padding-x);
+  min-height: var(--modal-button-min-height);
   border-radius: 0;
   border: 1px solid var(--border);
   background: var(--bg-raised);
   color: var(--fg);
   cursor: pointer;
   font-weight: 700;
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: var(--modal-font-size);
+  line-height: var(--modal-line-height);
 }
 
 .modal button.secondary {
