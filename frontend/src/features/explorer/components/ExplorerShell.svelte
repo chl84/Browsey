@@ -99,6 +99,7 @@
   export let dragTargetPath: string | null = null
   export let dragAllowed = false
   export let dragging = false
+  export let videoThumbs = true
 
   export let contextMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
     open: false,
@@ -290,6 +291,7 @@
         {selected}
         {isHidden}
         {displayName}
+        videoThumbs={videoThumbs}
         {clipboardMode}
           {clipboardPaths}
           onWheel={onWheel}

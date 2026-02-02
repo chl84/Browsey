@@ -58,3 +58,8 @@ export const loadOpenDestAfterExtract = () => invoke<boolean | null>('load_open_
 
 export const storeOpenDestAfterExtract = (value: boolean) =>
   invoke<void>('store_open_dest_after_extract', { value })
+
+export const loadVideoThumbs = () => invoke<boolean | null>('load_video_thumbs')
+
+export const storeVideoThumbs = (value: boolean) =>
+  invoke<void>('store_video_thumbs', { value })
