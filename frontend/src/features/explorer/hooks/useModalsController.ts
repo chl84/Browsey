@@ -61,7 +61,7 @@ export const useModalsController = ({
   const compressModal = createCompressModal({
     activityApi,
     getCurrentPath,
-    loadPath: (path: string) => loadPath(path, { recordHistory: false }),
+    reloadCurrent,
     showToast,
   })
   const compressState = compressModal.state
