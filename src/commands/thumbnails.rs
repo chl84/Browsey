@@ -6,13 +6,16 @@ use image::ImageReader;
 use image::Limits;
 use image::{imageops::FilterType, GenericImageView, ImageFormat};
 use once_cell::sync::Lazy;
+use rayon::ThreadPool;
+use rayon::ThreadPoolBuilder;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::io::{self, BufRead, Read, Seek};
 use std::sync::mpsc;
 use std::time::Duration;
 use tauri::AppHandle;
 use tauri::Manager;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Semaphore};
 
 mod thumbnails_svg;
 use thumbnails_svg::render_svg_thumbnail;
@@ -63,16 +66,27 @@ enum ThumbKind {
 
 static POOL_THREADS: Lazy<usize> =
     Lazy::new(|| num_cpus::get().clamp(POOL_MIN_THREADS, POOL_MAX_THREADS));
+static DECODE_POOL: Lazy<ThreadPool> = Lazy::new(|| {
+    let threads = *POOL_THREADS;
+    ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .thread_name(|i| format!("thumb-decode-{i}"))
+        .build()
+        .expect("failed to build decode pool")
+});
 
 static INFLIGHT: Lazy<
     std::sync::Mutex<HashMap<String, Vec<oneshot::Sender<Result<ThumbnailResponse, String>>>>>,
 > = Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
-static LIMITER: Lazy<std::sync::Mutex<ConcurrencyLimiter>> = Lazy::new(|| {
-    let threads = *POOL_THREADS;
-    std::sync::Mutex::new(ConcurrencyLimiter::new(threads))
-});
 static LOG_THUMBS: Lazy<bool> =
     Lazy::new(|| std::env::var("BROWSEY_DEBUG_THUMBS").is_ok() || cfg!(debug_assertions));
+static BLOCKING_SEM: Lazy<Semaphore> =
+    Lazy::new(|| Semaphore::new(GLOBAL_HARD_MAX_INFLIGHT));
+static DOC_SEM: Lazy<Semaphore> = Lazy::new(|| {
+    let threads = *POOL_THREADS;
+    let permits = threads.saturating_mul(2).clamp(POOL_MIN_THREADS, GLOBAL_HARD_MAX_INFLIGHT);
+    Semaphore::new(permits)
+});
 
 #[derive(Serialize, Clone)]
 pub struct ThumbnailResponse {
@@ -133,8 +147,6 @@ pub async fn get_thumbnail(
     fs::create_dir_all(&cache_dir)
         .map_err(|e| format!("Failed to create thumbnail cache dir: {e}"))?;
 
-    let inflight_limit = limiter_limit_for_kind(kind);
-
     let key = cache_key(&target, mtime, max_dim);
     let cache_path = cache_dir.join(format!("{key}.png"));
 
@@ -161,11 +173,20 @@ pub async fn get_thumbnail(
     let task_path = target.clone();
     let task_cache = cache_path.clone();
 
-    if !try_acquire(kind, inflight_limit) {
-        let msg = format!("Too many concurrent thumbnails (limit {inflight_limit})");
-        notify_waiters(&key, Err(msg.clone()));
-        return Err(msg);
-    }
+    let permit_global = BLOCKING_SEM
+        .acquire()
+        .await
+        .map_err(|_| "Semaphore closed".to_string())?;
+    let permit_doc = if matches!(kind, ThumbKind::Svg | ThumbKind::Pdf | ThumbKind::Video) {
+        Some(
+            DOC_SEM
+                .acquire()
+                .await
+                .map_err(|_| "Semaphore closed".to_string())?,
+        )
+    } else {
+        None
+    };
 
     let res = tauri::async_runtime::spawn_blocking(move || {
         let res_dir_opt = app_handle.path().resource_dir().ok();
@@ -186,7 +207,8 @@ pub async fn get_thumbnail(
         notify_waiters(&key, Err(err.clone()));
     }
 
-    release(kind);
+    drop(permit_doc);
+    drop(permit_global);
 
     let res = res?;
 
@@ -210,16 +232,6 @@ pub async fn get_thumbnail(
     };
 
     res
-}
-
-fn try_acquire(kind: ThumbKind, kind_limit: usize) -> bool {
-    let mut limiter = LIMITER.lock().expect("limiter poisoned");
-    limiter.try_acquire(kind, kind_limit)
-}
-
-fn release(kind: ThumbKind) {
-    let mut limiter = LIMITER.lock().expect("limiter poisoned");
-    limiter.release(kind);
 }
 
 fn cache_dir() -> Result<PathBuf, String> {
@@ -307,9 +319,6 @@ fn generate_thumbnail(
         });
     }
 
-    // Lightweight preflight: reject huge dimensions before full decode.
-    preflight_dimensions(path)?;
-
     let reader = ImageReader::open(path)
         .map_err(|e| format!("Open failed: {e}"))?
         .with_guessed_format()
@@ -332,7 +341,7 @@ fn generate_thumbnail(
         _ => return Err("Unsupported image format".into()),
     }
 
-    let img = decode_with_timeout(reader, Duration::from_millis(DECODE_TIMEOUT_MS))?;
+    let img = decode_with_timeout(reader, fmt, Duration::from_millis(DECODE_TIMEOUT_MS))?;
 
     let (src_w, src_h) = img.dimensions();
     if src_w > MAX_SOURCE_DIM || src_h > MAX_SOURCE_DIM {
@@ -362,24 +371,6 @@ pub(super) fn thumb_log(msg: &str) {
     if *LOG_THUMBS {
         debug_log(msg);
     }
-}
-
-fn preflight_dimensions(path: &Path) -> Result<(), String> {
-    let dims_reader = ImageReader::open(path)
-        .map_err(|e| format!("Open failed: {e}"))?
-        .with_guessed_format()
-        .map_err(|e| format!("Failed to guess format: {e}"))?;
-
-    // into_dimensions performs a header-only parse for most codecs; cheap compared to full decode.
-    let (w, h) = dims_reader
-        .into_dimensions()
-        .map_err(|e| format!("Failed to read image dimensions: {e}"))?;
-
-    if w > MAX_SOURCE_DIM || h > MAX_SOURCE_DIM {
-        return Err("Image dimensions too large for thumbnail".into());
-    }
-
-    Ok(())
 }
 
 fn register_or_wait(key: &str) -> Option<oneshot::Receiver<Result<ThumbnailResponse, String>>> {
@@ -437,8 +428,9 @@ fn trim_cache(dir: &Path, max_bytes: u64, max_files: usize) {
     }
 }
 
-fn decode_with_timeout<R: std::io::BufRead + std::io::Seek + Send + 'static>(
-    mut reader: ImageReader<R>,
+fn decode_with_timeout<R: BufRead + Seek + Send + 'static>(
+    reader: ImageReader<R>,
+    format: ImageFormat,
     timeout: Duration,
 ) -> Result<image::DynamicImage, String> {
     // Apply codec limits to guard against pathological inputs.
@@ -446,11 +438,21 @@ fn decode_with_timeout<R: std::io::BufRead + std::io::Seek + Send + 'static>(
     limits.max_image_width = Some(MAX_SOURCE_DIM);
     limits.max_image_height = Some(MAX_SOURCE_DIM);
     limits.max_alloc = Some(MAX_DECODE_BYTES);
+
+    // Wrap reader so we can cooperatively abort on timeout.
+    let inner = reader.into_inner();
+    let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let wrapped = CancelableReader {
+        inner,
+        cancelled: cancel_flag.clone(),
+    };
+
+    let mut reader = ImageReader::with_format(wrapped, format);
     reader.limits(limits);
 
     let (tx, rx) = mpsc::channel();
 
-    std::thread::spawn(move || {
+    DECODE_POOL.spawn_fifo(move || {
         let res = reader.decode();
         let _ = tx.send(res);
     });
@@ -458,8 +460,48 @@ fn decode_with_timeout<R: std::io::BufRead + std::io::Seek + Send + 'static>(
     match rx.recv_timeout(timeout) {
         Ok(Ok(img)) => Ok(img),
         Ok(Err(e)) => Err(format!("Decode failed: {e}")),
-        Err(mpsc::RecvTimeoutError::Timeout) => Err("Decode timed out".into()),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            Err("Decode timed out".into())
+        }
         Err(mpsc::RecvTimeoutError::Disconnected) => Err("Decode worker crashed".into()),
+    }
+}
+
+/// Reader wrapper that allows cooperative cancellation via an AtomicBool flag.
+struct CancelableReader<R> {
+    inner: R,
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl<R: Read> Read for CancelableReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "decode cancelled"));
+        }
+        self.inner.read(buf)
+    }
+}
+
+impl<R: BufRead> BufRead for CancelableReader<R> {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "decode cancelled"));
+        }
+        self.inner.fill_buf()
+    }
+
+    fn consume(&mut self, amt: usize) {
+        self.inner.consume(amt);
+    }
+}
+
+impl<R: Seek> Seek for CancelableReader<R> {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "decode cancelled"));
+        }
+        self.inner.seek(pos)
     }
 }
 
@@ -532,72 +574,5 @@ fn is_video(path: &Path) -> bool {
     {
         Some("mp4") | Some("mov") | Some("m4v") | Some("webm") | Some("mkv") | Some("avi") => true,
         _ => false,
-    }
-}
-
-fn limiter_limit_for_kind(kind: ThumbKind) -> usize {
-    let threads = *POOL_THREADS;
-    let base = match kind {
-        ThumbKind::Image => threads.saturating_mul(4),
-        ThumbKind::Svg | ThumbKind::Pdf => threads.saturating_mul(2),
-        ThumbKind::Video => threads.saturating_mul(2).min(4), // hard cap video parallelisme
-    };
-    base.clamp(POOL_MIN_THREADS, GLOBAL_HARD_MAX_INFLIGHT)
-}
-
-#[derive(Debug)]
-struct ConcurrencyLimiter {
-    global_active: usize,
-    image_active: usize,
-    doc_active: usize,
-    threads: usize,
-}
-
-impl ConcurrencyLimiter {
-    fn new(threads: usize) -> Self {
-        Self {
-            global_active: 0,
-            image_active: 0,
-            doc_active: 0,
-            threads,
-        }
-    }
-
-    fn try_acquire(&mut self, kind: ThumbKind, kind_limit: usize) -> bool {
-        let global_limit = GLOBAL_HARD_MAX_INFLIGHT.min(self.threads.saturating_mul(4));
-        if self.global_active >= global_limit {
-            return false;
-        }
-        let kind_ok = match kind {
-            ThumbKind::Image => self.image_active < kind_limit,
-            ThumbKind::Svg | ThumbKind::Pdf | ThumbKind::Video => self.doc_active < kind_limit,
-        };
-        if !kind_ok {
-            return false;
-        }
-        self.global_active += 1;
-        match kind {
-            ThumbKind::Image => self.image_active += 1,
-            ThumbKind::Svg | ThumbKind::Pdf | ThumbKind::Video => self.doc_active += 1,
-        }
-        true
-    }
-
-    fn release(&mut self, kind: ThumbKind) {
-        if self.global_active > 0 {
-            self.global_active -= 1;
-        }
-        match kind {
-            ThumbKind::Image => {
-                if self.image_active > 0 {
-                    self.image_active -= 1;
-                }
-            }
-            ThumbKind::Svg | ThumbKind::Pdf | ThumbKind::Video => {
-                if self.doc_active > 0 {
-                    self.doc_active -= 1;
-                }
-            }
-        }
     }
 }

@@ -141,7 +141,13 @@ fn run_with_timeout(
                 match child.try_wait() {
                     Ok(Some(status)) => finished = Some(status),
                     Ok(None) => {}
-                    Err(e) => return Err(format!("Wait ffmpeg failed: {e}")),
+                    Err(e) => {
+                        if let Some((_gen, mut child)) = map.remove(&pid) {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                        }
+                        return Err(format!("Wait ffmpeg failed: {e}"));
+                    }
                 }
             } else {
                 return Err("Video process missing".into());
