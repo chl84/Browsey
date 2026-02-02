@@ -53,3 +53,8 @@ export const loadArchiveLevel = () => invoke<number | null>('load_archive_level'
 
 export const storeArchiveLevel = (value: number) =>
   invoke<void>('store_archive_level', { value })
+
+export const loadOpenDestAfterExtract = () => invoke<boolean | null>('load_open_dest_after_extract')
+
+export const storeOpenDestAfterExtract = (value: boolean) =>
+  invoke<void>('store_open_dest_after_extract', { value })

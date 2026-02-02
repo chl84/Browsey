@@ -188,3 +188,15 @@ pub fn load_archive_level() -> Result<Option<i64>, String> {
     }
     Ok(None)
 }
+
+#[tauri::command]
+pub fn store_open_dest_after_extract(value: bool) -> Result<(), String> {
+    let conn = crate::db::open()?;
+    crate::db::set_setting_bool(&conn, "openDestAfterExtract", value)
+}
+
+#[tauri::command]
+pub fn load_open_dest_after_extract() -> Result<Option<bool>, String> {
+    let conn = crate::db::open()?;
+    crate::db::get_setting_bool(&conn, "openDestAfterExtract")
+}
