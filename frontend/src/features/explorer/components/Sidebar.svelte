@@ -36,7 +36,7 @@
     border-bottom: none;
     border-left: none;
     border-radius: 0;
-    padding: 5px;
+    padding: var(--sidebar-padding);
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -47,7 +47,7 @@
     -ms-overflow-style: none;
     user-select: none;
     width: auto;
-    max-width: 220px;
+    max-width: var(--sidebar-max-width);
     transition:
       max-width 600ms cubic-bezier(0.4, 0.0, 0.2, 1),
       padding 600ms cubic-bezier(0.4, 0.0, 0.2, 1),
@@ -69,7 +69,7 @@
   .drag-top {
     position: sticky;
     top: 0;
-    height: 32px;
+    height: var(--sidebar-drag-height);
     background: var(--bg-alt);
     z-index: 1;
   }
@@ -78,7 +78,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--sidebar-gap);
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-width: none;

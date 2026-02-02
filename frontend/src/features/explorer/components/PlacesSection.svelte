@@ -42,7 +42,7 @@
   .nav {
     border: none;
     border-radius: 0;
-    padding: 5px 22px 5px 22px;
+    padding: calc((var(--sidebar-row-height) - 18px) / 2) 22px;
     background: transparent;
     color: var(--fg);
     font-size: var(--font-size-base);
