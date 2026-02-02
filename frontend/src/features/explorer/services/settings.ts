@@ -48,3 +48,8 @@ export const storeDensity = (value: Density) => invoke<void>('store_density', { 
 export const loadArchiveName = () => invoke<string | null>('load_archive_name')
 
 export const storeArchiveName = (value: string) => invoke<void>('store_archive_name', { value })
+
+export const loadArchiveLevel = () => invoke<number | null>('load_archive_level')
+
+export const storeArchiveLevel = (value: number) =>
+  invoke<void>('store_archive_level', { value })

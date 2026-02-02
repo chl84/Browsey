@@ -167,6 +167,8 @@ fn main() {
             load_sort_direction,
             store_archive_name,
             load_archive_name,
+            store_archive_level,
+            load_archive_level,
             store_density,
             load_density,
             dir_sizes,
