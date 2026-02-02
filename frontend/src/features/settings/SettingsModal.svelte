@@ -12,6 +12,7 @@
   export let foldersFirstValue = true
   export let confirmDeleteValue = true
   export let densityValue: Density = 'cozy'
+  export let archiveNameValue = 'Archive'
   export let sortFieldValue: DefaultSortField = 'name'
   export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
@@ -24,6 +25,7 @@
   export let onChangeSortDirection: (value: typeof sortDirectionValue) => void = () => {}
   export let onChangeStartDir: (value: string) => void = () => {}
   export let onChangeDensity: (value: Density) => void = () => {}
+  export let onChangeArchiveName: (value: string) => void = () => {}
 
   let filter = ''
   let needle = ''
@@ -72,7 +74,7 @@
     sortDirection: 'asc',
     density: 'cozy',
     iconSize: 24,
-    archiveName: 'Archive.zip',
+    archiveName: 'Archive',
     archiveLevel: 6,
     openDestAfterExtract: true,
     videoThumbs: true,
@@ -144,6 +146,9 @@
   $: if (settings.density !== densityValue) {
     settings = { ...settings, density: densityValue }
   }
+  $: if (settings.archiveName !== archiveNameValue) {
+    settings = { ...settings, archiveName: archiveNameValue }
+  }
 
   const rowTexts = (
     ...parts: (string | number | boolean | null | undefined | (string | number | boolean | null | undefined)[])[]
@@ -179,7 +184,7 @@
   $: densityTexts = rowTexts('density', 'cozy', 'compact', settings.density)
   $: iconSizeTexts = rowTexts('icon size', `${settings.iconSize}px`, settings.iconSize)
 
-  $: archiveNameTexts = rowTexts('default archive name', settings.archiveName)
+  $: archiveNameTexts = rowTexts('default archive name', `${settings.archiveName}.zip`)
   $: archiveLevelTexts = rowTexts('zip level', `level ${settings.archiveLevel}`, settings.archiveLevel)
   $: afterExtractTexts = rowTexts('after extract', 'open destination after extract', settings.openDestAfterExtract ? 'enabled' : 'disabled')
   $: rarNoteTexts = rowTexts('note', 'rar compressed entries are currently unsupported (fail fast)', 'rar')
@@ -511,8 +516,17 @@
           <div class="group-heading">Archives</div><div class="group-spacer"></div>
         {#if rowMatches(needle, archiveNameTexts)}
           <div class="form-label">Default archive name</div>
-          <div class="form-control">
-            <input type="text" bind:value={settings.archiveName} />
+          <div class="form-control archive-name">
+            <input
+              type="text"
+              bind:value={settings.archiveName}
+              on:input={(e) => {
+                const val = (e.currentTarget as HTMLInputElement).value
+                settings = { ...settings, archiveName: val }
+                onChangeArchiveName(val)
+              }}
+            />
+            <span class="suffix">.zip</span>
           </div>
         {/if}
 
@@ -882,6 +896,23 @@
     gap: 6px;
     cursor: pointer;
     color: var(--fg);
+  }
+
+  .archive-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .archive-name input {
+    flex: 1;
+  }
+
+  .archive-name .suffix {
+    color: var(--fg-muted);
+    font-size: 13px;
+    min-width: 32px;
+    text-align: left;
   }
 
   .key {
