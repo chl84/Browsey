@@ -223,7 +223,7 @@
 
   $: showSorting = rowMatches(needle, [...sortFieldTexts, ...sortDirectionTexts])
 
-  $: showAppearance = rowMatches(needle, [...densityTexts, ...iconSizeTexts])
+  $: showAppearance = rowMatches(needle, [...densityTexts])
 
   $: showArchives = rowMatches(needle, [
     ...archiveNameTexts,
@@ -503,14 +503,6 @@
                   { value: 'compact', label: 'Compact' },
                 ] satisfies ComboOption[]}
               />
-            </div>
-          {/if}
-
-        {#if rowMatches(needle, iconSizeTexts)}
-          <div class="form-label">Icon size</div>
-          <div class="form-control">
-              <input type="range" min="16" max="64" bind:value={settings.iconSize} />
-              <small>{settings.iconSize}px</small>
             </div>
           {/if}
         {/if}
