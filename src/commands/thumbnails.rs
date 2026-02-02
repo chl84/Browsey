@@ -67,7 +67,7 @@ enum ThumbKind {
 static POOL_THREADS: Lazy<usize> =
     Lazy::new(|| num_cpus::get().clamp(POOL_MIN_THREADS, POOL_MAX_THREADS));
 static DECODE_POOL: Lazy<ThreadPool> = Lazy::new(|| {
-    let threads = *POOL_THREADS;
+    let threads = (*POOL_THREADS).saturating_mul(2).clamp(POOL_MIN_THREADS, POOL_MAX_THREADS * 2);
     ThreadPoolBuilder::new()
         .num_threads(threads)
         .thread_name(|i| format!("thumb-decode-{i}"))
@@ -80,8 +80,12 @@ static INFLIGHT: Lazy<
 > = Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
 static LOG_THUMBS: Lazy<bool> =
     Lazy::new(|| std::env::var("BROWSEY_DEBUG_THUMBS").is_ok() || cfg!(debug_assertions));
-static BLOCKING_SEM: Lazy<Semaphore> =
-    Lazy::new(|| Semaphore::new(GLOBAL_HARD_MAX_INFLIGHT));
+static BLOCKING_SEM: Lazy<Semaphore> = Lazy::new(|| {
+    let permits = (*POOL_THREADS)
+        .saturating_mul(4)
+        .clamp(POOL_MIN_THREADS, GLOBAL_HARD_MAX_INFLIGHT);
+    Semaphore::new(permits)
+});
 
 #[derive(Serialize, Clone)]
 pub struct ThumbnailResponse {
