@@ -37,7 +37,8 @@ pub use settings::{
     load_confirm_delete, store_sort_field, load_sort_field, store_sort_direction,
     load_sort_direction, store_density, load_density, store_archive_name, load_archive_name,
     store_archive_level, load_archive_level, store_open_dest_after_extract, load_open_dest_after_extract,
-    store_video_thumbs, load_video_thumbs,
+    store_ffmpeg_path, load_ffmpeg_path, store_thumb_cache_mb, load_thumb_cache_mb, store_video_thumbs,
+    load_video_thumbs,
 };
 pub use system_clipboard::clear_system_clipboard;
 pub use system_clipboard::copy_paths_to_system_clipboard;

@@ -39,8 +39,12 @@ import {
   storeOpenDestAfterExtract,
   loadDensity,
   storeDensity,
+  loadFfmpegPath,
+  storeFfmpegPath,
   loadVideoThumbs,
   storeVideoThumbs,
+  loadThumbCacheMb,
+  storeThumbCacheMb,
 } from './services/settings'
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
@@ -101,6 +105,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const archiveLevel = writable<number>(6)
   const openDestAfterExtract = writable<boolean>(false)
   const videoThumbs = writable<boolean>(true)
+  const ffmpegPath = writable<string>('')
+  const thumbCacheMb = writable<number>(300)
   const bookmarks = writable<{ label: string; path: string }[]>([])
   const partitions = writable<Partition[]>([])
   const history = writable<Location[]>([])
@@ -741,6 +747,28 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const loadFfmpegPathPref = async () => {
+    try {
+      const saved = await loadFfmpegPath()
+      if (typeof saved === 'string') {
+        ffmpegPath.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load ffmpegPath setting', err)
+    }
+  }
+
+  const loadThumbCachePref = async () => {
+    try {
+      const saved = await loadThumbCacheMb()
+      if (typeof saved === 'number' && saved >= 50 && saved <= 1000) {
+        thumbCacheMb.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load thumbCacheMb setting', err)
+    }
+  }
+
   const loadDensityPref = async () => {
     try {
       const saved = await loadDensity()
@@ -771,6 +799,18 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       void storeVideoThumbs(next)
       return next
     })
+  }
+
+  const setFfmpegPathPref = (value: string) => {
+    const normalized = value.trim()
+    ffmpegPath.set(normalized)
+    void storeFfmpegPath(normalized)
+  }
+
+  const setThumbCachePref = (value: number) => {
+    const clamped = Math.min(1000, Math.max(50, Math.round(value)))
+    thumbCacheMb.set(clamped)
+    void storeThumbCacheMb(clamped)
   }
 
   const loadFoldersFirstPref = async () => {
@@ -806,6 +846,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     archiveLevel,
     openDestAfterExtract,
     videoThumbs,
+    ffmpegPath,
+    thumbCacheMb,
     bookmarks,
     partitions,
     showHidden,
@@ -844,6 +886,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadArchiveLevelPref,
     loadOpenDestAfterExtractPref,
     loadVideoThumbsPref,
+    loadFfmpegPathPref,
+    loadThumbCachePref,
     loadFoldersFirstPref,
     loadDensityPref,
     loadSavedWidths,
@@ -855,5 +899,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     setArchiveLevelPref,
     toggleOpenDestAfterExtract,
     toggleVideoThumbs,
+    setFfmpegPathPref,
+    setThumbCachePref,
   }
 }
