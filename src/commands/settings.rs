@@ -166,3 +166,25 @@ pub fn load_density() -> Result<Option<String>, String> {
         _ => None,
     })
 }
+
+#[tauri::command]
+pub fn store_archive_level(value: i64) -> Result<(), String> {
+    if !(0..=9).contains(&value) {
+        return Err("archive level must be 0-9".into());
+    }
+    let conn = crate::db::open()?;
+    crate::db::set_setting_string(&conn, "archiveLevel", &value.to_string())
+}
+
+#[tauri::command]
+pub fn load_archive_level() -> Result<Option<i64>, String> {
+    let conn = crate::db::open()?;
+    if let Some(s) = crate::db::get_setting_string(&conn, "archiveLevel")? {
+        if let Ok(n) = s.parse::<i64>() {
+            if (0..=9).contains(&n) {
+                return Ok(Some(n));
+            }
+        }
+    }
+    Ok(None)
+}

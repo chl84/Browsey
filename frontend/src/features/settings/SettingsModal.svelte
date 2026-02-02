@@ -13,6 +13,7 @@
   export let confirmDeleteValue = true
   export let densityValue: Density = 'cozy'
   export let archiveNameValue = 'Archive'
+  export let archiveLevelValue = 6
   export let sortFieldValue: DefaultSortField = 'name'
   export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
@@ -26,6 +27,7 @@
   export let onChangeStartDir: (value: string) => void = () => {}
   export let onChangeDensity: (value: Density) => void = () => {}
   export let onChangeArchiveName: (value: string) => void = () => {}
+  export let onChangeArchiveLevel: (value: number) => void = () => {}
 
   let filter = ''
   let needle = ''
@@ -148,6 +150,9 @@
   }
   $: if (settings.archiveName !== archiveNameValue) {
     settings = { ...settings, archiveName: archiveNameValue }
+  }
+  $: if (settings.archiveLevel !== archiveLevelValue) {
+    settings = { ...settings, archiveLevel: archiveLevelValue }
   }
 
   const rowTexts = (
@@ -533,7 +538,18 @@
         {#if rowMatches(needle, archiveLevelTexts)}
           <div class="form-label">ZIP level</div>
           <div class="form-control">
-            <input type="range" min="0" max="9" step="1" bind:value={settings.archiveLevel} />
+            <input
+              type="range"
+              min="0"
+              max="9"
+              step="1"
+              value={settings.archiveLevel}
+              on:input={(e) => {
+                const next = Number((e.currentTarget as HTMLInputElement).value)
+                settings = { ...settings, archiveLevel: next }
+                onChangeArchiveLevel(next)
+              }}
+            />
             <small>Level {settings.archiveLevel}</small>
           </div>
         {/if}

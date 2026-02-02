@@ -156,6 +156,7 @@ let compressLevel = 6
     startDirPref,
     density,
     archiveName,
+    archiveLevel,
     sortFieldPref,
     sortDirectionPref,
     sortField,
@@ -164,6 +165,7 @@ let compressLevel = 6
     setSortDirectionPref,
     setDensityPref,
     setArchiveNamePref,
+    setArchiveLevelPref,
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
@@ -1623,7 +1625,7 @@ let compressLevel = 6
     openWith: (entry) => modalActions.openWith(entry),
     openCompress: (entries) => {
       compressName = modalActions.openCompress(entries, get(archiveName))
-      compressLevel = 6
+      compressLevel = get(archiveLevel)
     },
     extractEntries: (entries) => extractEntries(entries),
     startRename: (entry) => {
@@ -2469,6 +2471,7 @@ let compressLevel = 6
     confirmDeleteValue={$confirmDelete}
     densityValue={$density}
     archiveNameValue={$archiveName}
+    archiveLevelValue={$archiveLevel}
     startDirValue={$startDirPref ?? '~'}
     sortFieldValue={$sortFieldPref}
     sortDirectionValue={$sortDirectionPref}
@@ -2484,6 +2487,7 @@ let compressLevel = 6
     onChangeStartDir={setStartDirPref}
     onChangeDensity={setDensityPref}
     onChangeArchiveName={setArchiveNamePref}
+    onChangeArchiveLevel={setArchiveLevelPref}
     onChangeSortField={setSortFieldPref}
     onChangeSortDirection={setSortDirectionPref}
     onClose={() => (settingsOpen = false)}

@@ -33,6 +33,8 @@ import {
   storeSortDirection,
   loadArchiveName,
   storeArchiveName,
+  loadArchiveLevel,
+  storeArchiveLevel,
   loadDensity,
   storeDensity,
 } from './services/settings'
@@ -92,6 +94,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const sortDirection = writable<SortDirection>('asc')
   const density = writable<Density>('cozy')
   const archiveName = writable<string>('Archive')
+  const archiveLevel = writable<number>(6)
   const bookmarks = writable<{ label: string; path: string }[]>([])
   const partitions = writable<Partition[]>([])
   const history = writable<Location[]>([])
@@ -351,6 +354,12 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
     archiveName.set(trimmed)
     void storeArchiveName(trimmed)
+  }
+
+  const setArchiveLevelPref = (value: number) => {
+    const lvl = Math.min(Math.max(Math.round(value), 0), 9)
+    archiveLevel.set(lvl)
+    void storeArchiveLevel(lvl)
   }
 
   const refreshForSort = async () => {
@@ -693,6 +702,17 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const loadArchiveLevelPref = async () => {
+    try {
+      const saved = await loadArchiveLevel()
+      if (typeof saved === 'number' && saved >= 0 && saved <= 9) {
+        archiveLevel.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load archiveLevel setting', err)
+    }
+  }
+
   const loadDensityPref = async () => {
     try {
       const saved = await loadDensity()
@@ -739,6 +759,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     sortFieldPref,
     sortDirectionPref,
     archiveName,
+    archiveLevel,
     bookmarks,
     partitions,
     showHidden,
@@ -774,6 +795,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadConfirmDeletePref,
     loadSortPref,
     loadArchiveNamePref,
+    loadArchiveLevelPref,
     loadFoldersFirstPref,
     loadDensityPref,
     loadSavedWidths,
@@ -782,5 +804,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     setSortDirectionPref,
     setDensityPref,
     setArchiveNamePref,
+    setArchiveLevelPref,
   }
 }
