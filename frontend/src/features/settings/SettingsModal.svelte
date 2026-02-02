@@ -80,7 +80,7 @@
     iconSize: 24,
     archiveName: 'Archive',
     archiveLevel: 6,
-    openDestAfterExtract: true,
+    openDestAfterExtract: false,
     videoThumbs: true,
     ffmpegPath: '',
     thumbCacheMb: 300,
