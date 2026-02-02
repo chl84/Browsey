@@ -241,6 +241,15 @@ body.density-cozy {
   --modal-button-padding-y: 10px;
   --modal-button-padding-x: 14px;
   --modal-button-min-height: 38px;
+  /* Context menu (cozy) */
+  --ctx-width: 180px;
+  --ctx-padding: 6px;
+  --ctx-gap: 4px;
+  --ctx-item-padding-y: 8px;
+  --ctx-item-padding-x: 10px;
+  --ctx-item-font-size: 14px;
+  --ctx-shortcut-font-size: 12px;
+  --ctx-divider-margin: 4px;
 }
 
 /* Placeholder for upcoming compact values; keeps selectors in place */
@@ -276,6 +285,15 @@ body.density-compact {
   --modal-button-padding-y: 8px;
   --modal-button-padding-x: 12px;
   --modal-button-min-height: 34px;
+  /* Context menu (compact) */
+  --ctx-width: 170px;
+  --ctx-padding: 4px;
+  --ctx-gap: 3px;
+  --ctx-item-padding-y: 6px;
+  --ctx-item-padding-x: 9px;
+  --ctx-item-font-size: 13px;
+  --ctx-shortcut-font-size: 11px;
+  --ctx-divider-margin: 3px;
 }
 
 #app {

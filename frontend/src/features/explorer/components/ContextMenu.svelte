@@ -96,26 +96,26 @@
 
   .menu {
     position: absolute;
-    min-width: 180px;
+    min-width: var(--ctx-width);
     background: var(--bg);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-xl);
     border-radius: 0;
     display: flex;
     flex-direction: column;
-    padding: 6px;
-    gap: 4px;
+    padding: var(--ctx-padding);
+    gap: var(--ctx-gap);
   }
 
   button {
     width: 100%;
     text-align: left;
-    padding: 8px 10px;
+    padding: var(--ctx-item-padding-y) var(--ctx-item-padding-x);
     border: 1px solid transparent;
     background: transparent;
     color: var(--fg);
     border-radius: 0;
-    font-size: 14px;
+    font-size: var(--ctx-item-font-size);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -145,7 +145,7 @@
     height: 1px;
     width: 100%;
     background: var(--border);
-    margin: 4px 0;
+    margin: var(--ctx-divider-margin) 0;
   }
 
   .label {
@@ -154,6 +154,6 @@
 
   .shortcut {
     color: var(--fg-muted);
-    font-size: 12px;
+    font-size: var(--ctx-shortcut-font-size);
   }
 </style>
