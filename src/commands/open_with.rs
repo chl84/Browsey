@@ -41,8 +41,6 @@ pub struct OpenWithApp {
 #[serde(rename_all = "camelCase")]
 pub struct OpenWithChoice {
     pub app_id: Option<String>,
-    pub custom_command: Option<String>,
-    pub custom_args: Option<String>,
 }
 
 #[tauri::command]
@@ -66,33 +64,15 @@ pub fn list_open_with_apps(path: String) -> Result<Vec<OpenWithApp>, String> {
 #[tauri::command]
 pub fn open_with(path: String, choice: OpenWithChoice) -> Result<(), String> {
     let target = sanitize_path_follow(&path, false)?;
-    let OpenWithChoice {
-        app_id,
-        custom_command,
-        custom_args,
-    } = choice;
+    let OpenWithChoice { app_id } = choice;
 
     let conn = db::open()?;
     if let Err(e) = db::touch_recent(&conn, &target.to_string_lossy()) {
         warn!("Failed to record recent for {:?}: {}", target, e);
     }
 
-    let custom_cmd = custom_command
-        .as_ref()
-        .map(|c| c.trim())
-        .filter(|c| !c.is_empty())
-        .map(|c| c.to_string());
-
-    if matches!(app_id.as_deref(), Some("__default__"))
-        || (app_id.is_none() && custom_cmd.is_none())
-    {
+    if matches!(app_id.as_deref(), Some("__default__")) || app_id.is_none() {
         return crate::commands::fs::open_entry(target.to_string_lossy().to_string());
-    }
-
-    if let Some(cmd) = custom_cmd {
-        let args = custom_args.unwrap_or_default();
-        info!("Opening {:?} with custom command {:?}", target, cmd);
-        return launch_custom(&target, &cmd, &args);
     }
 
     #[cfg(target_os = "linux")]
@@ -110,28 +90,6 @@ pub fn open_with(path: String, choice: OpenWithChoice) -> Result<(), String> {
     }
 
     Err("No application selected".into())
-}
-
-fn launch_custom(target: &Path, command: &str, args: &str) -> Result<(), String> {
-    let mut parts =
-        shell_words::split(command).map_err(|e| format!("Failed to parse command: {e}"))?;
-    if parts.is_empty() {
-        return Err("Command cannot be empty".into());
-    }
-    let program = parts.remove(0);
-    let mut parsed_args = parts;
-    if !args.trim().is_empty() {
-        let extra = shell_words::split(args)
-            .map_err(|e| format!("Failed to parse additional arguments: {e}"))?;
-        parsed_args.extend(extra);
-    }
-    parsed_args.push(target.to_string_lossy().to_string());
-    let mut cmd = Command::new(&program);
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .args(parsed_args);
-    spawn_detached(cmd).map_err(|e| format!("Failed to launch {program}: {e}"))
 }
 
 #[cfg(target_os = "linux")]

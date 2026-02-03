@@ -1755,6 +1755,8 @@ let compressLevel = 6
     const gridEntries = get(filteredEntries)
     if (gridEntries.length === 0) return
     event.preventDefault()
+    blurPathInput()
+    gridEl.focus()
     selectionDrag = false
     const additive = event.ctrlKey || event.metaKey
     const subtractive = !additive && event.shiftKey

@@ -12,8 +12,6 @@ export type OpenWithApp = {
 
 export type OpenWithChoice = {
   appId?: string | null
-  customCommand?: string
-  customArgs?: string
 }
 
 export const fetchOpenWithApps = (path: string) =>
