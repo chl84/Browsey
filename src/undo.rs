@@ -172,6 +172,9 @@ pub struct UndoState {
 }
 
 impl UndoState {
+    pub fn clone_inner(&self) -> Arc<Mutex<UndoManager>> {
+        self.inner.clone()
+    }
     #[allow(dead_code)]
     pub fn record(&self, action: Action) -> Result<(), String> {
         let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;

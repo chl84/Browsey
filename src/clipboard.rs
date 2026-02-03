@@ -1,17 +1,21 @@
 use crate::{
     fs_utils::sanitize_path_follow,
+    tasks::CancelState,
     undo::{move_with_fallback, run_actions, temp_backup_path, Action, Direction, UndoState},
 };
 use once_cell::sync::Lazy;
 use std::{
     fs,
-    io,
+    io::{Read, Write},
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Mutex, atomic::AtomicBool},
 };
-use libc::{EOPNOTSUPP, ENOSYS, EXDEV};
+use serde::Serialize;
+use tauri::Emitter;
 #[cfg(not(target_os = "windows"))]
 use std::process::Command;
+#[cfg(not(target_os = "windows"))]
+use std::io::BufRead;
 
 #[derive(Clone, Copy)]
 enum ClipboardMode {
@@ -31,6 +35,13 @@ enum ConflictPolicy {
     Overwrite,
 }
 
+#[derive(Serialize, Clone, Copy)]
+struct CopyProgressPayload {
+    bytes: u64,
+    total: u64,
+    finished: bool,
+}
+
 #[derive(serde::Serialize)]
 pub struct ConflictInfo {
     pub src: String,
@@ -48,22 +59,31 @@ fn ensure_not_child(src: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
+fn copy_dir(
+    src: &Path,
+    dest: &Path,
+    app: Option<&tauri::AppHandle>,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|e| format!("Failed to create dir {:?}: {e}", dest))?;
     for entry in fs::read_dir(src).map_err(|e| format!("Failed to read dir {:?}: {e}", src))? {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
         let path = entry.path();
         let meta =
             fs::symlink_metadata(&path).map_err(|e| format!("Failed to read metadata: {e}"))?;
+        if cancel.map(|c| c.load(std::sync::atomic::Ordering::Relaxed)).unwrap_or(false) {
+            return Err("Copy cancelled".into());
+        }
         if meta.file_type().is_symlink() {
             return Err("Refusing to copy symlinks".into());
         }
         let target = dest.join(entry.file_name());
         if meta.is_dir() {
             ensure_not_child(&path, &target)?;
-            copy_dir(&path, &target)?;
+            copy_dir(&path, &target, app, progress_event, cancel)?;
         } else {
-            copy_file_best_effort(&path, &target)?;
+            copy_file_best_effort(&path, &target, app, progress_event, cancel)?;
         }
     }
     Ok(())
@@ -89,6 +109,9 @@ fn merge_dir(
     dest: &Path,
     mode: ClipboardMode,
     actions: &mut Vec<Action>,
+    app: Option<&tauri::AppHandle>,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
 ) -> Result<(), String> {
     // Ensure both exist and are directories.
     let src_meta =
@@ -107,17 +130,20 @@ fn merge_dir(
         if meta.file_type().is_symlink() {
             return Err("Refusing to copy symlinks".into());
         }
+        if cancel.map(|c| c.load(std::sync::atomic::Ordering::Relaxed)).unwrap_or(false) {
+            return Err("Copy cancelled".into());
+        }
         let target = dest.join(entry.file_name());
         if meta.is_dir() {
             if target.exists() && target.is_dir() {
-                merge_dir(&path, &target, mode, actions)?;
+                merge_dir(&path, &target, mode, actions, app, progress_event, cancel)?;
             } else {
                 if target.exists() {
                     backup_existing_target(&target, actions)?;
                 }
                 match mode {
                     ClipboardMode::Copy => {
-                        copy_dir(&path, &target)?;
+                        copy_dir(&path, &target, app, progress_event, cancel)?;
                         actions.push(Action::Copy {
                             from: path.clone(),
                             to: target.clone(),
@@ -175,67 +201,192 @@ fn merge_dir(
     Ok(())
 }
 
-fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
+fn copy_entry(
+    src: &Path,
+    dest: &Path,
+    app: Option<&tauri::AppHandle>,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> Result<(), String> {
     let meta = fs::symlink_metadata(src).map_err(|e| format!("Failed to read metadata: {e}"))?;
     if meta.file_type().is_symlink() {
         return Err("Refusing to copy symlinks".into());
     }
     if meta.is_dir() {
         ensure_not_child(src, dest)?;
-        copy_dir(src, dest)
+        copy_dir(src, dest, app, progress_event, cancel)
     } else {
-        copy_file_best_effort(src, dest)?;
+        if cancel
+            .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false)
+        {
+            return Err("Copy cancelled".into());
+        }
+        copy_file_best_effort(src, dest, app, progress_event, cancel)?;
         Ok(())
     }
 }
 
-fn copy_file_best_effort(src: &Path, dest: &Path) -> Result<(), String> {
-    match fs::copy(src, dest) {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            let raw = e.raw_os_error();
-            let kind = e.kind();
-            let is_unsupported = matches!(kind, io::ErrorKind::Unsupported)
-                || matches!(raw, Some(EOPNOTSUPP) | Some(ENOSYS) | Some(EXDEV));
-
-            // GVFS/MTP sometimes rejects copy_file_range; try gio copy which speaks the gvfs backend.
-            #[cfg(not(target_os = "windows"))]
-            if is_unsupported || is_gvfs_path(dest) {
-                if try_gio_copy(src, dest)? {
-                    return Ok(());
+fn copy_file_best_effort(
+    src: &Path,
+    dest: &Path,
+    app: Option<&tauri::AppHandle>,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> Result<u64, String> {
+    #[cfg(not(target_os = "windows"))]
+    {
+        if is_gvfs_path(src) || is_gvfs_path(dest) {
+            if let Some(app) = app {
+                if let Some(bytes) = try_gio_copy_progress(src, dest, app, progress_event, cancel)? {
+                    return Ok(bytes);
                 }
-            }
-
-            if is_unsupported {
-                let mut reader = fs::File::open(src)
-                    .map_err(|e| format!("Failed to open source for copy: {e}"))?;
-                let mut writer = fs::OpenOptions::new()
-                    .write(true)
-                    .create(true)
-                    .truncate(true)
-                    .open(dest)
-                    .map_err(|e| format!("Failed to open target for copy: {e}"))?;
-                io::copy(&mut reader, &mut writer)
-                    .map_err(|e| format!("Fallback copy failed: {e}"))?;
-                Ok(())
-            } else {
-                Err(format!("Failed to copy file: {e}"))
             }
         }
     }
+
+    // Fallback: manual chunked copy with progress
+    let mut reader = fs::File::open(src).map_err(|e| format!("Failed to open source for copy: {e}"))?;
+    let mut writer = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(dest)
+        .map_err(|e| format!("Failed to open target for copy: {e}"))?;
+
+    let mut buf = vec![0u8; 512 * 1024];
+    let mut done: u64 = 0;
+    let total = progress_event.and_then(|_| fs::metadata(src).ok().map(|m| m.len()));
+    let mut last_emit = 0u64;
+    let mut last_time = std::time::Instant::now();
+    loop {
+        if cancel
+            .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false)
+        {
+            let _ = fs::remove_file(dest);
+            return Err("Copy cancelled".into());
+        }
+        let n = reader
+            .read(&mut buf)
+            .map_err(|e| format!("Read failed: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        writer
+            .write_all(&buf[..n])
+            .map_err(|e| format!("Write failed: {e}"))?;
+        done = done.saturating_add(n as u64);
+        if let (Some(app), Some(evt)) = (app, progress_event) {
+            let elapsed = last_time.elapsed();
+            if done.saturating_sub(last_emit) >= 64 * 1024 || elapsed >= std::time::Duration::from_millis(200) {
+                let _ = app.emit(
+                    evt,
+                    CopyProgressPayload {
+                        bytes: done,
+                        total: total.unwrap_or(0),
+                        finished: false,
+                    },
+                );
+                last_emit = done;
+                last_time = std::time::Instant::now();
+            }
+        }
+    }
+    if let (Some(app), Some(evt)) = (app, progress_event) {
+        let _ = app.emit(
+            evt,
+            CopyProgressPayload {
+                bytes: done,
+                total: total.unwrap_or(done),
+                finished: true,
+            },
+        );
+    }
+    Ok(done)
 }
 
 #[cfg(not(target_os = "windows"))]
-fn try_gio_copy(src: &Path, dest: &Path) -> Result<bool, String> {
-    match Command::new("gio")
-        .arg("copy")
-        .arg(src)
-        .arg(dest)
-        .status()
-    {
-        Ok(status) => Ok(status.success()),
-        Err(_) => Ok(false), // treat spawn failure as unsupported so we fall back
+fn try_gio_copy_progress(
+    src: &Path,
+    dest: &Path,
+    app: &tauri::AppHandle,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> Result<Option<u64>, String> {
+    let mut cmd = Command::new("gio");
+    cmd.arg("copy").arg("--progress").arg(src).arg(dest);
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(_) => return Ok(None),
+    };
+
+    let stdout = child.stdout.take();
+    let mut total_seen: Option<u64> = None;
+    let mut last_bytes: u64 = 0;
+
+    if let Some(out) = stdout {
+        let reader = std::io::BufReader::new(out);
+        for line in reader.lines().flatten() {
+            if cancel
+                .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+                .unwrap_or(false)
+            {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("Copy cancelled".into());
+            }
+
+            // Format: "Transferred X bytes out of Y bytes (Z/s)"
+            if let Some(rest) = line.strip_prefix("Transferred ") {
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    if let Ok(x) = parts[0].parse::<u64>() {
+                        last_bytes = x;
+                    }
+                }
+                if let Some(idx) = parts.iter().position(|p| *p == "of") {
+                    if parts.len() > idx + 1 {
+                        if let Ok(y) = parts[idx + 1].parse::<u64>() {
+                            total_seen = Some(y);
+                        }
+                    }
+                }
+                if let (Some(evt), Some(total)) = (progress_event, total_seen) {
+                    let _ = app.emit(
+                        evt,
+                        CopyProgressPayload {
+                            bytes: last_bytes,
+                            total,
+                            finished: false,
+                        },
+                    );
+                }
+            }
+        }
     }
+
+    let status = child
+        .wait()
+        .map_err(|e| format!("gio copy wait failed: {e}"))?;
+    if status.success() {
+        if let Some(evt) = progress_event {
+            let _ = app.emit(
+                evt,
+                CopyProgressPayload {
+                    bytes: last_bytes,
+                    total: total_seen.unwrap_or(last_bytes),
+                    finished: true,
+                },
+            );
+        }
+        return Ok(Some(last_bytes));
+    }
+
+    Ok(None)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -259,7 +410,7 @@ fn move_entry(src: &Path, dest: &Path) -> Result<(), String> {
     match fs::rename(src, dest) {
         Ok(_) => Ok(()),
         Err(_) => {
-            copy_entry(src, dest)?;
+            copy_entry(src, dest, None, None, None)?;
             delete_entry_path(src)
         }
     }
@@ -366,10 +517,38 @@ pub fn paste_clipboard_preview(dest: String) -> Result<Vec<ConflictInfo>, String
 }
 
 #[tauri::command]
-pub fn paste_clipboard_cmd(
+pub async fn paste_clipboard_cmd(
+    app: tauri::AppHandle,
     dest: String,
     policy: Option<String>,
-    undo: tauri::State<UndoState>,
+    undo: tauri::State<'_, UndoState>,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
+) -> Result<Vec<String>, String> {
+    let undo_inner = undo.clone_inner();
+    let cancel_state = cancel.inner().clone();
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        paste_clipboard_impl(
+            app_handle,
+            dest,
+            policy,
+            undo_inner,
+            cancel_state,
+            progress_event,
+        )
+    })
+    .await
+    .map_err(|e| format!("Paste task failed: {e}"))?
+}
+
+fn paste_clipboard_impl(
+    app: tauri::AppHandle,
+    dest: String,
+    policy: Option<String>,
+    undo_inner: std::sync::Arc<std::sync::Mutex<crate::undo::UndoManager>>,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
 ) -> Result<Vec<String>, String> {
     let dest = sanitize_path_follow(&dest, false)?;
     let state = current_clipboard().ok_or_else(|| "Clipboard is empty".to_string())?;
@@ -378,9 +557,35 @@ pub fn paste_clipboard_cmd(
         .transpose()?
         .unwrap_or(ConflictPolicy::Rename);
 
+    let cancel_guard = progress_event
+        .as_ref()
+        .map(|id| cancel_state.register(id.clone()))
+        .transpose()?;
+    let cancel_flag = cancel_guard.as_ref().map(|g| g.token());
+
+    let total_items = state.entries.len() as u64;
+    let mut done_items: u64 = 0;
+    if let Some(evt) = progress_event.as_ref() {
+        let _ = app.emit(
+            evt,
+            CopyProgressPayload {
+                bytes: done_items,
+                total: total_items,
+                finished: false,
+            },
+        );
+    }
+
     let mut created = Vec::new();
     let mut performed: Vec<Action> = Vec::with_capacity(state.entries.len() * 4);
     for src in state.entries.iter() {
+        if cancel_flag
+            .as_ref()
+            .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false)
+        {
+            return Err("Copy cancelled".into());
+        }
         if !src.exists() {
             return Err(format!("Source does not exist: {:?}", src));
         }
@@ -401,7 +606,15 @@ pub fn paste_clipboard_cmd(
         if matches!(policy, ConflictPolicy::Overwrite) && target.exists() {
             // If both are dirs, merge instead of deleting target (Windows Explorer behavior).
             if src_meta.is_dir() && target.is_dir() {
-                merge_dir(src, &target, state.mode, &mut performed)?;
+                merge_dir(
+                    src,
+                    &target,
+                    state.mode,
+                    &mut performed,
+                    Some(&app),
+                    progress_event.as_deref(),
+                    cancel_flag.as_deref(),
+                )?;
                 created.push(target.to_string_lossy().to_string());
                 continue;
             }
@@ -415,12 +628,31 @@ pub fn paste_clipboard_cmd(
         let mut attempts = 0usize;
         loop {
             let result = match state.mode {
-                ClipboardMode::Copy => copy_entry(src, &target),
+                ClipboardMode::Copy => copy_entry(
+                    src,
+                    &target,
+                    Some(&app),
+                    progress_event.as_deref(),
+                    cancel_flag.as_deref(),
+                ),
                 ClipboardMode::Cut => move_entry(src, &target),
             };
 
             match result {
-                Ok(_) => break,
+                Ok(_) => {
+                    done_items = done_items.saturating_add(1);
+                    if let Some(evt) = progress_event.as_ref() {
+                        let _ = app.emit(
+                            evt,
+                            CopyProgressPayload {
+                                bytes: done_items,
+                                total: total_items,
+                                finished: false,
+                            },
+                        );
+                    }
+                    break;
+                }
                 Err(err) => {
                     let is_exists = err.contains("exists") || err.contains("AlreadyExists");
                     if matches!(policy, ConflictPolicy::Rename) && is_exists && attempts < 50 {
@@ -455,13 +687,26 @@ pub fn paste_clipboard_cmd(
         created.push(target.to_string_lossy().to_string());
     }
 
+    if let Some(evt) = progress_event.as_ref() {
+        let _ = app.emit(
+            evt,
+            CopyProgressPayload {
+                bytes: done_items,
+                total: total_items,
+                finished: true,
+            },
+        );
+    }
+
     if !performed.is_empty() {
         let recorded = if performed.len() == 1 {
             performed.pop().unwrap()
         } else {
             Action::Batch(performed)
         };
-        let _ = undo.record_applied(recorded);
+        if let Ok(mut mgr) = undo_inner.lock() {
+            mgr.record_applied(recorded);
+        }
     }
 
     if let ClipboardMode::Cut = state.mode {
@@ -522,7 +767,7 @@ mod tests {
         write_file(&src.join("a.txt"), b"a");
 
         let mut actions = Vec::new();
-        merge_dir(&src, &dest, ClipboardMode::Copy, &mut actions).unwrap();
+        merge_dir(&src, &dest, ClipboardMode::Copy, &mut actions, None).unwrap();
 
         assert!(dest.join("old.txt").exists());
         assert!(dest.join("a.txt").exists());
@@ -550,7 +795,7 @@ mod tests {
         write_file(&src.join("a.txt"), b"a");
 
         let mut actions = Vec::new();
-        merge_dir(&src, &dest, ClipboardMode::Cut, &mut actions).unwrap();
+        merge_dir(&src, &dest, ClipboardMode::Cut, &mut actions, None).unwrap();
 
         assert!(dest.join("old.txt").exists());
         assert!(dest.join("a.txt").exists());

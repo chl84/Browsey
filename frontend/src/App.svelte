@@ -1984,9 +1984,10 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
       if (view === 'dir' && curr) {
         try {
           await setClipboardCmd(paths, 'copy')
-          await pasteClipboardCmd(curr, 'rename')
-          await reloadCurrent()
-          showToast(`Pasted ${paths.length} item${paths.length === 1 ? '' : 's'}`)
+          const ok = await handlePasteOrMove(curr)
+          if (ok) {
+            showToast(`Pasted ${paths.length} item${paths.length === 1 ? '' : 's'}`)
+          }
         } catch (err) {
           showToast(`Drop failed: ${err instanceof Error ? err.message : String(err)}`)
         }
@@ -2124,24 +2125,35 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   }
 
   const handlePasteOrMove = async (dest: string) => {
+    const runPaste = async (target: string, policy: 'rename' | 'overwrite' = 'rename') => {
+      const progressEvent = `copy-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      try {
+        await activityApi.start('Copying…', progressEvent, () => activityApi.requestCancel(progressEvent))
+        await pasteClipboardCmd(target, policy, progressEvent)
+        await reloadCurrent()
+        activityApi.hideSoon()
+        return true
+      } catch (err) {
+        activityApi.clearNow()
+        await activityApi.cleanup()
+        showToast(`Paste failed: ${err instanceof Error ? err.message : String(err)}`)
+        return false
+      }
+    }
     try {
       const conflicts = await pasteClipboardPreview(dest)
       if (conflicts && conflicts.length > 0) {
         const destNorm = normalizePath(dest)
         const selfPaste = conflicts.every((c) => normalizePath(parentPath(c.src)) === destNorm)
         if (selfPaste) {
-          await pasteClipboardCmd(dest, 'rename')
-          await reloadCurrent()
-          return true
+          return await runPaste(dest, 'rename')
         }
         conflictList = conflicts
         conflictDest = dest
         conflictModalOpen = true
         return false
       }
-      await pasteClipboardCmd(dest, 'rename')
-      await reloadCurrent()
-      return true
+      return await runPaste(dest, 'rename')
     } catch (err) {
       showToast(`Paste failed: ${err instanceof Error ? err.message : String(err)}`)
       return false
@@ -2152,9 +2164,14 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     if (!conflictDest) return
     conflictModalOpen = false
     try {
-      await pasteClipboardCmd(conflictDest, policy)
+      const progressEvent = `copy-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      await activityApi.start('Copying…', progressEvent, () => activityApi.requestCancel(progressEvent))
+      await pasteClipboardCmd(conflictDest, policy, progressEvent)
       await reloadCurrent()
+      activityApi.hideSoon()
     } catch (err) {
+      activityApi.clearNow()
+      await activityApi.cleanup()
       showToast(`Paste failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       conflictDest = null
