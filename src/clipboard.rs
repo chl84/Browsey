@@ -227,13 +227,15 @@ fn copy_file_best_effort(src: &Path, dest: &Path) -> Result<(), String> {
 
 #[cfg(not(target_os = "windows"))]
 fn try_gio_copy(src: &Path, dest: &Path) -> Result<bool, String> {
-    let status = Command::new("gio")
+    match Command::new("gio")
         .arg("copy")
         .arg(src)
         .arg(dest)
         .status()
-        .map_err(|e| format!("gio copy spawn failed: {e}"))?;
-    Ok(status.success())
+    {
+        Ok(status) => Ok(status.success()),
+        Err(_) => Ok(false), // treat spawn failure as unsupported so we fall back
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
