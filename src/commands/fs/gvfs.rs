@@ -103,17 +103,17 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
 #[cfg(not(target_os = "windows"))]
 fn short_label(fs: &str, display: &str, raw_name: &str) -> String {
     if fs == "onedrive" {
-        // Prefer display name if already short; otherwise derive from raw mount name.
-        let trimmed = display.trim();
-        if !trimmed.is_empty() && trimmed.len() <= 32 {
-            return format!("OneDrive ({})", trimmed);
-        }
-        // raw_name example: "onedrive:host=gmail.com,user=christerlepsoe"
-        let user = raw_name
+        // Privacy: avoid personal identifiers; prefer provider/host if available.
+        let host = raw_name
             .split(',')
-            .find_map(|part| part.strip_prefix("user="))
-            .unwrap_or("OneDrive");
-        return format!("OneDrive ({})", user);
+            .find_map(|part| part.strip_prefix("host="))
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+
+        return match host {
+            Some(h) => format!("OneDrive ({h})"),
+            None => "OneDrive".to_string(),
+        };
     }
     display.to_string()
 }
