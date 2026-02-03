@@ -76,18 +76,19 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
             .to_string_lossy()
             .into_owned();
 
-        // We only surface MTP endpoints for now; other GVFS backends can be added later.
-        if !name.starts_with("mtp:") {
-            continue;
-        }
+        let (fs, removable) = match name.split_once(':').map(|(p, _)| p) {
+            Some("mtp") => ("mtp", true),
+            Some("onedrive") => ("onedrive", true),
+            _ => continue,
+        };
 
         let label = display_name(&path).unwrap_or_else(|| name.clone());
 
         mounts.push(MountInfo {
             label,
             path: path.to_string_lossy().into_owned(),
-            fs: "mtp".to_string(),
-            removable: true,
+            fs: fs.to_string(),
+            removable,
         });
     }
 
