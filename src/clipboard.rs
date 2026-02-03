@@ -272,6 +272,16 @@ fn copy_file_best_effort(
             .unwrap_or(false)
         {
             let _ = fs::remove_file(dest);
+            if let (Some(app), Some(evt)) = (app, progress_event) {
+                let _ = app.emit(
+                    evt,
+                    CopyProgressPayload {
+                        bytes: done,
+                        total: total.unwrap_or(done),
+                        finished: true,
+                    },
+                );
+            }
             return Err("Copy cancelled".into());
         }
         let n = reader
