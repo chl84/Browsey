@@ -20,6 +20,8 @@ use crate::{
 #[cfg(target_os = "windows")]
 #[path = "fs_windows.rs"]
 mod fs_windows;
+#[cfg(not(target_os = "windows"))]
+mod gvfs;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
@@ -415,6 +417,12 @@ fn watch_allowed_roots() -> Vec<PathBuf> {
             }
         }
     }
+    // Allow GVFS mounts (e.g., MTP) even if we don't get filesystem events; watcher will be best-effort.
+    if let Some(gvfs_root) = dirs_next::runtime_dir().map(|p| p.join("gvfs")) {
+        if gvfs_root.exists() {
+            roots.push(gvfs_root);
+        }
+    }
     if let Ok(conn) = db::open() {
         if let Ok(bookmarks) = db::list_bookmarks(&conn) {
             for (_label, path) in bookmarks {
@@ -506,6 +514,11 @@ fn command_output(cmd: &str, args: &[&str]) -> Result<(), CmdError> {
 #[cfg(not(target_os = "windows"))]
 fn linux_mounts() -> Vec<MountInfo> {
     let mut mounts = Vec::new();
+    let gvfs_root = dirs_next::runtime_dir().map(|p| p.join("gvfs"));
+
+    // Surface GVFS-backed MTP endpoints (e.g., Android phones).
+    mounts.extend(gvfs::list_gvfs_mounts());
+
     if let Ok(contents) = fs::read_to_string("/proc/self/mounts") {
         for line in contents.lines() {
             let mut parts = line.split_whitespace();
@@ -544,10 +557,16 @@ fn linux_mounts() -> Vec<MountInfo> {
             ) {
                 continue;
             }
+            let in_gvfs = gvfs_root
+                .as_ref()
+                .and_then(|p| p.to_str())
+                .map(|p| target.starts_with(p))
+                .unwrap_or(false);
+
             if target.starts_with("/proc")
                 || target.starts_with("/sys")
                 || target.starts_with("/run/lock")
-                || target.starts_with("/run/user")
+                || (target.starts_with("/run/user") && !in_gvfs)
             {
                 continue;
             }
