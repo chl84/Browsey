@@ -3,6 +3,8 @@ use crate::{
     tasks::CancelState,
     undo::{move_with_fallback, run_actions, temp_backup_path, Action, Direction, UndoState},
 };
+mod clipboard_size;
+use clipboard_size::estimate_total_size;
 use once_cell::sync::Lazy;
 use std::{
     fs,
@@ -83,7 +85,7 @@ fn copy_dir(
             ensure_not_child(&path, &target)?;
             copy_dir(&path, &target, app, progress_event, cancel)?;
         } else {
-            copy_file_best_effort(&path, &target, app, progress_event, cancel)?;
+            copy_file_best_effort(&path, &target, app, progress_event, cancel, None)?;
         }
     }
     Ok(())
@@ -222,7 +224,8 @@ fn copy_entry(
         {
             return Err("Copy cancelled".into());
         }
-        copy_file_best_effort(src, dest, app, progress_event, cancel)?;
+        let size_hint = Some(meta.len());
+        copy_file_best_effort(src, dest, app, progress_event, cancel, size_hint)?;
         Ok(())
     }
 }
@@ -233,12 +236,15 @@ fn copy_file_best_effort(
     app: Option<&tauri::AppHandle>,
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
+    total_hint: Option<u64>,
 ) -> Result<u64, String> {
     #[cfg(not(target_os = "windows"))]
     {
         if is_gvfs_path(src) || is_gvfs_path(dest) {
             if let Some(app) = app {
-                if let Some(bytes) = try_gio_copy_progress(src, dest, app, progress_event, cancel)? {
+                if let Some(bytes) =
+                    try_gio_copy_progress(src, dest, app, progress_event, cancel, total_hint)?
+                {
                     return Ok(bytes);
                 }
             }
@@ -256,7 +262,8 @@ fn copy_file_best_effort(
 
     let mut buf = vec![0u8; 512 * 1024];
     let mut done: u64 = 0;
-    let total = progress_event.and_then(|_| fs::metadata(src).ok().map(|m| m.len()));
+    let total = total_hint
+        .or_else(|| progress_event.and_then(|_| fs::metadata(src).ok().map(|m| m.len())));
     let mut last_emit = 0u64;
     let mut last_time = std::time::Instant::now();
     loop {
@@ -313,6 +320,7 @@ fn try_gio_copy_progress(
     app: &tauri::AppHandle,
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
+    total_hint: Option<u64>,
 ) -> Result<Option<u64>, String> {
     let mut cmd = Command::new("gio");
     cmd.arg("copy").arg("--progress").arg(src).arg(dest);
@@ -325,7 +333,7 @@ fn try_gio_copy_progress(
     };
 
     let stdout = child.stdout.take();
-    let mut total_seen: Option<u64> = None;
+    let mut total_seen: Option<u64> = total_hint;
     let mut last_bytes: u64 = 0;
 
     if let Some(out) = stdout {
@@ -340,21 +348,15 @@ fn try_gio_copy_progress(
                 return Err("Copy cancelled".into());
             }
 
-            // Format: "Transferred X bytes out of Y bytes (Z/s)"
-            if let Some(rest) = line.strip_prefix("Transferred ") {
-                let parts: Vec<&str> = rest.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    if let Ok(x) = parts[0].parse::<u64>() {
-                        last_bytes = x;
-                    }
-                }
-                if let Some(idx) = parts.iter().position(|p| *p == "of") {
-                    if parts.len() > idx + 1 {
-                        if let Ok(y) = parts[idx + 1].parse::<u64>() {
-                            total_seen = Some(y);
-                        }
-                    }
-                }
+            // Parse integers in the line; expect two numbers = transferred, total.
+            let nums: Vec<u64> = line
+                .split(|c: char| !c.is_ascii_digit())
+                .filter(|s| !s.is_empty())
+                .filter_map(|s| s.parse::<u64>().ok())
+                .collect();
+            if nums.len() >= 2 {
+                last_bytes = nums[0];
+                total_seen = Some(nums[1]);
                 if let (Some(evt), Some(total)) = (progress_event, total_seen) {
                     let _ = app.emit(
                         evt,
@@ -570,13 +572,16 @@ fn paste_clipboard_impl(
     let cancel_flag = cancel_guard.as_ref().map(|g| g.token());
 
     let total_items = state.entries.len() as u64;
+    let total_bytes = progress_event
+        .as_ref()
+        .map(|evt| estimate_total_size(&state.entries, evt, &app));
     let mut done_items: u64 = 0;
-    if let Some(evt) = progress_event.as_ref() {
+    if let (Some(evt), Some(total)) = (progress_event.as_ref(), total_bytes) {
         let _ = app.emit(
             evt,
             CopyProgressPayload {
                 bytes: done_items,
-                total: total_items,
+                total,
                 finished: false,
             },
         );
@@ -653,15 +658,17 @@ fn paste_clipboard_impl(
             match result {
                 Ok(_) => {
                     done_items = done_items.saturating_add(1);
-                    if let Some(evt) = progress_event.as_ref() {
-                        let _ = app.emit(
-                            evt,
-                            CopyProgressPayload {
-                                bytes: done_items,
-                                total: total_items,
-                                finished: false,
-                            },
-                        );
+                    if total_bytes.is_none() {
+                        if let Some(evt) = progress_event.as_ref() {
+                            let _ = app.emit(
+                                evt,
+                                CopyProgressPayload {
+                                    bytes: done_items,
+                                    total: total_items,
+                                    finished: false,
+                                },
+                            );
+                        }
                     }
                     break;
                 }
@@ -703,8 +710,8 @@ fn paste_clipboard_impl(
         let _ = app.emit(
             evt,
             CopyProgressPayload {
-                bytes: done_items,
-                total: total_items,
+                bytes: total_bytes.unwrap_or(done_items),
+                total: total_bytes.unwrap_or(total_items),
                 finished: true,
             },
         );
