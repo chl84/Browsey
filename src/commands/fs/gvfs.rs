@@ -85,7 +85,7 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
         let label = display_name(&path).unwrap_or_else(|| name.clone());
 
         mounts.push(MountInfo {
-            label,
+            label: short_label(fs, &label, &name),
             path: path.to_string_lossy().into_owned(),
             fs: fs.to_string(),
             removable,
@@ -98,4 +98,22 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
 #[cfg(target_os = "windows")]
 pub fn list_gvfs_mounts() -> Vec<MountInfo> {
     Vec::new()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn short_label(fs: &str, display: &str, raw_name: &str) -> String {
+    if fs == "onedrive" {
+        // Prefer display name if already short; otherwise derive from raw mount name.
+        let trimmed = display.trim();
+        if !trimmed.is_empty() && trimmed.len() <= 32 {
+            return format!("OneDrive ({})", trimmed);
+        }
+        // raw_name example: "onedrive:host=gmail.com,user=christerlepsoe"
+        let user = raw_name
+            .split(',')
+            .find_map(|part| part.strip_prefix("user="))
+            .unwrap_or("OneDrive");
+        return format!("OneDrive ({})", user);
+    }
+    display.to_string()
 }
