@@ -1,4 +1,5 @@
 <script lang="ts">
+  // --- Imports -------------------------------------------------------------
   import { onMount, onDestroy, tick } from 'svelte'
   import { invoke } from '@tauri-apps/api/core'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -50,6 +51,7 @@ import { loadDefaultView, storeDefaultView } from './features/explorer/services/
   import SettingsModal from './features/settings/SettingsModal.svelte'
   import './features/explorer/ExplorerLayout.css'
 
+  // --- Types --------------------------------------------------------------
   type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
   type ExtractBatchItem = {
     path: string
@@ -58,12 +60,18 @@ import { loadDefaultView, storeDefaultView } from './features/explorer/services/
     error?: string | null
   }
   type ViewMode = 'list' | 'grid'
+
+  // --- Core UI state -------------------------------------------------------
   let sidebarCollapsed = false
-let pathInput = ''
-let mode: 'address' | 'filter' | 'search' = 'address'
-let viewMode: ViewMode = 'list'
-let defaultViewPref: ViewMode = 'list'
-let inputFocused = false
+
+  // Path / mode
+  let pathInput = ''
+  let mode: 'address' | 'filter' | 'search' = 'address'
+  let viewMode: ViewMode = 'list'
+  let defaultViewPref: ViewMode = 'list'
+  let inputFocused = false
+
+  // DOM refs & observers
   let rowsElRef: HTMLDivElement | null = null
   let gridElRef: HTMLDivElement | null = null
   let headerElRef: HTMLDivElement | null = null
@@ -73,6 +81,7 @@ let inputFocused = false
   let rowsRaf: number | null = null
   let gridRaf: number | null = null
 
+  // --- Nav + bookmarks -----------------------------------------------------
   const places = [
     { label: 'Home', path: '~' },
     { label: 'Recent', path: '' },
@@ -83,31 +92,38 @@ let inputFocused = false
 
   let bookmarks: { label: string; path: string }[] = []
   let partitions: Partition[] = []
+
+  // Modals & dialogs
   const bookmarkModal = createBookmarkModal()
-  const dragDrop = useDragDrop()
-  const { store: bookmarkStore } = bookmarkModal
-  const dragState = dragDrop.state
-  let dragAction: 'copy' | 'move' | null = null
   let bookmarkModalOpen = false
   let bookmarkName = ''
   let bookmarkCandidate: Entry | null = null
   let bookmarkInputEl: HTMLInputElement | null = null
   let renameValue = ''
-let compressName = 'Archive'
-let compressLevel = 6
-  let newFolderName = 'New folder'
-  let newFileName = ''
   let conflictModalOpen = false
   let conflictList: { src: string; target: string; is_dir: boolean }[] = []
   let conflictDest: string | null = null
+  let compressName = 'Archive'
+  let compressLevel = 6
+  let newFolderName = 'New folder'
+  let newFileName = ''
+  let settingsOpen = false
+
+  // Drag & clipboard
+  const dragDrop = useDragDrop()
+  const { store: bookmarkStore } = bookmarkModal
+  const dragState = dragDrop.state
+  let dragAction: 'copy' | 'move' | null = null
   let clipboardMode: 'copy' | 'cut' = 'copy'
   let clipboardPaths = new Set<string>()
+
+  // View / navigation tracking
   let currentView: CurrentView = 'dir'
   let lastLocation = ''
   let extracting = false
-  let settingsOpen = false
   useContextMenuBlocker()
 
+  // --- Helpers -------------------------------------------------------------
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
     const tag = target.tagName.toLowerCase()
@@ -127,6 +143,7 @@ let compressLevel = 6
   const activityApi = createActivity({ onError: showToast })
   const activity = activityApi.activity
 
+  // --- Data + preferences --------------------------------------------------
   const explorer = useExplorerData({
     onEntriesChanged: () => resetScrollPosition(),
     onCurrentChange: (path) => {
@@ -276,6 +293,7 @@ let compressLevel = 6
     void focusCurrentView()
   }
 
+  // --- List/grid derived state & handlers ---------------------------------
   const {
     selected,
     anchorIndex,
@@ -300,6 +318,8 @@ let compressLevel = 6
     resetScrollPosition,
     recompute,
   } = createListState()
+
+  // --- Selection memory & drive helpers -----------------------------------
 
   const selectionMemory = createSelectionMemory()
   const driveLetter = (path: string): string | null => {
@@ -806,6 +826,7 @@ let compressLevel = 6
     return entry.name
   }
 
+  // --- UI sizing & viewport updates ---------------------------------------
   const handleResize = () => {
     if (typeof window === 'undefined') return
     sidebarCollapsed = window.innerWidth < 700
@@ -815,6 +836,7 @@ let compressLevel = 6
     }
   }
 
+  // --- Path input focus/blur ----------------------------------------------
   const handleInputFocus = () => {
     inputFocused = true
     if (mode === 'address' && !$searchMode) {
@@ -1385,6 +1407,7 @@ let compressLevel = 6
     }
   }
 
+  // --- Lifecycle: global listeners ---------------------------------------
   onMount(() => {
     window.addEventListener('keydown', handleSettingsHotkey)
   })
@@ -1696,6 +1719,7 @@ let compressLevel = 6
     }
   }
 
+  // --- Pointer handlers (list & grid) -------------------------------------
   const handleRowsMouseDown = (event: MouseEvent) => {
     const target = event.target as HTMLElement | null
     if (viewMode === 'list') {
@@ -1755,6 +1779,7 @@ let compressLevel = 6
     const gridEntries = get(filteredEntries)
     if (gridEntries.length === 0) return
     event.preventDefault()
+    // When clicking blank space in grid mode, leave address edit mode and focus the grid.
     blurPathInput()
     gridEl.focus()
     selectionDrag = false
@@ -1803,6 +1828,7 @@ let compressLevel = 6
     })
   }
 
+  // --- Scroll / wheel routing --------------------------------------------
   const handleRowsScrollCombined = (event: Event) => {
     if (viewMode === 'list') {
       handleRowsScroll()
@@ -1811,6 +1837,7 @@ let compressLevel = 6
     }
   }
 
+  // --- Keyboard navigation (grid) -----------------------------------------
   const handleGridKeydown = (event: KeyboardEvent) => {
     if (viewMode !== 'grid') return
     const list = get(filteredEntries)
@@ -1907,6 +1934,7 @@ let compressLevel = 6
     }
   }
 
+  // --- Click handling (row/grid blank vs cards) ---------------------------
   const handleRowsClickSafe = (event: MouseEvent) => {
     if (selectionDrag) {
       selectionDrag = false
@@ -1926,6 +1954,7 @@ let compressLevel = 6
     handleRowsClick(event)
   }
 
+  // --- Context menus ------------------------------------------------------
   const handleRowContextMenu = (entry: Entry, event: MouseEvent) => {
     const idx = get(filteredEntries).findIndex((e) => e.path === entry.path)
     ensureSelectionBeforeMenu($selected, entry.path, idx, (paths, anchor, caret) => {
