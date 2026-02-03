@@ -4,6 +4,9 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { Entry } from '../types'
 import { createExplorerState } from '../state'
 
+const isGvfsPath = (path: string | null | undefined) =>
+  !!path && path.includes('/run/user/') && path.includes('/gvfs/')
+
 type Options = {
   onEntriesChanged?: () => void
   onCurrentChange?: (path: string) => void
@@ -48,6 +51,24 @@ export const useExplorerData = (options: Options = {}) => {
   let unlistenEntryMeta: UnlistenFn | null = null
   let unlistenEntryMetaBatch: UnlistenFn | null = null
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
+  let gvfsRefresh: ReturnType<typeof setInterval> | null = null
+  let unsubscribeCurrent: (() => void) | null = null
+
+  const ensureGvfsRefresh = (path: string | null | undefined) => {
+    const shouldPoll = isGvfsPath(path)
+    if (shouldPoll) {
+      if (!gvfsRefresh) {
+        gvfsRefresh = setInterval(() => {
+          const latest = get(current)
+          if (!latest || !isGvfsPath(latest)) return
+          void load(latest, { recordHistory: false, silent: true })
+        }, 5000)
+      }
+    } else if (gvfsRefresh) {
+      clearInterval(gvfsRefresh)
+      gvfsRefresh = null
+    }
+  }
 
   const setup = async () => {
     void loadSavedWidths()
@@ -78,6 +99,8 @@ export const useExplorerData = (options: Options = {}) => {
 
     const initial = options.initialPath ?? (get(startDirPref) ?? undefined)
     await load(initial)
+    ensureGvfsRefresh(get(current))
+    unsubscribeCurrent = current.subscribe((p) => ensureGvfsRefresh(p))
 
     unlistenDirChanged = await listen<string>('dir-changed', (event) => {
       const curr = get(current)
@@ -122,6 +145,10 @@ export const useExplorerData = (options: Options = {}) => {
       clearInterval(partitionsPoll)
       partitionsPoll = null
     }
+    if (gvfsRefresh) {
+      clearInterval(gvfsRefresh)
+      gvfsRefresh = null
+    }
     if (unlistenDirChanged) {
       unlistenDirChanged()
       unlistenDirChanged = null
@@ -133,6 +160,10 @@ export const useExplorerData = (options: Options = {}) => {
     if (unlistenEntryMetaBatch) {
       unlistenEntryMetaBatch()
       unlistenEntryMetaBatch = null
+    }
+    if (unsubscribeCurrent) {
+      unsubscribeCurrent()
+      unsubscribeCurrent = null
     }
   }
 
