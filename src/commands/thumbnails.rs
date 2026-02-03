@@ -37,6 +37,7 @@ const POOL_MAX_THREADS: usize = 8;
 const CACHE_MAX_FILES: usize = 2000;
 const MAX_SOURCE_DIM: u32 = 20000;
 const DECODE_TIMEOUT_MS: u64 = 2000;
+const DECODE_TIMEOUT_MS_GVFS: u64 = 8000;
 const GLOBAL_HARD_MAX_INFLIGHT: usize = 32;
 const CACHE_DEFAULT_MB: u64 = 300;
 const CACHE_MIN_MB: u64 = 50;
@@ -334,7 +335,8 @@ fn generate_thumbnail(
         _ => return Err("Unsupported image format".into()),
     }
 
-    let img = decode_with_timeout(reader, fmt, Duration::from_millis(DECODE_TIMEOUT_MS))?;
+    let timeout = decode_timeout_for_path(path);
+    let img = decode_with_timeout(reader, fmt, timeout)?;
 
     let (src_w, src_h) = img.dimensions();
     if src_w > MAX_SOURCE_DIM || src_h > MAX_SOURCE_DIM {
@@ -458,6 +460,15 @@ fn decode_with_timeout<R: BufRead + Seek + Send + 'static>(
             Err("Decode timed out".into())
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => Err("Decode worker crashed".into()),
+    }
+}
+
+fn decode_timeout_for_path(path: &Path) -> Duration {
+    let s = path.to_string_lossy().to_lowercase();
+    if s.contains("/gvfs/mtp:") || s.contains("\\gvfs\\mtp:") || s.contains("/gvfs/") {
+        Duration::from_millis(DECODE_TIMEOUT_MS_GVFS)
+    } else {
+        Duration::from_millis(DECODE_TIMEOUT_MS)
     }
 }
 
