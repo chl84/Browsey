@@ -84,91 +84,87 @@
     </div>
 
     {#if activeTab === 'basic'}
-      {#if count === 1 && entry}
-        <div class="row"><span class="label">Name</span><span class="value">{entry.name}</span></div>
-        <div class="row"><span class="label">Type</span><span class="value">{entry.kind}</span></div>
-      {/if}
+      <div class="rows">
+        {#if count === 1 && entry}
+          <div class="row"><span class="label">Name</span><span class="value">{entry.name}</span></div>
+          <div class="row"><span class="label">Type</span><span class="value">{entry.kind}</span></div>
+        {/if}
 
-      <div class="row">
-        <span class="label">Size</span>
-        <span class="value">
-          {#if size !== null && size !== undefined}
-            {formatSize(size)}{#if deepCount !== null} {' '}({deepCount} {deepCount === 1 ? 'item' : 'items'}){/if}
-          {:else}
-            —{#if deepCount !== null} {' '}({deepCount} {deepCount === 1 ? 'item' : 'items'}){/if}
-          {/if}
-        </span>
-      </div>
-
-      {#if count === 1 && entry}
         <div class="row">
-          <span class="label">Accessed</span>
-          <span class="value">{entry.kind === 'file' ? entry.accessed ?? '—' : '—'}</span>
+          <span class="label">Size</span>
+          <span class="value">
+            {#if size !== null && size !== undefined}
+              {formatSize(size)}{#if deepCount !== null} {' '}({deepCount} {deepCount === 1 ? 'item' : 'items'}){/if}
+            {:else}
+              —{#if deepCount !== null} {' '}({deepCount} {deepCount === 1 ? 'item' : 'items'}){/if}
+            {/if}
+          </span>
         </div>
-        <div class="row"><span class="label">Modified</span><span class="value">{entry.modified ?? '—'}</span></div>
-        <div class="row"><span class="label">Created</span><span class="value">{entry.created ?? '—'}</span></div>
-      {/if}
-    {:else if activeTab === 'extra'}
-      <div class="row">
-        <span class="label">Hidden</span>
-        <span class="value">
-          <label class="toggle">
-            <input
-              type="checkbox"
-              use:indeterminate={hiddenBit}
-              checked={hiddenBit === true}
-              title="Hidden attribute"
-              on:change={(e) => onToggleHidden((e.currentTarget as HTMLInputElement).checked)}
-            />
-          </label>
-        </span>
+
+        {#if count === 1 && entry}
+          <div class="row">
+            <span class="label">Accessed</span>
+            <span class="value">{entry.kind === 'file' ? entry.accessed ?? '—' : '—'}</span>
+          </div>
+          <div class="row"><span class="label">Modified</span><span class="value">{entry.modified ?? '—'}</span></div>
+          <div class="row"><span class="label">Created</span><span class="value">{entry.created ?? '—'}</span></div>
+        {/if}
       </div>
-      <div class="row"><span class="label">Extra</span><span class="value">More coming soon</span></div>
+    {:else if activeTab === 'extra'}
+      <div class="rows">
+        <div class="row">
+          <span class="label">Hidden</span>
+          <span class="value">
+            <label class="toggle">
+              <input
+                type="checkbox"
+                use:indeterminate={hiddenBit}
+                checked={hiddenBit === true}
+                title="Hidden attribute"
+                on:change={(e) => onToggleHidden((e.currentTarget as HTMLInputElement).checked)}
+              />
+            </label>
+          </span>
+        </div>
+        <div class="row"><span class="label">Extra</span><span class="value">More coming soon</span></div>
+      </div>
     {:else if activeTab === 'permissions'}
       {#if permissions && permissions.accessSupported}
         <div class="access">
-          <div class="row access-head">
-            <span class="label"></span>
-            <span class="value access-cols">
-              <span>Read</span>
-              <span>Write</span>
-              <span>Exec</span>
-            </span>
-          </div>
+          <div class="cell head"></div>
+          <div class="cell head">Read</div>
+          <div class="cell head">Write</div>
+          <div class="cell head">Exec</div>
           {#each scopes as scope (scope)}
             {#if permissions[scope]}
-              <div class="row access-row">
-                <span class="label">{accessLabels[scope]}</span>
-                <span class="value access-cols">
-                  <label>
-                    <input
-                      type="checkbox"
-                      use:indeterminate={permissions[scope].read}
-                      checked={permissions[scope].read === true}
-                      on:change={(e) =>
-                        onToggleAccess(scope, 'read', (e.currentTarget as HTMLInputElement).checked)}
-                    />
-                  </label>
-                  <label>
-                    <input
-                      type="checkbox"
-                      use:indeterminate={permissions[scope].write}
-                      checked={permissions[scope].write === true}
-                      on:change={(e) =>
-                        onToggleAccess(scope, 'write', (e.currentTarget as HTMLInputElement).checked)}
-                    />
-                  </label>
-                  <label>
-                    <input
-                      type="checkbox"
-                      use:indeterminate={permissions[scope].exec}
-                      checked={permissions[scope].exec === true}
-                      on:change={(e) =>
-                        onToggleAccess(scope, 'exec', (e.currentTarget as HTMLInputElement).checked)}
-                    />
-                  </label>
-                </span>
-              </div>
+              <div class="cell label">{accessLabels[scope]}</div>
+              <label class="cell">
+                <input
+                  type="checkbox"
+                  use:indeterminate={permissions[scope].read}
+                  checked={permissions[scope].read === true}
+                  on:change={(e) =>
+                    onToggleAccess(scope, 'read', (e.currentTarget as HTMLInputElement).checked)}
+                />
+              </label>
+              <label class="cell">
+                <input
+                  type="checkbox"
+                  use:indeterminate={permissions[scope].write}
+                  checked={permissions[scope].write === true}
+                  on:change={(e) =>
+                    onToggleAccess(scope, 'write', (e.currentTarget as HTMLInputElement).checked)}
+                />
+              </label>
+              <label class="cell">
+                <input
+                  type="checkbox"
+                  use:indeterminate={permissions[scope].exec}
+                  checked={permissions[scope].exec === true}
+                  on:change={(e) =>
+                    onToggleAccess(scope, 'exec', (e.currentTarget as HTMLInputElement).checked)}
+                />
+              </label>
             {/if}
           {/each}
         </div>
@@ -185,25 +181,56 @@
 
 <style>
   /* Styling is inherited from global modal rules in app.css */
+  .rows {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    row-gap: 8px;
+    column-gap: 10px;
+  }
+
+  .row {
+    display: contents;
+  }
+
+  .label {
+    color: var(--fg-muted);
+    font-weight: 600;
+    text-align: right;
+  }
+
+  .value {
+    overflow-wrap: anywhere;
+  }
+
   .access {
     margin-top: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .access-head {
-    font-weight: 600;
-  }
-
-  .access-cols {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
+    grid-template-columns: 120px repeat(3, minmax(70px, 1fr));
+    row-gap: 8px;
+    column-gap: 10px;
     align-items: center;
+    justify-content: start;
+    width: max-content;
+    transform: translateX(-20px);
   }
 
-  .access-row input {
-    transform: translateY(1px);
+  .access .cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: center;
+  }
+
+  .access .cell.head {
+    font-weight: 600;
+    white-space: nowrap;
+    justify-content: center;
+  }
+
+  .access .cell.label {
+    justify-content: flex-end;
+    text-align: right;
+    white-space: nowrap;
+    justify-self: end;
   }
 </style>
