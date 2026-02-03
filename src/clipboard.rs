@@ -138,46 +138,46 @@ fn merge_dir(
             if target.exists() && target.is_dir() {
                 merge_dir(&path, &target, mode, actions, app, progress_event, cancel)?;
             } else {
-                if target.exists() {
-                    backup_existing_target(&target, actions)?;
-                }
-                match mode {
-                    ClipboardMode::Copy => {
-                        copy_dir(&path, &target, app, progress_event, cancel)?;
-                        actions.push(Action::Copy {
-                            from: path.clone(),
-                            to: target.clone(),
-                        });
-                    }
-                    ClipboardMode::Cut => {
-                        move_entry(&path, &target)?;
-                        actions.push(Action::Move {
-                            from: path.clone(),
-                            to: target.clone(),
-                        });
-                    }
+                        if target.exists() {
+                            backup_existing_target(&target, actions)?;
+                        }
+                        match mode {
+                            ClipboardMode::Copy => {
+                                copy_dir(&path, &target, app, progress_event, cancel)?;
+                                actions.push(Action::Copy {
+                                    from: path.clone(),
+                                    to: target.clone(),
+                                });
+                            }
+                            ClipboardMode::Cut => {
+                                move_entry(&path, &target, app, progress_event, cancel)?;
+                                actions.push(Action::Move {
+                                    from: path.clone(),
+                                    to: target.clone(),
+                                });
+                            }
                 }
             }
         } else {
             if target.exists() {
                 backup_existing_target(&target, actions)?;
             }
-            match mode {
-                ClipboardMode::Copy => {
-                    fs::copy(&path, &target)
-                        .map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
-                    actions.push(Action::Copy {
-                        from: path.clone(),
-                        to: target.clone(),
-                    });
-                }
-                ClipboardMode::Cut => {
-                    move_entry(&path, &target)?;
-                    actions.push(Action::Move {
-                        from: path.clone(),
-                        to: target.clone(),
-                    });
-                }
+                match mode {
+                    ClipboardMode::Copy => {
+                        fs::copy(&path, &target)
+                            .map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
+                        actions.push(Action::Copy {
+                            from: path.clone(),
+                            to: target.clone(),
+                        });
+                    }
+                    ClipboardMode::Cut => {
+                        move_entry(&path, &target, app, progress_event, cancel)?;
+                        actions.push(Action::Move {
+                            from: path.clone(),
+                            to: target.clone(),
+                        });
+                    }
             }
         }
     }
@@ -405,12 +405,18 @@ fn delete_entry_path(path: &Path) -> Result<(), String> {
     }
 }
 
-fn move_entry(src: &Path, dest: &Path) -> Result<(), String> {
+fn move_entry(
+    src: &Path,
+    dest: &Path,
+    app: Option<&tauri::AppHandle>,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> Result<(), String> {
     ensure_not_child(src, dest)?;
     match fs::rename(src, dest) {
         Ok(_) => Ok(()),
         Err(_) => {
-            copy_entry(src, dest, None, None, None)?;
+            copy_entry(src, dest, app, progress_event, cancel)?;
             delete_entry_path(src)
         }
     }
@@ -635,7 +641,13 @@ fn paste_clipboard_impl(
                     progress_event.as_deref(),
                     cancel_flag.as_deref(),
                 ),
-                ClipboardMode::Cut => move_entry(src, &target),
+                ClipboardMode::Cut => move_entry(
+                    src,
+                    &target,
+                    Some(&app),
+                    progress_event.as_deref(),
+                    cancel_flag.as_deref(),
+                ),
             };
 
             match result {
