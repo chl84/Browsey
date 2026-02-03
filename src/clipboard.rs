@@ -5,9 +5,13 @@ use crate::{
 use once_cell::sync::Lazy;
 use std::{
     fs,
+    io,
     path::{Path, PathBuf},
     sync::Mutex,
 };
+use libc::{EOPNOTSUPP, ENOSYS, EXDEV};
+#[cfg(not(target_os = "windows"))]
+use std::process::Command;
 
 #[derive(Clone, Copy)]
 enum ClipboardMode {
@@ -59,7 +63,7 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
             ensure_not_child(&path, &target)?;
             copy_dir(&path, &target)?;
         } else {
-            fs::copy(&path, &target).map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
+            copy_file_best_effort(&path, &target)?;
         }
     }
     Ok(())
@@ -180,9 +184,63 @@ fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
         ensure_not_child(src, dest)?;
         copy_dir(src, dest)
     } else {
-        fs::copy(src, dest).map_err(|e| format!("Failed to copy file: {e}"))?;
+        copy_file_best_effort(src, dest)?;
         Ok(())
     }
+}
+
+fn copy_file_best_effort(src: &Path, dest: &Path) -> Result<(), String> {
+    match fs::copy(src, dest) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            let raw = e.raw_os_error();
+            let kind = e.kind();
+            let is_unsupported = matches!(kind, io::ErrorKind::Unsupported)
+                || matches!(raw, Some(EOPNOTSUPP) | Some(ENOSYS) | Some(EXDEV));
+
+            // GVFS/MTP sometimes rejects copy_file_range; try gio copy which speaks the gvfs backend.
+            #[cfg(not(target_os = "windows"))]
+            if is_unsupported || is_gvfs_path(dest) {
+                if try_gio_copy(src, dest)? {
+                    return Ok(());
+                }
+            }
+
+            if is_unsupported {
+                let mut reader = fs::File::open(src)
+                    .map_err(|e| format!("Failed to open source for copy: {e}"))?;
+                let mut writer = fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(dest)
+                    .map_err(|e| format!("Failed to open target for copy: {e}"))?;
+                io::copy(&mut reader, &mut writer)
+                    .map_err(|e| format!("Fallback copy failed: {e}"))?;
+                Ok(())
+            } else {
+                Err(format!("Failed to copy file: {e}"))
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn try_gio_copy(src: &Path, dest: &Path) -> Result<bool, String> {
+    let status = Command::new("gio")
+        .arg("copy")
+        .arg(src)
+        .arg(dest)
+        .status()
+        .map_err(|e| format!("gio copy spawn failed: {e}"))?;
+    Ok(status.success())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_gvfs_path(path: &Path) -> bool {
+    path.to_string_lossy()
+        .to_lowercase()
+        .contains("/gvfs/")
 }
 
 fn delete_entry_path(path: &Path) -> Result<(), String> {
