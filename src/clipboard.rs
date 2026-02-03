@@ -796,7 +796,16 @@ mod tests {
         write_file(&src.join("a.txt"), b"a");
 
         let mut actions = Vec::new();
-        merge_dir(&src, &dest, ClipboardMode::Copy, &mut actions, None).unwrap();
+        merge_dir(
+            &src,
+            &dest,
+            ClipboardMode::Copy,
+            &mut actions,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         assert!(dest.join("old.txt").exists());
         assert!(dest.join("a.txt").exists());
@@ -824,7 +833,16 @@ mod tests {
         write_file(&src.join("a.txt"), b"a");
 
         let mut actions = Vec::new();
-        merge_dir(&src, &dest, ClipboardMode::Cut, &mut actions, None).unwrap();
+        merge_dir(
+            &src,
+            &dest,
+            ClipboardMode::Cut,
+            &mut actions,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         assert!(dest.join("old.txt").exists());
         assert!(dest.join("a.txt").exists());
