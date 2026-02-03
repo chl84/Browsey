@@ -8,7 +8,7 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 ## Highlights
 - **Responsive lists**: Virtualized rows, smooth wheel coalescing, and cached metadata keep large folders responsive.
 - **Live updates**: A `notify` watcher emits `dir-changed` events; the UI refreshes with a short debounce. Bookmarked paths are automatically allowlisted for watching (handy for mapped network drives).
-- **Clipboard & conflicts**: Native copy/cut/paste commands with preview. Pasting into the same folder auto-renames without prompting; other conflicts offer overwrite vs auto-rename.
+- **Clipboard & conflicts**: Native copy/cut/paste commands with preview. Pasting into the same folder auto-renames without prompting; other conflicts offer overwrite vs auto-rename. Long copies (e.g., GVFS OneDrive/MTP) run in the background with live progress, size hints, and cancel support.
 - **Search**: Recursive, case-insensitive search scoped to the current directory subtree; skips symlinks to avoid loops.
 - **Drag targets**: Internal drag/drop supports breadcrumbs as drop targets with visual highlighting.
 - **Drives & bookmarks**: Lists mounts/partitions (marks removable), bookmarks, starred, recent, and trash. Mounts are polled every 2s and SQLite stores bookmarks, stars, recents, and column widths.
@@ -19,7 +19,7 @@ Early beta: core flows (browse, search, clipboard, trash, compress, open with, p
 - **Grid view parity**: Fixed-size cards with virtualization, keyboard navigation and range selection, lasso overlay, hidden-item dimming, and consistent click-to-clear selection; names can span up to three lines but stay aligned to show the start.
 - **Theming & density**: Dark by default plus a light toggle; “cozy” vs “compact” density presets resize rows, grid cards, icons, and even the sidebar, all via CSS variables in `frontend/src/app.css`.
 - **Cross-platform details**: Uses system WebView (WebKit on Linux, WebView2 on Windows). Network locations on Windows delete permanently (Explorer parity) because the recycle bin is unavailable there.
-- **Removable drives**: Detects removable volumes and offers an eject action on Windows (CfgMgr/SetupAPI + IOCTL fallback) and on Linux (`gio`/`umount`/`udisksctl` with lazy fallback); safely-ejected drives are hidden from the list. Busy devices surface a short “in use” hint.
+- **Removable & cloud drives**: Detects removable volumes and offers an eject action on Windows (CfgMgr/SetupAPI + IOCTL fallback) and on Linux (`gio`/`umount`/`udisksctl` with lazy fallback); safely-ejected drives are hidden from the list. GVFS mounts for MTP (phones) and OneDrive appear with appropriate icons; busy devices surface a short “in use” hint.
 - **UI polish**: Flat, squared styling across inputs/buttons/modals; address bar shows breadcrumbs when unfocused and selects the full path on focus; renaming pre-selects the filename without its extension; browser default context menu and hotkeys are disabled (except Ctrl+Shift+I), while app shortcuts remain.
 - **Visual cues for access**: Read-only items show an eye icon; items without read access show a padlock. Multi-select permission changes apply in one batch with undo/rollback on failure (Unix and Windows).
 - **User defaults**: Persists show hidden, hidden-last, folders-first, start directory, default view (list/grid), default sort field/direction, and delete confirmation. Defaults load before the first listing so startup respects your prefs.
