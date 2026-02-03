@@ -79,13 +79,10 @@ export const createOpenWithModal = (deps: Deps) => {
     if (!current.open || !current.entry || current.submitting) return
     const normalized: OpenWithChoice = {
       appId: choice.appId ?? undefined,
-      customCommand: choice.customCommand?.trim() || undefined,
-      customArgs: choice.customArgs?.trim() || undefined,
     }
-    const hasCustom = Boolean(normalized.customCommand)
     const hasApp = Boolean(normalized.appId)
-    if (!hasCustom && !hasApp) {
-      state.update((s) => ({ ...s, error: 'Pick an application or enter a command.' }))
+    if (!hasApp) {
+      state.update((s) => ({ ...s, error: 'Pick an application.' }))
       return
     }
     state.update((s) => ({ ...s, submitting: true, error: '' }))
