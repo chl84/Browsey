@@ -496,22 +496,28 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   const goToPath = async (path: string) => {
     const trimmed = path.trim()
     if (!trimmed) return
-    if (trimmed !== get(current)) {
+    if (trimmed !== get(current) && !get(loading)) {
       await loadDir(trimmed)
     }
+  }
+
+  const loadDirIfIdle = async (path: string, opts: { recordHistory?: boolean; silent?: boolean } = {}) => {
+    if (get(loading)) return
+    await loadDir(path, opts)
   }
 
   const openPartition = async (path: string) => {
     const lower = path.toLowerCase()
     if (lower.startsWith('onedrive://')) {
       try {
+        if (get(loading)) return
         await mountPartition(path)
         await loadPartitions()
         const mounted = get(partitionsStore).find(
           (p) => p.fs?.toLowerCase() === 'onedrive' && !p.path.toLowerCase().startsWith('onedrive://')
         )
         if (mounted) {
-          await loadDir(mounted.path)
+          await loadDirIfIdle(mounted.path)
         } else {
           showToast('Mounted, but no OneDrive mount path found')
         }
@@ -521,7 +527,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
       return
     }
 
-    await loadDir(path)
+    await loadDirIfIdle(path)
   }
 
   const handlePlace = (label: string, path: string) => {
@@ -2342,7 +2348,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   {bookmarks}
   {partitions}
   onPlaceSelect={handlePlace}
-  onBookmarkSelect={(path) => void loadDir(path)}
+  onBookmarkSelect={(path) => void loadDirIfIdle(path)}
   onRemoveBookmark={(path) => {
     void removeBookmark(path)
     bookmarksStore.update((list) => list.filter((b) => b.path !== path))

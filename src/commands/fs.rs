@@ -251,8 +251,7 @@ fn spawn_meta_refresh(app: tauri::AppHandle, jobs: Vec<(PathBuf, Option<fs::File
     });
 }
 
-#[tauri::command]
-pub fn list_dir(
+fn list_dir_sync(
     path: Option<String>,
     sort: Option<SortSpec>,
     app: tauri::AppHandle,
@@ -348,6 +347,18 @@ pub fn list_dir(
         current: display_path(&target),
         entries,
     })
+}
+
+#[tauri::command]
+pub async fn list_dir(
+    path: Option<String>,
+    sort: Option<SortSpec>,
+    app: tauri::AppHandle,
+) -> Result<DirListing, String> {
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn_blocking(move || list_dir_sync(path, sort, app_clone))
+        .await
+        .unwrap_or_else(|e| Err(format!("list_dir task panicked: {e}")))
 }
 
 #[cfg(not(target_os = "windows"))]
