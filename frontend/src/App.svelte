@@ -15,7 +15,7 @@
   import { useModalsController } from './features/explorer/hooks/useModalsController'
   import { useGridVirtualizer } from './features/explorer/hooks/useGridVirtualizer'
   import { addBookmark, removeBookmark } from './features/explorer/services/bookmarks'
-  import { ejectDrive } from './features/explorer/services/drives'
+  import { ejectDrive, mountPartition } from './features/explorer/services/drives'
   import { openConsole } from './features/explorer/services/console'
   import {
     copyPathsToSystemClipboard,
@@ -499,6 +499,29 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     if (trimmed !== get(current)) {
       await loadDir(trimmed)
     }
+  }
+
+  const openPartition = async (path: string) => {
+    const lower = path.toLowerCase()
+    if (lower.startsWith('onedrive://')) {
+      try {
+        await mountPartition(path)
+        await loadPartitions()
+        const mounted = get(partitionsStore).find(
+          (p) => p.fs?.toLowerCase() === 'onedrive' && !p.path.toLowerCase().startsWith('onedrive://')
+        )
+        if (mounted) {
+          await loadDir(mounted.path)
+        } else {
+          showToast('Mounted, but no OneDrive mount path found')
+        }
+      } catch (err) {
+        showToast(`Mount failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      return
+    }
+
+    await loadDir(path)
   }
 
   const handlePlace = (label: string, path: string) => {
@@ -2324,7 +2347,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     void removeBookmark(path)
     bookmarksStore.update((list) => list.filter((b) => b.path !== path))
   }}
-  onPartitionSelect={(path) => void loadDir(path)}
+  onPartitionSelect={(path) => void openPartition(path)}
   onPartitionEject={async (path) => {
     try {
       await ejectDrive(path)

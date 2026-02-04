@@ -181,6 +181,7 @@ fn main() {
             load_density,
             dir_sizes,
             eject_drive,
+            mount_partition,
             context_menu_actions,
             rename_entry,
             move_to_trash,

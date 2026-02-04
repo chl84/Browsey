@@ -28,7 +28,7 @@ use std::ffi::OsString;
 #[cfg(target_os = "windows")]
 use std::os::windows::prelude::*;
 #[cfg(not(target_os = "windows"))]
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use std::{
     fs, io,
@@ -484,6 +484,33 @@ struct CmdError {
 }
 
 #[cfg(not(target_os = "windows"))]
+fn command_output_silent_stderr(cmd: &str, args: &[&str]) -> Result<(), CmdError> {
+    let output = Command::new(cmd)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|e| CmdError {
+            message: e.to_string(),
+            busy: false,
+        })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let mut parts = Vec::new();
+    if !output.stdout.is_empty() {
+        parts.push(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+    let msg = if parts.is_empty() {
+        format!("exit status {}", output.status)
+    } else {
+        format!("exit status {}: {}", output.status, parts.join(" | "))
+    };
+    let busy = msg.to_lowercase().contains("busy");
+    Err(CmdError { message: msg, busy })
+}
+
+#[cfg(not(target_os = "windows"))]
 fn command_output(cmd: &str, args: &[&str]) -> Result<(), CmdError> {
     let output = Command::new(cmd)
         .args(args)
@@ -628,18 +655,41 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
     // Drop watcher to avoid open handles during unmount
     watcher.replace(None);
 
+    // Normalize OneDrive: if called on activation_root (onedrive://...), map to actual mount path.
+    let lower = path.to_ascii_lowercase();
+    let mut path = path;
+    if lower.starts_with("onedrive://") {
+        if let Some(actual) = gvfs::list_gvfs_mounts()
+            .into_iter()
+            .find(|m| m.fs == "onedrive" && !m.path.to_ascii_lowercase().starts_with("onedrive://"))
+            .map(|m| m.path)
+        {
+            path = actual;
+        } else {
+            // Nothing mounted; treat as already ejected.
+            return Ok(());
+        }
+    }
+
+    gvfs::ensure_gvfsd_fuse_running();
+
     let device = block_device_for_mount(&path);
 
     let mut errors: Vec<String> = Vec::new();
     let mut busy_detected = false;
 
     // Prefer gio (GVFS) if available; it handles user mounts.
-    match command_output("gio", &["mount", "-u", &path]) {
+    match command_output_silent_stderr("gio", &["mount", "-u", &path]) {
         Ok(_) => {
             power_off_device(device);
             return Ok(());
         }
         Err(e) => {
+            // Ignore noisy gvfsd-fuse lookup errors on unmount.
+            if e.message.contains("gvfsd-fuse") {
+                power_off_device(device);
+                return Ok(());
+            }
             busy_detected |= e.busy;
             errors.push(format!("gio mount -u: {}", e.message));
         }
@@ -748,6 +798,30 @@ pub fn open_entry(path: String) -> Result<(), String> {
         error!("Failed to open {:?}: {}", pb, e);
         format!("Failed to open: {e}")
     })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub async fn mount_partition(path: String) -> Result<(), String> {
+    let lower = path.to_ascii_lowercase();
+    if lower.starts_with("onedrive://") {
+        let res = tauri::async_runtime::spawn_blocking(move || gvfs::mount_uri(&path))
+            .await
+            .unwrap_or(false);
+        if res {
+            Ok(())
+        } else {
+            Err("Failed to mount OneDrive".into())
+        }
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub async fn mount_partition(_path: String) -> Result<(), String> {
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
