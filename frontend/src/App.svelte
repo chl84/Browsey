@@ -109,6 +109,8 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   let newFolderName = 'New folder'
   let newFileName = ''
   let settingsOpen = false
+  let pendingNav: { path: string; opts?: { recordHistory?: boolean; silent?: boolean }; gen: number } | null = null
+  let navGeneration = 0
 
   // Drag & clipboard
   const dragDrop = useDragDrop()
@@ -452,6 +454,8 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   }
 
   const loadDir = async (path?: string, opts: { recordHistory?: boolean; silent?: boolean } = {}) => {
+    navGeneration += 1
+    pendingNav = null
     captureSelectionSnapshot()
     await loadRaw(path, opts)
     restoreSelectionForCurrent()
@@ -502,7 +506,13 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   }
 
   const loadDirIfIdle = async (path: string, opts: { recordHistory?: boolean; silent?: boolean } = {}) => {
-    if (get(loading)) return
+    if (get(loading)) {
+      if (pendingNav && pendingNav.path === path) {
+        return
+      }
+      pendingNav = { path, opts, gen: navGeneration + 1 }
+      return
+    }
     await loadDir(path, opts)
   }
 
@@ -551,6 +561,18 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     }
   }
 
+  // If a navigation was queued while loading, execute it when idle.
+  $: if (!get(loading) && pendingNav) {
+    if (pendingNav.gen > navGeneration) {
+      const next = pendingNav
+      pendingNav = null
+      navGeneration = next.gen
+      void loadDir(next.path, next.opts ?? {})
+    } else {
+      pendingNav = null
+    }
+  }
+
   $: rowsElStore.set(viewMode === 'list' ? rowsElRef : null)
   $: headerElStore.set(viewMode === 'list' ? headerElRef : null)
   $: {
@@ -579,6 +601,10 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
         : $current.startsWith('Trash')
           ? 'trash'
           : 'dir'
+  // Drop stale pending nav if we already are at that path
+  $: if (pendingNav && pendingNav.path === get(current)) {
+    pendingNav = null
+  }
   $: {
     const state = $bookmarkStore
     bookmarkModalOpen = state.open
