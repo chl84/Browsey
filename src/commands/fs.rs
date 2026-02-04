@@ -22,6 +22,8 @@ use crate::{
 mod fs_windows;
 #[cfg(not(target_os = "windows"))]
 mod gvfs;
+#[cfg(not(target_os = "windows"))]
+mod gvfs_wait;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
@@ -515,6 +517,15 @@ fn command_output(cmd: &str, args: &[&str]) -> Result<(), CmdError> {
 fn linux_mounts() -> Vec<MountInfo> {
     let mut mounts = Vec::new();
     let gvfs_root = dirs_next::runtime_dir().map(|p| p.join("gvfs"));
+
+    // Try to auto-mount OneDrive if not already visible
+    #[cfg(not(target_os = "windows"))]
+    {
+        if !gvfs::has_mount_prefix("onedrive") {
+            let _ = gvfs::ensure_mount("onedrive");
+            let _ = gvfs_wait::wait_for_mount("onedrive", std::time::Duration::from_secs(2));
+        }
+    }
 
     // Surface GVFS-backed MTP endpoints (e.g., Android phones).
     mounts.extend(gvfs::list_gvfs_mounts());

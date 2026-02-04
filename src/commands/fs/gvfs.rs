@@ -5,15 +5,81 @@ use crate::commands::fs::MountInfo;
 #[cfg(not(target_os = "windows"))]
 use crate::fs_utils::debug_log;
 #[cfg(not(target_os = "windows"))]
+use once_cell::sync::OnceCell;
+#[cfg(not(target_os = "windows"))]
 use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+    time::{Duration, Instant},
 };
 
 #[cfg(not(target_os = "windows"))]
 fn gvfs_root() -> Option<PathBuf> {
     dirs_next::runtime_dir().map(|p| p.join("gvfs"))
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn has_mount_prefix(prefix: &str) -> bool {
+    if let Some(root) = gvfs_root() {
+        if let Ok(rd) = fs::read_dir(root) {
+            return rd.flatten().any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .starts_with(&format!("{}:", prefix.to_lowercase()))
+            });
+        }
+    }
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn ensure_mount(prefix: &str) -> bool {
+    static LAST_ATTEMPT: OnceCell<std::sync::Mutex<Instant>> = OnceCell::new();
+    let guard = LAST_ATTEMPT.get_or_init(|| std::sync::Mutex::new(Instant::now()));
+    if let Ok(mut last) = guard.lock() {
+        if last.elapsed() < Duration::from_secs(30) {
+            return false;
+        }
+        *last = Instant::now();
+    }
+
+    let output = Command::new("gio")
+        .arg("mount")
+        .arg("-li")
+        .output()
+        .ok();
+    let stdout = output
+        .as_ref()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+
+    let uri = stdout
+        .lines()
+        .flat_map(|l| l.split_whitespace())
+        .find(|p| {
+            let pref = prefix.to_lowercase();
+            p.to_lowercase().starts_with(&format!("{pref}://"))
+        })
+        .map(|s| s.to_string());
+
+    let Some(uri) = uri else {
+        debug_log(&format!("ensure_mount: no uri found for {}", prefix));
+        return false;
+    };
+
+    match Command::new("gio").arg("mount").arg(&uri).status() {
+        Ok(status) if status.success() => true,
+        Ok(status) => {
+            debug_log(&format!("ensure_mount: gio mount {uri} failed: {status:?}"));
+            false
+        }
+        Err(e) => {
+            debug_log(&format!("ensure_mount: spawn failed for gio mount {uri}: {e}"));
+            false
+        }
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
