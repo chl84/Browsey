@@ -90,7 +90,7 @@ export const useExplorerData = (options: Options = {}) => {
       loadThumbCachePref(),
     ])
 
-    const pollMs = options.partitionsPollMs ?? 2000
+    const pollMs = options.partitionsPollMs ?? 8000
     if (pollMs > 0) {
       partitionsPoll = setInterval(() => {
         void loadPartitions()
