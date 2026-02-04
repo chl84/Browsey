@@ -37,40 +37,35 @@ pub fn has_mount_prefix(prefix: &str) -> bool {
 #[cfg(not(target_os = "windows"))]
 pub fn ensure_mount(prefix: &str) -> bool {
     static LAST_ATTEMPT: OnceCell<std::sync::Mutex<Instant>> = OnceCell::new();
-    let guard = LAST_ATTEMPT.get_or_init(|| std::sync::Mutex::new(Instant::now()));
-    if let Ok(mut last) = guard.lock() {
-        if last.elapsed() < Duration::from_secs(30) {
+    let guard = LAST_ATTEMPT.get_or_init(|| std::sync::Mutex::new(Instant::now() - Duration::from_secs(10)));
+    if let Ok(last) = guard.lock() {
+        if last.elapsed() < Duration::from_secs(5) {
             return false;
         }
-        *last = Instant::now();
     }
 
-    let output = Command::new("gio")
-        .arg("mount")
-        .arg("-li")
-        .output()
-        .ok();
-    let stdout = output
-        .as_ref()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        .unwrap_or_default();
-
-    let uri = stdout
-        .lines()
-        .flat_map(|l| l.split_whitespace())
-        .find(|p| {
-            let pref = prefix.to_lowercase();
-            p.to_lowercase().starts_with(&format!("{pref}://"))
-        })
-        .map(|s| s.to_string());
-
+    let uri = find_onedrive_uri(prefix).or_else(|| find_onedrive_uri_goa(prefix));
     let Some(uri) = uri else {
-        debug_log(&format!("ensure_mount: no uri found for {}", prefix));
+        debug_log("ensure_mount: no OneDrive URI found");
         return false;
     };
 
+    if let Ok(mut last) = guard.lock() {
+        *last = Instant::now();
+    }
+
     match Command::new("gio").arg("mount").arg(&uri).status() {
-        Ok(status) if status.success() => true,
+        Ok(status) if status.success() => {
+            // Wait briefly for the mount to appear
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while Instant::now() < deadline {
+                if has_mount_prefix(prefix) {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            true
+        }
         Ok(status) => {
             debug_log(&format!("ensure_mount: gio mount {uri} failed: {status:?}"));
             false
@@ -81,6 +76,71 @@ pub fn ensure_mount(prefix: &str) -> bool {
         }
     }
 }
+
+#[cfg(not(target_os = "windows"))]
+fn find_onedrive_uri(_prefix: &str) -> Option<String> {
+    let output = Command::new("gio").arg("mount").arg("-li").output().ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .flat_map(|l| l.split_whitespace())
+        .find(|p| p.to_ascii_lowercase().starts_with("onedrive://"))
+        .map(|s| s.to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn find_onedrive_uri_goa(prefix: &str) -> Option<String> {
+    if prefix.to_ascii_lowercase() != "onedrive" {
+        return None;
+    }
+    let conf = dirs_next::config_dir()?.join("goa-1.0").join("accounts.conf");
+    let contents = fs::read_to_string(conf).ok()?;
+    let mut id: Option<String> = None;
+    let mut identity: Option<String> = None;
+    let mut presentation: Option<String> = None;
+    let mut provider = false;
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            provider = false;
+            id = None;
+            identity = None;
+            presentation = None;
+            continue;
+        }
+        if line.eq_ignore_ascii_case("Provider=msgraph") || line.eq_ignore_ascii_case("Provider=ms_graph") {
+            provider = true;
+            continue;
+        }
+        if !provider {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("Id=") {
+            id = Some(rest.trim().to_string());
+        }
+        if let Some(rest) = line.strip_prefix("Identity=") {
+            identity = Some(rest.trim().to_string());
+        }
+        if let Some(rest) = line.strip_prefix("PresentationIdentity=") {
+            presentation = Some(rest.trim().to_string());
+        }
+    }
+    let chosen = presentation
+        .or(identity)
+        .or(id);
+    chosen.map(|s| format!("onedrive://{s}/"))
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn spawn_mount_async(prefix: &str) {
+    let pref = prefix.to_string();
+    std::thread::spawn(move || {
+        let _ = ensure_mount(&pref);
+    });
+}
+
+#[cfg(target_os = "windows")]
+pub fn spawn_mount_async(_prefix: &str) {}
 
 #[cfg(not(target_os = "windows"))]
 fn display_name(path: &Path) -> Option<String> {
