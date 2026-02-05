@@ -52,7 +52,27 @@ export const useExplorerData = (options: Options = {}) => {
   let unlistenEntryMetaBatch: UnlistenFn | null = null
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
   let gvfsRefresh: ReturnType<typeof setInterval> | null = null
+  let gvfsInFlightPath: string | null = null
   let unsubscribeCurrent: (() => void) | null = null
+
+  const refreshGvfsPath = (path: string | null | undefined) => {
+    if (!path || !isGvfsPath(path)) return
+    // Debounce: skip if same path already refreshing
+    if (gvfsInFlightPath === path) return
+    // Early bail: path already changed
+    if (get(current) !== path) return
+    gvfsInFlightPath = path
+    void (async () => {
+      try {
+        await load(path, { recordHistory: false, silent: true })
+      } finally {
+        // Clear only if we still point at the same path
+        if (gvfsInFlightPath === path) {
+          gvfsInFlightPath = null
+        }
+      }
+    })()
+  }
 
   const ensureGvfsRefresh = (path: string | null | undefined) => {
     const shouldPoll = isGvfsPath(path)
@@ -61,12 +81,13 @@ export const useExplorerData = (options: Options = {}) => {
         gvfsRefresh = setInterval(() => {
           const latest = get(current)
           if (!latest || !isGvfsPath(latest)) return
-          void load(latest, { recordHistory: false, silent: true })
+          refreshGvfsPath(latest)
         }, 5000)
       }
     } else if (gvfsRefresh) {
       clearInterval(gvfsRefresh)
       gvfsRefresh = null
+      gvfsInFlightPath = null
     }
   }
 
