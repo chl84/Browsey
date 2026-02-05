@@ -5,6 +5,7 @@ pub mod compress;
 pub mod console;
 pub mod decompress;
 pub mod fs;
+pub mod mounts;
 pub mod library;
 pub mod meta;
 pub mod open_with;
@@ -21,9 +22,9 @@ pub use compress::compress_entries;
 pub use console::open_console;
 pub use decompress::{extract_archive, extract_archives};
 pub use fs::{
-    create_file, create_folder, delete_entries, delete_entry, eject_drive, list_dir, list_mounts,
-    list_trash, move_to_trash, move_to_trash_many, open_entry, purge_trash_items, rename_entry,
-    restore_trash_items, set_hidden, watch_dir, mount_partition,
+    create_file, create_folder, delete_entries, delete_entry, list_dir, list_trash, move_to_trash,
+    move_to_trash_many, open_entry, purge_trash_items, rename_entry, restore_trash_items,
+    set_hidden, watch_dir,
 };
 pub use library::{list_recent, list_starred, remove_recent, toggle_star};
 pub use meta::entry_times_cmd;
@@ -45,3 +46,4 @@ pub use system_clipboard::copy_paths_to_system_clipboard;
 pub use system_clipboard::system_clipboard_paths;
 pub use tasks::{cancel_task, CancelState};
 pub use thumbnails::get_thumbnail;
+pub use mounts::{eject_drive, list_mounts, mount_partition};
