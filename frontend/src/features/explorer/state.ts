@@ -581,6 +581,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       lastMountPaths = nextPaths
 
       if (removedMount && isUnderMount(get(current), removedMount)) {
+        const curr = get(current)
         error.set('Volume disconnected; returning to Home')
         void load(undefined)
       }
