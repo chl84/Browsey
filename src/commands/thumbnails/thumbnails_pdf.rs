@@ -1,8 +1,16 @@
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::ImageEncoder;
+use once_cell::sync::OnceCell;
 use pdfium_render::prelude::*;
 
 use super::thumb_log;
+
+const MAX_PDF_PIXELS: u64 = 20_000 * 20_000;
+
+static PDFIUM: OnceCell<Pdfium> = OnceCell::new();
 
 pub fn render_pdf_thumbnail(
     path: &Path,
@@ -10,9 +18,7 @@ pub fn render_pdf_thumbnail(
     max_dim: u32,
     resource_dir: Option<&Path>,
 ) -> Result<(u32, u32), String> {
-    let bindings = load_pdfium_bindings(resource_dir)?;
-    thumb_log(&format!("pdfium: bindings loaded for {}", path.display()));
-    let pdfium = Pdfium::new(bindings);
+    let pdfium = pdfium_instance(resource_dir)?;
 
     let doc = pdfium
         .load_pdf_from_file(path, None)
@@ -23,12 +29,15 @@ pub fn render_pdf_thumbnail(
         .get(0)
         .map_err(|e| format!("PDF first page failed: {e}"))?;
 
-    // Scale to fit max_dim while keeping aspect
+    // Scale to fit max_dim while keeping aspect and respect pixel cap
     let dims = (page.width().value, page.height().value);
-    let max_side = dims.0.max(dims.1);
-    let scale = (max_dim as f32 / max_side).min(1.0);
-    let target_w = (dims.0 * scale).round() as i32;
-    let target_h = (dims.1 * scale).round() as i32;
+    let max_side = dims.0.max(dims.1).max(1.0);
+    let scale_max_dim = (max_dim as f32 / max_side).min(1.0);
+    let pixels = (dims.0 as f64).max(1.0) * (dims.1 as f64).max(1.0);
+    let scale_pixel_cap = ((MAX_PDF_PIXELS as f64) / pixels).sqrt().min(1.0);
+    let scale = scale_max_dim.min(scale_pixel_cap as f32);
+    let target_w = (dims.0 * scale).round().max(1.0) as i32;
+    let target_h = (dims.1 * scale).round().max(1.0) as i32;
 
     let render = page
         .render_with_config(
@@ -41,8 +50,17 @@ pub fn render_pdf_thumbnail(
 
     let image = render.as_image();
 
-    image
-        .save_with_format(cache_path, image::ImageFormat::Png)
+    let rgba = image.to_rgba8();
+    let file =
+        File::create(cache_path).map_err(|e| format!("Save PDF thumbnail failed (open): {e}"))?;
+    let encoder = PngEncoder::new_with_quality(file, CompressionType::Fast, FilterType::NoFilter);
+    encoder
+        .write_image(
+            rgba.as_raw(),
+            rgba.width(),
+            rgba.height(),
+            image::ColorType::Rgba8.into(),
+        )
         .map_err(|e| format!("Save PDF thumbnail failed: {e}"))?;
 
     thumb_log(&format!(
@@ -54,6 +72,14 @@ pub fn render_pdf_thumbnail(
     ));
 
     Ok((image.width(), image.height()))
+}
+
+fn pdfium_instance(resource_dir: Option<&Path>) -> Result<&'static Pdfium, String> {
+    PDFIUM.get_or_try_init(|| {
+        let bindings = load_pdfium_bindings(resource_dir)?;
+        thumb_log("pdfium: bindings loaded (cached)");
+        Ok(Pdfium::new(bindings))
+    })
 }
 
 fn load_pdfium_bindings(
