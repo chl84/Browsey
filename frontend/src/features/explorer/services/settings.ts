@@ -73,3 +73,8 @@ export const loadThumbCacheMb = () => invoke<number | null>('load_thumb_cache_mb
 
 export const storeThumbCacheMb = (value: number) =>
   invoke<void>('store_thumb_cache_mb', { value })
+
+export const loadMountsPollMs = () => invoke<number | null>('load_mounts_poll_ms')
+
+export const storeMountsPollMs = (value: number) =>
+  invoke<void>('store_mounts_poll_ms', { value })

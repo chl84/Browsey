@@ -175,6 +175,8 @@ fn main() {
             load_ffmpeg_path,
             store_thumb_cache_mb,
             load_thumb_cache_mb,
+            store_mounts_poll_ms,
+            load_mounts_poll_ms,
             store_video_thumbs,
             load_video_thumbs,
             store_density,

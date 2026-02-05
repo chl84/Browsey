@@ -18,6 +18,7 @@
   export let videoThumbsValue = true
   export let ffmpegPathValue = ''
   export let thumbCacheMbValue = 300
+  export let mountsPollMsValue = 8000
   export let sortFieldValue: DefaultSortField = 'name'
   export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
@@ -36,6 +37,7 @@
   export let onToggleVideoThumbs: (value: boolean) => void = () => {}
   export let onChangeFfmpegPath: (value: string) => void = () => {}
   export let onChangeThumbCacheMb: (value: number) => void = () => {}
+  export let onChangeMountsPollMs: (value: number) => void = () => {}
 
   let filter = ''
   let needle = ''
@@ -61,7 +63,7 @@
     videoThumbs: boolean
     ffmpegPath: string
     thumbCacheMb: number
-    watcherPollMs: number
+    mountsPollMs: number
     ioConcurrency: number
     lazyDirScan: boolean
     doubleClickMs: number
@@ -89,7 +91,7 @@
     videoThumbs: true,
     ffmpegPath: '',
     thumbCacheMb: 300,
-    watcherPollMs: 2000,
+    mountsPollMs: 8000,
     ioConcurrency: 4,
     lazyDirScan: true,
     doubleClickMs: 300,
@@ -172,6 +174,9 @@
   $: if (settings.thumbCacheMb !== thumbCacheMbValue) {
     settings = { ...settings, thumbCacheMb: thumbCacheMbValue }
   }
+  $: if (settings.mountsPollMs !== mountsPollMsValue) {
+    settings = { ...settings, mountsPollMs: mountsPollMsValue }
+  }
 
   const rowTexts = (
     ...parts: (string | number | boolean | null | undefined | (string | number | boolean | null | undefined)[])[]
@@ -221,7 +226,7 @@
   )
   $: shortcutSectionTexts = rowTexts('shortcuts')
 
-  $: watcherPollTexts = rowTexts('mounts poll', 'watcher poll', `${settings.watcherPollMs} ms`)
+  $: mountsPollTexts = rowTexts('mounts poll', 'watcher poll', `${settings.mountsPollMs} ms`)
   $: ioConcurrencyTexts = rowTexts('io concurrency', `${settings.ioConcurrency} workers`, settings.ioConcurrency)
   $: lazyScansTexts = rowTexts('lazy scans', 'defer deep scans in large folders')
 
@@ -268,7 +273,7 @@
   $: showShortcuts = rowMatches(needle, filteredShortcuts.flatMap((s) => rowTexts(s.action, s.keys)))
 
   $: showPerformance = rowMatches(needle, [
-    ...watcherPollTexts,
+    ...mountsPollTexts,
     ...ioConcurrencyTexts,
     ...lazyScansTexts,
   ])
@@ -665,7 +670,7 @@
 
         {#if showPerformance}
           <div class="group-heading">Performance</div><div class="group-spacer"></div>
-        {#if rowMatches(needle, watcherPollTexts)}
+        {#if rowMatches(needle, mountsPollTexts)}
           <div class="form-label">Mounts poll (ms)</div>
           <div class="form-control">
             <input
@@ -673,10 +678,14 @@
                 min="500"
                 max="10000"
                 step="100"
-                value={settings.watcherPollMs}
-                on:input={onNumberInput('watcherPollMs')}
+                value={settings.mountsPollMs}
+                on:input={(e) => {
+                  const next = Number((e.currentTarget as HTMLInputElement).value)
+                  settings = { ...settings, mountsPollMs: next }
+                  onChangeMountsPollMs(next)
+                }}
               />
-              <small>{settings.watcherPollMs} ms</small>
+              <small>{settings.mountsPollMs} ms</small>
             </div>
           {/if}
 

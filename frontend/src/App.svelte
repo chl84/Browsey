@@ -189,6 +189,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     videoThumbs,
     ffmpegPath,
     thumbCacheMb,
+    mountsPollMs,
     sortFieldPref,
     sortDirectionPref,
     sortField,
@@ -202,6 +203,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     toggleVideoThumbs,
     setFfmpegPathPref,
     setThumbCachePref,
+    setMountsPollPref,
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
@@ -2559,6 +2561,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     videoThumbsValue={$videoThumbs}
     ffmpegPathValue={$ffmpegPath}
     thumbCacheMbValue={$thumbCacheMb}
+    mountsPollMsValue={$mountsPollMs}
     startDirValue={$startDirPref ?? '~'}
     sortFieldValue={$sortFieldPref}
     sortDirectionValue={$sortDirectionPref}
@@ -2579,6 +2582,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     onToggleVideoThumbs={toggleVideoThumbs}
     onChangeFfmpegPath={setFfmpegPathPref}
     onChangeThumbCacheMb={setThumbCachePref}
+    onChangeMountsPollMs={setMountsPollPref}
     onChangeSortField={setSortFieldPref}
     onChangeSortDirection={setSortDirectionPref}
     onClose={() => (settingsOpen = false)}

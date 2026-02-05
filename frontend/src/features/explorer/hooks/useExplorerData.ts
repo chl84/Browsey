@@ -22,9 +22,11 @@ export const useExplorerData = (options: Options = {}) => {
 
   const {
     load,
+    mountsPollMs,
     loadSavedWidths,
     loadBookmarks,
     loadPartitions,
+    loadMountsPollPref,
     loadShowHiddenPref,
     loadHiddenFilesLastPref,
     loadFoldersFirstPref,
@@ -56,6 +58,7 @@ export const useExplorerData = (options: Options = {}) => {
   let unsubscribeCurrent: (() => void) | null = null
   let userNavActive = false
   let userNavGen = 0
+  let unsubscribeMountsPoll: (() => void) | null = null
 
   const refreshGvfsPath = (path: string | null | undefined) => {
     if (!path || !isGvfsPath(path)) return
@@ -98,6 +101,7 @@ export const useExplorerData = (options: Options = {}) => {
     void loadSavedWidths()
     void loadBookmarks()
     void loadPartitions()
+    await loadMountsPollPref()
     await Promise.all([
       loadShowHiddenPref(),
       loadHiddenFilesLastPref(),
@@ -114,12 +118,23 @@ export const useExplorerData = (options: Options = {}) => {
       loadThumbCachePref(),
     ])
 
-    const pollMs = options.partitionsPollMs ?? 8000
-    if (pollMs > 0) {
-      partitionsPoll = setInterval(() => {
-        void loadPartitions()
-      }, pollMs)
+    const setPartitionsPollMs = (ms: number) => {
+      if (partitionsPoll) {
+        clearInterval(partitionsPoll)
+        partitionsPoll = null
+      }
+      if (ms > 0) {
+        partitionsPoll = setInterval(() => {
+          void loadPartitions()
+        }, ms)
+      }
     }
+
+    setPartitionsPollMs(options.partitionsPollMs ?? get(mountsPollMs))
+
+    unsubscribeMountsPoll = mountsPollMs.subscribe((v) => {
+      setPartitionsPollMs(v)
+    })
 
     const initial = options.initialPath ?? (get(startDirPref) ?? undefined)
     await load(initial)
@@ -168,6 +183,10 @@ export const useExplorerData = (options: Options = {}) => {
     if (partitionsPoll) {
       clearInterval(partitionsPoll)
       partitionsPoll = null
+    }
+    if (unsubscribeMountsPoll) {
+      unsubscribeMountsPoll()
+      unsubscribeMountsPoll = null
     }
     if (gvfsRefresh) {
       clearInterval(gvfsRefresh)

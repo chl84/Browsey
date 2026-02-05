@@ -42,7 +42,8 @@ pub use settings::{
     store_archive_name, store_column_widths, store_confirm_delete, store_default_view,
     store_density, store_ffmpeg_path, store_folders_first, store_hidden_files_last,
     store_open_dest_after_extract, store_show_hidden, store_sort_direction, store_sort_field,
-    store_start_dir, store_thumb_cache_mb, store_video_thumbs,
+    store_start_dir, store_thumb_cache_mb, store_video_thumbs, load_mounts_poll_ms,
+    store_mounts_poll_ms,
 };
 pub use system_clipboard::clear_system_clipboard;
 pub use system_clipboard::copy_paths_to_system_clipboard;

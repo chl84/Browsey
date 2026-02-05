@@ -238,6 +238,28 @@ pub fn load_thumb_cache_mb() -> Result<Option<i64>, String> {
 }
 
 #[tauri::command]
+pub fn store_mounts_poll_ms(value: i64) -> Result<(), String> {
+    if !(500..=10000).contains(&value) {
+        return Err("mounts poll must be 500-10000 ms".into());
+    }
+    let conn = crate::db::open()?;
+    crate::db::set_setting_string(&conn, "mountsPollMs", &value.to_string())
+}
+
+#[tauri::command]
+pub fn load_mounts_poll_ms() -> Result<Option<i64>, String> {
+    let conn = crate::db::open()?;
+    if let Some(s) = crate::db::get_setting_string(&conn, "mountsPollMs")? {
+        if let Ok(n) = s.parse::<i64>() {
+            if (500..=10000).contains(&n) {
+                return Ok(Some(n));
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[tauri::command]
 pub fn store_video_thumbs(value: bool) -> Result<(), String> {
     let conn = crate::db::open()?;
     crate::db::set_setting_bool(&conn, "videoThumbs", value)
