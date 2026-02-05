@@ -34,6 +34,7 @@ use std::time::{Duration, Instant};
 use std::{
     fs, io,
     path::{Path, PathBuf},
+    sync::mpsc,
 };
 use sysinfo::Disks;
 use tauri::Emitter;
@@ -77,6 +78,14 @@ pub struct MountInfo {
 }
 
 const META_CACHE_TTL: Duration = Duration::from_secs(30);
+#[cfg(not(target_os = "windows"))]
+const OPEN_TIMEOUT_GVFS: Duration = Duration::from_secs(8);
+
+#[cfg(not(target_os = "windows"))]
+fn is_gvfs_path(path: &Path) -> bool {
+    let s = path.to_string_lossy();
+    s.contains("/gvfs/") || s.contains("\\gvfs\\")
+}
 
 fn entry_from_cached(path: &Path, cached: &CachedMeta, starred: bool) -> FsEntry {
     let kind = if cached.is_link {
@@ -812,6 +821,33 @@ pub fn open_entry(path: String) -> Result<(), String> {
         warn!("Failed to record recent for {:?}: {}", pb, e);
     }
     info!("Opening path {:?}", pb);
+    #[cfg(not(target_os = "windows"))]
+    {
+        if is_gvfs_path(&pb) {
+            let (tx, rx) = mpsc::channel();
+            let path_for_open = pb.clone();
+            std::thread::spawn(move || {
+                let res = open::that_detached(&path_for_open)
+                    .map_err(|e| format!("Failed to open: {e}"));
+                let _ = tx.send(res);
+            });
+            let res = match rx.recv_timeout(OPEN_TIMEOUT_GVFS) {
+                Ok(res) => res.map_err(|e| {
+                    error!("Failed to open {:?}: {}", pb, e);
+                    e
+                }),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    error!("Open timed out for {:?}", pb);
+                    Err("Open timed out on remote device".into())
+                }
+                Err(_) => {
+                    error!("Open channel closed for {:?}", pb);
+                    Err("Failed to open".into())
+                }
+            };
+            return res;
+        }
+    }
     open::that_detached(&pb).map_err(|e| {
         error!("Failed to open {:?}: {}", pb, e);
         format!("Failed to open: {e}")
