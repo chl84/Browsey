@@ -2,6 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use blake3::Hasher;
+use image::codecs::png::{CompressionType as PngCompression, FilterType as PngFilter, PngEncoder};
+use image::ImageEncoder;
 use image::ImageReader;
 use image::Limits;
 use image::{imageops::FilterType, GenericImageView, ImageFormat};
@@ -342,12 +344,20 @@ fn generate_thumbnail(
     if src_w > MAX_SOURCE_DIM || src_h > MAX_SOURCE_DIM {
         return Err("Image dimensions too large for thumbnail".into());
     }
-    let thumb = img.resize(max_dim, max_dim, FilterType::Lanczos3);
+    let thumb = img.resize(max_dim, max_dim, FilterType::Nearest);
     let (w, h) = thumb.dimensions();
 
-    thumb
-        .save_with_format(cache_path, ImageFormat::Png)
-        .map_err(|e| format!("Save thumbnail failed: {e}"))?;
+    // Save quickly: fast compression and no PNG filters to cut CPU time.
+    {
+        let file = fs::File::create(cache_path).map_err(|e| format!("Save thumbnail failed: {e}"))?;
+        let writer = std::io::BufWriter::new(file);
+        let encoder = PngEncoder::new_with_quality(writer, PngCompression::Fast, PngFilter::NoFilter);
+        let rgba = thumb.to_rgba8();
+        let (w, h) = rgba.dimensions();
+        encoder
+            .write_image(&rgba, w, h, image::ColorType::Rgba8.into())
+            .map_err(|e| format!("Save thumbnail failed: {e}"))?;
+    }
 
     thumb_log(&format!(
         "thumbnail generated: source={:?} cache={:?} size={}x{}",
