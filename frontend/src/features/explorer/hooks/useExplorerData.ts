@@ -53,30 +53,24 @@ export const useExplorerData = (options: Options = {}) => {
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
   let gvfsRefresh: ReturnType<typeof setInterval> | null = null
   let gvfsInFlightPath: string | null = null
-  let gvfsRefreshGen = 0
   let unsubscribeCurrent: (() => void) | null = null
-
-  const cancelGvfsRefresh = () => {
-    gvfsRefreshGen += 1
-    gvfsInFlightPath = null
-  }
+  let userNavActive = false
+  let userNavGen = 0
 
   const refreshGvfsPath = (path: string | null | undefined) => {
     if (!path || !isGvfsPath(path)) return
+    if (userNavActive) return
     // Debounce: skip if same path already refreshing
     if (gvfsInFlightPath === path) return
     // Early bail: path already changed
     if (get(current) !== path) return
-    const gen = gvfsRefreshGen
     gvfsInFlightPath = path
     void (async () => {
       try {
-        // If a user navigation happened after we scheduled this, skip
-        if (gen !== gvfsRefreshGen) return
         await load(path, { recordHistory: false, silent: true })
       } finally {
         // Clear only if we still point at the same path
-        if (gen === gvfsRefreshGen && gvfsInFlightPath === path) {
+        if (gvfsInFlightPath === path) {
           gvfsInFlightPath = null
         }
       }
@@ -98,14 +92,6 @@ export const useExplorerData = (options: Options = {}) => {
       gvfsRefresh = null
       gvfsInFlightPath = null
     }
-  }
-
-  const loadWithCancel = async (
-    path?: Parameters<typeof load>[0],
-    opts?: Parameters<typeof load>[1]
-  ) => {
-    cancelGvfsRefresh()
-    return load(path, opts)
   }
 
   const setup = async () => {
@@ -136,7 +122,7 @@ export const useExplorerData = (options: Options = {}) => {
     }
 
     const initial = options.initialPath ?? (get(startDirPref) ?? undefined)
-    await loadWithCancel(initial)
+    await load(initial)
     ensureGvfsRefresh(get(current))
     unsubscribeCurrent = current.subscribe((p) => ensureGvfsRefresh(p))
 
@@ -210,9 +196,24 @@ export const useExplorerData = (options: Options = {}) => {
     return cleanup
   })
 
+  const loadUserNav = async (
+    path?: Parameters<typeof load>[0],
+    opts?: Parameters<typeof load>[1]
+  ) => {
+    userNavActive = true
+    const gen = ++userNavGen
+    try {
+      return await load(path, opts)
+    } finally {
+      if (userNavGen === gen) {
+        userNavActive = false
+      }
+    }
+  }
+
   return {
     ...explorer,
-    load: loadWithCancel,
+    load: loadUserNav,
     cleanup,
   }
 }
