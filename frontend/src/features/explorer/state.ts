@@ -45,6 +45,8 @@ import {
   storeVideoThumbs,
   loadThumbCacheMb,
   storeThumbCacheMb,
+  loadMountsPollMs,
+  storeMountsPollMs,
 } from './services/settings'
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
@@ -107,6 +109,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const videoThumbs = writable<boolean>(true)
   const ffmpegPath = writable<string>('')
   const thumbCacheMb = writable<number>(300)
+  const mountsPollMs = writable<number>(8000)
   const bookmarks = writable<{ label: string; path: string }[]>([])
   const partitions = writable<Partition[]>([])
   const history = writable<Location[]>([])
@@ -814,6 +817,24 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     void storeThumbCacheMb(clamped)
   }
 
+  const setMountsPollPref = (value: number) => {
+    const clamped = Math.min(10000, Math.max(500, Math.round(value)))
+    mountsPollMs.set(clamped)
+    void storeMountsPollMs(clamped)
+  }
+
+  const loadMountsPollPref = async () => {
+    try {
+      const saved = await loadMountsPollMs()
+      if (typeof saved === 'number') {
+        const clamped = Math.min(10000, Math.max(500, Math.round(saved)))
+        mountsPollMs.set(clamped)
+      }
+    } catch (err) {
+      console.error('Failed to load mounts poll setting', err)
+    }
+  }
+
   const loadFoldersFirstPref = async () => {
     try {
       const saved = await loadFoldersFirst()
@@ -856,6 +877,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     filteredEntries,
     density,
     load,
+    mountsPollMs,
     loadRecent,
     loadStarred,
     loadTrash,
@@ -902,5 +924,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     toggleVideoThumbs,
     setFfmpegPathPref,
     setThumbCachePref,
+    setMountsPollPref,
+    loadMountsPollPref,
   }
 }
