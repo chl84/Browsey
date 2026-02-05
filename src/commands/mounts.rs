@@ -211,8 +211,7 @@ fn linux_mounts() -> Vec<MountInfo> {
 }
 
 #[cfg(target_os = "windows")]
-#[tauri::command]
-pub fn list_mounts() -> Vec<MountInfo> {
+fn list_mounts_sync() -> Vec<MountInfo> {
     fs_windows::list_windows_mounts()
 }
 
@@ -224,9 +223,15 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
     fs_windows::eject_drive(&path)
 }
 
-#[cfg(not(target_os = "windows"))]
 #[tauri::command]
-pub fn list_mounts() -> Vec<MountInfo> {
+pub async fn list_mounts() -> Result<Vec<MountInfo>, String> {
+    tauri::async_runtime::spawn_blocking(|| list_mounts_sync())
+        .await
+        .map_err(|e| format!("mount scan failed: {e}"))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn list_mounts_sync() -> Vec<MountInfo> {
     linux_mounts()
 }
 
