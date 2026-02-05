@@ -5,6 +5,7 @@ pub mod compress;
 pub mod console;
 pub mod decompress;
 pub mod fs;
+pub mod listing;
 pub mod mounts;
 pub mod library;
 pub mod meta;
@@ -22,10 +23,11 @@ pub use compress::compress_entries;
 pub use console::open_console;
 pub use decompress::{extract_archive, extract_archives};
 pub use fs::{
-    create_file, create_folder, delete_entries, delete_entry, list_dir, list_trash, move_to_trash,
+    create_file, create_folder, delete_entries, delete_entry, list_trash, move_to_trash,
     move_to_trash_many, open_entry, purge_trash_items, rename_entry, restore_trash_items,
-    set_hidden, watch_dir,
+    set_hidden,
 };
+pub use listing::{list_dir, watch_dir};
 pub use library::{list_recent, list_starred, remove_recent, toggle_star};
 pub use meta::entry_times_cmd;
 pub use open_with::{list_open_with_apps, open_with};
