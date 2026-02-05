@@ -2,7 +2,10 @@
 
 use crate::{
     db,
-    entry::{build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta, FsEntry},
+    entry::{
+        build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
+        FsEntry,
+    },
     fs_utils::{check_no_symlink_components, debug_log, sanitize_path_follow},
     icons::icon_ids::{FILE, GENERIC_FOLDER, SHORTCUT},
     sorting::{sort_entries, SortSpec},
@@ -231,7 +234,9 @@ fn list_dir_sync(
         let file_type = entry.file_type().ok();
         if is_network_location(&path) {
             if let Some(cached) = get_cached_meta(&path, META_CACHE_TTL) {
-                entries.push(crate::commands::fs::entry_from_cached(&path, &cached, starred));
+                entries.push(crate::commands::fs::entry_from_cached(
+                    &path, &cached, starred,
+                ));
                 continue;
             }
             if pending_seen.insert(path.clone()) {

@@ -70,7 +70,9 @@ enum ThumbKind {
 static POOL_THREADS: Lazy<usize> =
     Lazy::new(|| num_cpus::get().clamp(POOL_MIN_THREADS, POOL_MAX_THREADS));
 static DECODE_POOL: Lazy<ThreadPool> = Lazy::new(|| {
-    let threads = (*POOL_THREADS).saturating_mul(2).clamp(POOL_MIN_THREADS, POOL_MAX_THREADS * 2);
+    let threads = (*POOL_THREADS)
+        .saturating_mul(2)
+        .clamp(POOL_MIN_THREADS, POOL_MAX_THREADS * 2);
     ThreadPoolBuilder::new()
         .num_threads(threads)
         .thread_name(|i| format!("thumb-decode-{i}"))
@@ -349,9 +351,11 @@ fn generate_thumbnail(
 
     // Save quickly: fast compression and no PNG filters to cut CPU time.
     {
-        let file = fs::File::create(cache_path).map_err(|e| format!("Save thumbnail failed: {e}"))?;
+        let file =
+            fs::File::create(cache_path).map_err(|e| format!("Save thumbnail failed: {e}"))?;
         let writer = std::io::BufWriter::new(file);
-        let encoder = PngEncoder::new_with_quality(writer, PngCompression::Fast, PngFilter::NoFilter);
+        let encoder =
+            PngEncoder::new_with_quality(writer, PngCompression::Fast, PngFilter::NoFilter);
         let rgba = thumb.to_rgba8();
         let (w, h) = rgba.dimensions();
         encoder
@@ -491,7 +495,10 @@ struct CancelableReader<R> {
 impl<R: Read> Read for CancelableReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err(io::Error::new(io::ErrorKind::Interrupted, "decode cancelled"));
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "decode cancelled",
+            ));
         }
         self.inner.read(buf)
     }
@@ -500,7 +507,10 @@ impl<R: Read> Read for CancelableReader<R> {
 impl<R: BufRead> BufRead for CancelableReader<R> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
         if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err(io::Error::new(io::ErrorKind::Interrupted, "decode cancelled"));
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "decode cancelled",
+            ));
         }
         self.inner.fill_buf()
     }
@@ -513,7 +523,10 @@ impl<R: BufRead> BufRead for CancelableReader<R> {
 impl<R: Seek> Seek for CancelableReader<R> {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
         if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err(io::Error::new(io::ErrorKind::Interrupted, "decode cancelled"));
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "decode cancelled",
+            ));
         }
         self.inner.seek(pos)
     }

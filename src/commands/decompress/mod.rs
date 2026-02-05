@@ -9,10 +9,7 @@ use std::{
     fs::File,
     io::{self, BufReader, BufWriter, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
-    sync::{
-        atomic::AtomicBool,
-        Arc, Mutex,
-    },
+    sync::{atomic::AtomicBool, Arc, Mutex},
 };
 
 use bzip2::read::BzDecoder;
@@ -33,7 +30,7 @@ use seven_z_format::{extract_7z, sevenz_uncompressed_total, single_root_in_7z};
 use tar_format::{extract_tar_with_reader, single_root_in_tar, tar_uncompressed_total};
 use util::{
     copy_with_progress, map_copy_err, map_io, open_buffered_file, open_unique_file,
-    strip_known_suffixes, CHUNK, CreatedPaths, ProgressEmitter, SkipStats,
+    strip_known_suffixes, CreatedPaths, ProgressEmitter, SkipStats, CHUNK,
 };
 use zip_format::{extract_zip, single_root_in_zip, zip_uncompressed_total};
 
@@ -219,7 +216,9 @@ fn do_extract(
         ArchiveKind::Zip => zip_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::Tar => tar_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
         ArchiveKind::TarGz => gzip_uncompressed_size(&archive_path).unwrap_or_else(|_| meta.len()),
-        ArchiveKind::SevenZ => sevenz_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::SevenZ => {
+            sevenz_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len())
+        }
         ArchiveKind::Rar => {
             let entries = parse_rar_entries(&archive_path)?;
             let total =

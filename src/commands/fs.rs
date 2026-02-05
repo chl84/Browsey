@@ -3,7 +3,9 @@
 use crate::{
     db,
     entry::{build_entry, CachedMeta, FsEntry},
-    fs_utils::{check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow},
+    fs_utils::{
+        check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow,
+    },
     sorting::{sort_entries, SortSpec},
     undo::{
         copy_entry as undo_copy_entry, delete_entry_path as undo_delete_path, move_with_fallback,
@@ -142,8 +144,8 @@ pub fn open_entry(path: String) -> Result<(), String> {
             let (tx, rx) = mpsc::channel();
             let path_for_open = pb.clone();
             std::thread::spawn(move || {
-                let res = open::that_detached(&path_for_open)
-                    .map_err(|e| format!("Failed to open: {e}"));
+                let res =
+                    open::that_detached(&path_for_open).map_err(|e| format!("Failed to open: {e}"));
                 let _ = tx.send(res);
             });
             let res = match rx.recv_timeout(OPEN_TIMEOUT_GVFS) {

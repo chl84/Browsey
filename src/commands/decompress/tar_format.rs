@@ -13,11 +13,14 @@ use zstd::stream::read::Decoder as ZstdDecoder;
 
 use super::util::{
     check_cancel, clean_relative_path, copy_with_progress, first_component, map_copy_err, map_io,
-    open_buffered_file, open_unique_file, CHUNK, CreatedPaths, ProgressEmitter, SkipStats,
+    open_buffered_file, open_unique_file, CreatedPaths, ProgressEmitter, SkipStats, CHUNK,
 };
 use super::ArchiveKind;
 
-pub(super) fn single_root_in_tar(path: &Path, kind: ArchiveKind) -> Result<Option<PathBuf>, String> {
+pub(super) fn single_root_in_tar(
+    path: &Path,
+    kind: ArchiveKind,
+) -> Result<Option<PathBuf>, String> {
     let file = File::open(path).map_err(map_io("open tar for root"))?;
     let reader = BufReader::with_capacity(CHUNK, file);
     let reader: Box<dyn Read> = match kind {
