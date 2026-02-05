@@ -5,10 +5,10 @@ pub mod compress;
 pub mod console;
 pub mod decompress;
 pub mod fs;
-pub mod listing;
-pub mod mounts;
 pub mod library;
+pub mod listing;
 pub mod meta;
+pub mod mounts;
 pub mod open_with;
 pub mod permissions;
 pub mod search;
@@ -27,9 +27,10 @@ pub use fs::{
     move_to_trash_many, open_entry, purge_trash_items, rename_entry, restore_trash_items,
     set_hidden,
 };
-pub use listing::{list_dir, watch_dir};
 pub use library::{list_recent, list_starred, remove_recent, toggle_star};
+pub use listing::{list_dir, watch_dir};
 pub use meta::entry_times_cmd;
+pub use mounts::{eject_drive, list_mounts, mount_partition};
 pub use open_with::{list_open_with_apps, open_with};
 pub use permissions::{get_permissions, set_permissions};
 pub use search::{search, search_stream};
@@ -48,4 +49,3 @@ pub use system_clipboard::copy_paths_to_system_clipboard;
 pub use system_clipboard::system_clipboard_paths;
 pub use tasks::{cancel_task, CancelState};
 pub use thumbnails::get_thumbnail;
-pub use mounts::{eject_drive, list_mounts, mount_partition};

@@ -152,7 +152,9 @@ fn find_onedrive_uri_cli(preloaded: Option<&str>) -> Option<String> {
 
 #[cfg(not(target_os = "windows"))]
 fn find_onedrive_uri_goa() -> Option<String> {
-    let conf = dirs_next::config_dir()?.join("goa-1.0").join("accounts.conf");
+    let conf = dirs_next::config_dir()?
+        .join("goa-1.0")
+        .join("accounts.conf");
     let contents = fs::read_to_string(conf).ok()?;
     parse_onedrive_uri_goa(&contents)
 }
@@ -208,7 +210,10 @@ pub fn mount_uri(uri: &str) -> bool {
     static LOG_STATE: OnceCell<Mutex<Instant>> = OnceCell::new();
 
     let mut cmd = Command::new("gio");
-    cmd.arg("mount").arg(uri).stdout(Stdio::null()).stderr(Stdio::null());
+    cmd.arg("mount")
+        .arg(uri)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
 
     match cmd.status() {
         Ok(status) if status.success() => {
@@ -222,7 +227,11 @@ pub fn mount_uri(uri: &str) -> bool {
             }
             // One light retry before giving up
             let mut retry = Command::new("gio");
-            retry.arg("mount").arg(uri).stdout(Stdio::null()).stderr(Stdio::null());
+            retry
+                .arg("mount")
+                .arg(uri)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
             if retry.status().map(|s| s.success()).unwrap_or(false) {
                 let retry_deadline = Instant::now() + Duration::from_secs(2);
                 while Instant::now() < retry_deadline {
@@ -329,10 +338,7 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
 
         for entry in entries.flatten() {
             let path = entry.path();
-            let name = entry
-                .file_name()
-                .to_string_lossy()
-                .into_owned();
+            let name = entry.file_name().to_string_lossy().into_owned();
 
             let (fs, removable) = match name.split_once(':').map(|(p, _)| p) {
                 Some("mtp") => ("mtp", true),
@@ -548,7 +554,9 @@ fn parse_onedrive_uri_goa(contents: &str) -> Option<String> {
             presentation = None;
             continue;
         }
-        if line.eq_ignore_ascii_case("Provider=msgraph") || line.eq_ignore_ascii_case("Provider=ms_graph") {
+        if line.eq_ignore_ascii_case("Provider=msgraph")
+            || line.eq_ignore_ascii_case("Provider=ms_graph")
+        {
             provider = true;
             continue;
         }

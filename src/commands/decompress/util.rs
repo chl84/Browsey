@@ -245,7 +245,10 @@ pub(super) fn copy_with_progress<R: Read, W: Write>(
     Ok(written)
 }
 
-pub(super) fn open_buffered_file(path: &Path, action: &'static str) -> Result<BufReader<File>, String> {
+pub(super) fn open_buffered_file(
+    path: &Path,
+    action: &'static str,
+) -> Result<BufReader<File>, String> {
     let file = File::open(path).map_err(map_io(action))?;
     Ok(BufReader::with_capacity(CHUNK, file))
 }

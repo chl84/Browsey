@@ -12,8 +12,8 @@ use rar_stream::{
 use tauri::async_runtime;
 
 use super::util::{
-    check_cancel, clean_relative_path, map_copy_err, open_unique_file, CHUNK, CreatedPaths,
-    ProgressEmitter, SkipStats, first_component,
+    check_cancel, clean_relative_path, first_component, map_copy_err, open_unique_file,
+    CreatedPaths, ProgressEmitter, SkipStats, CHUNK,
 };
 
 pub(super) fn single_root_in_rar(path: &Path) -> Result<Option<PathBuf>, String> {

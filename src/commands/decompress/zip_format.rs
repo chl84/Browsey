@@ -10,7 +10,7 @@ use zip::ZipArchive;
 
 use super::util::{
     check_cancel, clean_relative_path, copy_with_progress, first_component, map_copy_err, map_io,
-    open_unique_file, CHUNK, CreatedPaths, ProgressEmitter, SkipStats,
+    open_unique_file, CreatedPaths, ProgressEmitter, SkipStats, CHUNK,
 };
 use crate::fs_utils::debug_log;
 

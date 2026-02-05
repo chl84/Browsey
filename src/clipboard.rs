@@ -6,18 +6,18 @@ use crate::{
 mod clipboard_size;
 use clipboard_size::estimate_total_size;
 use once_cell::sync::Lazy;
+use serde::Serialize;
+#[cfg(not(target_os = "windows"))]
+use std::io::BufRead;
+#[cfg(not(target_os = "windows"))]
+use std::process::Command;
 use std::{
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::{Mutex, atomic::AtomicBool},
+    sync::{atomic::AtomicBool, Mutex},
 };
-use serde::Serialize;
 use tauri::Emitter;
-#[cfg(not(target_os = "windows"))]
-use std::process::Command;
-#[cfg(not(target_os = "windows"))]
-use std::io::BufRead;
 
 #[derive(Clone, Copy)]
 enum ClipboardMode {
@@ -74,7 +74,10 @@ fn copy_dir(
         let path = entry.path();
         let meta =
             fs::symlink_metadata(&path).map_err(|e| format!("Failed to read metadata: {e}"))?;
-        if cancel.map(|c| c.load(std::sync::atomic::Ordering::Relaxed)).unwrap_or(false) {
+        if cancel
+            .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false)
+        {
             return Err("Copy cancelled".into());
         }
         if meta.file_type().is_symlink() {
@@ -132,7 +135,10 @@ fn merge_dir(
         if meta.file_type().is_symlink() {
             return Err("Refusing to copy symlinks".into());
         }
-        if cancel.map(|c| c.load(std::sync::atomic::Ordering::Relaxed)).unwrap_or(false) {
+        if cancel
+            .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap_or(false)
+        {
             return Err("Copy cancelled".into());
         }
         let target = dest.join(entry.file_name());
@@ -140,34 +146,12 @@ fn merge_dir(
             if target.exists() && target.is_dir() {
                 merge_dir(&path, &target, mode, actions, app, progress_event, cancel)?;
             } else {
-                        if target.exists() {
-                            backup_existing_target(&target, actions)?;
-                        }
-                        match mode {
-                            ClipboardMode::Copy => {
-                                copy_dir(&path, &target, app, progress_event, cancel)?;
-                                actions.push(Action::Copy {
-                                    from: path.clone(),
-                                    to: target.clone(),
-                                });
-                            }
-                            ClipboardMode::Cut => {
-                                move_entry(&path, &target, app, progress_event, cancel)?;
-                                actions.push(Action::Move {
-                                    from: path.clone(),
-                                    to: target.clone(),
-                                });
-                            }
+                if target.exists() {
+                    backup_existing_target(&target, actions)?;
                 }
-            }
-        } else {
-            if target.exists() {
-                backup_existing_target(&target, actions)?;
-            }
                 match mode {
                     ClipboardMode::Copy => {
-                        fs::copy(&path, &target)
-                            .map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
+                        copy_dir(&path, &target, app, progress_event, cancel)?;
                         actions.push(Action::Copy {
                             from: path.clone(),
                             to: target.clone(),
@@ -180,6 +164,28 @@ fn merge_dir(
                             to: target.clone(),
                         });
                     }
+                }
+            }
+        } else {
+            if target.exists() {
+                backup_existing_target(&target, actions)?;
+            }
+            match mode {
+                ClipboardMode::Copy => {
+                    fs::copy(&path, &target)
+                        .map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
+                    actions.push(Action::Copy {
+                        from: path.clone(),
+                        to: target.clone(),
+                    });
+                }
+                ClipboardMode::Cut => {
+                    move_entry(&path, &target, app, progress_event, cancel)?;
+                    actions.push(Action::Move {
+                        from: path.clone(),
+                        to: target.clone(),
+                    });
+                }
             }
         }
     }
@@ -252,7 +258,8 @@ fn copy_file_best_effort(
     }
 
     // Fallback: manual chunked copy with progress
-    let mut reader = fs::File::open(src).map_err(|e| format!("Failed to open source for copy: {e}"))?;
+    let mut reader =
+        fs::File::open(src).map_err(|e| format!("Failed to open source for copy: {e}"))?;
     let mut writer = fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -262,8 +269,8 @@ fn copy_file_best_effort(
 
     let mut buf = vec![0u8; 512 * 1024];
     let mut done: u64 = 0;
-    let total = total_hint
-        .or_else(|| progress_event.and_then(|_| fs::metadata(src).ok().map(|m| m.len())));
+    let total =
+        total_hint.or_else(|| progress_event.and_then(|_| fs::metadata(src).ok().map(|m| m.len())));
     let mut last_emit = 0u64;
     let mut last_time = std::time::Instant::now();
     loop {
@@ -296,7 +303,9 @@ fn copy_file_best_effort(
         done = done.saturating_add(n as u64);
         if let (Some(app), Some(evt)) = (app, progress_event) {
             let elapsed = last_time.elapsed();
-            if done.saturating_sub(last_emit) >= 64 * 1024 || elapsed >= std::time::Duration::from_millis(200) {
+            if done.saturating_sub(last_emit) >= 64 * 1024
+                || elapsed >= std::time::Duration::from_millis(200)
+            {
                 let _ = app.emit(
                     evt,
                     CopyProgressPayload {
@@ -403,9 +412,7 @@ fn try_gio_copy_progress(
 
 #[cfg(not(target_os = "windows"))]
 fn is_gvfs_path(path: &Path) -> bool {
-    path.to_string_lossy()
-        .to_lowercase()
-        .contains("/gvfs/")
+    path.to_string_lossy().to_lowercase().contains("/gvfs/")
 }
 
 fn delete_entry_path(path: &Path) -> Result<(), String> {

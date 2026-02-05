@@ -11,8 +11,8 @@ use sevenz_rust2::{
 };
 
 use super::util::{
-    clean_relative_path, copy_with_progress, is_cancelled, open_unique_file, CHUNK,
-    CreatedPaths, ProgressEmitter, SkipStats, first_component,
+    clean_relative_path, copy_with_progress, first_component, is_cancelled, open_unique_file,
+    CreatedPaths, ProgressEmitter, SkipStats, CHUNK,
 };
 
 pub(super) fn single_root_in_7z(path: &Path) -> Result<Option<PathBuf>, String> {
