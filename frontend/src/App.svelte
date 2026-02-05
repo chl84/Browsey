@@ -61,6 +61,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     error?: string | null
   }
   type ViewMode = 'list' | 'grid'
+  type MountEvent = { path: string; fs?: string; ok?: boolean; duration_ms?: number }
 
   // --- Core UI state -------------------------------------------------------
   let sidebarCollapsed = false
@@ -145,6 +146,13 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   const selectionBox = createSelectionBox()
   const activityApi = createActivity({ onError: showToast })
   const activity = activityApi.activity
+
+  const fsLabel = (fs?: string) => {
+    const kind = (fs ?? '').toLowerCase()
+    if (kind === 'onedrive') return 'OneDrive'
+    if (kind === 'mtp') return 'MTP device'
+    return 'drive'
+  }
 
   // --- Data + preferences --------------------------------------------------
   const explorer = useExplorerData({
@@ -2312,6 +2320,25 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
       await nativeDrop.start()
       cleanupFns.push(() => {
         void nativeDrop.stop()
+      })
+
+      const unlistenMountStart = await listen<MountEvent>('mounting-started', (event) => {
+        const { fs } = event.payload ?? {}
+        activityApi.clearNow()
+        activity.set({ label: `Mounting ${fsLabel(fs)}…`, percent: null, cancel: null, cancelling: false })
+      })
+      const unlistenMountDone = await listen<MountEvent>('mounting-done', (event) => {
+        const { fs, ok } = event.payload ?? {}
+        const label = ok ? `${fsLabel(fs)} mounted` : 'Mount failed'
+        activity.set({ label, percent: null, cancel: null, cancelling: false })
+        activityApi.hideSoon()
+        if (ok === false) {
+          showToast('Mount failed. Please try again.')
+        }
+      })
+      cleanupFns.push(() => {
+        unlistenMountStart()
+        unlistenMountDone()
       })
     }
 

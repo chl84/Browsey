@@ -17,6 +17,7 @@ use crate::{
     },
     watcher::{self, WatchState},
 };
+use serde_json::json;
 #[cfg(target_os = "windows")]
 #[path = "fs_windows.rs"]
 mod fs_windows;
@@ -472,9 +473,15 @@ fn block_device_for_mount(target: &str) -> Option<String> {
 
 #[cfg(not(target_os = "windows"))]
 fn power_off_device(device: Option<String>) {
+    // Only attempt power-off for real block devices; skip pseudo entries like gvfsd-fuse.
     if let Some(dev) = device {
+        if !dev.starts_with("/dev/") {
+            return;
+        }
         if let Ok(status) = Command::new("udisksctl")
             .args(["power-off", "-b", &dev])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status()
         {
             if !status.success() {
@@ -813,18 +820,36 @@ pub fn open_entry(path: String) -> Result<(), String> {
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-pub async fn mount_partition(path: String) -> Result<(), String> {
+pub async fn mount_partition(path: String, app: tauri::AppHandle) -> Result<(), String> {
     let lower = path.to_ascii_lowercase();
+    let fs_kind = if lower.starts_with("onedrive://") {
+        "onedrive"
+    } else {
+        "gvfs"
+    };
+    let _ = app.emit("mounting-started", json!({ "path": path, "fs": fs_kind }));
+    let started = Instant::now();
     if lower.starts_with("onedrive://") {
-        let res = tauri::async_runtime::spawn_blocking(move || gvfs::mount_uri(&path))
+        let path_for_mount = path.clone();
+        let res = tauri::async_runtime::spawn_blocking(move || gvfs::mount_uri(&path_for_mount))
             .await
             .unwrap_or(false);
+        let duration_ms = started.elapsed().as_millis() as u64;
+        let _ = app.emit(
+            "mounting-done",
+            json!({ "path": path, "fs": fs_kind, "ok": res, "duration_ms": duration_ms }),
+        );
         if res {
             Ok(())
         } else {
             Err("Failed to mount OneDrive".into())
         }
     } else {
+        let duration_ms = started.elapsed().as_millis() as u64;
+        let _ = app.emit(
+            "mounting-done",
+            json!({ "path": path, "fs": fs_kind, "ok": true, "duration_ms": duration_ms }),
+        );
         Ok(())
     }
 }
