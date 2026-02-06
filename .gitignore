@@ -30,6 +30,7 @@ tauri.conf.json
 tmp/
 temp/
 scripts/tempCodeRunnerFile.sh
+frontend/src/features/explorer/hooks/tempCodeRunnerFile.ts
 *.log
 npm-debug.log*
 yarn-debug.log*

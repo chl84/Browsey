@@ -106,7 +106,7 @@
     bind:this={rowsEl}
     style="user-select:none"
     on:scroll={onRowsScroll}
-    on:wheel|passive={onWheel}
+    on:wheel={onWheel}
     on:contextmenu={onRowsContextMenu}
     on:click={onRowsClick}
     on:mousedown={onRowsMousedown}
