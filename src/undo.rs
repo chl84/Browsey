@@ -215,15 +215,35 @@ pub fn redo_action(state: tauri::State<'_, UndoState>) -> Result<(), String> {
 pub fn cleanup_stale_backups(max_age: Option<Duration>) {
     let _ = max_age; // keep the signature; we remove everything regardless.
     let base = base_undo_dir();
-    // Remove the entire base; safe because undo history is in-memory only and does not survive restarts.
+
+    if let Err(e) = validate_undo_dir(&base) {
+        warn!("Skip cleanup; unsafe undo dir {:?}: {}", base, e);
+        return;
+    }
+
     if base.exists() {
-        if let Err(e) = fs::remove_dir_all(&base) {
-            warn!("Failed to clean backup directory {:?}: {}", base, e);
-        } else {
-            debug!("Cleaned backup directory {:?}", base);
+        match fs::read_dir(&base) {
+            Ok(entries) => {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let res = if path.is_dir() {
+                        fs::remove_dir_all(&path)
+                    } else {
+                        fs::remove_file(&path)
+                    };
+                    if let Err(err) = res {
+                        warn!("Failed to remove {:?}: {}", path, err);
+                    }
+                }
+                debug!("Cleaned contents of backup directory {:?}", base);
+            }
+            Err(e) => warn!("Failed to read backup directory {:?}: {}", base, e),
         }
     }
-    let _ = fs::create_dir_all(&base);
+
+    if let Err(e) = fs::create_dir_all(&base) {
+        warn!("Failed to ensure backup directory {:?}: {}", base, e);
+    }
 }
 
 pub(crate) fn run_actions(actions: &mut [Action], direction: Direction) -> Result<(), String> {
@@ -908,8 +928,35 @@ fn base_undo_dir() -> PathBuf {
     if let Ok(custom) = std::env::var("BROWSEY_UNDO_DIR") {
         return PathBuf::from(custom);
     }
+    default_undo_dir()
+}
+
+fn default_undo_dir() -> PathBuf {
     dirs_next::data_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("browsey")
         .join("undo")
+}
+
+fn validate_undo_dir(path: &Path) -> Result<(), String> {
+    if cfg!(test) {
+        return Ok(());
+    }
+    if !path.is_absolute() {
+        return Err("Undo directory must be an absolute path".into());
+    }
+    if path.parent().is_none() {
+        return Err("Undo directory cannot be the filesystem root".into());
+    }
+    let default_parent = default_undo_dir()
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("/"));
+    if !path.starts_with(&default_parent) {
+        return Err(format!(
+            "Undo directory must reside under {}",
+            default_parent.display()
+        ));
+    }
+    Ok(())
 }
