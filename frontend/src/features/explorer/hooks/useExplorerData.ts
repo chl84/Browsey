@@ -59,6 +59,8 @@ export const useExplorerData = (options: Options = {}) => {
   let userNavActive = false
   let userNavGen = 0
   let unsubscribeMountsPoll: (() => void) | null = null
+  let metaQueue = new Map<string, Partial<Entry>>()
+  let metaTimer: ReturnType<typeof setTimeout> | null = null
 
   const refreshGvfsPath = (path: string | null | undefined) => {
     if (!path || !isGvfsPath(path)) return
@@ -157,21 +159,13 @@ export const useExplorerData = (options: Options = {}) => {
     })
 
     unlistenEntryMeta = await listen<Entry>('entry-meta', (event) => {
-      const update = event.payload
-      entries.update((list) => {
-        const idx = list.findIndex((e) => e.path === update.path)
-        if (idx === -1) return list
-        const next = [...list]
-        next[idx] = { ...next[idx], ...update }
-        return next
-      })
+      enqueueMetaUpdate(event.payload)
     })
 
     unlistenEntryMetaBatch = await listen<Entry[]>('entry-meta-batch', (event) => {
       const updates = event.payload
       if (!Array.isArray(updates) || updates.length === 0) return
-      const map = new Map(updates.map((u) => [u.path, u]))
-      entries.update((list) => list.map((item) => (map.has(item.path) ? { ...item, ...map.get(item.path)! } : item)))
+      updates.forEach(enqueueMetaUpdate)
     })
   }
 
@@ -214,6 +208,27 @@ export const useExplorerData = (options: Options = {}) => {
     void setup()
     return cleanup
   })
+
+  const flushMetaQueue = () => {
+    if (metaQueue.size === 0) return
+    const pending = metaQueue
+    metaQueue = new Map()
+    entries.update((list) =>
+      list.map((item) => {
+        const upd = pending.get(item.path)
+        return upd ? { ...item, ...upd } : item
+      }),
+    )
+  }
+
+  const enqueueMetaUpdate = (update: Entry) => {
+    metaQueue.set(update.path, { ...metaQueue.get(update.path), ...update })
+    if (metaTimer) return
+    metaTimer = setTimeout(() => {
+      metaTimer = null
+      flushMetaQueue()
+    }, 50)
+  }
 
   const loadUserNav = async (
     path?: Parameters<typeof load>[0],
