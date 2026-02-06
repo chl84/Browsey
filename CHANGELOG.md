@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.0 — 2026-02-06
+- Hardened undo backup cleanup: validates undo dir location before deleting contents and avoids deleting the root folder outright.
+- Search command now runs in a blocking task to prevent UI freezes on large trees.
+- Asset protocol scope made portable via cache-dir placeholder, restoring thumbnail access across machines.
+- Archive handling: added 7z and RAR extraction, batch extract with shared progress/cancel and undo, plus safer single-root handling and ZIP level/name persistence.
+- Thumbnails: switched to PDFium backend with bundled binaries, faster decode pipeline (pool scaling, retries, timeouts), two-generation cache and video-thumb preference; PDF caching and resource lookup fixed.
+- GVFS/OneDrive/MTP: better mount detection, polling/cancel/debounce to avoid UI hangs; copy/move now supports progress, cancel, and gio fallback; clearer cloud labels and icons.
+- Scroll/viewport perf: list scroll and wheel events now rAF-throttled; entry-meta refresh batched to reduce jank.
+- Drag/drop & clipboard: native file drop support with correct copy/move hints; system clipboard cut/copy integration and conflict modal readability improvements.
+- Settings & UX: persistent defaults for view, start directory, folders-first, hidden-last, show hidden, confirm delete, density (cozy/compact); cleaned settings UI and removed unused theme/icon controls.
+- Docs: README notes inspiration from GNOME Nautilus; version bumped to 0.4.0.
+
 ## v0.3.0-beta1 — 2026-01-25
 - Added thumbnail pipeline with caching, format allowlist, permission checks, decode timeouts, and global concurrency limits.
 - Grid view now loads thumbnails lazily via IntersectionObserver + queue; falls back to icons instantly on error.
