@@ -5,7 +5,6 @@ import { applyClickSelection } from '../helpers/selectionController'
 
 const defaultRowHeight = 32
 const overscan = 16
-const wheelScale = 1.0
 
 export type ListState = ReturnType<typeof createListState>
 
@@ -40,8 +39,6 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
 
   const rowHeight = writable(initialRowHeight)
 
-  let wheelRaf: number | null = null
-  let pendingDeltaY = 0
   let scrollRaf: number | null = null
   let pendingScrollTop = 0
 
@@ -78,21 +75,10 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
     })
   }
 
-  let pendingDeltaX = 0
   const handleWheel = (event: WheelEvent) => {
     const el = get(rowsEl)
     if (!el) return
-    event.preventDefault()
-    pendingDeltaX += event.deltaX * wheelScale
-    pendingDeltaY += event.deltaY * wheelScale
-    if (wheelRaf !== null) return
-    wheelRaf = requestAnimationFrame(() => {
-      el.scrollLeft += pendingDeltaX
-      el.scrollTop += pendingDeltaY
-      pendingDeltaX = 0
-      pendingDeltaY = 0
-      wheelRaf = null
-    })
+    // Bruk nettleserens native scroll og momentum; ingen custom handling.
   }
 
   const handleRowsKeydown = (filteredEntries: Entry[]) => (event: KeyboardEvent) => {
@@ -211,7 +197,6 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
   return {
     rowHeight,
     overscan,
-    wheelScale,
     selected,
     anchorIndex,
     caretIndex,

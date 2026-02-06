@@ -698,7 +698,9 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   // Keep in sync with the left padding in .grid (FileGrid.svelte)
   const GRID_PADDING = 15
   const GRID_OVERSCAN = 2
-  const GRID_WHEEL_SCALE = 1.0
+  const GRID_WHEEL_SCALE = 0.2
+  const GRID_WHEEL_DECAY = 0.85
+  const GRID_WHEEL_STOP = 0.05
   let cursorX = 0
   let cursorY = 0
   const LASSO_GUTTER_WIDTH = 3
@@ -723,6 +725,8 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     padding: GRID_PADDING,
     overscan: GRID_OVERSCAN,
     wheelScale: GRID_WHEEL_SCALE,
+    wheelDecay: GRID_WHEEL_DECAY,
+    wheelStopThreshold: GRID_WHEEL_STOP,
   }
 
   const {
