@@ -8,6 +8,8 @@ type GridConfig = {
   padding: number
   overscan: number
   wheelScale: number
+  wheelDecay: number
+  wheelStopThreshold: number
 }
 
 type Params = {
@@ -36,10 +38,6 @@ export const useGridVirtualizer = ({
   const gridTotalHeight = writable(0)
   const gridColsStore = writable(1)
   let gridColsValue = 1
-
-  let gridWheelRaf: number | null = null
-  let gridPendingDeltaX = 0
-  let gridPendingDeltaY = 0
 
   const getGridCols = () => gridColsValue
 
@@ -75,19 +73,7 @@ export const useGridVirtualizer = ({
   }
 
   const handleGridWheel = (event: WheelEvent) => {
-    const el = getGridEl()
-    if (!el) return
-    event.preventDefault()
-    gridPendingDeltaX += event.deltaX * config.wheelScale
-    gridPendingDeltaY += event.deltaY * config.wheelScale
-    if (gridWheelRaf !== null) return
-    gridWheelRaf = requestAnimationFrame(() => {
-      el.scrollLeft += gridPendingDeltaX
-      el.scrollTop += gridPendingDeltaY
-      gridPendingDeltaX = 0
-      gridPendingDeltaY = 0
-      gridWheelRaf = null
-    })
+    // Bruk native scroll; ingen custom behandling.
   }
 
   const ensureGridVisible = (index: number) => {
