@@ -77,6 +77,7 @@ export const useGridVirtualizer = ({
   const handleGridWheel = (event: WheelEvent) => {
     const el = getGridEl()
     if (!el) return
+    event.preventDefault()
     gridPendingDeltaX += event.deltaX * config.wheelScale
     gridPendingDeltaY += event.deltaY * config.wheelScale
     if (gridWheelRaf !== null) return

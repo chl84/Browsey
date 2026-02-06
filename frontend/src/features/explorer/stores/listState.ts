@@ -5,7 +5,7 @@ import { applyClickSelection } from '../helpers/selectionController'
 
 const defaultRowHeight = 32
 const overscan = 16
-const wheelScale = 0.7
+const wheelScale = 1.0
 
 export type ListState = ReturnType<typeof createListState>
 
@@ -82,6 +82,7 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
   const handleWheel = (event: WheelEvent) => {
     const el = get(rowsEl)
     if (!el) return
+    event.preventDefault()
     pendingDeltaX += event.deltaX * wheelScale
     pendingDeltaY += event.deltaY * wheelScale
     if (wheelRaf !== null) return

@@ -698,7 +698,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   // Keep in sync with the left padding in .grid (FileGrid.svelte)
   const GRID_PADDING = 15
   const GRID_OVERSCAN = 2
-  const GRID_WHEEL_SCALE = 0.7
+  const GRID_WHEEL_SCALE = 1.0
   let cursorX = 0
   let cursorY = 0
   const LASSO_GUTTER_WIDTH = 3
