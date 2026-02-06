@@ -21,9 +21,9 @@
       {#each conflicts as conflict (conflict.target)}
         <div class="row">
           <div class="name">
-            {conflict.is_dir ? '📁' : '📄'} {conflict.src}
+            {conflict.src}
           </div>
-          <div class="target">→ {conflict.target}</div>
+          <div class="target"><strong>→</strong> {conflict.target}</div>
         </div>
       {/each}
     </div>
@@ -37,4 +37,28 @@
 
 <style>
   /* Styling is inherited from global modal rules in app.css */
+  .conflicts {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-subtle, #ddd);
+    background: var(--panel, rgba(0, 0, 0, 0.02));
+  }
+
+  .name,
+  .target {
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
+
+  .target strong {
+    font-weight: 700;
+  }
 </style>
