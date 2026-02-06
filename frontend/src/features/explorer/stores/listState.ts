@@ -42,6 +42,8 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
 
   let wheelRaf: number | null = null
   let pendingDeltaY = 0
+  let scrollRaf: number | null = null
+  let pendingScrollTop = 0
 
   const headerHeight = () => get(headerEl)?.offsetHeight ?? 0
 
@@ -68,8 +70,12 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
   const handleRowsScroll = () => {
     const el = get(rowsEl)
     if (!el) return
-    const effectiveTop = Math.max(0, el.scrollTop - headerHeight())
-    scrollTop.set(effectiveTop)
+    pendingScrollTop = Math.max(0, el.scrollTop - headerHeight())
+    if (scrollRaf !== null) return
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = null
+      scrollTop.set(pendingScrollTop)
+    })
   }
 
   let pendingDeltaX = 0
