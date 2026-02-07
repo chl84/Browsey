@@ -270,34 +270,19 @@
 
 <style>
   .layout-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 16px;
     margin-bottom: 12px;
-    align-items: stretch;
-    grid-auto-rows: 1fr;
-    max-height: 70vh;
-    overflow: hidden;
     min-height: 0;
-  }
-
-  @media (min-width: 900px) {
-    .layout-grid {
-      grid-template-columns: 1fr 2fr;
-      grid-auto-rows: 1fr;
-    }
-    .preview-panel {
-      grid-column: 2 / 3;
-      grid-row: 1 / 2;
-    }
   }
 
   .left-stack {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    height: 100%;
     min-height: 0;
+    flex: 1 1 360px;
   }
 
   .field {
@@ -337,21 +322,30 @@
     padding: 10px;
     border-radius: 2px;
     background: var(--bg-raised);
-    height: 100%;
-    max-height: 100%;
-    min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
+    height: auto;
+    max-height: 50vh;
+    min-height: 120px;
     overflow: auto;
-    flex: 1;
   }
 
   .preview-panel {
     display: flex;
     flex-direction: column;
-    height: 100%;
-    min-height: 0;
-    max-height: 100%;
-    margin-top: 0;
-    overflow: hidden;
+    gap: 8px;
+    width: 100%;
+    margin-top: 12px;
+    flex: 1 1 360px;
+  }
+
+  @media (min-width: 900px) {
+    .layout-grid {
+      flex-wrap: nowrap;
+    }
+    .preview-panel {
+      margin-top: 0;
+    }
   }
 
   .preview ul {
