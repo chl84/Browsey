@@ -276,6 +276,9 @@
     margin-bottom: 12px;
     align-items: stretch;
     grid-auto-rows: 1fr;
+    max-height: 70vh;
+    overflow: hidden;
+    min-height: 0;
   }
 
   @media (min-width: 900px) {
@@ -294,6 +297,7 @@
     flex-direction: column;
     gap: 12px;
     height: 100%;
+    min-height: 0;
   }
 
   .field {
@@ -333,8 +337,9 @@
     padding: 10px;
     border-radius: 2px;
     background: var(--bg-raised);
-    min-height: 120px;
     height: 100%;
+    max-height: 100%;
+    min-height: 0;
     overflow: auto;
     flex: 1;
   }
@@ -343,7 +348,10 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
+    max-height: 100%;
     margin-top: 0;
+    overflow: hidden;
   }
 
   .preview ul {
