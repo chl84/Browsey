@@ -23,32 +23,6 @@ struct CmdError {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn command_output_silent_stderr(cmd: &str, args: &[&str]) -> Result<(), CmdError> {
-    let output = Command::new(cmd)
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .map_err(|e| CmdError {
-            message: e.to_string(),
-            busy: false,
-        })?;
-    if output.status.success() {
-        return Ok(());
-    }
-    let mut parts = Vec::new();
-    if !output.stdout.is_empty() {
-        parts.push(String::from_utf8_lossy(&output.stdout).trim().to_string());
-    }
-    let msg = if parts.is_empty() {
-        format!("exit status {}", output.status)
-    } else {
-        format!("exit status {}: {}", output.status, parts.join(" | "))
-    };
-    let busy = msg.to_lowercase().contains("busy");
-    Err(CmdError { message: msg, busy })
-}
-
 #[cfg(not(target_os = "windows"))]
 fn command_output(cmd: &str, args: &[&str]) -> Result<(), CmdError> {
     let output = Command::new(cmd)
@@ -162,6 +136,7 @@ fn linux_mounts() -> Vec<MountInfo> {
                     | "mqueue"
                     | "cgroup"
                     | "cgroup2"
+                    | "fuse.rofiles-fuse" // Flatpak Builder readonly rofiles mounts
             ) {
                 continue;
             }
@@ -244,6 +219,8 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
     // Normalize OneDrive: if called on activation_root (onedrive://...), map to actual mount path.
     let lower = path.to_ascii_lowercase();
     let mut path = path;
+    let mut is_onedrive = lower.contains("onedrive");
+
     if lower.starts_with("onedrive://") {
         if let Some(actual) = gvfs::list_gvfs_mounts()
             .into_iter()
@@ -255,6 +232,7 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
             // Nothing mounted; treat as already ejected.
             return Ok(());
         }
+        is_onedrive = true;
     }
 
     gvfs::ensure_gvfsd_fuse_running();
@@ -265,7 +243,7 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
     let mut busy_detected = false;
 
     // Prefer gio (GVFS) if available; it handles user mounts.
-    match command_output_silent_stderr("gio", &["mount", "-u", &path]) {
+    match command_output("gio", &["mount", "-u", &path]) {
         Ok(_) => {
             power_off_device(device);
             return Ok(());
@@ -278,6 +256,23 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
             }
             busy_detected |= e.busy;
             errors.push(format!("gio mount -u: {}", e.message));
+        }
+    }
+
+    // OneDrive over GVFS sometimes needs a scheme-level unmount to talk to the right backend.
+    if is_onedrive {
+        match command_output("gio", &["mount", "--unmount-scheme=onedrive"]) {
+            Ok(_) => {
+                power_off_device(device);
+                return Ok(());
+            }
+            Err(e) => {
+                busy_detected |= e.busy;
+                errors.push(format!(
+                    "gio mount --unmount-scheme=onedrive: {}",
+                    e.message
+                ));
+            }
         }
     }
 
@@ -318,9 +313,11 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
     }
 
     let msg = if busy_detected {
-        "Eject failed: volume is in use. Close file managers or terminals using it and try again."
+        "Volume is in use. Close file managers or terminals using it and try again.".to_string()
+    } else if let Some(first) = errors.first() {
+        first.clone()
     } else {
-        "Eject failed. Please try again."
+        "Eject failed.".to_string()
     };
     debug_log(&format!(
         "eject errors for {}: {}",

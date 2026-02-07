@@ -78,6 +78,7 @@ pub fn open_with(path: String, choice: OpenWithChoice) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         if let Some(app_id) = app_id {
+            #[cfg(debug_assertions)]
             info!("Opening {:?} with desktop entry {}", target, app_id);
             return launch_desktop_entry(&target, &app_id);
         }
