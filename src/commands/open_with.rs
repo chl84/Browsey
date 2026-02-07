@@ -7,7 +7,9 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
-use tracing::{info, warn};
+#[cfg(debug_assertions)]
+use tracing::info;
+use tracing::warn;
 #[cfg(target_os = "windows")]
 use windows::{
     core::{HSTRING, PWSTR},
