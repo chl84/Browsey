@@ -16,9 +16,9 @@ pub fn toggle_star(path: String) -> Result<bool, String> {
     let conn = db::open()?;
     let res = db::toggle_star(&conn, &path);
     match &res {
-        Ok(st) => {
+        Ok(_st) => {
             #[cfg(debug_assertions)]
-            info!("Toggled star for {} -> {}", path, st)
+            info!("Toggled star for {} -> {}", path, _st)
         }
         Err(e) => error!("Failed to toggle star for {}: {}", path, e),
     }

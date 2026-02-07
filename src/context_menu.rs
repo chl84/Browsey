@@ -89,6 +89,7 @@ pub fn context_menu_actions(
             items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
         }
         items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
+        items.push(ContextAction::new("rename-advanced", "Rename…"));
         if !in_starred {
             items.push(ContextAction::new("compress", "Compress…"));
             items.push(ContextAction::new("extract", "Extract"));

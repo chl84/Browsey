@@ -23,6 +23,7 @@ type Deps = {
   showToast: (msg: string, durationMs?: number) => void
   openWith: (entry: Entry) => void
   startRename: (entry: Entry) => void
+  startAdvancedRename: (entries: Entry[]) => void
   confirmDelete: (entries: Entry[]) => void
   openProperties: (entries: Entry[]) => Promise<void> | void
   openLocation: (entry: Entry) => Promise<void> | void
@@ -42,6 +43,7 @@ export const createContextActions = (deps: Deps) => {
     showToast,
     openWith,
     startRename,
+    startAdvancedRename,
     confirmDelete,
     openProperties,
     openLocation,
@@ -140,6 +142,10 @@ export const createContextActions = (deps: Deps) => {
 
     if (id === 'rename') {
       startRename(entry)
+      return
+    }
+    if (id === 'rename-advanced') {
+      startAdvancedRename(selectionEntries)
       return
     }
 
