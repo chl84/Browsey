@@ -208,6 +208,21 @@ export function createThumbnailLoader(opts: Options = {}) {
         })
       }
     },
+    drop: (path: string) => {
+      requested.delete(path)
+      retries.delete(path)
+      for (let i = highQueue.length - 1; i >= 0; i--) {
+        if (highQueue[i] === path) highQueue.splice(i, 1)
+      }
+      for (let i = lowQueue.length - 1; i >= 0; i--) {
+        if (lowQueue[i] === path) lowQueue.splice(i, 1)
+      }
+      thumbs.update((m) => {
+        const next = new Map(m)
+        next.delete(path)
+        return next
+      })
+    },
     subscribe: thumbs.subscribe as Readable<ThumbMap>['subscribe'],
   }
 }

@@ -162,6 +162,7 @@
                   draggable="false"
                   on:error={(e) => {
                     e.currentTarget?.setAttribute('src', iconPathById(entry.iconId))
+                    thumbLoader.drop(entry.path)
                   }}
                 />
               {:else}
