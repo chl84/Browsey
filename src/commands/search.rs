@@ -109,6 +109,7 @@ pub fn search_stream(
         let mut seen: HashSet<String> = HashSet::new();
         let mut last_sent: usize = 0;
         let needle_lc = needle.to_lowercase();
+        const BATCH: usize = 256;
 
         while let Some(dir) = stack.pop() {
             let iter = match std::fs::read_dir(&dir) {
@@ -145,7 +146,7 @@ pub fn search_stream(
                             item.starred = true;
                         }
                         all.push(item);
-                        if all.len() - last_sent >= 64 {
+                        if all.len() - last_sent >= BATCH {
                             send(all[last_sent..].to_vec(), false, None);
                             last_sent = all.len();
                         }
