@@ -137,6 +137,7 @@ pub fn open_entry(path: String) -> Result<(), String> {
     if let Err(e) = db::touch_recent(&conn, &pb.to_string_lossy()) {
         warn!("Failed to record recent for {:?}: {}", pb, e);
     }
+    #[cfg(debug_assertions)]
     info!("Opening path {:?}", pb);
     #[cfg(not(target_os = "windows"))]
     {
