@@ -22,8 +22,6 @@ struct CmdError {
     busy: bool,
 }
 
-#[cfg(not(target_os = "windows"))]
-#[cfg(not(target_os = "windows"))]
 fn command_output(cmd: &str, args: &[&str]) -> Result<(), CmdError> {
     let output = Command::new(cmd)
         .args(args)

@@ -30,7 +30,9 @@ use std::{
     sync::mpsc,
 };
 use tauri::Emitter;
-use tracing::{error, info, warn};
+#[cfg(debug_assertions)]
+use tracing::info;
+use tracing::{error, warn};
 use trash::{
     delete as trash_delete,
     os_limited::{list as trash_list, metadata as trash_metadata, purge_all, restore_all},
