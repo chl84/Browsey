@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store'
 import type { Entry } from '../types'
 
-export type SequenceMode = 'numeric' | 'alpha'
+export type SequenceMode = 'none' | 'numeric' | 'alpha'
 
 export type AdvancedRenameState = {
   open: boolean
@@ -23,7 +23,7 @@ export const createAdvancedRenameModal = () => {
     regex: '',
     replacement: '',
     caseSensitive: true,
-    sequenceMode: 'numeric',
+    sequenceMode: 'none',
     sequenceStart: 1,
     sequenceStep: 1,
     sequencePad: 2,
@@ -37,7 +37,7 @@ export const createAdvancedRenameModal = () => {
       regex: '',
       replacement: '',
       caseSensitive: true,
-      sequenceMode: 'numeric',
+      sequenceMode: 'none',
       sequenceStart: 1,
       sequenceStep: 1,
       sequencePad: 2,
