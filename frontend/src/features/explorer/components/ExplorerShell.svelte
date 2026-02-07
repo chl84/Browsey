@@ -11,6 +11,7 @@
   import NewFolderModal from './NewFolderModal.svelte'
   import OpenWithModal from './OpenWithModal.svelte'
   import PropertiesModal from './PropertiesModal.svelte'
+  import AdvancedRenameModal from './AdvancedRenameModal.svelte'
   import BookmarkModal from './BookmarkModal.svelte'
   import Toast from '../../../ui/Toast.svelte'
   import CompressModal from './CompressModal.svelte'
@@ -132,6 +133,27 @@
   export let renameError = ''
   export let onConfirmRename: (name: string) => void = () => {}
   export let onCancelRename: () => void = () => {}
+  export let advancedRenameOpen = false
+  export let advancedRenameEntries: Entry[] = []
+  export let advancedRenameRegex = ''
+  export let advancedRenameReplacement = ''
+  export let advancedRenameCaseSensitive = true
+  export let advancedRenameSequenceMode: 'none' | 'numeric' | 'alpha' = 'none'
+  export let advancedRenameSequenceStart = 1
+  export let advancedRenameSequenceStep = 1
+  export let advancedRenameSequencePad = 2
+  export let advancedRenameError = ''
+  export let onAdvancedRenameChange: (payload: {
+    regex: string
+    replacement: string
+    caseSensitive: boolean
+    sequenceMode: 'none' | 'numeric' | 'alpha'
+    sequenceStart: number
+    sequenceStep: number
+    sequencePad: number
+  }) => void = () => {}
+  export let onConfirmAdvancedRename: () => void = () => {}
+  export let onCancelAdvancedRename: () => void = () => {}
   export let compressOpen = false
   export let compressName = ''
   export let compressLevel = 6
@@ -350,6 +372,21 @@
   error={renameError}
   onConfirm={onConfirmRename}
   onCancel={onCancelRename}
+/>
+<AdvancedRenameModal
+  open={advancedRenameOpen}
+  entries={advancedRenameEntries}
+  regex={advancedRenameRegex}
+  replacement={advancedRenameReplacement}
+  caseSensitive={advancedRenameCaseSensitive}
+  sequenceMode={advancedRenameSequenceMode}
+  sequenceStart={advancedRenameSequenceStart}
+  sequenceStep={advancedRenameSequenceStep}
+  sequencePad={advancedRenameSequencePad}
+  error={advancedRenameError}
+  onChange={onAdvancedRenameChange}
+  onConfirm={onConfirmAdvancedRename}
+  onCancel={onCancelAdvancedRename}
 />
 <CompressModal
   open={compressOpen}

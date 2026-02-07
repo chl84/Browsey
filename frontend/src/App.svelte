@@ -1514,20 +1514,34 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     event.stopPropagation()
     try {
       const selectionCount = $selected.has(entry.path) ? $selected.size : 1
-      const actions = await invoke<ContextAction[]>('context_menu_actions', {
+      const selectionPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
+      const selectionEntries = selectionPaths
+        .map((p) => $visibleEntries.find((e) => e.path === p) || entry)
+        .filter(Boolean) as Entry[]
+
+      let actions = await invoke<ContextAction[]>('context_menu_actions', {
         count: selectionCount,
         kind: entry.kind,
         starred: Boolean(entry.starred),
         view: currentView,
         clipboardHasItems: clipboardPaths.size > 0,
       })
-      const filtered = actions.filter((action) => action.id !== 'new-folder')
-      const inSearch = $searchMode || mode === 'search'
-      if (inSearch && selectionCount === 1 && !filtered.some((a) => a.id === 'open-location')) {
-        filtered.splice(1, 0, { id: 'open-location', label: 'Open item location' })
+      actions = actions.filter((action) => action.id !== 'new-folder')
+      // Drop any leading dividers that can appear after filtering
+      while (actions.length > 0 && actions[0].id.startsWith('divider')) {
+        actions.shift()
       }
-      if (filtered.length > 0) {
-        openContextMenu(entry, filtered, event.clientX, event.clientY)
+      // Only show Extract when all selected entries are extractable archives
+      const allExtractable = selectionEntries.length > 0 && selectionEntries.every(isExtractableArchive)
+      if (!allExtractable) {
+        actions = actions.filter((a) => a.id !== 'extract')
+      }
+      const inSearch = $searchMode || mode === 'search'
+      if (inSearch && selectionCount === 1 && !actions.some((a) => a.id === 'open-location')) {
+        actions.splice(1, 0, { id: 'open-location', label: 'Open item location' })
+      }
+      if (actions.length > 0) {
+        openContextMenu(entry, actions, event.clientX, event.clientY)
       }
     } catch (err) {
       console.error('Failed to load context menu actions', err)
@@ -1600,6 +1614,8 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     propertiesState,
     renameModal,
     renameState,
+    advancedRenameModal,
+    advancedRenameState,
     newFileModal,
     newFileState,
     newFolderModal,
@@ -1745,6 +1761,9 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     startRename: (entry) => {
       renameValue = entry.name
       modalActions.startRename(entry)
+    },
+    startAdvancedRename: (entries) => {
+      advancedRenameModal.open(entries)
     },
     confirmDelete: (entries) => modalActions.confirmDelete(entries),
     openProperties: (entries) => {
@@ -2031,6 +2050,21 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
         return
       }
       newFileName = newFileModal.open()
+      return
+    }
+    if (id === 'rename-advanced') {
+      const selectedPaths = $selected.size > 0 ? Array.from($selected) : entry ? [entry.path] : []
+      const entries =
+        selectedPaths.length > 0
+          ? $filteredEntries.filter((e) => selectedPaths.includes(e.path))
+          : entry
+            ? [entry]
+            : []
+      if (entries.length > 1) {
+        advancedRenameModal.open(entries)
+      } else {
+        modalActions.startRename(entry!)
+      }
       return
     }
     await contextActions(id, entry)
@@ -2500,6 +2534,19 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   bind:renameValue
   onConfirmRename={confirmRename}
   onCancelRename={closeRenameModal}
+  advancedRenameOpen={$advancedRenameState.open}
+  advancedRenameEntries={$advancedRenameState.entries}
+  advancedRenameRegex={$advancedRenameState.regex}
+  advancedRenameReplacement={$advancedRenameState.replacement}
+  advancedRenameCaseSensitive={$advancedRenameState.caseSensitive}
+  advancedRenameSequenceMode={$advancedRenameState.sequenceMode}
+  advancedRenameSequenceStart={$advancedRenameState.sequenceStart}
+  advancedRenameSequenceStep={$advancedRenameState.sequenceStep}
+  advancedRenameSequencePad={$advancedRenameState.sequencePad}
+  advancedRenameError={$advancedRenameState.error}
+  onAdvancedRenameChange={(payload) => advancedRenameState.update((s) => ({ ...s, ...payload }))}
+  onConfirmAdvancedRename={() => advancedRenameModal.confirm()}
+  onCancelAdvancedRename={() => advancedRenameModal.close()}
   compressOpen={$compressState.open}
   bind:compressName
   bind:compressLevel

@@ -116,7 +116,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const historyIndex = writable(-1)
 
   // Search streaming coordination
-  let searchUnlisten: (() => Promise<void>) | null = null
+  let searchUnlisten: (() => void) | null = null
   let searchBuffer: Entry[] = []
   let searchRaf: number | null = null
 
@@ -518,7 +518,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
     // Cancel any in-flight search listener to avoid overlapping batches
     if (searchUnlisten) {
-      await searchUnlisten()
+      searchUnlisten()
       searchUnlisten = null
     }
     // Reset buffering state
@@ -584,14 +584,14 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       error.set(err instanceof Error ? err.message : String(err))
       loading.set(false)
       if (searchUnlisten) {
-        void searchUnlisten()
+        searchUnlisten()
         searchUnlisten = null
       }
     })
 
     return async () => {
       if (searchUnlisten) {
-        await searchUnlisten()
+        searchUnlisten()
         searchUnlisten = null
       }
     }

@@ -2,6 +2,7 @@ import { createDeleteConfirmModal } from '../modals/deleteConfirmModal'
 import { createOpenWithModal } from '../modals/openWithModal'
 import { createPropertiesModal } from '../modals/propertiesModal'
 import { createRenameModal } from '../modals/renameModal'
+import { createAdvancedRenameModal } from '../modals/advancedRenameModal'
 import { createNewFolderModal } from '../modals/newFolderModal'
 import { createNewFileModal } from '../modals/newFileModal'
 import { createCompressModal } from '../modals/compressModal'
@@ -44,6 +45,9 @@ export const useModalsController = ({
   })
   const renameState = renameModal.state
 
+  const advancedRenameModal = createAdvancedRenameModal()
+  const advancedRenameState = advancedRenameModal.state
+
   const newFolderModal = createNewFolderModal({
     getCurrentPath,
     loadPath: (path: string) => loadPath(path, { recordHistory: false }),
@@ -70,6 +74,7 @@ export const useModalsController = ({
     openWith: (entry: Entry) => openWithModal.open(entry),
     openCompress: (entries: Entry[], defaultArchiveBase: string) => compressModal.open(entries, defaultArchiveBase),
     startRename: (entry: Entry) => renameModal.open(entry),
+    startAdvancedRename: (entries: Entry[]) => advancedRenameModal.open(entries),
     confirmDelete: (entries: Entry[]) => deleteModal.open(entries),
     openProperties: (entries: Entry[]) => propertiesModal.open(entries),
   }
@@ -83,6 +88,8 @@ export const useModalsController = ({
     propertiesState,
     renameModal,
     renameState,
+    advancedRenameModal,
+    advancedRenameState,
     newFileModal,
     newFileState,
     newFolderModal,
