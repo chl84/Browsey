@@ -400,35 +400,41 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     void storeArchiveLevel(lvl)
   }
 
+  const sortSearchEntries = (
+    list: Entry[],
+    spec: { field: SortField; direction: SortDirection } = sortPayload(),
+  ) => {
+    const dir = spec.direction === 'asc' ? 1 : -1
+    const kindRank = (k: string) => (k === 'dir' ? 0 : k === 'file' ? 1 : 2)
+    const sorted = [...list]
+    sorted.sort((a, b) => {
+      const cmp = (() => {
+        switch (spec.field) {
+          case 'name':
+            return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+          case 'type':
+            if (a.kind !== b.kind) return kindRank(a.kind) - kindRank(b.kind)
+            return (a.ext ?? '').localeCompare(b.ext ?? '', undefined, { sensitivity: 'base' })
+          case 'modified':
+            return (a.modified ?? '').localeCompare(b.modified ?? '')
+          case 'size':
+            return (a.size ?? 0) - (b.size ?? 0)
+          case 'starred':
+            return Number(b.starred ?? false) - Number(a.starred ?? false)
+          default:
+            return 0
+        }
+      })()
+      return dir * cmp
+    })
+    return mapNameLower(sorted)
+  }
+
   const refreshForSort = async () => {
     const isSearchActive = get(searchActive)
     const isSearchMode = get(searchMode)
     if (isSearchActive && isSearchMode) {
-      const list = [...get(entries)]
-      const spec = sortPayload()
-      const dir = spec.direction === 'asc' ? 1 : -1
-      const kindRank = (k: string) => (k === 'dir' ? 0 : k === 'file' ? 1 : 2)
-      list.sort((a, b) => {
-        const cmp = (() => {
-          switch (spec.field) {
-            case 'name':
-              return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-            case 'type':
-              if (a.kind !== b.kind) return kindRank(a.kind) - kindRank(b.kind)
-              return (a.ext ?? '').localeCompare(b.ext ?? '', undefined, { sensitivity: 'base' })
-            case 'modified':
-              return (a.modified ?? '').localeCompare(b.modified ?? '')
-            case 'size':
-              return (a.size ?? 0) - (b.size ?? 0)
-            case 'starred':
-              return Number(b.starred ?? false) - Number(a.starred ?? false)
-            default:
-              return 0
-          }
-        })()
-        return dir * cmp
-      })
-      entries.set(mapNameLower(list))
+      entries.set(sortSearchEntries(get(entries), sortPayload()))
       return
     }
     const where = get(current)
@@ -614,12 +620,13 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
             cancelAnimationFrame(raf)
             raf = null
           }
-          buffer = []
-          const finalEntries =
+          const doneEntries =
             evt.payload.entries && evt.payload.entries.length > 0
               ? mapNameLower(evt.payload.entries)
-              : []
-          entries.set(finalEntries)
+              : null
+          const finalEntries = doneEntries ?? [...get(entries), ...buffer]
+          buffer = []
+          entries.set(sortSearchEntries(finalEntries, sortPayload()))
           callbacks.onEntriesChanged?.()
           loading.set(false)
           cleanup()
