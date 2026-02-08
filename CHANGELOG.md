@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.1 — 2026-02-08
+- Linux rendering fallback simplified: when hardware acceleration is disabled, Browsey now sets only `WEBKIT_DISABLE_DMABUF_RENDERER=1` (removed legacy compositing/software flags).
+- Added **Check for Duplicates** tool in the file context menu (single-file selection), with a dedicated modal built on the shared modal shell and app-wide modal styling.
+- Duplicate scan backend: two-stage matching (file size pre-filter, then byte-for-byte compare with early mismatch exit), symlink-safe traversal, and deterministic sorted output.
+- Duplicate scan UX: streaming progress, modal progress bar, clean cancellation when closing the modal (including Esc), and improved result preview/copy behavior.
+- Docs: README updated with duplicate-check behavior and current Linux hardware-acceleration policy.
+
 ## v0.4.0 — 2026-02-06
 - Hardened undo backup cleanup: validates undo dir location before deleting contents and avoids deleting the root folder outright.
 - Search command now runs in a blocking task to prevent UI freezes on large trees.
