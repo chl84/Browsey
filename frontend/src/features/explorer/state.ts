@@ -119,9 +119,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const historyIndex = writable(-1)
 
   // Search streaming coordination
-  let searchUnlisten: (() => void) | null = null
-  let searchBuffer: Entry[] = []
-  let searchRaf: number | null = null
+  let searchRunId = 0
+  let cancelActiveSearch: (() => void) | null = null
 
   const applyFoldersFirst = (list: Entry[], foldersFirstOn: boolean) => {
     if (!foldersFirstOn) return list
@@ -514,28 +513,47 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   }
 
   const runSearch = async (needleRaw: string) => {
+    const runId = ++searchRunId
     const needle = needleRaw.trim()
     const progressEvent = `search-progress-${Math.random().toString(16).slice(2)}`
     loading.set(true)
     error.set('')
 
-    // Cancel any in-flight search listener to avoid overlapping batches
-    if (searchUnlisten) {
-      searchUnlisten()
-      searchUnlisten = null
+    cancelActiveSearch?.()
+    cancelActiveSearch = null
+
+    let buffer: Entry[] = []
+    let raf: number | null = null
+    let stop: (() => void) | null = null
+    let cleaned = false
+
+    const cleanup = () => {
+      if (cleaned) return
+      cleaned = true
+      if (raf !== null) {
+        cancelAnimationFrame(raf)
+        raf = null
+      }
+      buffer = []
+      if (stop) {
+        stop()
+        stop = null
+      }
+      if (cancelActiveSearch === cleanup) {
+        cancelActiveSearch = null
+      }
     }
-    // Reset buffering state
-    searchBuffer = []
-    if (searchRaf !== null) {
-      cancelAnimationFrame(searchRaf)
-      searchRaf = null
-    }
+
+    cancelActiveSearch = cleanup
 
     if (needle.length === 0) {
       searchActive.set(false)
       await load(get(current), { recordHistory: false })
-      loading.set(false)
-      return
+      if (runId === searchRunId) {
+        loading.set(false)
+      }
+      cleanup()
+      return cleanup
     }
     filter.set(needle)
     searchActive.set(true)
@@ -543,47 +561,70 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     callbacks.onEntriesChanged?.()
 
     const flushBuffer = () => {
-      if (searchBuffer.length === 0) return
-      entries.update((list) => [...list, ...searchBuffer])
+      if (runId !== searchRunId) {
+        cleanup()
+        return
+      }
+      if (buffer.length === 0) {
+        raf = null
+        return
+      }
+      entries.update((list) => [...list, ...buffer])
       callbacks.onEntriesChanged?.()
-      searchBuffer = []
-      searchRaf = null
+      buffer = []
+      raf = null
     }
 
     const scheduleFlush = () => {
-      if (searchRaf !== null) return
-      searchRaf = requestAnimationFrame(flushBuffer)
+      if (raf !== null) return
+      raf = requestAnimationFrame(flushBuffer)
     }
 
-    const stop = await listen<{ entries: Entry[]; done: boolean; error?: string }>(progressEvent, (evt) => {
-      if (evt.payload.error) {
-        error.set(evt.payload.error)
-      }
-      if (evt.payload.done) {
-        if (searchRaf !== null) {
-          cancelAnimationFrame(searchRaf)
-          searchRaf = null
+    let unlisten: () => void
+    try {
+      unlisten = await listen<{ entries: Entry[]; done: boolean; error?: string }>(progressEvent, (evt) => {
+        if (runId !== searchRunId) {
+          cleanup()
+          return
         }
-        searchBuffer = []
-        const finalEntries =
-          evt.payload.entries && evt.payload.entries.length > 0
-            ? mapNameLower(evt.payload.entries)
-            : []
-        entries.set(finalEntries)
-        callbacks.onEntriesChanged?.()
+        if (evt.payload.error) {
+          error.set(evt.payload.error)
+        }
+        if (evt.payload.done) {
+          if (raf !== null) {
+            cancelAnimationFrame(raf)
+            raf = null
+          }
+          buffer = []
+          const finalEntries =
+            evt.payload.entries && evt.payload.entries.length > 0
+              ? mapNameLower(evt.payload.entries)
+              : []
+          entries.set(finalEntries)
+          callbacks.onEntriesChanged?.()
+          loading.set(false)
+          cleanup()
+          return
+        }
+        if (evt.payload.entries && evt.payload.entries.length > 0) {
+          buffer.push(...mapNameLower(evt.payload.entries))
+          scheduleFlush()
+        }
+      })
+    } catch (err) {
+      if (runId === searchRunId) {
+        error.set(err instanceof Error ? err.message : String(err))
         loading.set(false)
-        if (searchUnlisten) {
-          searchUnlisten()
-          searchUnlisten = null
-        }
-        return
       }
-      if (evt.payload.entries && evt.payload.entries.length > 0) {
-        searchBuffer.push(...mapNameLower(evt.payload.entries))
-        scheduleFlush()
-      }
-    })
-    searchUnlisten = stop
+      cleanup()
+      return cleanup
+    }
+    stop = unlisten
+    if (cleaned) {
+      stop()
+      stop = null
+      return cleanup
+    }
 
     searchStream({
       path: get(current),
@@ -591,20 +632,16 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       sort: sortPayload(),
       progressEvent,
     }).catch((err) => {
+      if (runId !== searchRunId) {
+        cleanup()
+        return
+      }
       error.set(err instanceof Error ? err.message : String(err))
       loading.set(false)
-      if (searchUnlisten) {
-        searchUnlisten()
-        searchUnlisten = null
-      }
+      cleanup()
     })
 
-    return async () => {
-      if (searchUnlisten) {
-        searchUnlisten()
-        searchUnlisten = null
-      }
-    }
+    return cleanup
   }
 
   const toggleMode = async (checked: boolean) => {
