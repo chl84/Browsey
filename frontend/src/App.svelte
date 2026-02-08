@@ -2538,6 +2538,8 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   advancedRenameEntries={$advancedRenameState.entries}
   advancedRenameRegex={$advancedRenameState.regex}
   advancedRenameReplacement={$advancedRenameState.replacement}
+  advancedRenamePrefix={$advancedRenameState.prefix}
+  advancedRenameSuffix={$advancedRenameState.suffix}
   advancedRenameCaseSensitive={$advancedRenameState.caseSensitive}
   advancedRenameSequenceMode={$advancedRenameState.sequenceMode}
   advancedRenameSequenceStart={$advancedRenameState.sequenceStart}

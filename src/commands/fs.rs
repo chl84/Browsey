@@ -18,7 +18,7 @@ pub mod fs_windows;
 #[cfg(not(target_os = "windows"))]
 pub mod gvfs;
 pub use crate::commands::listing::DirListing;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 #[cfg(target_os = "windows")]
@@ -306,31 +306,118 @@ pub fn rename_entry(
     new_name: String,
     state: tauri::State<UndoState>,
 ) -> Result<String, String> {
-    let from = sanitize_path_nofollow(&path, true)?;
-    check_no_symlink_components(&from)?;
+    let (from, to) = prepare_rename_pair(path.as_str(), new_name.as_str())?;
+    apply_rename(&from, &to)?;
+    let _ = state.record_applied(Action::Rename {
+        from: from.clone(),
+        to: to.clone(),
+    });
+    Ok(to.to_string_lossy().to_string())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameEntryRequest {
+    pub path: String,
+    pub new_name: String,
+}
+
+fn build_rename_target(from: &Path, new_name: &str) -> Result<PathBuf, String> {
     if new_name.trim().is_empty() {
         return Err("New name cannot be empty".into());
     }
     let parent = from
         .parent()
         .ok_or_else(|| "Cannot rename root".to_string())?;
-    let to = parent.join(new_name.trim());
+    Ok(parent.join(new_name.trim()))
+}
+
+fn prepare_rename_pair(path: &str, new_name: &str) -> Result<(PathBuf, PathBuf), String> {
+    let from = sanitize_path_nofollow(path, true)?;
+    check_no_symlink_components(&from)?;
+    let to = build_rename_target(&from, new_name)?;
     if to != from && to.exists() {
         return Err("A file or directory with that name already exists".into());
     }
-    match fs::rename(&from, &to) {
-        Ok(_) => {
-            let _ = state.record_applied(Action::Rename {
-                from: from.clone(),
-                to: to.clone(),
-            });
-            Ok(to.to_string_lossy().to_string())
-        }
+    Ok((from, to))
+}
+
+fn apply_rename(from: &Path, to: &Path) -> Result<(), String> {
+    match fs::rename(from, to) {
+        Ok(_) => Ok(()),
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
             Err("A file or directory with that name already exists".into())
         }
         Err(e) => Err(format!("Failed to rename: {e}")),
     }
+}
+
+#[tauri::command]
+pub fn rename_entries(
+    entries: Vec<RenameEntryRequest>,
+    undo: tauri::State<UndoState>,
+) -> Result<Vec<String>, String> {
+    if entries.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut pairs: Vec<(PathBuf, PathBuf)> = Vec::with_capacity(entries.len());
+    let mut seen_sources: HashSet<PathBuf> = HashSet::with_capacity(entries.len());
+    let mut seen_targets: HashSet<PathBuf> = HashSet::with_capacity(entries.len());
+
+    for (idx, entry) in entries.into_iter().enumerate() {
+        let (from, to) = prepare_rename_pair(entry.path.as_str(), entry.new_name.as_str())?;
+
+        if !seen_sources.insert(from.clone()) {
+            return Err(format!(
+                "Duplicate source path in request (item {})",
+                idx + 1
+            ));
+        }
+        if !seen_targets.insert(to.clone()) {
+            return Err(format!(
+                "Duplicate target name in request (item {})",
+                idx + 1
+            ));
+        }
+
+        pairs.push((from, to));
+    }
+
+    let mut performed: Vec<Action> = Vec::new();
+    let mut renamed_paths: Vec<String> = Vec::with_capacity(pairs.len());
+
+    for (from, to) in pairs {
+        if from == to {
+            continue;
+        }
+        if let Err(err) = apply_rename(&from, &to) {
+            if !performed.is_empty() {
+                let mut rollback = performed.clone();
+                if let Err(rb_err) = run_actions(&mut rollback, Direction::Backward) {
+                    return Err(format!("{}; rollback also failed: {}", err, rb_err));
+                }
+            }
+            return Err(err);
+        }
+
+        renamed_paths.push(to.to_string_lossy().to_string());
+        performed.push(Action::Rename {
+            from: from.clone(),
+            to: to.clone(),
+        });
+    }
+
+    if !performed.is_empty() {
+        let recorded = if performed.len() == 1 {
+            performed.pop().unwrap()
+        } else {
+            Action::Batch(performed)
+        };
+        let _ = undo.record_applied(recorded);
+    }
+
+    Ok(renamed_paths)
 }
 
 #[tauri::command]

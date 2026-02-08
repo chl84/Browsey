@@ -18,6 +18,7 @@
   import type { Column, Entry, Partition, SortField } from '../types'
   import type { ContextAction } from '../hooks/useContextMenus'
   import type { OpenWithApp, OpenWithChoice } from '../services/openWith'
+  import type { AdvancedRenamePayload } from '../modals/advancedRenameModal'
 
   export let sidebarCollapsed = false
   export let places: { label: string; path: string }[] = []
@@ -137,21 +138,15 @@
   export let advancedRenameEntries: Entry[] = []
   export let advancedRenameRegex = ''
   export let advancedRenameReplacement = ''
+  export let advancedRenamePrefix = ''
+  export let advancedRenameSuffix = ''
   export let advancedRenameCaseSensitive = true
   export let advancedRenameSequenceMode: 'none' | 'numeric' | 'alpha' = 'none'
   export let advancedRenameSequenceStart = 1
   export let advancedRenameSequenceStep = 1
   export let advancedRenameSequencePad = 2
   export let advancedRenameError = ''
-  export let onAdvancedRenameChange: (payload: {
-    regex: string
-    replacement: string
-    caseSensitive: boolean
-    sequenceMode: 'none' | 'numeric' | 'alpha'
-    sequenceStart: number
-    sequenceStep: number
-    sequencePad: number
-  }) => void = () => {}
+  export let onAdvancedRenameChange: (payload: AdvancedRenamePayload) => void = () => {}
   export let onConfirmAdvancedRename: () => void = () => {}
   export let onCancelAdvancedRename: () => void = () => {}
   export let compressOpen = false
@@ -378,6 +373,8 @@
   entries={advancedRenameEntries}
   regex={advancedRenameRegex}
   replacement={advancedRenameReplacement}
+  prefix={advancedRenamePrefix}
+  suffix={advancedRenameSuffix}
   caseSensitive={advancedRenameCaseSensitive}
   sequenceMode={advancedRenameSequenceMode}
   sequenceStart={advancedRenameSequenceStart}
