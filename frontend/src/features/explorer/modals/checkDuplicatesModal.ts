@@ -108,12 +108,13 @@ export const createCheckDuplicatesModal = ({ parentPath }: Deps) => {
           .filter((path) => path.length > 0),
       ),
     )
+    const doneLabel = `Finished: ${deduped.length} identical ${deduped.length === 1 ? 'file' : 'files'}`
     state.update((s) => ({
       ...s,
       duplicates: deduped,
       scanning: false,
       progressPercent: 100,
-      progressLabel: 'Scan complete',
+      progressLabel: doneLabel,
       error: '',
     }))
   }
