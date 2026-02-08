@@ -6,6 +6,8 @@ pub struct ContextAction {
     pub label: String,
     pub dangerous: bool,
     pub shortcut: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<ContextAction>>,
 }
 
 impl ContextAction {
@@ -15,6 +17,7 @@ impl ContextAction {
             label: label.to_string(),
             dangerous: false,
             shortcut: None,
+            children: None,
         }
     }
 
@@ -24,6 +27,17 @@ impl ContextAction {
             label: label.to_string(),
             dangerous: false,
             shortcut: Some(shortcut.to_string()),
+            children: None,
+        }
+    }
+
+    pub fn submenu(id: &str, label: &str, children: Vec<ContextAction>) -> Self {
+        Self {
+            id: id.to_string(),
+            label: label.to_string(),
+            dangerous: false,
+            shortcut: None,
+            children: Some(children),
         }
     }
 }
@@ -41,7 +55,8 @@ pub fn context_menu_actions(
     let in_recent = matches!(view.as_deref(), Some("recent"));
     let in_starred = matches!(view.as_deref(), Some("starred"));
     let allow_new_folder = !in_trash && !in_recent && !in_starred;
-    let _ = (kind, starred); // placeholders for future per-kind menus
+    let single_file = count == 1 && matches!(kind.as_deref(), Some("file"));
+    let _ = starred;
 
     // Disable context menu entirely if no entries are selected and clipboard is empty (no paste).
     if count == 0 && !clipboard_has_items {
@@ -52,6 +67,13 @@ pub fn context_menu_actions(
         items.push(ContextAction::new("open-with", "Open with…"));
         items.push(ContextAction::new("open-location", "Open item location"));
         items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
+        if single_file {
+            items.push(ContextAction::submenu(
+                "tools",
+                "Tools",
+                vec![ContextAction::new("check-duplicates", "Check for Duplicates")],
+            ));
+        }
         items.push(ContextAction::with_shortcut(
             "properties",
             "Properties",
@@ -127,6 +149,13 @@ pub fn context_menu_actions(
         items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
     }
     items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
+    if single_file {
+        items.push(ContextAction::submenu(
+            "tools",
+            "Tools",
+            vec![ContextAction::new("check-duplicates", "Check for Duplicates")],
+        ));
+    }
     items.push(ContextAction::new("divider-1", "---"));
     if !in_starred {
         items.push(ContextAction::with_shortcut("rename", "Rename…", "F2"));

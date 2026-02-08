@@ -6,6 +6,7 @@ import { createAdvancedRenameModal } from '../modals/advancedRenameModal'
 import { createNewFolderModal } from '../modals/newFolderModal'
 import { createNewFileModal } from '../modals/newFileModal'
 import { createCompressModal } from '../modals/compressModal'
+import { createCheckDuplicatesModal } from '../modals/checkDuplicatesModal'
 import type { Entry } from '../types'
 
 type Deps = {
@@ -73,9 +74,13 @@ export const useModalsController = ({
   })
   const compressState = compressModal.state
 
+  const checkDuplicatesModal = createCheckDuplicatesModal({ parentPath })
+  const checkDuplicatesState = checkDuplicatesModal.state
+
   const actions = {
     openWith: (entry: Entry) => openWithModal.open(entry),
     openCompress: (entries: Entry[], defaultArchiveBase: string) => compressModal.open(entries, defaultArchiveBase),
+    openCheckDuplicates: (entry: Entry) => checkDuplicatesModal.open(entry),
     startRename: (entry: Entry) => renameModal.open(entry),
     startAdvancedRename: (entries: Entry[]) => advancedRenameModal.open(entries),
     confirmDelete: (entries: Entry[]) => deleteModal.open(entries),
@@ -99,6 +104,8 @@ export const useModalsController = ({
     newFolderState,
     compressModal,
     compressState,
+    checkDuplicatesModal,
+    checkDuplicatesState,
     actions,
   }
 }

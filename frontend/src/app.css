@@ -535,6 +535,20 @@ select:focus {
   line-height: var(--modal-line-height);
 }
 
+.modal button.icon-btn {
+  min-height: 28px;
+  min-width: 28px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal button.icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 .modal button.secondary {
   background: transparent;
 }
