@@ -330,6 +330,7 @@
     font-weight: var(--font-weight-base);
     color: var(--fg-strong);
     line-height: 1.3;
+    max-height: calc(1.3em * 3);
     display: -webkit-box;
     -webkit-line-clamp: 3;
     line-clamp: 3;
@@ -340,9 +341,6 @@
     max-width: 100%;
     width: 100%;
     text-align: center;
-    /* Mykere avkutt på siste linje */
-    mask-image: linear-gradient(180deg, #000 75%, transparent 100%);
-    -webkit-mask-image: linear-gradient(180deg, #000 75%, transparent 100%);
   }
 
   .card.dragging * {
