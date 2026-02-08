@@ -2,7 +2,11 @@
   import ModalShell from '../../../ui/ModalShell.svelte'
   import { autoSelectOnOpen } from '../../../ui/modalUtils'
   import type { Entry } from '../types'
-  import type { AdvancedRenamePayload, SequenceMode } from '../modals/advancedRenameModal'
+  import type {
+    AdvancedRenamePayload,
+    SequenceMode,
+    SequencePlacement,
+  } from '../modals/advancedRenameModal'
   import { computeAdvancedRenamePreview } from '../modals/advancedRenameUtils'
 
   export let open = false
@@ -13,6 +17,7 @@
   export let suffix = ''
   export let caseSensitive = true
   export let sequenceMode: SequenceMode = 'none'
+  export let sequencePlacement: SequencePlacement = 'end'
   export let sequenceStart = 1
   export let sequenceStep = 1
   export let sequencePad = 2
@@ -36,6 +41,7 @@
       suffix,
       caseSensitive,
       sequenceMode,
+      sequencePlacement,
       sequenceStart: Number(sequenceStart),
       sequenceStep: Number(sequenceStep),
       sequencePad: Number(sequencePad),
@@ -61,6 +67,7 @@
       suffix,
       caseSensitive,
       sequenceMode,
+      sequencePlacement,
       sequenceStart,
       sequenceStep,
       sequencePad,
@@ -140,6 +147,33 @@
                 <input type="radio" name="seq-mode" value="alpha" bind:group={sequenceMode} on:change={handleChange} />
                 <span>Alphanumeric</span>
               </label>
+              <div class="field sequence-position">
+                <span>Position</span>
+                <div class="sequence-position-options">
+                  <label class="radio">
+                    <input
+                      type="radio"
+                      name="seq-placement"
+                      value="start"
+                      bind:group={sequencePlacement}
+                      on:change={handleChange}
+                      disabled={sequenceMode === 'none'}
+                    />
+                    <span>Start</span>
+                  </label>
+                  <label class="radio">
+                    <input
+                      type="radio"
+                      name="seq-placement"
+                      value="end"
+                      bind:group={sequencePlacement}
+                      on:change={handleChange}
+                      disabled={sequenceMode === 'none'}
+                    />
+                    <span>End</span>
+                  </label>
+                </div>
+              </div>
               <div class="sequence-grid">
                 <label>
                   <span>Start</span>
@@ -232,8 +266,9 @@
 
   .field-row {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(65px, 1fr));
     gap: var(--modal-field-gap);
+    margin-top: var(--modal-field-gap);
   }
 
   .checkbox,
@@ -253,13 +288,19 @@
 
   .sequence-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(65px, 1fr));
     gap: var(--modal-field-gap);
   }
 
   .sequence-grid input {
     width: 100%;
     box-sizing: border-box;
+  }
+
+  .sequence-position-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--modal-field-gap);
   }
 
   .preview-box {

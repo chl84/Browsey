@@ -142,6 +142,7 @@
   export let advancedRenameSuffix = ''
   export let advancedRenameCaseSensitive = true
   export let advancedRenameSequenceMode: 'none' | 'numeric' | 'alpha' = 'none'
+  export let advancedRenameSequencePlacement: 'start' | 'end' = 'end'
   export let advancedRenameSequenceStart = 1
   export let advancedRenameSequenceStep = 1
   export let advancedRenameSequencePad = 2
@@ -377,6 +378,7 @@
   suffix={advancedRenameSuffix}
   caseSensitive={advancedRenameCaseSensitive}
   sequenceMode={advancedRenameSequenceMode}
+  sequencePlacement={advancedRenameSequencePlacement}
   sequenceStart={advancedRenameSequenceStart}
   sequenceStep={advancedRenameSequenceStep}
   sequencePad={advancedRenameSequencePad}
