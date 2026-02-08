@@ -25,19 +25,20 @@
     pasteClipboardPreview,
   } from './features/explorer/services/clipboard'
   import { undoAction, redoAction } from './features/explorer/services/history'
-import { deleteEntry, deleteEntries, moveToTrashMany } from './features/explorer/services/trash'
-import type { Entry, Partition, SortField, Density } from './features/explorer/types'
+  import { cancelTask } from './features/explorer/services/activity'
+  import { deleteEntry, deleteEntries, moveToTrashMany } from './features/explorer/services/trash'
+  import type { Entry, Partition, SortField, Density } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
   import { setClipboardState, clearClipboardState } from './features/explorer/stores/clipboardState'
   import { createContextMenus } from './features/explorer/hooks/useContextMenus'
   import type { ContextAction } from './features/explorer/hooks/useContextMenus'
-import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
-import { createSelectionBox } from './features/explorer/hooks/selectionBox'
-import { hitTestGridVirtualized } from './features/explorer/helpers/lassoHitTest'
-import { createViewSwitchAnchor } from './features/explorer/hooks/viewAnchor'
-import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
-import { moveCaret } from './features/explorer/helpers/navigationController'
+  import { createContextActions, type CurrentView } from './features/explorer/hooks/useContextActions'
+  import { createSelectionBox } from './features/explorer/hooks/selectionBox'
+  import { hitTestGridVirtualized } from './features/explorer/helpers/lassoHitTest'
+  import { createViewSwitchAnchor } from './features/explorer/hooks/viewAnchor'
+  import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
+  import { moveCaret } from './features/explorer/helpers/navigationController'
   import { createSelectionMemory } from './features/explorer/selectionMemory'
   import { loadDefaultView, storeDefaultView } from './features/explorer/services/settings'
   import { createGridKeyboardHandler } from './features/explorer/hooks/useGridHandlers'
@@ -46,12 +47,15 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   import { allowedCtrlKeys } from './features/explorer/config/hotkeys'
   import DragGhost from './ui/DragGhost.svelte'
   import TextContextMenu from './ui/TextContextMenu.svelte'
-import { createNativeFileDrop } from './features/explorer/hooks/useNativeFileDrop'
-import { startNativeFileDrag } from './features/explorer/services/nativeDrag'
-import { checkDuplicates } from './features/explorer/services/duplicates'
-import ConflictModal from './ui/ConflictModal.svelte'
-import SettingsModal from './features/settings/SettingsModal.svelte'
-import './features/explorer/ExplorerLayout.css'
+  import { createNativeFileDrop } from './features/explorer/hooks/useNativeFileDrop'
+  import { startNativeFileDrag } from './features/explorer/services/nativeDrag'
+  import {
+    checkDuplicatesStream,
+    type DuplicateScanProgress,
+  } from './features/explorer/services/duplicates'
+  import ConflictModal from './ui/ConflictModal.svelte'
+  import SettingsModal from './features/settings/SettingsModal.svelte'
+  import './features/explorer/ExplorerLayout.css'
 
   // --- Types --------------------------------------------------------------
   type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
@@ -1312,7 +1316,7 @@ import './features/explorer/ExplorerLayout.css'
       if ($checkDuplicatesState.open) {
         event.preventDefault()
         event.stopPropagation()
-        checkDuplicatesModal.close()
+        closeCheckDuplicatesModal()
         return
       }
       if ($newFolderState.open) {
@@ -1504,6 +1508,7 @@ import './features/explorer/ExplorerLayout.css'
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleSettingsHotkey)
+    void stopDuplicateScan(true)
   })
 
   const openBookmarkModal = async (entry: Entry) => {
@@ -1654,6 +1659,52 @@ import './features/explorer/ExplorerLayout.css'
     parentPath,
     computeDirStats,
   })
+
+  let duplicateScanToken = 0
+  let activeDuplicateProgressEvent: string | null = null
+  let unlistenDuplicateProgress: UnlistenFn | null = null
+
+  const duplicateProgressLabel = (payload: DuplicateScanProgress) => {
+    if (payload.phase === 'collecting') {
+      return `Scanning files: ${payload.scannedFiles} checked, ${payload.candidateFiles} candidate${payload.candidateFiles === 1 ? '' : 's'}`
+    }
+    if (payload.phase === 'comparing') {
+      return `Comparing bytes: ${payload.comparedFiles}/${payload.candidateFiles}`
+    }
+    return `Finished: ${payload.matchedFiles} identical ${payload.matchedFiles === 1 ? 'file' : 'files'}`
+  }
+
+  const cleanupDuplicateProgressListener = async () => {
+    if (unlistenDuplicateProgress) {
+      await unlistenDuplicateProgress()
+      unlistenDuplicateProgress = null
+    }
+    activeDuplicateProgressEvent = null
+  }
+
+  const stopDuplicateScan = async (invalidate = true) => {
+    if (invalidate) {
+      duplicateScanToken += 1
+    }
+    const cancelId = activeDuplicateProgressEvent
+    checkDuplicatesModal.stopScan()
+    if (cancelId) {
+      try {
+        await cancelTask(cancelId)
+      } catch {
+        // Task likely already completed or cleaned up.
+      }
+    }
+    await cleanupDuplicateProgressListener()
+  }
+
+  const closeCheckDuplicatesModal = () => {
+    void stopDuplicateScan(true)
+      .catch(() => {})
+      .finally(() => {
+        checkDuplicatesModal.close()
+      })
+  }
 
 
   const isExtractableArchive = (entry: Entry) => {
@@ -1844,21 +1895,72 @@ import './features/explorer/ExplorerLayout.css'
       showToast('Choose a start folder first')
       return
     }
+    if ($checkDuplicatesState.scanning) {
+      return
+    }
+
+    await stopDuplicateScan(true)
+    const runToken = ++duplicateScanToken
+    const progressEvent = `duplicates-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    activeDuplicateProgressEvent = progressEvent
+    checkDuplicatesModal.startScan()
 
     try {
-      const paths = await checkDuplicates(target.path, searchRoot)
-      checkDuplicatesModal.setDuplicatePaths(paths)
-      if (paths.length === 0) {
-        showToast('No identical files found', 1600)
-      } else {
-        showToast(
-          `Found ${paths.length} identical ${paths.length === 1 ? 'file' : 'files'}`,
-          1800,
-        )
+      unlistenDuplicateProgress = await listen<DuplicateScanProgress>(progressEvent, (event) => {
+        if (runToken !== duplicateScanToken) {
+          return
+        }
+
+        const payload = event.payload
+        checkDuplicatesModal.setProgress(payload.percent, duplicateProgressLabel(payload))
+
+        if (payload.error) {
+          checkDuplicatesModal.failScan(payload.error)
+          showToast(`Duplicate scan failed: ${payload.error}`)
+          if (activeDuplicateProgressEvent === progressEvent) {
+            void cleanupDuplicateProgressListener()
+          }
+          return
+        }
+
+        if (!payload.done) {
+          return
+        }
+
+        const paths = payload.duplicates ?? []
+        checkDuplicatesModal.finishScan(paths)
+        if (paths.length === 0) {
+          showToast('No identical files found', 1600)
+        } else {
+          showToast(
+            `Found ${paths.length} identical ${paths.length === 1 ? 'file' : 'files'}`,
+            1800,
+          )
+        }
+
+        if (activeDuplicateProgressEvent === progressEvent) {
+          void cleanupDuplicateProgressListener()
+        }
+      })
+
+      if (runToken !== duplicateScanToken) {
+        await cleanupDuplicateProgressListener()
+        return
       }
+
+      await checkDuplicatesStream({
+        targetPath: target.path,
+        startPath: searchRoot,
+        progressEvent,
+      })
     } catch (err) {
+      if (runToken !== duplicateScanToken) {
+        return
+      }
       const msg = err instanceof Error ? err.message : String(err)
+      checkDuplicatesModal.failScan(msg)
       showToast(`Duplicate scan failed: ${msg}`)
+      await cleanupDuplicateProgressListener()
     }
   }
 
@@ -2650,10 +2752,14 @@ import './features/explorer/ExplorerLayout.css'
   checkDuplicatesTarget={$checkDuplicatesState.target}
   checkDuplicatesSearchRoot={$checkDuplicatesState.searchRoot}
   checkDuplicatesDuplicates={$checkDuplicatesState.duplicates}
+  checkDuplicatesScanning={$checkDuplicatesState.scanning}
+  checkDuplicatesProgressPercent={$checkDuplicatesState.progressPercent}
+  checkDuplicatesProgressLabel={$checkDuplicatesState.progressLabel}
+  checkDuplicatesError={$checkDuplicatesState.error}
   onChangeCheckDuplicatesSearchRoot={checkDuplicatesModal.setSearchRoot}
   onCopyCheckDuplicates={copyCheckDuplicatesList}
   onSearchCheckDuplicates={searchCheckDuplicates}
-  onCloseCheckDuplicates={checkDuplicatesModal.close}
+  onCloseCheckDuplicates={closeCheckDuplicatesModal}
   newFolderOpen={$newFolderState.open}
   bind:newFolderName
   newFolderError={$newFolderState.error}
