@@ -97,7 +97,10 @@ export const computeAdvancedRenamePreview = (
         next = next.replaceAll('$n', seq)
       } else {
         const { stem, ext } = splitExt(next)
-        next = `${stem}${seq}${ext}`
+        next =
+          payload.sequencePlacement === 'start'
+            ? `${seq}${stem}${ext}`
+            : `${stem}${seq}${ext}`
       }
     }
 

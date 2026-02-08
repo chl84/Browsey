@@ -4,6 +4,7 @@ import { renameEntries } from '../services/files'
 import { computeAdvancedRenamePreview } from './advancedRenameUtils'
 
 export type SequenceMode = 'none' | 'numeric' | 'alpha'
+export type SequencePlacement = 'start' | 'end'
 
 export type AdvancedRenamePayload = {
   regex: string
@@ -12,6 +13,7 @@ export type AdvancedRenamePayload = {
   suffix: string
   caseSensitive: boolean
   sequenceMode: SequenceMode
+  sequencePlacement: SequencePlacement
   sequenceStart: number
   sequenceStep: number
   sequencePad: number
@@ -39,6 +41,7 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast }: Deps) =>
     suffix: '',
     caseSensitive: true,
     sequenceMode: 'none',
+    sequencePlacement: 'end',
     sequenceStart: 1,
     sequenceStep: 1,
     sequencePad: 2,
@@ -55,6 +58,7 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast }: Deps) =>
       suffix: '',
       caseSensitive: true,
       sequenceMode: 'none',
+      sequencePlacement: 'end',
       sequenceStart: 1,
       sequenceStep: 1,
       sequencePad: 2,
