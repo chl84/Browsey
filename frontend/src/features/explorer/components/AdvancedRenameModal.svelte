@@ -283,7 +283,7 @@
     flex: 1 1 360px;
   }
 
-  @media (min-width: 900px) {
+  @media (min-width: 700px) {
     .layout-grid {
       flex-wrap: nowrap;
       align-items: stretch;
@@ -300,7 +300,7 @@
     }
   }
 
-  @media (max-width: 899px) and (max-height: 760px) {
+  @media (max-width: 699px) and (max-height: 760px) {
     .preview-box {
       height: 30vh;
       max-height: 30vh;
