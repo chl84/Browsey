@@ -363,6 +363,13 @@ a {
   color: var(--fg-muted);
 }
 
+.modal .field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .modal input[type='text'],
 .modal input[type='search'],
 .modal input[type='number'],

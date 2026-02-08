@@ -73,9 +73,9 @@
     {/if}
 
     <div class="field">
-      <span>Identical files</span>
-      {#if duplicates.length > 0}
-        <div class="actions">
+      <div class="field-head">
+        <span>Identical files</span>
+        {#if duplicates.length > 0}
           <button
             type="button"
             class="secondary icon-btn"
@@ -88,7 +88,9 @@
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
           </button>
-        </div>
+        {/if}
+      </div>
+      {#if duplicates.length > 0}
         <div class="path duplicate-preview">
           {#each duplicatePreviewLines as line, index}
             <div class="duplicate-preview-line" class:summary={hasSummaryLine && index === duplicatePreviewLines.length - 1}>

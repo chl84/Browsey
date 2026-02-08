@@ -181,6 +181,7 @@ fn collect_same_size_files(
     let mut processed_entries = 0u64;
     let mut discovered_entries = 0u64;
     let mut since_progress = 0u64;
+    let mut last_collect_percent = 0u8;
 
     while let Some(dir) = stack.pop() {
         if is_cancelled(cancel_token) {
@@ -258,8 +259,11 @@ fn collect_same_size_files(
 
             if since_progress >= COLLECT_PROGRESS_INTERVAL {
                 since_progress = 0;
+                let raw_percent = collect_percent(processed_entries, discovered_entries);
+                let percent = raw_percent.max(last_collect_percent);
+                last_collect_percent = percent;
                 on_progress(ScanProgress::collecting(
-                    collect_percent(processed_entries, discovered_entries),
+                    percent,
                     scanned_files,
                     out.len() as u64,
                 ));
@@ -268,7 +272,7 @@ fn collect_same_size_files(
     }
 
     on_progress(ScanProgress::collecting(
-        COLLECT_PHASE_PERCENT,
+        COLLECT_PHASE_PERCENT.max(last_collect_percent),
         scanned_files,
         out.len() as u64,
     ));
