@@ -695,8 +695,8 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   let gridCardWidth = 128
   let gridRowHeight = 136
   let gridGap = 6
-  // Keep in sync with the left padding in .grid (FileGrid.svelte)
-  const GRID_PADDING = 15
+  // Keep in sync with .grid padding (FileGrid.svelte)
+  const GRID_PADDING = 20
   const GRID_OVERSCAN = 2
   const GRID_WHEEL_SCALE = 0.2
   const GRID_WHEEL_DECAY = 0.85
