@@ -112,15 +112,17 @@
               <div class="muted">Use $1, $2 for capture groups if regex is set.</div>
             </label>
 
-            <label class="field">
-              <span>Prefix</span>
-              <input type="text" autocomplete="off" bind:value={prefix} on:input={handleChange} />
-            </label>
+            <div class="field-row">
+              <label class="field">
+                <span>Prefix</span>
+                <input type="text" autocomplete="off" bind:value={prefix} on:input={handleChange} />
+              </label>
 
-            <label class="field">
-              <span>Suffix</span>
-              <input type="text" autocomplete="off" bind:value={suffix} on:input={handleChange} />
-            </label>
+              <label class="field">
+                <span>Suffix</span>
+                <input type="text" autocomplete="off" bind:value={suffix} on:input={handleChange} />
+              </label>
+            </div>
           </div>
 
           <div class="panel">
@@ -219,12 +221,18 @@
     flex-direction: column;
     gap: var(--modal-gap);
     min-height: 0;
-    flex: 1 1 360px;
+    flex: 1 1 240px;
   }
 
   .field {
     display: flex;
     flex-direction: column;
+    gap: var(--modal-field-gap);
+  }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--modal-field-gap);
   }
 
@@ -261,9 +269,8 @@
     background: var(--bg-raised);
     width: 100%;
     box-sizing: border-box;
-    height: auto;
+    height: 50vh;
     max-height: 50vh;
-    min-height: calc(var(--modal-input-min-height) * 4);
     overflow: auto;
   }
 
@@ -279,15 +286,30 @@
   @media (min-width: 900px) {
     .layout-grid {
       flex-wrap: nowrap;
+      align-items: stretch;
     }
     .preview-panel {
       margin-top: 0;
+      min-height: 0;
+    }
+    .preview-box {
+      height: auto;
+      max-height: none;
+      min-height: 0;
+      flex: 1 1 auto;
     }
   }
 
-  @media (max-width: 899px) {
+  @media (max-width: 899px) and (max-height: 760px) {
     .preview-box {
+      height: 30vh;
       max-height: 30vh;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .field-row {
+      grid-template-columns: 1fr;
     }
   }
 
