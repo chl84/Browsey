@@ -670,7 +670,11 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
       recomputeGrid()
       const entriesList = get(filteredEntries)
       if (entriesList.length > 0 && get(visibleEntries).length === 0 && gridElRef) {
-        const maxTop = Math.max(0, get(gridTotalHeight) - gridElRef.clientHeight)
+        const maxTop = Math.max(
+          0,
+          get(gridTotalHeight) - gridElRef.clientHeight,
+          gridElRef.scrollHeight - gridElRef.clientHeight
+        )
         gridElRef.scrollTop = Math.min(gridElRef.scrollTop, maxTop)
         recomputeGrid()
       }
@@ -703,7 +707,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   let gridCardWidth = 128
   let gridRowHeight = 136
   let gridGap = 6
-  const GRID_OVERSCAN = 2
+  const GRID_OVERSCAN = 4
   const GRID_WHEEL_SCALE = 0.2
   const GRID_WHEEL_DECAY = 0.85
   const GRID_WHEEL_STOP = 0.05
