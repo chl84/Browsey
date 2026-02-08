@@ -1,5 +1,6 @@
 //! Recursive search command that decorates entries with starred state.
 
+use super::tasks::CancelState;
 use crate::{
     commands::fs::expand_path,
     db,
@@ -10,6 +11,7 @@ use crate::{
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::atomic::Ordering;
 use tauri::Emitter;
 use tracing::warn;
 
@@ -55,12 +57,14 @@ pub struct SearchProgress {
 #[tauri::command]
 pub fn search_stream(
     app: tauri::AppHandle,
+    cancel: tauri::State<'_, CancelState>,
     path: Option<String>,
     query: String,
     sort: Option<SortSpec>,
     progress_event: Option<String>,
 ) -> Result<(), String> {
     let progress_event = progress_event.ok_or_else(|| "progress_event is required".to_string())?;
+    let cancel_state = cancel.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let send = |entries: Vec<FsEntry>, done: bool, error: Option<String>| {
             let payload = SearchProgress {
@@ -70,6 +74,14 @@ pub fn search_stream(
             };
             let _ = app.emit(&progress_event, payload);
         };
+        let cancel_guard = match cancel_state.register(progress_event.clone()) {
+            Ok(g) => g,
+            Err(e) => {
+                send(Vec::new(), true, Some(e));
+                return;
+            }
+        };
+        let cancel_token = cancel_guard.token();
 
         let needle = query.trim();
         if needle.is_empty() {
@@ -112,6 +124,9 @@ pub fn search_stream(
         const BATCH: usize = 256;
 
         while let Some(dir) = stack.pop() {
+            if cancel_token.load(Ordering::Relaxed) {
+                return;
+            }
             let iter = match std::fs::read_dir(&dir) {
                 Ok(i) => i,
                 Err(err) => {
@@ -125,6 +140,9 @@ pub fn search_stream(
             };
 
             for entry in iter.flatten() {
+                if cancel_token.load(Ordering::Relaxed) {
+                    return;
+                }
                 let path = entry.path();
                 let file_type = match entry.file_type() {
                     Ok(ft) => ft,
@@ -163,7 +181,13 @@ pub fn search_stream(
             send(all[last_sent..].to_vec(), false, None);
         }
 
+        if cancel_token.load(Ordering::Relaxed) {
+            return;
+        }
         sort_entries(&mut all, sort);
+        if cancel_token.load(Ordering::Relaxed) {
+            return;
+        }
         send(all, true, None);
     });
 
