@@ -564,11 +564,18 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
           cancelAnimationFrame(searchRaf)
           searchRaf = null
         }
-        if (evt.payload.entries && evt.payload.entries.length > 0) {
-          searchBuffer.push(...mapNameLower(evt.payload.entries))
-        }
-        flushBuffer()
+        searchBuffer = []
+        const finalEntries =
+          evt.payload.entries && evt.payload.entries.length > 0
+            ? mapNameLower(evt.payload.entries)
+            : []
+        entries.set(finalEntries)
+        callbacks.onEntriesChanged?.()
         loading.set(false)
+        if (searchUnlisten) {
+          searchUnlisten()
+          searchUnlisten = null
+        }
         return
       }
       if (evt.payload.entries && evt.payload.entries.length > 0) {
