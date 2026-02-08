@@ -28,6 +28,7 @@ type Deps = {
   openProperties: (entries: Entry[]) => Promise<void> | void
   openLocation: (entry: Entry) => Promise<void> | void
   openCompress: (entries: Entry[]) => void
+  openCheckDuplicates: (entry: Entry) => void
   extractEntries: (entries: Entry[]) => Promise<void>
 }
 
@@ -48,6 +49,7 @@ export const createContextActions = (deps: Deps) => {
     openProperties,
     openLocation,
     openCompress,
+    openCheckDuplicates,
     extractEntries,
   } = deps
 
@@ -151,6 +153,15 @@ export const createContextActions = (deps: Deps) => {
 
     if (id === 'compress') {
       openCompress(selectionEntries)
+      return
+    }
+
+    if (id === 'check-duplicates') {
+      if (selectionEntries.length !== 1 || selectionEntries[0].kind !== 'file') {
+        showToast('Check for Duplicates is available for one file at a time')
+        return
+      }
+      openCheckDuplicates(selectionEntries[0])
       return
     }
 

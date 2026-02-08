@@ -1,7 +1,13 @@
 import { writable } from 'svelte/store'
 import type { Entry } from '../types'
 
-export type ContextAction = { id: string; label: string; shortcut?: string; dangerous?: boolean }
+export type ContextAction = {
+  id: string
+  label: string
+  shortcut?: string
+  dangerous?: boolean
+  children?: ContextAction[]
+}
 
 type ContextMenuState = {
   open: boolean

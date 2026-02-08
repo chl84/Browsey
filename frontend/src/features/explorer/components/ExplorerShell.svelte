@@ -15,6 +15,7 @@
   import BookmarkModal from './BookmarkModal.svelte'
   import Toast from '../../../ui/Toast.svelte'
   import CompressModal from './CompressModal.svelte'
+  import CheckDuplicatesModal from './CheckDuplicatesModal.svelte'
   import type { Column, Entry, Partition, SortField } from '../types'
   import type { ContextAction } from '../hooks/useContextMenus'
   import type { OpenWithApp, OpenWithChoice } from '../services/openWith'
@@ -156,6 +157,14 @@
   export let compressError = ''
   export let onConfirmCompress: (name: string, level: number) => void = () => {}
   export let onCancelCompress: () => void = () => {}
+  export let checkDuplicatesOpen = false
+  export let checkDuplicatesTarget: Entry | null = null
+  export let checkDuplicatesSearchRoot = ''
+  export let checkDuplicatesDuplicates: string[] = []
+  export let onChangeCheckDuplicatesSearchRoot: (value: string) => void = () => {}
+  export let onCopyCheckDuplicates: () => void | Promise<void> = () => {}
+  export let onSearchCheckDuplicates: () => void | Promise<void> = () => {}
+  export let onCloseCheckDuplicates: () => void = () => {}
   export let newFolderOpen = false
   export let newFolderName = ''
   export let newFolderError = ''
@@ -394,6 +403,16 @@
   error={compressError}
   onConfirm={onConfirmCompress}
   onCancel={onCancelCompress}
+/>
+<CheckDuplicatesModal
+  open={checkDuplicatesOpen}
+  target={checkDuplicatesTarget}
+  searchRoot={checkDuplicatesSearchRoot}
+  duplicates={checkDuplicatesDuplicates}
+  onChangeSearchRoot={onChangeCheckDuplicatesSearchRoot}
+  onCopyList={onCopyCheckDuplicates}
+  onSearch={onSearchCheckDuplicates}
+  onClose={onCloseCheckDuplicates}
 />
 <NewFolderModal
   open={newFolderOpen}

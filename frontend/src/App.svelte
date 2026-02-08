@@ -46,11 +46,12 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   import { allowedCtrlKeys } from './features/explorer/config/hotkeys'
   import DragGhost from './ui/DragGhost.svelte'
   import TextContextMenu from './ui/TextContextMenu.svelte'
-  import { createNativeFileDrop } from './features/explorer/hooks/useNativeFileDrop'
-  import { startNativeFileDrag } from './features/explorer/services/nativeDrag'
-  import ConflictModal from './ui/ConflictModal.svelte'
-  import SettingsModal from './features/settings/SettingsModal.svelte'
-  import './features/explorer/ExplorerLayout.css'
+import { createNativeFileDrop } from './features/explorer/hooks/useNativeFileDrop'
+import { startNativeFileDrag } from './features/explorer/services/nativeDrag'
+import { checkDuplicates } from './features/explorer/services/duplicates'
+import ConflictModal from './ui/ConflictModal.svelte'
+import SettingsModal from './features/settings/SettingsModal.svelte'
+import './features/explorer/ExplorerLayout.css'
 
   // --- Types --------------------------------------------------------------
   type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
@@ -1308,6 +1309,12 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
         compressModal.close()
         return
       }
+      if ($checkDuplicatesState.open) {
+        event.preventDefault()
+        event.stopPropagation()
+        checkDuplicatesModal.close()
+        return
+      }
       if ($newFolderState.open) {
         event.preventDefault()
         event.stopPropagation()
@@ -1635,6 +1642,8 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     newFolderState,
     compressModal,
     compressState,
+    checkDuplicatesModal,
+    checkDuplicatesState,
     actions: modalActions,
   } = useModalsController({
     activityApi,
@@ -1770,6 +1779,9 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
       compressName = modalActions.openCompress(entries, get(archiveName))
       compressLevel = get(archiveLevel)
     },
+    openCheckDuplicates: (entry) => {
+      modalActions.openCheckDuplicates(entry)
+    },
     extractEntries: (entries) => extractEntries(entries),
     startRename: (entry) => {
       renameValue = entry.name
@@ -1786,6 +1798,69 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
       void openEntryLocation(entry)
     },
   })
+
+  const copyCheckDuplicatesList = async () => {
+    const list = $checkDuplicatesState.duplicates
+    if (list.length === 0) return
+    const payload = list.join('\n')
+    try {
+      await navigator.clipboard.writeText(payload)
+      showToast('Duplicate list copied', 1500)
+      return
+    } catch {
+      // Fallback for environments with blocked clipboard API.
+    }
+
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = payload
+      ta.setAttribute('readonly', 'true')
+      ta.style.position = 'fixed'
+      ta.style.left = '-9999px'
+      ta.style.top = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+      if (!ok) {
+        throw new Error('copy command failed')
+      }
+      showToast('Duplicate list copied', 1500)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showToast(`Copy failed: ${msg}`)
+    }
+  }
+
+  const searchCheckDuplicates = async () => {
+    const target = $checkDuplicatesState.target
+    const searchRoot = $checkDuplicatesState.searchRoot.trim()
+
+    if (!target) {
+      showToast('No target file selected')
+      return
+    }
+    if (!searchRoot) {
+      showToast('Choose a start folder first')
+      return
+    }
+
+    try {
+      const paths = await checkDuplicates(target.path, searchRoot)
+      checkDuplicatesModal.setDuplicatePaths(paths)
+      if (paths.length === 0) {
+        showToast('No identical files found', 1600)
+      } else {
+        showToast(
+          `Found ${paths.length} identical ${paths.length === 1 ? 'file' : 'files'}`,
+          1800,
+        )
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showToast(`Duplicate scan failed: ${msg}`)
+    }
+  }
 
   const handleOpenEntry = async (entry: Entry) => {
     if (entry.kind === 'dir') {
@@ -2571,6 +2646,14 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   compressError={$compressState.error}
   onConfirmCompress={confirmCompress}
   onCancelCompress={closeCompress}
+  checkDuplicatesOpen={$checkDuplicatesState.open}
+  checkDuplicatesTarget={$checkDuplicatesState.target}
+  checkDuplicatesSearchRoot={$checkDuplicatesState.searchRoot}
+  checkDuplicatesDuplicates={$checkDuplicatesState.duplicates}
+  onChangeCheckDuplicatesSearchRoot={checkDuplicatesModal.setSearchRoot}
+  onCopyCheckDuplicates={copyCheckDuplicatesList}
+  onSearchCheckDuplicates={searchCheckDuplicates}
+  onCloseCheckDuplicates={checkDuplicatesModal.close}
   newFolderOpen={$newFolderState.open}
   bind:newFolderName
   newFolderError={$newFolderState.error}

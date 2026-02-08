@@ -225,6 +225,7 @@ fn main() {
             purge_trash_items,
             create_folder,
             compress_entries,
+            check_duplicates,
             cancel_task,
             get_permissions,
             set_permissions,
