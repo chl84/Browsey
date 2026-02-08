@@ -60,7 +60,7 @@ pub fn search_stream(
     cancel: tauri::State<'_, CancelState>,
     path: Option<String>,
     query: String,
-    sort: Option<SortSpec>,
+    _sort: Option<SortSpec>,
     progress_event: Option<String>,
 ) -> Result<(), String> {
     let progress_event = progress_event.ok_or_else(|| "progress_event is required".to_string())?;
@@ -117,11 +117,10 @@ pub fn search_stream(
         };
 
         let mut stack = vec![target];
-        let mut all = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
-        let mut last_sent: usize = 0;
         let needle_lc = needle.to_lowercase();
         const BATCH: usize = 256;
+        let mut batch: Vec<FsEntry> = Vec::with_capacity(BATCH);
 
         while let Some(dir) = stack.pop() {
             if cancel_token.load(Ordering::Relaxed) {
@@ -163,10 +162,9 @@ pub fn search_stream(
                         if star_set.contains(&normalize_key_for_db(&path)) {
                             item.starred = true;
                         }
-                        all.push(item);
-                        if all.len() - last_sent >= BATCH {
-                            send(all[last_sent..].to_vec(), false, None);
-                            last_sent = all.len();
+                        batch.push(item);
+                        if batch.len() >= BATCH {
+                            send(std::mem::take(&mut batch), false, None);
                         }
                     }
                 }
@@ -177,18 +175,14 @@ pub fn search_stream(
             }
         }
 
-        if last_sent < all.len() {
-            send(all[last_sent..].to_vec(), false, None);
+        if !batch.is_empty() {
+            send(batch, false, None);
         }
 
         if cancel_token.load(Ordering::Relaxed) {
             return;
         }
-        sort_entries(&mut all, sort);
-        if cancel_token.load(Ordering::Relaxed) {
-            return;
-        }
-        send(all, true, None);
+        send(Vec::new(), true, None);
     });
 
     Ok(())
