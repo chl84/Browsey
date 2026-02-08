@@ -161,6 +161,10 @@
   export let checkDuplicatesTarget: Entry | null = null
   export let checkDuplicatesSearchRoot = ''
   export let checkDuplicatesDuplicates: string[] = []
+  export let checkDuplicatesScanning = false
+  export let checkDuplicatesProgressPercent = 0
+  export let checkDuplicatesProgressLabel = ''
+  export let checkDuplicatesError = ''
   export let onChangeCheckDuplicatesSearchRoot: (value: string) => void = () => {}
   export let onCopyCheckDuplicates: () => void | Promise<void> = () => {}
   export let onSearchCheckDuplicates: () => void | Promise<void> = () => {}
@@ -409,6 +413,10 @@
   target={checkDuplicatesTarget}
   searchRoot={checkDuplicatesSearchRoot}
   duplicates={checkDuplicatesDuplicates}
+  scanning={checkDuplicatesScanning}
+  progressPercent={checkDuplicatesProgressPercent}
+  progressLabel={checkDuplicatesProgressLabel}
+  error={checkDuplicatesError}
   onChangeSearchRoot={onChangeCheckDuplicatesSearchRoot}
   onCopyList={onCopyCheckDuplicates}
   onSearch={onSearchCheckDuplicates}

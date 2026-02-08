@@ -6,10 +6,30 @@
   export let target: Entry | null = null
   export let searchRoot = ''
   export let duplicates: string[] = []
+  export let scanning = false
+  export let progressPercent = 0
+  export let progressLabel = ''
+  export let error = ''
   export let onChangeSearchRoot: (value: string) => void = () => {}
   export let onCopyList: () => void | Promise<void> = () => {}
   export let onSearch: () => void | Promise<void> = () => {}
   export let onClose: () => void = () => {}
+
+  const PREVIEW_LIMIT = 3
+
+  const buildDuplicatePreviewLines = (paths: string[]) => {
+    const previewLines = [...paths.slice(0, PREVIEW_LIMIT)]
+    const remaining = paths.length - previewLines.length
+    if (remaining > 0) {
+      previewLines.push(
+        `...and ${remaining} additional matching ${remaining === 1 ? 'file' : 'files'}`,
+      )
+    }
+    return previewLines
+  }
+
+  $: duplicatePreviewLines = buildDuplicatePreviewLines(duplicates)
+  $: hasSummaryLine = duplicates.length > PREVIEW_LIMIT
 </script>
 
 {#if open}
@@ -35,9 +55,22 @@
         type="text"
         autocomplete="off"
         value={searchRoot}
+        disabled={scanning}
         on:input={(e) => onChangeSearchRoot((e.currentTarget as HTMLInputElement).value)}
       />
     </label>
+
+    {#if error}
+      <div class="pill error">{error}</div>
+    {/if}
+
+    {#if scanning || progressLabel}
+      <div class="field">
+        <span>Progress</span>
+        <progress max="100" value={Math.max(0, Math.min(100, progressPercent))}></progress>
+        <p class="muted">{progressLabel || `${progressPercent}%`}</p>
+      </div>
+    {/if}
 
     <div class="field">
       <span>Identical files</span>
@@ -56,14 +89,22 @@
             </svg>
           </button>
         </div>
-        <pre class="path">{duplicates.join('\n')}</pre>
+        <div class="path duplicate-preview">
+          {#each duplicatePreviewLines as line, index}
+            <div class="duplicate-preview-line" class:summary={hasSummaryLine && index === duplicatePreviewLines.length - 1}>
+              {line}
+            </div>
+          {/each}
+        </div>
       {:else}
-        <p class="muted">No identical files yet. Symlinks are ignored.</p>
+        <p class="muted">{scanning ? 'Scanning... symlinks are ignored.' : 'No identical files yet. Symlinks are ignored.'}</p>
       {/if}
     </div>
 
     <div slot="actions">
-      <button type="button" data-initial-focus="1" on:click={() => void onSearch()}>Search</button>
+      <button type="button" data-initial-focus="1" disabled={scanning} on:click={() => void onSearch()}>
+        {scanning ? 'Searching...' : 'Search'}
+      </button>
     </div>
   </ModalShell>
 {/if}

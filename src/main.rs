@@ -226,6 +226,7 @@ fn main() {
             create_folder,
             compress_entries,
             check_duplicates,
+            check_duplicates_stream,
             cancel_task,
             get_permissions,
             set_permissions,

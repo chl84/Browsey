@@ -501,6 +501,25 @@ a {
   resize: vertical;
 }
 
+.modal progress {
+  width: 100%;
+  height: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.modal progress::-webkit-progress-bar {
+  background: var(--bg-raised);
+}
+
+.modal progress::-webkit-progress-value {
+  background: var(--accent-primary);
+}
+
+.modal progress::-moz-progress-bar {
+  background: var(--accent-primary);
+}
+
 .modal input:focus,
 .modal select:focus,
 .modal textarea:focus {
@@ -611,6 +630,24 @@ select:focus {
   padding: 8px;
   border-radius: 0;
   margin: 0;
+}
+
+.modal .duplicate-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.modal .duplicate-preview-line {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal .duplicate-preview-line.summary {
+  color: var(--fg-muted);
 }
 
 /* Shared tooltip styling for custom tooltips */

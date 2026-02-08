@@ -11,6 +11,10 @@ export type CheckDuplicatesState = {
   target: Entry | null
   searchRoot: string
   duplicates: string[]
+  scanning: boolean
+  progressPercent: number
+  progressLabel: string
+  error: string
 }
 
 type Deps = {
@@ -23,6 +27,10 @@ export const createCheckDuplicatesModal = ({ parentPath }: Deps) => {
     target: null,
     searchRoot: '',
     duplicates: [],
+    scanning: false,
+    progressPercent: 0,
+    progressLabel: '',
+    error: '',
   })
 
   const open = (entry: Entry) => {
@@ -31,11 +39,24 @@ export const createCheckDuplicatesModal = ({ parentPath }: Deps) => {
       target: entry,
       searchRoot: parentPath(entry.path),
       duplicates: [],
+      scanning: false,
+      progressPercent: 0,
+      progressLabel: '',
+      error: '',
     })
   }
 
   const close = () => {
-    state.set({ open: false, target: null, searchRoot: '', duplicates: [] })
+    state.set({
+      open: false,
+      target: null,
+      searchRoot: '',
+      duplicates: [],
+      scanning: false,
+      progressPercent: 0,
+      progressLabel: '',
+      error: '',
+    })
   }
 
   const setSearchRoot = (searchRoot: string) => {
@@ -58,6 +79,58 @@ export const createCheckDuplicatesModal = ({ parentPath }: Deps) => {
     setDuplicates(paths.map((path) => ({ path })))
   }
 
+  const startScan = (label = 'Scanning files...') => {
+    state.update((s) => ({
+      ...s,
+      duplicates: [],
+      scanning: true,
+      progressPercent: 0,
+      progressLabel: label,
+      error: '',
+    }))
+  }
+
+  const setProgress = (progressPercent: number, progressLabel: string) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(progressPercent)))
+    state.update((s) => ({
+      ...s,
+      scanning: true,
+      progressPercent: clamped,
+      progressLabel,
+    }))
+  }
+
+  const finishScan = (paths: string[]) => {
+    const deduped = Array.from(
+      new Set(
+        paths
+          .map((path) => path.trim())
+          .filter((path) => path.length > 0),
+      ),
+    )
+    state.update((s) => ({
+      ...s,
+      duplicates: deduped,
+      scanning: false,
+      progressPercent: 100,
+      progressLabel: 'Scan complete',
+      error: '',
+    }))
+  }
+
+  const failScan = (error: string) => {
+    state.update((s) => ({
+      ...s,
+      scanning: false,
+      error,
+      progressLabel: '',
+    }))
+  }
+
+  const stopScan = () => {
+    state.update((s) => ({ ...s, scanning: false }))
+  }
+
   return {
     state,
     open,
@@ -65,5 +138,10 @@ export const createCheckDuplicatesModal = ({ parentPath }: Deps) => {
     setSearchRoot,
     setDuplicates,
     setDuplicatePaths,
+    startScan,
+    setProgress,
+    finishScan,
+    failScan,
+    stopScan,
   }
 }
