@@ -15,6 +15,7 @@ import type {
 import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files'
 import { listDir, listRecent, listStarred, listTrash, watchDir, listMounts, searchStream } from './services/listing'
+import { cancelTask } from './services/activity'
 import { storeColumnWidths, loadSavedColumnWidths } from './services/layout'
 import {
   loadShowHidden,
@@ -121,7 +122,13 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   // Search streaming coordination
   let searchRunId = 0
   let cancelActiveSearch: (() => void) | null = null
+  let activeSearchCancelId: string | null = null
   const invalidateSearchRun = () => {
+    const cancelId = activeSearchCancelId
+    activeSearchCancelId = null
+    if (cancelId) {
+      void cancelTask(cancelId).catch(() => {})
+    }
     searchRunId += 1
     cancelActiveSearch?.()
     cancelActiveSearch = null
@@ -550,9 +557,13 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       if (cancelActiveSearch === cleanup) {
         cancelActiveSearch = null
       }
+      if (activeSearchCancelId === progressEvent) {
+        activeSearchCancelId = null
+      }
     }
 
     cancelActiveSearch = cleanup
+    activeSearchCancelId = progressEvent
 
     if (needle.length === 0) {
       searchActive.set(false)
