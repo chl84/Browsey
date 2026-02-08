@@ -109,7 +109,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const archiveLevel = writable<number>(6)
   const openDestAfterExtract = writable<boolean>(false)
   const videoThumbs = writable<boolean>(true)
-  const hardwareAcceleration = writable<boolean>(false)
+  const hardwareAcceleration = writable<boolean>(true)
   const ffmpegPath = writable<string>('')
   const thumbCacheMb = writable<number>(300)
   const mountsPollMs = writable<number>(8000)

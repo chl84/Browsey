@@ -117,7 +117,7 @@ fn apply_webview_rendering_policy_from_settings() {
     let hardware_acceleration = db::open()
         .ok()
         .and_then(|conn| db::get_setting_bool(&conn, "hardwareAcceleration").ok().flatten())
-        .unwrap_or(false);
+        .unwrap_or(true);
 
     if !hardware_acceleration {
         // Default to software rendering on Linux unless explicitly enabled in settings.
