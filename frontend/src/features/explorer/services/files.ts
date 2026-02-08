@@ -7,6 +7,9 @@ export const openEntry = (entry: Entry) =>
 export const renameEntry = (path: string, newName: string) =>
   invoke<void>('rename_entry', { path, newName })
 
+export const renameEntries = (entries: Array<{ path: string; newName: string }>) =>
+  invoke<string[]>('rename_entries', { entries })
+
 export const createFolder = (base: string, name: string) =>
   invoke<string>('create_folder', { path: base, name })
 

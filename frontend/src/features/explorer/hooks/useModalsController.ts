@@ -45,7 +45,10 @@ export const useModalsController = ({
   })
   const renameState = renameModal.state
 
-  const advancedRenameModal = createAdvancedRenameModal()
+  const advancedRenameModal = createAdvancedRenameModal({
+    reloadCurrent,
+    showToast,
+  })
   const advancedRenameState = advancedRenameModal.state
 
   const newFolderModal = createNewFolderModal({

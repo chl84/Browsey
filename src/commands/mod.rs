@@ -24,8 +24,8 @@ pub use console::open_console;
 pub use decompress::{extract_archive, extract_archives};
 pub use fs::{
     create_file, create_folder, delete_entries, delete_entry, list_trash, move_to_trash,
-    move_to_trash_many, open_entry, purge_trash_items, rename_entry, restore_trash_items,
-    set_hidden,
+    move_to_trash_many, open_entry, purge_trash_items, rename_entries, rename_entry,
+    restore_trash_items, set_hidden,
 };
 pub use library::{list_recent, list_starred, remove_recent, toggle_star};
 pub use listing::{list_dir, watch_dir};
