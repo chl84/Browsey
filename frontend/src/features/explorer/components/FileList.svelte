@@ -84,7 +84,7 @@
       <div class="muted">No items here.</div>
     {:else}
       <div class="spacer" style={`height:${totalHeight}px`}>
-        <div class="row-viewport" style={`transform: translateY(${offsetY}px)`}>
+        <div class="row-viewport" style={`top:${offsetY}px`}>
           {#each visibleEntries as entry, i (entry.path)}
             <FileRow
               {entry}
@@ -124,7 +124,7 @@
     border: none;
     border-radius: 0;
     box-shadow: none;
-    overflow: auto;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     flex: 1;

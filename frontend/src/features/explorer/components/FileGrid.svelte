@@ -116,7 +116,7 @@
       <div class="muted">No items here.</div>
     {:else}
       <div class="spacer" style={`height:${totalHeight}px`}>
-        <div class="grid-viewport" style={`transform: translateY(${offsetY}px);`}>
+        <div class="grid-viewport" style={`top:${offsetY}px;`}>
           {#each visibleEntries as entry, i (entry.path)}
             <button
               use:thumbLoader.observe={entry.path}
@@ -197,8 +197,7 @@
   .grid-container {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: hidden;
     padding: 0;
   }
 
