@@ -43,6 +43,8 @@ import {
   storeFfmpegPath,
   loadVideoThumbs,
   storeVideoThumbs,
+  loadHardwareAcceleration,
+  storeHardwareAcceleration,
   loadThumbCacheMb,
   storeThumbCacheMb,
   loadMountsPollMs,
@@ -107,6 +109,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const archiveLevel = writable<number>(6)
   const openDestAfterExtract = writable<boolean>(false)
   const videoThumbs = writable<boolean>(true)
+  const hardwareAcceleration = writable<boolean>(false)
   const ffmpegPath = writable<string>('')
   const thumbCacheMb = writable<number>(300)
   const mountsPollMs = writable<number>(8000)
@@ -795,6 +798,17 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const loadHardwareAccelerationPref = async () => {
+    try {
+      const saved = await loadHardwareAcceleration()
+      if (typeof saved === 'boolean') {
+        hardwareAcceleration.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load hardwareAcceleration setting', err)
+    }
+  }
+
   const loadFfmpegPathPref = async () => {
     try {
       const saved = await loadFfmpegPath()
@@ -847,6 +861,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       void storeVideoThumbs(next)
       return next
     })
+  }
+
+  const setHardwareAccelerationPref = (value: boolean) => {
+    hardwareAcceleration.set(value)
+    void storeHardwareAcceleration(value)
   }
 
   const setFfmpegPathPref = (value: string) => {
@@ -912,6 +931,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     archiveLevel,
     openDestAfterExtract,
     videoThumbs,
+    hardwareAcceleration,
     ffmpegPath,
     thumbCacheMb,
     bookmarks,
@@ -953,6 +973,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadArchiveLevelPref,
     loadOpenDestAfterExtractPref,
     loadVideoThumbsPref,
+    loadHardwareAccelerationPref,
     loadFfmpegPathPref,
     loadThumbCachePref,
     loadFoldersFirstPref,
@@ -966,6 +987,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     setArchiveLevelPref,
     toggleOpenDestAfterExtract,
     toggleVideoThumbs,
+    setHardwareAccelerationPref,
     setFfmpegPathPref,
     setThumbCachePref,
     setMountsPollPref,

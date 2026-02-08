@@ -16,6 +16,7 @@
   export let archiveLevelValue = 6
   export let openDestAfterExtractValue = true
   export let videoThumbsValue = true
+  export let hardwareAccelerationValue = false
   export let ffmpegPathValue = ''
   export let thumbCacheMbValue = 300
   export let mountsPollMsValue = 8000
@@ -35,6 +36,7 @@
   export let onChangeArchiveLevel: (value: number) => void = () => {}
   export let onToggleOpenDestAfterExtract: (value: boolean) => void = () => {}
   export let onToggleVideoThumbs: (value: boolean) => void = () => {}
+  export let onToggleHardwareAcceleration: (value: boolean) => void = () => {}
   export let onChangeFfmpegPath: (value: string) => void = () => {}
   export let onChangeThumbCacheMb: (value: number) => void = () => {}
   export let onChangeMountsPollMs: (value: number) => void = () => {}
@@ -61,6 +63,7 @@
     archiveLevel: number
     openDestAfterExtract: boolean
     videoThumbs: boolean
+    hardwareAcceleration: boolean
     ffmpegPath: string
     thumbCacheMb: number
     mountsPollMs: number
@@ -89,6 +92,7 @@
     archiveLevel: 6,
     openDestAfterExtract: false,
     videoThumbs: true,
+    hardwareAcceleration: false,
     ffmpegPath: '',
     thumbCacheMb: 300,
     mountsPollMs: 8000,
@@ -168,6 +172,9 @@
   $: if (settings.videoThumbs !== videoThumbsValue) {
     settings = { ...settings, videoThumbs: videoThumbsValue }
   }
+  $: if (settings.hardwareAcceleration !== hardwareAccelerationValue) {
+    settings = { ...settings, hardwareAcceleration: hardwareAccelerationValue }
+  }
   $: if (settings.ffmpegPath !== ffmpegPathValue) {
     settings = { ...settings, ffmpegPath: ffmpegPathValue }
   }
@@ -229,6 +236,13 @@
   $: mountsPollTexts = rowTexts('mounts poll', 'watcher poll', `${settings.mountsPollMs} ms`)
   $: ioConcurrencyTexts = rowTexts('io concurrency', `${settings.ioConcurrency} workers`, settings.ioConcurrency)
   $: lazyScansTexts = rowTexts('lazy scans', 'defer deep scans in large folders')
+  $: hardwareAccelerationTexts = rowTexts(
+    'hardware acceleration',
+    'gpu',
+    'software rendering',
+    settings.hardwareAcceleration ? 'enabled' : 'disabled',
+    'restart required'
+  )
 
   $: doubleClickTexts = rowTexts('double-click speed', `${settings.doubleClickMs} ms`, 'double click speed')
   $: singleClickTexts = rowTexts('single click to open', settings.singleClickOpen ? 'on' : 'off', 'single click open')
@@ -273,6 +287,7 @@
   $: showShortcuts = rowMatches(needle, filteredShortcuts.flatMap((s) => rowTexts(s.action, s.keys)))
 
   $: showPerformance = rowMatches(needle, [
+    ...hardwareAccelerationTexts,
     ...mountsPollTexts,
     ...ioConcurrencyTexts,
     ...lazyScansTexts,
@@ -670,6 +685,22 @@
 
         {#if showPerformance}
           <div class="group-heading">Performance</div><div class="group-spacer"></div>
+        {#if rowMatches(needle, hardwareAccelerationTexts)}
+          <div class="form-label">Hardware acceleration</div>
+          <div class="form-control checkbox">
+            <input
+              type="checkbox"
+              checked={settings.hardwareAcceleration}
+              on:change={(e) => {
+                const next = (e.currentTarget as HTMLInputElement).checked
+                settings = { ...settings, hardwareAcceleration: next }
+                onToggleHardwareAcceleration(next)
+              }}
+            />
+            <span>Use GPU acceleration for rendering</span>
+            <small>Requires restart to take effect</small>
+          </div>
+        {/if}
         {#if rowMatches(needle, mountsPollTexts)}
           <div class="form-label">Mounts poll (ms)</div>
           <div class="form-control">

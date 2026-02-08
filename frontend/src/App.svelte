@@ -187,6 +187,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     archiveLevel,
     openDestAfterExtract,
     videoThumbs,
+    hardwareAcceleration,
     ffmpegPath,
     thumbCacheMb,
     mountsPollMs,
@@ -201,6 +202,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     setArchiveLevelPref,
     toggleOpenDestAfterExtract,
     toggleVideoThumbs,
+    setHardwareAccelerationPref,
     setFfmpegPathPref,
     setThumbCachePref,
     setMountsPollPref,
@@ -1436,6 +1438,8 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
       $scrollTop
       recompute($filteredEntries)
     } else {
+      // Ensure grid virtualization reruns when entry set changes.
+      $filteredEntries
       recomputeGrid()
     }
   }
@@ -2624,6 +2628,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     archiveLevelValue={$archiveLevel}
     openDestAfterExtractValue={$openDestAfterExtract}
     videoThumbsValue={$videoThumbs}
+    hardwareAccelerationValue={$hardwareAcceleration}
     ffmpegPathValue={$ffmpegPath}
     thumbCacheMbValue={$thumbCacheMb}
     mountsPollMsValue={$mountsPollMs}
@@ -2645,6 +2650,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     onChangeArchiveLevel={setArchiveLevelPref}
     onToggleOpenDestAfterExtract={toggleOpenDestAfterExtract}
     onToggleVideoThumbs={toggleVideoThumbs}
+    onToggleHardwareAcceleration={setHardwareAccelerationPref}
     onChangeFfmpegPath={setFfmpegPathPref}
     onChangeThumbCacheMb={setThumbCachePref}
     onChangeMountsPollMs={setMountsPollPref}
