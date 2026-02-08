@@ -121,6 +121,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   // Search streaming coordination
   let searchRunId = 0
   let cancelActiveSearch: (() => void) | null = null
+  const invalidateSearchRun = () => {
+    searchRunId += 1
+    cancelActiveSearch?.()
+    cancelActiveSearch = null
+  }
 
   const applyFoldersFirst = (list: Entry[], foldersFirstOn: boolean) => {
     if (!foldersFirstOn) return list
@@ -225,6 +230,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       loading.set(true)
     }
     error.set('')
+    invalidateSearchRun()
     searchActive.set(false)
     try {
       const result = await listDir(path, sortPayload())
@@ -248,6 +254,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const loadRecent = async (recordHistory = true, applySort = false) => {
     loading.set(true)
     error.set('')
+    invalidateSearchRun()
     searchActive.set(false)
     try {
       const sortArg = applySort ? sortPayload() : null
@@ -269,6 +276,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const loadStarred = async (recordHistory = true) => {
     loading.set(true)
     error.set('')
+    invalidateSearchRun()
     searchActive.set(false)
     try {
       const result = await listStarred(sortPayload())
@@ -289,6 +297,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const loadTrash = async (recordHistory = true) => {
     loading.set(true)
     error.set('')
+    invalidateSearchRun()
     searchActive.set(false)
     try {
       const result = await listTrash(sortPayload())
@@ -513,14 +522,13 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   }
 
   const runSearch = async (needleRaw: string) => {
-    const runId = ++searchRunId
     const needle = needleRaw.trim()
     const progressEvent = `search-progress-${Math.random().toString(16).slice(2)}`
     loading.set(true)
     error.set('')
 
-    cancelActiveSearch?.()
-    cancelActiveSearch = null
+    invalidateSearchRun()
+    const runId = searchRunId
 
     let buffer: Entry[] = []
     let raf: number | null = null
