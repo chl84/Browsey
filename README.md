@@ -107,7 +107,7 @@ Tauri bundles:
 - **Hidden files**: `Ctrl+H` toggles showing hidden files (hidden items are shown by default).
 
 ## Architecture notes
-- **Backend (`src/`)**: Tauri commands for listing, search, mounts, bookmarks, starring, trash, rename/delete, open with (desktop entries on Linux, custom commands, and default handler), clipboard preview/execute, compression to ZIP, and a filesystem watcher. Thumbnail pipeline uses resvg for SVG and bundled PDFium for PDFs, keeping heavy files in check. Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) sit behind cfg gates.
+- **Backend (`src/`)**: Tauri commands for listing, streaming search, mounts, bookmarks, starring, trash, rename/delete, open with (desktop entries on Linux, custom commands, and default handler), clipboard preview/execute, compression to ZIP, and a filesystem watcher. Search uses the `search_stream` command with incremental batches and cancellation support. Thumbnail pipeline uses resvg for SVG and bundled PDFium for PDFs, keeping heavy files in check. Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) sit behind cfg gates.
 - **Frontend (`frontend/src/`)**: Explorer UI in Svelte with virtualized rows/cards, drag/drop, lasso selection, context menus, modals, and a thumbnail loader. All Tauri `invoke` calls are wrapped in `features/explorer/services/` (clipboard, trash, listing, files, layout, history, activity, star, bookmarks). Layout and theming live in `frontend/src/app.css`. Modals share structure via `frontend/src/ui/ModalShell.svelte` and `frontend/src/ui/modalUtils.ts`.
 - **Data & persistence**: SQLite DB in the platform data dir stores bookmarks, starred items, recents, and column widths. Thumbnail cache lives under the user cache dir with periodic trimming. Capability file `capabilities/default.json` grants event listen/emit so the watcher can signal the UI.
 - **Icons**: Uses a custom Browsey icon set in `frontend/public/icons/scalable/browsey/` mapped via `src/icons.rs`, covering sidebar items, folders (incl. templates, public, desktop, etc.), files (images, text, pdf, spreadsheets, presentations), compressed archives, and shortcuts. Removable disks and bookmarks also use the new set.
@@ -126,7 +126,7 @@ Tauri bundles:
 
 ## Behavior specifics
 - Listings sort folders before files and skip symlinks for safety.
-- Search is scoped to the current root; empty queries return no results but preserve the listing.
+- Search is scoped to the current root and streamed incrementally; final ordering is applied in the frontend using the active sort setting. Empty queries return no results but preserve the listing.
 - “Open item location” jumps to the parent and reselects the item.
 - Windows network paths delete permanently (recycle bin is unavailable there). Symlink copy/move is rejected.
 - Permissions: Owner/group/other (Everyone) access bits can be edited on Unix and Windows; Windows maps to the file DACL and honors read-only and executable toggles. Changes roll back if any target fails.
