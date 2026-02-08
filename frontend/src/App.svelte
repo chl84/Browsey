@@ -242,6 +242,14 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     return Math.max(0, el.clientWidth - paddingLeft - paddingRight)
   }
 
+  const getGridPadding = (el: HTMLDivElement) => {
+    const style = getComputedStyle(el)
+    return {
+      paddingLeft: parseFloat(style.paddingLeft) || 0,
+      paddingTop: parseFloat(style.paddingTop) || 0,
+    }
+  }
+
   const focusCurrentView = async () => {
     await tick()
     rowsElRef?.focus()
@@ -695,8 +703,6 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
   let gridCardWidth = 128
   let gridRowHeight = 136
   let gridGap = 6
-  // Keep in sync with .grid padding (FileGrid.svelte)
-  const GRID_PADDING = 20
   const GRID_OVERSCAN = 2
   const GRID_WHEEL_SCALE = 0.2
   const GRID_WHEEL_DECAY = 0.85
@@ -722,7 +728,6 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     cardWidth: gridCardWidth,
     rowHeight: gridRowHeight,
     gap: gridGap,
-    padding: GRID_PADDING,
     overscan: GRID_OVERSCAN,
     wheelScale: GRID_WHEEL_SCALE,
     wheelDecay: GRID_WHEEL_DECAY,
@@ -1867,6 +1872,7 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
     if (target && target.closest('.card')) return
     const gridEntries = get(filteredEntries)
     if (gridEntries.length === 0) return
+    const { paddingLeft: gridPaddingLeft, paddingTop: gridPaddingTop } = getGridPadding(gridEl)
     event.preventDefault()
     // When clicking blank space in grid mode, leave address edit mode and focus the grid.
     blurPathInput()
@@ -1888,7 +1894,8 @@ import { moveCaret } from './features/explorer/helpers/navigationController'
           cardWidth: gridCardWidth,
           cardHeight: gridRowHeight,
           gap: gridGap,
-          padding: GRID_PADDING,
+          paddingLeft: gridPaddingLeft,
+          paddingTop: gridPaddingTop,
         }),
       onSelect: (paths, anchor, caret) => {
         if (subtractive) {

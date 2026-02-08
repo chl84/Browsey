@@ -5,7 +5,6 @@ type GridConfig = {
   cardWidth: number
   rowHeight: number
   gap: number
-  padding: number
   overscan: number
   wheelScale: number
   wheelDecay: number
@@ -42,12 +41,19 @@ export const useGridVirtualizer = ({
 
   const getGridCols = () => gridColsValue
 
+  const getHorizontalPadding = (gridEl: HTMLDivElement) => {
+    const styles = getComputedStyle(gridEl)
+    const left = parseFloat(styles.paddingLeft) || 0
+    const right = parseFloat(styles.paddingRight) || 0
+    return left + right
+  }
+
   const recomputeGrid = () => {
     if (getViewMode() !== 'grid') return
     const gridEl = getGridEl()
     if (!gridEl) return
     const list = getEntries()
-    const width = Math.max(0, gridEl.clientWidth - config.padding * 2)
+    const width = Math.max(0, gridEl.clientWidth - getHorizontalPadding(gridEl))
     gridColsValue = Math.max(1, Math.floor((width + config.gap) / (config.cardWidth + config.gap)))
     gridColsStore.set(gridColsValue)
     const rowStride = config.rowHeight + config.gap

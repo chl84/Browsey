@@ -46,21 +46,22 @@ type GridMetrics = {
   cardWidth: number
   cardHeight: number
   gap: number
-  padding: number
+  paddingLeft: number
+  paddingTop: number
 }
 
 export const hitTestGridVirtualized = (rect: Rect, entries: { path: string }[], metrics: GridMetrics) => {
-  const { gridCols, cardWidth, cardHeight, gap, padding } = metrics
+  const { gridCols, cardWidth, cardHeight, gap, paddingLeft, paddingTop } = metrics
   if (gridCols <= 0 || cardWidth <= 0 || cardHeight <= 0) {
     return { paths: new Set<string>(), anchor: null, caret: null }
   }
 
   const rectRight = rect.x + rect.width
   const rectBottom = rect.y + rect.height
-  const x0 = Math.max(0, rect.x - padding)
+  const x0 = Math.max(0, rect.x - paddingLeft)
   // Juster y for scroll/oversettelse: rektangelet gis i viewport-koordinater,
   // rows start at padding and are not transformed by translateY in the hit test.
-  const y0 = Math.max(0, rect.y - padding)
+  const y0 = Math.max(0, rect.y - paddingTop)
   const colStride = cardWidth + gap
   const rowStride = cardHeight + gap
   // Bruk gulv for start og tak for slutt slik at vi inkluderer nedre rad selv ved avrundingsfeil.
@@ -80,9 +81,9 @@ export const hitTestGridVirtualized = (rect: Rect, entries: { path: string }[], 
       const entry = entries[idx]
       if (!entry || !entry.path) continue
 
-      const cardLeft = padding + col * colStride
+      const cardLeft = paddingLeft + col * colStride
       const cardRight = cardLeft + cardWidth
-      const cardTop = padding + row * rowStride
+      const cardTop = paddingTop + row * rowStride
       const cardBottom = cardTop + cardHeight
       const intersects =
         cardLeft < rectRight &&
