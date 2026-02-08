@@ -85,7 +85,7 @@
     {:else}
       <div class="spacer" style={`height:${totalHeight}px`}>
         <div class="row-viewport" style={`transform: translateY(${offsetY}px)`}>
-          {#each visibleEntries as entry, i (`${entry.path}-${i}`)}
+          {#each visibleEntries as entry, i (entry.path)}
             <FileRow
               {entry}
               index={start + i}

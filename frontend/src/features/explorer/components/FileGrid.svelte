@@ -117,7 +117,7 @@
     {:else}
       <div class="spacer" style={`height:${totalHeight}px`}>
         <div class="grid-viewport" style={`transform: translateY(${offsetY}px);`}>
-          {#each visibleEntries as entry, i (`${entry.path}-${i}`)}
+          {#each visibleEntries as entry, i (entry.path)}
             <button
               use:thumbLoader.observe={entry.path}
               class="card"
