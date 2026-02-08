@@ -16,7 +16,7 @@
   export let archiveLevelValue = 6
   export let openDestAfterExtractValue = true
   export let videoThumbsValue = true
-  export let hardwareAccelerationValue = false
+  export let hardwareAccelerationValue = true
   export let ffmpegPathValue = ''
   export let thumbCacheMbValue = 300
   export let mountsPollMsValue = 8000
@@ -92,7 +92,7 @@
     archiveLevel: 6,
     openDestAfterExtract: false,
     videoThumbs: true,
-    hardwareAcceleration: false,
+    hardwareAcceleration: true,
     ffmpegPath: '',
     thumbCacheMb: 300,
     mountsPollMs: 8000,
