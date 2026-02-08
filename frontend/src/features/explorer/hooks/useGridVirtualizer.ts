@@ -38,6 +38,7 @@ export const useGridVirtualizer = ({
   const gridTotalHeight = writable(0)
   const gridColsStore = writable(1)
   let gridColsValue = 1
+  let scrollRaf: number | null = null
 
   const getGridCols = () => gridColsValue
 
@@ -69,7 +70,11 @@ export const useGridVirtualizer = ({
 
   const handleGridScroll = () => {
     if (getViewMode() !== 'grid') return
-    recomputeGrid()
+    if (scrollRaf !== null) return
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = null
+      recomputeGrid()
+    })
   }
 
   const handleGridWheel = (event: WheelEvent) => {
