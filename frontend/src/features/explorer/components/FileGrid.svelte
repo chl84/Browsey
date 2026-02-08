@@ -210,7 +210,7 @@
     position: relative;
     user-select: none;
     cursor: default;
-    padding: 15px 20px 15px 15px; /* extra right padding to offset scrollbar from resize hitbox */
+    padding: 20px;
     box-sizing: border-box;
   }
 
