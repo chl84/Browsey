@@ -119,9 +119,8 @@ fn apply_webview_rendering_policy_from_settings() {
         .unwrap_or(true);
 
     if !hardware_acceleration {
-        // Default to software rendering on Linux unless explicitly enabled in settings.
-        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-        std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
+        // Keep compositing enabled, but disable the DMA-BUF renderer to reduce artifacts.
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 }
 
