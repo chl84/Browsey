@@ -33,7 +33,7 @@ pub use meta::entry_times_cmd;
 pub use mounts::{eject_drive, list_mounts, mount_partition};
 pub use open_with::{list_open_with_apps, open_with};
 pub use permissions::{get_permissions, set_permissions};
-pub use search::{search, search_stream};
+pub use search::search_stream;
 pub use settings::{
     load_archive_level, load_archive_name, load_confirm_delete, load_default_view, load_density,
     load_ffmpeg_path, load_folders_first, load_hardware_acceleration, load_hidden_files_last,

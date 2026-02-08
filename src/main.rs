@@ -7,7 +7,6 @@ mod db;
 mod entry;
 mod fs_utils;
 mod icons;
-mod search;
 mod sorting;
 mod statusbar;
 mod undo;
@@ -151,7 +150,6 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             list_dir,
-            search,
             list_mounts,
             get_bookmarks,
             add_bookmark,
