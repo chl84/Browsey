@@ -270,3 +270,15 @@ pub fn load_video_thumbs() -> Result<Option<bool>, String> {
     let conn = crate::db::open()?;
     crate::db::get_setting_bool(&conn, "videoThumbs")
 }
+
+#[tauri::command]
+pub fn store_hardware_acceleration(value: bool) -> Result<(), String> {
+    let conn = crate::db::open()?;
+    crate::db::set_setting_bool(&conn, "hardwareAcceleration", value)
+}
+
+#[tauri::command]
+pub fn load_hardware_acceleration() -> Result<Option<bool>, String> {
+    let conn = crate::db::open()?;
+    crate::db::get_setting_bool(&conn, "hardwareAcceleration")
+}

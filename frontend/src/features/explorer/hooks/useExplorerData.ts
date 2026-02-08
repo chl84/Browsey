@@ -38,6 +38,7 @@ export const useExplorerData = (options: Options = {}) => {
     loadArchiveLevelPref,
     loadOpenDestAfterExtractPref,
     loadVideoThumbsPref,
+    loadHardwareAccelerationPref,
     loadFfmpegPathPref,
     loadThumbCachePref,
     entries,
@@ -116,6 +117,7 @@ export const useExplorerData = (options: Options = {}) => {
       loadArchiveLevelPref(),
       loadOpenDestAfterExtractPref(),
       loadVideoThumbsPref(),
+      loadHardwareAccelerationPref(),
       loadFfmpegPathPref(),
       loadThumbCachePref(),
     ])

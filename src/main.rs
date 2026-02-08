@@ -112,8 +112,26 @@ fn init_logging() {
     ));
 }
 
+#[cfg(target_os = "linux")]
+fn apply_webview_rendering_policy_from_settings() {
+    let hardware_acceleration = db::open()
+        .ok()
+        .and_then(|conn| db::get_setting_bool(&conn, "hardwareAcceleration").ok().flatten())
+        .unwrap_or(false);
+
+    if !hardware_acceleration {
+        // Default to software rendering on Linux unless explicitly enabled in settings.
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+        std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn apply_webview_rendering_policy_from_settings() {}
+
 fn main() {
     init_logging();
+    apply_webview_rendering_policy_from_settings();
     undo::cleanup_stale_backups(None);
     tauri::Builder::default()
         .plugin(tauri_plugin_drag::init())
@@ -179,6 +197,8 @@ fn main() {
             load_mounts_poll_ms,
             store_video_thumbs,
             load_video_thumbs,
+            store_hardware_acceleration,
+            load_hardware_acceleration,
             store_density,
             load_density,
             dir_sizes,

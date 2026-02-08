@@ -69,6 +69,12 @@ export const loadVideoThumbs = () => invoke<boolean | null>('load_video_thumbs')
 export const storeVideoThumbs = (value: boolean) =>
   invoke<void>('store_video_thumbs', { value })
 
+export const loadHardwareAcceleration = () =>
+  invoke<boolean | null>('load_hardware_acceleration')
+
+export const storeHardwareAcceleration = (value: boolean) =>
+  invoke<void>('store_hardware_acceleration', { value })
+
 export const loadThumbCacheMb = () => invoke<number | null>('load_thumb_cache_mb')
 
 export const storeThumbCacheMb = (value: number) =>
