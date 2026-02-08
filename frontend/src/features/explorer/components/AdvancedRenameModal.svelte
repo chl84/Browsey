@@ -56,24 +56,30 @@
     value: regex,
   })
 
-  const sequenceExample =
+  let sequenceExample = '—'
+  $: sequenceExample =
     sequenceMode === 'numeric' ? '001, 002, 003…' : sequenceMode === 'alpha' ? 'AA, AB, AC…' : '—'
 
   $: {
-    const { rows, error: nextError } = computeAdvancedRenamePreview(entries, {
-      regex,
-      replacement,
-      prefix,
-      suffix,
-      caseSensitive,
-      sequenceMode,
-      sequencePlacement,
-      sequenceStart,
-      sequenceStep,
-      sequencePad,
-    })
-    preview = rows
-    previewError = nextError
+    if (!open) {
+      preview = []
+      previewError = ''
+    } else {
+      const { rows, error: nextError } = computeAdvancedRenamePreview(entries, {
+        regex,
+        replacement,
+        prefix,
+        suffix,
+        caseSensitive,
+        sequenceMode,
+        sequencePlacement,
+        sequenceStart,
+        sequenceStep,
+        sequencePad,
+      })
+      preview = rows
+      previewError = nextError
+    }
   }
 </script>
 
@@ -96,9 +102,10 @@
       <div class="layout-grid">
         <div class="left-stack">
           <div class="panel">
-            <label class="field">
-              <span>Match (regex optional)</span>
+            <div class="field">
+              <label for="advanced-rename-regex">Match (regex optional)</label>
               <input
+                id="advanced-rename-regex"
                 name="regex"
                 type="text"
                 autocomplete="off"
@@ -111,7 +118,7 @@
                 <input type="checkbox" bind:checked={caseSensitive} on:change={handleChange} />
                 <span>Case sensitive</span>
               </label>
-            </label>
+            </div>
 
             <label class="field">
               <span>Replacement</span>
@@ -223,7 +230,7 @@
 
     <div slot="actions">
       <button type="button" class="secondary" on:click={onCancel}>Cancel</button>
-      <button type="button" on:click={onConfirm}>Apply</button>
+      <button type="button" on:click={onConfirm} disabled={Boolean(visibleError) || entries.length === 0}>Apply</button>
     </div>
   </ModalShell>
 {/if}
