@@ -1,0 +1,147 @@
+:root {
+  --bg: #f6f5f2;
+  --paper: #fffdf7;
+  --ink: #1d1b17;
+  --ink-muted: #5f584c;
+  --line: #d9d1c2;
+  --accent: #0a7a5a;
+  --accent-soft: #d8efe7;
+
+  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at top right, #ebe7dc 0%, #f6f5f2 45%);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+}
+
+code {
+  font-family: 'JetBrains Mono', 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 0.9em;
+  background: #ece9df;
+  border: 1px solid var(--line);
+  padding: 1px 5px;
+}
+
+.shell {
+  width: min(1060px, 94vw);
+  margin: 32px auto 56px;
+  display: grid;
+  gap: 22px;
+}
+
+.top {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.15;
+}
+
+.lede {
+  margin: 10px 0 0;
+  color: var(--ink-muted);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  gap: 18px;
+}
+
+.nav {
+  align-self: start;
+  position: sticky;
+  top: 18px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  padding: 16px;
+}
+
+.nav h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.nav nav {
+  display: grid;
+  gap: 6px;
+}
+
+.nav a {
+  text-decoration: none;
+  color: var(--ink);
+  border: 1px solid transparent;
+  padding: 5px 7px;
+}
+
+.nav a:hover {
+  border-color: var(--line);
+  background: #f2eee4;
+}
+
+.content {
+  display: grid;
+  gap: 14px;
+}
+
+.card {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  padding: 20px;
+}
+
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.card p {
+  margin: 0 0 10px;
+  color: var(--ink-muted);
+}
+
+.card ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.card li {
+  margin: 0 0 6px;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .nav {
+    position: static;
+  }
+}
