@@ -616,32 +616,6 @@ export const docsPages: DocPage[] = [
     summary: 'Practical fixes for setup, build, and docs deployment issues.',
     sections: [
       {
-        id: 'docs-pages-404',
-        title: 'Docs URL Returns 404',
-        bullets: [
-          'Confirm latest Docs Pages run completed successfully in GitHub Actions',
-          'Ensure repository Settings -> Pages uses Source: GitHub Actions',
-          'Use the exact repository path: /Browsey/ (case-sensitive)',
-          'Wait briefly after successful deploy; Pages propagation can lag',
-        ],
-      },
-      {
-        id: 'actions-500',
-        title: 'GitHub Actions UI Shows 500 Errors',
-        body: 'GitHub occasionally has transient UI/API errors when opening workflow pages.',
-        bullets: [
-          'Retry from the workflow list or refresh after a short wait',
-          'Trigger a fresh run from main if a run page fails to render',
-          'If run status is green and Pages URL works, deployment is usually fine',
-        ],
-      },
-      {
-        id: 'docs-tools-missing',
-        title: 'Missing vite or svelte-check',
-        body: 'Tool-not-found errors in docs commands usually mean dependencies are not installed for docs workspace.',
-        code: `npm --prefix docs install\n./scripts/docs-check.sh`,
-      },
-      {
         id: 'linux-build-deps',
         title: 'Linux Build Fails on WebKit/Soup/GTK',
         body: 'Install distro equivalents of webkit2gtk4.1, javascriptcoregtk4.1, libsoup3, and gtk3 development packages.',
