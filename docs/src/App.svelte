@@ -1,36 +1,120 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
-  import { docsPages, docsPageMap, type DocPage } from './content/pages'
+  import { onMount, tick } from 'svelte'
+  import DocsOnThisPage from './components/DocsOnThisPage.svelte'
+  import DocsPageContent from './components/DocsPageContent.svelte'
+  import DocsSidebar from './components/DocsSidebar.svelte'
+  import { docsPages, docsPageMap, type DocPage, type DocSection } from './content/pages'
 
   const fallbackPageId = docsPages[0].id
+  const sectionAnchorId = (pageId: string, sectionId: string) => `${pageId}--${sectionId}`
+  const canonicalHash = (pageId: string, sectionId = '') =>
+    sectionId
+      ? `#/${encodeURIComponent(pageId)}/${encodeURIComponent(sectionId)}`
+      : `#/${encodeURIComponent(pageId)}`
+
   let activePageId = fallbackPageId
+  let activeSectionId = ''
   let activePage: DocPage = docsPageMap.get(fallbackPageId)!
+  let searchQuery = ''
+  let filteredPages: DocPage[] = docsPages
 
-  const normalizeHash = () => {
-    const raw = window.location.hash.trim()
-    if (!raw || raw === '#') return fallbackPageId
-    const noPound = raw.startsWith('#') ? raw.slice(1) : raw
-    const noSlash = noPound.startsWith('/') ? noPound.slice(1) : noPound
-    const pageId = decodeURIComponent(noSlash)
-    return docsPageMap.has(pageId) ? pageId : fallbackPageId
-  }
-
-  const syncFromHash = () => {
-    activePageId = normalizeHash()
-    activePage = docsPageMap.get(activePageId) ?? docsPageMap.get(fallbackPageId)!
-    if (window.location.hash !== `#/${activePageId}`) {
-      window.history.replaceState(null, '', `#/${activePageId}`)
+  const decodeHashPart = (value: string) => {
+    try {
+      return decodeURIComponent(value)
+    } catch {
+      return value
     }
   }
 
+  const normalizeHash = () => {
+    const raw = window.location.hash.trim()
+    if (!raw || raw === '#') {
+      return { pageId: fallbackPageId, sectionId: '' }
+    }
+
+    const withoutPound = raw.startsWith('#') ? raw.slice(1) : raw
+    const withoutSlash = withoutPound.startsWith('/') ? withoutPound.slice(1) : withoutPound
+    const [rawPageId = '', rawSectionId = ''] = withoutSlash.split('/')
+
+    const pageIdCandidate = decodeHashPart(rawPageId)
+    const pageId = docsPageMap.has(pageIdCandidate) ? pageIdCandidate : fallbackPageId
+    const page = docsPageMap.get(pageId) ?? docsPageMap.get(fallbackPageId)!
+
+    const sectionIdCandidate = decodeHashPart(rawSectionId)
+    const sectionId = page.sections.some((section) => section.id === sectionIdCandidate)
+      ? sectionIdCandidate
+      : ''
+
+    return { pageId, sectionId }
+  }
+
+  const scrollToSection = async (pageId: string, sectionId: string) => {
+    if (!sectionId) return
+    await tick()
+    const target = document.getElementById(sectionAnchorId(pageId, sectionId))
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
+  const syncFromHash = async () => {
+    const { pageId, sectionId } = normalizeHash()
+    activePageId = pageId
+    activeSectionId = sectionId
+    activePage = docsPageMap.get(activePageId) ?? docsPageMap.get(fallbackPageId)!
+
+    const hash = canonicalHash(activePageId, activeSectionId)
+    if (window.location.hash !== hash) {
+      window.history.replaceState(null, '', hash)
+    }
+
+    await scrollToSection(activePageId, activeSectionId)
+  }
+
+  const sectionMatches = (section: DocSection, needle: string) => {
+    const terms = [section.title, section.body, section.note, section.code, ...(section.bullets ?? [])]
+    return terms.some((term) => term?.toLowerCase().includes(needle))
+  }
+
+  const applySearchFilter = () => {
+    const needle = searchQuery.trim().toLowerCase()
+    if (!needle) {
+      filteredPages = docsPages
+      return
+    }
+
+    filteredPages = docsPages.filter((page) => {
+      const pageTerms = [page.title, page.summary]
+      const pageMatch = pageTerms.some((term) => term.toLowerCase().includes(needle))
+      return pageMatch || page.sections.some((section) => sectionMatches(section, needle))
+    })
+  }
+
+  const handleSearchChange = (value: string) => {
+    searchQuery = value
+    applySearchFilter()
+
+    if (filteredPages.length === 0 || filteredPages.some((page) => page.id === activePageId)) {
+      return
+    }
+
+    window.location.hash = canonicalHash(filteredPages[0].id)
+  }
+
   onMount(() => {
-    syncFromHash()
-    window.addEventListener('hashchange', syncFromHash)
+    const handleHashChange = () => {
+      void syncFromHash()
+    }
+
+    applySearchFilter()
+    void syncFromHash()
+    window.addEventListener('hashchange', handleHashChange)
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange)
+    }
   })
 
-  onDestroy(() => {
-    window.removeEventListener('hashchange', syncFromHash)
-  })
 </script>
 
 <main class="shell">
@@ -41,39 +125,15 @@
   </header>
 
   <div class="layout">
-    <aside class="nav">
-      <h2>Documentation</h2>
-      <nav aria-label="Documentation pages">
-        {#each docsPages as page}
-          <a href={`#/${page.id}`} class:active={page.id === activePageId}>
-            {page.title}
-          </a>
-        {/each}
-      </nav>
-    </aside>
+    <DocsSidebar
+      pages={filteredPages}
+      activePageId={activePageId}
+      searchQuery={searchQuery}
+      onSearchChange={handleSearchChange}
+    />
 
-    <section class="content">
-      {#each activePage.sections as section}
-        <article id={section.id} class="card">
-          <h2>{section.title}</h2>
-          {#if section.body}
-            <p>{section.body}</p>
-          {/if}
-          {#if section.bullets && section.bullets.length > 0}
-            <ul>
-              {#each section.bullets as bullet}
-                <li>{bullet}</li>
-              {/each}
-            </ul>
-          {/if}
-          {#if section.code}
-            <pre><code>{section.code}</code></pre>
-          {/if}
-          {#if section.note}
-            <p class="note">{section.note}</p>
-          {/if}
-        </article>
-      {/each}
-    </section>
+    <DocsPageContent page={activePage} activeSectionId={activeSectionId} />
+
+    <DocsOnThisPage page={activePage} activeSectionId={activeSectionId} />
   </div>
 </main>
