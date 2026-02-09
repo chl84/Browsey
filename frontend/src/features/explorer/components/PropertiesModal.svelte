@@ -8,6 +8,7 @@
   export let deepCount: number | null = null
   export let onClose: () => void = () => {}
   export let formatSize: (size?: number | null) => string = () => ''
+  export let permissionsLoading = false
   type Access = { read: boolean | 'mixed'; write: boolean | 'mixed'; exec: boolean | 'mixed' }
   type HiddenBit = boolean | 'mixed' | null
   const scopes = ['owner', 'group', 'other'] as const
@@ -18,6 +19,8 @@
         executableSupported: boolean
         readOnly: boolean | 'mixed' | null
         executable: boolean | 'mixed' | null
+        ownerName: string | null
+        groupName: string | null
         owner: Access | null
         group: Access | null
         other: Access | null
@@ -49,6 +52,10 @@
     owner: 'Owner',
     group: 'Group',
     other: 'Other users',
+  }
+  const principalLabel = (value: string | null | undefined) => {
+    if (!value) return '—'
+    return value === 'mixed' ? 'Mixed' : value
   }
 
   $: hiddenBit =
@@ -129,47 +136,67 @@
         <div class="row"><span class="label">Extra</span><span class="value">More coming soon</span></div>
       </div>
     {:else if activeTab === 'permissions'}
-      {#if permissions && permissions.accessSupported}
-        <div class="access">
-          <div class="cell head"></div>
-          <div class="cell head">Read</div>
-          <div class="cell head">Write</div>
-          <div class="cell head">Exec</div>
-          {#each scopes as scope (scope)}
-            {#if permissions[scope]}
-              <div class="cell label">{accessLabels[scope]}</div>
-              <label class="cell">
-                <input
-                  type="checkbox"
-                  use:indeterminate={permissions[scope].read}
-                  checked={permissions[scope].read === true}
-                  on:change={(e) =>
-                    onToggleAccess(scope, 'read', (e.currentTarget as HTMLInputElement).checked)}
-                />
-              </label>
-              <label class="cell">
-                <input
-                  type="checkbox"
-                  use:indeterminate={permissions[scope].write}
-                  checked={permissions[scope].write === true}
-                  on:change={(e) =>
-                    onToggleAccess(scope, 'write', (e.currentTarget as HTMLInputElement).checked)}
-                />
-              </label>
-              <label class="cell">
-                <input
-                  type="checkbox"
-                  use:indeterminate={permissions[scope].exec}
-                  checked={permissions[scope].exec === true}
-                  on:change={(e) =>
-                    onToggleAccess(scope, 'exec', (e.currentTarget as HTMLInputElement).checked)}
-                />
-              </label>
-            {/if}
-          {/each}
+      {#if permissionsLoading}
+        <div class="rows status-rows">
+          <div class="row"><span class="label">Permissions</span><span class="value">Loading…</span></div>
         </div>
+      {:else if permissions}
+        <div class="rows ownership">
+          <div class="row"><span class="label">User</span><span class="value">{principalLabel(permissions.ownerName)}</span></div>
+          <div class="row"><span class="label">Group</span><span class="value">{principalLabel(permissions.groupName)}</span></div>
+        </div>
+
+        {#if permissions.accessSupported}
+          <div class="access">
+            <div class="cell head"></div>
+            <div class="cell head">Read</div>
+            <div class="cell head">Write</div>
+            <div class="cell head">Exec</div>
+            {#each scopes as scope (scope)}
+              {#if permissions[scope]}
+                <div class="cell label">{accessLabels[scope]}</div>
+                <label class="cell">
+                  <input
+                    type="checkbox"
+                    use:indeterminate={permissions[scope].read}
+                    checked={permissions[scope].read === true}
+                    on:change={(e) =>
+                      onToggleAccess(scope, 'read', (e.currentTarget as HTMLInputElement).checked)}
+                  />
+                </label>
+                <label class="cell">
+                  <input
+                    type="checkbox"
+                    use:indeterminate={permissions[scope].write}
+                    checked={permissions[scope].write === true}
+                    on:change={(e) =>
+                      onToggleAccess(scope, 'write', (e.currentTarget as HTMLInputElement).checked)}
+                  />
+                </label>
+                <label class="cell">
+                  <input
+                    type="checkbox"
+                    use:indeterminate={permissions[scope].exec}
+                    checked={permissions[scope].exec === true}
+                    on:change={(e) =>
+                      onToggleAccess(scope, 'exec', (e.currentTarget as HTMLInputElement).checked)}
+                  />
+                </label>
+              {/if}
+            {/each}
+          </div>
+        {:else}
+          <div class="rows status-rows">
+            <div class="row">
+              <span class="label">Permissions</span>
+              <span class="value">Not available for one or more selected items</span>
+            </div>
+          </div>
+        {/if}
       {:else}
-        <div class="row"><span class="label">Permissions</span><span class="value">Not available</span></div>
+        <div class="rows status-rows">
+          <div class="row"><span class="label">Permissions</span><span class="value">Not available</span></div>
+        </div>
       {/if}
     {/if}
 
@@ -212,6 +239,14 @@
     justify-content: start;
     width: max-content;
     transform: translateX(-20px);
+  }
+
+  .ownership {
+    margin-bottom: 8px;
+  }
+
+  .status-rows {
+    margin-top: 8px;
   }
 
   .access .cell {
