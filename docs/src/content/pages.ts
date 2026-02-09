@@ -152,6 +152,7 @@ export const docsPages: DocPage[] = [
           'Press Ctrl+F to toggle search mode',
           'Press Esc to exit search mode',
           'Empty query returns no search results but keeps listing state',
+          'When search completes, the result list is sorted by current sort field/direction',
         ],
       },
       {
@@ -173,6 +174,8 @@ export const docsPages: DocPage[] = [
           'Traversal ignores symlinks',
           'Backend compares by file length first, then byte-by-byte for matching lengths',
           'Progress is streamed and scan cancels cleanly when modal closes (including Esc)',
+          'Result preview shows the first 3 matches, then a summary line for remaining matches',
+          'Use the copy button to copy the full duplicate list to clipboard',
         ],
       },
       {
@@ -190,16 +193,35 @@ export const docsPages: DocPage[] = [
         bullets: [
           'Delete sends to wastebasket when supported',
           'Shift+Delete performs permanent delete',
-          'Windows network paths delete permanently (recycle bin unavailable there)',
+          'On Windows, network locations use permanent-delete flow (recycle bin is unavailable there)',
         ],
       },
       {
         id: 'open-with-flow',
         title: 'Open With and External Apps',
         bullets: [
-          'Open with lists matching applications and allows custom command',
+          'Open with lists associated applications and includes an explicit "Open normally" system default option',
+          'Entries are filtered in the modal by app name, comment, and command',
           'System default handler can be selected explicitly',
           'Launches are detached to avoid terminal noise',
+        ],
+      },
+      {
+        id: 'console-flow',
+        title: 'Open Console in Current Folder',
+        bullets: [
+          'Ctrl+T opens a terminal rooted at the current directory view',
+          'On Linux, Browsey tries FILEY_TERMINAL/TERMINAL/COLORTERM first, then common terminal binaries',
+          'The action is available only when the current view is a real directory',
+        ],
+      },
+      {
+        id: 'undo-redo-flow',
+        title: 'Undo and Redo Scope',
+        bullets: [
+          'Ctrl+Z and Ctrl+Y execute backend undo/redo actions',
+          'Operations are tracked in-memory with capped history (current max: 50 actions)',
+          'File-operation backups are written under the app undo directory for restoration',
         ],
       },
     ],
@@ -224,9 +246,29 @@ export const docsPages: DocPage[] = [
         title: 'Watcher and Live Refresh',
         body: 'Browsey uses filesystem watcher events and emits refresh signals to keep views in sync with external changes.',
         bullets: [
+          'The backend watcher is non-recursive for the active directory',
           'Debounced refresh avoids thrashing on noisy event bursts',
-          'Bookmarked paths are allowlisted for watching',
           'UI listens for dir-changed events and refreshes active views',
+        ],
+      },
+      {
+        id: 'search-internals',
+        title: 'Search Streaming Internals',
+        bullets: [
+          'Search runs in a blocking backend task to avoid UI stalls',
+          'Matches are streamed in batches (current batch size: 256 entries)',
+          'Cancellation is keyed by task id/event id and propagated via cancel_task',
+          'Symlinks are excluded from traversal',
+        ],
+      },
+      {
+        id: 'duplicate-internals',
+        title: 'Duplicate Scan Internals',
+        bullets: [
+          'Phase 1 collects same-size candidates while counting scanned files',
+          'Phase 2 compares candidate bytes with early mismatch exit',
+          'Progress uses phase weighting: collecting to 40%, comparing from 40% to 100%',
+          'Final duplicate output is sorted deterministically by path string',
         ],
       },
       {
@@ -248,6 +290,8 @@ export const docsPages: DocPage[] = [
           'Windows supports eject with native APIs and fallback paths',
           'Linux eject uses gio/umount/udisksctl with safe fallback behavior',
           'GVFS mounts (including MTP/OneDrive-style integrations) are surfaced when available',
+          'Mount scanning cadence is user-configurable (default 8000 ms)',
+          'Active GVFS locations get periodic refresh (5s) in addition to watcher-driven updates',
         ],
       },
       {
@@ -255,7 +299,7 @@ export const docsPages: DocPage[] = [
         title: 'Safety Rules and Guardrails',
         bullets: [
           'Symlinks are ignored in search and duplicate traversal',
-          'Symlink copy/move is rejected on Windows paths that cannot guarantee safe semantics',
+          'Clipboard copy/cut rejects symlink entries during transfer operations',
           'Permission edits roll back on failure in multi-target updates',
           'Undo cleanup validates path boundaries before deletion actions',
         ],
@@ -276,7 +320,39 @@ export const docsPages: DocPage[] = [
           'Sort field and sort direction',
           'Delete confirmation preference',
           'Density profile (cozy/compact)',
+          'Archive defaults (name, compression level, open-destination-after-extract)',
+          'Thumbnail settings (video thumbnails enabled flag, ffmpeg path override, cache size)',
+          'Mount list polling interval',
           'Hardware acceleration toggle',
+        ],
+      },
+      {
+        id: 'default-settings',
+        title: 'Current Default Values',
+        bullets: [
+          'Default view: list',
+          'Density: cozy',
+          'Show hidden: enabled',
+          'Hidden files last: disabled',
+          'Folders first: enabled',
+          'Confirm permanent delete: enabled',
+          'Archive name: Archive (.zip)',
+          'Archive level: 6',
+          'Open destination after extract: disabled',
+          'Video thumbnails: enabled',
+          'FFmpeg path override: empty (auto-detect)',
+          'Thumbnail cache: 300 MB',
+          'Mount polling: 8000 ms',
+          'Hardware acceleration: enabled',
+        ],
+      },
+      {
+        id: 'settings-ranges',
+        title: 'Validated Setting Ranges',
+        bullets: [
+          'Archive compression level: 0-9',
+          'Thumbnail cache size: 50-1000 MB',
+          'Mount polling interval: 500-10000 ms',
         ],
       },
       {
@@ -288,7 +364,7 @@ export const docsPages: DocPage[] = [
         id: 'hardware-accel',
         title: 'Hardware Acceleration on Linux',
         body: 'When hardware acceleration is disabled in Browsey settings, Browsey keeps compositing enabled and sets only WEBKIT_DISABLE_DMABUF_RENDERER=1.',
-        note: 'Legacy software-rendering flags were removed in v0.4.1.',
+        note: 'Legacy software-rendering flags were removed in v0.4.1. Restart is required for this setting to take effect.',
       },
       {
         id: 'shortcut-map',
@@ -298,6 +374,8 @@ export const docsPages: DocPage[] = [
           'Ctrl+G: toggle list/grid view',
           'Ctrl+C / Ctrl+X / Ctrl+V: copy/cut/paste',
           'Ctrl+A: select all',
+          'Ctrl+Z / Ctrl+Y: undo / redo',
+          'Ctrl+S: open settings modal',
           'F2: rename',
           'Delete / Shift+Delete: trash / permanent delete',
           'Ctrl+P: properties',
@@ -312,7 +390,8 @@ export const docsPages: DocPage[] = [
         bullets: [
           'Typing without focus enters address-bar filter mode',
           'Esc exits search/filter context where applicable',
-          'Default browser context menu/hotkeys are blocked (except Ctrl+Shift+I)',
+          'Browser-level Ctrl hotkeys outside Browsey allowlist are blocked (Ctrl+Shift+I is allowed)',
+          'Text inputs keep native editing shortcuts',
         ],
       },
     ],
@@ -328,7 +407,9 @@ export const docsPages: DocPage[] = [
         bullets: [
           'Command modules under src/commands for fs, search, settings, metadata, and library features',
           'Streaming commands for long-running operations (search, duplicate scan, transfers)',
+          'Shared cancellation registry (CancelState) coordinates clean task cancellation by event/task id',
           'Clipboard preview/execute path for safe conflict handling before writes',
+          'Undo manager tracks applied actions with bounded history (current max: 50)',
           'Platform-specific behavior isolated behind cfg gates where needed',
         ],
       },
@@ -348,6 +429,9 @@ export const docsPages: DocPage[] = [
         bullets: [
           'SQLite stores bookmarks, stars, recents, and column widths',
           'Thumbnail cache lives in user cache directory and is trimmed periodically',
+          'Application logs are written under the user data directory at browsey/logs/browsey.log',
+          'Log file rotation keeps a secondary browsey.log.1 when the main log reaches size limit',
+          'Undo backups are kept under user data directory (browsey/undo) and stale backups are cleaned at startup',
           'Capabilities configuration grants event listen/emit for backend-to-frontend signaling',
         ],
       },
@@ -384,7 +468,7 @@ export const docsPages: DocPage[] = [
         id: 'docs-dev-loop',
         title: 'Docs Development Loop',
         code: `npm --prefix docs install\n./scripts/docs-dev.sh\n./scripts/docs-check.sh\n./scripts/docs-build.sh`,
-        note: 'Equivalent npm commands are also available directly with --prefix docs.',
+        note: 'Also available: scripts/docs-install.sh + scripts/docs-preview.sh (and .bat equivalents on Windows).',
       },
       {
         id: 'docs-pages-deploy',
@@ -462,6 +546,71 @@ export const docsPages: DocPage[] = [
     ],
   },
   {
+    id: 'known-limitations',
+    title: 'Known Limitations',
+    summary: 'Current constraints and caveats verified against the codebase.',
+    sections: [
+      {
+        id: 'platform-coverage',
+        title: 'Platform Coverage',
+        bullets: [
+          'Browsey currently targets Linux and Windows; macOS is not supported yet',
+          'Console-launch behavior is implemented per-platform and may fail if no terminal emulator is available',
+        ],
+      },
+      {
+        id: 'open-with-limitations',
+        title: 'Open With Limitations',
+        bullets: [
+          'Open With currently supports associated applications plus an explicit system-default option',
+          'A true custom command workflow is not implemented yet in the current Open With modal flow',
+        ],
+      },
+      {
+        id: 'archive-limitations',
+        title: 'Archive Limitations',
+        bullets: [
+          'RAR entries using unsupported compression methods are rejected (fail-fast)',
+          'Symlink archive entries are skipped or rejected depending on archive format and safety rules',
+          'Extraction reports skipped symlink and skipped unsupported-entry counts',
+        ],
+      },
+      {
+        id: 'symlink-policy',
+        title: 'Symlink Policy',
+        bullets: [
+          'Search and duplicate scans do not traverse symlinks',
+          'Clipboard copy/cut logic refuses symlink entries',
+          'Permission editing on symlinks is not supported',
+        ],
+      },
+      {
+        id: 'undo-lifecycle',
+        title: 'Undo Lifecycle',
+        bullets: [
+          'Undo/redo history is in-memory and therefore resets when the app restarts',
+          'Backup paths under browsey/undo are cleaned at startup to prevent stale leftovers',
+        ],
+      },
+      {
+        id: 'windows-mount-visibility',
+        title: 'Windows Mount Visibility',
+        bullets: [
+          'Windows mount enumeration is drive-letter based',
+          'Volumes/devices without drive letters are outside the standard mount list',
+        ],
+      },
+      {
+        id: 'settings-change-scope',
+        title: 'Settings Change Scope',
+        bullets: [
+          'Hardware acceleration changes require application restart',
+          'Some settings UI entries are placeholders and not wired to backend behavior yet (for example, shortcut editing)',
+        ],
+      },
+    ],
+  },
+  {
     id: 'troubleshooting',
     title: 'Troubleshooting',
     summary: 'Practical fixes for setup, build, and docs deployment issues.',
@@ -498,11 +647,37 @@ export const docsPages: DocPage[] = [
         body: 'Install distro equivalents of webkit2gtk4.1, javascriptcoregtk4.1, libsoup3, and gtk3 development packages.',
       },
       {
+        id: 'setting-change-restart',
+        title: 'Hardware Acceleration Change Has No Immediate Effect',
+        bullets: [
+          'Hardware acceleration is read during app startup',
+          'After toggling this setting, restart Browsey to apply renderer policy changes',
+        ],
+      },
+      {
         id: 'thumbnails-video',
         title: 'Video Thumbnails Missing',
         bullets: [
           'Verify ffmpeg is available in PATH (or set FFMPEG_BIN)',
+          'Browsey can also use a persisted ffmpeg override path from Settings',
           'Without ffmpeg, Browsey falls back to file-type icons for videos',
+        ],
+      },
+      {
+        id: 'open-console-fails',
+        title: 'Open Console Fails on Linux',
+        bullets: [
+          'Ensure a terminal emulator is installed (Browsey probes common terminal commands)',
+          'Optionally set FILEY_TERMINAL to your preferred terminal executable',
+          'The target path must be an existing directory',
+        ],
+      },
+      {
+        id: 'logs-location',
+        title: 'Finding Logs',
+        bullets: [
+          'Browsey writes logs under your user data directory in browsey/logs/',
+          'Primary log file is browsey.log with rotation to browsey.log.1',
         ],
       },
       {
