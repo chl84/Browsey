@@ -1,74 +1,77 @@
 <script lang="ts">
-  type Section = {
-    id: string
-    title: string
-    text: string
-    bullets: string[]
+  import { onDestroy, onMount } from 'svelte'
+  import { docsPages, docsPageMap, type DocPage } from './content/pages'
+
+  const fallbackPageId = docsPages[0].id
+  let activePageId = fallbackPageId
+  let activePage: DocPage = docsPageMap.get(fallbackPageId)!
+
+  const normalizeHash = () => {
+    const raw = window.location.hash.trim()
+    if (!raw || raw === '#') return fallbackPageId
+    const noPound = raw.startsWith('#') ? raw.slice(1) : raw
+    const noSlash = noPound.startsWith('/') ? noPound.slice(1) : noPound
+    const pageId = decodeURIComponent(noSlash)
+    return docsPageMap.has(pageId) ? pageId : fallbackPageId
   }
 
-  const sections: Section[] = [
-    {
-      id: 'intro',
-      title: 'What This Is',
-      text: 'This site is the dedicated documentation project for Browsey, kept in the same repository but built and deployed independently from the desktop app.',
-      bullets: [
-        'Separate build pipeline from the main app',
-        'Static HTML output using Vite + Svelte',
-        'Ready for versioned docs pages',
-      ],
-    },
-    {
-      id: 'local-dev',
-      title: 'Local Development',
-      text: 'Run docs independently from the Tauri app so writing docs does not interfere with app development ports and tooling.',
-      bullets: [
-        'Install dependencies: npm --prefix docs install',
-        'Start local server: npm --prefix docs run dev',
-        'Build static output: npm --prefix docs run build',
-      ],
-    },
-    {
-      id: 'next-steps',
-      title: 'Recommended Next Steps',
-      text: 'If you continue with this setup, the next step is content structure: navigation, command references, release notes by version, and troubleshooting sections.',
-      bullets: [
-        'Add docs pages under src/routes-like sections',
-        'Introduce version selector (latest + tagged versions)',
-        'Publish docs/dist with your preferred static host',
-      ],
-    },
-  ]
+  const syncFromHash = () => {
+    activePageId = normalizeHash()
+    activePage = docsPageMap.get(activePageId) ?? docsPageMap.get(fallbackPageId)!
+    if (window.location.hash !== `#/${activePageId}`) {
+      window.history.replaceState(null, '', `#/${activePageId}`)
+    }
+  }
+
+  onMount(() => {
+    syncFromHash()
+    window.addEventListener('hashchange', syncFromHash)
+  })
+
+  onDestroy(() => {
+    window.removeEventListener('hashchange', syncFromHash)
+  })
 </script>
 
 <main class="shell">
   <header class="top">
     <p class="eyebrow">Browsey Documentation</p>
-    <h1>Dedicated Svelte Docs Workspace</h1>
-    <p class="lede">
-      The docs project now lives in <code>docs/</code> with its own package and build output.
-    </p>
+    <h1>{activePage.title}</h1>
+    <p class="lede">{activePage.summary}</p>
   </header>
 
   <div class="layout">
     <aside class="nav">
-      <h2>Sections</h2>
-      <nav aria-label="Section links">
-        {#each sections as section}
-          <a href={`#${section.id}`}>{section.title}</a>
+      <h2>Documentation</h2>
+      <nav aria-label="Documentation pages">
+        {#each docsPages as page}
+          <a href={`#/${page.id}`} class:active={page.id === activePageId}>
+            {page.title}
+          </a>
         {/each}
       </nav>
     </aside>
 
     <section class="content">
-      {#each sections as section}
+      {#each activePage.sections as section}
         <article id={section.id} class="card">
           <h2>{section.title}</h2>
-          <p>{section.text}</p>
-          <ul>
-            {#each section.bullets as bullet}
-              <li>{bullet}</li>
-            {/each}
-          </ul>
+          {#if section.body}
+            <p>{section.body}</p>
+          {/if}
+          {#if section.bullets && section.bullets.length > 0}
+            <ul>
+              {#each section.bullets as bullet}
+                <li>{bullet}</li>
+              {/each}
+            </ul>
+          {/if}
+          {#if section.code}
+            <pre><code>{section.code}</code></pre>
+          {/if}
+          {#if section.note}
+            <p class="note">{section.note}</p>
+          {/if}
         </article>
       {/each}
     </section>
