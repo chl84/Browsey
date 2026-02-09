@@ -50,7 +50,7 @@ end tell"#,
 
         // Allow override via env
         let mut candidates: Vec<(String, Vec<String>)> = Vec::new();
-        if let Ok(bin) = std::env::var("FILEY_TERMINAL")
+        if let Ok(bin) = std::env::var("BROWSEY_TERMINAL")
             .or_else(|_| std::env::var("TERMINAL"))
             .or_else(|_| std::env::var("COLORTERM"))
         {

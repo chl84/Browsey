@@ -210,6 +210,7 @@ fn main() {
             delete_entry,
             delete_entries,
             entry_times_cmd,
+            entry_kind_cmd,
             set_hidden,
             extract_archive,
             extract_archives,

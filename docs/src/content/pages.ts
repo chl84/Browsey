@@ -211,7 +211,7 @@ export const docsPages: DocPage[] = [
         title: 'Open Console in Current Folder',
         bullets: [
           'Ctrl+T opens a terminal rooted at the current directory view',
-          'On Linux, Browsey tries FILEY_TERMINAL/TERMINAL/COLORTERM first, then common terminal binaries',
+          'On Linux, Browsey tries BROWSEY_TERMINAL/TERMINAL/COLORTERM first, then common terminal binaries',
           'The action is available only when the current view is a real directory',
         ],
       },
@@ -642,7 +642,7 @@ export const docsPages: DocPage[] = [
         title: 'Open Console Fails on Linux',
         bullets: [
           'Ensure a terminal emulator is installed (Browsey probes common terminal commands)',
-          'Optionally set FILEY_TERMINAL to your preferred terminal executable',
+          'Optionally set BROWSEY_TERMINAL to your preferred terminal executable',
           'The target path must be an existing directory',
         ],
       },
