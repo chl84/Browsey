@@ -4,11 +4,24 @@ import type { Entry } from '../types'
 
 type AccessBit = boolean | 'mixed'
 type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
+type PermissionPayload = {
+  access_supported: boolean
+  executable_supported: boolean
+  read_only: boolean
+  executable: boolean | null
+  owner_name?: string | null
+  group_name?: string | null
+  owner?: Access
+  group?: Access
+  other?: Access
+}
 export type PermissionsState = {
   accessSupported: boolean
   executableSupported: boolean
   readOnly: AccessBit | null
   executable: AccessBit | null
+  ownerName: string | null
+  groupName: string | null
   owner: Access | null
   group: Access | null
   other: Access | null
@@ -22,8 +35,21 @@ export type PropertiesState = {
   size: number | null
   itemCount: number | null
   hidden: AccessBit | null
+  permissionsLoading: boolean
   permissions: PermissionsState | null
 }
+
+const PERMISSIONS_MULTI_CONCURRENCY = 8
+const SYMLINK_PERMISSIONS_MSG = 'Permissions are not supported on symlinks'
+
+const unsupportedPermissionsPayload = (): PermissionPayload => ({
+  access_supported: false,
+  executable_supported: false,
+  read_only: false,
+  executable: null,
+  owner_name: null,
+  group_name: null,
+})
 
 type Deps = {
   computeDirStats: (
@@ -43,6 +69,7 @@ export const createPropertiesModal = (deps: Deps) => {
     size: null,
     itemCount: null,
     hidden: null,
+    permissionsLoading: false,
     permissions: null,
   })
   let token = 0
@@ -56,6 +83,7 @@ export const createPropertiesModal = (deps: Deps) => {
       size: null,
       itemCount: null,
       hidden: null,
+      permissionsLoading: false,
       permissions: null,
     })
   }
@@ -75,8 +103,17 @@ export const createPropertiesModal = (deps: Deps) => {
       size: fileBytes,
       itemCount: dirs.length === 0 ? fileCount : null,
       hidden: combine(entries.map((e) => e.hidden == true)),
+      permissionsLoading: true,
       permissions: null,
     })
+
+    if (entries.length === 1) {
+      const entry = entries[0]
+      void loadPermissions(entry, nextToken)
+      void loadEntryTimes(entry, nextToken)
+    } else {
+      void loadPermissionsMulti(entries, nextToken)
+    }
 
     if (dirs.length > 0) {
       const { total, items } = await computeDirStats(
@@ -93,14 +130,6 @@ export const createPropertiesModal = (deps: Deps) => {
     } else {
       state.update((s) => ({ ...s, itemCount: fileCount }))
     }
-
-    if (entries.length === 1) {
-      const entry = entries[0]
-      void loadPermissions(entry, nextToken)
-      void loadEntryTimes(entry, nextToken)
-    } else {
-      void loadPermissionsMulti(entries, nextToken)
-    }
   }
 
   const combine = (values: boolean[]): AccessBit => {
@@ -112,22 +141,57 @@ export const createPropertiesModal = (deps: Deps) => {
     return 'mixed'
   }
 
+  const combinePrincipal = (values: Array<string | null | undefined>): string | null => {
+    if (values.length === 0) return null
+    const normalized = values.map((v) => (typeof v === 'string' ? v.trim() : ''))
+    const unique = Array.from(new Set(normalized.filter((v) => v.length > 0)))
+    if (unique.length === 0) return null
+    if (unique.length === 1 && normalized.every((v) => v === unique[0])) return unique[0]
+    return 'mixed'
+  }
+
+  const fetchPermissionsAll = async (entries: Entry[]): Promise<PermissionPayload[]> => {
+    if (entries.length === 0) return []
+
+    const results: PermissionPayload[] = new Array(entries.length)
+    const workerCount = Math.min(PERMISSIONS_MULTI_CONCURRENCY, entries.length)
+    let nextIdx = 0
+    let failures = 0
+    let unexpectedFailures = 0
+
+    const worker = async () => {
+      while (true) {
+        const idx = nextIdx
+        nextIdx += 1
+        if (idx >= entries.length) {
+          return
+        }
+        const e = entries[idx]
+        try {
+          results[idx] = await invoke<PermissionPayload>('get_permissions', { path: e.path })
+        } catch (err) {
+          failures += 1
+          const msg = err instanceof Error ? err.message : String(err)
+          if (!msg.includes(SYMLINK_PERMISSIONS_MSG)) {
+            unexpectedFailures += 1
+          }
+          results[idx] = unsupportedPermissionsPayload()
+        }
+      }
+    }
+
+    await Promise.all(Array.from({ length: workerCount }, () => worker()))
+    if (unexpectedFailures > 0) {
+      console.warn(
+        `Permissions unavailable for ${failures} selected item(s), ${unexpectedFailures} unexpected`,
+      )
+    }
+    return results
+  }
+
   const loadPermissionsMulti = async (entries: Entry[], currToken: number) => {
     try {
-      const sample = entries.slice(0, 50) // limit to avoid huge bursts
-      const permsList = await Promise.all(
-        sample.map((e) =>
-          invoke<{
-            access_supported: boolean
-            executable_supported: boolean
-            read_only: boolean
-            executable: boolean | null
-            owner?: Access
-            group?: Access
-            other?: Access
-          }>('get_permissions', { path: e.path }),
-        ),
-      )
+      const permsList = await fetchPermissionsAll(entries)
       if (currToken !== token) return
       const accessSupported = permsList.every((p) => p.access_supported)
       const executableSupported = permsList.every((p) => p.executable_supported)
@@ -166,15 +230,20 @@ export const createPropertiesModal = (deps: Deps) => {
       const execVals = permsList
         .map((p) => p.executable)
         .filter((v): v is boolean => v !== null && v !== undefined)
+      const ownerNameVals = permsList.map((p) => p.owner_name ?? null)
+      const groupNameVals = permsList.map((p) => p.group_name ?? null)
 
       state.update((s) => ({
         ...s,
+        permissionsLoading: false,
         permissions: accessSupported
           ? {
               accessSupported,
               executableSupported,
               readOnly: combine(readOnlyVals),
               executable: executableSupported ? combine(execVals) : null,
+              ownerName: combinePrincipal(ownerNameVals),
+              groupName: combinePrincipal(groupNameVals),
               owner: {
                 read: combine(ownerReads),
                 write: combine(ownerWrites),
@@ -196,6 +265,8 @@ export const createPropertiesModal = (deps: Deps) => {
               executableSupported,
               readOnly: null,
               executable: executableSupported ? combine(execVals) : null,
+              ownerName: combinePrincipal(ownerNameVals),
+              groupName: combinePrincipal(groupNameVals),
               owner: null,
               group: null,
               other: null,
@@ -203,28 +274,25 @@ export const createPropertiesModal = (deps: Deps) => {
       }))
     } catch (err) {
       console.error('Failed to load multi permissions', err)
+      if (currToken !== token) return
+      state.update((s) => ({ ...s, permissionsLoading: false }))
     }
   }
 
   const loadPermissions = async (entry: Entry, currToken: number) => {
     try {
-      const perms = await invoke<{
-        access_supported: boolean
-        executable_supported: boolean
-        read_only: boolean
-        executable: boolean | null
-        owner?: Access
-        group?: Access
-        other?: Access
-      }>('get_permissions', { path: entry.path })
+      const perms = await invoke<PermissionPayload>('get_permissions', { path: entry.path })
       if (currToken !== token) return
       state.update((s) => ({
         ...s,
+        permissionsLoading: false,
         permissions: {
           accessSupported: perms.access_supported,
           executableSupported: perms.executable_supported,
           readOnly: perms.read_only,
           executable: perms.executable,
+          ownerName: perms.owner_name ?? null,
+          groupName: perms.group_name ?? null,
           owner: perms.owner ?? null,
           group: perms.group ?? null,
           other: perms.other ?? null,
@@ -232,6 +300,8 @@ export const createPropertiesModal = (deps: Deps) => {
       }))
     } catch (err) {
       console.error('Failed to load permissions', err)
+      if (currToken !== token) return
+      state.update((s) => ({ ...s, permissionsLoading: false }))
     }
   }
 
@@ -286,6 +356,7 @@ export const createPropertiesModal = (deps: Deps) => {
     if (opts.owner && Object.keys(opts.owner).length > 0) payload.owner = { ...opts.owner }
     if (opts.group && Object.keys(opts.group).length > 0) payload.group = { ...opts.group }
     if (opts.other && Object.keys(opts.other).length > 0) payload.other = { ...opts.other }
+    const activeToken = token
 
     try {
       const perms = await invoke<{
@@ -293,10 +364,17 @@ export const createPropertiesModal = (deps: Deps) => {
         executable_supported?: boolean
         read_only?: boolean
         executable?: boolean | null
+        owner_name?: string | null
+        group_name?: string | null
         owner?: Access
         group?: Access
         other?: Access
       }>('set_permissions', payload)
+      if (targets.length > 1) {
+        state.update((s) => ({ ...s, permissionsLoading: true }))
+        await loadPermissionsMulti(current.targets, activeToken)
+        return
+      }
       const currentPerms = get(state).permissions
       state.update((s) => ({
         ...s,
@@ -305,6 +383,8 @@ export const createPropertiesModal = (deps: Deps) => {
           executableSupported: perms.executable_supported ?? currentPerms?.executableSupported ?? false,
           readOnly: perms.read_only ?? currentPerms?.readOnly ?? null,
           executable: perms.executable ?? currentPerms?.executable ?? null,
+          ownerName: perms.owner_name ?? currentPerms?.ownerName ?? null,
+          groupName: perms.group_name ?? currentPerms?.groupName ?? null,
           owner: perms.owner ?? currentPerms?.owner ?? null,
           group: perms.group ?? currentPerms?.group ?? null,
           other: perms.other ?? currentPerms?.other ?? null,

@@ -194,6 +194,7 @@
   export let propertiesSize: number | null = null
   export let propertiesItemCount: number | null = null
   export let propertiesHidden: boolean | 'mixed' | null = null
+  export let propertiesPermissionsLoading = false
   type AccessBit = boolean | 'mixed'
   type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
   export let propertiesPermissions:
@@ -202,6 +203,8 @@
         executableSupported: boolean
         readOnly: AccessBit | null
         executable: AccessBit | null
+        ownerName: string | null
+        groupName: string | null
         owner: Access | null
         group: Access | null
         other: Access | null
@@ -454,6 +457,7 @@
   size={propertiesSize}
   deepCount={propertiesItemCount}
   hidden={propertiesHidden}
+  permissionsLoading={propertiesPermissionsLoading}
   permissions={propertiesPermissions}
   onToggleAccess={onTogglePermissionsAccess}
   onToggleHidden={onToggleHidden}
