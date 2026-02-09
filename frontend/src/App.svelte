@@ -2807,6 +2807,9 @@
   propertiesSize={$propertiesState.size}
   propertiesItemCount={$propertiesState.itemCount}
   propertiesHidden={$propertiesState.hidden}
+  propertiesExtraMetadataLoading={$propertiesState.extraMetadataLoading}
+  propertiesExtraMetadataError={$propertiesState.extraMetadataError}
+  propertiesExtraMetadata={$propertiesState.extraMetadata}
   propertiesPermissionsLoading={$propertiesState.permissionsLoading}
   propertiesPermissions={$propertiesState.permissions}
   onTogglePermissionsAccess={(scope, key, next) => propertiesModal.toggleAccess(scope, key, next)}
