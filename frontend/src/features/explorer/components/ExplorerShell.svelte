@@ -225,6 +225,7 @@
   export let onTogglePermissionsAccess: (scope: 'owner' | 'group' | 'other', key: 'read' | 'write' | 'exec', next: boolean) => void =
     () => {}
   export let onToggleHidden: (next: boolean) => void = () => {}
+  export let onLoadPropertiesExtraMetadata: () => void = () => {}
   export let onCloseProperties: () => void = () => {}
 
   export let bookmarkModalOpen = false
@@ -476,6 +477,7 @@
   permissions={propertiesPermissions}
   onToggleAccess={onTogglePermissionsAccess}
   onToggleHidden={onToggleHidden}
+  onActivateExtra={onLoadPropertiesExtraMetadata}
   {formatSize}
   onClose={onCloseProperties}
 />

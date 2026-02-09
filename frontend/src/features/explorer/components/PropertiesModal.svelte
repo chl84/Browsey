@@ -38,6 +38,7 @@
     next: boolean
   ) => void = () => {}
   export let onToggleHidden: (next: boolean) => void = () => {}
+  export let onActivateExtra: () => void = () => {}
 
   const indeterminate = (node: HTMLInputElement, value: boolean | 'mixed' | null | undefined) => {
     node.indeterminate = value === 'mixed'
@@ -69,6 +70,10 @@
   let activeTab: 'basic' | 'extra' | 'permissions' = 'basic'
   let availableTabs: Array<'basic' | 'extra' | 'permissions'> = ['basic', 'extra', 'permissions']
   let wasOpen = false
+  const switchTab = (tab: 'basic' | 'extra' | 'permissions') => {
+    activeTab = tab
+    if (tab === 'extra') onActivateExtra()
+  }
   $: availableTabs = ['basic', 'extra', 'permissions']
   $: if (!availableTabs.includes(activeTab)) activeTab = 'basic'
   $: {
@@ -88,7 +93,7 @@
         <button
           type="button"
           class:selected={activeTab === tab}
-          on:click={() => (activeTab = tab)}
+          on:click={() => switchTab(tab)}
         >
           {tabLabels[tab]}
         </button>
@@ -150,12 +155,8 @@
           <div class="row"><span class="label">Extra</span><span class="value">Failed to load: {extraMetadataError}</span></div>
         </div>
       {:else if extraMetadata && extraMetadata.sections.length > 0}
-        <div class="rows status-rows">
-          <div class="row"><span class="label">Kind</span><span class="value">{extraMetadata.kind}</span></div>
-        </div>
         {#each extraMetadata.sections as section (section.id)}
           <div class="section extra-section">
-            <h3>{section.title}</h3>
             <div class="rows">
               {#each section.fields as field (field.key)}
                 <div class="row">

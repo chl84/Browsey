@@ -21,7 +21,18 @@ fn classify_kind(path: &Path, meta: &fs::Metadata) -> String {
 
     if matches!(
         ext.as_str(),
-        "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "svg" | "tiff" | "ico" | "avif"
+        "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "bmp"
+            | "webp"
+            | "svg"
+            | "tiff"
+            | "tif"
+            | "tga"
+            | "ico"
+            | "avif"
     ) {
         return "image".to_string();
     }

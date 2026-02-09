@@ -56,6 +56,7 @@ export type PropertiesState = {
   extraMetadataLoading: boolean
   extraMetadataError: string | null
   extraMetadata: ExtraMetadataPayload | null
+  extraMetadataPath: string | null
   permissionsLoading: boolean
   permissions: PermissionsState | null
 }
@@ -93,6 +94,7 @@ export const createPropertiesModal = (deps: Deps) => {
     extraMetadataLoading: false,
     extraMetadataError: null,
     extraMetadata: null,
+    extraMetadataPath: null,
     permissionsLoading: false,
     permissions: null,
   })
@@ -110,6 +112,7 @@ export const createPropertiesModal = (deps: Deps) => {
       extraMetadataLoading: false,
       extraMetadataError: null,
       extraMetadata: null,
+      extraMetadataPath: null,
       permissionsLoading: false,
       permissions: null,
     })
@@ -130,9 +133,10 @@ export const createPropertiesModal = (deps: Deps) => {
       size: fileBytes,
       itemCount: dirs.length === 0 ? fileCount : null,
       hidden: combine(entries.map((e) => e.hidden == true)),
-      extraMetadataLoading: entries.length === 1,
+      extraMetadataLoading: false,
       extraMetadataError: null,
       extraMetadata: null,
+      extraMetadataPath: null,
       permissionsLoading: true,
       permissions: null,
     })
@@ -141,7 +145,6 @@ export const createPropertiesModal = (deps: Deps) => {
       const entry = entries[0]
       void loadPermissions(entry, nextToken)
       void loadEntryTimes(entry, nextToken)
-      void loadExtraMetadata(entry, nextToken)
     } else {
       void loadPermissionsMulti(entries, nextToken)
     }
@@ -362,6 +365,7 @@ export const createPropertiesModal = (deps: Deps) => {
         extraMetadataLoading: false,
         extraMetadataError: null,
         extraMetadata: metadata,
+        extraMetadataPath: entry.path,
       }))
     } catch (err) {
       if (currToken !== token) return
@@ -370,8 +374,24 @@ export const createPropertiesModal = (deps: Deps) => {
         extraMetadataLoading: false,
         extraMetadataError: err instanceof Error ? err.message : String(err),
         extraMetadata: null,
+        extraMetadataPath: null,
       }))
     }
+  }
+
+  const loadExtraIfNeeded = () => {
+    const current = get(state)
+    if (!current.open || current.count !== 1 || !current.entry) return
+    if (current.extraMetadataLoading) return
+    if (current.extraMetadata && current.extraMetadataPath === current.entry.path) return
+    const activeToken = token
+    const entry = current.entry
+    state.update((s) => ({
+      ...s,
+      extraMetadataLoading: true,
+      extraMetadataError: null,
+    }))
+    void loadExtraMetadata(entry, activeToken)
   }
 
   const updatePermissions = async (
@@ -465,6 +485,7 @@ export const createPropertiesModal = (deps: Deps) => {
     state,
     open: openModal,
     close,
+    loadExtraIfNeeded,
     toggleAccess,
     async toggleHidden(next: boolean) {
       const current = get(state)
