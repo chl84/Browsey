@@ -194,6 +194,18 @@
   export let propertiesSize: number | null = null
   export let propertiesItemCount: number | null = null
   export let propertiesHidden: boolean | 'mixed' | null = null
+  export let propertiesExtraMetadataLoading = false
+  export let propertiesExtraMetadataError: string | null = null
+  export let propertiesExtraMetadata:
+    | {
+        kind: string
+        sections: Array<{
+          id: string
+          title: string
+          fields: Array<{ key: string; label: string; value: string }>
+        }>
+      }
+    | null = null
   export let propertiesPermissionsLoading = false
   type AccessBit = boolean | 'mixed'
   type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
@@ -457,6 +469,9 @@
   size={propertiesSize}
   deepCount={propertiesItemCount}
   hidden={propertiesHidden}
+  extraMetadataLoading={propertiesExtraMetadataLoading}
+  extraMetadataError={propertiesExtraMetadataError}
+  extraMetadata={propertiesExtraMetadata}
   permissionsLoading={propertiesPermissionsLoading}
   permissions={propertiesPermissions}
   onToggleAccess={onTogglePermissionsAccess}

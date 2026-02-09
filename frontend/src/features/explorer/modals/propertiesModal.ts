@@ -15,6 +15,24 @@ type PermissionPayload = {
   group?: Access
   other?: Access
 }
+
+export type ExtraMetadataField = {
+  key: string
+  label: string
+  value: string
+}
+
+export type ExtraMetadataSection = {
+  id: string
+  title: string
+  fields: ExtraMetadataField[]
+}
+
+export type ExtraMetadataPayload = {
+  kind: string
+  sections: ExtraMetadataSection[]
+}
+
 export type PermissionsState = {
   accessSupported: boolean
   executableSupported: boolean
@@ -35,6 +53,9 @@ export type PropertiesState = {
   size: number | null
   itemCount: number | null
   hidden: AccessBit | null
+  extraMetadataLoading: boolean
+  extraMetadataError: string | null
+  extraMetadata: ExtraMetadataPayload | null
   permissionsLoading: boolean
   permissions: PermissionsState | null
 }
@@ -69,6 +90,9 @@ export const createPropertiesModal = (deps: Deps) => {
     size: null,
     itemCount: null,
     hidden: null,
+    extraMetadataLoading: false,
+    extraMetadataError: null,
+    extraMetadata: null,
     permissionsLoading: false,
     permissions: null,
   })
@@ -83,6 +107,9 @@ export const createPropertiesModal = (deps: Deps) => {
       size: null,
       itemCount: null,
       hidden: null,
+      extraMetadataLoading: false,
+      extraMetadataError: null,
+      extraMetadata: null,
       permissionsLoading: false,
       permissions: null,
     })
@@ -103,6 +130,9 @@ export const createPropertiesModal = (deps: Deps) => {
       size: fileBytes,
       itemCount: dirs.length === 0 ? fileCount : null,
       hidden: combine(entries.map((e) => e.hidden == true)),
+      extraMetadataLoading: entries.length === 1,
+      extraMetadataError: null,
+      extraMetadata: null,
       permissionsLoading: true,
       permissions: null,
     })
@@ -111,6 +141,7 @@ export const createPropertiesModal = (deps: Deps) => {
       const entry = entries[0]
       void loadPermissions(entry, nextToken)
       void loadEntryTimes(entry, nextToken)
+      void loadExtraMetadata(entry, nextToken)
     } else {
       void loadPermissionsMulti(entries, nextToken)
     }
@@ -319,6 +350,27 @@ export const createPropertiesModal = (deps: Deps) => {
       }))
     } catch (err) {
       console.error('Failed to load entry times', err)
+    }
+  }
+
+  const loadExtraMetadata = async (entry: Entry, currToken: number) => {
+    try {
+      const metadata = await invoke<ExtraMetadataPayload>('entry_extra_metadata_cmd', { path: entry.path })
+      if (currToken !== token) return
+      state.update((s) => ({
+        ...s,
+        extraMetadataLoading: false,
+        extraMetadataError: null,
+        extraMetadata: metadata,
+      }))
+    } catch (err) {
+      if (currToken !== token) return
+      state.update((s) => ({
+        ...s,
+        extraMetadataLoading: false,
+        extraMetadataError: err instanceof Error ? err.message : String(err),
+        extraMetadata: null,
+      }))
     }
   }
 

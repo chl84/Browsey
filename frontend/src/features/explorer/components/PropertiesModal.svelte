@@ -8,6 +8,11 @@
   export let deepCount: number | null = null
   export let onClose: () => void = () => {}
   export let formatSize: (size?: number | null) => string = () => ''
+  type ExtraField = { key: string; label: string; value: string }
+  type ExtraSection = { id: string; title: string; fields: ExtraField[] }
+  export let extraMetadataLoading = false
+  export let extraMetadataError: string | null = null
+  export let extraMetadata: { kind: string; sections: ExtraSection[] } | null = null
   export let permissionsLoading = false
   type Access = { read: boolean | 'mixed'; write: boolean | 'mixed'; exec: boolean | 'mixed' }
   type HiddenBit = boolean | 'mixed' | null
@@ -116,9 +121,6 @@
           <div class="row"><span class="label">Modified</span><span class="value">{entry.modified ?? '—'}</span></div>
           <div class="row"><span class="label">Created</span><span class="value">{entry.created ?? '—'}</span></div>
         {/if}
-      </div>
-    {:else if activeTab === 'extra'}
-      <div class="rows">
         <div class="row">
           <span class="label">Hidden</span>
           <span class="value">
@@ -133,8 +135,42 @@
             </label>
           </span>
         </div>
-        <div class="row"><span class="label">Extra</span><span class="value">More coming soon</span></div>
       </div>
+    {:else if activeTab === 'extra'}
+      {#if count !== 1}
+        <div class="rows status-rows">
+          <div class="row"><span class="label">Extra</span><span class="value">Select one item to view extra metadata</span></div>
+        </div>
+      {:else if extraMetadataLoading}
+        <div class="rows status-rows">
+          <div class="row"><span class="label">Extra</span><span class="value">Loading…</span></div>
+        </div>
+      {:else if extraMetadataError}
+        <div class="rows status-rows">
+          <div class="row"><span class="label">Extra</span><span class="value">Failed to load: {extraMetadataError}</span></div>
+        </div>
+      {:else if extraMetadata && extraMetadata.sections.length > 0}
+        <div class="rows status-rows">
+          <div class="row"><span class="label">Kind</span><span class="value">{extraMetadata.kind}</span></div>
+        </div>
+        {#each extraMetadata.sections as section (section.id)}
+          <div class="section extra-section">
+            <h3>{section.title}</h3>
+            <div class="rows">
+              {#each section.fields as field (field.key)}
+                <div class="row">
+                  <span class="label">{field.label}</span>
+                  <span class="value">{field.value || '—'}</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/each}
+      {:else}
+        <div class="rows status-rows">
+          <div class="row"><span class="label">Extra</span><span class="value">No extra metadata available</span></div>
+        </div>
+      {/if}
     {:else if activeTab === 'permissions'}
       {#if permissionsLoading}
         <div class="rows status-rows">
@@ -246,6 +282,10 @@
   }
 
   .status-rows {
+    margin-top: 8px;
+  }
+
+  .extra-section + .extra-section {
     margin-top: 8px;
   }
 

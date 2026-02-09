@@ -7,6 +7,7 @@ mod db;
 mod entry;
 mod fs_utils;
 mod icons;
+mod metadata;
 mod sorting;
 mod statusbar;
 mod undo;
@@ -115,7 +116,11 @@ fn init_logging() {
 fn apply_webview_rendering_policy_from_settings() {
     let hardware_acceleration = db::open()
         .ok()
-        .and_then(|conn| db::get_setting_bool(&conn, "hardwareAcceleration").ok().flatten())
+        .and_then(|conn| {
+            db::get_setting_bool(&conn, "hardwareAcceleration")
+                .ok()
+                .flatten()
+        })
         .unwrap_or(true);
 
     if !hardware_acceleration {
@@ -211,6 +216,7 @@ fn main() {
             delete_entries,
             entry_times_cmd,
             entry_kind_cmd,
+            entry_extra_metadata_cmd,
             set_hidden,
             extract_archive,
             extract_archives,

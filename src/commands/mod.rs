@@ -31,7 +31,7 @@ pub use fs::{
 };
 pub use library::{list_recent, list_starred, remove_recent, toggle_star};
 pub use listing::{list_dir, watch_dir};
-pub use meta::{entry_kind_cmd, entry_times_cmd};
+pub use meta::{entry_extra_metadata_cmd, entry_kind_cmd, entry_times_cmd};
 pub use mounts::{eject_drive, list_mounts, mount_partition};
 pub use open_with::{list_open_with_apps, open_with};
 pub use permissions::{get_permissions, set_permissions};
