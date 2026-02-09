@@ -522,11 +522,35 @@
     await centerSelectionIfAny()
   }
 
+  const openPathAsFile = (path: string) => {
+    const name = path.split(/[\\/]+/).filter((segment) => segment.length > 0).pop() ?? path
+    open({
+      name,
+      path,
+      kind: 'file',
+      iconId: 0,
+    })
+  }
+
   const goToPath = async (path: string) => {
     const trimmed = path.trim()
     if (!trimmed) return
-    if (trimmed !== get(current) && !get(loading)) {
-      await loadDir(trimmed)
+
+    try {
+      const kind = await invoke<'dir' | 'file'>('entry_kind_cmd', { path: trimmed })
+      if (kind === 'dir') {
+        if (trimmed !== get(current) && !get(loading)) {
+          await loadDir(trimmed)
+        }
+        return
+      }
+
+      openPathAsFile(trimmed)
+      pathInput = get(current)
+    } catch {
+      if (trimmed !== get(current) && !get(loading)) {
+        await loadDir(trimmed)
+      }
     }
   }
 
