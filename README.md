@@ -14,20 +14,22 @@ Early beta: core flows (browse, search, clipboard, trash, compress, duplicate ch
 - **Search**: Recursive, case-insensitive search scoped to the current directory subtree; skips symlinks to avoid loops.
 - **Duplicate checks**: Context action for a single selected file. Scan starts from a user-selected folder, ignores symlinks, streams progress in two phases (size filter, then byte compare), and supports clean cancellation when the modal closes.
 - **Drag targets**: Internal drag/drop supports breadcrumbs as drop targets with visual highlighting.
-- **Drives & bookmarks**: Lists mounts/partitions (marks removable), bookmarks, starred, recent, and trash. Mounts are polled every 2s and SQLite stores bookmarks, stars, recents, and column widths.
+- **Drives & bookmarks**: Lists mounts/partitions (marks removable), bookmarks, starred, recent, and trash. Mount polling is configurable (500-10000 ms, default 8000 ms), and SQLite stores bookmarks, stars, recents, and column widths.
 - **Context actions**: New Folder…, Open with (associated apps + custom command), copy path, cut/copy/paste, compress to ZIP (name + level), Check for Duplicates (single file), rename, move to wastebasket (Delete), delete permanently (Shift+Delete), properties with lazy-loaded tabs, and “open item location” for recents.
 - **Configurable shortcuts**: Settings includes a persisted shortcut keymap editor. Click a shortcut to capture a new key combo; bindings are validated/canonicalized and duplicate conflicts are rejected.
+- **Settings data actions**: Settings > Data can clear thumbnail cache, stars, bookmarks, and recents with confirmation dialogs and per-action toast feedback.
 - **Properties metadata**: The Extra tab loads on demand and shows type-specific metadata only (for example image resolution/color model/depth, PDF document fields, audio/video codec and timing, archive format and entry stats).
 - **Archive extraction**: Zip/Tar(+gz/bz2/xz/zst)/GZ/BZ2/XZ/Zstd/7z and RAR (stored entries); supports multi-archive batch extract with cancel/progress/undo. Unsupported RAR compression methods fail fast instead of writing corrupt data.
 - **Drag & drop**: Internal drag/drop with custom ghost and drop-target highlighting; designed to work on Linux and Windows.
 - **Thumbnails**: Lazy, virtualized thumbnails with caching and per-file permission checks. SVG rasterized via resvg; PDFs via bundled PDFium; images via `image` crate; **videos** via ffmpeg first-frame grabs with cancellation on navigation.
 - **Grid view parity**: Fixed-size cards with virtualization, keyboard navigation and range selection, lasso overlay, hidden-item dimming, and consistent click-to-clear selection; names can span up to three lines but stay aligned to show the start.
+- **Interaction tuning**: Double-click speed in Settings directly controls list/grid open timing for mouse-based file/folder opening.
 - **Theming & density**: Dark by default plus a light toggle; “cozy” vs “compact” density presets resize rows, grid cards, icons, and even the sidebar, all via CSS variables in `frontend/src/app.css`.
 - **Cross-platform details**: Uses system WebView (WebKit on Linux, WebView2 on Windows). Network locations on Windows delete permanently (Explorer parity) because the recycle bin is unavailable there. On Linux, when hardware acceleration is disabled in settings, Browsey keeps compositing enabled and only sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`.
 - **Removable & cloud drives**: Detects removable volumes and offers an eject action on Windows (CfgMgr/SetupAPI + IOCTL fallback) and on Linux (`gio`/`umount`/`udisksctl` with lazy fallback); safely-ejected drives are hidden from the list. GVFS mounts for MTP (phones) and OneDrive appear with appropriate icons; busy devices surface a short “in use” hint. On Windows we enumerate only drive-letter volumes; OneDrive works as its synced local folders and MTP devices without drive letters are not listed.
 - **UI polish**: Flat, squared styling across inputs/buttons/modals; address bar shows breadcrumbs when unfocused and selects the full path on focus; renaming pre-selects the filename without its extension; browser default context menu and hotkeys are disabled (except Ctrl+Shift+I), while app shortcuts remain.
 - **Visual cues for access**: Read-only items show an eye icon; items without read access show a padlock. Multi-select permission changes apply in one batch with undo/rollback on failure (Unix and Windows).
-- **User defaults**: Persists show hidden, hidden-last, folders-first, start directory, default view (list/grid), default sort field/direction, and delete confirmation. Defaults load before the first listing so startup respects your prefs.
+- **User defaults**: Persists show hidden, hidden-last, folders-first, start directory, default view (list/grid), default sort field/direction, delete confirmation, mount polling interval, and double-click speed. Defaults load before the first listing so startup respects your prefs.
 
 ## Screenshots
 ![Browsey showing a Fedora workspace](resources/01_screenshot_browsey_fedora.png)
@@ -114,7 +116,7 @@ Tauri bundles:
 
 ## Architecture notes
 - **Backend (`src/`)**: Tauri commands for listing, streaming search, mounts, bookmarks, starring, trash, rename/delete, open with (desktop entries on Linux, custom commands, and default handler), clipboard preview/execute, compression to ZIP, duplicate scanning, shortcut keymap management, and a filesystem watcher. Search uses the `search_stream` command with incremental batches and cancellation support. Duplicate scanning supports a streaming command with progress and cancel tokens. Thumbnail pipeline uses resvg for SVG and bundled PDFium for PDFs, keeping heavy files in check. Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) sit behind cfg gates.
-- **Frontend (`frontend/src/`)**: Explorer UI in Svelte with virtualized rows/cards, drag/drop, lasso selection, context menus, modals, and a thumbnail loader. All Tauri `invoke` calls are wrapped in `features/explorer/services/` (clipboard, trash, listing, files, layout, history, activity, star, bookmarks). Layout and theming live in `frontend/src/app.css`. Modals share structure via `frontend/src/ui/ModalShell.svelte` and `frontend/src/ui/modalUtils.ts`.
+- **Frontend (`frontend/src/`)**: Explorer UI in Svelte with virtualized rows/cards, drag/drop, lasso selection, context menus, modals, and a thumbnail loader. All Tauri `invoke` calls are wrapped in `features/explorer/services/` (clipboard, trash, listing, files, layout, history, activity, star, bookmarks, data). Layout and theming live in `frontend/src/app.css`. Modals share structure via `frontend/src/ui/ModalShell.svelte` and `frontend/src/ui/modalUtils.ts`.
 - **Data & persistence**: SQLite DB in the platform data dir stores bookmarks, starred items, recents, column widths, and shortcut keymap overrides. Thumbnail cache lives under the user cache dir with periodic trimming. Capability file `capabilities/default.json` grants event listen/emit so the watcher can signal the UI.
 - **Icons**: Uses a custom Browsey icon set in `frontend/public/icons/scalable/browsey/` mapped via `src/icons.rs`, covering sidebar items, folders (incl. templates, public, desktop, etc.), files (images, text, pdf, spreadsheets, presentations), compressed archives, and shortcuts. Removable disks and bookmarks also use the new set.
 
@@ -125,7 +127,7 @@ Tauri bundles:
 - `src/clipboard.rs` — Clipboard state, conflict preview, paste/rename/overwrite handling.
 - `src/watcher.rs` — Notify-based watcher emitting `dir-changed`.
 - `frontend/src/features/explorer/` — Explorer components, hooks, stores, services, utils, selection.
-- `frontend/src/features/explorer/services/` — All Tauri API calls wrapped as small modules (clipboard, trash, listing, files, layout, history, activity, star, bookmarks).
+- `frontend/src/features/explorer/services/` — All Tauri API calls wrapped as small modules (clipboard, trash, listing, files, layout, history, activity, star, bookmarks, data).
 - `frontend/src/ui/` — Shared UI atoms (toasts, modals, drag ghost, etc.).
 - `scripts/` — Dev/build helpers for both shells.
 - `resources/` — Icons and generated schemas; `capabilities/` for Tauri permissions.

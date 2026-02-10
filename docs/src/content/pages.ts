@@ -331,7 +331,7 @@ export const docsPages: DocPage[] = [
   {
     id: 'settings-shortcuts',
     title: 'Settings and Shortcuts',
-    summary: 'Persisted defaults, editable keyboard map, and Linux hardware acceleration behavior.',
+    summary: 'Persisted defaults, editable keyboard map, interaction tuning, and data-maintenance actions.',
     sections: [
       {
         id: 'persisted-settings',
@@ -345,6 +345,7 @@ export const docsPages: DocPage[] = [
           'Archive defaults (name, compression level, open-destination-after-extract)',
           'Thumbnail settings (video thumbnails enabled flag, ffmpeg path override, cache size)',
           'Mount list polling interval',
+          'Double-click speed for mouse-based opening in list/grid',
           'Hardware acceleration toggle',
           'Shortcut keymap bindings',
         ],
@@ -366,6 +367,7 @@ export const docsPages: DocPage[] = [
           'FFmpeg path override: empty (auto-detect)',
           'Thumbnail cache: 300 MB',
           'Mount polling: 8000 ms',
+          'Double-click speed: 300 ms',
           'Hardware acceleration: enabled',
         ],
       },
@@ -376,6 +378,17 @@ export const docsPages: DocPage[] = [
           'Archive compression level: 0-9',
           'Thumbnail cache size: 50-1000 MB',
           'Mount polling interval: 500-10000 ms',
+          'Double-click speed: 150-600 ms',
+        ],
+      },
+      {
+        id: 'settings-data-actions',
+        title: 'Data Maintenance Actions',
+        bullets: [
+          'Settings > Data provides clear actions for thumbnail cache, stars, bookmarks, and recents',
+          'Each clear action requires confirmation and shows per-action toast feedback',
+          'Clearing thumbnail cache removes cached files on disk and refreshes visible thumbnails in the UI',
+          'Clearing stars/bookmarks/recents applies globally and updates relevant views/state immediately',
         ],
       },
       {
@@ -445,6 +458,7 @@ export const docsPages: DocPage[] = [
           'Explorer shell and feature modules under frontend/src/features/explorer/',
           'All Tauri invoke calls wrapped in service modules',
           'Shared modal structure through frontend/src/ui/ModalShell.svelte',
+          'Settings data actions use a shared confirmation modal component for destructive maintenance operations',
           'Shared styles and density/theming variables in frontend/src/app.css',
         ],
       },
@@ -526,6 +540,9 @@ export const docsPages: DocPage[] = [
         bullets: [
           'Added configurable shortcut keymap manager (persisted bindings with conflict validation)',
           'Settings modal supports click-to-capture shortcut editing with immediate apply',
+          'Double-click speed setting is now wired to list/grid open behavior and persisted with range validation',
+          'Settings > Data actions now clear thumbnail cache, stars, bookmarks, and recents with confirmation dialogs',
+          'Data clear actions show per-action toast feedback; thumbnail-cache clear also refreshes visible thumbnails',
           'Extra metadata now lazy-loads when the Extra tab is activated',
           'Extra metadata backend split into type-specific providers and avoids Basic-tab duplication',
           'Extra tab UI simplified by removing kind and section title chrome',

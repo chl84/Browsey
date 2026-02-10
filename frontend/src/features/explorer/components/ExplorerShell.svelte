@@ -103,6 +103,7 @@
   export let dragAllowed = false
   export let dragging = false
   export let videoThumbs = true
+  export let thumbnailRefreshToken = 0
 
   export let contextMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
     open: false,
@@ -339,6 +340,7 @@
         {isHidden}
         {displayName}
         videoThumbs={videoThumbs}
+        {thumbnailRefreshToken}
         {clipboardMode}
           {clipboardPaths}
           onWheel={onWheel}
@@ -347,7 +349,6 @@
           onRowsMousedown={onRowsMousedown}
           onRowsScroll={onRowsScroll}
           onRowsKeydown={onRowsKeydown}
-          onOpen={onOpen}
           onRowClick={onRowClick}
           onContextMenu={onContextMenu}
           onRowDragStart={onRowDragStart}

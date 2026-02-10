@@ -100,6 +100,35 @@ pub struct ThumbnailResponse {
     pub cached: bool,
 }
 
+#[derive(Serialize, Clone)]
+pub struct ThumbnailCacheClearResult {
+    pub removed_files: u64,
+    pub removed_bytes: u64,
+}
+
+#[tauri::command]
+pub fn clear_thumbnail_cache() -> Result<ThumbnailCacheClearResult, String> {
+    let dir = cache_dir()?;
+    if !dir.exists() {
+        fs::create_dir_all(&dir)
+            .map_err(|e| format!("Failed to create thumbnail cache dir: {e}"))?;
+        return Ok(ThumbnailCacheClearResult {
+            removed_files: 0,
+            removed_bytes: 0,
+        });
+    }
+
+    let (removed_files, removed_bytes) = thumbnail_cache_stats(&dir)?;
+
+    fs::remove_dir_all(&dir).map_err(|e| format!("Failed to clear thumbnail cache: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to recreate thumbnail cache dir: {e}"))?;
+
+    Ok(ThumbnailCacheClearResult {
+        removed_files,
+        removed_bytes,
+    })
+}
+
 #[tauri::command]
 pub async fn get_thumbnail(
     app_handle: AppHandle,
@@ -237,6 +266,39 @@ fn cache_dir() -> Result<PathBuf, String> {
         .or_else(dirs_next::data_dir)
         .unwrap_or_else(|| std::env::temp_dir());
     Ok(base.join("browsey").join("thumbs"))
+}
+
+fn thumbnail_cache_stats(root: &Path) -> Result<(u64, u64), String> {
+    let mut dirs = vec![root.to_path_buf()];
+    let mut files = 0_u64;
+    let mut bytes = 0_u64;
+
+    while let Some(dir) = dirs.pop() {
+        let entries = fs::read_dir(&dir)
+            .map_err(|e| format!("Failed to read thumbnail cache dir {}: {e}", dir.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("Failed to read thumbnail cache entry: {e}"))?;
+            let path = entry.path();
+            let ty = entry
+                .file_type()
+                .map_err(|e| format!("Failed to read file type {}: {e}", path.display()))?;
+
+            if ty.is_dir() {
+                dirs.push(path);
+                continue;
+            }
+            if ty.is_file() {
+                files += 1;
+                let len = entry
+                    .metadata()
+                    .map_err(|e| format!("Failed to read metadata {}: {e}", path.display()))?
+                    .len();
+                bytes = bytes.saturating_add(len);
+            }
+        }
+    }
+
+    Ok((files, bytes))
 }
 
 fn cache_key(path: &Path, mtime: Option<std::time::SystemTime>, max_dim: u32) -> String {

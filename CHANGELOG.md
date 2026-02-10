@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Settings: `Double-click speed` is now wired to actual list/grid mouse-open behavior and persisted as a validated preference.
+- Settings: Added Data maintenance actions to clear thumbnail cache, stars, bookmarks, and recents with confirmation dialogs and per-action toasts.
+- Thumbnail cache clear now removes cached files on disk and refreshes visible thumbnails in the UI.
 - Properties modal: Extra metadata is now lazy-loaded when the **Extra** tab is opened (no eager metadata fetch on modal open).
 - Extra metadata backend reorganized into type-specific providers (image, pdf, audio, video, archive) and no longer duplicates Basic-tab fields.
 - Extra tab UI simplified by removing the redundant `kind` row and section headings; it now focuses on the metadata fields directly.

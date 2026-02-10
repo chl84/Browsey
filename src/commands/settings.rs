@@ -282,3 +282,25 @@ pub fn load_hardware_acceleration() -> Result<Option<bool>, String> {
     let conn = crate::db::open()?;
     crate::db::get_setting_bool(&conn, "hardwareAcceleration")
 }
+
+#[tauri::command]
+pub fn store_double_click_ms(value: i64) -> Result<(), String> {
+    if !(150..=600).contains(&value) {
+        return Err("double click speed must be 150-600 ms".into());
+    }
+    let conn = crate::db::open()?;
+    crate::db::set_setting_string(&conn, "doubleClickMs", &value.to_string())
+}
+
+#[tauri::command]
+pub fn load_double_click_ms() -> Result<Option<i64>, String> {
+    let conn = crate::db::open()?;
+    if let Some(s) = crate::db::get_setting_string(&conn, "doubleClickMs")? {
+        if let Ok(n) = s.parse::<i64>() {
+            if (150..=600).contains(&n) {
+                return Ok(Some(n));
+            }
+        }
+    }
+    Ok(None)
+}

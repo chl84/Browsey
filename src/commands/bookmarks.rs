@@ -1,6 +1,6 @@
 //! Bookmark CRUD commands backed by SQLite.
 
-use crate::db::{delete_bookmark, list_bookmarks, upsert_bookmark};
+use crate::db::{delete_all_bookmarks, delete_bookmark, list_bookmarks, upsert_bookmark};
 use serde::Serialize;
 
 #[derive(Serialize, Clone)]
@@ -29,4 +29,11 @@ pub fn add_bookmark(label: String, path: String) -> Result<(), String> {
 pub fn remove_bookmark(path: String) -> Result<(), String> {
     let conn = crate::db::open()?;
     delete_bookmark(&conn, &path)
+}
+
+#[tauri::command]
+pub fn clear_bookmarks() -> Result<u64, String> {
+    let conn = crate::db::open()?;
+    let removed = delete_all_bookmarks(&conn)?;
+    Ok(removed as u64)
 }

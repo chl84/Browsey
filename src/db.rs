@@ -234,6 +234,21 @@ pub fn delete_bookmark(conn: &Connection, path: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn delete_all_starred(conn: &Connection) -> Result<usize, String> {
+    conn.execute("DELETE FROM starred", [])
+        .map_err(|e| format!("Failed to clear stars: {e}"))
+}
+
+pub fn delete_all_recent(conn: &Connection) -> Result<usize, String> {
+    conn.execute("DELETE FROM recent", [])
+        .map_err(|e| format!("Failed to clear recents: {e}"))
+}
+
+pub fn delete_all_bookmarks(conn: &Connection) -> Result<usize, String> {
+    conn.execute("DELETE FROM bookmarks", [])
+        .map_err(|e| format!("Failed to clear bookmarks: {e}"))
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct ColumnWidths {
     pub widths: Vec<f64>,

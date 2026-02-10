@@ -44,7 +44,6 @@
   type="button"
   draggable="true"
   style:userSelect="text"
-  on:dblclick={() => onOpen(entry)}
   on:keydown={(e) => {
     if (e.key === 'Enter') {
       e.preventDefault()

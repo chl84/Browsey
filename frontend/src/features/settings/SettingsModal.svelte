@@ -1,5 +1,6 @@
 <script lang="ts">
   import ModalShell from '../../ui/ModalShell.svelte'
+  import ConfirmActionModal from '../../ui/ConfirmActionModal.svelte'
   import ComboBox, { type ComboOption } from '../../ui/ComboBox.svelte'
   import { onMount, onDestroy } from 'svelte'
   import type { DefaultSortField, Density } from '../explorer/types'
@@ -25,6 +26,7 @@
   export let ffmpegPathValue = ''
   export let thumbCacheMbValue = 300
   export let mountsPollMsValue = 8000
+  export let doubleClickMsValue = 300
   export let sortFieldValue: DefaultSortField = 'name'
   export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
@@ -46,6 +48,11 @@
   export let onChangeFfmpegPath: (value: string) => void = () => {}
   export let onChangeThumbCacheMb: (value: number) => void = () => {}
   export let onChangeMountsPollMs: (value: number) => void = () => {}
+  export let onChangeDoubleClickMs: (value: number) => void = () => {}
+  export let onClearThumbCache: () => Promise<void> | void = () => {}
+  export let onClearStars: () => Promise<void> | void = () => {}
+  export let onClearBookmarks: () => Promise<void> | void = () => {}
+  export let onClearRecents: () => Promise<void> | void = () => {}
   export let onChangeShortcut: (
     commandId: ShortcutCommandId,
     accelerator: string,
@@ -57,6 +64,7 @@
   type SortField = DefaultSortField
   type SortDirection = 'asc' | 'desc'
   type LogLevel = 'error' | 'warn' | 'info' | 'debug'
+  type DataClearTarget = 'thumb-cache' | 'stars' | 'bookmarks' | 'recents'
 
   type Settings = {
     startDir: string
@@ -77,10 +85,7 @@
     ffmpegPath: string
     thumbCacheMb: number
     mountsPollMs: number
-    ioConcurrency: number
-    lazyDirScan: boolean
     doubleClickMs: number
-    singleClickOpen: boolean
     logLevel: LogLevel
     externalTools: string
     highContrast: boolean
@@ -106,10 +111,7 @@
     ffmpegPath: '',
     thumbCacheMb: 300,
     mountsPollMs: 8000,
-    ioConcurrency: 4,
-    lazyDirScan: true,
     doubleClickMs: 300,
-    singleClickOpen: false,
     logLevel: 'warn',
     externalTools: '',
     highContrast: false,
@@ -179,6 +181,9 @@
   $: if (settings.mountsPollMs !== mountsPollMsValue) {
     settings = { ...settings, mountsPollMs: mountsPollMsValue }
   }
+  $: if (settings.doubleClickMs !== doubleClickMsValue) {
+    settings = { ...settings, doubleClickMs: doubleClickMsValue }
+  }
 
   const rowTexts = (
     ...parts: (string | number | boolean | null | undefined | (string | number | boolean | null | undefined)[])[]
@@ -236,8 +241,6 @@
   ]
 
   $: mountsPollTexts = rowTexts('mounts poll', 'watcher poll', `${settings.mountsPollMs} ms`)
-  $: ioConcurrencyTexts = rowTexts('io concurrency', `${settings.ioConcurrency} workers`, settings.ioConcurrency)
-  $: lazyScansTexts = rowTexts('lazy scans', 'defer deep scans in large folders')
   $: hardwareAccelerationTexts = rowTexts(
     'hardware acceleration',
     'gpu',
@@ -247,8 +250,6 @@
   )
 
   $: doubleClickTexts = rowTexts('double-click speed', `${settings.doubleClickMs} ms`, 'double click speed')
-  $: singleClickTexts = rowTexts('single click to open', settings.singleClickOpen ? 'on' : 'off', 'single click open')
-
   $: clearThumbTexts = rowTexts('clear thumbnail cache', 'clear', 'thumbnail cache')
   $: clearStarsTexts = rowTexts('clear stars', 'clear')
   $: clearBookmarksTexts = rowTexts('clear bookmarks', 'clear')
@@ -294,11 +295,9 @@
   $: showPerformance = rowMatches(needle, [
     ...hardwareAccelerationTexts,
     ...mountsPollTexts,
-    ...ioConcurrencyTexts,
-    ...lazyScansTexts,
   ])
 
-  $: showInteraction = rowMatches(needle, [...doubleClickTexts, ...singleClickTexts])
+  $: showInteraction = rowMatches(needle, [...doubleClickTexts])
 
   $: showData = rowMatches(needle, [
     ...clearThumbTexts,
@@ -313,9 +312,72 @@
   $: hiddenFilesLastDisabled = !settings.showHidden
   $: thumbsDisabled = !settings.videoThumbs
 
-  const clearStore = (target: 'thumb-cache' | 'stars' | 'bookmarks' | 'recents') => {
-    console.log(`TODO: clear ${target}`)
+  const clearTargetCopy = {
+    'thumb-cache': {
+      title: 'Clear thumbnail cache?',
+      message: 'This removes all cached thumbnail files on disk and refreshes the UI.',
+      confirmLabel: 'Clear cache',
+    },
+    stars: {
+      title: 'Clear all stars?',
+      message: 'This removes all starred items.',
+      confirmLabel: 'Clear stars',
+    },
+    bookmarks: {
+      title: 'Clear all bookmarks?',
+      message: 'This removes all bookmarks.',
+      confirmLabel: 'Clear bookmarks',
+    },
+    recents: {
+      title: 'Clear all recents?',
+      message: 'This removes all recent items.',
+      confirmLabel: 'Clear recents',
+    },
+  } satisfies Record<DataClearTarget, { title: string; message: string; confirmLabel: string }>
+
+  let clearTarget: DataClearTarget | null = null
+  let clearBusy = false
+  let clearError = ''
+
+  const requestClear = (target: DataClearTarget) => {
+    if (clearBusy) return
+    clearTarget = target
+    clearError = ''
   }
+
+  const cancelClear = () => {
+    if (clearBusy) return
+    clearTarget = null
+    clearError = ''
+  }
+
+  const confirmClear = async () => {
+    if (!clearTarget || clearBusy) return
+    clearBusy = true
+    clearError = ''
+    try {
+      if (clearTarget === 'thumb-cache') {
+        await onClearThumbCache()
+      } else if (clearTarget === 'stars') {
+        await onClearStars()
+      } else if (clearTarget === 'bookmarks') {
+        await onClearBookmarks()
+      } else {
+        await onClearRecents()
+      }
+      clearTarget = null
+    } catch (err) {
+      clearError = err instanceof Error ? err.message : String(err)
+    } finally {
+      clearBusy = false
+    }
+  }
+
+  $: clearDialog = clearTarget ? clearTargetCopy[clearTarget] : null
+  $: clearDialogMessage =
+    clearDialog && clearError
+      ? `${clearDialog.message}\n\nLast error: ${clearError}`
+      : clearDialog?.message ?? ''
 
   const restoreDefaults = () => {
     settings = { ...DEFAULT_SETTINGS }
@@ -374,6 +436,10 @@
     }
     if (e.key === 'Escape') {
       e.preventDefault()
+      if (clearTarget) {
+        cancelClear()
+        return
+      }
       onClose()
     }
   }
@@ -804,28 +870,6 @@
             </div>
           {/if}
 
-        {#if rowMatches(needle, ioConcurrencyTexts)}
-          <div class="form-label">IO concurrency</div>
-          <div class="form-control">
-              <input
-                type="range"
-                min="1"
-                max="16"
-                step="1"
-                value={settings.ioConcurrency}
-                on:input={onNumberInput('ioConcurrency')}
-              />
-              <small>{settings.ioConcurrency} workers</small>
-            </div>
-          {/if}
-
-        {#if rowMatches(needle, lazyScansTexts)}
-          <div class="form-label">Lazy scans</div>
-          <div class="form-control checkbox">
-              <input type="checkbox" bind:checked={settings.lazyDirScan} />
-              <span>Defer deep scans in large folders</span>
-            </div>
-          {/if}
         {/if}
 
         {#if showInteraction}
@@ -834,25 +878,22 @@
         {#if rowMatches(needle, doubleClickTexts)}
           <div class="form-label">Double-click speed</div>
           <div class="form-control">
-            <input
+              <input
                 type="range"
                 min="150"
                 max="600"
                 step="10"
                 value={settings.doubleClickMs}
-                on:input={onNumberInput('doubleClickMs')}
+                on:input={(e) => {
+                  const next = Number((e.currentTarget as HTMLInputElement).value)
+                  settings = { ...settings, doubleClickMs: next }
+                  onChangeDoubleClickMs(next)
+                }}
               />
               <small>{settings.doubleClickMs} ms</small>
             </div>
           {/if}
 
-        {#if rowMatches(needle, singleClickTexts)}
-          <div class="form-label">Single click to open</div>
-          <div class="form-control checkbox">
-              <input type="checkbox" bind:checked={settings.singleClickOpen} />
-              <span>Open items on single click</span>
-            </div>
-          {/if}
         {/if}
 
         {#if showData}
@@ -860,19 +901,47 @@
           <div class="group-heading">Data</div><div class="group-spacer"></div>
           <div class="form-label">Clear thumbnail cache</div>
           <div class="form-control">
-            <button type="button" class="secondary" on:click={() => clearStore('thumb-cache')}>Clear</button>
+            <button
+              type="button"
+              class="secondary"
+              disabled={clearBusy}
+              on:click={() => requestClear('thumb-cache')}
+            >
+              {clearBusy && clearTarget === 'thumb-cache' ? 'Clearing...' : 'Clear'}
+            </button>
           </div>
           <div class="form-label">Clear stars</div>
           <div class="form-control">
-            <button type="button" class="secondary" on:click={() => clearStore('stars')}>Clear</button>
+            <button
+              type="button"
+              class="secondary"
+              disabled={clearBusy}
+              on:click={() => requestClear('stars')}
+            >
+              {clearBusy && clearTarget === 'stars' ? 'Clearing...' : 'Clear'}
+            </button>
           </div>
           <div class="form-label">Clear bookmarks</div>
           <div class="form-control">
-            <button type="button" class="secondary" on:click={() => clearStore('bookmarks')}>Clear</button>
+            <button
+              type="button"
+              class="secondary"
+              disabled={clearBusy}
+              on:click={() => requestClear('bookmarks')}
+            >
+              {clearBusy && clearTarget === 'bookmarks' ? 'Clearing...' : 'Clear'}
+            </button>
           </div>
           <div class="form-label">Clear recents</div>
           <div class="form-control">
-            <button type="button" class="secondary" on:click={() => clearStore('recents')}>Clear</button>
+            <button
+              type="button"
+              class="secondary"
+              disabled={clearBusy}
+              on:click={() => requestClear('recents')}
+            >
+              {clearBusy && clearTarget === 'recents' ? 'Clearing...' : 'Clear'}
+            </button>
           </div>
         {/if}
 
@@ -932,6 +1001,18 @@
     </div>
 
   </ModalShell>
+
+  <ConfirmActionModal
+    open={clearTarget !== null}
+    title={clearDialog?.title ?? 'Confirm action'}
+    message={clearDialogMessage}
+    confirmLabel={clearDialog?.confirmLabel ?? 'Confirm'}
+    cancelLabel="Cancel"
+    danger={true}
+    busy={clearBusy}
+    onConfirm={() => void confirmClear()}
+    onCancel={cancelClear}
+  />
 {/if}
 
 <style>
