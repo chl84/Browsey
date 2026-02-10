@@ -31,16 +31,6 @@ export const createGridKeyboardHandler = ({
 
     const key = event.key.toLowerCase()
     const selectedSet = get(selected)
-    const ctrl = event.ctrlKey || event.metaKey
-
-    if (ctrl && key === 'a') {
-      event.preventDefault()
-      event.stopPropagation()
-      selected.set(new Set(list.map((e) => e.path)))
-      anchorIndex.set(0)
-      caretIndex.set(list.length - 1)
-      return
-    }
 
     if (key === 'escape') {
       event.preventDefault()

@@ -3,6 +3,11 @@
   import ComboBox, { type ComboOption } from '../../ui/ComboBox.svelte'
   import { onMount, onDestroy } from 'svelte'
   import type { DefaultSortField, Density } from '../explorer/types'
+  import {
+    keyboardEventToAccelerator,
+    type ShortcutBinding,
+    type ShortcutCommandId,
+  } from '../shortcuts/keymap'
 
   export let open = false
   export let onClose: () => void
@@ -23,6 +28,7 @@
   export let sortFieldValue: DefaultSortField = 'name'
   export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
+  export let shortcuts: ShortcutBinding[] = []
   export let onChangeDefaultView: (value: 'list' | 'grid') => void = () => {}
   export let onToggleShowHidden: (value: boolean) => void = () => {}
   export let onToggleHiddenFilesLast: (value: boolean) => void = () => {}
@@ -40,6 +46,10 @@
   export let onChangeFfmpegPath: (value: string) => void = () => {}
   export let onChangeThumbCacheMb: (value: number) => void = () => {}
   export let onChangeMountsPollMs: (value: number) => void = () => {}
+  export let onChangeShortcut: (
+    commandId: ShortcutCommandId,
+    accelerator: string,
+  ) => Promise<void> | void = () => {}
 
   let filter = ''
   let needle = ''
@@ -112,24 +122,9 @@
     const target = event.currentTarget as HTMLInputElement
     settings = { ...settings, [key]: Number(target.value) }
   }
-  const shortcuts = [
-    { action: 'Search', keys: 'Ctrl+F' },
-    { action: 'Toggle view', keys: 'Ctrl+G' },
-    { action: 'Bookmarks', keys: 'Ctrl+B' },
-    { action: 'Open console', keys: 'Ctrl+T' },
-    { action: 'Copy', keys: 'Ctrl+C' },
-    { action: 'Cut', keys: 'Ctrl+X' },
-    { action: 'Paste', keys: 'Ctrl+V' },
-    { action: 'Select all', keys: 'Ctrl+A' },
-    { action: 'Undo', keys: 'Ctrl+Z' },
-    { action: 'Redo', keys: 'Ctrl+Y' },
-    { action: 'Properties', keys: 'Ctrl+P' },
-    { action: 'Show hidden', keys: 'Ctrl+H' },
-    { action: 'Open settings', keys: 'Ctrl+S' },
-    { action: 'Delete to wastebasket', keys: 'Delete' },
-    { action: 'Delete permanently', keys: 'Shift+Delete' },
-    { action: 'Rename', keys: 'F2' },
-  ]
+  let shortcutCaptureId: ShortcutCommandId | null = null
+  let shortcutCaptureBusy = false
+  let shortcutCaptureError = ''
 
   $: needle = filter.trim().toLowerCase()
 
@@ -228,10 +223,17 @@
   $: ffmpegPathTexts = rowTexts('ffmpeg path', settings.ffmpegPath || 'auto-detect if empty', 'ffmpeg')
   $: thumbCacheTexts = rowTexts('cache size', 'thumbnail cache size', `${settings.thumbCacheMb} mb`)
 
-  $: filteredShortcuts = shortcuts.filter((s) =>
-    rowMatches(needle, rowTexts('shortcuts', 'keys', s.action, s.keys)),
+  $: sortedShortcuts = [...shortcuts].sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
   )
-  $: shortcutSectionTexts = rowTexts('shortcuts')
+  $: filteredShortcuts = sortedShortcuts.filter((s) =>
+    rowMatches(needle, rowTexts('shortcuts', 'keys', s.label, s.accelerator)),
+  )
+  $: shortcutMidpoint = Math.ceil(filteredShortcuts.length / 2)
+  $: shortcutColumns = [
+    filteredShortcuts.slice(0, shortcutMidpoint),
+    filteredShortcuts.slice(shortcutMidpoint),
+  ]
 
   $: mountsPollTexts = rowTexts('mounts poll', 'watcher poll', `${settings.mountsPollMs} ms`)
   $: ioConcurrencyTexts = rowTexts('io concurrency', `${settings.ioConcurrency} workers`, settings.ioConcurrency)
@@ -284,7 +286,10 @@
     ...thumbCacheTexts,
   ])
 
-  $: showShortcuts = rowMatches(needle, filteredShortcuts.flatMap((s) => rowTexts(s.action, s.keys)))
+  $: showShortcuts = rowMatches(
+    needle,
+    filteredShortcuts.flatMap((s) => rowTexts(s.label, s.accelerator)),
+  )
 
   $: showPerformance = rowMatches(needle, [
     ...hardwareAccelerationTexts,
@@ -317,8 +322,56 @@
     filter = ''
   }
 
+  const beginShortcutCapture = (commandId: ShortcutCommandId) => {
+    if (shortcutCaptureBusy) return
+    shortcutCaptureId = commandId
+    shortcutCaptureError = ''
+  }
+
+  const cancelShortcutCapture = () => {
+    if (shortcutCaptureBusy) return
+    shortcutCaptureId = null
+    shortcutCaptureError = ''
+  }
+
+  const applyShortcutCapture = async (accelerator: string) => {
+    if (!shortcutCaptureId) return
+    const commandId = shortcutCaptureId
+    shortcutCaptureBusy = true
+    shortcutCaptureError = ''
+    try {
+      await onChangeShortcut(commandId, accelerator)
+      shortcutCaptureId = null
+    } catch (err) {
+      shortcutCaptureError = err instanceof Error ? err.message : String(err)
+    } finally {
+      shortcutCaptureBusy = false
+    }
+  }
+
   const handleWindowKeydown = (e: KeyboardEvent) => {
     if (!open) return
+    if (shortcutCaptureId) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        cancelShortcutCapture()
+        return
+      }
+      if (shortcutCaptureBusy || e.repeat) {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
+      const accelerator = keyboardEventToAccelerator(e)
+      e.preventDefault()
+      e.stopPropagation()
+      if (!accelerator) {
+        return
+      }
+      void applyShortcutCapture(accelerator)
+      return
+    }
     if (e.key === 'Escape') {
       e.preventDefault()
       onClose()
@@ -478,6 +531,7 @@
         {/if}
 
         {#if showSorting}
+          <div class="group-divider" aria-hidden="true"></div>
           <div class="group-heading">Sorting</div><div class="group-spacer"></div>
         {#if rowMatches(needle, sortFieldTexts)}
           <div class="form-label">Default sort field</div>
@@ -533,6 +587,7 @@
         {/if}
 
         {#if showAppearance}
+          <div class="group-divider" aria-hidden="true"></div>
           <div class="group-heading">Appearance</div><div class="group-spacer"></div>
         {#if rowMatches(needle, densityTexts)}
           <div class="form-label">Density</div>
@@ -554,6 +609,7 @@
         {/if}
 
         {#if showArchives}
+          <div class="group-divider" aria-hidden="true"></div>
           <div class="group-heading">Archives</div><div class="group-spacer"></div>
         {#if rowMatches(needle, archiveNameTexts)}
           <div class="form-label">Default archive name</div>
@@ -615,6 +671,7 @@
         {/if}
 
         {#if showThumbnails}
+          <div class="group-divider" aria-hidden="true"></div>
           <div class="group-heading">Thumbnails</div><div class="group-spacer"></div>
         {#if rowMatches(needle, videoThumbsTexts)}
           <div class="form-label">Video thumbs</div>
@@ -672,18 +729,45 @@
         {/if}
 
         {#if showShortcuts}
+          <div class="group-divider" aria-hidden="true"></div>
           <div class="group-heading">Shortcuts</div><div class="group-spacer"></div>
-          {#each filteredShortcuts as shortcut (shortcut.action)}
-            <div class="form-label">{shortcut.action}</div>
-            <div class="form-control"><span class="key">{shortcut.keys}</span></div>
-          {/each}
-          <div class="form-label"></div>
-          <div class="form-control">
-            <button type="button" class="secondary">Edit shortcuts (coming soon)</button>
+          <div class="form-control shortcuts-control shortcuts-row">
+            <div class="shortcuts-columns">
+              {#each shortcutColumns as column, columnIndex (columnIndex)}
+                <div class="shortcuts-column">
+                  {#each column as shortcut (shortcut.commandId)}
+                    <div class="shortcut-item">
+                      <span class="shortcut-action">{shortcut.label}</span>
+                      <button
+                        type="button"
+                        class="key shortcut-key"
+                        class:capturing={shortcutCaptureId === shortcut.commandId}
+                        disabled={shortcutCaptureBusy && shortcutCaptureId !== shortcut.commandId}
+                        on:click={() => beginShortcutCapture(shortcut.commandId)}
+                      >
+                        {#if shortcutCaptureId === shortcut.commandId}
+                          {#if shortcutCaptureBusy}
+                            Saving...
+                          {:else}
+                            Press keys
+                          {/if}
+                        {:else}
+                          {shortcut.accelerator}
+                        {/if}
+                      </button>
+                    </div>
+                  {/each}
+                </div>
+              {/each}
+            </div>
+            {#if shortcutCaptureError}
+              <div class="shortcuts-error">{shortcutCaptureError}</div>
+            {/if}
           </div>
         {/if}
 
         {#if showPerformance}
+          <div class="group-divider" aria-hidden="true"></div>
           <div class="group-heading">Performance</div><div class="group-spacer"></div>
         {#if rowMatches(needle, hardwareAccelerationTexts)}
           <div class="form-label">Hardware acceleration</div>
@@ -745,6 +829,7 @@
         {/if}
 
         {#if showInteraction}
+          <div class="group-divider" aria-hidden="true"></div>
           <div class="group-heading">Interaction</div><div class="group-spacer"></div>
         {#if rowMatches(needle, doubleClickTexts)}
           <div class="form-label">Double-click speed</div>
@@ -771,6 +856,7 @@
         {/if}
 
         {#if showData}
+          <div class="group-divider" aria-hidden="true"></div>
           <div class="group-heading">Data</div><div class="group-spacer"></div>
           <div class="form-label">Clear thumbnail cache</div>
           <div class="form-control">
@@ -791,6 +877,7 @@
         {/if}
 
         {#if showAccessibility}
+          <div class="group-divider" aria-hidden="true"></div>
           <div class="group-heading">Accessibility</div><div class="group-spacer"></div>
         {#if rowMatches(needle, highContrastTexts)}
           <div class="form-label">High contrast</div>
@@ -817,6 +904,7 @@
         {/if}
 
         {#if showAdvanced}
+          <div class="group-divider" aria-hidden="true"></div>
           <div class="group-heading">Advanced</div><div class="group-spacer"></div>
         {#if rowMatches(needle, externalToolsTexts)}
           <div class="form-label">External tools</div>
@@ -909,19 +997,33 @@
     grid-column: 1;
     font-weight: 700;
     color: var(--fg-strong);
-    padding-top: 6px;
+    padding-top: 0;
     text-align: right;
     justify-self: end;
   }
 
   .group-spacer {
     grid-column: 2;
+    min-height: 1px;
+  }
+
+  .group-divider {
+    grid-column: 1 / -1;
+    height: 0;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    margin-bottom: 8px;
+  }
+
+  .settings-table > .group-divider:first-child {
+    display: none;
   }
 
   .form-rows {
     display: grid;
     grid-template-columns: 150px 1fr;
-    gap: 10px 32px;
+    column-gap: 32px;
+    row-gap: 10px;
     align-items: center;
   }
 
@@ -1006,5 +1108,61 @@
     background: var(--bg);
     border-radius: 0;
     font-size: 12px;
+  }
+
+  .shortcuts-control {
+    align-items: stretch;
+  }
+
+  .shortcuts-row {
+    grid-column: 2;
+  }
+
+  .shortcuts-columns {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+  }
+
+  .shortcuts-column {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .shortcut-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 28px;
+  }
+
+  .shortcut-action {
+    color: var(--fg);
+  }
+
+  .shortcut-key {
+    cursor: pointer;
+  }
+
+  .shortcut-key.capturing {
+    border-color: var(--border-accent);
+    background: var(--bg-hover);
+  }
+
+  .shortcuts-error {
+    margin-top: 8px;
+    color: var(--danger, #b00020);
+    font-size: 12px;
+  }
+
+  @media (max-width: 760px) {
+    .shortcuts-columns {
+      flex-direction: column;
+      gap: 8px;
+    }
   }
 </style>

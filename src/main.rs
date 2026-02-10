@@ -7,6 +7,7 @@ mod db;
 mod entry;
 mod fs_utils;
 mod icons;
+mod keymap;
 mod metadata;
 mod sorting;
 mod statusbar;
@@ -203,6 +204,10 @@ fn main() {
             load_hardware_acceleration,
             store_density,
             load_density,
+            load_shortcuts,
+            set_shortcut_binding,
+            reset_shortcut_binding,
+            reset_all_shortcuts,
             dir_sizes,
             eject_drive,
             mount_partition,
