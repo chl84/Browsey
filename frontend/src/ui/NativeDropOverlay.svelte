@@ -21,7 +21,7 @@
     inset: 0;
     z-index: 90;
     pointer-events: none;
-    background: rgba(0, 0, 0, 0.08);
+    background: var(--overlay-soft);
     display: flex;
     align-items: center;
     justify-content: center;

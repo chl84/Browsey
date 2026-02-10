@@ -55,12 +55,16 @@
 <style>
   .header-row {
     display: grid;
-    gap: 10px;
-    padding: 6px 6px 6px 13px;
+    gap: var(--list-header-gap);
+    padding:
+      var(--list-header-padding-y)
+      var(--list-header-padding-right)
+      var(--list-header-padding-y)
+      var(--list-header-padding-left);
     border-bottom: 1px solid var(--border-strong);
     background: var(--bg);
     color: var(--fg-muted);
-    font-size: 12px;
+    font-size: var(--list-header-font-size);
     letter-spacing: 0.02em;
     text-transform: uppercase;
     position: sticky;
@@ -73,7 +77,7 @@
     display: flex;
     align-items: center;
     position: relative;
-    gap: 6px;
+    gap: var(--list-header-cell-gap);
     min-width: 0;
     flex: 1 1 0;
   }
@@ -81,7 +85,7 @@
   .header-btn {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--list-header-cell-gap);
     justify-content: flex-start;
     flex: 1 1 auto;
     min-width: 0;
@@ -89,7 +93,7 @@
     border: none;
     background: transparent;
     color: inherit;
-    font-size: 12px;
+    font-size: var(--list-header-font-size);
     font-weight: 700;
     letter-spacing: 0.02em;
     text-transform: uppercase;
@@ -101,8 +105,8 @@
   .header-btn.align-right {
     justify-content: flex-end;
     text-align: right;
-    margin-right: -10px;
-    padding-right: 10px;
+    margin-right: calc(-1 * var(--list-header-align-right-offset));
+    padding-right: var(--list-header-align-right-offset);
   }
 
   .header-btn.inert {
@@ -121,7 +125,7 @@
   }
 
   .sort-icon {
-    font-size: 11px;
+    font-size: var(--list-header-sort-icon-size);
     opacity: 0.8;
     display: inline-flex;
     align-items: center;

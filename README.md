@@ -7,7 +7,7 @@ Documentation: https://chl84.github.io/Browsey/
 For technical deep-dives (module maps, behavior details, and release notes), use the docs site.
 
 ## Status
-Browsey is in active development. Core flows (browse, search, clipboard, trash, compress, duplicate checks, open with, properties) are in place and stable for daily use, while rapid iteration continues. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
+Browsey is in active development with current feature work focused on Linux. Core flows (browse, search, clipboard, trash, compress, duplicate checks, open with, properties) are in place and stable for daily use, while rapid iteration continues. Windows builds remain available, but the Windows version is currently in maintenance mode (critical fixes and compatibility updates) rather than active feature development. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
 
 ## Highlights
 - Virtualized list and grid views tuned for large folders.
@@ -25,7 +25,7 @@ Browsey is in active development. Core flows (browse, search, clipboard, trash, 
 ![Browsey in grid view with thumbnails](resources/02_screenshot_browsey_fedora.png)
 
 ## Requirements
-Supported platforms: Linux and Windows (macOS is not supported yet).
+Supported platforms: Linux and Windows (macOS is not supported yet). Active development is currently Linux-first.
 
 Common:
 - Rust (stable) via `rustup`
