@@ -15,7 +15,8 @@ Early beta: core flows (browse, search, clipboard, trash, compress, duplicate ch
 - **Duplicate checks**: Context action for a single selected file. Scan starts from a user-selected folder, ignores symlinks, streams progress in two phases (size filter, then byte compare), and supports clean cancellation when the modal closes.
 - **Drag targets**: Internal drag/drop supports breadcrumbs as drop targets with visual highlighting.
 - **Drives & bookmarks**: Lists mounts/partitions (marks removable), bookmarks, starred, recent, and trash. Mounts are polled every 2s and SQLite stores bookmarks, stars, recents, and column widths.
-- **Context actions**: New Folder…, Open with (associated apps + custom command), copy path, cut/copy/paste, compress to ZIP (name + level), Check for Duplicates (single file), rename, move to wastebasket (Delete), delete permanently (Shift+Delete), properties with lazy-loaded timestamps, and “open item location” for recents.
+- **Context actions**: New Folder…, Open with (associated apps + custom command), copy path, cut/copy/paste, compress to ZIP (name + level), Check for Duplicates (single file), rename, move to wastebasket (Delete), delete permanently (Shift+Delete), properties with lazy-loaded tabs, and “open item location” for recents.
+- **Properties metadata**: The Extra tab loads on demand and shows type-specific metadata only (for example image resolution/color model/depth, PDF document fields, audio/video codec and timing, archive format and entry stats).
 - **Archive extraction**: Zip/Tar(+gz/bz2/xz/zst)/GZ/BZ2/XZ/Zstd/7z and RAR (stored entries); supports multi-archive batch extract with cancel/progress/undo. Unsupported RAR compression methods fail fast instead of writing corrupt data.
 - **Drag & drop**: Internal drag/drop with custom ghost and drop-target highlighting; designed to work on Linux and Windows.
 - **Thumbnails**: Lazy, virtualized thumbnails with caching and per-file permission checks. SVG rasterized via resvg; PDFs via bundled PDFium; images via `image` crate; **videos** via ffmpeg first-frame grabs with cancellation on navigation.
@@ -106,7 +107,7 @@ Tauri bundles:
 - **Clipboard**: `Ctrl+C`/`Ctrl+X` copy/cut; `Ctrl+V` paste. Pasting into the same directory auto-renames duplicates; other conflicts prompt overwrite vs auto-rename.
 - **Rename**: `F2` or context menu.
 - **Delete**: `Delete` moves to wastebasket (or permanently on Windows network paths); `Shift+Delete` deletes permanently with confirmation.
-- **Properties**: `Ctrl+P` opens properties with lazy-loaded timestamps; folder sizes reuse the status bar computation.
+- **Properties**: `Ctrl+P` opens properties; folder sizes reuse the status bar computation, and the Extra tab loads metadata only when activated.
 - **Hidden files**: `Ctrl+H` toggles showing hidden files (hidden items are shown by default).
 
 ## Architecture notes
@@ -133,7 +134,7 @@ Tauri bundles:
 - Duplicate checks compare by file size first, then byte-for-byte with early exit on mismatch; symlinks are ignored.
 - “Open item location” jumps to the parent and reselects the item.
 - Windows network paths delete permanently (recycle bin is unavailable there). Symlink copy/move is rejected.
-- Permissions: Owner/group/other (Everyone) access bits can be edited on Unix and Windows; Windows maps to the file DACL and honors read-only and executable toggles. Changes roll back if any target fails.
+- Permissions: Owner/group/other (Everyone) access bits can be edited on Unix and Windows; Windows maps to the file DACL and honors read-only and executable toggles. Multi-select permission state is aggregated across the full selection with bounded parallelism, and unsupported targets (for example symlinks) are handled without aborting the full batch.
 - Removable volumes on Windows expose an eject action; once a device is successfully ejected the UI removes it and filters out NOT_READY/DEVICE_NOT_CONNECTED remnants.
 - Open with modal lists matching applications (fallbacks included), allows a custom command, uses the system default when chosen, and launches apps detached without console noise.
 - Drag/drop uses a custom ghost image; Tauri window drag/drop is disabled to allow HTML5 DnD on Windows.

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- Properties modal: Extra metadata is now lazy-loaded when the **Extra** tab is opened (no eager metadata fetch on modal open).
+- Extra metadata backend reorganized into type-specific providers (image, pdf, audio, video, archive) and no longer duplicates Basic-tab fields.
+- Extra tab UI simplified by removing the redundant `kind` row and section headings; it now focuses on the metadata fields directly.
+- Image extra-metadata routing now includes `.tif` and `.tga`.
+
 ## v0.4.1 — 2026-02-08
 - Linux rendering fallback simplified: when hardware acceleration is disabled, Browsey now sets only `WEBKIT_DISABLE_DMABUF_RENDERER=1` (removed legacy compositing/software flags).
 - Added **Check for Duplicates** tool in the file context menu (single-file selection), with a dedicated modal built on the shared modal shell and app-wide modal styling.

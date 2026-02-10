@@ -207,6 +207,17 @@ export const docsPages: DocPage[] = [
         ],
       },
       {
+        id: 'properties-flow',
+        title: 'Properties and Extra Metadata',
+        bullets: [
+          'Ctrl+P opens Properties for the current selection',
+          'Permissions tab shows user/group ownership before the permissions matrix',
+          'Multi-select permissions are aggregated across the full selection',
+          'Extra tab fetches metadata only when the tab is activated (single selection)',
+          'Extra tab shows type-specific metadata only and avoids duplicating Basic-tab fields',
+        ],
+      },
+      {
         id: 'console-flow',
         title: 'Open Console in Current Folder',
         bullets: [
@@ -280,6 +291,17 @@ export const docsPages: DocPage[] = [
           'PDF rendering via bundled PDFium',
           'Video first-frame extraction via ffmpeg when available',
           'Fallback icons are used when decode fails or access is denied',
+        ],
+      },
+      {
+        id: 'properties-metadata',
+        title: 'Properties Metadata Pipeline',
+        bullets: [
+          'Properties Basic tab loads lightweight metadata first; heavy metadata stays deferred',
+          'Extra metadata is loaded lazily when the Extra tab is opened',
+          'Backend providers are type-specific: image, pdf, audio, video, archive',
+          'Image metadata routing covers png/jpg/jpeg/gif/bmp/webp/svg/tiff/tif/tga/ico (and avif when decoder support is available)',
+          'Extra tab UI intentionally omits redundant kind/section labels and shows fields directly',
         ],
       },
       {
@@ -496,6 +518,16 @@ export const docsPages: DocPage[] = [
     summary: 'Curated highlights from recent versions.',
     sections: [
       {
+        id: 'unreleased',
+        title: 'Unreleased',
+        bullets: [
+          'Extra metadata now lazy-loads when the Extra tab is activated',
+          'Extra metadata backend split into type-specific providers and avoids Basic-tab duplication',
+          'Extra tab UI simplified by removing kind and section title chrome',
+          'Image extra-metadata routing now includes .tif and .tga',
+        ],
+      },
+      {
         id: 'v041',
         title: 'v0.4.1 (2026-02-08)',
         bullets: [
@@ -562,8 +594,8 @@ export const docsPages: DocPage[] = [
         id: 'open-with-limitations',
         title: 'Open With Limitations',
         bullets: [
-          'Open With currently supports associated applications plus an explicit system-default option',
-          'A true custom command workflow is not implemented yet in the current Open With modal flow',
+          'Open With behavior depends on platform app registration quality and may vary by file type',
+          'Custom command launching is supported, but command availability and arguments are user-managed',
         ],
       },
       {
