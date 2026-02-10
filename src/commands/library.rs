@@ -69,3 +69,17 @@ pub fn remove_recent(paths: Vec<String>) -> Result<(), String> {
     db::delete_recent_paths(&mut conn, &paths)?;
     Ok(())
 }
+
+#[tauri::command]
+pub fn clear_stars() -> Result<u64, String> {
+    let conn = db::open()?;
+    let removed = db::delete_all_starred(&conn)?;
+    Ok(removed as u64)
+}
+
+#[tauri::command]
+pub fn clear_recents() -> Result<u64, String> {
+    let conn = db::open()?;
+    let removed = db::delete_all_recent(&conn)?;
+    Ok(removed as u64)
+}

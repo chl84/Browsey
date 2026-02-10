@@ -50,6 +50,8 @@ import {
   storeThumbCacheMb,
   loadMountsPollMs,
   storeMountsPollMs,
+  loadDoubleClickMs,
+  storeDoubleClickMs,
 } from './services/settings'
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
@@ -114,6 +116,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const ffmpegPath = writable<string>('')
   const thumbCacheMb = writable<number>(300)
   const mountsPollMs = writable<number>(8000)
+  const doubleClickMs = writable<number>(300)
   const bookmarks = writable<{ label: string; path: string }[]>([])
   const partitions = writable<Partition[]>([])
   const history = writable<Location[]>([])
@@ -956,6 +959,12 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     void storeMountsPollMs(clamped)
   }
 
+  const setDoubleClickMsPref = (value: number) => {
+    const clamped = Math.min(600, Math.max(150, Math.round(value)))
+    doubleClickMs.set(clamped)
+    void storeDoubleClickMs(clamped)
+  }
+
   const loadMountsPollPref = async () => {
     try {
       const saved = await loadMountsPollMs()
@@ -965,6 +974,18 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       }
     } catch (err) {
       console.error('Failed to load mounts poll setting', err)
+    }
+  }
+
+  const loadDoubleClickMsPref = async () => {
+    try {
+      const saved = await loadDoubleClickMs()
+      if (typeof saved === 'number') {
+        const clamped = Math.min(600, Math.max(150, Math.round(saved)))
+        doubleClickMs.set(clamped)
+      }
+    } catch (err) {
+      console.error('Failed to load doubleClickMs setting', err)
     }
   }
 
@@ -1004,6 +1025,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     hardwareAcceleration,
     ffmpegPath,
     thumbCacheMb,
+    doubleClickMs,
     bookmarks,
     partitions,
     showHidden,
@@ -1060,7 +1082,9 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     setHardwareAccelerationPref,
     setFfmpegPathPref,
     setThumbCachePref,
+    setDoubleClickMsPref,
     setMountsPollPref,
+    loadDoubleClickMsPref,
     loadMountsPollPref,
   }
 }

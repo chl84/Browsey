@@ -159,14 +159,17 @@ fn main() {
             get_bookmarks,
             add_bookmark,
             remove_bookmark,
+            clear_bookmarks,
             watch_dir,
             open_entry,
             list_open_with_apps,
             open_with,
             toggle_star,
             list_starred,
+            clear_stars,
             remove_recent,
             list_recent,
+            clear_recents,
             list_trash,
             store_column_widths,
             load_saved_column_widths,
@@ -198,6 +201,8 @@ fn main() {
             load_thumb_cache_mb,
             store_mounts_poll_ms,
             load_mounts_poll_ms,
+            store_double_click_ms,
+            load_double_click_ms,
             store_video_thumbs,
             load_video_thumbs,
             store_hardware_acceleration,
@@ -244,7 +249,8 @@ fn main() {
             set_permissions,
             undo_action,
             redo_action,
-            get_thumbnail
+            get_thumbnail,
+            clear_thumbnail_cache
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

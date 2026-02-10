@@ -11,6 +11,7 @@
 
   export let currentPath = ''
   export let videoThumbs = true
+  export let thumbnailRefreshToken = 0
 
   const thumbLoader = createThumbnailLoader({
     maxConcurrent: 3,
@@ -36,6 +37,12 @@
     lastVideoThumbs = videoThumbs
   }
 
+  let lastThumbnailRefreshToken = thumbnailRefreshToken
+  $: if (thumbnailRefreshToken !== lastThumbnailRefreshToken) {
+    thumbLoader.reset(`${currentPath}-thumb-refresh-${thumbnailRefreshToken}`)
+    lastThumbnailRefreshToken = thumbnailRefreshToken
+  }
+
   onDestroy(() => {
     unsubThumbs()
   })
@@ -59,7 +66,6 @@
     width: 0,
     height: 0,
   }
-  export let onOpen: (entry: Entry) => void = () => {}
   export let onRowClick: (entry: Entry, index: number, event: MouseEvent) => void = () => {}
   export let onContextMenu: (entry: Entry, event: MouseEvent) => void = () => {}
   export let onRowDragStart: (entry: Entry, event: DragEvent) => void = () => {}
@@ -132,7 +138,6 @@
               data-index={start + i}
               data-path={entry.path}
               draggable="true"
-              on:dblclick={() => onOpen(entry)}
               on:click={(event) => onRowClick(entry, start + i, event)}
               on:contextmenu={(event) => {
                 event.preventDefault()

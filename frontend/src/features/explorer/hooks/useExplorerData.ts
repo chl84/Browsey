@@ -41,6 +41,7 @@ export const useExplorerData = (options: Options = {}) => {
     loadHardwareAccelerationPref,
     loadFfmpegPathPref,
     loadThumbCachePref,
+    loadDoubleClickMsPref,
     entries,
     current,
     startDirPref,
@@ -120,6 +121,7 @@ export const useExplorerData = (options: Options = {}) => {
       loadHardwareAccelerationPref(),
       loadFfmpegPathPref(),
       loadThumbCachePref(),
+      loadDoubleClickMsPref(),
     ])
 
     const setPartitionsPollMs = (ms: number) => {

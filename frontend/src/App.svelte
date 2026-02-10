@@ -61,6 +61,12 @@
     checkDuplicatesStream,
     type DuplicateScanProgress,
   } from './features/explorer/services/duplicates'
+  import {
+    clearBookmarks,
+    clearRecents,
+    clearStars,
+    clearThumbnailCache,
+  } from './features/explorer/services/data'
   import ConflictModal from './ui/ConflictModal.svelte'
   import SettingsModal from './features/settings/SettingsModal.svelte'
   import { anyModalOpen as anyModalOpenStore } from './ui/modalOpenState'
@@ -124,6 +130,7 @@
   let newFolderName = 'New folder'
   let newFileName = ''
   let settingsOpen = false
+  let thumbnailRefreshToken = 0
   let shortcutBindings: ShortcutBinding[] = DEFAULT_SHORTCUTS
   let pendingNav: { path: string; opts?: { recordHistory?: boolean; silent?: boolean }; gen: number } | null = null
   let navGeneration = 0
@@ -206,6 +213,7 @@
     ffmpegPath,
     thumbCacheMb,
     mountsPollMs,
+    doubleClickMs,
     sortFieldPref,
     sortDirectionPref,
     sortField,
@@ -221,6 +229,7 @@
     setFfmpegPathPref,
     setThumbCachePref,
     setMountsPollPref,
+    setDoubleClickMsPref,
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
@@ -680,7 +689,7 @@
   }
 
   $: rowsKeydownHandler = handleRowsKeydown($filteredEntries)
-  $: rowClickHandler = handleRowClick($filteredEntries)
+  $: rowSelectionHandler = handleRowClick($filteredEntries)
 
   $: bookmarks = $bookmarksStore
   $: partitions = $partitionsStore
@@ -1709,6 +1718,81 @@
     await loadRaw($current, { recordHistory: false })
   }
 
+  const clearThumbnailCacheFromSettings = async () => {
+    try {
+      const result = await clearThumbnailCache()
+      thumbnailRefreshToken += 1
+      await reloadCurrent()
+      if (result.removed_files > 0) {
+        showToast(
+          `Cleared thumbnail cache: ${result.removed_files} file${result.removed_files === 1 ? '' : 's'} (${formatSize(result.removed_bytes)})`,
+          2200,
+        )
+      } else {
+        showToast('Thumbnail cache already empty', 1800)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showToast(`Clear thumbnail cache failed: ${msg}`)
+      throw err
+    }
+  }
+
+  const clearStarsFromSettings = async () => {
+    try {
+      const removed = await clearStars()
+      entries.update((list) =>
+        list.map((entry) => (entry.starred ? { ...entry, starred: false } : entry)),
+      )
+      if (currentView === 'starred') {
+        await loadStarred(false)
+      }
+      if (removed > 0) {
+        showToast(`Cleared ${removed} star${removed === 1 ? '' : 's'}`, 1800)
+      } else {
+        showToast('No stars to clear', 1600)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showToast(`Clear stars failed: ${msg}`)
+      throw err
+    }
+  }
+
+  const clearBookmarksFromSettings = async () => {
+    try {
+      const removed = await clearBookmarks()
+      bookmarksStore.set([])
+      if (removed > 0) {
+        showToast(`Cleared ${removed} bookmark${removed === 1 ? '' : 's'}`, 1800)
+      } else {
+        showToast('No bookmarks to clear', 1600)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showToast(`Clear bookmarks failed: ${msg}`)
+      throw err
+    }
+  }
+
+  const clearRecentsFromSettings = async () => {
+    try {
+      const removed = await clearRecents()
+      if (currentView === 'recent') {
+        await loadRecent(false)
+      }
+      if (removed > 0) {
+        showToast(`Cleared ${removed} recent item${removed === 1 ? '' : 's'}`, 1800)
+      } else {
+        showToast('No recents to clear', 1600)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showToast(`Clear recents failed: ${msg}`)
+      throw err
+    }
+  }
+
   const {
     deleteModal,
     deleteState,
@@ -2044,6 +2128,7 @@
   }
 
   const handleOpenEntry = async (entry: Entry) => {
+    pendingOpenCandidate = null
     if (entry.kind === 'dir') {
       mode = 'address'
       searchActive.set(false)
@@ -2060,6 +2145,49 @@
       return
     }
     open(entry)
+  }
+
+  let pendingOpenCandidate: { path: string; atMs: number } | null = null
+
+  const isOpenClickCandidate = (event: MouseEvent) =>
+    event.button === 0 &&
+    !event.shiftKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey
+
+  const clickTimestampMs = (event: MouseEvent) => {
+    const stamp = Number(event.timeStamp)
+    return Number.isFinite(stamp) ? stamp : performance.now()
+  }
+
+  const resolveDoubleClickMs = () => {
+    const configured = get(doubleClickMs)
+    return Math.min(600, Math.max(150, Math.round(configured)))
+  }
+
+  const handleRowClickWithOpen = (entry: Entry, absoluteIndex: number, event: MouseEvent) => {
+    rowSelectionHandler(entry, absoluteIndex, event)
+
+    if (!isOpenClickCandidate(event)) {
+      pendingOpenCandidate = null
+      return
+    }
+
+    const nowMs = clickTimestampMs(event)
+    const thresholdMs = resolveDoubleClickMs()
+
+    if (
+      pendingOpenCandidate &&
+      pendingOpenCandidate.path === entry.path &&
+      nowMs - pendingOpenCandidate.atMs <= thresholdMs
+    ) {
+      pendingOpenCandidate = null
+      void handleOpenEntry(entry)
+      return
+    }
+
+    pendingOpenCandidate = { path: entry.path, atMs: nowMs }
   }
 
   const openEntryLocation = async (entry: Entry) => {
@@ -2228,12 +2356,14 @@
   const handleRowsClickSafe = (event: MouseEvent) => {
     if (selectionDrag) {
       selectionDrag = false
+      pendingOpenCandidate = null
       return
     }
     if (isScrollbarClick(event, rowsElRef)) return
     if (viewMode === 'grid') {
       const target = event.target as HTMLElement | null
       if (target && target.closest('.card')) return
+      pendingOpenCandidate = null
       if (get(selected).size > 0) {
         selected.set(new Set())
         anchorIndex.set(null)
@@ -2241,11 +2371,13 @@
       }
       return
     }
+    pendingOpenCandidate = null
     handleRowsClick(event)
   }
 
   // --- Context menus ------------------------------------------------------
   const handleRowContextMenu = (entry: Entry, event: MouseEvent) => {
+    pendingOpenCandidate = null
     const idx = get(filteredEntries).findIndex((e) => e.path === entry.path)
     ensureSelectionBeforeMenu($selected, entry.path, idx, (paths, anchor, caret) => {
       selected.set(paths)
@@ -2757,6 +2889,7 @@
   {mode}
   filterValue={$filter}
   videoThumbs={$videoThumbs}
+  {thumbnailRefreshToken}
   cols={$cols}
   gridTemplate={$gridTemplate}
   filteredEntries={$filteredEntries}
@@ -2783,7 +2916,7 @@
     onChangeSort={changeSort}
     onStartResize={startResize}
     ariaSort={ariaSort}
-    onRowClick={rowClickHandler}
+    onRowClick={handleRowClickWithOpen}
     onOpen={handleOpenEntry}
     onContextMenu={handleRowContextMenu}
     onToggleStar={toggleStar}
@@ -2918,6 +3051,7 @@
     ffmpegPathValue={$ffmpegPath}
     thumbCacheMbValue={$thumbCacheMb}
     mountsPollMsValue={$mountsPollMs}
+    doubleClickMsValue={$doubleClickMs}
     startDirValue={$startDirPref ?? '~'}
     sortFieldValue={$sortFieldPref}
     sortDirectionValue={$sortDirectionPref}
@@ -2941,6 +3075,11 @@
     onChangeFfmpegPath={setFfmpegPathPref}
     onChangeThumbCacheMb={setThumbCachePref}
     onChangeMountsPollMs={setMountsPollPref}
+    onChangeDoubleClickMs={setDoubleClickMsPref}
+    onClearThumbCache={clearThumbnailCacheFromSettings}
+    onClearStars={clearStarsFromSettings}
+    onClearBookmarks={clearBookmarksFromSettings}
+    onClearRecents={clearRecentsFromSettings}
     onChangeSortField={setSortFieldPref}
     onChangeSortDirection={setSortDirectionPref}
     onChangeShortcut={updateShortcutBinding}

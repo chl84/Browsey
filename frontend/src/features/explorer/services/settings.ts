@@ -84,3 +84,8 @@ export const loadMountsPollMs = () => invoke<number | null>('load_mounts_poll_ms
 
 export const storeMountsPollMs = (value: number) =>
   invoke<void>('store_mounts_poll_ms', { value })
+
+export const loadDoubleClickMs = () => invoke<number | null>('load_double_click_ms')
+
+export const storeDoubleClickMs = (value: number) =>
+  invoke<void>('store_double_click_ms', { value })
