@@ -10,7 +10,7 @@
 
 <style>
   .statusbar {
-    height: 32px;
+    height: var(--statusbar-height);
     border-top: none;
     background: var(--bg);
     border-radius: 0;
@@ -21,14 +21,14 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 12px;
-    gap: 12px;
+    padding: 0 var(--statusbar-padding-x);
+    gap: var(--statusbar-gap);
     user-select: none;
   }
 
   .status-text {
     color: var(--fg);
-    font-size: 14px;
+    font-size: var(--statusbar-font-size);
     font-weight: 400;
   }
 

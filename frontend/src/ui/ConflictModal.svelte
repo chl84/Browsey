@@ -48,8 +48,8 @@
     flex-direction: column;
     gap: 0.4rem;
     padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border-subtle, #ddd);
-    background: var(--panel, rgba(0, 0, 0, 0.02));
+    border: 1px solid var(--border-subtle);
+    background: var(--panel);
   }
 
   .name,

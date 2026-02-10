@@ -1019,7 +1019,7 @@
   /* Inherits global modal styles; light tweaks for tabs and spacing */
   :global(.settings-modal) {
     max-height: 80vh;
-    min-height: 420px;
+    min-height: var(--settings-modal-min-height);
     display: flex;
     flex-direction: column;
   }
@@ -1028,32 +1028,32 @@
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 8px;
+    gap: var(--settings-header-gap);
     flex-wrap: wrap;
-    margin-bottom: 12px;
+    margin-bottom: var(--settings-header-margin-bottom);
   }
 
   .settings-header h2 {
     margin: 0;
-    font-size: 18px;
-    line-height: 1.4;
+    font-size: var(--modal-header-size);
+    line-height: var(--modal-header-line);
     flex: 0 1 auto;
   }
 
   .settings-filter {
-    min-width: 200px;
-    width: 240px;
+    min-width: var(--settings-filter-min-width);
+    width: var(--settings-filter-width);
   }
 
-.restore-btn {
-    padding: 8px 10px;
+  .restore-btn {
+    padding: var(--settings-restore-padding-y) var(--settings-restore-padding-x);
     border: 1px solid var(--border);
     background: var(--bg);
     color: var(--fg);
     cursor: pointer;
-    font-size: 13px;
+    font-size: var(--settings-restore-font-size);
     margin-left: 0;
-}
+  }
 
   .restore-btn:hover {
     background: var(--bg-hover);
@@ -1066,12 +1066,12 @@
     overflow: auto;
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding-right: 8px;
+    gap: var(--settings-panel-gap);
+    padding-right: var(--settings-panel-padding-right);
   }
 
   .settings-panel.single {
-    padding-right: 8px;
+    padding-right: var(--settings-panel-padding-right);
   }
 
   .group-heading {
@@ -1092,8 +1092,8 @@
     grid-column: 1 / -1;
     height: 0;
     border-top: 1px solid var(--border);
-    margin-top: 4px;
-    margin-bottom: 8px;
+    margin-top: var(--settings-group-divider-margin-top);
+    margin-bottom: var(--settings-group-divider-margin-bottom);
   }
 
   .settings-table > .group-divider:first-child {
@@ -1102,9 +1102,9 @@
 
   .form-rows {
     display: grid;
-    grid-template-columns: 150px 1fr;
-    column-gap: 32px;
-    row-gap: 10px;
+    grid-template-columns: var(--settings-form-label-width) 1fr;
+    column-gap: var(--settings-form-column-gap);
+    row-gap: var(--settings-form-row-gap);
     align-items: center;
   }
 
@@ -1118,14 +1118,14 @@
   .form-control {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--settings-control-gap);
     width: 100%;
   }
 
   .form-control.column {
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
+    gap: var(--settings-control-gap-tight);
   }
 
   .form-control input[type='text'],
@@ -1152,13 +1152,13 @@
   }
 
   .form-control.radios {
-    gap: 16px;
+    gap: var(--settings-radios-gap);
   }
 
   .form-control.radios .radio {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--settings-control-gap-tight);
     cursor: pointer;
     color: var(--fg);
   }
@@ -1166,7 +1166,7 @@
   .archive-name {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--settings-archive-gap);
   }
 
   .archive-name input {
@@ -1175,7 +1175,7 @@
 
   .archive-name .suffix {
     color: var(--fg-muted);
-    font-size: 13px;
+    font-size: var(--settings-archive-suffix-size);
     min-width: 32px;
     text-align: left;
   }
@@ -1184,11 +1184,11 @@
     display: inline-flex;
     min-width: 64px;
     justify-content: center;
-    padding: 4px 8px;
+    padding: var(--settings-key-padding-y) var(--settings-key-padding-x);
     border: 1px solid var(--border);
     background: var(--bg);
     border-radius: 0;
-    font-size: 12px;
+    font-size: var(--settings-key-font-size);
   }
 
   .shortcuts-control {
@@ -1201,7 +1201,7 @@
 
   .shortcuts-columns {
     display: flex;
-    gap: 20px;
+    gap: var(--settings-shortcuts-columns-gap);
     width: 100%;
   }
 
@@ -1210,15 +1210,15 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--settings-shortcuts-column-gap);
   }
 
   .shortcut-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
-    min-height: 28px;
+    gap: var(--settings-shortcut-item-gap);
+    min-height: var(--settings-shortcut-item-min-height);
   }
 
   .shortcut-action {
@@ -1229,7 +1229,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 28px;
+    height: var(--settings-shortcut-key-height);
     line-height: 1;
     cursor: pointer;
   }
@@ -1241,14 +1241,14 @@
 
   .shortcuts-error {
     margin-top: 8px;
-    color: var(--danger, #b00020);
-    font-size: 12px;
+    color: var(--danger);
+    font-size: var(--settings-shortcut-error-size);
   }
 
   @media (max-width: 760px) {
     .shortcuts-columns {
       flex-direction: column;
-      gap: 8px;
+      gap: var(--settings-shortcuts-column-gap);
     }
   }
 </style>
