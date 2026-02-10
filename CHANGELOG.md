@@ -8,6 +8,7 @@
 - Extra metadata backend reorganized into type-specific providers (image, pdf, audio, video, archive) and no longer duplicates Basic-tab fields.
 - Extra tab UI simplified by removing the redundant `kind` row and section headings; it now focuses on the metadata fields directly.
 - Image extra-metadata routing now includes `.tif` and `.tga`.
+- Bundled Linux PDFium updated to `146.0.7678.0` (including refreshed `libpdfium.so`, headers, and license set).
 
 ## v0.4.1 — 2026-02-08
 - Linux rendering fallback simplified: when hardware acceleration is disabled, Browsey now sets only `WEBKIT_DISABLE_DMABUF_RENDERER=1` (removed legacy compositing/software flags).
