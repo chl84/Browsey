@@ -119,9 +119,9 @@
   }
 
   .header-btn:focus-visible {
-    outline: 2px solid var(--border-accent);
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
     border-radius: 0;
-    outline-offset: 2px;
+    outline-offset: var(--focus-ring-offset);
   }
 
   .sort-icon {

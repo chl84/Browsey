@@ -87,6 +87,8 @@
   --settings-shortcut-item-min-height: 28px;
   --settings-shortcut-key-height: 28px;
   --settings-shortcut-error-size: 12px;
+  --focus-ring-width: 1px;
+  --focus-ring-offset: 0px;
   /* Modal (cozy baseline) */
   --modal-padding: 20px;
   --modal-gap: 16px;
@@ -174,6 +176,7 @@
   --tooltip-fg: #cbd5e1;
   --tooltip-border: #2b2b2b;
   --tooltip-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  --focus-ring-color: rgba(191, 196, 203, 0.35);
   --theme-toggle-icon-sun: #686868;
   --theme-toggle-icon-moon: #cbd5e1;
   --theme-toggle-thumb-light: #f4e185;
@@ -188,6 +191,12 @@
   background: var(--bg);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+html,
+body,
+#app {
+  height: 100%;
 }
 
 html,
@@ -244,6 +253,7 @@ body {
   --tooltip-fg: #1f232b;
   --tooltip-border: #d4d7dd;
   --tooltip-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  --focus-ring-color: rgba(31, 35, 43, 0.22);
 }
 
 *,
@@ -255,8 +265,6 @@ body {
 /* Dark scrollbars app-wide; components can override by hiding or customizing. */
 * {
   scrollbar-color: var(--border-accent) var(--bg);
-  user-select: none !important;
-  -webkit-user-select: none !important;
 }
 
 *::-webkit-scrollbar {
@@ -280,31 +288,28 @@ body {
   background: var(--border-accent-strong);
 }
 
-/* Allow text selection inside controls, even when their parents disable selection. */
-.sidebar :is(input, textarea, select, option, [contenteditable='true']) {
-  user-select: text;
-}
-
-/* Allow text selection only where intended: rows/cards and form fields. */
+/* Allow text selection only where intended. */
 input,
 textarea,
 select,
 option,
 [contenteditable='true'],
-.row,
-.card {
-  user-select: text !important;
-  -webkit-user-select: text !important;
+.row-viewport .row,
+.grid .card {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 body {
   margin: 0;
   background: var(--bg);
-  min-height: 100vh;
-  height: 100vh;
   color: var(--fg);
   overflow: hidden;
+}
+
+#app {
   user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Cozy is the baseline in :root; keep class for compatibility/readability. */
@@ -428,13 +433,22 @@ body.density-compact {
   --ctx-divider-margin: 3px;
 }
 
-#app {
-  min-height: 100vh;
-  height: 100vh;
-}
-
 a {
   color: inherit;
+}
+
+button {
+  border-radius: 0;
+}
+
+button:focus {
+  outline: none;
+}
+
+button:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: 0;
 }
 
 /* Modal shared styles */
@@ -461,6 +475,11 @@ a {
   gap: var(--modal-gap);
   font-size: var(--modal-font-size);
   line-height: var(--modal-line-height);
+}
+
+.modal:focus,
+.modal:focus-visible {
+  outline: none;
 }
 
 .modal header {
@@ -568,8 +587,9 @@ a {
 }
 
 .modal .combo-btn:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: 0;
 }
 
 .modal .combo[data-open='true'] .combo-btn {
@@ -627,6 +647,11 @@ a {
   padding: 0;
 }
 
+.modal input[type='checkbox'],
+.modal input[type='radio'] {
+  border-radius: 0;
+}
+
 .modal textarea {
   min-height: 120px;
   resize: vertical;
@@ -654,15 +679,16 @@ a {
 .modal input:focus,
 .modal select:focus,
 .modal textarea:focus {
-  outline: none;
   border-color: var(--border-accent);
   background: var(--bg-raised);
 }
 
-input:focus,
-textarea:focus,
-select:focus {
-  outline: none;
+.modal input:focus-visible,
+.modal select:focus-visible,
+.modal textarea:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: 0;
 }
 
 .modal .actions {
@@ -749,6 +775,8 @@ select:focus {
   padding: 8px;
   border-radius: 0;
   margin: 0;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .modal .duplicate-preview {
@@ -809,8 +837,9 @@ select:focus {
 }
 
 .modal .tabs button:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: 0;
 }
 
 .modal .section {
