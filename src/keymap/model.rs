@@ -6,7 +6,7 @@ pub struct ShortcutCommandDefinition {
     pub default_accelerator: &'static str,
 }
 
-pub const SHORTCUT_COMMANDS: [ShortcutCommandDefinition; 16] = [
+pub const SHORTCUT_COMMANDS: [ShortcutCommandDefinition; 18] = [
     ShortcutCommandDefinition {
         id: "search",
         label: "Search",
@@ -54,6 +54,18 @@ pub const SHORTCUT_COMMANDS: [ShortcutCommandDefinition; 16] = [
         label: "Open settings",
         context: "global",
         default_accelerator: "Ctrl+S",
+    },
+    ShortcutCommandDefinition {
+        id: "go_back",
+        label: "Back",
+        context: "global",
+        default_accelerator: "Backspace",
+    },
+    ShortcutCommandDefinition {
+        id: "go_forward",
+        label: "Forward",
+        context: "global",
+        default_accelerator: "Shift+Backspace",
     },
     ShortcutCommandDefinition {
         id: "open_console",

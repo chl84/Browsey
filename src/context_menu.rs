@@ -21,16 +21,6 @@ impl ContextAction {
         }
     }
 
-    pub fn with_shortcut(id: &str, label: &str, shortcut: &str) -> Self {
-        Self {
-            id: id.to_string(),
-            label: label.to_string(),
-            dangerous: false,
-            shortcut: Some(shortcut.to_string()),
-            children: None,
-        }
-    }
-
     pub fn submenu(id: &str, label: &str, children: Vec<ContextAction>) -> Self {
         Self {
             id: id.to_string(),
@@ -66,7 +56,7 @@ pub fn context_menu_actions(
     if (count >= 1) && in_recent {
         items.push(ContextAction::new("open-with", "Open with…"));
         items.push(ContextAction::new("open-location", "Open item location"));
-        items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
+        items.push(ContextAction::new("copy", "Copy"));
         if single_file {
             items.push(ContextAction::submenu(
                 "tools",
@@ -74,11 +64,7 @@ pub fn context_menu_actions(
                 vec![ContextAction::new("check-duplicates", "Check for Duplicates")],
             ));
         }
-        items.push(ContextAction::with_shortcut(
-            "properties",
-            "Properties",
-            "Ctrl+P",
-        ));
+        items.push(ContextAction::new("properties", "Properties"));
         items.push(ContextAction::new("divider-recent-remove", "---"));
         items.push(ContextAction::new("remove-recent", "Remove from Recent"));
         return items;
@@ -87,18 +73,10 @@ pub fn context_menu_actions(
     if (count >= 1) && in_trash {
         items.push(ContextAction::new("restore", "Restore"));
         items.push(ContextAction::new("divider-restore", "---"));
-        items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
-        items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
-        items.push(ContextAction::with_shortcut(
-            "delete-permanent",
-            "Delete permanently…",
-            "Shift+Delete",
-        ));
-        items.push(ContextAction::with_shortcut(
-            "properties",
-            "Properties",
-            "Ctrl+P",
-        ));
+        items.push(ContextAction::new("cut", "Cut"));
+        items.push(ContextAction::new("copy", "Copy"));
+        items.push(ContextAction::new("delete-permanent", "Delete permanently…"));
+        items.push(ContextAction::new("properties", "Properties"));
         return items;
     }
 
@@ -108,30 +86,18 @@ pub fn context_menu_actions(
             items.push(ContextAction::new("divider-0", "---"));
         }
         if !in_starred {
-            items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
+            items.push(ContextAction::new("cut", "Cut"));
         }
-        items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
+        items.push(ContextAction::new("copy", "Copy"));
         items.push(ContextAction::new("rename-advanced", "Rename…"));
         if !in_starred {
             items.push(ContextAction::new("compress", "Compress…"));
             items.push(ContextAction::new("extract", "Extract"));
         }
-        items.push(ContextAction::with_shortcut(
-            "move-trash",
-            "Move to wastebasket",
-            "Delete",
-        ));
-        items.push(ContextAction::with_shortcut(
-            "delete-permanent",
-            "Delete permanently…",
-            "Shift+Delete",
-        ));
+        items.push(ContextAction::new("move-trash", "Move to wastebasket"));
+        items.push(ContextAction::new("delete-permanent", "Delete permanently…"));
         items.push(ContextAction::new("divider-1", "---"));
-        items.push(ContextAction::with_shortcut(
-            "properties",
-            "Properties",
-            "Ctrl+P",
-        ));
+        items.push(ContextAction::new("properties", "Properties"));
         return items;
     }
 
@@ -146,9 +112,9 @@ pub fn context_menu_actions(
     }
     items.push(ContextAction::new("copy-path", "Copy path"));
     if !in_starred {
-        items.push(ContextAction::with_shortcut("cut", "Cut", "Ctrl+X"));
+        items.push(ContextAction::new("cut", "Cut"));
     }
-    items.push(ContextAction::with_shortcut("copy", "Copy", "Ctrl+C"));
+    items.push(ContextAction::new("copy", "Copy"));
     if single_file {
         items.push(ContextAction::submenu(
             "tools",
@@ -158,25 +124,13 @@ pub fn context_menu_actions(
     }
     items.push(ContextAction::new("divider-1", "---"));
     if !in_starred {
-        items.push(ContextAction::with_shortcut("rename", "Rename…", "F2"));
+        items.push(ContextAction::new("rename", "Rename…"));
         items.push(ContextAction::new("compress", "Compress…"));
         items.push(ContextAction::new("extract", "Extract"));
     }
-    items.push(ContextAction::with_shortcut(
-        "move-trash",
-        "Move to wastebasket",
-        "Delete",
-    ));
-    items.push(ContextAction::with_shortcut(
-        "delete-permanent",
-        "Delete permanently…",
-        "Shift+Delete",
-    ));
+    items.push(ContextAction::new("move-trash", "Move to wastebasket"));
+    items.push(ContextAction::new("delete-permanent", "Delete permanently…"));
     items.push(ContextAction::new("divider-2", "---"));
-    items.push(ContextAction::with_shortcut(
-        "properties",
-        "Properties",
-        "Ctrl+P",
-    ));
+    items.push(ContextAction::new("properties", "Properties"));
     items
 }

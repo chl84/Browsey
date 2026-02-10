@@ -86,6 +86,9 @@ pub fn canonicalize_accelerator(raw: &str) -> Result<String, String> {
     if is_alnum_single && !ctrl && !alt {
         return Err("alphanumeric shortcuts require Ctrl/Cmd or Alt".into());
     }
+    if ctrl && shift && !alt && key == "I" {
+        return Err("Ctrl+Shift+I is reserved".into());
+    }
 
     let mut parts: Vec<&str> = Vec::with_capacity(4);
     if ctrl {
