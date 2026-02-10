@@ -7,6 +7,8 @@ export type ShortcutCommandId =
   | 'toggle_view'
   | 'toggle_hidden'
   | 'open_settings'
+  | 'go_back'
+  | 'go_forward'
   | 'open_console'
   | 'properties'
   | 'select_all'
@@ -40,6 +42,8 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
   { commandId: 'toggle_view', label: 'Toggle view', context: 'global', defaultAccelerator: 'Ctrl+G', accelerator: 'Ctrl+G' },
   { commandId: 'toggle_hidden', label: 'Show hidden', context: 'global', defaultAccelerator: 'Ctrl+H', accelerator: 'Ctrl+H' },
   { commandId: 'open_settings', label: 'Open settings', context: 'global', defaultAccelerator: 'Ctrl+S', accelerator: 'Ctrl+S' },
+  { commandId: 'go_back', label: 'Back', context: 'global', defaultAccelerator: 'Backspace', accelerator: 'Backspace' },
+  { commandId: 'go_forward', label: 'Forward', context: 'global', defaultAccelerator: 'Shift+Backspace', accelerator: 'Shift+Backspace' },
   { commandId: 'open_console', label: 'Open console', context: 'global', defaultAccelerator: 'Ctrl+T', accelerator: 'Ctrl+T' },
   { commandId: 'properties', label: 'Properties', context: 'global', defaultAccelerator: 'Ctrl+P', accelerator: 'Ctrl+P' },
   { commandId: 'select_all', label: 'Select all', context: 'global', defaultAccelerator: 'Ctrl+A', accelerator: 'Ctrl+A' },

@@ -1,21 +1,35 @@
 <script lang="ts">
   import ContextMenu from '../features/explorer/components/ContextMenu.svelte'
+  import {
+    DEFAULT_SHORTCUTS,
+    shortcutFor,
+    type ShortcutBinding,
+    type ShortcutCommandId,
+  } from '../features/shortcuts/keymap'
 
   export let open = false
   export let x = 0
   export let y = 0
   export let target: HTMLElement | null = null
   export let readonly = false
+  export let shortcuts: ShortcutBinding[] = DEFAULT_SHORTCUTS
   export let onClose: () => void = () => {}
 
   type ActionId = 'cut' | 'copy' | 'paste' | 'select-all'
 
-  const actions: { id: ActionId; label: string; shortcut: string }[] = [
-    { id: 'cut', label: 'Cut', shortcut: 'Ctrl+X' },
-    { id: 'copy', label: 'Copy', shortcut: 'Ctrl+C' },
-    { id: 'paste', label: 'Paste', shortcut: 'Ctrl+V' },
-    { id: 'select-all', label: 'Select all', shortcut: 'Ctrl+A' },
+  const actionDefs: { id: ActionId; label: string; commandId: ShortcutCommandId }[] = [
+    { id: 'cut', label: 'Cut', commandId: 'cut' },
+    { id: 'copy', label: 'Copy', commandId: 'copy' },
+    { id: 'paste', label: 'Paste', commandId: 'paste' },
+    { id: 'select-all', label: 'Select all', commandId: 'select_all' },
   ]
+
+  let actions: { id: ActionId; label: string; shortcut: string }[] = []
+  $: actions = actionDefs.map((action) => ({
+    id: action.id,
+    label: action.label,
+    shortcut: shortcutFor(shortcuts, action.commandId)?.accelerator ?? '',
+  }))
 
   const isTextField = (el: HTMLElement | null): el is HTMLInputElement | HTMLTextAreaElement =>
     !!el &&

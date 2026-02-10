@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import { onDestroy, tick } from 'svelte'
+  import { modalOpenState } from './modalOpenState'
 
   export let open = false
   export let title: string | null = null
@@ -15,6 +16,23 @@
 
   let overlayPointerDown = false
   let modalEl: HTMLDivElement | null = null
+  let countedAsOpen = false
+
+  $: {
+    if (open && !countedAsOpen) {
+      modalOpenState.enter()
+      countedAsOpen = true
+    } else if (!open && countedAsOpen) {
+      modalOpenState.leave()
+      countedAsOpen = false
+    }
+  }
+
+  onDestroy(() => {
+    if (!countedAsOpen) return
+    modalOpenState.leave()
+    countedAsOpen = false
+  })
 
   $: if (open && initialFocusSelector) {
     void tick().then(() => {

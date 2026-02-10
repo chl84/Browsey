@@ -115,6 +115,7 @@ export const createGlobalShortcuts = ({
     }
 
     if (isShortcut(event, 'search')) {
+      if (editable) return
       event.preventDefault()
       event.stopPropagation()
       if (!searchMode()) {
@@ -125,6 +126,7 @@ export const createGlobalShortcuts = ({
     }
 
     if (isShortcut(event, 'bookmarks')) {
+      if (editable) return
       event.preventDefault()
       event.stopPropagation()
       const selectedPaths = getSelectedPaths()
@@ -273,8 +275,9 @@ export const createGlobalShortcuts = ({
       return
     }
 
-    if (key === 'backspace') {
-      if (event.ctrlKey || event.metaKey || event.altKey) return
+    const backShortcut = isShortcut(event, 'go_back')
+    const forwardShortcut = isShortcut(event, 'go_forward')
+    if (backShortcut || forwardShortcut) {
       if (editable) return
       const handled = await onRemoveChar()
       if (handled) {
@@ -284,7 +287,7 @@ export const createGlobalShortcuts = ({
       }
       event.preventDefault()
       event.stopPropagation()
-      if (event.shiftKey) {
+      if (forwardShortcut) {
         void goForward()
       } else {
         void goBack()

@@ -63,6 +63,7 @@
   } from './features/explorer/services/duplicates'
   import ConflictModal from './ui/ConflictModal.svelte'
   import SettingsModal from './features/settings/SettingsModal.svelte'
+  import { anyModalOpen as anyModalOpenStore } from './ui/modalOpenState'
   import './features/explorer/ExplorerLayout.css'
 
   // --- Types --------------------------------------------------------------
@@ -273,6 +274,33 @@
 
   const isShortcut = (event: KeyboardEvent, commandId: ShortcutCommandId) => {
     return matchesShortcut(event, shortcutBindings, commandId)
+  }
+
+  const commandForContextAction = (actionId: string): ShortcutCommandId | null => {
+    if (actionId === 'cut') return 'cut'
+    if (actionId === 'copy') return 'copy'
+    if (actionId === 'paste') return 'paste'
+    if (actionId === 'rename') return 'rename'
+    if (actionId === 'properties') return 'properties'
+    if (actionId === 'move-trash') return 'delete_to_wastebasket'
+    if (actionId === 'delete-permanent') return 'delete_permanently'
+    if (actionId === 'open-console') return 'open_console'
+    return null
+  }
+
+  const applyContextMenuShortcuts = (actions: ContextAction[]): ContextAction[] => {
+    return actions.map((action) => {
+      const commandId = commandForContextAction(action.id)
+      const nextShortcut = commandId
+        ? shortcutFor(shortcutBindings, commandId)?.accelerator ?? action.shortcut
+        : action.shortcut
+      const nextChildren = action.children ? applyContextMenuShortcuts(action.children) : undefined
+      return {
+        ...action,
+        ...(nextShortcut ? { shortcut: nextShortcut } : {}),
+        ...(nextChildren ? { children: nextChildren } : {}),
+      }
+    })
   }
 
   const applyShortcutBindings = (next: ShortcutBinding[]) => {
@@ -1275,14 +1303,22 @@
     if (event.key === 'Control' || event.key === 'Meta') {
       copyModifierActive = true
     }
+    if (event.defaultPrevented) {
+      return
+    }
     const key = event.key.toLowerCase()
     const inRows = rowsElRef?.contains(event.target as Node) ?? false
+    const blockingModalOpen = get(anyModalOpenStore)
+
+    if (blockingModalOpen && key !== 'escape') {
+      return
+    }
 
     if ((event.ctrlKey || event.metaKey) && !isEditableTarget(event.target)) {
       if (key === 'control' || key === 'meta' || key === 'alt' || key === 'shift') {
         return
       }
-      if (event.shiftKey && key === 'i') {
+      if (event.shiftKey && !event.altKey && key === 'i') {
         return
       }
       if (!matchesAnyShortcut(event, shortcutBindings)) {
@@ -1419,6 +1455,9 @@
         closeBlankContextMenu()
         return
       }
+      if (blockingModalOpen) {
+        return
+      }
       if (mode === 'filter') {
         event.preventDefault()
         event.stopPropagation()
@@ -1450,6 +1489,9 @@
         anchorIndex.set(null)
         caretIndex.set(null)
       }
+    }
+    if (blockingModalOpen) {
+      return
     }
     void handleGlobalKeydown(event)
   }
@@ -1601,6 +1643,7 @@
       if (inSearch && selectionCount === 1 && !actions.some((a) => a.id === 'open-location')) {
         actions.splice(1, 0, { id: 'open-location', label: 'Open item location' })
       }
+      actions = applyContextMenuShortcuts(actions)
       if (actions.length > 0) {
         openContextMenu(entry, actions, event.clientX, event.clientY)
       }
@@ -2662,6 +2705,7 @@
   y={textMenuY}
   target={textMenuTarget}
   readonly={textMenuReadonly}
+  shortcuts={shortcutBindings}
   onClose={() => {
     textMenuOpen = false
     textMenuTarget = null
