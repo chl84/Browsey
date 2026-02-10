@@ -6,6 +6,7 @@ pub mod console;
 pub mod decompress;
 pub mod duplicates;
 pub mod fs;
+pub mod keymap;
 pub mod library;
 pub mod listing;
 pub mod meta;
@@ -28,6 +29,9 @@ pub use fs::{
     create_file, create_folder, delete_entries, delete_entry, list_trash, move_to_trash,
     move_to_trash_many, open_entry, purge_trash_items, rename_entries, rename_entry,
     restore_trash_items, set_hidden,
+};
+pub use keymap::{
+    load_shortcuts, reset_all_shortcuts, reset_shortcut_binding, set_shortcut_binding,
 };
 pub use library::{list_recent, list_starred, remove_recent, toggle_star};
 pub use listing::{list_dir, watch_dir};

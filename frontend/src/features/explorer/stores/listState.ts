@@ -1,5 +1,5 @@
 import { get, writable } from 'svelte/store'
-import { clampIndex, clearSelection, selectAllPaths, selectRange } from '../selection'
+import { clampIndex, clearSelection, selectRange } from '../selection'
 import type { Entry } from '../types'
 import { applyClickSelection } from '../helpers/selectionController'
 
@@ -84,13 +84,7 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
   const handleRowsKeydown = (filteredEntries: Entry[]) => (event: KeyboardEvent) => {
     const key = event.key.toLowerCase()
     const selectedSet = get(selected)
-    if (event.ctrlKey && key === 'a') {
-      event.preventDefault()
-      event.stopPropagation()
-      selected.set(selectAllPaths(filteredEntries))
-      anchorIndex.set(0)
-      caretIndex.set(filteredEntries.length > 0 ? filteredEntries.length - 1 : null)
-    } else if (key === 'escape') {
+    if (key === 'escape') {
       event.preventDefault()
       event.stopPropagation()
       selected.set(clearSelection())

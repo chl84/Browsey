@@ -44,7 +44,15 @@
   import { createGridKeyboardHandler } from './features/explorer/hooks/useGridHandlers'
   import { useContextMenuBlocker } from './features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from './features/explorer/hooks/useActivity'
-  import { allowedCtrlKeys } from './features/explorer/config/hotkeys'
+  import { loadShortcuts, setShortcutBinding } from './features/shortcuts/service'
+  import {
+    DEFAULT_SHORTCUTS,
+    matchesAnyShortcut,
+    matchesShortcut,
+    shortcutFor,
+    type ShortcutBinding,
+    type ShortcutCommandId,
+  } from './features/shortcuts/keymap'
   import DragGhost from './ui/DragGhost.svelte'
   import TextContextMenu from './ui/TextContextMenu.svelte'
   import { createNativeFileDrop } from './features/explorer/hooks/useNativeFileDrop'
@@ -115,6 +123,7 @@
   let newFolderName = 'New folder'
   let newFileName = ''
   let settingsOpen = false
+  let shortcutBindings: ShortcutBinding[] = DEFAULT_SHORTCUTS
   let pendingNav: { path: string; opts?: { recordHistory?: boolean; silent?: boolean }; gen: number } | null = null
   let navGeneration = 0
 
@@ -262,12 +271,22 @@
     rowsElRef?.focus()
   }
 
-  const handleSettingsHotkey = (event: KeyboardEvent) => {
-    if (event.ctrlKey && !event.shiftKey && !event.altKey && (event.key === 's' || event.key === 'S')) {
-      if (isEditableTarget(event.target)) return
-      event.preventDefault()
-      settingsOpen = !settingsOpen
+  const isShortcut = (event: KeyboardEvent, commandId: ShortcutCommandId) => {
+    return matchesShortcut(event, shortcutBindings, commandId)
+  }
+
+  const applyShortcutBindings = (next: ShortcutBinding[]) => {
+    if (Array.isArray(next) && next.length > 0) {
+      shortcutBindings = next
     }
+  }
+
+  const updateShortcutBinding = async (
+    commandId: ShortcutCommandId,
+    accelerator: string,
+  ) => {
+    const next = await setShortcutBinding(commandId, accelerator)
+    applyShortcutBindings(next)
   }
 
   const toggleViewMode = async () => {
@@ -1012,6 +1031,7 @@
     setSearchMode: async (value: boolean) => setSearchModeState(value),
     focusPath: () => focusPathInput(),
     blurPath: () => blurPathInput(),
+    isShortcut,
     onToggleHidden: () => Promise.resolve(toggleShowHidden()),
     onTypeChar: async (char) => {
       if (inputFocused && mode === 'address' && canUseSearch()) {
@@ -1176,6 +1196,26 @@
       }
       return true
     },
+    onDeletePermanentFast: async () => {
+      const sel = get(selected)
+      if (sel.size === 0) return false
+      const list = get(filteredEntries).filter((e) => sel.has(e.path))
+      if (list.length === 0) return false
+      if (get(explorer.confirmDelete)) {
+        modalActions.confirmDelete(list)
+        return true
+      }
+      try {
+        const paths = list.map((e) => e.path)
+        await deleteEntries(paths)
+        await reloadCurrent()
+        showToast('Deleted')
+        return true
+      } catch (err) {
+        showToast(`Delete failed: ${err instanceof Error ? err.message : String(err)}`)
+        return false
+      }
+    },
     onProperties: async () => {
       if ($selected.size === 0) return false
       const selection = $entries.filter((e) => $selected.has(e.path))
@@ -1194,29 +1234,42 @@
       }
     },
     onToggleView: async () => toggleViewMode(),
+    onSelectAll: async () => {
+      const list = get(filteredEntries)
+      if (list.length === 0) return false
+      selected.set(new Set(list.map((entry) => entry.path)))
+      anchorIndex.set(0)
+      caretIndex.set(list.length - 1)
+      return true
+    },
+    onUndo: async () => {
+      try {
+        await undoAction()
+        showToast('Undo')
+        await reloadCurrent()
+        return true
+      } catch (err) {
+        showToast(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)
+        return false
+      }
+    },
+    onRedo: async () => {
+      try {
+        await redoAction()
+        showToast('Redo')
+        await reloadCurrent()
+        return true
+      } catch (err) {
+        showToast(`Redo failed: ${err instanceof Error ? err.message : String(err)}`)
+        return false
+      }
+    },
+    onToggleSettings: async () => {
+      settingsOpen = !settingsOpen
+      return true
+    },
   })
   const { handleGlobalKeydown } = shortcuts
-
-  const handleShiftDelete = async () => {
-    const sel = get(selected)
-    if (sel.size === 0) return false
-    const list = get(filteredEntries).filter((e) => sel.has(e.path))
-    if (list.length === 0) return false
-    if (get(explorer.confirmDelete)) {
-      modalActions.confirmDelete(list)
-      return true
-    }
-    try {
-      const paths = list.map((e) => e.path)
-      await deleteEntries(paths)
-      await reloadCurrent()
-      showToast('Deleted')
-      return true
-    } catch (err) {
-      showToast(`Delete failed: ${err instanceof Error ? err.message : String(err)}`)
-      return false
-    }
-  }
 
   const handleDocumentKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Control' || event.key === 'Meta') {
@@ -1226,10 +1279,13 @@
     const inRows = rowsElRef?.contains(event.target as Node) ?? false
 
     if ((event.ctrlKey || event.metaKey) && !isEditableTarget(event.target)) {
+      if (key === 'control' || key === 'meta' || key === 'alt' || key === 'shift') {
+        return
+      }
       if (event.shiftKey && key === 'i') {
         return
       }
-      if (!allowedCtrlKeys.has(key)) {
+      if (!matchesAnyShortcut(event, shortcutBindings)) {
         event.preventDefault()
         event.stopPropagation()
         return
@@ -1296,16 +1352,6 @@
         return
       }
     }
-    if (event.shiftKey && key === 'delete') {
-      void handleShiftDelete().then((handled) => {
-        if (handled) {
-          event.preventDefault()
-          event.stopPropagation()
-        }
-      })
-      return
-    }
-
     if (key === 'escape') {
       if ($deleteState.open) {
         event.preventDefault()
@@ -1405,35 +1451,6 @@
         caretIndex.set(null)
       }
     }
-    if ((event.ctrlKey || event.metaKey) && !isEditableTarget(event.target)) {
-      if (key === 'z') {
-        event.preventDefault()
-        event.stopPropagation()
-        void undoAction()
-          .then(() => {
-            showToast('Undo')
-            return reloadCurrent()
-          })
-          .catch((err) =>
-            showToast(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)
-          )
-        return
-      }
-      if (key === 'y') {
-        event.preventDefault()
-        event.stopPropagation()
-        void redoAction()
-          .then(() => {
-            showToast('Redo')
-            return reloadCurrent()
-          })
-          .catch((err) =>
-            showToast(`Redo failed: ${err instanceof Error ? err.message : String(err)}`)
-          )
-        return
-      }
-    }
-
     void handleGlobalKeydown(event)
   }
 
@@ -1526,12 +1543,7 @@
   }
 
   // --- Lifecycle: global listeners ---------------------------------------
-  onMount(() => {
-    window.addEventListener('keydown', handleSettingsHotkey)
-  })
-
   onDestroy(() => {
-    window.removeEventListener('keydown', handleSettingsHotkey)
     void stopDuplicateScan(true)
   })
 
@@ -2211,16 +2223,20 @@
       return
     }
     const hasClipboardItems = clipboardPaths.size > 0
+    const openConsoleShortcut =
+      shortcutFor(shortcutBindings, 'open_console')?.accelerator ?? 'Ctrl+T'
+    const pasteShortcut =
+      shortcutFor(shortcutBindings, 'paste')?.accelerator ?? 'Ctrl+V'
     selected.set(new Set())
     anchorIndex.set(null)
     caretIndex.set(null)
     const actions: ContextAction[] = [
       { id: 'new-file', label: 'New File…' },
       { id: 'new-folder', label: 'New Folder…' },
-      { id: 'open-console', label: 'Open in console', shortcut: 'Ctrl+T' },
+      { id: 'open-console', label: 'Open in console', shortcut: openConsoleShortcut },
     ]
     if (hasClipboardItems) {
-      actions.push({ id: 'paste', label: 'Paste', shortcut: 'Ctrl+V' })
+      actions.push({ id: 'paste', label: 'Paste', shortcut: pasteShortcut })
     }
     openBlankContextMenu(actions, event.clientX, event.clientY)
   }
@@ -2573,6 +2589,14 @@
         viewMode = prefView
       }
 
+      const savedShortcuts = await loadShortcuts().catch((err) => {
+        console.error('Failed to load shortcuts', err)
+        return null
+      })
+      if (savedShortcuts && savedShortcuts.length > 0) {
+        applyShortcutBindings(savedShortcuts)
+      }
+
       await nativeDrop.start()
       cleanupFns.push(() => {
         void nativeDrop.stop()
@@ -2853,6 +2877,7 @@
     startDirValue={$startDirPref ?? '~'}
     sortFieldValue={$sortFieldPref}
     sortDirectionValue={$sortDirectionPref}
+    shortcuts={shortcutBindings}
     onChangeDefaultView={(val) => {
       viewMode = val
       defaultViewPref = val
@@ -2874,6 +2899,7 @@
     onChangeMountsPollMs={setMountsPollPref}
     onChangeSortField={setSortFieldPref}
     onChangeSortDirection={setSortDirectionPref}
+    onChangeShortcut={updateShortcutBinding}
     onClose={() => (settingsOpen = false)}
   />
 {/if}

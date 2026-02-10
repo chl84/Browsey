@@ -1,3 +1,5 @@
+import type { ShortcutCommandId } from '../../shortcuts/keymap'
+
 type ShortcutArgs = {
   isBookmarkModalOpen: () => boolean
   searchMode: () => boolean
@@ -11,6 +13,7 @@ type ShortcutArgs = {
   openBookmarkModal: (entry: { kind: string }) => Promise<void>
   goBack: () => void
   goForward: () => void
+  isShortcut: (event: KeyboardEvent, commandId: ShortcutCommandId) => boolean
   onCopy?: () => Promise<boolean> | boolean
   onCut?: () => Promise<boolean> | boolean
   onPaste?: () => Promise<boolean> | boolean
@@ -21,6 +24,10 @@ type ShortcutArgs = {
   onOpenConsole?: () => Promise<boolean> | boolean
   onToggleView?: () => Promise<void> | void
   onToggleHidden?: () => Promise<void> | void
+  onSelectAll?: () => Promise<boolean> | boolean
+  onUndo?: () => Promise<boolean> | boolean
+  onRedo?: () => Promise<boolean> | boolean
+  onToggleSettings?: () => Promise<boolean> | boolean
 }
 
 export const createGlobalShortcuts = ({
@@ -36,6 +43,7 @@ export const createGlobalShortcuts = ({
   openBookmarkModal,
   goBack,
   goForward,
+  isShortcut,
   onCopy,
   onCut,
   onPaste,
@@ -46,6 +54,10 @@ export const createGlobalShortcuts = ({
   onOpenConsole,
   onToggleView,
   onToggleHidden,
+  onSelectAll,
+  onUndo,
+  onRedo,
+  onToggleSettings,
 }: ShortcutArgs) => {
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false
@@ -92,7 +104,17 @@ export const createGlobalShortcuts = ({
       }
     }
 
-    if ((event.ctrlKey || event.metaKey) && key === 'f') {
+    if (isShortcut(event, 'open_settings') && onToggleSettings) {
+      if (editable) return
+      const handled = await onToggleSettings()
+      if (handled !== false) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      return
+    }
+
+    if (isShortcut(event, 'search')) {
       event.preventDefault()
       event.stopPropagation()
       if (!searchMode()) {
@@ -102,7 +124,7 @@ export const createGlobalShortcuts = ({
       return
     }
 
-    if ((event.ctrlKey || event.metaKey) && key === 'b') {
+    if (isShortcut(event, 'bookmarks')) {
       event.preventDefault()
       event.stopPropagation()
       const selectedPaths = getSelectedPaths()
@@ -115,8 +137,8 @@ export const createGlobalShortcuts = ({
       return
     }
 
-    if ((event.ctrlKey || event.metaKey) && key === 'c') {
-      if (isEditableTarget(event.target)) return
+    if (isShortcut(event, 'copy')) {
+      if (editable) return
       if (onCopy) {
         await onCopy()
       }
@@ -125,8 +147,8 @@ export const createGlobalShortcuts = ({
       return
     }
 
-    if ((event.ctrlKey || event.metaKey) && key === 'x') {
-      if (isEditableTarget(event.target)) return
+    if (isShortcut(event, 'cut')) {
+      if (editable) return
       if (onCut) {
         await onCut()
       }
@@ -135,8 +157,8 @@ export const createGlobalShortcuts = ({
       return
     }
 
-    if ((event.ctrlKey || event.metaKey) && key === 'v') {
-      if (isEditableTarget(event.target)) return
+    if (isShortcut(event, 'paste')) {
+      if (editable) return
       if (onPaste) {
         await onPaste()
       }
@@ -145,8 +167,8 @@ export const createGlobalShortcuts = ({
       return
     }
 
-    if ((event.ctrlKey || event.metaKey) && key === 'p' && onProperties) {
-      if (isEditableTarget(event.target)) return
+    if (isShortcut(event, 'properties') && onProperties) {
+      if (editable) return
       const handled = await onProperties()
       if (handled) {
         event.preventDefault()
@@ -155,8 +177,8 @@ export const createGlobalShortcuts = ({
       return
     }
 
-    if ((event.ctrlKey || event.metaKey) && key === 't' && onOpenConsole) {
-      if (isEditableTarget(event.target)) return
+    if (isShortcut(event, 'open_console') && onOpenConsole) {
+      if (editable) return
       const handled = await onOpenConsole()
       if (handled) {
         event.preventDefault()
@@ -165,22 +187,24 @@ export const createGlobalShortcuts = ({
       return
     }
 
-    if ((event.ctrlKey || event.metaKey) && key === 'g' && onToggleView) {
+    if (isShortcut(event, 'toggle_view') && onToggleView) {
+      if (editable) return
       await onToggleView()
       event.preventDefault()
       event.stopPropagation()
       return
     }
 
-    if ((event.ctrlKey || event.metaKey) && key === 'h' && onToggleHidden) {
+    if (isShortcut(event, 'toggle_hidden') && onToggleHidden) {
+      if (editable) return
       await onToggleHidden()
       event.preventDefault()
       event.stopPropagation()
       return
     }
 
-    if (key === 'f2' && onRename) {
-      if (isEditableTarget(event.target)) return
+    if (isShortcut(event, 'rename') && onRename) {
+      if (editable) return
       const handled = await onRename()
       if (handled) {
         event.preventDefault()
@@ -189,17 +213,49 @@ export const createGlobalShortcuts = ({
       return
     }
 
-    if (key === 'delete' && (onDeletePermanentFast || onDelete)) {
-      if (isEditableTarget(event.target)) return
-      if (event.shiftKey && onDeletePermanentFast) {
-        const handled = await onDeletePermanentFast()
-        if (handled) {
-          event.preventDefault()
-          event.stopPropagation()
-        }
-        return
+    if (isShortcut(event, 'select_all') && onSelectAll) {
+      if (editable) return
+      const handled = await onSelectAll()
+      if (handled) {
+        event.preventDefault()
+        event.stopPropagation()
       }
-      const handled = await onDelete?.(false)
+      return
+    }
+
+    if (isShortcut(event, 'undo') && onUndo) {
+      if (editable) return
+      const handled = await onUndo()
+      if (handled) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      return
+    }
+
+    if (isShortcut(event, 'redo') && onRedo) {
+      if (editable) return
+      const handled = await onRedo()
+      if (handled) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      return
+    }
+
+    if (isShortcut(event, 'delete_permanently') && onDeletePermanentFast) {
+      if (editable) return
+      const handled = await onDeletePermanentFast()
+      if (handled) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      return
+    }
+
+    if (isShortcut(event, 'delete_to_wastebasket') && onDelete) {
+      if (editable) return
+      const handled = await onDelete(false)
       if (handled) {
         event.preventDefault()
         event.stopPropagation()
@@ -219,7 +275,7 @@ export const createGlobalShortcuts = ({
 
     if (key === 'backspace') {
       if (event.ctrlKey || event.metaKey || event.altKey) return
-      if (isEditableTarget(event.target)) return
+      if (editable) return
       const handled = await onRemoveChar()
       if (handled) {
         event.preventDefault()
