@@ -580,6 +580,7 @@ capabilities/default.json`,
           'Extra metadata backend split into type-specific providers and avoids Basic-tab duplication',
           'Extra tab UI simplified by removing kind and section title chrome',
           'Image extra-metadata routing now includes .tif and .tga',
+          'Bundled Linux PDFium updated to 146.0.7678.0 (library, headers, and licenses refreshed)',
         ],
       },
       {
