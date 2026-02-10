@@ -16,6 +16,7 @@ Early beta: core flows (browse, search, clipboard, trash, compress, duplicate ch
 - **Drag targets**: Internal drag/drop supports breadcrumbs as drop targets with visual highlighting.
 - **Drives & bookmarks**: Lists mounts/partitions (marks removable), bookmarks, starred, recent, and trash. Mounts are polled every 2s and SQLite stores bookmarks, stars, recents, and column widths.
 - **Context actions**: New Folder…, Open with (associated apps + custom command), copy path, cut/copy/paste, compress to ZIP (name + level), Check for Duplicates (single file), rename, move to wastebasket (Delete), delete permanently (Shift+Delete), properties with lazy-loaded tabs, and “open item location” for recents.
+- **Configurable shortcuts**: Settings includes a persisted shortcut keymap editor. Click a shortcut to capture a new key combo; bindings are validated/canonicalized and duplicate conflicts are rejected.
 - **Properties metadata**: The Extra tab loads on demand and shows type-specific metadata only (for example image resolution/color model/depth, PDF document fields, audio/video codec and timing, archive format and entry stats).
 - **Archive extraction**: Zip/Tar(+gz/bz2/xz/zst)/GZ/BZ2/XZ/Zstd/7z and RAR (stored entries); supports multi-archive batch extract with cancel/progress/undo. Unsupported RAR compression methods fail fast instead of writing corrupt data.
 - **Drag & drop**: Internal drag/drop with custom ghost and drop-target highlighting; designed to work on Linux and Windows.
@@ -97,7 +98,8 @@ Tauri bundles:
   ```
   Helper: `scripts/build-release.sh`. Output in `target/release/bundle/rpm/`.
 
-## Keyboard & interaction map
+## Keyboard & interaction map (defaults)
+- Shortcuts below are default bindings and can be remapped in Settings.
 - **Typing without focus**: Enters filter mode on the address bar; Esc exits.
 - **Search**: `Ctrl+F` toggles search mode; Esc leaves search mode.
 - **View toggle**: `Ctrl+G` toggles between list and grid.
@@ -111,13 +113,14 @@ Tauri bundles:
 - **Hidden files**: `Ctrl+H` toggles showing hidden files (hidden items are shown by default).
 
 ## Architecture notes
-- **Backend (`src/`)**: Tauri commands for listing, streaming search, mounts, bookmarks, starring, trash, rename/delete, open with (desktop entries on Linux, custom commands, and default handler), clipboard preview/execute, compression to ZIP, duplicate scanning, and a filesystem watcher. Search uses the `search_stream` command with incremental batches and cancellation support. Duplicate scanning supports a streaming command with progress and cancel tokens. Thumbnail pipeline uses resvg for SVG and bundled PDFium for PDFs, keeping heavy files in check. Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) sit behind cfg gates.
+- **Backend (`src/`)**: Tauri commands for listing, streaming search, mounts, bookmarks, starring, trash, rename/delete, open with (desktop entries on Linux, custom commands, and default handler), clipboard preview/execute, compression to ZIP, duplicate scanning, shortcut keymap management, and a filesystem watcher. Search uses the `search_stream` command with incremental batches and cancellation support. Duplicate scanning supports a streaming command with progress and cancel tokens. Thumbnail pipeline uses resvg for SVG and bundled PDFium for PDFs, keeping heavy files in check. Windows-specific behaviors (e.g., network delete fallback, resilient `read_dir`) sit behind cfg gates.
 - **Frontend (`frontend/src/`)**: Explorer UI in Svelte with virtualized rows/cards, drag/drop, lasso selection, context menus, modals, and a thumbnail loader. All Tauri `invoke` calls are wrapped in `features/explorer/services/` (clipboard, trash, listing, files, layout, history, activity, star, bookmarks). Layout and theming live in `frontend/src/app.css`. Modals share structure via `frontend/src/ui/ModalShell.svelte` and `frontend/src/ui/modalUtils.ts`.
-- **Data & persistence**: SQLite DB in the platform data dir stores bookmarks, starred items, recents, and column widths. Thumbnail cache lives under the user cache dir with periodic trimming. Capability file `capabilities/default.json` grants event listen/emit so the watcher can signal the UI.
+- **Data & persistence**: SQLite DB in the platform data dir stores bookmarks, starred items, recents, column widths, and shortcut keymap overrides. Thumbnail cache lives under the user cache dir with periodic trimming. Capability file `capabilities/default.json` grants event listen/emit so the watcher can signal the UI.
 - **Icons**: Uses a custom Browsey icon set in `frontend/public/icons/scalable/browsey/` mapped via `src/icons.rs`, covering sidebar items, folders (incl. templates, public, desktop, etc.), files (images, text, pdf, spreadsheets, presentations), compressed archives, and shortcuts. Removable disks and bookmarks also use the new set.
 
 ## Project layout
-- `src/commands/` — Tauri command modules (fs, search, bookmarks, settings, meta, library).
+- `src/commands/` — Tauri command modules (fs, search, bookmarks, settings, keymap, meta, library).
+- `src/keymap/` — Shortcut keymap definitions, accelerator validation/canonicalization, and conflict checks.
 - `src/fs_utils.rs` — Path sanitation, platform helpers, logging.
 - `src/clipboard.rs` — Clipboard state, conflict preview, paste/rename/overwrite handling.
 - `src/watcher.rs` — Notify-based watcher emitting `dir-changed`.

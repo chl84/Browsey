@@ -331,7 +331,7 @@ export const docsPages: DocPage[] = [
   {
     id: 'settings-shortcuts',
     title: 'Settings and Shortcuts',
-    summary: 'Persisted defaults, keyboard map, and Linux hardware acceleration behavior.',
+    summary: 'Persisted defaults, editable keyboard map, and Linux hardware acceleration behavior.',
     sections: [
       {
         id: 'persisted-settings',
@@ -346,6 +346,7 @@ export const docsPages: DocPage[] = [
           'Thumbnail settings (video thumbnails enabled flag, ffmpeg path override, cache size)',
           'Mount list polling interval',
           'Hardware acceleration toggle',
+          'Shortcut keymap bindings',
         ],
       },
       {
@@ -390,8 +391,10 @@ export const docsPages: DocPage[] = [
       },
       {
         id: 'shortcut-map',
-        title: 'Primary Keyboard Shortcuts',
+        title: 'Default Keyboard Shortcuts (Remappable)',
         bullets: [
+          'Any shortcut can be remapped from Settings by clicking its binding and pressing a new key combo',
+          'Shortcut updates are persisted and validated; duplicate/conflicting bindings are rejected',
           'Ctrl+F: toggle search mode',
           'Ctrl+G: toggle list/grid view',
           'Ctrl+C / Ctrl+X / Ctrl+V: copy/cut/paste',
@@ -412,7 +415,7 @@ export const docsPages: DocPage[] = [
         bullets: [
           'Typing without focus enters address-bar filter mode',
           'Esc exits search/filter context where applicable',
-          'Browser-level Ctrl hotkeys outside Browsey allowlist are blocked (Ctrl+Shift+I is allowed)',
+          'Browser-level Ctrl hotkeys outside the configured shortcut map are blocked (Ctrl+Shift+I is allowed)',
           'Text inputs keep native editing shortcuts',
         ],
       },
@@ -427,7 +430,7 @@ export const docsPages: DocPage[] = [
         id: 'backend',
         title: 'Backend (Rust / Tauri Commands)',
         bullets: [
-          'Command modules under src/commands for fs, search, settings, metadata, and library features',
+          'Command modules under src/commands for fs, search, settings, keymap, metadata, and library features',
           'Streaming commands for long-running operations (search, duplicate scan, transfers)',
           'Shared cancellation registry (CancelState) coordinates clean task cancellation by event/task id',
           'Clipboard preview/execute path for safe conflict handling before writes',
@@ -449,7 +452,7 @@ export const docsPages: DocPage[] = [
         id: 'persistence',
         title: 'Persistence and Cache',
         bullets: [
-          'SQLite stores bookmarks, stars, recents, and column widths',
+          'SQLite stores bookmarks, stars, recents, column widths, and shortcut keymap overrides',
           'Thumbnail cache lives in user cache directory and is trimmed periodically',
           'Application logs are written under the user data directory at browsey/logs/browsey.log',
           'Log file rotation keeps a secondary browsey.log.1 when the main log reaches size limit',
@@ -521,6 +524,8 @@ export const docsPages: DocPage[] = [
         id: 'unreleased',
         title: 'Unreleased',
         bullets: [
+          'Added configurable shortcut keymap manager (persisted bindings with conflict validation)',
+          'Settings modal supports click-to-capture shortcut editing with immediate apply',
           'Extra metadata now lazy-loads when the Extra tab is activated',
           'Extra metadata backend split into type-specific providers and avoids Basic-tab duplication',
           'Extra tab UI simplified by removing kind and section title chrome',
@@ -637,7 +642,7 @@ export const docsPages: DocPage[] = [
         title: 'Settings Change Scope',
         bullets: [
           'Hardware acceleration changes require application restart',
-          'Some settings UI entries are placeholders and not wired to backend behavior yet (for example, shortcut editing)',
+          'Shortcut editing currently supports single-step accelerators (no multi-stroke chords)',
         ],
       },
     ],
