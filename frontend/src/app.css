@@ -1,307 +1,6 @@
 :root {
+  color-scheme: dark;
   /* Layout defaults (override per density) */
-  --row-height: 32px;
-  --row-padding-y: 4px;
-  --row-padding-x: 10px;
-  --row-font-size: 14px;
-  --list-icon-size: 18px;
-  --grid-gap: 6px;
-  --grid-card-width: 128px;
-  --grid-row-height: 136px;
-  --grid-thumb-size: 96px;
-  --sidebar-max-width: 220px;
-  --sidebar-padding: 5px;
-  --sidebar-gap: 16px;
-  --sidebar-drag-height: 32px;
-  --sidebar-row-height: 28px;
-  --statusbar-height: 32px;
-  --statusbar-padding-x: 12px;
-  --statusbar-gap: 12px;
-  --statusbar-font-size: 14px;
-  --topbar-drag-height: 32px;
-  --topbar-gap: 12px;
-  --topbar-input-padding-y: 10px;
-  --topbar-input-padding-x: 12px;
-  --topbar-input-font-size: 14px;
-  --topbar-pill-padding-y: 6px;
-  --topbar-pill-padding-x: 10px;
-  --topbar-pill-font-size: 12px;
-  --topbar-progress-width: 80px;
-  --topbar-progress-height: 6px;
-  --topbar-breadcrumb-gap: 2px;
-  --topbar-crumb-padding-y: 6px;
-  --topbar-crumb-padding-x: 10px;
-  --topbar-crumb-font-size: 13px;
-  --topbar-crumb-drop-padding-y: 5px;
-  --topbar-crumb-drop-padding-x: 9px;
-  --topbar-separator-font-size: 13px;
-  --topbar-window-controls-gap: 4px;
-  --topbar-theme-toggle-width: 46px;
-  --topbar-theme-toggle-height: 20px;
-  --topbar-theme-toggle-inset: 2px;
-  --topbar-theme-toggle-icon-sun-left: 4px;
-  --topbar-theme-toggle-icon-moon-right: 6px;
-  --topbar-theme-toggle-icon-size: 12px;
-  --topbar-theme-toggle-thumb-width: 16px;
-  --topbar-theme-toggle-thumb-height: 15px;
-  --topbar-theme-toggle-thumb-offset: 24px;
-  --topbar-theme-toggle-margin-right: 10px;
-  --topbar-pill-cancel-font-size: 14px;
-  --topbar-win-btn-size: 20px;
-  --topbar-win-btn-font-size: 12px;
-  --list-header-gap: 10px;
-  --list-header-padding-y: 6px;
-  --list-header-padding-right: 6px;
-  --list-header-padding-left: 13px;
-  --list-header-font-size: 12px;
-  --list-header-cell-gap: 6px;
-  --list-header-align-right-offset: 10px;
-  --list-header-sort-icon-size: 11px;
-  --settings-modal-min-height: 420px;
-  --settings-header-gap: 8px;
-  --settings-header-margin-bottom: 12px;
-  --settings-filter-min-width: 200px;
-  --settings-filter-width: 240px;
-  --settings-restore-padding-y: 8px;
-  --settings-restore-padding-x: 10px;
-  --settings-restore-font-size: 13px;
-  --settings-panel-gap: 14px;
-  --settings-panel-padding-right: 8px;
-  --settings-group-divider-margin-top: 4px;
-  --settings-group-divider-margin-bottom: 8px;
-  --settings-form-label-width: 150px;
-  --settings-form-column-gap: 32px;
-  --settings-form-row-gap: 10px;
-  --settings-control-gap: 8px;
-  --settings-control-gap-tight: 6px;
-  --settings-radios-gap: 16px;
-  --settings-archive-gap: 8px;
-  --settings-archive-suffix-size: 13px;
-  --settings-key-padding-y: 4px;
-  --settings-key-padding-x: 8px;
-  --settings-key-font-size: 12px;
-  --settings-shortcuts-columns-gap: 20px;
-  --settings-shortcuts-column-gap: 8px;
-  --settings-shortcut-item-gap: 10px;
-  --settings-shortcut-item-min-height: 28px;
-  --settings-shortcut-key-height: 28px;
-  --settings-shortcut-error-size: 12px;
-
-  --bg: #101010;
-  --bg-alt: #0d0d0d;
-  --bg-raised: #1f1f1f;
-  --bg-button: #141414;
-  --bg-hover: #181818;
-  --border: #2b2b2b;
-  --border-strong: #232323;
-  --border-accent: #3f3f3f;
-  --border-accent-strong: #4f4f4f;
-  --accent-primary: #1e88e5;
-  --accent-danger: #ff8585;
-  --accent-warning: #f6d04d;
-  --accent-error-text: #fca5a5;
-  --danger: var(--accent-error-text);
-  --panel: var(--bg-alt);
-  --border-subtle: var(--border);
-  --overlay-backdrop: rgba(0, 0, 0, 0.35);
-  --overlay-soft: rgba(0, 0, 0, 0.08);
-  --selection-border: rgba(140, 140, 140, 0.6);
-  --selection-fill: rgba(160, 160, 160, 0.16);
-  --selection-shadow: 0 0 0 1px rgba(140, 140, 140, 0.2);
-  --drop-allowed-bg: rgba(160, 160, 160, 0.12);
-  --drop-allowed-border: rgba(180, 180, 180, 0.5);
-  --drop-allowed-shadow: inset 0 0 0 1px rgba(200, 200, 200, 0.3);
-  --drop-blocked-bg: rgba(110, 110, 110, 0.14);
-  --drop-blocked-border: rgba(150, 150, 150, 0.6);
-  --drop-blocked-shadow: inset 0 0 0 1px rgba(150, 150, 150, 0.25);
-  --drag-ghost-text: #ffffff;
-  --drag-ghost-border: rgba(255, 255, 255, 0.1);
-  --drag-ghost-bg: linear-gradient(120deg, rgba(25, 118, 210, 0.95), rgba(55, 158, 255, 0.9));
-  --drag-ghost-dot-bg: rgba(255, 255, 255, 0.9);
-  --shadow-strong: 0 14px 38px rgba(0, 0, 0, 0.45);
-  --shadow-xl: 0 10px 30px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.4);
-  --shadow-sidebar: 0 10px 24px rgba(0, 0, 0, 0.35);
-  --shadow-ghost: 0 10px 24px rgba(0, 0, 0, 0.25);
-  --shadow-drop: 0 6px 12px rgba(0, 0, 0, 0.25);
-  --fg: #bfc4cb;
-  --fg-strong: #c5c9cf;
-  --fg-muted: #959ead;
-  --fg-dim: #6b7280;
-  --fg-pill: #cbd5e1;
-  --win-btn-bg: var(--bg-alt);
-  --win-btn-fg: var(--fg);
-  --win-btn-border: var(--border);
-  --win-btn-hover-bg: var(--bg-hover);
-  --win-btn-close-hover-bg: var(--accent-danger);
-  --win-btn-close-hover-fg: #ffffff;
-  --win-btn-close-hover-border: var(--accent-danger);
-  --btn-primary-bg: var(--accent-primary);
-  --btn-primary-fg: var(--drag-ghost-text);
-  --btn-danger-bg: #1e1e1e;
-  --btn-danger-border: var(--border-accent-strong);
-  --btn-danger-fg: #ffb7b7;
-  --pill-error-border: #c0392b;
-  --pill-error-fg: #fceaea;
-  --tooltip-bg: #1e1e1e;
-  --tooltip-fg: #cbd5e1;
-  --tooltip-border: #2b2b2b;
-  --tooltip-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
-  --theme-toggle-icon-sun: #686868;
-  --theme-toggle-icon-moon: #cbd5e1;
-  --theme-toggle-thumb-light: #f4e185;
-  --theme-toggle-thumb-dark-start: #111827;
-  --theme-toggle-thumb-dark-end: #1f2937;
-  --font-size-base: 14px;
-  --font-size-small: 12px;
-  --font-weight-base: 400;
-
-  font-family: 'Noto Sans', 'Segoe UI', 'Helvetica Neue', system-ui, -apple-system, sans-serif;
-  color: var(--fg);
-  background: var(--bg);
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-}
-
-html,
-body {
-  scroll-behavior: smooth;
-}
-
-:root[data-theme='light'] {
-  --bg: #f7f7f8;
-  --bg-alt: #f0f1f3;
-  --bg-raised: #ffffff;
-  --bg-button: #f5f6f8;
-  --bg-hover: #e7e9ed;
-  --border: #d4d7dd;
-  --border-strong: #c7cbd2;
-  --border-accent: #b7bcc7;
-  --border-accent-strong: #a6adbb;
-  --accent-primary: #1e88e5;
-  --accent-danger: #d04444;
-  --accent-warning: #e6b400;
-  --accent-error-text: #c92a2a;
-  --danger: var(--accent-error-text);
-  --panel: var(--bg-alt);
-  --border-subtle: var(--border);
-  --overlay-backdrop: rgba(0, 0, 0, 0.28);
-  --overlay-soft: rgba(0, 0, 0, 0.06);
-  --selection-border: rgba(30, 136, 229, 0.4);
-  --selection-fill: rgba(30, 136, 229, 0.14);
-  --selection-shadow: 0 0 0 1px rgba(30, 136, 229, 0.15);
-  --drop-allowed-bg: rgba(30, 136, 229, 0.08);
-  --drop-allowed-border: rgba(30, 136, 229, 0.45);
-  --drop-allowed-shadow: inset 0 0 0 1px rgba(30, 136, 229, 0.35);
-  --drop-blocked-bg: rgba(208, 68, 68, 0.08);
-  --drop-blocked-border: rgba(208, 68, 68, 0.4);
-  --drop-blocked-shadow: inset 0 0 0 1px rgba(208, 68, 68, 0.25);
-  --drag-ghost-text: #0d1116;
-  --drag-ghost-border: rgba(0, 0, 0, 0.08);
-  --drag-ghost-bg: linear-gradient(120deg, rgba(30, 136, 229, 0.9), rgba(55, 158, 255, 0.85));
-  --drag-ghost-dot-bg: rgba(0, 0, 0, 0.6);
-  --shadow-strong: 0 14px 38px rgba(0, 0, 0, 0.18);
-  --shadow-xl: 0 10px 30px rgba(0, 0, 0, 0.16);
-  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.14);
-  --shadow-sidebar: 0 10px 24px rgba(0, 0, 0, 0.14);
-  --shadow-ghost: 0 10px 24px rgba(0, 0, 0, 0.14);
-  --shadow-drop: 0 6px 12px rgba(0, 0, 0, 0.12);
-  --fg: #1f232b;
-  --fg-strong: #0f1117;
-  --fg-muted: #5a6372;
-  --fg-dim: #7a8290;
-  --fg-pill: #1f232b;
-  --win-btn-bg: var(--bg-alt);
-  --win-btn-fg: var(--fg);
-  --win-btn-border: var(--border);
-  --win-btn-hover-bg: var(--bg-hover);
-  --win-btn-close-hover-bg: var(--accent-danger);
-  --win-btn-close-hover-fg: #ffffff;
-  --win-btn-close-hover-border: var(--accent-danger);
-  --btn-primary-bg: var(--accent-primary);
-  --btn-primary-fg: #ffffff;
-  --btn-danger-bg: #f9e8e8;
-  --btn-danger-border: #e2b3b3;
-  --btn-danger-fg: #a12727;
-  --pill-error-border: #c0392b;
-  --pill-error-fg: #b02626;
-  --tooltip-bg: #ffffff;
-  --tooltip-fg: #1f232b;
-  --tooltip-border: #d4d7dd;
-  --tooltip-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
-  --theme-toggle-icon-sun: #686868;
-  --theme-toggle-icon-moon: #cbd5e1;
-  --theme-toggle-thumb-light: #f4e185;
-  --theme-toggle-thumb-dark-start: #111827;
-  --theme-toggle-thumb-dark-end: #1f2937;
-  --font-size-base: 14px;
-  --font-size-small: 12px;
-  --font-weight-base: 400;
-}
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-/* Dark scrollbars app-wide; components can override by hiding or customizing. */
-* {
-  scrollbar-color: var(--border-accent) var(--bg);
-  user-select: none !important;
-  -webkit-user-select: none !important;
-}
-
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-  background: var(--bg);
-}
-
-/* Make the recent-icon readable in dark mode (SVG media query isn't applied inside <img>). */
-:root:not([data-theme='light']) img[src*="/recent.svg"] {
-  filter: invert(1);
-}
-
-*::-webkit-scrollbar-thumb {
-  background: var(--border-accent);
-  border-radius: 0;
-  border: 2px solid var(--bg);
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--border-accent-strong);
-}
-
-/* Allow text selection inside controls, even when their parents disable selection. */
-.sidebar :is(input, textarea, select, option, [contenteditable='true']) {
-  user-select: text;
-}
-
-/* Allow text selection only where intended: rows/cards and form fields. */
-input,
-textarea,
-select,
-option,
-[contenteditable='true'],
-.row,
-.card {
-  user-select: text !important;
-  -webkit-user-select: text !important;
-}
-
-body {
-  margin: 0;
-  background: var(--bg);
-  min-height: 100vh;
-  height: 100vh;
-  color: var(--fg);
-  overflow: hidden;
-  user-select: none;
-}
-
-/* Base density variables — current UI equals "cozy" */
-body.density-cozy {
   --row-height: 32px;
   --row-padding-y: 4px;
   --row-padding-x: 10px;
@@ -388,7 +87,7 @@ body.density-cozy {
   --settings-shortcut-item-min-height: 28px;
   --settings-shortcut-key-height: 28px;
   --settings-shortcut-error-size: 12px;
-  /* Modal (cozy) */
+  /* Modal (cozy baseline) */
   --modal-padding: 20px;
   --modal-gap: 16px;
   --modal-font-size: 14px;
@@ -405,7 +104,7 @@ body.density-cozy {
   --modal-button-padding-y: 10px;
   --modal-button-padding-x: 14px;
   --modal-button-min-height: 38px;
-  /* Context menu (cozy) */
+  /* Context menu (cozy baseline) */
   --ctx-width: 180px;
   --ctx-padding: 6px;
   --ctx-gap: 4px;
@@ -414,9 +113,206 @@ body.density-cozy {
   --ctx-item-font-size: 14px;
   --ctx-shortcut-font-size: 12px;
   --ctx-divider-margin: 4px;
+
+  --bg: #101010;
+  --bg-alt: #0d0d0d;
+  --bg-raised: #1f1f1f;
+  --bg-button: #141414;
+  --bg-hover: #181818;
+  --border: #2b2b2b;
+  --border-strong: #232323;
+  --border-accent: #3f3f3f;
+  --border-accent-strong: #4f4f4f;
+  --accent-primary: #1e88e5;
+  --accent-danger: #ff8585;
+  --accent-warning: #f6d04d;
+  --accent-error-text: #fca5a5;
+  --danger: var(--accent-error-text);
+  --panel: var(--bg-alt);
+  --border-subtle: var(--border);
+  --overlay-backdrop: rgba(0, 0, 0, 0.35);
+  --overlay-soft: rgba(0, 0, 0, 0.08);
+  --selection-border: rgba(140, 140, 140, 0.6);
+  --selection-fill: rgba(160, 160, 160, 0.16);
+  --selection-shadow: 0 0 0 1px rgba(140, 140, 140, 0.2);
+  --drop-allowed-bg: rgba(160, 160, 160, 0.12);
+  --drop-allowed-border: rgba(180, 180, 180, 0.5);
+  --drop-allowed-shadow: inset 0 0 0 1px rgba(200, 200, 200, 0.3);
+  --drop-blocked-bg: rgba(110, 110, 110, 0.14);
+  --drop-blocked-border: rgba(150, 150, 150, 0.6);
+  --drop-blocked-shadow: inset 0 0 0 1px rgba(150, 150, 150, 0.25);
+  --drag-ghost-text: #ffffff;
+  --drag-ghost-border: rgba(255, 255, 255, 0.1);
+  --drag-ghost-bg: linear-gradient(120deg, rgba(25, 118, 210, 0.95), rgba(55, 158, 255, 0.9));
+  --drag-ghost-dot-bg: rgba(255, 255, 255, 0.9);
+  --shadow-strong: 0 14px 38px rgba(0, 0, 0, 0.45);
+  --shadow-xl: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.4);
+  --shadow-sidebar: 0 10px 24px rgba(0, 0, 0, 0.35);
+  --shadow-ghost: 0 10px 24px rgba(0, 0, 0, 0.25);
+  --shadow-drop: 0 6px 12px rgba(0, 0, 0, 0.25);
+  --fg: #bfc4cb;
+  --fg-strong: #c5c9cf;
+  --fg-muted: #959ead;
+  --fg-dim: #6b7280;
+  --fg-pill: #cbd5e1;
+  --win-btn-bg: var(--bg-alt);
+  --win-btn-fg: var(--fg);
+  --win-btn-border: var(--border);
+  --win-btn-hover-bg: var(--bg-hover);
+  --win-btn-close-hover-bg: var(--accent-danger);
+  --win-btn-close-hover-fg: #ffffff;
+  --win-btn-close-hover-border: var(--accent-danger);
+  --btn-primary-bg: var(--accent-primary);
+  --btn-primary-fg: var(--drag-ghost-text);
+  --btn-danger-bg: #1e1e1e;
+  --btn-danger-border: var(--border-accent-strong);
+  --btn-danger-fg: #ffb7b7;
+  --pill-error-border: #c0392b;
+  --pill-error-fg: #fceaea;
+  --tooltip-bg: #1e1e1e;
+  --tooltip-fg: #cbd5e1;
+  --tooltip-border: #2b2b2b;
+  --tooltip-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  --theme-toggle-icon-sun: #686868;
+  --theme-toggle-icon-moon: #cbd5e1;
+  --theme-toggle-thumb-light: #f4e185;
+  --theme-toggle-thumb-dark-start: #111827;
+  --theme-toggle-thumb-dark-end: #1f2937;
+  --font-size-base: 14px;
+  --font-size-small: 12px;
+  --font-weight-base: 400;
+
+  font-family: 'Noto Sans', 'Segoe UI', 'Helvetica Neue', system-ui, -apple-system, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Placeholder for upcoming compact values; keeps selectors in place */
+html,
+body {
+  scroll-behavior: smooth;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f7f7f8;
+  --bg-alt: #f0f1f3;
+  --bg-raised: #ffffff;
+  --bg-button: #f5f6f8;
+  --bg-hover: #e7e9ed;
+  --border: #d4d7dd;
+  --border-strong: #c7cbd2;
+  --border-accent: #b7bcc7;
+  --border-accent-strong: #a6adbb;
+  --accent-danger: #d04444;
+  --accent-warning: #e6b400;
+  --accent-error-text: #c92a2a;
+  --overlay-backdrop: rgba(0, 0, 0, 0.28);
+  --overlay-soft: rgba(0, 0, 0, 0.06);
+  --selection-border: rgba(30, 136, 229, 0.4);
+  --selection-fill: rgba(30, 136, 229, 0.14);
+  --selection-shadow: 0 0 0 1px rgba(30, 136, 229, 0.15);
+  --drop-allowed-bg: rgba(30, 136, 229, 0.08);
+  --drop-allowed-border: rgba(30, 136, 229, 0.45);
+  --drop-allowed-shadow: inset 0 0 0 1px rgba(30, 136, 229, 0.35);
+  --drop-blocked-bg: rgba(208, 68, 68, 0.08);
+  --drop-blocked-border: rgba(208, 68, 68, 0.4);
+  --drop-blocked-shadow: inset 0 0 0 1px rgba(208, 68, 68, 0.25);
+  --drag-ghost-text: #0d1116;
+  --drag-ghost-border: rgba(0, 0, 0, 0.08);
+  --drag-ghost-bg: linear-gradient(120deg, rgba(30, 136, 229, 0.9), rgba(55, 158, 255, 0.85));
+  --drag-ghost-dot-bg: rgba(0, 0, 0, 0.6);
+  --shadow-strong: 0 14px 38px rgba(0, 0, 0, 0.18);
+  --shadow-xl: 0 10px 30px rgba(0, 0, 0, 0.16);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.14);
+  --shadow-sidebar: 0 10px 24px rgba(0, 0, 0, 0.14);
+  --shadow-ghost: 0 10px 24px rgba(0, 0, 0, 0.14);
+  --shadow-drop: 0 6px 12px rgba(0, 0, 0, 0.12);
+  --fg: #1f232b;
+  --fg-strong: #0f1117;
+  --fg-muted: #5a6372;
+  --fg-dim: #7a8290;
+  --fg-pill: #1f232b;
+  --btn-primary-fg: #ffffff;
+  --btn-danger-bg: #f9e8e8;
+  --btn-danger-border: #e2b3b3;
+  --btn-danger-fg: #a12727;
+  --pill-error-fg: #b02626;
+  --tooltip-bg: #ffffff;
+  --tooltip-fg: #1f232b;
+  --tooltip-border: #d4d7dd;
+  --tooltip-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Dark scrollbars app-wide; components can override by hiding or customizing. */
+* {
+  scrollbar-color: var(--border-accent) var(--bg);
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: var(--bg);
+}
+
+/* Make the recent-icon readable in dark mode (SVG media query isn't applied inside <img>). */
+:root:not([data-theme='light']) img[src*="/recent.svg"] {
+  filter: invert(1);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-accent);
+  border-radius: 0;
+  border: 2px solid var(--bg);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-accent-strong);
+}
+
+/* Allow text selection inside controls, even when their parents disable selection. */
+.sidebar :is(input, textarea, select, option, [contenteditable='true']) {
+  user-select: text;
+}
+
+/* Allow text selection only where intended: rows/cards and form fields. */
+input,
+textarea,
+select,
+option,
+[contenteditable='true'],
+.row,
+.card {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  min-height: 100vh;
+  height: 100vh;
+  color: var(--fg);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Cozy is the baseline in :root; keep class for compatibility/readability. */
+body.density-cozy {
+  /* Cozy uses :root defaults. */
+}
+
+/* Compact overrides */
 body.density-compact {
   --row-height: 26px;
   --row-padding-y: 2px;
@@ -576,7 +472,6 @@ a {
 
 .modal p {
   margin: 0;
-  line-height: 1.5;
 }
 
 .modal .muted {
@@ -638,21 +533,14 @@ a {
   color: var(--fg);
 }
 
-:root:not([data-theme='light']) .modal select {
-  color-scheme: dark;
-}
-
 :root[data-theme='light'] .modal select {
-  color-scheme: light;
-  background: var(--bg-raised) !important;
-  color: var(--fg) !important;
   border-color: var(--border);
 }
 
 :root[data-theme='light'] .modal select,
 :root[data-theme='light'] .modal select option {
-  background: var(--bg-raised) !important;
-  color: var(--fg) !important;
+  background: var(--bg-raised);
+  color: var(--fg);
 }
 
 .modal select:disabled {
@@ -827,21 +715,9 @@ select:focus {
   color: var(--btn-danger-fg);
 }
 
-.modal button:hover {
+.modal button:not(.primary):not(.danger):hover {
   border-color: var(--border-accent);
   background: var(--bg-hover);
-}
-
-.modal button.primary:hover {
-  background: var(--btn-primary-bg);
-  border-color: var(--btn-primary-bg);
-  color: var(--btn-primary-fg);
-}
-
-.modal button.danger:hover {
-  background: var(--btn-danger-bg);
-  border-color: var(--btn-danger-border);
-  color: var(--btn-danger-fg);
 }
 
 .modal button:disabled {
