@@ -277,6 +277,7 @@
     width: 22px;
     height: 22px;
     border: none;
+    border-radius: 0;
     background: transparent;
     color: var(--fg-muted);
     padding: 0px;
@@ -303,7 +304,9 @@
   }
 
   .star-btn:focus-visible {
-    outline: 2px solid var(--border-accent);
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+    border-radius: 0;
   }
 
   .star-btn.starred {

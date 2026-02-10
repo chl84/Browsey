@@ -178,58 +178,60 @@
           <div class="row"><span class="label">Permissions</span><span class="value">Loading…</span></div>
         </div>
       {:else if permissions}
-        <div class="rows ownership">
-          <div class="row"><span class="label">User</span><span class="value">{principalLabel(permissions.ownerName)}</span></div>
-          <div class="row"><span class="label">Group</span><span class="value">{principalLabel(permissions.groupName)}</span></div>
-        </div>
+        <div class="permissions-panel">
+          <div class="rows ownership">
+            <div class="row"><span class="label">User</span><span class="value">{principalLabel(permissions.ownerName)}</span></div>
+            <div class="row"><span class="label">Group</span><span class="value">{principalLabel(permissions.groupName)}</span></div>
+          </div>
 
-        {#if permissions.accessSupported}
-          <div class="access">
-            <div class="cell head"></div>
-            <div class="cell head">Read</div>
-            <div class="cell head">Write</div>
-            <div class="cell head">Exec</div>
-            {#each scopes as scope (scope)}
-              {#if permissions[scope]}
-                <div class="cell label">{accessLabels[scope]}</div>
-                <label class="cell">
-                  <input
-                    type="checkbox"
-                    use:indeterminate={permissions[scope].read}
-                    checked={permissions[scope].read === true}
-                    on:change={(e) =>
-                      onToggleAccess(scope, 'read', (e.currentTarget as HTMLInputElement).checked)}
-                  />
-                </label>
-                <label class="cell">
-                  <input
-                    type="checkbox"
-                    use:indeterminate={permissions[scope].write}
-                    checked={permissions[scope].write === true}
-                    on:change={(e) =>
-                      onToggleAccess(scope, 'write', (e.currentTarget as HTMLInputElement).checked)}
-                  />
-                </label>
-                <label class="cell">
-                  <input
-                    type="checkbox"
-                    use:indeterminate={permissions[scope].exec}
-                    checked={permissions[scope].exec === true}
-                    on:change={(e) =>
-                      onToggleAccess(scope, 'exec', (e.currentTarget as HTMLInputElement).checked)}
-                  />
-                </label>
-              {/if}
-            {/each}
-          </div>
-        {:else}
-          <div class="rows status-rows">
-            <div class="row">
-              <span class="label">Permissions</span>
-              <span class="value">Not available for one or more selected items</span>
+          {#if permissions.accessSupported}
+            <div class="access">
+              <div class="cell head"></div>
+              <div class="cell head">Read</div>
+              <div class="cell head">Write</div>
+              <div class="cell head">Exec</div>
+              {#each scopes as scope (scope)}
+                {#if permissions[scope]}
+                  <div class="cell label">{accessLabels[scope]}</div>
+                  <label class="cell">
+                    <input
+                      type="checkbox"
+                      use:indeterminate={permissions[scope].read}
+                      checked={permissions[scope].read === true}
+                      on:change={(e) =>
+                        onToggleAccess(scope, 'read', (e.currentTarget as HTMLInputElement).checked)}
+                    />
+                  </label>
+                  <label class="cell">
+                    <input
+                      type="checkbox"
+                      use:indeterminate={permissions[scope].write}
+                      checked={permissions[scope].write === true}
+                      on:change={(e) =>
+                        onToggleAccess(scope, 'write', (e.currentTarget as HTMLInputElement).checked)}
+                    />
+                  </label>
+                  <label class="cell">
+                    <input
+                      type="checkbox"
+                      use:indeterminate={permissions[scope].exec}
+                      checked={permissions[scope].exec === true}
+                      on:change={(e) =>
+                        onToggleAccess(scope, 'exec', (e.currentTarget as HTMLInputElement).checked)}
+                    />
+                  </label>
+                {/if}
+              {/each}
             </div>
-          </div>
-        {/if}
+          {:else}
+            <div class="rows status-rows permissions-status">
+              <div class="row">
+                <span class="label">Permissions</span>
+                <span class="value">Not available for one or more selected items</span>
+              </div>
+            </div>
+          {/if}
+        </div>
       {:else}
         <div class="rows status-rows">
           <div class="row"><span class="label">Permissions</span><span class="value">Not available</span></div>
@@ -267,19 +269,43 @@
   }
 
   .access {
-    margin-top: 8px;
+    margin-top: 0;
     display: grid;
-    grid-template-columns: 120px repeat(3, minmax(70px, 1fr));
+    grid-template-columns: max-content repeat(3, 88px);
     row-gap: 8px;
-    column-gap: 10px;
+    column-gap: 12px;
     align-items: center;
-    justify-content: start;
     width: max-content;
-    transform: translateX(-20px);
   }
 
   .ownership {
-    margin-bottom: 8px;
+    margin: 0;
+    width: max-content;
+    grid-template-columns: max-content max-content;
+    row-gap: 10px;
+    column-gap: 14px;
+  }
+
+  .permissions-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    margin-top: 2px;
+  }
+
+  .ownership .label {
+    text-align: left;
+    justify-self: start;
+    min-width: 52px;
+  }
+
+  .ownership .value {
+    justify-self: start;
+  }
+
+  .permissions-status {
+    margin-top: 0;
   }
 
   .status-rows {
@@ -304,9 +330,10 @@
   }
 
   .access .cell.label {
-    justify-content: flex-end;
-    text-align: right;
+    justify-content: flex-start;
+    text-align: left;
     white-space: nowrap;
-    justify-self: end;
+    justify-self: start;
+    padding-right: 4px;
   }
 </style>
