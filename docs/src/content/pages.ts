@@ -43,7 +43,7 @@ export const docsPages: DocPage[] = [
       {
         id: 'status',
         title: 'Current Status',
-        body: 'Browsey is in early beta. Core workflows are implemented and production-like for many use cases, but rapid iteration is still expected and behavior can evolve quickly between versions.',
+        body: 'Browsey is in active development. Core workflows are implemented and stable for daily use, while rapid iteration continues and behavior can still evolve quickly between versions.',
         bullets: [
           'Search and duplicate scanning are streamed and cancellable',
           'Permissions editing works on Unix and Windows',
@@ -448,23 +448,27 @@ export const docsPages: DocPage[] = [
         id: 'backend',
         title: 'Backend (Rust / Tauri Commands)',
         bullets: [
-          'Command modules under src/commands for fs, search, settings, keymap, metadata, and library features',
-          'Streaming commands for long-running operations (search, duplicate scan, transfers)',
-          'Shared cancellation registry (CancelState) coordinates clean task cancellation by event/task id',
-          'Clipboard preview/execute path for safe conflict handling before writes',
-          'Undo manager tracks applied actions with bounded history (current max: 50)',
-          'Platform-specific behavior isolated behind cfg gates where needed',
+          'src/main.rs wires app startup, command registration, event handlers, and shared runtime state',
+          'src/commands/ is capability-split: listing/fs/search/permissions/meta/settings/keymap/library/open_with/system_clipboard/tasks/console',
+          'Long-running pipelines are isolated in submodules (src/commands/duplicates/, src/commands/decompress/, src/commands/thumbnails/) with progress + cancellation support',
+          'src/metadata/providers/ contains type-specific extra-metadata providers (image, pdf, audio, video, archive, shared media_probe)',
+          'src/keymap/ centralizes accelerator parsing/canonicalization and conflict validation for remappable shortcuts',
+          'Shared subsystems live outside commands (src/watcher.rs, src/clipboard.rs, src/undo.rs, src/db.rs, src/fs_utils.rs)',
+          'Platform-specific behavior is isolated with cfg gates (for example Windows delete/eject details and Linux launcher/mount behavior)',
         ],
       },
       {
         id: 'frontend',
         title: 'Frontend (Svelte)',
         bullets: [
-          'Explorer shell and feature modules under frontend/src/features/explorer/',
-          'All Tauri invoke calls wrapped in service modules',
-          'Shared modal structure through frontend/src/ui/ModalShell.svelte',
-          'Settings data actions use a shared confirmation modal component for destructive maintenance operations',
-          'Shared styles and density/theming variables in frontend/src/app.css',
+          'frontend/src/features/explorer/components/ holds the main shell plus list/grid/sidebar/topbar/modal components',
+          'frontend/src/features/explorer/hooks/ orchestrates shortcuts, selection, clipboard flow, context menus, and modal wiring',
+          'frontend/src/features/explorer/services/ is the invoke boundary: UI code calls service wrappers, not invoke directly',
+          'frontend/src/features/explorer/stores/ + state.ts keep list/selection/clipboard state consistent across list and grid views',
+          'frontend/src/features/settings/SettingsModal.svelte owns interaction and data-maintenance controls',
+          'frontend/src/features/shortcuts/ provides shortcut mapping metadata and frontend bridge logic',
+          'Reusable UI primitives live in frontend/src/ui/ (ModalShell, ConfirmActionModal, Toast, context menus, overlays)',
+          'Global styling/theme density variables are centralized in frontend/src/app.css',
         ],
       },
       {
@@ -483,12 +487,35 @@ export const docsPages: DocPage[] = [
         id: 'repo-layout',
         title: 'Repository Layout',
         bullets: [
-          'src/: Rust backend',
-          'frontend/: Browsey application UI',
-          'docs/: standalone docs application',
-          'scripts/: developer and build helper scripts',
-          'resources/: icons, schemas, bundled binaries (including PDFium)',
+          'README stays intentionally high-level; this docs section is the detailed source of truth for structure',
+          'Top-level split: src/ (Rust backend), frontend/ (Svelte app), docs/ (documentation app), scripts/ (helpers), resources/ (assets)',
+          'capabilities/default.json defines Tauri permission capabilities used by app event/listen flows',
         ],
+        code: `src/
+  main.rs
+  commands/
+    listing.rs fs.rs search.rs permissions.rs meta.rs settings.rs keymap.rs
+    library.rs bookmarks.rs mounts.rs open_with.rs system_clipboard.rs tasks.rs console.rs
+    duplicates/{mod.rs,scan.rs}
+    decompress/{mod.rs,zip_format.rs,tar_format.rs,seven_z_format.rs,rar_format.rs,util.rs}
+    thumbnails/{thumbnails_svg.rs,thumbnails_pdf.rs,thumbnails_video.rs}
+  metadata/providers/{image.rs,pdf.rs,audio.rs,video.rs,archive.rs,media_probe.rs}
+  keymap/{mod.rs,model.rs,accelerator.rs}
+  watcher.rs clipboard.rs undo.rs db.rs fs_utils.rs
+
+frontend/src/
+  App.svelte app.css main.ts
+  features/
+    explorer/{components,hooks,stores,services,modals,helpers}
+    settings/SettingsModal.svelte
+    shortcuts/{keymap.ts,service.ts}
+  ui/{ModalShell.svelte,ConfirmActionModal.svelte,Toast.svelte,TextContextMenu.svelte,...}
+
+docs/src/content/pages.ts
+scripts/{dev-server.*,build-release.*,docs-*.sh,docs-*.bat}
+resources/{icons/,schemas/,pdfium-linux-x64/,pdfium-win-x64/}
+capabilities/default.json`,
+        note: 'When in doubt, add user-facing behavior notes in docs first, then keep README concise with links/summaries.',
       },
     ],
   },
@@ -527,6 +554,7 @@ export const docsPages: DocPage[] = [
         id: 'contributor-guidance',
         title: 'Contributor Guidance',
         bullets: [
+          'Keep README concise and high-level; put deep technical details in docs pages',
           'Prefer updating docs content in docs/src/content/pages.ts for user-facing docs pages',
           'Keep docs statements aligned with README and changelog facts',
           'When behavior changes, update docs and release notes in the same PR',
