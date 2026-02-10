@@ -26,6 +26,11 @@ export const docsPages: DocPage[] = [
         body: 'Browsey is a cross-platform file explorer built with a Rust/Tauri backend and a Svelte/TypeScript frontend. Rust handles filesystem-heavy operations (listing, search, metadata, archive tasks), while the UI layer focuses on rendering, keyboard/mouse interactions, and responsive updates.',
       },
       {
+        id: 'ai-assisted-development',
+        title: 'AI-Assisted Development',
+        body: 'Browsey is developed with AI assistance from OpenAI Codex as part of day-to-day implementation and iteration work.',
+      },
+      {
         id: 'scope',
         title: 'Product Scope',
         bullets: [

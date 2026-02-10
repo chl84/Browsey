@@ -1,6 +1,7 @@
 # Browsey Docs Workspace
 
 This folder is a standalone Svelte + Vite project for Browsey documentation.
+Browsey itself is developed with AI assistance from OpenAI Codex.
 
 For GitHub Pages deploys, the build uses `PAGES_BASE_PATH` so repository pages like
 `https://chl84.github.io/Browsey/` resolve assets correctly.
