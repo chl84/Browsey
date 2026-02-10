@@ -734,8 +734,8 @@
   const applyDensityMetrics = () => {
     const nextRowHeight = readCssNumber('--row-height', 32)
     const nextGridGap = readCssNumber('--grid-gap', 6)
-    const nextGridCardWidth = readCssNumber('--grid-card-width', 128)
-    const nextGridRowHeight = readCssNumber('--grid-row-height', 136)
+    const nextGridCardWidth = readCssNumber('--grid-card-width', 120)
+    const nextGridRowHeight = readCssNumber('--grid-row-height', 126)
 
     setRowHeight(nextRowHeight)
     gridGap = nextGridGap
@@ -791,8 +791,8 @@
   }
 
   let selectionDrag = false
-  let gridCardWidth = 128
-  let gridRowHeight = 136
+  let gridCardWidth = 120
+  let gridRowHeight = 126
   let gridGap = 6
   const GRID_OVERSCAN = 4
   const GRID_WHEEL_SCALE = 0.2
