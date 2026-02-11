@@ -1,7 +1,65 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::Command;
 
 use crate::fs_utils::sanitize_path_follow;
+
+#[cfg(target_os = "linux")]
+type Candidate = (&'static str, Vec<String>);
+
+#[cfg(target_os = "linux")]
+fn linux_terminal_candidates(dir: &str) -> Vec<Candidate> {
+    // Strict allowlist: no environment-controlled terminal commands or free-form args.
+    vec![
+        (
+            "ptyxis",
+            vec![
+                "--new-window".to_string(),
+                "--working-directory".to_string(),
+                dir.to_string(),
+            ],
+        ),
+        (
+            "ptyxis",
+            vec![
+                "--tab".to_string(),
+                "--working-directory".to_string(),
+                dir.to_string(),
+            ],
+        ),
+        (
+            "gnome-terminal",
+            vec!["--working-directory".to_string(), dir.to_string()],
+        ),
+        ("gnome-terminal", vec![format!("--working-directory={dir}")]),
+        ("konsole", vec!["--workdir".to_string(), dir.to_string()]),
+        (
+            "xfce4-terminal",
+            vec!["--working-directory".to_string(), dir.to_string()],
+        ),
+        (
+            "tilix",
+            vec!["--working-directory".to_string(), dir.to_string()],
+        ),
+        (
+            "alacritty",
+            vec!["--working-directory".to_string(), dir.to_string()],
+        ),
+        ("kitty", vec!["--directory".to_string(), dir.to_string()]),
+        (
+            "wezterm",
+            vec!["start".to_string(), "--cwd".to_string(), dir.to_string()],
+        ),
+        ("wezterm", vec!["start".to_string(), format!("--cwd={dir}")]),
+        (
+            "foot",
+            vec!["--working-directory".to_string(), dir.to_string()],
+        ),
+        (
+            "kgx",
+            vec!["--working-directory".to_string(), dir.to_string()],
+        ),
+    ]
+}
 
 #[tauri::command]
 pub fn open_console(path: String) -> Result<(), String> {
@@ -12,7 +70,7 @@ pub fn open_console(path: String) -> Result<(), String> {
     launch_terminal(&pb)
 }
 
-fn launch_terminal(dir: &PathBuf) -> Result<(), String> {
+fn launch_terminal(dir: &Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         Command::new("cmd")
@@ -25,20 +83,10 @@ fn launch_terminal(dir: &PathBuf) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        let script = format!(
-            r#"tell application "Terminal"
-if not (exists window 1) then
-    do script "cd \"{}\""
-else
-    do script "cd \"{}\"" in window 1
-end if
-activate
-end tell"#,
-            dir.display(),
-            dir.display()
-        );
-        Command::new("osascript")
-            .args(["-e", &script])
+        Command::new("open")
+            .arg("-a")
+            .arg("Terminal")
+            .arg(dir)
             .spawn()
             .map_err(|e| format!("Failed to launch Terminal: {e}"))?;
         return Ok(());
@@ -46,60 +94,22 @@ end tell"#,
 
     #[cfg(target_os = "linux")]
     {
-        let cmd = format!("cd \"{}\"; exec \"$SHELL\"", dir.display());
-
-        // Allow override via env
-        let mut candidates: Vec<(String, Vec<String>)> = Vec::new();
-        if let Ok(bin) = std::env::var("BROWSEY_TERMINAL")
-            .or_else(|_| std::env::var("TERMINAL"))
-            .or_else(|_| std::env::var("COLORTERM"))
-        {
-            candidates.push((
-                bin,
-                vec!["-e".into(), "sh".into(), "-c".into(), cmd.clone()],
-            ));
-        }
-
-        // Common Fedora/GTK/KDE terminals
-        let defaults = [
-            ("x-terminal-emulator", vec!["-e", "sh", "-c"]),
-            ("kgx", vec!["-e", "sh", "-c"]),
-            ("gnome-terminal", vec!["--", "sh", "-c"]),
-            ("konsole", vec!["-e", "sh", "-c"]),
-            ("xfce4-terminal", vec!["-e", "sh", "-c"]),
-            ("tilix", vec!["-e", "sh", "-c"]),
-            ("alacritty", vec!["-e", "sh", "-c"]),
-            ("kitty", vec!["sh", "-c"]),
-            ("wezterm", vec!["start", "--", "sh", "-c"]),
-            ("foot", vec!["-e", "sh", "-c"]),
-            ("rio", vec!["-e", "sh", "-c"]),
-            ("ptyxis", vec!["-e", "sh", "-c"]),
-        ];
-        for (bin, args) in defaults {
-            candidates.push((
-                bin.to_string(),
-                args.iter().map(|s| s.to_string()).collect(),
-            ));
-        }
-
-        let mut tried: Vec<String> = Vec::new();
-        for (bin, mut args) in candidates {
+        // Strict Linux launch strategy: only known terminal binaries/args.
+        let dir_arg = dir.to_string_lossy().to_string();
+        let mut tried_bins = std::collections::BTreeSet::new();
+        for (bin, args) in linux_terminal_candidates(&dir_arg) {
             let mut cmdline = Command::new(&bin);
-            // Append command payload if not already present
-            if !args.is_empty() {
-                args.push(cmd.clone());
-                cmdline.args(&args);
-            } else {
-                cmdline.arg(&cmd);
-            }
+            cmdline.current_dir(dir).args(&args);
             match cmdline.spawn() {
                 Ok(_) => return Ok(()),
-                Err(_) => tried.push(bin),
+                Err(_) => {
+                    tried_bins.insert(bin.to_string());
+                }
             }
         }
         return Err(format!(
-            "Could not find a terminal emulator to launch (tried: {})",
-            tried.join(", ")
+            "Could not find a supported terminal emulator to launch (tried: {})",
+            tried_bins.into_iter().collect::<Vec<_>>().join(", ")
         ));
     }
 
