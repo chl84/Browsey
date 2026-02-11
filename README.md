@@ -16,6 +16,7 @@ Browsey is in active development with current feature work focused on Linux. Cor
 - Recursive search, duplicate scanning, archive extract/compress, and open-with workflows.
 - Settings-driven shortcut remapping with conflict validation.
 - Properties with editable permissions (Unix + Windows) and lazy type-specific Extra metadata.
+- Image thumbnails support common raster formats plus HDR (`.hdr`) and OpenEXR (`.exr`).
 - Data maintenance actions (clear thumbnail cache, stars, bookmarks, recents) with confirmation and feedback.
 - Cross-platform drive/mount handling, removable media eject, and optional video thumbnails via ffmpeg.
 - Persisted user defaults for view/sort/interaction behavior.
@@ -114,6 +115,7 @@ Tauri bundles:
 - Permissions on symlinks are not editable.
 - Windows network paths use permanent delete behavior.
 - Extra metadata is lazy-loaded when opening the Extra tab.
+- HDR/EXR image thumbnail decoding uses a longer timeout window than standard image formats.
 
 ## Disclaimer
 Browsey performs file operations (copy, move, rename, compress, trash, delete). Use it at your own risk, keep backups of important data, and verify paths before destructive actions. The software is provided as-is without warranties; contributors are not liable for data loss or other damage.

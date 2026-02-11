@@ -33,6 +33,8 @@ fn classify_kind(path: &Path, meta: &fs::Metadata) -> String {
             | "tga"
             | "ico"
             | "avif"
+            | "hdr"
+            | "exr"
     ) {
         return "image".to_string();
     }
