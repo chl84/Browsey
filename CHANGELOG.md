@@ -8,7 +8,12 @@
 - Extra metadata backend reorganized into type-specific providers (image, pdf, audio, video, archive) and no longer duplicates Basic-tab fields.
 - Extra tab UI simplified by removing the redundant `kind` row and section headings; it now focuses on the metadata fields directly.
 - Image extra-metadata routing now includes `.tif` and `.tga`.
+- Image extra-metadata routing now includes `.hdr` and `.exr`.
 - Bundled Linux PDFium updated to `146.0.7678.0` (including refreshed `libpdfium.so`, headers, and license set).
+- Linux open-console launcher now uses a strict terminal allowlist and fixed arguments (removed env-driven terminal command overrides).
+- Extraction safety guardrails expanded: total output cap (`100 GB`) and total-entry cap (`2,000,000`) are both enforced.
+- `RAR` extraction now streams entry data in chunks instead of buffering whole entries in memory.
+- Clipboard helper binaries (`wl-copy`, `wl-paste`, `xclip`) and `ffprobe` now resolve through canonical path checks before process spawn.
 
 ## v0.4.1 — 2026-02-08
 - Linux rendering fallback simplified: when hardware acceleration is disabled, Browsey now sets only `WEBKIT_DISABLE_DMABUF_RENDERER=1` (removed legacy compositing/software flags).

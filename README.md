@@ -14,6 +14,7 @@ Browsey is in active development with current feature work focused on Linux. Cor
 - Live refresh from filesystem watcher events.
 - Native clipboard flow with conflict preview/resolve and background transfer progress.
 - Recursive search, duplicate scanning, archive extract/compress, and open-with workflows.
+- Extraction guardrails with total-size and entry-count caps to prevent runaway unpack operations.
 - Settings-driven shortcut remapping with conflict validation.
 - Properties with editable permissions (Unix + Windows) and lazy type-specific Extra metadata.
 - Image thumbnails support common raster formats plus HDR (`.hdr`) and OpenEXR (`.exr`).
@@ -116,6 +117,8 @@ Tauri bundles:
 - Windows network paths use permanent delete behavior.
 - Extra metadata is lazy-loaded when opening the Extra tab.
 - HDR/EXR image thumbnail decoding uses a longer timeout window than standard image formats.
+- Archive extraction enforces a total output cap (100 GB) and total entry cap (2,000,000 entries).
+- Linux console launch uses a strict allowlist of terminal binaries/arguments (no env-injected command strings).
 
 ## Disclaimer
 Browsey performs file operations (copy, move, rename, compress, trash, delete). Use it at your own risk, keep backups of important data, and verify paths before destructive actions. The software is provided as-is without warranties; contributors are not liable for data loss or other damage.
