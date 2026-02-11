@@ -277,6 +277,11 @@
     z-index: 1;
   }
 
+  :global(.is-scrolling) .card:hover:not(.selected):not(.drop-target) {
+    background: transparent;
+    z-index: auto;
+  }
+
   .card.selected {
     background: var(--selection-fill);
     border-color: transparent;

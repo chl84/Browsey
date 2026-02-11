@@ -158,6 +158,11 @@
     z-index: 1;
   }
 
+  :global(.is-scrolling) .row:hover:not(.selected):not(.drop-target) {
+    background: transparent;
+    z-index: auto;
+  }
+
   .row.hidden {
     opacity: 0.55;
   }
