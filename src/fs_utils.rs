@@ -25,30 +25,22 @@ fn normalize_drive_root(raw: &str) -> String {
 pub fn sanitize_path_follow(raw: &str, forbid_root: bool) -> Result<PathBuf, String> {
     let raw = normalize_drive_root(raw);
     let pb = PathBuf::from(&raw);
-    let drive = drive_letter(&pb);
-    let is_net = is_network_path(&pb) && !is_special_drive(drive);
-    #[cfg(target_os = "windows")]
-    let is_remote_drive = drive.is_some() && is_remote_drive(&pb);
-    #[cfg(not(target_os = "windows"))]
-    let is_remote_drive = false;
+    let is_net = is_network_path(&pb);
     debug!(
         raw = %raw,
         resolved = %pb.display(),
-        network = is_net || is_remote_drive,
+        network = is_net,
         "sanitize_follow start"
     );
-    let canon = if is_net || is_remote_drive {
-        // Skip canonicalize on UNC or remote drives to avoid DFS/SMB resolution; use as-given.
-        pb.clone()
-    } else {
-        match pb.canonicalize() {
-            Ok(c) => c,
-            Err(e) => {
-                debug!(path = %pb.display(), error = ?e, "canonicalize failed");
-                return Err(format!("Failed to canonicalize path: {e}"));
-            }
+
+    let canon = match pb.canonicalize() {
+        Ok(c) => c,
+        Err(e) => {
+            debug!(path = %pb.display(), error = ?e, "canonicalize failed");
+            return Err(format!("Failed to canonicalize path: {e}"));
         }
     };
+
     debug!(
         raw = %raw,
         canon = %canon.display(),
@@ -68,20 +60,17 @@ pub fn sanitize_path_follow(raw: &str, forbid_root: bool) -> Result<PathBuf, Str
 pub fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, String> {
     let raw = normalize_drive_root(raw);
     let pb = PathBuf::from(&raw);
-    let drive = drive_letter(&pb);
-    let is_net = is_network_path(&pb) && !is_special_drive(drive);
+    let is_net = is_network_path(&pb);
     debug!(
         raw = %raw,
         resolved = %pb.display(),
         network = is_net,
         "sanitize_nofollow start"
     );
-    if !is_net {
-        let _meta = std::fs::symlink_metadata(&pb).map_err(|e| {
-            debug!(path = %pb.display(), error = ?e, "symlink_metadata failed");
-            format!("Path does not exist or unreadable: {e}")
-        })?;
-    }
+    let _meta = std::fs::symlink_metadata(&pb).map_err(|e| {
+        debug!(path = %pb.display(), error = ?e, "symlink_metadata failed");
+        format!("Path does not exist or unreadable: {e}")
+    })?;
     if forbid_root
         && pb.is_absolute()
         && pb.parent().is_none()
@@ -181,28 +170,6 @@ fn drive_letter(path: &Path) -> Option<u8> {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
-fn drive_letter(_path: &Path) -> Option<u8> {
-    None
-}
-
-#[cfg(target_os = "windows")]
-fn is_remote_drive(path: &Path) -> bool {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::GetDriveTypeW;
-
-    if let Some(letter) = drive_letter(path) {
-        let root = format!("{}:\\", letter as char);
-        let wide: Vec<u16> = std::ffi::OsStr::new(&root)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        unsafe { GetDriveTypeW(wide.as_ptr()) == 4 }
-    } else {
-        false
-    }
-}
-
 #[cfg(target_os = "windows")]
 fn is_removable_drive(path: &Path) -> bool {
     use std::os::windows::ffi::OsStrExt;
@@ -226,15 +193,7 @@ fn is_removable_drive(_path: &Path) -> bool {
     false
 }
 
-fn is_special_drive(_letter: Option<u8>) -> bool {
-    // Treat all drive letters uniformly; avoid hard-coded exceptions.
-    false
-}
-
 pub fn check_no_symlink_components(path: &Path) -> Result<(), String> {
-    if is_network_path(path) {
-        return Ok(());
-    }
     let mut acc = PathBuf::new();
     for comp in path.components() {
         match comp {
