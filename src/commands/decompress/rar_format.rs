@@ -13,7 +13,7 @@ use tauri::async_runtime;
 
 use super::util::{
     check_cancel, clean_relative_path, first_component, map_copy_err, open_unique_file,
-    CreatedPaths, ProgressEmitter, SkipStats, CHUNK,
+    CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
 };
 
 pub(super) fn single_root_in_rar(path: &Path) -> Result<Option<PathBuf>, String> {
@@ -56,6 +56,7 @@ pub(super) fn extract_rar(
     progress: Option<&ProgressEmitter>,
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
+    budget: &ExtractBudget,
 ) -> Result<(), String> {
     for entry in entries {
         check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
@@ -128,7 +129,7 @@ pub(super) fn extract_rar(
             open_unique_file(&dest_path).map_err(|e| format!("Failed to create file: {e}"))?;
         created.record_file(dest_actual.clone());
         let mut out = BufWriter::with_capacity(CHUNK, file);
-        write_rar_entry_streaming(&entry, &raw_name, &mut out, progress, cancel)?;
+        write_rar_entry_streaming(&entry, &raw_name, &mut out, progress, cancel, budget)?;
     }
     Ok(())
 }
@@ -139,6 +140,7 @@ fn write_rar_entry_streaming(
     out: &mut BufWriter<std::fs::File>,
     progress: Option<&ProgressEmitter>,
     cancel: Option<&AtomicBool>,
+    budget: &ExtractBudget,
 ) -> Result<(), String> {
     let mut start = 0u64;
     let chunk_len = CHUNK as u64;
@@ -152,6 +154,9 @@ fn write_rar_entry_streaming(
             return Err(format!("Failed to read rar entry {raw_name}: empty chunk"));
         }
 
+        budget
+            .reserve_bytes(data.len() as u64)
+            .map_err(|e| map_copy_err("Extraction size cap exceeded", e))?;
         out.write_all(&data)
             .map_err(|e| map_copy_err(&format!("Failed to write {raw_name}"), e))?;
         if let Some(p) = progress {

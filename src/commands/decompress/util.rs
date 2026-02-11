@@ -15,6 +15,46 @@ use tauri::Emitter;
 use crate::fs_utils::{debug_log, unique_path};
 
 pub(super) const CHUNK: usize = 4 * 1024 * 1024;
+pub(super) const EXTRACT_TOTAL_BYTES_CAP: u64 = 100_000_000_000; // 100 GB
+
+#[derive(Clone)]
+pub(super) struct ExtractBudget {
+    max_total_bytes: u64,
+    written_total: Arc<AtomicU64>,
+}
+
+impl ExtractBudget {
+    pub(super) fn new(max_total_bytes: u64) -> Self {
+        Self {
+            max_total_bytes,
+            written_total: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    pub(super) fn max_total_bytes(&self) -> u64 {
+        self.max_total_bytes
+    }
+
+    pub(super) fn reserve_bytes(&self, delta: u64) -> io::Result<()> {
+        loop {
+            let current = self.written_total.load(Ordering::Relaxed);
+            let projected = current.saturating_add(delta);
+            if projected > self.max_total_bytes {
+                return Err(io::Error::other(format!(
+                    "Extraction exceeds size cap ({} bytes > {} bytes)",
+                    projected, self.max_total_bytes
+                )));
+            }
+            if self
+                .written_total
+                .compare_exchange(current, projected, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+    }
+}
 
 #[derive(Default, Clone)]
 pub(super) struct SkipStats {
@@ -227,6 +267,7 @@ pub(super) fn copy_with_progress<R: Read, W: Write>(
     mut writer: W,
     progress: Option<&ProgressEmitter>,
     cancel: Option<&AtomicBool>,
+    budget: &ExtractBudget,
     buf: &mut [u8],
 ) -> io::Result<u64> {
     let mut written: u64 = 0;
@@ -236,6 +277,7 @@ pub(super) fn copy_with_progress<R: Read, W: Write>(
         if n == 0 {
             break;
         }
+        budget.reserve_bytes(n as u64)?;
         writer.write_all(&buf[..n])?;
         written = written.saturating_add(n as u64);
         if let Some(p) = progress {

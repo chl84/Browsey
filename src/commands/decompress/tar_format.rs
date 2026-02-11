@@ -13,7 +13,8 @@ use zstd::stream::read::Decoder as ZstdDecoder;
 
 use super::util::{
     check_cancel, clean_relative_path, copy_with_progress, first_component, map_copy_err, map_io,
-    open_buffered_file, open_unique_file, CreatedPaths, ProgressEmitter, SkipStats, CHUNK,
+    open_buffered_file, open_unique_file, CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats,
+    CHUNK,
 };
 use super::ArchiveKind;
 
@@ -77,6 +78,7 @@ pub(super) fn extract_tar_with_reader<F>(
     progress: Option<&ProgressEmitter>,
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
+    budget: &ExtractBudget,
     wrap: F,
 ) -> Result<(), String>
 where
@@ -92,6 +94,7 @@ where
         progress,
         created,
         cancel,
+        budget,
     )?;
     Ok(())
 }
@@ -104,6 +107,7 @@ pub(super) fn extract_tar<R: Read>(
     progress: Option<&ProgressEmitter>,
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
+    budget: &ExtractBudget,
 ) -> Result<(), String> {
     let mut archive = Archive::new(reader);
     let mut buf = vec![0u8; CHUNK];
@@ -188,7 +192,7 @@ pub(super) fn extract_tar<R: Read>(
         let (file, _) = open_unique_file(&dest_path)?;
         created.record_file(dest_path.clone());
         let mut out = BufWriter::with_capacity(CHUNK, file);
-        copy_with_progress(&mut entry, &mut out, progress, cancel, &mut buf)
+        copy_with_progress(&mut entry, &mut out, progress, cancel, budget, &mut buf)
             .map_err(|e| map_copy_err("write tar entry", e))?;
     }
     Ok(())
