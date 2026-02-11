@@ -7,7 +7,7 @@ use std::{
 
 use rar_stream::{
     InnerFile as RarInnerFile, LocalFileMedia as RarLocalFileMedia,
-    ParseOptions as RarParseOptions, RarFilesPackage,
+    ParseOptions as RarParseOptions, RarFilesPackage, ReadInterval as RarReadInterval,
 };
 use tauri::async_runtime;
 
@@ -128,24 +128,40 @@ pub(super) fn extract_rar(
             open_unique_file(&dest_path).map_err(|e| format!("Failed to create file: {e}"))?;
         created.record_file(dest_actual.clone());
         let mut out = BufWriter::with_capacity(CHUNK, file);
-
-        let data = async_runtime::block_on(entry.read_to_end())
-            .map_err(|e| format!("Failed to read rar entry {raw_name}: {e}"))?;
-
-        let mut written = 0usize;
-        while written < data.len() {
-            check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
-            let end = (written + CHUNK).min(data.len());
-            let slice = &data[written..end];
-            out.write_all(slice)
-                .map_err(|e| map_copy_err(&format!("Failed to write {raw_name}"), e))?;
-            if let Some(p) = progress {
-                p.add((end - written) as u64);
-            }
-            written = end;
-        }
+        write_rar_entry_streaming(&entry, &raw_name, &mut out, progress, cancel)?;
     }
     Ok(())
+}
+
+fn write_rar_entry_streaming(
+    entry: &RarInnerFile,
+    raw_name: &str,
+    out: &mut BufWriter<std::fs::File>,
+    progress: Option<&ProgressEmitter>,
+    cancel: Option<&AtomicBool>,
+) -> Result<(), String> {
+    let mut start = 0u64;
+    let chunk_len = CHUNK as u64;
+
+    while start < entry.length {
+        check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
+        let end = (start.saturating_add(chunk_len).saturating_sub(1)).min(entry.length - 1);
+        let data = async_runtime::block_on(entry.read_range(RarReadInterval { start, end }))
+            .map_err(|e| format!("Failed to read rar entry {raw_name}: {e}"))?;
+        if data.is_empty() {
+            return Err(format!("Failed to read rar entry {raw_name}: empty chunk"));
+        }
+
+        out.write_all(&data)
+            .map_err(|e| map_copy_err(&format!("Failed to write {raw_name}"), e))?;
+        if let Some(p) = progress {
+            p.add(data.len() as u64);
+        }
+        start = start.saturating_add(data.len() as u64);
+    }
+
+    out.flush()
+        .map_err(|e| map_copy_err(&format!("Failed to flush {raw_name}"), e))
 }
 
 pub(super) fn parse_rar_entries(path: &Path) -> Result<Vec<RarInnerFile>, String> {
