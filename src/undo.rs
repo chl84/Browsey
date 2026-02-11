@@ -8,6 +8,8 @@ use std::{hash::Hash, hash::Hasher};
 use std::{os::windows::ffi::OsStrExt, ptr};
 use tracing::{debug, warn};
 
+use crate::fs_utils::check_no_symlink_components;
+
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::{LocalFree, ERROR_SUCCESS};
 #[cfg(target_os = "windows")]
@@ -510,16 +512,15 @@ fn snapshot_dacl(path: &Path) -> Result<Option<Vec<u8>>, String> {
 }
 
 pub(crate) fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
-    let meta = fs::symlink_metadata(src).map_err(|e| format!("Failed to read metadata: {e}"))?;
-    if meta.file_type().is_symlink() {
-        return Err("Refusing to copy symlinks".into());
+    let meta = ensure_existing_path_nonsymlink(src)?;
+    if let Some(parent) = dest.parent() {
+        ensure_existing_dir_nonsymlink(parent)?;
     }
     if meta.is_dir() {
         copy_dir(src, dest)
     } else {
         if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create parent {:?}: {e}", parent))?;
+            ensure_existing_dir_nonsymlink(parent)?;
         }
         fs::copy(src, dest)
             .map_err(|e| format!("Failed to copy file: {e}"))
@@ -531,15 +532,14 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
     if dest.exists() {
         return Err(format!("Destination already exists: {}", dest.display()));
     }
+    if let Some(parent) = dest.parent() {
+        ensure_existing_dir_nonsymlink(parent)?;
+    }
     fs::create_dir_all(dest).map_err(|e| format!("Failed to create dir {:?}: {e}", dest))?;
     for entry in fs::read_dir(src).map_err(|e| format!("Failed to read dir {:?}: {e}", src))? {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
         let path = entry.path();
-        let meta =
-            fs::symlink_metadata(&path).map_err(|e| format!("Failed to read metadata: {e}"))?;
-        if meta.file_type().is_symlink() {
-            return Err("Refusing to copy symlinks".into());
-        }
+        let meta = ensure_existing_path_nonsymlink(&path)?;
         let target = dest.join(entry.file_name());
         if meta.is_dir() {
             copy_dir(&path, &target)?;
@@ -551,7 +551,7 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
 }
 
 pub(crate) fn delete_entry_path(path: &Path) -> Result<(), String> {
-    let meta = fs::symlink_metadata(path).map_err(|e| format!("Failed to read metadata: {e}"))?;
+    let meta = ensure_existing_path_nonsymlink(path)?;
     if meta.is_dir() {
         fs::remove_dir_all(path).map_err(|e| format!("Failed to delete directory: {e}"))
     } else {
@@ -560,6 +560,12 @@ pub(crate) fn delete_entry_path(path: &Path) -> Result<(), String> {
 }
 
 pub fn move_with_fallback(src: &Path, dst: &Path) -> Result<(), String> {
+    ensure_existing_path_nonsymlink(src)?;
+    if let Some(parent) = dst.parent() {
+        ensure_existing_dir_nonsymlink(parent)?;
+    } else {
+        return Err("Invalid destination path".into());
+    }
     match fs::rename(src, dst) {
         Ok(_) => Ok(()),
         Err(rename_err) => {
@@ -588,6 +594,27 @@ pub fn move_with_fallback(src: &Path, dst: &Path) -> Result<(), String> {
 
 fn is_cross_device(err: &std::io::Error) -> bool {
     matches!(err.raw_os_error(), Some(17) | Some(18))
+}
+
+fn ensure_existing_path_nonsymlink(path: &Path) -> Result<fs::Metadata, String> {
+    check_no_symlink_components(path)?;
+    let meta = fs::symlink_metadata(path)
+        .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+    if meta.file_type().is_symlink() {
+        return Err(format!(
+            "Refusing path with symlink target: {}",
+            path.display()
+        ));
+    }
+    Ok(meta)
+}
+
+fn ensure_existing_dir_nonsymlink(path: &Path) -> Result<(), String> {
+    let meta = ensure_existing_path_nonsymlink(path)?;
+    if !meta.is_dir() {
+        return Err(format!("Expected directory path: {}", path.display()));
+    }
+    Ok(())
 }
 
 #[allow(dead_code)]
