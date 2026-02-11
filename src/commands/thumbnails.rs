@@ -40,6 +40,8 @@ const CACHE_MAX_FILES: usize = 2000;
 const MAX_SOURCE_DIM: u32 = 20000;
 const DECODE_TIMEOUT_MS: u64 = 2000;
 const DECODE_TIMEOUT_MS_GVFS: u64 = 8000;
+const DECODE_TIMEOUT_MS_HDR_EXR: u64 = 6000;
+const DECODE_TIMEOUT_MS_GVFS_HDR_EXR: u64 = 12000;
 const GLOBAL_HARD_MAX_INFLIGHT: usize = 32;
 const CACHE_DEFAULT_MB: u64 = 300;
 const CACHE_MIN_MB: u64 = 50;
@@ -397,6 +399,7 @@ fn generate_thumbnail(
         | ImageFormat::Tga
         | ImageFormat::WebP
         | ImageFormat::Hdr
+        | ImageFormat::OpenExr
         | ImageFormat::Dds => {}
         _ => return Err("Unsupported image format".into()),
     }
@@ -541,10 +544,27 @@ fn decode_with_timeout<R: BufRead + Seek + Send + 'static>(
 
 fn decode_timeout_for_path(path: &Path) -> Duration {
     let s = path.to_string_lossy().to_lowercase();
-    if s.contains("/gvfs/mtp:") || s.contains("\\gvfs\\mtp:") || s.contains("/gvfs/") {
-        Duration::from_millis(DECODE_TIMEOUT_MS_GVFS)
+    let is_gvfs = s.contains("/gvfs/mtp:") || s.contains("\\gvfs\\mtp:") || s.contains("/gvfs/");
+    let is_hdr_or_exr = matches!(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| ext.to_ascii_lowercase())
+            .as_deref(),
+        Some("hdr") | Some("exr")
+    );
+
+    if is_gvfs {
+        if is_hdr_or_exr {
+            Duration::from_millis(DECODE_TIMEOUT_MS_GVFS_HDR_EXR)
+        } else {
+            Duration::from_millis(DECODE_TIMEOUT_MS_GVFS)
+        }
     } else {
-        Duration::from_millis(DECODE_TIMEOUT_MS)
+        if is_hdr_or_exr {
+            Duration::from_millis(DECODE_TIMEOUT_MS_HDR_EXR)
+        } else {
+            Duration::from_millis(DECODE_TIMEOUT_MS)
+        }
     }
 }
 
