@@ -965,7 +965,10 @@ fn ensure_no_symlink_components_existing_prefix(path: &Path) -> Result<(), Strin
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => break,
             Err(e) => {
-                return Err(format!("Failed to read metadata for {}: {e}", acc.display()));
+                return Err(format!(
+                    "Failed to read metadata for {}: {e}",
+                    acc.display()
+                ));
             }
         }
     }

@@ -1,6 +1,24 @@
+use super::thumb_log;
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::Tree;
 use std::path::Path;
+
+fn contains_ascii_nocase(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    haystack
+        .windows(needle.len())
+        .any(|w| w.eq_ignore_ascii_case(needle))
+}
+
+fn has_unsupported_arithmetic_composite_filter(data: &[u8]) -> bool {
+    // Guardrail: resvg 0.46 can panic on some malformed/complex feComposite arithmetic filters.
+    // If these tokens are present together, skip thumbnail generation for this file.
+    contains_ascii_nocase(data, b"fecomposite")
+        && contains_ascii_nocase(data, b"operator")
+        && contains_ascii_nocase(data, b"arithmetic")
+}
 
 pub fn render_svg_thumbnail(
     path: &Path,
@@ -8,6 +26,13 @@ pub fn render_svg_thumbnail(
     max_dim: u32,
 ) -> Result<(u32, u32), String> {
     let data = std::fs::read(path).map_err(|e| format!("Read SVG failed: {e}"))?;
+    if has_unsupported_arithmetic_composite_filter(&data) {
+        thumb_log(&format!(
+            "svg thumbnail skipped (unsupported feComposite arithmetic filter): {}",
+            path.display()
+        ));
+        return Err("SVG uses unsupported arithmetic composite filter".into());
+    }
 
     let opt = crate::svg_options::usvg_options_for_path(path);
 
@@ -35,4 +60,21 @@ pub fn render_svg_thumbnail(
         .map_err(|e| format!("Save SVG thumbnail failed: {e}"))?;
 
     Ok((target_w, target_h))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_unsupported_arithmetic_composite_filter;
+
+    #[test]
+    fn detects_fecomposite_arithmetic_filter() {
+        let svg = br#"<svg><filter id='f'><feComposite operator="arithmetic"/></filter></svg>"#;
+        assert!(has_unsupported_arithmetic_composite_filter(svg));
+    }
+
+    #[test]
+    fn ignores_regular_svg_without_arithmetic_filter() {
+        let svg = br#"<svg><rect width="10" height="10"/></svg>"#;
+        assert!(!has_unsupported_arithmetic_composite_filter(svg));
+    }
 }
