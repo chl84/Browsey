@@ -1,6 +1,6 @@
 use crate::metadata::types::{ExtraMetadataField, ExtraMetadataSection};
 use image::{ColorType, ImageDecoder, ImageReader};
-use resvg::usvg::{Options, Tree};
+use resvg::usvg::Tree;
 use std::path::Path;
 
 pub fn collect(path: &Path) -> Vec<ExtraMetadataSection> {
@@ -72,8 +72,7 @@ fn collect_svg(path: &Path) -> Vec<ExtraMetadataSection> {
     let Ok(data) = std::fs::read(path) else {
         return Vec::new();
     };
-    let mut options = Options::default();
-    options.resources_dir = path.parent().map(|p| p.to_path_buf());
+    let options = crate::svg_options::usvg_options_for_path(path);
     let Ok(tree) = Tree::from_data(&data, &options) else {
         return Vec::new();
     };

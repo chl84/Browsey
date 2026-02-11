@@ -4,11 +4,19 @@ use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
 };
-use tracing::warn;
+use tracing::{debug, warn};
 
 const COMPARE_BUF_SIZE: usize = 64 * 1024;
 const COLLECT_PHASE_PERCENT: u8 = 40;
 const COLLECT_PROGRESS_INTERVAL: u64 = 128;
+
+fn log_walk_error(context: &str, path: &Path, err: &std::io::Error) {
+    if err.kind() == std::io::ErrorKind::PermissionDenied {
+        debug!("{context}: path={} err={}", path.display(), err);
+    } else {
+        warn!("{context}: path={} err={}", path.display(), err);
+    }
+}
 
 pub(super) fn find_identical_files(target: &Path, start: &Path, target_len: u64) -> Vec<PathBuf> {
     match find_identical_files_with_progress(target, start, target_len, None, |_| {}) {
@@ -191,11 +199,7 @@ fn collect_same_size_files(
         let iter = match fs::read_dir(&dir) {
             Ok(iter) => iter,
             Err(err) => {
-                warn!(
-                    "duplicate read_dir failed: dir={} err={}",
-                    dir.display(),
-                    err
-                );
+                log_walk_error("duplicate read_dir failed", &dir, &err);
                 continue;
             }
         };
@@ -213,11 +217,7 @@ fn collect_same_size_files(
             let item = match item {
                 Ok(item) => item,
                 Err(err) => {
-                    warn!(
-                        "duplicate read_dir entry failed: dir={} err={}",
-                        dir.display(),
-                        err
-                    );
+                    log_walk_error("duplicate read_dir entry failed", &dir, &err);
                     continue;
                 }
             };
@@ -225,11 +225,7 @@ fn collect_same_size_files(
             let file_type = match item.file_type() {
                 Ok(file_type) => file_type,
                 Err(err) => {
-                    warn!(
-                        "duplicate file_type failed: path={} err={}",
-                        item.path().display(),
-                        err
-                    );
+                    log_walk_error("duplicate file_type failed", &item.path(), &err);
                     continue;
                 }
             };
@@ -251,11 +247,7 @@ fn collect_same_size_files(
             let meta = match item.metadata() {
                 Ok(meta) => meta,
                 Err(err) => {
-                    warn!(
-                        "duplicate metadata failed: path={} err={}",
-                        path.display(),
-                        err
-                    );
+                    log_walk_error("duplicate metadata failed", &path, &err);
                     continue;
                 }
             };
