@@ -334,7 +334,6 @@ fn build_rename_target(from: &Path, new_name: &str) -> Result<PathBuf, String> {
 
 fn prepare_rename_pair(path: &str, new_name: &str) -> Result<(PathBuf, PathBuf), String> {
     let from = sanitize_path_nofollow(path, true)?;
-    check_no_symlink_components(&from)?;
     let to = build_rename_target(&from, new_name)?;
     if to != from && to.exists() {
         return Err("A file or directory with that name already exists".into());
@@ -343,6 +342,12 @@ fn prepare_rename_pair(path: &str, new_name: &str) -> Result<(PathBuf, PathBuf),
 }
 
 fn apply_rename(from: &Path, to: &Path) -> Result<(), String> {
+    ensure_existing_path_nonsymlink(from)?;
+    if let Some(parent) = to.parent() {
+        ensure_existing_dir_nonsymlink(parent)?;
+    } else {
+        return Err("Invalid destination path".into());
+    }
     match fs::rename(from, to) {
         Ok(_) => Ok(()),
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
@@ -427,7 +432,7 @@ pub fn create_folder(
     state: tauri::State<UndoState>,
 ) -> Result<String, String> {
     let base = sanitize_path_follow(&path, true)?;
-    check_no_symlink_components(&base)?;
+    ensure_existing_dir_nonsymlink(&base)?;
     let trimmed = name.trim();
     if trimmed.is_empty() {
         return Err("Folder name cannot be empty".into());
@@ -453,11 +458,7 @@ pub fn create_file(
     state: tauri::State<UndoState>,
 ) -> Result<String, String> {
     let base = sanitize_path_follow(&path, true)?;
-    check_no_symlink_components(&base)?;
-    let meta = fs::metadata(&base).map_err(|e| format!("Cannot read destination: {e}"))?;
-    if !meta.is_dir() {
-        return Err("Destination is not a directory".into());
-    }
+    ensure_existing_dir_nonsymlink(&base)?;
 
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -777,15 +778,19 @@ pub fn purge_trash_items(ids: Vec<String>, app: tauri::AppHandle) -> Result<(), 
 #[tauri::command]
 pub fn delete_entry(path: String, state: tauri::State<UndoState>) -> Result<(), String> {
     let pb = sanitize_path_nofollow(&path, true)?;
-    check_no_symlink_components(&pb)?;
     let action = delete_with_backup(&pb)?;
     let _ = state.record_applied(action);
     Ok(())
 }
 
 fn delete_with_backup(path: &Path) -> Result<Action, String> {
+    ensure_existing_path_nonsymlink(path)?;
     let backup = temp_backup_path(path);
+    if let Some(parent) = path.parent() {
+        ensure_existing_dir_nonsymlink(parent)?;
+    }
     if let Some(parent) = backup.parent() {
+        check_no_symlink_components(parent)?;
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create backup dir {}: {e}", parent.display()))?;
     }
@@ -838,17 +843,12 @@ fn delete_entries_blocking(
     if paths.is_empty() {
         return Ok(());
     }
-    let mut resolved: Vec<PathBuf> = Vec::with_capacity(paths.len());
-    for raw in paths {
-        let pb = sanitize_path_nofollow(&raw, true)?;
-        check_no_symlink_components(&pb)?;
-        resolved.push(pb);
-    }
-    let total = resolved.len() as u64;
+    let total = paths.len() as u64;
     let mut done = 0u64;
     let mut last_emit = Instant::now();
-    let mut performed: Vec<Action> = Vec::with_capacity(resolved.len());
-    for path in resolved {
+    let mut performed: Vec<Action> = Vec::with_capacity(paths.len());
+    for raw in paths {
+        let path = sanitize_path_nofollow(&raw, true)?;
         match delete_with_backup(&path) {
             Ok(action) => {
                 performed.push(action);
@@ -909,4 +909,24 @@ pub async fn delete_entries(
         delete_entries_blocking(app, paths, progress_event, undo)
     });
     task.await.map_err(|e| format!("Delete task failed: {e}"))?
+}
+
+fn ensure_existing_path_nonsymlink(path: &Path) -> Result<(), String> {
+    check_no_symlink_components(path)?;
+    let meta = fs::symlink_metadata(path)
+        .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+    if meta.file_type().is_symlink() {
+        return Err(format!("Symlinks are not allowed: {}", path.display()));
+    }
+    Ok(())
+}
+
+fn ensure_existing_dir_nonsymlink(path: &Path) -> Result<(), String> {
+    ensure_existing_path_nonsymlink(path)?;
+    let meta = fs::metadata(path)
+        .map_err(|e| format!("Cannot read destination {}: {e}", path.display()))?;
+    if !meta.is_dir() {
+        return Err("Destination is not a directory".into());
+    }
+    Ok(())
 }
