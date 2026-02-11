@@ -12,13 +12,21 @@ use sevenz_rust2::{
 
 use super::util::{
     clean_relative_path, copy_with_progress, first_component, is_cancelled, open_unique_file,
-    CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
+    CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 
 pub(super) fn single_root_in_7z(path: &Path) -> Result<Option<PathBuf>, String> {
     let archive = SevenZArchive::open(path).map_err(|e| format!("Failed to read 7z: {e}"))?;
     let mut root: Option<PathBuf> = None;
+    let mut entries_seen = 0u64;
     for entry in archive.files {
+        entries_seen = entries_seen.saturating_add(1);
+        if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
+            return Err(format!(
+                "Archive exceeds entry cap ({} entries > {} entries)",
+                entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
+            ));
+        }
         if entry.is_anti_item {
             continue;
         }
@@ -59,6 +67,9 @@ pub(super) fn extract_7z(
 ) -> Result<(), String> {
     let mut buf = vec![0u8; CHUNK];
     decompress_file_with_extract_fn(archive_path, dest_dir, |entry, reader, _dest_path| {
+        budget
+            .reserve_entry(1)
+            .map_err(|e| SevenZError::Io(e, Cow::Borrowed("Extraction entry cap exceeded")))?;
         if is_cancelled(cancel) {
             return Err(SevenZError::Io(
                 io::Error::new(io::ErrorKind::Interrupted, "cancelled"),
@@ -156,7 +167,15 @@ pub(super) fn sevenz_uncompressed_total(path: &Path) -> Result<u64, String> {
     let archive =
         SevenZArchive::open(path).map_err(|e| format!("Failed to read 7z for total size: {e}"))?;
     let mut total = 0u64;
+    let mut entries_seen = 0u64;
     for entry in archive.files {
+        entries_seen = entries_seen.saturating_add(1);
+        if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
+            return Err(format!(
+                "Archive exceeds entry cap ({} entries > {} entries)",
+                entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
+            ));
+        }
         if entry.is_directory || entry.is_anti_item || !entry.has_stream {
             continue;
         }

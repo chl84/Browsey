@@ -11,6 +11,7 @@ use zip::ZipArchive;
 use super::util::{
     check_cancel, clean_relative_path, copy_with_progress, first_component, map_copy_err, map_io,
     open_unique_file, CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
+    EXTRACT_TOTAL_ENTRIES_CAP,
 };
 use crate::fs_utils::debug_log;
 
@@ -18,10 +19,18 @@ pub(super) fn single_root_in_zip(path: &Path) -> Result<Option<PathBuf>, String>
     let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip for root"))?)
         .map_err(|e| format!("Failed to read zip: {e}"))?;
     let mut root: Option<PathBuf> = None;
+    let mut entries_seen = 0u64;
     for i in 0..archive.len() {
         let entry = archive
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
+        entries_seen = entries_seen.saturating_add(1);
+        if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
+            return Err(format!(
+                "Archive exceeds entry cap ({} entries > {} entries)",
+                entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
+            ));
+        }
         let raw_name = entry.name().to_string();
         let enclosed = entry.enclosed_name().ok_or_else(|| {
             debug_log(&format!("Skipping zip entry with unsafe name: {raw_name}"));
@@ -74,6 +83,9 @@ pub(super) fn extract_zip(
         let mut entry = archive
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
+        budget
+            .reserve_entry(1)
+            .map_err(|e| map_copy_err("Extraction entry cap exceeded", e))?;
         let raw_name = entry.name().to_string();
         let enclosed = entry.enclosed_name().ok_or_else(|| {
             stats.skip_unsupported(&raw_name, "path traversal");
@@ -160,10 +172,18 @@ pub(super) fn zip_uncompressed_total(path: &Path) -> Result<u64, String> {
     let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip for total"))?)
         .map_err(|e| format!("Failed to read zip: {e}"))?;
     let mut total = 0u64;
+    let mut entries_seen = 0u64;
     for i in 0..archive.len() {
         let entry = archive
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
+        entries_seen = entries_seen.saturating_add(1);
+        if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
+            return Err(format!(
+                "Archive exceeds entry cap ({} entries > {} entries)",
+                entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
+            ));
+        }
         if entry.is_dir() {
             continue;
         }

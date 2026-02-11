@@ -190,23 +190,23 @@ fn parse_f64(value: Option<&Value>) -> Option<f64> {
 
 fn resolve_ffprobe_bin() -> Option<PathBuf> {
     let env_probe = std::env::var("FFPROBE_BIN").ok().map(PathBuf::from);
-    if let Some(path) = env_probe.filter(|p| p.exists()) {
-        return Some(path);
-    }
 
-    if let Some(path) = configured_ffmpeg_binary()
+    let configured_probe = configured_ffmpeg_binary()
         .as_deref()
-        .and_then(derive_ffprobe_from_ffmpeg)
-    {
-        return Some(path);
-    }
+        .and_then(derive_ffprobe_from_ffmpeg);
+    let env_derived_probe = std::env::var("FFMPEG_BIN")
+        .ok()
+        .map(PathBuf::from)
+        .as_deref()
+        .and_then(derive_ffprobe_from_ffmpeg);
 
-    let env_ffmpeg = std::env::var("FFMPEG_BIN").ok().map(PathBuf::from);
-    if let Some(path) = env_ffmpeg.as_deref().and_then(derive_ffprobe_from_ffmpeg) {
-        return Some(path);
-    }
-
-    which::which("ffprobe").ok()
+    crate::binary_resolver::resolve_binary_with_overrides(
+        "ffprobe",
+        [env_probe, configured_probe, env_derived_probe]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>(),
+    )
 }
 
 fn configured_ffmpeg_binary() -> Option<PathBuf> {
@@ -219,11 +219,10 @@ fn configured_ffmpeg_binary() -> Option<PathBuf> {
         return None;
     }
     let candidate = PathBuf::from(trimmed);
-    if candidate.exists() {
-        Some(candidate)
-    } else {
-        None
+    if !candidate.exists() {
+        return None;
     }
+    candidate.canonicalize().ok().or(Some(candidate))
 }
 
 fn derive_ffprobe_from_ffmpeg(ffmpeg_path: &Path) -> Option<PathBuf> {

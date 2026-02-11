@@ -1,5 +1,6 @@
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
+use once_cell::sync::Lazy;
 use url::Url;
 
 use crate::fs_utils::sanitize_path_follow;
@@ -10,6 +11,13 @@ pub struct SystemClipboardContent {
     pub paths: Vec<String>,
 }
 
+static WL_COPY_BIN: Lazy<Option<PathBuf>> =
+    Lazy::new(|| crate::binary_resolver::resolve_binary("wl-copy"));
+static WL_PASTE_BIN: Lazy<Option<PathBuf>> =
+    Lazy::new(|| crate::binary_resolver::resolve_binary("wl-paste"));
+static XCLIP_BIN: Lazy<Option<PathBuf>> =
+    Lazy::new(|| crate::binary_resolver::resolve_binary("xclip"));
+
 fn file_uri(path: &str) -> Result<String, String> {
     let cleaned = sanitize_path_follow(path, true)?;
     Url::from_file_path(&cleaned)
@@ -18,7 +26,10 @@ fn file_uri(path: &str) -> Result<String, String> {
 }
 
 fn run_wl_copy(mime: &str, payload: &str) -> Result<(), String> {
-    let status = Command::new("wl-copy")
+    let bin = WL_COPY_BIN
+        .as_ref()
+        .ok_or_else(|| "wl-copy not found".to_string())?;
+    let status = Command::new(bin)
         .arg("--type")
         .arg(mime)
         .stdin(std::process::Stdio::piped())
@@ -38,7 +49,10 @@ fn run_wl_copy(mime: &str, payload: &str) -> Result<(), String> {
 }
 
 fn run_xclip(mime: &str, payload: &str) -> Result<(), String> {
-    let status = Command::new("xclip")
+    let bin = XCLIP_BIN
+        .as_ref()
+        .ok_or_else(|| "xclip not found".to_string())?;
+    let status = Command::new(bin)
         .arg("-selection")
         .arg("clipboard")
         .arg("-t")
@@ -131,12 +145,18 @@ fn read_command_output(cmd: &mut Command) -> Result<Option<String>, String> {
 }
 
 fn read_wl_paste(mime: &str) -> Result<Option<String>, String> {
-    read_command_output(Command::new("wl-paste").arg("--type").arg(mime))
+    let Some(bin) = WL_PASTE_BIN.as_ref() else {
+        return Ok(None);
+    };
+    read_command_output(Command::new(bin).arg("--type").arg(mime))
 }
 
 fn read_xclip(mime: &str) -> Result<Option<String>, String> {
+    let Some(bin) = XCLIP_BIN.as_ref() else {
+        return Ok(None);
+    };
     read_command_output(
-        Command::new("xclip")
+        Command::new(bin)
             .arg("-selection")
             .arg("clipboard")
             .arg("-t")
@@ -225,7 +245,10 @@ pub fn system_clipboard_paths() -> Result<SystemClipboardContent, String> {
 }
 
 fn clear_with_wl_copy() -> Result<(), String> {
-    let status = Command::new("wl-copy")
+    let bin = WL_COPY_BIN
+        .as_ref()
+        .ok_or_else(|| "wl-copy not found".to_string())?;
+    let status = Command::new(bin)
         .arg("--clear")
         .status()
         .map_err(|e| format!("wl-copy --clear failed: {e}"))?;
@@ -236,7 +259,10 @@ fn clear_with_wl_copy() -> Result<(), String> {
 }
 
 fn clear_with_xclip() -> Result<(), String> {
-    let status = Command::new("xclip")
+    let bin = XCLIP_BIN
+        .as_ref()
+        .ok_or_else(|| "xclip not found".to_string())?;
+    let status = Command::new(bin)
         .arg("-selection")
         .arg("clipboard")
         .arg("-i")
