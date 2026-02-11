@@ -10,7 +10,7 @@ use zip::ZipArchive;
 
 use super::util::{
     check_cancel, clean_relative_path, copy_with_progress, first_component, map_copy_err, map_io,
-    open_unique_file, CreatedPaths, ProgressEmitter, SkipStats, CHUNK,
+    open_unique_file, CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
 };
 use crate::fs_utils::debug_log;
 
@@ -64,6 +64,7 @@ pub(super) fn extract_zip(
     progress: Option<&ProgressEmitter>,
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
+    budget: &ExtractBudget,
 ) -> Result<(), String> {
     let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip"))?)
         .map_err(|e| format!("Failed to read zip: {e}"))?;
@@ -145,7 +146,8 @@ pub(super) fn extract_zip(
         let (file, _) = open_unique_file(&dest_path)?;
         created.record_file(dest_path.clone());
         let mut out = BufWriter::with_capacity(CHUNK, file);
-        if let Err(e) = copy_with_progress(&mut entry, &mut out, progress, cancel, &mut buf) {
+        if let Err(e) = copy_with_progress(&mut entry, &mut out, progress, cancel, budget, &mut buf)
+        {
             let msg = map_copy_err(&format!("Failed to write zip entry {raw_name}"), e);
             return Err(msg);
         }

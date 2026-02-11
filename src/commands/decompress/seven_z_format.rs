@@ -12,7 +12,7 @@ use sevenz_rust2::{
 
 use super::util::{
     clean_relative_path, copy_with_progress, first_component, is_cancelled, open_unique_file,
-    CreatedPaths, ProgressEmitter, SkipStats, CHUNK,
+    CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
 };
 
 pub(super) fn single_root_in_7z(path: &Path) -> Result<Option<PathBuf>, String> {
@@ -55,6 +55,7 @@ pub(super) fn extract_7z(
     progress: Option<&ProgressEmitter>,
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
+    budget: &ExtractBudget,
 ) -> Result<(), String> {
     let mut buf = vec![0u8; CHUNK];
     decompress_file_with_extract_fn(archive_path, dest_dir, |entry, reader, _dest_path| {
@@ -140,7 +141,7 @@ pub(super) fn extract_7z(
             open_unique_file(&dest_path).map_err(|e| SevenZError::Other(Cow::Owned(e)))?;
         created.record_file(dest_actual.clone());
         let mut out = BufWriter::with_capacity(CHUNK, file);
-        copy_with_progress(reader, &mut out, progress, cancel, &mut buf).map_err(|e| {
+        copy_with_progress(reader, &mut out, progress, cancel, budget, &mut buf).map_err(|e| {
             SevenZError::Io(
                 e,
                 Cow::Owned(format!("Failed to write 7z entry {raw_name}")),

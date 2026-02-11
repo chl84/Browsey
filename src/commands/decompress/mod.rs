@@ -30,7 +30,8 @@ use seven_z_format::{extract_7z, sevenz_uncompressed_total, single_root_in_7z};
 use tar_format::{extract_tar_with_reader, single_root_in_tar, tar_uncompressed_total};
 use util::{
     copy_with_progress, map_copy_err, map_io, open_buffered_file, open_unique_file,
-    strip_known_suffixes, CreatedPaths, ProgressEmitter, SkipStats, CHUNK,
+    strip_known_suffixes, CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
+    EXTRACT_TOTAL_BYTES_CAP,
 };
 use zip_format::{extract_zip, single_root_in_zip, zip_uncompressed_total};
 
@@ -230,6 +231,14 @@ fn do_extract(
         _ => meta.len(),
     }
     .max(1);
+    let budget = ExtractBudget::new(EXTRACT_TOTAL_BYTES_CAP);
+    if total_hint > budget.max_total_bytes() {
+        return Err(format!(
+            "Archive exceeds extraction size cap ({} bytes > {} bytes)",
+            total_hint,
+            budget.max_total_bytes()
+        ));
+    }
     let progress_id = progress_event.clone();
     let mut owns_progress = false;
     let progress = if let Some(p) = shared_progress {
@@ -268,6 +277,7 @@ fn do_extract(
                 progress.as_ref(),
                 &mut created,
                 cancel_token.as_deref(),
+                &budget,
             )?;
             dest_dir
         }
@@ -282,6 +292,7 @@ fn do_extract(
                 progress.as_ref(),
                 &mut created,
                 cancel_token.as_deref(),
+                &budget,
                 |reader| Ok(Box::new(reader) as Box<dyn Read>),
             )?;
             dest_dir
@@ -297,6 +308,7 @@ fn do_extract(
                 progress.as_ref(),
                 &mut created,
                 cancel_token.as_deref(),
+                &budget,
                 |reader| Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>),
             )?;
             dest_dir
@@ -312,6 +324,7 @@ fn do_extract(
                 progress.as_ref(),
                 &mut created,
                 cancel_token.as_deref(),
+                &budget,
                 |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
             )?;
             dest_dir
@@ -327,6 +340,7 @@ fn do_extract(
                 progress.as_ref(),
                 &mut created,
                 cancel_token.as_deref(),
+                &budget,
                 |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
             )?;
             dest_dir
@@ -342,6 +356,7 @@ fn do_extract(
                 progress.as_ref(),
                 &mut created,
                 cancel_token.as_deref(),
+                &budget,
                 |reader| {
                     ZstdDecoder::new(reader)
                         .map(|r| Box::new(r) as Box<dyn Read>)
@@ -361,6 +376,7 @@ fn do_extract(
                 progress.as_ref(),
                 &mut created,
                 cancel_token.as_deref(),
+                &budget,
             )?;
             dest_dir
         }
@@ -379,6 +395,7 @@ fn do_extract(
                 progress.as_ref(),
                 &mut created,
                 cancel_token.as_deref(),
+                &budget,
             )?;
             dest_dir
         }
@@ -388,6 +405,7 @@ fn do_extract(
             progress.as_ref(),
             &mut created,
             cancel_token.as_deref(),
+            &budget,
             |reader| Ok(Box::new(MultiGzDecoder::new(reader)) as Box<dyn Read>),
         )?,
         ArchiveKind::Bz2 => decompress_single_with_reader(
@@ -396,6 +414,7 @@ fn do_extract(
             progress.as_ref(),
             &mut created,
             cancel_token.as_deref(),
+            &budget,
             |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
         )?,
         ArchiveKind::Xz => decompress_single_with_reader(
@@ -404,6 +423,7 @@ fn do_extract(
             progress.as_ref(),
             &mut created,
             cancel_token.as_deref(),
+            &budget,
             |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
         )?,
         ArchiveKind::Zstd => decompress_single_with_reader(
@@ -412,6 +432,7 @@ fn do_extract(
             progress.as_ref(),
             &mut created,
             cancel_token.as_deref(),
+            &budget,
             |reader| {
                 ZstdDecoder::new(reader)
                     .map(|r| Box::new(r) as Box<dyn Read>)
@@ -608,6 +629,7 @@ fn decompress_single_with_reader<F>(
     progress: Option<&ProgressEmitter>,
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
+    budget: &ExtractBudget,
     wrap: F,
 ) -> Result<PathBuf, String>
 where
@@ -615,7 +637,15 @@ where
 {
     let reader = open_buffered_file(archive_path, "open compressed file")?;
     let reader = wrap(reader)?;
-    decompress_single(reader, archive_path, parent, progress, created, cancel)
+    decompress_single(
+        reader,
+        archive_path,
+        parent,
+        progress,
+        created,
+        cancel,
+        budget,
+    )
 }
 
 fn decompress_single<R: Read>(
@@ -625,6 +655,7 @@ fn decompress_single<R: Read>(
     progress: Option<&ProgressEmitter>,
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
+    budget: &ExtractBudget,
 ) -> Result<PathBuf, String> {
     let mut dest_name = archive
         .file_name()
@@ -645,7 +676,7 @@ fn decompress_single<R: Read>(
     created.record_file(dest_path.clone());
     let mut out = BufWriter::with_capacity(CHUNK, file);
     let mut buf = vec![0u8; CHUNK];
-    copy_with_progress(&mut reader, &mut out, progress, cancel, &mut buf)
+    copy_with_progress(&mut reader, &mut out, progress, cancel, budget, &mut buf)
         .map_err(|e| map_copy_err("write decompressed file", e))?;
     Ok(dest_path)
 }
