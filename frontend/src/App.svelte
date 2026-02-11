@@ -103,6 +103,8 @@
   let gridObserver: ResizeObserver | null = null
   let rowsRaf: number | null = null
   let gridRaf: number | null = null
+  const SCROLL_HOVER_SUPPRESS_MS = 150
+  let scrollHoverTimer: ReturnType<typeof setTimeout> | null = null
 
   // --- Nav + bookmarks -----------------------------------------------------
   const places = [
@@ -2326,7 +2328,21 @@
   }
 
   // --- Scroll / wheel routing --------------------------------------------
+  const suppressHoverWhileScrolling = () => {
+    const el = rowsElRef
+    if (!el) return
+    el.classList.add('is-scrolling')
+    if (scrollHoverTimer !== null) {
+      clearTimeout(scrollHoverTimer)
+    }
+    scrollHoverTimer = setTimeout(() => {
+      scrollHoverTimer = null
+      rowsElRef?.classList.remove('is-scrolling')
+    }, SCROLL_HOVER_SUPPRESS_MS)
+  }
+
   const handleRowsScrollCombined = () => {
+    suppressHoverWhileScrolling()
     if (viewMode === 'list') {
       handleRowsScroll()
     } else {
@@ -2809,6 +2825,11 @@
     void setupCore()
 
     return () => {
+      if (scrollHoverTimer !== null) {
+        clearTimeout(scrollHoverTimer)
+        scrollHoverTimer = null
+      }
+      rowsElRef?.classList.remove('is-scrolling')
       rowsObserver?.disconnect()
       gridObserver?.disconnect()
       cleanupFns.forEach((fn) => fn())
