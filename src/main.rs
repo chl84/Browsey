@@ -9,6 +9,7 @@ mod fs_utils;
 mod icons;
 mod keymap;
 mod metadata;
+mod runtime_lifecycle;
 mod sorting;
 mod statusbar;
 mod undo;
@@ -20,7 +21,9 @@ use commands::*;
 use context_menu::context_menu_actions;
 use fs_utils::debug_log;
 use once_cell::sync::OnceCell;
+use runtime_lifecycle::RuntimeLifecycle;
 use statusbar::dir_sizes;
+use tauri::Manager;
 use undo::{redo_action, undo_action, UndoState};
 use watcher::WatchState;
 
@@ -137,11 +140,26 @@ fn main() {
     init_logging();
     apply_webview_rendering_policy_from_settings();
     undo::cleanup_stale_backups(None);
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_drag::init())
         .manage(WatchState::default())
         .manage(CancelState::default())
         .manage(UndoState::default())
+        .manage(RuntimeLifecycle::default())
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
+                let app = window.app_handle();
+                runtime_lifecycle::begin_shutdown_from_app(&app);
+                if let Some(watch) = app.try_state::<WatchState>() {
+                    watch.stop_all();
+                }
+                runtime_lifecycle::wait_for_background_jobs_from_app(
+                    &app,
+                    std::time::Duration::from_millis(250),
+                );
+            }
+            _ => {}
+        })
         .setup(|app| {
             for window in &app.config().app.windows {
                 if window.create {
@@ -252,6 +270,20 @@ fn main() {
             get_thumbnail,
             clear_thumbnail_cache
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+            runtime_lifecycle::begin_shutdown_from_app(app_handle);
+            if let Some(watch) = app_handle.try_state::<WatchState>() {
+                watch.stop_all();
+            }
+            runtime_lifecycle::wait_for_background_jobs_from_app(
+                app_handle,
+                std::time::Duration::from_millis(250),
+            );
+        }
+        _ => {}
+    });
 }

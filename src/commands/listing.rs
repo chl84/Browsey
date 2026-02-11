@@ -18,7 +18,6 @@ use std::{
     path::{Path, PathBuf},
 };
 use sysinfo::Disks;
-use tauri::Emitter;
 use tracing::warn;
 
 #[cfg(target_os = "windows")]
@@ -156,9 +155,17 @@ fn spawn_meta_refresh(app: tauri::AppHandle, jobs: Vec<(PathBuf, Option<fs::File
     if jobs.is_empty() {
         return;
     }
+    let Some(activity_guard) = crate::runtime_lifecycle::try_enter_background_job_from_app(&app)
+    else {
+        return;
+    };
     tauri::async_runtime::spawn_blocking(move || {
+        let _activity_guard = activity_guard;
         let mut batch: Vec<FsEntry> = Vec::with_capacity(128);
         for (idx, (path, _file_type, starred)) in jobs.into_iter().enumerate() {
+            if crate::runtime_lifecycle::is_shutting_down(&app) {
+                break;
+            }
             let meta = match fs::symlink_metadata(&path) {
                 Ok(m) => m,
                 Err(e) => {
@@ -174,7 +181,7 @@ fn spawn_meta_refresh(app: tauri::AppHandle, jobs: Vec<(PathBuf, Option<fs::File
             store_cached_meta(&path, &meta, is_link);
             batch.push(build_entry(&path, &meta, is_link, starred));
             if batch.len() >= 128 {
-                let _ = app.emit("entry-meta-batch", &batch);
+                let _ = crate::runtime_lifecycle::emit_if_running(&app, "entry-meta-batch", &batch);
                 batch.clear();
             }
             if idx % 512 == 511 {
@@ -182,7 +189,7 @@ fn spawn_meta_refresh(app: tauri::AppHandle, jobs: Vec<(PathBuf, Option<fs::File
             }
         }
         if !batch.is_empty() {
-            let _ = app.emit("entry-meta-batch", &batch);
+            let _ = crate::runtime_lifecycle::emit_if_running(&app, "entry-meta-batch", &batch);
         }
     });
 }
