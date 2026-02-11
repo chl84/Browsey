@@ -80,7 +80,7 @@ export const useGridVirtualizer = ({
     })
   }
 
-  const handleGridWheel = (event: WheelEvent) => {
+  const handleGridWheel = (_event: WheelEvent) => {
     // Bruk native scroll; ingen custom behandling.
   }
 

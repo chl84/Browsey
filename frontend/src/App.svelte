@@ -38,6 +38,7 @@
   import { hitTestGridVirtualized } from './features/explorer/helpers/lassoHitTest'
   import { createViewSwitchAnchor } from './features/explorer/hooks/viewAnchor'
   import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
+  import { isScrollbarClick } from './features/explorer/helpers/scrollbar'
   import { moveCaret } from './features/explorer/helpers/navigationController'
   import { createSelectionMemory } from './features/explorer/selectionMemory'
   import { loadDefaultView, storeDefaultView } from './features/explorer/services/settings'
@@ -178,7 +179,6 @@
 
   // --- Data + preferences --------------------------------------------------
   const explorer = useExplorerData({
-    onEntriesChanged: () => resetScrollPosition(),
     onCurrentChange: (path) => {
       const sameLocation = path === lastLocation
       const typingFilterOrSearch = mode === 'filter' || mode === 'search'
@@ -326,6 +326,12 @@
     applyShortcutBindings(next)
   }
 
+  const listContentScrollTop = () => {
+    const rawTop = rowsElRef?.scrollTop ?? 0
+    const headerOffset = headerElRef?.offsetHeight ?? 0
+    return Math.max(0, rawTop - headerOffset)
+  }
+
   const toggleViewMode = async () => {
     viewAnchor.capture({
       viewMode,
@@ -349,11 +355,11 @@
     if (switchingToList) {
       gridTotalHeight.set(0)
       await tick()
-      scrollTop.set(Math.max(0, rowsElRef?.scrollTop ?? 0))
+      scrollTop.set(listContentScrollTop())
       updateViewportHeight()
       recompute(get(filteredEntries))
       requestAnimationFrame(() => {
-        scrollTop.set(Math.max(0, rowsElRef?.scrollTop ?? 0))
+        scrollTop.set(listContentScrollTop())
         updateViewportHeight()
         recompute(get(filteredEntries))
         viewAnchor.scroll({
@@ -534,7 +540,15 @@
     })
   }
 
-  const loadDir = async (path?: string, opts: { recordHistory?: boolean; silent?: boolean } = {}) => {
+  const loadDir = async (
+    path?: string,
+    opts: { recordHistory?: boolean; silent?: boolean } = {},
+    navOpts: { resetScroll?: boolean } = {},
+  ) => {
+    const shouldResetScroll = navOpts.resetScroll ?? !opts.silent
+    if (shouldResetScroll) {
+      resetScrollPosition()
+    }
     navGeneration += 1
     pendingNav = null
     captureSelectionSnapshot()
@@ -543,21 +557,30 @@
     await centerSelectionIfAny()
   }
 
-  const loadRecent = async (recordHistory = true, applySort = false) => {
+  const loadRecent = async (recordHistory = true, applySort = false, navOpts: { resetScroll?: boolean } = {}) => {
+    if (navOpts.resetScroll ?? true) {
+      resetScrollPosition()
+    }
     captureSelectionSnapshot()
     await loadRecentRaw(recordHistory, applySort)
     restoreSelectionForCurrent()
     await centerSelectionIfAny()
   }
 
-  const loadStarred = async (recordHistory = true) => {
+  const loadStarred = async (recordHistory = true, navOpts: { resetScroll?: boolean } = {}) => {
+    if (navOpts.resetScroll ?? true) {
+      resetScrollPosition()
+    }
     captureSelectionSnapshot()
     await loadStarredRaw(recordHistory)
     restoreSelectionForCurrent()
     await centerSelectionIfAny()
   }
 
-  const loadTrash = async (recordHistory = true) => {
+  const loadTrash = async (recordHistory = true, navOpts: { resetScroll?: boolean } = {}) => {
+    if (navOpts.resetScroll ?? true) {
+      resetScrollPosition()
+    }
     captureSelectionSnapshot()
     await loadTrashRaw(recordHistory)
     restoreSelectionForCurrent()
@@ -566,14 +589,22 @@
 
   const goBack = async () => {
     captureSelectionSnapshot()
+    const before = get(current)
     await goBackRaw()
+    if (get(current) !== before) {
+      resetScrollPosition()
+    }
     restoreSelectionForCurrent()
     await centerSelectionIfAny()
   }
 
   const goForward = async () => {
     captureSelectionSnapshot()
+    const before = get(current)
     await goForwardRaw()
+    if (get(current) !== before) {
+      resetScrollPosition()
+    }
     restoreSelectionForCurrent()
     await centerSelectionIfAny()
   }
@@ -776,6 +807,7 @@
           rowsEl.scrollTop = maxTop
         }
       }
+      updateViewportHeight()
       recompute(entriesList)
     }
   }
@@ -837,22 +869,6 @@
     visibleEntries,
     config: gridConfig,
   })
-
-  const isScrollbarClick = (event: MouseEvent, el: HTMLDivElement | null) => {
-    if (!el) return false
-    const rect = el.getBoundingClientRect()
-    const scrollbarX = el.offsetWidth - el.clientWidth
-    const scrollbarY = el.offsetHeight - el.clientHeight
-    if (scrollbarX > 0) {
-      const x = event.clientX - rect.left
-      if (x >= el.clientWidth) return true
-    }
-    if (scrollbarY > 0) {
-      const y = event.clientY - rect.top
-      if (y >= el.clientHeight) return true
-    }
-    return false
-  }
 
   $: {
     if (mode === 'filter') {
@@ -1527,7 +1543,6 @@
     textMenuY = event.clientY
   }
 
-  $: updateViewportHeight()
   $: {
     if (viewMode === 'list') {
       // Recompute virtualization when viewport or scroll changes.
@@ -1698,15 +1713,15 @@
 
   const reloadCurrent = async () => {
     if (currentView === 'recent') {
-      await loadRecent(false)
+      await loadRecent(false, false, { resetScroll: false })
       return
     }
     if (currentView === 'starred') {
-      await loadStarred(false)
+      await loadStarred(false, { resetScroll: false })
       return
     }
     if (currentView === 'trash') {
-      await loadTrash(false)
+      await loadTrash(false, { resetScroll: false })
       return
     }
     await loadRaw($current, { recordHistory: false })
@@ -1739,7 +1754,7 @@
         list.map((entry) => (entry.starred ? { ...entry, starred: false } : entry)),
       )
       if (currentView === 'starred') {
-        await loadStarred(false)
+        await loadStarred(false, { resetScroll: false })
       }
       if (removed > 0) {
         showToast(`Cleared ${removed} star${removed === 1 ? '' : 's'}`, 1800)
@@ -1773,7 +1788,7 @@
     try {
       const removed = await clearRecents()
       if (currentView === 'recent') {
-        await loadRecent(false)
+        await loadRecent(false, false, { resetScroll: false })
       }
       if (removed > 0) {
         showToast(`Cleared ${removed} recent item${removed === 1 ? '' : 's'}`, 1800)
@@ -2311,7 +2326,7 @@
   }
 
   // --- Scroll / wheel routing --------------------------------------------
-  const handleRowsScrollCombined = (event: Event) => {
+  const handleRowsScrollCombined = () => {
     if (viewMode === 'list') {
       handleRowsScroll()
     } else {

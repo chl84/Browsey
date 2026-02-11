@@ -2,27 +2,12 @@ import { get, writable } from 'svelte/store'
 import { clampIndex, clearSelection, selectRange } from '../selection'
 import type { Entry } from '../types'
 import { applyClickSelection } from '../helpers/selectionController'
+import { isScrollbarClick } from '../helpers/scrollbar'
 
 const defaultRowHeight = 32
 const overscan = 16
 
 export type ListState = ReturnType<typeof createListState>
-
-const isScrollbarClick = (event: MouseEvent, el: HTMLDivElement | null) => {
-  if (!el) return false
-  const rect = el.getBoundingClientRect()
-  const scrollbarX = el.offsetWidth - el.clientWidth
-  const scrollbarY = el.offsetHeight - el.clientHeight
-  if (scrollbarX > 0) {
-    const x = event.clientX - rect.left
-    if (x >= el.clientWidth) return true
-  }
-  if (scrollbarY > 0) {
-    const y = event.clientY - rect.top
-    if (y >= el.clientHeight) return true
-  }
-  return false
-}
 
 export const createListState = (initialRowHeight: number = defaultRowHeight) => {
   const selected = writable<Set<string>>(clearSelection())
@@ -75,9 +60,7 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
     })
   }
 
-  const handleWheel = (event: WheelEvent) => {
-    const el = get(rowsEl)
-    if (!el) return
+  const handleWheel = (_event: WheelEvent) => {
     // Bruk nettleserens native scroll og momentum; ingen custom handling.
   }
 
@@ -174,8 +157,10 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
     totalHeight.set(total)
     const view = get(viewportHeight)
     const scrolled = get(scrollTop)
-    const visibleCount = Math.ceil((view || 0) / rh) + overscan * 2
-    const startIdx = Math.max(0, Math.floor(scrolled / rh) - overscan)
+    const visibleCount = Math.max(1, Math.ceil((view || 0) / rh) + overscan * 2)
+    const rawStartIdx = Math.max(0, Math.floor(scrolled / rh) - overscan)
+    const maxStartIdx = Math.max(0, filteredEntries.length - visibleCount)
+    const startIdx = Math.min(rawStartIdx, maxStartIdx)
     const endIdx = Math.min(filteredEntries.length, startIdx + visibleCount)
     const slice = filteredEntries.slice(startIdx, endIdx)
     start.set(startIdx)
