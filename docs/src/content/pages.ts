@@ -157,7 +157,7 @@ export const docsPages: DocPage[] = [
           'Press Ctrl+F to toggle search mode',
           'Press Esc to exit search mode',
           'Empty query returns no search results but keeps listing state',
-          'When search completes, the result list is sorted by current sort field/direction',
+          'Search results stream in arrival order; sort can be applied manually from the list header',
         ],
       },
       {
