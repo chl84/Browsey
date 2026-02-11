@@ -629,7 +629,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
               : null
           const finalEntries = doneEntries ?? [...get(entries), ...buffer]
           buffer = []
-          entries.set(sortSearchEntries(finalEntries, sortPayload()))
+          // Keep streamed order on completion; sorting remains a manual UI action.
+          entries.set(finalEntries)
           callbacks.onEntriesChanged?.()
           loading.set(false)
           cleanup()

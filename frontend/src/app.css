@@ -312,10 +312,21 @@ body {
   -webkit-user-select: none;
 }
 
-/* Force arrow cursor across the app; do not show hand/resize cursors. */
+/* Keep arrow cursor across the app, with explicit exceptions for text fields and column resize. */
 #app,
 #app * {
   cursor: default !important;
+}
+
+#app input,
+#app textarea,
+#app [contenteditable='true'],
+#app [contenteditable='true'] * {
+  cursor: text !important;
+}
+
+#app .column-resizer {
+  cursor: col-resize !important;
 }
 
 /* Cozy is the baseline in :root; keep class for compatibility/readability. */

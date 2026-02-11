@@ -790,9 +790,10 @@ fn delete_with_backup(path: &Path) -> Result<Action, String> {
         ensure_existing_dir_nonsymlink(parent)?;
     }
     if let Some(parent) = backup.parent() {
-        check_no_symlink_components(parent)?;
+        ensure_no_symlink_components_existing_prefix(parent)?;
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create backup dir {}: {e}", parent.display()))?;
+        ensure_existing_dir_nonsymlink(parent)?;
     }
     if backup.exists() {
         return Err(format!("Backup path already exists: {}", backup.display()));
@@ -927,6 +928,46 @@ fn ensure_existing_dir_nonsymlink(path: &Path) -> Result<(), String> {
         .map_err(|e| format!("Cannot read destination {}: {e}", path.display()))?;
     if !meta.is_dir() {
         return Err("Destination is not a directory".into());
+    }
+    Ok(())
+}
+
+fn ensure_no_symlink_components_existing_prefix(path: &Path) -> Result<(), String> {
+    let mut acc = PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            std::path::Component::Prefix(p) => {
+                acc.push(p.as_os_str());
+                continue;
+            }
+            std::path::Component::RootDir => {
+                acc.push(std::path::Component::RootDir.as_os_str());
+                continue;
+            }
+            std::path::Component::CurDir => continue,
+            std::path::Component::ParentDir => {
+                acc.pop();
+                continue;
+            }
+            std::path::Component::Normal(seg) => acc.push(seg),
+        }
+        if acc.as_os_str().is_empty() {
+            continue;
+        }
+        match fs::symlink_metadata(&acc) {
+            Ok(meta) => {
+                if meta.file_type().is_symlink() {
+                    return Err(format!(
+                        "Symlinks are not allowed in path: {}",
+                        acc.display()
+                    ));
+                }
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => break,
+            Err(e) => {
+                return Err(format!("Failed to read metadata for {}: {e}", acc.display()));
+            }
+        }
     }
     Ok(())
 }
