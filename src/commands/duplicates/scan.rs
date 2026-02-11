@@ -191,7 +191,11 @@ fn collect_same_size_files(
         let iter = match fs::read_dir(&dir) {
             Ok(iter) => iter,
             Err(err) => {
-                warn!("duplicate read_dir failed: dir={} err={}", dir.display(), err);
+                warn!(
+                    "duplicate read_dir failed: dir={} err={}",
+                    dir.display(),
+                    err
+                );
                 continue;
             }
         };
@@ -247,7 +251,11 @@ fn collect_same_size_files(
             let meta = match item.metadata() {
                 Ok(meta) => meta,
                 Err(err) => {
-                    warn!("duplicate metadata failed: path={} err={}", path.display(), err);
+                    warn!(
+                        "duplicate metadata failed: path={} err={}",
+                        path.display(),
+                        err
+                    );
                     continue;
                 }
             };
