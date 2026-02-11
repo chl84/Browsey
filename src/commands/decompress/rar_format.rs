@@ -13,13 +13,21 @@ use tauri::async_runtime;
 
 use super::util::{
     check_cancel, clean_relative_path, first_component, map_copy_err, open_unique_file,
-    CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
+    CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 
 pub(super) fn single_root_in_rar(path: &Path) -> Result<Option<PathBuf>, String> {
     let entries = parse_rar_entries(path)?;
     let mut root: Option<PathBuf> = None;
+    let mut entries_seen = 0u64;
     for entry in entries {
+        entries_seen = entries_seen.saturating_add(1);
+        if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
+            return Err(format!(
+                "Archive exceeds entry cap ({} entries > {} entries)",
+                entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
+            ));
+        }
         let raw_name = entry.name.replace('\\', "/");
         let raw_path = PathBuf::from(raw_name.clone());
         let clean_rel = match clean_relative_path(&raw_path) {
@@ -60,6 +68,9 @@ pub(super) fn extract_rar(
 ) -> Result<(), String> {
     for entry in entries {
         check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
+        budget
+            .reserve_entry(1)
+            .map_err(|e| map_copy_err("Extraction entry cap exceeded", e))?;
         let raw_name = entry.name.clone();
         let normalized = raw_name.replace('\\', "/");
         let raw_path = Path::new(&normalized).to_path_buf();
@@ -187,7 +198,15 @@ pub(super) fn parse_rar_entries(path: &Path) -> Result<Vec<RarInnerFile>, String
 
 pub(super) fn rar_uncompressed_total_from_entries(entries: &[RarInnerFile]) -> Result<u64, String> {
     let mut total = 0u64;
+    let mut entries_seen = 0u64;
     for entry in entries {
+        entries_seen = entries_seen.saturating_add(1);
+        if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
+            return Err(format!(
+                "Archive exceeds entry cap ({} entries > {} entries)",
+                entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
+            ));
+        }
         total = total.saturating_add(entry.length);
     }
     Ok(total)

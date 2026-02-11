@@ -31,7 +31,7 @@ use tar_format::{extract_tar_with_reader, single_root_in_tar, tar_uncompressed_t
 use util::{
     copy_with_progress, map_copy_err, map_io, open_buffered_file, open_unique_file,
     strip_known_suffixes, CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
-    EXTRACT_TOTAL_BYTES_CAP,
+    EXTRACT_TOTAL_BYTES_CAP, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 use zip_format::{extract_zip, single_root_in_zip, zip_uncompressed_total};
 
@@ -231,7 +231,7 @@ fn do_extract(
         _ => meta.len(),
     }
     .max(1);
-    let budget = ExtractBudget::new(EXTRACT_TOTAL_BYTES_CAP);
+    let budget = ExtractBudget::new(EXTRACT_TOTAL_BYTES_CAP, EXTRACT_TOTAL_ENTRIES_CAP);
     if total_hint > budget.max_total_bytes() {
         return Err(format!(
             "Archive exceeds extraction size cap ({} bytes > {} bytes)",
@@ -657,6 +657,9 @@ fn decompress_single<R: Read>(
     cancel: Option<&AtomicBool>,
     budget: &ExtractBudget,
 ) -> Result<PathBuf, String> {
+    budget
+        .reserve_entry(1)
+        .map_err(|e| map_copy_err("Extraction entry cap exceeded", e))?;
     let mut dest_name = archive
         .file_name()
         .and_then(|s| s.to_str())

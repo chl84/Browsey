@@ -16,18 +16,23 @@ use crate::fs_utils::{debug_log, unique_path};
 
 pub(super) const CHUNK: usize = 4 * 1024 * 1024;
 pub(super) const EXTRACT_TOTAL_BYTES_CAP: u64 = 100_000_000_000; // 100 GB
+pub(super) const EXTRACT_TOTAL_ENTRIES_CAP: u64 = 2_000_000; // 2 million entries
 
 #[derive(Clone)]
 pub(super) struct ExtractBudget {
     max_total_bytes: u64,
+    max_total_entries: u64,
     written_total: Arc<AtomicU64>,
+    entries_total: Arc<AtomicU64>,
 }
 
 impl ExtractBudget {
-    pub(super) fn new(max_total_bytes: u64) -> Self {
+    pub(super) fn new(max_total_bytes: u64, max_total_entries: u64) -> Self {
         Self {
             max_total_bytes,
+            max_total_entries,
             written_total: Arc::new(AtomicU64::new(0)),
+            entries_total: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -47,6 +52,26 @@ impl ExtractBudget {
             }
             if self
                 .written_total
+                .compare_exchange(current, projected, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+    }
+
+    pub(super) fn reserve_entry(&self, delta: u64) -> io::Result<()> {
+        loop {
+            let current = self.entries_total.load(Ordering::Relaxed);
+            let projected = current.saturating_add(delta);
+            if projected > self.max_total_entries {
+                return Err(io::Error::other(format!(
+                    "Extraction exceeds entry cap ({} entries > {} entries)",
+                    projected, self.max_total_entries
+                )));
+            }
+            if self
+                .entries_total
                 .compare_exchange(current, projected, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
             {

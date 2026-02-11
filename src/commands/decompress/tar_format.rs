@@ -14,7 +14,7 @@ use zstd::stream::read::Decoder as ZstdDecoder;
 use super::util::{
     check_cancel, clean_relative_path, copy_with_progress, first_component, map_copy_err, map_io,
     open_buffered_file, open_unique_file, CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats,
-    CHUNK,
+    CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 use super::ArchiveKind;
 
@@ -36,11 +36,19 @@ pub(super) fn single_root_in_tar(
     };
     let mut archive = Archive::new(reader);
     let mut root: Option<PathBuf> = None;
+    let mut entries_seen = 0u64;
     for entry_result in archive
         .entries()
         .map_err(|e| format!("Failed to iterate tar: {e}"))?
     {
         let entry = entry_result.map_err(|e| format!("Failed to read tar entry: {e}"))?;
+        entries_seen = entries_seen.saturating_add(1);
+        if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
+            return Err(format!(
+                "Archive exceeds entry cap ({} entries > {} entries)",
+                entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
+            ));
+        }
         let entry_type = entry.header().entry_type();
         let raw_path = entry
             .path()
@@ -117,6 +125,9 @@ pub(super) fn extract_tar<R: Read>(
     {
         check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
         let mut entry = entry_result.map_err(|e| format!("Failed to read tar entry: {e}"))?;
+        budget
+            .reserve_entry(1)
+            .map_err(|e| map_copy_err("Extraction entry cap exceeded", e))?;
         let entry_type = entry.header().entry_type();
         let raw_path = entry
             .path()
@@ -206,8 +217,16 @@ pub(super) fn tar_uncompressed_total(path: &Path) -> Result<u64, String> {
     let entries = archive
         .entries()
         .map_err(|e| format!("Failed to iterate tar for total: {e}"))?;
+    let mut entries_seen = 0u64;
     for entry_result in entries {
         let entry = entry_result.map_err(|e| format!("Failed to read tar entry for total: {e}"))?;
+        entries_seen = entries_seen.saturating_add(1);
+        if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
+            return Err(format!(
+                "Archive exceeds entry cap ({} entries > {} entries)",
+                entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
+            ));
+        }
         let header = entry.header();
         if header.entry_type().is_dir() {
             continue;
