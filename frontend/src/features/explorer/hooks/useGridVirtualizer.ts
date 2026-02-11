@@ -6,9 +6,6 @@ type GridConfig = {
   rowHeight: number
   gap: number
   overscan: number
-  wheelScale: number
-  wheelDecay: number
-  wheelStopThreshold: number
 }
 
 type Params = {
