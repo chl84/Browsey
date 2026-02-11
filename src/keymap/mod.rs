@@ -49,10 +49,7 @@ fn build_bindings(overrides: &HashMap<String, String>) -> Result<Vec<ShortcutBin
                 ));
             }
         }
-        used.insert(
-            used_key,
-            (def.id.to_string(), def.label.to_string()),
-        );
+        used.insert(used_key, (def.id.to_string(), def.label.to_string()));
 
         out.push(ShortcutBinding {
             command_id: def.id.to_string(),
@@ -72,8 +69,8 @@ fn load_overrides(conn: &Connection) -> Result<HashMap<String, String>, String> 
         return Ok(HashMap::new());
     };
 
-    let parsed: HashMap<String, String> =
-        serde_json::from_str(&raw).map_err(|e| format!("failed to parse shortcut settings: {e}"))?;
+    let parsed: HashMap<String, String> = serde_json::from_str(&raw)
+        .map_err(|e| format!("failed to parse shortcut settings: {e}"))?;
 
     let mut out = HashMap::new();
     for (command_id, accelerator) in parsed {

@@ -61,7 +61,10 @@ pub fn context_menu_actions(
             items.push(ContextAction::submenu(
                 "tools",
                 "Tools",
-                vec![ContextAction::new("check-duplicates", "Check for Duplicates")],
+                vec![ContextAction::new(
+                    "check-duplicates",
+                    "Check for Duplicates",
+                )],
             ));
         }
         items.push(ContextAction::new("properties", "Properties"));
@@ -75,7 +78,10 @@ pub fn context_menu_actions(
         items.push(ContextAction::new("divider-restore", "---"));
         items.push(ContextAction::new("cut", "Cut"));
         items.push(ContextAction::new("copy", "Copy"));
-        items.push(ContextAction::new("delete-permanent", "Delete permanently…"));
+        items.push(ContextAction::new(
+            "delete-permanent",
+            "Delete permanently…",
+        ));
         items.push(ContextAction::new("properties", "Properties"));
         return items;
     }
@@ -95,7 +101,10 @@ pub fn context_menu_actions(
             items.push(ContextAction::new("extract", "Extract"));
         }
         items.push(ContextAction::new("move-trash", "Move to wastebasket"));
-        items.push(ContextAction::new("delete-permanent", "Delete permanently…"));
+        items.push(ContextAction::new(
+            "delete-permanent",
+            "Delete permanently…",
+        ));
         items.push(ContextAction::new("divider-1", "---"));
         items.push(ContextAction::new("properties", "Properties"));
         return items;
@@ -119,7 +128,10 @@ pub fn context_menu_actions(
         items.push(ContextAction::submenu(
             "tools",
             "Tools",
-            vec![ContextAction::new("check-duplicates", "Check for Duplicates")],
+            vec![ContextAction::new(
+                "check-duplicates",
+                "Check for Duplicates",
+            )],
         ));
     }
     items.push(ContextAction::new("divider-1", "---"));
@@ -129,7 +141,10 @@ pub fn context_menu_actions(
         items.push(ContextAction::new("extract", "Extract"));
     }
     items.push(ContextAction::new("move-trash", "Move to wastebasket"));
-    items.push(ContextAction::new("delete-permanent", "Delete permanently…"));
+    items.push(ContextAction::new(
+        "delete-permanent",
+        "Delete permanently…",
+    ));
     items.push(ContextAction::new("divider-2", "---"));
     items.push(ContextAction::new("properties", "Properties"));
     items

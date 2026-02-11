@@ -7,15 +7,12 @@
 mod scan;
 
 use crate::{
-    commands::tasks::CancelState,
     commands::fs::expand_path,
+    commands::tasks::CancelState,
     fs_utils::{check_no_symlink_components, sanitize_path_follow},
 };
 use serde::Serialize;
-use std::{
-    path::PathBuf,
-    sync::atomic::Ordering,
-};
+use std::{path::PathBuf, sync::atomic::Ordering};
 use tauri::Emitter;
 
 struct DuplicateScanInput {
@@ -47,7 +44,10 @@ pub struct DuplicateScanProgress {
 }
 
 #[tauri::command]
-pub async fn check_duplicates(target_path: String, start_path: String) -> Result<Vec<String>, String> {
+pub async fn check_duplicates(
+    target_path: String,
+    start_path: String,
+) -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(move || check_duplicates_sync(target_path, start_path))
         .await
         .unwrap_or_else(|e| Err(format!("duplicate scan task panicked: {e}")))
@@ -122,12 +122,15 @@ fn check_duplicates_sync(target_path: String, start_path: String) -> Result<Vec<
     Ok(to_string_paths(matches))
 }
 
-fn validate_scan_input(target_path: String, start_path: String) -> Result<DuplicateScanInput, String> {
+fn validate_scan_input(
+    target_path: String,
+    start_path: String,
+) -> Result<DuplicateScanInput, String> {
     let target = sanitize_path_follow(&target_path, false)?;
     check_no_symlink_components(&target)?;
 
-    let target_meta =
-        std::fs::symlink_metadata(&target).map_err(|e| format!("Failed to read target metadata: {e}"))?;
+    let target_meta = std::fs::symlink_metadata(&target)
+        .map_err(|e| format!("Failed to read target metadata: {e}"))?;
     if target_meta.file_type().is_symlink() {
         return Err("Target must be a regular file (symlinks are ignored)".into());
     }
