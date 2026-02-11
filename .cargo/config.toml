@@ -2,6 +2,7 @@
 opt-level = 3
 lto = "thin"
 codegen-units = 1
-panic = "abort"
+# Keep release robust against dependency panics in background workers (e.g. malformed SVG filters).
+panic = "unwind"
 strip = "debuginfo"
 incremental = false
