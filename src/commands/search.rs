@@ -11,7 +11,7 @@ use serde::Serialize;
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 use tauri::Emitter;
-use tracing::warn;
+use tracing::{debug, warn};
 
 #[derive(Serialize, Clone)]
 pub struct SearchProgress {
@@ -95,11 +95,15 @@ pub fn search_stream(
             let iter = match std::fs::read_dir(&dir) {
                 Ok(i) => i,
                 Err(err) => {
-                    warn!(
-                        "search read_dir failed: dir={} err={:?}",
-                        dir.display(),
-                        err
-                    );
+                    if err.kind() == std::io::ErrorKind::PermissionDenied {
+                        debug!(
+                            "search read_dir permission denied: dir={} err={}",
+                            dir.display(),
+                            err
+                        );
+                    } else {
+                        warn!("search read_dir failed: dir={} err={}", dir.display(), err);
+                    }
                     continue;
                 }
             };

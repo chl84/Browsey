@@ -1,5 +1,5 @@
 use resvg::tiny_skia::{Pixmap, Transform};
-use resvg::usvg::{Options, Tree};
+use resvg::usvg::Tree;
 use std::path::Path;
 
 pub fn render_svg_thumbnail(
@@ -9,8 +9,7 @@ pub fn render_svg_thumbnail(
 ) -> Result<(u32, u32), String> {
     let data = std::fs::read(path).map_err(|e| format!("Read SVG failed: {e}"))?;
 
-    let mut opt = Options::default();
-    opt.resources_dir = path.parent().map(|p| p.to_path_buf());
+    let opt = crate::svg_options::usvg_options_for_path(path);
 
     let tree = Tree::from_data(&data, &opt).map_err(|e| format!("SVG parse failed: {e}"))?;
     let size = tree.size();

@@ -13,6 +13,7 @@ mod metadata;
 mod runtime_lifecycle;
 mod sorting;
 mod statusbar;
+mod svg_options;
 mod undo;
 mod watcher;
 
@@ -98,11 +99,10 @@ fn init_logging() {
     let (non_blocking, guard) =
         tracing_appender::non_blocking::NonBlockingBuilder::default().finish(writer);
     let _ = GUARD.set(guard);
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,usvg=error"));
     let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("info".parse().unwrap()),
-        )
+        .with_env_filter(env_filter)
         .with_ansi(false)
         .with_writer(non_blocking);
     if let Err(e) = subscriber.try_init() {
