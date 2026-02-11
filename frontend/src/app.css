@@ -312,6 +312,12 @@ body {
   -webkit-user-select: none;
 }
 
+/* Force arrow cursor across the app; do not show hand/resize cursors. */
+#app,
+#app * {
+  cursor: default !important;
+}
+
 /* Cozy is the baseline in :root; keep class for compatibility/readability. */
 body.density-cozy {
   /* Cozy uses :root defaults. */

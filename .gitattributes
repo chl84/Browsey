@@ -2,3 +2,4 @@
 resources/pdfium-win-x64/** linguist-vendored
 resources/pdfium-linux-x64/** linguist-vendored
 resources/icons/scalable/** linguist-vendored
+docs/** linguist-vendored
