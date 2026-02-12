@@ -9,6 +9,7 @@
   export let sortDirection: SortDirection = 'asc'
   export let ariaSort: (field: SortField) => 'ascending' | 'descending' | 'none' = () => 'none'
   export let onFilterClick: (field: SortField, anchor: DOMRect) => void = () => {}
+  export let isFilterActive: (field: SortField) => boolean = () => false
   export let onChangeSort: (field: SortField) => void = () => {}
   export let onStartResize: (index: number, event: PointerEvent) => void = () => {}
 </script>
@@ -47,6 +48,7 @@
             </span>
             <svg
               class="filter-icon"
+              class:active={isFilterActive(col.sort)}
               viewBox="0 0 12 12"
               aria-hidden="true"
               focusable="false"
@@ -169,5 +171,10 @@
     fill: currentColor;
     opacity: 0.35;
     cursor: pointer;
+  }
+
+  .filter-icon.active {
+    color: var(--filter-active, var(--accent-error-text));
+    opacity: 1;
   }
 </style>

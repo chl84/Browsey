@@ -85,6 +85,11 @@
   const closeFilterMenu = () => {
     filterMenuOpen = false
   }
+
+  const isFilterActive = (field: SortField) => {
+    if (field === 'name') return activeNameFilters.size > 0
+    return false
+  }
 </script>
 
 <section class="list" class:wide={wide}>
@@ -111,6 +116,7 @@
       onChangeSort={onChangeSort}
       onStartResize={onStartResize}
       onFilterClick={handleFilterClick}
+      isFilterActive={isFilterActive}
     />
     {#if !loading && filteredEntries.length === 0}
       <div class="muted">No items here.</div>
