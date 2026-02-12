@@ -53,6 +53,26 @@ fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
                 set.insert(entry_type_label(e));
             }
         }
+        "size" => {
+            for e in entries {
+                if e.hidden {
+                    continue;
+                }
+                if e.kind != "file" {
+                    continue;
+                }
+                if let Some(size) = e.size {
+                    let (label, rank) = bucket_size(size);
+                    let entry = buckets.entry(label).or_insert(rank);
+                    if rank < *entry {
+                        *entry = rank;
+                    }
+                }
+            }
+            let mut v: Vec<(String, i64)> = buckets.into_iter().collect();
+            v.sort_by_key(|(_, rank)| *rank);
+            return v.into_iter().map(|(label, _)| label).collect();
+        }
         "modified" => {
             let now = Local::now().naive_local();
             for e in entries {
@@ -117,6 +137,32 @@ fn bucket_modified(dt: NaiveDateTime, now: NaiveDateTime) -> (String, i64) {
         format!("{years} years ago")
     };
     (label, years * 365)
+}
+
+fn bucket_size(size: u64) -> (String, i64) {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    const GB: u64 = 1024 * MB;
+    const TB: u64 = 1024 * GB;
+
+    let buckets = [
+        (10 * KB, "0–10 KB"),
+        (100 * KB, "10–100 KB"),
+        (MB, "100 KB–1 MB"),
+        (10 * MB, "1–10 MB"),
+        (100 * MB, "10–100 MB"),
+        (GB, "100 MB–1 GB"),
+        (10 * GB, "1–10 GB"),
+        (100 * GB, "10–100 GB"),
+        (TB, "100 GB–1 TB"),
+    ];
+
+    for (limit, label) in buckets.iter() {
+        if size <= *limit {
+            return (label.to_string(), *limit as i64);
+        }
+    }
+    ("Over 1 TB".to_string(), (size / TB) as i64 * (TB as i64))
 }
 
 fn display_path_unix(path: &Path) -> String {
