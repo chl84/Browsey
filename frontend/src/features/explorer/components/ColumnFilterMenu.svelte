@@ -82,11 +82,6 @@
     overflow-y: auto;
   }
 
-  .options::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-  }
-
   .option {
     display: grid;
     grid-template-columns: auto 1fr;
