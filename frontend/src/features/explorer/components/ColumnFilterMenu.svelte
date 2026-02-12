@@ -9,6 +9,24 @@
   export let onToggle: (id: string, checked: boolean) => void = () => {}
   export let onClose: () => void = () => {}
 
+  import { onMount, onDestroy } from 'svelte'
+
+  const handleWindowKeydown = (event: KeyboardEvent) => {
+    if (!open) return
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      onClose()
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('keydown', handleWindowKeydown)
+  })
+
+  onDestroy(() => {
+    window.removeEventListener('keydown', handleWindowKeydown)
+  })
+
   const handleBackgroundClick = () => onClose()
   const handleBackgroundKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
@@ -26,7 +44,6 @@
   <div
     class="filter-layer"
     role="presentation"
-    tabindex="-1"
     on:click={handleBackgroundClick}
     on:keydown={handleBackgroundKeydown}
   >
