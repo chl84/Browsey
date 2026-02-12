@@ -8,6 +8,7 @@
   export let sortField: SortField = 'name'
   export let sortDirection: SortDirection = 'asc'
   export let ariaSort: (field: SortField) => 'ascending' | 'descending' | 'none' = () => 'none'
+  export let onFilterClick: (field: SortField) => void = () => {}
   export let onChangeSort: (field: SortField) => void = () => {}
   export let onStartResize: (index: number, event: PointerEvent) => void = () => {}
 </script>
@@ -50,6 +51,9 @@
               viewBox="0 0 12 12"
               aria-hidden="true"
               focusable="false"
+              role="button"
+              tabindex="-1"
+              on:click|stopPropagation={() => onFilterClick(col.sort)}
             >
               <path d="M2 3h8l-3.5 4.5v2.3l-1.8-.9v-1.4Z" />
             </svg>
@@ -162,6 +166,7 @@
     height: var(--list-header-sort-icon-size);
     fill: currentColor;
     opacity: 0.8;
+    cursor: pointer;
   }
 
   .filter-icon.inactive {
