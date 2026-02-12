@@ -1043,7 +1043,7 @@
 
   .settings-filter {
     min-width: var(--settings-filter-min-width);
-    width: var(--settings-filter-width);
+    flex: 1 1 var(--settings-filter-width);
   }
 
   .restore-btn {
@@ -1053,7 +1053,7 @@
     color: var(--fg);
     cursor: pointer;
     font-size: var(--settings-restore-font-size);
-    margin-left: 0;
+    margin-left: auto;
   }
 
   .restore-btn:hover {
