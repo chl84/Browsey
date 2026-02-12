@@ -336,9 +336,18 @@ pub async fn list_column_values(
     column: String,
     app: tauri::AppHandle,
 ) -> Result<Vec<String>, String> {
+    let p = match path {
+        Some(p) if !p.is_empty() => std::path::PathBuf::from(p),
+        _ => return Ok(Vec::new()),
+    };
+    if !p.exists() {
+        return Ok(Vec::new());
+    }
+
     let app_clone = app.clone();
+    let path_arg = Some(p.to_string_lossy().to_string());
     tauri::async_runtime::spawn_blocking(move || {
-        let listing = list_dir_sync(path, None, app_clone)?;
+        let listing = list_dir_sync(path_arg, None, app_clone)?;
         Ok(collect_column_values(&listing.entries, column.as_str()))
     })
     .await
