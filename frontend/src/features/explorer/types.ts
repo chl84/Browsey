@@ -29,6 +29,12 @@ export type DefaultSortField = Exclude<SortField, 'starred'>
 export type SortDirection = 'asc' | 'desc'
 export type Density = 'cozy' | 'compact'
 
+export type FilterOption = {
+  id: string
+  label: string
+  description?: string
+}
+
 export type Location =
   | { type: 'dir'; path: string }
   | { type: 'recent' }

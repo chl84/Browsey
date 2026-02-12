@@ -1,0 +1,119 @@
+<script lang="ts">
+  export type FilterOption = { id: string; label: string; description?: string }
+
+  export let open = false
+  export let title = 'Filters'
+  export let options: FilterOption[] = []
+  export let selected: Set<string> = new Set()
+  export let anchor: DOMRect | null = null
+
+  export let onToggle: (id: string, checked: boolean) => void = () => {}
+  export let onClose: () => void = () => {}
+
+  const handleBackgroundClick = () => onClose()
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') onClose()
+  }
+</script>
+
+{#if open && anchor}
+  <div class="filter-layer" on:click={handleBackgroundClick} on:keydown={handleKeydown} tabindex="-1">
+    <div
+      class="filter-card"
+      style={`top:${anchor.bottom + 4}px;left:${anchor.left}px;`}
+      on:click|stopPropagation
+    >
+      <header>
+        <span>{title}</span>
+        <button class="close" type="button" on:click={onClose} aria-label="Close">
+          ×
+        </button>
+      </header>
+      <div class="options">
+        {#each options as opt}
+          <label class="option">
+            <input
+              type="checkbox"
+              bind:checked={selected.has(opt.id)}
+              on:change={(e) => onToggle(opt.id, (e.target as HTMLInputElement).checked)}
+            />
+            <span class="text">{opt.label}</span>
+            {#if opt.description}
+              <span class="muted">{opt.description}</span>
+            {/if}
+          </label>
+        {/each}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .filter-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 12;
+    background: transparent;
+  }
+
+  .filter-card {
+    position: absolute;
+    min-width: 200px;
+    max-width: 260px;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    border-radius: 4px;
+    padding: 8px 10px 10px;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .close {
+    border: none;
+    background: transparent;
+    color: var(--fg-muted);
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .option {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .option input[type='checkbox'] {
+    accent-color: var(--accent, var(--fg));
+    cursor: pointer;
+  }
+
+  .text {
+    font-weight: 600;
+  }
+
+  .muted {
+    grid-column: 2;
+    font-size: 12px;
+    color: var(--fg-muted);
+  }
+</style>
