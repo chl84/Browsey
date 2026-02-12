@@ -45,6 +45,7 @@
   export let onNavigateSegment: (path: string) => void = () => {}
 
   export let noticeMessage = ''
+  export let staleSearchMessage = ''
   export let searchActive = false
   export let filterValue = ''
   export let currentPath = ''
@@ -284,6 +285,10 @@
       />
 
       <Notice message={noticeMessage} />
+
+      {#if staleSearchMessage}
+        <div class="pill">{staleSearchMessage}</div>
+      {/if}
 
       {#if searchActive && loading}
         <div class="pill">{mode === 'filter' ? 'Filtering' : 'Searching'}: "{filterValue}"</div>

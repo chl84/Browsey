@@ -93,6 +93,9 @@
   let viewMode: ViewMode = 'list'
   let defaultViewPref: ViewMode = 'list'
   let inputFocused = false
+  let lastSubmittedSearchQuery = ''
+  let staleSearchMessage = ''
+  let staleClearedQuery: string | null = null
 
   // DOM refs & observers
   let rowsElRef: HTMLDivElement | null = null
@@ -240,6 +243,7 @@
     loadRecent: loadRecentRaw,
     loadStarred: loadStarredRaw,
     loadTrash: loadTrashRaw,
+    cancelSearch,
     runSearch,
     toggleMode,
     toggleShowHidden,
@@ -413,6 +417,18 @@
     resetScrollPosition,
     recompute,
   } = createListState()
+
+  const normalizeSearchQuery = (value: string) => value.trim()
+
+  const markSearchResultsStale = (draftQuery: string) => {
+    if (staleClearedQuery === draftQuery) return
+    cancelSearch()
+    entries.set([])
+    selected.set(new Set())
+    anchorIndex.set(null)
+    caretIndex.set(null)
+    staleClearedQuery = draftQuery
+  }
 
   // --- Selection memory & drive helpers -----------------------------------
 
@@ -882,6 +898,30 @@
     }
   }
 
+  $: {
+    const inSearchInputMode = $searchMode || mode === 'search'
+    if (!inSearchInputMode) {
+      lastSubmittedSearchQuery = ''
+      staleSearchMessage = ''
+      staleClearedQuery = null
+    } else {
+      const draftQuery = normalizeSearchQuery(pathInput)
+      const stale = draftQuery !== lastSubmittedSearchQuery
+      if (stale) {
+        markSearchResultsStale(draftQuery)
+        filter.set(draftQuery)
+        searchActive.set(false)
+        staleSearchMessage =
+          draftQuery.length === 0
+            ? 'Search query changed. Press Enter to return folder results.'
+            : 'Search query changed. Press Enter to refresh results.'
+      } else {
+        staleSearchMessage = ''
+        staleClearedQuery = null
+      }
+    }
+  }
+
   const resetInputModeForNavigation = () => {
     mode = 'address'
     searchMode.set(false)
@@ -986,6 +1026,13 @@
     const trimmed = pathInput.trim()
     if (!trimmed) return
     void goToPath(trimmed)
+  }
+
+  const submitSearch = () => {
+    lastSubmittedSearchQuery = normalizeSearchQuery(pathInput)
+    staleSearchMessage = ''
+    staleClearedQuery = null
+    void runSearch(pathInput)
   }
 
   const enterAddressMode = async () => {
@@ -2914,10 +2961,11 @@
   onFocus={handleInputFocus}
   onBlur={handleInputBlur}
   onSubmitPath={submitPath}
-  onSearch={() => runSearch(pathInput)}
+  onSearch={submitSearch}
   onExitSearch={() => void enterAddressMode().then(() => blurPathInput())}
   onNavigateSegment={(path) => void navigateToBreadcrumb(path)}
   noticeMessage={$error}
+  {staleSearchMessage}
   searchActive={$searchActive}
   {mode}
   filterValue={$filter}

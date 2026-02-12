@@ -582,6 +582,15 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const cancelSearch = () => {
+    const hadActiveSearch = activeSearchCancelId !== null || get(searchActive)
+    invalidateSearchRun()
+    searchActive.set(false)
+    if (hadActiveSearch) {
+      loading.set(false)
+    }
+  }
+
   const handlePlace = (label: string, path: string) => {
     if (label === 'Recent') {
       void loadRecent()
@@ -1102,6 +1111,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadRecent,
     loadStarred,
     loadTrash,
+    cancelSearch,
     runSearch,
     toggleMode,
     changeSort,
