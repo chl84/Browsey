@@ -68,6 +68,7 @@
   let activeNameFilters: Set<string> = new Set()
   let activeTypeFilters: Set<string> = new Set()
   let activeModifiedFilters: Set<string> = new Set()
+  let activeSizeFilters: Set<string> = new Set()
 
   const typeLabel = (entry: Entry) => {
     if (entry.ext && entry.ext.length > 0) return entry.ext.toLowerCase()
@@ -305,6 +306,7 @@
     if (field === 'name') return activeNameFilters.size > 0
     if (field === 'type') return activeTypeFilters.size > 0
     if (field === 'modified') return activeModifiedFilters.size > 0
+    if (field === 'size') return activeSizeFilters.size > 0
     return false
   }
 </script>
