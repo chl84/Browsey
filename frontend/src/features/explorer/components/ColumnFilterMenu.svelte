@@ -20,11 +20,11 @@
   }
 
   onMount(() => {
-    window.addEventListener('keydown', handleWindowKeydown)
+    window.addEventListener('keydown', handleWindowKeydown, true);
   })
 
   onDestroy(() => {
-    window.removeEventListener('keydown', handleWindowKeydown)
+    window.removeEventListener('keydown', handleWindowKeydown, true);
   })
 
   const handleBackgroundClick = () => onClose()
@@ -44,6 +44,7 @@
   <div
     class="filter-layer"
     role="presentation"
+    tabindex="-1"
     on:click={handleBackgroundClick}
     on:keydown={handleBackgroundKeydown}
   >
