@@ -3,6 +3,7 @@
   import FileRow from './FileRow.svelte'
   import SelectionBox from '../../../ui/SelectionBox.svelte'
   import ColumnFilterMenu from './ColumnFilterMenu.svelte'
+  import ContextMenu from './ContextMenu.svelte'
   import { invoke } from '@tauri-apps/api/core'
   import type { Column, Entry, SortDirection, SortField, FilterOption } from '../types'
   import { nameFilterOptions } from '../filters/nameFilters'
@@ -69,6 +70,10 @@
   let activeTypeFilters: Set<string> = new Set()
   let activeModifiedFilters: Set<string> = new Set()
   let activeSizeFilters: Set<string> = new Set()
+  let filterCtxOpen = false
+  let filterCtxX = 0
+  let filterCtxY = 0
+  let filterCtxField: SortField | null = null
 
   const typeLabel = (entry: Entry) => {
     if (entry.ext && entry.ext.length > 0) return entry.ext.toLowerCase()
@@ -298,16 +303,52 @@
     activeModifiedFilters = next
   }
 
+  const handleToggleSizeFilter = (id: string, checked: boolean) => {
+    const next = new Set(activeSizeFilters)
+    if (checked) {
+      next.add(id)
+    } else {
+      next.delete(id)
+    }
+    activeSizeFilters = next
+  }
+
   const closeFilterMenu = () => {
     filterMenuOpen = false
   }
 
-  const isFilterActive = (field: SortField) => {
-    if (field === 'name') return activeNameFilters.size > 0
-    if (field === 'type') return activeTypeFilters.size > 0
-    if (field === 'modified') return activeModifiedFilters.size > 0
-    if (field === 'size') return activeSizeFilters.size > 0
-    return false
+  const openFilterContextMenu = (field: SortField, event: MouseEvent) => {
+    event.preventDefault()
+    filterMenuOpen = false
+    filterCtxField = field
+    filterCtxX = event.clientX
+    filterCtxY = event.clientY
+    filterCtxOpen = true
+  }
+
+  const closeFilterContextMenu = () => {
+    filterCtxOpen = false
+    filterCtxField = null
+  }
+
+  const handleFilterContextSelect = (id: string) => {
+    if (id !== 'reset' || !filterCtxField) {
+      closeFilterContextMenu()
+      return
+    }
+    if (filterCtxField === 'name') activeNameFilters = new Set()
+    if (filterCtxField === 'type') activeTypeFilters = new Set()
+    if (filterCtxField === 'modified') activeModifiedFilters = new Set()
+    if (filterCtxField === 'size') activeSizeFilters = new Set()
+    closeFilterContextMenu()
+  }
+
+  $: filterActive = {
+    name: activeNameFilters.size > 0,
+    type: activeTypeFilters.size > 0,
+    modified: activeModifiedFilters.size > 0,
+    size: activeSizeFilters.size > 0,
+    starred: false,
   }
 </script>
 
@@ -335,7 +376,8 @@
       onChangeSort={onChangeSort}
       onStartResize={onStartResize}
       onFilterClick={handleFilterClick}
-      isFilterActive={isFilterActive}
+      onFilterContextMenu={openFilterContextMenu}
+      filterActive={filterActive}
     />
     {#if !loading && filteredEntries.length === 0}
       <div class="muted">No items here.</div>
@@ -383,15 +425,27 @@
       ? activeTypeFilters
       : filterMenuField === 'modified'
         ? activeModifiedFilters
-        : activeNameFilters
+        : filterMenuField === 'size'
+          ? activeSizeFilters
+          : activeNameFilters
   }
   anchor={filterMenuAnchor}
   onToggle={(id, checked) => {
     if (id.startsWith('name:')) return handleToggleNameFilter(id, checked)
     if (id.startsWith('type:')) return handleToggleTypeFilter(id, checked)
     if (id.startsWith('modified:')) return handleToggleModifiedFilter(id, checked)
+    if (id.startsWith('size:')) return handleToggleSizeFilter(id, checked)
   }}
   onClose={closeFilterMenu}
+/>
+
+<ContextMenu
+  open={filterCtxOpen}
+  x={filterCtxX}
+  y={filterCtxY}
+  actions={[{ id: 'reset', label: 'Reset' }]}
+  onSelect={handleFilterContextSelect}
+  onClose={closeFilterContextMenu}
 />
 
 <style>

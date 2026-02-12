@@ -40,7 +40,7 @@
   }
 </script>
 
-{#if open && anchor}
+{#if open && anchor && options.length > 0}
   <div
     class="filter-layer"
     role="presentation"

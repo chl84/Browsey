@@ -9,7 +9,14 @@
   export let sortDirection: SortDirection = 'asc'
   export let ariaSort: (field: SortField) => 'ascending' | 'descending' | 'none' = () => 'none'
   export let onFilterClick: (field: SortField, anchor: DOMRect) => void = () => {}
-  export let isFilterActive: (field: SortField) => boolean = () => false
+  export let onFilterContextMenu: (field: SortField, event: MouseEvent) => void = () => {}
+  export let filterActive: Record<SortField, boolean> = {
+    name: false,
+    type: false,
+    modified: false,
+    size: false,
+    starred: false,
+  }
   export let onChangeSort: (field: SortField) => void = () => {}
   export let onStartResize: (index: number, event: PointerEvent) => void = () => {}
 </script>
@@ -48,7 +55,7 @@
             </span>
             <svg
               class="filter-icon"
-              class:active={isFilterActive(col.sort)}
+              class:active={filterActive[col.sort] ?? false}
               viewBox="0 0 12 12"
               aria-hidden="true"
               focusable="false"
@@ -58,6 +65,7 @@
                 const anchor = (event.currentTarget as Element).getBoundingClientRect()
                 onFilterClick(col.sort, anchor)
               }}
+              on:contextmenu|preventDefault|stopPropagation={(event) => onFilterContextMenu(col.sort, event)}
             >
               <path d="M2 3h8L7.2 5.6c-.1.1-.2.3-.2.5V9l-2 .9V6.1c0-.2-.1-.4-.2-.5Z" />
             </svg>
