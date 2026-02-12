@@ -98,6 +98,23 @@
     return years === 1 ? '1 year ago' : `${years} years ago`
   }
 
+  const bucketRank = (label: string): number => {
+    if (label === 'Today') return 0
+    if (label === 'Yesterday') return 1
+    const daysMatch = label.match(/^(\d+) days ago$/)
+    if (daysMatch) return parseInt(daysMatch[1], 10)
+    const weeksMatch = label.match(/^(\d+) weeks ago$/)
+    if (weeksMatch) return parseInt(weeksMatch[1], 10) * 7
+    if (label === '1 week ago') return 7
+    const monthsMatch = label.match(/^(\d+) months ago$/)
+    if (monthsMatch) return parseInt(monthsMatch[1], 10) * 30
+    if (label === '1 month ago') return 30
+    const yearsMatch = label.match(/^(\d+) years ago$/)
+    if (yearsMatch) return parseInt(yearsMatch[1], 10) * 365
+    if (label === '1 year ago') return 365
+    return Number.MAX_SAFE_INTEGER
+  }
+
   const handleFilterClick = (field: SortField, anchor: DOMRect) => {
     if (field === 'name') {
       filterMenuOpen = true
@@ -151,16 +168,19 @@
     filterMenuOpen = true
     filterMenuAnchor = anchor
     filterMenuTitle = 'Modified filters'
-    const localSet = new Set<string>()
+    const localBuckets = new Map<string, number>()
     for (const e of filteredEntries) {
       if (e.hidden) continue
       const bucket = bucketModified(e.modified)
-      if (bucket) localSet.add(bucket)
+      if (bucket) {
+        const rank = bucketRank(bucket)
+        localBuckets.set(bucket, rank)
+      }
     }
-    if (localSet.size > 0) {
-      filterMenuOptions = Array.from(localSet)
-        .sort((a, b) => a.localeCompare(b))
-        .map((v) => ({ id: `modified:${v}`, label: v }))
+    if (localBuckets.size > 0) {
+      filterMenuOptions = Array.from(localBuckets.entries())
+        .sort((a, b) => a[1] - b[1])
+        .map(([v]) => ({ id: `modified:${v}`, label: v }))
       return
     }
     if (!currentPath) return
