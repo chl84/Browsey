@@ -31,6 +31,30 @@ pub struct DirListing {
     pub entries: Vec<FsEntry>,
 }
 
+fn entry_type_label(e: &FsEntry) -> String {
+    if let Some(ext) = &e.ext {
+        if !ext.is_empty() {
+            return ext.to_lowercase();
+        }
+    }
+    e.kind.to_lowercase()
+}
+
+fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
+    let mut set = std::collections::HashSet::new();
+    match column {
+        "type" => {
+            for e in entries {
+                set.insert(entry_type_label(e));
+            }
+        }
+        _ => {}
+    }
+    let mut v: Vec<String> = set.into_iter().collect();
+    v.sort_unstable();
+    v
+}
+
 fn display_path_unix(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
@@ -304,6 +328,21 @@ pub async fn list_dir(
     tauri::async_runtime::spawn_blocking(move || list_dir_sync(path, sort, app_clone))
         .await
         .unwrap_or_else(|e| Err(format!("list_dir task panicked: {e}")))
+}
+
+#[tauri::command]
+pub async fn list_column_values(
+    path: Option<String>,
+    column: String,
+    app: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let listing = list_dir_sync(path, None, app_clone)?;
+        Ok(collect_column_values(&listing.entries, column.as_str()))
+    })
+    .await
+    .unwrap_or_else(|e| Err(format!("list_column_values task panicked: {e}")))
 }
 
 fn watch_allow_all() -> bool {

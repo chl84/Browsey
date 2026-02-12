@@ -36,7 +36,7 @@ pub use keymap::{
 pub use library::{
     clear_recents, clear_stars, list_recent, list_starred, remove_recent, toggle_star,
 };
-pub use listing::{list_dir, watch_dir};
+pub use listing::{list_column_values, list_dir, watch_dir};
 pub use meta::{entry_extra_metadata_cmd, entry_kind_cmd, entry_times_cmd};
 pub use mounts::{eject_drive, list_mounts, mount_partition};
 pub use open_with::{list_open_with_apps, open_with};

@@ -283,15 +283,16 @@
       {#if viewMode === 'list'}
         <FileList
           {cols}
-          {gridTemplate}
-          bind:rowsEl
-          bind:headerEl
-          {loading}
-          filteredEntries={filteredEntries}
-          visibleEntries={visibleEntries}
-          {start}
-          {offsetY}
-          {totalHeight}
+        {gridTemplate}
+        bind:rowsEl
+        bind:headerEl
+        {loading}
+        {currentPath}
+        filteredEntries={filteredEntries}
+        visibleEntries={visibleEntries}
+        {start}
+        {offsetY}
+        {totalHeight}
           {wide}
           {selected}
           {sortField}
