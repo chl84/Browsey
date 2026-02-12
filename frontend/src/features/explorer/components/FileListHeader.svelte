@@ -164,7 +164,7 @@
     width: var(--list-header-sort-icon-size);
     height: var(--list-header-sort-icon-size);
     fill: currentColor;
-    opacity: 0.8;
+    opacity: 0.35;
     cursor: pointer;
   }
 </style>
