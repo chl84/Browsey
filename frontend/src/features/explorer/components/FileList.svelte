@@ -21,6 +21,7 @@
   export let filteredEntries: Entry[] = []
   export let visibleEntries: Entry[] = []
   export let filterValue = ''
+  export let showHidden = false
   export let columnFilters: {
     name: Set<string>
     type: Set<string>
@@ -261,7 +262,6 @@
     const optionEntries = entriesForFilterField('name')
     const localBuckets = new Set<string>()
     for (const e of optionEntries) {
-      if (e.hidden) continue
       const bucket = nameBucket(e.nameLower ?? e.name.toLowerCase())
       localBuckets.add(bucket)
     }
@@ -278,7 +278,11 @@
 
     if (!currentPath) return
     try {
-      const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'name' })
+      const values = await invoke<string[]>('list_column_values', {
+        path: currentPath,
+        column: 'name',
+        includeHidden: showHidden,
+      })
       applyFilterMenuOptions(
         'name',
         requestId,
@@ -298,7 +302,6 @@
     const optionEntries = entriesForFilterField('type')
     const localSet = new Set<string>()
     for (const e of optionEntries) {
-      if (e.hidden) continue
       localSet.add(typeLabel(e))
     }
     if (localSet.size > 0) {
@@ -314,7 +317,11 @@
 
     if (!currentPath) return
     try {
-      const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'type' })
+      const values = await invoke<string[]>('list_column_values', {
+        path: currentPath,
+        column: 'type',
+        includeHidden: showHidden,
+      })
       applyFilterMenuOptions(
         'type',
         requestId,
@@ -332,7 +339,6 @@
     const optionEntries = entriesForFilterField('size')
     const localBuckets = new Map<string, number>()
     for (const e of optionEntries) {
-      if (e.hidden) continue
       if (e.kind !== 'file') continue
       if (typeof e.size === 'number') {
         const bucket = bucketSize(e.size)
@@ -352,7 +358,11 @@
 
     if (!currentPath) return
     try {
-      const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'size' })
+      const values = await invoke<string[]>('list_column_values', {
+        path: currentPath,
+        column: 'size',
+        includeHidden: showHidden,
+      })
       applyFilterMenuOptions(
         'size',
         requestId,
@@ -369,7 +379,6 @@
     const optionEntries = entriesForFilterField('modified')
     const localBuckets = new Map<string, number>()
     for (const e of optionEntries) {
-      if (e.hidden) continue
       const bucket = bucketModified(e.modified)
       if (bucket) {
         const rank = bucketRank(bucket)
@@ -388,7 +397,11 @@
     }
     if (!currentPath) return
     try {
-      const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'modified' })
+      const values = await invoke<string[]>('list_column_values', {
+        path: currentPath,
+        column: 'modified',
+        includeHidden: showHidden,
+      })
       applyFilterMenuOptions(
         'modified',
         requestId,

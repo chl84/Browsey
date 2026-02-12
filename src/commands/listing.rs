@@ -41,13 +41,13 @@ fn entry_type_label(e: &FsEntry) -> String {
     e.kind.to_lowercase()
 }
 
-fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
+fn collect_column_values(entries: &[FsEntry], column: &str, include_hidden: bool) -> Vec<String> {
     let mut set = std::collections::HashSet::new();
     let mut buckets: HashMap<String, i64> = HashMap::new();
     match column {
         "name" => {
             for e in entries {
-                if e.hidden {
+                if !include_hidden && e.hidden {
                     continue;
                 }
                 let lower = e.name.to_lowercase();
@@ -63,7 +63,7 @@ fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
         }
         "type" => {
             for e in entries {
-                if e.hidden {
+                if !include_hidden && e.hidden {
                     continue;
                 }
                 set.insert(entry_type_label(e));
@@ -71,7 +71,7 @@ fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
         }
         "size" => {
             for e in entries {
-                if e.hidden {
+                if !include_hidden && e.hidden {
                     continue;
                 }
                 if e.kind != "file" {
@@ -92,7 +92,7 @@ fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
         "modified" => {
             let now = Local::now().naive_local();
             for e in entries {
-                if e.hidden {
+                if !include_hidden && e.hidden {
                     continue;
                 }
                 if let Some(mod_str) = &e.modified {
@@ -480,6 +480,7 @@ pub async fn list_dir(
 pub async fn list_column_values(
     path: Option<String>,
     column: String,
+    include_hidden: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<Vec<String>, String> {
     let p = match path {
@@ -492,9 +493,14 @@ pub async fn list_column_values(
 
     let app_clone = app.clone();
     let path_arg = Some(p.to_string_lossy().to_string());
+    let include_hidden = include_hidden.unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || {
         let listing = list_dir_sync(path_arg, None, app_clone)?;
-        Ok(collect_column_values(&listing.entries, column.as_str()))
+        Ok(collect_column_values(
+            &listing.entries,
+            column.as_str(),
+            include_hidden,
+        ))
     })
     .await
     .unwrap_or_else(|e| Err(format!("list_column_values task panicked: {e}")))

@@ -55,6 +55,7 @@
   export let headerEl: HTMLDivElement | null = null
   export let filteredEntries: Entry[] = []
   export let visibleEntries: Entry[] = []
+  export let showHidden = false
   export let columnFilters: {
     name: Set<string>
     type: Set<string>
@@ -296,6 +297,7 @@
         bind:headerEl
         {loading}
         {currentPath}
+        showHidden={showHidden}
         {columnFilters}
         filterValue={filterValue}
         filteredEntries={filteredEntries}
