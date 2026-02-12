@@ -10,6 +10,7 @@ mod fs_utils;
 mod icons;
 mod keymap;
 mod metadata;
+mod filter;
 mod runtime_lifecycle;
 mod sorting;
 mod statusbar;
