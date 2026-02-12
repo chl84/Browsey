@@ -163,6 +163,7 @@
   .filter-icon {
     width: var(--list-header-sort-icon-size);
     height: var(--list-header-sort-icon-size);
+    color: var(--fg-muted);
     fill: currentColor;
     opacity: 0.8;
     cursor: pointer;
