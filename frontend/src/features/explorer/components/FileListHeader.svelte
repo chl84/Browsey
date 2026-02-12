@@ -98,6 +98,9 @@
     top: 0;
     z-index: 1;
     width: max-content;
+    box-sizing: border-box;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
   }
 
   .header-cell {
