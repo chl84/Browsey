@@ -6,7 +6,12 @@
   import ContextMenu from './ContextMenu.svelte'
   import { invoke } from '@tauri-apps/api/core'
   import type { Column, Entry, SortDirection, SortField, FilterOption } from '../types'
-  import { nameFilterOptions } from '../filters/nameFilters'
+  import {
+    nameFilterOptions,
+    nameBucket,
+    nameFilterLabel,
+    nameFilterRank,
+  } from '../filters/nameFilters'
 
   export let cols: Column[] = []
   export let gridTemplate = ''
@@ -169,11 +174,8 @@
 
   const handleFilterClick = (field: SortField, anchor: DOMRect) => {
     if (field === 'name') {
-      filterMenuOpen = true
-      filterMenuAnchor = anchor
       filterMenuField = 'name'
-      filterMenuTitle = 'Name filters'
-      filterMenuOptions = nameFilterOptions
+      void handleNameFilterClick(anchor)
       return
     }
     if (field === 'type') {
@@ -190,6 +192,36 @@
       filterMenuField = 'size'
       void handleSizeFilterClick(anchor)
       return
+    }
+  }
+
+  const handleNameFilterClick = async (anchor: DOMRect) => {
+    filterMenuOpen = true
+    filterMenuAnchor = anchor
+    filterMenuTitle = 'Name filters'
+
+    const localBuckets = new Set<string>()
+    for (const e of filteredEntries) {
+      if (e.hidden) continue
+      const bucket = nameBucket(e.nameLower ?? e.name.toLowerCase())
+      localBuckets.add(bucket)
+    }
+    if (localBuckets.size > 0) {
+      filterMenuOptions = Array.from(localBuckets)
+        .sort((a, b) => nameFilterRank(a) - nameFilterRank(b))
+        .map((id) => ({ id, label: nameFilterLabel(id) }))
+      return
+    }
+
+    if (!currentPath) return
+    try {
+      const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'name' })
+      filterMenuOptions = values
+        .sort((a, b) => nameFilterRank(a) - nameFilterRank(b))
+        .map((id: string) => ({ id, label: nameFilterLabel(id) }))
+    } catch (err) {
+      console.error('Failed to load name filters', err)
+      filterMenuOptions = []
     }
   }
 
