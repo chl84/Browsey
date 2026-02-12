@@ -98,6 +98,29 @@
     return years === 1 ? '1 year ago' : `${years} years ago`
   }
 
+  const bucketSize = (size: number): { label: string; rank: number } | null => {
+    const KB = 1024
+    const MB = 1024 * KB
+    const GB = 1024 * MB
+    const TB = 1024 * GB
+    const buckets: Array<[number, string]> = [
+      [10 * KB, '0–10 KB'],
+      [100 * KB, '10–100 KB'],
+      [MB, '100 KB–1 MB'],
+      [10 * MB, '1–10 MB'],
+      [100 * MB, '10–100 MB'],
+      [GB, '100 MB–1 GB'],
+      [10 * GB, '1–10 GB'],
+      [100 * GB, '10–100 GB'],
+      [TB, '100 GB–1 TB'],
+    ]
+    for (const [limit, label] of buckets) {
+      if (size <= limit) return { label, rank: limit }
+    }
+    const over = Math.max(1, Math.floor(size / TB))
+    return { label: 'Over 1 TB', rank: over * TB }
+  }
+
   const bucketRank = (label: string): number => {
     if (label === 'Today') return 0
     if (label === 'Yesterday') return 1
@@ -112,6 +135,21 @@
     const yearsMatch = label.match(/^(\d+) years ago$/)
     if (yearsMatch) return parseInt(yearsMatch[1], 10) * 365
     if (label === '1 year ago') return 365
+    // size buckets
+    const sizeOrder = [
+      '0–10 KB',
+      '10–100 KB',
+      '100 KB–1 MB',
+      '1–10 MB',
+      '10–100 MB',
+      '100 MB–1 GB',
+      '1–10 GB',
+      '10–100 GB',
+      '100 GB–1 TB',
+      'Over 1 TB',
+    ]
+    const idx = sizeOrder.indexOf(label)
+    if (idx >= 0) return idx
     return Number.MAX_SAFE_INTEGER
   }
 
@@ -132,6 +170,11 @@
     if (field === 'modified') {
       filterMenuField = 'modified'
       void handleModifiedFilterClick(anchor)
+      return
+    }
+    if (field === 'size') {
+      filterMenuField = 'size'
+      void handleSizeFilterClick(anchor)
       return
     }
   }
@@ -160,6 +203,37 @@
         .map((v: string) => ({ id: `type:${v}`, label: v || 'unknown' }))
     } catch (err) {
       console.error('Failed to load type filters', err)
+      filterMenuOptions = []
+    }
+  }
+
+  const handleSizeFilterClick = async (anchor: DOMRect) => {
+    filterMenuOpen = true
+    filterMenuAnchor = anchor
+    filterMenuTitle = 'Size filters'
+
+    const localBuckets = new Map<string, number>()
+    for (const e of filteredEntries) {
+      if (e.hidden) continue
+      if (e.kind !== 'file') continue
+      if (typeof e.size === 'number') {
+        const bucket = bucketSize(e.size)
+        if (bucket) localBuckets.set(bucket.label, bucket.rank)
+      }
+    }
+    if (localBuckets.size > 0) {
+      filterMenuOptions = Array.from(localBuckets.entries())
+        .sort((a, b) => a[1] - b[1])
+        .map(([v]) => ({ id: `size:${v}`, label: v }))
+      return
+    }
+
+    if (!currentPath) return
+    try {
+      const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'size' })
+      filterMenuOptions = values.map((v: string) => ({ id: `size:${v}`, label: v }))
+    } catch (err) {
+      console.error('Failed to load size filters', err)
       filterMenuOptions = []
     }
   }
