@@ -312,13 +312,20 @@ body {
   -webkit-user-select: none;
 }
 
-/* Keep arrow cursor across the app, with explicit exceptions for text fields and column resize. */
+/* Keep arrow cursor across the app, with explicit exceptions for text-entry fields and column resize. */
 #app,
 #app * {
   cursor: default !important;
 }
 
-#app input,
+#app input:not([type]),
+#app input[type='text'],
+#app input[type='search'],
+#app input[type='email'],
+#app input[type='password'],
+#app input[type='url'],
+#app input[type='tel'],
+#app input[type='number'],
 #app textarea,
 #app [contenteditable='true'],
 #app [contenteditable='true'] * {
