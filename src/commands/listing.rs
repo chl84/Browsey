@@ -13,7 +13,7 @@ use crate::{
 };
 use chrono::{Local, NaiveDateTime};
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -43,6 +43,7 @@ fn entry_type_label(e: &FsEntry) -> String {
 
 fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
     let mut set = std::collections::HashSet::new();
+    let mut buckets: HashMap<String, i64> = HashMap::new();
     match column {
         "type" => {
             for e in entries {
@@ -60,10 +61,17 @@ fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
                 }
                 if let Some(mod_str) = &e.modified {
                     if let Ok(dt) = NaiveDateTime::parse_from_str(mod_str, "%Y-%m-%d %H:%M") {
-                        set.insert(bucket_modified(dt, now));
+                        let (label, days) = bucket_modified(dt, now);
+                        let entry = buckets.entry(label).or_insert(days);
+                        if days < *entry {
+                            *entry = days;
+                        }
                     }
                 }
             }
+            let mut v: Vec<(String, i64)> = buckets.into_iter().collect();
+            v.sort_by_key(|(_, days)| *days);
+            return v.into_iter().map(|(label, _)| label).collect();
         }
         _ => {}
     }
@@ -72,38 +80,43 @@ fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
     v
 }
 
-fn bucket_modified(dt: NaiveDateTime, now: NaiveDateTime) -> String {
+fn bucket_modified(dt: NaiveDateTime, now: NaiveDateTime) -> (String, i64) {
     let diff = now - dt;
     let days = diff.num_days();
     if days <= 0 {
-        return "Today".to_string();
+        return ("Today".to_string(), 0);
     }
     if days == 1 {
-        return "Yesterday".to_string();
+        return ("Yesterday".to_string(), 1);
     }
     if days < 7 {
-        return format!("{days} days ago");
+        return (format!("{days} days ago"), days);
     }
     if days < 30 {
         let weeks = (days + 6) / 7;
-        if weeks == 1 {
-            return "1 week ago".to_string();
-        }
-        return format!("{weeks} weeks ago");
+        let label = if weeks == 1 {
+            "1 week ago".to_string()
+        } else {
+            format!("{weeks} weeks ago")
+        };
+        return (label, weeks * 7);
     }
     if days < 365 {
         let months = (days + 29) / 30;
-        if months == 1 {
-            return "1 month ago".to_string();
-        }
-        return format!("{months} months ago");
+        let label = if months == 1 {
+            "1 month ago".to_string()
+        } else {
+            format!("{months} months ago")
+        };
+        return (label, months * 30);
     }
     let years = (days + 364) / 365;
-    if years == 1 {
+    let label = if years == 1 {
         "1 year ago".to_string()
     } else {
         format!("{years} years ago")
-    }
+    };
+    (label, years * 365)
 }
 
 fn display_path_unix(path: &Path) -> String {
