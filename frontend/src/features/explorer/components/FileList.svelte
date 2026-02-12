@@ -79,6 +79,7 @@
   let filterMenuField: SortField | null = null
   let filterMenuTitle = 'Filters'
   let filterMenuOptions: FilterOption[] = nameFilterOptions
+  let filterMenuRequestSeq = 0
   $: activeNameFilters = columnFilters.name
   $: activeTypeFilters = columnFilters.type
   $: activeModifiedFilters = columnFilters.modified
@@ -174,31 +175,43 @@
 
   const handleFilterClick = (field: SortField, anchor: DOMRect) => {
     if (field === 'name') {
-      filterMenuField = 'name'
       void handleNameFilterClick(anchor)
       return
     }
     if (field === 'type') {
-      filterMenuField = 'type'
       void handleTypeFilterClick(anchor)
       return
     }
     if (field === 'modified') {
-      filterMenuField = 'modified'
       void handleModifiedFilterClick(anchor)
       return
     }
     if (field === 'size') {
-      filterMenuField = 'size'
       void handleSizeFilterClick(anchor)
       return
     }
   }
 
-  const handleNameFilterClick = async (anchor: DOMRect) => {
+  const beginFilterMenuRequest = (field: SortField, title: string, anchor: DOMRect): number => {
+    filterMenuRequestSeq += 1
     filterMenuOpen = true
     filterMenuAnchor = anchor
-    filterMenuTitle = 'Name filters'
+    filterMenuField = field
+    filterMenuTitle = title
+    filterMenuOptions = []
+    return filterMenuRequestSeq
+  }
+
+  const isFilterMenuRequestActive = (field: SortField, requestId: number): boolean =>
+    filterMenuOpen && filterMenuField === field && filterMenuRequestSeq === requestId
+
+  const applyFilterMenuOptions = (field: SortField, requestId: number, options: FilterOption[]): void => {
+    if (!isFilterMenuRequestActive(field, requestId)) return
+    filterMenuOptions = options
+  }
+
+  const handleNameFilterClick = async (anchor: DOMRect) => {
+    const requestId = beginFilterMenuRequest('name', 'Name filters', anchor)
 
     const localBuckets = new Set<string>()
     for (const e of filteredEntries) {
@@ -207,28 +220,34 @@
       localBuckets.add(bucket)
     }
     if (localBuckets.size > 0) {
-      filterMenuOptions = Array.from(localBuckets)
-        .sort((a, b) => nameFilterRank(a) - nameFilterRank(b))
-        .map((id) => ({ id, label: nameFilterLabel(id) }))
+      applyFilterMenuOptions(
+        'name',
+        requestId,
+        Array.from(localBuckets)
+          .sort((a, b) => nameFilterRank(a) - nameFilterRank(b))
+          .map((id) => ({ id, label: nameFilterLabel(id) })),
+      )
       return
     }
 
     if (!currentPath) return
     try {
       const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'name' })
-      filterMenuOptions = values
-        .sort((a, b) => nameFilterRank(a) - nameFilterRank(b))
-        .map((id: string) => ({ id, label: nameFilterLabel(id) }))
+      applyFilterMenuOptions(
+        'name',
+        requestId,
+        values
+          .sort((a, b) => nameFilterRank(a) - nameFilterRank(b))
+          .map((id: string) => ({ id, label: nameFilterLabel(id) })),
+      )
     } catch (err) {
       console.error('Failed to load name filters', err)
-      filterMenuOptions = []
+      applyFilterMenuOptions('name', requestId, [])
     }
   }
 
   const handleTypeFilterClick = async (anchor: DOMRect) => {
-    filterMenuOpen = true
-    filterMenuAnchor = anchor
-    filterMenuTitle = 'Type filters'
+    const requestId = beginFilterMenuRequest('type', 'Type filters', anchor)
     // Prefer current result set (search/filter) to stay in sync with visible items.
     const localSet = new Set<string>()
     for (const e of filteredEntries) {
@@ -236,27 +255,32 @@
       localSet.add(typeLabel(e))
     }
     if (localSet.size > 0) {
-      filterMenuOptions = Array.from(localSet)
-        .sort((a, b) => a.localeCompare(b))
-        .map((v) => ({ id: `type:${v}`, label: v || 'unknown' }))
+      applyFilterMenuOptions(
+        'type',
+        requestId,
+        Array.from(localSet)
+          .sort((a, b) => a.localeCompare(b))
+          .map((v) => ({ id: `type:${v}`, label: v || 'unknown' })),
+      )
       return
     }
 
     if (!currentPath) return
     try {
       const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'type' })
-      filterMenuOptions = values
-        .map((v: string) => ({ id: `type:${v}`, label: v || 'unknown' }))
+      applyFilterMenuOptions(
+        'type',
+        requestId,
+        values.map((v: string) => ({ id: `type:${v}`, label: v || 'unknown' })),
+      )
     } catch (err) {
       console.error('Failed to load type filters', err)
-      filterMenuOptions = []
+      applyFilterMenuOptions('type', requestId, [])
     }
   }
 
   const handleSizeFilterClick = async (anchor: DOMRect) => {
-    filterMenuOpen = true
-    filterMenuAnchor = anchor
-    filterMenuTitle = 'Size filters'
+    const requestId = beginFilterMenuRequest('size', 'Size filters', anchor)
 
     const localBuckets = new Map<string, number>()
     for (const e of filteredEntries) {
@@ -268,26 +292,32 @@
       }
     }
     if (localBuckets.size > 0) {
-      filterMenuOptions = Array.from(localBuckets.entries())
-        .sort((a, b) => a[1] - b[1])
-        .map(([v]) => ({ id: `size:${v}`, label: v }))
+      applyFilterMenuOptions(
+        'size',
+        requestId,
+        Array.from(localBuckets.entries())
+          .sort((a, b) => a[1] - b[1])
+          .map(([v]) => ({ id: `size:${v}`, label: v })),
+      )
       return
     }
 
     if (!currentPath) return
     try {
       const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'size' })
-      filterMenuOptions = values.map((v: string) => ({ id: `size:${v}`, label: v }))
+      applyFilterMenuOptions(
+        'size',
+        requestId,
+        values.map((v: string) => ({ id: `size:${v}`, label: v })),
+      )
     } catch (err) {
       console.error('Failed to load size filters', err)
-      filterMenuOptions = []
+      applyFilterMenuOptions('size', requestId, [])
     }
   }
 
   const handleModifiedFilterClick = async (anchor: DOMRect) => {
-    filterMenuOpen = true
-    filterMenuAnchor = anchor
-    filterMenuTitle = 'Modified filters'
+    const requestId = beginFilterMenuRequest('modified', 'Modified filters', anchor)
     const localBuckets = new Map<string, number>()
     for (const e of filteredEntries) {
       if (e.hidden) continue
@@ -298,18 +328,26 @@
       }
     }
     if (localBuckets.size > 0) {
-      filterMenuOptions = Array.from(localBuckets.entries())
-        .sort((a, b) => a[1] - b[1])
-        .map(([v]) => ({ id: `modified:${v}`, label: v }))
+      applyFilterMenuOptions(
+        'modified',
+        requestId,
+        Array.from(localBuckets.entries())
+          .sort((a, b) => a[1] - b[1])
+          .map(([v]) => ({ id: `modified:${v}`, label: v })),
+      )
       return
     }
     if (!currentPath) return
     try {
       const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'modified' })
-      filterMenuOptions = values.map((v: string) => ({ id: `modified:${v}`, label: v }))
+      applyFilterMenuOptions(
+        'modified',
+        requestId,
+        values.map((v: string) => ({ id: `modified:${v}`, label: v })),
+      )
     } catch (err) {
       console.error('Failed to load modified filters', err)
-      filterMenuOptions = []
+      applyFilterMenuOptions('modified', requestId, [])
     }
   }
 
@@ -320,6 +358,7 @@
   const handleToggleSizeFilter = (id: string, checked: boolean) => onToggleFilter('size', id, checked)
 
   const closeFilterMenu = () => {
+    filterMenuRequestSeq += 1
     filterMenuOpen = false
   }
 
