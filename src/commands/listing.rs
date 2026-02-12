@@ -45,6 +45,22 @@ fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
     let mut set = std::collections::HashSet::new();
     let mut buckets: HashMap<String, i64> = HashMap::new();
     match column {
+        "name" => {
+            for e in entries {
+                if e.hidden {
+                    continue;
+                }
+                let lower = e.name.to_lowercase();
+                let (label, rank) = bucket_name(lower.as_str());
+                let entry = buckets.entry(label.to_string()).or_insert(rank);
+                if rank < *entry {
+                    *entry = rank;
+                }
+            }
+            let mut v: Vec<(String, i64)> = buckets.into_iter().collect();
+            v.sort_by_key(|(_, rank)| *rank);
+            return v.into_iter().map(|(label, _)| label).collect();
+        }
         "type" => {
             for e in entries {
                 if e.hidden {
@@ -163,6 +179,26 @@ fn bucket_size(size: u64) -> (String, i64) {
         }
     }
     ("Over 1 TB".to_string(), (size / TB) as i64 * (TB as i64))
+}
+
+fn bucket_name(value: &str) -> (&'static str, i64) {
+    let ch = value.chars().next().unwrap_or('\0');
+    if ('a'..='f').contains(&ch) {
+        return ("name:a-f", 0);
+    }
+    if ('g'..='l').contains(&ch) {
+        return ("name:g-l", 1);
+    }
+    if ('m'..='r').contains(&ch) {
+        return ("name:m-r", 2);
+    }
+    if ('s'..='z').contains(&ch) {
+        return ("name:s-z", 3);
+    }
+    if ('0'..='9').contains(&ch) {
+        return ("name:0-9", 4);
+    }
+    ("name:other", 5)
 }
 
 fn display_path_unix(path: &Path) -> String {

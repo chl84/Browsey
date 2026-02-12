@@ -55,6 +55,7 @@ import {
 } from './services/settings'
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
+import { nameBucket } from './filters/nameFilters'
 
 const FILTER_DEBOUNCE_MS = 40
 
@@ -190,16 +191,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     size: new Set(),
   })
 
-  const nameBucket = (entry: Entry): string => {
-    const ch = (entry.nameLower ?? entry.name.toLowerCase()).charAt(0)
-    if (ch >= 'a' && ch <= 'f') return 'name:a-f'
-    if (ch >= 'g' && ch <= 'l') return 'name:g-l'
-    if (ch >= 'm' && ch <= 'r') return 'name:m-r'
-    if (ch >= 's' && ch <= 'z') return 'name:s-z'
-    if (ch >= '0' && ch <= '9') return 'name:0-9'
-    return 'name:other'
-  }
-
   const typeLabel = (entry: Entry): string => {
     if (entry.ext && entry.ext.length > 0) return entry.ext.toLowerCase()
     if (entry.kind) return entry.kind.toLowerCase()
@@ -260,7 +251,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
     return list.filter((e) => {
       if (hasName) {
-        const bucket = nameBucket(e)
+        const bucket = nameBucket(e.nameLower ?? e.name.toLowerCase())
         if (!filters.name.has(bucket)) return false
       }
 
