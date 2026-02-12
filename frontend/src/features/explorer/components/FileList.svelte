@@ -12,6 +12,7 @@
     nameFilterLabel,
     nameFilterRank,
   } from '../filters/nameFilters'
+  import { modifiedBucket, sizeBucket, typeLabel } from '../filters/columnBuckets'
 
   export let cols: Column[] = []
   export let gridTemplate = ''
@@ -91,90 +92,6 @@
   let filterCtxY = 0
   let filterCtxField: SortField | null = null
 
-  const typeLabel = (entry: Entry) => {
-    if (entry.ext && entry.ext.length > 0) return entry.ext.toLowerCase()
-    if (entry.kind) return entry.kind.toLowerCase()
-    return ''
-  }
-
-  const bucketModified = (modified?: string | null): string | null => {
-    if (!modified) return null
-    const iso = modified.replace(' ', 'T')
-    const date = new Date(iso)
-    if (Number.isNaN(date.getTime())) return null
-    const now = new Date()
-    const msPerDay = 1000 * 60 * 60 * 24
-    const diffDays = Math.floor((now.getTime() - date.getTime()) / msPerDay)
-    if (diffDays <= 0) return 'Today'
-    if (diffDays === 1) return 'Yesterday'
-    if (diffDays < 7) return `${diffDays} days ago`
-    if (diffDays < 30) {
-      const weeks = Math.floor((diffDays + 6) / 7)
-      return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`
-    }
-    if (diffDays < 365) {
-      const months = Math.floor((diffDays + 29) / 30)
-      return months === 1 ? '1 month ago' : `${months} months ago`
-    }
-    const years = Math.floor((diffDays + 364) / 365)
-    return years === 1 ? '1 year ago' : `${years} years ago`
-  }
-
-  const bucketSize = (size: number): { label: string; rank: number } | null => {
-    const KB = 1024
-    const MB = 1024 * KB
-    const GB = 1024 * MB
-    const TB = 1024 * GB
-    const buckets: Array<[number, string]> = [
-      [10 * KB, '0–10 KB'],
-      [100 * KB, '10–100 KB'],
-      [MB, '100 KB–1 MB'],
-      [10 * MB, '1–10 MB'],
-      [100 * MB, '10–100 MB'],
-      [GB, '100 MB–1 GB'],
-      [10 * GB, '1–10 GB'],
-      [100 * GB, '10–100 GB'],
-      [TB, '100 GB–1 TB'],
-    ]
-    for (const [limit, label] of buckets) {
-      if (size <= limit) return { label, rank: limit }
-    }
-    const over = Math.max(1, Math.floor(size / TB))
-    return { label: 'Over 1 TB', rank: over * TB }
-  }
-
-  const bucketRank = (label: string): number => {
-    if (label === 'Today') return 0
-    if (label === 'Yesterday') return 1
-    const daysMatch = label.match(/^(\d+) days ago$/)
-    if (daysMatch) return parseInt(daysMatch[1], 10)
-    const weeksMatch = label.match(/^(\d+) weeks ago$/)
-    if (weeksMatch) return parseInt(weeksMatch[1], 10) * 7
-    if (label === '1 week ago') return 7
-    const monthsMatch = label.match(/^(\d+) months ago$/)
-    if (monthsMatch) return parseInt(monthsMatch[1], 10) * 30
-    if (label === '1 month ago') return 30
-    const yearsMatch = label.match(/^(\d+) years ago$/)
-    if (yearsMatch) return parseInt(yearsMatch[1], 10) * 365
-    if (label === '1 year ago') return 365
-    // size buckets
-    const sizeOrder = [
-      '0–10 KB',
-      '10–100 KB',
-      '100 KB–1 MB',
-      '1–10 MB',
-      '10–100 MB',
-      '100 MB–1 GB',
-      '1–10 GB',
-      '10–100 GB',
-      '100 GB–1 TB',
-      'Over 1 TB',
-    ]
-    const idx = sizeOrder.indexOf(label)
-    if (idx >= 0) return idx
-    return Number.MAX_SAFE_INTEGER
-  }
-
   const entriesForFilterField = (field: 'name' | 'type' | 'modified' | 'size'): Entry[] => {
     const needle = filterValue.trim().toLowerCase()
     let base =
@@ -200,15 +117,15 @@
       }
 
       if (hasModified) {
-        const bucket = bucketModified(e.modified)
+        const bucket = modifiedBucket(e.modified)
         if (!bucket) return false
-        if (!columnFilters.modified.has(`modified:${bucket}`)) return false
+        if (!columnFilters.modified.has(`modified:${bucket.label}`)) return false
       }
 
       if (hasSize) {
         if (e.kind !== 'file') return false
         if (typeof e.size !== 'number') return false
-        const bucket = bucketSize(e.size)
+        const bucket = sizeBucket(e.size)
         if (!bucket) return false
         if (!columnFilters.size.has(`size:${bucket.label}`)) return false
       }
@@ -341,7 +258,7 @@
     for (const e of optionEntries) {
       if (e.kind !== 'file') continue
       if (typeof e.size === 'number') {
-        const bucket = bucketSize(e.size)
+        const bucket = sizeBucket(e.size)
         if (bucket) localBuckets.set(bucket.label, bucket.rank)
       }
     }
@@ -379,10 +296,9 @@
     const optionEntries = entriesForFilterField('modified')
     const localBuckets = new Map<string, number>()
     for (const e of optionEntries) {
-      const bucket = bucketModified(e.modified)
+      const bucket = modifiedBucket(e.modified)
       if (bucket) {
-        const rank = bucketRank(bucket)
-        localBuckets.set(bucket, rank)
+        localBuckets.set(bucket.label, bucket.rank)
       }
     }
     if (localBuckets.size > 0) {

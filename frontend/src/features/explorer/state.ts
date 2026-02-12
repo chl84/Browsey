@@ -56,6 +56,7 @@ import {
 import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
 import { nameBucket } from './filters/nameFilters'
+import { modifiedBucket, sizeBucket, typeLabel } from './filters/columnBuckets'
 
 const FILTER_DEBOUNCE_MS = 40
 
@@ -191,57 +192,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     size: new Set(),
   })
 
-  const typeLabel = (entry: Entry): string => {
-    if (entry.ext && entry.ext.length > 0) return entry.ext.toLowerCase()
-    if (entry.kind) return entry.kind.toLowerCase()
-    return ''
-  }
-
-  const bucketModified = (modified?: string | null): string | null => {
-    if (!modified) return null
-    const iso = modified.replace(' ', 'T')
-    const date = new Date(iso)
-    if (Number.isNaN(date.getTime())) return null
-    const now = new Date()
-    const msPerDay = 1000 * 60 * 60 * 24
-    const diffDays = Math.floor((now.getTime() - date.getTime()) / msPerDay)
-    if (diffDays <= 0) return 'Today'
-    if (diffDays === 1) return 'Yesterday'
-    if (diffDays < 7) return `${diffDays} days ago`
-    if (diffDays < 30) {
-      const weeks = Math.floor((diffDays + 6) / 7)
-      return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`
-    }
-    if (diffDays < 365) {
-      const months = Math.floor((diffDays + 29) / 30)
-      return months === 1 ? '1 month ago' : `${months} months ago`
-    }
-    const years = Math.floor((diffDays + 364) / 365)
-    return years === 1 ? '1 year ago' : `${years} years ago`
-  }
-
-  const bucketSize = (size: number): string | null => {
-    const KB = 1024
-    const MB = 1024 * KB
-    const GB = 1024 * MB
-    const TB = 1024 * GB
-    const buckets: Array<[number, string]> = [
-      [10 * KB, '0–10 KB'],
-      [100 * KB, '10–100 KB'],
-      [MB, '100 KB–1 MB'],
-      [10 * MB, '1–10 MB'],
-      [100 * MB, '10–100 MB'],
-      [GB, '100 MB–1 GB'],
-      [10 * GB, '1–10 GB'],
-      [100 * GB, '10–100 GB'],
-      [TB, '100 GB–1 TB'],
-    ]
-    for (const [limit, label] of buckets) {
-      if (size <= limit) return label
-    }
-    return 'Over 1 TB'
-  }
-
   const applyColumnFilters = (list: Entry[], filters: ColumnFilters) => {
     const hasName = filters.name.size > 0
     const hasType = filters.type.size > 0
@@ -262,18 +212,18 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       }
 
       if (hasModified) {
-        const bucket = bucketModified(e.modified)
+        const bucket = modifiedBucket(e.modified)
         if (!bucket) return false
-        const id = `modified:${bucket}`
+        const id = `modified:${bucket.label}`
         if (!filters.modified.has(id)) return false
       }
 
       if (hasSize) {
         if (e.kind !== 'file') return false
         if (typeof e.size !== 'number') return false
-        const label = bucketSize(e.size)
-        if (!label) return false
-        const id = `size:${label}`
+        const bucket = sizeBucket(e.size)
+        if (!bucket) return false
+        const id = `size:${bucket.label}`
         if (!filters.size.has(id)) return false
       }
 
