@@ -11,7 +11,10 @@
 
   const handleBackgroundClick = () => onClose()
   const handleBackgroundKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') onClose()
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      onClose()
+    }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       onClose()
