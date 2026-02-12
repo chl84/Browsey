@@ -20,6 +20,7 @@
   export let loading = false
   export let filteredEntries: Entry[] = []
   export let visibleEntries: Entry[] = []
+  export let filterValue = ''
   export let columnFilters: {
     name: Set<string>
     type: Set<string>
@@ -173,6 +174,50 @@
     return Number.MAX_SAFE_INTEGER
   }
 
+  const entriesForFilterField = (field: 'name' | 'type' | 'modified' | 'size'): Entry[] => {
+    const needle = filterValue.trim().toLowerCase()
+    let base =
+      needle.length === 0
+        ? visibleEntries
+        : visibleEntries.filter((e) => (e.nameLower ?? e.name.toLowerCase()).includes(needle))
+
+    const hasName = field !== 'name' && columnFilters.name.size > 0
+    const hasType = field !== 'type' && columnFilters.type.size > 0
+    const hasModified = field !== 'modified' && columnFilters.modified.size > 0
+    const hasSize = field !== 'size' && columnFilters.size.size > 0
+    if (!hasName && !hasType && !hasModified && !hasSize) return base
+
+    base = base.filter((e) => {
+      if (hasName) {
+        const bucket = nameBucket(e.nameLower ?? e.name.toLowerCase())
+        if (!columnFilters.name.has(bucket)) return false
+      }
+
+      if (hasType) {
+        const label = typeLabel(e)
+        if (!columnFilters.type.has(`type:${label}`)) return false
+      }
+
+      if (hasModified) {
+        const bucket = bucketModified(e.modified)
+        if (!bucket) return false
+        if (!columnFilters.modified.has(`modified:${bucket}`)) return false
+      }
+
+      if (hasSize) {
+        if (e.kind !== 'file') return false
+        if (typeof e.size !== 'number') return false
+        const bucket = bucketSize(e.size)
+        if (!bucket) return false
+        if (!columnFilters.size.has(`size:${bucket.label}`)) return false
+      }
+
+      return true
+    })
+
+    return base
+  }
+
   const handleFilterClick = (field: SortField, anchor: DOMRect) => {
     if (field === 'name') {
       void handleNameFilterClick(anchor)
@@ -213,8 +258,9 @@
   const handleNameFilterClick = async (anchor: DOMRect) => {
     const requestId = beginFilterMenuRequest('name', 'Name filters', anchor)
 
+    const optionEntries = entriesForFilterField('name')
     const localBuckets = new Set<string>()
-    for (const e of filteredEntries) {
+    for (const e of optionEntries) {
       if (e.hidden) continue
       const bucket = nameBucket(e.nameLower ?? e.name.toLowerCase())
       localBuckets.add(bucket)
@@ -249,8 +295,9 @@
   const handleTypeFilterClick = async (anchor: DOMRect) => {
     const requestId = beginFilterMenuRequest('type', 'Type filters', anchor)
     // Prefer current result set (search/filter) to stay in sync with visible items.
+    const optionEntries = entriesForFilterField('type')
     const localSet = new Set<string>()
-    for (const e of filteredEntries) {
+    for (const e of optionEntries) {
       if (e.hidden) continue
       localSet.add(typeLabel(e))
     }
@@ -282,8 +329,9 @@
   const handleSizeFilterClick = async (anchor: DOMRect) => {
     const requestId = beginFilterMenuRequest('size', 'Size filters', anchor)
 
+    const optionEntries = entriesForFilterField('size')
     const localBuckets = new Map<string, number>()
-    for (const e of filteredEntries) {
+    for (const e of optionEntries) {
       if (e.hidden) continue
       if (e.kind !== 'file') continue
       if (typeof e.size === 'number') {
@@ -318,8 +366,9 @@
 
   const handleModifiedFilterClick = async (anchor: DOMRect) => {
     const requestId = beginFilterMenuRequest('modified', 'Modified filters', anchor)
+    const optionEntries = entriesForFilterField('modified')
     const localBuckets = new Map<string, number>()
-    for (const e of filteredEntries) {
+    for (const e of optionEntries) {
       if (e.hidden) continue
       const bucket = bucketModified(e.modified)
       if (bucket) {

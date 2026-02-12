@@ -297,6 +297,7 @@
         {loading}
         {currentPath}
         {columnFilters}
+        filterValue={filterValue}
         filteredEntries={filteredEntries}
         visibleEntries={visibleEntries}
         {start}
