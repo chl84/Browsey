@@ -133,9 +133,13 @@
 <style>
   .row {
     display: grid;
-    gap: 10px;
+    gap: var(--list-header-gap);
     align-items: center;
-    padding: var(--row-padding-y) var(--row-padding-x);
+    padding:
+      var(--row-padding-y)
+      var(--list-header-padding-right)
+      var(--row-padding-y)
+      var(--list-header-padding-left);
     height: var(--row-height);
     min-height: var(--row-height);
     transition: none;
