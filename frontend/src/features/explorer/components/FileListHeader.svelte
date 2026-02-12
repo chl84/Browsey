@@ -54,7 +54,7 @@
               tabindex="-1"
               on:click|stopPropagation={() => onFilterClick(col.sort)}
             >
-              <path d="M2 3h8l-3.5 4.5v2.3l-1.8-.9v-1.4Z" />
+              <path d="M2 3h8L7 7v2.1L5 10V7Z" />
             </svg>
           </span>
         </button>
