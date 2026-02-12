@@ -45,6 +45,9 @@ fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
     match column {
         "type" => {
             for e in entries {
+                if e.hidden {
+                    continue;
+                }
                 set.insert(entry_type_label(e));
             }
         }
