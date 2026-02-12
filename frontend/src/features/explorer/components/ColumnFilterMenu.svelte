@@ -43,7 +43,7 @@
               checked={selected.has(opt.id)}
               on:change={(e) => onToggle(opt.id, (e.target as HTMLInputElement).checked)}
             />
-            <span class="text">{opt.label}</span>
+            <span class="text" title={opt.label}>{opt.label}</span>
             {#if opt.description}
               <span class="muted">{opt.description}</span>
             {/if}
@@ -78,6 +78,13 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .options::-webkit-scrollbar {
+    width: 0;
+    height: 0;
   }
 
   .option {
@@ -96,6 +103,9 @@
 
   .text {
     font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .muted {
