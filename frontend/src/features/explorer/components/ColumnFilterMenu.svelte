@@ -25,8 +25,8 @@
 {#if open && anchor}
   <div
     class="filter-layer"
-    role="button"
-    tabindex="0"
+    role="presentation"
+    tabindex="-1"
     on:click={handleBackgroundClick}
     on:keydown={handleBackgroundKeydown}
   >
