@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Column filters now apply real filtering on top of text filter/search, with name/type/modified/size buckets, reset via right-click, and red active indicators.
+- Size/modified/type filter options are sourced from the current listing or backend column sets; hidden files are respected and size buckets skip folders.
 - Settings: `Double-click speed` is now wired to actual list/grid mouse-open behavior and persisted as a validated preference.
 - Settings: Added Data maintenance actions to clear thumbnail cache, stars, bookmarks, and recents with confirmation dialogs and per-action toasts.
 - Thumbnail cache clear now removes cached files on disk and refreshes visible thumbnails in the UI.
