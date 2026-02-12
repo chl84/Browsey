@@ -161,8 +161,8 @@
   }
 
   .filter-icon {
-    width: var(--list-header-sort-icon-size);
-    height: var(--list-header-sort-icon-size);
+    width: calc(var(--list-header-sort-icon-size) + 1px);
+    height: calc(var(--list-header-sort-icon-size) + 1px);
     fill: currentColor;
     opacity: 0.35;
     cursor: pointer;
