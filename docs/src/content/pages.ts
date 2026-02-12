@@ -161,6 +161,20 @@ export const docsPages: DocPage[] = [
         ],
       },
       {
+        id: 'column-filters',
+        title: 'Column Filters',
+        body:
+          'Each sortable column has a filter icon that opens a checkbox list. Filters combine with the text filter and search results, and apply before sorting and pagination.',
+        bullets: [
+          'Name: alphabet buckets (A–F, G–L, M–R, S–Z, 0–9, Other)',
+          'Type: values come from current view (extension/kind) or backend column set, sorted alphabetically',
+          'Modified: time-bucketed groups (Today, Yesterday, N days/weeks/months/years ago), newest first',
+          'Size: file-only buckets (0–10 KB … Over 1 TB), ascending by size band',
+          'Filters respect hidden-file setting and never cross symlinks from the backend source',
+          'Right-click a filter icon for a Reset action; filter icons turn red when any option is active',
+        ],
+      },
+      {
         id: 'clipboard-flow',
         title: 'Copy/Cut/Paste and Conflict Handling',
         bullets: [
