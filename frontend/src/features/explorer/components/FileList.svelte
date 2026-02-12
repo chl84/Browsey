@@ -302,7 +302,13 @@
 <ColumnFilterMenu
   open={filterMenuOpen}
   options={filterMenuOptions}
-  selected={filterMenuField === 'type' ? activeTypeFilters : activeNameFilters}
+  selected={
+    filterMenuField === 'type'
+      ? activeTypeFilters
+      : filterMenuField === 'modified'
+        ? activeModifiedFilters
+        : activeNameFilters
+  }
   anchor={filterMenuAnchor}
   onToggle={(id, checked) => {
     if (id.startsWith('name:')) return handleToggleNameFilter(id, checked)
