@@ -36,12 +36,23 @@
           on:click={() => onChangeSort(col.sort)}
         >
           <span>{col.label}</span>
-          <span
-            class="sort-icon"
-            class:desc={sortField === col.sort && sortDirection === 'desc'}
-            class:inactive={sortField !== col.sort}
-          >
-            ▲
+          <span class="sort-group">
+            <span
+              class="sort-icon"
+              class:desc={sortField === col.sort && sortDirection === 'desc'}
+              class:inactive={sortField !== col.sort}
+            >
+              ▲
+            </span>
+            <svg
+              class="filter-icon"
+              class:inactive={sortField !== col.sort}
+              viewBox="0 0 12 12"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="M2 3h8l-3.5 4.5v2.3l-1.8-.9v-1.4Z" />
+            </svg>
           </span>
         </button>
       {/if}
@@ -138,5 +149,22 @@
 
   .sort-icon.desc {
     transform: rotate(180deg);
+  }
+
+  .sort-group {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(var(--list-header-cell-gap) / 2);
+  }
+
+  .filter-icon {
+    width: var(--list-header-sort-icon-size);
+    height: var(--list-header-sort-icon-size);
+    fill: currentColor;
+    opacity: 0.8;
+  }
+
+  .filter-icon.inactive {
+    opacity: 0.35;
   }
 </style>
