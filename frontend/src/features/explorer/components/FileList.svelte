@@ -67,6 +67,12 @@
   let activeNameFilters: Set<string> = new Set()
   let activeTypeFilters: Set<string> = new Set()
 
+  const typeLabel = (entry: Entry) => {
+    if (entry.ext && entry.ext.length > 0) return entry.ext.toLowerCase()
+    if (entry.kind) return entry.kind.toLowerCase()
+    return ''
+  }
+
   const handleFilterClick = (field: SortField, anchor: DOMRect) => {
     if (field === 'name') {
       filterMenuOpen = true
@@ -82,13 +88,27 @@
   }
 
   const handleTypeFilterClick = async (anchor: DOMRect) => {
-    if (!currentPath) return
     filterMenuOpen = true
     filterMenuAnchor = anchor
     filterMenuTitle = 'Type filters'
+    // Prefer current result set (search/filter) to stay in sync with visible items.
+    const localSet = new Set<string>()
+    for (const e of filteredEntries) {
+      if (e.hidden) continue
+      localSet.add(typeLabel(e))
+    }
+    if (localSet.size > 0) {
+      filterMenuOptions = Array.from(localSet)
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ id: `type:${v}`, label: v || 'unknown' }))
+      return
+    }
+
+    if (!currentPath) return
     try {
       const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'type' })
-      filterMenuOptions = values.map((v: string) => ({ id: `type:${v}`, label: v || 'Unknown' }))
+      filterMenuOptions = values
+        .map((v: string) => ({ id: `type:${v}`, label: v || 'unknown' }))
     } catch (err) {
       console.error('Failed to load type filters', err)
       filterMenuOptions = []
