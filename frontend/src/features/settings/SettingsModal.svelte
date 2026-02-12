@@ -1028,7 +1028,7 @@
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: var(--settings-header-gap);
+    gap: var(--settings-form-column-gap);
     flex-wrap: wrap;
     margin-bottom: var(--settings-header-margin-bottom);
   }
@@ -1037,7 +1037,8 @@
     margin: 0;
     font-size: var(--modal-header-size);
     line-height: var(--modal-header-line);
-    flex: 0 1 auto;
+    flex: 0 0 var(--settings-form-label-width);
+    text-align: right;
   }
 
   .settings-filter {
