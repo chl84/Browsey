@@ -2,7 +2,6 @@
   import type { FilterOption } from '../types'
 
   export let open = false
-  export let title = 'Filters'
   export let options: FilterOption[] = []
   export let selected: Set<string> = new Set()
   export let anchor: DOMRect | null = null
@@ -36,12 +35,6 @@
       on:click|stopPropagation
       on:keydown|stopPropagation
     >
-      <header>
-        <span>{title}</span>
-        <button class="close" type="button" on:click={onClose} aria-label="Close">
-          ×
-        </button>
-      </header>
       <div class="options">
         {#each options as opt}
           <label class="option">
@@ -79,25 +72,6 @@
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
     border-radius: 0;
     padding: 8px 10px 10px;
-  }
-
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    font-weight: 700;
-    margin-bottom: 6px;
-  }
-
-  .close {
-    border: none;
-    background: transparent;
-    color: var(--fg-muted);
-    cursor: pointer;
-    padding: 2px 4px;
-    font-size: 14px;
-    line-height: 1;
   }
 
   .options {
