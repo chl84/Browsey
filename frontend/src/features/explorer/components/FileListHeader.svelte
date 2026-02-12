@@ -47,7 +47,6 @@
             </span>
             <svg
               class="filter-icon"
-              class:inactive={sortField !== col.sort}
               viewBox="0 0 12 12"
               aria-hidden="true"
               focusable="false"
@@ -167,9 +166,5 @@
     fill: currentColor;
     opacity: 0.8;
     cursor: pointer;
-  }
-
-  .filter-icon.inactive {
-    opacity: 0.35;
   }
 </style>
