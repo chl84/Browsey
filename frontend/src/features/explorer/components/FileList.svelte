@@ -62,6 +62,7 @@
   // Filter UI state (logic application is deferred; we only manage selection/visibility).
   let filterMenuOpen = false
   let filterMenuAnchor: DOMRect | null = null
+  let filterMenuField: SortField | null = null
   let filterMenuTitle = 'Filters'
   let filterMenuOptions: FilterOption[] = nameFilterOptions
   let activeNameFilters: Set<string> = new Set()
@@ -77,11 +78,13 @@
     if (field === 'name') {
       filterMenuOpen = true
       filterMenuAnchor = anchor
+      filterMenuField = 'name'
       filterMenuTitle = 'Name filters'
       filterMenuOptions = nameFilterOptions
       return
     }
     if (field === 'type') {
+      filterMenuField = 'type'
       void handleTypeFilterClick(anchor)
       return
     }
@@ -213,7 +216,7 @@
 <ColumnFilterMenu
   open={filterMenuOpen}
   options={filterMenuOptions}
-  selected={activeNameFilters}
+  selected={filterMenuField === 'type' ? activeTypeFilters : activeNameFilters}
   anchor={filterMenuAnchor}
   onToggle={(id, checked) => {
     if (id.startsWith('name:')) return handleToggleNameFilter(id, checked)
