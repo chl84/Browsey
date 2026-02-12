@@ -1,5 +1,5 @@
 <script lang="ts">
-  export type FilterOption = { id: string; label: string; description?: string }
+  import type { FilterOption } from '../types'
 
   export let open = false
   export let title = 'Filters'
@@ -11,17 +11,30 @@
   export let onClose: () => void = () => {}
 
   const handleBackgroundClick = () => onClose()
-  const handleKeydown = (event: KeyboardEvent) => {
+  const handleBackgroundKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') onClose()
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onClose()
+    }
   }
 </script>
 
 {#if open && anchor}
-  <div class="filter-layer" on:click={handleBackgroundClick} on:keydown={handleKeydown} tabindex="-1">
+  <div
+    class="filter-layer"
+    role="button"
+    tabindex="0"
+    on:click={handleBackgroundClick}
+    on:keydown={handleBackgroundKeydown}
+  >
     <div
       class="filter-card"
       style={`top:${anchor.bottom + 4}px;left:${anchor.left}px;`}
+      role="presentation"
+      tabindex="-1"
       on:click|stopPropagation
+      on:keydown|stopPropagation
     >
       <header>
         <span>{title}</span>
@@ -34,7 +47,7 @@
           <label class="option">
             <input
               type="checkbox"
-              bind:checked={selected.has(opt.id)}
+              checked={selected.has(opt.id)}
               on:change={(e) => onToggle(opt.id, (e.target as HTMLInputElement).checked)}
             />
             <span class="text">{opt.label}</span>
