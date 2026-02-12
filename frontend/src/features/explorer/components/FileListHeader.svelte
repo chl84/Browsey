@@ -8,7 +8,7 @@
   export let sortField: SortField = 'name'
   export let sortDirection: SortDirection = 'asc'
   export let ariaSort: (field: SortField) => 'ascending' | 'descending' | 'none' = () => 'none'
-  export let onFilterClick: (field: SortField) => void = () => {}
+  export let onFilterClick: (field: SortField, anchor: DOMRect) => void = () => {}
   export let onChangeSort: (field: SortField) => void = () => {}
   export let onStartResize: (index: number, event: PointerEvent) => void = () => {}
 </script>
@@ -52,7 +52,8 @@
               focusable="false"
               role="button"
               tabindex="-1"
-              on:click|stopPropagation={() => onFilterClick(col.sort)}
+              on:click|stopPropagation={(event) =>
+                onFilterClick(col.sort, (event.currentTarget as HTMLElement).getBoundingClientRect())}
             >
               <path d="M2 3h8L7.2 5.6c-.1.1-.2.3-.2.5V9l-2 .9V6.1c0-.2-.1-.4-.2-.5Z" />
             </svg>

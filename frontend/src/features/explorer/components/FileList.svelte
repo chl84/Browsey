@@ -2,7 +2,9 @@
   import FileListHeader from './FileListHeader.svelte'
   import FileRow from './FileRow.svelte'
   import SelectionBox from '../../../ui/SelectionBox.svelte'
-  import type { Column, Entry, SortDirection, SortField } from '../types'
+  import ColumnFilterMenu from './ColumnFilterMenu.svelte'
+  import type { Column, Entry, SortDirection, SortField, FilterOption } from '../types'
+  import { nameFilterOptions } from '../filters/nameFilters'
 
   export let cols: Column[] = []
   export let gridTemplate = ''
@@ -54,6 +56,35 @@
   export let dragTargetPath: string | null = null
   export let dragAllowed = false
   export let dragging = false
+
+  // Filter UI state (logic application is deferred; we only manage selection/visibility).
+  let filterMenuOpen = false
+  let filterMenuAnchor: DOMRect | null = null
+  let filterMenuTitle = 'Filters'
+  let filterMenuOptions: FilterOption[] = nameFilterOptions
+  let activeNameFilters: Set<string> = new Set()
+
+  const handleFilterClick = (field: SortField, anchor: DOMRect) => {
+    if (field !== 'name') return
+    filterMenuOpen = true
+    filterMenuAnchor = anchor
+    filterMenuTitle = 'Name filters'
+    filterMenuOptions = nameFilterOptions
+  }
+
+  const handleToggleNameFilter = (id: string, checked: boolean) => {
+    const next = new Set(activeNameFilters)
+    if (checked) {
+      next.add(id)
+    } else {
+      next.delete(id)
+    }
+    activeNameFilters = next
+  }
+
+  const closeFilterMenu = () => {
+    filterMenuOpen = false
+  }
 </script>
 
 <section class="list" class:wide={wide}>
@@ -79,6 +110,7 @@
       {ariaSort}
       onChangeSort={onChangeSort}
       onStartResize={onStartResize}
+      onFilterClick={handleFilterClick}
     />
     {#if !loading && filteredEntries.length === 0}
       <div class="muted">No items here.</div>
@@ -117,6 +149,16 @@
     <SelectionBox active={selectionActive} rect={selectionRect} />
   </div>
 </section>
+
+<ColumnFilterMenu
+  open={filterMenuOpen}
+  title={filterMenuTitle}
+  options={filterMenuOptions}
+  selected={activeNameFilters}
+  anchor={filterMenuAnchor}
+  onToggle={handleToggleNameFilter}
+  onClose={closeFilterMenu}
+/>
 
 <style>
   .list {
