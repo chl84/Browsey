@@ -2921,6 +2921,7 @@
   searchActive={$searchActive}
   {mode}
   filterValue={$filter}
+  showHidden={$showHidden}
   columnFilters={$columnFilters}
   videoThumbs={$videoThumbs}
   {thumbnailRefreshToken}
