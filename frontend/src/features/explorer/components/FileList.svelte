@@ -67,11 +67,35 @@
   let filterMenuOptions: FilterOption[] = nameFilterOptions
   let activeNameFilters: Set<string> = new Set()
   let activeTypeFilters: Set<string> = new Set()
+  let activeModifiedFilters: Set<string> = new Set()
 
   const typeLabel = (entry: Entry) => {
     if (entry.ext && entry.ext.length > 0) return entry.ext.toLowerCase()
     if (entry.kind) return entry.kind.toLowerCase()
     return ''
+  }
+
+  const bucketModified = (modified?: string | null): string | null => {
+    if (!modified) return null
+    const iso = modified.replace(' ', 'T')
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) return null
+    const now = new Date()
+    const msPerDay = 1000 * 60 * 60 * 24
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / msPerDay)
+    if (diffDays <= 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    if (diffDays < 7) return `${diffDays} days ago`
+    if (diffDays < 30) {
+      const weeks = Math.floor((diffDays + 6) / 7)
+      return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`
+    }
+    if (diffDays < 365) {
+      const months = Math.floor((diffDays + 29) / 30)
+      return months === 1 ? '1 month ago' : `${months} months ago`
+    }
+    const years = Math.floor((diffDays + 364) / 365)
+    return years === 1 ? '1 year ago' : `${years} years ago`
   }
 
   const handleFilterClick = (field: SortField, anchor: DOMRect) => {
@@ -86,6 +110,11 @@
     if (field === 'type') {
       filterMenuField = 'type'
       void handleTypeFilterClick(anchor)
+      return
+    }
+    if (field === 'modified') {
+      filterMenuField = 'modified'
+      void handleModifiedFilterClick(anchor)
       return
     }
   }
@@ -118,6 +147,32 @@
     }
   }
 
+  const handleModifiedFilterClick = async (anchor: DOMRect) => {
+    filterMenuOpen = true
+    filterMenuAnchor = anchor
+    filterMenuTitle = 'Modified filters'
+    const localSet = new Set<string>()
+    for (const e of filteredEntries) {
+      if (e.hidden) continue
+      const bucket = bucketModified(e.modified)
+      if (bucket) localSet.add(bucket)
+    }
+    if (localSet.size > 0) {
+      filterMenuOptions = Array.from(localSet)
+        .sort((a, b) => a.localeCompare(b))
+        .map((v) => ({ id: `modified:${v}`, label: v }))
+      return
+    }
+    if (!currentPath) return
+    try {
+      const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'modified' })
+      filterMenuOptions = values.map((v: string) => ({ id: `modified:${v}`, label: v }))
+    } catch (err) {
+      console.error('Failed to load modified filters', err)
+      filterMenuOptions = []
+    }
+  }
+
   const handleToggleNameFilter = (id: string, checked: boolean) => {
     const next = new Set(activeNameFilters)
     if (checked) {
@@ -138,6 +193,16 @@
     activeTypeFilters = next
   }
 
+  const handleToggleModifiedFilter = (id: string, checked: boolean) => {
+    const next = new Set(activeModifiedFilters)
+    if (checked) {
+      next.add(id)
+    } else {
+      next.delete(id)
+    }
+    activeModifiedFilters = next
+  }
+
   const closeFilterMenu = () => {
     filterMenuOpen = false
   }
@@ -145,6 +210,7 @@
   const isFilterActive = (field: SortField) => {
     if (field === 'name') return activeNameFilters.size > 0
     if (field === 'type') return activeTypeFilters.size > 0
+    if (field === 'modified') return activeModifiedFilters.size > 0
     return false
   }
 </script>
@@ -221,6 +287,7 @@
   onToggle={(id, checked) => {
     if (id.startsWith('name:')) return handleToggleNameFilter(id, checked)
     if (id.startsWith('type:')) return handleToggleTypeFilter(id, checked)
+    if (id.startsWith('modified:')) return handleToggleModifiedFilter(id, checked)
   }}
   onClose={closeFilterMenu}
 />

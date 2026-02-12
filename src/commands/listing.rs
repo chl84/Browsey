@@ -11,6 +11,7 @@ use crate::{
     sorting::{sort_entries, SortSpec},
     watcher::{self, WatchState},
 };
+use chrono::{Local, NaiveDateTime};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::{
@@ -51,11 +52,58 @@ fn collect_column_values(entries: &[FsEntry], column: &str) -> Vec<String> {
                 set.insert(entry_type_label(e));
             }
         }
+        "modified" => {
+            let now = Local::now().naive_local();
+            for e in entries {
+                if e.hidden {
+                    continue;
+                }
+                if let Some(mod_str) = &e.modified {
+                    if let Ok(dt) = NaiveDateTime::parse_from_str(mod_str, "%Y-%m-%d %H:%M") {
+                        set.insert(bucket_modified(dt, now));
+                    }
+                }
+            }
+        }
         _ => {}
     }
     let mut v: Vec<String> = set.into_iter().collect();
     v.sort_unstable();
     v
+}
+
+fn bucket_modified(dt: NaiveDateTime, now: NaiveDateTime) -> String {
+    let diff = now - dt;
+    let days = diff.num_days();
+    if days <= 0 {
+        return "Today".to_string();
+    }
+    if days == 1 {
+        return "Yesterday".to_string();
+    }
+    if days < 7 {
+        return format!("{days} days ago");
+    }
+    if days < 30 {
+        let weeks = (days + 6) / 7;
+        if weeks == 1 {
+            return "1 week ago".to_string();
+        }
+        return format!("{weeks} weeks ago");
+    }
+    if days < 365 {
+        let months = (days + 29) / 30;
+        if months == 1 {
+            return "1 month ago".to_string();
+        }
+        return format!("{months} months ago");
+    }
+    let years = (days + 364) / 365;
+    if years == 1 {
+        "1 year ago".to_string()
+    } else {
+        format!("{years} years ago")
+    }
 }
 
 fn display_path_unix(path: &Path) -> String {
