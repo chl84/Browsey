@@ -58,6 +58,13 @@ import { getBookmarks } from './services/bookmarks'
 
 const FILTER_DEBOUNCE_MS = 40
 
+type ColumnFilters = {
+  name: Set<string>
+  type: Set<string>
+  modified: Set<string>
+  size: Set<string>
+}
+
 type ExplorerCallbacks = {
   onEntriesChanged?: () => void
   onCurrentChange?: (path: string) => void
@@ -176,36 +183,127 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     },
   )
 
-  let lastNeedle = ''
-  let lastResult: Entry[] = []
-  let lastVisibleRef: Entry[] = []
+  const columnFilters = writable<ColumnFilters>({
+    name: new Set(),
+    type: new Set(),
+    modified: new Set(),
+    size: new Set(),
+  })
 
-  const filteredEntries = derived([visibleEntries, filter], ([$visible, $filter], set) => {
+  const nameBucket = (entry: Entry): string => {
+    const ch = (entry.nameLower ?? entry.name.toLowerCase()).charAt(0)
+    if (ch >= 'a' && ch <= 'f') return 'name:a-f'
+    if (ch >= 'g' && ch <= 'l') return 'name:g-l'
+    if (ch >= 'm' && ch <= 'r') return 'name:m-r'
+    if (ch >= 's' && ch <= 'z') return 'name:s-z'
+    if (ch >= '0' && ch <= '9') return 'name:0-9'
+    return 'name:other'
+  }
+
+  const typeLabel = (entry: Entry): string => {
+    if (entry.ext && entry.ext.length > 0) return entry.ext.toLowerCase()
+    if (entry.kind) return entry.kind.toLowerCase()
+    return ''
+  }
+
+  const bucketModified = (modified?: string | null): string | null => {
+    if (!modified) return null
+    const iso = modified.replace(' ', 'T')
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) return null
+    const now = new Date()
+    const msPerDay = 1000 * 60 * 60 * 24
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / msPerDay)
+    if (diffDays <= 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    if (diffDays < 7) return `${diffDays} days ago`
+    if (diffDays < 30) {
+      const weeks = Math.floor((diffDays + 6) / 7)
+      return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`
+    }
+    if (diffDays < 365) {
+      const months = Math.floor((diffDays + 29) / 30)
+      return months === 1 ? '1 month ago' : `${months} months ago`
+    }
+    const years = Math.floor((diffDays + 364) / 365)
+    return years === 1 ? '1 year ago' : `${years} years ago`
+  }
+
+  const bucketSize = (size: number): string | null => {
+    const KB = 1024
+    const MB = 1024 * KB
+    const GB = 1024 * MB
+    const TB = 1024 * GB
+    const buckets: Array<[number, string]> = [
+      [10 * KB, '0–10 KB'],
+      [100 * KB, '10–100 KB'],
+      [MB, '100 KB–1 MB'],
+      [10 * MB, '1–10 MB'],
+      [100 * MB, '10–100 MB'],
+      [GB, '100 MB–1 GB'],
+      [10 * GB, '1–10 GB'],
+      [100 * GB, '10–100 GB'],
+      [TB, '100 GB–1 TB'],
+    ]
+    for (const [limit, label] of buckets) {
+      if (size <= limit) return label
+    }
+    return 'Over 1 TB'
+  }
+
+  const applyColumnFilters = (list: Entry[], filters: ColumnFilters) => {
+    const hasName = filters.name.size > 0
+    const hasType = filters.type.size > 0
+    const hasModified = filters.modified.size > 0
+    const hasSize = filters.size.size > 0
+    if (!hasName && !hasType && !hasModified && !hasSize) return list
+
+    return list.filter((e) => {
+      if (hasName) {
+        const bucket = nameBucket(e)
+        if (!filters.name.has(bucket)) return false
+      }
+
+      if (hasType) {
+        const label = typeLabel(e)
+        const id = `type:${label}`
+        if (!filters.type.has(id)) return false
+      }
+
+      if (hasModified) {
+        const bucket = bucketModified(e.modified)
+        if (!bucket) return false
+        const id = `modified:${bucket}`
+        if (!filters.modified.has(id)) return false
+      }
+
+      if (hasSize) {
+        if (e.kind !== 'file') return false
+        if (typeof e.size !== 'number') return false
+        const label = bucketSize(e.size)
+        if (!label) return false
+        const id = `size:${label}`
+        if (!filters.size.has(id)) return false
+      }
+
+      return true
+    })
+  }
+
+  const filteredEntries = derived([visibleEntries, filter, columnFilters], ([$visible, $filter, $filters], set) => {
     let timer: ReturnType<typeof setTimeout> | undefined
     const needle = $filter.trim().toLowerCase()
 
     const compute = () => {
-      if (needle.length === 0) {
-        lastNeedle = ''
-        lastVisibleRef = $visible
-        lastResult = $visible
-        set($visible)
-        return
-      }
-
-      if (needle === lastNeedle && $visible === lastVisibleRef) {
-        set(lastResult)
-        return
-      }
-
-      const result = $visible.filter((e) => (e.nameLower ?? e.name.toLowerCase()).includes(needle))
-      lastNeedle = needle
-      lastVisibleRef = $visible
-      lastResult = result
-      set(result)
+      let base =
+        needle.length === 0
+          ? $visible
+          : $visible.filter((e) => (e.nameLower ?? e.name.toLowerCase()).includes(needle))
+      base = applyColumnFilters(base, $filters)
+      set(base)
     }
 
-    const shouldDebounce = needle.length > 0 && needle !== lastNeedle
+    const shouldDebounce = needle.length > 0
     if (shouldDebounce) {
       timer = setTimeout(compute, FILTER_DEBOUNCE_MS)
     } else {
@@ -223,6 +321,30 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     field: get(sortField),
     direction: get(sortDirection),
   })
+
+  const resetColumnFilter = (field: SortField) => {
+    if (field !== 'name' && field !== 'type' && field !== 'modified' && field !== 'size') return
+    columnFilters.update((f) => ({
+      ...f,
+      [field]: new Set<string>(),
+    }))
+  }
+
+  const toggleColumnFilter = (field: SortField, id: string, checked: boolean) => {
+    if (field !== 'name' && field !== 'type' && field !== 'modified' && field !== 'size') return
+    columnFilters.update((f) => {
+      const next = {
+        ...f,
+        [field]: new Set(f[field]),
+      }
+      if (checked) {
+        next[field].add(id)
+      } else {
+        next[field].delete(id)
+      }
+      return next
+    })
+  }
 
   const pushHistory = (loc: Location) => {
     const list = get(history)
@@ -1030,6 +1152,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     bookmarks,
     partitions,
     showHidden,
+    columnFilters,
     visibleEntries,
     filteredEntries,
     density,
@@ -1087,5 +1210,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     setMountsPollPref,
     loadDoubleClickMsPref,
     loadMountsPollPref,
+    toggleColumnFilter,
+    resetColumnFilter,
   }
 }

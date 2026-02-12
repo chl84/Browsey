@@ -55,6 +55,12 @@
   export let headerEl: HTMLDivElement | null = null
   export let filteredEntries: Entry[] = []
   export let visibleEntries: Entry[] = []
+  export let columnFilters: {
+    name: Set<string>
+    type: Set<string>
+    modified: Set<string>
+    size: Set<string>
+  } = { name: new Set(), type: new Set(), modified: new Set(), size: new Set() }
   export let start = 0
   export let offsetY = 0
   export let totalHeight = 0
@@ -75,6 +81,8 @@
   export let onRowsClick: (e: MouseEvent) => void = () => {}
   export let onRowsContextMenu: (e: MouseEvent) => void = () => {}
   export let onChangeSort: (field: SortField) => void = () => {}
+  export let onToggleFilter: (field: SortField, id: string, checked: boolean) => void = () => {}
+  export let onResetFilter: (field: SortField) => void = () => {}
   export let onStartResize: (col: number, event: PointerEvent) => void = () => {}
   export let ariaSort: (field: SortField) => 'ascending' | 'descending' | 'none' = () => 'none'
   export let onRowClick: (entry: Entry, absoluteIndex: number, event: MouseEvent) => void = () => {}
@@ -288,6 +296,7 @@
         bind:headerEl
         {loading}
         {currentPath}
+        {columnFilters}
         filteredEntries={filteredEntries}
         visibleEntries={visibleEntries}
         {start}
@@ -308,10 +317,12 @@
           onRowsKeydown={onRowsKeydown}
           onRowsMousedown={onRowsMousedown}
           onRowsClick={onRowsClick}
-          onRowsContextMenu={onRowsContextMenu}
-          onChangeSort={onChangeSort}
-          onStartResize={onStartResize}
-          ariaSort={ariaSort}
+        onRowsContextMenu={onRowsContextMenu}
+        onChangeSort={onChangeSort}
+        onToggleFilter={onToggleFilter}
+        onResetFilter={onResetFilter}
+        onStartResize={onStartResize}
+        ariaSort={ariaSort}
           onRowClick={onRowClick}
           onOpen={onOpen}
           onContextMenu={onContextMenu}
