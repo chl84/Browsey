@@ -216,6 +216,7 @@
     thumbCacheMb,
     mountsPollMs,
     doubleClickMs,
+    columnFilters,
     sortFieldPref,
     sortDirectionPref,
     sortField,
@@ -255,6 +256,8 @@
     loadPartitions,
     loadSavedWidths,
     persistWidths,
+    toggleColumnFilter,
+    resetColumnFilter,
   } = explorer
 
   const selectionActive = selectionBox.active
@@ -2918,6 +2921,7 @@
   searchActive={$searchActive}
   {mode}
   filterValue={$filter}
+  columnFilters={$columnFilters}
   videoThumbs={$videoThumbs}
   {thumbnailRefreshToken}
   cols={$cols}
@@ -2946,6 +2950,8 @@
     onChangeSort={changeSort}
     onStartResize={startResize}
     ariaSort={ariaSort}
+    onToggleFilter={(field, id, checked) => toggleColumnFilter(field, id, checked)}
+    onResetFilter={(field) => resetColumnFilter(field)}
     onRowClick={handleRowClickWithOpen}
     onOpen={handleOpenEntry}
     onContextMenu={handleRowContextMenu}

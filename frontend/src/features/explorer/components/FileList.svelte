@@ -15,6 +15,12 @@
   export let loading = false
   export let filteredEntries: Entry[] = []
   export let visibleEntries: Entry[] = []
+  export let columnFilters: {
+    name: Set<string>
+    type: Set<string>
+    modified: Set<string>
+    size: Set<string>
+  } = { name: new Set(), type: new Set(), modified: new Set(), size: new Set() }
   export let start = 0
   export let offsetY = 0
   export let totalHeight = 0
@@ -37,6 +43,8 @@
   export let onRowsClick: (event: MouseEvent) => void = () => {}
   export let onRowsContextMenu: (event: MouseEvent) => void = () => {}
   export let onChangeSort: (field: SortField) => void = () => {}
+  export let onToggleFilter: (field: SortField, id: string, checked: boolean) => void = () => {}
+  export let onResetFilter: (field: SortField) => void = () => {}
   export let onStartResize: (index: number, event: PointerEvent) => void = () => {}
   export let ariaSort: (field: SortField) => 'ascending' | 'descending' | 'none' = () => 'none'
   export let onRowClick: (entry: Entry, absoluteIndex: number, event: MouseEvent) => void = () => {}
@@ -66,10 +74,10 @@
   let filterMenuField: SortField | null = null
   let filterMenuTitle = 'Filters'
   let filterMenuOptions: FilterOption[] = nameFilterOptions
-  let activeNameFilters: Set<string> = new Set()
-  let activeTypeFilters: Set<string> = new Set()
-  let activeModifiedFilters: Set<string> = new Set()
-  let activeSizeFilters: Set<string> = new Set()
+  $: activeNameFilters = columnFilters.name
+  $: activeTypeFilters = columnFilters.type
+  $: activeModifiedFilters = columnFilters.modified
+  $: activeSizeFilters = columnFilters.size
   let filterCtxOpen = false
   let filterCtxX = 0
   let filterCtxY = 0
@@ -273,45 +281,11 @@
     }
   }
 
-  const handleToggleNameFilter = (id: string, checked: boolean) => {
-    const next = new Set(activeNameFilters)
-    if (checked) {
-      next.add(id)
-    } else {
-      next.delete(id)
-    }
-    activeNameFilters = next
-  }
-
-  const handleToggleTypeFilter = (id: string, checked: boolean) => {
-    const next = new Set(activeTypeFilters)
-    if (checked) {
-      next.add(id)
-    } else {
-      next.delete(id)
-    }
-    activeTypeFilters = next
-  }
-
-  const handleToggleModifiedFilter = (id: string, checked: boolean) => {
-    const next = new Set(activeModifiedFilters)
-    if (checked) {
-      next.add(id)
-    } else {
-      next.delete(id)
-    }
-    activeModifiedFilters = next
-  }
-
-  const handleToggleSizeFilter = (id: string, checked: boolean) => {
-    const next = new Set(activeSizeFilters)
-    if (checked) {
-      next.add(id)
-    } else {
-      next.delete(id)
-    }
-    activeSizeFilters = next
-  }
+  const handleToggleNameFilter = (id: string, checked: boolean) => onToggleFilter('name', id, checked)
+  const handleToggleTypeFilter = (id: string, checked: boolean) => onToggleFilter('type', id, checked)
+  const handleToggleModifiedFilter = (id: string, checked: boolean) =>
+    onToggleFilter('modified', id, checked)
+  const handleToggleSizeFilter = (id: string, checked: boolean) => onToggleFilter('size', id, checked)
 
   const closeFilterMenu = () => {
     filterMenuOpen = false
@@ -336,10 +310,7 @@
       closeFilterContextMenu()
       return
     }
-    if (filterCtxField === 'name') activeNameFilters = new Set()
-    if (filterCtxField === 'type') activeTypeFilters = new Set()
-    if (filterCtxField === 'modified') activeModifiedFilters = new Set()
-    if (filterCtxField === 'size') activeSizeFilters = new Set()
+    onResetFilter(filterCtxField)
     closeFilterContextMenu()
   }
 
