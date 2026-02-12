@@ -152,7 +152,6 @@
 
 <ColumnFilterMenu
   open={filterMenuOpen}
-  title={filterMenuTitle}
   options={filterMenuOptions}
   selected={activeNameFilters}
   anchor={filterMenuAnchor}
