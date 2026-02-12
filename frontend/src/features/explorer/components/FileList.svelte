@@ -3,6 +3,7 @@
   import FileRow from './FileRow.svelte'
   import SelectionBox from '../../../ui/SelectionBox.svelte'
   import ColumnFilterMenu from './ColumnFilterMenu.svelte'
+  import { invoke } from '@tauri-apps/api/core'
   import type { Column, Entry, SortDirection, SortField, FilterOption } from '../types'
   import { nameFilterOptions } from '../filters/nameFilters'
 
@@ -16,6 +17,7 @@
   export let start = 0
   export let offsetY = 0
   export let totalHeight = 0
+  export let currentPath: string | null = null
   export let wide = false
   export let selected: Set<string> = new Set()
   export let sortField: SortField = 'name'
@@ -63,13 +65,34 @@
   let filterMenuTitle = 'Filters'
   let filterMenuOptions: FilterOption[] = nameFilterOptions
   let activeNameFilters: Set<string> = new Set()
+  let activeTypeFilters: Set<string> = new Set()
 
   const handleFilterClick = (field: SortField, anchor: DOMRect) => {
-    if (field !== 'name') return
+    if (field === 'name') {
+      filterMenuOpen = true
+      filterMenuAnchor = anchor
+      filterMenuTitle = 'Name filters'
+      filterMenuOptions = nameFilterOptions
+      return
+    }
+    if (field === 'type') {
+      void handleTypeFilterClick(anchor)
+      return
+    }
+  }
+
+  const handleTypeFilterClick = async (anchor: DOMRect) => {
+    if (!currentPath) return
     filterMenuOpen = true
     filterMenuAnchor = anchor
-    filterMenuTitle = 'Name filters'
-    filterMenuOptions = nameFilterOptions
+    filterMenuTitle = 'Type filters'
+    try {
+      const values = await invoke<string[]>('list_column_values', { path: currentPath, column: 'type' })
+      filterMenuOptions = values.map((v: string) => ({ id: `type:${v}`, label: v || 'Unknown' }))
+    } catch (err) {
+      console.error('Failed to load type filters', err)
+      filterMenuOptions = []
+    }
   }
 
   const handleToggleNameFilter = (id: string, checked: boolean) => {
@@ -82,12 +105,23 @@
     activeNameFilters = next
   }
 
+  const handleToggleTypeFilter = (id: string, checked: boolean) => {
+    const next = new Set(activeTypeFilters)
+    if (checked) {
+      next.add(id)
+    } else {
+      next.delete(id)
+    }
+    activeTypeFilters = next
+  }
+
   const closeFilterMenu = () => {
     filterMenuOpen = false
   }
 
   const isFilterActive = (field: SortField) => {
     if (field === 'name') return activeNameFilters.size > 0
+    if (field === 'type') return activeTypeFilters.size > 0
     return false
   }
 </script>
@@ -161,7 +195,10 @@
   options={filterMenuOptions}
   selected={activeNameFilters}
   anchor={filterMenuAnchor}
-  onToggle={handleToggleNameFilter}
+  onToggle={(id, checked) => {
+    if (id.startsWith('name:')) return handleToggleNameFilter(id, checked)
+    if (id.startsWith('type:')) return handleToggleTypeFilter(id, checked)
+  }}
   onClose={closeFilterMenu}
 />
 
