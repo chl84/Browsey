@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- No unreleased entries yet.
+
+## v0.4.3 — 2026-02-13
 - Added a topbar main action menu (hamburger) with wired actions for Settings, Keyboard Shortcuts, Search, view-mode toggle (List/Grid), hidden-files toggle, Refresh, and About.
 - Added a dedicated About modal with three tabs: `Version` (embedded changelog), `Build` (runtime/build target details), and `License`.
 - License tab now shows both `LICENSE` and `THIRD_PARTY_NOTICES` in one combined scrollable text field.
