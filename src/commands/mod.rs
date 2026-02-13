@@ -1,5 +1,6 @@
 //! Aggregates Tauri command modules and re-exports them for the builder.
 
+pub mod about;
 pub mod bookmarks;
 pub mod compress;
 pub mod console;
@@ -20,6 +21,7 @@ pub mod tasks;
 pub mod thumbnails;
 
 pub use crate::clipboard::{paste_clipboard_cmd, paste_clipboard_preview, set_clipboard_cmd};
+pub use about::about_info;
 pub use bookmarks::{add_bookmark, clear_bookmarks, get_bookmarks, remove_bookmark};
 pub use compress::compress_entries;
 pub use console::open_console;
