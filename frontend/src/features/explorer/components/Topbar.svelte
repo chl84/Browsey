@@ -3,6 +3,8 @@
   export let searchMode = false
   export let mode: 'address' | 'filter' | 'search' = 'address'
   export let loading = false
+  export let viewMode: 'list' | 'grid' = 'list'
+  export let showHidden = false
   export let activity:
     | { label: string; percent: number | null; cancel?: (() => void) | null; cancelling?: boolean }
     | null = null
@@ -20,6 +22,7 @@
   export let onMainMenuAction: (
     id: 'open-settings' | 'open-shortcuts' | 'search' | 'toggle-hidden' | 'refresh' | 'about'
   ) => void = () => {}
+  export let onToggleViewMode: (mode: 'list' | 'grid') => void = () => {}
 
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import ThemeToggle from './ThemeToggle.svelte'
@@ -138,10 +141,15 @@
   open={actionMenuOpen}
   x={actionMenuX}
   y={actionMenuY}
+  gridMode={viewMode === 'grid'}
+  {showHidden}
   onClose={closeActionMenu}
   onSelect={(id) => {
     onMainMenuAction(id)
     closeActionMenu()
+  }}
+  onToggleViewMode={(nextGridMode) => {
+    onToggleViewMode(nextGridMode ? 'grid' : 'list')
   }}
 />
 

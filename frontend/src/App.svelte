@@ -70,6 +70,7 @@
   } from './features/explorer/services/data'
   import ConflictModal from './ui/ConflictModal.svelte'
   import SettingsModal from './features/settings/SettingsModal.svelte'
+  import AboutBrowseyModal from './features/explorer/components/AboutBrowseyModal.svelte'
   import { anyModalOpen as anyModalOpenStore } from './ui/modalOpenState'
   import './features/explorer/ExplorerLayout.css'
 
@@ -136,6 +137,7 @@
   let newFolderName = 'New folder'
   let newFileName = ''
   let settingsOpen = false
+  let aboutOpen = false
   let settingsInitialFilter = ''
   let thumbnailRefreshToken = 0
   let shortcutBindings: ShortcutBinding[] = DEFAULT_SHORTCUTS
@@ -2983,6 +2985,22 @@
       })()
       return
     }
+    if (id === 'toggle-hidden') {
+      toggleShowHidden()
+      return
+    }
+    if (id === 'about') {
+      aboutOpen = true
+      return
+    }
+    if (id === 'refresh') {
+      void reloadCurrent()
+      return
+    }
+  }}
+  onTopbarViewModeChange={(nextMode) => {
+    if (nextMode === viewMode) return
+    void toggleViewMode()
   }}
   noticeMessage={$error}
   {staleSearchMessage}
@@ -3139,6 +3157,7 @@
   onRenameAll={() => resolveConflicts('rename')}
   onOverwrite={() => resolveConflicts('overwrite')}
 />
+<AboutBrowseyModal open={aboutOpen} onClose={() => (aboutOpen = false)} />
 {#if settingsOpen}
   <SettingsModal
     open

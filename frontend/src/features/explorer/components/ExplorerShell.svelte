@@ -46,6 +46,7 @@
   export let onTopbarAction: (
     id: 'open-settings' | 'open-shortcuts' | 'search' | 'toggle-hidden' | 'refresh' | 'about'
   ) => void = () => {}
+  export let onTopbarViewModeChange: (mode: 'list' | 'grid') => void = () => {}
 
   export let noticeMessage = ''
   export let staleSearchMessage = ''
@@ -271,6 +272,8 @@
       <Topbar
         bind:pathInput
         bind:pathInputEl
+        {viewMode}
+        {showHidden}
         {mode}
         {searchMode}
         {loading}
@@ -282,6 +285,7 @@
         onExitSearch={onExitSearch}
         onNavigateSegment={onNavigateSegment}
         onMainMenuAction={onTopbarAction}
+        onToggleViewMode={onTopbarViewModeChange}
         dragTargetPath={dragTargetPath}
         onBreadcrumbDragOver={onBreadcrumbDragOver}
         onBreadcrumbDragLeave={onBreadcrumbDragLeave}
