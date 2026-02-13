@@ -174,6 +174,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            about_info,
             list_dir,
             list_mounts,
             get_bookmarks,
