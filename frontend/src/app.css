@@ -37,15 +37,15 @@
   --topbar-crumb-drop-padding-x: 9px;
   --topbar-separator-font-size: 13px;
   --topbar-window-controls-gap: 4px;
-  --topbar-theme-toggle-width: 46px;
+  --topbar-theme-toggle-width: 48px;
   --topbar-theme-toggle-height: 20px;
   --topbar-theme-toggle-inset: 2px;
   --topbar-theme-toggle-icon-sun-left: 4px;
   --topbar-theme-toggle-icon-moon-right: 6px;
-  --topbar-theme-toggle-icon-size: 12px;
-  --topbar-theme-toggle-thumb-width: 16px;
-  --topbar-theme-toggle-thumb-height: 15px;
-  --topbar-theme-toggle-thumb-offset: 24px;
+  --topbar-theme-toggle-icon-size: 13px;
+  --topbar-theme-toggle-thumb-width: 17px;
+  --topbar-theme-toggle-thumb-height: 16px;
+  --topbar-theme-toggle-thumb-offset: 25px;
   --topbar-theme-toggle-margin-right: 10px;
   --topbar-pill-cancel-font-size: 14px;
   --topbar-win-btn-size: 20px;
@@ -294,9 +294,7 @@ input,
 textarea,
 select,
 option,
-[contenteditable='true'],
-.row-viewport .row,
-.grid .card {
+[contenteditable='true'] {
   user-select: text;
   -webkit-user-select: text;
 }
@@ -380,15 +378,15 @@ body.density-compact {
   --topbar-crumb-drop-padding-x: 7px;
   --topbar-separator-font-size: 12px;
   --topbar-window-controls-gap: 3px;
-  --topbar-theme-toggle-width: 42px;
-  --topbar-theme-toggle-height: 18px;
+  --topbar-theme-toggle-width: 44px;
+  --topbar-theme-toggle-height: 19px;
   --topbar-theme-toggle-inset: 1px;
   --topbar-theme-toggle-icon-sun-left: 3px;
   --topbar-theme-toggle-icon-moon-right: 5px;
-  --topbar-theme-toggle-icon-size: 11px;
-  --topbar-theme-toggle-thumb-width: 14px;
-  --topbar-theme-toggle-thumb-height: 13px;
-  --topbar-theme-toggle-thumb-offset: 22px;
+  --topbar-theme-toggle-icon-size: 12px;
+  --topbar-theme-toggle-thumb-width: 15px;
+  --topbar-theme-toggle-thumb-height: 14px;
+  --topbar-theme-toggle-thumb-offset: 23px;
   --topbar-theme-toggle-margin-right: 8px;
   --topbar-pill-cancel-font-size: 13px;
   --topbar-win-btn-size: 18px;

@@ -19,32 +19,9 @@
   export let dragTargetPath: string | null = null
 
   import { getCurrentWindow } from '@tauri-apps/api/window'
-  import { onMount } from 'svelte'
+  import ThemeToggle from './ThemeToggle.svelte'
 
   const appWindow = getCurrentWindow()
-
-  let theme: 'light' | 'dark' = 'dark'
-
-  onMount(() => {
-    const stored = localStorage.getItem('browsey-theme')
-    const current = stored === 'light' ? 'light' : 'dark'
-    applyTheme(current)
-  })
-
-  const applyTheme = (next: 'light' | 'dark') => {
-    theme = next
-    const root = document.documentElement
-    if (next === 'light') {
-      root.dataset.theme = 'light'
-    } else {
-      root.removeAttribute('data-theme')
-    }
-    localStorage.setItem('browsey-theme', next)
-  }
-
-  const toggleTheme = () => {
-    applyTheme(theme === 'dark' ? 'light' : 'dark')
-  }
 
   const minimize = () => {
     void appWindow.minimize()
@@ -109,19 +86,7 @@
 
 <div class="drag-spacer" data-tauri-drag-region>
   <div class="window-controls" aria-label="Window controls">
-    <button
-      class="theme-toggle"
-      class:light={theme === 'light'}
-      type="button"
-      aria-label="Toggle theme"
-      aria-pressed={theme === 'light'}
-      on:click|stopPropagation={toggleTheme}
-    >
-      <span class="icon sun" aria-hidden="true">☀</span>
-      <span class="icon moon" aria-hidden="true">☾</span>
-      <span class="thumb" aria-hidden="true"></span>
-      <span class="sr-only">{theme === 'light' ? 'Light mode' : 'Dark mode'}</span>
-    </button>
+    <ThemeToggle />
     <button class="win-btn minimize" type="button" aria-label="Minimize window" on:click|stopPropagation={minimize}>–</button>
     <button class="win-btn maximize" type="button" aria-label="Toggle maximize window" on:click|stopPropagation={toggleMaximize}>□</button>
     <button class="win-btn close" type="button" aria-label="Close window" on:click|stopPropagation={closeWindow}>×</button>
@@ -428,95 +393,6 @@
     align-items: center;
     gap: var(--topbar-window-controls-gap);
     flex-shrink: 0;
-  }
-
-  .theme-toggle {
-    position: relative;
-    width: var(--topbar-theme-toggle-width);
-    height: var(--topbar-theme-toggle-height);
-    border: 1px solid var(--win-btn-border);
-    background: linear-gradient(120deg, var(--bg-raised), var(--bg));
-    border-radius: 0;
-    padding: var(--topbar-theme-toggle-inset);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background 140ms ease, border-color 140ms ease;
-    color: var(--fg-muted);
-    overflow: hidden;
-    margin-right: var(--topbar-theme-toggle-margin-right);
-  }
-
-  .theme-toggle .icon {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: var(--topbar-theme-toggle-icon-size);
-    line-height: 1;
-    opacity: 0.45;
-    z-index: 2;
-    user-select: none;
-    pointer-events: none;
-  }
-
-  .theme-toggle .icon.sun {
-    left: var(--topbar-theme-toggle-icon-sun-left);
-  }
-
-  .theme-toggle .icon.moon {
-    right: var(--topbar-theme-toggle-icon-moon-right);
-  }
-
-  .theme-toggle.light .icon.sun {
-    opacity: 1;
-    color: var(--theme-toggle-icon-sun);
-  }
-
-  .theme-toggle.light .icon.moon {
-    opacity: 0.35;
-  }
-
-  .theme-toggle:not(.light) .icon.moon {
-    opacity: 1;
-    color: var(--theme-toggle-icon-moon);
-  }
-
-  .theme-toggle:not(.light) .icon.sun {
-    opacity: 0.35;
-  }
-
-  .theme-toggle .thumb {
-    position: absolute;
-    top: var(--topbar-theme-toggle-inset);
-    left: var(--topbar-theme-toggle-inset);
-    width: var(--topbar-theme-toggle-thumb-width);
-    height: var(--topbar-theme-toggle-thumb-height);
-    border-radius: 0;
-    background: var(--theme-toggle-thumb-light);
-    transform: translateX(0);
-    transition: transform 140ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
-  }
-
-  .theme-toggle:not(.light) .thumb {
-    transform: translateX(var(--topbar-theme-toggle-thumb-offset));
-    background: linear-gradient(
-      135deg,
-      var(--theme-toggle-thumb-dark-start),
-      var(--theme-toggle-thumb-dark-end)
-    );
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 
   .win-btn {
