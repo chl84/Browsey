@@ -14,16 +14,15 @@
   export let open = false
   export let x = 0
   export let y = 0
+  export let gridMode = false
+  export let showHidden = false
   export let onClose: () => void = () => {}
   export let onSelect: (id: TopbarActionId) => void = () => {}
+  export let onToggleViewMode: (nextGridMode: boolean) => void = () => {}
 
   let menuEl: HTMLDivElement | null = null
   let posX = 0
   let posY = 0
-
-  // Visual-only state for now; view mode wiring comes later.
-  let gridMode = false
-  let showHiddenFiles = false
 
   const actions: Array<{ id: TopbarActionId; label: string; shortcut?: string }> = [
     { id: 'open-settings', label: 'Settings…', shortcut: 'Ctrl+S' },
@@ -138,25 +137,23 @@
           leftLabel="List"
           rightLabel="Grid"
           ariaLabel="Toggle list or grid view"
-          onToggle={(next) => {
-            gridMode = next
-          }}
+          onToggle={onToggleViewMode}
         />
       </div>
 
       <button
         class="check-row"
         role="menuitemcheckbox"
-        aria-checked={showHiddenFiles}
+        aria-checked={showHidden}
         type="button"
         on:click={() => {
-          showHiddenFiles = !showHiddenFiles
+          select(actions[3].id)
         }}
       >
         <span class="label">{actions[3].label}</span>
         <span class="check-meta">
           <span class="shortcut">{actions[3].shortcut}</span>
-          <CheckboxIndicator checked={showHiddenFiles} />
+          <CheckboxIndicator checked={showHidden} />
         </span>
       </button>
 
