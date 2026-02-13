@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## v0.4.2 — 2026-02-13
 - Column filters now apply real filtering on top of text filter/search, with name/type/modified/size buckets, reset via right-click, and red active indicators.
 - Size/modified/type filter options are sourced from the current listing or backend column sets; hidden files are respected and size buckets skip folders.
 - Settings: `Double-click speed` is now wired to actual list/grid mouse-open behavior and persisted as a validated preference.
