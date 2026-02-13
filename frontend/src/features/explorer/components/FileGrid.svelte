@@ -134,7 +134,6 @@
               class:drop-target={dragTargetPath === entry.path}
               class:drop-blocked={dragTargetPath === entry.path && !dragAllowed}
               type="button"
-              style="user-select:text"
               data-index={start + i}
               data-path={entry.path}
               draggable="true"
