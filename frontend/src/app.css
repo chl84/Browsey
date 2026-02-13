@@ -116,6 +116,14 @@
   --ctx-item-font-size: 14px;
   --ctx-shortcut-font-size: 12px;
   --ctx-divider-margin: 4px;
+  --binary-slider-width: 74px;
+  --binary-slider-height: 22px;
+  --binary-slider-padding: 1px;
+  --binary-slider-thumb-width: 34px;
+  --binary-slider-thumb-height: 18px;
+  --binary-slider-label-size: 10px;
+  --checkbox-indicator-size: 13px;
+  --checkbox-indicator-mark-size: 7px;
 
   --bg: #101010;
   --bg-alt: #0d0d0d;
@@ -454,6 +462,14 @@ body.density-compact {
   --ctx-item-font-size: 13px;
   --ctx-shortcut-font-size: 11px;
   --ctx-divider-margin: 3px;
+  --binary-slider-width: 66px;
+  --binary-slider-height: 20px;
+  --binary-slider-padding: 1px;
+  --binary-slider-thumb-width: 30px;
+  --binary-slider-thumb-height: 16px;
+  --binary-slider-label-size: 9px;
+  --checkbox-indicator-size: 11px;
+  --checkbox-indicator-mark-size: 6px;
 }
 
 a {

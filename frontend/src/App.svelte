@@ -136,6 +136,7 @@
   let newFolderName = 'New folder'
   let newFileName = ''
   let settingsOpen = false
+  let settingsInitialFilter = ''
   let thumbnailRefreshToken = 0
   let shortcutBindings: ShortcutBinding[] = DEFAULT_SHORTCUTS
   let pendingNav: { path: string; opts?: { recordHistory?: boolean; silent?: boolean }; gen: number } | null = null
@@ -1364,7 +1365,12 @@
       }
     },
     onToggleSettings: async () => {
-      settingsOpen = !settingsOpen
+      if (settingsOpen) {
+        settingsOpen = false
+      } else {
+        settingsInitialFilter = ''
+        settingsOpen = true
+      }
       return true
     },
   })
@@ -1999,16 +2005,9 @@
         })
         const successes = result.filter((r) => r.ok && r.result)
         const failures = result.filter((r) => !r.ok)
-        if (get(openDestAfterExtract)) {
-          const firstDest = successes.find((r) => r.result?.destination)?.result?.destination
-          if (firstDest) {
-            await loadRaw(firstDest, { recordHistory: true })
-          } else {
-            await reloadCurrent()
-          }
-        } else {
-          await reloadCurrent()
-        }
+        // In batch extraction, keep the current location stable even if
+        // "Open destination after extract" is enabled.
+        await reloadCurrent()
         const totalSkippedSymlinks = successes.reduce(
           (n, r) => n + (r.result?.skipped_symlinks ?? 0),
           0
@@ -2964,6 +2963,27 @@
   onSearch={submitSearch}
   onExitSearch={() => void enterAddressMode().then(() => blurPathInput())}
   onNavigateSegment={(path) => void navigateToBreadcrumb(path)}
+  onTopbarAction={(id) => {
+    if (id === 'open-settings') {
+      settingsInitialFilter = ''
+      settingsOpen = true
+      return
+    }
+    if (id === 'open-shortcuts') {
+      settingsInitialFilter = 'shortcut'
+      settingsOpen = true
+      return
+    }
+    if (id === 'search') {
+      void (async () => {
+        if (!$searchMode) {
+          await setSearchModeState(true)
+        }
+        focusPathInput()
+      })()
+      return
+    }
+  }}
   noticeMessage={$error}
   {staleSearchMessage}
   searchActive={$searchActive}
@@ -3122,6 +3142,7 @@
 {#if settingsOpen}
   <SettingsModal
     open
+    initialFilter={settingsInitialFilter}
     defaultViewValue={defaultViewPref}
     showHiddenValue={$showHidden}
     hiddenFilesLastValue={$hiddenFilesLast}
