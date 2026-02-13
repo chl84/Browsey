@@ -43,6 +43,9 @@
   export let onSearch: () => void = () => {}
   export let onExitSearch: () => void = () => {}
   export let onNavigateSegment: (path: string) => void = () => {}
+  export let onTopbarAction: (
+    id: 'open-settings' | 'open-shortcuts' | 'search' | 'toggle-hidden' | 'refresh' | 'about'
+  ) => void = () => {}
 
   export let noticeMessage = ''
   export let staleSearchMessage = ''
@@ -278,6 +281,7 @@
         onSearch={onSearch}
         onExitSearch={onExitSearch}
         onNavigateSegment={onNavigateSegment}
+        onMainMenuAction={onTopbarAction}
         dragTargetPath={dragTargetPath}
         onBreadcrumbDragOver={onBreadcrumbDragOver}
         onBreadcrumbDragLeave={onBreadcrumbDragLeave}

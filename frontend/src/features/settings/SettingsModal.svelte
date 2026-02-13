@@ -12,6 +12,7 @@
 
   export let open = false
   export let onClose: () => void
+  export let initialFilter = ''
   export let defaultViewValue: 'list' | 'grid' = 'list'
   export let showHiddenValue = true
   export let hiddenFilesLastValue = false
@@ -59,6 +60,7 @@
   ) => Promise<void> | void = () => {}
 
   let filter = ''
+  let seededInitialFilter = false
   let needle = ''
 
   type SortField = DefaultSortField
@@ -129,6 +131,14 @@
   let shortcutCaptureError = ''
 
   $: needle = filter.trim().toLowerCase()
+
+  $: if (open && !seededInitialFilter) {
+    filter = initialFilter
+    seededInitialFilter = true
+  }
+  $: if (!open) {
+    seededInitialFilter = false
+  }
 
   $: if (settings.defaultView !== defaultViewValue) {
     settings = { ...settings, defaultView: defaultViewValue }
@@ -289,7 +299,10 @@
 
   $: showShortcuts = rowMatches(
     needle,
-    filteredShortcuts.flatMap((s) => rowTexts(s.label, s.accelerator)),
+    [
+      ...rowTexts('shortcut', 'shortcuts', 'keys', 'keyboard shortcuts'),
+      ...filteredShortcuts.flatMap((s) => rowTexts(s.label, s.accelerator)),
+    ],
   )
 
   $: showPerformance = rowMatches(needle, [

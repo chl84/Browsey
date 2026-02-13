@@ -17,9 +17,13 @@
   export let onBreadcrumbDragLeave: (path: string, e: DragEvent) => void = () => {}
   export let onBreadcrumbDrop: (path: string, e: DragEvent) => void = () => {}
   export let dragTargetPath: string | null = null
+  export let onMainMenuAction: (
+    id: 'open-settings' | 'open-shortcuts' | 'search' | 'toggle-hidden' | 'refresh' | 'about'
+  ) => void = () => {}
 
   import { getCurrentWindow } from '@tauri-apps/api/window'
   import ThemeToggle from './ThemeToggle.svelte'
+  import TopbarActionMenu from './TopbarActionMenu.svelte'
 
   const appWindow = getCurrentWindow()
 
@@ -37,6 +41,27 @@
 
   const closeWindow = () => {
     void appWindow.close()
+  }
+
+  let menuButtonEl: HTMLButtonElement | null = null
+  let actionMenuOpen = false
+  let actionMenuX = 0
+  let actionMenuY = 0
+
+  const toggleActionMenu = () => {
+    if (actionMenuOpen) {
+      actionMenuOpen = false
+      return
+    }
+    if (!menuButtonEl || typeof window === 'undefined') return
+    const rect = menuButtonEl.getBoundingClientRect()
+    actionMenuX = rect.left
+    actionMenuY = rect.bottom + 4
+    actionMenuOpen = true
+  }
+
+  const closeActionMenu = () => {
+    actionMenuOpen = false
   }
 
   let focused = false
@@ -87,11 +112,38 @@
 <div class="drag-spacer" data-tauri-drag-region>
   <div class="window-controls" aria-label="Window controls">
     <ThemeToggle />
+    <button
+      bind:this={menuButtonEl}
+      class="win-btn menu-btn"
+      class:active={actionMenuOpen}
+      type="button"
+      aria-label="Main menu"
+      aria-haspopup="menu"
+      aria-expanded={actionMenuOpen}
+      on:click|stopPropagation={toggleActionMenu}
+    >
+      <svg class="menu-icon" viewBox="0 0 10 7" aria-hidden="true" focusable="false">
+        <line x1="0" y1="0.5" x2="10" y2="0.5"></line>
+        <line x1="0" y1="3.5" x2="10" y2="3.5"></line>
+        <line x1="0" y1="6.5" x2="10" y2="6.5"></line>
+      </svg>
+    </button>
     <button class="win-btn minimize" type="button" aria-label="Minimize window" on:click|stopPropagation={minimize}>–</button>
     <button class="win-btn maximize" type="button" aria-label="Toggle maximize window" on:click|stopPropagation={toggleMaximize}>□</button>
     <button class="win-btn close" type="button" aria-label="Close window" on:click|stopPropagation={closeWindow}>×</button>
   </div>
 </div>
+
+<TopbarActionMenu
+  open={actionMenuOpen}
+  x={actionMenuX}
+  y={actionMenuY}
+  onClose={closeActionMenu}
+  onSelect={(id) => {
+    onMainMenuAction(id)
+    closeActionMenu()
+  }}
+/>
 
 <header class="topbar">
   <div class="left">
@@ -415,6 +467,28 @@
 
   .win-btn:hover {
     background: var(--win-btn-hover-bg);
+  }
+
+  .menu-btn {
+    padding: 0;
+  }
+
+  .menu-btn.active {
+    background: var(--win-btn-hover-bg);
+    border-color: var(--border-accent);
+  }
+
+  .menu-icon {
+    width: 10px;
+    height: 7px;
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1;
+    stroke-linecap: butt;
+    vector-effect: non-scaling-stroke;
+    transform: translateY(0.5px);
+    flex: 0 0 auto;
   }
 
   .win-btn.close:hover {
