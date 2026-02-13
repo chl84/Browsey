@@ -127,7 +127,7 @@ export const docsPages: DocPage[] = [
         id: 'install-packages',
         title: 'Installable Artifacts',
         bullets: [
-          'Linux RPM: Browsey-<version>-1.x86_64.rpm from Releases',
+          'Linux RPM: Browsey-<version>.x86_64.rpm from Releases',
           'Windows NSIS installer from Releases',
           'Binaries and bundles are emitted under target/release/',
         ],
