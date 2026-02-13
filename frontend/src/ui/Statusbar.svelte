@@ -21,7 +21,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 var(--statusbar-padding-x);
+    padding: 0 var(--statusbar-padding-x) 0 calc(var(--statusbar-padding-x) * 1.5);
     gap: var(--statusbar-gap);
     user-select: none;
   }

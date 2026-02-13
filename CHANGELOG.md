@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Added a topbar main action menu (hamburger) with wired actions for Settings, Keyboard Shortcuts, Search, view-mode toggle (List/Grid), hidden-files toggle, Refresh, and About.
+- Added a dedicated About modal with three tabs: `Version` (embedded changelog), `Build` (runtime/build target details), and `License`.
+- License tab now shows both `LICENSE` and `THIRD_PARTY_NOTICES` in one combined scrollable text field.
 
 ## v0.4.2 — 2026-02-13
 - Column filters now apply real filtering on top of text filter/search, with name/type/modified/size buckets, reset via right-click, and red active indicators.
