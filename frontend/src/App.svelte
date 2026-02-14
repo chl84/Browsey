@@ -68,10 +68,7 @@
     clearStars,
     clearThumbnailCache,
   } from './features/explorer/services/data'
-  import {
-    detectNewFileType,
-    type NewFileTypeMatch,
-  } from './features/explorer/services/fileTypes'
+  import { createNewFileTypeHint } from './features/explorer/hooks/useNewFileTypeHint'
   import ConflictModal from './ui/ConflictModal.svelte'
   import SettingsModal from './features/settings/SettingsModal.svelte'
   import AboutBrowseyModal from './features/explorer/components/AboutBrowseyModal.svelte'
@@ -140,10 +137,6 @@
   let compressLevel = 6
   let newFolderName = 'New folder'
   let newFileName = ''
-  let newFileTypeHint = ''
-  let newFileTypeHintTimer: ReturnType<typeof setTimeout> | null = null
-  let newFileTypeHintRequestId = 0
-  let newFileTypeHintLastInput = ''
   let settingsOpen = false
   let aboutOpen = false
   let settingsInitialFilter = ''
@@ -185,50 +178,17 @@
   const selectionBox = createSelectionBox()
   const activityApi = createActivity({ onError: showToast })
   const activity = activityApi.activity
+  const {
+    hint: newFileTypeHint,
+    scheduleLookup: scheduleNewFileTypeHintLookup,
+    reset: resetNewFileTypeHint,
+  } = createNewFileTypeHint()
 
   const fsLabel = (fs?: string) => {
     const kind = (fs ?? '').toLowerCase()
     if (kind === 'onedrive') return 'OneDrive'
     if (kind === 'mtp') return 'MTP device'
     return 'drive'
-  }
-
-  const formatNewFileTypeHint = (match: NewFileTypeMatch | null) => {
-    if (!match) return ''
-    if (!match.matchedExt) return `Detected type: ${match.label}`
-    return `Detected type: ${match.label} (.${match.matchedExt})`
-  }
-
-  const cancelNewFileTypeHintLookup = () => {
-    if (newFileTypeHintTimer !== null) {
-      clearTimeout(newFileTypeHintTimer)
-      newFileTypeHintTimer = null
-    }
-  }
-
-  const scheduleNewFileTypeHintLookup = (name: string) => {
-    const normalized = name.trim()
-    if (normalized === newFileTypeHintLastInput) return
-    newFileTypeHintLastInput = normalized
-    cancelNewFileTypeHintLookup()
-    if (!normalized) {
-      newFileTypeHintRequestId += 1
-      newFileTypeHint = ''
-      return
-    }
-    const requestId = ++newFileTypeHintRequestId
-    newFileTypeHintTimer = setTimeout(() => {
-      newFileTypeHintTimer = null
-      void detectNewFileType(normalized)
-        .then((match) => {
-          if (requestId !== newFileTypeHintRequestId) return
-          newFileTypeHint = formatNewFileTypeHint(match)
-        })
-        .catch(() => {
-          if (requestId !== newFileTypeHintRequestId) return
-          newFileTypeHint = ''
-        })
-    }, 80)
   }
 
   // --- Data + preferences --------------------------------------------------
@@ -1710,8 +1670,7 @@
 
   // --- Lifecycle: global listeners ---------------------------------------
   onDestroy(() => {
-    cancelNewFileTypeHintLookup()
-    newFileTypeHintRequestId += 1
+    resetNewFileTypeHint()
     void stopDuplicateScan(true)
   })
 
@@ -1943,10 +1902,7 @@
   $: if ($newFileState.open) {
     scheduleNewFileTypeHintLookup(newFileName)
   } else {
-    cancelNewFileTypeHintLookup()
-    newFileTypeHintRequestId += 1
-    newFileTypeHintLastInput = ''
-    newFileTypeHint = ''
+    resetNewFileTypeHint()
   }
 
   let duplicateScanToken = 0
@@ -3179,7 +3135,7 @@
   newFileOpen={$newFileState.open}
   bind:newFileName
   newFileError={$newFileState.error}
-  {newFileTypeHint}
+  newFileTypeHint={$newFileTypeHint}
   onConfirmNewFile={confirmNewFile}
   onCancelNewFile={closeNewFileModal}
   openWithOpen={$openWithState.open}
