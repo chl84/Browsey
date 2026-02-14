@@ -46,6 +46,7 @@
   import { useContextMenuBlocker } from './features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from './features/explorer/hooks/useActivity'
   import { createAppLifecycle } from './features/explorer/hooks/useAppLifecycle'
+  import { createViewObservers } from './features/explorer/hooks/useViewObservers'
   import { loadShortcuts, setShortcutBinding } from './features/shortcuts/service'
   import {
     DEFAULT_SHORTCUTS,
@@ -104,10 +105,6 @@
   let gridElRef: HTMLDivElement | null = null
   let headerElRef: HTMLDivElement | null = null
   let pathInputEl: HTMLInputElement | null = null
-  let rowsObserver: ResizeObserver | null = null
-  let gridObserver: ResizeObserver | null = null
-  let rowsRaf: number | null = null
-  let gridRaf: number | null = null
   const SCROLL_HOVER_SUPPRESS_MS = 150
   let scrollHoverTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -178,6 +175,7 @@
   const selectionBox = createSelectionBox()
   const activityApi = createActivity({ onError: showToast })
   const activity = activityApi.activity
+  const viewObservers = createViewObservers()
   const {
     hint: newFileTypeHint,
     scheduleLookup: scheduleNewFileTypeHintLookup,
@@ -361,9 +359,8 @@
     const nextMode = viewMode === 'list' ? 'grid' : 'list'
     const switchingToList = nextMode === 'list'
 
-    if (switchingToList && gridObserver) {
-      gridObserver.disconnect()
-      gridObserver = null
+    if (switchingToList) {
+      viewObservers.disconnectGrid()
     }
 
     viewMode = nextMode
@@ -743,9 +740,8 @@
   $: headerElStore.set(viewMode === 'list' ? headerElRef : null)
   $: {
     gridElRef = viewMode === 'grid' ? rowsElRef : null
-    if (viewMode !== 'grid' && gridObserver) {
-      gridObserver.disconnect()
-      gridObserver = null
+    if (viewMode !== 'grid') {
+      viewObservers.disconnectGrid()
     }
   }
 
@@ -1622,48 +1618,16 @@
     }
   }
 
-  const setupRowsObserver = () => {
-    if (!rowsElRef || typeof ResizeObserver === 'undefined') return
-    rowsObserver?.disconnect()
-    rowsObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.contentRect.height > 0) {
-          if (rowsRaf === null) {
-            rowsRaf = requestAnimationFrame(() => {
-              rowsRaf = null
-              updateViewportHeight()
-            })
-          }
-        }
-      }
-    })
-    rowsObserver.observe(rowsElRef)
-  }
-
   $: {
     if (rowsElRef && viewMode === 'list') {
-      setupRowsObserver()
+      viewObservers.setupRows(rowsElRef, updateViewportHeight)
       updateViewportHeight()
     }
   }
 
-  const setupGridObserver = () => {
-    if (!gridElRef || viewMode !== 'grid' || typeof ResizeObserver === 'undefined') return
-    gridObserver?.disconnect()
-    gridObserver = new ResizeObserver(() => {
-      if (gridRaf === null) {
-        gridRaf = requestAnimationFrame(() => {
-          gridRaf = null
-          recomputeGrid()
-        })
-      }
-    })
-    gridObserver.observe(gridElRef)
-  }
-
   $: {
     if (gridElRef && viewMode === 'grid') {
-      setupGridObserver()
+      viewObservers.setupGrid(gridElRef, viewMode, recomputeGrid)
       recomputeGrid()
     }
   }
@@ -2856,8 +2820,7 @@
         scrollHoverTimer = null
       }
       rowsElRef?.classList.remove('is-scrolling')
-      rowsObserver?.disconnect()
-      gridObserver?.disconnect()
+      viewObservers.cleanup()
       dirSizeAbort++
     },
   })
