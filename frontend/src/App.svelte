@@ -46,6 +46,7 @@
   import { useContextMenuBlocker } from './features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from './features/explorer/hooks/useActivity'
   import { createAppLifecycle } from './features/explorer/hooks/useAppLifecycle'
+  import { createTopbarActions } from './features/explorer/hooks/useTopbarActions'
   import { createTextContextMenu } from './features/explorer/hooks/useTextContextMenu'
   import { createViewObservers } from './features/explorer/hooks/useViewObservers'
   import { loadShortcuts, setShortcutBinding } from './features/shortcuts/service'
@@ -1124,6 +1125,23 @@
       pathInput = $current
     }
   }
+
+  const { handleTopbarAction, handleTopbarViewModeChange } = createTopbarActions({
+    openSettings: (initialFilter) => {
+      settingsInitialFilter = initialFilter
+      settingsOpen = true
+    },
+    isSearchMode: () => $searchMode,
+    setSearchMode: setSearchModeState,
+    focusPathInput,
+    toggleShowHidden: () => toggleShowHidden(),
+    openAbout: () => {
+      aboutOpen = true
+    },
+    refresh: () => reloadCurrent(),
+    getViewMode: () => viewMode,
+    toggleViewMode: () => toggleViewMode(),
+  })
 
   const navigateToBreadcrumb = async (path: string) => {
     if (currentView !== 'dir') {
@@ -2882,43 +2900,8 @@
   onSearch={submitSearch}
   onExitSearch={() => void enterAddressMode().then(() => blurPathInput())}
   onNavigateSegment={(path) => void navigateToBreadcrumb(path)}
-  onTopbarAction={(id) => {
-    if (id === 'open-settings') {
-      settingsInitialFilter = ''
-      settingsOpen = true
-      return
-    }
-    if (id === 'open-shortcuts') {
-      settingsInitialFilter = 'shortcut'
-      settingsOpen = true
-      return
-    }
-    if (id === 'search') {
-      void (async () => {
-        if (!$searchMode) {
-          await setSearchModeState(true)
-        }
-        focusPathInput()
-      })()
-      return
-    }
-    if (id === 'toggle-hidden') {
-      toggleShowHidden()
-      return
-    }
-    if (id === 'about') {
-      aboutOpen = true
-      return
-    }
-    if (id === 'refresh') {
-      void reloadCurrent()
-      return
-    }
-  }}
-  onTopbarViewModeChange={(nextMode) => {
-    if (nextMode === viewMode) return
-    void toggleViewMode()
-  }}
+  onTopbarAction={handleTopbarAction}
+  onTopbarViewModeChange={handleTopbarViewModeChange}
   noticeMessage={$error}
   {staleSearchMessage}
   searchActive={$searchActive}
