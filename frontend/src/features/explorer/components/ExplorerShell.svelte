@@ -192,6 +192,7 @@
   export let newFileOpen = false
   export let newFileName = ''
   export let newFileError = ''
+  export let newFileTypeHint = ''
   export let onConfirmNewFile: () => void = () => {}
   export let onCancelNewFile: () => void = () => {}
 
@@ -478,6 +479,7 @@
   open={newFileOpen}
   bind:value={newFileName}
   error={newFileError}
+  hint={newFileTypeHint}
   title="New file"
   inputId="new-file-name"
   onConfirm={onConfirmNewFile}
