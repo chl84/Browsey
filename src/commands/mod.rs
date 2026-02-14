@@ -6,6 +6,7 @@ pub mod compress;
 pub mod console;
 pub mod decompress;
 pub mod duplicates;
+pub mod file_types;
 pub mod fs;
 pub mod keymap;
 pub mod library;
@@ -27,6 +28,7 @@ pub use compress::compress_entries;
 pub use console::open_console;
 pub use decompress::{extract_archive, extract_archives};
 pub use duplicates::{check_duplicates, check_duplicates_stream};
+pub use file_types::detect_new_file_type;
 pub use fs::{
     create_file, create_folder, delete_entries, delete_entry, list_trash, move_to_trash,
     move_to_trash_many, open_entry, purge_trash_items, rename_entries, rename_entry,

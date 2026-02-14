@@ -5,6 +5,7 @@
   export let open = false
   export let value = ''
   export let error = ''
+  export let hint = ''
   export let title = 'New folder'
   export let confirmLabel = 'Create'
   export let inputId = 'new-folder-name'
@@ -51,6 +52,9 @@
         }
       }}
     />
+    {#if hint}
+      <p class="muted">{hint}</p>
+    {/if}
 
     <div slot="actions">
       <button type="button" class="secondary" on:click={onCancel}>Cancel</button>

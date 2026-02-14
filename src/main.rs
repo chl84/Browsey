@@ -243,6 +243,7 @@ fn main() {
             move_to_trash,
             move_to_trash_many,
             create_file,
+            detect_new_file_type,
             delete_entry,
             delete_entries,
             entry_times_cmd,
