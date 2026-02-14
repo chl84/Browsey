@@ -46,6 +46,7 @@
   import { useContextMenuBlocker } from './features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from './features/explorer/hooks/useActivity'
   import { createAppLifecycle } from './features/explorer/hooks/useAppLifecycle'
+  import { createTextContextMenu } from './features/explorer/hooks/useTextContextMenu'
   import { createViewObservers } from './features/explorer/hooks/useViewObservers'
   import { loadShortcuts, setShortcutBinding } from './features/shortcuts/service'
   import {
@@ -175,6 +176,15 @@
   const selectionBox = createSelectionBox()
   const activityApi = createActivity({ onError: showToast })
   const activity = activityApi.activity
+  const {
+    open: textMenuOpen,
+    x: textMenuX,
+    y: textMenuY,
+    target: textMenuTarget,
+    readonly: textMenuReadonly,
+    close: closeTextContextMenu,
+    handleDocumentContextMenu,
+  } = createTextContextMenu()
   const viewObservers = createViewObservers()
   const {
     hint: newFileTypeHint,
@@ -1583,28 +1593,6 @@
     }
   }
 
-  const isTextTarget = (target: EventTarget | null): target is HTMLElement => {
-    if (!(target instanceof HTMLElement)) return false
-    if (target.isContentEditable) return true
-    if (target instanceof HTMLInputElement) {
-      return !['button', 'submit', 'reset', 'checkbox', 'radio', 'file'].includes(target.type)
-    }
-    return target instanceof HTMLTextAreaElement
-  }
-
-  const handleDocumentContextMenu = (event: MouseEvent) => {
-    if (!isTextTarget(event.target)) return
-    event.preventDefault()
-    event.stopPropagation()
-    textMenuTarget = event.target as HTMLElement
-    textMenuReadonly =
-      (textMenuTarget instanceof HTMLInputElement || textMenuTarget instanceof HTMLTextAreaElement) &&
-      (textMenuTarget.readOnly || textMenuTarget.disabled)
-    textMenuOpen = true
-    textMenuX = event.clientX
-    textMenuY = event.clientY
-  }
-
   $: {
     if (viewMode === 'list') {
       // Recompute virtualization when viewport or scroll changes.
@@ -2539,11 +2527,6 @@
   let dragPaths: string[] = []
   let copyModifierActive = false
   let nativeDragActive = false
-  let textMenuOpen = false
-  let textMenuX = 0
-  let textMenuY = 0
-  let textMenuTarget: HTMLElement | null = null
-  let textMenuReadonly = false
   const nativeDrop = createNativeFileDrop({
     onDrop: async (paths) => {
       if (!paths || paths.length === 0) return
@@ -2850,16 +2833,13 @@
   action={dragAction}
 />
 <TextContextMenu
-  open={textMenuOpen}
-  x={textMenuX}
-  y={textMenuY}
-  target={textMenuTarget}
-  readonly={textMenuReadonly}
+  open={$textMenuOpen}
+  x={$textMenuX}
+  y={$textMenuY}
+  target={$textMenuTarget}
+  readonly={$textMenuReadonly}
   shortcuts={shortcutBindings}
-  onClose={() => {
-    textMenuOpen = false
-    textMenuTarget = null
-  }}
+  onClose={closeTextContextMenu}
 />
   <ExplorerShell
     bind:pathInput
