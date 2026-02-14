@@ -45,6 +45,7 @@
   import { createGridKeyboardHandler } from './features/explorer/hooks/useGridHandlers'
   import { useContextMenuBlocker } from './features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from './features/explorer/hooks/useActivity'
+  import { createAppLifecycle } from './features/explorer/hooks/useAppLifecycle'
   import { loadShortcuts, setShortcutBinding } from './features/shortcuts/service'
   import {
     DEFAULT_SHORTCUTS,
@@ -84,7 +85,6 @@
     error?: string | null
   }
   type ViewMode = 'list' | 'grid'
-  type MountEvent = { path: string; fs?: string; ok?: boolean; duration_ms?: number }
 
   // --- Core UI state -------------------------------------------------------
   let sidebarCollapsed = false
@@ -2826,75 +2826,31 @@
   }
 
 
-  const initLifecycle = () => {
-    const cleanupFns: Array<() => void> = []
-
-    const handleError = (event: ErrorEvent) => {
-      const msg = event.error instanceof Error ? event.error.message : event.message ?? 'Unknown error'
-      console.error('Unhandled error', event)
-      showToast(`Error: ${msg}`)
-    }
-    const handleRejection = (event: PromiseRejectionEvent) => {
-      const reason = event.reason
-      const msg = reason instanceof Error ? reason.message : String(reason)
-      console.error('Unhandled rejection', reason)
-      showToast(`Error: ${msg}`)
-    }
-
-    const setupCore = async () => {
-      handleResize()
-      window.addEventListener('resize', handleResize)
-      cleanupFns.push(() => window.removeEventListener('resize', handleResize))
-
-      window.addEventListener('error', handleError)
-      window.addEventListener('unhandledrejection', handleRejection)
-      cleanupFns.push(() => {
-        window.removeEventListener('error', handleError)
-        window.removeEventListener('unhandledrejection', handleRejection)
-      })
-
-      const prefView = await loadDefaultView().catch(() => null)
-      if (prefView === 'list' || prefView === 'grid') {
-        defaultViewPref = prefView
-        viewMode = prefView
+  const initLifecycle = createAppLifecycle({
+    handleResize,
+    loadDefaultView,
+    applyDefaultView: (prefView) => {
+      defaultViewPref = prefView
+      viewMode = prefView
+    },
+    loadShortcuts,
+    applyShortcutBindings,
+    startNativeDrop: () => nativeDrop.start(),
+    stopNativeDrop: () => nativeDrop.stop(),
+    onMountStarted: (fs) => {
+      activityApi.clearNow()
+      activity.set({ label: `Mounting ${fsLabel(fs)}…`, percent: null, cancel: null, cancelling: false })
+    },
+    onMountDone: (fs, ok) => {
+      const label = ok ? `${fsLabel(fs)} mounted` : 'Mount failed'
+      activity.set({ label, percent: null, cancel: null, cancelling: false })
+      activityApi.hideSoon()
+      if (ok === false) {
+        showToast('Mount failed. Please try again.')
       }
-
-      const savedShortcuts = await loadShortcuts().catch((err) => {
-        console.error('Failed to load shortcuts', err)
-        return null
-      })
-      if (savedShortcuts && savedShortcuts.length > 0) {
-        applyShortcutBindings(savedShortcuts)
-      }
-
-      await nativeDrop.start()
-      cleanupFns.push(() => {
-        void nativeDrop.stop()
-      })
-
-      const unlistenMountStart = await listen<MountEvent>('mounting-started', (event) => {
-        const { fs } = event.payload ?? {}
-        activityApi.clearNow()
-        activity.set({ label: `Mounting ${fsLabel(fs)}…`, percent: null, cancel: null, cancelling: false })
-      })
-      const unlistenMountDone = await listen<MountEvent>('mounting-done', (event) => {
-        const { fs, ok } = event.payload ?? {}
-        const label = ok ? `${fsLabel(fs)} mounted` : 'Mount failed'
-        activity.set({ label, percent: null, cancel: null, cancelling: false })
-        activityApi.hideSoon()
-        if (ok === false) {
-          showToast('Mount failed. Please try again.')
-        }
-      })
-      cleanupFns.push(() => {
-        unlistenMountStart()
-        unlistenMountDone()
-      })
-    }
-
-    void setupCore()
-
-    return () => {
+    },
+    onErrorToast: showToast,
+    onCleanup: () => {
       if (scrollHoverTimer !== null) {
         clearTimeout(scrollHoverTimer)
         scrollHoverTimer = null
@@ -2902,10 +2858,9 @@
       rowsElRef?.classList.remove('is-scrolling')
       rowsObserver?.disconnect()
       gridObserver?.disconnect()
-      cleanupFns.forEach((fn) => fn())
       dirSizeAbort++
-    }
-  }
+    },
+  })
 
   onMount(initLifecycle)
 </script>
