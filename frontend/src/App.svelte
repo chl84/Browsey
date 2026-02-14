@@ -1994,7 +1994,13 @@
           progressEvent,
         })
         if (get(openDestAfterExtract) && result?.destination) {
-          await loadRaw(result.destination, { recordHistory: true })
+          try {
+            const kind = await invoke<'dir' | 'file'>('entry_kind_cmd', { path: result.destination })
+            const target = kind === 'dir' ? result.destination : parentPath(result.destination)
+            await loadRaw(target, { recordHistory: true })
+          } catch {
+            await reloadCurrent()
+          }
         } else {
           await reloadCurrent()
         }
