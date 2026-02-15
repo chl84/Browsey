@@ -5,6 +5,12 @@
 - Clipboard UX/performance: large-selection `Ctrl+C`/`Ctrl+X` now use path-based flows that avoid quadratic selection scans.
 - Context-menu and delete flows were optimized for large selections (Set/Map lookups and reduced repeated selection reconstruction).
 - Clipboard/file-operation shutdown handling was hardened to reduce late-stage work and event emissions during app exit.
+- Wastebasket delete performance: trash entries are now resolved and purged by stable trash IDs, reducing unnecessary `.trashinfo` scans.
+- Properties permissions: ownership editing (`user`/`group`) now supports privilege escalation on Linux via `pkexec` helper fallback when needed.
+- Properties modal polish: permissions/ownership layout now follows density-aware sizing (cozy/compact), with a smaller ownership apply button.
+- Error readability: long error messages now wrap in modal error pills, properties ownership errors, and notice banners.
+- Frontend ownership flow now suppresses expected warning-noise in dev logs (for example auth dismissal or unknown user/group validation errors).
+- App logs now use local timestamps with timezone offset (for example `+01:00`) instead of UTC `Z` formatting.
 
 ## v0.4.3 — 2026-02-13
 - Added a topbar main action menu (hamburger) with wired actions for Settings, Keyboard Shortcuts, Search, view-mode toggle (List/Grid), hidden-files toggle, Refresh, and About.
