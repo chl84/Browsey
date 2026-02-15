@@ -106,7 +106,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const error = writable('')
   const filter = writable('')
   const searchMode = writable(false)
-  const searchActive = writable(false)
+  const searchRunning = writable(false)
   const showHidden = writable(true)
   const hiddenFilesLast = writable(false)
   const foldersFirst = writable(true)
@@ -308,7 +308,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
     error.set('')
     invalidateSearchRun()
-    searchActive.set(false)
+    searchRunning.set(false)
     try {
       const result = await listDir(path, sortPayload())
       current.set(result.current)
@@ -332,7 +332,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loading.set(true)
     error.set('')
     invalidateSearchRun()
-    searchActive.set(false)
+    searchRunning.set(false)
     try {
       const sortArg = applySort ? sortPayload() : null
       const result = await listRecent(sortArg)
@@ -354,7 +354,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loading.set(true)
     error.set('')
     invalidateSearchRun()
-    searchActive.set(false)
+    searchRunning.set(false)
     try {
       const result = await listStarred(sortPayload())
       current.set('Starred')
@@ -375,7 +375,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loading.set(true)
     error.set('')
     invalidateSearchRun()
-    searchActive.set(false)
+    searchRunning.set(false)
     try {
       const result = await listTrash(sortPayload())
       current.set('Trash')
@@ -501,9 +501,9 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   }
 
   const refreshForSort = async () => {
-    const isSearchActive = get(searchActive)
     const isSearchMode = get(searchMode)
-    if (isSearchActive && isSearchMode) {
+    const hasSearchQuery = get(filter).trim().length > 0
+    if (isSearchMode && hasSearchQuery) {
       entries.set(sortSearchEntries(get(entries), sortPayload()))
       return
     }
@@ -568,12 +568,12 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   }
 
   const goUp = () => {
-    searchActive.set(false)
+    searchRunning.set(false)
     return load(parentPath(get(current)))
   }
 
   const goHome = () => {
-    searchActive.set(false)
+    searchRunning.set(false)
     const pref = (get(startDirPref) ?? '').trim()
     return load(pref || undefined)
   }
@@ -587,9 +587,9 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   }
 
   const cancelSearch = () => {
-    const hadActiveSearch = activeSearchCancelId !== null || get(searchActive)
+    const hadActiveSearch = activeSearchCancelId !== null || get(searchRunning)
     invalidateSearchRun()
-    searchActive.set(false)
+    searchRunning.set(false)
     if (hadActiveSearch) {
       loading.set(false)
     }
@@ -651,7 +651,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     activeSearchCancelId = progressEvent
 
     if (needle.length === 0) {
-      searchActive.set(false)
+      searchRunning.set(false)
       await load(get(current), { recordHistory: false })
       if (runId === searchRunId) {
         loading.set(false)
@@ -660,7 +660,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       return cleanup
     }
     filter.set(needle)
-    searchActive.set(true)
+    searchRunning.set(true)
     entries.set([])
     callbacks.onEntriesChanged?.()
 
@@ -708,6 +708,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
           // Keep streamed order on completion; sorting remains a manual UI action.
           entries.set(finalEntries)
           callbacks.onEntriesChanged?.()
+          searchRunning.set(false)
           loading.set(false)
           cleanup()
           return
@@ -720,6 +721,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     } catch (err) {
       if (runId === searchRunId) {
         error.set(err instanceof Error ? err.message : String(err))
+        searchRunning.set(false)
         loading.set(false)
       }
       cleanup()
@@ -743,6 +745,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         return
       }
       error.set(err instanceof Error ? err.message : String(err))
+      searchRunning.set(false)
       loading.set(false)
       cleanup()
     })
@@ -1095,7 +1098,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     error,
     filter,
     searchMode,
-    searchActive,
+    searchRunning,
     hiddenFilesLast,
     foldersFirst,
     confirmDelete,

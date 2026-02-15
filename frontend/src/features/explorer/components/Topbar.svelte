@@ -192,10 +192,12 @@
             onExitSearch()
             return
           }
-          if (e.key === 'Enter' && !searchMode) {
-            onSubmitPath()
-          } else if (e.key === 'Enter' && searchMode) {
-            onSearch()
+          if (e.key === 'Enter') {
+            if (searchMode) {
+              onSearch()
+            } else if (mode === 'address') {
+              onSubmitPath()
+            }
           }
         }}
       />
