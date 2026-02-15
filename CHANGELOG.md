@@ -11,6 +11,8 @@
 - Search state cleanup: `searchRunning` now represents active backend search execution, with state ownership moved to the explorer state layer.
 - Wastebasket delete performance: trash entries are now resolved and purged by stable trash IDs, reducing unnecessary `.trashinfo` scans.
 - Properties permissions: ownership editing (`user`/`group`) now supports privilege escalation on Linux via `pkexec` helper fallback when needed.
+- Permissions/ownership behavior: changes from the Properties modal are now intentionally excluded from undo/redo history.
+- Permissions/ownership safety: rollback paths are now decoupled from undo action types and validated with dedicated partial-rollback failure tests.
 - Properties modal polish: permissions/ownership layout now follows density-aware sizing (cozy/compact), with a smaller ownership apply button.
 - Error readability: long error messages now wrap in modal error pills, properties ownership errors, and notice banners.
 - Frontend ownership flow now suppresses expected warning-noise in dev logs (for example auth dismissal or unknown user/group validation errors).
