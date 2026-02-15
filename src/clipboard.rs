@@ -1,5 +1,6 @@
 use crate::{
     fs_utils::sanitize_path_follow,
+    runtime_lifecycle,
     tasks::CancelState,
     undo::{move_with_fallback, run_actions, temp_backup_path, Action, Direction, UndoState},
 };
@@ -17,7 +18,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Mutex},
 };
-use tauri::Emitter;
 
 #[derive(Clone, Copy)]
 enum ClipboardMode {
@@ -61,6 +61,25 @@ fn ensure_not_child(src: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn transfer_cancelled(cancel: Option<&AtomicBool>, app: Option<&tauri::AppHandle>) -> bool {
+    cancel
+        .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+        .unwrap_or(false)
+        || app
+            .map(runtime_lifecycle::is_shutting_down)
+            .unwrap_or(false)
+}
+
+fn emit_copy_progress(
+    app: Option<&tauri::AppHandle>,
+    event: Option<&str>,
+    payload: CopyProgressPayload,
+) {
+    if let (Some(app), Some(evt)) = (app, event) {
+        let _ = runtime_lifecycle::emit_if_running(app, evt, payload);
+    }
+}
+
 fn copy_dir(
     src: &Path,
     dest: &Path,
@@ -74,10 +93,7 @@ fn copy_dir(
         let path = entry.path();
         let meta =
             fs::symlink_metadata(&path).map_err(|e| format!("Failed to read metadata: {e}"))?;
-        if cancel
-            .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
-            .unwrap_or(false)
-        {
+        if transfer_cancelled(cancel, app) {
             return Err("Copy cancelled".into());
         }
         if meta.file_type().is_symlink() {
@@ -135,10 +151,7 @@ fn merge_dir(
         if meta.file_type().is_symlink() {
             return Err("Refusing to copy symlinks".into());
         }
-        if cancel
-            .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
-            .unwrap_or(false)
-        {
+        if transfer_cancelled(cancel, app) {
             return Err("Copy cancelled".into());
         }
         let target = dest.join(entry.file_name());
@@ -224,10 +237,7 @@ fn copy_entry(
         ensure_not_child(src, dest)?;
         copy_dir(src, dest, app, progress_event, cancel)
     } else {
-        if cancel
-            .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
-            .unwrap_or(false)
-        {
+        if transfer_cancelled(cancel, app) {
             return Err("Copy cancelled".into());
         }
         let size_hint = Some(meta.len());
@@ -274,21 +284,17 @@ fn copy_file_best_effort(
     let mut last_emit = 0u64;
     let mut last_time = std::time::Instant::now();
     loop {
-        if cancel
-            .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
-            .unwrap_or(false)
-        {
+        if transfer_cancelled(cancel, app) {
             let _ = fs::remove_file(dest);
-            if let (Some(app), Some(evt)) = (app, progress_event) {
-                let _ = app.emit(
-                    evt,
-                    CopyProgressPayload {
-                        bytes: done,
-                        total: total.unwrap_or(done),
-                        finished: true,
-                    },
-                );
-            }
+            emit_copy_progress(
+                app,
+                progress_event,
+                CopyProgressPayload {
+                    bytes: done,
+                    total: total.unwrap_or(done),
+                    finished: true,
+                },
+            );
             return Err("Copy cancelled".into());
         }
         let n = reader
@@ -301,13 +307,14 @@ fn copy_file_best_effort(
             .write_all(&buf[..n])
             .map_err(|e| format!("Write failed: {e}"))?;
         done = done.saturating_add(n as u64);
-        if let (Some(app), Some(evt)) = (app, progress_event) {
+        if progress_event.is_some() {
             let elapsed = last_time.elapsed();
             if done.saturating_sub(last_emit) >= 64 * 1024
                 || elapsed >= std::time::Duration::from_millis(200)
             {
-                let _ = app.emit(
-                    evt,
+                emit_copy_progress(
+                    app,
+                    progress_event,
                     CopyProgressPayload {
                         bytes: done,
                         total: total.unwrap_or(0),
@@ -319,16 +326,15 @@ fn copy_file_best_effort(
             }
         }
     }
-    if let (Some(app), Some(evt)) = (app, progress_event) {
-        let _ = app.emit(
-            evt,
-            CopyProgressPayload {
-                bytes: done,
-                total: total.unwrap_or(done),
-                finished: true,
-            },
-        );
-    }
+    emit_copy_progress(
+        app,
+        progress_event,
+        CopyProgressPayload {
+            bytes: done,
+            total: total.unwrap_or(done),
+            finished: true,
+        },
+    );
     Ok(done)
 }
 
@@ -358,10 +364,7 @@ fn try_gio_copy_progress(
     if let Some(out) = stdout {
         let reader = std::io::BufReader::new(out);
         for line in reader.lines().flatten() {
-            if cancel
-                .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
-                .unwrap_or(false)
-            {
+            if transfer_cancelled(cancel, Some(app)) {
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err("Copy cancelled".into());
@@ -377,7 +380,8 @@ fn try_gio_copy_progress(
                 last_bytes = nums[0];
                 total_seen = Some(nums[1]);
                 if let (Some(evt), Some(total)) = (progress_event, total_seen) {
-                    let _ = app.emit(
+                    let _ = runtime_lifecycle::emit_if_running(
+                        app,
                         evt,
                         CopyProgressPayload {
                             bytes: last_bytes,
@@ -395,7 +399,8 @@ fn try_gio_copy_progress(
         .map_err(|e| format!("gio copy wait failed: {e}"))?;
     if status.success() {
         if let Some(evt) = progress_event {
-            let _ = app.emit(
+            let _ = runtime_lifecycle::emit_if_running(
+                app,
                 evt,
                 CopyProgressPayload {
                     bytes: last_bytes,
@@ -575,6 +580,9 @@ fn paste_clipboard_impl(
     cancel_state: CancelState,
     progress_event: Option<String>,
 ) -> Result<Vec<String>, String> {
+    if runtime_lifecycle::is_shutting_down(&app) {
+        return Err("Copy cancelled".into());
+    }
     let dest = sanitize_path_follow(&dest, false)?;
     let state = current_clipboard().ok_or_else(|| "Clipboard is empty".to_string())?;
     let policy = policy
@@ -594,7 +602,8 @@ fn paste_clipboard_impl(
         .map(|evt| estimate_total_size(&state.entries, evt, &app));
     let mut done_items: u64 = 0;
     if let (Some(evt), Some(total)) = (progress_event.as_ref(), total_bytes) {
-        let _ = app.emit(
+        let _ = runtime_lifecycle::emit_if_running(
+            &app,
             evt,
             CopyProgressPayload {
                 bytes: done_items,
@@ -607,11 +616,7 @@ fn paste_clipboard_impl(
     let mut created = Vec::new();
     let mut performed: Vec<Action> = Vec::with_capacity(state.entries.len() * 4);
     for src in state.entries.iter() {
-        if cancel_flag
-            .as_ref()
-            .map(|c| c.load(std::sync::atomic::Ordering::Relaxed))
-            .unwrap_or(false)
-        {
+        if transfer_cancelled(cancel_flag.as_deref(), Some(&app)) {
             return Err("Copy cancelled".into());
         }
         if !src.exists() {
@@ -677,7 +682,8 @@ fn paste_clipboard_impl(
                     done_items = done_items.saturating_add(1);
                     if total_bytes.is_none() {
                         if let Some(evt) = progress_event.as_ref() {
-                            let _ = app.emit(
+                            let _ = runtime_lifecycle::emit_if_running(
+                                &app,
                                 evt,
                                 CopyProgressPayload {
                                     bytes: done_items,
@@ -724,7 +730,8 @@ fn paste_clipboard_impl(
     }
 
     if let Some(evt) = progress_event.as_ref() {
-        let _ = app.emit(
+        let _ = runtime_lifecycle::emit_if_running(
+            &app,
             evt,
             CopyProgressPayload {
                 bytes: total_bytes.unwrap_or(done_items),
