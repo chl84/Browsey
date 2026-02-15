@@ -36,7 +36,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc,
+        mpsc, Mutex, OnceLock,
     },
 };
 #[cfg(debug_assertions)]
@@ -549,6 +549,36 @@ struct PreparedTrashMove {
     staged_src: Option<std::path::PathBuf>,
 }
 
+trait TrashBackend {
+    fn list_items(&self) -> Result<Vec<TrashItem>, String>;
+    fn delete_path(&self, path: &Path) -> Result<(), String>;
+    fn rewrite_original_path(&self, item: &TrashItem, original_path: &Path) -> Result<(), String>;
+}
+
+struct SystemTrashBackend;
+
+impl TrashBackend for SystemTrashBackend {
+    fn list_items(&self) -> Result<Vec<TrashItem>, String> {
+        trash_list().map_err(|e| format!("Failed to list trash: {e}"))
+    }
+
+    fn delete_path(&self, path: &Path) -> Result<(), String> {
+        trash_delete(path).map_err(|e| format!("Failed to move to trash: {e}"))
+    }
+
+    fn rewrite_original_path(&self, item: &TrashItem, original_path: &Path) -> Result<(), String> {
+        #[cfg(not(target_os = "windows"))]
+        {
+            return rewrite_trash_info_original_path(item, original_path);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = (item, original_path);
+            Ok(())
+        }
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TrashStageJournalEntry {
@@ -562,6 +592,12 @@ fn trash_stage_journal_path() -> PathBuf {
         .unwrap_or_else(std::env::temp_dir)
         .join("browsey")
         .join("trash-stage-journal.tsv")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn trash_stage_journal_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -593,14 +629,15 @@ fn stage_for_trash(src: &Path) -> Result<PathBuf, String> {
     ))
 }
 
-fn trash_delete_via_staged_rename(
+fn trash_delete_via_staged_rename<B: TrashBackend>(
     src: &Path,
     src_snapshot: &PathSnapshot,
+    backend: &B,
 ) -> Result<PathBuf, String> {
     assert_path_snapshot(src, src_snapshot)?;
     #[cfg(target_os = "windows")]
     {
-        trash_delete(src).map_err(|e| format!("Failed to move to trash: {e}"))?;
+        backend.delete_path(src)?;
         Ok(src.to_path_buf())
     }
     #[cfg(not(target_os = "windows"))]
@@ -615,7 +652,7 @@ fn trash_delete_via_staged_rename(
                 "Failed to persist staged trash journal entry: {err}{rollback}"
             ));
         }
-        match trash_delete(&staged) {
+        match backend.delete_path(&staged) {
             Ok(_) => {
                 let _ = remove_trash_stage_journal_entry(&staged, src);
                 Ok(staged)
@@ -720,8 +757,7 @@ fn decode_percent_encoded_unix_path(encoded: &str) -> Result<PathBuf, String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn load_trash_stage_journal_entries() -> Result<Vec<TrashStageJournalEntry>, String> {
-    let path = trash_stage_journal_path();
+fn load_trash_stage_journal_entries_at(path: &Path) -> Result<Vec<TrashStageJournalEntry>, String> {
     let content = match fs::read_to_string(&path) {
         Ok(content) => content,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -789,8 +825,15 @@ fn load_trash_stage_journal_entries() -> Result<Vec<TrashStageJournalEntry>, Str
 }
 
 #[cfg(not(target_os = "windows"))]
-fn store_trash_stage_journal_entries(entries: &[TrashStageJournalEntry]) -> Result<(), String> {
-    let path = trash_stage_journal_path();
+fn load_trash_stage_journal_entries() -> Result<Vec<TrashStageJournalEntry>, String> {
+    load_trash_stage_journal_entries_at(&trash_stage_journal_path())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn store_trash_stage_journal_entries_at(
+    path: &Path,
+    entries: &[TrashStageJournalEntry],
+) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -836,7 +879,15 @@ fn store_trash_stage_journal_entries(entries: &[TrashStageJournalEntry]) -> Resu
 }
 
 #[cfg(not(target_os = "windows"))]
+fn store_trash_stage_journal_entries(entries: &[TrashStageJournalEntry]) -> Result<(), String> {
+    store_trash_stage_journal_entries_at(&trash_stage_journal_path(), entries)
+}
+
+#[cfg(not(target_os = "windows"))]
 fn add_trash_stage_journal_entry(staged: &Path, original: &Path) -> Result<(), String> {
+    let _guard = trash_stage_journal_lock()
+        .lock()
+        .map_err(|_| "Trash stage journal lock poisoned".to_string())?;
     let mut entries = load_trash_stage_journal_entries()?;
     let new_entry = TrashStageJournalEntry {
         staged: staged.to_path_buf(),
@@ -850,6 +901,9 @@ fn add_trash_stage_journal_entry(staged: &Path, original: &Path) -> Result<(), S
 
 #[cfg(not(target_os = "windows"))]
 fn remove_trash_stage_journal_entry(staged: &Path, original: &Path) -> Result<(), String> {
+    let _guard = trash_stage_journal_lock()
+        .lock()
+        .map_err(|_| "Trash stage journal lock poisoned".to_string())?;
     let mut entries = load_trash_stage_journal_entries()?;
     entries.retain(|entry| !(entry.staged == staged && entry.original == original));
     store_trash_stage_journal_entries(&entries)
@@ -862,49 +916,62 @@ pub fn cleanup_stale_trash_staging() {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let entries = match load_trash_stage_journal_entries() {
-            Ok(entries) => entries,
-            Err(err) => {
-                warn!("{err}");
-                return;
-            }
-        };
-        if entries.is_empty() {
+        cleanup_stale_trash_staging_at(&trash_stage_journal_path());
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn cleanup_stale_trash_staging_at(path: &Path) {
+    let _guard = match trash_stage_journal_lock().lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            warn!("Trash stage journal lock poisoned");
             return;
         }
+    };
 
-        let mut retained = Vec::new();
-        for entry in entries {
-            let staged_meta = fs::symlink_metadata(&entry.staged);
-            if let Err(err) = staged_meta {
-                if err.kind() != io::ErrorKind::NotFound {
-                    warn!(
-                        "Failed to inspect staged trash path {}: {}",
-                        entry.staged.display(),
-                        err
-                    );
-                    retained.push(entry);
-                }
-                continue;
-            }
-
-            match rename_entry_nofollow_io(&entry.staged, &entry.original) {
-                Ok(_) => {}
-                Err(err) => {
-                    warn!(
-                        "Failed to recover staged trash item {} -> {}: {}",
-                        entry.staged.display(),
-                        entry.original.display(),
-                        err
-                    );
-                    retained.push(entry);
-                }
-            }
-        }
-
-        if let Err(err) = store_trash_stage_journal_entries(&retained) {
+    let entries = match load_trash_stage_journal_entries_at(path) {
+        Ok(entries) => entries,
+        Err(err) => {
             warn!("{err}");
+            return;
         }
+    };
+    if entries.is_empty() {
+        return;
+    }
+
+    let mut retained = Vec::new();
+    for entry in entries {
+        let staged_meta = fs::symlink_metadata(&entry.staged);
+        if let Err(err) = staged_meta {
+            if err.kind() != io::ErrorKind::NotFound {
+                warn!(
+                    "Failed to inspect staged trash path {}: {}",
+                    entry.staged.display(),
+                    err
+                );
+                retained.push(entry);
+            }
+            continue;
+        }
+
+        match rename_entry_nofollow_io(&entry.staged, &entry.original) {
+            Ok(_) => {}
+            Err(err) => {
+                warn!(
+                    "Failed to recover staged trash item {} -> {}: {}",
+                    entry.staged.display(),
+                    entry.original.display(),
+                    err
+                );
+                retained.push(entry);
+            }
+        }
+    }
+
+    if let Err(err) = store_trash_stage_journal_entries_at(path, &retained) {
+        warn!("{err}");
     }
 }
 
@@ -990,88 +1057,62 @@ fn prepare_trash_move(raw: &str) -> Result<PreparedTrashMove, String> {
     })
 }
 
-fn move_to_trash_many_blocking(
+fn move_to_trash_many_with_backend<B, FShouldAbort, FEmitProgress, FEmitChanged>(
     paths: Vec<String>,
-    app: tauri::AppHandle,
     undo: UndoState,
-    progress_event: Option<String>,
     cancel: Option<&AtomicBool>,
-) -> Result<(), String> {
+    backend: &B,
+    mut should_abort: FShouldAbort,
+    mut emit_progress: FEmitProgress,
+    mut emit_changed: FEmitChanged,
+) -> Result<(), String>
+where
+    B: TrashBackend,
+    FShouldAbort: FnMut(Option<&AtomicBool>) -> bool,
+    FEmitProgress: FnMut(u64, u64, bool),
+    FEmitChanged: FnMut(),
+{
     let total = paths.len() as u64;
     if total == 0 {
-        emit_trash_progress(
-            &app,
-            progress_event.as_ref(),
-            0,
-            0,
-            true,
-            &mut Instant::now(),
-        );
+        emit_progress(0, 0, true);
         return Ok(());
     }
     // Capture current trash contents once to avoid O(n^2) directory scans.
-    let before_ids: HashSet<OsString> = trash_list()
-        .map_err(|e| format!("Failed to list trash: {e}"))?
+    let before_ids: HashSet<OsString> = backend
+        .list_items()?
         .into_iter()
         .map(|item| item.id)
         .collect();
 
     let mut prepared: Vec<PreparedTrashMove> = Vec::with_capacity(paths.len());
-    let mut done = 0u64;
-    let mut last_emit = Instant::now();
+    let mut done: u64 = 0;
     for path in paths {
-        if should_abort_fs_op(&app, cancel) {
+        if should_abort(cancel) {
             rollback_prepared_trash(&prepared);
-            emit_trash_progress(
-                &app,
-                progress_event.as_ref(),
-                done,
-                total,
-                true,
-                &mut last_emit,
-            );
+            emit_progress(done, total, true);
             return Err("Move to trash cancelled".into());
         }
         match prepare_trash_move(&path) {
-            Ok(mut prep) => match trash_delete_via_staged_rename(&prep.src, &prep.src_snapshot) {
-                Ok(staged_src) => {
-                    prep.staged_src = Some(staged_src);
-                    done = done.saturating_add(1);
-                    emit_trash_progress(
-                        &app,
-                        progress_event.as_ref(),
-                        done,
-                        total,
-                        done == total,
-                        &mut last_emit,
-                    );
-                    prepared.push(prep);
+            Ok(mut prep) => {
+                match trash_delete_via_staged_rename(&prep.src, &prep.src_snapshot, backend) {
+                    Ok(staged_src) => {
+                        prep.staged_src = Some(staged_src);
+                        done = done.saturating_add(1);
+                        emit_progress(done, total, done == total);
+                        prepared.push(prep);
+                    }
+                    Err(err) => {
+                        rollback_prepared_trash(&prepared);
+                        let _ = undo_delete_path(&prep.backup);
+                        emit_progress(done, total, true);
+                        return Err(err);
+                    }
                 }
-                Err(err) => {
-                    rollback_prepared_trash(&prepared);
-                    let _ = undo_delete_path(&prep.backup);
-                    emit_trash_progress(
-                        &app,
-                        progress_event.as_ref(),
-                        done,
-                        total,
-                        true,
-                        &mut last_emit,
-                    );
-                    return Err(err);
-                }
-            },
+            }
             Err(err) => {
                 // Nothing was moved for this entry; roll back previous ones.
                 rollback_prepared_trash(&prepared);
-                emit_trash_progress(
-                    &app,
-                    progress_event.as_ref(),
-                    done,
-                    total,
-                    true,
-                    &mut last_emit,
-                );
+                emit_progress(done, total, true);
                 return Err(err);
             }
         }
@@ -1079,7 +1120,7 @@ fn move_to_trash_many_blocking(
 
     // Identify new trash items with a single post-scan.
     let mut new_items: HashMap<std::path::PathBuf, TrashItem> = HashMap::new();
-    if let Ok(after) = trash_list() {
+    if let Ok(after) = backend.list_items() {
         for item in after.into_iter().filter(|i| !before_ids.contains(&i.id)) {
             new_items.insert(item.original_path(), item);
         }
@@ -1089,8 +1130,7 @@ fn move_to_trash_many_blocking(
     for prep in prepared {
         let lookup = prep.staged_src.as_ref().unwrap_or(&prep.src);
         if let Some(item) = new_items.remove(lookup) {
-            #[cfg(not(target_os = "windows"))]
-            if let Err(err) = rewrite_trash_info_original_path(&item, &prep.src) {
+            if let Err(err) = backend.rewrite_original_path(&item, &prep.src) {
                 warn!(
                     "Failed to rewrite trash info for {}: {}",
                     prep.src.display(),
@@ -1116,8 +1156,39 @@ fn move_to_trash_many_blocking(
         Action::Batch(actions)
     };
     let _ = undo.record_applied(recorded);
-    let _ = runtime_lifecycle::emit_if_running(&app, "trash-changed", ());
+    emit_changed();
     Ok(())
+}
+
+fn move_to_trash_many_blocking(
+    paths: Vec<String>,
+    app: tauri::AppHandle,
+    undo: UndoState,
+    progress_event: Option<String>,
+    cancel: Option<&AtomicBool>,
+) -> Result<(), String> {
+    let backend = SystemTrashBackend;
+    let mut last_emit = Instant::now();
+    move_to_trash_many_with_backend(
+        paths,
+        undo,
+        cancel,
+        &backend,
+        |cancel_flag| should_abort_fs_op(&app, cancel_flag),
+        |done, total, finished| {
+            emit_trash_progress(
+                &app,
+                progress_event.as_ref(),
+                done,
+                total,
+                finished,
+                &mut last_emit,
+            );
+        },
+        || {
+            let _ = runtime_lifecycle::emit_if_running(&app, "trash-changed", ());
+        },
+    )
 }
 
 #[tauri::command]
@@ -1149,10 +1220,9 @@ pub async fn move_to_trash_many(
     .map_err(|e| format!("Move to trash task failed: {e}"))?
 }
 
-fn move_single_to_trash(
+fn move_single_to_trash_with_backend<B: TrashBackend>(
     path: &str,
-    app: &tauri::AppHandle,
-    emit_event: bool,
+    backend: &B,
 ) -> Result<Action, String> {
     let src = sanitize_path_nofollow(&path, true)?;
     check_no_symlink_components(&src)?;
@@ -1166,24 +1236,21 @@ fn move_single_to_trash(
     }
     undo_copy_entry(&src, &backup)?;
 
-    let before: HashSet<OsString> = trash_list()
-        .map_err(|e| format!("Failed to list trash: {e}"))?
+    let before: HashSet<OsString> = backend
+        .list_items()?
         .into_iter()
         .map(|item| item.id)
         .collect();
 
-    let staged_src = match trash_delete_via_staged_rename(&src, &src_snapshot) {
+    let staged_src = match trash_delete_via_staged_rename(&src, &src_snapshot, backend) {
         Ok(staged) => staged,
         Err(err) => {
             let _ = undo_delete_path(&backup);
             return Err(err);
         }
     };
-    if emit_event {
-        let _ = runtime_lifecycle::emit_if_running(app, "trash-changed", ());
-    }
 
-    let trashed_item = trash_list().ok().and_then(|after| {
+    let trashed_item = backend.list_items().ok().and_then(|after| {
         after
             .into_iter()
             .find(|item| !before.contains(&item.id) && item.original_path() == staged_src)
@@ -1191,8 +1258,7 @@ fn move_single_to_trash(
 
     match trashed_item {
         Some(item) => {
-            #[cfg(not(target_os = "windows"))]
-            if let Err(err) = rewrite_trash_info_original_path(&item, &src) {
+            if let Err(err) = backend.rewrite_original_path(&item, &src) {
                 warn!(
                     "Failed to rewrite trash info for {}: {}",
                     src.display(),
@@ -1208,6 +1274,19 @@ fn move_single_to_trash(
         }
         None => Ok(Action::Delete { path: src, backup }),
     }
+}
+
+fn move_single_to_trash(
+    path: &str,
+    app: &tauri::AppHandle,
+    emit_event: bool,
+) -> Result<Action, String> {
+    let backend = SystemTrashBackend;
+    let action = move_single_to_trash_with_backend(path, &backend)?;
+    if emit_event {
+        let _ = runtime_lifecycle::emit_if_running(app, "trash-changed", ());
+    }
+    Ok(action)
 }
 
 #[tauri::command]
@@ -1474,10 +1553,122 @@ fn ensure_no_symlink_components_existing_prefix(path: &Path) -> Result<(), Strin
 
 #[cfg(all(test, not(target_os = "windows")))]
 mod tests {
-    use super::{decode_percent_encoded_unix_path, encode_trash_info_path};
+    use super::{
+        cleanup_stale_trash_staging_at, decode_percent_encoded_unix_path, encode_trash_info_path,
+        load_trash_stage_journal_entries_at, move_single_to_trash_with_backend,
+        move_to_trash_many_with_backend, store_trash_stage_journal_entries_at, TrashBackend,
+        TrashStageJournalEntry,
+    };
+    use crate::undo::UndoState;
+    use std::cell::{Cell, RefCell};
+    use std::collections::VecDeque;
     use std::ffi::OsString;
+    use std::fs::{self, OpenOptions};
+    use std::io::Write;
     use std::os::unix::ffi::OsStringExt;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, SystemTime};
+    use trash::TrashItem;
+
+    fn uniq_path(label: &str) -> PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        std::env::temp_dir().join(format!("browsey-fs-test-{label}-{ts}"))
+    }
+
+    fn write_file(path: &Path, bytes: &[u8]) {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .expect("open file");
+        file.write_all(bytes).expect("write file");
+    }
+
+    #[derive(Default)]
+    struct FakeTrashBackend {
+        items: RefCell<Vec<TrashItem>>,
+        list_script: RefCell<VecDeque<Result<Vec<TrashItem>, String>>>,
+        delete_calls: RefCell<Vec<PathBuf>>,
+        rewrite_calls: RefCell<Vec<(PathBuf, PathBuf)>>,
+        fail_delete_call: Cell<Option<usize>>,
+        delete_call_count: Cell<usize>,
+    }
+
+    impl FakeTrashBackend {
+        fn with_fail_on_delete_call(call: usize) -> Self {
+            Self {
+                fail_delete_call: Cell::new(Some(call)),
+                ..Self::default()
+            }
+        }
+
+        fn queue_list_response(&self, value: Result<Vec<TrashItem>, String>) {
+            self.list_script.borrow_mut().push_back(value);
+        }
+    }
+
+    impl TrashBackend for FakeTrashBackend {
+        fn list_items(&self) -> Result<Vec<TrashItem>, String> {
+            if let Some(next) = self.list_script.borrow_mut().pop_front() {
+                return next;
+            }
+            Ok(self.items.borrow().clone())
+        }
+
+        fn delete_path(&self, path: &Path) -> Result<(), String> {
+            let next_call = self.delete_call_count.get().saturating_add(1);
+            self.delete_call_count.set(next_call);
+            self.delete_calls.borrow_mut().push(path.to_path_buf());
+
+            if self.fail_delete_call.get() == Some(next_call) {
+                return Err("simulated trash delete failure".into());
+            }
+
+            if let Ok(meta) = fs::symlink_metadata(path) {
+                if meta.is_dir() {
+                    fs::remove_dir_all(path).map_err(|e| format!("fake delete dir failed: {e}"))?;
+                } else {
+                    fs::remove_file(path).map_err(|e| format!("fake delete file failed: {e}"))?;
+                }
+            }
+
+            let name = path
+                .file_name()
+                .map(|n| n.to_os_string())
+                .unwrap_or_else(|| OsString::from("item"));
+            let original_parent = path
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| PathBuf::from("/"));
+            let id = PathBuf::from(format!("/tmp/fake-trash/info/item-{next_call}.trashinfo"))
+                .into_os_string();
+            self.items.borrow_mut().push(TrashItem {
+                id,
+                name,
+                original_parent,
+                time_deleted: 0,
+            });
+            Ok(())
+        }
+
+        fn rewrite_original_path(
+            &self,
+            item: &TrashItem,
+            original_path: &Path,
+        ) -> Result<(), String> {
+            self.rewrite_calls
+                .borrow_mut()
+                .push((PathBuf::from(&item.id), original_path.to_path_buf()));
+            Ok(())
+        }
+    }
 
     #[test]
     fn encode_trash_info_path_percent_encodes_non_unreserved_bytes() {
@@ -1495,5 +1686,125 @@ mod tests {
         let encoded = encode_trash_info_path(&original);
         let decoded = decode_percent_encoded_unix_path(&encoded).expect("decode should succeed");
         assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn move_single_to_trash_uses_backend_and_rewrites_original_path() {
+        let dir = uniq_path("single-trash-success");
+        let _ = fs::create_dir_all(&dir);
+        let src = dir.join("file.txt");
+        write_file(&src, b"hello");
+
+        let backend = FakeTrashBackend::default();
+        let action =
+            move_single_to_trash_with_backend(&src.to_string_lossy(), &backend).expect("success");
+
+        match action {
+            super::Action::Move { from, to: _ } => assert_eq!(from, src),
+            other => panic!("expected move action, got {other:?}"),
+        }
+        assert_eq!(
+            backend.delete_calls.borrow().len(),
+            1,
+            "one delete expected"
+        );
+        assert_eq!(
+            backend.rewrite_calls.borrow().len(),
+            1,
+            "one rewrite expected"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_single_to_trash_falls_back_to_delete_when_item_not_detected() {
+        let dir = uniq_path("single-trash-delete-fallback");
+        let _ = fs::create_dir_all(&dir);
+        let src = dir.join("file.txt");
+        write_file(&src, b"hello");
+
+        let backend = FakeTrashBackend::default();
+        backend.queue_list_response(Ok(Vec::new()));
+        backend.queue_list_response(Ok(Vec::new()));
+
+        let action =
+            move_single_to_trash_with_backend(&src.to_string_lossy(), &backend).expect("success");
+        match action {
+            super::Action::Delete { path, backup: _ } => assert_eq!(path, src),
+            other => panic!("expected delete action, got {other:?}"),
+        }
+        assert_eq!(
+            backend.rewrite_calls.borrow().len(),
+            0,
+            "no rewrite expected"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_to_trash_many_rolls_back_previous_on_later_failure() {
+        let dir = uniq_path("many-trash-rollback");
+        let _ = fs::create_dir_all(&dir);
+        let src1 = dir.join("a.txt");
+        let src2 = dir.join("b.txt");
+        write_file(&src1, b"a");
+        write_file(&src2, b"b");
+
+        let backend = FakeTrashBackend::with_fail_on_delete_call(2);
+        let undo = UndoState::default();
+        let result = move_to_trash_many_with_backend(
+            vec![
+                src1.to_string_lossy().into_owned(),
+                src2.to_string_lossy().into_owned(),
+            ],
+            undo,
+            None,
+            &backend,
+            |_| false,
+            |_done, _total, _finished| {},
+            || {},
+        );
+
+        assert!(result.is_err(), "second delete should fail");
+        assert!(
+            src1.exists(),
+            "first file should be restored after rollback"
+        );
+        assert!(
+            src2.exists(),
+            "second file should be rolled back by staging logic"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cleanup_stale_trash_staging_recovers_staged_item_and_clears_journal() {
+        let dir = uniq_path("cleanup-staged-trash");
+        let journal = dir.join("journal.tsv");
+        let _ = fs::create_dir_all(&dir);
+        let staged = dir.join("browsey-trash-stage-test");
+        let original = dir.join("original.txt");
+        write_file(&staged, b"staged");
+
+        let entries = vec![TrashStageJournalEntry {
+            staged: staged.clone(),
+            original: original.clone(),
+        }];
+        store_trash_stage_journal_entries_at(&journal, &entries).expect("store journal");
+
+        cleanup_stale_trash_staging_at(&journal);
+
+        assert!(!staged.exists(), "staged path should be gone after cleanup");
+        assert!(
+            original.exists(),
+            "original path should be restored after cleanup"
+        );
+        let remaining = load_trash_stage_journal_entries_at(&journal).expect("load journal");
+        assert!(remaining.is_empty(), "journal should be emptied");
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
