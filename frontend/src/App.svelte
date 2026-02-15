@@ -1596,12 +1596,13 @@
       if (mode === 'filter') {
         event.preventDefault()
         event.stopPropagation()
-        void enterAddressMode()
+        void enterAddressMode().then(() => blurPathInput())
+        return
       }
       if ($searchMode || mode === 'search') {
         event.preventDefault()
         event.stopPropagation()
-        void setSearchModeState(false)
+        void enterAddressMode().then(() => blurPathInput())
         return
       }
       if (inRows) {
@@ -1610,12 +1611,6 @@
         selected.set(new Set())
         anchorIndex.set(null)
         caretIndex.set(null)
-        return
-      }
-      if (mode === 'filter') {
-        event.preventDefault()
-        event.stopPropagation()
-        void enterAddressMode()
         return
       }
       const hasSelection = get(selected).size > 0
