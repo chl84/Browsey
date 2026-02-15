@@ -1302,9 +1302,10 @@
       return true
     },
     onDelete: async (permanent) => {
-      const paths = Array.from($selected)
-      if (paths.length === 0) return false
-      const entries = $filteredEntries.filter((e) => paths.includes(e.path))
+      const selectedPaths = Array.from($selected)
+      if (selectedPaths.length === 0) return false
+      const selectedPathSet = new Set(selectedPaths)
+      const entries = $filteredEntries.filter((e) => selectedPathSet.has(e.path))
       if (entries.length === 0) return false
       const hasNetwork = entries.some((e) => e.network)
 
@@ -1702,9 +1703,13 @@
     try {
       const selectionCount = $selected.has(entry.path) ? $selected.size : 1
       const selectionPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
-      const selectionEntries = selectionPaths
-        .map((p) => $visibleEntries.find((e) => e.path === p) || entry)
-        .filter(Boolean) as Entry[]
+      const selectionEntries =
+        selectionPaths.length <= 1
+          ? [entry]
+          : (() => {
+              const visibleByPath = new Map($visibleEntries.map((visibleEntry) => [visibleEntry.path, visibleEntry]))
+              return selectionPaths.map((p) => visibleByPath.get(p) ?? entry)
+            })()
 
       let actions = await invoke<ContextAction[]>('context_menu_actions', {
         count: selectionCount,
@@ -2557,7 +2562,10 @@
       const selectedPaths = $selected.size > 0 ? Array.from($selected) : entry ? [entry.path] : []
       const entries =
         selectedPaths.length > 0
-          ? $filteredEntries.filter((e) => selectedPaths.includes(e.path))
+          ? (() => {
+              const selectedPathSet = new Set(selectedPaths)
+              return $filteredEntries.filter((e) => selectedPathSet.has(e.path))
+            })()
           : entry
             ? [entry]
             : []
