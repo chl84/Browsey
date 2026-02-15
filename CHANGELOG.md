@@ -10,6 +10,12 @@
 - Input/search refactor: mode transitions (`address`/`filter`/search session) are now centralized for more consistent state resets.
 - Search state cleanup: `searchRunning` now represents active backend search execution, with state ownership moved to the explorer state layer.
 - Wastebasket delete performance: trash entries are now resolved and purged by stable trash IDs, reducing unnecessary `.trashinfo` scans.
+- Wastebasket reliability/security hardening: Unix trash/undo rename-delete paths now use descriptor-based no-follow primitives to reduce symlink and check-then-use race exposure.
+- Wastebasket compatibility: no-overwrite rename now falls back on Linux when `renameat2(RENAME_NOREPLACE)` is unavailable, with documented narrower race guarantees instead of hard failure.
+- Wastebasket crash recovery: staged trash renames are now journaled and recovered on startup if a previous trash operation was interrupted.
+- Windows wastebasket correctness: trash moves no longer use staged renames on Windows, so restore keeps the original path and filename.
+- Wastebasket internals were refactored behind a backend abstraction and covered with rollback/fallback/cleanup unit tests.
+- Linux Open With hardening: selected app IDs are now resolved only from canonical in-scope `.desktop` files (symlink/out-of-scope entries are rejected).
 - Properties permissions: ownership editing (`user`/`group`) now supports privilege escalation on Linux via `pkexec` helper fallback when needed.
 - Permissions/ownership behavior: changes from the Properties modal are now intentionally excluded from undo/redo history.
 - Permissions/ownership safety: rollback paths are now decoupled from undo action types and validated with dedicated partial-rollback failure tests.
