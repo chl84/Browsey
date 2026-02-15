@@ -1,7 +1,7 @@
 //! Library-style listings: starred items and recent paths.
 
 use crate::{
-    commands::listing::{build_listing_facets, DirListing},
+    commands::listing::DirListing,
     db,
     entry::{build_entry, normalize_key_for_db},
     sorting::{sort_entries, SortSpec},
@@ -39,11 +39,9 @@ pub fn list_starred(sort: Option<SortSpec>) -> Result<DirListing, String> {
         }
     }
     sort_entries(&mut out, sort);
-    let facets = build_listing_facets(&out);
     Ok(DirListing {
         current: "Starred".to_string(),
         entries: out,
-        facets,
     })
 }
 
@@ -63,11 +61,9 @@ pub fn list_recent(sort: Option<SortSpec>) -> Result<DirListing, String> {
     if sort.is_some() {
         sort_entries(&mut out, sort);
     }
-    let facets = build_listing_facets(&out);
     Ok(DirListing {
         current: "Recent".to_string(),
         entries: out,
-        facets,
     })
 }
 

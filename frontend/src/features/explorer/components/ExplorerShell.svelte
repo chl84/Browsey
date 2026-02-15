@@ -58,6 +58,7 @@
   export let gridTemplate = ''
   export let rowsEl: HTMLDivElement | null = null
   export let headerEl: HTMLDivElement | null = null
+  export let filterSourceEntries: Entry[] = []
   export let filteredEntries: Entry[] = []
   export let visibleEntries: Entry[] = []
   export let showHidden = false
@@ -68,6 +69,8 @@
     size: Set<string>
   } = { name: new Set(), type: new Set(), modified: new Set(), size: new Set() }
   export let columnFacets: ListingFacets = { name: [], type: [], modified: [], size: [] }
+  export let columnFacetsLoading = false
+  export let onEnsureColumnFacets: () => void | Promise<void> = () => {}
   export let start = 0
   export let offsetY = 0
   export let totalHeight = 0
@@ -313,6 +316,10 @@
         {loading}
         {columnFilters}
         {columnFacets}
+        columnFacetsLoading={columnFacetsLoading}
+        onEnsureColumnFacets={onEnsureColumnFacets}
+        filterValue={filterValue}
+        filterSourceEntries={filterSourceEntries}
         filteredEntries={filteredEntries}
         visibleEntries={visibleEntries}
         {start}

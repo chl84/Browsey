@@ -2,6 +2,7 @@
   import type { FilterOption } from '../types'
 
   export let open = false
+  export let loading = false
   export let options: FilterOption[] = []
   export let selected: Set<string> = new Set()
   export let anchor: DOMRect | null = null
@@ -40,7 +41,7 @@
   }
 </script>
 
-{#if open && anchor && options.length > 0}
+{#if open && anchor}
   <div
     class="filter-layer"
     role="presentation"
@@ -57,19 +58,25 @@
       on:keydown|stopPropagation
     >
       <div class="options">
-        {#each options as opt}
-          <label class="option">
-            <input
-              type="checkbox"
-              checked={selected.has(opt.id)}
-              on:change={(e) => onToggle(opt.id, (e.target as HTMLInputElement).checked)}
-            />
-            <span class="text" title={opt.label}>{opt.label}</span>
-            {#if opt.description}
-              <span class="muted">{opt.description}</span>
-            {/if}
-          </label>
-        {/each}
+        {#if loading}
+          <div class="empty">Loading filters...</div>
+        {:else if options.length === 0}
+          <div class="empty">No filters available</div>
+        {:else}
+          {#each options as opt}
+            <label class="option">
+              <input
+                type="checkbox"
+                checked={selected.has(opt.id)}
+                on:change={(e) => onToggle(opt.id, (e.target as HTMLInputElement).checked)}
+              />
+              <span class="text" title={opt.label}>{opt.label}</span>
+              {#if opt.description}
+                <span class="muted">{opt.description}</span>
+              {/if}
+            </label>
+          {/each}
+        {/if}
       </div>
     </div>
   </div>
@@ -128,5 +135,11 @@
     grid-column: 2;
     font-size: 12px;
     color: var(--fg-muted);
+  }
+
+  .empty {
+    font-size: 12px;
+    color: var(--fg-muted);
+    padding: 2px 0;
   }
 </style>

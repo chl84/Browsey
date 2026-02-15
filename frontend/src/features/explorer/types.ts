@@ -22,7 +22,6 @@ export type Entry = {
 export type Listing = {
   current: string
   entries: Entry[]
-  facets: ListingFacets
 }
 
 export type SortField = 'name' | 'type' | 'modified' | 'size' | 'starred'

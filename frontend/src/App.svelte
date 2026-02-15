@@ -263,6 +263,7 @@
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
+    visibleEntries: filterSourceEntries,
     load: loadRaw,
     loadRecent: loadRecentRaw,
     loadStarred: loadStarredRaw,
@@ -287,6 +288,8 @@
     toggleColumnFilter,
     resetColumnFilter,
     columnFacets,
+    columnFacetsLoading,
+    ensureColumnFacets,
   } = explorer
 
   const selectionActive = selectionBox.active
@@ -2980,11 +2983,14 @@
   showHidden={$showHidden}
   columnFilters={$columnFilters}
   columnFacets={$columnFacets}
+  columnFacetsLoading={$columnFacetsLoading}
+  onEnsureColumnFacets={ensureColumnFacets}
   videoThumbs={$videoThumbs}
   {thumbnailRefreshToken}
   cols={$cols}
   gridTemplate={$gridTemplate}
   filteredEntries={$filteredEntries}
+  filterSourceEntries={$filterSourceEntries}
   visibleEntries={$visibleEntries}
   start={$start}
   offsetY={$offsetY}

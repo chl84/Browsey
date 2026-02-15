@@ -5,14 +5,18 @@
   import ColumnFilterMenu from './ColumnFilterMenu.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import type { Column, Entry, SortDirection, SortField, FilterOption, ListingFacets } from '../types'
+  import { nameBucket } from '../filters/nameFilters'
+  import { modifiedBucket, sizeBucket, typeLabel } from '../filters/columnBuckets'
 
   export let cols: Column[] = []
   export let gridTemplate = ''
   export let rowsEl: HTMLDivElement | null = null
   export let headerEl: HTMLDivElement | null = null
   export let loading = false
+  export let filterSourceEntries: Entry[] = []
   export let filteredEntries: Entry[] = []
   export let visibleEntries: Entry[] = []
+  export let filterValue = ''
   export let columnFilters: {
     name: Set<string>
     type: Set<string>
@@ -20,6 +24,8 @@
     size: Set<string>
   } = { name: new Set(), type: new Set(), modified: new Set(), size: new Set() }
   export let columnFacets: ListingFacets = { name: [], type: [], modified: [], size: [] }
+  export let columnFacetsLoading = false
+  export let onEnsureColumnFacets: () => void | Promise<void> = () => {}
   export let start = 0
   export let offsetY = 0
   export let totalHeight = 0
@@ -85,11 +91,86 @@
   const isFilterField = (field: SortField): field is FilterField =>
     field === 'name' || field === 'type' || field === 'modified' || field === 'size'
 
-  const filterOptionsForField = (field: FilterField): FilterOption[] => {
+  const facetOptionsForField = (field: FilterField): FilterOption[] => {
     if (field === 'name') return columnFacets.name
     if (field === 'type') return columnFacets.type
     if (field === 'modified') return columnFacets.modified
     return columnFacets.size
+  }
+
+  const selectedForField = (field: FilterField): Set<string> => {
+    if (field === 'name') return activeNameFilters
+    if (field === 'type') return activeTypeFilters
+    if (field === 'modified') return activeModifiedFilters
+    return activeSizeFilters
+  }
+
+  const entryMatchesFilter = (entry: Entry, field: FilterField): boolean => {
+    if (field === 'name') {
+      const bucket = nameBucket(entry.nameLower ?? entry.name.toLowerCase())
+      return activeNameFilters.has(bucket)
+    }
+    if (field === 'type') {
+      return activeTypeFilters.has(`type:${typeLabel(entry)}`)
+    }
+    if (field === 'modified') {
+      const bucket = modifiedBucket(entry.modified)
+      return !!bucket && activeModifiedFilters.has(`modified:${bucket.label}`)
+    }
+    if (entry.kind !== 'file' || typeof entry.size !== 'number') return false
+    const bucket = sizeBucket(entry.size)
+    return !!bucket && activeSizeFilters.has(`size:${bucket.label}`)
+  }
+
+  const entriesForFilterField = (field: FilterField): Entry[] => {
+    const needle = filterValue.trim().toLowerCase()
+    const base =
+      needle.length === 0
+        ? filterSourceEntries
+        : filterSourceEntries.filter((e) => (e.nameLower ?? e.name.toLowerCase()).includes(needle))
+    return base.filter((entry) => {
+      if (field !== 'name' && activeNameFilters.size > 0 && !entryMatchesFilter(entry, 'name')) return false
+      if (field !== 'type' && activeTypeFilters.size > 0 && !entryMatchesFilter(entry, 'type')) return false
+      if (field !== 'modified' && activeModifiedFilters.size > 0 && !entryMatchesFilter(entry, 'modified')) return false
+      if (field !== 'size' && activeSizeFilters.size > 0 && !entryMatchesFilter(entry, 'size')) return false
+      return true
+    })
+  }
+
+  const availableOptionIds = (field: FilterField): Set<string> => {
+    const set = new Set<string>()
+    const entries = entriesForFilterField(field)
+    for (const entry of entries) {
+      if (field === 'name') {
+        set.add(nameBucket(entry.nameLower ?? entry.name.toLowerCase()))
+        continue
+      }
+      if (field === 'type') {
+        set.add(`type:${typeLabel(entry)}`)
+        continue
+      }
+      if (field === 'modified') {
+        const bucket = modifiedBucket(entry.modified)
+        if (bucket) {
+          set.add(`modified:${bucket.label}`)
+        }
+        continue
+      }
+      if (entry.kind !== 'file' || typeof entry.size !== 'number') continue
+      const bucket = sizeBucket(entry.size)
+      if (bucket) {
+        set.add(`size:${bucket.label}`)
+      }
+    }
+    return set
+  }
+
+  const filterOptionsForField = (field: FilterField): FilterOption[] => {
+    const facetOptions = facetOptionsForField(field)
+    if (facetOptions.length === 0) return []
+    const selected = selectedForField(field)
+    const available = availableOptionIds(field)
+    return facetOptions.filter((opt) => available.has(opt.id) || selected.has(opt.id))
   }
 
   const handleFilterClick = (field: SortField, anchor: DOMRect) => {
@@ -100,6 +181,9 @@
     filterMenuAnchor = anchor
     filterMenuField = field
     filterMenuOptions = filterOptionsForField(field)
+    if (facetOptionsForField(field).length === 0) {
+      void onEnsureColumnFacets()
+    }
   }
 
   const closeFilterMenu = () => {
@@ -135,6 +219,10 @@
     modified: activeModifiedFilters.size > 0,
     size: activeSizeFilters.size > 0,
     starred: false,
+  }
+
+  $: if (filterMenuOpen && filterMenuField && isFilterField(filterMenuField)) {
+    filterMenuOptions = filterOptionsForField(filterMenuField)
   }
 </script>
 
@@ -205,6 +293,7 @@
 
 <ColumnFilterMenu
   open={filterMenuOpen}
+  loading={columnFacetsLoading}
   options={filterMenuOptions}
   selected={
     filterMenuField === 'type'
