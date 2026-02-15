@@ -1258,42 +1258,34 @@
     goForward,
     onCopy: async () => {
       const paths = Array.from($selected)
-      if (paths.length === 0) return false
-      const entries = $filteredEntries.filter((e) => paths.includes(e.path))
-      const result = await clipboard.copy(entries)
+      const result = await clipboard.copyPaths(paths)
       if (!result.ok) {
         showToast(`Copy failed: ${result.error}`)
         return false
       }
-      try {
-        await copyPathsToSystemClipboard(paths)
-        showToast('Copied', 1500)
-      } catch (err) {
+      showToast('Copied', 1500)
+      void copyPathsToSystemClipboard(paths).catch((err) => {
         showToast(
           `Copied (system clipboard unavailable: ${err instanceof Error ? err.message : String(err)})`,
           2500
         )
-      }
+      })
       return true
     },
     onCut: async () => {
       const paths = Array.from($selected)
-      if (paths.length === 0) return false
-      const entries = $filteredEntries.filter((e) => paths.includes(e.path))
-      const result = await clipboard.cut(entries)
+      const result = await clipboard.cutPaths(paths)
       if (!result.ok) {
         showToast(`Cut failed: ${result.error}`)
         return false
       }
-      try {
-        await copyPathsToSystemClipboard(paths, 'cut')
-        showToast('Cut', 1500)
-      } catch (err) {
+      showToast('Cut', 1500)
+      void copyPathsToSystemClipboard(paths, 'cut').catch((err) => {
         showToast(
           `Cut (system clipboard unavailable: ${err instanceof Error ? err.message : String(err)})`,
           2500
         )
-      }
+      })
       return true
     },
     onPaste: async () => {
