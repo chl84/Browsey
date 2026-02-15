@@ -60,16 +60,6 @@ pub enum Action {
         path: PathBuf,
     },
     Batch(Vec<Action>),
-    SetPermissions {
-        path: PathBuf,
-        before: PermissionsSnapshot,
-        after: PermissionsSnapshot,
-    },
-    SetOwnership {
-        path: PathBuf,
-        before: OwnershipSnapshot,
-        after: OwnershipSnapshot,
-    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -351,28 +341,6 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
                 }
             }
         },
-        Action::SetPermissions {
-            path,
-            before,
-            after,
-        } => {
-            let snap = match direction {
-                Direction::Forward => after,
-                Direction::Backward => before,
-            };
-            apply_permissions(path, snap)
-        }
-        Action::SetOwnership {
-            path,
-            before,
-            after,
-        } => {
-            let snap = match direction {
-                Direction::Forward => after,
-                Direction::Backward => before,
-            };
-            apply_ownership(path, snap)
-        }
     }
 }
 
@@ -428,7 +396,7 @@ fn ensure_absent(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> Result<(), String> {
+pub(crate) fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> Result<(), String> {
     check_no_symlink_components(path)?;
     let meta_no_follow = fs::symlink_metadata(path)
         .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
@@ -701,7 +669,7 @@ pub(crate) fn set_unix_mode_nofollow(path: &Path, mode: u32) -> Result<(), Strin
     ))
 }
 
-fn apply_ownership(path: &Path, snap: &OwnershipSnapshot) -> Result<(), String> {
+pub(crate) fn apply_ownership(path: &Path, snap: &OwnershipSnapshot) -> Result<(), String> {
     #[cfg(unix)]
     {
         check_no_symlink_components(path)?;
@@ -1170,39 +1138,6 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
         let _ = fs::remove_dir_all(backup.parent().unwrap_or_else(|| Path::new(".")));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn permissions_roundtrip() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let dir = uniq_path("perm");
-        let _ = fs::create_dir_all(&dir);
-        let path = dir.join("file.txt");
-        write_file(&path, b"perm");
-
-        let before = permissions_snapshot(&path).unwrap();
-        let mut after = before.clone();
-        // Flip owner exec bit for the test.
-        after.mode ^= 0o100;
-        let after_mode = after.mode;
-
-        let mut mgr = UndoManager::new();
-        mgr.apply(Action::SetPermissions {
-            path: path.clone(),
-            before: before.clone(),
-            after,
-        })
-        .unwrap();
-        let mode = fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o100, after_mode & 0o100);
-
-        mgr.undo().unwrap();
-        let mode = fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o100, before.mode & 0o100);
-
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
