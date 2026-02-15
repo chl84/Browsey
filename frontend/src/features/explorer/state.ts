@@ -15,7 +15,17 @@ import type {
 } from './types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files'
-import { listDir, listRecent, listStarred, listTrash, watchDir, listMounts, searchStream } from './services/listing'
+import {
+  listDir,
+  listFacets,
+  listRecent,
+  listStarred,
+  listTrash,
+  watchDir,
+  listMounts,
+  searchStream,
+  type FacetScope,
+} from './services/listing'
 import { cancelTask } from './services/activity'
 import { storeColumnWidths, loadSavedColumnWidths } from './services/layout'
 import {
@@ -200,6 +210,73 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     size: new Set(),
   })
   const columnFacets = writable<ListingFacets>(emptyListingFacets())
+  const columnFacetsLoading = writable(false)
+  const facetCache = new Map<string, ListingFacets>()
+  let facetRequestSeq = 0
+
+  const currentFacetScope = (where: string): { scope: FacetScope; path?: string } | null => {
+    if (where === 'Recent') return { scope: 'recent' }
+    if (where === 'Starred') return { scope: 'starred' }
+    if (where === 'Trash') return { scope: 'trash' }
+    if (where.trim().length === 0) return null
+    return { scope: 'dir', path: where }
+  }
+
+  const facetCacheKey = (
+    context: { scope: FacetScope; path?: string },
+    includeHidden: boolean,
+  ): string => `${context.scope}|${context.path ?? ''}|hidden:${includeHidden ? 1 : 0}`
+
+  const clearFacetCache = () => {
+    facetRequestSeq += 1
+    facetCache.clear()
+    columnFacets.set(emptyListingFacets())
+    columnFacetsLoading.set(false)
+  }
+
+  const ensureColumnFacets = async () => {
+    if (get(searchMode)) {
+      return
+    }
+    const context = currentFacetScope(get(current))
+    if (!context) {
+      columnFacets.set(emptyListingFacets())
+      return
+    }
+
+    const includeHidden = get(showHidden)
+    const key = facetCacheKey(context, includeHidden)
+    const cached = facetCache.get(key)
+    if (cached) {
+      columnFacets.set(cached)
+      return
+    }
+
+    const req = ++facetRequestSeq
+    columnFacetsLoading.set(true)
+    try {
+      const facets = await listFacets({
+        scope: context.scope,
+        path: context.path,
+        includeHidden,
+      })
+      facetCache.set(key, facets)
+      const latest = currentFacetScope(get(current))
+      const latestKey = latest ? facetCacheKey(latest, get(showHidden)) : null
+      if (req === facetRequestSeq && latestKey === key) {
+        columnFacets.set(facets)
+      }
+    } catch (err) {
+      console.error('Failed to load column facets', err)
+      if (req === facetRequestSeq) {
+        columnFacets.set(emptyListingFacets())
+      }
+    } finally {
+      if (req === facetRequestSeq) {
+        columnFacetsLoading.set(false)
+      }
+    }
+  }
 
   const applyColumnFilters = (list: Entry[], filters: ColumnFilters) => {
     const hasName = filters.name.size > 0
@@ -315,6 +392,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     if (!silent) {
       loading.set(true)
     }
+    clearFacetCache()
     error.set('')
     invalidateSearchRun()
     searchRunning.set(false)
@@ -322,7 +400,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       const result = await listDir(path, sortPayload())
       current.set(result.current)
       entries.set(mapNameLower(result.entries))
-      columnFacets.set(result.facets ?? emptyListingFacets())
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.(result.current)
       if (recordHistory) {
@@ -340,6 +417,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const loadRecent = async (recordHistory = true, applySort = false) => {
     loading.set(true)
+    clearFacetCache()
     error.set('')
     invalidateSearchRun()
     searchRunning.set(false)
@@ -348,7 +426,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       const result = await listRecent(sortArg)
       current.set(result.current)
       entries.set(mapNameLower(result.entries))
-      columnFacets.set(result.facets ?? emptyListingFacets())
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.(result.current)
       if (recordHistory) {
@@ -363,6 +440,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const loadStarred = async (recordHistory = true) => {
     loading.set(true)
+    clearFacetCache()
     error.set('')
     invalidateSearchRun()
     searchRunning.set(false)
@@ -370,7 +448,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       const result = await listStarred(sortPayload())
       current.set(result.current)
       entries.set(mapNameLower(result.entries))
-      columnFacets.set(result.facets ?? emptyListingFacets())
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.(result.current)
       if (recordHistory) {
@@ -385,6 +462,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const loadTrash = async (recordHistory = true) => {
     loading.set(true)
+    clearFacetCache()
     error.set('')
     invalidateSearchRun()
     searchRunning.set(false)
@@ -392,7 +470,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       const result = await listTrash(sortPayload())
       current.set('Trash')
       entries.set(mapNameLower(result.entries))
-      columnFacets.set(result.facets ?? emptyListingFacets())
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.('Wastebasket')
       if (recordHistory) {
@@ -562,6 +639,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       void storeShowHidden(next)
       return next
     })
+    clearFacetCache()
   }
 
   const toggleHiddenFilesLast = () => {
@@ -630,6 +708,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     const needle = needleRaw.trim()
     const progressEvent = `search-progress-${Math.random().toString(16).slice(2)}`
     loading.set(true)
+    clearFacetCache()
     error.set('')
 
     invalidateSearchRun()
@@ -675,7 +754,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     filter.set(needle)
     searchRunning.set(true)
     entries.set([])
-    columnFacets.set(emptyListingFacets())
     callbacks.onEntriesChanged?.()
 
     const flushBuffer = () => {
@@ -1144,6 +1222,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     showHidden,
     columnFilters,
     columnFacets,
+    columnFacetsLoading,
     visibleEntries,
     filteredEntries,
     density,
@@ -1204,5 +1283,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadMountsPollPref,
     toggleColumnFilter,
     resetColumnFilter,
+    ensureColumnFacets,
   }
 }

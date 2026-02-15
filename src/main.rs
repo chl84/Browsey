@@ -35,12 +35,13 @@ const MAX_LOG_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
 struct LocalTimestamp;
 
 impl tracing_subscriber::fmt::time::FormatTime for LocalTimestamp {
-    fn format_time(
-        &self,
-        w: &mut tracing_subscriber::fmt::format::Writer<'_>,
-    ) -> std::fmt::Result {
+    fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
         // Write local wall-clock time with timezone offset, e.g. 2026-02-15T14:08:12.345678+01:00
-        write!(w, "{}", chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.6f%:z"))
+        write!(
+            w,
+            "{}",
+            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.6f%:z")
+        )
     }
 }
 
@@ -195,6 +196,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             about_info,
             list_dir,
+            list_facets,
             list_mounts,
             get_bookmarks,
             add_bookmark,

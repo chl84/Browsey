@@ -151,9 +151,15 @@ impl ListingFacetBuilder {
     }
 }
 
-pub fn build_listing_facets(entries: &[FsEntry]) -> ListingFacets {
+pub fn build_listing_facets_with_hidden(
+    entries: &[FsEntry],
+    include_hidden: bool,
+) -> ListingFacets {
     let mut builder = ListingFacetBuilder::default();
     for entry in entries {
+        if !include_hidden && entry.hidden {
+            continue;
+        }
         builder.add(entry);
     }
     builder.finish()
@@ -187,7 +193,6 @@ fn name_filter_rank(id: &str) -> i64 {
 pub struct DirListing {
     pub current: String,
     pub entries: Vec<FsEntry>,
-    pub facets: ListingFacets,
 }
 
 fn entry_type_label(e: &FsEntry) -> String {
@@ -539,13 +544,11 @@ fn list_dir_sync(
     }
 
     sort_entries(&mut entries, sort);
-    let facets = build_listing_facets(&entries);
     spawn_meta_refresh(app, pending_meta);
 
     Ok(DirListing {
         current: display_path(&target),
         entries,
-        facets,
     })
 }
 
@@ -559,6 +562,29 @@ pub async fn list_dir(
     tauri::async_runtime::spawn_blocking(move || list_dir_sync(path, sort, app_clone))
         .await
         .unwrap_or_else(|e| Err(format!("list_dir task panicked: {e}")))
+}
+
+#[tauri::command]
+pub async fn list_facets(
+    scope: String,
+    path: Option<String>,
+    include_hidden: Option<bool>,
+    app: tauri::AppHandle,
+) -> Result<ListingFacets, String> {
+    let app_clone = app.clone();
+    let include_hidden = include_hidden.unwrap_or(true);
+    tauri::async_runtime::spawn_blocking(move || {
+        let entries = match scope.as_str() {
+            "dir" => list_dir_sync(path, None, app_clone.clone())?.entries,
+            "recent" => crate::commands::library::list_recent(None)?.entries,
+            "starred" => crate::commands::library::list_starred(None)?.entries,
+            "trash" => crate::commands::fs::list_trash(None)?.entries,
+            _ => return Err(format!("Unsupported facet scope: {scope}")),
+        };
+        Ok(build_listing_facets_with_hidden(&entries, include_hidden))
+    })
+    .await
+    .unwrap_or_else(|e| Err(format!("list_facets task panicked: {e}")))
 }
 
 fn watch_allow_all() -> bool {
