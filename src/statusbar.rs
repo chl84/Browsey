@@ -2,10 +2,12 @@ use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::Emitter;
+use std::sync::atomic::Ordering;
 
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
+
+use crate::{commands::CancelState, runtime_lifecycle};
 
 /// Height hint for the status bar in the UI.
 #[allow(dead_code)]
@@ -41,23 +43,30 @@ fn should_skip(path: &Path, pseudo_roots: &HashSet<&str>) -> bool {
     false
 }
 
-fn dir_size_recursive<F>(
+fn dir_size_recursive<F, S>(
     root: &Path,
     #[cfg_attr(not(unix), allow(unused_variables))] root_dev: Option<u64>,
     pseudo_roots: &HashSet<&str>,
     mut on_progress: F,
-) -> (u64, u64)
+    should_stop: S,
+) -> (u64, u64, bool)
 where
     F: FnMut(u64, u64),
+    S: Fn() -> bool,
 {
     let mut total: u64 = 0;
     let mut items: u64 = 0;
     let mut stack = vec![root.to_path_buf()];
     let mut pending: u64 = 0;
     let mut pending_items: u64 = 0;
+    let mut stopped = false;
     const PROGRESS_BYTES: u64 = 500 * 1024 * 1024; // emit roughly every 500MB
 
     while let Some(path) = stack.pop() {
+        if should_stop() {
+            stopped = true;
+            break;
+        }
         if should_skip(&path, pseudo_roots) {
             continue;
         }
@@ -106,25 +115,39 @@ where
                 Err(_) => continue,
             };
             for entry in iter.flatten() {
+                if should_stop() {
+                    stopped = true;
+                    break;
+                }
                 stack.push(entry.path());
+            }
+            if stopped {
+                break;
             }
         }
     }
 
-    if pending > 0 {
+    if pending > 0 && !stopped {
         on_progress(pending, pending_items);
     }
 
-    (total, items)
+    (total, items, stopped)
 }
 
 #[tauri::command]
 pub async fn dir_sizes(
     app: tauri::AppHandle,
+    cancel: tauri::State<'_, CancelState>,
     paths: Vec<String>,
     progress_event: Option<String>,
 ) -> Result<DirSizeResult, String> {
-    let task = tauri::async_runtime::spawn_blocking(move || {
+    let cancel_state = cancel.inner().clone();
+    let task = tauri::async_runtime::spawn_blocking(move || -> Result<DirSizeResult, String> {
+        let cancel_guard = progress_event
+            .as_ref()
+            .map(|evt| cancel_state.register(evt.clone()))
+            .transpose()?;
+        let cancel_token = cancel_guard.as_ref().map(|g| g.token());
         let mut entries = Vec::new();
         let mut total: u64 = 0;
         let mut total_items: u64 = 0;
@@ -139,9 +162,17 @@ pub async fn dir_sizes(
         ]
         .into_iter()
         .collect();
-        let emitter = progress_event.map(|evt| (app, evt));
+        let emitter = progress_event;
 
         for raw in paths {
+            if runtime_lifecycle::is_shutting_down(&app)
+                || cancel_token
+                    .as_ref()
+                    .map(|token| token.load(Ordering::Relaxed))
+                    .unwrap_or(false)
+            {
+                break;
+            }
             let path = PathBuf::from(&raw);
             if !path.exists() {
                 continue;
@@ -155,12 +186,10 @@ pub async fn dir_sizes(
             let mut partial: u64 = 0;
             let mut partial_items: u64 = 0;
             let emit_progress =
-                |delta: u64,
-                 items_delta: u64,
-                 raw: &str,
-                 emitter: &Option<(tauri::AppHandle, String)>| {
-                    if let Some((app, evt)) = emitter {
-                        let _ = app.emit(
+                |delta: u64, items_delta: u64, raw: &str, emitter: &Option<String>| {
+                    if let Some(evt) = emitter {
+                        let _ = runtime_lifecycle::emit_if_running(
+                            &app,
                             evt,
                             DirSizeEntry {
                                 path: raw.to_string(),
@@ -171,12 +200,23 @@ pub async fn dir_sizes(
                     }
                 };
 
-            let (size, items) =
-                dir_size_recursive(&path, root_dev, &pseudo_roots, |delta, items_delta| {
+            let (size, items, stopped) = dir_size_recursive(
+                &path,
+                root_dev,
+                &pseudo_roots,
+                |delta, items_delta| {
                     partial = partial.saturating_add(delta);
                     partial_items = partial_items.saturating_add(items_delta);
                     emit_progress(partial, partial_items, &raw, &emitter);
-                });
+                },
+                || {
+                    runtime_lifecycle::is_shutting_down(&app)
+                        || cancel_token
+                            .as_ref()
+                            .map(|token| token.load(Ordering::Relaxed))
+                            .unwrap_or(false)
+                },
+            );
             total = total.saturating_add(size);
             total_items = total_items.saturating_add(items);
             entries.push(DirSizeEntry {
@@ -184,15 +224,18 @@ pub async fn dir_sizes(
                 bytes: size,
                 items,
             });
+            if stopped {
+                break;
+            }
         }
 
-        DirSizeResult {
+        Ok(DirSizeResult {
             total,
             total_items,
             entries,
-        }
+        })
     });
 
     task.await
-        .map_err(|e| format!("Failed to compute directory sizes: {e}"))
+        .map_err(|e| format!("Failed to compute directory sizes: {e}"))?
 }
