@@ -155,7 +155,7 @@ export const docsPages: DocPage[] = [
         body: 'Search is recursive and case-insensitive under the active directory subtree. Results stream progressively and symlinks are skipped to avoid loops.',
         bullets: [
           'Press Ctrl+F to toggle search mode',
-          'Press Esc to exit search mode',
+          'Press Esc once to exit search/filter input and return directly to breadcrumb view',
           'Empty query returns no search results but keeps listing state',
           'Search results stream in arrival order; sort can be applied manually from the list header',
         ],
@@ -452,7 +452,7 @@ export const docsPages: DocPage[] = [
         title: 'Input and Focus Behavior',
         bullets: [
           'Typing without focus enters address-bar filter mode',
-          'Esc exits search/filter context where applicable',
+          'Esc exits search/filter input and lands directly in breadcrumb view (address mode, input unfocused)',
           'Browser-level Ctrl hotkeys outside the configured shortcut map are blocked (Ctrl+Shift+I is allowed)',
           'Text inputs keep native editing shortcuts',
         ],
@@ -591,7 +591,10 @@ capabilities/default.json`,
         id: 'unreleased',
         title: 'Unreleased',
         bullets: [
-          'No unreleased entries yet.',
+          'Esc now exits both search and filter directly to breadcrumb view',
+          'Large-selection copy/cut flows were optimized to avoid quadratic selection scans',
+          'Large-selection context-menu and delete path resolution now use Set/Map lookups',
+          'Shutdown handling around clipboard/file operations was hardened to reduce late-stage work during exit',
         ],
       },
       {
