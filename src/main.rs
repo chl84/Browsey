@@ -32,6 +32,18 @@ use watcher::WatchState;
 
 const MAX_LOG_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
 
+struct LocalTimestamp;
+
+impl tracing_subscriber::fmt::time::FormatTime for LocalTimestamp {
+    fn format_time(
+        &self,
+        w: &mut tracing_subscriber::fmt::format::Writer<'_>,
+    ) -> std::fmt::Result {
+        // Write local wall-clock time with timezone offset, e.g. 2026-02-15T14:08:12.345678+01:00
+        write!(w, "{}", chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.6f%:z"))
+    }
+}
+
 struct SizeLimitedWriter {
     file: std::fs::File,
     path: std::path::PathBuf,
@@ -103,6 +115,7 @@ fn init_logging() {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,usvg=error"));
     let subscriber = tracing_subscriber::fmt()
+        .with_timer(LocalTimestamp)
         .with_env_filter(env_filter)
         .with_ansi(false)
         .with_writer(non_blocking);

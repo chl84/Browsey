@@ -107,6 +107,30 @@
   --modal-button-padding-y: 10px;
   --modal-button-padding-x: 14px;
   --modal-button-min-height: 38px;
+  /* Properties modal (cozy baseline) */
+  --properties-label-width: 120px;
+  --properties-row-gap: 8px;
+  --properties-col-gap: 10px;
+  --properties-status-margin-top: 8px;
+  --properties-section-margin-top: 8px;
+  --properties-panel-gap: 14px;
+  --properties-panel-margin-top: 2px;
+  --properties-access-col-width: 88px;
+  --properties-access-row-gap: 8px;
+  --properties-access-col-gap: 12px;
+  --properties-access-cell-gap: 6px;
+  --properties-access-label-padding-right: 4px;
+  --properties-ownership-row-gap: 10px;
+  --properties-ownership-col-gap: 14px;
+  --properties-ownership-label-min-width: 52px;
+  --properties-ownership-input-width: 220px;
+  --properties-ownership-input-max-width: 360px;
+  --properties-ownership-controls-gap: 4px;
+  --properties-ownership-meta-font-size: 12px;
+  --properties-apply-button-padding-y: 7px;
+  --properties-apply-button-padding-x: 10px;
+  --properties-apply-button-min-height: 32px;
+  --properties-apply-button-font-size: 12px;
   /* Context menu (cozy baseline) */
   --ctx-width: 180px;
   --ctx-padding: 6px;
@@ -453,6 +477,30 @@ body.density-compact {
   --modal-button-padding-y: 8px;
   --modal-button-padding-x: 12px;
   --modal-button-min-height: 34px;
+  /* Properties modal (compact) */
+  --properties-label-width: 104px;
+  --properties-row-gap: 6px;
+  --properties-col-gap: 8px;
+  --properties-status-margin-top: 6px;
+  --properties-section-margin-top: 6px;
+  --properties-panel-gap: 10px;
+  --properties-panel-margin-top: 1px;
+  --properties-access-col-width: 78px;
+  --properties-access-row-gap: 6px;
+  --properties-access-col-gap: 10px;
+  --properties-access-cell-gap: 5px;
+  --properties-access-label-padding-right: 3px;
+  --properties-ownership-row-gap: 8px;
+  --properties-ownership-col-gap: 10px;
+  --properties-ownership-label-min-width: 46px;
+  --properties-ownership-input-width: 190px;
+  --properties-ownership-input-max-width: 300px;
+  --properties-ownership-controls-gap: 3px;
+  --properties-ownership-meta-font-size: 11px;
+  --properties-apply-button-padding-y: 6px;
+  --properties-apply-button-padding-x: 9px;
+  --properties-apply-button-min-height: 28px;
+  --properties-apply-button-font-size: 11px;
   /* Context menu (compact) */
   --ctx-width: 170px;
   --ctx-padding: 4px;
@@ -805,6 +853,12 @@ button:focus-visible {
   border-color: var(--pill-error-border);
   background: var(--bg-alt);
   color: var(--pill-error-fg);
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .modal .path {
