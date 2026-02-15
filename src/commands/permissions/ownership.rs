@@ -414,3 +414,53 @@ pub fn maybe_run_ownership_helper_from_args() -> Option<i32> {
         Some(1)
     }
 }
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn temp_path(prefix: &str) -> PathBuf {
+        let unique = format!(
+            "{}-{}-{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        std::env::temp_dir().join(unique)
+    }
+
+    #[test]
+    fn rollback_ownership_actions_reports_partial_failure() {
+        let path = temp_path("owner-rollback-partial-ok");
+        let missing = temp_path("owner-rollback-partial-missing");
+        fs::write(&path, b"test").unwrap();
+        let before = ownership_snapshot(&path).unwrap();
+        let expected_uid = before.uid;
+        let expected_gid = before.gid;
+
+        let actions = vec![
+            OwnershipRollback {
+                path: path.clone(),
+                before: before.clone(),
+            },
+            OwnershipRollback {
+                path: missing.clone(),
+                before,
+            },
+        ];
+
+        let err = rollback_ownership_actions(&actions).unwrap_err();
+        assert!(err.contains(missing.to_string_lossy().as_ref()));
+
+        let after = fs::symlink_metadata(&path).unwrap();
+        assert_eq!(after.uid(), expected_uid);
+        assert_eq!(after.gid(), expected_gid);
+
+        let _ = fs::remove_file(&path);
+    }
+}

@@ -2,6 +2,7 @@ use super::{
     get_permissions, refresh_permissions_after_apply, set_ownership_batch, set_permissions_batch,
     AccessUpdate,
 };
+use crate::undo::{Action, UndoState};
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -380,4 +381,76 @@ fn refresh_permissions_after_apply_errors_when_no_change() {
         Err(err) => err,
     };
     assert!(err.contains("Path does not exist or unreadable"));
+}
+
+#[test]
+fn set_permissions_does_not_record_undo_history() {
+    let src = temp_file("perm-undo-src");
+    let dst = temp_file("perm-undo-dst");
+    fs::write(&src, b"undo-test").unwrap();
+    let _ = fs::remove_file(&dst);
+
+    let undo = UndoState::default();
+    undo.record(Action::Rename {
+        from: src.clone(),
+        to: dst.clone(),
+    })
+    .unwrap();
+    assert!(!src.exists());
+    assert!(dst.exists());
+
+    set_permissions_batch(
+        vec![dst.to_string_lossy().to_string()],
+        Some(true),
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    undo.undo().unwrap();
+    assert!(src.exists());
+    assert!(!dst.exists());
+
+    let err = undo.undo().unwrap_err();
+    assert!(err.contains("Nothing to undo"));
+
+    let _ = fs::remove_file(&src);
+    let _ = fs::remove_file(&dst);
+}
+
+#[test]
+fn set_ownership_does_not_record_undo_history() {
+    let src = temp_file("owner-undo-src");
+    let dst = temp_file("owner-undo-dst");
+    fs::write(&src, b"undo-test").unwrap();
+    let _ = fs::remove_file(&dst);
+
+    let undo = UndoState::default();
+    undo.record(Action::Rename {
+        from: src.clone(),
+        to: dst.clone(),
+    })
+    .unwrap();
+    assert!(!src.exists());
+    assert!(dst.exists());
+
+    let meta = fs::symlink_metadata(&dst).unwrap();
+    set_ownership_batch(
+        vec![dst.to_string_lossy().to_string()],
+        Some(meta.uid().to_string()),
+        Some(meta.gid().to_string()),
+    )
+    .unwrap();
+
+    undo.undo().unwrap();
+    assert!(src.exists());
+    assert!(!dst.exists());
+
+    let err = undo.undo().unwrap_err();
+    assert!(err.contains("Nothing to undo"));
+
+    let _ = fs::remove_file(&src);
+    let _ = fs::remove_file(&dst);
 }

@@ -409,3 +409,53 @@ pub(super) fn set_permissions_batch(
     }
     Err("Permission changes are not supported on this platform".into())
 }
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+
+    fn temp_path(prefix: &str) -> PathBuf {
+        let unique = format!(
+            "{}-{}-{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        std::env::temp_dir().join(unique)
+    }
+
+    #[test]
+    fn rollback_permissions_actions_reports_partial_failure() {
+        let path = temp_path("perm-rollback-partial-ok");
+        let missing = temp_path("perm-rollback-partial-missing");
+        fs::write(&path, b"test").unwrap();
+        fs::set_permissions(&path, PermissionsExt::from_mode(0o600)).unwrap();
+        let before = permissions_snapshot(&path).unwrap();
+        fs::set_permissions(&path, PermissionsExt::from_mode(0o640)).unwrap();
+
+        let actions = vec![
+            PermissionRollback {
+                path: path.clone(),
+                before: before.clone(),
+            },
+            PermissionRollback {
+                path: missing.clone(),
+                before,
+            },
+        ];
+
+        let err = rollback_permissions_actions(&actions).unwrap_err();
+        assert!(err.contains(missing.to_string_lossy().as_ref()));
+
+        let restored_mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(restored_mode, 0o600);
+
+        let _ = fs::remove_file(&path);
+    }
+}
