@@ -6,7 +6,6 @@
   import { fullNameTooltip } from '../fullNameTooltip'
   import { createThumbnailLoader } from '../thumbnailLoader'
   import { onDestroy } from 'svelte'
-  import { get } from 'svelte/store'
   import { convertFileSrc } from '@tauri-apps/api/core'
 
   export let currentPath = ''
@@ -45,6 +44,7 @@
 
   onDestroy(() => {
     unsubThumbs()
+    thumbLoader.destroy()
   })
 
   export let entries: Entry[] = []
@@ -86,19 +86,25 @@
   const readOnlyIcon = assetIconPath('status/eye-svgrepo-com.svg')
   const lockIcon = assetIconPath('status/padlock.svg')
 
-  const autoAlignName = (node: HTMLElement) => {
-    const update = () => {
-      const overflowsWidth = node.scrollWidth - 1 > node.clientWidth
-      const overflowsHeight = node.scrollHeight - 1 > node.clientHeight
-      node.dataset.align = overflowsWidth || overflowsHeight ? 'start' : 'center'
+  const observeThumb = (node: Element, entry: Entry) => {
+    let binding: ReturnType<typeof thumbLoader.observe> | null = null
+
+    const bind = (next: Entry) => {
+      binding?.destroy()
+      binding = null
+      if (next.kind === 'file') {
+        binding = thumbLoader.observe(node, next.path)
+      }
     }
 
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(node)
+    bind(entry)
+
     return {
+      update(next: Entry) {
+        bind(next)
+      },
       destroy() {
-        ro.disconnect()
+        binding?.destroy()
       },
     }
   }
@@ -125,7 +131,7 @@
         <div class="grid-viewport" style={`top:${offsetY}px;`}>
           {#each visibleEntries as entry, i (entry.path)}
             <button
-              use:thumbLoader.observe={entry.path}
+              use:observeThumb={entry}
               class="card"
               class:dragging={dragging}
               class:selected={selected.has(entry.path)}
@@ -174,7 +180,6 @@
               {/if}
               <div
                 class="name"
-                use:autoAlignName
                 use:fullNameTooltip={() => {
                   const parts = [entry.name]
                   if (entry.kind === 'file' && entry.size !== null && entry.size !== undefined) {

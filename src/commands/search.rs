@@ -5,12 +5,12 @@ use crate::{
     commands::fs::expand_path,
     db,
     entry::{normalize_key_for_db, FsEntry},
+    runtime_lifecycle,
     sorting::SortSpec,
 };
 use serde::Serialize;
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
-use tauri::Emitter;
 use tracing::{debug, warn};
 
 #[derive(Serialize, Clone)]
@@ -38,7 +38,7 @@ pub fn search_stream(
                 done,
                 error,
             };
-            let _ = app.emit(&progress_event, payload);
+            let _ = runtime_lifecycle::emit_if_running(&app, &progress_event, payload);
         };
         let cancel_guard = match cancel_state.register(progress_event.clone()) {
             Ok(g) => g,
@@ -89,7 +89,7 @@ pub fn search_stream(
         let mut batch: Vec<FsEntry> = Vec::with_capacity(BATCH);
 
         while let Some(dir) = stack.pop() {
-            if cancel_token.load(Ordering::Relaxed) {
+            if cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app) {
                 return;
             }
             let iter = match std::fs::read_dir(&dir) {
@@ -109,7 +109,8 @@ pub fn search_stream(
             };
 
             for entry in iter.flatten() {
-                if cancel_token.load(Ordering::Relaxed) {
+                if cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app)
+                {
                     return;
                 }
                 let path = entry.path();
@@ -149,7 +150,7 @@ pub fn search_stream(
             send(batch, false, None);
         }
 
-        if cancel_token.load(Ordering::Relaxed) {
+        if cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app) {
             return;
         }
         send(Vec::new(), true, None);

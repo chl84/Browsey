@@ -46,6 +46,17 @@ impl CancelState {
         }
     }
 
+    pub fn cancel_all(&self) -> Result<usize, String> {
+        let map = self
+            .inner
+            .lock()
+            .map_err(|_| "Failed to lock cancel registry".to_string())?;
+        for flag in map.values() {
+            flag.store(true, Ordering::Relaxed);
+        }
+        Ok(map.len())
+    }
+
     fn remove(&self, id: &str) {
         if let Ok(mut map) = self.inner.lock() {
             map.remove(id);

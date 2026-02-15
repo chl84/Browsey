@@ -359,7 +359,20 @@
     return Math.max(0, rawTop - headerOffset)
   }
 
+  let toggleViewModeInFlight = false
+  let toggleViewModeRaf: number | null = null
+
+  const cancelToggleViewModeRaf = () => {
+    if (toggleViewModeRaf !== null) {
+      cancelAnimationFrame(toggleViewModeRaf)
+      toggleViewModeRaf = null
+    }
+  }
+
   const toggleViewMode = async () => {
+    if (toggleViewModeInFlight) return
+    toggleViewModeInFlight = true
+    cancelToggleViewModeRaf()
     viewAnchor.capture({
       viewMode,
       rowsEl: rowsElRef,
@@ -370,24 +383,37 @@
     const nextMode = viewMode === 'list' ? 'grid' : 'list'
     const switchingToList = nextMode === 'list'
 
-    if (switchingToList) {
-      viewObservers.disconnectGrid()
-    }
+    try {
+      if (switchingToList) {
+        viewObservers.disconnectGrid()
+      }
 
-    viewMode = nextMode
-    selectionBox.active.set(false)
-    selectionBox.rect.set({ x: 0, y: 0, width: 0, height: 0 })
+      viewMode = nextMode
+      selectionBox.active.set(false)
+      selectionBox.rect.set({ x: 0, y: 0, width: 0, height: 0 })
 
-    if (switchingToList) {
-      gridTotalHeight.set(0)
-      await tick()
-      scrollTop.set(listContentScrollTop())
-      updateViewportHeight()
-      recompute(get(filteredEntries))
-      requestAnimationFrame(() => {
+      if (switchingToList) {
+        gridTotalHeight.set(0)
+        await tick()
         scrollTop.set(listContentScrollTop())
         updateViewportHeight()
         recompute(get(filteredEntries))
+        toggleViewModeRaf = requestAnimationFrame(() => {
+          toggleViewModeRaf = null
+          if (viewMode !== 'list') return
+          scrollTop.set(listContentScrollTop())
+          updateViewportHeight()
+          recompute(get(filteredEntries))
+          viewAnchor.scroll({
+            viewMode,
+            rowsEl: rowsElRef,
+            headerEl: headerElRef,
+            gridEl: gridElRef,
+            gridCols: getGridCols(),
+          })
+        })
+      } else {
+        await tick()
         viewAnchor.scroll({
           viewMode,
           rowsEl: rowsElRef,
@@ -395,18 +421,11 @@
           gridEl: gridElRef,
           gridCols: getGridCols(),
         })
-      })
-    } else {
-      await tick()
-      viewAnchor.scroll({
-        viewMode,
-        rowsEl: rowsElRef,
-        headerEl: headerElRef,
-        gridEl: gridElRef,
-        gridCols: getGridCols(),
-      })
+      }
+      void focusCurrentView()
+    } finally {
+      toggleViewModeInFlight = false
     }
-    void focusCurrentView()
   }
 
   // --- List/grid derived state & handlers ---------------------------------
@@ -1640,7 +1659,11 @@
 
   // --- Lifecycle: global listeners ---------------------------------------
   onDestroy(() => {
+    cancelToggleViewModeRaf()
     resetNewFileTypeHint()
+    cancelSearch()
+    activityApi.clearNow()
+    void activityApi.cleanup()
     void stopDuplicateScan(true)
   })
 

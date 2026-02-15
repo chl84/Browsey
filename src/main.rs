@@ -152,6 +152,9 @@ fn main() {
             tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
                 let app = window.app_handle();
                 runtime_lifecycle::begin_shutdown_from_app(&app);
+                if let Some(cancel) = app.try_state::<CancelState>() {
+                    let _ = cancel.cancel_all();
+                }
                 if let Some(watch) = app.try_state::<WatchState>() {
                     watch.stop_all();
                 }
@@ -281,6 +284,9 @@ fn main() {
     app.run(|app_handle, event| match event {
         tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
             runtime_lifecycle::begin_shutdown_from_app(app_handle);
+            if let Some(cancel) = app_handle.try_state::<CancelState>() {
+                let _ = cancel.cancel_all();
+            }
             if let Some(watch) = app_handle.try_state::<WatchState>() {
                 watch.stop_all();
             }
