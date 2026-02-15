@@ -1,4 +1,5 @@
 use std::fs::{self, Permissions};
+use std::path::PathBuf;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use tracing::{debug, warn};
@@ -7,7 +8,7 @@ use tracing::{debug, warn};
 use crate::undo::set_unix_mode_nofollow;
 use crate::{
     fs_utils::{check_no_symlink_components, sanitize_path_nofollow},
-    undo::{permissions_snapshot, run_actions, Action, Direction},
+    undo::{apply_permissions, permissions_snapshot},
 };
 
 #[cfg(target_os = "windows")]
@@ -19,15 +20,29 @@ use super::{
     PermissionInfo,
 };
 
-fn rollback_permissions_actions(actions: &[Action]) -> Result<(), String> {
+#[derive(Clone)]
+struct PermissionRollback {
+    path: PathBuf,
+    before: crate::undo::PermissionsSnapshot,
+}
+
+fn rollback_permissions_actions(actions: &[PermissionRollback]) -> Result<(), String> {
     if actions.is_empty() {
         return Ok(());
     }
-    let mut rev = actions.to_vec();
-    run_actions(&mut rev, Direction::Backward).map_err(|e| {
-        warn!(error = %e, "permissions rollback failed");
-        e
-    })
+    let mut errors: Vec<String> = Vec::new();
+    for action in actions.iter().rev() {
+        if let Err(err) = apply_permissions(&action.path, &action.before) {
+            errors.push(format!("{}: {err}", action.path.display()));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        let joined = errors.join("; ");
+        warn!(error = %joined, "permissions rollback failed");
+        Err(joined)
+    }
 }
 
 #[cfg(unix)]
@@ -45,7 +60,7 @@ pub(super) fn set_permissions_batch(
     }
 
     let first_path = paths.first().cloned();
-    let mut actions: Vec<Action> = Vec::with_capacity(paths.len());
+    let mut rollbacks: Vec<PermissionRollback> = Vec::with_capacity(paths.len());
 
     for path in paths {
         let owner_update = owner.clone();
@@ -176,15 +191,10 @@ pub(super) fn set_permissions_batch(
                     fs::set_permissions(&target, perms)
                         .map_err(|e| format!("Failed to update permissions: {e}"))?;
                 }
-                let after = match permissions_snapshot(&target) {
-                    Ok(after) => after,
+                match permissions_snapshot(&target) {
+                    Ok(_) => {}
                     Err(snapshot_err) => {
-                        let mut current = vec![Action::SetPermissions {
-                            path: target.clone(),
-                            before: before.clone(),
-                            after: before.clone(),
-                        }];
-                        match run_actions(&mut current, Direction::Backward) {
+                        match apply_permissions(&target, &before) {
                             Ok(()) => {
                                 return Err(format!(
                                     "Failed to capture post-change permissions for {}: {}; current target rolled back",
@@ -201,11 +211,10 @@ pub(super) fn set_permissions_batch(
                             }
                         }
                     }
-                };
-                actions.push(Action::SetPermissions {
+                }
+                rollbacks.push(PermissionRollback {
                     path: target.clone(),
                     before,
-                    after,
                 });
             }
             Ok(())
@@ -213,7 +222,7 @@ pub(super) fn set_permissions_batch(
 
         if let Err(err) = apply_result {
             warn!(path = %path, error = %err, "set_permissions failed");
-            if let Err(rollback_err) = rollback_permissions_actions(&actions) {
+            if let Err(rollback_err) = rollback_permissions_actions(&rollbacks) {
                 return Err(format!(
                     "{err}; rollback failed ({rollback_err}). System may be partially changed"
                 ));
@@ -222,7 +231,7 @@ pub(super) fn set_permissions_batch(
         }
     }
 
-    let changed_any = !actions.is_empty();
+    let changed_any = !rollbacks.is_empty();
 
     if let Some(path) = first_path {
         return refresh_permissions_after_apply(path, changed_any);
@@ -246,7 +255,7 @@ pub(super) fn set_permissions_batch(
     }
 
     let first_path = paths.first().cloned();
-    let mut actions: Vec<Action> = Vec::with_capacity(paths.len());
+    let mut rollbacks: Vec<PermissionRollback> = Vec::with_capacity(paths.len());
 
     for path in paths {
         let owner_update = owner.clone();
@@ -334,15 +343,10 @@ pub(super) fn set_permissions_batch(
             }
 
             if changed {
-                let after = match permissions_snapshot(&target) {
-                    Ok(after) => after,
+                match permissions_snapshot(&target) {
+                    Ok(_) => {}
                     Err(snapshot_err) => {
-                        let mut current = vec![Action::SetPermissions {
-                            path: target.clone(),
-                            before: before.clone(),
-                            after: before.clone(),
-                        }];
-                        match run_actions(&mut current, Direction::Backward) {
+                        match apply_permissions(&target, &before) {
                             Ok(()) => {
                                 return Err(format!(
                                     "Failed to capture post-change permissions for {}: {}; current target rolled back",
@@ -359,11 +363,10 @@ pub(super) fn set_permissions_batch(
                             }
                         }
                     }
-                };
-                actions.push(Action::SetPermissions {
+                }
+                rollbacks.push(PermissionRollback {
                     path: target.clone(),
                     before,
-                    after,
                 });
             }
             Ok(())
@@ -371,7 +374,7 @@ pub(super) fn set_permissions_batch(
 
         if let Err(err) = apply_result {
             warn!(path = %path, error = %err, "set_permissions failed");
-            if let Err(rollback_err) = rollback_permissions_actions(&actions) {
+            if let Err(rollback_err) = rollback_permissions_actions(&rollbacks) {
                 return Err(format!(
                     "{err}; rollback failed ({rollback_err}). System may be partially changed"
                 ));
@@ -380,7 +383,7 @@ pub(super) fn set_permissions_batch(
         }
     }
 
-    let changed_any = !actions.is_empty();
+    let changed_any = !rollbacks.is_empty();
 
     if let Some(path) = first_path {
         return refresh_permissions_after_apply(path, changed_any);

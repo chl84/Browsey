@@ -7,7 +7,7 @@ use tracing::{debug, warn};
 
 use crate::{
     fs_utils::{check_no_symlink_components, sanitize_path_nofollow},
-    undo::{ownership_snapshot, run_actions, set_ownership_nofollow, Action, Direction},
+    undo::{apply_ownership, ownership_snapshot, set_ownership_nofollow},
 };
 
 use super::{
@@ -15,15 +15,29 @@ use super::{
     PermissionInfo, OWNERSHIP_HELPER_FLAG,
 };
 
-fn rollback_ownership_actions(actions: &[Action]) -> Result<(), String> {
+#[derive(Clone)]
+struct OwnershipRollback {
+    path: std::path::PathBuf,
+    before: crate::undo::OwnershipSnapshot,
+}
+
+fn rollback_ownership_actions(actions: &[OwnershipRollback]) -> Result<(), String> {
     if actions.is_empty() {
         return Ok(());
     }
-    let mut rev = actions.to_vec();
-    run_actions(&mut rev, Direction::Backward).map_err(|e| {
-        warn!(error = %e, "ownership rollback failed");
-        e
-    })
+    let mut errors: Vec<String> = Vec::new();
+    for action in actions.iter().rev() {
+        if let Err(err) = apply_ownership(&action.path, &action.before) {
+            errors.push(format!("{}: {err}", action.path.display()));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        let joined = errors.join("; ");
+        warn!(error = %joined, "ownership rollback failed");
+        Err(joined)
+    }
 }
 
 #[cfg(unix)]
@@ -251,7 +265,7 @@ fn set_ownership_batch_impl(
         });
     }
 
-    let mut actions: Vec<Action> = Vec::with_capacity(targets.len());
+    let mut rollbacks: Vec<OwnershipRollback> = Vec::with_capacity(targets.len());
     let mut escalated = false;
 
     for target in &targets {
@@ -281,12 +295,7 @@ fn set_ownership_batch_impl(
             let after = match ownership_snapshot(&target.target) {
                 Ok(after) => after,
                 Err(snapshot_err) => {
-                    let mut current = vec![Action::SetOwnership {
-                        path: target.target.clone(),
-                        before: target.before.clone(),
-                        after: target.before.clone(),
-                    }];
-                    match run_actions(&mut current, Direction::Backward) {
+                    match apply_ownership(&target.target, &target.before) {
                         Ok(()) => {
                             return Err(format!(
                                 "Failed to capture post-change ownership for {}: {}; current target rolled back",
@@ -305,17 +314,16 @@ fn set_ownership_batch_impl(
                 }
             };
             if after.uid != target.before.uid || after.gid != target.before.gid {
-                actions.push(Action::SetOwnership {
+                rollbacks.push(OwnershipRollback {
                     path: target.target.clone(),
                     before: target.before.clone(),
-                    after,
                 });
             }
             Ok(())
         })();
 
         if let Err(err) = apply_result {
-            if let Err(rollback_err) = rollback_ownership_actions(&actions) {
+            if let Err(rollback_err) = rollback_ownership_actions(&rollbacks) {
                 return Err(format!(
                     "{err}; rollback failed ({rollback_err}). System may be partially changed"
                 ));
@@ -327,24 +335,21 @@ fn set_ownership_batch_impl(
         }
     }
 
-    if escalated {
-        actions.clear();
+    let changed_any = if escalated {
+        let mut changed = false;
         for target in &targets {
             if target.uid_update.is_none() && target.gid_update.is_none() {
                 continue;
             }
             let after = ownership_snapshot(&target.target)?;
             if after.uid != target.before.uid || after.gid != target.before.gid {
-                actions.push(Action::SetOwnership {
-                    path: target.target.clone(),
-                    before: target.before.clone(),
-                    after,
-                });
+                changed = true;
             }
         }
-    }
-
-    let changed_any = !actions.is_empty();
+        changed
+    } else {
+        !rollbacks.is_empty()
+    };
 
     if let Some(path) = first_path {
         return refresh_permissions_after_apply(path, changed_any);
