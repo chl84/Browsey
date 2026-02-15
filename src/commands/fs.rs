@@ -27,7 +27,7 @@ use std::ffi::OsString;
 #[cfg(not(target_os = "windows"))]
 use std::fmt::Write as _;
 #[cfg(not(target_os = "windows"))]
-use std::os::unix::ffi::OsStrExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 #[cfg(target_os = "windows")]
 use std::os::windows::prelude::*;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -550,6 +550,21 @@ struct PreparedTrashMove {
 }
 
 #[cfg(not(target_os = "windows"))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TrashStageJournalEntry {
+    staged: PathBuf,
+    original: PathBuf,
+}
+
+#[cfg(not(target_os = "windows"))]
+fn trash_stage_journal_path() -> PathBuf {
+    dirs_next::data_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("browsey")
+        .join("trash-stage-journal.tsv")
+}
+
+#[cfg(not(target_os = "windows"))]
 fn stage_for_trash(src: &Path) -> Result<PathBuf, String> {
     let parent = src
         .parent()
@@ -591,10 +606,26 @@ fn trash_delete_via_staged_rename(
     #[cfg(not(target_os = "windows"))]
     {
         let staged = stage_for_trash(src)?;
+        if let Err(err) = add_trash_stage_journal_entry(&staged, src) {
+            let rollback = rename_entry_nofollow_io(&staged, src)
+                .err()
+                .map(|e| format!("; rollback failed: {e}"))
+                .unwrap_or_default();
+            return Err(format!(
+                "Failed to persist staged trash journal entry: {err}{rollback}"
+            ));
+        }
         match trash_delete(&staged) {
-            Ok(_) => Ok(staged),
+            Ok(_) => {
+                let _ = remove_trash_stage_journal_entry(&staged, src);
+                Ok(staged)
+            }
             Err(err) => {
-                let rollback = rename_entry_nofollow_io(&staged, src)
+                let rollback_result = rename_entry_nofollow_io(&staged, src);
+                if rollback_result.is_ok() {
+                    let _ = remove_trash_stage_journal_entry(&staged, src);
+                }
+                let rollback = rollback_result
                     .err()
                     .map(|e| format!("; rollback failed: {e}"))
                     .unwrap_or_default();
@@ -642,6 +673,238 @@ fn encode_trash_info_path(path: &Path) -> String {
         ".".to_string()
     } else {
         out
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn decode_percent_encoded_unix_path(encoded: &str) -> Result<PathBuf, String> {
+    fn hex_val(byte: u8) -> Option<u8> {
+        match byte {
+            b'0'..=b'9' => Some(byte - b'0'),
+            b'a'..=b'f' => Some(byte - b'a' + 10),
+            b'A'..=b'F' => Some(byte - b'A' + 10),
+            _ => None,
+        }
+    }
+
+    let bytes = encoded.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if i + 2 >= bytes.len() {
+                return Err(format!("Invalid percent encoding: '{encoded}'"));
+            }
+            let hi = hex_val(bytes[i + 1]).ok_or_else(|| {
+                format!(
+                    "Invalid percent encoding at index {} in '{}'",
+                    i + 1,
+                    encoded
+                )
+            })?;
+            let lo = hex_val(bytes[i + 2]).ok_or_else(|| {
+                format!(
+                    "Invalid percent encoding at index {} in '{}'",
+                    i + 2,
+                    encoded
+                )
+            })?;
+            out.push((hi << 4) | lo);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    Ok(PathBuf::from(OsString::from_vec(out)))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn load_trash_stage_journal_entries() -> Result<Vec<TrashStageJournalEntry>, String> {
+    let path = trash_stage_journal_path();
+    let content = match fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => {
+            return Err(format!(
+                "Failed to read trash stage journal {}: {err}",
+                path.display()
+            ));
+        }
+    };
+
+    let mut entries = Vec::new();
+    for (idx, line) in content.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let mut parts = line.splitn(2, '\t');
+        let staged_enc = match parts.next() {
+            Some(v) if !v.is_empty() => v,
+            _ => {
+                warn!(
+                    "Ignoring malformed trash stage journal entry at line {}",
+                    idx + 1
+                );
+                continue;
+            }
+        };
+        let original_enc = match parts.next() {
+            Some(v) if !v.is_empty() => v,
+            _ => {
+                warn!(
+                    "Ignoring malformed trash stage journal entry at line {}",
+                    idx + 1
+                );
+                continue;
+            }
+        };
+
+        let staged = match decode_percent_encoded_unix_path(staged_enc) {
+            Ok(path) => path,
+            Err(err) => {
+                warn!(
+                    "Ignoring invalid staged path in trash stage journal at line {}: {}",
+                    idx + 1,
+                    err
+                );
+                continue;
+            }
+        };
+        let original = match decode_percent_encoded_unix_path(original_enc) {
+            Ok(path) => path,
+            Err(err) => {
+                warn!(
+                    "Ignoring invalid original path in trash stage journal at line {}: {}",
+                    idx + 1,
+                    err
+                );
+                continue;
+            }
+        };
+        entries.push(TrashStageJournalEntry { staged, original });
+    }
+
+    Ok(entries)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn store_trash_stage_journal_entries(entries: &[TrashStageJournalEntry]) -> Result<(), String> {
+    let path = trash_stage_journal_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create trash stage journal directory {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+
+    if entries.is_empty() {
+        if let Err(err) = fs::remove_file(&path) {
+            if err.kind() != io::ErrorKind::NotFound {
+                return Err(format!(
+                    "Failed to remove trash stage journal {}: {err}",
+                    path.display()
+                ));
+            }
+        }
+        return Ok(());
+    }
+
+    let mut content = String::new();
+    for entry in entries {
+        content.push_str(&encode_trash_info_path(&entry.staged));
+        content.push('\t');
+        content.push_str(&encode_trash_info_path(&entry.original));
+        content.push('\n');
+    }
+
+    let tmp_path = path.with_extension("tsv.tmp");
+    fs::write(&tmp_path, content).map_err(|e| {
+        format!(
+            "Failed to write temporary trash stage journal {}: {e}",
+            tmp_path.display()
+        )
+    })?;
+    fs::rename(&tmp_path, &path).map_err(|e| {
+        format!(
+            "Failed to finalize trash stage journal {}: {e}",
+            path.display()
+        )
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn add_trash_stage_journal_entry(staged: &Path, original: &Path) -> Result<(), String> {
+    let mut entries = load_trash_stage_journal_entries()?;
+    let new_entry = TrashStageJournalEntry {
+        staged: staged.to_path_buf(),
+        original: original.to_path_buf(),
+    };
+    if !entries.contains(&new_entry) {
+        entries.push(new_entry);
+    }
+    store_trash_stage_journal_entries(&entries)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn remove_trash_stage_journal_entry(staged: &Path, original: &Path) -> Result<(), String> {
+    let mut entries = load_trash_stage_journal_entries()?;
+    entries.retain(|entry| !(entry.staged == staged && entry.original == original));
+    store_trash_stage_journal_entries(&entries)
+}
+
+pub fn cleanup_stale_trash_staging() {
+    #[cfg(target_os = "windows")]
+    {
+        return;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let entries = match load_trash_stage_journal_entries() {
+            Ok(entries) => entries,
+            Err(err) => {
+                warn!("{err}");
+                return;
+            }
+        };
+        if entries.is_empty() {
+            return;
+        }
+
+        let mut retained = Vec::new();
+        for entry in entries {
+            let staged_meta = fs::symlink_metadata(&entry.staged);
+            if let Err(err) = staged_meta {
+                if err.kind() != io::ErrorKind::NotFound {
+                    warn!(
+                        "Failed to inspect staged trash path {}: {}",
+                        entry.staged.display(),
+                        err
+                    );
+                    retained.push(entry);
+                }
+                continue;
+            }
+
+            match rename_entry_nofollow_io(&entry.staged, &entry.original) {
+                Ok(_) => {}
+                Err(err) => {
+                    warn!(
+                        "Failed to recover staged trash item {} -> {}: {}",
+                        entry.staged.display(),
+                        entry.original.display(),
+                        err
+                    );
+                    retained.push(entry);
+                }
+            }
+        }
+
+        if let Err(err) = store_trash_stage_journal_entries(&retained) {
+            warn!("{err}");
+        }
     }
 }
 
@@ -1211,7 +1474,7 @@ fn ensure_no_symlink_components_existing_prefix(path: &Path) -> Result<(), Strin
 
 #[cfg(all(test, not(target_os = "windows")))]
 mod tests {
-    use super::encode_trash_info_path;
+    use super::{decode_percent_encoded_unix_path, encode_trash_info_path};
     use std::ffi::OsString;
     use std::os::unix::ffi::OsStringExt;
     use std::path::PathBuf;
@@ -1222,5 +1485,15 @@ mod tests {
             b'/', b't', b'm', b'p', b'/', b'a', b' ', b'b', b'%', 0xFF,
         ]));
         assert_eq!(encode_trash_info_path(&path), "/tmp/a%20b%25%FF");
+    }
+
+    #[test]
+    fn decode_percent_encoded_unix_path_roundtrips_non_utf8() {
+        let original = PathBuf::from(OsString::from_vec(vec![
+            b'/', b't', b'm', b'p', b'/', b'x', 0xFF, b' ', b'y',
+        ]));
+        let encoded = encode_trash_info_path(&original);
+        let decoded = decode_percent_encoded_unix_path(&encoded).expect("decode should succeed");
+        assert_eq!(decoded, original);
     }
 }
