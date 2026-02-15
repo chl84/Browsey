@@ -1,14 +1,14 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Entry, Listing, Partition, SortField, SortDirection } from '../types'
+import type { Listing, Partition, SortField, SortDirection } from '../types'
 
 export const listDir = (path: string | undefined, sort: { field: SortField; direction: SortDirection }) =>
   invoke<Listing>('list_dir', { path, sort })
 
 export const listRecent = (sort: { field: SortField; direction: SortDirection } | null) =>
-  invoke<Entry[]>('list_recent', { sort })
+  invoke<Listing>('list_recent', { sort })
 
 export const listStarred = (sort: { field: SortField; direction: SortDirection } | null) =>
-  invoke<Entry[]>('list_starred', { sort })
+  invoke<Listing>('list_starred', { sort })
 
 export const listTrash = (sort: { field: SortField; direction: SortDirection }) =>
   invoke<Listing>('list_trash', { sort })

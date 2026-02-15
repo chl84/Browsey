@@ -286,6 +286,7 @@
     persistWidths,
     toggleColumnFilter,
     resetColumnFilter,
+    columnFacets,
   } = explorer
 
   const selectionActive = selectionBox.active
@@ -2978,6 +2979,7 @@
   filterValue={$filter}
   showHidden={$showHidden}
   columnFilters={$columnFilters}
+  columnFacets={$columnFacets}
   videoThumbs={$videoThumbs}
   {thumbnailRefreshToken}
   cols={$cols}

@@ -19,6 +19,7 @@ use crate::{
 pub mod fs_windows;
 #[cfg(not(target_os = "windows"))]
 pub mod gvfs;
+use crate::commands::listing::build_listing_facets;
 pub use crate::commands::listing::DirListing;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -298,9 +299,11 @@ pub fn list_trash(sort: Option<SortSpec>) -> Result<DirListing, String> {
         entries.push(entry);
     }
     sort_entries(&mut entries, sort);
+    let facets = build_listing_facets(&entries);
     Ok(DirListing {
         current: "Trash".to_string(),
         entries,
+        facets,
     })
 }
 

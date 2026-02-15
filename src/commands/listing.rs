@@ -26,10 +26,168 @@ use std::os::windows::prelude::*;
 
 const META_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
+#[derive(Serialize, Clone)]
+pub struct FacetOption {
+    pub id: String,
+    pub label: String,
+}
+
+#[derive(Serialize, Default, Clone)]
+pub struct ListingFacets {
+    pub name: Vec<FacetOption>,
+    #[serde(rename = "type")]
+    pub type_values: Vec<FacetOption>,
+    pub modified: Vec<FacetOption>,
+    pub size: Vec<FacetOption>,
+}
+
+pub struct ListingFacetBuilder {
+    name: HashMap<String, u64>,
+    type_values: HashMap<String, u64>,
+    modified: HashMap<String, (i64, u64)>,
+    size: HashMap<String, (i64, u64)>,
+    now: NaiveDateTime,
+}
+
+impl Default for ListingFacetBuilder {
+    fn default() -> Self {
+        Self {
+            name: HashMap::new(),
+            type_values: HashMap::new(),
+            modified: HashMap::new(),
+            size: HashMap::new(),
+            now: Local::now().naive_local(),
+        }
+    }
+}
+
+impl ListingFacetBuilder {
+    pub fn add(&mut self, entry: &FsEntry) {
+        let name_key = entry.name.to_lowercase();
+        let (name_bucket, _) = bucket_name(name_key.as_str());
+        *self.name.entry(name_bucket.to_string()).or_insert(0) += 1;
+
+        let ty = entry_type_label(entry);
+        *self.type_values.entry(ty).or_insert(0) += 1;
+
+        if let Some(modified) = &entry.modified {
+            if let Ok(dt) = NaiveDateTime::parse_from_str(modified, "%Y-%m-%d %H:%M") {
+                let (label, rank) = bucket_modified(dt, self.now);
+                let slot = self.modified.entry(label).or_insert((rank, 0));
+                slot.1 += 1;
+                if rank < slot.0 {
+                    slot.0 = rank;
+                }
+            }
+        }
+
+        if entry.kind == "file" {
+            if let Some(size) = entry.size {
+                let (label, rank) = bucket_size(size);
+                let slot = self.size.entry(label).or_insert((rank, 0));
+                slot.1 += 1;
+                if rank < slot.0 {
+                    slot.0 = rank;
+                }
+            }
+        }
+    }
+
+    pub fn finish(self) -> ListingFacets {
+        let mut name: Vec<FacetOption> = self
+            .name
+            .into_keys()
+            .map(|id| FacetOption {
+                label: name_filter_label(id.as_str()).to_string(),
+                id,
+            })
+            .collect();
+        name.sort_by_key(|opt| name_filter_rank(opt.id.as_str()));
+
+        let mut type_values: Vec<FacetOption> = self
+            .type_values
+            .into_keys()
+            .map(|label| FacetOption {
+                id: format!("type:{label}"),
+                label,
+            })
+            .collect();
+        type_values.sort_by(|a, b| a.label.cmp(&b.label));
+
+        let mut modified: Vec<(String, i64)> = self
+            .modified
+            .into_iter()
+            .map(|(label, (rank, _count))| (label, rank))
+            .collect();
+        modified.sort_by_key(|(_, rank)| *rank);
+        let modified: Vec<FacetOption> = modified
+            .into_iter()
+            .map(|(label, _)| FacetOption {
+                id: format!("modified:{label}"),
+                label,
+            })
+            .collect();
+
+        let mut size: Vec<(String, i64)> = self
+            .size
+            .into_iter()
+            .map(|(label, (rank, _count))| (label, rank))
+            .collect();
+        size.sort_by_key(|(_, rank)| *rank);
+        let size: Vec<FacetOption> = size
+            .into_iter()
+            .map(|(label, _)| FacetOption {
+                id: format!("size:{label}"),
+                label,
+            })
+            .collect();
+
+        ListingFacets {
+            name,
+            type_values,
+            modified,
+            size,
+        }
+    }
+}
+
+pub fn build_listing_facets(entries: &[FsEntry]) -> ListingFacets {
+    let mut builder = ListingFacetBuilder::default();
+    for entry in entries {
+        builder.add(entry);
+    }
+    builder.finish()
+}
+
+fn name_filter_label(id: &str) -> &'static str {
+    match id {
+        "name:a-f" => "A–F",
+        "name:g-l" => "G–L",
+        "name:m-r" => "M–R",
+        "name:s-z" => "S–Z",
+        "name:0-9" => "0-9",
+        "name:other" => "Other symbols",
+        _ => "Other symbols",
+    }
+}
+
+fn name_filter_rank(id: &str) -> i64 {
+    match id {
+        "name:a-f" => 0,
+        "name:g-l" => 1,
+        "name:m-r" => 2,
+        "name:s-z" => 3,
+        "name:0-9" => 4,
+        "name:other" => 5,
+        _ => i64::MAX,
+    }
+}
+
 #[derive(Serialize)]
 pub struct DirListing {
     pub current: String,
     pub entries: Vec<FsEntry>,
+    pub facets: ListingFacets,
 }
 
 fn entry_type_label(e: &FsEntry) -> String {
@@ -39,81 +197,6 @@ fn entry_type_label(e: &FsEntry) -> String {
         }
     }
     e.kind.to_lowercase()
-}
-
-fn collect_column_values(entries: &[FsEntry], column: &str, include_hidden: bool) -> Vec<String> {
-    let mut set = std::collections::HashSet::new();
-    let mut buckets: HashMap<String, i64> = HashMap::new();
-    match column {
-        "name" => {
-            for e in entries {
-                if !include_hidden && e.hidden {
-                    continue;
-                }
-                let lower = e.name.to_lowercase();
-                let (label, rank) = bucket_name(lower.as_str());
-                let entry = buckets.entry(label.to_string()).or_insert(rank);
-                if rank < *entry {
-                    *entry = rank;
-                }
-            }
-            let mut v: Vec<(String, i64)> = buckets.into_iter().collect();
-            v.sort_by_key(|(_, rank)| *rank);
-            return v.into_iter().map(|(label, _)| label).collect();
-        }
-        "type" => {
-            for e in entries {
-                if !include_hidden && e.hidden {
-                    continue;
-                }
-                set.insert(entry_type_label(e));
-            }
-        }
-        "size" => {
-            for e in entries {
-                if !include_hidden && e.hidden {
-                    continue;
-                }
-                if e.kind != "file" {
-                    continue;
-                }
-                if let Some(size) = e.size {
-                    let (label, rank) = bucket_size(size);
-                    let entry = buckets.entry(label).or_insert(rank);
-                    if rank < *entry {
-                        *entry = rank;
-                    }
-                }
-            }
-            let mut v: Vec<(String, i64)> = buckets.into_iter().collect();
-            v.sort_by_key(|(_, rank)| *rank);
-            return v.into_iter().map(|(label, _)| label).collect();
-        }
-        "modified" => {
-            let now = Local::now().naive_local();
-            for e in entries {
-                if !include_hidden && e.hidden {
-                    continue;
-                }
-                if let Some(mod_str) = &e.modified {
-                    if let Ok(dt) = NaiveDateTime::parse_from_str(mod_str, "%Y-%m-%d %H:%M") {
-                        let (label, days) = bucket_modified(dt, now);
-                        let entry = buckets.entry(label).or_insert(days);
-                        if days < *entry {
-                            *entry = days;
-                        }
-                    }
-                }
-            }
-            let mut v: Vec<(String, i64)> = buckets.into_iter().collect();
-            v.sort_by_key(|(_, days)| *days);
-            return v.into_iter().map(|(label, _)| label).collect();
-        }
-        _ => {}
-    }
-    let mut v: Vec<String> = set.into_iter().collect();
-    v.sort_unstable();
-    v
 }
 
 fn bucket_modified(dt: NaiveDateTime, now: NaiveDateTime) -> (String, i64) {
@@ -456,11 +539,13 @@ fn list_dir_sync(
     }
 
     sort_entries(&mut entries, sort);
+    let facets = build_listing_facets(&entries);
     spawn_meta_refresh(app, pending_meta);
 
     Ok(DirListing {
         current: display_path(&target),
         entries,
+        facets,
     })
 }
 
@@ -474,36 +559,6 @@ pub async fn list_dir(
     tauri::async_runtime::spawn_blocking(move || list_dir_sync(path, sort, app_clone))
         .await
         .unwrap_or_else(|e| Err(format!("list_dir task panicked: {e}")))
-}
-
-#[tauri::command]
-pub async fn list_column_values(
-    path: Option<String>,
-    column: String,
-    include_hidden: Option<bool>,
-    app: tauri::AppHandle,
-) -> Result<Vec<String>, String> {
-    let p = match path {
-        Some(p) if !p.is_empty() => std::path::PathBuf::from(p),
-        _ => return Ok(Vec::new()),
-    };
-    if !p.exists() {
-        return Ok(Vec::new());
-    }
-
-    let app_clone = app.clone();
-    let path_arg = Some(p.to_string_lossy().to_string());
-    let include_hidden = include_hidden.unwrap_or(false);
-    tauri::async_runtime::spawn_blocking(move || {
-        let listing = list_dir_sync(path_arg, None, app_clone)?;
-        Ok(collect_column_values(
-            &listing.entries,
-            column.as_str(),
-            include_hidden,
-        ))
-    })
-    .await
-    .unwrap_or_else(|e| Err(format!("list_column_values task panicked: {e}")))
 }
 
 fn watch_allow_all() -> bool {
