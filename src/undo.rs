@@ -1,14 +1,17 @@
 use std::collections::{hash_map::DefaultHasher, VecDeque};
+#[cfg(unix)]
+use std::ffi::{CStr, CString};
 use std::fs;
+use std::io::{self, ErrorKind};
 #[cfg(all(unix, target_os = "linux"))]
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+#[cfg(unix)]
+use std::os::unix::ffi::OsStrExt;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-#[cfg(unix)]
-use std::{ffi::CString, os::unix::ffi::OsStrExt};
 use std::{hash::Hash, hash::Hasher};
 #[cfg(target_os = "windows")]
 use std::{os::windows::ffi::OsStrExt, ptr};
@@ -262,6 +265,326 @@ pub(crate) fn run_actions(actions: &mut [Action], direction: Direction) -> Resul
     execute_batch(actions, direction)
 }
 
+#[cfg(all(unix, target_os = "linux"))]
+fn absolute_path(path: &Path) -> Result<PathBuf, std::io::Error> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        Ok(std::env::current_dir()?.join(path))
+    }
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn parent_fd_and_name(path: &Path) -> Result<(OwnedFd, CString), std::io::Error> {
+    let abs = absolute_path(path)?;
+    let parent = abs.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "Path is missing parent")
+    })?;
+    let name = abs.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Path is missing file name",
+        )
+    })?;
+    let c_name = CString::new(name.as_bytes()).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Path contains invalid NUL byte",
+        )
+    })?;
+    let parent_fd = open_nofollow_path_fd(parent)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    Ok((parent_fd, c_name))
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn fstatat_nofollow(parent_fd: libc::c_int, name: &CString) -> Result<libc::stat, std::io::Error> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    let rc = unsafe {
+        libc::fstatat(
+            parent_fd,
+            name.as_ptr(),
+            stat.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    if rc != 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(unsafe { stat.assume_init() })
+    }
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
+    if absolute_path(src)? == absolute_path(dst)? {
+        return Ok(());
+    }
+
+    let (src_parent_fd, src_name) = parent_fd_and_name(src)?;
+    let (dst_parent_fd, dst_name) = parent_fd_and_name(dst)?;
+
+    let src_stat = fstatat_nofollow(src_parent_fd.as_raw_fd(), &src_name)?;
+    if (src_stat.st_mode & libc::S_IFMT) == libc::S_IFLNK {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Symlinks are not allowed",
+        ));
+    }
+
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2 as libc::c_long,
+            src_parent_fd.as_raw_fd(),
+            src_name.as_ptr(),
+            dst_parent_fd.as_raw_fd(),
+            dst_name.as_ptr(),
+            libc::RENAME_NOREPLACE as libc::c_uint,
+        )
+    } as libc::c_int;
+    if rc == 0 {
+        Ok(())
+    } else {
+        let err = std::io::Error::last_os_error();
+        match err.raw_os_error() {
+            Some(code) if code == libc::ENOSYS || code == libc::EINVAL => Err(std::io::Error::new(
+                ErrorKind::Unsupported,
+                "Secure no-replace rename is not supported on this platform/filesystem",
+            )),
+            _ => Err(err),
+        }
+    }
+}
+
+#[cfg(not(all(unix, target_os = "linux")))]
+fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
+    fs::rename(src, dst)
+}
+
+pub(crate) fn rename_entry_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
+    rename_nofollow_io(src, dst)
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn read_dir_entry_names(dir_fd: &OwnedFd) -> Result<Vec<CString>, std::io::Error> {
+    let dup_fd = unsafe { libc::fcntl(dir_fd.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
+    if dup_fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let dir = unsafe { libc::fdopendir(dup_fd) };
+    if dir.is_null() {
+        let err = std::io::Error::last_os_error();
+        let _ = unsafe { libc::close(dup_fd) };
+        return Err(err);
+    }
+
+    let mut names = Vec::new();
+    let mut read_err: Option<std::io::Error> = None;
+    loop {
+        unsafe {
+            *libc::__errno_location() = 0;
+        }
+        let entry = unsafe { libc::readdir(dir) };
+        if entry.is_null() {
+            let errno = unsafe { *libc::__errno_location() };
+            if errno != 0 {
+                read_err = Some(std::io::Error::from_raw_os_error(errno));
+            }
+            break;
+        }
+        let raw = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+        let bytes = raw.to_bytes();
+        if bytes == b"." || bytes == b".." {
+            continue;
+        }
+        let name = CString::new(bytes).map_err(|_| {
+            std::io::Error::new(
+                ErrorKind::InvalidData,
+                "Directory entry contains an unexpected NUL byte",
+            )
+        })?;
+        names.push(name);
+    }
+
+    if unsafe { libc::closedir(dir) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if let Some(err) = read_err {
+        return Err(err);
+    }
+    Ok(names)
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn unlinkat_nofollow(
+    parent_fd: libc::c_int,
+    name: &CString,
+    flags: libc::c_int,
+) -> Result<(), std::io::Error> {
+    let rc = unsafe { libc::unlinkat(parent_fd, name.as_ptr(), flags) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn delete_dir_recursive_at(parent_fd: libc::c_int, name: &CString) -> Result<(), std::io::Error> {
+    let child_raw = unsafe {
+        libc::openat(
+            parent_fd,
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if child_raw < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let child_fd = unsafe { OwnedFd::from_raw_fd(child_raw) };
+
+    for child_name in read_dir_entry_names(&child_fd)? {
+        let child_stat = match fstatat_nofollow(child_fd.as_raw_fd(), &child_name) {
+            Ok(stat) => stat,
+            Err(err) if err.kind() == ErrorKind::NotFound => continue,
+            Err(err) => return Err(err),
+        };
+        let mode = child_stat.st_mode & libc::S_IFMT;
+        if mode == libc::S_IFLNK {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Symlinks are not allowed",
+            ));
+        }
+        if mode == libc::S_IFDIR {
+            delete_dir_recursive_at(child_fd.as_raw_fd(), &child_name)?;
+        } else {
+            match unlinkat_nofollow(child_fd.as_raw_fd(), &child_name, 0) {
+                Ok(()) => {}
+                Err(err) if err.kind() == ErrorKind::NotFound => {}
+                Err(err) => return Err(err),
+            }
+        }
+    }
+
+    unlinkat_nofollow(parent_fd, name, libc::AT_REMOVEDIR)
+}
+
+#[cfg(all(unix, target_os = "linux"))]
+fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
+    let (parent_fd, name) = parent_fd_and_name(path)?;
+    let stat = fstatat_nofollow(parent_fd.as_raw_fd(), &name)?;
+    let mode = stat.st_mode & libc::S_IFMT;
+    if mode == libc::S_IFLNK {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Symlinks are not allowed",
+        ));
+    }
+    if mode == libc::S_IFDIR {
+        delete_dir_recursive_at(parent_fd.as_raw_fd(), &name)
+    } else {
+        unlinkat_nofollow(parent_fd.as_raw_fd(), &name, 0)
+    }
+}
+
+#[cfg(not(all(unix, target_os = "linux")))]
+fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
+    let meta = fs::symlink_metadata(path)?;
+    if meta.file_type().is_symlink() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Symlinks are not allowed",
+        ));
+    }
+    if meta.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
+}
+
+pub(crate) fn delete_entry_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
+    delete_nofollow_io(path)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PathKind {
+    File,
+    Dir,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PathSnapshot {
+    kind: PathKind,
+    #[cfg(unix)]
+    dev: u64,
+    #[cfg(unix)]
+    ino: u64,
+    #[cfg(not(unix))]
+    len: u64,
+    #[cfg(not(unix))]
+    modified_nanos: Option<u128>,
+}
+
+fn path_kind_from_meta(meta: &fs::Metadata) -> PathKind {
+    if meta.is_file() {
+        PathKind::File
+    } else if meta.is_dir() {
+        PathKind::Dir
+    } else {
+        PathKind::Other
+    }
+}
+
+fn path_snapshot_from_meta(meta: &fs::Metadata) -> PathSnapshot {
+    PathSnapshot {
+        kind: path_kind_from_meta(meta),
+        #[cfg(unix)]
+        dev: meta.dev(),
+        #[cfg(unix)]
+        ino: meta.ino(),
+        #[cfg(not(unix))]
+        len: meta.len(),
+        #[cfg(not(unix))]
+        modified_nanos: meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos()),
+    }
+}
+
+pub(crate) fn snapshot_existing_path(path: &Path) -> Result<PathSnapshot, String> {
+    let meta = ensure_existing_path_nonsymlink(path)?;
+    Ok(path_snapshot_from_meta(&meta))
+}
+
+fn snapshots_match(expected: &PathSnapshot, current: &PathSnapshot) -> bool {
+    if expected.kind != current.kind {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        expected.dev == current.dev && expected.ino == current.ino
+    }
+    #[cfg(not(unix))]
+    {
+        expected.len == current.len && expected.modified_nanos == current.modified_nanos
+    }
+}
+
+pub(crate) fn assert_path_snapshot(path: &Path, expected: &PathSnapshot) -> Result<(), String> {
+    let meta = ensure_existing_path_nonsymlink(path)?;
+    let current = path_snapshot_from_meta(&meta);
+    if snapshots_match(expected, &current) {
+        Ok(())
+    } else {
+        Err(format!("Path changed during operation: {}", path.display()))
+    }
+}
+
 fn execute_action(action: &mut Action, direction: Direction) -> Result<(), String> {
     match action {
         Action::Batch(actions) => execute_batch(actions, direction),
@@ -270,76 +593,47 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
                 Direction::Forward => (from, to),
                 Direction::Backward => (to, from),
             };
-            if dst.exists() {
-                delete_entry_path(dst)?;
-            }
             move_with_fallback(src, dst)
         }
         Action::Copy { from, to } => match direction {
-            Direction::Forward => {
-                ensure_absent(to)?;
-                copy_entry(from, to)
-            }
+            Direction::Forward => copy_entry(from, to),
             Direction::Backward => delete_entry_path(to),
         },
         Action::Create { path, backup } => match direction {
-            Direction::Forward => {
-                if !backup.exists() {
-                    return Err(format!("Backup missing: {}", backup.display()));
-                }
-                ensure_absent(path)?;
-                move_with_fallback(backup, path)
-            }
+            Direction::Forward => move_with_fallback(backup, path),
             Direction::Backward => {
-                if !path.exists() {
-                    return Err(format!("Path does not exist: {}", path.display()));
-                }
                 let parent = backup
                     .parent()
                     .ok_or_else(|| "Invalid backup path".to_string())?;
                 fs::create_dir_all(parent).map_err(|e| {
                     format!("Failed to create backup dir {}: {e}", parent.display())
                 })?;
-                ensure_absent(backup)?;
                 move_with_fallback(path, backup)
             }
         },
         Action::Delete { path, backup } => match direction {
             Direction::Forward => {
-                if !path.exists() {
-                    return Err(format!("Path does not exist: {}", path.display()));
-                }
                 let parent = backup
                     .parent()
                     .ok_or_else(|| "Invalid backup path".to_string())?;
                 fs::create_dir_all(parent).map_err(|e| {
                     format!("Failed to create backup dir {}: {e}", parent.display())
                 })?;
-                ensure_absent(backup)?;
                 move_with_fallback(path, backup)
             }
-            Direction::Backward => {
-                if !backup.exists() {
-                    return Err(format!("Backup missing: {}", backup.display()));
-                }
-                ensure_absent(path)?;
-                move_with_fallback(backup, path)
-            }
+            Direction::Backward => move_with_fallback(backup, path),
         },
         Action::CreateFolder { path } => match direction {
-            Direction::Forward => {
-                ensure_absent(path)?;
-                fs::create_dir_all(&*path)
-                    .map_err(|e| format!("Failed to create directory {}: {e}", path.display()))
-            }
-            Direction::Backward => {
-                if path.exists() {
-                    fs::remove_dir_all(&*path)
-                        .map_err(|e| format!("Failed to remove directory {}: {e}", path.display()))
-                } else {
-                    Ok(())
-                }
-            }
+            Direction::Forward => fs::create_dir(&*path)
+                .map_err(|e| format!("Failed to create directory {}: {e}", path.display())),
+            Direction::Backward => match delete_entry_nofollow_io(path) {
+                Ok(()) => Ok(()),
+                Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+                Err(err) => Err(format!(
+                    "Failed to remove directory {}: {err}",
+                    path.display()
+                )),
+            },
         },
     }
 }
@@ -387,13 +681,6 @@ fn reverse_direction(direction: Direction) -> Direction {
         Direction::Forward => Direction::Backward,
         Direction::Backward => Direction::Forward,
     }
-}
-
-fn ensure_absent(path: &Path) -> Result<(), String> {
-    if path.exists() {
-        return Err(format!("Destination already exists: {}", path.display()));
-    }
-    Ok(())
 }
 
 pub(crate) fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> Result<(), String> {
@@ -750,60 +1037,94 @@ fn snapshot_dacl(path: &Path) -> Result<Option<Vec<u8>>, String> {
 
 pub(crate) fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
     let meta = ensure_existing_path_nonsymlink(src)?;
+    let src_snapshot = path_snapshot_from_meta(&meta);
     if let Some(parent) = dest.parent() {
         ensure_existing_dir_nonsymlink(parent)?;
     }
     if meta.is_dir() {
+        assert_path_snapshot(src, &src_snapshot)?;
         copy_dir(src, dest)
     } else {
         if let Some(parent) = dest.parent() {
             ensure_existing_dir_nonsymlink(parent)?;
         }
-        fs::copy(src, dest)
-            .map_err(|e| format!("Failed to copy file: {e}"))
-            .map(|_| ())
+        assert_path_snapshot(src, &src_snapshot)?;
+        copy_file_noreplace(src, dest)
     }
 }
 
+fn copy_file_noreplace(src: &Path, dest: &Path) -> Result<(), String> {
+    let mut src_file =
+        fs::File::open(src).map_err(|e| format!("Failed to open source file {:?}: {e}", src))?;
+    let mut dst_file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(dest)
+        .map_err(|e| {
+            if e.kind() == ErrorKind::AlreadyExists {
+                format!("Destination already exists: {}", dest.display())
+            } else {
+                format!("Failed to create destination file {:?}: {e}", dest)
+            }
+        })?;
+    io::copy(&mut src_file, &mut dst_file)
+        .map_err(|e| format!("Failed to copy file {:?} -> {:?}: {e}", src, dest))?;
+    let perms = src_file
+        .metadata()
+        .map_err(|e| format!("Failed to read source permissions {:?}: {e}", src))?
+        .permissions();
+    fs::set_permissions(dest, perms)
+        .map_err(|e| format!("Failed to set permissions on {:?}: {e}", dest))
+}
+
 fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
-    if dest.exists() {
-        return Err(format!("Destination already exists: {}", dest.display()));
-    }
+    let src_snapshot = snapshot_existing_path(src)?;
     if let Some(parent) = dest.parent() {
         ensure_existing_dir_nonsymlink(parent)?;
     }
-    fs::create_dir_all(dest).map_err(|e| format!("Failed to create dir {:?}: {e}", dest))?;
+    assert_path_snapshot(src, &src_snapshot)?;
+    fs::create_dir(dest).map_err(|e| {
+        if e.kind() == ErrorKind::AlreadyExists {
+            format!("Destination already exists: {}", dest.display())
+        } else {
+            format!("Failed to create dir {:?}: {e}", dest)
+        }
+    })?;
     for entry in fs::read_dir(src).map_err(|e| format!("Failed to read dir {:?}: {e}", src))? {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
         let path = entry.path();
         let meta = ensure_existing_path_nonsymlink(&path)?;
+        let child_snapshot = path_snapshot_from_meta(&meta);
         let target = dest.join(entry.file_name());
         if meta.is_dir() {
+            assert_path_snapshot(&path, &child_snapshot)?;
             copy_dir(&path, &target)?;
         } else {
-            fs::copy(&path, &target).map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
+            assert_path_snapshot(&path, &child_snapshot)?;
+            copy_file_noreplace(&path, &target)?;
         }
     }
     Ok(())
 }
 
 pub(crate) fn delete_entry_path(path: &Path) -> Result<(), String> {
-    let meta = ensure_existing_path_nonsymlink(path)?;
-    if meta.is_dir() {
-        fs::remove_dir_all(path).map_err(|e| format!("Failed to delete directory: {e}"))
-    } else {
-        fs::remove_file(path).map_err(|e| format!("Failed to delete file: {e}"))
-    }
+    let snapshot = snapshot_existing_path(path)?;
+    assert_path_snapshot(path, &snapshot)?;
+    delete_entry_nofollow_io(path).map_err(|e| format!("Failed to delete {}: {e}", path.display()))
 }
 
 pub fn move_with_fallback(src: &Path, dst: &Path) -> Result<(), String> {
-    ensure_existing_path_nonsymlink(src)?;
+    let src_meta = ensure_existing_path_nonsymlink(src)?;
+    let src_snapshot = path_snapshot_from_meta(&src_meta);
     if let Some(parent) = dst.parent() {
         ensure_existing_dir_nonsymlink(parent)?;
+        let parent_snapshot = snapshot_existing_path(parent)?;
+        assert_path_snapshot(parent, &parent_snapshot)?;
     } else {
         return Err("Invalid destination path".into());
     }
-    match fs::rename(src, dst) {
+    assert_path_snapshot(src, &src_snapshot)?;
+    match rename_nofollow_io(src, dst) {
         Ok(_) => Ok(()),
         Err(rename_err) => {
             if !is_cross_device(&rename_err) {
@@ -815,6 +1136,7 @@ pub fn move_with_fallback(src: &Path, dst: &Path) -> Result<(), String> {
             }
             // Fallback: copy + delete to tolerate different disks/file systems.
             copy_entry(src, dst).and_then(|_| {
+                assert_path_snapshot(src, &src_snapshot)?;
                 delete_entry_path(src).map_err(|del_err| {
                     // Best effort: clean up destination if delete failed to avoid duplicates.
                     let _ = delete_entry_path(dst);
@@ -1113,6 +1435,38 @@ mod tests {
     }
 
     #[test]
+    fn move_with_fallback_refuses_existing_destination() {
+        let dir = uniq_path("move-no-overwrite");
+        let _ = fs::create_dir_all(&dir);
+        let source = dir.join("source.txt");
+        let dest = dir.join("dest.txt");
+        write_file(&source, b"source-data");
+        write_file(&dest, b"dest-data");
+
+        let err = move_with_fallback(&source, &dest).expect_err("existing destination should fail");
+        assert!(
+            err.contains("File exists") || err.contains("already exists") || err.contains("rename"),
+            "unexpected error: {err}"
+        );
+        assert!(source.exists(), "source should remain when move fails");
+        assert_eq!(fs::read(&dest).unwrap_or_default(), b"dest-data");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn delete_entry_path_removes_non_empty_directory() {
+        let dir = uniq_path("delete-dir-recursive");
+        let nested = dir.join("nested");
+        let deep_file = nested.join("child.txt");
+        let _ = fs::create_dir_all(&nested);
+        write_file(&deep_file, b"child");
+
+        delete_entry_path(&dir).expect("recursive delete should succeed");
+        assert!(!dir.exists(), "directory should be removed recursively");
+    }
+
+    #[test]
     fn undo_failure_restores_stack() {
         let _ = test_undo_dir();
         let dir = uniq_path("undo-fail");
@@ -1132,7 +1486,12 @@ mod tests {
 
         let _ = fs::remove_file(&backup);
         let err = mgr.undo().unwrap_err();
-        assert!(err.contains("Backup") || err.contains("rename"));
+        assert!(
+            err.contains("Backup")
+                || err.contains("rename")
+                || err.contains("metadata")
+                || err.contains("does not exist")
+        );
         assert!(mgr.can_undo());
         assert!(!mgr.can_redo());
 
@@ -1152,6 +1511,39 @@ mod tests {
             !target.exists(),
             "backup base contents should be removed during cleanup"
         );
+    }
+
+    #[test]
+    fn path_snapshot_accepts_unchanged_path() {
+        let dir = uniq_path("snapshot-unchanged");
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("file.txt");
+        write_file(&path, b"one");
+
+        let snapshot = snapshot_existing_path(&path).expect("snapshot should succeed");
+        assert!(
+            assert_path_snapshot(&path, &snapshot).is_ok(),
+            "unchanged path should pass snapshot check"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn path_snapshot_detects_replaced_path() {
+        let dir = uniq_path("snapshot-replaced");
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("file.txt");
+        write_file(&path, b"first");
+
+        let snapshot = snapshot_existing_path(&path).expect("snapshot should succeed");
+        let _ = fs::remove_file(&path);
+        write_file(&path, b"second");
+
+        let err = assert_path_snapshot(&path, &snapshot).expect_err("snapshot mismatch expected");
+        assert!(err.contains("Path changed during operation"));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
 

@@ -10,8 +10,9 @@ use crate::{
     runtime_lifecycle,
     sorting::{sort_entries, SortSpec},
     undo::{
-        copy_entry as undo_copy_entry, delete_entry_path as undo_delete_path, move_with_fallback,
-        run_actions, temp_backup_path, Action, Direction, UndoState,
+        assert_path_snapshot, copy_entry as undo_copy_entry, delete_entry_path as undo_delete_path,
+        move_with_fallback, rename_entry_nofollow_io, run_actions, snapshot_existing_path,
+        temp_backup_path, Action, Direction, PathSnapshot, UndoState,
     },
 };
 #[cfg(target_os = "windows")]
@@ -25,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 #[cfg(target_os = "windows")]
 use std::os::windows::prelude::*;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -339,20 +340,21 @@ fn build_rename_target(from: &Path, new_name: &str) -> Result<PathBuf, String> {
 fn prepare_rename_pair(path: &str, new_name: &str) -> Result<(PathBuf, PathBuf), String> {
     let from = sanitize_path_nofollow(path, true)?;
     let to = build_rename_target(&from, new_name)?;
-    if to != from && to.exists() {
-        return Err("A file or directory with that name already exists".into());
-    }
     Ok((from, to))
 }
 
 fn apply_rename(from: &Path, to: &Path) -> Result<(), String> {
     ensure_existing_path_nonsymlink(from)?;
+    let from_snapshot = snapshot_existing_path(from)?;
     if let Some(parent) = to.parent() {
         ensure_existing_dir_nonsymlink(parent)?;
+        let parent_snapshot = snapshot_existing_path(parent)?;
+        assert_path_snapshot(parent, &parent_snapshot)?;
     } else {
         return Err("Invalid destination path".into());
     }
-    match fs::rename(from, to) {
+    assert_path_snapshot(from, &from_snapshot)?;
+    match rename_entry_nofollow_io(from, to) {
         Ok(_) => Ok(()),
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
             Err("A file or directory with that name already exists".into())
@@ -534,6 +536,101 @@ fn emit_trash_progress(
 struct PreparedTrashMove {
     src: std::path::PathBuf,
     backup: std::path::PathBuf,
+    src_snapshot: PathSnapshot,
+    staged_src: Option<std::path::PathBuf>,
+}
+
+fn stage_for_trash(src: &Path) -> Result<PathBuf, String> {
+    let parent = src
+        .parent()
+        .ok_or_else(|| format!("Invalid source path: {}", src.display()))?;
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let pid = std::process::id();
+    for attempt in 0..64u32 {
+        let staged = parent.join(format!(".browsey-trash-stage-{pid}-{seed}-{attempt}"));
+        match rename_entry_nofollow_io(src, &staged) {
+            Ok(_) => return Ok(staged),
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(err) => {
+                return Err(format!(
+                    "Failed to stage {} for trash: {err}",
+                    src.display()
+                ));
+            }
+        }
+    }
+    Err(format!(
+        "Failed to allocate a temporary staged path for {}",
+        src.display()
+    ))
+}
+
+fn trash_delete_via_staged_rename(
+    src: &Path,
+    src_snapshot: &PathSnapshot,
+) -> Result<PathBuf, String> {
+    assert_path_snapshot(src, src_snapshot)?;
+    let staged = stage_for_trash(src)?;
+    match trash_delete(&staged) {
+        Ok(_) => Ok(staged),
+        Err(err) => {
+            let rollback = rename_entry_nofollow_io(&staged, src)
+                .err()
+                .map(|e| format!("; rollback failed: {e}"))
+                .unwrap_or_default();
+            Err(format!("Failed to move to trash: {err}{rollback}"))
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn rewrite_trash_info_original_path(item: &TrashItem, original_path: &Path) -> Result<(), String> {
+    let info_path = PathBuf::from(&item.id);
+    let contents = fs::read_to_string(&info_path).map_err(|e| {
+        format!(
+            "Failed to read trash info file {}: {e}",
+            info_path.display()
+        )
+    })?;
+
+    let replacement = format!("Path={}", original_path.to_string_lossy());
+    let mut output = String::with_capacity(contents.len() + replacement.len() + 8);
+    let mut replaced = false;
+    for line in contents.lines() {
+        if line.starts_with("Path=") {
+            output.push_str(&replacement);
+            output.push('\n');
+            replaced = true;
+        } else {
+            output.push_str(line);
+            output.push('\n');
+        }
+    }
+    if !replaced {
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+        output.push_str(&replacement);
+        output.push('\n');
+    }
+
+    fs::write(&info_path, output).map_err(|e| {
+        format!(
+            "Failed to update trash info file {}: {e}",
+            info_path.display()
+        )
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn rewrite_trash_info_original_path(
+    _item: &TrashItem,
+    _original_path: &Path,
+) -> Result<(), String> {
+    Ok(())
 }
 
 fn should_abort_fs_op(app: &tauri::AppHandle, cancel: Option<&AtomicBool>) -> bool {
@@ -557,6 +654,7 @@ fn rollback_prepared_trash(prepared: &[PreparedTrashMove]) {
 fn prepare_trash_move(raw: &str) -> Result<PreparedTrashMove, String> {
     let src = sanitize_path_nofollow(raw, true)?;
     check_no_symlink_components(&src)?;
+    let src_snapshot = snapshot_existing_path(&src)?;
 
     // Backup into the central undo directory in case we cannot locate the trash item path later.
     let backup = temp_backup_path(&src);
@@ -565,8 +663,17 @@ fn prepare_trash_move(raw: &str) -> Result<PreparedTrashMove, String> {
             .map_err(|e| format!("Failed to create backup dir {}: {e}", parent.display()))?;
     }
     undo_copy_entry(&src, &backup)?;
+    if let Err(err) = assert_path_snapshot(&src, &src_snapshot) {
+        let _ = undo_delete_path(&backup);
+        return Err(err);
+    }
 
-    Ok(PreparedTrashMove { src, backup })
+    Ok(PreparedTrashMove {
+        src,
+        backup,
+        src_snapshot,
+        staged_src: None,
+    })
 }
 
 fn move_to_trash_many_blocking(
@@ -612,35 +719,34 @@ fn move_to_trash_many_blocking(
             return Err("Move to trash cancelled".into());
         }
         match prepare_trash_move(&path) {
-            Ok(prep) => {
-                match trash_delete(&prep.src) {
-                    Ok(_) => {
-                        done = done.saturating_add(1);
-                        emit_trash_progress(
-                            &app,
-                            progress_event.as_ref(),
-                            done,
-                            total,
-                            done == total,
-                            &mut last_emit,
-                        );
-                        prepared.push(prep);
-                    }
-                    Err(err) => {
-                        // Roll back any already-trashed items using their backups.
-                        rollback_prepared_trash(&prepared);
-                        emit_trash_progress(
-                            &app,
-                            progress_event.as_ref(),
-                            done,
-                            total,
-                            true,
-                            &mut last_emit,
-                        );
-                        return Err(format!("Failed to move to trash: {err}"));
-                    }
+            Ok(mut prep) => match trash_delete_via_staged_rename(&prep.src, &prep.src_snapshot) {
+                Ok(staged_src) => {
+                    prep.staged_src = Some(staged_src);
+                    done = done.saturating_add(1);
+                    emit_trash_progress(
+                        &app,
+                        progress_event.as_ref(),
+                        done,
+                        total,
+                        done == total,
+                        &mut last_emit,
+                    );
+                    prepared.push(prep);
                 }
-            }
+                Err(err) => {
+                    rollback_prepared_trash(&prepared);
+                    let _ = undo_delete_path(&prep.backup);
+                    emit_trash_progress(
+                        &app,
+                        progress_event.as_ref(),
+                        done,
+                        total,
+                        true,
+                        &mut last_emit,
+                    );
+                    return Err(err);
+                }
+            },
             Err(err) => {
                 // Nothing was moved for this entry; roll back previous ones.
                 rollback_prepared_trash(&prepared);
@@ -658,20 +764,28 @@ fn move_to_trash_many_blocking(
     }
 
     // Identify new trash items with a single post-scan.
-    let mut new_items: HashMap<std::path::PathBuf, std::path::PathBuf> = HashMap::new();
+    let mut new_items: HashMap<std::path::PathBuf, TrashItem> = HashMap::new();
     if let Ok(after) = trash_list() {
         for item in after.into_iter().filter(|i| !before_ids.contains(&i.id)) {
-            new_items.insert(item.original_path(), trash_item_path(&item));
+            new_items.insert(item.original_path(), item);
         }
     }
 
     let mut actions = Vec::with_capacity(prepared.len());
     for prep in prepared {
-        if let Some(trash_path) = new_items.remove(&prep.src) {
+        let lookup = prep.staged_src.as_ref().unwrap_or(&prep.src);
+        if let Some(item) = new_items.remove(lookup) {
+            if let Err(err) = rewrite_trash_info_original_path(&item, &prep.src) {
+                warn!(
+                    "Failed to rewrite trash info for {}: {}",
+                    prep.src.display(),
+                    err
+                );
+            }
             let _ = undo_delete_path(&prep.backup);
             actions.push(Action::Move {
                 from: prep.src,
-                to: trash_path,
+                to: trash_item_path(&item),
             });
         } else {
             actions.push(Action::Delete {
@@ -727,6 +841,7 @@ fn move_single_to_trash(
 ) -> Result<Action, String> {
     let src = sanitize_path_nofollow(&path, true)?;
     check_no_symlink_components(&src)?;
+    let src_snapshot = snapshot_existing_path(&src)?;
 
     // Backup into the central undo directory in case the OS trash item can't be found.
     let backup = temp_backup_path(&src);
@@ -742,25 +857,37 @@ fn move_single_to_trash(
         .map(|item| item.id)
         .collect();
 
-    trash_delete(&src).map_err(|e| format!("Failed to move to trash: {e}"))?;
+    let staged_src = match trash_delete_via_staged_rename(&src, &src_snapshot) {
+        Ok(staged) => staged,
+        Err(err) => {
+            let _ = undo_delete_path(&backup);
+            return Err(err);
+        }
+    };
     if emit_event {
         let _ = runtime_lifecycle::emit_if_running(app, "trash-changed", ());
     }
 
-    let trash_path = trash_list().ok().and_then(|after| {
+    let trashed_item = trash_list().ok().and_then(|after| {
         after
             .into_iter()
-            .find(|item| !before.contains(&item.id) && item.original_path() == src)
-            .map(|item| trash_item_path(&item))
+            .find(|item| !before.contains(&item.id) && item.original_path() == staged_src)
     });
 
-    match trash_path {
-        Some(trash_path) => {
+    match trashed_item {
+        Some(item) => {
+            if let Err(err) = rewrite_trash_info_original_path(&item, &src) {
+                warn!(
+                    "Failed to rewrite trash info for {}: {}",
+                    src.display(),
+                    err
+                );
+            }
             // Remove the backup once we know the trash location.
             let _ = undo_delete_path(&backup);
             Ok(Action::Move {
                 from: src,
-                to: trash_path,
+                to: trash_item_path(&item),
             })
         }
         None => Ok(Action::Delete { path: src, backup }),
@@ -819,6 +946,7 @@ pub fn delete_entry(path: String, state: tauri::State<UndoState>) -> Result<(), 
 
 fn delete_with_backup(path: &Path) -> Result<Action, String> {
     ensure_existing_path_nonsymlink(path)?;
+    let src_snapshot = snapshot_existing_path(path)?;
     let backup = temp_backup_path(path);
     if let Some(parent) = path.parent() {
         ensure_existing_dir_nonsymlink(parent)?;
@@ -829,10 +957,8 @@ fn delete_with_backup(path: &Path) -> Result<Action, String> {
             .map_err(|e| format!("Failed to create backup dir {}: {e}", parent.display()))?;
         ensure_existing_dir_nonsymlink(parent)?;
     }
-    if backup.exists() {
-        return Err(format!("Backup path already exists: {}", backup.display()));
-    }
     // Bruk samme robuste flytt som undo-systemet (copy+delete fallback)
+    assert_path_snapshot(path, &src_snapshot)?;
     move_with_fallback(path, &backup)?;
     Ok(Action::Delete {
         path: path.to_path_buf(),
@@ -969,20 +1095,18 @@ pub async fn delete_entries(
     task.await.map_err(|e| format!("Delete task failed: {e}"))?
 }
 
-fn ensure_existing_path_nonsymlink(path: &Path) -> Result<(), String> {
+fn ensure_existing_path_nonsymlink(path: &Path) -> Result<fs::Metadata, String> {
     check_no_symlink_components(path)?;
     let meta = fs::symlink_metadata(path)
         .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
     if meta.file_type().is_symlink() {
         return Err(format!("Symlinks are not allowed: {}", path.display()));
     }
-    Ok(())
+    Ok(meta)
 }
 
 fn ensure_existing_dir_nonsymlink(path: &Path) -> Result<(), String> {
-    ensure_existing_path_nonsymlink(path)?;
-    let meta = fs::metadata(path)
-        .map_err(|e| format!("Cannot read destination {}: {e}", path.display()))?;
+    let meta = ensure_existing_path_nonsymlink(path)?;
     if !meta.is_dir() {
         return Err("Destination is not a directory".into());
     }
