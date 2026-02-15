@@ -1,7 +1,10 @@
 # Changelog
 
 ## Unreleased
-- No unreleased entries yet.
+- Keyboard UX: `Esc` now exits both search mode and filter mode directly to breadcrumb view (address mode with unfocused path input).
+- Clipboard UX/performance: large-selection `Ctrl+C`/`Ctrl+X` now use path-based flows that avoid quadratic selection scans.
+- Context-menu and delete flows were optimized for large selections (Set/Map lookups and reduced repeated selection reconstruction).
+- Clipboard/file-operation shutdown handling was hardened to reduce late-stage work and event emissions during app exit.
 
 ## v0.4.3 — 2026-02-13
 - Added a topbar main action menu (hamburger) with wired actions for Settings, Keyboard Shortcuts, Search, view-mode toggle (List/Grid), hidden-files toggle, Refresh, and About.
