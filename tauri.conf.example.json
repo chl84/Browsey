@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Browsey",
-  "version": "0.3.0",
+  "version": "0.4.3",
   "identifier": "com.browsey",
   "build": {
     "beforeDevCommand": "bash -lc 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && ./scripts/start-vite.sh'",
@@ -14,18 +14,19 @@
       {
         "title": "Browsey",
         "create": false,
-        "width": 800,
-        "height": 600,
+        "width": 1000,
+        "height": 800,
         "minWidth": 300,
         "minHeight": 300,
         "theme": "Dark",
-        "decorations": false
+        "decorations": false,
+        "dragDropEnabled": true
       }
     ],
     "security": {
       "assetProtocol": {
         "enable": true,
-        "scope": ["__CACHE_DIR__/browsey/**"]
+        "scope": ["$CACHE/browsey/**", "/app/resources/**"]
       }
     }
   },
@@ -33,9 +34,11 @@
     "active": true,
     "targets": ["rpm"],
     "icon": ["resources/icons/icon.png", "resources/icons/icon.ico"],
+    "externalBin": [
+      "resources/pdfium-linux-x64/lib/libpdfium.so"
+    ],
     "resources": [
-      "resources/pdfium-linux-x64/**",
-      "resources/pdfium-win-x64/**",
+      "resources/**",
       "THIRD_PARTY_NOTICES"
     ]
   }
