@@ -7,6 +7,7 @@ type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
 type PermissionPayload = {
   access_supported: boolean
   executable_supported: boolean
+  ownership_supported?: boolean
   read_only: boolean
   executable: boolean | null
   owner_name?: string | null
@@ -36,6 +37,7 @@ export type ExtraMetadataPayload = {
 export type PermissionsState = {
   accessSupported: boolean
   executableSupported: boolean
+  ownershipSupported: boolean
   readOnly: AccessBit | null
   executable: AccessBit | null
   ownerName: string | null
@@ -59,6 +61,8 @@ export type PropertiesState = {
   extraMetadataPath: string | null
   permissionsLoading: boolean
   permissions: PermissionsState | null
+  ownershipApplying: boolean
+  ownershipError: string | null
 }
 
 const PERMISSIONS_MULTI_CONCURRENCY = 8
@@ -67,6 +71,7 @@ const SYMLINK_PERMISSIONS_MSG = 'Permissions are not supported on symlinks'
 const unsupportedPermissionsPayload = (): PermissionPayload => ({
   access_supported: false,
   executable_supported: false,
+  ownership_supported: false,
   read_only: false,
   executable: null,
   owner_name: null,
@@ -97,6 +102,8 @@ export const createPropertiesModal = (deps: Deps) => {
     extraMetadataPath: null,
     permissionsLoading: false,
     permissions: null,
+    ownershipApplying: false,
+    ownershipError: null,
   })
   let token = 0
 
@@ -115,6 +122,8 @@ export const createPropertiesModal = (deps: Deps) => {
       extraMetadataPath: null,
       permissionsLoading: false,
       permissions: null,
+      ownershipApplying: false,
+      ownershipError: null,
     })
   }
 
@@ -139,6 +148,8 @@ export const createPropertiesModal = (deps: Deps) => {
       extraMetadataPath: null,
       permissionsLoading: true,
       permissions: null,
+      ownershipApplying: false,
+      ownershipError: null,
     })
 
     if (entries.length === 1) {
@@ -229,6 +240,7 @@ export const createPropertiesModal = (deps: Deps) => {
       if (currToken !== token) return
       const accessSupported = permsList.every((p) => p.access_supported)
       const executableSupported = permsList.every((p) => p.executable_supported)
+      const ownershipSupported = permsList.every((p) => p.ownership_supported === true)
 
       const ownerReads = permsList
         .map((p) => p.owner?.read)
@@ -274,6 +286,7 @@ export const createPropertiesModal = (deps: Deps) => {
           ? {
               accessSupported,
               executableSupported,
+              ownershipSupported,
               readOnly: combine(readOnlyVals),
               executable: executableSupported ? combine(execVals) : null,
               ownerName: combinePrincipal(ownerNameVals),
@@ -297,6 +310,7 @@ export const createPropertiesModal = (deps: Deps) => {
           : {
               accessSupported: false,
               executableSupported,
+              ownershipSupported,
               readOnly: null,
               executable: executableSupported ? combine(execVals) : null,
               ownerName: combinePrincipal(ownerNameVals),
@@ -323,6 +337,7 @@ export const createPropertiesModal = (deps: Deps) => {
         permissions: {
           accessSupported: perms.access_supported,
           executableSupported: perms.executable_supported,
+          ownershipSupported: perms.ownership_supported === true,
           readOnly: perms.read_only,
           executable: perms.executable,
           ownerName: perms.owner_name ?? null,
@@ -434,6 +449,7 @@ export const createPropertiesModal = (deps: Deps) => {
       const perms = await invoke<{
         access_supported?: boolean
         executable_supported?: boolean
+        ownership_supported?: boolean
         read_only?: boolean
         executable?: boolean | null
         owner_name?: string | null
@@ -453,6 +469,7 @@ export const createPropertiesModal = (deps: Deps) => {
         permissions: {
           accessSupported: perms.access_supported ?? currentPerms?.accessSupported ?? false,
           executableSupported: perms.executable_supported ?? currentPerms?.executableSupported ?? false,
+          ownershipSupported: perms.ownership_supported ?? currentPerms?.ownershipSupported ?? false,
           readOnly: perms.read_only ?? currentPerms?.readOnly ?? null,
           executable: perms.executable ?? currentPerms?.executable ?? null,
           ownerName: perms.owner_name ?? currentPerms?.ownerName ?? null,
@@ -481,12 +498,77 @@ export const createPropertiesModal = (deps: Deps) => {
     void updatePermissions({ [scope]: { [key]: next } }, prev)
   }
 
+  const setOwnership = async (ownerRaw: string, groupRaw: string) => {
+    const current = get(state)
+    const targets =
+      current.targets.length > 0
+        ? current.targets.map((p) => p.path)
+        : current.entry
+          ? [current.entry.path]
+          : []
+    if (targets.length === 0) return
+
+    const owner = ownerRaw.trim()
+    const group = groupRaw.trim()
+    const payload: {
+      paths: string[]
+      owner?: string
+      group?: string
+    } = { paths: targets }
+    if (owner.length > 0) payload.owner = owner
+    if (group.length > 0) payload.group = group
+    if (!payload.owner && !payload.group) {
+      state.update((s) => ({ ...s, ownershipError: 'Specify user and/or group before applying.' }))
+      return
+    }
+
+    const activeToken = token
+    state.update((s) => ({ ...s, ownershipApplying: true, ownershipError: null }))
+    try {
+      const perms = await invoke<PermissionPayload>('set_ownership', payload)
+      if (activeToken !== token) return
+      if (targets.length > 1) {
+        state.update((s) => ({ ...s, permissionsLoading: true }))
+        await loadPermissionsMulti(current.targets, activeToken)
+        return
+      }
+      const currentPerms = get(state).permissions
+      state.update((s) => ({
+        ...s,
+        permissions: {
+          accessSupported: perms.access_supported ?? currentPerms?.accessSupported ?? false,
+          executableSupported: perms.executable_supported ?? currentPerms?.executableSupported ?? false,
+          ownershipSupported: perms.ownership_supported ?? currentPerms?.ownershipSupported ?? false,
+          readOnly: perms.read_only ?? currentPerms?.readOnly ?? null,
+          executable: perms.executable ?? currentPerms?.executable ?? null,
+          ownerName: perms.owner_name ?? currentPerms?.ownerName ?? null,
+          groupName: perms.group_name ?? currentPerms?.groupName ?? null,
+          owner: perms.owner ?? currentPerms?.owner ?? null,
+          group: perms.group ?? currentPerms?.group ?? null,
+          other: perms.other ?? currentPerms?.other ?? null,
+        },
+      }))
+    } catch (err) {
+      const rawMessage = err instanceof Error ? err.message : String(err)
+      const message = rawMessage.toLowerCase().includes('operation not permitted')
+        ? 'Permission denied. Changing owner/group requires elevated privileges.'
+        : rawMessage
+      console.error('Failed to update ownership', { targets, owner: payload.owner, group: payload.group, err })
+      if (activeToken !== token) return
+      state.update((s) => ({ ...s, ownershipError: message }))
+    } finally {
+      if (activeToken !== token) return
+      state.update((s) => ({ ...s, ownershipApplying: false }))
+    }
+  }
+
   return {
     state,
     open: openModal,
     close,
     loadExtraIfNeeded,
     toggleAccess,
+    setOwnership,
     async toggleHidden(next: boolean) {
       const current = get(state)
       const targets = current.targets.length > 0 ? current.targets : current.entry ? [current.entry] : []

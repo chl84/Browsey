@@ -223,12 +223,15 @@
       }
     | null = null
   export let propertiesPermissionsLoading = false
+  export let propertiesOwnershipApplying = false
+  export let propertiesOwnershipError: string | null = null
   type AccessBit = boolean | 'mixed'
   type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
   export let propertiesPermissions:
     | {
         accessSupported: boolean
         executableSupported: boolean
+        ownershipSupported: boolean
         readOnly: AccessBit | null
         executable: AccessBit | null
         ownerName: string | null
@@ -240,6 +243,7 @@
     | null = null
   export let onTogglePermissionsAccess: (scope: 'owner' | 'group' | 'other', key: 'read' | 'write' | 'exec', next: boolean) => void =
     () => {}
+  export let onSetOwnership: (owner: string, group: string) => void | Promise<void> = () => {}
   export let onToggleHidden: (next: boolean) => void = () => {}
   export let onLoadPropertiesExtraMetadata: () => void = () => {}
   export let onCloseProperties: () => void = () => {}
@@ -505,8 +509,11 @@
   extraMetadataError={propertiesExtraMetadataError}
   extraMetadata={propertiesExtraMetadata}
   permissionsLoading={propertiesPermissionsLoading}
+  ownershipApplying={propertiesOwnershipApplying}
+  ownershipError={propertiesOwnershipError}
   permissions={propertiesPermissions}
   onToggleAccess={onTogglePermissionsAccess}
+  onSetOwnership={onSetOwnership}
   onToggleHidden={onToggleHidden}
   onActivateExtra={onLoadPropertiesExtraMetadata}
   {formatSize}

@@ -14,6 +14,8 @@
   export let extraMetadataError: string | null = null
   export let extraMetadata: { kind: string; sections: ExtraSection[] } | null = null
   export let permissionsLoading = false
+  export let ownershipApplying = false
+  export let ownershipError: string | null = null
   type Access = { read: boolean | 'mixed'; write: boolean | 'mixed'; exec: boolean | 'mixed' }
   type HiddenBit = boolean | 'mixed' | null
   const scopes = ['owner', 'group', 'other'] as const
@@ -22,6 +24,7 @@
     | {
         accessSupported: boolean
         executableSupported: boolean
+        ownershipSupported: boolean
         readOnly: boolean | 'mixed' | null
         executable: boolean | 'mixed' | null
         ownerName: string | null
@@ -39,6 +42,7 @@
   ) => void = () => {}
   export let onToggleHidden: (next: boolean) => void = () => {}
   export let onActivateExtra: () => void = () => {}
+  export let onSetOwnership: (owner: string, group: string) => void | Promise<void> = () => {}
 
   const indeterminate = (node: HTMLInputElement, value: boolean | 'mixed' | null | undefined) => {
     node.indeterminate = value === 'mixed'
@@ -63,6 +67,17 @@
     if (!value) return '—'
     return value === 'mixed' ? 'Mixed' : value
   }
+  const editablePrincipal = (value: string | null | undefined) => {
+    if (!value || value === 'mixed') return ''
+    return value
+  }
+  const principalPlaceholder = (value: string | null | undefined) => {
+    if (value === 'mixed') return 'Mixed'
+    return value ?? ''
+  }
+  const applyOwnership = () => {
+    void onSetOwnership(ownerInput, groupInput)
+  }
 
   $: hiddenBit =
     hidden !== null ? hidden : entry ? (entry.hidden === true || entry.name.startsWith('.')) : false
@@ -70,6 +85,9 @@
   let activeTab: 'basic' | 'extra' | 'permissions' = 'basic'
   let availableTabs: Array<'basic' | 'extra' | 'permissions'> = ['basic', 'extra', 'permissions']
   let wasOpen = false
+  let ownershipInputsInitialized = false
+  let ownerInput = ''
+  let groupInput = ''
   const switchTab = (tab: 'basic' | 'extra' | 'permissions') => {
     activeTab = tab
     if (tab === 'extra') onActivateExtra()
@@ -79,6 +97,19 @@
   $: {
     if (open && !wasOpen) {
       activeTab = 'basic'
+      ownershipInputsInitialized = false
+      ownerInput = ''
+      groupInput = ''
+    }
+    if (!open && wasOpen) {
+      ownershipInputsInitialized = false
+      ownerInput = ''
+      groupInput = ''
+    }
+    if (open && permissions && !ownershipInputsInitialized) {
+      ownerInput = editablePrincipal(permissions.ownerName)
+      groupInput = editablePrincipal(permissions.groupName)
+      ownershipInputsInitialized = true
     }
     wasOpen = open
   }
@@ -180,8 +211,51 @@
       {:else if permissions}
         <div class="permissions-panel">
           <div class="rows ownership">
-            <div class="row"><span class="label">User</span><span class="value">{principalLabel(permissions.ownerName)}</span></div>
-            <div class="row"><span class="label">Group</span><span class="value">{principalLabel(permissions.groupName)}</span></div>
+            {#if permissions.ownershipSupported}
+              <div class="row">
+                <span class="label">User</span>
+                <span class="value">
+                  <input
+                    class="ownership-input"
+                    type="text"
+                    bind:value={ownerInput}
+                    placeholder={principalPlaceholder(permissions.ownerName)}
+                    disabled={ownershipApplying}
+                  />
+                </span>
+              </div>
+              <div class="row">
+                <span class="label">Group</span>
+                <span class="value">
+                  <input
+                    class="ownership-input"
+                    type="text"
+                    bind:value={groupInput}
+                    placeholder={principalPlaceholder(permissions.groupName)}
+                    disabled={ownershipApplying}
+                  />
+                </span>
+              </div>
+              <div class="row">
+                <span class="label">Ownership</span>
+                <span class="value ownership-controls">
+                  <button type="button" on:click={applyOwnership} disabled={ownershipApplying}>
+                    {ownershipApplying ? 'Applying…' : 'Apply ownership'}
+                  </button>
+                  <span class="ownership-hint">Leave one field empty to keep it unchanged.</span>
+                  {#if ownershipError}
+                    <span class="ownership-error">{ownershipError}</span>
+                  {/if}
+                </span>
+              </div>
+            {:else}
+              <div class="row"><span class="label">User</span><span class="value">{principalLabel(permissions.ownerName)}</span></div>
+              <div class="row"><span class="label">Group</span><span class="value">{principalLabel(permissions.groupName)}</span></div>
+              <div class="row">
+                <span class="label">Ownership</span>
+                <span class="value ownership-hint">Changing user/group is not supported on this platform.</span>
+              </div>
+            {/if}
           </div>
 
           {#if permissions.accessSupported}
@@ -302,6 +376,28 @@
 
   .ownership .value {
     justify-self: start;
+  }
+
+  .ownership-input {
+    width: 220px;
+    max-width: 100%;
+  }
+
+  .ownership-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .ownership-hint {
+    color: var(--fg-muted);
+    font-size: 12px;
+  }
+
+  .ownership-error {
+    color: #c03a2b;
+    font-size: 12px;
   }
 
   .permissions-status {

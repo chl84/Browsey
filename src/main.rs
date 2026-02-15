@@ -139,6 +139,9 @@ fn apply_webview_rendering_policy_from_settings() {
 fn apply_webview_rendering_policy_from_settings() {}
 
 fn main() {
+    if let Some(code) = maybe_run_ownership_helper_from_args() {
+        std::process::exit(code);
+    }
     init_logging();
     apply_webview_rendering_policy_from_settings();
     undo::cleanup_stale_backups(None);
@@ -272,6 +275,7 @@ fn main() {
             cancel_task,
             get_permissions,
             set_permissions,
+            set_ownership,
             undo_action,
             redo_action,
             get_thumbnail,

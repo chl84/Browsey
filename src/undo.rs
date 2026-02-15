@@ -1,8 +1,12 @@
 use std::collections::{hash_map::DefaultHasher, VecDeque};
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+#[cfg(unix)]
+use std::{ffi::CString, os::unix::ffi::OsStrExt};
 use std::{hash::Hash, hash::Hasher};
 #[cfg(target_os = "windows")]
 use std::{os::windows::ffi::OsStrExt, ptr};
@@ -59,6 +63,11 @@ pub enum Action {
         before: PermissionsSnapshot,
         after: PermissionsSnapshot,
     },
+    SetOwnership {
+        path: PathBuf,
+        before: OwnershipSnapshot,
+        after: OwnershipSnapshot,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,6 +85,15 @@ pub struct PermissionsSnapshot {
     pub mode: u32,
     #[cfg(target_os = "windows")]
     pub dacl: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct OwnershipSnapshot {
+    #[cfg(unix)]
+    pub uid: u32,
+    #[cfg(unix)]
+    pub gid: u32,
 }
 
 #[derive(Default)]
@@ -342,6 +360,17 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
             };
             apply_permissions(path, snap)
         }
+        Action::SetOwnership {
+            path,
+            before,
+            after,
+        } => {
+            let snap = match direction {
+                Direction::Forward => after,
+                Direction::Backward => before,
+            };
+            apply_ownership(path, snap)
+        }
     }
 }
 
@@ -398,6 +427,12 @@ fn ensure_absent(path: &Path) -> Result<(), String> {
 }
 
 fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> Result<(), String> {
+    check_no_symlink_components(path)?;
+    let meta_no_follow = fs::symlink_metadata(path)
+        .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+    if meta_no_follow.file_type().is_symlink() {
+        return Err(format!("Symlinks are not allowed: {}", path.display()));
+    }
     let meta = fs::metadata(path)
         .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
     let mut perms = meta.permissions();
@@ -460,6 +495,108 @@ pub fn permissions_snapshot(path: &Path) -> Result<PermissionsSnapshot, String> 
     }
     #[cfg(not(any(unix, target_os = "windows")))]
     Ok(PermissionsSnapshot { readonly })
+}
+
+#[allow(dead_code)]
+pub fn ownership_snapshot(path: &Path) -> Result<OwnershipSnapshot, String> {
+    #[cfg(unix)]
+    {
+        check_no_symlink_components(path)?;
+        let meta = fs::symlink_metadata(path)
+            .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+        if meta.file_type().is_symlink() {
+            return Err(format!("Symlinks are not allowed: {}", path.display()));
+        }
+        return Ok(OwnershipSnapshot {
+            uid: meta.uid(),
+            gid: meta.gid(),
+        });
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Err("Ownership changes are not supported on this platform".into())
+    }
+}
+
+pub(crate) fn set_ownership_nofollow(
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::io;
+
+        if uid.is_none() && gid.is_none() {
+            return Ok(());
+        }
+        let bytes = path.as_os_str().as_bytes();
+        let c_path = CString::new(bytes)
+            .map_err(|_| format!("Path contains NUL byte: {}", path.display()))?;
+        let uid_arg = uid.map(|v| v as libc::uid_t).unwrap_or(!0 as libc::uid_t);
+        let gid_arg = gid.map(|v| v as libc::gid_t).unwrap_or(!0 as libc::gid_t);
+        let rc = unsafe {
+            libc::fchownat(
+                libc::AT_FDCWD,
+                c_path.as_ptr(),
+                uid_arg,
+                gid_arg,
+                libc::AT_SYMLINK_NOFOLLOW,
+            )
+        };
+        if rc == 0 {
+            return Ok(());
+        }
+        let err = io::Error::last_os_error();
+        let suffix = match err.raw_os_error() {
+            Some(code) if code == libc::EPERM || code == libc::EACCES => {
+                " (requires elevated privileges: root or CAP_CHOWN)"
+            }
+            _ => "",
+        };
+        return Err(format!(
+            "Failed to change owner/group for {}: {}{}",
+            path.display(),
+            err,
+            suffix
+        ));
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, uid, gid);
+        Err("Ownership changes are not supported on this platform".into())
+    }
+}
+
+fn apply_ownership(path: &Path, snap: &OwnershipSnapshot) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        check_no_symlink_components(path)?;
+        let meta = fs::symlink_metadata(path)
+            .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+        if meta.file_type().is_symlink() {
+            return Err(format!("Symlinks are not allowed: {}", path.display()));
+        }
+        let current_uid = meta.uid();
+        let current_gid = meta.gid();
+        let uid = if current_uid != snap.uid {
+            Some(snap.uid)
+        } else {
+            None
+        };
+        let gid = if current_gid != snap.gid {
+            Some(snap.gid)
+        } else {
+            None
+        };
+        return set_ownership_nofollow(path, uid, gid);
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, snap);
+        Err("Ownership changes are not supported on this platform".into())
+    }
 }
 
 #[cfg(target_os = "windows")]
