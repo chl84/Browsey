@@ -57,14 +57,20 @@ export const createContextActions = (deps: Deps) => {
     if (id.startsWith('divider')) return
     if (!entry) return
 
-    const selectionPaths = getSelectedPaths()
-    const paths = selectionPaths.includes(entry.path) ? selectionPaths : [entry.path]
+    const selectedSet = getSelectedSet()
+    const paths = selectedSet.has(entry.path) ? Array.from(selectedSet) : [entry.path]
     const filtered = getFilteredEntries()
-    const selectionEntries = paths.length > 1 ? filtered.filter((e) => paths.includes(e.path)) : [entry]
+    const pathSet = new Set(paths)
+    let selectionEntriesCache: Entry[] | null = null
+    const selectionEntries = () => {
+      if (selectionEntriesCache) return selectionEntriesCache
+      selectionEntriesCache = paths.length > 1 ? filtered.filter((e) => pathSet.has(e.path)) : [entry]
+      return selectionEntriesCache
+    }
 
     if (id === 'restore') {
       if (currentView() === 'trash') {
-        const ids = selectionEntries.map((e) => e.trash_id ?? e.path)
+        const ids = selectionEntries().map((e) => e.trash_id ?? e.path)
         try {
           await restoreTrashItems(ids)
           await reloadCurrent()
@@ -76,7 +82,7 @@ export const createContextActions = (deps: Deps) => {
     }
 
     if (id === 'copy-path') {
-      const result = await clipboard.copy(selectionEntries, { writeText: true })
+      const result = await clipboard.copyPaths(paths, { writeText: true })
       if (result.ok) {
         showToast('Path copied', 1500)
       } else {
@@ -87,7 +93,7 @@ export const createContextActions = (deps: Deps) => {
 
     if (id === 'remove-recent') {
       if (currentView() === 'recent') {
-        const paths = selectionEntries.map((e) => e.path)
+        const paths = selectionEntries().map((e) => e.path)
         try {
           await removeRecent(paths)
           await reloadCurrent()
@@ -100,35 +106,32 @@ export const createContextActions = (deps: Deps) => {
 
     if (id === 'cut' || id === 'copy') {
       if (id === 'cut') {
-        const result = await clipboard.cut(selectionEntries)
-        if (!result.ok) showToast(`Cut failed: ${result.error}`)
-        const paths = selectionEntries.map((e) => e.path)
-        try {
-          await copyPathsToSystemClipboard(paths, 'cut')
-          showToast('Cut', 1500)
-        } catch (err) {
+        const result = await clipboard.cutPaths(paths)
+        if (!result.ok) {
+          showToast(`Cut failed: ${result.error}`)
+          return
+        }
+        showToast('Cut', 1500)
+        void copyPathsToSystemClipboard(paths, 'cut').catch((err) => {
           showToast(
             `Cut (system clipboard unavailable: ${err instanceof Error ? err.message : String(err)})`,
             2500
           )
-        }
+        })
         return
       }
-      const result = await clipboard.copy(selectionEntries)
+      const result = await clipboard.copyPaths(paths)
       if (!result.ok) {
         showToast(`Copy failed: ${result.error}`)
         return
       }
-      const paths = selectionEntries.map((e) => e.path)
-      try {
-        await copyPathsToSystemClipboard(paths)
-        showToast('Copied', 1500)
-      } catch (err) {
+      showToast('Copied', 1500)
+      void copyPathsToSystemClipboard(paths).catch((err) => {
         showToast(
           `Copied (system clipboard unavailable: ${err instanceof Error ? err.message : String(err)})`,
           2500
         )
-      }
+      })
       return
     }
 
@@ -147,37 +150,38 @@ export const createContextActions = (deps: Deps) => {
       return
     }
     if (id === 'rename-advanced') {
-      startAdvancedRename(selectionEntries)
+      startAdvancedRename(selectionEntries())
       return
     }
 
     if (id === 'compress') {
-      openCompress(selectionEntries)
+      openCompress(selectionEntries())
       return
     }
 
     if (id === 'check-duplicates') {
-      if (selectionEntries.length !== 1 || selectionEntries[0].kind !== 'file') {
+      const entries = selectionEntries()
+      if (entries.length !== 1 || entries[0].kind !== 'file') {
         showToast('Check for Duplicates is available for one file at a time')
         return
       }
-      openCheckDuplicates(selectionEntries[0])
+      openCheckDuplicates(entries[0])
       return
     }
 
     if (id === 'extract') {
-      await extractEntries(selectionEntries)
+      await extractEntries(selectionEntries())
       return
     }
 
     if (id === 'move-trash') {
       try {
         if (currentView() === 'trash') {
-          for (const e of selectionEntries) {
+          for (const e of selectionEntries()) {
             await deleteEntry(e.path)
           }
         } else {
-          const paths = selectionEntries.map((e) => e.path)
+          const paths = selectionEntries().map((e) => e.path)
           await moveToTrashMany(paths)
         }
         await reloadCurrent()
@@ -190,7 +194,7 @@ export const createContextActions = (deps: Deps) => {
 
     if (id === 'delete-permanent') {
       if (currentView() === 'trash') {
-        const ids = selectionEntries.map((e) => e.trash_id ?? e.path)
+        const ids = selectionEntries().map((e) => e.trash_id ?? e.path)
         try {
           await purgeTrashItems(ids)
           await reloadCurrent()
@@ -200,7 +204,7 @@ export const createContextActions = (deps: Deps) => {
         return
       }
       if (!confirmDeleteEnabled()) {
-        const paths = selectionEntries.map((e) => e.path)
+        const paths = selectionEntries().map((e) => e.path)
         try {
           await deleteEntries(paths)
           await reloadCurrent()
@@ -210,12 +214,12 @@ export const createContextActions = (deps: Deps) => {
         }
         return
       }
-      confirmDelete(selectionEntries)
+      confirmDelete(selectionEntries())
       return
     }
 
     if (id === 'properties') {
-      await openProperties(selectionEntries)
+      await openProperties(selectionEntries())
       return
     }
   }
