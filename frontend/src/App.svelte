@@ -975,6 +975,7 @@
   const { startResize } = createColumnResize(cols, persistWidths, getListMaxWidth)
 
   let dirSizeAbort = 0
+  let activeDirSizeProgressEvent: string | null = null
   let selectionText = ''
 
   const computeDirStats = async (
@@ -982,8 +983,13 @@
     onProgress?: (bytes: number, items: number) => void,
   ): Promise<{ total: number; items: number }> => {
     if (paths.length === 0) return { total: 0, items: 0 }
+    if (activeDirSizeProgressEvent) {
+      void cancelTask(activeDirSizeProgressEvent).catch(() => {})
+      activeDirSizeProgressEvent = null
+    }
     const token = ++dirSizeAbort
     const progressEvent = `dir-size-progress-${token}-${Math.random().toString(16).slice(2)}`
+    activeDirSizeProgressEvent = progressEvent
     let unlisten: UnlistenFn | null = null
     const partials = new Map<string, { bytes: number; items: number }>()
     try {
@@ -1004,12 +1010,20 @@
         })
       }
       const result = await invoke<{ total: number; total_items: number }>('dir_sizes', { paths, progressEvent })
-      if (token !== dirSizeAbort) return { total: 0, items: 0 }
+      if (token !== dirSizeAbort) {
+        void cancelTask(progressEvent).catch(() => {})
+        return { total: 0, items: 0 }
+      }
       return { total: result.total ?? 0, items: result.total_items ?? 0 }
     } catch (err) {
       console.error('Failed to compute dir sizes', err)
       return { total: 0, items: 0 }
     } finally {
+      if (activeDirSizeProgressEvent === progressEvent) {
+        activeDirSizeProgressEvent = null
+      } else {
+        void cancelTask(progressEvent).catch(() => {})
+      }
       if (unlisten) {
         await unlisten()
       }
@@ -2839,6 +2853,10 @@
     },
     onErrorToast: showToast,
     onCleanup: () => {
+      if (activeDirSizeProgressEvent) {
+        void cancelTask(activeDirSizeProgressEvent).catch(() => {})
+        activeDirSizeProgressEvent = null
+      }
       if (scrollHoverTimer !== null) {
         clearTimeout(scrollHoverTimer)
         scrollHoverTimer = null
