@@ -24,6 +24,10 @@ pub use crate::commands::listing::DirListing;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
+#[cfg(not(target_os = "windows"))]
+use std::fmt::Write as _;
+#[cfg(not(target_os = "windows"))]
+use std::os::unix::ffi::OsStrExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::prelude::*;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -545,6 +549,7 @@ struct PreparedTrashMove {
     staged_src: Option<std::path::PathBuf>,
 }
 
+#[cfg(not(target_os = "windows"))]
 fn stage_for_trash(src: &Path) -> Result<PathBuf, String> {
     let parent = src
         .parent()
@@ -555,7 +560,7 @@ fn stage_for_trash(src: &Path) -> Result<PathBuf, String> {
         .as_nanos();
     let pid = std::process::id();
     for attempt in 0..64u32 {
-        let staged = parent.join(format!(".browsey-trash-stage-{pid}-{seed}-{attempt}"));
+        let staged = parent.join(format!("browsey-trash-stage-{pid}-{seed}-{attempt}"));
         match rename_entry_nofollow_io(src, &staged) {
             Ok(_) => return Ok(staged),
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
@@ -578,16 +583,65 @@ fn trash_delete_via_staged_rename(
     src_snapshot: &PathSnapshot,
 ) -> Result<PathBuf, String> {
     assert_path_snapshot(src, src_snapshot)?;
-    let staged = stage_for_trash(src)?;
-    match trash_delete(&staged) {
-        Ok(_) => Ok(staged),
-        Err(err) => {
-            let rollback = rename_entry_nofollow_io(&staged, src)
-                .err()
-                .map(|e| format!("; rollback failed: {e}"))
-                .unwrap_or_default();
-            Err(format!("Failed to move to trash: {err}{rollback}"))
+    #[cfg(target_os = "windows")]
+    {
+        trash_delete(src).map_err(|e| format!("Failed to move to trash: {e}"))?;
+        Ok(src.to_path_buf())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let staged = stage_for_trash(src)?;
+        match trash_delete(&staged) {
+            Ok(_) => Ok(staged),
+            Err(err) => {
+                let rollback = rename_entry_nofollow_io(&staged, src)
+                    .err()
+                    .map(|e| format!("; rollback failed: {e}"))
+                    .unwrap_or_default();
+                Err(format!("Failed to move to trash: {err}{rollback}"))
+            }
         }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn percent_encode_trash_info_segment(segment: &[u8], out: &mut String) {
+    for byte in segment {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*byte as char);
+            }
+            _ => {
+                let _ = write!(out, "%{byte:02X}");
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn encode_trash_info_path(path: &Path) -> String {
+    let bytes = path.as_os_str().as_bytes();
+    let mut out = String::with_capacity(bytes.len().saturating_mul(3).max(1));
+
+    if bytes.starts_with(b"/") {
+        out.push('/');
+    }
+    let start = usize::from(bytes.starts_with(b"/"));
+    let mut first_segment = true;
+    for segment in bytes[start..].split(|b| *b == b'/') {
+        if segment.is_empty() {
+            continue;
+        }
+        if !first_segment {
+            out.push('/');
+        }
+        percent_encode_trash_info_segment(segment, &mut out);
+        first_segment = false;
+    }
+    if out.is_empty() {
+        ".".to_string()
+    } else {
+        out
     }
 }
 
@@ -601,7 +655,7 @@ fn rewrite_trash_info_original_path(item: &TrashItem, original_path: &Path) -> R
         )
     })?;
 
-    let replacement = format!("Path={}", original_path.to_string_lossy());
+    let replacement = format!("Path={}", encode_trash_info_path(original_path));
     let mut output = String::with_capacity(contents.len() + replacement.len() + 8);
     let mut replaced = false;
     for line in contents.lines() {
@@ -628,14 +682,6 @@ fn rewrite_trash_info_original_path(item: &TrashItem, original_path: &Path) -> R
             info_path.display()
         )
     })
-}
-
-#[cfg(target_os = "windows")]
-fn rewrite_trash_info_original_path(
-    _item: &TrashItem,
-    _original_path: &Path,
-) -> Result<(), String> {
-    Ok(())
 }
 
 fn should_abort_fs_op(app: &tauri::AppHandle, cancel: Option<&AtomicBool>) -> bool {
@@ -780,6 +826,7 @@ fn move_to_trash_many_blocking(
     for prep in prepared {
         let lookup = prep.staged_src.as_ref().unwrap_or(&prep.src);
         if let Some(item) = new_items.remove(lookup) {
+            #[cfg(not(target_os = "windows"))]
             if let Err(err) = rewrite_trash_info_original_path(&item, &prep.src) {
                 warn!(
                     "Failed to rewrite trash info for {}: {}",
@@ -881,6 +928,7 @@ fn move_single_to_trash(
 
     match trashed_item {
         Some(item) => {
+            #[cfg(not(target_os = "windows"))]
             if let Err(err) = rewrite_trash_info_original_path(&item, &src) {
                 warn!(
                     "Failed to rewrite trash info for {}: {}",
@@ -1159,4 +1207,20 @@ fn ensure_no_symlink_components_existing_prefix(path: &Path) -> Result<(), Strin
         }
     }
     Ok(())
+}
+
+#[cfg(all(test, not(target_os = "windows")))]
+mod tests {
+    use super::encode_trash_info_path;
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+    use std::path::PathBuf;
+
+    #[test]
+    fn encode_trash_info_path_percent_encodes_non_unreserved_bytes() {
+        let path = PathBuf::from(OsString::from_vec(vec![
+            b'/', b't', b'm', b'p', b'/', b'a', b' ', b'b', b'%', 0xFF,
+        ]));
+        assert_eq!(encode_trash_info_path(&path), "/tmp/a%20b%25%FF");
+    }
 }

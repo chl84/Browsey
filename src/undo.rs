@@ -316,6 +316,48 @@ fn fstatat_nofollow(parent_fd: libc::c_int, name: &CString) -> Result<libc::stat
 }
 
 #[cfg(all(unix, target_os = "linux"))]
+fn rename_noreplace_compat(
+    src_parent_fd: &OwnedFd,
+    src_name: &CString,
+    dst_parent_fd: &OwnedFd,
+    dst_name: &CString,
+) -> Result<(), std::io::Error> {
+    // Compatibility fallback for kernels/filesystems without renameat2(RENAME_NOREPLACE).
+    // This preserves no-overwrite behavior in normal cases, but there is a race window
+    // between the destination existence check and renameat().
+    match fstatat_nofollow(dst_parent_fd.as_raw_fd(), dst_name) {
+        Ok(_) => {
+            return Err(std::io::Error::new(
+                ErrorKind::AlreadyExists,
+                "Destination already exists",
+            ));
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+    }
+
+    let rc = unsafe {
+        libc::renameat(
+            src_parent_fd.as_raw_fd(),
+            src_name.as_ptr(),
+            dst_parent_fd.as_raw_fd(),
+            dst_name.as_ptr(),
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        let err = std::io::Error::last_os_error();
+        match err.raw_os_error() {
+            Some(code) if code == libc::EEXIST || code == libc::ENOTEMPTY => Err(
+                std::io::Error::new(ErrorKind::AlreadyExists, "Destination already exists"),
+            ),
+            _ => Err(err),
+        }
+    }
+}
+
+#[cfg(all(unix, target_os = "linux"))]
 fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
     if absolute_path(src)? == absolute_path(dst)? {
         return Ok(());
@@ -347,10 +389,9 @@ fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
     } else {
         let err = std::io::Error::last_os_error();
         match err.raw_os_error() {
-            Some(code) if code == libc::ENOSYS || code == libc::EINVAL => Err(std::io::Error::new(
-                ErrorKind::Unsupported,
-                "Secure no-replace rename is not supported on this platform/filesystem",
-            )),
+            Some(code) if code == libc::ENOSYS || code == libc::EINVAL => {
+                rename_noreplace_compat(&src_parent_fd, &src_name, &dst_parent_fd, &dst_name)
+            }
             _ => Err(err),
         }
     }
