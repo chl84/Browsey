@@ -245,3 +245,101 @@ fn set_permissions_rejects_symlink_components() {
     let _ = fs::remove_dir(&real_dir);
     let _ = fs::remove_dir(&base);
 }
+
+#[test]
+fn set_permissions_rolls_back_when_later_target_fails_validation() {
+    let base = std::env::temp_dir().join(format!(
+        "perm-rollback-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let real_dir = base.join("real");
+    let link_dir = base.join("link");
+    let first_path = base.join("first.txt");
+    let file_path = real_dir.join("target.txt");
+    let via_link_path = link_dir.join("target.txt");
+
+    fs::create_dir_all(&real_dir).unwrap();
+    fs::write(&first_path, b"first").unwrap();
+    fs::set_permissions(&first_path, PermissionsExt::from_mode(0o664)).unwrap();
+    fs::write(&file_path, b"test").unwrap();
+    symlink(&real_dir, &link_dir).unwrap();
+
+    let before_mode = fs::metadata(&first_path).unwrap().permissions().mode() & 0o777;
+    let err = match set_permissions_batch(
+        vec![
+            first_path.to_string_lossy().to_string(),
+            via_link_path.to_string_lossy().to_string(),
+        ],
+        Some(true),
+        None,
+        None,
+        None,
+        None,
+        None,
+    ) {
+        Ok(_) => panic!("set_permissions_batch should fail when a later target is invalid"),
+        Err(err) => err,
+    };
+    assert!(err.contains("Symlinks are not allowed in path"));
+    let after_mode = fs::metadata(&first_path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(after_mode, before_mode);
+
+    let _ = fs::remove_file(&first_path);
+    let _ = fs::remove_file(&file_path);
+    let _ = fs::remove_file(&link_dir);
+    let _ = fs::remove_dir(&real_dir);
+    let _ = fs::remove_dir(&base);
+}
+
+#[test]
+fn set_permissions_noop_returns_actual_state() {
+    let path = temp_file("perm-noop-info");
+    fs::write(&path, b"test").unwrap();
+    fs::set_permissions(&path, PermissionsExt::from_mode(0o640)).unwrap();
+    let before_mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+
+    let info = set_permissions_batch(
+        vec![path.to_string_lossy().to_string()],
+        Some(false), // owner write already set, so this is a no-op
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+
+    assert!(info.access_supported);
+    assert!(info.owner.is_some());
+    assert!(info.group.is_some());
+    assert!(info.other.is_some());
+    assert_eq!(info.read_only, false);
+    let after_mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(after_mode, before_mode);
+
+    let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn set_ownership_rejects_relative_path() {
+    let path = temp_file("owner-rel");
+    fs::write(&path, b"test").unwrap();
+    let uid = fs::symlink_metadata(&path).unwrap().uid();
+
+    let err = match set_ownership_batch(
+        vec!["relative-owner-path".into()],
+        Some(uid.to_string()),
+        None,
+        None,
+    ) {
+        Ok(_) => panic!("set_ownership_batch should fail for relative paths"),
+        Err(err) => err,
+    };
+    assert!(err.contains("Path must be absolute"));
+
+    let _ = fs::remove_file(&path);
+}
