@@ -52,7 +52,9 @@
     border-radius: 0;
     font-weight: 500;
     font-size: 13px;
-    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .notice-error {

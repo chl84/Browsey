@@ -78,6 +78,39 @@ const unsupportedPermissionsPayload = (): PermissionPayload => ({
   group_name: null,
 })
 
+const invokeErrorMessage = (err: unknown): string => {
+  if (err instanceof Error && err.message.trim().length > 0) return err.message
+  if (typeof err === 'string' && err.trim().length > 0) return err
+  if (err && typeof err === 'object') {
+    const record = err as Record<string, unknown>
+    const candidates = [record.message, record.error, record.cause]
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim().length > 0) return candidate
+    }
+    try {
+      const serialized = JSON.stringify(err)
+      if (serialized && serialized !== '{}') return serialized
+    } catch {
+      // Ignore serialization issues and use fallback.
+    }
+  }
+  return 'Unknown error'
+}
+
+const isExpectedOwnershipError = (message: string): boolean => {
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('request dismissed') ||
+    normalized.includes('authentication was cancelled') ||
+    normalized.includes('cancelled or denied') ||
+    normalized.includes('user not found') ||
+    normalized.includes('group not found') ||
+    normalized.includes('operation not permitted') ||
+    normalized.includes('requires elevated privileges') ||
+    normalized.includes('permission denied')
+  )
+}
+
 type Deps = {
   computeDirStats: (
     paths: string[],
@@ -549,12 +582,14 @@ export const createPropertiesModal = (deps: Deps) => {
         },
       }))
     } catch (err) {
-      const rawMessage = err instanceof Error ? err.message : String(err)
+      if (activeToken !== token) return
+      const rawMessage = invokeErrorMessage(err)
       const message = rawMessage.toLowerCase().includes('operation not permitted')
         ? 'Permission denied. Changing owner/group requires elevated privileges.'
         : rawMessage
-      console.error('Failed to update ownership', { targets, owner: payload.owner, group: payload.group, err })
-      if (activeToken !== token) return
+      if (!isExpectedOwnershipError(rawMessage) && !isExpectedOwnershipError(message)) {
+        console.warn('Ownership update failed:', message)
+      }
       state.update((s) => ({ ...s, ownershipError: message }))
     } finally {
       if (activeToken !== token) return

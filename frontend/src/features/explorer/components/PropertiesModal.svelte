@@ -237,12 +237,16 @@
                 </span>
               </div>
               <div class="row">
-                <span class="label">Ownership</span>
+                <span class="label" aria-hidden="true"></span>
                 <span class="value ownership-controls">
-                  <button type="button" on:click={applyOwnership} disabled={ownershipApplying}>
+                  <button
+                    type="button"
+                    class="ownership-apply-button"
+                    on:click={applyOwnership}
+                    disabled={ownershipApplying}
+                  >
                     {ownershipApplying ? 'Applying…' : 'Apply ownership'}
                   </button>
-                  <span class="ownership-hint">Leave one field empty to keep it unchanged.</span>
                   {#if ownershipError}
                     <span class="ownership-error">{ownershipError}</span>
                   {/if}
@@ -252,7 +256,7 @@
               <div class="row"><span class="label">User</span><span class="value">{principalLabel(permissions.ownerName)}</span></div>
               <div class="row"><span class="label">Group</span><span class="value">{principalLabel(permissions.groupName)}</span></div>
               <div class="row">
-                <span class="label">Ownership</span>
+                <span class="label" aria-hidden="true"></span>
                 <span class="value ownership-hint">Changing user/group is not supported on this platform.</span>
               </div>
             {/if}
@@ -323,9 +327,9 @@
   /* Styling is inherited from global modal rules in app.css */
   .rows {
     display: grid;
-    grid-template-columns: 120px 1fr;
-    row-gap: 8px;
-    column-gap: 10px;
+    grid-template-columns: var(--properties-label-width) 1fr;
+    row-gap: var(--properties-row-gap);
+    column-gap: var(--properties-col-gap);
   }
 
   .row {
@@ -345,59 +349,73 @@
   .access {
     margin-top: 0;
     display: grid;
-    grid-template-columns: max-content repeat(3, 88px);
-    row-gap: 8px;
-    column-gap: 12px;
+    grid-template-columns: max-content repeat(3, var(--properties-access-col-width));
+    row-gap: var(--properties-access-row-gap);
+    column-gap: var(--properties-access-col-gap);
     align-items: center;
     width: max-content;
   }
 
   .ownership {
     margin: 0;
-    width: max-content;
-    grid-template-columns: max-content max-content;
-    row-gap: 10px;
-    column-gap: 14px;
+    width: 100%;
+    max-width: 100%;
+    grid-template-columns: max-content minmax(0, 1fr);
+    row-gap: var(--properties-ownership-row-gap);
+    column-gap: var(--properties-ownership-col-gap);
   }
 
   .permissions-panel {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 14px;
-    margin-top: 2px;
+    gap: var(--properties-panel-gap);
+    margin-top: var(--properties-panel-margin-top);
   }
 
   .ownership .label {
     text-align: left;
     justify-self: start;
-    min-width: 52px;
+    min-width: var(--properties-ownership-label-min-width);
   }
 
   .ownership .value {
     justify-self: start;
+    min-width: 0;
   }
 
   .ownership-input {
-    width: 220px;
-    max-width: 100%;
+    width: var(--properties-ownership-input-width);
+    max-width: min(var(--properties-ownership-input-max-width), 100%);
   }
 
   .ownership-controls {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: var(--properties-ownership-controls-gap);
+    max-width: 100%;
   }
 
   .ownership-hint {
     color: var(--fg-muted);
-    font-size: 12px;
+    font-size: var(--properties-ownership-meta-font-size);
   }
 
   .ownership-error {
     color: #c03a2b;
-    font-size: 12px;
+    font-size: var(--properties-ownership-meta-font-size);
+    display: block;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .ownership-apply-button {
+    padding: var(--properties-apply-button-padding-y) var(--properties-apply-button-padding-x);
+    min-height: var(--properties-apply-button-min-height);
+    font-size: var(--properties-apply-button-font-size);
   }
 
   .permissions-status {
@@ -405,17 +423,17 @@
   }
 
   .status-rows {
-    margin-top: 8px;
+    margin-top: var(--properties-status-margin-top);
   }
 
   .extra-section + .extra-section {
-    margin-top: 8px;
+    margin-top: var(--properties-section-margin-top);
   }
 
   .access .cell {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--properties-access-cell-gap);
     justify-content: center;
   }
 
@@ -430,6 +448,6 @@
     text-align: left;
     white-space: nowrap;
     justify-self: start;
-    padding-right: 4px;
+    padding-right: var(--properties-access-label-padding-right);
   }
 </style>
