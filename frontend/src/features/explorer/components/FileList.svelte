@@ -77,6 +77,9 @@
   let filterMenuAnchor: DOMRect | null = null
   let filterMenuField: SortField | null = null
   let filterMenuOptions: FilterOption[] = []
+  let filterMenuPendingLoad = false
+  let filterMenuLoadSeq = 0
+  let filterMenuLoadAttempts = 0
   $: activeNameFilters = columnFilters.name
   $: activeTypeFilters = columnFilters.type
   $: activeModifiedFilters = columnFilters.modified
@@ -173,20 +176,39 @@
     return facetOptions.filter((opt) => available.has(opt.id) || selected.has(opt.id))
   }
 
+  const requestFilterFacets = () => {
+    const req = ++filterMenuLoadSeq
+    filterMenuLoadAttempts += 1
+    filterMenuPendingLoad = true
+    Promise.resolve(onEnsureColumnFacets())
+      .catch(() => {})
+      .finally(() => {
+        if (req === filterMenuLoadSeq) {
+          filterMenuPendingLoad = false
+        }
+      })
+  }
+
   const handleFilterClick = (field: SortField, anchor: DOMRect) => {
     if (!isFilterField(field)) {
       return
     }
+    filterMenuLoadAttempts = 0
     filterMenuOpen = true
     filterMenuAnchor = anchor
     filterMenuField = field
     filterMenuOptions = filterOptionsForField(field)
-    if (facetOptionsForField(field).length === 0) {
-      void onEnsureColumnFacets()
+    if (filterMenuOptions.length === 0) {
+      requestFilterFacets()
+    } else {
+      filterMenuPendingLoad = false
     }
   }
 
   const closeFilterMenu = () => {
+    filterMenuLoadSeq += 1
+    filterMenuLoadAttempts = 0
+    filterMenuPendingLoad = false
     filterMenuOpen = false
   }
 
@@ -222,7 +244,38 @@
   }
 
   $: if (filterMenuOpen && filterMenuField && isFilterField(filterMenuField)) {
+    // Keep these dependencies explicit so menu options recompute while popup is open.
+    const deps = [
+      filterValue,
+      filterSourceEntries,
+      columnFacets.name,
+      columnFacets.type,
+      columnFacets.modified,
+      columnFacets.size,
+      activeNameFilters,
+      activeTypeFilters,
+      activeModifiedFilters,
+      activeSizeFilters,
+    ]
+    void deps
     filterMenuOptions = filterOptionsForField(filterMenuField)
+  }
+
+  $: if (filterMenuOpen && filterMenuOptions.length > 0 && filterMenuPendingLoad) {
+    filterMenuPendingLoad = false
+  }
+
+  $: if (
+    filterMenuOpen &&
+    filterMenuField &&
+    isFilterField(filterMenuField) &&
+    filterMenuOptions.length === 0 &&
+    !loading &&
+    !columnFacetsLoading &&
+    !filterMenuPendingLoad &&
+    filterMenuLoadAttempts < 2
+  ) {
+    requestFilterFacets()
   }
 </script>
 
@@ -293,7 +346,12 @@
 
 <ColumnFilterMenu
   open={filterMenuOpen}
-  loading={columnFacetsLoading}
+  loading={
+    loading ||
+    columnFacetsLoading ||
+    filterMenuPendingLoad ||
+    (filterMenuOpen && filterMenuOptions.length === 0 && filterMenuLoadAttempts < 2)
+  }
   options={filterMenuOptions}
   selected={
     filterMenuField === 'type'
