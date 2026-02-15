@@ -2,9 +2,13 @@
 
 ## Unreleased
 - Keyboard UX: `Esc` now exits both search mode and filter mode directly to breadcrumb view (address mode with unfocused path input).
+- Address mode UX: pressing `Esc` while editing the path now restores the current valid location path before returning to breadcrumbs.
+- Filter mode UX: pressing `Enter` is now a no-op (it no longer triggers path navigation).
 - Clipboard UX/performance: large-selection `Ctrl+C`/`Ctrl+X` now use path-based flows that avoid quadratic selection scans.
 - Context-menu and delete flows were optimized for large selections (Set/Map lookups and reduced repeated selection reconstruction).
 - Clipboard/file-operation shutdown handling was hardened to reduce late-stage work and event emissions during app exit.
+- Input/search refactor: mode transitions (`address`/`filter`/search session) are now centralized for more consistent state resets.
+- Search state cleanup: `searchRunning` now represents active backend search execution, with state ownership moved to the explorer state layer.
 - Wastebasket delete performance: trash entries are now resolved and purged by stable trash IDs, reducing unnecessary `.trashinfo` scans.
 - Properties permissions: ownership editing (`user`/`group`) now supports privilege escalation on Linux via `pkexec` helper fallback when needed.
 - Properties modal polish: permissions/ownership layout now follows density-aware sizing (cozy/compact), with a smaller ownership apply button.
