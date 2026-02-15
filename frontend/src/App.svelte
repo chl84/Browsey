@@ -3074,8 +3074,11 @@
   propertiesExtraMetadataError={$propertiesState.extraMetadataError}
   propertiesExtraMetadata={$propertiesState.extraMetadata}
   propertiesPermissionsLoading={$propertiesState.permissionsLoading}
+  propertiesOwnershipApplying={$propertiesState.ownershipApplying}
+  propertiesOwnershipError={$propertiesState.ownershipError}
   propertiesPermissions={$propertiesState.permissions}
   onTogglePermissionsAccess={(scope, key, next) => propertiesModal.toggleAccess(scope, key, next)}
+  onSetOwnership={(owner, group) => propertiesModal.setOwnership(owner, group)}
   onToggleHidden={(next) => propertiesModal.toggleHidden(next)}
   onLoadPropertiesExtraMetadata={() => propertiesModal.loadExtraIfNeeded()}
   onCloseProperties={propertiesModal.close}
