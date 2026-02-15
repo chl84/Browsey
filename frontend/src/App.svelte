@@ -227,7 +227,7 @@
     error,
     filter,
     searchMode,
-    searchActive: searchRunning,
+    searchRunning,
     showHidden,
     hiddenFilesLast,
     foldersFirst,
@@ -486,7 +486,6 @@
   const markSearchResultsStale = (draftQuery: string) => {
     if (searchSession.clearedDraftQuery === draftQuery) return
     cancelSearch()
-    searchRunning.set(searchSession.submittedQuery.length > 0)
     filter.set(searchSession.submittedQuery)
     patchSearchSession({ clearedDraftQuery: draftQuery })
   }
@@ -499,14 +498,36 @@
   ) => {
     const { reloadOnDisable = true, skipToggle = false } = options
     if (skipToggle) {
+      cancelSearch()
       searchMode.set(false)
     } else if (isSearchSessionEnabled) {
       await toggleMode(false, { reloadOnDisable })
     }
-    searchRunning.set(false)
     filter.set('')
-    filterActive = false
     resetSearchSession()
+  }
+
+  const transitionToAddressMode = async (
+    options: {
+      path?: string
+      blur?: boolean
+      reloadOnDisable?: boolean
+      skipToggle?: boolean
+    } = {},
+  ) => {
+    const { path = $current, blur = false, reloadOnDisable = true, skipToggle = false } = options
+    mode = 'address'
+    await exitSearchSession({ reloadOnDisable, skipToggle })
+    pathInput = path
+    if (blur) {
+      pathInputEl?.blur()
+    }
+  }
+
+  const transitionToFilterMode = async (path = '') => {
+    mode = 'filter'
+    await exitSearchSession({ reloadOnDisable: false })
+    pathInput = path
   }
 
   // --- Selection memory & drive helpers -----------------------------------
@@ -974,11 +995,9 @@
   }
 
   $: {
+    filterActive = mode === 'filter' && pathInput.length > 0
     if (mode === 'filter') {
       filter.set(pathInput)
-      filterActive = pathInput.length > 0
-    } else {
-      filterActive = false
     }
   }
 
@@ -999,12 +1018,12 @@
   }
 
   const resetInputModeForNavigation = (returnToBreadcrumb = false, currentPath = get(current)) => {
-    mode = 'address'
-    void exitSearchSession({ reloadOnDisable: false, skipToggle: true })
-    pathInput = currentPath
-    if (returnToBreadcrumb) {
-      pathInputEl?.blur()
-    }
+    void transitionToAddressMode({
+      path: currentPath,
+      blur: returnToBreadcrumb,
+      reloadOnDisable: false,
+      skipToggle: true,
+    })
   }
 
   $: {
@@ -1130,9 +1149,7 @@
   }
 
   const enterAddressMode = async () => {
-    mode = 'address'
-    await exitSearchSession()
-    pathInput = $current
+    await transitionToAddressMode({ path: $current })
   }
 
   const isHidden = (entry: Entry) => entry.hidden === true || entry.name.startsWith('.')
@@ -1157,9 +1174,6 @@
   // --- Path input focus/blur ----------------------------------------------
   const handleInputFocus = () => {
     inputFocused = true
-    if (mode === 'address' && !isSearchSessionEnabled) {
-      mode = 'address'
-    }
   }
 
   const handleInputBlur = () => {
@@ -1181,22 +1195,17 @@
 
   const setSearchModeState = async (value: boolean) => {
     if (value && !canUseSearch()) {
-      mode = 'filter'
-      await exitSearchSession({ reloadOnDisable: false })
-      pathInput = ''
+      await transitionToFilterMode('')
       return
     }
     if (!value) {
-      mode = 'address'
-      await exitSearchSession()
-      pathInput = $current
+      await transitionToAddressMode({ path: $current })
       return
     }
     pathInput = ''
     resetSearchSession()
     await toggleMode(true)
     mode = 'address'
-    filterActive = false
   }
 
   const { handleTopbarAction, handleTopbarViewModeChange } = createTopbarActions({
@@ -1220,9 +1229,7 @@
     if (currentView !== 'dir') {
       return
     }
-    mode = 'address'
-    await exitSearchSession({ reloadOnDisable: false })
-    pathInput = path
+    await transitionToAddressMode({ path, reloadOnDisable: false })
     await goToPath(path)
   }
 
@@ -1243,13 +1250,9 @@
         return true
       }
       if (mode !== 'filter') {
-        mode = 'filter'
-        await exitSearchSession({ reloadOnDisable: false })
-        pathInput = ''
+        await transitionToFilterMode('')
       }
       pathInput = `${pathInput}${char}`
-      filter.set(pathInput)
-      filterActive = pathInput.length > 0
       focusPathInput()
       return true
     },
@@ -1266,13 +1269,10 @@
       }
       if (mode === 'filter') {
         if (pathInput.length <= 1) {
-          await enterAddressMode()
-          blurPathInput()
+          await transitionToAddressMode({ path: $current, blur: true })
           return true
         }
         pathInput = pathInput.slice(0, -1)
-        filter.set(pathInput)
-        filterActive = pathInput.length > 0
         focusPathInput()
         return true
       }
@@ -1627,13 +1627,13 @@
       if (mode === 'filter') {
         event.preventDefault()
         event.stopPropagation()
-        void enterAddressMode().then(() => blurPathInput())
+        void transitionToAddressMode({ path: $current, blur: true })
         return
       }
       if (isSearchSessionEnabled) {
         event.preventDefault()
         event.stopPropagation()
-        void enterAddressMode().then(() => blurPathInput())
+        void transitionToAddressMode({ path: $current, blur: true })
         return
       }
       if (inputFocused && mode === 'address') {
@@ -2249,9 +2249,7 @@
   const handleOpenEntry = async (entry: Entry) => {
     pendingOpenCandidate = null
     if (entry.kind === 'dir') {
-      mode = 'address'
-      await exitSearchSession({ reloadOnDisable: false })
-      pathInput = entry.path
+      await transitionToAddressMode({ path: entry.path, reloadOnDisable: false })
       await loadDir(entry.path)
       return
     }
@@ -2969,7 +2967,7 @@
   onBlur={handleInputBlur}
   onSubmitPath={submitPath}
   onSearch={submitSearch}
-  onExitSearch={() => void enterAddressMode().then(() => blurPathInput())}
+  onExitSearch={() => void transitionToAddressMode({ path: $current, blur: true })}
   onNavigateSegment={(path) => void navigateToBreadcrumb(path)}
   onTopbarAction={handleTopbarAction}
   onTopbarViewModeChange={handleTopbarViewModeChange}
