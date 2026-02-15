@@ -83,7 +83,7 @@ export const useModalsController = ({
     openCheckDuplicates: (entry: Entry) => checkDuplicatesModal.open(entry),
     startRename: (entry: Entry) => renameModal.open(entry),
     startAdvancedRename: (entries: Entry[]) => advancedRenameModal.open(entries),
-    confirmDelete: (entries: Entry[]) => deleteModal.open(entries),
+    confirmDelete: (entries: Entry[], mode: 'default' | 'trash' = 'default') => deleteModal.open(entries, mode),
     openProperties: (entries: Entry[]) => propertiesModal.open(entries),
   }
 

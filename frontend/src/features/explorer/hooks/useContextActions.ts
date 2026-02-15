@@ -4,7 +4,6 @@ import { copyPathsToSystemClipboard } from '../services/clipboard'
 import {
   restoreTrashItems,
   removeRecent,
-  deleteEntry,
   deleteEntries,
   moveToTrashMany,
   purgeTrashItems,
@@ -24,7 +23,7 @@ type Deps = {
   openWith: (entry: Entry) => void
   startRename: (entry: Entry) => void
   startAdvancedRename: (entries: Entry[]) => void
-  confirmDelete: (entries: Entry[]) => void
+  confirmDelete: (entries: Entry[], mode?: 'default' | 'trash') => void
   openProperties: (entries: Entry[]) => Promise<void> | void
   openLocation: (entry: Entry) => Promise<void> | void
   openCompress: (entries: Entry[]) => void
@@ -177,9 +176,8 @@ export const createContextActions = (deps: Deps) => {
     if (id === 'move-trash') {
       try {
         if (currentView() === 'trash') {
-          for (const e of selectionEntries()) {
-            await deleteEntry(e.path)
-          }
+          const ids = selectionEntries().map((e) => e.trash_id ?? e.path)
+          await purgeTrashItems(ids)
         } else {
           const paths = selectionEntries().map((e) => e.path)
           await moveToTrashMany(paths)
@@ -187,7 +185,11 @@ export const createContextActions = (deps: Deps) => {
         await reloadCurrent()
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        showToast(`Failed to move to trash: ${message}`)
+        showToast(
+          currentView() === 'trash'
+            ? `Delete failed: ${message}`
+            : `Failed to move to trash: ${message}`
+        )
       }
       return
     }

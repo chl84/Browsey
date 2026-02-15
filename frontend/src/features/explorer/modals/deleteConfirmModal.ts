@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store'
 import type { Entry } from '../types'
-import { deleteEntries } from '../services/trash'
+import { deleteEntries, purgeTrashItems } from '../services/trash'
 
 type ActivityApi = {
   start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
@@ -18,28 +18,34 @@ type Deps = {
 export type DeleteConfirmState = {
   open: boolean
   targets: Entry[]
+  mode: 'default' | 'trash'
 }
 
 export const createDeleteConfirmModal = (deps: Deps) => {
   const { activityApi, reloadCurrent, showToast } = deps
-  const state = writable<DeleteConfirmState>({ open: false, targets: [] })
+  const state = writable<DeleteConfirmState>({ open: false, targets: [], mode: 'default' })
   let deleting = false
 
-  const open = (entries: Entry[]) => {
-    state.set({ open: true, targets: entries })
+  const open = (entries: Entry[], mode: DeleteConfirmState['mode'] = 'default') => {
+    state.set({ open: true, targets: entries, mode })
   }
 
-  const close = () => state.set({ open: false, targets: [] })
+  const close = () => state.set({ open: false, targets: [], mode: 'default' })
 
   const confirm = async () => {
     const current = get(state)
     if (!current.open || current.targets.length === 0 || deleting) return
     deleting = true
-    const paths = current.targets.map((t) => t.path)
     const progressEvent = `delete-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       await activityApi.start('Deleting…', progressEvent)
-      await deleteEntries(paths, progressEvent)
+      if (current.mode === 'trash') {
+        const ids = current.targets.map((t) => t.trash_id ?? t.path)
+        await purgeTrashItems(ids)
+      } else {
+        const paths = current.targets.map((t) => t.path)
+        await deleteEntries(paths, progressEvent)
+      }
       await reloadCurrent()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
