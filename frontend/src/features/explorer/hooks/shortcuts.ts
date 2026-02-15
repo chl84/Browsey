@@ -5,7 +5,6 @@ type ShortcutArgs = {
   searchMode: () => boolean
   setSearchMode: (value: boolean) => Promise<void>
   focusPath: () => void
-  blurPath: () => void
   onTypeChar: (char: string) => Promise<boolean> | boolean
   onRemoveChar: () => Promise<boolean> | boolean
   getSelectedPaths: () => string[]
@@ -35,7 +34,6 @@ export const createGlobalShortcuts = ({
   searchMode,
   setSearchMode,
   focusPath,
-  blurPath,
   onTypeChar,
   onRemoveChar,
   getSelectedPaths,
@@ -261,16 +259,6 @@ export const createGlobalShortcuts = ({
       if (handled) {
         event.preventDefault()
         event.stopPropagation()
-      }
-      return
-    }
-
-    if (key === 'escape') {
-      event.preventDefault()
-      event.stopPropagation()
-      if (searchMode()) {
-        await setSearchMode(false)
-        blurPath()
       }
       return
     }

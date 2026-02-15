@@ -1,7 +1,7 @@
 <script lang="ts">
   export let pathInput = ''
   export let searchMode = false
-  export let mode: 'address' | 'filter' | 'search' = 'address'
+  export let mode: 'address' | 'filter' = 'address'
   export let loading = false
   export let viewMode: 'list' | 'grid' = 'list'
   export let showHidden = false
@@ -187,12 +187,6 @@
         }}
         on:keydown={(e) => {
           if (e.key === 'Backspace' && mode === 'filter' && pathInput.length <= 1) {
-            e.preventDefault()
-            e.stopPropagation()
-            onExitSearch()
-            return
-          }
-          if (e.key === 'Escape') {
             e.preventDefault()
             e.stopPropagation()
             onExitSearch()
