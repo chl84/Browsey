@@ -159,6 +159,7 @@ fn main() {
     init_logging();
     apply_webview_rendering_policy_from_settings();
     undo::cleanup_stale_backups(None);
+    commands::fs::cleanup_stale_trash_staging();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_drag::init())
         .manage(WatchState::default())
