@@ -1260,7 +1260,7 @@
       const paths = Array.from($selected)
       if (paths.length === 0) return false
       const entries = $filteredEntries.filter((e) => paths.includes(e.path))
-      const result = await clipboard.copy(entries, { writeText: true })
+      const result = await clipboard.copy(entries)
       if (!result.ok) {
         showToast(`Copy failed: ${result.error}`)
         return false

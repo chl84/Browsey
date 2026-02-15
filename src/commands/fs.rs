@@ -1,11 +1,13 @@
 //! File-system oriented Tauri commands: listings, mounts, trash, opening, renaming, deleting, and watch wiring.
 
+use super::tasks::CancelState;
 use crate::{
     db,
     entry::{build_entry, CachedMeta, FsEntry},
     fs_utils::{
         check_no_symlink_components, debug_log, sanitize_path_follow, sanitize_path_nofollow,
     },
+    runtime_lifecycle,
     sorting::{sort_entries, SortSpec},
     undo::{
         copy_entry as undo_copy_entry, delete_entry_path as undo_delete_path, move_with_fallback,
@@ -27,9 +29,11 @@ use std::time::{Duration, Instant};
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
 };
-use tauri::Emitter;
 #[cfg(debug_assertions)]
 use tracing::info;
 use tracing::{error, warn};
@@ -521,7 +525,7 @@ fn emit_trash_progress(
                 total,
                 finished,
             };
-            let _ = app.emit(evt, payload);
+            let _ = runtime_lifecycle::emit_if_running(app, evt, payload);
             *last_emit = now;
         }
     }
@@ -530,6 +534,24 @@ fn emit_trash_progress(
 struct PreparedTrashMove {
     src: std::path::PathBuf,
     backup: std::path::PathBuf,
+}
+
+fn should_abort_fs_op(app: &tauri::AppHandle, cancel: Option<&AtomicBool>) -> bool {
+    runtime_lifecycle::is_shutting_down(app)
+        || cancel
+            .map(|flag| flag.load(Ordering::Relaxed))
+            .unwrap_or(false)
+}
+
+fn rollback_prepared_trash(prepared: &[PreparedTrashMove]) {
+    let mut rollback: Vec<Action> = prepared
+        .iter()
+        .map(|p| Action::Delete {
+            path: p.src.clone(),
+            backup: p.backup.clone(),
+        })
+        .collect();
+    let _ = run_actions(&mut rollback, Direction::Backward);
 }
 
 fn prepare_trash_move(raw: &str) -> Result<PreparedTrashMove, String> {
@@ -552,6 +574,7 @@ fn move_to_trash_many_blocking(
     app: tauri::AppHandle,
     undo: UndoState,
     progress_event: Option<String>,
+    cancel: Option<&AtomicBool>,
 ) -> Result<(), String> {
     let total = paths.len() as u64;
     if total == 0 {
@@ -576,6 +599,18 @@ fn move_to_trash_many_blocking(
     let mut done = 0u64;
     let mut last_emit = Instant::now();
     for path in paths {
+        if should_abort_fs_op(&app, cancel) {
+            rollback_prepared_trash(&prepared);
+            emit_trash_progress(
+                &app,
+                progress_event.as_ref(),
+                done,
+                total,
+                true,
+                &mut last_emit,
+            );
+            return Err("Move to trash cancelled".into());
+        }
         match prepare_trash_move(&path) {
             Ok(prep) => {
                 match trash_delete(&prep.src) {
@@ -593,14 +628,7 @@ fn move_to_trash_many_blocking(
                     }
                     Err(err) => {
                         // Roll back any already-trashed items using their backups.
-                        let mut rollback: Vec<Action> = prepared
-                            .iter()
-                            .map(|p| Action::Delete {
-                                path: p.src.clone(),
-                                backup: p.backup.clone(),
-                            })
-                            .collect();
-                        let _ = run_actions(&mut rollback, Direction::Backward);
+                        rollback_prepared_trash(&prepared);
                         emit_trash_progress(
                             &app,
                             progress_event.as_ref(),
@@ -615,14 +643,7 @@ fn move_to_trash_many_blocking(
             }
             Err(err) => {
                 // Nothing was moved for this entry; roll back previous ones.
-                let mut rollback: Vec<Action> = prepared
-                    .iter()
-                    .map(|p| Action::Delete {
-                        path: p.src.clone(),
-                        backup: p.backup.clone(),
-                    })
-                    .collect();
-                let _ = run_actions(&mut rollback, Direction::Backward);
+                rollback_prepared_trash(&prepared);
                 emit_trash_progress(
                     &app,
                     progress_event.as_ref(),
@@ -666,7 +687,7 @@ fn move_to_trash_many_blocking(
         Action::Batch(actions)
     };
     let _ = undo.record_applied(recorded);
-    let _ = app.emit("trash-changed", ());
+    let _ = runtime_lifecycle::emit_if_running(&app, "trash-changed", ());
     Ok(())
 }
 
@@ -675,12 +696,25 @@ pub async fn move_to_trash_many(
     paths: Vec<String>,
     app: tauri::AppHandle,
     undo: tauri::State<'_, UndoState>,
+    cancel: tauri::State<'_, CancelState>,
     progress_event: Option<String>,
 ) -> Result<(), String> {
     let app_handle = app.clone();
     let undo_state = undo.inner().clone();
+    let cancel_state = cancel.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        move_to_trash_many_blocking(paths, app_handle, undo_state, progress_event)
+        let cancel_guard = progress_event
+            .as_ref()
+            .map(|id| cancel_state.register(id.clone()))
+            .transpose()?;
+        let cancel_token = cancel_guard.as_ref().map(|g| g.token());
+        move_to_trash_many_blocking(
+            paths,
+            app_handle,
+            undo_state,
+            progress_event,
+            cancel_token.as_deref(),
+        )
     })
     .await
     .map_err(|e| format!("Move to trash task failed: {e}"))?
@@ -710,7 +744,7 @@ fn move_single_to_trash(
 
     trash_delete(&src).map_err(|e| format!("Failed to move to trash: {e}"))?;
     if emit_event {
-        let _ = app.emit("trash-changed", ());
+        let _ = runtime_lifecycle::emit_if_running(app, "trash-changed", ());
     }
 
     let trash_path = trash_list().ok().and_then(|after| {
@@ -750,7 +784,7 @@ pub fn restore_trash_items(ids: Vec<String>, app: tauri::AppHandle) -> Result<()
     restore_all(selected)
         .map_err(|e| format!("Failed to restore: {e}"))
         .map(|_| {
-            let _ = app.emit("trash-changed", ());
+            let _ = runtime_lifecycle::emit_if_running(&app, "trash-changed", ());
         })
 }
 
@@ -771,7 +805,7 @@ pub fn purge_trash_items(ids: Vec<String>, app: tauri::AppHandle) -> Result<(), 
     purge_all(selected)
         .map_err(|e| format!("Failed to delete permanently: {e}"))
         .map(|_| {
-            let _ = app.emit("trash-changed", ());
+            let _ = runtime_lifecycle::emit_if_running(&app, "trash-changed", ());
         })
 }
 
@@ -829,7 +863,7 @@ fn emit_delete_progress(
                 total,
                 finished,
             };
-            let _ = app.emit(evt, payload);
+            let _ = runtime_lifecycle::emit_if_running(app, evt, payload);
             *last_emit = now;
         }
     }
@@ -840,6 +874,7 @@ fn delete_entries_blocking(
     paths: Vec<String>,
     progress_event: Option<String>,
     undo: UndoState,
+    cancel: Option<&AtomicBool>,
 ) -> Result<(), String> {
     if paths.is_empty() {
         return Ok(());
@@ -849,6 +884,21 @@ fn delete_entries_blocking(
     let mut last_emit = Instant::now();
     let mut performed: Vec<Action> = Vec::with_capacity(paths.len());
     for raw in paths {
+        if should_abort_fs_op(&app, cancel) {
+            if !performed.is_empty() {
+                let mut rollback = performed.clone();
+                let _ = run_actions(&mut rollback, Direction::Backward);
+            }
+            emit_delete_progress(
+                &app,
+                progress_event.as_ref(),
+                done,
+                total,
+                true,
+                &mut last_emit,
+            );
+            return Err("Delete cancelled".into());
+        }
         let path = sanitize_path_nofollow(&raw, true)?;
         match delete_with_backup(&path) {
             Ok(action) => {
@@ -904,10 +954,17 @@ pub async fn delete_entries(
     paths: Vec<String>,
     progress_event: Option<String>,
     undo: tauri::State<'_, UndoState>,
+    cancel: tauri::State<'_, CancelState>,
 ) -> Result<(), String> {
     let undo = undo.inner().clone();
+    let cancel_state = cancel.inner().clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        delete_entries_blocking(app, paths, progress_event, undo)
+        let cancel_guard = progress_event
+            .as_ref()
+            .map(|id| cancel_state.register(id.clone()))
+            .transpose()?;
+        let cancel_token = cancel_guard.as_ref().map(|g| g.token());
+        delete_entries_blocking(app, paths, progress_event, undo, cancel_token.as_deref())
     });
     task.await.map_err(|e| format!("Delete task failed: {e}"))?
 }

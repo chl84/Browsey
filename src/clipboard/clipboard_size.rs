@@ -4,11 +4,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::clipboard::CopyProgressPayload;
-use tauri::Emitter;
+use crate::runtime_lifecycle;
 
 pub fn estimate_total_size(entries: &[PathBuf], evt: &str, app: &tauri::AppHandle) -> u64 {
     let mut total: u64 = 0;
     for p in entries {
+        if runtime_lifecycle::is_shutting_down(app) {
+            break;
+        }
         if let Ok(meta) = std::fs::metadata(p) {
             total = total.saturating_add(meta.len());
             continue;
@@ -21,7 +24,8 @@ pub fn estimate_total_size(entries: &[PathBuf], evt: &str, app: &tauri::AppHandl
         }
     }
     if total > 0 {
-        let _ = app.emit(
+        let _ = runtime_lifecycle::emit_if_running(
+            app,
             evt,
             CopyProgressPayload {
                 bytes: 0,

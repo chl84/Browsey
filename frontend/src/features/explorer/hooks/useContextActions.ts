@@ -114,7 +114,7 @@ export const createContextActions = (deps: Deps) => {
         }
         return
       }
-      const result = await clipboard.copy(selectionEntries, { writeText: true })
+      const result = await clipboard.copy(selectionEntries)
       if (!result.ok) {
         showToast(`Copy failed: ${result.error}`)
         return
