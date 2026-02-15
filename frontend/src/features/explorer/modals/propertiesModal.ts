@@ -111,6 +111,17 @@ const isExpectedOwnershipError = (message: string): boolean => {
   )
 }
 
+const isExpectedPermissionUpdateError = (message: string): boolean => {
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('operation not permitted') ||
+    normalized.includes('permission denied') ||
+    normalized.includes('read-only file system') ||
+    normalized.includes('access is denied') ||
+    normalized.includes('failed to update permissions')
+  )
+}
+
 type Deps = {
   computeDirStats: (
     paths: string[],
@@ -139,6 +150,8 @@ export const createPropertiesModal = (deps: Deps) => {
     ownershipError: null,
   })
   let token = 0
+  let lastPermissionsErrorSignature = ''
+  let lastPermissionsErrorAt = 0
 
   const close = () => {
     state.set({
@@ -513,7 +526,22 @@ export const createPropertiesModal = (deps: Deps) => {
         },
       }))
     } catch (err) {
-      console.error('Failed to update permissions', { targets, opts, err })
+      if (activeToken !== token) return
+      const message = invokeErrorMessage(err)
+      const signature = `${targets.join('\n')}|${JSON.stringify(opts)}|${message}`
+      const now = Date.now()
+      const duplicate =
+        signature === lastPermissionsErrorSignature && now - lastPermissionsErrorAt < 2000
+
+      if (!duplicate) {
+        lastPermissionsErrorSignature = signature
+        lastPermissionsErrorAt = now
+
+        if (!isExpectedPermissionUpdateError(message)) {
+          console.error('Failed to update permissions', { targets, opts, message, err })
+        }
+      }
+
       if (prevState) {
         state.update((s) => ({ ...s, permissions: prevState }))
       }
