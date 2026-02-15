@@ -26,7 +26,7 @@
   } from './features/explorer/services/clipboard'
   import { undoAction, redoAction } from './features/explorer/services/history'
   import { cancelTask } from './features/explorer/services/activity'
-  import { deleteEntry, deleteEntries, moveToTrashMany } from './features/explorer/services/trash'
+  import { deleteEntries, moveToTrashMany, purgeTrashItems } from './features/explorer/services/trash'
   import type { Entry, Partition, SortField, Density } from './features/explorer/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
@@ -1308,26 +1308,21 @@
       const entries = $filteredEntries.filter((e) => selectedPathSet.has(e.path))
       if (entries.length === 0) return false
       const hasNetwork = entries.some((e) => e.network)
+      const inTrashView = currentView === 'trash'
 
-      if (permanent || (hasNetwork && currentView !== 'trash')) {
-        deleteModal.open(entries)
+      if (permanent || (hasNetwork && !inTrashView)) {
+        deleteModal.open(entries, inTrashView ? 'trash' : 'default')
         return true
       }
-      const label = currentView === 'trash' ? 'Deleting…' : 'Moving to trash…'
+      const label = inTrashView ? 'Deleting…' : 'Moving to trash…'
       const total = entries.length
       await activityApi.cleanup()
       activity.set({ label, percent: total > 0 ? 0 : null })
       try {
-        if (currentView === 'trash') {
-          let done = 0
-          for (const p of entries.map((e) => e.path)) {
-            await deleteEntry(p)
-            done += 1
-            activity.set({
-              label,
-              percent: total > 0 ? Math.round((done / total) * 100) : null,
-            })
-          }
+        if (inTrashView) {
+          const ids = entries.map((e) => e.trash_id ?? e.path)
+          await purgeTrashItems(ids)
+          activity.set({ label, percent: 100 })
         } else {
           const paths = entries.map((e) => e.path)
           const progressEvent = `trash-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -1336,13 +1331,13 @@
         }
         await reloadCurrent()
       } catch (err) {
-        console.error('Failed to move to trash', err)
+        console.error(inTrashView ? 'Failed to delete from trash' : 'Failed to move to trash', err)
         showToast(
-          `Move to trash failed: ${err instanceof Error ? err.message : String(err)}`,
+          `${inTrashView ? 'Delete failed' : 'Move to trash failed'}: ${err instanceof Error ? err.message : String(err)}`,
           3000
         )
       } finally {
-        if (currentView === 'trash') {
+        if (inTrashView) {
           activityApi.hideSoon()
         } else {
           const hadTimer = activityApi.hasHideTimer()
@@ -1359,13 +1354,19 @@
       if (sel.size === 0) return false
       const list = get(filteredEntries).filter((e) => sel.has(e.path))
       if (list.length === 0) return false
+      const inTrashView = currentView === 'trash'
       if (get(explorer.confirmDelete)) {
-        modalActions.confirmDelete(list)
+        modalActions.confirmDelete(list, inTrashView ? 'trash' : 'default')
         return true
       }
       try {
-        const paths = list.map((e) => e.path)
-        await deleteEntries(paths)
+        if (inTrashView) {
+          const ids = list.map((e) => e.trash_id ?? e.path)
+          await purgeTrashItems(ids)
+        } else {
+          const paths = list.map((e) => e.path)
+          await deleteEntries(paths)
+        }
         await reloadCurrent()
         showToast('Deleted')
         return true
@@ -2084,7 +2085,8 @@
     startAdvancedRename: (entries) => {
       advancedRenameModal.open(entries)
     },
-    confirmDelete: (entries) => modalActions.confirmDelete(entries),
+    confirmDelete: (entries) =>
+      modalActions.confirmDelete(entries, currentView === 'trash' ? 'trash' : 'default'),
     openProperties: (entries) => {
       void modalActions.openProperties(entries)
     },
