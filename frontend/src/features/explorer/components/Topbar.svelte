@@ -150,6 +150,7 @@
   }}
   onToggleViewMode={(nextGridMode) => {
     onToggleViewMode(nextGridMode ? 'grid' : 'list')
+    closeActionMenu()
   }}
 />
 

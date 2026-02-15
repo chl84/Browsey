@@ -63,6 +63,7 @@ export const useExplorerData = (options: Options = {}) => {
   let unsubscribeMountsPoll: (() => void) | null = null
   let metaQueue = new Map<string, Partial<Entry>>()
   let metaTimer: ReturnType<typeof setTimeout> | null = null
+  let disposed = false
 
   const refreshGvfsPath = (path: string | null | undefined) => {
     if (!path || !isGvfsPath(path)) return
@@ -102,10 +103,12 @@ export const useExplorerData = (options: Options = {}) => {
   }
 
   const setup = async () => {
+    if (disposed) return
     void loadSavedWidths()
     void loadBookmarks()
     void loadPartitions()
     await loadMountsPollPref()
+    if (disposed) return
     await Promise.all([
       loadShowHiddenPref(),
       loadHiddenFilesLastPref(),
@@ -123,8 +126,10 @@ export const useExplorerData = (options: Options = {}) => {
       loadThumbCachePref(),
       loadDoubleClickMsPref(),
     ])
+    if (disposed) return
 
     const setPartitionsPollMs = (ms: number) => {
+      if (disposed) return
       if (partitionsPoll) {
         clearInterval(partitionsPoll)
         partitionsPoll = null
@@ -137,17 +142,30 @@ export const useExplorerData = (options: Options = {}) => {
     }
 
     setPartitionsPollMs(options.partitionsPollMs ?? get(mountsPollMs))
+    if (disposed) return
 
     unsubscribeMountsPoll = mountsPollMs.subscribe((v) => {
       setPartitionsPollMs(v)
     })
+    if (disposed) {
+      unsubscribeMountsPoll()
+      unsubscribeMountsPoll = null
+      return
+    }
 
     const initial = options.initialPath ?? (get(startDirPref) ?? undefined)
     await load(initial)
+    if (disposed) return
     ensureGvfsRefresh(get(current))
     unsubscribeCurrent = current.subscribe((p) => ensureGvfsRefresh(p))
+    if (disposed) {
+      unsubscribeCurrent()
+      unsubscribeCurrent = null
+      return
+    }
 
-    unlistenDirChanged = await listen<string>('dir-changed', (event) => {
+    const unlistenDir = await listen<string>('dir-changed', (event) => {
+      if (disposed) return
       const curr = get(current)
       const payload = event.payload
       if (!curr || payload === curr) {
@@ -161,16 +179,33 @@ export const useExplorerData = (options: Options = {}) => {
         }, 300)
       }
     })
+    if (disposed) {
+      unlistenDir()
+      return
+    }
+    unlistenDirChanged = unlistenDir
 
-    unlistenEntryMeta = await listen<Entry>('entry-meta', (event) => {
+    const unlistenMeta = await listen<Entry>('entry-meta', (event) => {
+      if (disposed) return
       enqueueMetaUpdate(event.payload)
     })
+    if (disposed) {
+      unlistenMeta()
+      return
+    }
+    unlistenEntryMeta = unlistenMeta
 
-    unlistenEntryMetaBatch = await listen<Entry[]>('entry-meta-batch', (event) => {
+    const unlistenMetaBatch = await listen<Entry[]>('entry-meta-batch', (event) => {
+      if (disposed) return
       const updates = event.payload
       if (!Array.isArray(updates) || updates.length === 0) return
       updates.forEach(enqueueMetaUpdate)
     })
+    if (disposed) {
+      unlistenMetaBatch()
+      return
+    }
+    unlistenEntryMetaBatch = unlistenMetaBatch
   }
 
   const cleanup = () => {
@@ -190,6 +225,12 @@ export const useExplorerData = (options: Options = {}) => {
       clearInterval(gvfsRefresh)
       gvfsRefresh = null
     }
+    gvfsInFlightPath = null
+    if (metaTimer) {
+      clearTimeout(metaTimer)
+      metaTimer = null
+    }
+    metaQueue.clear()
     if (unlistenDirChanged) {
       unlistenDirChanged()
       unlistenDirChanged = null
@@ -210,7 +251,10 @@ export const useExplorerData = (options: Options = {}) => {
 
   onMount(() => {
     void setup()
-    return cleanup
+    return () => {
+      disposed = true
+      cleanup()
+    }
   })
 
   const flushMetaQueue = () => {

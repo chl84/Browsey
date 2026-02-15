@@ -10,10 +10,10 @@ use crate::{
     commands::fs::expand_path,
     commands::tasks::CancelState,
     fs_utils::{check_no_symlink_components, sanitize_path_follow},
+    runtime_lifecycle,
 };
 use serde::Serialize;
 use std::{path::PathBuf, sync::atomic::Ordering};
-use tauri::Emitter;
 
 struct DuplicateScanInput {
     target: PathBuf,
@@ -66,7 +66,7 @@ pub fn check_duplicates_stream(
 
     tauri::async_runtime::spawn_blocking(move || {
         let send = |payload: DuplicateScanProgress| {
-            let _ = app.emit(&progress_event, payload);
+            let _ = runtime_lifecycle::emit_if_running(&app, &progress_event, payload);
         };
         let cancel_guard = match cancel_state.register(progress_event.clone()) {
             Ok(guard) => guard,
@@ -92,14 +92,16 @@ pub fn check_duplicates_stream(
             input.target_len,
             Some(cancel_token.as_ref()),
             |progress| {
-                if progress_cancel.load(Ordering::Relaxed) {
+                if progress_cancel.load(Ordering::Relaxed)
+                    || runtime_lifecycle::is_shutting_down(&app)
+                {
                     return;
                 }
                 send(progress_payload(progress, false, None, None));
             },
         );
 
-        if cancel_token.load(Ordering::Relaxed) {
+        if cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app) {
             return;
         }
 

@@ -12,13 +12,12 @@ use std::{
 
 use chrono::{DateTime as ChronoDateTime, Datelike, Local, Timelike};
 use serde::Serialize;
-use tauri::Emitter;
 use walkdir::WalkDir;
 use zip::{write::SimpleFileOptions, CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
 use super::tasks::{CancelGuard, CancelState};
-use crate::fs_utils::sanitize_path_nofollow;
 use crate::undo::{temp_backup_path, Action, UndoState};
+use crate::{fs_utils::sanitize_path_nofollow, runtime_lifecycle};
 
 const CHUNK: usize = 4 * 1024 * 1024;
 const FILE_READ_BUF: usize = 256 * 1024;
@@ -341,7 +340,8 @@ impl ProgressEmitter {
                     Ordering::Relaxed,
                     Ordering::Relaxed,
                 );
-                let _ = self.app.emit(
+                let _ = runtime_lifecycle::emit_if_running(
+                    &self.app,
                     &self.event,
                     CompressProgressPayload {
                         bytes: done,
@@ -358,7 +358,8 @@ impl ProgressEmitter {
         self.last_emit.store(done, Ordering::Relaxed);
         self.last_emit_time_ms
             .store(current_millis(), Ordering::Relaxed);
-        let _ = self.app.emit(
+        let _ = runtime_lifecycle::emit_if_running(
+            &self.app,
             &self.event,
             CompressProgressPayload {
                 bytes: done,

@@ -31,7 +31,9 @@ export function createThumbnailLoader(opts: Options = {}) {
   const requested = new Set<string>()
   const highQueue: string[] = []
   const lowQueue: string[] = []
+  const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
   let active = 0
+  let destroyed = false
   const retries = new Map<string, number>()
   const videoExt = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'])
   const isVideo = (path: string) => {
@@ -60,7 +62,9 @@ export function createThumbnailLoader(opts: Options = {}) {
   const observed = new Map<Element, string>()
 
   function enqueue(path: string, priority?: Priority) {
+    if (destroyed) return false
     if (!allowVideos && isVideo(path)) return false
+    clearRetryTimer(path)
     if (requested.has(path)) return false
     requested.add(path)
     const prio = priority ?? (isVideo(path) ? 'low' : 'high')
@@ -74,6 +78,7 @@ export function createThumbnailLoader(opts: Options = {}) {
   }
 
   function pump() {
+    if (destroyed) return
     while (active < maxConcurrent && (highQueue.length > 0 || lowQueue.length > 0)) {
       const path = highQueue.shift() ?? lowQueue.shift()
       if (!path) break
@@ -81,6 +86,7 @@ export function createThumbnailLoader(opts: Options = {}) {
       active++
       loadThumb(path, genAtStart)
         .then((thumbPath) => {
+          if (destroyed) return
           if (genAtStart !== generation) return
           if (!thumbPath) return
           thumbs.update((m) => {
@@ -130,7 +136,11 @@ export function createThumbnailLoader(opts: Options = {}) {
           retries.set(path, attempt)
           const delay = Math.min(BASE_BACKOFF_MS * Math.pow(2, attempt - 1), 2000)
           requested.delete(path)
-          setTimeout(() => enqueue(path), delay)
+          const retryId = setTimeout(() => {
+            retryTimers.delete(path)
+            enqueue(path)
+          }, delay)
+          retryTimers.set(path, retryId)
         } else {
           retries.delete(path)
           requested.delete(path)
@@ -144,6 +154,12 @@ export function createThumbnailLoader(opts: Options = {}) {
   }
 
   function observe(node: Element, path: string) {
+    if (destroyed) {
+      return {
+        update() {},
+        destroy() {},
+      }
+    }
     observed.set(node, path)
     observer.observe(node)
     return {
@@ -157,12 +173,26 @@ export function createThumbnailLoader(opts: Options = {}) {
     }
   }
 
+  function clearRetryTimer(path: string) {
+    const retryId = retryTimers.get(path)
+    if (retryId !== undefined) {
+      clearTimeout(retryId)
+      retryTimers.delete(path)
+    }
+  }
+
+  function clearRetryTimers() {
+    retryTimers.forEach((retryId) => clearTimeout(retryId))
+    retryTimers.clear()
+  }
+
   return {
     observe,
     reset: (token?: string) => {
       generation = token ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
       requested.clear()
       retries.clear()
+      clearRetryTimers()
       highQueue.length = 0
       lowQueue.length = 0
       thumbs.set(new Map())
@@ -179,10 +209,16 @@ export function createThumbnailLoader(opts: Options = {}) {
           if (isVideo(lowQueue[i])) lowQueue.splice(i, 1)
         }
         requested.forEach((p) => {
-          if (isVideo(p)) requested.delete(p)
+          if (isVideo(p)) {
+            requested.delete(p)
+            clearRetryTimer(p)
+          }
         })
         retries.forEach((_, p) => {
-          if (isVideo(p)) retries.delete(p)
+          if (isVideo(p)) {
+            retries.delete(p)
+            clearRetryTimer(p)
+          }
         })
         thumbs.update((m) => {
           const next = new Map(m)
@@ -211,6 +247,7 @@ export function createThumbnailLoader(opts: Options = {}) {
     drop: (path: string) => {
       requested.delete(path)
       retries.delete(path)
+      clearRetryTimer(path)
       for (let i = highQueue.length - 1; i >= 0; i--) {
         if (highQueue[i] === path) highQueue.splice(i, 1)
       }
@@ -222,6 +259,18 @@ export function createThumbnailLoader(opts: Options = {}) {
         next.delete(path)
         return next
       })
+    },
+    destroy: () => {
+      if (destroyed) return
+      destroyed = true
+      observer.disconnect()
+      observed.clear()
+      clearRetryTimers()
+      requested.clear()
+      retries.clear()
+      highQueue.length = 0
+      lowQueue.length = 0
+      thumbs.set(new Map())
     },
     subscribe: thumbs.subscribe as Readable<ThumbMap>['subscribe'],
   }

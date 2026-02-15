@@ -10,9 +10,11 @@ use std::{
 };
 
 use serde::Serialize;
-use tauri::Emitter;
 
-use crate::fs_utils::{debug_log, unique_path};
+use crate::{
+    fs_utils::{debug_log, unique_path},
+    runtime_lifecycle,
+};
 
 pub(super) const CHUNK: usize = 4 * 1024 * 1024;
 pub(super) const EXTRACT_TOTAL_BYTES_CAP: u64 = 100_000_000_000; // 100 GB
@@ -193,7 +195,8 @@ impl ProgressEmitter {
                     Ordering::Relaxed,
                     Ordering::Relaxed,
                 );
-                let _ = self.app.emit(
+                let _ = runtime_lifecycle::emit_if_running(
+                    &self.app,
                     &self.event,
                     ExtractProgressPayload {
                         bytes: done,
@@ -210,7 +213,8 @@ impl ProgressEmitter {
         self.last_emit.store(done, Ordering::Relaxed);
         self.last_emit_time_ms
             .store(current_millis(), Ordering::Relaxed);
-        let _ = self.app.emit(
+        let _ = runtime_lifecycle::emit_if_running(
+            &self.app,
             &self.event,
             ExtractProgressPayload {
                 bytes: done,
