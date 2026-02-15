@@ -1,8 +1,10 @@
 use std::collections::{hash_map::DefaultHasher, VecDeque};
 use std::fs;
+#[cfg(all(unix, target_os = "linux"))]
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 #[cfg(unix)]
@@ -519,18 +521,123 @@ pub fn ownership_snapshot(path: &Path) -> Result<OwnershipSnapshot, String> {
     }
 }
 
+#[cfg(all(unix, target_os = "linux"))]
+fn open_nofollow_path_fd(path: &Path) -> Result<OwnedFd, String> {
+    use std::io;
+
+    if !path.is_absolute() {
+        return Err(format!("Path must be absolute: {}", path.display()));
+    }
+
+    let root = CString::new("/").map_err(|_| "Failed to build root path".to_string())?;
+    let root_fd = unsafe {
+        libc::open(
+            root.as_ptr(),
+            libc::O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
+        )
+    };
+    if root_fd < 0 {
+        return Err(format!(
+            "Failed to open root while resolving {}: {}",
+            path.display(),
+            io::Error::last_os_error()
+        ));
+    }
+
+    let mut current = unsafe { OwnedFd::from_raw_fd(root_fd) };
+    let mut components = path.components().peekable();
+    while let Some(component) = components.next() {
+        match component {
+            Component::RootDir | Component::CurDir => continue,
+            Component::ParentDir => {
+                return Err(format!(
+                    "Parent directory components are not allowed: {}",
+                    path.display()
+                ));
+            }
+            Component::Normal(seg) => {
+                let seg_name = seg.to_string_lossy().into_owned();
+                let c_seg = CString::new(seg.as_bytes()).map_err(|_| {
+                    format!(
+                        "Invalid path component (NUL byte) while resolving {}",
+                        path.display()
+                    )
+                })?;
+                let is_last = components.peek().is_none();
+                let mut flags = libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+                if !is_last {
+                    flags |= libc::O_DIRECTORY;
+                }
+                let fd = unsafe { libc::openat(current.as_raw_fd(), c_seg.as_ptr(), flags) };
+                if fd < 0 {
+                    return Err(format!(
+                        "Failed to open path component '{}' for {}: {}",
+                        seg_name,
+                        path.display(),
+                        io::Error::last_os_error()
+                    ));
+                }
+                current = unsafe { OwnedFd::from_raw_fd(fd) };
+            }
+            Component::Prefix(_) => {
+                return Err(format!("Unsupported path prefix: {}", path.display()));
+            }
+        }
+    }
+
+    Ok(current)
+}
+
 pub(crate) fn set_ownership_nofollow(
     path: &Path,
     uid: Option<u32>,
     gid: Option<u32>,
 ) -> Result<(), String> {
-    #[cfg(unix)]
+    #[cfg(all(unix, target_os = "linux"))]
     {
         use std::io;
 
         if uid.is_none() && gid.is_none() {
             return Ok(());
         }
+        let fd = open_nofollow_path_fd(path)?;
+        let uid_arg = uid.map(|v| v as libc::uid_t).unwrap_or(!0 as libc::uid_t);
+        let gid_arg = gid.map(|v| v as libc::gid_t).unwrap_or(!0 as libc::gid_t);
+        let empty: [libc::c_char; 1] = [0];
+        let rc = unsafe {
+            libc::fchownat(
+                fd.as_raw_fd(),
+                empty.as_ptr(),
+                uid_arg,
+                gid_arg,
+                libc::AT_EMPTY_PATH,
+            )
+        };
+        if rc == 0 {
+            return Ok(());
+        }
+        let err = io::Error::last_os_error();
+        let suffix = match err.raw_os_error() {
+            Some(code) if code == libc::EPERM || code == libc::EACCES => {
+                " (requires elevated privileges: root or CAP_CHOWN)"
+            }
+            _ => "",
+        };
+        return Err(format!(
+            "Failed to change owner/group for {}: {}{}",
+            path.display(),
+            err,
+            suffix
+        ));
+    }
+    #[cfg(all(unix, not(target_os = "linux")))]
+    {
+        use std::io;
+
+        if uid.is_none() && gid.is_none() {
+            return Ok(());
+        }
+        check_no_symlink_components(path)?;
         let bytes = path.as_os_str().as_bytes();
         let c_path = CString::new(bytes)
             .map_err(|_| format!("Path contains NUL byte: {}", path.display()))?;
