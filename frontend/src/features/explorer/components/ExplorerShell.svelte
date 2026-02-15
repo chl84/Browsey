@@ -33,7 +33,7 @@
 
   export let pathInput = ''
   export let pathInputEl: HTMLInputElement | null = null
-  export let mode: 'address' | 'filter' | 'search' = 'address'
+  export let mode: 'address' | 'filter' = 'address'
   export let searchMode = false
   export let loading = false
   export let viewMode: 'list' | 'grid' = 'list'
@@ -49,8 +49,8 @@
   export let onTopbarViewModeChange: (mode: 'list' | 'grid') => void = () => {}
 
   export let noticeMessage = ''
-  export let staleSearchMessage = ''
-  export let searchActive = false
+  export let searchRunning = false
+  export let filterActive = false
   export let filterValue = ''
   export let currentPath = ''
 
@@ -299,12 +299,8 @@
 
       <Notice message={noticeMessage} />
 
-      {#if staleSearchMessage}
-        <div class="pill">{staleSearchMessage}</div>
-      {/if}
-
-      {#if searchActive && loading}
-        <div class="pill">{mode === 'filter' ? 'Filtering' : 'Searching'}: "{filterValue}"</div>
+      {#if loading && (searchRunning || filterActive)}
+        <div class="pill">{filterActive ? 'Filtering' : 'Searching'}: "{filterValue}"</div>
       {/if}
 
       {#if viewMode === 'list'}

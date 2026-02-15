@@ -88,19 +88,26 @@
     error?: string | null
   }
   type ViewMode = 'list' | 'grid'
+  type SearchSession = {
+    submittedQuery: string
+    clearedDraftQuery: string | null
+  }
 
   // --- Core UI state -------------------------------------------------------
   let sidebarCollapsed = false
 
   // Path / mode
   let pathInput = ''
-  let mode: 'address' | 'filter' | 'search' = 'address'
+  let mode: 'address' | 'filter' = 'address'
   let viewMode: ViewMode = 'list'
   let defaultViewPref: ViewMode = 'list'
   let inputFocused = false
-  let lastSubmittedSearchQuery = ''
-  let staleSearchMessage = ''
-  let staleClearedQuery: string | null = null
+  let filterActive = false
+  let isSearchSessionEnabled = false
+  let searchSession: SearchSession = {
+    submittedQuery: '',
+    clearedDraftQuery: null,
+  }
 
   // DOM refs & observers
   let rowsElRef: HTMLDivElement | null = null
@@ -203,9 +210,8 @@
   // --- Data + preferences --------------------------------------------------
   const explorer = useExplorerData({
     onCurrentChange: (path) => {
-      const sameLocation = path === lastLocation
-      const typingFilterOrSearch = mode === 'filter' || mode === 'search'
-      if (sameLocation && typingFilterOrSearch) {
+      const typingFilterOrSearch = mode === 'filter' || isSearchSessionEnabled
+      if (typingFilterOrSearch) {
         return
       }
       pathInput = path
@@ -221,7 +227,7 @@
     error,
     filter,
     searchMode,
-    searchActive,
+    searchActive: searchRunning,
     showHidden,
     hiddenFilesLast,
     foldersFirst,
@@ -456,14 +462,51 @@
 
   const normalizeSearchQuery = (value: string) => value.trim()
 
+  const patchSearchSession = (patch: Partial<SearchSession>) => {
+    const next: SearchSession = {
+      ...searchSession,
+      ...patch,
+    }
+    if (
+      next.submittedQuery === searchSession.submittedQuery &&
+      next.clearedDraftQuery === searchSession.clearedDraftQuery
+    ) {
+      return
+    }
+    searchSession = next
+  }
+
+  const resetSearchSession = () => {
+    patchSearchSession({
+      submittedQuery: '',
+      clearedDraftQuery: null,
+    })
+  }
+
   const markSearchResultsStale = (draftQuery: string) => {
-    if (staleClearedQuery === draftQuery) return
+    if (searchSession.clearedDraftQuery === draftQuery) return
     cancelSearch()
-    entries.set([])
-    selected.set(new Set())
-    anchorIndex.set(null)
-    caretIndex.set(null)
-    staleClearedQuery = draftQuery
+    searchRunning.set(searchSession.submittedQuery.length > 0)
+    filter.set(searchSession.submittedQuery)
+    patchSearchSession({ clearedDraftQuery: draftQuery })
+  }
+
+  const exitSearchSession = async (
+    options: {
+      reloadOnDisable?: boolean
+      skipToggle?: boolean
+    } = {},
+  ) => {
+    const { reloadOnDisable = true, skipToggle = false } = options
+    if (skipToggle) {
+      searchMode.set(false)
+    } else if (isSearchSessionEnabled) {
+      await toggleMode(false, { reloadOnDisable })
+    }
+    searchRunning.set(false)
+    filter.set('')
+    filterActive = false
+    resetSearchSession()
   }
 
   // --- Selection memory & drive helpers -----------------------------------
@@ -927,48 +970,49 @@
   })
 
   $: {
+    isSearchSessionEnabled = $searchMode
+  }
+
+  $: {
     if (mode === 'filter') {
       filter.set(pathInput)
-      searchActive.set(pathInput.length > 0)
+      filterActive = pathInput.length > 0
+    } else {
+      filterActive = false
     }
   }
 
   $: {
-    const inSearchInputMode = $searchMode || mode === 'search'
-    if (!inSearchInputMode) {
-      lastSubmittedSearchQuery = ''
-      staleSearchMessage = ''
-      staleClearedQuery = null
+    if (!isSearchSessionEnabled) {
+      resetSearchSession()
     } else {
       const draftQuery = normalizeSearchQuery(pathInput)
-      const stale = draftQuery !== lastSubmittedSearchQuery
+      const stale = draftQuery !== searchSession.submittedQuery
       if (stale) {
         markSearchResultsStale(draftQuery)
-        filter.set(draftQuery)
-        searchActive.set(false)
-        staleSearchMessage =
-          draftQuery.length === 0
-            ? 'Search query changed. Press Enter to return folder results.'
-            : 'Search query changed. Press Enter to refresh results.'
       } else {
-        staleSearchMessage = ''
-        staleClearedQuery = null
+        patchSearchSession({
+          clearedDraftQuery: null,
+        })
       }
     }
   }
 
-  const resetInputModeForNavigation = () => {
+  const resetInputModeForNavigation = (returnToBreadcrumb = false, currentPath = get(current)) => {
     mode = 'address'
-    searchMode.set(false)
-    searchActive.set(false)
-    filter.set('')
+    void exitSearchSession({ reloadOnDisable: false, skipToggle: true })
+    pathInput = currentPath
+    if (returnToBreadcrumb) {
+      pathInputEl?.blur()
+    }
   }
 
   $: {
     const curr = $current
     if (curr !== lastLocation) {
+      const wasInSearchMode = isSearchSessionEnabled
       lastLocation = curr
-      resetInputModeForNavigation()
+      resetInputModeForNavigation(wasInSearchMode, curr)
     }
   }
 
@@ -1041,8 +1085,8 @@
     const dirLine = formatSelectionLine(dirs.length, 'folder')
     const fileLine = formatSelectionLine(fileCount, 'file', fileBytes)
 
-    const filterActive = $filter.trim().length > 0
-    const filterLine = filterActive ? `${$filteredEntries.length} results` : ''
+    const hasFilter = $filter.trim().length > 0
+    const filterLine = hasFilter ? `${$filteredEntries.length} results` : ''
 
     const parts = [filterLine, dirLine, fileLine].filter((p) => p.length > 0)
     selectionText = parts.join(' | ')
@@ -1078,19 +1122,16 @@
   }
 
   const submitSearch = () => {
-    lastSubmittedSearchQuery = normalizeSearchQuery(pathInput)
-    staleSearchMessage = ''
-    staleClearedQuery = null
+    patchSearchSession({
+      submittedQuery: normalizeSearchQuery(pathInput),
+      clearedDraftQuery: null,
+    })
     void runSearch(pathInput)
   }
 
   const enterAddressMode = async () => {
     mode = 'address'
-    if ($searchMode) {
-      await toggleMode(false)
-    }
-    searchActive.set(false)
-    filter.set('')
+    await exitSearchSession()
     pathInput = $current
   }
 
@@ -1116,7 +1157,7 @@
   // --- Path input focus/blur ----------------------------------------------
   const handleInputFocus = () => {
     inputFocused = true
-    if (mode === 'address' && !$searchMode) {
+    if (mode === 'address' && !isSearchSessionEnabled) {
       mode = 'address'
     }
   }
@@ -1141,22 +1182,21 @@
   const setSearchModeState = async (value: boolean) => {
     if (value && !canUseSearch()) {
       mode = 'filter'
-      searchActive.set(false)
-      if ($searchMode) {
-        await toggleMode(false)
-      }
+      await exitSearchSession({ reloadOnDisable: false })
       pathInput = ''
-      filter.set('')
+      return
+    }
+    if (!value) {
+      mode = 'address'
+      await exitSearchSession()
+      pathInput = $current
       return
     }
     pathInput = ''
-    await toggleMode(value)
-    mode = value ? 'search' : 'address'
-    if (!value) {
-      searchActive.set(false)
-      filter.set('')
-      pathInput = $current
-    }
+    resetSearchSession()
+    await toggleMode(true)
+    mode = 'address'
+    filterActive = false
   }
 
   const { handleTopbarAction, handleTopbarViewModeChange } = createTopbarActions({
@@ -1164,7 +1204,7 @@
       settingsInitialFilter = initialFilter
       settingsOpen = true
     },
-    isSearchMode: () => $searchMode,
+    isSearchMode: () => isSearchSessionEnabled,
     setSearchMode: setSearchModeState,
     focusPathInput,
     toggleShowHidden: () => toggleShowHidden(),
@@ -1181,59 +1221,46 @@
       return
     }
     mode = 'address'
-    searchActive.set(false)
-    filter.set('')
-    if ($searchMode) {
-      await toggleMode(false)
-    }
+    await exitSearchSession({ reloadOnDisable: false })
     pathInput = path
     await goToPath(path)
   }
 
   const shortcuts = createGlobalShortcuts({
     isBookmarkModalOpen: () => get(bookmarkStore).open,
-    searchMode: () => $searchMode,
+    searchMode: () => isSearchSessionEnabled,
     setSearchMode: async (value: boolean) => setSearchModeState(value),
     focusPath: () => focusPathInput(),
-    blurPath: () => blurPathInput(),
     isShortcut,
     onToggleHidden: () => Promise.resolve(toggleShowHidden()),
     onTypeChar: async (char) => {
       if (inputFocused && mode === 'address' && canUseSearch()) {
         return false
       }
-      if (($searchMode || mode === 'search') && canUseSearch()) {
-        mode = 'search'
+      if (isSearchSessionEnabled && canUseSearch()) {
         pathInput = `${pathInput}${char}`
-        searchActive.set(pathInput.length > 0)
         focusPathInput()
         return true
       }
       if (mode !== 'filter') {
         mode = 'filter'
-        if ($searchMode) {
-          await toggleMode(false)
-        }
+        await exitSearchSession({ reloadOnDisable: false })
         pathInput = ''
       }
       pathInput = `${pathInput}${char}`
       filter.set(pathInput)
-      searchActive.set(pathInput.length > 0)
+      filterActive = pathInput.length > 0
       focusPathInput()
       return true
     },
     onRemoveChar: async () => {
-      if (mode === 'address') {
-        return false
-      }
-      if (mode === 'search') {
+      if (isSearchSessionEnabled) {
         if (pathInput.length === 0) {
           await enterAddressMode()
           focusPathInput()
           return true
         }
         pathInput = pathInput.slice(0, -1)
-        searchActive.set(pathInput.length > 0)
         focusPathInput()
         return true
       }
@@ -1245,9 +1272,12 @@
         }
         pathInput = pathInput.slice(0, -1)
         filter.set(pathInput)
-        searchActive.set(pathInput.length > 0)
+        filterActive = pathInput.length > 0
         focusPathInput()
         return true
+      }
+      if (mode === 'address') {
+        return false
       }
       return false
     },
@@ -1600,10 +1630,16 @@
         void enterAddressMode().then(() => blurPathInput())
         return
       }
-      if ($searchMode || mode === 'search') {
+      if (isSearchSessionEnabled) {
         event.preventDefault()
         event.stopPropagation()
         void enterAddressMode().then(() => blurPathInput())
+        return
+      }
+      if (inputFocused && mode === 'address') {
+        event.preventDefault()
+        event.stopPropagation()
+        blurPathInput()
         return
       }
       if (inRows) {
@@ -1724,7 +1760,7 @@
       if (!allExtractable) {
         actions = actions.filter((a) => a.id !== 'extract')
       }
-      const inSearch = $searchMode || mode === 'search'
+      const inSearch = isSearchSessionEnabled
       if (inSearch && selectionCount === 1 && !actions.some((a) => a.id === 'open-location')) {
         actions.splice(1, 0, { id: 'open-location', label: 'Open item location' })
       }
@@ -2213,11 +2249,7 @@
     pendingOpenCandidate = null
     if (entry.kind === 'dir') {
       mode = 'address'
-      searchActive.set(false)
-      filter.set('')
-      if ($searchMode) {
-        await toggleMode(false)
-      }
+      await exitSearchSession({ reloadOnDisable: false })
       pathInput = entry.path
       await loadDir(entry.path)
       return
@@ -2929,7 +2961,7 @@
       showToast(`Eject failed: ${err instanceof Error ? err.message : String(err)}`)
     }
   }}
-  searchMode={$searchMode}
+  searchMode={isSearchSessionEnabled}
   loading={$loading}
   activity={$activity}
   onFocus={handleInputFocus}
@@ -2941,8 +2973,8 @@
   onTopbarAction={handleTopbarAction}
   onTopbarViewModeChange={handleTopbarViewModeChange}
   noticeMessage={$error}
-  {staleSearchMessage}
-  searchActive={$searchActive}
+  searchRunning={$searchRunning}
+  {filterActive}
   {mode}
   filterValue={$filter}
   showHidden={$showHidden}

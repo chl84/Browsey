@@ -231,32 +231,36 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     })
   }
 
-  const filteredEntries = derived([visibleEntries, filter, columnFilters], ([$visible, $filter, $filters], set) => {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const needle = $filter.trim().toLowerCase()
+  const filteredEntries = derived(
+    [visibleEntries, filter, columnFilters, searchMode],
+    ([$visible, $filter, $filters, $searchMode], set) => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const needle = $filter.trim().toLowerCase()
 
-    const compute = () => {
-      let base =
-        needle.length === 0
-          ? $visible
-          : $visible.filter((e) => (e.nameLower ?? e.name.toLowerCase()).includes(needle))
-      base = applyColumnFilters(base, $filters)
-      set(base)
-    }
-
-    const shouldDebounce = needle.length > 0
-    if (shouldDebounce) {
-      timer = setTimeout(compute, FILTER_DEBOUNCE_MS)
-    } else {
-      compute()
-    }
-
-    return () => {
-      if (timer) {
-        clearTimeout(timer)
+      const compute = () => {
+        let base =
+          needle.length === 0
+            ? $visible
+            : $visible.filter((e) => (e.nameLower ?? e.name.toLowerCase()).includes(needle))
+        base = applyColumnFilters(base, $filters)
+        set(base)
       }
-    }
-  }, [] as Entry[])
+
+      const shouldDebounce = needle.length > 0 && !$searchMode
+      if (shouldDebounce) {
+        timer = setTimeout(compute, FILTER_DEBOUNCE_MS)
+      } else {
+        compute()
+      }
+
+      return () => {
+        if (timer) {
+          clearTimeout(timer)
+        }
+      }
+    },
+    [] as Entry[],
+  )
 
   const sortPayload = () => ({
     field: get(sortField),
@@ -746,14 +750,23 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     return cleanup
   }
 
-  const toggleMode = async (checked: boolean) => {
+  const toggleMode = async (
+    checked: boolean,
+    options: {
+      reloadOnDisable?: boolean
+    } = {},
+  ) => {
+    const { reloadOnDisable = true } = options
     if (get(searchMode) === checked) {
       return
     }
     searchMode.set(checked)
     if (!checked) {
+      cancelSearch()
       filter.set('')
-      searchActive.set(false)
+      if (!reloadOnDisable) {
+        return
+      }
       const curr = get(current)
       if (curr === 'Recent') {
         await loadRecent(false)
