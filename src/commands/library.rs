@@ -1,8 +1,9 @@
 //! Library-style listings: starred items and recent paths.
 
 use crate::{
+    commands::listing::{build_listing_facets, DirListing},
     db,
-    entry::{build_entry, normalize_key_for_db, FsEntry},
+    entry::{build_entry, normalize_key_for_db},
     sorting::{sort_entries, SortSpec},
 };
 use std::collections::HashSet;
@@ -26,7 +27,7 @@ pub fn toggle_star(path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn list_starred(sort: Option<SortSpec>) -> Result<Vec<FsEntry>, String> {
+pub fn list_starred(sort: Option<SortSpec>) -> Result<DirListing, String> {
     let conn = db::open()?;
     let entries = db::starred_entries(&conn)?;
     let mut out = Vec::new();
@@ -38,11 +39,16 @@ pub fn list_starred(sort: Option<SortSpec>) -> Result<Vec<FsEntry>, String> {
         }
     }
     sort_entries(&mut out, sort);
-    Ok(out)
+    let facets = build_listing_facets(&out);
+    Ok(DirListing {
+        current: "Starred".to_string(),
+        entries: out,
+        facets,
+    })
 }
 
 #[tauri::command]
-pub fn list_recent(sort: Option<SortSpec>) -> Result<Vec<FsEntry>, String> {
+pub fn list_recent(sort: Option<SortSpec>) -> Result<DirListing, String> {
     let conn = db::open()?;
     let star_set: HashSet<String> = db::starred_set(&conn)?;
     let mut out = Vec::new();
@@ -57,7 +63,12 @@ pub fn list_recent(sort: Option<SortSpec>) -> Result<Vec<FsEntry>, String> {
     if sort.is_some() {
         sort_entries(&mut out, sort);
     }
-    Ok(out)
+    let facets = build_listing_facets(&out);
+    Ok(DirListing {
+        current: "Recent".to_string(),
+        entries: out,
+        facets,
+    })
 }
 
 #[tauri::command]

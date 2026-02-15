@@ -22,6 +22,7 @@ export type Entry = {
 export type Listing = {
   current: string
   entries: Entry[]
+  facets: ListingFacets
 }
 
 export type SortField = 'name' | 'type' | 'modified' | 'size' | 'starred'
@@ -33,6 +34,13 @@ export type FilterOption = {
   id: string
   label: string
   description?: string
+}
+
+export type ListingFacets = {
+  name: FilterOption[]
+  type: FilterOption[]
+  modified: FilterOption[]
+  size: FilterOption[]
 }
 
 export type Location =

@@ -3,6 +3,7 @@
 use super::tasks::CancelState;
 use crate::{
     commands::fs::expand_path,
+    commands::listing::{ListingFacetBuilder, ListingFacets},
     db,
     entry::{normalize_key_for_db, FsEntry},
     runtime_lifecycle,
@@ -18,6 +19,8 @@ pub struct SearchProgress {
     pub entries: Vec<FsEntry>,
     pub done: bool,
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub facets: Option<ListingFacets>,
 }
 
 #[tauri::command]
@@ -32,18 +35,22 @@ pub fn search_stream(
     let progress_event = progress_event.ok_or_else(|| "progress_event is required".to_string())?;
     let cancel_state = cancel.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let send = |entries: Vec<FsEntry>, done: bool, error: Option<String>| {
+        let send = |entries: Vec<FsEntry>,
+                    done: bool,
+                    error: Option<String>,
+                    facets: Option<ListingFacets>| {
             let payload = SearchProgress {
                 entries,
                 done,
                 error,
+                facets,
             };
             let _ = runtime_lifecycle::emit_if_running(&app, &progress_event, payload);
         };
         let cancel_guard = match cancel_state.register(progress_event.clone()) {
             Ok(g) => g,
             Err(e) => {
-                send(Vec::new(), true, Some(e));
+                send(Vec::new(), true, Some(e), Some(ListingFacets::default()));
                 return;
             }
         };
@@ -51,7 +58,7 @@ pub fn search_stream(
 
         let needle = query.trim();
         if needle.is_empty() {
-            send(Vec::new(), true, None);
+            send(Vec::new(), true, None, Some(ListingFacets::default()));
             return;
         }
 
@@ -64,12 +71,13 @@ pub fn search_stream(
                         Vec::new(),
                         true,
                         Some("Start directory not found".to_string()),
+                        Some(ListingFacets::default()),
                     );
                     return;
                 }
             },
             Err(e) => {
-                send(Vec::new(), true, Some(e));
+                send(Vec::new(), true, Some(e), Some(ListingFacets::default()));
                 return;
             }
         };
@@ -77,7 +85,7 @@ pub fn search_stream(
         let star_set = match db::open().and_then(|conn| db::starred_set(&conn)) {
             Ok(set) => set,
             Err(e) => {
-                send(Vec::new(), true, Some(e));
+                send(Vec::new(), true, Some(e), Some(ListingFacets::default()));
                 return;
             }
         };
@@ -87,6 +95,7 @@ pub fn search_stream(
         let needle_lc = needle.to_lowercase();
         const BATCH: usize = 256;
         let mut batch: Vec<FsEntry> = Vec::with_capacity(BATCH);
+        let mut facets = ListingFacetBuilder::default();
 
         while let Some(dir) = stack.pop() {
             if cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app) {
@@ -133,9 +142,10 @@ pub fn search_stream(
                         if star_set.contains(&normalize_key_for_db(&path)) {
                             item.starred = true;
                         }
+                        facets.add(&item);
                         batch.push(item);
                         if batch.len() >= BATCH {
-                            send(std::mem::take(&mut batch), false, None);
+                            send(std::mem::take(&mut batch), false, None, None);
                         }
                     }
                 }
@@ -147,13 +157,13 @@ pub fn search_stream(
         }
 
         if !batch.is_empty() {
-            send(batch, false, None);
+            send(batch, false, None, None);
         }
 
         if cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app) {
             return;
         }
-        send(Vec::new(), true, None);
+        send(Vec::new(), true, None, Some(facets.finish()));
     });
 
     Ok(())

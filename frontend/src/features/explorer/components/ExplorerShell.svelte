@@ -16,7 +16,7 @@
   import Toast from '../../../ui/Toast.svelte'
   import CompressModal from './CompressModal.svelte'
   import CheckDuplicatesModal from './CheckDuplicatesModal.svelte'
-  import type { Column, Entry, Partition, SortField } from '../types'
+  import type { Column, Entry, ListingFacets, Partition, SortField } from '../types'
   import type { ContextAction } from '../hooks/useContextMenus'
   import type { OpenWithApp, OpenWithChoice } from '../services/openWith'
   import type { AdvancedRenamePayload } from '../modals/advancedRenameModal'
@@ -67,6 +67,7 @@
     modified: Set<string>
     size: Set<string>
   } = { name: new Set(), type: new Set(), modified: new Set(), size: new Set() }
+  export let columnFacets: ListingFacets = { name: [], type: [], modified: [], size: [] }
   export let start = 0
   export let offsetY = 0
   export let totalHeight = 0
@@ -305,15 +306,13 @@
 
       {#if viewMode === 'list'}
         <FileList
-          {cols}
+        {cols}
         {gridTemplate}
         bind:rowsEl
         bind:headerEl
         {loading}
-        {currentPath}
-        showHidden={showHidden}
         {columnFilters}
-        filterValue={filterValue}
+        {columnFacets}
         filteredEntries={filteredEntries}
         visibleEntries={visibleEntries}
         {start}

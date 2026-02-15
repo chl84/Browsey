@@ -11,6 +11,7 @@ import type {
   SortField,
   DefaultSortField,
   Density,
+  ListingFacets,
 } from './types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files'
@@ -66,6 +67,13 @@ type ColumnFilters = {
   modified: Set<string>
   size: Set<string>
 }
+
+const emptyListingFacets = (): ListingFacets => ({
+  name: [],
+  type: [],
+  modified: [],
+  size: [],
+})
 
 type ExplorerCallbacks = {
   onEntriesChanged?: () => void
@@ -191,6 +199,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     modified: new Set(),
     size: new Set(),
   })
+  const columnFacets = writable<ListingFacets>(emptyListingFacets())
 
   const applyColumnFilters = (list: Entry[], filters: ColumnFilters) => {
     const hasName = filters.name.size > 0
@@ -313,6 +322,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       const result = await listDir(path, sortPayload())
       current.set(result.current)
       entries.set(mapNameLower(result.entries))
+      columnFacets.set(result.facets ?? emptyListingFacets())
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.(result.current)
       if (recordHistory) {
@@ -336,10 +346,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     try {
       const sortArg = applySort ? sortPayload() : null
       const result = await listRecent(sortArg)
-      current.set('Recent')
-      entries.set(mapNameLower(result))
+      current.set(result.current)
+      entries.set(mapNameLower(result.entries))
+      columnFacets.set(result.facets ?? emptyListingFacets())
       callbacks.onEntriesChanged?.()
-      callbacks.onCurrentChange?.('Recent')
+      callbacks.onCurrentChange?.(result.current)
       if (recordHistory) {
         pushHistory({ type: 'recent' })
       }
@@ -357,10 +368,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     searchRunning.set(false)
     try {
       const result = await listStarred(sortPayload())
-      current.set('Starred')
-      entries.set(mapNameLower(result))
+      current.set(result.current)
+      entries.set(mapNameLower(result.entries))
+      columnFacets.set(result.facets ?? emptyListingFacets())
       callbacks.onEntriesChanged?.()
-      callbacks.onCurrentChange?.('Starred')
+      callbacks.onCurrentChange?.(result.current)
       if (recordHistory) {
         pushHistory({ type: 'starred' })
       }
@@ -380,6 +392,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       const result = await listTrash(sortPayload())
       current.set('Trash')
       entries.set(mapNameLower(result.entries))
+      columnFacets.set(result.facets ?? emptyListingFacets())
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.('Wastebasket')
       if (recordHistory) {
@@ -662,6 +675,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     filter.set(needle)
     searchRunning.set(true)
     entries.set([])
+    columnFacets.set(emptyListingFacets())
     callbacks.onEntriesChanged?.()
 
     const flushBuffer = () => {
@@ -686,7 +700,12 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
     let unlisten: () => void
     try {
-      unlisten = await listen<{ entries: Entry[]; done: boolean; error?: string }>(progressEvent, (evt) => {
+      unlisten = await listen<{
+        entries: Entry[]
+        done: boolean
+        error?: string
+        facets?: ListingFacets
+      }>(progressEvent, (evt) => {
         if (runId !== searchRunId) {
           cleanup()
           return
@@ -707,6 +726,9 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
           buffer = []
           // Keep streamed order on completion; sorting remains a manual UI action.
           entries.set(finalEntries)
+          if (evt.payload.facets) {
+            columnFacets.set(evt.payload.facets)
+          }
           callbacks.onEntriesChanged?.()
           searchRunning.set(false)
           loading.set(false)
@@ -723,6 +745,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         error.set(err instanceof Error ? err.message : String(err))
         searchRunning.set(false)
         loading.set(false)
+        columnFacets.set(emptyListingFacets())
       }
       cleanup()
       return cleanup
@@ -747,6 +770,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       error.set(err instanceof Error ? err.message : String(err))
       searchRunning.set(false)
       loading.set(false)
+      columnFacets.set(emptyListingFacets())
       cleanup()
     })
 
@@ -1119,6 +1143,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     partitions,
     showHidden,
     columnFilters,
+    columnFacets,
     visibleEntries,
     filteredEntries,
     density,
