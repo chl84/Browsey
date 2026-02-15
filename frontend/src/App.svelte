@@ -1639,6 +1639,7 @@
       if (inputFocused && mode === 'address') {
         event.preventDefault()
         event.stopPropagation()
+        pathInput = $current
         blurPathInput()
         return
       }
