@@ -4,12 +4,9 @@ use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
-use tracing::debug;
+use tracing::{debug, warn};
 
-use crate::{
-    fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitize_path_nofollow},
-    undo::UndoState,
-};
+use crate::fs_utils::{check_no_symlink_components, sanitize_path_nofollow};
 
 mod ownership;
 mod set_permissions;
@@ -59,6 +56,72 @@ pub struct PermissionInfo {
     pub owner: Option<AccessBits>,
     pub group: Option<AccessBits>,
     pub other: Option<AccessBits>,
+}
+
+pub(super) fn permission_info_fallback() -> PermissionInfo {
+    #[cfg(target_os = "windows")]
+    {
+        PermissionInfo {
+            read_only: false,
+            executable: None,
+            executable_supported: true,
+            access_supported: true,
+            ownership_supported: false,
+            owner_name: None,
+            group_name: None,
+            owner: None,
+            group: None,
+            other: None,
+        }
+    }
+    #[cfg(unix)]
+    {
+        PermissionInfo {
+            read_only: false,
+            executable: None,
+            executable_supported: true,
+            access_supported: true,
+            ownership_supported: true,
+            owner_name: None,
+            group_name: None,
+            owner: None,
+            group: None,
+            other: None,
+        }
+    }
+    #[cfg(not(any(unix, target_os = "windows")))]
+    {
+        PermissionInfo {
+            read_only: false,
+            executable: None,
+            executable_supported: false,
+            access_supported: false,
+            ownership_supported: false,
+            owner_name: None,
+            group_name: None,
+            owner: None,
+            group: None,
+            other: None,
+        }
+    }
+}
+
+pub(super) fn refresh_permissions_after_apply(
+    path: String,
+    changed_any: bool,
+) -> Result<PermissionInfo, String> {
+    match get_permissions(path.clone()) {
+        Ok(info) => Ok(info),
+        Err(err) if changed_any => {
+            warn!(
+                path = %path,
+                error = %err,
+                "permission refresh failed after successful apply; returning fallback"
+            );
+            Ok(permission_info_fallback())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 fn is_executable(meta: &fs::Metadata) -> Option<bool> {
@@ -170,14 +233,13 @@ fn resolve_owner_group_names(meta: &fs::Metadata) -> (Option<String>, Option<Str
 pub fn get_permissions(path: String) -> Result<PermissionInfo, String> {
     debug!(path = %path, "get_permissions start");
     ensure_absolute_path(&path)?;
-    let nofollow = sanitize_path_nofollow(&path, true)?;
+    let target = sanitize_path_nofollow(&path, true)?;
+    check_no_symlink_components(&target)?;
     let meta =
-        fs::symlink_metadata(&nofollow).map_err(|e| format!("Failed to read metadata: {e}"))?;
+        fs::symlink_metadata(&target).map_err(|e| format!("Failed to read metadata: {e}"))?;
     if meta.file_type().is_symlink() {
         return Err("Permissions are not supported on symlinks".into());
     }
-    let target = sanitize_path_follow(&path, true)?;
-    check_no_symlink_components(&target)?;
     debug!(path = %target.display(), "get_permissions resolved target");
 
     #[cfg(target_os = "windows")]
@@ -253,7 +315,6 @@ pub fn set_permissions(
     owner: Option<AccessUpdate>,
     group: Option<AccessUpdate>,
     other: Option<AccessUpdate>,
-    undo: tauri::State<UndoState>,
 ) -> Result<PermissionInfo, String> {
     let targets: Vec<String> = match (paths, path) {
         (Some(list), _) if !list.is_empty() => list,
@@ -267,7 +328,6 @@ pub fn set_permissions(
         owner,
         group,
         other,
-        Some(undo.inner()),
     )
 }
 
@@ -277,12 +337,11 @@ pub fn set_ownership(
     paths: Option<Vec<String>>,
     owner: Option<String>,
     group: Option<String>,
-    undo: tauri::State<UndoState>,
 ) -> Result<PermissionInfo, String> {
     let targets: Vec<String> = match (paths, path) {
         (Some(list), _) if !list.is_empty() => list,
         (_, Some(single)) => vec![single],
         _ => return Err("No paths provided".into()),
     };
-    set_ownership_batch(targets, owner, group, Some(undo.inner()))
+    set_ownership_batch(targets, owner, group)
 }

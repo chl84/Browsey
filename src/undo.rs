@@ -676,6 +676,31 @@ pub(crate) fn set_ownership_nofollow(
     }
 }
 
+#[cfg(all(unix, target_os = "linux"))]
+pub(crate) fn set_unix_mode_nofollow(path: &Path, mode: u32) -> Result<(), String> {
+    use std::io;
+
+    let fd = open_nofollow_path_fd(path)?;
+    let empty: [libc::c_char; 1] = [0];
+    let rc = unsafe {
+        libc::fchmodat(
+            fd.as_raw_fd(),
+            empty.as_ptr(),
+            mode as libc::mode_t,
+            libc::AT_EMPTY_PATH,
+        )
+    };
+    if rc == 0 {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    Err(format!(
+        "Failed to update permissions for {}: {}",
+        path.display(),
+        err
+    ))
+}
+
 fn apply_ownership(path: &Path, snap: &OwnershipSnapshot) -> Result<(), String> {
     #[cfg(unix)]
     {

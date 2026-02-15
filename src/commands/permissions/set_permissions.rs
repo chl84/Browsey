@@ -3,16 +3,21 @@ use std::fs::{self, Permissions};
 use std::os::unix::fs::PermissionsExt;
 use tracing::{debug, warn};
 
+#[cfg(target_os = "linux")]
+use crate::undo::set_unix_mode_nofollow;
 use crate::{
     fs_utils::{check_no_symlink_components, sanitize_path_nofollow},
-    undo::{permissions_snapshot, run_actions, Action, Direction, UndoState},
+    undo::{permissions_snapshot, run_actions, Action, Direction},
 };
 
 #[cfg(target_os = "windows")]
 use super::windows_acl;
 #[cfg(target_os = "windows")]
 use super::AccessBits;
-use super::{ensure_absolute_path, get_permissions, AccessUpdate, PermissionInfo};
+use super::{
+    ensure_absolute_path, permission_info_fallback, refresh_permissions_after_apply, AccessUpdate,
+    PermissionInfo,
+};
 
 fn rollback_permissions_actions(actions: &[Action]) -> Result<(), String> {
     if actions.is_empty() {
@@ -33,7 +38,6 @@ pub(super) fn set_permissions_batch(
     owner: Option<AccessUpdate>,
     group: Option<AccessUpdate>,
     other: Option<AccessUpdate>,
-    undo: Option<&UndoState>,
 ) -> Result<PermissionInfo, String> {
     let has_access_updates = owner.is_some() || group.is_some() || other.is_some();
     if read_only.is_none() && executable.is_none() && !has_access_updates {
@@ -162,9 +166,42 @@ pub(super) fn set_permissions_batch(
             }
 
             if changed {
-                fs::set_permissions(&target, perms)
-                    .map_err(|e| format!("Failed to update permissions: {e}"))?;
-                let after = permissions_snapshot(&target)?;
+                #[cfg(target_os = "linux")]
+                {
+                    set_unix_mode_nofollow(&target, mode)
+                        .map_err(|e| format!("Failed to update permissions: {e}"))?;
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    fs::set_permissions(&target, perms)
+                        .map_err(|e| format!("Failed to update permissions: {e}"))?;
+                }
+                let after = match permissions_snapshot(&target) {
+                    Ok(after) => after,
+                    Err(snapshot_err) => {
+                        let mut current = vec![Action::SetPermissions {
+                            path: target.clone(),
+                            before: before.clone(),
+                            after: before.clone(),
+                        }];
+                        match run_actions(&mut current, Direction::Backward) {
+                            Ok(()) => {
+                                return Err(format!(
+                                    "Failed to capture post-change permissions for {}: {}; current target rolled back",
+                                    target.display(),
+                                    snapshot_err
+                                ));
+                            }
+                            Err(rollback_err) => {
+                                return Err(format!(
+                                    "Failed to capture post-change permissions for {}: {}; rollback failed ({rollback_err}). System may be partially changed",
+                                    target.display(),
+                                    snapshot_err
+                                ));
+                            }
+                        }
+                    }
+                };
                 actions.push(Action::SetPermissions {
                     path: target.clone(),
                     before,
@@ -185,32 +222,13 @@ pub(super) fn set_permissions_batch(
         }
     }
 
-    if let Some(undo) = undo {
-        if !actions.is_empty() {
-            if actions.len() == 1 {
-                let _ = undo.record_applied(actions.pop().unwrap());
-            } else {
-                let _ = undo.record_applied(Action::Batch(actions));
-            }
-        }
-    }
+    let changed_any = !actions.is_empty();
 
     if let Some(path) = first_path {
-        return get_permissions(path);
+        return refresh_permissions_after_apply(path, changed_any);
     }
 
-    Ok(PermissionInfo {
-        read_only: false,
-        executable: None,
-        executable_supported: cfg!(unix),
-        access_supported: cfg!(unix),
-        ownership_supported: cfg!(unix),
-        owner_name: None,
-        group_name: None,
-        owner: None,
-        group: None,
-        other: None,
-    })
+    Ok(permission_info_fallback())
 }
 
 #[cfg(target_os = "windows")]
@@ -221,7 +239,6 @@ pub(super) fn set_permissions_batch(
     owner: Option<AccessUpdate>,
     group: Option<AccessUpdate>,
     other: Option<AccessUpdate>,
-    undo: Option<&UndoState>,
 ) -> Result<PermissionInfo, String> {
     let has_access_updates = owner.is_some() || group.is_some() || other.is_some();
     if read_only.is_none() && executable.is_none() && !has_access_updates {
@@ -317,7 +334,32 @@ pub(super) fn set_permissions_batch(
             }
 
             if changed {
-                let after = permissions_snapshot(&target)?;
+                let after = match permissions_snapshot(&target) {
+                    Ok(after) => after,
+                    Err(snapshot_err) => {
+                        let mut current = vec![Action::SetPermissions {
+                            path: target.clone(),
+                            before: before.clone(),
+                            after: before.clone(),
+                        }];
+                        match run_actions(&mut current, Direction::Backward) {
+                            Ok(()) => {
+                                return Err(format!(
+                                    "Failed to capture post-change permissions for {}: {}; current target rolled back",
+                                    target.display(),
+                                    snapshot_err
+                                ));
+                            }
+                            Err(rollback_err) => {
+                                return Err(format!(
+                                    "Failed to capture post-change permissions for {}: {}; rollback failed ({rollback_err}). System may be partially changed",
+                                    target.display(),
+                                    snapshot_err
+                                ));
+                            }
+                        }
+                    }
+                };
                 actions.push(Action::SetPermissions {
                     path: target.clone(),
                     before,
@@ -338,32 +380,13 @@ pub(super) fn set_permissions_batch(
         }
     }
 
-    if let Some(undo) = undo {
-        if !actions.is_empty() {
-            if actions.len() == 1 {
-                let _ = undo.record_applied(actions.pop().unwrap());
-            } else {
-                let _ = undo.record_applied(Action::Batch(actions));
-            }
-        }
-    }
+    let changed_any = !actions.is_empty();
 
     if let Some(path) = first_path {
-        return get_permissions(path);
+        return refresh_permissions_after_apply(path, changed_any);
     }
 
-    Ok(PermissionInfo {
-        read_only: false,
-        executable: None,
-        executable_supported: true,
-        access_supported: true,
-        ownership_supported: false,
-        owner_name: None,
-        group_name: None,
-        owner: None,
-        group: None,
-        other: None,
-    })
+    Ok(permission_info_fallback())
 }
 
 #[cfg(not(any(unix, target_os = "windows")))]
@@ -374,9 +397,8 @@ pub(super) fn set_permissions_batch(
     owner: Option<AccessUpdate>,
     group: Option<AccessUpdate>,
     other: Option<AccessUpdate>,
-    undo: Option<&UndoState>,
 ) -> Result<PermissionInfo, String> {
-    let _ = (paths, executable, owner, group, other, undo);
+    let _ = (paths, executable, owner, group, other);
     if let Some(ro) = read_only {
         return Err(format!(
             "Permission changes are not supported on this platform (requested readOnly={ro})"

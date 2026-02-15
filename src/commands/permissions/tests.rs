@@ -1,4 +1,7 @@
-use super::{set_ownership_batch, set_permissions_batch, AccessUpdate};
+use super::{
+    get_permissions, refresh_permissions_after_apply, set_ownership_batch, set_permissions_batch,
+    AccessUpdate,
+};
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -29,7 +32,6 @@ fn read_only_toggle_does_not_grant_world_write() {
         None,
         None,
         None,
-        None,
     )
     .unwrap();
     let after_ro = fs::metadata(&path).unwrap().permissions().mode();
@@ -38,7 +40,6 @@ fn read_only_toggle_does_not_grant_world_write() {
     set_permissions_batch(
         vec![path.to_string_lossy().to_string()],
         Some(false),
-        None,
         None,
         None,
         None,
@@ -64,7 +65,6 @@ fn executable_toggle_sets_owner_only() {
         None,
         None,
         None,
-        None,
     )
     .unwrap();
     let after_exec = fs::metadata(&path).unwrap().permissions().mode();
@@ -74,7 +74,6 @@ fn executable_toggle_sets_owner_only() {
         vec![path.to_string_lossy().to_string()],
         None,
         Some(false),
-        None,
         None,
         None,
         None,
@@ -104,7 +103,6 @@ fn owner_group_other_bits_update() {
             write: Some(false),
             exec: Some(false),
         }),
-        None,
     )
     .unwrap();
     let mode = fs::metadata(&path).unwrap().permissions().mode();
@@ -123,7 +121,6 @@ fn owner_group_other_bits_update() {
         }),
         None,
         None,
-        None,
     )
     .unwrap();
     let mode = fs::metadata(&path).unwrap().permissions().mode();
@@ -134,7 +131,7 @@ fn owner_group_other_bits_update() {
 fn set_ownership_requires_owner_or_group() {
     let path = temp_file("owner-empty");
     fs::write(&path, b"test").unwrap();
-    let err = match set_ownership_batch(vec![path.to_string_lossy().to_string()], None, None, None)
+    let err = match set_ownership_batch(vec![path.to_string_lossy().to_string()], None, None)
     {
         Ok(_) => panic!("set_ownership_batch should fail without owner/group"),
         Err(err) => err,
@@ -151,7 +148,6 @@ fn set_ownership_rejects_unknown_principals() {
         vec![path.to_string_lossy().to_string()],
         Some("browsey-user-does-not-exist".into()),
         None,
-        None,
     ) {
         Ok(_) => panic!("set_ownership_batch should fail for unknown user"),
         Err(err) => err,
@@ -162,7 +158,6 @@ fn set_ownership_rejects_unknown_principals() {
         vec![path.to_string_lossy().to_string()],
         None,
         Some("browsey-group-does-not-exist".into()),
-        None,
     ) {
         Ok(_) => panic!("set_ownership_batch should fail for unknown group"),
         Err(err) => err,
@@ -183,7 +178,6 @@ fn set_ownership_noop_with_current_ids_succeeds() {
         vec![path.to_string_lossy().to_string()],
         Some(uid.to_string()),
         Some(gid.to_string()),
-        None,
     )
     .unwrap();
     assert!(info.ownership_supported);
@@ -195,7 +189,6 @@ fn set_permissions_rejects_relative_path() {
     let err = match set_permissions_batch(
         vec!["relative-path.txt".into()],
         Some(true),
-        None,
         None,
         None,
         None,
@@ -233,9 +226,39 @@ fn set_permissions_rejects_symlink_components() {
         None,
         None,
         None,
-        None,
     ) {
         Ok(_) => panic!("set_permissions_batch should reject symlink path components"),
+        Err(err) => err,
+    };
+    assert!(err.contains("Symlinks are not allowed in path"));
+
+    let _ = fs::remove_file(&file_path);
+    let _ = fs::remove_file(&link_dir);
+    let _ = fs::remove_dir(&real_dir);
+    let _ = fs::remove_dir(&base);
+}
+
+#[test]
+fn get_permissions_rejects_symlink_components() {
+    let base = std::env::temp_dir().join(format!(
+        "perm-get-symlink-comp-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let real_dir = base.join("real");
+    let link_dir = base.join("link");
+    let file_path = real_dir.join("target.txt");
+    let via_link_path = link_dir.join("target.txt");
+
+    fs::create_dir_all(&real_dir).unwrap();
+    fs::write(&file_path, b"test").unwrap();
+    symlink(&real_dir, &link_dir).unwrap();
+
+    let err = match get_permissions(via_link_path.to_string_lossy().to_string()) {
+        Ok(_) => panic!("get_permissions should reject symlink path components"),
         Err(err) => err,
     };
     assert!(err.contains("Symlinks are not allowed in path"));
@@ -279,7 +302,6 @@ fn set_permissions_rolls_back_when_later_target_fails_validation() {
         None,
         None,
         None,
-        None,
     ) {
         Ok(_) => panic!("set_permissions_batch should fail when a later target is invalid"),
         Err(err) => err,
@@ -309,7 +331,6 @@ fn set_permissions_noop_returns_actual_state() {
         None,
         None,
         None,
-        None,
     )
     .unwrap();
 
@@ -334,7 +355,6 @@ fn set_ownership_rejects_relative_path() {
         vec!["relative-owner-path".into()],
         Some(uid.to_string()),
         None,
-        None,
     ) {
         Ok(_) => panic!("set_ownership_batch should fail for relative paths"),
         Err(err) => err,
@@ -342,4 +362,22 @@ fn set_ownership_rejects_relative_path() {
     assert!(err.contains("Path must be absolute"));
 
     let _ = fs::remove_file(&path);
+}
+
+#[test]
+fn refresh_permissions_after_apply_returns_fallback_when_changed() {
+    let missing = temp_file("perm-refresh-missing");
+    let info =
+        refresh_permissions_after_apply(missing.to_string_lossy().to_string(), true).unwrap();
+    assert!(info.access_supported);
+}
+
+#[test]
+fn refresh_permissions_after_apply_errors_when_no_change() {
+    let missing = temp_file("perm-refresh-nochange");
+    let err = match refresh_permissions_after_apply(missing.to_string_lossy().to_string(), false) {
+        Ok(_) => panic!("refresh should fail when nothing changed and path is invalid"),
+        Err(err) => err,
+    };
+    assert!(err.contains("Path does not exist or unreadable"));
 }
