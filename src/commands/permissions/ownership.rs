@@ -7,10 +7,13 @@ use tracing::{debug, warn};
 
 use crate::{
     fs_utils::{check_no_symlink_components, sanitize_path_nofollow},
-    undo::{ownership_snapshot, run_actions, set_ownership_nofollow, Action, Direction, UndoState},
+    undo::{ownership_snapshot, run_actions, set_ownership_nofollow, Action, Direction},
 };
 
-use super::{ensure_absolute_path, get_permissions, PermissionInfo, OWNERSHIP_HELPER_FLAG};
+use super::{
+    ensure_absolute_path, permission_info_fallback, refresh_permissions_after_apply,
+    PermissionInfo, OWNERSHIP_HELPER_FLAG,
+};
 
 fn rollback_ownership_actions(actions: &[Action]) -> Result<(), String> {
     if actions.is_empty() {
@@ -208,7 +211,6 @@ fn set_ownership_batch_impl(
     paths: Vec<String>,
     owner: Option<String>,
     group: Option<String>,
-    undo: Option<&UndoState>,
     allow_pkexec_retry: bool,
 ) -> Result<PermissionInfo, String> {
     let owner_spec = normalize_principal_spec(owner);
@@ -256,31 +258,72 @@ fn set_ownership_batch_impl(
         if target.uid_update.is_none() && target.gid_update.is_none() {
             continue;
         }
-        if let Err(e) = set_ownership_nofollow(&target.target, target.uid_update, target.gid_update)
-        {
+        let apply_result: Result<(), String> = (|| {
+            if let Err(e) =
+                set_ownership_nofollow(&target.target, target.uid_update, target.gid_update)
+            {
+                if allow_pkexec_retry && is_elevated_privileges_error(&e) {
+                    let helper_paths: Vec<String> = targets
+                        .iter()
+                        .map(|t| t.target.to_string_lossy().into_owned())
+                        .collect();
+                    run_ownership_with_pkexec(
+                        helper_paths,
+                        owner_spec.clone(),
+                        group_spec.clone(),
+                    )?;
+                    escalated = true;
+                    return Ok(());
+                }
+                return Err(e);
+            }
+
+            let after = match ownership_snapshot(&target.target) {
+                Ok(after) => after,
+                Err(snapshot_err) => {
+                    let mut current = vec![Action::SetOwnership {
+                        path: target.target.clone(),
+                        before: target.before.clone(),
+                        after: target.before.clone(),
+                    }];
+                    match run_actions(&mut current, Direction::Backward) {
+                        Ok(()) => {
+                            return Err(format!(
+                                "Failed to capture post-change ownership for {}: {}; current target rolled back",
+                                target.target.display(),
+                                snapshot_err
+                            ));
+                        }
+                        Err(rollback_err) => {
+                            return Err(format!(
+                                "Failed to capture post-change ownership for {}: {}; rollback failed ({rollback_err}). System may be partially changed",
+                                target.target.display(),
+                                snapshot_err
+                            ));
+                        }
+                    }
+                }
+            };
+            if after.uid != target.before.uid || after.gid != target.before.gid {
+                actions.push(Action::SetOwnership {
+                    path: target.target.clone(),
+                    before: target.before.clone(),
+                    after,
+                });
+            }
+            Ok(())
+        })();
+
+        if let Err(err) = apply_result {
             if let Err(rollback_err) = rollback_ownership_actions(&actions) {
                 return Err(format!(
-                    "{e}; rollback failed ({rollback_err}). System may be partially changed"
+                    "{err}; rollback failed ({rollback_err}). System may be partially changed"
                 ));
             }
-            if allow_pkexec_retry && is_elevated_privileges_error(&e) {
-                let helper_paths: Vec<String> = targets
-                    .iter()
-                    .map(|t| t.target.to_string_lossy().into_owned())
-                    .collect();
-                run_ownership_with_pkexec(helper_paths, owner_spec.clone(), group_spec.clone())?;
-                escalated = true;
-                break;
-            }
-            return Err(e);
+            return Err(err);
         }
-        let after = ownership_snapshot(&target.target)?;
-        if after.uid != target.before.uid || after.gid != target.before.gid {
-            actions.push(Action::SetOwnership {
-                path: target.target.clone(),
-                before: target.before.clone(),
-                after,
-            });
+        if escalated {
+            break;
         }
     }
 
@@ -301,32 +344,13 @@ fn set_ownership_batch_impl(
         }
     }
 
-    if let Some(undo) = undo {
-        if !actions.is_empty() {
-            if actions.len() == 1 {
-                let _ = undo.record_applied(actions.pop().unwrap());
-            } else {
-                let _ = undo.record_applied(Action::Batch(actions));
-            }
-        }
-    }
+    let changed_any = !actions.is_empty();
 
     if let Some(path) = first_path {
-        return get_permissions(path);
+        return refresh_permissions_after_apply(path, changed_any);
     }
 
-    Ok(PermissionInfo {
-        read_only: false,
-        executable: None,
-        executable_supported: cfg!(unix),
-        access_supported: cfg!(unix),
-        ownership_supported: cfg!(unix),
-        owner_name: None,
-        group_name: None,
-        owner: None,
-        group: None,
-        other: None,
-    })
+    Ok(permission_info_fallback())
 }
 
 #[cfg(unix)]
@@ -334,9 +358,8 @@ pub(super) fn set_ownership_batch(
     paths: Vec<String>,
     owner: Option<String>,
     group: Option<String>,
-    undo: Option<&UndoState>,
 ) -> Result<PermissionInfo, String> {
-    set_ownership_batch_impl(paths, owner, group, undo, true)
+    set_ownership_batch_impl(paths, owner, group, true)
 }
 
 #[cfg(not(unix))]
@@ -344,9 +367,8 @@ pub(super) fn set_ownership_batch(
     paths: Vec<String>,
     owner: Option<String>,
     group: Option<String>,
-    undo: Option<&UndoState>,
 ) -> Result<PermissionInfo, String> {
-    let _ = (paths, owner, group, undo);
+    let _ = (paths, owner, group);
     Err("Ownership changes are not supported on this platform".into())
 }
 
@@ -360,7 +382,7 @@ fn run_ownership_helper_from_stdin() -> Result<(), String> {
         .map_err(|e| format!("Failed reading helper input: {e}"))?;
     let request: OwnershipHelperRequest =
         serde_json::from_slice(&input).map_err(|e| format!("Invalid helper input: {e}"))?;
-    set_ownership_batch_impl(request.paths, request.owner, request.group, None, false).map(|_| ())
+    set_ownership_batch_impl(request.paths, request.owner, request.group, false).map(|_| ())
 }
 
 pub fn maybe_run_ownership_helper_from_args() -> Option<i32> {
