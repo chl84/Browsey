@@ -7,6 +7,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
+#[cfg(target_os = "linux")]
+use std::{collections::HashSet, fs};
 #[cfg(debug_assertions)]
 use tracing::info;
 use tracing::warn;
@@ -82,7 +84,7 @@ pub fn open_with(path: String, choice: OpenWithChoice) -> Result<(), String> {
         if let Some(app_id) = app_id {
             #[cfg(debug_assertions)]
             info!("Opening {:?} with desktop entry {}", target, app_id);
-            return launch_desktop_entry(&target, &app_id);
+            return launch_desktop_entry_by_id(&target, &app_id);
         }
     }
     #[cfg(target_os = "windows")]
@@ -97,49 +99,22 @@ pub fn open_with(path: String, choice: OpenWithChoice) -> Result<(), String> {
 
 #[cfg(target_os = "linux")]
 fn list_linux_apps(target: &Path) -> Vec<OpenWithApp> {
-    use std::collections::HashSet;
-
-    let target_mime = mime_for_path(target);
-    let is_dir = target.is_dir();
     let mut matches_list = Vec::new();
     let mut fallback = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
-    for dir in linux_application_dirs() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
+    for app in linux_app_candidates(target) {
+        let open_app = OpenWithApp {
+            id: app.id,
+            name: app.desktop.name,
+            comment: app.desktop.comment,
+            exec: app.desktop.exec,
+            icon: app.desktop.icon,
+            matches: app.matches,
+            terminal: app.desktop.terminal,
         };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|ext| ext.eq_ignore_ascii_case("desktop"))
-                != Some(true)
-            {
-                continue;
-            }
-            let Some(desktop) = parse_desktop_entry(&path) else {
-                continue;
-            };
-            let matches = matches_mime(&desktop.mime_types, &target_mime, is_dir);
-            let id = path.to_string_lossy().to_string();
-            if !seen.insert(id.clone()) {
-                continue;
-            }
-            let app = OpenWithApp {
-                id,
-                name: desktop.name,
-                comment: desktop.comment,
-                exec: desktop.exec,
-                icon: desktop.icon,
-                matches,
-                terminal: desktop.terminal,
-            };
-            if matches {
-                matches_list.push(app);
-            } else {
-                fallback.push(app);
-            }
+        if app.matches {
+            matches_list.push(open_app);
+        } else {
+            fallback.push(open_app);
         }
     }
     matches_list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -149,11 +124,21 @@ fn list_linux_apps(target: &Path) -> Vec<OpenWithApp> {
 }
 
 #[cfg(target_os = "linux")]
-fn launch_desktop_entry(target: &Path, app_id: &str) -> Result<(), String> {
-    let path = PathBuf::from(app_id);
-    let entry = parse_desktop_entry(&path)
+fn launch_desktop_entry_by_id(target: &Path, app_id: &str) -> Result<(), String> {
+    let app = resolve_linux_app_for_target(target, app_id)
         .ok_or_else(|| "Selected application is unavailable".to_string())?;
+    launch_desktop_entry(target, &app.desktop)
+}
+
+#[cfg(target_os = "linux")]
+fn launch_desktop_entry(target: &Path, entry: &DesktopEntry) -> Result<(), String> {
     let (program, args) = command_from_exec(&entry, target)?;
+    if !command_exists(&program) {
+        return Err(format!(
+            "Selected application is unavailable: {}",
+            entry.name
+        ));
+    }
     let mut cmd = Command::new(&program);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -175,6 +160,7 @@ fn spawn_detached(mut cmd: Command) -> Result<(), String> {
 }
 
 #[cfg(target_os = "linux")]
+#[derive(Clone)]
 struct DesktopEntry {
     name: String,
     comment: Option<String>,
@@ -183,6 +169,122 @@ struct DesktopEntry {
     icon: Option<String>,
     terminal: bool,
     path: PathBuf,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Clone)]
+struct LinuxAppCandidate {
+    id: String,
+    desktop: DesktopEntry,
+    matches: bool,
+}
+
+#[cfg(target_os = "linux")]
+fn linux_desktop_entry_id(path: &Path) -> String {
+    let hash = blake3::hash(path.to_string_lossy().as_bytes());
+    format!("desktop:{}", hash.to_hex())
+}
+
+#[cfg(target_os = "linux")]
+fn canonical_application_dirs(app_dirs: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    for dir in app_dirs {
+        let Ok(canon) = fs::canonicalize(dir) else {
+            continue;
+        };
+        let Ok(meta) = fs::symlink_metadata(&canon) else {
+            continue;
+        };
+        if !meta.is_dir() {
+            continue;
+        }
+        if seen.insert(canon.clone()) {
+            out.push(canon);
+        }
+    }
+    out
+}
+
+#[cfg(target_os = "linux")]
+fn linux_app_candidates(target: &Path) -> Vec<LinuxAppCandidate> {
+    let dirs = linux_application_dirs();
+    linux_app_candidates_in_dirs(target, &dirs)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_app_candidates_in_dirs(target: &Path, app_dirs: &[PathBuf]) -> Vec<LinuxAppCandidate> {
+    let target_mime = mime_for_path(target);
+    let is_dir = target.is_dir();
+    let mut out = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    for dir in canonical_application_dirs(app_dirs) {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case("desktop"))
+                != Some(true)
+            {
+                continue;
+            }
+            let Ok(meta) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if meta.file_type().is_symlink() || !meta.is_file() {
+                continue;
+            }
+            let Ok(canon) = fs::canonicalize(&path) else {
+                continue;
+            };
+            if !canon.starts_with(&dir) {
+                continue;
+            }
+            let Ok(canon_meta) = fs::symlink_metadata(&canon) else {
+                continue;
+            };
+            if canon_meta.file_type().is_symlink() || !canon_meta.is_file() {
+                continue;
+            }
+            let Some(desktop) = parse_desktop_entry(&canon) else {
+                continue;
+            };
+            let id = linux_desktop_entry_id(&canon);
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+            let matches = matches_mime(&desktop.mime_types, &target_mime, is_dir);
+            out.push(LinuxAppCandidate {
+                id,
+                desktop,
+                matches,
+            });
+        }
+    }
+
+    out
+}
+
+#[cfg(target_os = "linux")]
+fn resolve_linux_app_for_target(target: &Path, app_id: &str) -> Option<LinuxAppCandidate> {
+    let dirs = linux_application_dirs();
+    resolve_linux_app_for_target_in_dirs(target, app_id, &dirs)
+}
+
+#[cfg(target_os = "linux")]
+fn resolve_linux_app_for_target_in_dirs(
+    target: &Path,
+    app_id: &str,
+    app_dirs: &[PathBuf],
+) -> Option<LinuxAppCandidate> {
+    linux_app_candidates_in_dirs(target, app_dirs)
+        .into_iter()
+        .find(|app| app.id == app_id)
 }
 
 #[cfg(target_os = "linux")]
@@ -846,5 +948,105 @@ impl Drop for ComGuard {
                 CoUninitialize();
             }
         }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::symlink;
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, SystemTime};
+
+    fn uniq_dir(label: &str) -> PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        std::env::temp_dir().join(format!("browsey-open-with-{label}-{ts}"))
+    }
+
+    fn write_desktop(path: &Path, name: &str) {
+        let contents = format!(
+            "[Desktop Entry]\nType=Application\nName={name}\nExec=/bin/echo %f\nMimeType=text/plain;\n"
+        );
+        fs::write(path, contents).expect("failed to write desktop file");
+    }
+
+    #[test]
+    fn linux_open_with_resolves_only_listed_ids() {
+        let root = uniq_dir("resolve");
+        let allowed_dir = root.join("allowed");
+        let outsider_dir = root.join("outsider");
+        fs::create_dir_all(&allowed_dir).expect("failed to create allowed dir");
+        fs::create_dir_all(&outsider_dir).expect("failed to create outsider dir");
+
+        let app_path = allowed_dir.join("viewer.desktop");
+        write_desktop(&app_path, "Viewer");
+        let outsider_path = outsider_dir.join("evil.desktop");
+        write_desktop(&outsider_path, "Evil");
+
+        let target = root.join("sample.txt");
+        fs::write(&target, b"data").expect("failed to write target");
+
+        let dirs = vec![allowed_dir.clone()];
+        let listed = linux_app_candidates_in_dirs(&target, &dirs);
+        assert_eq!(listed.len(), 1);
+        let listed_id = listed[0].id.clone();
+        assert!(
+            listed_id.starts_with("desktop:"),
+            "expected hashed desktop id"
+        );
+
+        let resolved = resolve_linux_app_for_target_in_dirs(&target, &listed_id, &dirs);
+        assert!(resolved.is_some(), "listed app id should resolve");
+
+        let outsider_id = linux_desktop_entry_id(
+            &outsider_path
+                .canonicalize()
+                .expect("failed to canonicalize outsider desktop"),
+        );
+        let outsider_resolved = resolve_linux_app_for_target_in_dirs(&target, &outsider_id, &dirs);
+        assert!(
+            outsider_resolved.is_none(),
+            "outsider app id must not resolve"
+        );
+
+        let raw_path_id = outsider_path.to_string_lossy().to_string();
+        let raw_path_resolved = resolve_linux_app_for_target_in_dirs(&target, &raw_path_id, &dirs);
+        assert!(
+            raw_path_resolved.is_none(),
+            "raw path app id must not resolve"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn linux_open_with_skips_symlink_desktop_files() {
+        let root = uniq_dir("symlink");
+        let allowed_dir = root.join("allowed");
+        let outside_dir = root.join("outside");
+        fs::create_dir_all(&allowed_dir).expect("failed to create allowed dir");
+        fs::create_dir_all(&outside_dir).expect("failed to create outside dir");
+
+        let real_path = allowed_dir.join("real.desktop");
+        write_desktop(&real_path, "Real");
+
+        let linked_source = outside_dir.join("linked.desktop");
+        write_desktop(&linked_source, "Linked");
+        let linked_path = allowed_dir.join("linked-symlink.desktop");
+        symlink(&linked_source, &linked_path).expect("failed to create desktop symlink");
+
+        let target = root.join("sample.txt");
+        fs::write(&target, b"data").expect("failed to write target");
+
+        let dirs = vec![allowed_dir];
+        let listed = linux_app_candidates_in_dirs(&target, &dirs);
+        assert_eq!(listed.len(), 1, "symlink desktop entries should be ignored");
+        assert_eq!(listed[0].desktop.name, "Real");
+
+        let _ = fs::remove_dir_all(&root);
     }
 }
