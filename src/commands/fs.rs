@@ -230,10 +230,15 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
     if target == path {
         return Ok(path.to_path_buf());
     }
-    if target.exists() {
-        return Err(format!("Target already exists: {}", target.display()));
+    match rename_entry_nofollow_io(path, &target) {
+        Ok(_) => {}
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            return Err(format!("Target already exists: {}", target.display()));
+        }
+        Err(e) => {
+            return Err(format!("Failed to rename: {e}"));
+        }
     }
-    fs::rename(path, &target).map_err(|e| format!("Failed to rename: {e}"))?;
     Ok(target)
 }
 
