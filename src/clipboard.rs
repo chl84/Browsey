@@ -14,7 +14,7 @@ use std::io::BufRead;
 use std::process::Command;
 use std::{
     fs,
-    io::{Read, Write},
+    io::{ErrorKind, Read, Write},
     path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Mutex},
 };
@@ -87,7 +87,13 @@ fn copy_dir(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> Result<(), String> {
-    fs::create_dir_all(dest).map_err(|e| format!("Failed to create dir {:?}: {e}", dest))?;
+    fs::create_dir(dest).map_err(|e| {
+        if e.kind() == ErrorKind::AlreadyExists {
+            format!("Destination already exists: {}", dest.display())
+        } else {
+            format!("Failed to create dir {:?}: {e}", dest)
+        }
+    })?;
     for entry in fs::read_dir(src).map_err(|e| format!("Failed to read dir {:?}: {e}", src))? {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
         let path = entry.path();
@@ -155,11 +161,15 @@ fn merge_dir(
             return Err("Copy cancelled".into());
         }
         let target = dest.join(entry.file_name());
+        let target_meta = metadata_if_exists_nofollow(&target)?;
         if meta.is_dir() {
-            if target.exists() && target.is_dir() {
+            if matches!(target_meta, Some(ref m) if m.file_type().is_symlink()) {
+                return Err("Refusing to overwrite symlinks".into());
+            }
+            if matches!(target_meta, Some(ref m) if m.is_dir()) {
                 merge_dir(&path, &target, mode, actions, app, progress_event, cancel)?;
             } else {
-                if target.exists() {
+                if target_meta.is_some() {
                     backup_existing_target(&target, actions)?;
                 }
                 match mode {
@@ -180,13 +190,16 @@ fn merge_dir(
                 }
             }
         } else {
-            if target.exists() {
+            if matches!(target_meta, Some(ref m) if m.file_type().is_symlink()) {
+                return Err("Refusing to overwrite symlinks".into());
+            }
+            if target_meta.is_some() {
                 backup_existing_target(&target, actions)?;
             }
             match mode {
                 ClipboardMode::Copy => {
-                    fs::copy(&path, &target)
-                        .map_err(|e| format!("Failed to copy file {:?}: {e}", path))?;
+                    let hint = Some(meta.len());
+                    copy_file_best_effort(&path, &target, app, progress_event, cancel, hint)?;
                     actions.push(Action::Copy {
                         from: path.clone(),
                         to: target.clone(),
@@ -272,10 +285,15 @@ fn copy_file_best_effort(
         fs::File::open(src).map_err(|e| format!("Failed to open source for copy: {e}"))?;
     let mut writer = fs::OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .open(dest)
-        .map_err(|e| format!("Failed to open target for copy: {e}"))?;
+        .map_err(|e| {
+            if e.kind() == ErrorKind::AlreadyExists {
+                format!("Destination already exists: {}", dest.display())
+            } else {
+                format!("Failed to open target for copy: {e}")
+            }
+        })?;
 
     let mut buf = vec![0u8; 512 * 1024];
     let mut done: u64 = 0;
@@ -454,8 +472,19 @@ fn policy_from_str(policy: &str) -> Result<ConflictPolicy, String> {
     }
 }
 
-fn next_unique_name(base: &Path) -> PathBuf {
-    if !base.exists() {
+fn metadata_if_exists_nofollow(path: &Path) -> Result<Option<fs::Metadata>, String> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) => Ok(Some(meta)),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(format!(
+            "Failed to read metadata for {}: {err}",
+            path.display()
+        )),
+    }
+}
+
+fn rename_candidate(base: &Path, idx: usize) -> PathBuf {
+    if idx == 0 {
         return base.to_path_buf();
     }
     let parent = base.parent().unwrap_or_else(|| Path::new("."));
@@ -469,19 +498,20 @@ fn next_unique_name(base: &Path) -> PathBuf {
         .map(|(s, e)| (s.to_string(), Some(e.to_string())))
         .unwrap_or_else(|| (original.clone(), None));
 
-    // Start at 1 because base is known to already exist in conflict scenarios.
-    let mut idx: usize = 1;
-    loop {
-        let candidate_name = match &ext {
-            Some(ext) => format!("{stem}-{idx}.{ext}"),
-            None => format!("{stem}-{idx}"),
-        };
-        let candidate = parent.join(&candidate_name);
-        if !candidate.exists() {
-            return candidate;
-        }
-        idx = idx.saturating_add(1);
-    }
+    let candidate_name = match &ext {
+        Some(ext) => format!("{stem}-{idx}.{ext}"),
+        None => format!("{stem}-{idx}"),
+    };
+    parent.join(candidate_name)
+}
+
+fn is_destination_exists_error(err: &str) -> bool {
+    let lower = err.to_lowercase();
+    lower.contains("already exists")
+        || lower.contains("file exists")
+        || lower.contains("destination exists")
+        || lower.contains("os error 17")
+        || lower.contains("os error 183")
 }
 
 #[tauri::command]
@@ -619,11 +649,13 @@ fn paste_clipboard_impl(
         if transfer_cancelled(cancel_flag.as_deref(), Some(&app)) {
             return Err("Copy cancelled".into());
         }
-        if !src.exists() {
-            return Err(format!("Source does not exist: {:?}", src));
-        }
-        let src_meta =
-            fs::symlink_metadata(src).map_err(|e| format!("Failed to read metadata: {e}"))?;
+        let src_meta = match fs::symlink_metadata(src) {
+            Ok(meta) => meta,
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                return Err(format!("Source does not exist: {:?}", src))
+            }
+            Err(e) => return Err(format!("Failed to read metadata: {e}")),
+        };
         if src_meta.file_type().is_symlink() {
             return Err("Symlinks are not supported in clipboard".into());
         }
@@ -631,34 +663,39 @@ fn paste_clipboard_impl(
             .file_name()
             .ok_or_else(|| "Invalid source path".to_string())?;
         let target_base = dest.join(name);
+        let mut rename_attempt = 0usize;
         let mut target = match policy {
-            ConflictPolicy::Rename => next_unique_name(&target_base),
+            ConflictPolicy::Rename => rename_candidate(&target_base, rename_attempt),
             ConflictPolicy::Overwrite => target_base.clone(),
         };
 
-        if matches!(policy, ConflictPolicy::Overwrite) && target.exists() {
-            // If both are dirs, merge instead of deleting target (Windows Explorer behavior).
-            if src_meta.is_dir() && target.is_dir() {
-                merge_dir(
-                    src,
-                    &target,
-                    state.mode,
-                    &mut performed,
-                    Some(&app),
-                    progress_event.as_deref(),
-                    cancel_flag.as_deref(),
-                )?;
-                created.push(target.to_string_lossy().to_string());
-                continue;
+        if matches!(policy, ConflictPolicy::Overwrite) {
+            if let Some(target_meta) = metadata_if_exists_nofollow(&target)? {
+                if target_meta.file_type().is_symlink() {
+                    return Err("Refusing to overwrite symlinks".into());
+                }
+                // If both are dirs, merge instead of deleting target (Windows Explorer behavior).
+                if src_meta.is_dir() && target_meta.is_dir() {
+                    merge_dir(
+                        src,
+                        &target,
+                        state.mode,
+                        &mut performed,
+                        Some(&app),
+                        progress_event.as_deref(),
+                        cancel_flag.as_deref(),
+                    )?;
+                    created.push(target.to_string_lossy().to_string());
+                    continue;
+                }
+                // Prevent deleting parent/ancestor of the source.
+                if src.starts_with(&target) {
+                    return Err("Cannot overwrite a parent directory of the source item".into());
+                }
+                backup_existing_target(&target, &mut performed)?;
             }
-            // Prevent deleting parent/ancestor of the source.
-            if src.starts_with(&target) {
-                return Err("Cannot overwrite a parent directory of the source item".into());
-            }
-            backup_existing_target(&target, &mut performed)?;
         }
 
-        let mut attempts = 0usize;
         loop {
             let result = match state.mode {
                 ClipboardMode::Copy => copy_entry(
@@ -696,10 +733,12 @@ fn paste_clipboard_impl(
                     break;
                 }
                 Err(err) => {
-                    let is_exists = err.contains("exists") || err.contains("AlreadyExists");
-                    if matches!(policy, ConflictPolicy::Rename) && is_exists && attempts < 50 {
-                        attempts += 1;
-                        target = next_unique_name(&target);
+                    if matches!(policy, ConflictPolicy::Rename)
+                        && is_destination_exists_error(&err)
+                        && rename_attempt < 50
+                    {
+                        rename_attempt += 1;
+                        target = rename_candidate(&target_base, rename_attempt);
                         continue;
                     }
                     if !performed.is_empty() {
@@ -869,5 +908,39 @@ mod tests {
         assert!(!dest.join("a.txt").exists());
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn copy_file_best_effort_does_not_overwrite_existing_target() {
+        let base = uniq_path("copy-no-overwrite");
+        fs::create_dir_all(&base).unwrap();
+        let src = base.join("src.txt");
+        let dest = base.join("dest.txt");
+        write_file(&src, b"new-content");
+        write_file(&dest, b"old-content");
+
+        let err = copy_file_best_effort(&src, &dest, None, None, None, None).unwrap_err();
+        assert!(is_destination_exists_error(&err), "unexpected error: {err}");
+        assert_eq!(
+            fs::read(&dest).unwrap(),
+            b"old-content",
+            "existing destination should remain unchanged"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn rename_candidate_is_deterministic_without_exists_probe() {
+        let base = uniq_path("candidate").join("report.pdf");
+        assert_eq!(rename_candidate(&base, 0), base);
+        assert_eq!(
+            rename_candidate(&base, 1),
+            base.parent().unwrap().join("report-1.pdf")
+        );
+        assert_eq!(
+            rename_candidate(&base, 2),
+            base.parent().unwrap().join("report-2.pdf")
+        );
     }
 }
