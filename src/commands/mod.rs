@@ -45,7 +45,8 @@ pub use meta::{entry_extra_metadata_cmd, entry_kind_cmd, entry_times_cmd};
 pub use mounts::{eject_drive, list_mounts, mount_partition};
 pub use open_with::{list_open_with_apps, open_with};
 pub use permissions::{
-    get_permissions, maybe_run_ownership_helper_from_args, set_ownership, set_permissions,
+    get_permissions, list_ownership_principals, maybe_run_ownership_helper_from_args,
+    set_ownership, set_permissions,
 };
 pub use search::search_stream;
 pub use settings::{

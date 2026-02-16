@@ -15,7 +15,10 @@ mod tests;
 #[cfg(target_os = "windows")]
 mod windows_acl;
 
-use ownership::set_ownership_batch;
+use ownership::{
+    list_ownership_principals as list_ownership_principals_impl, set_ownership_batch,
+    OwnershipPrincipalKind,
+};
 use set_permissions::set_permissions_batch;
 
 pub use ownership::maybe_run_ownership_helper_from_args;
@@ -344,4 +347,13 @@ pub fn set_ownership(
         _ => return Err("No paths provided".into()),
     };
     set_ownership_batch(targets, owner, group)
+}
+
+#[tauri::command]
+pub fn list_ownership_principals(
+    kind: OwnershipPrincipalKind,
+    query: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<String>, String> {
+    list_ownership_principals_impl(kind, query, limit)
 }

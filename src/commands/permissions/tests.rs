@@ -132,8 +132,7 @@ fn owner_group_other_bits_update() {
 fn set_ownership_requires_owner_or_group() {
     let path = temp_file("owner-empty");
     fs::write(&path, b"test").unwrap();
-    let err = match set_ownership_batch(vec![path.to_string_lossy().to_string()], None, None)
-    {
+    let err = match set_ownership_batch(vec![path.to_string_lossy().to_string()], None, None) {
         Ok(_) => panic!("set_ownership_batch should fail without owner/group"),
         Err(err) => err,
     };

@@ -10,13 +10,14 @@
 
   export let currentPath = ''
   export let videoThumbs = true
+  export let thumbnailsEnabled = true
   export let thumbnailRefreshToken = 0
 
   const thumbLoader = createThumbnailLoader({
     maxConcurrent: 3,
     maxDim: 96,
     initialGeneration: currentPath,
-    allowVideos: videoThumbs,
+    allowVideos: videoThumbs && thumbnailsEnabled,
   })
   let thumbMap = new Map<string, string>()
   const unsubThumbs = thumbLoader.subscribe((m) => {
@@ -31,9 +32,16 @@
 
   let lastVideoThumbs = videoThumbs
   $: if (videoThumbs !== lastVideoThumbs) {
-    thumbLoader.setAllowVideos(videoThumbs)
+    thumbLoader.setAllowVideos(videoThumbs && thumbnailsEnabled)
     thumbLoader.reset(`${currentPath}-vthumbs-${videoThumbs ? 'on' : 'off'}`)
     lastVideoThumbs = videoThumbs
+  }
+
+  let lastThumbnailsEnabled = thumbnailsEnabled
+  $: if (thumbnailsEnabled !== lastThumbnailsEnabled) {
+    thumbLoader.setAllowVideos(videoThumbs && thumbnailsEnabled)
+    thumbLoader.reset(`${currentPath}-thumbs-${thumbnailsEnabled ? 'on' : 'off'}`)
+    lastThumbnailsEnabled = thumbnailsEnabled
   }
 
   let lastThumbnailRefreshToken = thumbnailRefreshToken
@@ -86,21 +94,21 @@
   const readOnlyIcon = assetIconPath('status/eye-svgrepo-com.svg')
   const lockIcon = assetIconPath('status/padlock.svg')
 
-  const observeThumb = (node: Element, entry: Entry) => {
+  const observeThumb = (node: Element, payload: { entry: Entry; thumbnailsEnabled: boolean }) => {
     let binding: ReturnType<typeof thumbLoader.observe> | null = null
 
-    const bind = (next: Entry) => {
+    const bind = (next: { entry: Entry; thumbnailsEnabled: boolean }) => {
       binding?.destroy()
       binding = null
-      if (next.kind === 'file') {
-        binding = thumbLoader.observe(node, next.path)
+      if (next.thumbnailsEnabled && next.entry.kind === 'file') {
+        binding = thumbLoader.observe(node, next.entry.path)
       }
     }
 
-    bind(entry)
+    bind(payload)
 
     return {
-      update(next: Entry) {
+      update(next: { entry: Entry; thumbnailsEnabled: boolean }) {
         bind(next)
       },
       destroy() {
@@ -131,7 +139,7 @@
         <div class="grid-viewport" style={`top:${offsetY}px;`}>
           {#each visibleEntries as entry, i (entry.path)}
             <button
-              use:observeThumb={entry}
+              use:observeThumb={{ entry, thumbnailsEnabled }}
               class="card"
               class:dragging={dragging}
               class:selected={selected.has(entry.path)}
@@ -164,7 +172,7 @@
                   <img class="badge-icon" src={readOnlyIcon} alt="Read-only" title="Read-only" />
                 {/if}
               </div>
-              {#if thumbMap.has(entry.path)}
+              {#if thumbnailsEnabled && thumbMap.has(entry.path)}
                 <img
                   class="icon"
                   src={convertFileSrc(thumbMap.get(entry.path) || '')}

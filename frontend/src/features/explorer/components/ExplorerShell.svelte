@@ -121,6 +121,7 @@
   export let dragAllowed = false
   export let dragging = false
   export let videoThumbs = true
+  export let thumbnailsEnabled = true
   export let thumbnailRefreshToken = 0
 
   export let contextMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
@@ -210,6 +211,7 @@
 
   export let propertiesOpen = false
   export let propertiesEntry: Entry | null = null
+  export let propertiesMutationsLocked = false
   export let propertiesCount = 1
   export let propertiesSize: number | null = null
   export let propertiesItemCount: number | null = null
@@ -229,6 +231,10 @@
   export let propertiesPermissionsLoading = false
   export let propertiesOwnershipApplying = false
   export let propertiesOwnershipError: string | null = null
+  export let propertiesOwnershipUsers: string[] = []
+  export let propertiesOwnershipGroups: string[] = []
+  export let propertiesOwnershipOptionsLoading = false
+  export let propertiesOwnershipOptionsError: string | null = null
   type AccessBit = boolean | 'mixed'
   type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
   export let propertiesPermissions:
@@ -371,6 +377,7 @@
         {totalHeight}
         {currentPath}
         bind:rowsEl
+        {thumbnailsEnabled}
         {selected}
         {isHidden}
         {displayName}
@@ -503,6 +510,7 @@
 <PropertiesModal
   open={propertiesOpen}
   entry={propertiesEntry}
+  mutationsLocked={propertiesMutationsLocked}
   count={propertiesCount}
   size={propertiesSize}
   deepCount={propertiesItemCount}
@@ -513,6 +521,10 @@
   permissionsLoading={propertiesPermissionsLoading}
   ownershipApplying={propertiesOwnershipApplying}
   ownershipError={propertiesOwnershipError}
+  ownershipUsers={propertiesOwnershipUsers}
+  ownershipGroups={propertiesOwnershipGroups}
+  ownershipOptionsLoading={propertiesOwnershipOptionsLoading}
+  ownershipOptionsError={propertiesOwnershipOptionsError}
   permissions={propertiesPermissions}
   onToggleAccess={onTogglePermissionsAccess}
   onSetOwnership={onSetOwnership}

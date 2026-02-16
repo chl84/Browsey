@@ -4,6 +4,7 @@ import type { Entry } from '../types'
 
 type AccessBit = boolean | 'mixed'
 type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
+type OwnershipPrincipalKind = 'user' | 'group'
 type PermissionPayload = {
   access_supported: boolean
   executable_supported: boolean
@@ -34,6 +35,29 @@ export type ExtraMetadataPayload = {
   sections: ExtraMetadataSection[]
 }
 
+const withTrashOriginalPath = (
+  metadata: ExtraMetadataPayload,
+  entry: Entry,
+): ExtraMetadataPayload => {
+  const originalPath = typeof entry.original_path === 'string' ? entry.original_path.trim() : ''
+  if (!entry.trash_id || !originalPath) return metadata
+  const originalPathSection: ExtraMetadataSection = {
+    id: 'trash',
+    title: 'Trash',
+    fields: [{ key: 'original_path', label: 'Original path', value: originalPath }],
+  }
+  return {
+    ...metadata,
+    sections: [originalPathSection, ...metadata.sections],
+  }
+}
+
+const isTrashEntry = (entry: Entry): boolean =>
+  typeof entry.trash_id === 'string' && entry.trash_id.trim().length > 0
+
+const shouldLockMutations = (entries: Entry[]): boolean =>
+  entries.length > 0 && entries.every(isTrashEntry)
+
 export type PermissionsState = {
   accessSupported: boolean
   executableSupported: boolean
@@ -51,6 +75,7 @@ export type PropertiesState = {
   open: boolean
   entry: Entry | null
   targets: Entry[]
+  mutationsLocked: boolean
   count: number
   size: number | null
   itemCount: number | null
@@ -61,11 +86,16 @@ export type PropertiesState = {
   extraMetadataPath: string | null
   permissionsLoading: boolean
   permissions: PermissionsState | null
+  ownershipUsers: string[]
+  ownershipGroups: string[]
+  ownershipOptionsLoading: boolean
+  ownershipOptionsError: string | null
   ownershipApplying: boolean
   ownershipError: string | null
 }
 
 const PERMISSIONS_MULTI_CONCURRENCY = 8
+const OWNERSHIP_PRINCIPAL_LIMIT = 2048
 const SYMLINK_PERMISSIONS_MSG = 'Permissions are not supported on symlinks'
 
 const unsupportedPermissionsPayload = (): PermissionPayload => ({
@@ -77,6 +107,23 @@ const unsupportedPermissionsPayload = (): PermissionPayload => ({
   owner_name: null,
   group_name: null,
 })
+
+const normalizePrincipalList = (values: unknown): string[] => {
+  if (!Array.isArray(values)) return []
+  const cleaned = values
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter((value) => value.length > 0)
+  cleaned.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  return Array.from(new Set(cleaned))
+}
+
+const fetchOwnershipPrincipalList = async (
+  kind: OwnershipPrincipalKind,
+  limit = OWNERSHIP_PRINCIPAL_LIMIT,
+): Promise<string[]> => {
+  const raw = await invoke<unknown>('list_ownership_principals', { kind, limit })
+  return normalizePrincipalList(raw)
+}
 
 const invokeErrorMessage = (err: unknown): string => {
   if (err instanceof Error && err.message.trim().length > 0) return err.message
@@ -136,6 +183,7 @@ export const createPropertiesModal = (deps: Deps) => {
     open: false,
     entry: null,
     targets: [],
+    mutationsLocked: false,
     count: 0,
     size: null,
     itemCount: null,
@@ -146,10 +194,15 @@ export const createPropertiesModal = (deps: Deps) => {
     extraMetadataPath: null,
     permissionsLoading: false,
     permissions: null,
+    ownershipUsers: [],
+    ownershipGroups: [],
+    ownershipOptionsLoading: false,
+    ownershipOptionsError: null,
     ownershipApplying: false,
     ownershipError: null,
   })
   let token = 0
+  let ownershipPrincipalsLoadedToken = -1
   let lastPermissionsErrorSignature = ''
   let lastPermissionsErrorAt = 0
 
@@ -158,6 +211,7 @@ export const createPropertiesModal = (deps: Deps) => {
       open: false,
       entry: null,
       targets: [],
+      mutationsLocked: false,
       count: 0,
       size: null,
       itemCount: null,
@@ -168,13 +222,19 @@ export const createPropertiesModal = (deps: Deps) => {
       extraMetadataPath: null,
       permissionsLoading: false,
       permissions: null,
+      ownershipUsers: [],
+      ownershipGroups: [],
+      ownershipOptionsLoading: false,
+      ownershipOptionsError: null,
       ownershipApplying: false,
       ownershipError: null,
     })
+    ownershipPrincipalsLoadedToken = -1
   }
 
   const openModal = async (entries: Entry[]) => {
     const nextToken = ++token
+    ownershipPrincipalsLoadedToken = -1
     const files = entries.filter((e) => e.kind === 'file')
     const dirs = entries.filter((e) => e.kind === 'dir')
     const fileBytes = files.reduce((sum, f) => sum + (f.size ?? 0), 0)
@@ -184,6 +244,7 @@ export const createPropertiesModal = (deps: Deps) => {
       open: true,
       entry: entries.length === 1 ? entries[0] : null,
       targets: entries,
+      mutationsLocked: shouldLockMutations(entries),
       count: entries.length,
       size: fileBytes,
       itemCount: dirs.length === 0 ? fileCount : null,
@@ -194,6 +255,10 @@ export const createPropertiesModal = (deps: Deps) => {
       extraMetadataPath: null,
       permissionsLoading: true,
       permissions: null,
+      ownershipUsers: [],
+      ownershipGroups: [],
+      ownershipOptionsLoading: false,
+      ownershipOptionsError: null,
       ownershipApplying: false,
       ownershipError: null,
     })
@@ -239,6 +304,43 @@ export const createPropertiesModal = (deps: Deps) => {
     if (unique.length === 0) return null
     if (unique.length === 1 && normalized.every((v) => v === unique[0])) return unique[0]
     return 'mixed'
+  }
+
+  const ensureOwnershipPrincipalsLoaded = async (currToken: number) => {
+    if (currToken !== token) return
+    if (ownershipPrincipalsLoadedToken === currToken) return
+    const current = get(state)
+    if (!current.open || current.ownershipOptionsLoading) return
+    state.update((s) => ({ ...s, ownershipOptionsLoading: true, ownershipOptionsError: null }))
+    try {
+      const [users, groups] = await Promise.all([
+        fetchOwnershipPrincipalList('user'),
+        fetchOwnershipPrincipalList('group'),
+      ])
+      if (currToken !== token) return
+      state.update((s) => ({
+        ...s,
+        ownershipUsers: users,
+        ownershipGroups: groups,
+        ownershipOptionsLoading: false,
+        ownershipOptionsError: null,
+      }))
+    } catch (err) {
+      if (currToken !== token) return
+      const message = invokeErrorMessage(err)
+      console.warn('Failed to load ownership principals', message)
+      state.update((s) => ({
+        ...s,
+        ownershipUsers: [],
+        ownershipGroups: [],
+        ownershipOptionsLoading: false,
+        ownershipOptionsError: message,
+      }))
+    } finally {
+      if (currToken === token) {
+        ownershipPrincipalsLoadedToken = currToken
+      }
+    }
   }
 
   const fetchPermissionsAll = async (entries: Entry[]): Promise<PermissionPayload[]> => {
@@ -366,6 +468,9 @@ export const createPropertiesModal = (deps: Deps) => {
               other: null,
             },
       }))
+      if (ownershipSupported) {
+        void ensureOwnershipPrincipalsLoaded(currToken)
+      }
     } catch (err) {
       console.error('Failed to load multi permissions', err)
       if (currToken !== token) return
@@ -393,6 +498,9 @@ export const createPropertiesModal = (deps: Deps) => {
           other: perms.other ?? null,
         },
       }))
+      if (perms.ownership_supported === true) {
+        void ensureOwnershipPrincipalsLoaded(currToken)
+      }
     } catch (err) {
       console.error('Failed to load permissions', err)
       if (currToken !== token) return
@@ -421,11 +529,12 @@ export const createPropertiesModal = (deps: Deps) => {
     try {
       const metadata = await invoke<ExtraMetadataPayload>('entry_extra_metadata_cmd', { path: entry.path })
       if (currToken !== token) return
+      const metadataWithTrashPath = withTrashOriginalPath(metadata, entry)
       state.update((s) => ({
         ...s,
         extraMetadataLoading: false,
         extraMetadataError: null,
-        extraMetadata: metadata,
+        extraMetadata: metadataWithTrashPath,
         extraMetadataPath: entry.path,
       }))
     } catch (err) {
@@ -466,6 +575,7 @@ export const createPropertiesModal = (deps: Deps) => {
     prevState?: PermissionsState | null,
   ) => {
     const current = get(state)
+    if (current.mutationsLocked) return
     const targets =
       current.targets.length > 0
         ? current.targets.map((p) => p.path)
@@ -550,6 +660,7 @@ export const createPropertiesModal = (deps: Deps) => {
 
   const toggleAccess = (scope: 'owner' | 'group' | 'other', key: 'read' | 'write' | 'exec', next: boolean) => {
     const current = get(state)
+    if (current.mutationsLocked) return
     const perms = current.permissions
     if (!perms || !perms.accessSupported) return
     const prev = JSON.parse(JSON.stringify(perms)) as PermissionsState
@@ -561,6 +672,7 @@ export const createPropertiesModal = (deps: Deps) => {
 
   const setOwnership = async (ownerRaw: string, groupRaw: string) => {
     const current = get(state)
+    if (current.mutationsLocked) return
     const targets =
       current.targets.length > 0
         ? current.targets.map((p) => p.path)
@@ -634,6 +746,7 @@ export const createPropertiesModal = (deps: Deps) => {
     setOwnership,
     async toggleHidden(next: boolean) {
       const current = get(state)
+      if (current.mutationsLocked) return
       const targets = current.targets.length > 0 ? current.targets : current.entry ? [current.entry] : []
       if (targets.length === 0) return
       const failures: string[] = []

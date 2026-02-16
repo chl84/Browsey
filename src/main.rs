@@ -292,6 +292,7 @@ fn main() {
             get_permissions,
             set_permissions,
             set_ownership,
+            list_ownership_principals,
             undo_action,
             redo_action,
             get_thumbnail,
