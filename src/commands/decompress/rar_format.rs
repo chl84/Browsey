@@ -1,5 +1,4 @@
 use std::{
-    fs,
     io::{BufWriter, Write},
     path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Arc},
@@ -12,8 +11,9 @@ use rar_stream::{
 use tauri::async_runtime;
 
 use super::util::{
-    check_cancel, clean_relative_path, first_component, map_copy_err, open_unique_file,
-    CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
+    check_cancel, clean_relative_path, ensure_dir_nofollow, first_component, map_copy_err,
+    open_unique_file, path_exists_nofollow, CreatedPaths, ExtractBudget, ProgressEmitter,
+    SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 
 pub(super) fn single_root_in_rar(path: &Path) -> Result<Option<PathBuf>, String> {
@@ -104,41 +104,50 @@ pub(super) fn extract_rar(
         let is_dir = normalized.ends_with('/') || normalized.ends_with('\\');
 
         if is_dir {
-            if !dest_path.exists() {
-                if let Err(e) = fs::create_dir_all(&dest_path) {
-                    stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
-                } else {
-                    created.record_dir(dest_path.clone());
+            match ensure_dir_nofollow(&dest_path) {
+                Ok(created_dirs) => {
+                    for dir in created_dirs {
+                        created.record_dir(dir);
+                    }
                 }
-            } else if let Err(e) = fs::create_dir_all(&dest_path) {
-                stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
+                Err(e) => {
+                    stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
+                }
             }
             continue;
         }
 
-        if dest_path.exists() {
-            if let Some(p) = progress {
-                p.add(entry.length.max(1));
+        match path_exists_nofollow(&dest_path) {
+            Ok(true) => {
+                if let Some(p) = progress {
+                    p.add(entry.length.max(1));
+                }
+                continue;
             }
-            continue;
+            Ok(false) => {}
+            Err(e) => {
+                stats.skip_unsupported(&raw_name, &format!("stat destination failed: {e}"));
+                continue;
+            }
         }
 
         if let Some(parent) = dest_path.parent() {
-            if !parent.exists() {
-                if let Err(e) = fs::create_dir_all(parent) {
+            match ensure_dir_nofollow(parent) {
+                Ok(created_dirs) => {
+                    for dir in created_dirs {
+                        created.record_dir(dir);
+                    }
+                }
+                Err(e) => {
                     stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
                     continue;
                 }
-                created.record_dir(parent.to_path_buf());
-            } else if let Err(e) = fs::create_dir_all(parent) {
-                stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
-                continue;
             }
         }
 
         let (file, dest_actual) =
             open_unique_file(&dest_path).map_err(|e| format!("Failed to create file: {e}"))?;
-        created.record_file(dest_actual.clone());
+        created.record_file(dest_actual);
         let mut out = BufWriter::with_capacity(CHUNK, file);
         write_rar_entry_streaming(&entry, &raw_name, &mut out, progress, cancel, budget)?;
     }

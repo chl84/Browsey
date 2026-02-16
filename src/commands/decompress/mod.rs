@@ -7,7 +7,7 @@ mod zip_format;
 use std::{
     fs,
     fs::File,
-    io::{self, BufReader, BufWriter, Read, Seek, SeekFrom},
+    io::{BufReader, BufWriter, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     sync::{atomic::AtomicBool, Arc, Mutex},
 };
@@ -29,9 +29,9 @@ use rar_format::{
 use seven_z_format::{extract_7z, sevenz_uncompressed_total, single_root_in_7z};
 use tar_format::{extract_tar_with_reader, single_root_in_tar, tar_uncompressed_total};
 use util::{
-    copy_with_progress, map_copy_err, map_io, open_buffered_file, open_unique_file,
-    strip_known_suffixes, CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
-    EXTRACT_TOTAL_BYTES_CAP, EXTRACT_TOTAL_ENTRIES_CAP,
+    copy_with_progress, create_unique_dir_nofollow, ensure_dir_nofollow, map_copy_err, map_io,
+    open_buffered_file, open_unique_file, strip_known_suffixes, CreatedPaths, ExtractBudget,
+    ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_BYTES_CAP, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 use zip_format::{extract_zip, single_root_in_zip, zip_uncompressed_total};
 
@@ -483,24 +483,7 @@ fn archive_root_name(path: &Path) -> String {
 }
 
 fn create_unique_dir(parent: &Path, base: &str) -> Result<PathBuf, String> {
-    fs::create_dir_all(parent).map_err(map_io("ensure parent dir"))?;
-    let mut candidate = parent.join(base);
-    let mut idx = 1;
-    loop {
-        match fs::create_dir(&candidate) {
-            Ok(_) => return Ok(candidate),
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-                candidate = parent.join(format!("{base}-{idx}"));
-                idx += 1;
-            }
-            Err(e) => {
-                return Err(format!(
-                    "Failed to create destination folder {}: {e}",
-                    candidate.display()
-                ))
-            }
-        }
-    }
+    create_unique_dir_nofollow(parent, base)
 }
 
 fn prepare_output_dir(archive_path: &Path) -> Result<PathBuf, String> {
@@ -670,9 +653,10 @@ fn decompress_single<R: Read>(
     }
     let dest_path = parent.join(dest_name);
     if let Some(parent_dir) = dest_path.parent() {
-        if !parent_dir.exists() {
-            fs::create_dir_all(parent_dir).map_err(map_io("create output dir"))?;
-            created.record_dir(parent_dir.to_path_buf());
+        let created_dirs = ensure_dir_nofollow(parent_dir)
+            .map_err(|e| format!("Failed to create output dir {}: {e}", parent_dir.display()))?;
+        for dir in created_dirs {
+            created.record_dir(dir);
         }
     }
     let (file, dest_path) = open_unique_file(&dest_path)?;
