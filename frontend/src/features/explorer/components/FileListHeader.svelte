@@ -19,9 +19,20 @@
   }
   export let onChangeSort: (field: SortField) => void = () => {}
   export let onStartResize: (index: number, event: PointerEvent) => void = () => {}
+
+  $: hasActiveFilter =
+    (filterActive.name ?? false) ||
+    (filterActive.type ?? false) ||
+    (filterActive.modified ?? false) ||
+    (filterActive.size ?? false)
 </script>
 
-<div class="header-row" bind:this={headerEl} style={`grid-template-columns:${gridTemplate};`}>
+<div
+  class="header-row"
+  class:filter-frame={hasActiveFilter}
+  bind:this={headerEl}
+  style={`grid-template-columns:${gridTemplate};`}
+>
   {#each cols as col, idx}
     <div class="header-cell">
       {#if col.sortable === false}
@@ -88,6 +99,7 @@
       var(--list-header-padding-right)
       var(--list-header-padding-y)
       var(--list-header-padding-left);
+    border-top: 1px solid transparent;
     border-bottom: 1px solid var(--border-strong);
     background: var(--bg);
     color: var(--fg-muted);
@@ -101,6 +113,13 @@
     box-sizing: border-box;
     border-left: 1px solid transparent;
     border-right: 1px solid transparent;
+  }
+
+  .header-row.filter-frame {
+    border-top-color: var(--filter-active, var(--accent-error-text));
+    border-bottom-color: var(--filter-active, var(--accent-error-text));
+    border-left-color: var(--filter-active, var(--accent-error-text));
+    border-right-color: var(--filter-active, var(--accent-error-text));
   }
 
   .header-cell {

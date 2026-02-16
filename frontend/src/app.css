@@ -54,6 +54,7 @@
   --list-header-padding-y: 6px;
   --list-header-padding-right: 6px;
   --list-header-padding-left: 13px;
+  --list-rows-padding-left: 15px;
   --list-header-font-size: 12px;
   --list-header-cell-gap: 6px;
   --list-header-align-right-offset: 10px;
@@ -427,6 +428,7 @@ body.density-compact {
   --list-header-padding-y: 4px;
   --list-header-padding-right: 4px;
   --list-header-padding-left: 10px;
+  --list-rows-padding-left: 15px;
   --list-header-font-size: 11px;
   --list-header-cell-gap: 5px;
   --list-header-align-right-offset: 8px;
