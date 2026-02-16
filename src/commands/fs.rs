@@ -6,8 +6,8 @@ use crate::{
     fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitize_path_nofollow},
     runtime_lifecycle,
     undo::{
-        assert_path_snapshot, rename_entry_nofollow_io, run_actions, snapshot_existing_path,
-        temp_backup_path, Action, Direction, UndoState,
+        assert_path_snapshot, is_destination_exists_error, move_with_fallback, run_actions,
+        snapshot_existing_path, temp_backup_path, Action, Direction, UndoState,
     },
 };
 #[path = "fs/delete_ops.rs"]
@@ -30,7 +30,7 @@ use std::collections::HashSet;
 #[cfg(target_os = "windows")]
 use std::os::windows::prelude::*;
 use std::{
-    fs, io,
+    fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
 };
@@ -158,9 +158,9 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
     if target == path {
         return Ok(path.to_path_buf());
     }
-    match rename_entry_nofollow_io(path, &target) {
+    match move_with_fallback(path, &target) {
         Ok(_) => {}
-        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+        Err(e) if is_destination_exists_error(&e) => {
             return Err(format!("Target already exists: {}", target.display()));
         }
         Err(e) => {
@@ -243,9 +243,9 @@ fn apply_rename(from: &Path, to: &Path) -> Result<(), String> {
         return Err("Invalid destination path".into());
     }
     assert_path_snapshot(from, &from_snapshot)?;
-    match rename_entry_nofollow_io(from, to) {
+    match move_with_fallback(from, to) {
         Ok(_) => Ok(()),
-        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+        Err(e) if is_destination_exists_error(&e) => {
             Err("A file or directory with that name already exists".into())
         }
         Err(e) => Err(format!("Failed to rename: {e}")),

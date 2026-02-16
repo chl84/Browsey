@@ -316,45 +316,14 @@ fn fstatat_nofollow(parent_fd: libc::c_int, name: &CString) -> Result<libc::stat
 }
 
 #[cfg(all(unix, target_os = "linux"))]
-fn rename_noreplace_compat(
-    src_parent_fd: &OwnedFd,
-    src_name: &CString,
-    dst_parent_fd: &OwnedFd,
-    dst_name: &CString,
-) -> Result<(), std::io::Error> {
-    // Compatibility fallback for kernels/filesystems without renameat2(RENAME_NOREPLACE).
-    // This preserves no-overwrite behavior in normal cases, but there is a race window
-    // between the destination existence check and renameat().
-    match fstatat_nofollow(dst_parent_fd.as_raw_fd(), dst_name) {
-        Ok(_) => {
-            return Err(std::io::Error::new(
-                ErrorKind::AlreadyExists,
-                "Destination already exists",
-            ));
-        }
-        Err(err) if err.kind() == ErrorKind::NotFound => {}
-        Err(err) => return Err(err),
-    }
-
-    let rc = unsafe {
-        libc::renameat(
-            src_parent_fd.as_raw_fd(),
-            src_name.as_ptr(),
-            dst_parent_fd.as_raw_fd(),
-            dst_name.as_ptr(),
-        )
-    };
-    if rc == 0 {
-        Ok(())
-    } else {
-        let err = std::io::Error::last_os_error();
-        match err.raw_os_error() {
-            Some(code) if code == libc::EEXIST || code == libc::ENOTEMPTY => Err(
-                std::io::Error::new(ErrorKind::AlreadyExists, "Destination already exists"),
-            ),
-            _ => Err(err),
-        }
-    }
+fn rename_noreplace_unsupported_error(code: Option<i32>) -> std::io::Error {
+    let detail = code
+        .map(|raw| format!(" (os error {raw})"))
+        .unwrap_or_default();
+    std::io::Error::new(
+        ErrorKind::Unsupported,
+        format!("RENAME_NOREPLACE is unavailable{detail}"),
+    )
 }
 
 #[cfg(all(unix, target_os = "linux"))]
@@ -389,8 +358,13 @@ fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
     } else {
         let err = std::io::Error::last_os_error();
         match err.raw_os_error() {
-            Some(code) if code == libc::ENOSYS || code == libc::EINVAL => {
-                rename_noreplace_compat(&src_parent_fd, &src_name, &dst_parent_fd, &dst_name)
+            Some(code)
+                if code == libc::ENOSYS
+                    || code == libc::EINVAL
+                    || code == libc::ENOTSUP
+                    || code == libc::EOPNOTSUPP =>
+            {
+                Err(rename_noreplace_unsupported_error(Some(code)))
             }
             _ => Err(err),
         }
@@ -399,11 +373,11 @@ fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
 
 #[cfg(not(all(unix, target_os = "linux")))]
 fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
-    fs::rename(src, dst)
-}
-
-pub(crate) fn rename_entry_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
-    rename_nofollow_io(src, dst)
+    let _ = (src, dst);
+    Err(std::io::Error::new(
+        ErrorKind::Unsupported,
+        "RENAME_NOREPLACE is unavailable on this platform",
+    ))
 }
 
 #[cfg(all(unix, target_os = "linux"))]
@@ -1168,32 +1142,54 @@ pub fn move_with_fallback(src: &Path, dst: &Path) -> Result<(), String> {
     match rename_nofollow_io(src, dst) {
         Ok(_) => Ok(()),
         Err(rename_err) => {
-            if !is_cross_device(&rename_err) {
+            if !is_cross_device(&rename_err) && !is_noreplace_unsupported(&rename_err) {
                 return Err(format!(
                     "Failed to rename {} -> {}: {rename_err}",
                     src.display(),
                     dst.display()
                 ));
             }
-            // Fallback: copy + delete to tolerate different disks/file systems.
-            copy_entry(src, dst).and_then(|_| {
-                assert_path_snapshot(src, &src_snapshot)?;
-                delete_entry_path(src).map_err(|del_err| {
-                    // Best effort: clean up destination if delete failed to avoid duplicates.
-                    let _ = delete_entry_path(dst);
-                    format!(
-                        "Copied {} -> {} after cross-device rename error, but failed to delete source: {del_err}",
-                        src.display(),
-                        dst.display()
-                    )
-                })
-            })
+            move_by_copy_delete_noreplace(src, dst, &src_snapshot)
         }
     }
 }
 
+fn move_by_copy_delete_noreplace(
+    src: &Path,
+    dst: &Path,
+    src_snapshot: &PathSnapshot,
+) -> Result<(), String> {
+    // Controlled fallback when atomic no-replace rename is unavailable
+    // (or across filesystems): copy + delete without destination overwrite.
+    copy_entry(src, dst).and_then(|_| {
+        assert_path_snapshot(src, src_snapshot)?;
+        delete_entry_path(src).map_err(|del_err| {
+            // Best effort: clean up destination if delete failed to avoid duplicates.
+            let _ = delete_entry_path(dst);
+            format!(
+                "Copied {} -> {} after fallback move, but failed to delete source: {del_err}",
+                src.display(),
+                dst.display()
+            )
+        })
+    })
+}
+
 fn is_cross_device(err: &std::io::Error) -> bool {
     matches!(err.raw_os_error(), Some(17) | Some(18))
+}
+
+fn is_noreplace_unsupported(err: &std::io::Error) -> bool {
+    err.kind() == ErrorKind::Unsupported
+}
+
+pub(crate) fn is_destination_exists_error(err: &str) -> bool {
+    let lower = err.to_lowercase();
+    lower.contains("destination already exists")
+        || lower.contains("already exists")
+        || lower.contains("file exists")
+        || lower.contains("os error 17")
+        || lower.contains("os error 183")
 }
 
 fn ensure_existing_path_nonsymlink(path: &Path) -> Result<fs::Metadata, String> {
@@ -1490,6 +1486,47 @@ mod tests {
             "unexpected error: {err}"
         );
         assert!(source.exists(), "source should remain when move fails");
+        assert_eq!(fs::read(&dest).unwrap_or_default(), b"dest-data");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn copy_delete_fallback_moves_file_without_overwrite() {
+        let dir = uniq_path("move-copy-delete");
+        let _ = fs::create_dir_all(&dir);
+        let source = dir.join("source.txt");
+        let dest = dir.join("dest.txt");
+        write_file(&source, b"source-data");
+        let src_snapshot = snapshot_existing_path(&source).expect("snapshot");
+
+        move_by_copy_delete_noreplace(&source, &dest, &src_snapshot).expect("fallback move");
+        assert!(
+            !source.exists(),
+            "source should be deleted after fallback move"
+        );
+        assert_eq!(fs::read(&dest).unwrap_or_default(), b"source-data");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn copy_delete_fallback_refuses_existing_destination() {
+        let dir = uniq_path("move-copy-delete-exists");
+        let _ = fs::create_dir_all(&dir);
+        let source = dir.join("source.txt");
+        let dest = dir.join("dest.txt");
+        write_file(&source, b"source-data");
+        write_file(&dest, b"dest-data");
+        let src_snapshot = snapshot_existing_path(&source).expect("snapshot");
+
+        let err = move_by_copy_delete_noreplace(&source, &dest, &src_snapshot)
+            .expect_err("fallback move should fail when destination exists");
+        assert!(is_destination_exists_error(&err), "unexpected error: {err}");
+        assert!(
+            source.exists(),
+            "source should remain when destination exists"
+        );
         assert_eq!(fs::read(&dest).unwrap_or_default(), b"dest-data");
 
         let _ = fs::remove_dir_all(&dir);
