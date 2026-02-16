@@ -30,7 +30,8 @@ pub(super) const CHUNK: usize = 4 * 1024 * 1024;
 pub(super) const EXTRACT_TOTAL_BYTES_CAP: u64 = 100_000_000_000; // 100 GB
 pub(super) const EXTRACT_TOTAL_ENTRIES_CAP: u64 = 2_000_000; // 2 million entries
 pub(super) const EXTRACT_MIN_FREE_DISK_RESERVE: u64 = 1_073_741_824; // 1 GiB
-pub(super) const EXTRACT_DISK_CHECK_INTERVAL_BYTES: u64 = 64 * 1024 * 1024; // 64 MiB
+pub(super) const EXTRACT_DISK_CHECK_INTERVAL_BYTES: u64 = 256 * 1024 * 1024; // 256 MiB
+const EXTRACT_CANCEL_CHECK_INTERVAL_BYTES: u64 = 16 * 1024 * 1024; // 16 MiB
 
 #[derive(Clone)]
 pub(super) struct DiskSpaceGuard {
@@ -776,14 +777,19 @@ pub(super) fn copy_with_progress<R: Read, W: Write>(
     buf: &mut [u8],
 ) -> io::Result<u64> {
     let mut written: u64 = 0;
+    let mut since_cancel_check = EXTRACT_CANCEL_CHECK_INTERVAL_BYTES;
     loop {
-        check_cancel(cancel)?;
+        if since_cancel_check >= EXTRACT_CANCEL_CHECK_INTERVAL_BYTES {
+            check_cancel(cancel)?;
+            since_cancel_check = 0;
+        }
         let n = reader.read(buf)?;
         if n == 0 {
             break;
         }
         budget.reserve_bytes(n as u64)?;
         writer.write_all(&buf[..n])?;
+        since_cancel_check = since_cancel_check.saturating_add(n as u64);
         written = written.saturating_add(n as u64);
         if let Some(p) = progress {
             p.add(n as u64);

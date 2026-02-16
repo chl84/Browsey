@@ -20,7 +20,9 @@ use tracing::{debug, warn};
 use crate::fs_utils::check_no_symlink_components;
 
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::Foundation::{LocalFree, ERROR_SUCCESS};
+use windows_sys::Win32::Foundation::{
+    LocalFree, ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS, ERROR_SUCCESS,
+};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Security::Authorization::{
     GetNamedSecurityInfoW, SetNamedSecurityInfoW, SE_FILE_OBJECT,
@@ -29,6 +31,8 @@ use windows_sys::Win32::Security::Authorization::{
 use windows_sys::Win32::Security::{
     GetSecurityDescriptorDacl, ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
 };
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
 
 const MAX_HISTORY: usize = 50;
 // Use a central directory for all undo backups.
@@ -371,7 +375,59 @@ fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
     }
 }
 
-#[cfg(not(all(unix, target_os = "linux")))]
+#[cfg(target_os = "windows")]
+fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
+    if src == dst {
+        return Ok(());
+    }
+
+    // Validate source without following symlinks/reparse points via metadata.
+    let src_meta = fs::symlink_metadata(src)?;
+    if src_meta.file_type().is_symlink() {
+        return Err(std::io::Error::new(
+            ErrorKind::Other,
+            "Symlinks are not allowed",
+        ));
+    }
+
+    let src_wide: Vec<u16> = src
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let dst_wide: Vec<u16> = dst
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let ok = unsafe { MoveFileExW(src_wide.as_ptr(), dst_wide.as_ptr(), MOVEFILE_WRITE_THROUGH) };
+    if ok != 0 {
+        return Ok(());
+    }
+
+    let err = std::io::Error::last_os_error();
+    match err.raw_os_error() {
+        Some(code) if code == ERROR_ALREADY_EXISTS as i32 || code == ERROR_FILE_EXISTS as i32 => {
+            Err(std::io::Error::new(
+                ErrorKind::AlreadyExists,
+                "Destination already exists",
+            ))
+        }
+        _ => Err(err),
+    }
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
+    let _ = (src, dst);
+    Err(std::io::Error::new(
+        ErrorKind::Unsupported,
+        "RENAME_NOREPLACE is unavailable on this platform",
+    ))
+}
+
+#[cfg(not(any(unix, target_os = "windows")))]
 fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
     let _ = (src, dst);
     Err(std::io::Error::new(
@@ -504,7 +560,8 @@ fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
 }
 
 #[cfg(not(all(unix, target_os = "linux")))]
-fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
+fn metadata_nofollow_path(path: &Path) -> Result<fs::Metadata, std::io::Error> {
+    check_no_symlink_components(path).map_err(|e| std::io::Error::new(ErrorKind::Other, e))?;
     let meta = fs::symlink_metadata(path)?;
     if meta.file_type().is_symlink() {
         return Err(std::io::Error::new(
@@ -512,8 +569,29 @@ fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
             "Symlinks are not allowed",
         ));
     }
+    Ok(meta)
+}
+
+#[cfg(not(all(unix, target_os = "linux")))]
+fn delete_dir_recursive_nofollow_path(path: &Path) -> Result<(), std::io::Error> {
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let child = entry.path();
+        let child_meta = metadata_nofollow_path(&child)?;
+        if child_meta.is_dir() {
+            delete_dir_recursive_nofollow_path(&child)?;
+        } else {
+            fs::remove_file(&child)?;
+        }
+    }
+    fs::remove_dir(path)
+}
+
+#[cfg(not(all(unix, target_os = "linux")))]
+fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
+    let meta = metadata_nofollow_path(path)?;
     if meta.is_dir() {
-        fs::remove_dir_all(path)
+        delete_dir_recursive_nofollow_path(path)
     } else {
         fs::remove_file(path)
     }

@@ -1,6 +1,14 @@
 # Changelog
 
 ## Unreleased
+- Destructive move hardening: removed Linux check-then-rename compatibility fallback when `renameat2(RENAME_NOREPLACE)` is unavailable; operations now use a controlled non-overwrite copy+delete fallback with explicit narrower (non-atomic) guarantees.
+- Windows/portable destructive-op hardening: Windows rename path now uses the native move API with explicit destination-exists mapping, and non-Linux recursive delete now validates no-follow metadata recursively instead of calling raw `remove_dir_all`.
+- Archive extraction hardening: Linux extraction now uses descriptor-based no-follow directory/file primitives across tar/zip/7z/rar and single-file decompress paths to reduce symlink and path-race exposure.
+- Archive safety limits are now disk-aware: effective extraction byte cap is computed from available destination disk space with a 1 GiB reserve, plus periodic runtime free-space checks during writes.
+- Clipboard copy hardening: fallback copy now uses no-clobber file creation (`create_new`), and rename conflict handling uses deterministic candidate retries without pre-`exists()` probing.
+- Duplicate scan pressure controls: collection now enforces scanned/candidate file caps and iterates `read_dir` streams directly (no full directory-entry buffering).
+- Properties modal ownership editing now uses searchable User/Group dropdowns populated from discovered system principals.
+- Wastebasket list mode now resolves icon type from original item metadata so entries show file-type-specific icons instead of a generic file icon.
 - Keyboard UX: `Esc` now exits both search mode and filter mode directly to breadcrumb view (address mode with unfocused path input).
 - Address mode UX: pressing `Esc` while editing the path now restores the current valid location path before returning to breadcrumbs.
 - Filter mode UX: pressing `Enter` is now a no-op (it no longer triggers path navigation).
