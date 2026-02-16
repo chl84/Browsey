@@ -45,6 +45,7 @@ export const useExplorerData = (options: Options = {}) => {
     entries,
     current,
     startDirPref,
+    invalidateFacetCache,
     sortFieldPref,
     sortDirectionPref,
     openDestAfterExtract,
@@ -261,6 +262,7 @@ export const useExplorerData = (options: Options = {}) => {
     if (metaQueue.size === 0) return
     const pending = metaQueue
     metaQueue = new Map()
+    invalidateFacetCache()
     entries.update((list) =>
       list.map((item) => {
         const upd = pending.get(item.path)

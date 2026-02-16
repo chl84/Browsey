@@ -681,3 +681,74 @@ pub fn watch_dir(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{bucket_modified, bucket_name, bucket_size};
+    use chrono::NaiveDateTime;
+
+    fn parse_dt(value: &str) -> NaiveDateTime {
+        NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M").expect("valid test datetime")
+    }
+
+    #[test]
+    fn bucket_modified_uses_naive_day_boundaries() {
+        let now = parse_dt("2026-03-10 12:00");
+
+        assert_eq!(
+            bucket_modified(parse_dt("2026-03-10 11:01"), now).0,
+            "Today"
+        );
+        assert_eq!(
+            bucket_modified(parse_dt("2026-03-09 13:00"), now).0,
+            "Today"
+        );
+        assert_eq!(
+            bucket_modified(parse_dt("2026-03-09 12:00"), now).0,
+            "Yesterday"
+        );
+        assert_eq!(
+            bucket_modified(parse_dt("2026-03-08 12:00"), now).0,
+            "2 days ago"
+        );
+        assert_eq!(
+            bucket_modified(parse_dt("2026-03-03 12:00"), now).0,
+            "1 week ago"
+        );
+        assert_eq!(
+            bucket_modified(parse_dt("2026-01-01 12:00"), now).0,
+            "3 months ago"
+        );
+        assert_eq!(
+            bucket_modified(parse_dt("2025-03-10 12:00"), now).0,
+            "1 year ago"
+        );
+    }
+
+    #[test]
+    fn bucket_size_assigns_expected_ranges() {
+        const KB: u64 = 1024;
+        const MB: u64 = 1024 * KB;
+        const GB: u64 = 1024 * MB;
+        const TB: u64 = 1024 * GB;
+
+        assert_eq!(bucket_size(0).0, "0–10 KB");
+        assert_eq!(bucket_size(10 * KB).0, "0–10 KB");
+        assert_eq!(bucket_size(10 * KB + 1).0, "10–100 KB");
+        assert_eq!(bucket_size(MB).0, "100 KB–1 MB");
+        assert_eq!(bucket_size(GB).0, "100 MB–1 GB");
+        assert_eq!(bucket_size(TB).0, "100 GB–1 TB");
+        assert_eq!(bucket_size(2 * TB).0, "Over 1 TB");
+        assert_eq!(bucket_size(2 * TB).1, (2 * TB) as i64);
+    }
+
+    #[test]
+    fn bucket_name_assigns_expected_ranges() {
+        assert_eq!(bucket_name("apple").0, "name:a-f");
+        assert_eq!(bucket_name("kite").0, "name:g-l");
+        assert_eq!(bucket_name("moon").0, "name:m-r");
+        assert_eq!(bucket_name("zeta").0, "name:s-z");
+        assert_eq!(bucket_name("7zip").0, "name:0-9");
+        assert_eq!(bucket_name("_tmp").0, "name:other");
+    }
+}
