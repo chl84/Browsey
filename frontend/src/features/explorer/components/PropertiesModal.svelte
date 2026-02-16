@@ -1,5 +1,6 @@
 <script lang="ts">
   import ModalShell from '../../../ui/ModalShell.svelte'
+  import ComboBox, { type ComboOption } from '../../../ui/ComboBox.svelte'
   import type { Entry } from '../types'
   export let open = false
   export let entry: Entry | null = null
@@ -16,6 +17,10 @@
   export let permissionsLoading = false
   export let ownershipApplying = false
   export let ownershipError: string | null = null
+  export let ownershipUsers: string[] = []
+  export let ownershipGroups: string[] = []
+  export let ownershipOptionsLoading = false
+  export let ownershipOptionsError: string | null = null
   type Access = { read: boolean | 'mixed'; write: boolean | 'mixed'; exec: boolean | 'mixed' }
   type HiddenBit = boolean | 'mixed' | null
   const scopes = ['owner', 'group', 'other'] as const
@@ -35,6 +40,7 @@
       }
     | null = null
   export let hidden: HiddenBit = null
+  export let mutationsLocked = false
   export let onToggleAccess: (
     scope: Scope,
     key: 'read' | 'write' | 'exec',
@@ -75,6 +81,23 @@
     if (value === 'mixed') return 'Mixed'
     return value ?? ''
   }
+  const toPrincipalOptions = (values: string[]): ComboOption[] =>
+    values.map((value) => ({ value, label: value }))
+  const ensurePrincipalOption = (
+    options: ComboOption[],
+    current: string | null | undefined,
+    selected: string,
+  ): ComboOption[] => {
+    const normalizedCurrent = editablePrincipal(current).trim()
+    const normalizedSelected = selected.trim()
+    const merged = [...options]
+    for (const candidate of [normalizedCurrent, normalizedSelected]) {
+      if (!candidate) continue
+      if (merged.some((option) => option.value === candidate)) continue
+      merged.unshift({ value: candidate, label: candidate })
+    }
+    return merged
+  }
   const applyOwnership = () => {
     void onSetOwnership(ownerInput, groupInput)
   }
@@ -88,6 +111,16 @@
   let ownershipInputsInitialized = false
   let ownerInput = ''
   let groupInput = ''
+  $: ownerOptions = ensurePrincipalOption(
+    toPrincipalOptions(ownershipUsers),
+    permissions?.ownerName,
+    ownerInput,
+  )
+  $: groupOptions = ensurePrincipalOption(
+    toPrincipalOptions(ownershipGroups),
+    permissions?.groupName,
+    groupInput,
+  )
   const switchTab = (tab: 'basic' | 'extra' | 'permissions') => {
     activeTab = tab
     if (tab === 'extra') onActivateExtra()
@@ -166,6 +199,7 @@
                 use:indeterminate={hiddenBit}
                 checked={hiddenBit === true}
                 title="Hidden attribute"
+                disabled={mutationsLocked}
                 on:change={(e) => onToggleHidden((e.currentTarget as HTMLInputElement).checked)}
               />
             </label>
@@ -215,24 +249,32 @@
               <div class="row">
                 <span class="label">User</span>
                 <span class="value">
-                  <input
-                    class="ownership-input"
-                    type="text"
-                    bind:value={ownerInput}
+                  <ComboBox
+                    options={ownerOptions}
+                    value={ownerInput}
                     placeholder={principalPlaceholder(permissions.ownerName)}
-                    disabled={ownershipApplying}
+                    searchable={true}
+                    searchPlaceholder="Search users"
+                    emptyLabel={ownershipOptionsLoading ? 'Loading users…' : 'No users found'}
+                    noMatchesLabel="No matching users"
+                    disabled={ownershipApplying || mutationsLocked}
+                    on:change={(e) => (ownerInput = e.detail as string)}
                   />
                 </span>
               </div>
               <div class="row">
                 <span class="label">Group</span>
                 <span class="value">
-                  <input
-                    class="ownership-input"
-                    type="text"
-                    bind:value={groupInput}
+                  <ComboBox
+                    options={groupOptions}
+                    value={groupInput}
                     placeholder={principalPlaceholder(permissions.groupName)}
-                    disabled={ownershipApplying}
+                    searchable={true}
+                    searchPlaceholder="Search groups"
+                    emptyLabel={ownershipOptionsLoading ? 'Loading groups…' : 'No groups found'}
+                    noMatchesLabel="No matching groups"
+                    disabled={ownershipApplying || mutationsLocked}
+                    on:change={(e) => (groupInput = e.detail as string)}
                   />
                 </span>
               </div>
@@ -243,12 +285,16 @@
                     type="button"
                     class="ownership-apply-button"
                     on:click={applyOwnership}
-                    disabled={ownershipApplying}
+                    disabled={ownershipApplying || mutationsLocked}
                   >
                     {ownershipApplying ? 'Applying…' : 'Apply ownership'}
                   </button>
                   {#if ownershipError}
                     <span class="ownership-error">{ownershipError}</span>
+                  {:else if ownershipOptionsError}
+                    <span class="ownership-hint">Failed to load users/groups: {ownershipOptionsError}</span>
+                  {:else if ownershipOptionsLoading}
+                    <span class="ownership-hint">Loading users/groups…</span>
                   {/if}
                 </span>
               </div>
@@ -276,6 +322,7 @@
                       type="checkbox"
                       use:indeterminate={permissions[scope].read}
                       checked={permissions[scope].read === true}
+                      disabled={mutationsLocked}
                       on:change={(e) =>
                         onToggleAccess(scope, 'read', (e.currentTarget as HTMLInputElement).checked)}
                     />
@@ -285,6 +332,7 @@
                       type="checkbox"
                       use:indeterminate={permissions[scope].write}
                       checked={permissions[scope].write === true}
+                      disabled={mutationsLocked}
                       on:change={(e) =>
                         onToggleAccess(scope, 'write', (e.currentTarget as HTMLInputElement).checked)}
                     />
@@ -294,6 +342,7 @@
                       type="checkbox"
                       use:indeterminate={permissions[scope].exec}
                       checked={permissions[scope].exec === true}
+                      disabled={mutationsLocked}
                       on:change={(e) =>
                         onToggleAccess(scope, 'exec', (e.currentTarget as HTMLInputElement).checked)}
                     />
@@ -384,9 +433,13 @@
     min-width: 0;
   }
 
-  .ownership-input {
+  .ownership :global(.combo) {
     width: var(--properties-ownership-input-width);
     max-width: min(var(--properties-ownership-input-max-width), 100%);
+  }
+
+  .ownership :global(.combo-list) {
+    max-height: calc(var(--modal-input-min-height) * 5.2);
   }
 
   .ownership-controls {

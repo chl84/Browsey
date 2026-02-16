@@ -698,7 +698,7 @@ button:focus-visible {
   padding-left: 8px;
 }
 
-.modal .combo-list {
+.modal .combo-list-wrap {
   position: absolute;
   z-index: 40;
   top: calc(100% + 2px);
@@ -707,6 +707,19 @@ button:focus-visible {
   background: var(--bg-raised);
   border: 1px solid var(--border-accent);
   box-shadow: var(--shadow-drop);
+}
+
+.modal .combo-search-wrap {
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal .combo-search {
+  width: 100%;
+  min-width: 0;
+}
+
+.modal .combo-list {
   max-height: 240px;
   overflow: auto;
   list-style: none;
@@ -727,6 +740,11 @@ button:focus-visible {
 
 .modal .combo-list li.active {
   background: var(--drop-allowed-bg);
+}
+
+.modal .combo-list li.empty {
+  color: var(--fg-muted);
+  cursor: default;
 }
 
 .modal input[type='range'] {

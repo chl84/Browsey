@@ -2986,6 +2986,7 @@
   columnFacetsLoading={$columnFacetsLoading}
   onEnsureColumnFacets={ensureColumnFacets}
   videoThumbs={$videoThumbs}
+  thumbnailsEnabled={currentView !== 'trash'}
   {thumbnailRefreshToken}
   cols={$cols}
   gridTemplate={$gridTemplate}
@@ -3105,6 +3106,7 @@
   onCloseOpenWith={openWithModal.close}
   propertiesOpen={$propertiesState.open}
   propertiesEntry={$propertiesState.entry}
+  propertiesMutationsLocked={$propertiesState.mutationsLocked}
   propertiesCount={$propertiesState.count}
   propertiesSize={$propertiesState.size}
   propertiesItemCount={$propertiesState.itemCount}
@@ -3115,6 +3117,10 @@
   propertiesPermissionsLoading={$propertiesState.permissionsLoading}
   propertiesOwnershipApplying={$propertiesState.ownershipApplying}
   propertiesOwnershipError={$propertiesState.ownershipError}
+  propertiesOwnershipUsers={$propertiesState.ownershipUsers}
+  propertiesOwnershipGroups={$propertiesState.ownershipGroups}
+  propertiesOwnershipOptionsLoading={$propertiesState.ownershipOptionsLoading}
+  propertiesOwnershipOptionsError={$propertiesState.ownershipOptionsError}
   propertiesPermissions={$propertiesState.permissions}
   onTogglePermissionsAccess={(scope, key, next) => propertiesModal.toggleAccess(scope, key, next)}
   onSetOwnership={(owner, group) => propertiesModal.setOwnership(owner, group)}

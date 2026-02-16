@@ -1,7 +1,7 @@
 use std::fs::{self, Permissions};
-use std::path::PathBuf;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
 use tracing::{debug, warn};
 
 #[cfg(target_os = "linux")]
@@ -193,24 +193,22 @@ pub(super) fn set_permissions_batch(
                 }
                 match permissions_snapshot(&target) {
                     Ok(_) => {}
-                    Err(snapshot_err) => {
-                        match apply_permissions(&target, &before) {
-                            Ok(()) => {
-                                return Err(format!(
+                    Err(snapshot_err) => match apply_permissions(&target, &before) {
+                        Ok(()) => {
+                            return Err(format!(
                                     "Failed to capture post-change permissions for {}: {}; current target rolled back",
                                     target.display(),
                                     snapshot_err
                                 ));
-                            }
-                            Err(rollback_err) => {
-                                return Err(format!(
+                        }
+                        Err(rollback_err) => {
+                            return Err(format!(
                                     "Failed to capture post-change permissions for {}: {}; rollback failed ({rollback_err}). System may be partially changed",
                                     target.display(),
                                     snapshot_err
                                 ));
-                            }
                         }
-                    }
+                    },
                 }
                 rollbacks.push(PermissionRollback {
                     path: target.clone(),
@@ -345,24 +343,22 @@ pub(super) fn set_permissions_batch(
             if changed {
                 match permissions_snapshot(&target) {
                     Ok(_) => {}
-                    Err(snapshot_err) => {
-                        match apply_permissions(&target, &before) {
-                            Ok(()) => {
-                                return Err(format!(
+                    Err(snapshot_err) => match apply_permissions(&target, &before) {
+                        Ok(()) => {
+                            return Err(format!(
                                     "Failed to capture post-change permissions for {}: {}; current target rolled back",
                                     target.display(),
                                     snapshot_err
                                 ));
-                            }
-                            Err(rollback_err) => {
-                                return Err(format!(
+                        }
+                        Err(rollback_err) => {
+                            return Err(format!(
                                     "Failed to capture post-change permissions for {}: {}; rollback failed ({rollback_err}). System may be partially changed",
                                     target.display(),
                                     snapshot_err
                                 ));
-                            }
                         }
-                    }
+                    },
                 }
                 rollbacks.push(PermissionRollback {
                     path: target.clone(),

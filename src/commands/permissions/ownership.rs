@@ -1,8 +1,13 @@
+#[cfg(unix)]
+use once_cell::sync::Lazy;
+use std::collections::HashSet;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 #[cfg(unix)]
 use std::process::{Command, Stdio};
+#[cfg(unix)]
+use std::sync::Mutex;
 use tracing::{debug, warn};
 
 use crate::{
@@ -48,6 +53,16 @@ struct OwnershipHelperRequest {
     group: Option<String>,
 }
 
+#[derive(Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OwnershipPrincipalKind {
+    User,
+    Group,
+}
+
+const DEFAULT_PRINCIPAL_LIST_LIMIT: usize = 512;
+const MAX_PRINCIPAL_LIST_LIMIT: usize = 4096;
+
 fn normalize_principal_spec(raw: Option<String>) -> Option<String> {
     raw.and_then(|v| {
         let trimmed = v.trim();
@@ -57,6 +72,136 @@ fn normalize_principal_spec(raw: Option<String>) -> Option<String> {
             Some(trimmed.to_string())
         }
     })
+}
+
+fn normalize_principal_query(raw: Option<String>) -> Option<String> {
+    raw.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_lowercase())
+        }
+    })
+}
+
+fn normalize_principal_limit(limit: Option<usize>) -> usize {
+    limit
+        .unwrap_or(DEFAULT_PRINCIPAL_LIST_LIMIT)
+        .max(1)
+        .min(MAX_PRINCIPAL_LIST_LIMIT)
+}
+
+fn filter_principal_names(
+    names: Vec<String>,
+    query: Option<String>,
+    limit: Option<usize>,
+) -> Vec<String> {
+    let needle = normalize_principal_query(query);
+    let mut filtered: Vec<String> = names
+        .into_iter()
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .collect();
+
+    if let Some(needle) = needle {
+        filtered.retain(|name| name.to_lowercase().contains(&needle));
+    }
+
+    filtered.sort_by(|a, b| {
+        a.to_lowercase()
+            .cmp(&b.to_lowercase())
+            .then_with(|| a.cmp(b))
+    });
+
+    let mut seen: HashSet<String> = HashSet::with_capacity(filtered.len());
+    filtered.retain(|name| seen.insert(name.to_lowercase()));
+    filtered.truncate(normalize_principal_limit(limit));
+    filtered
+}
+
+#[cfg(unix)]
+static PRINCIPAL_ENUM_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+#[cfg(unix)]
+fn enumerate_user_names() -> Vec<String> {
+    use std::ffi::CStr;
+
+    let _guard = PRINCIPAL_ENUM_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut names: Vec<String> = Vec::new();
+    unsafe {
+        libc::setpwent();
+        loop {
+            let pwd = libc::getpwent();
+            if pwd.is_null() {
+                break;
+            }
+            let name_ptr = (*pwd).pw_name;
+            if name_ptr.is_null() {
+                continue;
+            }
+            let name = CStr::from_ptr(name_ptr).to_string_lossy().into_owned();
+            if !name.is_empty() {
+                names.push(name);
+            }
+        }
+        libc::endpwent();
+    }
+    names
+}
+
+#[cfg(unix)]
+fn enumerate_group_names() -> Vec<String> {
+    use std::ffi::CStr;
+
+    let _guard = PRINCIPAL_ENUM_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut names: Vec<String> = Vec::new();
+    unsafe {
+        libc::setgrent();
+        loop {
+            let grp = libc::getgrent();
+            if grp.is_null() {
+                break;
+            }
+            let name_ptr = (*grp).gr_name;
+            if name_ptr.is_null() {
+                continue;
+            }
+            let name = CStr::from_ptr(name_ptr).to_string_lossy().into_owned();
+            if !name.is_empty() {
+                names.push(name);
+            }
+        }
+        libc::endgrent();
+    }
+    names
+}
+
+#[cfg(unix)]
+pub(super) fn list_ownership_principals(
+    kind: OwnershipPrincipalKind,
+    query: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<String>, String> {
+    let names = match kind {
+        OwnershipPrincipalKind::User => enumerate_user_names(),
+        OwnershipPrincipalKind::Group => enumerate_group_names(),
+    };
+    Ok(filter_principal_names(names, query, limit))
+}
+
+#[cfg(not(unix))]
+pub(super) fn list_ownership_principals(
+    kind: OwnershipPrincipalKind,
+    query: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<String>, String> {
+    let _ = (kind, query, limit);
+    Err("Ownership principals are not supported on this platform".into())
 }
 
 #[cfg(unix)]
@@ -294,24 +439,22 @@ fn set_ownership_batch_impl(
 
             let after = match ownership_snapshot(&target.target) {
                 Ok(after) => after,
-                Err(snapshot_err) => {
-                    match apply_ownership(&target.target, &target.before) {
-                        Ok(()) => {
-                            return Err(format!(
+                Err(snapshot_err) => match apply_ownership(&target.target, &target.before) {
+                    Ok(()) => {
+                        return Err(format!(
                                 "Failed to capture post-change ownership for {}: {}; current target rolled back",
                                 target.target.display(),
                                 snapshot_err
                             ));
-                        }
-                        Err(rollback_err) => {
-                            return Err(format!(
+                    }
+                    Err(rollback_err) => {
+                        return Err(format!(
                                 "Failed to capture post-change ownership for {}: {}; rollback failed ({rollback_err}). System may be partially changed",
                                 target.target.display(),
                                 snapshot_err
                             ));
-                        }
                     }
-                }
+                },
             };
             if after.uid != target.before.uid || after.gid != target.before.gid {
                 rollbacks.push(OwnershipRollback {
@@ -462,5 +605,19 @@ mod tests {
         assert_eq!(after.gid(), expected_gid);
 
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn filter_principal_names_applies_query_limit_and_dedup() {
+        let names = vec![
+            "alice".to_string(),
+            "Alice".to_string(),
+            "bob".to_string(),
+            "carol".to_string(),
+            "daemon".to_string(),
+            "".to_string(),
+        ];
+        let filtered = filter_principal_names(names, Some("a".into()), Some(2));
+        assert_eq!(filtered, vec!["Alice".to_string(), "carol".to_string()]);
     }
 }
