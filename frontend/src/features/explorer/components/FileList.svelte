@@ -190,7 +190,7 @@
     overflow-x: hidden;
     width: 100%;
     direction: ltr;
-    padding-left: 15px;
+    padding-left: var(--list-rows-padding-left, 15px);
     padding-right: 20px; /* move scrollbar inward ~8px to keep native resize grip clear */
     padding-bottom: 32px;
     position: relative;

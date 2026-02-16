@@ -39,3 +39,17 @@
   font-weight: 600;
   border: 1px solid var(--border);
 }
+
+.grid-filter-indicator {
+  color: var(--filter-active, var(--accent-error-text));
+  font-size: var(--list-header-font-size);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding:
+    var(--list-header-padding-y)
+    var(--list-header-padding-right)
+    var(--list-header-padding-y)
+    var(--list-header-padding-left);
+  padding-left: calc(var(--list-header-padding-left) + var(--list-rows-padding-left, 15px) - 3px);
+}

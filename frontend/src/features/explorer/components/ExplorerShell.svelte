@@ -267,6 +267,12 @@
 
   export let toastMessage: string | null = null
 
+  $: hasActiveColumnFilters =
+    columnFilters.name.size > 0 ||
+    columnFilters.type.size > 0 ||
+    columnFilters.modified.size > 0 ||
+    columnFilters.size.size > 0
+
 </script>
 
 <main class="shell">
@@ -369,6 +375,9 @@
           selectionRect={selectionRect}
         />
       {:else}
+      {#if hasActiveColumnFilters}
+        <div class="grid-filter-indicator">Column filters active</div>
+      {/if}
       <FileGrid
         entries={filteredEntries}
         visibleEntries={visibleEntries}
