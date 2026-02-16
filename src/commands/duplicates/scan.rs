@@ -9,6 +9,8 @@ use tracing::{debug, warn};
 const COMPARE_BUF_SIZE: usize = 64 * 1024;
 const COLLECT_PHASE_PERCENT: u8 = 40;
 const COLLECT_PROGRESS_INTERVAL: u64 = 128;
+const MAX_SCANNED_FILES: u64 = 2_000_000;
+const MAX_CANDIDATE_FILES: u64 = 100_000;
 
 fn log_walk_error(context: &str, path: &Path, err: &std::io::Error) {
     if err.kind() == std::io::ErrorKind::PermissionDenied {
@@ -18,10 +20,15 @@ fn log_walk_error(context: &str, path: &Path, err: &std::io::Error) {
     }
 }
 
-pub(super) fn find_identical_files(target: &Path, start: &Path, target_len: u64) -> Vec<PathBuf> {
+pub(super) fn find_identical_files(
+    target: &Path,
+    start: &Path,
+    target_len: u64,
+) -> Result<Vec<PathBuf>, String> {
     match find_identical_files_with_progress(target, start, target_len, None, |_| {}) {
-        ScanResult::Completed { matches, .. } => matches,
-        ScanResult::Cancelled => Vec::new(),
+        ScanResult::Completed { matches, .. } => Ok(matches),
+        ScanResult::Cancelled => Err("Duplicate scan cancelled".into()),
+        ScanResult::Failed(err) => Err(err),
     }
 }
 
@@ -94,6 +101,7 @@ pub(super) enum ScanResult {
         progress: ScanProgress,
     },
     Cancelled,
+    Failed(String),
 }
 
 pub(super) fn find_identical_files_with_progress(
@@ -107,8 +115,9 @@ pub(super) fn find_identical_files_with_progress(
 
     let (candidates, scanned_files) =
         match collect_same_size_files(target, start, target_len, cancel_token, &mut on_progress) {
-            Some(result) => result,
-            None => return ScanResult::Cancelled,
+            Ok(result) => result,
+            Err(CollectAbort::Cancelled) => return ScanResult::Cancelled,
+            Err(CollectAbort::Failed(err)) => return ScanResult::Failed(err),
         };
     let candidate_files = candidates.len() as u64;
 
@@ -176,13 +185,38 @@ pub(super) fn find_identical_files_with_progress(
     }
 }
 
+enum CollectAbort {
+    Cancelled,
+    Failed(String),
+}
+
 fn collect_same_size_files(
     target: &Path,
     start: &Path,
     target_len: u64,
     cancel_token: Option<&AtomicBool>,
     on_progress: &mut impl FnMut(ScanProgress),
-) -> Option<(Vec<PathBuf>, u64)> {
+) -> Result<(Vec<PathBuf>, u64), CollectAbort> {
+    collect_same_size_files_with_limits(
+        target,
+        start,
+        target_len,
+        cancel_token,
+        on_progress,
+        MAX_SCANNED_FILES,
+        MAX_CANDIDATE_FILES,
+    )
+}
+
+fn collect_same_size_files_with_limits(
+    target: &Path,
+    start: &Path,
+    target_len: u64,
+    cancel_token: Option<&AtomicBool>,
+    on_progress: &mut impl FnMut(ScanProgress),
+    max_scanned_files: u64,
+    max_candidate_files: u64,
+) -> Result<(Vec<PathBuf>, u64), CollectAbort> {
     let mut stack = vec![start.to_path_buf()];
     let mut out = Vec::new();
     let mut scanned_files = 0u64;
@@ -193,7 +227,7 @@ fn collect_same_size_files(
 
     while let Some(dir) = stack.pop() {
         if is_cancelled(cancel_token) {
-            return None;
+            return Err(CollectAbort::Cancelled);
         }
 
         let iter = match fs::read_dir(&dir) {
@@ -204,12 +238,10 @@ fn collect_same_size_files(
             }
         };
 
-        let entries: Vec<_> = iter.collect();
-        discovered_entries = discovered_entries.saturating_add(entries.len() as u64);
-
-        for item in entries {
+        for item in iter {
+            discovered_entries = discovered_entries.saturating_add(1);
             if is_cancelled(cancel_token) {
-                return None;
+                return Err(CollectAbort::Cancelled);
             }
             processed_entries = processed_entries.saturating_add(1);
             since_progress = since_progress.saturating_add(1);
@@ -253,7 +285,20 @@ fn collect_same_size_files(
             };
 
             scanned_files = scanned_files.saturating_add(1);
+            if scanned_files > max_scanned_files {
+                return Err(CollectAbort::Failed(format!(
+                    "Duplicate scan aborted: scanned file limit exceeded ({} > {})",
+                    scanned_files, max_scanned_files
+                )));
+            }
             if meta.len() == target_len {
+                if (out.len() as u64) >= max_candidate_files {
+                    return Err(CollectAbort::Failed(format!(
+                        "Duplicate scan aborted: candidate file limit exceeded ({} >= {})",
+                        out.len(),
+                        max_candidate_files
+                    )));
+                }
                 out.push(path);
             }
 
@@ -276,7 +321,7 @@ fn collect_same_size_files(
         scanned_files,
         out.len() as u64,
     ));
-    Some((out, scanned_files))
+    Ok((out, scanned_files))
 }
 
 fn files_equal(left: &Path, right: &Path) -> std::io::Result<bool> {
@@ -330,4 +375,76 @@ fn compare_percent(compared_files: u64, candidate_files: u64) -> u8 {
         )
         .min(100);
     percent as u8
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{fs, io::Write, time::Duration};
+
+    fn uniq_path(label: &str) -> PathBuf {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        std::env::temp_dir().join(format!("browsey-dup-scan-{label}-{ts}"))
+    }
+
+    fn write_file(path: &Path, content: &[u8]) {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let mut f = fs::File::create(path).unwrap();
+        f.write_all(content).unwrap();
+    }
+
+    #[test]
+    fn collect_same_size_files_limits_candidates() {
+        let base = uniq_path("candidate-limit");
+        fs::create_dir_all(&base).unwrap();
+        let target = base.join("target.bin");
+        write_file(&target, b"same-size");
+        write_file(&base.join("a.bin"), b"same-size");
+        write_file(&base.join("b.bin"), b"same-size");
+
+        let mut progress = |_p: ScanProgress| {};
+        let res =
+            collect_same_size_files_with_limits(&target, &base, 9, None, &mut progress, 100, 1);
+        match res {
+            Err(CollectAbort::Failed(err)) => {
+                assert!(
+                    err.contains("candidate file limit exceeded"),
+                    "unexpected: {err}"
+                )
+            }
+            _ => panic!("expected candidate limit error"),
+        }
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn collect_same_size_files_limits_scanned_files() {
+        let base = uniq_path("scanned-limit");
+        fs::create_dir_all(&base).unwrap();
+        let target = base.join("target.bin");
+        write_file(&target, b"x");
+        write_file(&base.join("a.bin"), b"a");
+        write_file(&base.join("b.bin"), b"b");
+
+        let mut progress = |_p: ScanProgress| {};
+        let res =
+            collect_same_size_files_with_limits(&target, &base, 1, None, &mut progress, 1, 100);
+        match res {
+            Err(CollectAbort::Failed(err)) => {
+                assert!(
+                    err.contains("scanned file limit exceeded"),
+                    "unexpected: {err}"
+                )
+            }
+            _ => panic!("expected scanned file limit error"),
+        }
+
+        let _ = fs::remove_dir_all(&base);
+    }
 }

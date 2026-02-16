@@ -105,13 +105,19 @@ pub fn check_duplicates_stream(
             return;
         }
 
-        if let scan::ScanResult::Completed { matches, progress } = outcome {
-            send(progress_payload(
-                progress,
-                true,
-                None,
-                Some(to_string_paths(matches)),
-            ));
+        match outcome {
+            scan::ScanResult::Completed { matches, progress } => {
+                send(progress_payload(
+                    progress,
+                    true,
+                    None,
+                    Some(to_string_paths(matches)),
+                ));
+            }
+            scan::ScanResult::Cancelled => {}
+            scan::ScanResult::Failed(err) => {
+                send(error_payload(err));
+            }
         }
     });
 
@@ -120,7 +126,7 @@ pub fn check_duplicates_stream(
 
 fn check_duplicates_sync(target_path: String, start_path: String) -> Result<Vec<String>, String> {
     let input = validate_scan_input(target_path, start_path)?;
-    let matches = scan::find_identical_files(&input.target, &input.start, input.target_len);
+    let matches = scan::find_identical_files(&input.target, &input.start, input.target_len)?;
     Ok(to_string_paths(matches))
 }
 
