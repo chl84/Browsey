@@ -7,8 +7,8 @@ use crate::{
     sorting::{sort_entries, SortSpec},
     undo::{
         assert_path_snapshot, copy_entry as undo_copy_entry, delete_entry_path as undo_delete_path,
-        rename_entry_nofollow_io, run_actions, snapshot_existing_path, temp_backup_path, Action,
-        Direction, PathSnapshot,
+        is_destination_exists_error, move_with_fallback, run_actions, snapshot_existing_path,
+        temp_backup_path, Action, Direction, PathSnapshot,
     },
 };
 use std::collections::{HashMap, HashSet};
@@ -212,9 +212,9 @@ fn stage_for_trash(src: &Path) -> Result<PathBuf, String> {
     let pid = std::process::id();
     for attempt in 0..64u32 {
         let staged = parent.join(format!("browsey-trash-stage-{pid}-{seed}-{attempt}"));
-        match rename_entry_nofollow_io(src, &staged) {
+        match move_with_fallback(src, &staged) {
             Ok(_) => return Ok(staged),
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) if is_destination_exists_error(&err) => continue,
             Err(err) => {
                 return Err(format!(
                     "Failed to stage {} for trash: {err}",
@@ -244,7 +244,7 @@ fn trash_delete_via_staged_rename<B: TrashBackend>(
     {
         let staged = stage_for_trash(src)?;
         if let Err(err) = add_trash_stage_journal_entry(&staged, src) {
-            let rollback = rename_entry_nofollow_io(&staged, src)
+            let rollback = move_with_fallback(&staged, src)
                 .err()
                 .map(|e| format!("; rollback failed: {e}"))
                 .unwrap_or_default();
@@ -258,7 +258,7 @@ fn trash_delete_via_staged_rename<B: TrashBackend>(
                 Ok(staged)
             }
             Err(err) => {
-                let rollback_result = rename_entry_nofollow_io(&staged, src);
+                let rollback_result = move_with_fallback(&staged, src);
                 if rollback_result.is_ok() {
                     let _ = remove_trash_stage_journal_entry(&staged, src);
                 }
@@ -556,7 +556,7 @@ fn cleanup_stale_trash_staging_at(path: &Path) {
             continue;
         }
 
-        match rename_entry_nofollow_io(&entry.staged, &entry.original) {
+        match move_with_fallback(&entry.staged, &entry.original) {
             Ok(_) => {}
             Err(err) => {
                 warn!(
