@@ -8,7 +8,8 @@ use tracing::{debug, warn};
 
 const COMPARE_BUF_SIZE: usize = 64 * 1024;
 const COLLECT_PHASE_PERCENT: u8 = 40;
-const COLLECT_PROGRESS_INTERVAL: u64 = 128;
+const COLLECT_PROGRESS_INTERVAL: u64 = 512;
+const COLLECT_CANCEL_CHECK_INTERVAL: u64 = 256;
 const MAX_SCANNED_FILES: u64 = 2_000_000;
 const MAX_CANDIDATE_FILES: u64 = 100_000;
 
@@ -223,12 +224,14 @@ fn collect_same_size_files_with_limits(
     let mut processed_entries = 0u64;
     let mut discovered_entries = 0u64;
     let mut since_progress = 0u64;
+    let mut since_cancel_check = COLLECT_CANCEL_CHECK_INTERVAL;
     let mut last_collect_percent = 0u8;
 
     while let Some(dir) = stack.pop() {
-        if is_cancelled(cancel_token) {
+        if since_cancel_check >= COLLECT_CANCEL_CHECK_INTERVAL && is_cancelled(cancel_token) {
             return Err(CollectAbort::Cancelled);
         }
+        since_cancel_check = 0;
 
         let iter = match fs::read_dir(&dir) {
             Ok(iter) => iter,
@@ -240,7 +243,8 @@ fn collect_same_size_files_with_limits(
 
         for item in iter {
             discovered_entries = discovered_entries.saturating_add(1);
-            if is_cancelled(cancel_token) {
+            since_cancel_check = since_cancel_check.saturating_add(1);
+            if since_cancel_check >= COLLECT_CANCEL_CHECK_INTERVAL && is_cancelled(cancel_token) {
                 return Err(CollectAbort::Cancelled);
             }
             processed_entries = processed_entries.saturating_add(1);

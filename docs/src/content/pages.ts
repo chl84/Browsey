@@ -193,6 +193,7 @@ export const docsPages: DocPage[] = [
           'Choose a start folder for the scan',
           'Traversal ignores symlinks',
           'Backend compares by file length first, then byte-by-byte for matching lengths',
+          'Collection enforces safety limits (max scanned files and max candidate files) and returns an explicit error if exceeded',
           'Progress is streamed and scan cancels cleanly when modal closes (including Esc)',
           'Result preview shows the first 3 matches, then a summary line for remaining matches',
           'Use the copy button to copy the full duplicate list to clipboard',
@@ -203,7 +204,8 @@ export const docsPages: DocPage[] = [
         title: 'Archive and Extraction Flow',
         bullets: [
           'Supports Zip, Tar variants, GZ/BZ2/XZ/Zstd, 7z, and stored RAR entries',
-          'Extraction is guarded by caps: max 100 GB output and max 2,000,000 archive entries',
+          'Extraction is guarded by limits: max 2,000,000 archive entries and a byte cap based on min(100 GB, available disk space minus 1 GiB reserve)',
+          'Runtime write flow re-checks destination free space periodically and aborts cleanly if reserve would be violated',
           'Batch extraction supports shared progress, cancel, and undo semantics',
           'Unsupported RAR compression methods fail fast to avoid bad output',
         ],
@@ -233,6 +235,7 @@ export const docsPages: DocPage[] = [
         bullets: [
           'Ctrl+P opens Properties for the current selection',
           'Permissions tab supports editing owner/group directly (platform support and permissions permitting)',
+          'Owner/group selectors use searchable dropdowns populated from discovered system users and groups',
           'On Linux, ownership updates can trigger privilege escalation via system auth prompt when required',
           'Multi-select permissions are aggregated across the full selection',
           'Extra tab fetches metadata only when the tab is activated (single selection)',
@@ -301,6 +304,8 @@ export const docsPages: DocPage[] = [
         title: 'Duplicate Scan Internals',
         bullets: [
           'Phase 1 collects same-size candidates while counting scanned files',
+          'Directory walking is streamed from read_dir iterators (no full per-directory entry buffering)',
+          'Collector enforces hard limits (2,000,000 scanned files and 100,000 candidates) and fails with explicit limit errors',
           'Phase 2 compares candidate bytes with early mismatch exit',
           'Progress uses phase weighting: collecting to 40%, comparing from 40% to 100%',
           'Final duplicate output is sorted deterministically by path string',
@@ -347,10 +352,12 @@ export const docsPages: DocPage[] = [
         bullets: [
           'Symlinks are ignored in search and duplicate traversal',
           'Clipboard copy/cut rejects symlink entries during transfer operations',
+          'Clipboard fallback copy uses no-clobber file creation and deterministic rename candidate retries',
           'Critical Linux rename/delete/trash staging paths use descriptor-based no-follow primitives to reduce symlink and check-then-use race exposure',
-          'Linux no-overwrite rename has a compatibility fallback when renameat2(RENAME_NOREPLACE) is unavailable',
+          'When atomic no-replace rename is unavailable, move/rename falls back to non-overwrite copy+delete with narrower non-atomic guarantees',
           'Permission edits roll back on failure in multi-target updates',
-          'Archive extraction enforces global safety caps (100 GB output, 2,000,000 entries)',
+          'Archive extraction enforces global caps (100 GB absolute output, 2,000,000 entries) plus disk-aware reserve checks',
+          'Linux extraction write paths use descriptor-based no-follow primitives for directory traversal and file creation',
           'Linux console launch uses a fixed terminal allowlist with fixed argument shapes',
           'Clipboard helper binaries and ffprobe are resolved to canonical executable paths before spawn',
           'Undo cleanup validates path boundaries before deletion actions',
@@ -477,6 +484,7 @@ export const docsPages: DocPage[] = [
         bullets: [
           'src/main.rs wires app startup, command registration, event handlers, and shared runtime state',
           'src/commands/ is capability-split: listing/fs/search/permissions/meta/settings/keymap/library/open_with/system_clipboard/tasks/console',
+          'Filesystem command internals are decomposed under src/commands/fs/ (delete/trash/path-guard/open/gvfs helpers) to keep critical paths isolated and testable',
           'Long-running pipelines are isolated in submodules (src/commands/duplicates/, src/commands/decompress/, src/commands/thumbnails/) with progress + cancellation support',
           'src/metadata/providers/ contains type-specific extra-metadata providers (image, pdf, audio, video, archive, shared media_probe)',
           'src/keymap/ centralizes accelerator parsing/canonicalization and conflict validation for remappable shortcuts',
@@ -523,6 +531,7 @@ export const docsPages: DocPage[] = [
   commands/
     listing.rs fs.rs search.rs permissions.rs meta.rs settings.rs keymap.rs
     library.rs bookmarks.rs mounts.rs open_with.rs system_clipboard.rs tasks.rs console.rs
+    fs/{delete_ops.rs,open_ops.rs,path_guard.rs,trash_ops.rs,gvfs.rs}
     duplicates/{mod.rs,scan.rs}
     decompress/{mod.rs,zip_format.rs,tar_format.rs,seven_z_format.rs,rar_format.rs,util.rs}
     thumbnails/{thumbnails_svg.rs,thumbnails_pdf.rs,thumbnails_video.rs}
@@ -598,6 +607,14 @@ capabilities/default.json`,
         id: 'unreleased',
         title: 'Unreleased',
         bullets: [
+          'Archive extraction write paths on Linux now use descriptor-based no-follow directory/file primitives to reduce symlink and path-race exposure',
+          'Extraction byte limits are now disk-aware (min(100 GB, available space minus 1 GiB reserve)) with periodic runtime free-space checks',
+          'Clipboard fallback copy now uses no-clobber file creation and deterministic rename candidate retries (no pre-exists probing)',
+          'Destructive move/rename no longer uses a check-then-rename Linux compatibility path when renameat2(RENAME_NOREPLACE) is unavailable; controlled copy+delete fallback is used instead',
+          'Windows/portable destructive delete fallback now validates no-follow metadata recursively instead of calling raw remove_dir_all',
+          'Duplicate candidate collection now streams directory iteration and enforces scanned/candidate caps with explicit limit errors',
+          'Properties ownership editing now uses searchable User/Group dropdowns populated from discovered system principals',
+          'Wastebasket list mode now maps icons from original item metadata so file-type-specific icons are preserved',
           'Esc now exits both search and filter directly to breadcrumb view',
           'Address-mode Esc now restores the current valid path when input text has been edited',
           'Filter-mode Enter is now a no-op and no longer triggers path navigation',
@@ -608,7 +625,7 @@ capabilities/default.json`,
           'Search state semantics were tightened so searchRunning now reflects active backend search execution',
           'Wastebasket deletion now resolves entries by stable trash ID to reduce redundant .trashinfo scanning',
           'Unix trash/undo rename-delete paths now use descriptor-based no-follow primitives to reduce symlink and check-then-use race exposure',
-          'Linux no-overwrite rename now falls back cleanly when renameat2(RENAME_NOREPLACE) is unavailable (narrower documented guarantees, no hard-fail)',
+          'No-overwrite rename fallback semantics now use explicit non-overwrite copy+delete paths when atomic rename no-replace is unavailable',
           'Staged trash renames are now journaled and recovered on startup after interrupted operations',
           'Windows trash moves no longer use staged names, so restore keeps the original path and filename',
           'Trash internals were refactored behind a backend abstraction and hardened with rollback/fallback/cleanup unit tests',
@@ -728,8 +745,16 @@ capabilities/default.json`,
         bullets: [
           'RAR entries using unsupported compression methods are rejected (fail-fast)',
           'Symlink archive entries are skipped or rejected depending on archive format and safety rules',
-          'Archives exceeding extraction safety caps are rejected (100 GB total output or 2,000,000 entries)',
+          'Archives exceeding extraction safety caps are rejected (2,000,000 entries, plus byte cap = min(100 GB, available destination space minus 1 GiB reserve))',
           'Extraction reports skipped symlink and skipped unsupported-entry counts',
+        ],
+      },
+      {
+        id: 'duplicate-scan-limits',
+        title: 'Duplicate Scan Limits',
+        bullets: [
+          'Duplicate scans enforce hard collection limits (2,000,000 scanned files and 100,000 same-size candidates)',
+          'When limits are exceeded, the scan ends with an explicit limit error instead of unbounded memory growth',
         ],
       },
       {
@@ -747,6 +772,7 @@ capabilities/default.json`,
         bullets: [
           'Undo/redo history is in-memory and therefore resets when the app restarts',
           'Backup paths under browsey/undo are cleaned at startup to prevent stale leftovers',
+          'When atomic no-replace rename is unavailable on a platform/filesystem, move/rename fallback is copy+delete and therefore non-atomic',
         ],
       },
       {

@@ -22,6 +22,7 @@ use crate::{fs_utils::sanitize_path_nofollow, runtime_lifecycle};
 const CHUNK: usize = 4 * 1024 * 1024;
 const FILE_READ_BUF: usize = 256 * 1024;
 const ZIP64_LIMIT: u64 = 0xFFFF_FFFF;
+const COMPRESS_CANCEL_CHECK_INTERVAL_BYTES: u64 = 16 * 1024 * 1024; // 16 MiB
 
 #[derive(Debug, Clone)]
 struct EntryMeta {
@@ -579,15 +580,18 @@ fn copy_with_progress<R: Read, W: Write>(
     buf: &mut [u8],
 ) -> io::Result<u64> {
     let mut written = 0u64;
+    let mut since_cancel_check = COMPRESS_CANCEL_CHECK_INTERVAL_BYTES;
     loop {
-        if is_cancelled(cancel) {
-            return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+        if since_cancel_check >= COMPRESS_CANCEL_CHECK_INTERVAL_BYTES {
+            check_cancel(cancel)?;
+            since_cancel_check = 0;
         }
         let n = reader.read(buf)?;
         if n == 0 {
             break;
         }
         writer.write_all(&buf[..n])?;
+        since_cancel_check = since_cancel_check.saturating_add(n as u64);
         written = written.saturating_add(n as u64);
         if let Some(p) = progress.as_mut() {
             p.add(n as u64);
