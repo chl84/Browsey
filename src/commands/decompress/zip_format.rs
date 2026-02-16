@@ -1,5 +1,4 @@
 use std::{
-    fs,
     fs::File,
     io::BufWriter,
     path::{Path, PathBuf},
@@ -9,9 +8,9 @@ use std::{
 use zip::ZipArchive;
 
 use super::util::{
-    check_cancel, clean_relative_path, copy_with_progress, first_component, map_copy_err, map_io,
-    open_unique_file, CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
-    EXTRACT_TOTAL_ENTRIES_CAP,
+    check_cancel, clean_relative_path, copy_with_progress, ensure_dir_nofollow, first_component,
+    map_copy_err, map_io, open_unique_file, path_exists_nofollow, CreatedPaths, ExtractBudget,
+    ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 use crate::fs_utils::debug_log;
 
@@ -124,39 +123,49 @@ pub(super) fn extract_zip(
         }
         let dest_path = dest_dir.join(clean_rel);
         if entry.is_dir() || raw_name.ends_with('/') {
-            if !dest_path.exists() {
-                if let Err(e) = fs::create_dir_all(&dest_path) {
+            match ensure_dir_nofollow(&dest_path) {
+                Ok(created_dirs) => {
+                    for dir in created_dirs {
+                        created.record_dir(dir);
+                    }
+                }
+                Err(e) => {
                     stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
                     continue;
                 }
-                created.record_dir(dest_path.clone());
-            } else if let Err(e) = fs::create_dir_all(&dest_path) {
-                stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
             }
             continue;
         }
-        if dest_path.exists() {
-            if let Some(p) = progress {
-                // Approximate progress for skipped existing file using compressed size.
-                let inc = entry.compressed_size().max(1);
-                p.add(inc);
-            }
-            continue;
-        }
-        if let Some(parent) = dest_path.parent() {
-            if !parent.exists() {
-                if let Err(e) = fs::create_dir_all(parent) {
-                    stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
-                    continue;
+        match path_exists_nofollow(&dest_path) {
+            Ok(true) => {
+                if let Some(p) = progress {
+                    // Approximate progress for skipped existing file using compressed size.
+                    let inc = entry.compressed_size().max(1);
+                    p.add(inc);
                 }
-                created.record_dir(parent.to_path_buf());
-            } else if let Err(e) = fs::create_dir_all(parent) {
-                stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
+                continue;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                stats.skip_unsupported(&raw_name, &format!("stat destination failed: {e}"));
                 continue;
             }
         }
-        let (file, _) = open_unique_file(&dest_path)?;
-        created.record_file(dest_path.clone());
+        if let Some(parent) = dest_path.parent() {
+            match ensure_dir_nofollow(parent) {
+                Ok(created_dirs) => {
+                    for dir in created_dirs {
+                        created.record_dir(dir);
+                    }
+                }
+                Err(e) => {
+                    stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
+                    continue;
+                }
+            }
+        }
+        let (file, actual_path) = open_unique_file(&dest_path)?;
+        created.record_file(actual_path);
         let mut out = BufWriter::with_capacity(CHUNK, file);
         if let Err(e) = copy_with_progress(&mut entry, &mut out, progress, cancel, budget, &mut buf)
         {

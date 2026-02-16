@@ -1,6 +1,5 @@
 use std::{
     borrow::Cow,
-    fs,
     io::{self, BufWriter},
     path::{Path, PathBuf},
     sync::atomic::AtomicBool,
@@ -11,8 +10,9 @@ use sevenz_rust2::{
 };
 
 use super::util::{
-    clean_relative_path, copy_with_progress, first_component, is_cancelled, open_unique_file,
-    CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
+    clean_relative_path, copy_with_progress, ensure_dir_nofollow, first_component, is_cancelled,
+    open_unique_file, path_exists_nofollow, CreatedPaths, ExtractBudget, ProgressEmitter,
+    SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 
 pub(super) fn single_root_in_7z(path: &Path) -> Result<Option<PathBuf>, String> {
@@ -104,36 +104,41 @@ pub(super) fn extract_7z(
         let dest_path = dest_dir.join(clean_rel);
 
         if entry.is_directory {
-            if !dest_path.exists() {
-                fs::create_dir_all(&dest_path).map_err(|e| {
-                    SevenZError::Io(
-                        e,
-                        Cow::Owned(format!("create dir failed for {}", dest_path.display())),
-                    )
-                })?;
-                created.record_dir(dest_path.clone());
-            } else if let Err(e) = fs::create_dir_all(&dest_path) {
-                stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
+            match ensure_dir_nofollow(&dest_path) {
+                Ok(created_dirs) => {
+                    for dir in created_dirs {
+                        created.record_dir(dir);
+                    }
+                }
+                Err(e) => {
+                    stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
+                }
             }
             return Ok(true);
         }
 
         if let Some(parent) = dest_path.parent() {
-            if !parent.exists() {
-                if let Err(e) = fs::create_dir_all(parent) {
+            match ensure_dir_nofollow(parent) {
+                Ok(created_dirs) => {
+                    for dir in created_dirs {
+                        created.record_dir(dir);
+                    }
+                }
+                Err(e) => {
                     stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
                     return Ok(true);
                 }
-                created.record_dir(parent.to_path_buf());
-            } else if let Err(e) = fs::create_dir_all(parent) {
-                stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
-                return Ok(true);
             }
         }
 
         if !entry.has_stream {
-            if dest_path.exists() {
-                return Ok(true);
+            match path_exists_nofollow(&dest_path) {
+                Ok(true) => return Ok(true),
+                Ok(false) => {}
+                Err(e) => {
+                    stats.skip_unsupported(&raw_name, &format!("stat destination failed: {e}"));
+                    return Ok(true);
+                }
             }
             let (_file, dest_actual) =
                 open_unique_file(&dest_path).map_err(|e| SevenZError::Other(Cow::Owned(e)))?;
@@ -141,16 +146,23 @@ pub(super) fn extract_7z(
             return Ok(true);
         }
 
-        if dest_path.exists() {
-            if let Some(p) = progress {
-                p.add(entry.size.max(1));
+        match path_exists_nofollow(&dest_path) {
+            Ok(true) => {
+                if let Some(p) = progress {
+                    p.add(entry.size.max(1));
+                }
+                return Ok(true);
             }
-            return Ok(true);
+            Ok(false) => {}
+            Err(e) => {
+                stats.skip_unsupported(&raw_name, &format!("stat destination failed: {e}"));
+                return Ok(true);
+            }
         }
 
         let (file, dest_actual) =
             open_unique_file(&dest_path).map_err(|e| SevenZError::Other(Cow::Owned(e)))?;
-        created.record_file(dest_actual.clone());
+        created.record_file(dest_actual);
         let mut out = BufWriter::with_capacity(CHUNK, file);
         copy_with_progress(reader, &mut out, progress, cancel, budget, &mut buf).map_err(|e| {
             SevenZError::Io(

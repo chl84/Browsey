@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File},
+    fs::File,
     io::{BufReader, BufWriter, Read},
     path::{Path, PathBuf},
     sync::atomic::AtomicBool,
@@ -12,9 +12,9 @@ use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use super::util::{
-    check_cancel, clean_relative_path, copy_with_progress, first_component, map_copy_err, map_io,
-    open_buffered_file, open_unique_file, CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats,
-    CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
+    check_cancel, clean_relative_path, copy_with_progress, ensure_dir_nofollow, first_component,
+    map_copy_err, map_io, open_buffered_file, open_unique_file, path_exists_nofollow, CreatedPaths,
+    ExtractBudget, ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 use super::ArchiveKind;
 
@@ -169,39 +169,48 @@ pub(super) fn extract_tar<R: Read>(
 
         let dest_path = dest_dir.join(clean_rel);
         if entry_type.is_dir() {
-            if !dest_path.exists() {
-                if let Err(e) = fs::create_dir_all(&dest_path) {
+            match ensure_dir_nofollow(&dest_path) {
+                Ok(created_dirs) => {
+                    for dir in created_dirs {
+                        created.record_dir(dir);
+                    }
+                }
+                Err(e) => {
                     stats.skip_unsupported(&raw_str, &format!("create dir failed: {e}"));
-                } else {
-                    created.record_dir(dest_path.clone());
                 }
-            } else if let Err(e) = fs::create_dir_all(&dest_path) {
-                stats.skip_unsupported(&raw_str, &format!("create dir failed: {e}"));
             }
             continue;
         }
-        if dest_path.exists() {
-            if let Some(p) = progress {
-                let sz = entry.size();
-                p.add(sz);
-            }
-            continue;
-        }
-
-        if let Some(parent) = dest_path.parent() {
-            if !parent.exists() {
-                if let Err(e) = fs::create_dir_all(parent) {
-                    stats.skip_unsupported(&raw_str, &format!("create parent failed: {e}"));
-                    continue;
+        match path_exists_nofollow(&dest_path) {
+            Ok(true) => {
+                if let Some(p) = progress {
+                    let sz = entry.size();
+                    p.add(sz);
                 }
-                created.record_dir(parent.to_path_buf());
-            } else if let Err(e) = fs::create_dir_all(parent) {
-                stats.skip_unsupported(&raw_str, &format!("create parent failed: {e}"));
+                continue;
+            }
+            Ok(false) => {}
+            Err(e) => {
+                stats.skip_unsupported(&raw_str, &format!("stat destination failed: {e}"));
                 continue;
             }
         }
-        let (file, _) = open_unique_file(&dest_path)?;
-        created.record_file(dest_path.clone());
+
+        if let Some(parent) = dest_path.parent() {
+            match ensure_dir_nofollow(parent) {
+                Ok(created_dirs) => {
+                    for dir in created_dirs {
+                        created.record_dir(dir);
+                    }
+                }
+                Err(e) => {
+                    stats.skip_unsupported(&raw_str, &format!("create parent failed: {e}"));
+                    continue;
+                }
+            }
+        }
+        let (file, actual_path) = open_unique_file(&dest_path)?;
+        created.record_file(actual_path);
         let mut out = BufWriter::with_capacity(CHUNK, file);
         copy_with_progress(&mut entry, &mut out, progress, cancel, budget, &mut buf)
             .map_err(|e| map_copy_err("write tar entry", e))?;
