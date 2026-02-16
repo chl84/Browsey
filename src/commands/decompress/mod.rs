@@ -29,9 +29,11 @@ use rar_format::{
 use seven_z_format::{extract_7z, sevenz_uncompressed_total, single_root_in_7z};
 use tar_format::{extract_tar_with_reader, single_root_in_tar, tar_uncompressed_total};
 use util::{
-    copy_with_progress, create_unique_dir_nofollow, ensure_dir_nofollow, map_copy_err, map_io,
-    open_buffered_file, open_unique_file, strip_known_suffixes, CreatedPaths, ExtractBudget,
-    ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_BYTES_CAP, EXTRACT_TOTAL_ENTRIES_CAP,
+    available_disk_bytes, copy_with_progress, create_unique_dir_nofollow,
+    effective_extract_bytes_cap, ensure_dir_nofollow, map_copy_err, map_io, open_buffered_file,
+    open_unique_file, strip_known_suffixes, CreatedPaths, DiskSpaceGuard, ExtractBudget,
+    ProgressEmitter, SkipStats, CHUNK, EXTRACT_DISK_CHECK_INTERVAL_BYTES,
+    EXTRACT_MIN_FREE_DISK_RESERVE, EXTRACT_TOTAL_BYTES_CAP, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 use zip_format::{extract_zip, single_root_in_zip, zip_uncompressed_total};
 
@@ -231,12 +233,32 @@ fn do_extract(
         _ => meta.len(),
     }
     .max(1);
-    let budget = ExtractBudget::new(EXTRACT_TOTAL_BYTES_CAP, EXTRACT_TOTAL_ENTRIES_CAP);
+    let available_bytes = available_disk_bytes(parent)?;
+    let effective_bytes_cap = effective_extract_bytes_cap(
+        EXTRACT_TOTAL_BYTES_CAP,
+        available_bytes,
+        EXTRACT_MIN_FREE_DISK_RESERVE,
+    );
+    if effective_bytes_cap == 0 {
+        return Err(format!(
+            "Insufficient free disk space in {} (available: {} bytes, required reserve: {} bytes)",
+            parent.display(),
+            available_bytes,
+            EXTRACT_MIN_FREE_DISK_RESERVE
+        ));
+    }
+    let budget = ExtractBudget::new(effective_bytes_cap, EXTRACT_TOTAL_ENTRIES_CAP)
+        .with_disk_guard(DiskSpaceGuard::new(
+            parent.to_path_buf(),
+            EXTRACT_MIN_FREE_DISK_RESERVE,
+            EXTRACT_DISK_CHECK_INTERVAL_BYTES,
+        ));
     if total_hint > budget.max_total_bytes() {
         return Err(format!(
-            "Archive exceeds extraction size cap ({} bytes > {} bytes)",
+            "Archive exceeds extraction size cap ({} bytes > {} bytes, available disk: {} bytes)",
             total_hint,
-            budget.max_total_bytes()
+            budget.max_total_bytes(),
+            available_bytes
         ));
     }
     let progress_id = progress_event.clone();

@@ -19,6 +19,7 @@ use std::{
 };
 
 use serde::Serialize;
+use sysinfo::Disks;
 
 use crate::{
     fs_utils::{debug_log, unique_path},
@@ -28,6 +29,91 @@ use crate::{
 pub(super) const CHUNK: usize = 4 * 1024 * 1024;
 pub(super) const EXTRACT_TOTAL_BYTES_CAP: u64 = 100_000_000_000; // 100 GB
 pub(super) const EXTRACT_TOTAL_ENTRIES_CAP: u64 = 2_000_000; // 2 million entries
+pub(super) const EXTRACT_MIN_FREE_DISK_RESERVE: u64 = 1_073_741_824; // 1 GiB
+pub(super) const EXTRACT_DISK_CHECK_INTERVAL_BYTES: u64 = 64 * 1024 * 1024; // 64 MiB
+
+#[derive(Clone)]
+pub(super) struct DiskSpaceGuard {
+    path: PathBuf,
+    min_free_bytes: u64,
+    check_interval_bytes: u64,
+    bytes_since_check: Arc<AtomicU64>,
+}
+
+impl DiskSpaceGuard {
+    pub(super) fn new(path: PathBuf, min_free_bytes: u64, check_interval_bytes: u64) -> Self {
+        let interval = check_interval_bytes.max(1);
+        Self {
+            path,
+            min_free_bytes,
+            check_interval_bytes: interval,
+            // Force an early runtime check on first write.
+            bytes_since_check: Arc::new(AtomicU64::new(interval)),
+        }
+    }
+
+    fn maybe_check(&self, delta: u64) -> io::Result<()> {
+        let accumulated = self
+            .bytes_since_check
+            .fetch_add(delta, Ordering::Relaxed)
+            .saturating_add(delta);
+        if accumulated < self.check_interval_bytes {
+            return Ok(());
+        }
+        self.bytes_since_check.store(0, Ordering::Relaxed);
+        let available = available_disk_bytes(&self.path).map_err(io::Error::other)?;
+        let projected = available.saturating_sub(delta);
+        if projected < self.min_free_bytes {
+            return Err(io::Error::other(format!(
+                "Insufficient free disk space for extraction on {} (projected free: {} bytes, required reserve: {} bytes)",
+                self.path.display(),
+                projected,
+                self.min_free_bytes
+            )));
+        }
+        Ok(())
+    }
+}
+
+pub(super) fn effective_extract_bytes_cap(
+    hard_cap: u64,
+    available_bytes: u64,
+    reserve_bytes: u64,
+) -> u64 {
+    hard_cap.min(available_bytes.saturating_sub(reserve_bytes))
+}
+
+pub(super) fn available_disk_bytes(path: &Path) -> Result<u64, String> {
+    let mut probe = path.to_path_buf();
+    while !probe.exists() {
+        let Some(parent) = probe.parent() else {
+            break;
+        };
+        probe = parent.to_path_buf();
+    }
+
+    let disks = Disks::new_with_refreshed_list();
+    let mut best: Option<(usize, u64)> = None;
+    for disk in disks.iter() {
+        let mount = disk.mount_point();
+        if !probe.starts_with(mount) {
+            continue;
+        }
+        let depth = mount.components().count();
+        let available = disk.available_space();
+        match best {
+            Some((best_depth, _)) if best_depth >= depth => {}
+            _ => best = Some((depth, available)),
+        }
+    }
+
+    best.map(|(_, bytes)| bytes).ok_or_else(|| {
+        format!(
+            "Failed to determine available disk space for {}",
+            path.display()
+        )
+    })
+}
 
 #[derive(Clone)]
 pub(super) struct ExtractBudget {
@@ -35,6 +121,7 @@ pub(super) struct ExtractBudget {
     max_total_entries: u64,
     written_total: Arc<AtomicU64>,
     entries_total: Arc<AtomicU64>,
+    disk_guard: Option<DiskSpaceGuard>,
 }
 
 impl ExtractBudget {
@@ -44,7 +131,13 @@ impl ExtractBudget {
             max_total_entries,
             written_total: Arc::new(AtomicU64::new(0)),
             entries_total: Arc::new(AtomicU64::new(0)),
+            disk_guard: None,
         }
+    }
+
+    pub(super) fn with_disk_guard(mut self, guard: DiskSpaceGuard) -> Self {
+        self.disk_guard = Some(guard);
+        self
     }
 
     pub(super) fn max_total_bytes(&self) -> u64 {
@@ -52,6 +145,9 @@ impl ExtractBudget {
     }
 
     pub(super) fn reserve_bytes(&self, delta: u64) -> io::Result<()> {
+        if let Some(guard) = self.disk_guard.as_ref() {
+            guard.maybe_check(delta)?;
+        }
         loop {
             let current = self.written_total.load(Ordering::Relaxed);
             let projected = current.saturating_add(delta);
