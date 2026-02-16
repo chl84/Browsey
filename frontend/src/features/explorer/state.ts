@@ -227,11 +227,15 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     includeHidden: boolean,
   ): string => `${context.scope}|${context.path ?? ''}|hidden:${includeHidden ? 1 : 0}`
 
-  const clearFacetCache = () => {
+  const invalidateFacetCache = () => {
     facetRequestSeq += 1
     facetCache.clear()
-    columnFacets.set(emptyListingFacets())
     columnFacetsLoading.set(false)
+  }
+
+  const clearFacetCache = () => {
+    invalidateFacetCache()
+    columnFacets.set(emptyListingFacets())
   }
 
   const ensureColumnFacets = async () => {
@@ -260,10 +264,13 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         path: context.path,
         includeHidden,
       })
+      if (req !== facetRequestSeq) {
+        return
+      }
       facetCache.set(key, facets)
       const latest = currentFacetScope(get(current))
       const latestKey = latest ? facetCacheKey(latest, get(showHidden)) : null
-      if (req === facetRequestSeq && latestKey === key) {
+      if (latestKey === key) {
         columnFacets.set(facets)
       }
     } catch (err) {
@@ -1223,6 +1230,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     columnFilters,
     columnFacets,
     columnFacetsLoading,
+    invalidateFacetCache,
     visibleEntries,
     filteredEntries,
     density,

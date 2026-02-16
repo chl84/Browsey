@@ -2,8 +2,8 @@
   import ColumnFilterMenu from './ColumnFilterMenu.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import type { Entry, FilterOption, ListingFacets, SortField } from '../types'
-  import { nameBucket } from '../filters/nameFilters'
-  import { modifiedBucket, sizeBucket, typeLabel } from '../filters/columnBuckets'
+  import { nameBucket, nameFilterLabel, nameFilterRank } from '../filters/nameFilters'
+  import { modifiedBucket, modifiedFilterRank, sizeBucket, sizeFilterRank, typeLabel } from '../filters/columnBuckets'
 
   export let loading = false
   export let filterValue = ''
@@ -124,11 +124,47 @@
   }
 
   const filterOptionsForField = (field: FilterField): FilterOption[] => {
-    const facetOptions = facetOptionsForField(field)
-    if (facetOptions.length === 0) return []
     const selected = selectedForField(field)
     const available = availableOptionIds(field)
-    return facetOptions.filter((opt) => available.has(opt.id) || selected.has(opt.id))
+    const wantedIds = new Set<string>([...available, ...selected])
+    if (wantedIds.size === 0) return []
+
+    const facetMap = new Map<string, FilterOption>()
+    for (const opt of facetOptionsForField(field)) {
+      facetMap.set(opt.id, opt)
+    }
+
+    const options: FilterOption[] = []
+    for (const id of wantedIds) {
+      const fromFacets = facetMap.get(id)
+      if (fromFacets) {
+        options.push(fromFacets)
+        continue
+      }
+      const fallbackLabel =
+        field === 'name'
+          ? nameFilterLabel(id)
+          : id.startsWith(`${field}:`)
+            ? id.slice(field.length + 1)
+            : id
+      options.push({ id, label: fallbackLabel })
+    }
+
+    options.sort((a, b) => {
+      if (field === 'name') {
+        const rankDiff = nameFilterRank(a.id) - nameFilterRank(b.id)
+        if (rankDiff !== 0) return rankDiff
+      } else if (field === 'modified') {
+        const rankDiff = modifiedFilterRank(a.id) - modifiedFilterRank(b.id)
+        if (rankDiff !== 0) return rankDiff
+      } else if (field === 'size') {
+        const rankDiff = sizeFilterRank(a.id) - sizeFilterRank(b.id)
+        if (rankDiff !== 0) return rankDiff
+      }
+      return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' })
+    })
+
+    return options
   }
 
   const requestFilterFacets = () => {
