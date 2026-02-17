@@ -1,6 +1,8 @@
 //! Helpers for GVFS-backed mounts (e.g., MTP over GVFS).
 
 #[cfg(not(target_os = "windows"))]
+use super::sftp;
+#[cfg(not(target_os = "windows"))]
 use crate::commands::fs::MountInfo;
 #[cfg(not(target_os = "windows"))]
 use crate::fs_utils::debug_log;
@@ -201,11 +203,11 @@ fn list_onedrive_mountables() -> Option<Vec<(String, String)>> {
 #[cfg(not(target_os = "windows"))]
 pub fn mount_uri(uri: &str) -> bool {
     ensure_gvfsd_fuse_running();
-    let prefix = uri
-        .split(':')
-        .next()
-        .unwrap_or_default()
-        .to_ascii_lowercase();
+    let raw_prefix = uri.split(':').next().unwrap_or_default();
+    let prefix = match raw_prefix.to_ascii_lowercase().as_str() {
+        "ssh" => "sftp".to_string(),
+        other => other.to_string(),
+    };
 
     static LOG_STATE: OnceCell<Mutex<Instant>> = OnceCell::new();
 
@@ -343,6 +345,7 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
             let (fs, removable) = match name.split_once(':').map(|(p, _)| p) {
                 Some("mtp") => ("mtp", true),
                 Some("onedrive") => ("onedrive", true),
+                Some("sftp") => ("sftp", true),
                 _ => continue,
             };
 
@@ -379,6 +382,16 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
                 });
             }
         }
+    }
+
+    for (label, uri) in sftp::list_sftp_mountables() {
+        mounts.push(MountInfo {
+            label,
+            path: uri,
+            fs: "sftp".to_string(),
+            // Mountable addresses are not mounted yet and should not expose "eject".
+            removable: false,
+        });
     }
 
     mounts

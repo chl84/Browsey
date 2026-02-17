@@ -49,6 +49,7 @@
   import { createTopbarActions } from './features/explorer/hooks/useTopbarActions'
   import { createTextContextMenu } from './features/explorer/hooks/useTextContextMenu'
   import { createViewObservers } from './features/explorer/hooks/useViewObservers'
+  import { isMountUri, resolveMountedPathForUri } from './features/network'
   import { loadShortcuts, setShortcutBinding } from './features/shortcuts/service'
   import {
     DEFAULT_SHORTCUTS,
@@ -791,19 +792,17 @@
   }
 
   const openPartition = async (path: string) => {
-    const lower = path.toLowerCase()
-    if (lower.startsWith('onedrive://')) {
+    if (isMountUri(path)) {
       try {
         if (get(loading)) return
         await mountPartition(path)
         await loadPartitions()
-        const mounted = get(partitionsStore).find(
-          (p) => p.fs?.toLowerCase() === 'onedrive' && !p.path.toLowerCase().startsWith('onedrive://')
-        )
-        if (mounted) {
-          await loadDirIfIdle(mounted.path)
+        const mounts = get(partitionsStore)
+        const mountedPath = resolveMountedPathForUri(path, mounts)
+        if (mountedPath) {
+          await loadDirIfIdle(mountedPath)
         } else {
-          showToast('Mounted, but no OneDrive mount path found')
+          showToast('Mounted, but no mount path found')
         }
       } catch (err) {
         showToast(`Mount failed: ${err instanceof Error ? err.message : String(err)}`)
