@@ -15,8 +15,6 @@ mod delete_ops;
 #[cfg(target_os = "windows")]
 #[path = "fs_windows.rs"]
 pub mod fs_windows;
-#[cfg(not(target_os = "windows"))]
-pub mod gvfs;
 #[path = "fs/open_ops.rs"]
 mod open_ops;
 #[path = "fs/path_guard.rs"]
