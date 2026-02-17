@@ -38,6 +38,16 @@ export const isNetworkMount = (mount: Partition): boolean => {
   return false
 }
 
+const onedriveAccountKey = (rawPath: string): string => {
+  const path = rawPath.trim()
+  const scheme = uriScheme(path)
+  if (scheme !== 'onedrive') return ''
+  const rest = path.slice('onedrive://'.length)
+  const slash = rest.indexOf('/')
+  const account = (slash >= 0 ? rest.slice(0, slash) : rest).trim().toLowerCase()
+  return account ? `onedrive://${account}` : ''
+}
+
 export const toNetworkEntries = (mounts: Partition[]): Entry[] => {
   const onedriveMounted = mounts.some((mount) => {
     const fsLc = (mount.fs ?? '').toLowerCase()
@@ -57,8 +67,9 @@ export const toNetworkEntries = (mounts: Partition[]): Entry[] => {
     if (scheme && !isKnownNetworkUriScheme(scheme)) {
       continue
     }
+    const onedriveKey = onedriveAccountKey(rawPath)
     const normalized = normalizePath(rawPath)
-    const key = normalized || rawPath
+    const key = onedriveKey || normalized || rawPath
     if (!key) continue
     if (!deduped.has(key)) {
       deduped.set(key, mount)
