@@ -138,6 +138,7 @@ fn has_mount_prefix(prefix: &str) -> bool {
 fn canonical_scheme(raw: &str) -> String {
     match raw.to_ascii_lowercase().as_str() {
         "ssh" => "sftp".to_string(),
+        "ftps" => "ftp".to_string(),
         "webdav" => "dav".to_string(),
         "webdavs" => "davs".to_string(),
         other => other.to_string(),
@@ -152,7 +153,7 @@ fn canonical_gvfs_fs(prefix: &str) -> Option<(&'static str, bool)> {
         "sftp" | "ssh" | "sshfs" | "fuse.sshfs" => Some(("sftp", true)),
         "smb" | "smb3" | "smbfs" | "cifs" | "smb-share" => Some(("smb", true)),
         "nfs" | "nfs4" => Some(("nfs", true)),
-        "ftp" | "ftpfs" | "curlftpfs" => Some(("ftp", true)),
+        "ftp" | "ftps" | "ftpfs" | "curlftpfs" => Some(("ftp", true)),
         "dav" | "webdav" | "davfs2" => Some(("dav", true)),
         "davs" | "webdavs" => Some(("davs", true)),
         "afp" | "afpfs" | "afp-volume" => Some(("afp", true)),
@@ -672,6 +673,10 @@ Identity=first@example.com
             Some("sftp://alice@example.com:2222".to_string())
         );
         assert_eq!(
+            normalize_uri_for_compare("FTPS://example.com/path/"),
+            Some("ftp://example.com/path".to_string())
+        );
+        assert_eq!(
             normalize_uri_for_compare("webdav://Nas.LOCAL/share/"),
             Some("dav://nas.local/share".to_string())
         );
@@ -701,6 +706,7 @@ Mount(Ignore)
     fn canonical_gvfs_fs_maps_extended_network_prefixes() {
         assert_eq!(canonical_gvfs_fs("smb-share"), Some(("smb", true)));
         assert_eq!(canonical_gvfs_fs("nfs4"), Some(("nfs", true)));
+        assert_eq!(canonical_gvfs_fs("ftps"), Some(("ftp", true)));
         assert_eq!(canonical_gvfs_fs("webdav"), Some(("dav", true)));
         assert_eq!(canonical_gvfs_fs("afp-volume"), Some(("afp", true)));
         assert_eq!(canonical_gvfs_fs("unknown"), None);

@@ -21,6 +21,7 @@ const canonicalNetworkScheme = (raw: string): string | null => {
     case 'nfs4':
       return 'nfs'
     case 'ftp':
+    case 'ftps':
     case 'ftpfs':
     case 'curlftpfs':
       return 'ftp'

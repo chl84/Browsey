@@ -768,6 +768,11 @@
     const trimmed = path.trim()
     if (!trimmed) return
 
+    if (isMountUri(trimmed)) {
+      await openPartition(trimmed)
+      return
+    }
+
     try {
       const kind = await invoke<'dir' | 'file'>('entry_kind_cmd', { path: trimmed })
       if (kind === 'dir') {
