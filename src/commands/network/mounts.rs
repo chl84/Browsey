@@ -7,14 +7,14 @@ use tauri::Emitter;
 
 #[cfg(not(target_os = "windows"))]
 use {
-    crate::commands::fs::gvfs,
+    super::gvfs,
     dirs_next,
     std::fs,
     std::process::{Command, Stdio},
 };
 
 #[cfg(target_os = "windows")]
-use super::fs_windows;
+use crate::commands::fs::fs_windows;
 
 #[cfg(not(target_os = "windows"))]
 struct CmdError {
