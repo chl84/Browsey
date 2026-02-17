@@ -1,5 +1,8 @@
 //! Metadata helpers used by the properties modal.
 
+use crate::commands::network::extra_metadata::{
+    build_network_uri_extra_metadata, looks_like_uri_path,
+};
 use crate::entry::{entry_times, EntryTimes};
 use crate::fs_utils::sanitize_path_follow;
 use crate::metadata::{collect_extra_metadata, types::ExtraMetadataResult};
@@ -25,6 +28,9 @@ pub fn entry_kind_cmd(path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn entry_extra_metadata_cmd(path: String) -> Result<ExtraMetadataResult, String> {
+    if looks_like_uri_path(&path) {
+        return Ok(build_network_uri_extra_metadata(&path));
+    }
     let pb = sanitize_path_follow(&path, false)?;
     collect_extra_metadata(&pb)
 }
