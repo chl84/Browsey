@@ -360,20 +360,32 @@ pub async fn mount_partition(path: String, app: tauri::AppHandle) -> Result<(), 
         .split_once("://")
         .map(|(prefix, _)| prefix.to_string());
     let fs_kind = scheme.unwrap_or_else(|| "gvfs".to_string());
-    let _ = app.emit("mounting-started", json!({ "path": &path, "fs": &fs_kind }));
+    let _ = app.emit(
+        "mounting-started",
+        json!({ "path": &path, "fs": &fs_kind, "outcome": "connecting" }),
+    );
     let started = Instant::now();
 
     if lower.contains("://") {
         let path_for_mount = path.clone();
-        let res = tauri::async_runtime::spawn_blocking(move || gvfs::mount_uri(&path_for_mount))
-            .await
-            .unwrap_or(false);
+        let status =
+            tauri::async_runtime::spawn_blocking(move || gvfs::mount_uri_status(&path_for_mount))
+                .await
+                .unwrap_or(gvfs::MountUriStatus::Failed);
+        let ok = !matches!(status, gvfs::MountUriStatus::Failed);
+        let outcome = status.as_str();
         let duration_ms = started.elapsed().as_millis() as u64;
         let _ = app.emit(
             "mounting-done",
-            json!({ "path": &path, "fs": &fs_kind, "ok": res, "duration_ms": duration_ms }),
+            json!({
+                "path": &path,
+                "fs": &fs_kind,
+                "ok": ok,
+                "outcome": outcome,
+                "duration_ms": duration_ms
+            }),
         );
-        if res {
+        if ok {
             Ok(())
         } else {
             Err(format!("Failed to mount {fs_kind}"))
@@ -382,7 +394,13 @@ pub async fn mount_partition(path: String, app: tauri::AppHandle) -> Result<(), 
         let duration_ms = started.elapsed().as_millis() as u64;
         let _ = app.emit(
             "mounting-done",
-            json!({ "path": &path, "fs": &fs_kind, "ok": true, "duration_ms": duration_ms }),
+            json!({
+                "path": &path,
+                "fs": &fs_kind,
+                "ok": true,
+                "outcome": "connected",
+                "duration_ms": duration_ms
+            }),
         );
         Ok(())
     }

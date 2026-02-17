@@ -2,7 +2,8 @@ import { listen } from '@tauri-apps/api/event'
 import type { ShortcutBinding } from '../../shortcuts/keymap'
 
 type ViewMode = 'list' | 'grid'
-type MountEvent = { path: string; fs?: string; ok?: boolean; duration_ms?: number }
+type MountOutcome = 'connecting' | 'connected' | 'already_connected' | 'failed' | string
+type MountEvent = { path: string; fs?: string; ok?: boolean; outcome?: MountOutcome; duration_ms?: number }
 
 type Deps = {
   handleResize: () => void
@@ -12,8 +13,8 @@ type Deps = {
   applyShortcutBindings: (next: ShortcutBinding[]) => void
   startNativeDrop: () => Promise<void>
   stopNativeDrop: () => Promise<void>
-  onMountStarted: (fs?: string) => void
-  onMountDone: (fs?: string, ok?: boolean) => void
+  onMountStarted: (fs?: string, outcome?: MountOutcome) => void
+  onMountDone: (fs?: string, ok?: boolean, outcome?: MountOutcome) => void
   onErrorToast: (message: string) => void
   onCleanup: () => void
 }
@@ -89,8 +90,8 @@ export const createAppLifecycle = (deps: Deps) => {
       registerCleanup(() => deps.stopNativeDrop())
 
       const unlistenMountStart = await listen<MountEvent>('mounting-started', (event) => {
-        const { fs } = event.payload ?? {}
-        deps.onMountStarted(fs)
+        const { fs, outcome } = event.payload ?? {}
+        deps.onMountStarted(fs, outcome)
       })
       if (disposed) {
         await unlistenMountStart()
@@ -98,8 +99,8 @@ export const createAppLifecycle = (deps: Deps) => {
       }
 
       const unlistenMountDone = await listen<MountEvent>('mounting-done', (event) => {
-        const { fs, ok } = event.payload ?? {}
-        deps.onMountDone(fs, ok)
+        const { fs, ok, outcome } = event.payload ?? {}
+        deps.onMountDone(fs, ok, outcome)
       })
       if (disposed) {
         await unlistenMountStart()

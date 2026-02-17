@@ -119,15 +119,19 @@ pub fn ensure_gvfsd_fuse_running() {
 }
 
 #[cfg(not(target_os = "windows"))]
+fn mount_name_matches_prefix(name: &str, prefix: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    let prefix = prefix.to_ascii_lowercase();
+    name.starts_with(&format!("{prefix}:")) || name.starts_with(&format!("{prefix}-"))
+}
+
+#[cfg(not(target_os = "windows"))]
 fn has_mount_prefix(prefix: &str) -> bool {
-    let needle = format!("{}:", prefix.to_ascii_lowercase());
     if let Some(root) = gvfs_root() {
         if let Ok(rd) = fs::read_dir(root) {
             return rd.flatten().any(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .to_ascii_lowercase()
-                    .starts_with(&needle)
+                let name = e.file_name().to_string_lossy().into_owned();
+                mount_name_matches_prefix(&name, prefix)
             });
         }
     }
@@ -238,7 +242,7 @@ fn normalize_uri_for_compare(uri: &str) -> Option<String> {
     Some(normalized)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(not(target_os = "windows"), test))]
 fn parse_gio_mount_uris(stdout: &str) -> HashSet<String> {
     let mut uris = HashSet::new();
     for line in stdout.lines() {
@@ -255,7 +259,22 @@ fn parse_gio_mount_uris(stdout: &str) -> HashSet<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn list_gio_mount_uris() -> HashSet<String> {
+fn parse_gio_default_location_uris(stdout: &str) -> HashSet<String> {
+    let mut uris = HashSet::new();
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        let Some(uri) = trimmed.strip_prefix("default_location=") else {
+            continue;
+        };
+        if let Some(normalized) = normalize_uri_for_compare(uri) {
+            uris.insert(normalized);
+        }
+    }
+    uris
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_gio_mount_list() -> Option<String> {
     let output = match Command::new("gio")
         .arg("mount")
         .arg("-li")
@@ -263,9 +282,15 @@ fn list_gio_mount_uris() -> HashSet<String> {
         .output()
     {
         Ok(out) if out.status.success() => out,
-        _ => return HashSet::new(),
+        _ => return None,
     };
-    parse_gio_mount_uris(&String::from_utf8_lossy(&output.stdout))
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn list_gio_default_location_uris() -> HashSet<String> {
+    run_gio_mount_list()
+        .map(|stdout| parse_gio_default_location_uris(&stdout))
+        .unwrap_or_default()
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -282,6 +307,13 @@ fn list_gvfs_entry_names() -> HashSet<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
+fn has_mount_prefix_in_entries(entries: &HashSet<String>, prefix: &str) -> bool {
+    entries
+        .iter()
+        .any(|name| mount_name_matches_prefix(name, prefix))
+}
+
+#[cfg(not(target_os = "windows"))]
 fn has_new_gvfs_entry(before: &HashSet<String>) -> bool {
     if before.is_empty() {
         return !list_gvfs_entry_names().is_empty();
@@ -292,6 +324,14 @@ fn has_new_gvfs_entry(before: &HashSet<String>) -> bool {
 }
 
 #[cfg(not(target_os = "windows"))]
+fn uri_visible_in_gio(uri: &str) -> bool {
+    let Some(target) = normalize_uri_for_compare(uri) else {
+        return false;
+    };
+    list_gio_default_location_uris().contains(&target)
+}
+
+#[cfg(not(target_os = "windows"))]
 fn wait_for_mount_visibility(
     uri: &str,
     prefix: &str,
@@ -299,16 +339,20 @@ fn wait_for_mount_visibility(
     timeout: Duration,
 ) -> bool {
     let target_uri = normalize_uri_for_compare(uri);
+    let had_prefix_before = has_mount_prefix_in_entries(before_entries, prefix);
     let deadline = Instant::now() + timeout;
     let mut next_gio_scan_at = Instant::now();
 
     while Instant::now() < deadline {
-        if has_mount_prefix(prefix) || has_new_gvfs_entry(before_entries) {
+        if has_new_gvfs_entry(before_entries) {
+            return true;
+        }
+        if !had_prefix_before && has_mount_prefix(prefix) {
             return true;
         }
         if let Some(target) = target_uri.as_ref() {
             if Instant::now() >= next_gio_scan_at {
-                if list_gio_mount_uris().contains(target) {
+                if list_gio_default_location_uris().contains(target) {
                     return true;
                 }
                 next_gio_scan_at = Instant::now() + Duration::from_millis(450);
@@ -317,6 +361,25 @@ fn wait_for_mount_visibility(
         std::thread::sleep(Duration::from_millis(120));
     }
     false
+}
+
+#[cfg(not(target_os = "windows"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MountUriStatus {
+    Connected,
+    AlreadyConnected,
+    Failed,
+}
+
+#[cfg(not(target_os = "windows"))]
+impl MountUriStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Connected => "connected",
+            Self::AlreadyConnected => "already_connected",
+            Self::Failed => "failed",
+        }
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -387,11 +450,12 @@ fn list_onedrive_mountables() -> Option<Vec<(String, String)>> {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn mount_uri(uri: &str) -> bool {
+pub fn mount_uri_status(uri: &str) -> MountUriStatus {
     ensure_gvfsd_fuse_running();
     let raw_prefix = uri.split(':').next().unwrap_or_default();
     let prefix = canonical_scheme(raw_prefix);
     let before_entries = list_gvfs_entry_names();
+    let before_uri_visible = uri_visible_in_gio(uri);
 
     static LOG_STATE: OnceCell<Mutex<Instant>> = OnceCell::new();
 
@@ -404,7 +468,11 @@ pub fn mount_uri(uri: &str) -> bool {
     match cmd.output() {
         Ok(output) if output.status.success() => {
             if wait_for_mount_visibility(uri, &prefix, &before_entries, Duration::from_secs(5)) {
-                return true;
+                return if before_uri_visible {
+                    MountUriStatus::AlreadyConnected
+                } else {
+                    MountUriStatus::Connected
+                };
             }
 
             // One light retry before giving up.
@@ -418,7 +486,11 @@ pub fn mount_uri(uri: &str) -> bool {
             if retry.status().map(|s| s.success()).unwrap_or(false)
                 && wait_for_mount_visibility(uri, &prefix, &before_retry, Duration::from_secs(2))
             {
-                return true;
+                return if before_uri_visible {
+                    MountUriStatus::AlreadyConnected
+                } else {
+                    MountUriStatus::Connected
+                };
             }
             if let Some(mut ts) = LOG_STATE
                 .get_or_init(|| Mutex::new(instant_ago(Duration::from_secs(600))))
@@ -430,20 +502,26 @@ pub fn mount_uri(uri: &str) -> bool {
                 if now.duration_since(*ts) >= Duration::from_secs(300) {
                     let normalized_uri =
                         normalize_uri_for_compare(uri).unwrap_or_else(|| uri.into());
-                    let gio_match = list_gio_mount_uris().contains(&normalized_uri);
+                    let gio_match = list_gio_default_location_uris().contains(&normalized_uri);
                     let visible_entries = list_gvfs_entry_names().len();
                     debug_log(&format!(
-                        "mount_uri: gio mount {uri} reported success but mount not visible (normalized={normalized_uri}, prefix={prefix}, gio_match={gio_match}, gvfs_entries={visible_entries})"
+                        "mount_uri: gio mount {uri} reported success but mount not visible (normalized={normalized_uri}, prefix={prefix}, gio_default_location_match={gio_match}, gvfs_entries={visible_entries})"
                     ));
                     *ts = now;
                 }
             }
-            false
+            MountUriStatus::Failed
         }
         Ok(output) => {
             // Some backends return non-zero when URI is already mounted.
             if wait_for_mount_visibility(uri, &prefix, &before_entries, Duration::from_secs(1)) {
-                return true;
+                return if before_uri_visible {
+                    MountUriStatus::AlreadyConnected
+                } else if uri_visible_in_gio(uri) {
+                    MountUriStatus::Connected
+                } else {
+                    MountUriStatus::Connected
+                };
             }
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -451,18 +529,18 @@ pub fn mount_uri(uri: &str) -> bool {
                 "mount_uri: gio mount {uri} failed: status {:?}, stderr='{}', stdout='{}'",
                 output.status, stderr, stdout
             ));
-            false
+            MountUriStatus::Failed
         }
         Err(e) => {
             debug_log(&format!("mount_uri: spawn failed for gio mount {uri}: {e}"));
-            false
+            MountUriStatus::Failed
         }
     }
 }
 
 #[cfg(target_os = "windows")]
-pub fn mount_uri(_uri: &str) -> bool {
-    true
+pub fn mount_uri_status(_uri: &str) -> MountUriStatus {
+    MountUriStatus::Connected
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -703,6 +781,21 @@ Mount(Ignore)
     }
 
     #[test]
+    fn parse_gio_default_location_uris_ignores_activation_roots() {
+        let sample = r#"
+Volume(Personal OneDrive)
+    activation_root=onedrive://abc-123/
+    can_mount=1
+Mount(Storage)
+    default_location=webdav://Nas.LOCAL/share/
+        "#;
+        let uris = parse_gio_default_location_uris(sample);
+        assert!(uris.contains("dav://nas.local/share"));
+        assert!(!uris.contains("onedrive://abc-123"));
+        assert_eq!(uris.len(), 1);
+    }
+
+    #[test]
     fn canonical_gvfs_fs_maps_extended_network_prefixes() {
         assert_eq!(canonical_gvfs_fs("smb-share"), Some(("smb", true)));
         assert_eq!(canonical_gvfs_fs("nfs4"), Some(("nfs", true)));
@@ -710,6 +803,17 @@ Mount(Ignore)
         assert_eq!(canonical_gvfs_fs("webdav"), Some(("dav", true)));
         assert_eq!(canonical_gvfs_fs("afp-volume"), Some(("afp", true)));
         assert_eq!(canonical_gvfs_fs("unknown"), None);
+    }
+
+    #[test]
+    fn has_mount_prefix_in_entries_matches_case_insensitively() {
+        let entries = HashSet::from([
+            "smb-share:server=nas,share=files".to_string(),
+            "SFTP:host=box.local".to_string(),
+        ]);
+        assert!(has_mount_prefix_in_entries(&entries, "smb"));
+        assert!(has_mount_prefix_in_entries(&entries, "sftp"));
+        assert!(!has_mount_prefix_in_entries(&entries, "nfs"));
     }
 }
 #[cfg(not(target_os = "windows"))]

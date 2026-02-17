@@ -214,7 +214,13 @@
     const kind = (fs ?? '').toLowerCase()
     if (kind === 'onedrive') return 'OneDrive'
     if (kind === 'mtp') return 'MTP device'
-    return 'drive'
+    if (kind === 'sftp' || kind === 'ssh') return 'SFTP server'
+    if (kind === 'smb' || kind === 'cifs') return 'SMB server'
+    if (kind === 'nfs') return 'NFS server'
+    if (kind === 'ftp' || kind === 'ftps') return 'FTP server'
+    if (kind === 'dav' || kind === 'davs' || kind === 'webdav' || kind === 'webdavs') return 'WebDAV server'
+    if (kind === 'afp') return 'AFP server'
+    return 'network resource'
   }
 
   // --- Data + preferences --------------------------------------------------
@@ -2973,14 +2979,23 @@
     stopNativeDrop: () => nativeDrop.stop(),
     onMountStarted: (fs) => {
       activityApi.clearNow()
-      activity.set({ label: `Mounting ${fsLabel(fs)}…`, percent: null, cancel: null, cancelling: false })
+      activity.set({ label: `Connecting to ${fsLabel(fs)}…`, percent: null, cancel: null, cancelling: false })
     },
-    onMountDone: (fs, ok) => {
-      const label = ok ? `${fsLabel(fs)} mounted` : 'Mount failed'
+    onMountDone: (fs, ok, outcome) => {
+      const label =
+        outcome === 'already_connected'
+          ? `Already connected to ${fsLabel(fs)}`
+          : outcome === 'connected'
+            ? `Connected to ${fsLabel(fs)}`
+            : outcome === 'failed'
+              ? `Failed to connect to ${fsLabel(fs)}`
+              : ok
+                ? `Connected to ${fsLabel(fs)}`
+                : `Failed to connect to ${fsLabel(fs)}`
       activity.set({ label, percent: null, cancel: null, cancelling: false })
       activityApi.hideSoon()
-      if (ok === false) {
-        showToast('Mount failed. Please try again.')
+      if (outcome === 'already_connected') {
+        showToast('Already connected', 1400)
       }
     },
     onErrorToast: showToast,
