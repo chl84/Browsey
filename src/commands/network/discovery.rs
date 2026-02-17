@@ -17,6 +17,14 @@ fn instant_ago(d: Duration) -> Instant {
     Instant::now().checked_sub(d).unwrap_or_else(Instant::now)
 }
 
+#[cfg(not(target_os = "windows"))]
+static NETWORK_DISCOVERY_CACHE: OnceCell<Mutex<(Instant, Vec<MountInfo>)>> = OnceCell::new();
+
+#[cfg(not(target_os = "windows"))]
+fn network_discovery_cache() -> &'static Mutex<(Instant, Vec<MountInfo>)> {
+    NETWORK_DISCOVERY_CACHE.get_or_init(|| Mutex::new((instant_ago(DISCOVERY_CACHE_TTL), Vec::new())))
+}
+
 fn scheme_label(scheme: &str) -> &'static str {
     match scheme {
         "onedrive" => "OneDrive",
@@ -328,13 +336,14 @@ fn dedupe_and_sort(mut list: Vec<MountInfo>) -> Vec<MountInfo> {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub(super) fn list_network_devices_sync() -> Vec<MountInfo> {
-    static CACHE: OnceCell<Mutex<(Instant, Vec<MountInfo>)>> = OnceCell::new();
-    let cache = CACHE.get_or_init(|| Mutex::new((instant_ago(DISCOVERY_CACHE_TTL), Vec::new())));
+pub(super) fn list_network_devices_sync(force_refresh: bool) -> Vec<MountInfo> {
+    let cache = network_discovery_cache();
 
-    if let Ok(guard) = cache.lock() {
-        if guard.0.elapsed() < DISCOVERY_CACHE_TTL {
-            return guard.1.clone();
+    if !force_refresh {
+        if let Ok(guard) = cache.lock() {
+            if guard.0.elapsed() < DISCOVERY_CACHE_TTL {
+                return guard.1.clone();
+            }
         }
     }
 
@@ -351,13 +360,24 @@ pub(super) fn list_network_devices_sync() -> Vec<MountInfo> {
 }
 
 #[cfg(target_os = "windows")]
-pub(super) fn list_network_devices_sync() -> Vec<MountInfo> {
+pub(super) fn list_network_devices_sync(_force_refresh: bool) -> Vec<MountInfo> {
     Vec::new()
 }
 
+#[cfg(not(target_os = "windows"))]
+pub(super) fn invalidate_network_devices_cache() {
+    let cache = network_discovery_cache();
+    if let Ok(mut guard) = cache.lock() {
+        guard.0 = instant_ago(DISCOVERY_CACHE_TTL);
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub(super) fn invalidate_network_devices_cache() {}
+
 #[tauri::command]
 pub async fn list_network_devices() -> Result<Vec<MountInfo>, String> {
-    tauri::async_runtime::spawn_blocking(list_network_devices_sync)
+    tauri::async_runtime::spawn_blocking(|| list_network_devices_sync(false))
         .await
         .map_err(|e| format!("network discovery failed: {e}"))
 }

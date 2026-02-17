@@ -469,7 +469,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
-  const loadNetwork = async (recordHistory = true) => {
+  const loadNetwork = async (
+    recordHistory = true,
+    options: { forceRefresh?: boolean } = {},
+  ) => {
     loading.set(true)
     clearFacetCache()
     error.set('')
@@ -478,7 +481,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     try {
       const mounts = await listMounts()
       partitions.set(mounts)
-      const networkEntries = await listNetworkEntries()
+      const networkEntries = await listNetworkEntries(options.forceRefresh === true)
       current.set('Network')
       entries.set(sortSearchEntries(networkEntries, sortPayload()))
       callbacks.onEntriesChanged?.()
@@ -930,13 +933,14 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   }
 
   let lastMountPaths: string[] = []
-  const loadPartitions = async () => {
+  const loadPartitions = async (options: { forceNetworkRefresh?: boolean } = {}) => {
+    const { forceNetworkRefresh = false } = options
     try {
       const result = await listMounts()
       partitions.set(result)
       if (get(current) === 'Network') {
         try {
-          const networkEntries = await listNetworkEntries()
+          const networkEntries = await listNetworkEntries(forceNetworkRefresh)
           entries.set(sortSearchEntries(networkEntries, sortPayload()))
           callbacks.onEntriesChanged?.()
         } catch (err) {
