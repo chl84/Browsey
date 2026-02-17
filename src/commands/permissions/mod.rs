@@ -6,8 +6,10 @@ use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
 use tracing::{debug, warn};
 
+use crate::errors::api_error::{ApiError, ApiResult};
 use crate::fs_utils::{check_no_symlink_components, sanitize_path_nofollow};
 
+mod error;
 mod ownership;
 mod set_permissions;
 #[cfg(all(test, unix))]
@@ -15,6 +17,7 @@ mod tests;
 #[cfg(target_os = "windows")]
 mod windows_acl;
 
+use self::error::{is_expected_batch_error_code, map_api_result, to_api_error};
 use ownership::{
     list_ownership_principals as list_ownership_principals_impl, set_ownership_batch,
     OwnershipPrincipalKind,
@@ -94,7 +97,7 @@ pub struct PermissionsBatchItem {
     pub path: String,
     pub ok: bool,
     pub permissions: PermissionInfo,
-    pub error: Option<String>,
+    pub error: Option<ApiError>,
 }
 
 #[derive(serde::Serialize)]
@@ -342,17 +345,11 @@ fn aggregate_permissions(items: &[PermissionsBatchItem]) -> PermissionsBatchAggr
     }
 }
 
-fn is_expected_batch_error(message: &str) -> bool {
-    message
-        .to_ascii_lowercase()
-        .contains("permissions are not supported on symlinks")
-}
-
 pub(super) fn refresh_permissions_after_apply(
     path: String,
     changed_any: bool,
 ) -> Result<PermissionInfo, String> {
-    match get_permissions(path.clone()) {
+    match get_permissions_impl(path.clone()) {
         Ok(info) => Ok(info),
         Err(err) if changed_any => {
             warn!(
@@ -472,7 +469,11 @@ fn resolve_owner_group_names(meta: &fs::Metadata) -> (Option<String>, Option<Str
 }
 
 #[tauri::command]
-pub fn get_permissions(path: String) -> Result<PermissionInfo, String> {
+pub fn get_permissions(path: String) -> ApiResult<PermissionInfo> {
+    map_api_result(get_permissions_impl(path))
+}
+
+pub(super) fn get_permissions_impl(path: String) -> Result<PermissionInfo, String> {
     debug!(path = %path, "get_permissions start");
     ensure_absolute_path(&path)?;
     let target = sanitize_path_nofollow(&path, true)?;
@@ -569,16 +570,17 @@ pub(super) fn get_permissions_batch_impl(
             continue;
         }
 
-        match get_permissions(path.clone()) {
+        match get_permissions_impl(path.clone()) {
             Ok(permissions) => per_item.push(PermissionsBatchItem {
                 path,
                 ok: true,
                 permissions,
                 error: None,
             }),
-            Err(error) => {
+            Err(error_message) => {
                 failures += 1;
-                if !is_expected_batch_error(&error) {
+                let error = to_api_error(error_message);
+                if !is_expected_batch_error_code(&error.code) {
                     unexpected_failures += 1;
                 }
                 per_item.push(PermissionsBatchItem {
@@ -601,8 +603,8 @@ pub(super) fn get_permissions_batch_impl(
 }
 
 #[tauri::command]
-pub fn get_permissions_batch(paths: Vec<String>) -> Result<PermissionsBatchResult, String> {
-    get_permissions_batch_impl(paths)
+pub fn get_permissions_batch(paths: Vec<String>) -> ApiResult<PermissionsBatchResult> {
+    map_api_result(get_permissions_batch_impl(paths))
 }
 
 #[tauri::command]
@@ -615,20 +617,20 @@ pub fn set_permissions(
     owner: Option<AccessUpdate>,
     group: Option<AccessUpdate>,
     other: Option<AccessUpdate>,
-) -> Result<PermissionInfo, String> {
+) -> ApiResult<PermissionInfo> {
     let targets: Vec<String> = match (paths, path) {
         (Some(list), _) if !list.is_empty() => list,
         (_, Some(single)) => vec![single],
-        _ => return Err("No paths provided".into()),
+        _ => return map_api_result(Err("No paths provided".into())),
     };
-    set_permissions_batch(
+    map_api_result(set_permissions_batch(
         targets,
         readOnly.or(read_only),
         executable,
         owner,
         group,
         other,
-    )
+    ))
 }
 
 #[tauri::command]
@@ -637,13 +639,13 @@ pub fn set_ownership(
     paths: Option<Vec<String>>,
     owner: Option<String>,
     group: Option<String>,
-) -> Result<PermissionInfo, String> {
+) -> ApiResult<PermissionInfo> {
     let targets: Vec<String> = match (paths, path) {
         (Some(list), _) if !list.is_empty() => list,
         (_, Some(single)) => vec![single],
-        _ => return Err("No paths provided".into()),
+        _ => return map_api_result(Err("No paths provided".into())),
     };
-    set_ownership_batch(targets, owner, group)
+    map_api_result(set_ownership_batch(targets, owner, group))
 }
 
 #[tauri::command]
@@ -651,6 +653,6 @@ pub fn list_ownership_principals(
     kind: OwnershipPrincipalKind,
     query: Option<String>,
     limit: Option<usize>,
-) -> Result<Vec<String>, String> {
-    list_ownership_principals_impl(kind, query, limit)
+) -> ApiResult<Vec<String>> {
+    map_api_result(list_ownership_principals_impl(kind, query, limit))
 }

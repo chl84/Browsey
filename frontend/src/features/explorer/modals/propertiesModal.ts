@@ -5,6 +5,7 @@ import type { Entry } from '../types'
 type AccessBit = boolean | 'mixed'
 type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
 type OwnershipPrincipalKind = 'user' | 'group'
+type InvokeApiError = { code: string; message: string }
 type PermissionPayload = {
   access_supported: boolean
   executable_supported: boolean
@@ -22,7 +23,7 @@ type PermissionBatchItemPayload = {
   path: string
   ok: boolean
   permissions: PermissionPayload
-  error?: string | null
+  error?: InvokeApiError | string | null
 }
 
 type PermissionBatchAggregatePayload = {
@@ -318,7 +319,18 @@ const invokeErrorMessage = (err: unknown): string => {
   if (typeof err === 'string' && err.trim().length > 0) return err
   if (err && typeof err === 'object') {
     const record = err as Record<string, unknown>
-    const candidates = [record.message, record.error, record.cause]
+    const nestedError =
+      record.error && typeof record.error === 'object'
+        ? (record.error as Record<string, unknown>)
+        : null
+    const candidates = [
+      record.message,
+      record.error,
+      record.cause,
+      nestedError?.message,
+      nestedError?.error,
+      nestedError?.cause,
+    ]
     for (const candidate of candidates) {
       if (typeof candidate === 'string' && candidate.trim().length > 0) return candidate
     }
@@ -332,7 +344,31 @@ const invokeErrorMessage = (err: unknown): string => {
   return 'Unknown error'
 }
 
-const isExpectedOwnershipError = (message: string): boolean => {
+const invokeErrorCode = (err: unknown): string | null => {
+  if (!err || typeof err !== 'object') return null
+  const record = err as Record<string, unknown>
+  if (typeof record.code === 'string' && record.code.trim().length > 0) {
+    return record.code.trim()
+  }
+  if (record.error && typeof record.error === 'object') {
+    const nested = record.error as Record<string, unknown>
+    if (typeof nested.code === 'string' && nested.code.trim().length > 0) {
+      return nested.code.trim()
+    }
+  }
+  return null
+}
+
+const isExpectedOwnershipError = (message: string, code: string | null): boolean => {
+  if (code) {
+    return (
+      code === 'authentication_cancelled' ||
+      code === 'principal_not_found' ||
+      code === 'permission_denied' ||
+      code === 'elevated_required' ||
+      code === 'unsupported_platform'
+    )
+  }
   const normalized = message.toLowerCase()
   return (
     normalized.includes('request dismissed') ||
@@ -346,7 +382,15 @@ const isExpectedOwnershipError = (message: string): boolean => {
   )
 }
 
-const isExpectedPermissionUpdateError = (message: string): boolean => {
+const isExpectedPermissionUpdateError = (message: string, code: string | null): boolean => {
+  if (code) {
+    return (
+      code === 'permission_denied' ||
+      code === 'elevated_required' ||
+      code === 'read_only_filesystem' ||
+      code === 'symlink_unsupported'
+    )
+  }
   const normalized = message.toLowerCase()
   return (
     normalized.includes('operation not permitted') ||
@@ -559,7 +603,11 @@ export const createPropertiesModal = (deps: Deps) => {
         void ensureOwnershipPrincipalsLoaded(currToken)
       }
     } catch (err) {
-      console.error('Failed to load multi permissions', err)
+      const code = invokeErrorCode(err)
+      const message = invokeErrorMessage(err)
+      console.error(
+        `Failed to load multi permissions${code ? ` [${code}]` : ''}: ${message}`,
+      )
       if (currToken !== token) return
       state.update((s) => ({ ...s, permissionsLoading: false }))
     }
@@ -589,7 +637,9 @@ export const createPropertiesModal = (deps: Deps) => {
         void ensureOwnershipPrincipalsLoaded(currToken)
       }
     } catch (err) {
-      console.error('Failed to load permissions', err)
+      const code = invokeErrorCode(err)
+      const message = invokeErrorMessage(err)
+      console.error(`Failed to load permissions${code ? ` [${code}]` : ''}: ${message}`)
       if (currToken !== token) return
       state.update((s) => ({ ...s, permissionsLoading: false }))
     }
@@ -608,7 +658,9 @@ export const createPropertiesModal = (deps: Deps) => {
         entry: { ...entry, ...times },
       }))
     } catch (err) {
-      console.error('Failed to load entry times', err)
+      const code = invokeErrorCode(err)
+      const message = invokeErrorMessage(err)
+      console.error(`Failed to load entry times${code ? ` [${code}]` : ''}: ${message}`)
     }
   }
 
@@ -626,10 +678,11 @@ export const createPropertiesModal = (deps: Deps) => {
       }))
     } catch (err) {
       if (currToken !== token) return
+      const message = invokeErrorMessage(err)
       state.update((s) => ({
         ...s,
         extraMetadataLoading: false,
-        extraMetadataError: err instanceof Error ? err.message : String(err),
+        extraMetadataError: message,
         extraMetadata: null,
         extraMetadataPath: null,
       }))
@@ -735,8 +788,9 @@ export const createPropertiesModal = (deps: Deps) => {
       }))
     } catch (err) {
       if (activeToken !== token) return
+      const code = invokeErrorCode(err)
       const message = invokeErrorMessage(err)
-      const signature = `${targets.join('\n')}|${JSON.stringify(opts)}|${message}`
+      const signature = `${targets.join('\n')}|${JSON.stringify(opts)}|${code ?? ''}|${message}`
       const now = Date.now()
       const duplicate =
         signature === lastPermissionsErrorSignature && now - lastPermissionsErrorAt < 2000
@@ -745,7 +799,7 @@ export const createPropertiesModal = (deps: Deps) => {
         lastPermissionsErrorSignature = signature
         lastPermissionsErrorAt = now
 
-        if (!isExpectedPermissionUpdateError(message)) {
+        if (!isExpectedPermissionUpdateError(message, code)) {
           console.error('Failed to update permissions', { targets, opts, message, err })
         }
       }
@@ -821,11 +875,15 @@ export const createPropertiesModal = (deps: Deps) => {
       }))
     } catch (err) {
       if (activeToken !== token) return
+      const code = invokeErrorCode(err)
       const rawMessage = invokeErrorMessage(err)
-      const message = rawMessage.toLowerCase().includes('operation not permitted')
+      const message =
+        code === 'permission_denied' ||
+        code === 'elevated_required' ||
+        rawMessage.toLowerCase().includes('operation not permitted')
         ? 'Permission denied. Changing owner/group requires elevated privileges.'
         : rawMessage
-      if (!isExpectedOwnershipError(rawMessage) && !isExpectedOwnershipError(message)) {
+      if (!isExpectedOwnershipError(rawMessage, code) && !isExpectedOwnershipError(message, code)) {
         console.warn('Ownership update failed:', message)
       }
       state.update((s) => ({ ...s, ownershipError: message }))

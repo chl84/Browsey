@@ -1,5 +1,5 @@
 use super::{
-    get_permissions, get_permissions_batch_impl, refresh_permissions_after_apply,
+    get_permissions_batch_impl, get_permissions_impl, refresh_permissions_after_apply,
     set_ownership_batch, set_permissions_batch, AccessUpdate, AggregatedAccessBit,
 };
 use crate::undo::{Action, UndoState};
@@ -257,7 +257,7 @@ fn get_permissions_rejects_symlink_components() {
     fs::write(&file_path, b"test").unwrap();
     symlink(&real_dir, &link_dir).unwrap();
 
-    let err = match get_permissions(via_link_path.to_string_lossy().to_string()) {
+    let err = match get_permissions_impl(via_link_path.to_string_lossy().to_string()) {
         Ok(_) => panic!("get_permissions should reject symlink path components"),
         Err(err) => err,
     };
@@ -518,4 +518,39 @@ fn get_permissions_batch_marks_virtual_uris_as_unsupported_without_failure() {
     assert!(!batch.aggregate.ownership_supported);
     assert_eq!(batch.aggregate.read_only, None);
     assert_eq!(batch.aggregate.executable, None);
+}
+
+#[test]
+fn get_permissions_batch_uses_structured_error_codes_for_expected_failures() {
+    let missing = temp_file("perm-batch-missing");
+    let _ = fs::remove_file(&missing);
+
+    let batch = get_permissions_batch_impl(vec![missing.to_string_lossy().to_string()]).unwrap();
+    assert_eq!(batch.per_item.len(), 1);
+    assert_eq!(batch.failures, 1);
+    assert_eq!(batch.unexpected_failures, 0);
+    assert!(!batch.per_item[0].ok);
+
+    let error = batch.per_item[0]
+        .error
+        .as_ref()
+        .expect("missing path should include structured error");
+    assert_eq!(error.code, "not_found");
+    assert!(error.message.to_ascii_lowercase().contains("does not exist"));
+}
+
+#[test]
+fn get_permissions_batch_counts_unexpected_failures_by_error_code() {
+    let batch = get_permissions_batch_impl(vec!["relative-path.txt".into()]).unwrap();
+    assert_eq!(batch.per_item.len(), 1);
+    assert_eq!(batch.failures, 1);
+    assert_eq!(batch.unexpected_failures, 1);
+    assert!(!batch.per_item[0].ok);
+
+    let error = batch.per_item[0]
+        .error
+        .as_ref()
+        .expect("relative path should include structured error");
+    assert_eq!(error.code, "path_not_absolute");
+    assert!(error.message.contains("Path must be absolute"));
 }

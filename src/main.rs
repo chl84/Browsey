@@ -6,6 +6,7 @@ mod commands;
 mod context_menu;
 mod db;
 mod entry;
+mod errors;
 mod filter;
 mod fs_utils;
 mod icons;
