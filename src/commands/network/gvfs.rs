@@ -13,6 +13,7 @@ use std::sync::Mutex;
 #[cfg(not(target_os = "windows"))]
 use std::{
     borrow::Cow,
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -134,6 +135,174 @@ fn has_mount_prefix(prefix: &str) -> bool {
 }
 
 #[cfg(not(target_os = "windows"))]
+fn canonical_scheme(raw: &str) -> String {
+    match raw.to_ascii_lowercase().as_str() {
+        "ssh" => "sftp".to_string(),
+        "webdav" => "dav".to_string(),
+        "webdavs" => "davs".to_string(),
+        other => other.to_string(),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn normalize_authority_for_compare(authority: &str) -> Option<String> {
+    let authority = authority.trim();
+    if authority.is_empty() {
+        return None;
+    }
+
+    let (userinfo, host_port) = match authority.rsplit_once('@') {
+        Some((user, host)) if !host.trim().is_empty() => (Some(user.trim()), host.trim()),
+        _ => (None, authority),
+    };
+
+    let host_port_normalized = if host_port.starts_with('[') {
+        let end = host_port.find(']')?;
+        let host = host_port[1..end].trim();
+        if host.is_empty() {
+            return None;
+        }
+        let rest = host_port[(end + 1)..].trim();
+        let host_lc = host.to_ascii_lowercase();
+        if rest.is_empty() {
+            format!("[{host_lc}]")
+        } else if let Some(port) = rest.strip_prefix(':') {
+            let port = port.trim();
+            if port.is_empty() {
+                return None;
+            }
+            format!("[{host_lc}]:{port}")
+        } else {
+            return None;
+        }
+    } else if host_port.matches(':').count() > 1 {
+        let host = host_port.trim();
+        if host.is_empty() {
+            return None;
+        }
+        host.to_ascii_lowercase()
+    } else {
+        let (host, port) = match host_port.split_once(':') {
+            Some((host, port)) => (host.trim(), Some(port.trim())),
+            None => (host_port.trim(), None),
+        };
+        if host.is_empty() {
+            return None;
+        }
+        let host_lc = host.to_ascii_lowercase();
+        match port {
+            Some(p) if !p.is_empty() => format!("{host_lc}:{p}"),
+            Some(_) => return None,
+            None => host_lc,
+        }
+    };
+
+    Some(match userinfo {
+        Some(user) if !user.is_empty() => format!("{user}@{host_port_normalized}"),
+        _ => host_port_normalized,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn normalize_uri_for_compare(uri: &str) -> Option<String> {
+    let trimmed = uri.trim();
+    let (raw_scheme, rest) = trimmed.split_once("://")?;
+    let scheme = canonical_scheme(raw_scheme);
+
+    let (authority_raw, path_raw) = match rest.split_once('/') {
+        Some((authority, path)) => (authority, format!("/{path}")),
+        None => (rest, String::new()),
+    };
+    let authority = normalize_authority_for_compare(authority_raw)?;
+    let mut normalized = format!("{scheme}://{authority}{path_raw}");
+    while normalized.ends_with('/') {
+        normalized.pop();
+    }
+    Some(normalized)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn parse_gio_mount_uris(stdout: &str) -> HashSet<String> {
+    let mut uris = HashSet::new();
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        let uri = trimmed
+            .strip_prefix("activation_root=")
+            .or_else(|| trimmed.strip_prefix("default_location="));
+        let Some(uri) = uri else { continue };
+        if let Some(normalized) = normalize_uri_for_compare(uri) {
+            uris.insert(normalized);
+        }
+    }
+    uris
+}
+
+#[cfg(not(target_os = "windows"))]
+fn list_gio_mount_uris() -> HashSet<String> {
+    let output = match Command::new("gio")
+        .arg("mount")
+        .arg("-li")
+        .stderr(Stdio::null())
+        .output()
+    {
+        Ok(out) if out.status.success() => out,
+        _ => return HashSet::new(),
+    };
+    parse_gio_mount_uris(&String::from_utf8_lossy(&output.stdout))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn list_gvfs_entry_names() -> HashSet<String> {
+    let mut out = HashSet::new();
+    if let Some(root) = gvfs_root() {
+        if let Ok(rd) = fs::read_dir(root) {
+            for entry in rd.flatten() {
+                out.insert(entry.file_name().to_string_lossy().into_owned());
+            }
+        }
+    }
+    out
+}
+
+#[cfg(not(target_os = "windows"))]
+fn has_new_gvfs_entry(before: &HashSet<String>) -> bool {
+    if before.is_empty() {
+        return !list_gvfs_entry_names().is_empty();
+    }
+    list_gvfs_entry_names()
+        .iter()
+        .any(|name| !before.contains(name))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn wait_for_mount_visibility(
+    uri: &str,
+    prefix: &str,
+    before_entries: &HashSet<String>,
+    timeout: Duration,
+) -> bool {
+    let target_uri = normalize_uri_for_compare(uri);
+    let deadline = Instant::now() + timeout;
+    let mut next_gio_scan_at = Instant::now();
+
+    while Instant::now() < deadline {
+        if has_mount_prefix(prefix) || has_new_gvfs_entry(before_entries) {
+            return true;
+        }
+        if let Some(target) = target_uri.as_ref() {
+            if Instant::now() >= next_gio_scan_at {
+                if list_gio_mount_uris().contains(target) {
+                    return true;
+                }
+                next_gio_scan_at = Instant::now() + Duration::from_millis(450);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(120));
+    }
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
 fn find_onedrive_uri_cli(preloaded: Option<&str>) -> Option<String> {
     let text: Cow<'_, str> = if let Some(t) = preloaded {
         Cow::Borrowed(t)
@@ -204,10 +373,8 @@ fn list_onedrive_mountables() -> Option<Vec<(String, String)>> {
 pub fn mount_uri(uri: &str) -> bool {
     ensure_gvfsd_fuse_running();
     let raw_prefix = uri.split(':').next().unwrap_or_default();
-    let prefix = match raw_prefix.to_ascii_lowercase().as_str() {
-        "ssh" => "sftp".to_string(),
-        other => other.to_string(),
-    };
+    let prefix = canonical_scheme(raw_prefix);
+    let before_entries = list_gvfs_entry_names();
 
     static LOG_STATE: OnceCell<Mutex<Instant>> = OnceCell::new();
 
@@ -219,29 +386,22 @@ pub fn mount_uri(uri: &str) -> bool {
 
     match cmd.status() {
         Ok(status) if status.success() => {
-            // Wait briefly for the mount to appear under /run/user/.../gvfs
-            let deadline = Instant::now() + Duration::from_secs(5);
-            while Instant::now() < deadline {
-                if has_mount_prefix(&prefix) {
-                    return true;
-                }
-                std::thread::sleep(Duration::from_millis(120));
+            if wait_for_mount_visibility(uri, &prefix, &before_entries, Duration::from_secs(5)) {
+                return true;
             }
-            // One light retry before giving up
+
+            // One light retry before giving up.
+            let before_retry = list_gvfs_entry_names();
             let mut retry = Command::new("gio");
             retry
                 .arg("mount")
                 .arg(uri)
                 .stdout(Stdio::null())
                 .stderr(Stdio::null());
-            if retry.status().map(|s| s.success()).unwrap_or(false) {
-                let retry_deadline = Instant::now() + Duration::from_secs(2);
-                while Instant::now() < retry_deadline {
-                    if has_mount_prefix(&prefix) {
-                        return true;
-                    }
-                    std::thread::sleep(Duration::from_millis(120));
-                }
+            if retry.status().map(|s| s.success()).unwrap_or(false)
+                && wait_for_mount_visibility(uri, &prefix, &before_retry, Duration::from_secs(2))
+            {
+                return true;
             }
             if let Some(mut ts) = LOG_STATE
                 .get_or_init(|| Mutex::new(instant_ago(Duration::from_secs(600))))
@@ -251,8 +411,12 @@ pub fn mount_uri(uri: &str) -> bool {
             {
                 let now = Instant::now();
                 if now.duration_since(*ts) >= Duration::from_secs(300) {
+                    let normalized_uri =
+                        normalize_uri_for_compare(uri).unwrap_or_else(|| uri.into());
+                    let gio_match = list_gio_mount_uris().contains(&normalized_uri);
+                    let visible_entries = list_gvfs_entry_names().len();
                     debug_log(&format!(
-                        "mount_uri: gio mount {uri} reported success but mount path not visible"
+                        "mount_uri: gio mount {uri} reported success but mount not visible (normalized={normalized_uri}, prefix={prefix}, gio_match={gio_match}, gvfs_entries={visible_entries})"
                     ));
                     *ts = now;
                 }
@@ -473,6 +637,38 @@ Identity=first@example.com
         "#;
         let uri = parse_onedrive_uri_goa(contents).expect("should parse");
         assert_eq!(uri, "onedrive://pretty name/");
+    }
+
+    #[test]
+    fn normalize_uri_for_compare_maps_aliases_and_trims_slashes() {
+        assert_eq!(
+            normalize_uri_for_compare("SSH://alice@EXAMPLE.com:2222/"),
+            Some("sftp://alice@example.com:2222".to_string())
+        );
+        assert_eq!(
+            normalize_uri_for_compare("webdav://Nas.LOCAL/share/"),
+            Some("dav://nas.local/share".to_string())
+        );
+        assert_eq!(
+            normalize_uri_for_compare("webdavs://[2001:DB8::1]:8443/path///"),
+            Some("davs://[2001:db8::1]:8443/path".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_gio_mount_uris_extracts_activation_and_default_locations() {
+        let sample = r#"
+Mount(Fibaro)
+    activation_root=ssh://admin@FIBARO.local/
+Mount(Storage)
+    default_location=webdav://Nas.LOCAL/share/
+Mount(Ignore)
+    uuid=abc
+        "#;
+        let uris = parse_gio_mount_uris(sample);
+        assert!(uris.contains("sftp://admin@fibaro.local"));
+        assert!(uris.contains("dav://nas.local/share"));
+        assert_eq!(uris.len(), 2);
     }
 }
 #[cfg(not(target_os = "windows"))]
