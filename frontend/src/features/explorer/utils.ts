@@ -20,8 +20,12 @@ export const navIcon = (label: string) => {
 }
 
 export const partitionIcon = (part: Partition) => {
-  if (part.fs && part.fs.toLowerCase() === 'onedrive') {
+  const fs = (part.fs ?? '').toLowerCase()
+  if (fs === 'onedrive') {
     return iconPath('browsey/cloud.svg')
+  }
+  if (fs === 'sftp') {
+    return iconPath('browsey/network.svg')
   }
   return part.removable ? iconPath('browsey/usb_disk.svg') : iconPath('browsey/disk.svg')
 }

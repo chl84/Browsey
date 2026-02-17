@@ -356,14 +356,14 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
 #[tauri::command]
 pub async fn mount_partition(path: String, app: tauri::AppHandle) -> Result<(), String> {
     let lower = path.to_ascii_lowercase();
-    let fs_kind = if lower.starts_with("onedrive://") {
-        "onedrive"
-    } else {
-        "gvfs"
-    };
-    let _ = app.emit("mounting-started", json!({ "path": path, "fs": fs_kind }));
+    let scheme = lower
+        .split_once("://")
+        .map(|(prefix, _)| prefix.to_string());
+    let fs_kind = scheme.unwrap_or_else(|| "gvfs".to_string());
+    let _ = app.emit("mounting-started", json!({ "path": &path, "fs": &fs_kind }));
     let started = Instant::now();
-    if lower.starts_with("onedrive://") {
+
+    if lower.contains("://") {
         let path_for_mount = path.clone();
         let res = tauri::async_runtime::spawn_blocking(move || gvfs::mount_uri(&path_for_mount))
             .await
@@ -371,18 +371,18 @@ pub async fn mount_partition(path: String, app: tauri::AppHandle) -> Result<(), 
         let duration_ms = started.elapsed().as_millis() as u64;
         let _ = app.emit(
             "mounting-done",
-            json!({ "path": path, "fs": fs_kind, "ok": res, "duration_ms": duration_ms }),
+            json!({ "path": &path, "fs": &fs_kind, "ok": res, "duration_ms": duration_ms }),
         );
         if res {
             Ok(())
         } else {
-            Err("Failed to mount OneDrive".into())
+            Err(format!("Failed to mount {fs_kind}"))
         }
     } else {
         let duration_ms = started.elapsed().as_millis() as u64;
         let _ = app.emit(
             "mounting-done",
-            json!({ "path": path, "fs": fs_kind, "ok": true, "duration_ms": duration_ms }),
+            json!({ "path": &path, "fs": &fs_kind, "ok": true, "duration_ms": duration_ms }),
         );
         Ok(())
     }
