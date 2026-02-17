@@ -9,6 +9,12 @@ export type NetworkUriClassification = {
   normalizedUri: string | null
 }
 
+export type ConnectNetworkUriResult = {
+  kind: NetworkUriKind
+  normalizedUri: string | null
+  mountedPath: string | null
+}
+
 export const listNetworkDevices = () =>
   invoke<Partition[]>('list_network_devices')
 
@@ -23,3 +29,6 @@ export const classifyNetworkUri = (uri: string) =>
 
 export const resolveMountedPathForUri = (uri: string) =>
   invoke<string | null>('resolve_mounted_path_for_uri', { uri })
+
+export const connectNetworkUri = (uri: string) =>
+  invoke<ConnectNetworkUriResult>('connect_network_uri', { uri })

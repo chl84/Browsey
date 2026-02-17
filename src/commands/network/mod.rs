@@ -1,3 +1,4 @@
+pub mod connect;
 pub mod discovery;
 pub mod entries;
 pub mod gvfs;

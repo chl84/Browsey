@@ -10,6 +10,7 @@ export {
 export {
   listNetworkDevices,
   listNetworkEntries,
+  connectNetworkUri,
   openNetworkUri,
   classifyNetworkUri,
   resolveMountedPathForUri,

@@ -42,14 +42,15 @@ pub use library::{
 };
 pub use listing::{list_dir, list_facets, watch_dir};
 pub use meta::{entry_extra_metadata_cmd, entry_kind_cmd, entry_times_cmd};
+pub use network::connect::connect_network_uri;
 pub use network::discovery::{list_network_devices, open_network_uri};
 pub use network::entries::list_network_entries;
 pub use network::mounts::{eject_drive, list_mounts, mount_partition};
 pub use network::uri::{classify_network_uri, resolve_mounted_path_for_uri};
 pub use open_with::{list_open_with_apps, open_with};
 pub use permissions::{
-    get_permissions, list_ownership_principals, maybe_run_ownership_helper_from_args,
-    set_ownership, set_permissions,
+    get_permissions, get_permissions_batch, list_ownership_principals,
+    maybe_run_ownership_helper_from_args, set_ownership, set_permissions,
 };
 pub use search::search_stream;
 pub use settings::{
