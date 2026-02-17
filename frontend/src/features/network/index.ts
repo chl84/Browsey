@@ -1,2 +1,10 @@
 export { isNetworkMount, toNetworkEntries } from './mounts'
-export { isMountUri, resolveMountedPathForUri, uriScheme } from './uri'
+export {
+  isMountUri,
+  isMountableUri,
+  isExternallyOpenableUri,
+  isKnownNetworkUriScheme,
+  resolveMountedPathForUri,
+  uriScheme,
+} from './uri'
+export { listNetworkDevices, openNetworkUri } from './services'

@@ -5,10 +5,38 @@ export const uriScheme = (value: string): string | null => {
   const idx = trimmed.indexOf('://')
   if (idx <= 0) return null
   const raw = trimmed.slice(0, idx).toLowerCase()
-  return raw === 'ssh' ? 'sftp' : raw
+  if (raw === 'ssh') return 'sftp'
+  if (raw === 'webdav') return 'dav'
+  if (raw === 'webdavs') return 'davs'
+  return raw
 }
 
 export const isMountUri = (value: string): boolean => uriScheme(value) !== null
+
+const MOUNTABLE_URI_SCHEMES = new Set([
+  'onedrive',
+  'sftp',
+  'smb',
+  'nfs',
+  'ftp',
+  'dav',
+  'davs',
+  'afp',
+])
+const EXTERNAL_URI_SCHEMES = new Set(['http', 'https'])
+
+export const isKnownNetworkUriScheme = (scheme: string | null): boolean =>
+  !!scheme && (MOUNTABLE_URI_SCHEMES.has(scheme) || EXTERNAL_URI_SCHEMES.has(scheme))
+
+export const isMountableUri = (value: string): boolean => {
+  const scheme = uriScheme(value)
+  return !!scheme && MOUNTABLE_URI_SCHEMES.has(scheme)
+}
+
+export const isExternallyOpenableUri = (value: string): boolean => {
+  const scheme = uriScheme(value)
+  return !!scheme && EXTERNAL_URI_SCHEMES.has(scheme)
+}
 
 const uriHost = (value: string): string | null => {
   const idx = value.indexOf('://')
@@ -36,7 +64,8 @@ export const resolveMountedPathForUri = (
   if (!scheme) return null
 
   const mounted = mounts.filter((mount) => {
-    const fsLc = (mount.fs ?? '').toLowerCase()
+    const rawFs = (mount.fs ?? '').toLowerCase()
+    const fsLc = rawFs === 'ssh' ? 'sftp' : rawFs
     return fsLc === scheme && !isMountUri(mount.path)
   })
   if (mounted.length === 0) return null
