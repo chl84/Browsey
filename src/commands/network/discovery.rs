@@ -21,7 +21,7 @@ fn canonical_scheme(raw: &str) -> Option<&'static str> {
         "sftp" | "ssh" => Some("sftp"),
         "smb" => Some("smb"),
         "nfs" => Some("nfs"),
-        "ftp" => Some("ftp"),
+        "ftp" | "ftps" => Some("ftp"),
         "dav" | "webdav" => Some("dav"),
         "davs" | "webdavs" => Some("davs"),
         "afp" => Some("afp"),
@@ -414,6 +414,10 @@ mod tests {
         let (scheme, uri) = canonicalize_uri("webdavs://host/share").expect("webdavs should map");
         assert_eq!(scheme, "davs");
         assert_eq!(uri, "davs://host/share");
+
+        let (scheme, uri) = canonicalize_uri("ftps://host/path").expect("ftps should map");
+        assert_eq!(scheme, "ftp");
+        assert_eq!(uri, "ftps://host/path");
     }
 
     #[cfg(not(target_os = "windows"))]
