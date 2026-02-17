@@ -68,8 +68,7 @@ import { toggleStar as toggleStarService } from './services/star'
 import { getBookmarks } from './services/bookmarks'
 import { nameBucket } from './filters/nameFilters'
 import { modifiedBucket, sizeBucket, typeLabel } from './filters/columnBuckets'
-import { toNetworkEntries } from '../network/mounts'
-import { listNetworkDevices } from '../network'
+import { listNetworkEntries } from '../network'
 
 const FILTER_DEBOUNCE_MS = 40
 
@@ -478,14 +477,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     searchRunning.set(false)
     try {
       const mounts = await listMounts()
-      let discovered: Partition[] = []
-      try {
-        discovered = await listNetworkDevices()
-      } catch (err) {
-        console.error('Failed to discover network devices', err)
-      }
       partitions.set(mounts)
-      const networkEntries = toNetworkEntries([...mounts, ...discovered])
+      const networkEntries = await listNetworkEntries()
       current.set('Network')
       entries.set(sortSearchEntries(networkEntries, sortPayload()))
       callbacks.onEntriesChanged?.()
@@ -942,14 +935,13 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       const result = await listMounts()
       partitions.set(result)
       if (get(current) === 'Network') {
-        let discovered: Partition[] = []
         try {
-          discovered = await listNetworkDevices()
+          const networkEntries = await listNetworkEntries()
+          entries.set(sortSearchEntries(networkEntries, sortPayload()))
+          callbacks.onEntriesChanged?.()
         } catch (err) {
-          console.error('Failed to discover network devices', err)
+          console.error('Failed to list network entries', err)
         }
-        entries.set(sortSearchEntries(toNetworkEntries([...result, ...discovered]), sortPayload()))
-        callbacks.onEntriesChanged?.()
       }
       const nextPaths = result.map((p) => normalizePath(p.path))
       const removedMount = lastMountPaths.find((p) => !nextPaths.includes(p))

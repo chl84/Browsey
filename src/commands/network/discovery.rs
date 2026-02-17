@@ -328,7 +328,7 @@ fn dedupe_and_sort(mut list: Vec<MountInfo>) -> Vec<MountInfo> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn list_network_devices_sync() -> Vec<MountInfo> {
+pub(super) fn list_network_devices_sync() -> Vec<MountInfo> {
     static CACHE: OnceCell<Mutex<(Instant, Vec<MountInfo>)>> = OnceCell::new();
     let cache = CACHE.get_or_init(|| Mutex::new((instant_ago(DISCOVERY_CACHE_TTL), Vec::new())));
 
@@ -351,7 +351,7 @@ fn list_network_devices_sync() -> Vec<MountInfo> {
 }
 
 #[cfg(target_os = "windows")]
-fn list_network_devices_sync() -> Vec<MountInfo> {
+pub(super) fn list_network_devices_sync() -> Vec<MountInfo> {
     Vec::new()
 }
 

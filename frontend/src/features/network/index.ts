@@ -1,4 +1,3 @@
-export { isNetworkMount, toNetworkEntries } from './mounts'
 export { copyTextToSystemClipboard } from './clipboard'
 export { buildNetworkEntryContextActions, networkBlankContextActions } from './contextMenu'
 export {
@@ -10,6 +9,7 @@ export {
 } from './uri'
 export {
   listNetworkDevices,
+  listNetworkEntries,
   openNetworkUri,
   classifyNetworkUri,
   resolveMountedPathForUri,
