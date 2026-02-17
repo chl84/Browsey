@@ -9,7 +9,7 @@ import {
   purgeTrashItems,
 } from '../services/trash'
 
-export type CurrentView = 'recent' | 'starred' | 'trash' | 'dir'
+export type CurrentView = 'recent' | 'starred' | 'trash' | 'network' | 'dir'
 
 type Deps = {
   getSelectedPaths: () => string[]

@@ -44,7 +44,8 @@ pub fn context_menu_actions(
     let in_trash = matches!(view.as_deref(), Some("trash"));
     let in_recent = matches!(view.as_deref(), Some("recent"));
     let in_starred = matches!(view.as_deref(), Some("starred"));
-    let allow_new_folder = !in_trash && !in_recent && !in_starred;
+    let in_network = matches!(view.as_deref(), Some("network"));
+    let allow_new_folder = !in_trash && !in_recent && !in_starred && !in_network;
     let single_file = count == 1 && matches!(kind.as_deref(), Some("file"));
     let _ = starred;
 
@@ -82,6 +83,16 @@ pub fn context_menu_actions(
             "delete-permanent",
             "Delete permanently…",
         ));
+        items.push(ContextAction::new("properties", "Properties"));
+        return items;
+    }
+
+    if (count >= 1) && in_network {
+        if count == 1 {
+            items.push(ContextAction::new("copy-path", "Copy path"));
+        }
+        items.push(ContextAction::new("copy", "Copy"));
+        items.push(ContextAction::new("divider-network", "---"));
         items.push(ContextAction::new("properties", "Properties"));
         return items;
     }

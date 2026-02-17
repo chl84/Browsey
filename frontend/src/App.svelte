@@ -267,6 +267,7 @@
     load: loadRaw,
     loadRecent: loadRecentRaw,
     loadStarred: loadStarredRaw,
+    loadNetwork: loadNetworkRaw,
     loadTrash: loadTrashRaw,
     cancelSearch,
     runSearch,
@@ -598,6 +599,8 @@
       ? 'recent'
       : value === 'Starred'
         ? 'starred'
+        : value === 'Network'
+          ? 'network'
         : value.startsWith('Trash')
           ? 'trash'
           : 'dir'
@@ -698,6 +701,16 @@
     }
     captureSelectionSnapshot()
     await loadStarredRaw(recordHistory)
+    restoreSelectionForCurrent()
+    await centerSelectionIfAny()
+  }
+
+  const loadNetwork = async (recordHistory = true, navOpts: { resetScroll?: boolean } = {}) => {
+    if (navOpts.resetScroll ?? true) {
+      resetScrollPosition()
+    }
+    captureSelectionSnapshot()
+    await loadNetworkRaw(recordHistory)
     restoreSelectionForCurrent()
     await centerSelectionIfAny()
   }
@@ -811,6 +824,10 @@
       void loadStarred()
       return
     }
+    if (label === 'Network') {
+      void loadNetwork()
+      return
+    }
     if (label === 'Wastebasket') {
       void loadTrash()
       return
@@ -853,14 +870,7 @@
     clipboardMode = state.mode
     clipboardPaths = state.paths
   }
-  $: currentView =
-    $current === 'Recent'
-      ? 'recent'
-      : $current === 'Starred'
-        ? 'starred'
-        : $current.startsWith('Trash')
-          ? 'trash'
-          : 'dir'
+  $: currentView = viewFromPath($current)
   // Drop stale pending nav if we already are at that path
   $: if (pendingNav && pendingNav.path === get(current)) {
     pendingNav = null
@@ -1307,6 +1317,7 @@
       return true
     },
     onCut: async () => {
+      if (currentView === 'network') return false
       const paths = Array.from($selected)
       const result = await clipboard.cutPaths(paths)
       if (!result.ok) {
@@ -1323,10 +1334,11 @@
       return true
     },
     onPaste: async () => {
-      if (currentView === 'recent' || currentView === 'starred') return false
+      if (currentView !== 'dir') return false
       return pasteIntoCurrent()
     },
     onRename: async () => {
+      if (currentView === 'network') return false
       if ($selected.size !== 1) return false
       const path = Array.from($selected)[0]
       const entry = $entries.find((e) => e.path === path)
@@ -1336,6 +1348,7 @@
       return true
     },
     onDelete: async (permanent) => {
+      if (currentView === 'network') return false
       const selectedPaths = Array.from($selected)
       if (selectedPaths.length === 0) return false
       const selectedPathSet = new Set(selectedPaths)
@@ -1384,6 +1397,7 @@
       return true
     },
     onDeletePermanentFast: async () => {
+      if (currentView === 'network') return false
       const sel = get(selected)
       if (sel.size === 0) return false
       const list = get(filteredEntries).filter((e) => sel.has(e.path))
@@ -1779,8 +1793,8 @@
   }
 
   const pasteIntoCurrent = async () => {
-    if (currentView === 'starred') {
-      showToast('Cannot paste in Starred view')
+    if (currentView !== 'dir') {
+      showToast('Cannot paste here')
       return false
     }
 
@@ -1826,6 +1840,10 @@
     }
     if (currentView === 'starred') {
       await loadStarred(false, { resetScroll: false })
+      return
+    }
+    if (currentView === 'network') {
+      await loadNetwork(false, { resetScroll: false })
       return
     }
     if (currentView === 'trash') {
@@ -2253,8 +2271,13 @@
   const handleOpenEntry = async (entry: Entry) => {
     pendingOpenCandidate = null
     if (entry.kind === 'dir') {
-      await transitionToAddressMode({ path: entry.path, reloadOnDisable: false })
-      await loadDir(entry.path)
+      if (currentView === 'network') {
+        await transitionToAddressMode({ path: entry.path, reloadOnDisable: false })
+        await openPartition(entry.path)
+      } else {
+        await transitionToAddressMode({ path: entry.path, reloadOnDisable: false })
+        await loadDir(entry.path)
+      }
       return
     }
     if (isExtractableArchive(entry)) {
@@ -2652,6 +2675,10 @@
     showToast('Drop to paste into this folder', 1500)
   }
   const handleRowDragStart = (entry: Entry, event: DragEvent) => {
+    if (currentView === 'network') {
+      event.preventDefault()
+      return
+    }
     const selectedPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
     const nativeCopy = event.ctrlKey || event.metaKey
     if (event.altKey) {
