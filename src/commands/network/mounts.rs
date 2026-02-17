@@ -7,7 +7,7 @@ use tauri::Emitter;
 
 #[cfg(not(target_os = "windows"))]
 use {
-    super::gvfs,
+    super::{discovery, gvfs},
     dirs_next,
     std::fs,
     std::process::{Command, Stdio},
@@ -106,6 +106,11 @@ fn mount_path_is_under(path: &str, root: &str) -> bool {
             .strip_prefix(root)
             .map(|rest| rest.starts_with('/'))
             .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn invalidate_network_discovery_cache() {
+    discovery::invalidate_network_devices_cache();
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -270,12 +275,14 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
     // Prefer gio (GVFS) if available; it handles user mounts.
     match command_output("gio", &["mount", "-u", &path]) {
         Ok(_) => {
+            invalidate_network_discovery_cache();
             power_off_device(device);
             return Ok(());
         }
         Err(e) => {
             // Ignore noisy gvfsd-fuse lookup errors on unmount.
             if e.message.contains("gvfsd-fuse") {
+                invalidate_network_discovery_cache();
                 power_off_device(device);
                 return Ok(());
             }
@@ -288,6 +295,7 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
     if is_onedrive {
         match command_output("gio", &["mount", "--unmount-scheme=onedrive"]) {
             Ok(_) => {
+                invalidate_network_discovery_cache();
                 power_off_device(device);
                 return Ok(());
             }
@@ -304,6 +312,7 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
     // Fallback: plain umount.
     match command_output("umount", &[&path]) {
         Ok(_) => {
+            invalidate_network_discovery_cache();
             power_off_device(device);
             return Ok(());
         }
@@ -317,6 +326,7 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
     if let Some(dev) = device.clone() {
         match command_output("udisksctl", &["unmount", "-b", &dev]) {
             Ok(_) => {
+                invalidate_network_discovery_cache();
                 power_off_device(Some(dev));
                 return Ok(());
             }
@@ -332,6 +342,7 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
     // Optional lazy unmount if we only saw busy errors
     if busy_detected {
         if let Ok(_) = command_output("umount", &["-l", &path]) {
+            invalidate_network_discovery_cache();
             power_off_device(device);
             return Ok(());
         }
@@ -386,6 +397,7 @@ pub async fn mount_partition(path: String, app: tauri::AppHandle) -> Result<(), 
             }),
         );
         if ok {
+            invalidate_network_discovery_cache();
             Ok(())
         } else {
             Err(format!("Failed to mount {fs_kind}"))

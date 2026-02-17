@@ -18,8 +18,8 @@ export type ConnectNetworkUriResult = {
 export const listNetworkDevices = () =>
   invoke<Partition[]>('list_network_devices')
 
-export const listNetworkEntries = () =>
-  invoke<Entry[]>('list_network_entries')
+export const listNetworkEntries = (forceRefresh = false) =>
+  invoke<Entry[]>('list_network_entries', { force_refresh: forceRefresh })
 
 export const openNetworkUri = (uri: string) =>
   invoke<void>('open_network_uri', { uri })

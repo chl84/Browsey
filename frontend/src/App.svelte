@@ -718,12 +718,15 @@
     await centerSelectionIfAny()
   }
 
-  const loadNetwork = async (recordHistory = true, navOpts: { resetScroll?: boolean } = {}) => {
+  const loadNetwork = async (
+    recordHistory = true,
+    navOpts: { resetScroll?: boolean; forceRefresh?: boolean } = {},
+  ) => {
     if (navOpts.resetScroll ?? true) {
       resetScrollPosition()
     }
     captureSelectionSnapshot()
-    await loadNetworkRaw(recordHistory)
+    await loadNetworkRaw(recordHistory, { forceRefresh: navOpts.forceRefresh === true })
     restoreSelectionForCurrent()
     await centerSelectionIfAny()
   }
@@ -817,7 +820,7 @@
           return
         }
         if (result.kind === 'mountable') {
-          await loadPartitions()
+          await loadPartitions({ forceNetworkRefresh: true })
           if (result.mountedPath) {
             await loadDirIfIdle(result.mountedPath)
           } else {
@@ -844,7 +847,7 @@
       return
     }
     if (label === 'Network') {
-      void loadNetwork()
+      void loadNetwork(true, { forceRefresh: true })
       return
     }
     if (label === 'Wastebasket') {
@@ -1868,7 +1871,7 @@
       return
     }
     if (currentView === 'network') {
-      await loadNetwork(false, { resetScroll: false })
+      await loadNetwork(false, { resetScroll: false, forceRefresh: true })
       return
     }
     if (currentView === 'trash') {
@@ -2606,7 +2609,7 @@
     if (id === 'refresh-network') {
       closeBlankContextMenu()
       if (currentView === 'network') {
-        await loadNetwork(false, { resetScroll: false })
+        await loadNetwork(false, { resetScroll: false, forceRefresh: true })
       }
       return
     }
@@ -2654,9 +2657,9 @@
     if (entry && id === 'disconnect-network') {
       try {
         await ejectDrive(entry.path)
-        await loadPartitions()
+        await loadPartitions({ forceNetworkRefresh: true })
         if (currentView === 'network') {
-          await loadNetwork(false, { resetScroll: false })
+          await loadNetwork(false, { resetScroll: false, forceRefresh: true })
         }
         showToast('Disconnected')
       } catch (err) {
@@ -3062,7 +3065,7 @@
         list.filter((p) => p.path.trim().toUpperCase() !== path.trim().toUpperCase())
       )
       showToast(`Ejected ${path}`)
-      await loadPartitions()
+      await loadPartitions({ forceNetworkRefresh: true })
     } catch (err) {
       showToast(`Eject failed: ${err instanceof Error ? err.message : String(err)}`)
     }
