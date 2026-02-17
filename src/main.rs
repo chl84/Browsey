@@ -200,6 +200,7 @@ fn main() {
             list_facets,
             list_mounts,
             list_network_devices,
+            list_network_entries,
             get_bookmarks,
             add_bookmark,
             remove_bookmark,
