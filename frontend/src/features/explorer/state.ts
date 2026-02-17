@@ -97,6 +97,69 @@ const withNameLower = (entry: Entry): Entry => ({
 
 const mapNameLower = (list: Entry[]) => list.map(withNameLower)
 
+const NETWORK_FS = new Set([
+  'mtp',
+  'onedrive',
+  'cifs',
+  'smb3',
+  'smbfs',
+  'nfs',
+  'nfs4',
+  'sshfs',
+  'fuse.sshfs',
+  'davfs2',
+  'afpfs',
+  'ftpfs',
+  'curlftpfs',
+])
+
+const isNetworkMount = (mount: Partition): boolean => {
+  const path = mount.path.trim()
+  if (!path) return false
+  const pathLc = path.toLowerCase()
+  const fsLc = (mount.fs ?? '').toLowerCase()
+
+  if (pathLc.startsWith('onedrive://')) return true
+  if (pathLc.includes('/gvfs/') || pathLc.includes('\\gvfs\\')) return true
+  if (NETWORK_FS.has(fsLc)) return true
+  return false
+}
+
+const toNetworkEntries = (mounts: Partition[]): Entry[] => {
+  const onedriveMounted = mounts.some((mount) => {
+    const fsLc = (mount.fs ?? '').toLowerCase()
+    const pathLc = mount.path.trim().toLowerCase()
+    return fsLc === 'onedrive' && !pathLc.startsWith('onedrive://')
+  })
+
+  const deduped = new Map<string, Partition>()
+  for (const mount of mounts) {
+    if (!isNetworkMount(mount)) continue
+    const rawPath = mount.path.trim()
+    const rawPathLc = rawPath.toLowerCase()
+    if (onedriveMounted && rawPathLc.startsWith('onedrive://')) {
+      continue
+    }
+    const normalized = normalizePath(rawPath)
+    const key = normalized || mount.path.trim()
+    if (!key) continue
+    if (rawPath.includes('://') && !rawPathLc.startsWith('onedrive://')) {
+      continue
+    }
+    if (!deduped.has(key)) {
+      deduped.set(key, mount)
+    }
+  }
+
+  return Array.from(deduped.values()).map((mount) => ({
+    name: mount.label?.trim() || mount.path,
+    path: mount.path,
+    kind: 'dir',
+    iconId: 10,
+    network: true,
+  }))
+}
+
 const defaultColumns: Column[] = [
   { key: 'name', label: 'Name', sort: 'name', width: 320, min: 220, align: 'left' },
   { key: 'type', label: 'Type', sort: 'type', width: 120, min: 80 },
@@ -217,6 +280,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const currentFacetScope = (where: string): { scope: FacetScope; path?: string } | null => {
     if (where === 'Recent') return { scope: 'recent' }
     if (where === 'Starred') return { scope: 'starred' }
+    if (where === 'Network') return null
     if (where === 'Trash') return { scope: 'trash' }
     if (where.trim().length === 0) return null
     return { scope: 'dir', path: where }
@@ -467,6 +531,30 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const loadNetwork = async (recordHistory = true) => {
+    loading.set(true)
+    clearFacetCache()
+    error.set('')
+    invalidateSearchRun()
+    searchRunning.set(false)
+    try {
+      const mounts = await listMounts()
+      partitions.set(mounts)
+      const networkEntries = toNetworkEntries(mounts)
+      current.set('Network')
+      entries.set(sortSearchEntries(networkEntries, sortPayload()))
+      callbacks.onEntriesChanged?.()
+      callbacks.onCurrentChange?.('Network')
+      if (recordHistory) {
+        pushHistory({ type: 'network' })
+      }
+    } catch (err) {
+      error.set(err instanceof Error ? err.message : String(err))
+    } finally {
+      loading.set(false)
+    }
+  }
+
   const loadTrash = async (recordHistory = true) => {
     loading.set(true)
     clearFacetCache()
@@ -499,6 +587,9 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         break
       case 'starred':
         await loadStarred(recordHistory)
+        break
+      case 'network':
+        await loadNetwork(recordHistory)
         break
       case 'trash':
         await loadTrash(recordHistory)
@@ -609,6 +700,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       await loadRecent(false, true)
     } else if (where === 'Starred') {
       await loadStarred(false)
+    } else if (where === 'Network') {
+      await loadNetwork(false)
     } else if (where === 'Trash') {
       await loadTrash(false)
     } else {
@@ -700,6 +793,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
     if (label === 'Starred') {
       void loadStarred()
+      return
+    }
+    if (label === 'Network') {
+      void loadNetwork()
       return
     }
     if (label === 'Wastebasket') {
@@ -884,6 +981,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         await loadRecent(false)
       } else if (curr === 'Starred') {
         await loadStarred(false)
+      } else if (curr === 'Network') {
+        await loadNetwork(false)
       } else if (curr.startsWith('Trash')) {
         await loadTrash(false)
       } else {
@@ -897,6 +996,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     try {
       const result = await listMounts()
       partitions.set(result)
+      if (get(current) === 'Network') {
+        entries.set(sortSearchEntries(toNetworkEntries(result), sortPayload()))
+        callbacks.onEntriesChanged?.()
+      }
       const nextPaths = result.map((p) => normalizePath(p.path))
       const removedMount = lastMountPaths.find((p) => !nextPaths.includes(p))
       lastMountPaths = nextPaths
@@ -1238,6 +1341,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     mountsPollMs,
     loadRecent,
     loadStarred,
+    loadNetwork,
     loadTrash,
     cancelSearch,
     runSearch,

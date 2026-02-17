@@ -46,6 +46,7 @@ export type Location =
   | { type: 'dir'; path: string }
   | { type: 'recent' }
   | { type: 'starred' }
+  | { type: 'network' }
   | { type: 'trash' }
 
 export type Partition = {

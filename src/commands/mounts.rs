@@ -93,6 +93,22 @@ fn power_off_device(device: Option<String>) {
 }
 
 #[cfg(not(target_os = "windows"))]
+fn same_mount_path(a: &str, b: &str) -> bool {
+    a.trim_end_matches('/') == b.trim_end_matches('/')
+}
+
+#[cfg(not(target_os = "windows"))]
+fn mount_path_is_under(path: &str, root: &str) -> bool {
+    let path = path.trim_end_matches('/');
+    let root = root.trim_end_matches('/');
+    path == root
+        || path
+            .strip_prefix(root)
+            .map(|rest| rest.starts_with('/'))
+            .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "windows"))]
 fn linux_mounts() -> Vec<MountInfo> {
     let mut mounts = Vec::new();
     let gvfs_root = dirs_next::runtime_dir().map(|p| p.join("gvfs"));
@@ -142,8 +158,18 @@ fn linux_mounts() -> Vec<MountInfo> {
             let in_gvfs = gvfs_root
                 .as_ref()
                 .and_then(|p| p.to_str())
-                .map(|p| target.starts_with(p))
+                .map(|p| mount_path_is_under(&target, p))
                 .unwrap_or(false);
+            let is_gvfs_root = gvfs_root
+                .as_ref()
+                .and_then(|p| p.to_str())
+                .map(|p| same_mount_path(&target, p))
+                .unwrap_or(false);
+
+            // Keep GVFS endpoints (MTP/OneDrive), but hide the generic gvfs root mount from Partitions.
+            if is_gvfs_root {
+                continue;
+            }
 
             if target.starts_with("/proc")
                 || target.starts_with("/sys")
