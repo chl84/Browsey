@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- No changes yet.
+
+## v0.4.4 — 2026-02-17
 - Destructive move hardening: removed Linux check-then-rename compatibility fallback when `renameat2(RENAME_NOREPLACE)` is unavailable; operations now use a controlled non-overwrite copy+delete fallback with explicit narrower (non-atomic) guarantees.
 - Windows/portable destructive-op hardening: Windows rename path now uses the native move API with explicit destination-exists mapping, and non-Linux recursive delete now validates no-follow metadata recursively instead of calling raw `remove_dir_all`.
 - Archive extraction hardening: Linux extraction now uses descriptor-based no-follow directory/file primitives across tar/zip/7z/rar and single-file decompress paths to reduce symlink and path-race exposure.

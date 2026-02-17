@@ -619,6 +619,11 @@ capabilities/default.json`,
       {
         id: 'unreleased',
         title: 'Unreleased',
+        bullets: ['No changes yet.'],
+      },
+      {
+        id: 'v044',
+        title: 'v0.4.4 (2026-02-17)',
         bullets: [
           'Archive extraction write paths on Linux now use descriptor-based no-follow directory/file primitives to reduce symlink and path-race exposure',
           'Extraction byte limits are now disk-aware (min(100 GB, available space minus 1 GiB reserve)) with periodic runtime free-space checks',
