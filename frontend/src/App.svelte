@@ -50,9 +50,12 @@
   import { createTextContextMenu } from './features/explorer/hooks/useTextContextMenu'
   import { createViewObservers } from './features/explorer/hooks/useViewObservers'
   import {
+    buildNetworkEntryContextActions,
+    copyTextToSystemClipboard,
     isExternallyOpenableUri,
     isMountUri,
     isMountableUri,
+    networkBlankContextActions,
     openNetworkUri,
     resolveMountedPathForUri,
   } from './features/network'
@@ -1801,6 +1804,12 @@
       if (!allExtractable) {
         actions = actions.filter((a) => a.id !== 'extract')
       }
+      if (currentView === 'network') {
+        const networkActions = buildNetworkEntryContextActions(entry.path, selectionCount)
+        if (networkActions) {
+          actions = networkActions
+        }
+      }
       const inSearch = isSearchSessionEnabled
       if (inSearch && selectionCount === 1 && !actions.some((a) => a.id === 'open-location')) {
         actions.splice(1, 0, { id: 'open-location', label: 'Open item location' })
@@ -2566,6 +2575,13 @@
   const handleBlankContextMenu = (event: MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
+    if (currentView === 'network') {
+      selected.set(new Set())
+      anchorIndex.set(null)
+      caretIndex.set(null)
+      openBlankContextMenu(networkBlankContextActions(), event.clientX, event.clientY)
+      return
+    }
     if (currentView !== 'dir') {
       selected.set(new Set())
       anchorIndex.set(null)
@@ -2593,6 +2609,13 @@
   }
 
   const handleBlankContextAction = async (id: string) => {
+    if (id === 'refresh-network') {
+      closeBlankContextMenu()
+      if (currentView === 'network') {
+        await loadNetwork(false, { resetScroll: false })
+      }
+      return
+    }
     if (currentView !== 'dir') return
     closeBlankContextMenu()
     if (id === 'new-folder') {
@@ -2619,6 +2642,34 @@
   const handleContextSelect = async (id: string) => {
     const entry = $contextMenu.entry
     closeContextMenu()
+    if (entry && id === 'copy-network-address') {
+      const selectedPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
+      const payload = selectedPaths.filter((path) => isMountUri(path)).join('\n')
+      const result = await copyTextToSystemClipboard(payload || entry.path)
+      if (result.ok) {
+        showToast(selectedPaths.length > 1 ? 'Server addresses copied' : 'Server address copied', 1500)
+      } else {
+        showToast(`Copy failed: ${result.error}`)
+      }
+      return
+    }
+    if (entry && id === 'open-network-target') {
+      await openPartition(entry.path)
+      return
+    }
+    if (entry && id === 'disconnect-network') {
+      try {
+        await ejectDrive(entry.path)
+        await loadPartitions()
+        if (currentView === 'network') {
+          await loadNetwork(false, { resetScroll: false })
+        }
+        showToast('Disconnected')
+      } catch (err) {
+        showToast(`Disconnect failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      return
+    }
     if (id === 'new-folder') {
       if (currentView !== 'dir') {
         showToast('Cannot create folder here')
