@@ -381,11 +381,11 @@ pub fn mount_uri(uri: &str) -> bool {
     let mut cmd = Command::new("gio");
     cmd.arg("mount")
         .arg(uri)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
-    match cmd.status() {
-        Ok(status) if status.success() => {
+    match cmd.output() {
+        Ok(output) if output.status.success() => {
             if wait_for_mount_visibility(uri, &prefix, &before_entries, Duration::from_secs(5)) {
                 return true;
             }
@@ -423,8 +423,17 @@ pub fn mount_uri(uri: &str) -> bool {
             }
             false
         }
-        Ok(status) => {
-            debug_log(&format!("mount_uri: gio mount {uri} failed: {status:?}"));
+        Ok(output) => {
+            // Some backends return non-zero when URI is already mounted.
+            if wait_for_mount_visibility(uri, &prefix, &before_entries, Duration::from_secs(1)) {
+                return true;
+            }
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            debug_log(&format!(
+                "mount_uri: gio mount {uri} failed: status {:?}, stderr='{}', stdout='{}'",
+                output.status, stderr, stdout
+            ));
             false
         }
         Err(e) => {
