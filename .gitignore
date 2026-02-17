@@ -27,7 +27,6 @@
 frontend/.env
 frontend/.env.local
 frontend/.env.*.local
-tauri.conf.json
 
 # Logs / misc
 .tmp/
