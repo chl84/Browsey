@@ -55,6 +55,16 @@ const withTrashOriginalPath = (
 const isTrashEntry = (entry: Entry): boolean =>
   typeof entry.trash_id === 'string' && entry.trash_id.trim().length > 0
 
+const isUriPath = (path: string): boolean => {
+  const trimmed = path.trim()
+  const idx = trimmed.indexOf('://')
+  if (idx <= 0) return false
+  const scheme = trimmed.slice(0, idx)
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*$/.test(scheme)
+}
+
+const isVirtualUriEntry = (entry: Entry): boolean => isUriPath(entry.path)
+
 const shouldLockMutations = (entries: Entry[]): boolean =>
   entries.length > 0 && entries.every(isTrashEntry)
 
@@ -106,6 +116,19 @@ const unsupportedPermissionsPayload = (): PermissionPayload => ({
   executable: null,
   owner_name: null,
   group_name: null,
+})
+
+const unsupportedPermissionsState = (): PermissionsState => ({
+  accessSupported: false,
+  executableSupported: false,
+  ownershipSupported: false,
+  readOnly: null,
+  executable: null,
+  ownerName: null,
+  groupName: null,
+  owner: null,
+  group: null,
+  other: null,
 })
 
 const normalizePrincipalList = (values: unknown): string[] => {
@@ -237,6 +260,8 @@ export const createPropertiesModal = (deps: Deps) => {
     ownershipPrincipalsLoadedToken = -1
     const files = entries.filter((e) => e.kind === 'file')
     const dirs = entries.filter((e) => e.kind === 'dir')
+    const localDirs = dirs.filter((e) => !isVirtualUriEntry(e))
+    const singleVirtualUri = entries.length === 1 && isVirtualUriEntry(entries[0])
     const fileBytes = files.reduce((sum, f) => sum + (f.size ?? 0), 0)
     const fileCount = files.length
 
@@ -253,8 +278,8 @@ export const createPropertiesModal = (deps: Deps) => {
       extraMetadataError: null,
       extraMetadata: null,
       extraMetadataPath: null,
-      permissionsLoading: true,
-      permissions: null,
+      permissionsLoading: !singleVirtualUri,
+      permissions: singleVirtualUri ? unsupportedPermissionsState() : null,
       ownershipUsers: [],
       ownershipGroups: [],
       ownershipOptionsLoading: false,
@@ -265,15 +290,17 @@ export const createPropertiesModal = (deps: Deps) => {
 
     if (entries.length === 1) {
       const entry = entries[0]
-      void loadPermissions(entry, nextToken)
-      void loadEntryTimes(entry, nextToken)
+      if (!singleVirtualUri) {
+        void loadPermissions(entry, nextToken)
+        void loadEntryTimes(entry, nextToken)
+      }
     } else {
       void loadPermissionsMulti(entries, nextToken)
     }
 
-    if (dirs.length > 0) {
+    if (localDirs.length > 0) {
       const { total, items } = await computeDirStats(
-        dirs.map((d) => d.path),
+        localDirs.map((d) => d.path),
         (partialBytes) => {
           if (nextToken === token) {
             state.update((s) => ({ ...s, size: fileBytes + partialBytes }))
@@ -283,7 +310,7 @@ export const createPropertiesModal = (deps: Deps) => {
       if (nextToken === token) {
         state.update((s) => ({ ...s, size: fileBytes + total, itemCount: fileCount + items }))
       }
-    } else {
+    } else if (dirs.length === 0) {
       state.update((s) => ({ ...s, itemCount: fileCount }))
     }
   }
@@ -360,6 +387,10 @@ export const createPropertiesModal = (deps: Deps) => {
           return
         }
         const e = entries[idx]
+        if (isVirtualUriEntry(e)) {
+          results[idx] = unsupportedPermissionsPayload()
+          continue
+        }
         try {
           results[idx] = await invoke<PermissionPayload>('get_permissions', { path: e.path })
         } catch (err) {
