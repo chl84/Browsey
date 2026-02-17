@@ -31,6 +31,16 @@
 - Error readability: long error messages now wrap in modal error pills, properties ownership errors, and notice banners.
 - Frontend ownership flow now suppresses expected warning-noise in dev logs (for example auth dismissal or unknown user/group validation errors).
 - App logs now use local timestamps with timezone offset (for example `+01:00`) instead of UTC `Z` formatting.
+- Network layer was split into dedicated backend/frontend modules (`src/commands/network/*`, `frontend/src/features/network/*`) and wired into the `Network` view lifecycle.
+- Network discovery now aggregates GVFS (`gio mount -li`), Avahi/mDNS, and SSDP sources to surface broader SFTP/SMB/NFS/FTP/WebDAV/AFP/HTTP/HTTPS endpoints.
+- Address bar + URI handling now supports broader server-address aliases (`ssh`→`sftp`, `webdav`/`webdavs`→`dav`/`davs`, `ftps` accepted as FTP-family alias for normalization/matching).
+- Mount UX now reports explicit outcomes (`Connecting`, `Already connected`, `Connected`, `Failed`) from backend to frontend activity labels.
+- GVFS mount visibility checks were hardened with retries and stricter mounted-URI validation; OneDrive mountables no longer false-positive as already connected.
+- Linux partitions now hide the generic GVFS root mount while still surfacing concrete GVFS endpoints (for example active OneDrive/MTP mounts).
+- Network context menu is now URI-aware: mountable URIs show `Connect`/`Copy Server Address`, HTTP(S) URIs show `Open in Browser`, mounted paths keep `Open`/`Disconnect`.
+- Properties modal now supports virtual network URIs in the Extra tab by showing parsed URI fields (address/protocol/user/host/port/path/query/fragment) without failing filesystem metadata probes.
+- OneDrive entries in `Network` are now account-deduplicated during mount/eject transition windows to avoid temporary duplicate rows.
+- Column-filter UX was refined: facet staleness/parity issues were fixed, active filter indicators were improved for both list and grid modes, and grid now shows an explicit active-filter notice when headers are hidden.
 
 ## v0.4.3 — 2026-02-13
 - Added a topbar main action menu (hamburger) with wired actions for Settings, Keyboard Shortcuts, Search, view-mode toggle (List/Grid), hidden-files toggle, Refresh, and About.
