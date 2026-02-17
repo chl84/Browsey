@@ -49,7 +49,13 @@
   import { createTopbarActions } from './features/explorer/hooks/useTopbarActions'
   import { createTextContextMenu } from './features/explorer/hooks/useTextContextMenu'
   import { createViewObservers } from './features/explorer/hooks/useViewObservers'
-  import { isMountUri, resolveMountedPathForUri } from './features/network'
+  import {
+    isExternallyOpenableUri,
+    isMountUri,
+    isMountableUri,
+    openNetworkUri,
+    resolveMountedPathForUri,
+  } from './features/network'
   import { loadShortcuts, setShortcutBinding } from './features/shortcuts/service'
   import {
     DEFAULT_SHORTCUTS,
@@ -793,6 +799,18 @@
 
   const openPartition = async (path: string) => {
     if (isMountUri(path)) {
+      if (isExternallyOpenableUri(path)) {
+        try {
+          await openNetworkUri(path)
+        } catch (err) {
+          showToast(`Open failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        return
+      }
+      if (!isMountableUri(path)) {
+        showToast('Unsupported network protocol')
+        return
+      }
       try {
         if (get(loading)) return
         await mountPartition(path)

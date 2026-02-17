@@ -1,14 +1,16 @@
 import type { Entry, Partition } from '../explorer/types'
 import { normalizePath } from '../explorer/utils'
-import { uriScheme } from './uri'
+import { isKnownNetworkUriScheme, uriScheme } from './uri'
 
 const NETWORK_FS = new Set([
   'mtp',
   'onedrive',
   'sftp',
+  'ssh',
   'cifs',
   'smb3',
   'smbfs',
+  'smb',
   'nfs',
   'nfs4',
   'sshfs',
@@ -16,10 +18,12 @@ const NETWORK_FS = new Set([
   'davfs2',
   'afpfs',
   'ftpfs',
+  'ftp',
+  'dav',
+  'davs',
   'curlftpfs',
+  'afp',
 ])
-
-const NETWORK_URI_SCHEMES = new Set(['onedrive', 'sftp'])
 
 export const isNetworkMount = (mount: Partition): boolean => {
   const path = mount.path.trim()
@@ -27,7 +31,7 @@ export const isNetworkMount = (mount: Partition): boolean => {
   const fsLc = (mount.fs ?? '').toLowerCase()
   const scheme = uriScheme(path)
 
-  if (scheme && NETWORK_URI_SCHEMES.has(scheme)) return true
+  if (isKnownNetworkUriScheme(scheme)) return true
   const pathLc = path.toLowerCase()
   if (pathLc.includes('/gvfs/') || pathLc.includes('\\gvfs\\')) return true
   if (NETWORK_FS.has(fsLc)) return true
@@ -50,7 +54,7 @@ export const toNetworkEntries = (mounts: Partition[]): Entry[] => {
     if (onedriveMounted && rawPathLc.startsWith('onedrive://')) {
       continue
     }
-    if (scheme && !NETWORK_URI_SCHEMES.has(scheme)) {
+    if (scheme && !isKnownNetworkUriScheme(scheme)) {
       continue
     }
     const normalized = normalizePath(rawPath)
