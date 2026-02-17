@@ -211,7 +211,7 @@ fn linux_mounts() -> Vec<MountInfo> {
 }
 
 #[cfg(target_os = "windows")]
-fn list_mounts_sync() -> Vec<MountInfo> {
+pub(super) fn list_mounts_sync() -> Vec<MountInfo> {
     fs_windows::list_windows_mounts()
 }
 
@@ -231,7 +231,7 @@ pub async fn list_mounts() -> Result<Vec<MountInfo>, String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn list_mounts_sync() -> Vec<MountInfo> {
+pub(super) fn list_mounts_sync() -> Vec<MountInfo> {
     linux_mounts()
 }
 

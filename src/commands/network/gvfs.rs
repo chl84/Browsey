@@ -3,6 +3,8 @@
 #[cfg(not(target_os = "windows"))]
 use super::sftp;
 #[cfg(not(target_os = "windows"))]
+use super::uri::{canonical_scheme_or_raw, normalize_uri_for_compare};
+#[cfg(not(target_os = "windows"))]
 use crate::commands::fs::MountInfo;
 #[cfg(not(target_os = "windows"))]
 use crate::fs_utils::debug_log;
@@ -139,17 +141,6 @@ fn has_mount_prefix(prefix: &str) -> bool {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn canonical_scheme(raw: &str) -> String {
-    match raw.to_ascii_lowercase().as_str() {
-        "ssh" => "sftp".to_string(),
-        "ftps" => "ftp".to_string(),
-        "webdav" => "dav".to_string(),
-        "webdavs" => "davs".to_string(),
-        other => other.to_string(),
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
 fn canonical_gvfs_fs(prefix: &str) -> Option<(&'static str, bool)> {
     match prefix.to_ascii_lowercase().as_str() {
         "mtp" => Some(("mtp", true)),
@@ -163,83 +154,6 @@ fn canonical_gvfs_fs(prefix: &str) -> Option<(&'static str, bool)> {
         "afp" | "afpfs" | "afp-volume" => Some(("afp", true)),
         _ => None,
     }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn normalize_authority_for_compare(authority: &str) -> Option<String> {
-    let authority = authority.trim();
-    if authority.is_empty() {
-        return None;
-    }
-
-    let (userinfo, host_port) = match authority.rsplit_once('@') {
-        Some((user, host)) if !host.trim().is_empty() => (Some(user.trim()), host.trim()),
-        _ => (None, authority),
-    };
-
-    let host_port_normalized = if host_port.starts_with('[') {
-        let end = host_port.find(']')?;
-        let host = host_port[1..end].trim();
-        if host.is_empty() {
-            return None;
-        }
-        let rest = host_port[(end + 1)..].trim();
-        let host_lc = host.to_ascii_lowercase();
-        if rest.is_empty() {
-            format!("[{host_lc}]")
-        } else if let Some(port) = rest.strip_prefix(':') {
-            let port = port.trim();
-            if port.is_empty() {
-                return None;
-            }
-            format!("[{host_lc}]:{port}")
-        } else {
-            return None;
-        }
-    } else if host_port.matches(':').count() > 1 {
-        let host = host_port.trim();
-        if host.is_empty() {
-            return None;
-        }
-        host.to_ascii_lowercase()
-    } else {
-        let (host, port) = match host_port.split_once(':') {
-            Some((host, port)) => (host.trim(), Some(port.trim())),
-            None => (host_port.trim(), None),
-        };
-        if host.is_empty() {
-            return None;
-        }
-        let host_lc = host.to_ascii_lowercase();
-        match port {
-            Some(p) if !p.is_empty() => format!("{host_lc}:{p}"),
-            Some(_) => return None,
-            None => host_lc,
-        }
-    };
-
-    Some(match userinfo {
-        Some(user) if !user.is_empty() => format!("{user}@{host_port_normalized}"),
-        _ => host_port_normalized,
-    })
-}
-
-#[cfg(not(target_os = "windows"))]
-fn normalize_uri_for_compare(uri: &str) -> Option<String> {
-    let trimmed = uri.trim();
-    let (raw_scheme, rest) = trimmed.split_once("://")?;
-    let scheme = canonical_scheme(raw_scheme);
-
-    let (authority_raw, path_raw) = match rest.split_once('/') {
-        Some((authority, path)) => (authority, format!("/{path}")),
-        None => (rest, String::new()),
-    };
-    let authority = normalize_authority_for_compare(authority_raw)?;
-    let mut normalized = format!("{scheme}://{authority}{path_raw}");
-    while normalized.ends_with('/') {
-        normalized.pop();
-    }
-    Some(normalized)
 }
 
 #[cfg(all(not(target_os = "windows"), test))]
@@ -453,7 +367,7 @@ fn list_onedrive_mountables() -> Option<Vec<(String, String)>> {
 pub fn mount_uri_status(uri: &str) -> MountUriStatus {
     ensure_gvfsd_fuse_running();
     let raw_prefix = uri.split(':').next().unwrap_or_default();
-    let prefix = canonical_scheme(raw_prefix);
+    let prefix = canonical_scheme_or_raw(raw_prefix);
     let before_entries = list_gvfs_entry_names();
     let before_uri_visible = uri_visible_in_gio(uri);
 

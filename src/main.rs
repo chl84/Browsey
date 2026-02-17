@@ -261,6 +261,8 @@ fn main() {
             eject_drive,
             mount_partition,
             open_network_uri,
+            classify_network_uri,
+            resolve_mounted_path_for_uri,
             context_menu_actions,
             rename_entry,
             rename_entries,

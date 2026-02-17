@@ -9,39 +9,12 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use url::Url;
 
+use super::uri::canonicalize_uri;
+
 const DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(20);
 
 fn instant_ago(d: Duration) -> Instant {
     Instant::now().checked_sub(d).unwrap_or_else(Instant::now)
-}
-
-fn canonical_scheme(raw: &str) -> Option<&'static str> {
-    match raw.to_ascii_lowercase().as_str() {
-        "onedrive" => Some("onedrive"),
-        "sftp" | "ssh" => Some("sftp"),
-        "smb" => Some("smb"),
-        "nfs" => Some("nfs"),
-        "ftp" | "ftps" => Some("ftp"),
-        "dav" | "webdav" => Some("dav"),
-        "davs" | "webdavs" => Some("davs"),
-        "afp" => Some("afp"),
-        "http" => Some("http"),
-        "https" => Some("https"),
-        _ => None,
-    }
-}
-
-fn canonicalize_uri(uri: &str) -> Option<(String, String)> {
-    let trimmed = uri.trim();
-    let (raw_scheme, rest) = trimmed.split_once("://")?;
-    let scheme = canonical_scheme(raw_scheme)?.to_string();
-    let normalized = match raw_scheme.to_ascii_lowercase().as_str() {
-        "ssh" => format!("sftp://{rest}"),
-        "webdav" => format!("dav://{rest}"),
-        "webdavs" => format!("davs://{rest}"),
-        _ => trimmed.to_string(),
-    };
-    Some((scheme, normalized))
 }
 
 fn scheme_label(scheme: &str) -> &'static str {
