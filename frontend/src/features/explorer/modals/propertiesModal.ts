@@ -93,156 +93,6 @@ const isUriPath = (path: string): boolean => {
 
 const isVirtualUriEntry = (entry: Entry): boolean => isUriPath(entry.path)
 
-const safeDecode = (value: string): string => {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
-}
-
-type ParsedUri = {
-  protocol: string
-  user: string | null
-  host: string | null
-  port: string | null
-  path: string | null
-  query: string | null
-  fragment: string | null
-}
-
-const parseUriForExtra = (value: string): ParsedUri | null => {
-  const trimmed = value.trim()
-  const idx = trimmed.indexOf('://')
-  if (idx <= 0) return null
-  const protocol = trimmed.slice(0, idx).toLowerCase()
-  const rest = trimmed.slice(idx + 3)
-
-  const splitAt = rest.search(/[/?#]/)
-  const authority = (splitAt >= 0 ? rest.slice(0, splitAt) : rest).trim()
-  let tail = splitAt >= 0 ? rest.slice(splitAt) : ''
-
-  let fragment: string | null = null
-  const hashIdx = tail.indexOf('#')
-  if (hashIdx >= 0) {
-    fragment = safeDecode(tail.slice(hashIdx + 1).trim()) || null
-    tail = tail.slice(0, hashIdx)
-  }
-
-  let query: string | null = null
-  const queryIdx = tail.indexOf('?')
-  if (queryIdx >= 0) {
-    query = safeDecode(tail.slice(queryIdx + 1).trim()) || null
-    tail = tail.slice(0, queryIdx)
-  }
-
-  const path = safeDecode(tail.trim()) || null
-  if (protocol === 'onedrive') {
-    return {
-      protocol,
-      user: null,
-      host: safeDecode(authority) || null,
-      port: null,
-      path,
-      query,
-      fragment,
-    }
-  }
-
-  let user: string | null = null
-  let hostPort = authority
-  const atIdx = authority.lastIndexOf('@')
-  if (atIdx >= 0) {
-    user = safeDecode(authority.slice(0, atIdx).trim()) || null
-    hostPort = authority.slice(atIdx + 1).trim()
-  }
-
-  let host: string | null = null
-  let port: string | null = null
-  if (hostPort.startsWith('[')) {
-    const end = hostPort.indexOf(']')
-    if (end > 0) {
-      host = safeDecode(hostPort.slice(1, end).trim()) || null
-      const restAfter = hostPort.slice(end + 1).trim()
-      if (restAfter.startsWith(':')) {
-        port = restAfter.slice(1).trim() || null
-      }
-    } else {
-      host = safeDecode(hostPort.trim()) || null
-    }
-  } else if (hostPort.split(':').length === 2) {
-    const [h, p] = hostPort.split(':', 2)
-    host = safeDecode((h ?? '').trim()) || null
-    port = (p ?? '').trim() || null
-  } else {
-    host = safeDecode(hostPort.trim()) || null
-  }
-
-  return {
-    protocol,
-    user,
-    host,
-    port,
-    path,
-    query,
-    fragment,
-  }
-}
-
-const virtualUriExtraMetadata = (entry: Entry): ExtraMetadataPayload => {
-  const parsed = parseUriForExtra(entry.path)
-  if (!parsed) {
-    return {
-      kind: 'network-uri',
-      sections: [
-        {
-          id: 'network-uri',
-          title: 'Network',
-          fields: [{ key: 'address', label: 'Address', value: entry.path }],
-        },
-      ],
-    }
-  }
-
-  const fields: ExtraMetadataField[] = [
-    { key: 'address', label: 'Address', value: entry.path },
-    { key: 'protocol', label: 'Protocol', value: parsed.protocol.toUpperCase() },
-  ]
-  if (parsed.user) {
-    fields.push({ key: 'user', label: 'User', value: parsed.user })
-  }
-  if (parsed.host) {
-    fields.push({
-      key: 'host',
-      label: parsed.protocol === 'onedrive' ? 'Account' : 'Host',
-      value: parsed.host,
-    })
-  }
-  if (parsed.port) {
-    fields.push({ key: 'port', label: 'Port', value: parsed.port })
-  }
-  if (parsed.path) {
-    fields.push({ key: 'path', label: 'Path', value: parsed.path })
-  }
-  if (parsed.query) {
-    fields.push({ key: 'query', label: 'Query', value: parsed.query })
-  }
-  if (parsed.fragment) {
-    fields.push({ key: 'fragment', label: 'Fragment', value: parsed.fragment })
-  }
-
-  return {
-    kind: 'network-uri',
-    sections: [
-      {
-        id: 'network-uri',
-        title: 'Network',
-        fields,
-      },
-    ],
-  }
-}
-
 const shouldLockMutations = (entries: Entry[]): boolean =>
   entries.length > 0 && entries.every(isTrashEntry)
 
@@ -485,8 +335,8 @@ export const createPropertiesModal = (deps: Deps) => {
       hidden: combine(entries.map((e) => e.hidden == true)),
       extraMetadataLoading: false,
       extraMetadataError: null,
-      extraMetadata: singleVirtualUri ? virtualUriExtraMetadata(entries[0]) : null,
-      extraMetadataPath: singleVirtualUri ? entries[0].path : null,
+      extraMetadata: null,
+      extraMetadataPath: null,
       permissionsLoading: !singleVirtualUri,
       permissions: singleVirtualUri ? unsupportedPermissionsState() : null,
       ownershipUsers: [],
@@ -694,17 +544,6 @@ export const createPropertiesModal = (deps: Deps) => {
     if (!current.open || current.count !== 1 || !current.entry) return
     if (current.extraMetadataLoading) return
     if (current.extraMetadata && current.extraMetadataPath === current.entry.path) return
-    if (isVirtualUriEntry(current.entry)) {
-      const virtualEntry = current.entry
-      state.update((s) => ({
-        ...s,
-        extraMetadataLoading: false,
-        extraMetadataError: null,
-        extraMetadata: virtualUriExtraMetadata(virtualEntry),
-        extraMetadataPath: virtualEntry.path,
-      }))
-      return
-    }
     const activeToken = token
     const entry = current.entry
     state.update((s) => ({
