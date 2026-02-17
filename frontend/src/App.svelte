@@ -51,10 +51,9 @@
   import { createViewObservers } from './features/explorer/hooks/useViewObservers'
   import {
     buildNetworkEntryContextActions,
+    classifyNetworkUri,
     copyTextToSystemClipboard,
-    isExternallyOpenableUri,
     isMountUri,
-    isMountableUri,
     networkBlankContextActions,
     openNetworkUri,
     resolveMountedPathForUri,
@@ -813,24 +812,32 @@
 
   const openPartition = async (path: string) => {
     if (isMountUri(path)) {
-      if (isExternallyOpenableUri(path)) {
-        try {
-          await openNetworkUri(path)
-        } catch (err) {
-          showToast(`Open failed: ${err instanceof Error ? err.message : String(err)}`)
+      let normalizedUri = path
+      try {
+        const classified = await classifyNetworkUri(path)
+        normalizedUri = classified.normalizedUri ?? path
+        if (classified.kind === 'external') {
+          try {
+            await openNetworkUri(normalizedUri)
+          } catch (err) {
+            showToast(`Open failed: ${err instanceof Error ? err.message : String(err)}`)
+          }
+          return
         }
+        if (classified.kind !== 'mountable') {
+          showToast('Unsupported network protocol')
+          return
+        }
+      } catch (err) {
+        showToast(`Connect failed: ${err instanceof Error ? err.message : String(err)}`)
         return
       }
-      if (!isMountableUri(path)) {
-        showToast('Unsupported network protocol')
-        return
-      }
+
       try {
         if (get(loading)) return
-        await mountPartition(path)
+        await mountPartition(normalizedUri)
         await loadPartitions()
-        const mounts = get(partitionsStore)
-        const mountedPath = resolveMountedPathForUri(path, mounts)
+        const mountedPath = await resolveMountedPathForUri(normalizedUri)
         if (mountedPath) {
           await loadDirIfIdle(mountedPath)
         } else {

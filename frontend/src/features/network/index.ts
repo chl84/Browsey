@@ -6,7 +6,11 @@ export {
   isMountableUri,
   isExternallyOpenableUri,
   isKnownNetworkUriScheme,
-  resolveMountedPathForUri,
   uriScheme,
 } from './uri'
-export { listNetworkDevices, openNetworkUri } from './services'
+export {
+  listNetworkDevices,
+  openNetworkUri,
+  classifyNetworkUri,
+  resolveMountedPathForUri,
+} from './services'
