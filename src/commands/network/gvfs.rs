@@ -145,6 +145,22 @@ fn canonical_scheme(raw: &str) -> String {
 }
 
 #[cfg(not(target_os = "windows"))]
+fn canonical_gvfs_fs(prefix: &str) -> Option<(&'static str, bool)> {
+    match prefix.to_ascii_lowercase().as_str() {
+        "mtp" => Some(("mtp", true)),
+        "onedrive" => Some(("onedrive", true)),
+        "sftp" | "ssh" | "sshfs" | "fuse.sshfs" => Some(("sftp", true)),
+        "smb" | "smb3" | "smbfs" | "cifs" | "smb-share" => Some(("smb", true)),
+        "nfs" | "nfs4" => Some(("nfs", true)),
+        "ftp" | "ftpfs" | "curlftpfs" => Some(("ftp", true)),
+        "dav" | "webdav" | "davfs2" => Some(("dav", true)),
+        "davs" | "webdavs" => Some(("davs", true)),
+        "afp" | "afpfs" | "afp-volume" => Some(("afp", true)),
+        _ => None,
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
 fn normalize_authority_for_compare(authority: &str) -> Option<String> {
     let authority = authority.trim();
     if authority.is_empty() {
@@ -515,11 +531,12 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();
 
-            let (fs, removable) = match name.split_once(':').map(|(p, _)| p) {
-                Some("mtp") => ("mtp", true),
-                Some("onedrive") => ("onedrive", true),
-                Some("sftp") => ("sftp", true),
-                _ => continue,
+            let Some((fs, removable)) = name
+                .split_once(':')
+                .map(|(prefix, _)| prefix)
+                .and_then(canonical_gvfs_fs)
+            else {
+                continue;
             };
 
             let label = display_name(&path).unwrap_or_else(|| name.clone());
@@ -678,6 +695,15 @@ Mount(Ignore)
         assert!(uris.contains("sftp://admin@fibaro.local"));
         assert!(uris.contains("dav://nas.local/share"));
         assert_eq!(uris.len(), 2);
+    }
+
+    #[test]
+    fn canonical_gvfs_fs_maps_extended_network_prefixes() {
+        assert_eq!(canonical_gvfs_fs("smb-share"), Some(("smb", true)));
+        assert_eq!(canonical_gvfs_fs("nfs4"), Some(("nfs", true)));
+        assert_eq!(canonical_gvfs_fs("webdav"), Some(("dav", true)));
+        assert_eq!(canonical_gvfs_fs("afp-volume"), Some(("afp", true)));
+        assert_eq!(canonical_gvfs_fs("unknown"), None);
     }
 }
 #[cfg(not(target_os = "windows"))]
