@@ -15,7 +15,7 @@
   import { useModalsController } from './features/explorer/hooks/useModalsController'
   import { useGridVirtualizer } from './features/explorer/hooks/useGridVirtualizer'
   import { addBookmark, removeBookmark } from './features/explorer/services/bookmarks'
-  import { ejectDrive, mountPartition } from './features/explorer/services/drives'
+  import { ejectDrive } from './features/explorer/services/drives'
   import { openConsole } from './features/explorer/services/console'
   import {
     copyPathsToSystemClipboard,
@@ -51,12 +51,10 @@
   import { createViewObservers } from './features/explorer/hooks/useViewObservers'
   import {
     buildNetworkEntryContextActions,
-    classifyNetworkUri,
+    connectNetworkUri,
     copyTextToSystemClipboard,
     isMountUri,
     networkBlankContextActions,
-    openNetworkUri,
-    resolveMountedPathForUri,
   } from './features/network'
   import { loadShortcuts, setShortcutBinding } from './features/shortcuts/service'
   import {
@@ -812,39 +810,22 @@
 
   const openPartition = async (path: string) => {
     if (isMountUri(path)) {
-      let normalizedUri = path
       try {
-        const classified = await classifyNetworkUri(path)
-        normalizedUri = classified.normalizedUri ?? path
-        if (classified.kind === 'external') {
-          try {
-            await openNetworkUri(normalizedUri)
-          } catch (err) {
-            showToast(`Open failed: ${err instanceof Error ? err.message : String(err)}`)
-          }
-          return
-        }
-        if (classified.kind !== 'mountable') {
+        const result = await connectNetworkUri(path)
+        if (result.kind === 'unsupported') {
           showToast('Unsupported network protocol')
           return
         }
-      } catch (err) {
-        showToast(`Connect failed: ${err instanceof Error ? err.message : String(err)}`)
-        return
-      }
-
-      try {
-        if (get(loading)) return
-        await mountPartition(normalizedUri)
-        await loadPartitions()
-        const mountedPath = await resolveMountedPathForUri(normalizedUri)
-        if (mountedPath) {
-          await loadDirIfIdle(mountedPath)
-        } else {
-          showToast('Mounted, but no mount path found')
+        if (result.kind === 'mountable') {
+          await loadPartitions()
+          if (result.mountedPath) {
+            await loadDirIfIdle(result.mountedPath)
+          } else {
+            showToast('Mounted, but no mount path found')
+          }
         }
       } catch (err) {
-        showToast(`Mount failed: ${err instanceof Error ? err.message : String(err)}`)
+        showToast(`Connect failed: ${err instanceof Error ? err.message : String(err)}`)
       }
       return
     }

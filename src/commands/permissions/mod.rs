@@ -61,6 +61,50 @@ pub struct PermissionInfo {
     pub other: Option<AccessBits>,
 }
 
+#[derive(Debug, serde::Serialize, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum AggregatedAccessBit {
+    Bool(bool),
+    Mixed(String),
+}
+
+#[derive(serde::Serialize)]
+pub struct AggregatedAccess {
+    pub read: AggregatedAccessBit,
+    pub write: AggregatedAccessBit,
+    pub exec: AggregatedAccessBit,
+}
+
+#[derive(serde::Serialize)]
+pub struct PermissionsBatchAggregate {
+    pub access_supported: bool,
+    pub executable_supported: bool,
+    pub ownership_supported: bool,
+    pub read_only: Option<AggregatedAccessBit>,
+    pub executable: Option<AggregatedAccessBit>,
+    pub owner_name: Option<String>,
+    pub group_name: Option<String>,
+    pub owner: Option<AggregatedAccess>,
+    pub group: Option<AggregatedAccess>,
+    pub other: Option<AggregatedAccess>,
+}
+
+#[derive(serde::Serialize)]
+pub struct PermissionsBatchItem {
+    pub path: String,
+    pub ok: bool,
+    pub permissions: PermissionInfo,
+    pub error: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct PermissionsBatchResult {
+    pub per_item: Vec<PermissionsBatchItem>,
+    pub aggregate: PermissionsBatchAggregate,
+    pub failures: usize,
+    pub unexpected_failures: usize,
+}
+
 pub(super) fn permission_info_fallback() -> PermissionInfo {
     #[cfg(target_os = "windows")]
     {
@@ -107,6 +151,201 @@ pub(super) fn permission_info_fallback() -> PermissionInfo {
             other: None,
         }
     }
+}
+
+pub(super) fn permission_info_unsupported() -> PermissionInfo {
+    PermissionInfo {
+        read_only: false,
+        executable: None,
+        executable_supported: false,
+        access_supported: false,
+        ownership_supported: false,
+        owner_name: None,
+        group_name: None,
+        owner: None,
+        group: None,
+        other: None,
+    }
+}
+
+fn is_virtual_uri_path(path: &str) -> bool {
+    let trimmed = path.trim();
+    let Some(idx) = trimmed.find("://") else {
+        return false;
+    };
+    if idx == 0 {
+        return false;
+    }
+
+    let scheme = &trimmed[..idx];
+    let mut chars = scheme.chars();
+    match chars.next() {
+        Some(first) if first.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+
+    chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
+}
+
+fn combine_bool(values: &[bool]) -> AggregatedAccessBit {
+    if values.is_empty() {
+        return AggregatedAccessBit::Bool(false);
+    }
+    if values.iter().all(|value| *value) {
+        return AggregatedAccessBit::Bool(true);
+    }
+    if values.iter().all(|value| !*value) {
+        return AggregatedAccessBit::Bool(false);
+    }
+    AggregatedAccessBit::Mixed("mixed".to_string())
+}
+
+fn combine_principal<'a>(values: impl Iterator<Item = Option<&'a str>>) -> Option<String> {
+    let normalized: Vec<String> = values
+        .map(|value: Option<&str>| value.map(str::trim).unwrap_or("").to_string())
+        .collect();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let mut unique: Vec<String> = normalized
+        .iter()
+        .filter_map(|value: &String| {
+            if value.is_empty() {
+                None
+            } else {
+                Some(value.clone())
+            }
+        })
+        .collect();
+    unique.sort();
+    unique.dedup();
+
+    if unique.is_empty() {
+        return None;
+    }
+    if unique.len() == 1 && normalized.iter().all(|value| value == &unique[0]) {
+        Some(unique[0].clone())
+    } else {
+        Some("mixed".to_string())
+    }
+}
+
+fn aggregate_permissions(items: &[PermissionsBatchItem]) -> PermissionsBatchAggregate {
+    let access_supported = items.iter().all(|item| item.permissions.access_supported);
+    let executable_supported = items
+        .iter()
+        .all(|item| item.permissions.executable_supported);
+    let ownership_supported = items
+        .iter()
+        .all(|item| item.permissions.ownership_supported);
+
+    let owner_reads: Vec<bool> = items
+        .iter()
+        .filter_map(|item| item.permissions.owner.as_ref().map(|value| value.read))
+        .collect();
+    let owner_writes: Vec<bool> = items
+        .iter()
+        .filter_map(|item| item.permissions.owner.as_ref().map(|value| value.write))
+        .collect();
+    let owner_execs: Vec<bool> = items
+        .iter()
+        .filter_map(|item| item.permissions.owner.as_ref().map(|value| value.exec))
+        .collect();
+
+    let group_reads: Vec<bool> = items
+        .iter()
+        .filter_map(|item| item.permissions.group.as_ref().map(|value| value.read))
+        .collect();
+    let group_writes: Vec<bool> = items
+        .iter()
+        .filter_map(|item| item.permissions.group.as_ref().map(|value| value.write))
+        .collect();
+    let group_execs: Vec<bool> = items
+        .iter()
+        .filter_map(|item| item.permissions.group.as_ref().map(|value| value.exec))
+        .collect();
+
+    let other_reads: Vec<bool> = items
+        .iter()
+        .filter_map(|item| item.permissions.other.as_ref().map(|value| value.read))
+        .collect();
+    let other_writes: Vec<bool> = items
+        .iter()
+        .filter_map(|item| item.permissions.other.as_ref().map(|value| value.write))
+        .collect();
+    let other_execs: Vec<bool> = items
+        .iter()
+        .filter_map(|item| item.permissions.other.as_ref().map(|value| value.exec))
+        .collect();
+
+    let read_only_values: Vec<bool> = items
+        .iter()
+        .map(|item| item.permissions.read_only)
+        .collect();
+    let executable_values: Vec<bool> = items
+        .iter()
+        .filter_map(|item| item.permissions.executable)
+        .collect();
+
+    PermissionsBatchAggregate {
+        access_supported,
+        executable_supported,
+        ownership_supported,
+        read_only: if access_supported {
+            Some(combine_bool(&read_only_values))
+        } else {
+            None
+        },
+        executable: if executable_supported {
+            Some(combine_bool(&executable_values))
+        } else {
+            None
+        },
+        owner_name: combine_principal(
+            items
+                .iter()
+                .map(|item| item.permissions.owner_name.as_deref()),
+        ),
+        group_name: combine_principal(
+            items
+                .iter()
+                .map(|item| item.permissions.group_name.as_deref()),
+        ),
+        owner: if access_supported {
+            Some(AggregatedAccess {
+                read: combine_bool(&owner_reads),
+                write: combine_bool(&owner_writes),
+                exec: combine_bool(&owner_execs),
+            })
+        } else {
+            None
+        },
+        group: if access_supported {
+            Some(AggregatedAccess {
+                read: combine_bool(&group_reads),
+                write: combine_bool(&group_writes),
+                exec: combine_bool(&group_execs),
+            })
+        } else {
+            None
+        },
+        other: if access_supported {
+            Some(AggregatedAccess {
+                read: combine_bool(&other_reads),
+                write: combine_bool(&other_writes),
+                exec: combine_bool(&other_execs),
+            })
+        } else {
+            None
+        },
+    }
+}
+
+fn is_expected_batch_error(message: &str) -> bool {
+    message
+        .to_ascii_lowercase()
+        .contains("permissions are not supported on symlinks")
 }
 
 pub(super) fn refresh_permissions_after_apply(
@@ -306,6 +545,64 @@ pub fn get_permissions(path: String) -> Result<PermissionInfo, String> {
             other,
         })
     }
+}
+
+pub(super) fn get_permissions_batch_impl(
+    paths: Vec<String>,
+) -> Result<PermissionsBatchResult, String> {
+    if paths.is_empty() {
+        return Err("No paths provided".into());
+    }
+
+    let mut per_item: Vec<PermissionsBatchItem> = Vec::with_capacity(paths.len());
+    let mut failures = 0usize;
+    let mut unexpected_failures = 0usize;
+
+    for path in paths {
+        if is_virtual_uri_path(&path) {
+            per_item.push(PermissionsBatchItem {
+                path,
+                ok: true,
+                permissions: permission_info_unsupported(),
+                error: None,
+            });
+            continue;
+        }
+
+        match get_permissions(path.clone()) {
+            Ok(permissions) => per_item.push(PermissionsBatchItem {
+                path,
+                ok: true,
+                permissions,
+                error: None,
+            }),
+            Err(error) => {
+                failures += 1;
+                if !is_expected_batch_error(&error) {
+                    unexpected_failures += 1;
+                }
+                per_item.push(PermissionsBatchItem {
+                    path,
+                    ok: false,
+                    permissions: permission_info_unsupported(),
+                    error: Some(error),
+                });
+            }
+        }
+    }
+
+    let aggregate = aggregate_permissions(&per_item);
+    Ok(PermissionsBatchResult {
+        per_item,
+        aggregate,
+        failures,
+        unexpected_failures,
+    })
+}
+
+#[tauri::command]
+pub fn get_permissions_batch(paths: Vec<String>) -> Result<PermissionsBatchResult, String> {
+    get_permissions_batch_impl(paths)
 }
 
 #[tauri::command]

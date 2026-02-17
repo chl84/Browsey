@@ -18,6 +18,33 @@ type PermissionPayload = {
   other?: Access
 }
 
+type PermissionBatchItemPayload = {
+  path: string
+  ok: boolean
+  permissions: PermissionPayload
+  error?: string | null
+}
+
+type PermissionBatchAggregatePayload = {
+  access_supported: boolean
+  executable_supported: boolean
+  ownership_supported: boolean
+  read_only: AccessBit | null
+  executable: AccessBit | null
+  owner_name?: string | null
+  group_name?: string | null
+  owner?: Access | null
+  group?: Access | null
+  other?: Access | null
+}
+
+type PermissionBatchPayload = {
+  per_item: PermissionBatchItemPayload[]
+  aggregate: PermissionBatchAggregatePayload
+  failures: number
+  unexpected_failures: number
+}
+
 export type ExtraMetadataField = {
   key: string
   label: string
@@ -254,19 +281,7 @@ export type PropertiesState = {
   ownershipError: string | null
 }
 
-const PERMISSIONS_MULTI_CONCURRENCY = 8
 const OWNERSHIP_PRINCIPAL_LIMIT = 2048
-const SYMLINK_PERMISSIONS_MSG = 'Permissions are not supported on symlinks'
-
-const unsupportedPermissionsPayload = (): PermissionPayload => ({
-  access_supported: false,
-  executable_supported: false,
-  ownership_supported: false,
-  read_only: false,
-  executable: null,
-  owner_name: null,
-  group_name: null,
-})
 
 const unsupportedPermissionsState = (): PermissionsState => ({
   accessSupported: false,
@@ -474,15 +489,6 @@ export const createPropertiesModal = (deps: Deps) => {
     return 'mixed'
   }
 
-  const combinePrincipal = (values: Array<string | null | undefined>): string | null => {
-    if (values.length === 0) return null
-    const normalized = values.map((v) => (typeof v === 'string' ? v.trim() : ''))
-    const unique = Array.from(new Set(normalized.filter((v) => v.length > 0)))
-    if (unique.length === 0) return null
-    if (unique.length === 1 && normalized.every((v) => v === unique[0])) return unique[0]
-    return 'mixed'
-  }
-
   const ensureOwnershipPrincipalsLoaded = async (currToken: number) => {
     if (currToken !== token) return
     if (ownershipPrincipalsLoadedToken === currToken) return
@@ -520,136 +526,36 @@ export const createPropertiesModal = (deps: Deps) => {
     }
   }
 
-  const fetchPermissionsAll = async (entries: Entry[]): Promise<PermissionPayload[]> => {
-    if (entries.length === 0) return []
-
-    const results: PermissionPayload[] = new Array(entries.length)
-    const workerCount = Math.min(PERMISSIONS_MULTI_CONCURRENCY, entries.length)
-    let nextIdx = 0
-    let failures = 0
-    let unexpectedFailures = 0
-
-    const worker = async () => {
-      while (true) {
-        const idx = nextIdx
-        nextIdx += 1
-        if (idx >= entries.length) {
-          return
-        }
-        const e = entries[idx]
-        if (isVirtualUriEntry(e)) {
-          results[idx] = unsupportedPermissionsPayload()
-          continue
-        }
-        try {
-          results[idx] = await invoke<PermissionPayload>('get_permissions', { path: e.path })
-        } catch (err) {
-          failures += 1
-          const msg = err instanceof Error ? err.message : String(err)
-          if (!msg.includes(SYMLINK_PERMISSIONS_MSG)) {
-            unexpectedFailures += 1
-          }
-          results[idx] = unsupportedPermissionsPayload()
-        }
-      }
-    }
-
-    await Promise.all(Array.from({ length: workerCount }, () => worker()))
-    if (unexpectedFailures > 0) {
-      console.warn(
-        `Permissions unavailable for ${failures} selected item(s), ${unexpectedFailures} unexpected`,
-      )
-    }
-    return results
-  }
-
   const loadPermissionsMulti = async (entries: Entry[], currToken: number) => {
     try {
-      const permsList = await fetchPermissionsAll(entries)
+      const paths = entries.map((entry) => entry.path)
+      const batch = await invoke<PermissionBatchPayload>('get_permissions_batch', { paths })
       if (currToken !== token) return
-      const accessSupported = permsList.every((p) => p.access_supported)
-      const executableSupported = permsList.every((p) => p.executable_supported)
-      const ownershipSupported = permsList.every((p) => p.ownership_supported === true)
+      if (batch.unexpected_failures > 0) {
+        console.warn(
+          `Permissions unavailable for ${batch.failures} selected item(s), ${batch.unexpected_failures} unexpected`,
+        )
+      }
 
-      const ownerReads = permsList
-        .map((p) => p.owner?.read)
-        .filter((v): v is boolean => v !== undefined)
-      const ownerWrites = permsList
-        .map((p) => p.owner?.write)
-        .filter((v): v is boolean => v !== undefined)
-      const ownerExecs = permsList
-        .map((p) => p.owner?.exec)
-        .filter((v): v is boolean => v !== undefined)
-
-      const groupReads = permsList
-        .map((p) => p.group?.read)
-        .filter((v): v is boolean => v !== undefined)
-      const groupWrites = permsList
-        .map((p) => p.group?.write)
-        .filter((v): v is boolean => v !== undefined)
-      const groupExecs = permsList
-        .map((p) => p.group?.exec)
-        .filter((v): v is boolean => v !== undefined)
-
-      const otherReads = permsList
-        .map((p) => p.other?.read)
-        .filter((v): v is boolean => v !== undefined)
-      const otherWrites = permsList
-        .map((p) => p.other?.write)
-        .filter((v): v is boolean => v !== undefined)
-      const otherExecs = permsList
-        .map((p) => p.other?.exec)
-        .filter((v): v is boolean => v !== undefined)
-
-      const readOnlyVals = permsList.map((p) => p.read_only)
-      const execVals = permsList
-        .map((p) => p.executable)
-        .filter((v): v is boolean => v !== null && v !== undefined)
-      const ownerNameVals = permsList.map((p) => p.owner_name ?? null)
-      const groupNameVals = permsList.map((p) => p.group_name ?? null)
+      const aggregate = batch.aggregate
 
       state.update((s) => ({
         ...s,
         permissionsLoading: false,
-        permissions: accessSupported
-          ? {
-              accessSupported,
-              executableSupported,
-              ownershipSupported,
-              readOnly: combine(readOnlyVals),
-              executable: executableSupported ? combine(execVals) : null,
-              ownerName: combinePrincipal(ownerNameVals),
-              groupName: combinePrincipal(groupNameVals),
-              owner: {
-                read: combine(ownerReads),
-                write: combine(ownerWrites),
-                exec: combine(ownerExecs),
-              },
-              group: {
-                read: combine(groupReads),
-                write: combine(groupWrites),
-                exec: combine(groupExecs),
-              },
-              other: {
-                read: combine(otherReads),
-                write: combine(otherWrites),
-                exec: combine(otherExecs),
-              },
-            }
-          : {
-              accessSupported: false,
-              executableSupported,
-              ownershipSupported,
-              readOnly: null,
-              executable: executableSupported ? combine(execVals) : null,
-              ownerName: combinePrincipal(ownerNameVals),
-              groupName: combinePrincipal(groupNameVals),
-              owner: null,
-              group: null,
-              other: null,
-            },
+        permissions: {
+          accessSupported: aggregate.access_supported,
+          executableSupported: aggregate.executable_supported,
+          ownershipSupported: aggregate.ownership_supported,
+          readOnly: aggregate.read_only ?? null,
+          executable: aggregate.executable ?? null,
+          ownerName: aggregate.owner_name ?? null,
+          groupName: aggregate.group_name ?? null,
+          owner: aggregate.owner ?? null,
+          group: aggregate.group ?? null,
+          other: aggregate.other ?? null,
+        },
       }))
-      if (ownershipSupported) {
+      if (aggregate.ownership_supported) {
         void ensureOwnershipPrincipalsLoaded(currToken)
       }
     } catch (err) {

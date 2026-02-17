@@ -1,6 +1,6 @@
 use super::{
-    get_permissions, refresh_permissions_after_apply, set_ownership_batch, set_permissions_batch,
-    AccessUpdate,
+    get_permissions, get_permissions_batch_impl, refresh_permissions_after_apply,
+    set_ownership_batch, set_permissions_batch, AccessUpdate, AggregatedAccessBit,
 };
 use crate::undo::{Action, UndoState};
 use std::fs;
@@ -452,4 +452,70 @@ fn set_ownership_does_not_record_undo_history() {
 
     let _ = fs::remove_file(&src);
     let _ = fs::remove_file(&dst);
+}
+
+#[test]
+fn get_permissions_batch_aggregates_mixed_values() {
+    let path_a = temp_file("perm-batch-a");
+    let path_b = temp_file("perm-batch-b");
+    fs::write(&path_a, b"a").unwrap();
+    fs::write(&path_b, b"b").unwrap();
+    fs::set_permissions(&path_a, PermissionsExt::from_mode(0o644)).unwrap();
+    fs::set_permissions(&path_b, PermissionsExt::from_mode(0o600)).unwrap();
+
+    let batch = get_permissions_batch_impl(vec![
+        path_a.to_string_lossy().to_string(),
+        path_b.to_string_lossy().to_string(),
+    ])
+    .unwrap();
+
+    assert_eq!(batch.per_item.len(), 2);
+    assert_eq!(batch.failures, 0);
+    assert_eq!(batch.unexpected_failures, 0);
+    assert!(batch.aggregate.access_supported);
+    assert!(batch.aggregate.executable_supported);
+    assert!(batch.aggregate.ownership_supported);
+    assert_eq!(
+        batch.aggregate.read_only,
+        Some(AggregatedAccessBit::Bool(false))
+    );
+    assert_eq!(
+        batch.aggregate.executable,
+        Some(AggregatedAccessBit::Bool(false))
+    );
+    assert!(batch.aggregate.owner_name.is_some());
+    assert!(batch.aggregate.group_name.is_some());
+
+    let owner = batch.aggregate.owner.expect("owner aggregate");
+    assert_eq!(owner.read, AggregatedAccessBit::Bool(true));
+    assert_eq!(owner.write, AggregatedAccessBit::Bool(true));
+    assert_eq!(owner.exec, AggregatedAccessBit::Bool(false));
+
+    let group = batch.aggregate.group.expect("group aggregate");
+    assert_eq!(group.read, AggregatedAccessBit::Mixed("mixed".into()));
+    assert_eq!(group.write, AggregatedAccessBit::Bool(false));
+    assert_eq!(group.exec, AggregatedAccessBit::Bool(false));
+
+    let other = batch.aggregate.other.expect("other aggregate");
+    assert_eq!(other.read, AggregatedAccessBit::Mixed("mixed".into()));
+    assert_eq!(other.write, AggregatedAccessBit::Bool(false));
+    assert_eq!(other.exec, AggregatedAccessBit::Bool(false));
+
+    let _ = fs::remove_file(&path_a);
+    let _ = fs::remove_file(&path_b);
+}
+
+#[test]
+fn get_permissions_batch_marks_virtual_uris_as_unsupported_without_failure() {
+    let batch = get_permissions_batch_impl(vec!["sftp://user@example.local/home".into()]).unwrap();
+    assert_eq!(batch.per_item.len(), 1);
+    assert_eq!(batch.failures, 0);
+    assert_eq!(batch.unexpected_failures, 0);
+    assert!(batch.per_item[0].ok);
+    assert!(!batch.per_item[0].permissions.access_supported);
+    assert!(!batch.aggregate.access_supported);
+    assert!(!batch.aggregate.executable_supported);
+    assert!(!batch.aggregate.ownership_supported);
+    assert_eq!(batch.aggregate.read_only, None);
+    assert_eq!(batch.aggregate.executable, None);
 }
