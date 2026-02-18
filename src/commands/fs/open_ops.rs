@@ -1,3 +1,5 @@
+use super::error::{map_api_result, FsError, FsErrorCode, FsResult};
+use crate::errors::api_error::ApiResult;
 use crate::{db, fs_utils::sanitize_path_follow};
 #[cfg(not(target_os = "windows"))]
 use std::sync::mpsc;
@@ -17,9 +19,18 @@ fn is_gvfs_path(path: &std::path::Path) -> bool {
 }
 
 #[tauri::command]
-pub fn open_entry(path: String) -> Result<(), String> {
-    let pb = sanitize_path_follow(&path, false)?;
-    let conn = db::open()?;
+pub fn open_entry(path: String) -> ApiResult<()> {
+    map_api_result(open_entry_impl(path))
+}
+
+fn open_entry_impl(path: String) -> FsResult<()> {
+    let pb = sanitize_path_follow(&path, false).map_err(FsError::from_external_message)?;
+    let conn = db::open().map_err(|error| {
+        FsError::new(
+            FsErrorCode::OpenFailed,
+            format!("Failed to open database for recent tracking: {error}"),
+        )
+    })?;
     if let Err(e) = db::touch_recent(&conn, &pb.to_string_lossy()) {
         warn!("Failed to record recent for {:?}: {}", pb, e);
     }
@@ -36,24 +47,27 @@ pub fn open_entry(path: String) -> Result<(), String> {
                 let _ = tx.send(res);
             });
             let res = match rx.recv_timeout(OPEN_TIMEOUT_GVFS) {
-                Ok(res) => res.map_err(|e| {
-                    error!("Failed to open {:?}: {}", pb, e);
-                    e
+                Ok(res) => res.map_err(|error_message| {
+                    error!("Failed to open {:?}: {}", pb, error_message);
+                    FsError::new(FsErrorCode::OpenFailed, error_message)
                 }),
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     error!("Open timed out for {:?}", pb);
-                    Err("Open timed out on remote device".into())
+                    Err(FsError::new(
+                        FsErrorCode::OpenFailed,
+                        "Open timed out on remote device",
+                    ))
                 }
                 Err(_) => {
                     error!("Open channel closed for {:?}", pb);
-                    Err("Failed to open".into())
+                    Err(FsError::new(FsErrorCode::OpenFailed, "Failed to open"))
                 }
             };
             return res;
         }
     }
-    open::that_detached(&pb).map_err(|e| {
-        error!("Failed to open {:?}: {}", pb, e);
-        format!("Failed to open: {e}")
+    open::that_detached(&pb).map_err(|error| {
+        error!("Failed to open {:?}: {}", pb, error);
+        FsError::new(FsErrorCode::OpenFailed, format!("Failed to open: {error}"))
     })
 }

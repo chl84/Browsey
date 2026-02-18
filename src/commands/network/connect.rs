@@ -1,11 +1,15 @@
 //! High-level network URI connect flow used by the frontend.
 
+use crate::errors::api_error::ApiResult;
 use serde::Serialize;
 
+#[cfg(target_os = "windows")]
+use super::error::NetworkErrorCode;
 #[cfg(not(target_os = "windows"))]
 use super::mounts;
 use super::{
     discovery,
+    error::{map_api_result, NetworkError, NetworkResult},
     uri::{self, NetworkUriKind},
 };
 
@@ -22,7 +26,15 @@ pub struct ConnectNetworkUriResult {
 pub async fn connect_network_uri(
     uri: String,
     app: tauri::AppHandle,
-) -> Result<ConnectNetworkUriResult, String> {
+) -> ApiResult<ConnectNetworkUriResult> {
+    map_api_result(connect_network_uri_impl(uri, app).await)
+}
+
+#[cfg(not(target_os = "windows"))]
+async fn connect_network_uri_impl(
+    uri: String,
+    app: tauri::AppHandle,
+) -> NetworkResult<ConnectNetworkUriResult> {
     let classified = uri::classify_uri(&uri);
     let kind = classified.kind;
     let normalized_uri = classified
@@ -38,7 +50,8 @@ pub async fn connect_network_uri(
         }),
         NetworkUriKind::External => {
             let target = normalized_uri.unwrap_or_default();
-            discovery::open_network_uri(target)?;
+            discovery::open_network_uri(target)
+                .map_err(|error| NetworkError::from_external_message(error.message))?;
             Ok(ConnectNetworkUriResult {
                 kind,
                 normalized_uri: classified.normalized_uri,
@@ -47,7 +60,9 @@ pub async fn connect_network_uri(
         }
         NetworkUriKind::Mountable => {
             let target = normalized_uri.unwrap_or_default();
-            mounts::mount_partition(target.clone(), app).await?;
+            mounts::mount_partition(target.clone(), app)
+                .await
+                .map_err(|error| NetworkError::from_external_message(error.message))?;
             let mounted_path =
                 uri::resolve_mounted_path_for_uri_in_mounts(&target, &mounts::list_mounts_sync());
             Ok(ConnectNetworkUriResult {
@@ -61,7 +76,12 @@ pub async fn connect_network_uri(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-pub async fn connect_network_uri(uri: String) -> Result<ConnectNetworkUriResult, String> {
+pub async fn connect_network_uri(uri: String) -> ApiResult<ConnectNetworkUriResult> {
+    map_api_result(connect_network_uri_impl(uri).await)
+}
+
+#[cfg(target_os = "windows")]
+async fn connect_network_uri_impl(uri: String) -> NetworkResult<ConnectNetworkUriResult> {
     let classified = uri::classify_uri(&uri);
     let kind = classified.kind;
     let normalized_uri = classified
@@ -77,13 +97,17 @@ pub async fn connect_network_uri(uri: String) -> Result<ConnectNetworkUriResult,
         }),
         NetworkUriKind::External => {
             let target = normalized_uri.unwrap_or_default();
-            discovery::open_network_uri(target)?;
+            discovery::open_network_uri(target)
+                .map_err(|error| NetworkError::from_external_message(error.message))?;
             Ok(ConnectNetworkUriResult {
                 kind,
                 normalized_uri: classified.normalized_uri,
                 mounted_path: None,
             })
         }
-        NetworkUriKind::Mountable => Err("Network mounts are not supported on Windows yet".into()),
+        NetworkUriKind::Mountable => Err(NetworkError::new(
+            NetworkErrorCode::UnsupportedUri,
+            "Network mounts are not supported on Windows yet",
+        )),
     }
 }

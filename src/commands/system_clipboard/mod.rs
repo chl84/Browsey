@@ -3,7 +3,13 @@ use std::{path::PathBuf, process::Command};
 use once_cell::sync::Lazy;
 use url::Url;
 
+use crate::errors::api_error::ApiResult;
 use crate::fs_utils::sanitize_path_follow;
+use error::{
+    map_api_result, SystemClipboardError, SystemClipboardErrorCode, SystemClipboardResult,
+};
+
+mod error;
 
 #[derive(serde::Serialize)]
 pub struct SystemClipboardContent {
@@ -74,16 +80,23 @@ fn run_xclip(mime: &str, payload: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn copy_paths_to_system_clipboard(
+pub fn copy_paths_to_system_clipboard(paths: Vec<String>, mode: Option<String>) -> ApiResult<()> {
+    map_api_result(copy_paths_to_system_clipboard_impl(paths, mode))
+}
+
+fn copy_paths_to_system_clipboard_impl(
     paths: Vec<String>,
     mode: Option<String>,
-) -> Result<(), String> {
+) -> SystemClipboardResult<()> {
     if paths.is_empty() {
-        return Err("No paths provided".into());
+        return Err(SystemClipboardError::new(
+            SystemClipboardErrorCode::InvalidInput,
+            "No paths provided",
+        ));
     }
     let mut uris = Vec::with_capacity(paths.len());
     for p in paths {
-        uris.push(file_uri(&p)?);
+        uris.push(file_uri(&p).map_err(SystemClipboardError::from_external_message)?);
     }
     let action = match mode
         .unwrap_or_else(|| "copy".into())
@@ -126,7 +139,10 @@ pub fn copy_paths_to_system_clipboard(
         return Ok(());
     }
 
-    Err("No compatible clipboard tool found (need wl-copy or xclip)".into())
+    Err(SystemClipboardError::new(
+        SystemClipboardErrorCode::ClipboardToolMissing,
+        "No compatible clipboard tool found (need wl-copy or xclip)",
+    ))
 }
 
 fn read_command_output(cmd: &mut Command) -> Result<Option<String>, String> {
@@ -214,14 +230,22 @@ fn parse_gnome_payload(payload: &str) -> Option<SystemClipboardContent> {
 }
 
 #[tauri::command]
-pub fn system_clipboard_paths() -> Result<SystemClipboardContent, String> {
+pub fn system_clipboard_paths() -> ApiResult<SystemClipboardContent> {
+    map_api_result(system_clipboard_paths_impl())
+}
+
+fn system_clipboard_paths_impl() -> SystemClipboardResult<SystemClipboardContent> {
     // Try Wayland payload first
-    if let Some(text) = read_wl_paste("x-special/gnome-copied-files")? {
+    if let Some(text) = read_wl_paste("x-special/gnome-copied-files")
+        .map_err(SystemClipboardError::from_external_message)?
+    {
         if let Some(content) = parse_gnome_payload(&text) {
             return Ok(content);
         }
     }
-    if let Some(text) = read_wl_paste("text/uri-list")? {
+    if let Some(text) =
+        read_wl_paste("text/uri-list").map_err(SystemClipboardError::from_external_message)?
+    {
         let (paths, mode) = parse_uri_list(&text);
         if !paths.is_empty() {
             return Ok(SystemClipboardContent { mode, paths });
@@ -229,19 +253,26 @@ pub fn system_clipboard_paths() -> Result<SystemClipboardContent, String> {
     }
 
     // Fallback to X11
-    if let Some(text) = read_xclip("x-special/gnome-copied-files")? {
+    if let Some(text) = read_xclip("x-special/gnome-copied-files")
+        .map_err(SystemClipboardError::from_external_message)?
+    {
         if let Some(content) = parse_gnome_payload(&text) {
             return Ok(content);
         }
     }
-    if let Some(text) = read_xclip("text/uri-list")? {
+    if let Some(text) =
+        read_xclip("text/uri-list").map_err(SystemClipboardError::from_external_message)?
+    {
         let (paths, mode) = parse_uri_list(&text);
         if !paths.is_empty() {
             return Ok(SystemClipboardContent { mode, paths });
         }
     }
 
-    Err("No file paths found in system clipboard".into())
+    Err(SystemClipboardError::new(
+        SystemClipboardErrorCode::ClipboardEmpty,
+        "No file paths found in system clipboard",
+    ))
 }
 
 fn clear_with_wl_copy() -> Result<(), String> {
@@ -277,12 +308,19 @@ fn clear_with_xclip() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn clear_system_clipboard() -> Result<(), String> {
+pub fn clear_system_clipboard() -> ApiResult<()> {
+    map_api_result(clear_system_clipboard_impl())
+}
+
+fn clear_system_clipboard_impl() -> SystemClipboardResult<()> {
     if clear_with_wl_copy().is_ok() {
         return Ok(());
     }
     if clear_with_xclip().is_ok() {
         return Ok(());
     }
-    Err("No compatible clipboard tool found (need wl-copy or xclip)".into())
+    Err(SystemClipboardError::new(
+        SystemClipboardErrorCode::ClipboardToolMissing,
+        "No compatible clipboard tool found (need wl-copy or xclip)",
+    ))
 }

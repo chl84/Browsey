@@ -610,7 +610,11 @@ async fn list_facets_impl(
                     .map_err(|error| error.message)?
                     .entries
             }
-            "trash" => crate::commands::fs::list_trash(None)?.entries,
+            "trash" => {
+                crate::commands::fs::list_trash(None)
+                    .map_err(|error| error.message)?
+                    .entries
+            }
             _ => return Err(format!("Unsupported facet scope: {scope}")),
         };
         Ok(build_listing_facets_with_hidden(&entries, include_hidden))

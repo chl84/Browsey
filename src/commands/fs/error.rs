@@ -1,7 +1,7 @@
 #[cfg(target_os = "windows")]
 use crate::errors::domain::classify_io_error;
 use crate::errors::{
-    api_error::ApiError,
+    api_error::{ApiError, ApiResult},
     domain::{
         classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
         IoErrorHint,
@@ -189,6 +189,211 @@ const SET_HIDDEN_CLASSIFICATION_RULES: &[(SetHiddenErrorCode, &[&str])] = &[
             "setfileattributes failed",
             "getfileattributes failed",
             "failed to rename",
+        ],
+    ),
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FsErrorCode {
+    InvalidInput,
+    PathNotAbsolute,
+    InvalidPath,
+    RootForbidden,
+    SymlinkUnsupported,
+    NotFound,
+    PermissionDenied,
+    ReadOnlyFilesystem,
+    TargetExists,
+    Cancelled,
+    TaskFailed,
+    CreateFailed,
+    DeleteFailed,
+    OpenFailed,
+    TrashFailed,
+    UnknownError,
+}
+
+impl ErrorCode for FsErrorCode {
+    fn as_code_str(self) -> &'static str {
+        match self {
+            Self::InvalidInput => "invalid_input",
+            Self::PathNotAbsolute => "path_not_absolute",
+            Self::InvalidPath => "invalid_path",
+            Self::RootForbidden => "root_forbidden",
+            Self::SymlinkUnsupported => "symlink_unsupported",
+            Self::NotFound => "not_found",
+            Self::PermissionDenied => "permission_denied",
+            Self::ReadOnlyFilesystem => "read_only_filesystem",
+            Self::TargetExists => "target_exists",
+            Self::Cancelled => "cancelled",
+            Self::TaskFailed => "task_failed",
+            Self::CreateFailed => "create_failed",
+            Self::DeleteFailed => "delete_failed",
+            Self::OpenFailed => "open_failed",
+            Self::TrashFailed => "trash_failed",
+            Self::UnknownError => "unknown_error",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct FsError {
+    code: FsErrorCode,
+    message: String,
+}
+
+impl FsError {
+    pub(super) fn new(code: FsErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    pub(super) fn from_external_message(message: impl Into<String>) -> Self {
+        let message = message.into();
+        if let Some(hint) = classify_io_hint_from_message(&message) {
+            let io_code = match hint {
+                IoErrorHint::NotFound => Some(FsErrorCode::NotFound),
+                IoErrorHint::PermissionDenied => Some(FsErrorCode::PermissionDenied),
+                IoErrorHint::ReadOnlyFilesystem => Some(FsErrorCode::ReadOnlyFilesystem),
+                IoErrorHint::AlreadyExists => Some(FsErrorCode::TargetExists),
+                _ => None,
+            };
+            if let Some(code) = io_code {
+                return Self::new(code, message);
+            }
+        }
+        let code = classify_message_by_patterns(
+            &message,
+            FS_CLASSIFICATION_RULES,
+            FsErrorCode::UnknownError,
+        );
+        Self::new(code, message)
+    }
+}
+
+impl fmt::Display for FsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for FsError {}
+
+impl DomainError for FsError {
+    fn code_str(&self) -> &'static str {
+        self.code.as_code_str()
+    }
+
+    fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl From<String> for FsError {
+    fn from(message: String) -> Self {
+        Self::from_external_message(message)
+    }
+}
+
+impl From<&str> for FsError {
+    fn from(message: &str) -> Self {
+        Self::from_external_message(message)
+    }
+}
+
+pub(super) type FsResult<T> = Result<T, FsError>;
+
+pub(super) fn map_api_result<T>(result: FsResult<T>) -> ApiResult<T> {
+    result.map_err(|error| error.to_api_error())
+}
+
+const FS_CLASSIFICATION_RULES: &[(FsErrorCode, &[&str])] = &[
+    (FsErrorCode::Cancelled, &["cancelled"]),
+    (
+        FsErrorCode::TaskFailed,
+        &[
+            "task failed",
+            "task panicked",
+            "failed to register cancel",
+            "channel closed",
+        ],
+    ),
+    (
+        FsErrorCode::PathNotAbsolute,
+        &["path must be absolute", "start directory not found"],
+    ),
+    (
+        FsErrorCode::InvalidPath,
+        &[
+            "parent directory components are not allowed",
+            "invalid path component (nul byte)",
+            "path contains nul byte",
+            "unsupported path prefix",
+            "is not a directory",
+        ],
+    ),
+    (
+        FsErrorCode::InvalidInput,
+        &[
+            "no paths provided",
+            "name cannot be empty",
+            "folder name cannot be empty",
+            "file name cannot be empty",
+            "path separators",
+            "nothing to restore",
+            "nothing to delete",
+        ],
+    ),
+    (
+        FsErrorCode::RootForbidden,
+        &["refusing to operate on filesystem root"],
+    ),
+    (
+        FsErrorCode::SymlinkUnsupported,
+        &["symlinks are not allowed"],
+    ),
+    (
+        FsErrorCode::PermissionDenied,
+        &[
+            "permission denied",
+            "operation not permitted",
+            "access is denied",
+        ],
+    ),
+    (
+        FsErrorCode::TargetExists,
+        &[
+            "already exists",
+            "destination exists",
+            "file exists",
+            "target already exists",
+        ],
+    ),
+    (
+        FsErrorCode::CreateFailed,
+        &["failed to create folder", "failed to create file"],
+    ),
+    (
+        FsErrorCode::DeleteFailed,
+        &[
+            "failed to delete",
+            "delete cancelled",
+            "rollback also failed",
+        ],
+    ),
+    (
+        FsErrorCode::OpenFailed,
+        &["failed to open", "open timed out"],
+    ),
+    (
+        FsErrorCode::TrashFailed,
+        &[
+            "failed to list trash",
+            "failed to restore",
+            "failed to delete permanently",
+            "move to trash",
         ],
     ),
 ];

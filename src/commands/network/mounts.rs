@@ -1,6 +1,8 @@
 //! Mount/eject handling for local, GVFS, and OneDrive mounts.
 
-use crate::{commands::fs::MountInfo, fs_utils::debug_log, watcher::WatchState};
+use crate::{
+    commands::fs::MountInfo, errors::api_error::ApiResult, fs_utils::debug_log, watcher::WatchState,
+};
 use serde_json::json;
 use std::time::Instant;
 use tauri::Emitter;
@@ -12,6 +14,8 @@ use {
     std::fs,
     std::process::{Command, Stdio},
 };
+
+use super::error::{map_api_result, NetworkError, NetworkErrorCode, NetworkResult};
 
 #[cfg(target_os = "windows")]
 use crate::commands::fs::fs_windows;
@@ -222,17 +226,32 @@ pub(super) fn list_mounts_sync() -> Vec<MountInfo> {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<(), String> {
+pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> ApiResult<()> {
+    map_api_result(eject_drive_impl(path, watcher))
+}
+
+#[cfg(target_os = "windows")]
+fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> NetworkResult<()> {
     // Drop the active directory watcher before ejecting; open handles can block safe removal.
     watcher.replace(None);
     fs_windows::eject_drive(&path)
+        .map_err(|error| NetworkError::new(NetworkErrorCode::EjectFailed, error))
 }
 
 #[tauri::command]
-pub async fn list_mounts() -> Result<Vec<MountInfo>, String> {
-    tauri::async_runtime::spawn_blocking(|| list_mounts_sync())
-        .await
-        .map_err(|e| format!("mount scan failed: {e}"))
+pub async fn list_mounts() -> ApiResult<Vec<MountInfo>> {
+    map_api_result(list_mounts_impl().await)
+}
+
+async fn list_mounts_impl() -> NetworkResult<Vec<MountInfo>> {
+    let task = tauri::async_runtime::spawn_blocking(|| list_mounts_sync());
+    match task.await {
+        Ok(result) => Ok(result),
+        Err(error) => Err(NetworkError::new(
+            NetworkErrorCode::TaskFailed,
+            format!("mount scan failed: {error}"),
+        )),
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -242,7 +261,12 @@ pub(super) fn list_mounts_sync() -> Vec<MountInfo> {
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<(), String> {
+pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> ApiResult<()> {
+    map_api_result(eject_drive_impl(path, watcher).map_err(NetworkError::from_external_message))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> Result<(), String> {
     // Drop watcher to avoid open handles during unmount
     watcher.replace(None);
 
@@ -365,7 +389,16 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> Result<()
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-pub async fn mount_partition(path: String, app: tauri::AppHandle) -> Result<(), String> {
+pub async fn mount_partition(path: String, app: tauri::AppHandle) -> ApiResult<()> {
+    map_api_result(
+        mount_partition_impl(path, app)
+            .await
+            .map_err(NetworkError::from_external_message),
+    )
+}
+
+#[cfg(not(target_os = "windows"))]
+async fn mount_partition_impl(path: String, app: tauri::AppHandle) -> Result<(), String> {
     let lower = path.to_ascii_lowercase();
     let scheme = lower
         .split_once("://")
@@ -420,6 +453,6 @@ pub async fn mount_partition(path: String, app: tauri::AppHandle) -> Result<(), 
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-pub async fn mount_partition(_path: String) -> Result<(), String> {
-    Ok(())
+pub async fn mount_partition(_path: String) -> ApiResult<()> {
+    map_api_result(Ok(()))
 }

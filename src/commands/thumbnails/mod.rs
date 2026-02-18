@@ -25,9 +25,12 @@ mod thumbnails_pdf;
 use thumbnails_pdf::render_pdf_thumbnail;
 mod thumbnails_video;
 use thumbnails_video::render_video_thumbnail;
+mod error;
 
 use crate::db;
+use crate::errors::api_error::ApiResult;
 use crate::fs_utils::debug_log;
+use error::{map_api_result, ThumbnailError};
 
 const MAX_DIM_DEFAULT: u32 = 96;
 const MAX_DIM_HARD_LIMIT: u32 = 512;
@@ -109,7 +112,11 @@ pub struct ThumbnailCacheClearResult {
 }
 
 #[tauri::command]
-pub fn clear_thumbnail_cache() -> Result<ThumbnailCacheClearResult, String> {
+pub fn clear_thumbnail_cache() -> ApiResult<ThumbnailCacheClearResult> {
+    map_api_result(clear_thumbnail_cache_impl().map_err(ThumbnailError::from_external_message))
+}
+
+fn clear_thumbnail_cache_impl() -> Result<ThumbnailCacheClearResult, String> {
     let dir = cache_dir()?;
     if !dir.exists() {
         fs::create_dir_all(&dir)
@@ -133,6 +140,19 @@ pub fn clear_thumbnail_cache() -> Result<ThumbnailCacheClearResult, String> {
 
 #[tauri::command]
 pub async fn get_thumbnail(
+    app_handle: AppHandle,
+    path: String,
+    max_dim: Option<u32>,
+    generation: Option<String>,
+) -> ApiResult<ThumbnailResponse> {
+    map_api_result(
+        get_thumbnail_impl(app_handle, path, max_dim, generation)
+            .await
+            .map_err(ThumbnailError::from_external_message),
+    )
+}
+
+async fn get_thumbnail_impl(
     app_handle: AppHandle,
     path: String,
     max_dim: Option<u32>,

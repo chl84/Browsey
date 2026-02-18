@@ -1,6 +1,7 @@
 //! Shared URI classification and GVFS mount-path resolution for network entries.
 
 use crate::commands::fs::MountInfo;
+use crate::errors::api_error::ApiResult;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -236,7 +237,7 @@ pub fn classify_network_uri(uri: String) -> NetworkUriClassification {
 }
 
 #[tauri::command]
-pub fn resolve_mounted_path_for_uri(uri: String) -> Result<Option<String>, String> {
+pub fn resolve_mounted_path_for_uri(uri: String) -> ApiResult<Option<String>> {
     let mounts = mounts::list_mounts_sync();
     Ok(resolve_mounted_path_for_uri_in_mounts(&uri, &mounts))
 }

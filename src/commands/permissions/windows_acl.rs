@@ -1,4 +1,7 @@
-use super::AccessBits;
+use super::{
+    error::{PermissionsError, PermissionsErrorCode, PermissionsResult},
+    AccessBits,
+};
 use std::{os::windows::ffi::OsStrExt, path::Path, ptr};
 use windows_sys::Win32::Foundation::{LocalFree, ERROR_SUCCESS};
 use windows_sys::Win32::Security::Authorization::{
@@ -64,7 +67,7 @@ fn to_wide(path: &Path) -> Vec<u16> {
 
 fn fetch_security(
     path: &Path,
-) -> Result<
+) -> PermissionsResult<
     (
         SecurityDescriptor,
         *mut ACL,
@@ -92,15 +95,16 @@ fn fetch_security(
         )
     };
     if status != ERROR_SUCCESS {
-        return Err(format!(
-            "GetNamedSecurityInfoW failed: Win32 error {status}"
+        return Err(PermissionsError::new(
+            PermissionsErrorCode::MetadataReadFailed,
+            format!("GetNamedSecurityInfoW failed: Win32 error {status}"),
         ));
     }
 
     Ok((SecurityDescriptor { raw: sd }, dacl, owner, group))
 }
 
-fn everyone_sid() -> Result<Vec<u8>, String> {
+fn everyone_sid() -> PermissionsResult<Vec<u8>> {
     let mut sid = vec![0u8; SECURITY_MAX_SID_SIZE as usize];
     let mut size = sid.len() as u32;
     let ok = unsafe {
@@ -112,7 +116,10 @@ fn everyone_sid() -> Result<Vec<u8>, String> {
         )
     };
     if ok == 0 {
-        return Err("CreateWellKnownSid failed".into());
+        return Err(PermissionsError::new(
+            PermissionsErrorCode::MetadataReadFailed,
+            "CreateWellKnownSid failed",
+        ));
     }
     sid.truncate(size as usize);
     Ok(sid)
@@ -148,7 +155,7 @@ fn mask_for_sid(
     sd: &SecurityDescriptor,
     sid: *mut core::ffi::c_void,
     _is_dir: bool,
-) -> Result<u32, String> {
+) -> PermissionsResult<u32> {
     if sid.is_null() {
         return Ok(0);
     }
@@ -159,7 +166,10 @@ fn mask_for_sid(
         GetSecurityDescriptorDacl(sd.raw, &mut present, &mut actual_dacl, &mut defaulted)
     };
     if ok == 0 {
-        return Err("GetSecurityDescriptorDacl failed".into());
+        return Err(PermissionsError::new(
+            PermissionsErrorCode::MetadataReadFailed,
+            "GetSecurityDescriptorDacl failed",
+        ));
     }
     if present == 0 || actual_dacl.is_null() {
         return Ok(FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE);
@@ -178,7 +188,10 @@ fn mask_for_sid(
         let mut ace_ptr: *mut core::ffi::c_void = ptr::null_mut();
         let ok = unsafe { GetAce(actual_dacl, idx as u32, &mut ace_ptr) };
         if ok == 0 || ace_ptr.is_null() {
-            return Err("GetAce failed".into());
+            return Err(PermissionsError::new(
+                PermissionsErrorCode::MetadataReadFailed,
+                "GetAce failed",
+            ));
         }
         let header = unsafe { *(ace_ptr as *const ACE_HEADER) };
         match header.AceType {
@@ -210,7 +223,7 @@ fn mask_for_sid(
     Ok(allow)
 }
 
-pub fn read_bits(path: &Path, is_dir: bool) -> Result<PrincipalBits, String> {
+pub fn read_bits(path: &Path, is_dir: bool) -> PermissionsResult<PrincipalBits> {
     let (sd, dacl, owner_sid, group_sid) = fetch_security(path)?;
     let owner_mask = mask_for_sid(dacl, &sd, owner_sid, is_dir)?;
     let group_mask: Option<u32> = if group_sid.is_null() {
@@ -238,7 +251,7 @@ fn trustee_for_sid(sid: *mut core::ffi::c_void, ttype: TRUSTEE_TYPE) -> TRUSTEE_
     }
 }
 
-pub fn apply_bits(path: &Path, _is_dir: bool, bits: &PrincipalBits) -> Result<(), String> {
+pub fn apply_bits(path: &Path, _is_dir: bool, bits: &PrincipalBits) -> PermissionsResult<()> {
     let (_sd, dacl, owner_sid, group_sid) = fetch_security(path)?;
     let everyone_sid = everyone_sid()?;
     let everyone_sid_ptr = everyone_sid.as_ptr() as *mut core::ffi::c_void;
@@ -295,7 +308,10 @@ pub fn apply_bits(path: &Path, _is_dir: bool, bits: &PrincipalBits) -> Result<()
     let set_status =
         unsafe { SetEntriesInAclW(entries.len() as u32, entries.as_ptr(), dacl, &mut new_acl) };
     if set_status != ERROR_SUCCESS {
-        return Err(format!("SetEntriesInAclW failed: Win32 error {set_status}"));
+        return Err(PermissionsError::new(
+            PermissionsErrorCode::PermissionsUpdateFailed,
+            format!("SetEntriesInAclW failed: Win32 error {set_status}"),
+        ));
     }
     let new_acl_guard = LocalAcl { raw: new_acl };
 
@@ -312,8 +328,9 @@ pub fn apply_bits(path: &Path, _is_dir: bool, bits: &PrincipalBits) -> Result<()
         )
     };
     if set_status != ERROR_SUCCESS {
-        return Err(format!(
-            "SetNamedSecurityInfoW failed: Win32 error {set_status}"
+        return Err(PermissionsError::new(
+            PermissionsErrorCode::PermissionsUpdateFailed,
+            format!("SetNamedSecurityInfoW failed: Win32 error {set_status}"),
         ));
     }
 
