@@ -15,7 +15,7 @@ mod error;
 #[path = "windows.rs"]
 pub mod fs_windows;
 mod open_ops;
-mod trash_ops;
+mod trash;
 
 pub use crate::commands::listing::DirListing;
 use serde::Serialize;
@@ -30,7 +30,7 @@ use std::{
 pub use delete_ops::{delete_entries, delete_entry};
 use error::{is_expected_set_hidden_error_code, to_set_hidden_api_error};
 pub use open_ops::open_entry;
-pub use trash_ops::{
+pub use trash::{
     cleanup_stale_trash_staging, list_trash, move_to_trash, move_to_trash_many, purge_trash_items,
     restore_trash_items,
 };
