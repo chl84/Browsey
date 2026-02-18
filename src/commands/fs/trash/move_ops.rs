@@ -1,10 +1,14 @@
-use super::super::{should_abort_fs_op, CancelState, DeleteProgressPayload, UndoState};
+use super::super::{
+    error::{map_api_result, FsError, FsErrorCode, FsResult},
+    should_abort_fs_op, CancelState, DeleteProgressPayload, UndoState,
+};
 use super::{
     backend::{SystemTrashBackend, TrashBackend},
     listing::trash_item_path,
     staging::trash_delete_via_staged_rename,
 };
 use crate::{
+    errors::api_error::ApiResult,
     fs_utils::{check_no_symlink_components, sanitize_path_nofollow},
     runtime_lifecycle,
     undo::{
@@ -25,16 +29,29 @@ pub async fn move_to_trash(
     path: String,
     app: tauri::AppHandle,
     undo: tauri::State<'_, UndoState>,
-) -> Result<(), String> {
+) -> ApiResult<()> {
+    map_api_result(move_to_trash_impl(path, app, undo).await)
+}
+
+async fn move_to_trash_impl(
+    path: String,
+    app: tauri::AppHandle,
+    undo: tauri::State<'_, UndoState>,
+) -> FsResult<()> {
     let app_handle = app.clone();
     let undo_state = undo.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let task = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
         let action = move_single_to_trash(&path, &app_handle, true)?;
         let _ = undo_state.record_applied(action);
         Ok(())
-    })
-    .await
-    .map_err(|e| format!("Move to trash task failed: {e}"))?
+    });
+    match task.await {
+        Ok(result) => result.map_err(FsError::from_external_message),
+        Err(error) => Err(FsError::new(
+            FsErrorCode::TaskFailed,
+            format!("Move to trash task failed: {error}"),
+        )),
+    }
 }
 
 fn emit_trash_progress(
@@ -243,11 +260,21 @@ pub async fn move_to_trash_many(
     undo: tauri::State<'_, UndoState>,
     cancel: tauri::State<'_, CancelState>,
     progress_event: Option<String>,
-) -> Result<(), String> {
+) -> ApiResult<()> {
+    map_api_result(move_to_trash_many_impl(paths, app, undo, cancel, progress_event).await)
+}
+
+async fn move_to_trash_many_impl(
+    paths: Vec<String>,
+    app: tauri::AppHandle,
+    undo: tauri::State<'_, UndoState>,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
+) -> FsResult<()> {
     let app_handle = app.clone();
     let undo_state = undo.inner().clone();
     let cancel_state = cancel.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let task = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
         let cancel_guard = progress_event
             .as_ref()
             .map(|id| cancel_state.register(id.clone()))
@@ -260,9 +287,14 @@ pub async fn move_to_trash_many(
             progress_event,
             cancel_token.as_deref(),
         )
-    })
-    .await
-    .map_err(|e| format!("Move to trash task failed: {e}"))?
+    });
+    match task.await {
+        Ok(result) => result.map_err(FsError::from_external_message),
+        Err(error) => Err(FsError::new(
+            FsErrorCode::TaskFailed,
+            format!("Move to trash task failed: {error}"),
+        )),
+    }
 }
 
 pub(super) fn move_single_to_trash_with_backend<B: TrashBackend>(

@@ -1,9 +1,13 @@
 //! Build deduped network listing entries from mounts and discovered network targets.
 
-use crate::{commands::fs::MountInfo, entry::FsEntry};
+use crate::{commands::fs::MountInfo, entry::FsEntry, errors::api_error::ApiResult};
 use std::collections::HashMap;
 
-use super::{discovery, mounts, uri};
+use super::{
+    discovery,
+    error::{map_api_result, NetworkError, NetworkErrorCode, NetworkResult},
+    mounts, uri,
+};
 
 const NETWORK_ICON_ID: u16 = 10;
 
@@ -186,11 +190,21 @@ pub(super) fn list_network_entries_sync(force_refresh: bool) -> Vec<FsEntry> {
 }
 
 #[tauri::command]
-pub async fn list_network_entries(force_refresh: Option<bool>) -> Result<Vec<FsEntry>, String> {
+pub async fn list_network_entries(force_refresh: Option<bool>) -> ApiResult<Vec<FsEntry>> {
+    map_api_result(list_network_entries_impl(force_refresh).await)
+}
+
+async fn list_network_entries_impl(force_refresh: Option<bool>) -> NetworkResult<Vec<FsEntry>> {
     let force_refresh = force_refresh.unwrap_or(false);
-    tauri::async_runtime::spawn_blocking(move || list_network_entries_sync(force_refresh))
-        .await
-        .map_err(|e| format!("network listing failed: {e}"))
+    let task =
+        tauri::async_runtime::spawn_blocking(move || list_network_entries_sync(force_refresh));
+    match task.await {
+        Ok(result) => Ok(result),
+        Err(error) => Err(NetworkError::new(
+            NetworkErrorCode::DiscoveryFailed,
+            format!("network listing failed: {error}"),
+        )),
+    }
 }
 
 #[cfg(test)]

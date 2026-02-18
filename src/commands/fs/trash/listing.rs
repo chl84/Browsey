@@ -1,6 +1,8 @@
+use super::super::error::{map_api_result, FsError, FsErrorCode, FsResult};
 use super::super::DirListing;
 use crate::{
     entry::{build_entry, FsEntry},
+    errors::api_error::ApiResult,
     fs_utils::debug_log,
     icons::icon_id_for,
     sorting::{sort_entries, SortSpec},
@@ -53,8 +55,17 @@ pub(super) fn apply_original_trash_fields(
 }
 
 #[tauri::command]
-pub fn list_trash(sort: Option<SortSpec>) -> Result<DirListing, String> {
-    let items = trash_list().map_err(|e| format!("Failed to list trash: {e}"))?;
+pub fn list_trash(sort: Option<SortSpec>) -> ApiResult<DirListing> {
+    map_api_result(list_trash_impl(sort))
+}
+
+fn list_trash_impl(sort: Option<SortSpec>) -> FsResult<DirListing> {
+    let items = trash_list().map_err(|error| {
+        FsError::new(
+            FsErrorCode::TrashFailed,
+            format!("Failed to list trash: {error}"),
+        )
+    })?;
     let mut entries = Vec::new();
     for item in items {
         let path = trash_item_path(&item);

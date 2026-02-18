@@ -1,5 +1,7 @@
+use super::error::{map_api_result, FsError, FsErrorCode, FsResult};
 use super::{should_abort_fs_op, CancelState, DeleteProgressPayload, UndoState};
 use crate::{
+    errors::api_error::ApiResult,
     fs_utils::sanitize_path_nofollow,
     path_guard::{
         ensure_existing_dir_nonsymlink, ensure_existing_path_nonsymlink,
@@ -19,9 +21,13 @@ use std::{
 };
 
 #[tauri::command]
-pub fn delete_entry(path: String, state: tauri::State<UndoState>) -> Result<(), String> {
-    let pb = sanitize_path_nofollow(&path, true)?;
-    let action = delete_with_backup(&pb)?;
+pub fn delete_entry(path: String, state: tauri::State<UndoState>) -> ApiResult<()> {
+    map_api_result(delete_entry_impl(path, state))
+}
+
+fn delete_entry_impl(path: String, state: tauri::State<UndoState>) -> FsResult<()> {
+    let pb = sanitize_path_nofollow(&path, true).map_err(FsError::from_external_message)?;
+    let action = delete_with_backup(&pb).map_err(FsError::from_external_message)?;
     let _ = state.record_applied(action);
     Ok(())
 }
@@ -156,7 +162,17 @@ pub async fn delete_entries(
     progress_event: Option<String>,
     undo: tauri::State<'_, UndoState>,
     cancel: tauri::State<'_, CancelState>,
-) -> Result<(), String> {
+) -> ApiResult<()> {
+    map_api_result(delete_entries_impl(app, paths, progress_event, undo, cancel).await)
+}
+
+async fn delete_entries_impl(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+    progress_event: Option<String>,
+    undo: tauri::State<'_, UndoState>,
+    cancel: tauri::State<'_, CancelState>,
+) -> FsResult<()> {
     let undo = undo.inner().clone();
     let cancel_state = cancel.inner().clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -167,5 +183,11 @@ pub async fn delete_entries(
         let cancel_token = cancel_guard.as_ref().map(|g| g.token());
         delete_entries_blocking(app, paths, progress_event, undo, cancel_token.as_deref())
     });
-    task.await.map_err(|e| format!("Delete task failed: {e}"))?
+    match task.await {
+        Ok(result) => result.map_err(FsError::from_external_message),
+        Err(error) => Err(FsError::new(
+            FsErrorCode::TaskFailed,
+            format!("Delete task failed: {error}"),
+        )),
+    }
 }

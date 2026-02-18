@@ -11,17 +11,17 @@ Goal: Migrate remaining modules from `Result<..., String>` to the new code-based
 - [x] `src/commands/decompress`
 - [x] `src/commands/duplicates`
 - [x] `src/commands/entry_metadata`
-- [ ] `src/commands/fs` (partially migrated: `set_hidden` uses new flow)
+- [x] `src/commands/fs`
 - [x] `src/commands/keymap.rs`
 - [x] `src/commands/library.rs`
 - [x] `src/commands/listing`
-- [ ] `src/commands/network`
-- [ ] `src/commands/open_with`
-- [ ] `src/commands/permissions` (partially migrated; some internal helpers still return `String`)
-- [ ] `src/commands/search`
-- [ ] `src/commands/settings`
-- [ ] `src/commands/system_clipboard`
-- [ ] `src/commands/thumbnails`
+- [x] `src/commands/network`
+- [x] `src/commands/open_with`
+- [x] `src/commands/permissions`
+- [x] `src/commands/search`
+- [x] `src/commands/settings`
+- [x] `src/commands/system_clipboard`
+- [x] `src/commands/thumbnails`
 
 ## Core modules outside `commands`
 

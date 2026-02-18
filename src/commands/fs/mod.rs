@@ -2,7 +2,7 @@
 
 use crate::{
     entry::{CachedMeta, FsEntry},
-    errors::api_error::ApiError,
+    errors::api_error::{ApiError, ApiResult},
     fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitize_path_nofollow},
     path_guard::ensure_existing_dir_nonsymlink,
     runtime_lifecycle,
@@ -28,7 +28,10 @@ use std::{
 };
 
 pub use delete_ops::{delete_entries, delete_entry};
-use error::{is_expected_set_hidden_error, SetHiddenError, SetHiddenErrorCode, SetHiddenResult};
+use error::{
+    is_expected_set_hidden_error, map_api_result, FsError, FsErrorCode, SetHiddenError,
+    SetHiddenErrorCode, SetHiddenResult,
+};
 pub use open_ops::open_entry;
 pub use trash::{
     cleanup_stale_trash_staging, list_trash, move_to_trash, move_to_trash_many, purge_trash_items,
@@ -205,14 +208,23 @@ pub fn set_hidden(
     paths: Option<Vec<String>>,
     hidden: bool,
     state: tauri::State<UndoState>,
-) -> Result<SetHiddenBatchResult, String> {
+) -> ApiResult<SetHiddenBatchResult> {
+    map_api_result(set_hidden_impl(path, paths, hidden, state))
+}
+
+fn set_hidden_impl(
+    path: Option<String>,
+    paths: Option<Vec<String>>,
+    hidden: bool,
+    state: tauri::State<UndoState>,
+) -> error::FsResult<SetHiddenBatchResult> {
     let targets: Vec<String> = match (paths, path) {
         (Some(list), _) if !list.is_empty() => list,
         (_, Some(single)) => vec![single],
-        _ => return Err("No paths provided".into()),
+        _ => return Err(FsError::new(FsErrorCode::InvalidInput, "No paths provided")),
     };
     if targets.is_empty() {
-        return Err("No paths provided".into());
+        return Err(FsError::new(FsErrorCode::InvalidInput, "No paths provided"));
     }
     let mut per_item: Vec<SetHiddenBatchItem> = Vec::with_capacity(targets.len());
     let mut failures = 0usize;
@@ -283,21 +295,43 @@ pub fn create_folder(
     path: String,
     name: String,
     state: tauri::State<UndoState>,
-) -> Result<String, String> {
-    let base = sanitize_path_follow(&path, true)?;
-    ensure_existing_dir_nonsymlink(&base)?;
+) -> ApiResult<String> {
+    map_api_result(create_folder_impl(path, name, state))
+}
+
+fn create_folder_impl(
+    path: String,
+    name: String,
+    state: tauri::State<UndoState>,
+) -> error::FsResult<String> {
+    let base = sanitize_path_follow(&path, true).map_err(FsError::from_external_message)?;
+    ensure_existing_dir_nonsymlink(&base).map_err(FsError::from_external_message)?;
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        return Err("Folder name cannot be empty".into());
+        return Err(FsError::new(
+            FsErrorCode::InvalidInput,
+            "Folder name cannot be empty",
+        ));
     }
     if trimmed.contains(['/', '\\']) {
-        return Err("Folder name cannot contain path separators".into());
+        return Err(FsError::new(
+            FsErrorCode::InvalidInput,
+            "Folder name cannot contain path separators",
+        ));
     }
     let target = base.join(trimmed);
     if target.exists() {
-        return Err("A file or directory with that name already exists".into());
+        return Err(FsError::new(
+            FsErrorCode::TargetExists,
+            "A file or directory with that name already exists",
+        ));
     }
-    fs::create_dir(&target).map_err(|e| format!("Failed to create folder: {e}"))?;
+    fs::create_dir(&target).map_err(|error| {
+        FsError::new(
+            FsErrorCode::CreateFailed,
+            format!("Failed to create folder: {error}"),
+        )
+    })?;
     let _ = state.record_applied(Action::CreateFolder {
         path: target.clone(),
     });
@@ -309,28 +343,50 @@ pub fn create_file(
     path: String,
     name: String,
     state: tauri::State<UndoState>,
-) -> Result<String, String> {
-    let base = sanitize_path_follow(&path, true)?;
-    ensure_existing_dir_nonsymlink(&base)?;
+) -> ApiResult<String> {
+    map_api_result(create_file_impl(path, name, state))
+}
+
+fn create_file_impl(
+    path: String,
+    name: String,
+    state: tauri::State<UndoState>,
+) -> error::FsResult<String> {
+    let base = sanitize_path_follow(&path, true).map_err(FsError::from_external_message)?;
+    ensure_existing_dir_nonsymlink(&base).map_err(FsError::from_external_message)?;
 
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        return Err("File name cannot be empty".into());
+        return Err(FsError::new(
+            FsErrorCode::InvalidInput,
+            "File name cannot be empty",
+        ));
     }
     if trimmed.contains(['/', '\\']) {
-        return Err("File name cannot contain path separators".into());
+        return Err(FsError::new(
+            FsErrorCode::InvalidInput,
+            "File name cannot contain path separators",
+        ));
     }
 
     let target = base.join(trimmed);
     if target.exists() {
-        return Err("A file or directory with that name already exists".into());
+        return Err(FsError::new(
+            FsErrorCode::TargetExists,
+            "A file or directory with that name already exists",
+        ));
     }
 
     fs::File::options()
         .write(true)
         .create_new(true)
         .open(&target)
-        .map_err(|e| format!("Failed to create file: {e}"))?;
+        .map_err(|error| {
+            FsError::new(
+                FsErrorCode::CreateFailed,
+                format!("Failed to create file: {error}"),
+            )
+        })?;
 
     let backup = temp_backup_path(&target);
     let _ = state.record_applied(Action::Create {

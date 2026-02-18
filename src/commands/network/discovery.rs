@@ -1,4 +1,5 @@
 use crate::commands::fs::MountInfo;
+use crate::errors::api_error::ApiResult;
 use once_cell::sync::OnceCell;
 use std::collections::HashSet;
 #[cfg(not(target_os = "windows"))]
@@ -9,7 +10,10 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use url::Url;
 
-use super::uri::canonicalize_uri;
+use super::{
+    error::{map_api_result, NetworkError, NetworkErrorCode, NetworkResult},
+    uri::canonicalize_uri,
+};
 
 const DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(20);
 
@@ -377,14 +381,27 @@ pub(super) fn invalidate_network_devices_cache() {
 pub(super) fn invalidate_network_devices_cache() {}
 
 #[tauri::command]
-pub async fn list_network_devices() -> Result<Vec<MountInfo>, String> {
-    tauri::async_runtime::spawn_blocking(|| list_network_devices_sync(false))
-        .await
-        .map_err(|e| format!("network discovery failed: {e}"))
+pub async fn list_network_devices() -> ApiResult<Vec<MountInfo>> {
+    map_api_result(list_network_devices_impl().await)
 }
 
 #[tauri::command]
-pub fn open_network_uri(uri: String) -> Result<(), String> {
+pub fn open_network_uri(uri: String) -> ApiResult<()> {
+    map_api_result(open_network_uri_impl(uri).map_err(NetworkError::from_external_message))
+}
+
+async fn list_network_devices_impl() -> NetworkResult<Vec<MountInfo>> {
+    let task = tauri::async_runtime::spawn_blocking(|| list_network_devices_sync(false));
+    match task.await {
+        Ok(result) => Ok(result),
+        Err(error) => Err(NetworkError::new(
+            NetworkErrorCode::DiscoveryFailed,
+            format!("network discovery failed: {error}"),
+        )),
+    }
+}
+
+pub(super) fn open_network_uri_impl(uri: String) -> Result<(), String> {
     let Some((scheme, normalized)) = canonicalize_uri(&uri) else {
         return Err("Unsupported URI".into());
     };
