@@ -1,7 +1,7 @@
 use super::{spawn_detached, OpenWithApp};
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 
 pub(super) fn list_linux_apps(target: &Path) -> Vec<OpenWithApp> {
@@ -106,6 +106,7 @@ fn linux_app_candidates_in_dirs(target: &Path, app_dirs: &[PathBuf]) -> Vec<Linu
     let mut seen: HashSet<String> = HashSet::new();
 
     for dir in canonical_application_dirs(app_dirs) {
+        let flatpak_app_root = flatpak_app_root_for_export_dir(&dir);
         let Ok(entries) = fs::read_dir(&dir) else {
             continue;
         };
@@ -122,19 +123,27 @@ fn linux_app_candidates_in_dirs(target: &Path, app_dirs: &[PathBuf]) -> Vec<Linu
             let Ok(meta) = fs::symlink_metadata(&path) else {
                 continue;
             };
-            if meta.file_type().is_symlink() || !meta.is_file() {
+            let is_symlink = meta.file_type().is_symlink();
+            if !is_symlink && !meta.is_file() {
                 continue;
             }
             let Ok(canon) = fs::canonicalize(&path) else {
                 continue;
             };
-            if !canon.starts_with(&dir) {
-                continue;
-            }
             let Ok(canon_meta) = fs::symlink_metadata(&canon) else {
                 continue;
             };
             if canon_meta.file_type().is_symlink() || !canon_meta.is_file() {
+                continue;
+            }
+            if is_symlink {
+                let Some(app_root) = flatpak_app_root.as_ref() else {
+                    continue;
+                };
+                if !is_allowed_flatpak_desktop_target(&canon, app_root) {
+                    continue;
+                }
+            } else if !canon.starts_with(&dir) {
                 continue;
             }
             let Some(desktop) = parse_desktop_entry(&canon) else {
@@ -154,6 +163,40 @@ fn linux_app_candidates_in_dirs(target: &Path, app_dirs: &[PathBuf]) -> Vec<Linu
     }
 
     out
+}
+
+fn flatpak_app_root_for_export_dir(dir: &Path) -> Option<PathBuf> {
+    if !dir.ends_with(Path::new("flatpak/exports/share/applications")) {
+        return None;
+    }
+    let flatpak_root = dir.parent()?.parent()?.parent()?;
+    Some(flatpak_root.join("app"))
+}
+
+fn path_contains_component_sequence(path: &Path, sequence: &[&str]) -> bool {
+    if sequence.is_empty() {
+        return true;
+    }
+    let components: Vec<&str> = path
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(segment) => segment.to_str(),
+            _ => None,
+        })
+        .collect();
+    components
+        .windows(sequence.len())
+        .any(|window| window == sequence)
+}
+
+fn is_allowed_flatpak_desktop_target(path: &Path, app_root: &Path) -> bool {
+    path.starts_with(app_root)
+        && path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("desktop"))
+            == Some(true)
+        && path_contains_component_sequence(path, &["export", "share", "applications"])
 }
 
 fn resolve_linux_app_for_target(target: &Path, app_id: &str) -> Option<LinuxAppCandidate> {
@@ -508,6 +551,31 @@ mod tests {
         let listed = linux_app_candidates_in_dirs(&target, &dirs);
         assert_eq!(listed.len(), 1, "symlink desktop entries should be ignored");
         assert_eq!(listed[0].desktop.name, "Real");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn linux_open_with_allows_flatpak_exported_symlink_desktop_files() {
+        let root = uniq_dir("flatpak-symlink");
+        let export_dir = root.join("flatpak/exports/share/applications");
+        let app_dir = root
+            .join("flatpak/app/com.example.App/x86_64/stable/testhash/export/share/applications");
+        fs::create_dir_all(&export_dir).expect("failed to create export dir");
+        fs::create_dir_all(&app_dir).expect("failed to create app dir");
+
+        let real_path = app_dir.join("com.example.App.desktop");
+        write_desktop(&real_path, "Flatpak App");
+        let linked_path = export_dir.join("com.example.App.desktop");
+        symlink(&real_path, &linked_path).expect("failed to create desktop symlink");
+
+        let target = root.join("sample.txt");
+        fs::write(&target, b"data").expect("failed to write target");
+
+        let dirs = vec![export_dir];
+        let listed = linux_app_candidates_in_dirs(&target, &dirs);
+        assert_eq!(listed.len(), 1, "flatpak-export symlink should be allowed");
+        assert_eq!(listed[0].desktop.name, "Flatpak App");
 
         let _ = fs::remove_dir_all(&root);
     }
