@@ -136,7 +136,9 @@ fn set_ownership_requires_owner_or_group() {
         Ok(_) => panic!("set_ownership_batch should fail without owner/group"),
         Err(err) => err,
     };
-    assert!(err.contains("No ownership changes were provided"));
+    assert!(err
+        .to_string()
+        .contains("No ownership changes were provided"));
     let _ = fs::remove_file(&path);
 }
 
@@ -152,7 +154,7 @@ fn set_ownership_rejects_unknown_principals() {
         Ok(_) => panic!("set_ownership_batch should fail for unknown user"),
         Err(err) => err,
     };
-    assert!(err.contains("User not found"));
+    assert!(err.to_string().contains("User not found"));
 
     let err = match set_ownership_batch(
         vec![path.to_string_lossy().to_string()],
@@ -162,7 +164,7 @@ fn set_ownership_rejects_unknown_principals() {
         Ok(_) => panic!("set_ownership_batch should fail for unknown group"),
         Err(err) => err,
     };
-    assert!(err.contains("Group not found"));
+    assert!(err.to_string().contains("Group not found"));
     let _ = fs::remove_file(&path);
 }
 
@@ -197,7 +199,7 @@ fn set_permissions_rejects_relative_path() {
         Ok(_) => panic!("set_permissions_batch should fail for relative paths"),
         Err(err) => err,
     };
-    assert!(err.contains("Path must be absolute"));
+    assert!(err.to_string().contains("Path must be absolute"));
 }
 
 #[test]
@@ -230,7 +232,7 @@ fn set_permissions_rejects_symlink_components() {
         Ok(_) => panic!("set_permissions_batch should reject symlink path components"),
         Err(err) => err,
     };
-    assert!(err.contains("Symlinks are not allowed in path"));
+    assert!(err.to_string().contains("Symlinks are not allowed in path"));
 
     let _ = fs::remove_file(&file_path);
     let _ = fs::remove_file(&link_dir);
@@ -261,7 +263,7 @@ fn get_permissions_rejects_symlink_components() {
         Ok(_) => panic!("get_permissions should reject symlink path components"),
         Err(err) => err,
     };
-    assert!(err.contains("Symlinks are not allowed in path"));
+    assert!(err.to_string().contains("Symlinks are not allowed in path"));
 
     let _ = fs::remove_file(&file_path);
     let _ = fs::remove_file(&link_dir);
@@ -306,7 +308,7 @@ fn set_permissions_rolls_back_when_later_target_fails_validation() {
         Ok(_) => panic!("set_permissions_batch should fail when a later target is invalid"),
         Err(err) => err,
     };
-    assert!(err.contains("Symlinks are not allowed in path"));
+    assert!(err.to_string().contains("Symlinks are not allowed in path"));
     let after_mode = fs::metadata(&first_path).unwrap().permissions().mode() & 0o777;
     assert_eq!(after_mode, before_mode);
 
@@ -359,7 +361,7 @@ fn set_ownership_rejects_relative_path() {
         Ok(_) => panic!("set_ownership_batch should fail for relative paths"),
         Err(err) => err,
     };
-    assert!(err.contains("Path must be absolute"));
+    assert!(err.to_string().contains("Path must be absolute"));
 
     let _ = fs::remove_file(&path);
 }
@@ -379,7 +381,9 @@ fn refresh_permissions_after_apply_errors_when_no_change() {
         Ok(_) => panic!("refresh should fail when nothing changed and path is invalid"),
         Err(err) => err,
     };
-    assert!(err.contains("Path does not exist or unreadable"));
+    assert!(err
+        .to_string()
+        .contains("Path does not exist or unreadable"));
 }
 
 #[test]
@@ -413,7 +417,7 @@ fn set_permissions_does_not_record_undo_history() {
     assert!(!dst.exists());
 
     let err = undo.undo().unwrap_err();
-    assert!(err.contains("Nothing to undo"));
+    assert!(err.to_string().contains("Nothing to undo"));
 
     let _ = fs::remove_file(&src);
     let _ = fs::remove_file(&dst);
@@ -448,7 +452,7 @@ fn set_ownership_does_not_record_undo_history() {
     assert!(!dst.exists());
 
     let err = undo.undo().unwrap_err();
-    assert!(err.contains("Nothing to undo"));
+    assert!(err.to_string().contains("Nothing to undo"));
 
     let _ = fs::remove_file(&src);
     let _ = fs::remove_file(&dst);

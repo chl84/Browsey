@@ -16,8 +16,9 @@ use super::windows_acl;
 #[cfg(target_os = "windows")]
 use super::AccessBits;
 use super::{
-    ensure_absolute_path, permission_info_fallback, refresh_permissions_after_apply, AccessUpdate,
-    PermissionInfo,
+    ensure_absolute_path,
+    error::{PermissionsError, PermissionsErrorCode, PermissionsResult},
+    permission_info_fallback, refresh_permissions_after_apply, AccessUpdate, PermissionInfo,
 };
 
 #[derive(Clone)]
@@ -26,7 +27,7 @@ struct PermissionRollback {
     before: crate::undo::PermissionsSnapshot,
 }
 
-fn rollback_permissions_actions(actions: &[PermissionRollback]) -> Result<(), String> {
+fn rollback_permissions_actions(actions: &[PermissionRollback]) -> PermissionsResult<()> {
     if actions.is_empty() {
         return Ok(());
     }
@@ -41,7 +42,10 @@ fn rollback_permissions_actions(actions: &[PermissionRollback]) -> Result<(), St
     } else {
         let joined = errors.join("; ");
         warn!(error = %joined, "permissions rollback failed");
-        Err(joined)
+        Err(PermissionsError::new(
+            PermissionsErrorCode::RollbackFailed,
+            joined,
+        ))
     }
 }
 
@@ -53,10 +57,12 @@ pub(super) fn set_permissions_batch(
     owner: Option<AccessUpdate>,
     group: Option<AccessUpdate>,
     other: Option<AccessUpdate>,
-) -> Result<PermissionInfo, String> {
+) -> PermissionsResult<PermissionInfo> {
     let has_access_updates = owner.is_some() || group.is_some() || other.is_some();
     if read_only.is_none() && executable.is_none() && !has_access_updates {
-        return Err("No permission changes were provided".into());
+        return Err(PermissionsError::invalid_input(
+            "No permission changes were provided",
+        ));
     }
 
     let first_path = paths.first().cloned();
@@ -66,7 +72,7 @@ pub(super) fn set_permissions_batch(
         let owner_update = owner.clone();
         let group_update = group.clone();
         let other_update = other.clone();
-        let apply_result: Result<(), String> = (|| {
+        let apply_result: PermissionsResult<()> = (|| {
             ensure_absolute_path(&path)?;
             debug!(
                 path = %path,
@@ -74,12 +80,20 @@ pub(super) fn set_permissions_batch(
                 executable = ?executable,
                 "set_permissions start"
             );
-            let target = sanitize_path_nofollow(&path, true)?;
-            check_no_symlink_components(&target)?;
-            let meta = fs::symlink_metadata(&target)
-                .map_err(|e| format!("Failed to read metadata: {e}"))?;
+            let target = sanitize_path_nofollow(&path, true).map_err(PermissionsError::from)?;
+            check_no_symlink_components(&target).map_err(PermissionsError::from)?;
+            let meta = fs::symlink_metadata(&target).map_err(|e| {
+                PermissionsError::from_io_error(
+                    PermissionsErrorCode::MetadataReadFailed,
+                    "Failed to read metadata",
+                    e,
+                )
+            })?;
             if meta.file_type().is_symlink() {
-                return Err("Permissions are not supported on symlinks".into());
+                return Err(PermissionsError::new(
+                    PermissionsErrorCode::SymlinkUnsupported,
+                    "Permissions are not supported on symlinks",
+                ));
             }
             debug!(path = %target.display(), "set_permissions resolved target");
 
@@ -183,30 +197,45 @@ pub(super) fn set_permissions_batch(
             if changed {
                 #[cfg(target_os = "linux")]
                 {
-                    set_unix_mode_nofollow(&target, mode)
-                        .map_err(|e| format!("Failed to update permissions: {e}"))?;
+                    set_unix_mode_nofollow(&target, mode).map_err(|e| {
+                        PermissionsError::new(
+                            PermissionsErrorCode::PermissionsUpdateFailed,
+                            format!("Failed to update permissions: {e}"),
+                        )
+                    })?;
                 }
                 #[cfg(not(target_os = "linux"))]
                 {
-                    fs::set_permissions(&target, perms)
-                        .map_err(|e| format!("Failed to update permissions: {e}"))?;
+                    fs::set_permissions(&target, perms).map_err(|e| {
+                        PermissionsError::from_io_error(
+                            PermissionsErrorCode::PermissionsUpdateFailed,
+                            "Failed to update permissions",
+                            e,
+                        )
+                    })?;
                 }
                 match permissions_snapshot(&target) {
                     Ok(_) => {}
                     Err(snapshot_err) => match apply_permissions(&target, &before) {
                         Ok(()) => {
-                            return Err(format!(
+                            return Err(PermissionsError::new(
+                                PermissionsErrorCode::PostChangeSnapshotFailed,
+                                format!(
                                     "Failed to capture post-change permissions for {}: {}; current target rolled back",
                                     target.display(),
                                     snapshot_err
-                                ));
+                                ),
+                            ));
                         }
                         Err(rollback_err) => {
-                            return Err(format!(
+                            return Err(PermissionsError::new(
+                                PermissionsErrorCode::PostChangeSnapshotFailed,
+                                format!(
                                     "Failed to capture post-change permissions for {}: {}; rollback failed ({rollback_err}). System may be partially changed",
                                     target.display(),
                                     snapshot_err
-                                ));
+                                ),
+                            ));
                         }
                     },
                 }
@@ -221,8 +250,11 @@ pub(super) fn set_permissions_batch(
         if let Err(err) = apply_result {
             warn!(path = %path, error = %err, "set_permissions failed");
             if let Err(rollback_err) = rollback_permissions_actions(&rollbacks) {
-                return Err(format!(
-                    "{err}; rollback failed ({rollback_err}). System may be partially changed"
+                return Err(PermissionsError::new(
+                    PermissionsErrorCode::RollbackFailed,
+                    format!(
+                        "{err}; rollback failed ({rollback_err}). System may be partially changed"
+                    ),
                 ));
             }
             return Err(err);
@@ -246,10 +278,12 @@ pub(super) fn set_permissions_batch(
     owner: Option<AccessUpdate>,
     group: Option<AccessUpdate>,
     other: Option<AccessUpdate>,
-) -> Result<PermissionInfo, String> {
+) -> PermissionsResult<PermissionInfo> {
     let has_access_updates = owner.is_some() || group.is_some() || other.is_some();
     if read_only.is_none() && executable.is_none() && !has_access_updates {
-        return Err("No permission changes were provided".into());
+        return Err(PermissionsError::invalid_input(
+            "No permission changes were provided",
+        ));
     }
 
     let first_path = paths.first().cloned();
@@ -259,7 +293,7 @@ pub(super) fn set_permissions_batch(
         let owner_update = owner.clone();
         let group_update = group.clone();
         let other_update = other.clone();
-        let apply_result: Result<(), String> = (|| {
+        let apply_result: PermissionsResult<()> = (|| {
             ensure_absolute_path(&path)?;
             debug!(
                 path = %path,
@@ -267,12 +301,20 @@ pub(super) fn set_permissions_batch(
                 executable = ?executable,
                 "set_permissions start"
             );
-            let target = sanitize_path_nofollow(&path, true)?;
-            check_no_symlink_components(&target)?;
-            let meta = fs::symlink_metadata(&target)
-                .map_err(|e| format!("Failed to read metadata: {e}"))?;
+            let target = sanitize_path_nofollow(&path, true).map_err(PermissionsError::from)?;
+            check_no_symlink_components(&target).map_err(PermissionsError::from)?;
+            let meta = fs::symlink_metadata(&target).map_err(|e| {
+                PermissionsError::from_io_error(
+                    PermissionsErrorCode::MetadataReadFailed,
+                    "Failed to read metadata",
+                    e,
+                )
+            })?;
             if meta.file_type().is_symlink() {
-                return Err("Permissions are not supported on symlinks".into());
+                return Err(PermissionsError::new(
+                    PermissionsErrorCode::SymlinkUnsupported,
+                    "Permissions are not supported on symlinks",
+                ));
             }
             debug!(path = %target.display(), "set_permissions resolved target");
 
@@ -304,7 +346,10 @@ pub(super) fn set_permissions_batch(
                 if let Some(ref mut bits) = desired.group {
                     apply_update(bits, update);
                 } else {
-                    return Err("Group information is unavailable for this entry".into());
+                    return Err(PermissionsError::new(
+                        PermissionsErrorCode::GroupUnavailable,
+                        "Group information is unavailable for this entry",
+                    ));
                 }
             }
             if let Some(update) = other_update {
@@ -317,8 +362,13 @@ pub(super) fn set_permissions_batch(
             if let Some(ro) = read_only {
                 if ro != orig_ro {
                     perms.set_readonly(ro);
-                    fs::set_permissions(&target, perms.clone())
-                        .map_err(|e| format!("Failed to update permissions: {e}"))?;
+                    fs::set_permissions(&target, perms.clone()).map_err(|e| {
+                        PermissionsError::from_io_error(
+                            PermissionsErrorCode::PermissionsUpdateFailed,
+                            "Failed to update permissions",
+                            e,
+                        )
+                    })?;
                     changed = true;
                 }
             }
@@ -335,7 +385,11 @@ pub(super) fn set_permissions_batch(
                             let _ = fs::set_permissions(&target, revert);
                         }
                     }
-                    return Err(format!("Failed to update permissions: {e}"));
+                    return Err(PermissionsError::from_io_error(
+                        PermissionsErrorCode::PermissionsUpdateFailed,
+                        "Failed to update permissions",
+                        e,
+                    ));
                 }
                 changed = true;
             }
@@ -345,18 +399,24 @@ pub(super) fn set_permissions_batch(
                     Ok(_) => {}
                     Err(snapshot_err) => match apply_permissions(&target, &before) {
                         Ok(()) => {
-                            return Err(format!(
+                            return Err(PermissionsError::new(
+                                PermissionsErrorCode::PostChangeSnapshotFailed,
+                                format!(
                                     "Failed to capture post-change permissions for {}: {}; current target rolled back",
                                     target.display(),
                                     snapshot_err
-                                ));
+                                ),
+                            ));
                         }
                         Err(rollback_err) => {
-                            return Err(format!(
+                            return Err(PermissionsError::new(
+                                PermissionsErrorCode::PostChangeSnapshotFailed,
+                                format!(
                                     "Failed to capture post-change permissions for {}: {}; rollback failed ({rollback_err}). System may be partially changed",
                                     target.display(),
                                     snapshot_err
-                                ));
+                                ),
+                            ));
                         }
                     },
                 }
@@ -371,8 +431,11 @@ pub(super) fn set_permissions_batch(
         if let Err(err) = apply_result {
             warn!(path = %path, error = %err, "set_permissions failed");
             if let Err(rollback_err) = rollback_permissions_actions(&rollbacks) {
-                return Err(format!(
-                    "{err}; rollback failed ({rollback_err}). System may be partially changed"
+                return Err(PermissionsError::new(
+                    PermissionsErrorCode::RollbackFailed,
+                    format!(
+                        "{err}; rollback failed ({rollback_err}). System may be partially changed"
+                    ),
                 ));
             }
             return Err(err);
@@ -396,14 +459,20 @@ pub(super) fn set_permissions_batch(
     owner: Option<AccessUpdate>,
     group: Option<AccessUpdate>,
     other: Option<AccessUpdate>,
-) -> Result<PermissionInfo, String> {
+) -> PermissionsResult<PermissionInfo> {
     let _ = (paths, executable, owner, group, other);
     if let Some(ro) = read_only {
-        return Err(format!(
-            "Permission changes are not supported on this platform (requested readOnly={ro})"
+        return Err(PermissionsError::new(
+            PermissionsErrorCode::UnsupportedPlatform,
+            format!(
+                "Permission changes are not supported on this platform (requested readOnly={ro})"
+            ),
         ));
     }
-    Err("Permission changes are not supported on this platform".into())
+    Err(PermissionsError::new(
+        PermissionsErrorCode::UnsupportedPlatform,
+        "Permission changes are not supported on this platform",
+    ))
 }
 
 #[cfg(all(test, unix))]
@@ -447,7 +516,7 @@ mod tests {
         ];
 
         let err = rollback_permissions_actions(&actions).unwrap_err();
-        assert!(err.contains(missing.to_string_lossy().as_ref()));
+        assert!(err.to_string().contains(missing.to_string_lossy().as_ref()));
 
         let restored_mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(restored_mode, 0o600);
