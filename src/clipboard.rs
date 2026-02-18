@@ -19,7 +19,7 @@ use std::{
     sync::{atomic::AtomicBool, Mutex},
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ClipboardMode {
     Copy,
     Cut,
@@ -53,6 +53,76 @@ pub struct ConflictInfo {
 }
 
 static CLIPBOARD: Lazy<Mutex<Option<ClipboardState>>> = Lazy::new(|| Mutex::new(None));
+
+#[cfg(unix)]
+fn filesystem_key(path: &Path) -> Option<u64> {
+    use std::os::unix::fs::MetadataExt;
+    fs::metadata(path).ok().map(|meta| meta.dev())
+}
+
+#[cfg(target_os = "windows")]
+fn filesystem_key(path: &Path) -> Option<String> {
+    use std::path::Component;
+    let canon = path.canonicalize().ok()?;
+    let mut comps = canon.components();
+    match comps.next() {
+        Some(Component::Prefix(prefix)) => {
+            let mut key = prefix.as_os_str().to_string_lossy().to_string();
+            key.make_ascii_lowercase();
+            Some(key)
+        }
+        _ => None,
+    }
+}
+
+fn should_copy_for_drop(src: &Path, dest: &Path) -> bool {
+    match (filesystem_key(src), filesystem_key(dest)) {
+        (Some(src_key), Some(dest_key)) => src_key != dest_key,
+        _ => true,
+    }
+}
+
+fn resolve_drop_clipboard_mode_impl(
+    paths: Vec<String>,
+    dest: String,
+    prefer_copy: bool,
+) -> Result<ClipboardMode, String> {
+    if prefer_copy {
+        return Ok(ClipboardMode::Copy);
+    }
+    if paths.is_empty() {
+        return Err("No source paths provided".into());
+    }
+    let dest = sanitize_path_follow(&dest, false)?;
+    let dest_meta =
+        fs::symlink_metadata(&dest).map_err(|e| format!("Failed to read destination: {e}"))?;
+    if !dest_meta.is_dir() {
+        return Err("Drop destination must be a directory".into());
+    }
+    let mut src_paths = Vec::with_capacity(paths.len());
+    for raw in paths {
+        src_paths.push(sanitize_path_follow(&raw, true)?);
+    }
+    if src_paths.iter().any(|src| should_copy_for_drop(src, &dest)) {
+        Ok(ClipboardMode::Copy)
+    } else {
+        Ok(ClipboardMode::Cut)
+    }
+}
+
+#[tauri::command]
+pub fn resolve_drop_clipboard_mode(
+    paths: Vec<String>,
+    dest: String,
+    prefer_copy: bool,
+) -> Result<String, String> {
+    let mode = resolve_drop_clipboard_mode_impl(paths, dest, prefer_copy)?;
+    Ok(match mode {
+        ClipboardMode::Copy => "copy",
+        ClipboardMode::Cut => "cut",
+    }
+    .to_string())
+}
 
 fn ensure_not_child(src: &Path, dest: &Path) -> Result<(), String> {
     if dest.starts_with(src) {
@@ -942,5 +1012,47 @@ mod tests {
             rename_candidate(&base, 2),
             base.parent().unwrap().join("report-2.pdf")
         );
+    }
+
+    #[test]
+    fn resolve_drop_mode_prefers_copy_modifier() {
+        let base = uniq_path("drop-mode-copy");
+        let src_dir = base.join("src");
+        let dest_dir = base.join("dest");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::create_dir_all(&dest_dir).unwrap();
+        let src_file = src_dir.join("a.txt");
+        write_file(&src_file, b"a");
+
+        let mode = resolve_drop_clipboard_mode_impl(
+            vec![src_file.to_string_lossy().to_string()],
+            dest_dir.to_string_lossy().to_string(),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(mode, ClipboardMode::Copy);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn resolve_drop_mode_defaults_to_cut_on_same_filesystem() {
+        let base = uniq_path("drop-mode-cut");
+        let src_dir = base.join("src");
+        let dest_dir = base.join("dest");
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::create_dir_all(&dest_dir).unwrap();
+        let src_file = src_dir.join("a.txt");
+        write_file(&src_file, b"a");
+
+        let mode = resolve_drop_clipboard_mode_impl(
+            vec![src_file.to_string_lossy().to_string()],
+            dest_dir.to_string_lossy().to_string(),
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(mode, ClipboardMode::Cut);
+        let _ = fs::remove_dir_all(&base);
     }
 }

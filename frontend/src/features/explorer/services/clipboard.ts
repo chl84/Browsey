@@ -17,3 +17,9 @@ export const pasteClipboardCmd = (
 
 export const pasteClipboardPreview = (dest: string) =>
   invoke<{ src: string; target: string; is_dir: boolean }[]>('paste_clipboard_preview', { dest })
+
+export const resolveDropClipboardMode = (
+  paths: string[],
+  dest: string,
+  preferCopy: boolean,
+) => invoke<'copy' | 'cut'>('resolve_drop_clipboard_mode', { paths, dest, preferCopy })
