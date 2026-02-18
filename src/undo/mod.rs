@@ -1,4 +1,3 @@
-use std::collections::{hash_map::DefaultHasher, VecDeque};
 #[cfg(unix)]
 use std::ffi::{CStr, CString};
 use std::fs;
@@ -10,12 +9,8 @@ use std::os::unix::ffi::OsStrExt;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use std::{hash::Hash, hash::Hasher};
 #[cfg(target_os = "windows")]
 use std::{os::windows::ffi::OsStrExt, ptr};
-use tracing::{debug, warn};
 
 use crate::fs_utils::check_no_symlink_components;
 
@@ -37,194 +32,17 @@ use windows_sys::Win32::Storage::FileSystem::{
     MOVEFILE_WRITE_THROUGH,
 };
 
-const MAX_HISTORY: usize = 50;
-// Use a central directory for all undo backups.
+mod backup;
+mod types;
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub enum Action {
-    Rename {
-        from: PathBuf,
-        to: PathBuf,
-    },
-    Move {
-        from: PathBuf,
-        to: PathBuf,
-    },
-    Copy {
-        from: PathBuf,
-        to: PathBuf,
-    },
-    /// Represents a newly created path. Undo (Backward) moves the path to a
-    /// backup location (effectively deleting it while retaining data); redo
-    /// (Forward) moves it back.
-    Create {
-        path: PathBuf,
-        backup: PathBuf,
-    },
-    Delete {
-        path: PathBuf,
-        backup: PathBuf,
-    },
-    #[cfg(target_os = "windows")]
-    SetHidden {
-        path: PathBuf,
-        hidden: bool,
-    },
-    CreateFolder {
-        path: PathBuf,
-    },
-    Batch(Vec<Action>),
-}
+pub use backup::{cleanup_stale_backups, temp_backup_path};
+pub(crate) use types::PathSnapshot;
+pub use types::{
+    Action, Direction, OwnershipSnapshot, PermissionsSnapshot, UndoManager, UndoState,
+};
 
-#[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
-pub enum Direction {
-    Forward,
-    Backward,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct PermissionsSnapshot {
-    pub readonly: bool,
-    #[cfg(unix)]
-    pub mode: u32,
-    #[cfg(target_os = "windows")]
-    pub dacl: Option<Vec<u8>>,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct OwnershipSnapshot {
-    #[cfg(unix)]
-    pub uid: u32,
-    #[cfg(unix)]
-    pub gid: u32,
-}
-
-#[derive(Default)]
-#[allow(dead_code)]
-pub struct UndoManager {
-    undo_stack: VecDeque<Action>,
-    redo_stack: VecDeque<Action>,
-}
-
-impl UndoManager {
-    #[allow(dead_code)]
-    pub fn new() -> Self {
-        Self {
-            undo_stack: VecDeque::new(),
-            redo_stack: VecDeque::new(),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn can_undo(&self) -> bool {
-        !self.undo_stack.is_empty()
-    }
-
-    #[allow(dead_code)]
-    pub fn can_redo(&self) -> bool {
-        !self.redo_stack.is_empty()
-    }
-
-    /// Apply a new action and push it onto the undo stack. Clears redo history.
-    #[allow(dead_code)]
-    pub fn apply(&mut self, mut action: Action) -> Result<(), String> {
-        execute_action(&mut action, Direction::Forward)?;
-        self.undo_stack.push_back(action);
-        self.redo_stack.clear();
-        self.trim();
-        Ok(())
-    }
-
-    pub fn undo(&mut self) -> Result<(), String> {
-        let mut action = self
-            .undo_stack
-            .pop_back()
-            .ok_or_else(|| "Nothing to undo".to_string())?;
-        match execute_action(&mut action, Direction::Backward) {
-            Ok(_) => {
-                self.redo_stack.push_back(action);
-                Ok(())
-            }
-            Err(err) => {
-                self.undo_stack.push_back(action);
-                Err(err)
-            }
-        }
-    }
-
-    pub fn redo(&mut self) -> Result<(), String> {
-        let mut action = self
-            .redo_stack
-            .pop_back()
-            .ok_or_else(|| "Nothing to redo".to_string())?;
-        match execute_action(&mut action, Direction::Forward) {
-            Ok(_) => {
-                self.undo_stack.push_back(action);
-                self.trim();
-                Ok(())
-            }
-            Err(err) => {
-                self.redo_stack.push_back(action);
-                Err(err)
-            }
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn clear(&mut self) {
-        self.undo_stack.clear();
-        self.redo_stack.clear();
-    }
-
-    pub fn record_applied(&mut self, action: Action) {
-        self.undo_stack.push_back(action);
-        self.redo_stack.clear();
-        self.trim();
-    }
-
-    fn trim(&mut self) {
-        while self.undo_stack.len() > MAX_HISTORY {
-            let _ = self.undo_stack.pop_front();
-        }
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct UndoState {
-    inner: Arc<Mutex<UndoManager>>,
-}
-
-impl UndoState {
-    pub fn clone_inner(&self) -> Arc<Mutex<UndoManager>> {
-        self.inner.clone()
-    }
-    #[allow(dead_code)]
-    pub fn record(&self, action: Action) -> Result<(), String> {
-        let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
-        mgr.apply(action)?;
-        Ok(())
-    }
-
-    pub fn record_applied(&self, action: Action) -> Result<(), String> {
-        let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
-        mgr.record_applied(action);
-        Ok(())
-    }
-
-    pub fn undo(&self) -> Result<(), String> {
-        let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
-        mgr.undo()
-    }
-
-    pub fn redo(&self) -> Result<(), String> {
-        let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
-        mgr.redo()
-    }
-}
+#[cfg(test)]
+mod tests;
 
 #[tauri::command]
 pub fn undo_action(state: tauri::State<'_, UndoState>) -> Result<(), String> {
@@ -234,43 +52,6 @@ pub fn undo_action(state: tauri::State<'_, UndoState>) -> Result<(), String> {
 #[tauri::command]
 pub fn redo_action(state: tauri::State<'_, UndoState>) -> Result<(), String> {
     state.redo()
-}
-
-/// Best-effort cleanup of stale `.browsey-undo` directories. Runs at startup to
-/// avoid leaving orphaned backups after a crash or restart (undo history is
-/// in-memory only).
-pub fn cleanup_stale_backups(max_age: Option<Duration>) {
-    let _ = max_age; // keep the signature; we remove everything regardless.
-    let base = base_undo_dir();
-
-    if let Err(e) = validate_undo_dir(&base) {
-        warn!("Skip cleanup; unsafe undo dir {:?}: {}", base, e);
-        return;
-    }
-
-    if base.exists() {
-        match fs::read_dir(&base) {
-            Ok(entries) => {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    let res = if path.is_dir() {
-                        fs::remove_dir_all(&path)
-                    } else {
-                        fs::remove_file(&path)
-                    };
-                    if let Err(err) = res {
-                        warn!("Failed to remove {:?}: {}", path, err);
-                    }
-                }
-                debug!("Cleaned contents of backup directory {:?}", base);
-            }
-            Err(e) => warn!("Failed to read backup directory {:?}: {}", base, e),
-        }
-    }
-
-    if let Err(e) = fs::create_dir_all(&base) {
-        warn!("Failed to ensure backup directory {:?}: {}", base, e);
-    }
 }
 
 pub(crate) fn run_actions(actions: &mut [Action], direction: Direction) -> Result<(), String> {
@@ -609,77 +390,15 @@ pub(crate) fn delete_entry_nofollow_io(path: &Path) -> Result<(), std::io::Error
     delete_nofollow_io(path)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PathKind {
-    File,
-    Dir,
-    Other,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PathSnapshot {
-    kind: PathKind,
-    #[cfg(unix)]
-    dev: u64,
-    #[cfg(unix)]
-    ino: u64,
-    #[cfg(not(unix))]
-    len: u64,
-    #[cfg(not(unix))]
-    modified_nanos: Option<u128>,
-}
-
-fn path_kind_from_meta(meta: &fs::Metadata) -> PathKind {
-    if meta.is_file() {
-        PathKind::File
-    } else if meta.is_dir() {
-        PathKind::Dir
-    } else {
-        PathKind::Other
-    }
-}
-
-fn path_snapshot_from_meta(meta: &fs::Metadata) -> PathSnapshot {
-    PathSnapshot {
-        kind: path_kind_from_meta(meta),
-        #[cfg(unix)]
-        dev: meta.dev(),
-        #[cfg(unix)]
-        ino: meta.ino(),
-        #[cfg(not(unix))]
-        len: meta.len(),
-        #[cfg(not(unix))]
-        modified_nanos: meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_nanos()),
-    }
-}
-
 pub(crate) fn snapshot_existing_path(path: &Path) -> Result<PathSnapshot, String> {
     let meta = ensure_existing_path_nonsymlink(path)?;
-    Ok(path_snapshot_from_meta(&meta))
-}
-
-fn snapshots_match(expected: &PathSnapshot, current: &PathSnapshot) -> bool {
-    if expected.kind != current.kind {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        expected.dev == current.dev && expected.ino == current.ino
-    }
-    #[cfg(not(unix))]
-    {
-        expected.len == current.len && expected.modified_nanos == current.modified_nanos
-    }
+    Ok(types::path_snapshot_from_meta(&meta))
 }
 
 pub(crate) fn assert_path_snapshot(path: &Path, expected: &PathSnapshot) -> Result<(), String> {
     let meta = ensure_existing_path_nonsymlink(path)?;
-    let current = path_snapshot_from_meta(&meta);
-    if snapshots_match(expected, &current) {
+    let current = types::path_snapshot_from_meta(&meta);
+    if types::snapshots_match(expected, &current) {
         Ok(())
     } else {
         Err(format!("Path changed during operation: {}", path.display()))
@@ -1183,7 +902,7 @@ fn snapshot_dacl(path: &Path) -> Result<Option<Vec<u8>>, String> {
 
 pub(crate) fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
     let meta = ensure_existing_path_nonsymlink(src)?;
-    let src_snapshot = path_snapshot_from_meta(&meta);
+    let src_snapshot = types::path_snapshot_from_meta(&meta);
     if let Some(parent) = dest.parent() {
         ensure_existing_dir_nonsymlink(parent)?;
     }
@@ -1240,7 +959,7 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
         let path = entry.path();
         let meta = ensure_existing_path_nonsymlink(&path)?;
-        let child_snapshot = path_snapshot_from_meta(&meta);
+        let child_snapshot = types::path_snapshot_from_meta(&meta);
         let target = dest.join(entry.file_name());
         if meta.is_dir() {
             assert_path_snapshot(&path, &child_snapshot)?;
@@ -1261,7 +980,7 @@ pub(crate) fn delete_entry_path(path: &Path) -> Result<(), String> {
 
 pub fn move_with_fallback(src: &Path, dst: &Path) -> Result<(), String> {
     let src_meta = ensure_existing_path_nonsymlink(src)?;
-    let src_snapshot = path_snapshot_from_meta(&src_meta);
+    let src_snapshot = types::path_snapshot_from_meta(&src_meta);
     if let Some(parent) = dst.parent() {
         ensure_existing_dir_nonsymlink(parent)?;
         let parent_snapshot = snapshot_existing_path(parent)?;
@@ -1340,455 +1059,6 @@ fn ensure_existing_dir_nonsymlink(path: &Path) -> Result<(), String> {
     let meta = ensure_existing_path_nonsymlink(path)?;
     if !meta.is_dir() {
         return Err(format!("Expected directory path: {}", path.display()));
-    }
-    Ok(())
-}
-
-#[allow(dead_code)]
-pub fn temp_backup_path(original: &Path) -> PathBuf {
-    let base = base_undo_dir();
-    let _ = fs::create_dir_all(&base);
-
-    // Use a hash of the full path to group files from the same directory while avoiding long names.
-    let mut hasher = DefaultHasher::new();
-    original.hash(&mut hasher);
-    let bucket = format!("{:016x}", hasher.finish());
-
-    let name = original
-        .file_name()
-        .map(|n| n.to_string_lossy())
-        .unwrap_or_else(|| "item".into());
-
-    let name_str: &str = name.as_ref();
-    let mut candidate = base.join(&bucket).join(std::path::Path::new(name_str));
-    let mut idx = 1u32;
-    while candidate.exists() {
-        let with_idx = format!("{}-{}", name, idx);
-        candidate = base.join(&bucket).join(std::path::Path::new(&with_idx));
-        idx += 1;
-    }
-    candidate
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs::{self, OpenOptions};
-    use std::io::Write;
-    use std::sync::OnceLock;
-    use std::time::{Duration, SystemTime};
-
-    fn uniq_path(label: &str) -> PathBuf {
-        let ts = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or(Duration::from_secs(0))
-            .as_nanos();
-        std::env::temp_dir().join(format!("browsey-undo-test-{label}-{ts}"))
-    }
-
-    fn test_undo_dir() -> PathBuf {
-        static DIR: OnceLock<PathBuf> = OnceLock::new();
-        DIR.get_or_init(|| {
-            let dir = uniq_path("undo-base");
-            let _ = fs::remove_dir_all(&dir);
-            std::env::set_var("BROWSEY_UNDO_DIR", &dir);
-            dir
-        })
-        .clone()
-    }
-
-    fn write_file(path: &Path, content: &[u8]) {
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(path)
-            .unwrap();
-        file.write_all(content).unwrap();
-    }
-
-    #[test]
-    fn rename_and_undo_redo() {
-        let dir = uniq_path("rename");
-        let _ = fs::create_dir_all(&dir);
-        let from = dir.join("a.txt");
-        let to = dir.join("b.txt");
-        write_file(&from, b"hello");
-
-        let mut mgr = UndoManager::new();
-        mgr.apply(Action::Rename {
-            from: from.clone(),
-            to: to.clone(),
-        })
-        .unwrap();
-        assert!(!from.exists());
-        assert!(to.exists());
-
-        mgr.undo().unwrap();
-        assert!(from.exists());
-        assert!(!to.exists());
-
-        mgr.redo().unwrap();
-        assert!(!from.exists());
-        assert!(to.exists());
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn delete_and_restore() {
-        let _ = test_undo_dir();
-        let dir = uniq_path("delete");
-        let _ = fs::create_dir_all(&dir);
-        let path = dir.join("file.txt");
-        write_file(&path, b"bye");
-        let backup = temp_backup_path(&path);
-
-        let mut mgr = UndoManager::new();
-        mgr.apply(Action::Delete {
-            path: path.clone(),
-            backup: backup.clone(),
-        })
-        .unwrap();
-        assert!(!path.exists());
-        assert!(backup.exists());
-
-        mgr.undo().unwrap();
-        assert!(path.exists());
-        assert!(!backup.exists());
-
-        let _ = fs::remove_dir_all(&dir);
-        let _ = fs::remove_dir_all(backup.parent().unwrap_or_else(|| Path::new(".")));
-    }
-
-    #[test]
-    fn create_folder_and_undo() {
-        let path = uniq_path("mkdir");
-        let mut mgr = UndoManager::new();
-        mgr.apply(Action::CreateFolder { path: path.clone() })
-            .unwrap();
-        assert!(path.is_dir());
-
-        mgr.undo().unwrap();
-        assert!(!path.exists());
-
-        let _ = fs::remove_dir_all(&path);
-    }
-
-    #[test]
-    fn create_file_action_undo_redo() {
-        let path = uniq_path("create-file").join("file.txt");
-        write_file(&path, b"hello");
-        assert!(path.exists());
-
-        let backup = temp_backup_path(&path);
-        let mut mgr = UndoManager::new();
-        mgr.record_applied(Action::Create {
-            path: path.clone(),
-            backup: backup.clone(),
-        });
-
-        mgr.undo().unwrap();
-        assert!(!path.exists());
-        assert!(backup.exists());
-
-        mgr.redo().unwrap();
-        assert!(path.exists());
-        assert!(!backup.exists());
-
-        let _ = fs::remove_dir_all(path.parent().unwrap_or_else(|| Path::new(".")));
-    }
-
-    #[test]
-    fn create_dir_action_undo_redo() {
-        let dir = uniq_path("create-dir");
-        fs::create_dir_all(&dir).unwrap();
-        let backup = temp_backup_path(&dir);
-
-        let mut mgr = UndoManager::new();
-        mgr.record_applied(Action::Create {
-            path: dir.clone(),
-            backup: backup.clone(),
-        });
-
-        mgr.undo().unwrap();
-        assert!(!dir.exists());
-        assert!(backup.exists());
-
-        mgr.redo().unwrap();
-        assert!(dir.exists());
-        assert!(!backup.exists());
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn batch_apply_and_undo_redo() {
-        let dir = uniq_path("batch");
-        let _ = fs::create_dir_all(&dir);
-        let source = dir.join("a.txt");
-        let subdir = dir.join("nested");
-        let moved = subdir.join("a.txt");
-        let copied = dir.join("b.txt");
-        write_file(&source, b"hello");
-
-        let mut mgr = UndoManager::new();
-        mgr.apply(Action::Batch(vec![
-            Action::CreateFolder {
-                path: subdir.clone(),
-            },
-            Action::Move {
-                from: source.clone(),
-                to: moved.clone(),
-            },
-            Action::Copy {
-                from: moved.clone(),
-                to: copied.clone(),
-            },
-        ]))
-        .unwrap();
-
-        assert!(!source.exists());
-        assert!(moved.exists());
-        assert!(copied.exists());
-        assert!(subdir.exists());
-
-        mgr.undo().unwrap();
-        assert!(source.exists());
-        assert!(!moved.exists());
-        assert!(!copied.exists());
-        assert!(!subdir.exists());
-
-        mgr.redo().unwrap();
-        assert!(!source.exists());
-        assert!(moved.exists());
-        assert!(copied.exists());
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn batch_rolls_back_on_failure() {
-        let dir = uniq_path("batch-fail");
-        let _ = fs::create_dir_all(&dir);
-        let source = dir.join("source.txt");
-        let existing = dir.join("existing.txt");
-        let new_dir = dir.join("new-dir");
-        write_file(&source, b"hello");
-        write_file(&existing, b"keep");
-
-        let mut mgr = UndoManager::new();
-        let err = mgr
-            .apply(Action::Batch(vec![
-                Action::CreateFolder {
-                    path: new_dir.clone(),
-                },
-                Action::Copy {
-                    from: source.clone(),
-                    to: existing.clone(),
-                },
-            ]))
-            .unwrap_err();
-        assert!(err.contains("Batch action 2 failed"));
-        assert!(source.exists());
-        assert!(existing.exists());
-        assert!(!new_dir.exists());
-        assert!(!mgr.can_undo());
-        assert!(!mgr.can_redo());
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn move_with_fallback_refuses_existing_destination() {
-        let dir = uniq_path("move-no-overwrite");
-        let _ = fs::create_dir_all(&dir);
-        let source = dir.join("source.txt");
-        let dest = dir.join("dest.txt");
-        write_file(&source, b"source-data");
-        write_file(&dest, b"dest-data");
-
-        let err = move_with_fallback(&source, &dest).expect_err("existing destination should fail");
-        assert!(
-            err.contains("File exists") || err.contains("already exists") || err.contains("rename"),
-            "unexpected error: {err}"
-        );
-        assert!(source.exists(), "source should remain when move fails");
-        assert_eq!(fs::read(&dest).unwrap_or_default(), b"dest-data");
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn copy_delete_fallback_moves_file_without_overwrite() {
-        let dir = uniq_path("move-copy-delete");
-        let _ = fs::create_dir_all(&dir);
-        let source = dir.join("source.txt");
-        let dest = dir.join("dest.txt");
-        write_file(&source, b"source-data");
-        let src_snapshot = snapshot_existing_path(&source).expect("snapshot");
-
-        move_by_copy_delete_noreplace(&source, &dest, &src_snapshot).expect("fallback move");
-        assert!(
-            !source.exists(),
-            "source should be deleted after fallback move"
-        );
-        assert_eq!(fs::read(&dest).unwrap_or_default(), b"source-data");
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn copy_delete_fallback_refuses_existing_destination() {
-        let dir = uniq_path("move-copy-delete-exists");
-        let _ = fs::create_dir_all(&dir);
-        let source = dir.join("source.txt");
-        let dest = dir.join("dest.txt");
-        write_file(&source, b"source-data");
-        write_file(&dest, b"dest-data");
-        let src_snapshot = snapshot_existing_path(&source).expect("snapshot");
-
-        let err = move_by_copy_delete_noreplace(&source, &dest, &src_snapshot)
-            .expect_err("fallback move should fail when destination exists");
-        assert!(is_destination_exists_error(&err), "unexpected error: {err}");
-        assert!(
-            source.exists(),
-            "source should remain when destination exists"
-        );
-        assert_eq!(fs::read(&dest).unwrap_or_default(), b"dest-data");
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn delete_entry_path_removes_non_empty_directory() {
-        let dir = uniq_path("delete-dir-recursive");
-        let nested = dir.join("nested");
-        let deep_file = nested.join("child.txt");
-        let _ = fs::create_dir_all(&nested);
-        write_file(&deep_file, b"child");
-
-        delete_entry_path(&dir).expect("recursive delete should succeed");
-        assert!(!dir.exists(), "directory should be removed recursively");
-    }
-
-    #[test]
-    fn undo_failure_restores_stack() {
-        let _ = test_undo_dir();
-        let dir = uniq_path("undo-fail");
-        let _ = fs::create_dir_all(&dir);
-        let path = dir.join("file.txt");
-        write_file(&path, b"bye");
-        let backup = temp_backup_path(&path);
-
-        let mut mgr = UndoManager::new();
-        mgr.apply(Action::Delete {
-            path: path.clone(),
-            backup: backup.clone(),
-        })
-        .unwrap();
-        assert!(!path.exists());
-        assert!(backup.exists());
-
-        let _ = fs::remove_file(&backup);
-        let err = mgr.undo().unwrap_err();
-        assert!(
-            err.contains("Backup")
-                || err.contains("rename")
-                || err.contains("metadata")
-                || err.contains("does not exist")
-        );
-        assert!(mgr.can_undo());
-        assert!(!mgr.can_redo());
-
-        let _ = fs::remove_dir_all(&dir);
-        let _ = fs::remove_dir_all(backup.parent().unwrap_or_else(|| Path::new(".")));
-    }
-
-    #[test]
-    fn cleanup_prunes_stale_backup_dirs() {
-        let base = test_undo_dir();
-        let target = base.join("dummy");
-        fs::create_dir_all(&target).unwrap();
-
-        cleanup_stale_backups(Some(Duration::from_secs(0)));
-
-        assert!(
-            !target.exists(),
-            "backup base contents should be removed during cleanup"
-        );
-    }
-
-    #[test]
-    fn path_snapshot_accepts_unchanged_path() {
-        let dir = uniq_path("snapshot-unchanged");
-        let _ = fs::create_dir_all(&dir);
-        let path = dir.join("file.txt");
-        write_file(&path, b"one");
-
-        let snapshot = snapshot_existing_path(&path).expect("snapshot should succeed");
-        assert!(
-            assert_path_snapshot(&path, &snapshot).is_ok(),
-            "unchanged path should pass snapshot check"
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn path_snapshot_detects_replaced_path() {
-        let dir = uniq_path("snapshot-replaced");
-        let _ = fs::create_dir_all(&dir);
-        let path = dir.join("file.txt");
-        write_file(&path, b"first");
-
-        let snapshot = snapshot_existing_path(&path).expect("snapshot should succeed");
-        let _ = fs::remove_file(&path);
-        write_file(&path, b"second");
-
-        let err = assert_path_snapshot(&path, &snapshot).expect_err("snapshot mismatch expected");
-        assert!(err.contains("Path changed during operation"));
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-}
-
-fn base_undo_dir() -> PathBuf {
-    if let Ok(custom) = std::env::var("BROWSEY_UNDO_DIR") {
-        return PathBuf::from(custom);
-    }
-    default_undo_dir()
-}
-
-fn default_undo_dir() -> PathBuf {
-    dirs_next::data_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("browsey")
-        .join("undo")
-}
-
-fn validate_undo_dir(path: &Path) -> Result<(), String> {
-    if cfg!(test) {
-        return Ok(());
-    }
-    if !path.is_absolute() {
-        return Err("Undo directory must be an absolute path".into());
-    }
-    if path.parent().is_none() {
-        return Err("Undo directory cannot be the filesystem root".into());
-    }
-    let default_parent = default_undo_dir()
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("/"));
-    if !path.starts_with(&default_parent) {
-        return Err(format!(
-            "Undo directory must reside under {}",
-            default_parent.display()
-        ));
     }
     Ok(())
 }
