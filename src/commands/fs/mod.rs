@@ -9,16 +9,12 @@ use crate::{
     runtime_lifecycle,
     undo::{is_destination_exists_error, move_with_fallback, temp_backup_path, Action, UndoState},
 };
-#[path = "fs/delete_ops.rs"]
 mod delete_ops;
-#[path = "fs/error.rs"]
 mod error;
 #[cfg(target_os = "windows")]
-#[path = "fs_windows.rs"]
+#[path = "windows.rs"]
 pub mod fs_windows;
-#[path = "fs/open_ops.rs"]
 mod open_ops;
-#[path = "fs/trash_ops.rs"]
 mod trash_ops;
 
 pub use crate::commands::listing::DirListing;

@@ -9,7 +9,6 @@ use crate::{
         snapshot_existing_path, Action, Direction, UndoState,
     },
 };
-#[path = "rename/error.rs"]
 mod error;
 use error::map_api_result;
 use regex::RegexBuilder;
