@@ -11,6 +11,8 @@ use crate::{
 };
 #[path = "fs/delete_ops.rs"]
 mod delete_ops;
+#[path = "fs/error.rs"]
+mod error;
 #[cfg(target_os = "windows")]
 #[path = "fs_windows.rs"]
 pub mod fs_windows;
@@ -30,6 +32,7 @@ use std::{
 };
 
 pub use delete_ops::{delete_entries, delete_entry};
+use error::{is_expected_set_hidden_error_code, to_set_hidden_api_error};
 pub use open_ops::open_entry;
 pub use trash_ops::{
     cleanup_stale_trash_staging, list_trash, move_to_trash, move_to_trash_many, purge_trash_items,
@@ -179,67 +182,6 @@ pub struct SetHiddenBatchResult {
     pub per_item: Vec<SetHiddenBatchItem>,
     pub failures: usize,
     pub unexpected_failures: usize,
-}
-
-fn classify_set_hidden_error_code(message: &str) -> &'static str {
-    let normalized = message.to_ascii_lowercase();
-    if normalized.contains("path must be absolute") {
-        return "path_not_absolute";
-    }
-    if normalized.contains("parent directory components are not allowed")
-        || normalized.contains("invalid path component (nul byte)")
-        || normalized.contains("path contains nul byte")
-        || normalized.contains("unsupported path prefix")
-        || normalized.contains("invalid file name")
-        || normalized.contains("cannot derive visible name")
-        || normalized.contains("missing parent")
-    {
-        return "invalid_path";
-    }
-    if normalized.contains("no paths provided") {
-        return "invalid_input";
-    }
-    if normalized.contains("refusing to operate on filesystem root") {
-        return "root_forbidden";
-    }
-    if normalized.contains("symlinks are not allowed in path")
-        || normalized.contains("symlinks are not allowed:")
-    {
-        return "symlink_unsupported";
-    }
-    if normalized.contains("target already exists") {
-        return "target_exists";
-    }
-    if normalized.contains("path does not exist")
-        || normalized.contains("no such file or directory")
-    {
-        return "not_found";
-    }
-    if normalized.contains("permission denied")
-        || normalized.contains("operation not permitted")
-        || normalized.contains("access is denied")
-    {
-        return "permission_denied";
-    }
-    if normalized.contains("setfileattributes failed")
-        || normalized.contains("getfileattributes failed")
-        || normalized.contains("failed to rename")
-    {
-        return "hidden_update_failed";
-    }
-    "unknown_error"
-}
-
-fn is_expected_set_hidden_error_code(code: &str) -> bool {
-    matches!(
-        code,
-        "symlink_unsupported" | "not_found" | "permission_denied" | "target_exists"
-    )
-}
-
-fn to_set_hidden_api_error(message: impl Into<String>) -> ApiError {
-    let message = message.into();
-    ApiError::new(classify_set_hidden_error_code(&message), message)
 }
 
 #[tauri::command]

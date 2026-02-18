@@ -208,6 +208,16 @@ const invokeErrorMessage = (err: unknown): string => {
 }
 
 const invokeErrorCode = (err: unknown): string | null => {
+  if (typeof err === 'string' && err.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(err) as Record<string, unknown>
+      if (typeof parsed.code === 'string' && parsed.code.trim().length > 0) {
+        return parsed.code.trim()
+      }
+    } catch {
+      // Ignore parse failures for plain strings.
+    }
+  }
   if (!err || typeof err !== 'object') return null
   const record = err as Record<string, unknown>
   if (typeof record.code === 'string' && record.code.trim().length > 0) {
@@ -222,45 +232,22 @@ const invokeErrorCode = (err: unknown): string | null => {
   return null
 }
 
-const isExpectedOwnershipError = (message: string, code: string | null): boolean => {
-  if (code) {
-    return (
-      code === 'authentication_cancelled' ||
-      code === 'principal_not_found' ||
-      code === 'permission_denied' ||
-      code === 'elevated_required' ||
-      code === 'unsupported_platform'
-    )
-  }
-  const normalized = message.toLowerCase()
+const isExpectedOwnershipError = (code: string | null): boolean => {
   return (
-    normalized.includes('request dismissed') ||
-    normalized.includes('authentication was cancelled') ||
-    normalized.includes('cancelled or denied') ||
-    normalized.includes('user not found') ||
-    normalized.includes('group not found') ||
-    normalized.includes('operation not permitted') ||
-    normalized.includes('requires elevated privileges') ||
-    normalized.includes('permission denied')
+    code === 'authentication_cancelled' ||
+    code === 'principal_not_found' ||
+    code === 'permission_denied' ||
+    code === 'elevated_required' ||
+    code === 'unsupported_platform'
   )
 }
 
-const isExpectedPermissionUpdateError = (message: string, code: string | null): boolean => {
-  if (code) {
-    return (
-      code === 'permission_denied' ||
-      code === 'elevated_required' ||
-      code === 'read_only_filesystem' ||
-      code === 'symlink_unsupported'
-    )
-  }
-  const normalized = message.toLowerCase()
+const isExpectedPermissionUpdateError = (code: string | null): boolean => {
   return (
-    normalized.includes('operation not permitted') ||
-    normalized.includes('permission denied') ||
-    normalized.includes('read-only file system') ||
-    normalized.includes('access is denied') ||
-    normalized.includes('failed to update permissions')
+    code === 'permission_denied' ||
+    code === 'elevated_required' ||
+    code === 'read_only_filesystem' ||
+    code === 'symlink_unsupported'
   )
 }
 
@@ -651,7 +638,7 @@ export const createPropertiesModal = (deps: Deps) => {
         lastPermissionsErrorSignature = signature
         lastPermissionsErrorAt = now
 
-        if (!isExpectedPermissionUpdateError(message, code)) {
+        if (!isExpectedPermissionUpdateError(code)) {
           console.error('Failed to update permissions', { targets, opts, message, err })
         }
       }
@@ -731,11 +718,10 @@ export const createPropertiesModal = (deps: Deps) => {
       const rawMessage = invokeErrorMessage(err)
       const message =
         code === 'permission_denied' ||
-        code === 'elevated_required' ||
-        rawMessage.toLowerCase().includes('operation not permitted')
+        code === 'elevated_required'
         ? 'Permission denied. Changing owner/group requires elevated privileges.'
         : rawMessage
-      if (!isExpectedOwnershipError(rawMessage, code) && !isExpectedOwnershipError(message, code)) {
+      if (!isExpectedOwnershipError(code)) {
         console.warn('Ownership update failed:', message)
       }
       state.update((s) => ({ ...s, ownershipError: message }))

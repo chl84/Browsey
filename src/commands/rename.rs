@@ -2,12 +2,16 @@
 
 use super::path_guard::{ensure_existing_dir_nonsymlink, ensure_existing_path_nonsymlink};
 use crate::{
+    errors::api_error::ApiResult,
     fs_utils::sanitize_path_nofollow,
     undo::{
         assert_path_snapshot, is_destination_exists_error, move_with_fallback, run_actions,
         snapshot_existing_path, Action, Direction, UndoState,
     },
 };
+#[path = "rename/error.rs"]
+mod error;
+use error::map_api_result;
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -311,16 +315,20 @@ pub fn rename_entry(
     path: String,
     new_name: String,
     state: tauri::State<UndoState>,
-) -> Result<String, String> {
-    rename_entry_impl(path.as_str(), new_name.as_str(), state.inner())
+) -> ApiResult<String> {
+    map_api_result(rename_entry_impl(
+        path.as_str(),
+        new_name.as_str(),
+        state.inner(),
+    ))
 }
 
 #[tauri::command]
 pub fn rename_entries(
     entries: Vec<RenameEntryRequest>,
     undo: tauri::State<UndoState>,
-) -> Result<Vec<String>, String> {
-    rename_entries_impl(entries, undo.inner())
+) -> ApiResult<Vec<String>> {
+    map_api_result(rename_entries_impl(entries, undo.inner()))
 }
 
 #[tauri::command]

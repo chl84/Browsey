@@ -18,6 +18,35 @@ export const createRenameModal = (deps: Deps) => {
   const state = writable<RenameModalState>({ open: false, target: null, error: '' })
   let busy = false
 
+  const invokeErrorMessage = (err: unknown): string => {
+    if (err instanceof Error && err.message.trim().length > 0) return err.message
+    if (typeof err === 'string' && err.trim().length > 0) {
+      const raw = err.trim()
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>
+        if (typeof parsed.message === 'string' && parsed.message.trim().length > 0) {
+          return parsed.message
+        }
+      } catch {
+        // Keep raw string fallback below.
+      }
+      return raw
+    }
+    if (err && typeof err === 'object') {
+      const record = err as Record<string, unknown>
+      if (typeof record.message === 'string' && record.message.trim().length > 0) {
+        return record.message
+      }
+      if (record.error && typeof record.error === 'object') {
+        const nested = record.error as Record<string, unknown>
+        if (typeof nested.message === 'string' && nested.message.trim().length > 0) {
+          return nested.message
+        }
+      }
+    }
+    return 'Unknown error'
+  }
+
   const open = (entry: Entry) => {
     state.set({ open: true, target: entry, error: '' })
   }
@@ -38,7 +67,7 @@ export const createRenameModal = (deps: Deps) => {
       close()
       return true
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = invokeErrorMessage(err)
       state.update((s) => ({ ...s, error: msg }))
       return false
     } finally {
