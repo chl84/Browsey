@@ -68,6 +68,31 @@ pub struct ExtractBatchItem {
     pub error: Option<String>,
 }
 
+pub(crate) fn are_extractable_archive_paths(paths: &[String]) -> bool {
+    if paths.is_empty() {
+        return false;
+    }
+    paths.iter().all(|raw| {
+        let path = match sanitize_path_nofollow(raw, true) {
+            Ok(path) => path,
+            Err(_) => return false,
+        };
+        let meta = match fs::symlink_metadata(&path) {
+            Ok(meta) => meta,
+            Err(_) => return false,
+        };
+        if meta.file_type().is_symlink() || !meta.is_file() {
+            return false;
+        }
+        detect_archive(&path).is_ok()
+    })
+}
+
+#[tauri::command]
+pub fn can_extract_paths(paths: Vec<String>) -> Result<bool, String> {
+    Ok(are_extractable_archive_paths(&paths))
+}
+
 #[tauri::command]
 pub async fn extract_archive(
     app: tauri::AppHandle,

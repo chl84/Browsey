@@ -30,7 +30,7 @@ pub use about::about_info;
 pub use bookmarks::{add_bookmark, clear_bookmarks, get_bookmarks, remove_bookmark};
 pub use compress::compress_entries;
 pub use console::open_console;
-pub use decompress::{extract_archive, extract_archives};
+pub use decompress::{can_extract_paths, extract_archive, extract_archives};
 pub use duplicates::{check_duplicates, check_duplicates_stream};
 pub use file_types::detect_new_file_type;
 pub use fs::{

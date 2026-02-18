@@ -1,5 +1,25 @@
 use serde::Serialize;
 
+fn include_extract_action(
+    count: usize,
+    kind: Option<&str>,
+    selection_paths: Option<&Vec<String>>,
+) -> bool {
+    if count == 0 {
+        return false;
+    }
+    if count == 1 && kind != Some("file") {
+        return false;
+    }
+    let Some(paths) = selection_paths else {
+        return false;
+    };
+    if paths.len() != count {
+        return false;
+    }
+    crate::commands::decompress::are_extractable_archive_paths(paths)
+}
+
 #[derive(Serialize, Clone)]
 pub struct ContextAction {
     pub id: String,
@@ -39,6 +59,7 @@ pub fn context_menu_actions(
     starred: Option<bool>,
     view: Option<String>,
     clipboard_has_items: bool,
+    selection_paths: Option<Vec<String>>,
 ) -> Vec<ContextAction> {
     let mut items = Vec::new();
     let in_trash = matches!(view.as_deref(), Some("trash"));
@@ -109,7 +130,9 @@ pub fn context_menu_actions(
         items.push(ContextAction::new("rename-advanced", "Rename…"));
         if !in_starred {
             items.push(ContextAction::new("compress", "Compress…"));
-            items.push(ContextAction::new("extract", "Extract"));
+            if include_extract_action(count, kind.as_deref(), selection_paths.as_ref()) {
+                items.push(ContextAction::new("extract", "Extract"));
+            }
         }
         items.push(ContextAction::new("move-trash", "Move to wastebasket"));
         items.push(ContextAction::new(
@@ -149,7 +172,9 @@ pub fn context_menu_actions(
     if !in_starred {
         items.push(ContextAction::new("rename", "Rename…"));
         items.push(ContextAction::new("compress", "Compress…"));
-        items.push(ContextAction::new("extract", "Extract"));
+        if include_extract_action(count, kind.as_deref(), selection_paths.as_ref()) {
+            items.push(ContextAction::new("extract", "Extract"));
+        }
     }
     items.push(ContextAction::new("move-trash", "Move to wastebasket"));
     items.push(ContextAction::new(
