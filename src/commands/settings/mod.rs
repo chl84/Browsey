@@ -9,8 +9,11 @@ use crate::{
 
 use self::error::{map_api_result, SettingsError};
 
-fn map_settings_result<T>(result: Result<T, String>) -> ApiResult<T> {
-    map_api_result(result.map_err(SettingsError::from_external_message))
+fn map_settings_result<T, E>(result: Result<T, E>) -> ApiResult<T>
+where
+    E: std::fmt::Display,
+{
+    map_api_result(result.map_err(|error| SettingsError::from_external_message(error.to_string())))
 }
 
 fn open_connection() -> ApiResult<rusqlite::Connection> {

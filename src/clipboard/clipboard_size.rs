@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 #[cfg(not(target_os = "windows"))]
 use std::process::Command;
 
+use crate::clipboard::error::{ClipboardError, ClipboardErrorCode, ClipboardResult};
 use crate::clipboard::CopyProgressPayload;
 use crate::runtime_lifecycle;
 
@@ -38,15 +39,20 @@ pub fn estimate_total_size(entries: &[PathBuf], evt: &str, app: &tauri::AppHandl
 }
 
 #[cfg(not(target_os = "windows"))]
-fn gio_size(path: &Path) -> Result<u64, String> {
+fn gio_size(path: &Path) -> ClipboardResult<u64> {
     let output = Command::new("gio")
         .arg("info")
         .arg("--attributes=standard::size")
         .arg(path)
         .output()
-        .map_err(|e| format!("gio info failed: {e}"))?;
+        .map_err(|e| {
+            ClipboardError::new(ClipboardErrorCode::IoError, format!("gio info failed: {e}"))
+        })?;
     if !output.status.success() {
-        return Err("gio info failed".into());
+        return Err(ClipboardError::new(
+            ClipboardErrorCode::IoError,
+            "gio info failed",
+        ));
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines() {
@@ -57,10 +63,16 @@ fn gio_size(path: &Path) -> Result<u64, String> {
             }
         }
     }
-    Err("size not found".into())
+    Err(ClipboardError::new(
+        ClipboardErrorCode::UnknownError,
+        "size not found",
+    ))
 }
 
 #[cfg(target_os = "windows")]
-fn gio_size(_path: &Path) -> Result<u64, String> {
-    Err("gio size unsupported on Windows".into())
+fn gio_size(_path: &Path) -> ClipboardResult<u64> {
+    Err(ClipboardError::new(
+        ClipboardErrorCode::UnknownError,
+        "gio size unsupported on Windows",
+    ))
 }

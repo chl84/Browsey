@@ -469,8 +469,9 @@ fn list_dir_sync(
         target.display()
     ));
 
-    let star_conn = db::open()?;
-    let star_set: HashSet<String> = db::starred_set(&star_conn)?;
+    let star_conn = db::open().map_err(|error| error.to_string())?;
+    let star_set: HashSet<String> =
+        db::starred_set(&star_conn).map_err(|error| error.to_string())?;
 
     let mut entries = Vec::new();
     let mut pending_meta = Vec::new();

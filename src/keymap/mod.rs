@@ -64,7 +64,8 @@ fn build_bindings(overrides: &HashMap<String, String>) -> Result<Vec<ShortcutBin
 }
 
 fn load_overrides(conn: &Connection) -> Result<HashMap<String, String>, String> {
-    let raw = crate::db::get_setting_string(conn, SHORTCUTS_SETTING_KEY)?;
+    let raw =
+        crate::db::get_setting_string(conn, SHORTCUTS_SETTING_KEY).map_err(|e| e.to_string())?;
     let Some(raw) = raw else {
         return Ok(HashMap::new());
     };
@@ -91,7 +92,7 @@ fn save_overrides(conn: &Connection, overrides: &HashMap<String, String>) -> Res
     }
     let payload = serde_json::to_string(&stable)
         .map_err(|e| format!("failed to serialize shortcut settings: {e}"))?;
-    crate::db::set_setting_string(conn, SHORTCUTS_SETTING_KEY, &payload)
+    crate::db::set_setting_string(conn, SHORTCUTS_SETTING_KEY, &payload).map_err(|e| e.to_string())
 }
 
 fn load_overrides_or_default(conn: &Connection) -> HashMap<String, String> {

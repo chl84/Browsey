@@ -1,7 +1,10 @@
 use crate::fs_utils::sanitize_path_follow;
 use std::{fs, path::Path};
 
-use super::ClipboardMode;
+use super::{
+    error::{map_api_result, ClipboardError, ClipboardErrorCode, ClipboardResult},
+    ClipboardMode,
+};
 
 #[cfg(unix)]
 fn filesystem_key(path: &Path) -> Option<u64> {
@@ -36,24 +39,32 @@ pub(super) fn resolve_drop_clipboard_mode_impl(
     paths: Vec<String>,
     dest: String,
     prefer_copy: bool,
-) -> Result<ClipboardMode, String> {
+) -> ClipboardResult<ClipboardMode> {
     if prefer_copy {
         return Ok(ClipboardMode::Copy);
     }
     if paths.is_empty() {
-        return Err("No source paths provided".into());
+        return Err(ClipboardError::invalid_input("No source paths provided"));
     }
 
-    let dest = sanitize_path_follow(&dest, false)?;
-    let dest_meta =
-        fs::symlink_metadata(&dest).map_err(|e| format!("Failed to read destination: {e}"))?;
+    let dest = sanitize_path_follow(&dest, false).map_err(ClipboardError::from_external_message)?;
+    let dest_meta = fs::symlink_metadata(&dest).map_err(|e| {
+        ClipboardError::new(
+            ClipboardErrorCode::IoError,
+            format!("Failed to read destination: {e}"),
+        )
+    })?;
     if !dest_meta.is_dir() {
-        return Err("Drop destination must be a directory".into());
+        return Err(ClipboardError::new(
+            ClipboardErrorCode::NotDirectory,
+            "Drop destination must be a directory",
+        ));
     }
 
     let mut src_paths = Vec::with_capacity(paths.len());
     for raw in paths {
-        src_paths.push(sanitize_path_follow(&raw, true)?);
+        src_paths
+            .push(sanitize_path_follow(&raw, true).map_err(ClipboardError::from_external_message)?);
     }
 
     if src_paths.iter().any(|src| should_copy_for_drop(src, &dest)) {
@@ -68,11 +79,14 @@ pub fn resolve_drop_clipboard_mode(
     paths: Vec<String>,
     dest: String,
     prefer_copy: bool,
-) -> Result<String, String> {
-    let mode = resolve_drop_clipboard_mode_impl(paths, dest, prefer_copy)?;
-    Ok(match mode {
-        ClipboardMode::Copy => "copy",
-        ClipboardMode::Cut => "cut",
-    }
-    .to_string())
+) -> crate::errors::api_error::ApiResult<String> {
+    map_api_result(
+        resolve_drop_clipboard_mode_impl(paths, dest, prefer_copy).map(|mode| {
+            match mode {
+                ClipboardMode::Copy => "copy",
+                ClipboardMode::Cut => "cut",
+            }
+            .to_string()
+        }),
+    )
 }

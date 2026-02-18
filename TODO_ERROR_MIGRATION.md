@@ -25,8 +25,8 @@ Goal: Migrate remaining modules from `Result<..., String>` to the new code-based
 
 ## Core modules outside `commands`
 
-- [ ] `src/clipboard`
-- [ ] `src/db`
+- [x] `src/clipboard`
+- [x] `src/db`
 - [ ] `src/entry`
 - [ ] `src/fs_utils`
 - [ ] `src/keymap`

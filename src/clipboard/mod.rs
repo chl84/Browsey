@@ -1,4 +1,5 @@
 use crate::{
+    errors::api_error::ApiResult,
     fs_utils::sanitize_path_follow,
     runtime_lifecycle,
     tasks::CancelState,
@@ -6,11 +7,13 @@ use crate::{
 };
 mod clipboard_size;
 mod drop_mode;
+mod error;
 mod ops;
 #[cfg(test)]
 mod tests;
 
 use clipboard_size::estimate_total_size;
+use error::{map_api_result, ClipboardError, ClipboardErrorCode, ClipboardResult};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::{
@@ -66,11 +69,18 @@ pub struct ConflictInfo {
 
 static CLIPBOARD: Lazy<Mutex<Option<ClipboardState>>> = Lazy::new(|| Mutex::new(None));
 
-fn policy_from_str(policy: &str) -> Result<ConflictPolicy, String> {
+fn map_clipboard_result<T>(result: Result<T, String>) -> ClipboardResult<T> {
+    result.map_err(ClipboardError::from_external_message)
+}
+
+fn policy_from_str(policy: &str) -> ClipboardResult<ConflictPolicy> {
     match policy.to_lowercase().as_str() {
         "overwrite" => Ok(ConflictPolicy::Overwrite),
         "rename" => Ok(ConflictPolicy::Rename),
-        other => Err(format!("Invalid conflict policy: {}", other)),
+        other => Err(ClipboardError::new(
+            ClipboardErrorCode::InvalidMode,
+            format!("Invalid conflict policy: {}", other),
+        )),
     }
 }
 
@@ -102,7 +112,11 @@ fn current_clipboard() -> Option<ClipboardState> {
 }
 
 #[tauri::command]
-pub fn set_clipboard_cmd(paths: Vec<String>, mode: String) -> Result<(), String> {
+pub fn set_clipboard_cmd(paths: Vec<String>, mode: String) -> ApiResult<()> {
+    map_api_result(set_clipboard_impl(paths, mode))
+}
+
+fn set_clipboard_impl(paths: Vec<String>, mode: String) -> ClipboardResult<()> {
     if paths.is_empty() {
         let mut guard = CLIPBOARD.lock().unwrap();
         *guard = None;
@@ -112,16 +126,29 @@ pub fn set_clipboard_cmd(paths: Vec<String>, mode: String) -> Result<(), String>
     let parsed_mode = match mode.to_lowercase().as_str() {
         "copy" => ClipboardMode::Copy,
         "cut" => ClipboardMode::Cut,
-        _ => return Err("Invalid mode".into()),
+        _ => {
+            return Err(ClipboardError::new(
+                ClipboardErrorCode::InvalidMode,
+                "Invalid mode",
+            ))
+        }
     };
 
     let mut entries = Vec::new();
     for p in paths {
-        let meta = fs::symlink_metadata(&p).map_err(|e| format!("Path does not exist: {e}"))?;
+        let meta = fs::symlink_metadata(&p).map_err(|e| {
+            ClipboardError::new(
+                ClipboardErrorCode::NotFound,
+                format!("Path does not exist: {e}"),
+            )
+        })?;
         if meta.file_type().is_symlink() {
-            return Err("Symlinks are not supported in clipboard".into());
+            return Err(ClipboardError::new(
+                ClipboardErrorCode::SymlinkUnsupported,
+                "Symlinks are not supported in clipboard",
+            ));
         }
-        let clean = sanitize_path_follow(&p, true)?;
+        let clean = map_clipboard_result(sanitize_path_follow(&p, true))?;
         entries.push(clean);
     }
 
@@ -134,20 +161,30 @@ pub fn set_clipboard_cmd(paths: Vec<String>, mode: String) -> Result<(), String>
 }
 
 #[tauri::command]
-pub fn paste_clipboard_preview(dest: String) -> Result<Vec<ConflictInfo>, String> {
-    let dest = sanitize_path_follow(&dest, false)?;
+pub fn paste_clipboard_preview(dest: String) -> ApiResult<Vec<ConflictInfo>> {
+    map_api_result(paste_clipboard_preview_impl(dest))
+}
+
+fn paste_clipboard_preview_impl(dest: String) -> ClipboardResult<Vec<ConflictInfo>> {
+    let dest = map_clipboard_result(sanitize_path_follow(&dest, false))?;
     let Some(state) = current_clipboard() else {
-        return Err("Clipboard is empty".into());
+        return Err(ClipboardError::new(
+            ClipboardErrorCode::ClipboardEmpty,
+            "Clipboard is empty",
+        ));
     };
 
     let mut conflicts = Vec::new();
     for src in state.entries.iter() {
         if !src.exists() {
-            return Err(format!("Source does not exist: {:?}", src));
+            return Err(ClipboardError::new(
+                ClipboardErrorCode::NotFound,
+                format!("Source does not exist: {:?}", src),
+            ));
         }
         let name = src
             .file_name()
-            .ok_or_else(|| "Invalid source path".to_string())?;
+            .ok_or_else(|| ClipboardError::invalid_input("Invalid source path"))?;
         let target = dest.join(name);
         let exists = target.exists();
         let is_dir = target.is_dir();
@@ -169,11 +206,11 @@ pub async fn paste_clipboard_cmd(
     undo: tauri::State<'_, UndoState>,
     cancel: tauri::State<'_, CancelState>,
     progress_event: Option<String>,
-) -> Result<Vec<String>, String> {
+) -> ApiResult<Vec<String>> {
     let undo_inner = undo.clone_inner();
     let cancel_state = cancel.inner().clone();
     let app_handle = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let join_result = tauri::async_runtime::spawn_blocking(move || {
         paste_clipboard_impl(
             app_handle,
             dest,
@@ -183,8 +220,14 @@ pub async fn paste_clipboard_cmd(
             progress_event,
         )
     })
-    .await
-    .map_err(|e| format!("Paste task failed: {e}"))?
+    .await;
+    match join_result {
+        Ok(result) => map_api_result(result),
+        Err(e) => map_api_result(Err(ClipboardError::new(
+            ClipboardErrorCode::TaskFailed,
+            format!("Paste task failed: {e}"),
+        ))),
+    }
 }
 
 fn paste_clipboard_impl(
@@ -194,12 +237,14 @@ fn paste_clipboard_impl(
     undo_inner: std::sync::Arc<std::sync::Mutex<crate::undo::UndoManager>>,
     cancel_state: CancelState,
     progress_event: Option<String>,
-) -> Result<Vec<String>, String> {
+) -> ClipboardResult<Vec<String>> {
     if runtime_lifecycle::is_shutting_down(&app) {
-        return Err("Copy cancelled".into());
+        return Err(ClipboardError::cancelled());
     }
-    let dest = sanitize_path_follow(&dest, false)?;
-    let state = current_clipboard().ok_or_else(|| "Clipboard is empty".to_string())?;
+    let dest = map_clipboard_result(sanitize_path_follow(&dest, false))?;
+    let state = current_clipboard().ok_or_else(|| {
+        ClipboardError::new(ClipboardErrorCode::ClipboardEmpty, "Clipboard is empty")
+    })?;
     let policy = policy
         .map(|p| policy_from_str(&p))
         .transpose()?
@@ -208,7 +253,8 @@ fn paste_clipboard_impl(
     let cancel_guard = progress_event
         .as_ref()
         .map(|id| cancel_state.register(id.clone()))
-        .transpose()?;
+        .transpose()
+        .map_err(ClipboardError::from_external_message)?;
     let cancel_flag = cancel_guard.as_ref().map(|g| g.token());
 
     let total_items = state.entries.len() as u64;
@@ -232,22 +278,33 @@ fn paste_clipboard_impl(
     let mut performed: Vec<Action> = Vec::with_capacity(state.entries.len() * 4);
     for src in state.entries.iter() {
         if transfer_cancelled(cancel_flag.as_deref(), Some(&app)) {
-            return Err("Copy cancelled".into());
+            return Err(ClipboardError::cancelled());
         }
         let src_meta = match fs::symlink_metadata(src) {
             Ok(meta) => meta,
             Err(e) if e.kind() == ErrorKind::NotFound => {
-                return Err(format!("Source does not exist: {:?}", src));
+                return Err(ClipboardError::new(
+                    ClipboardErrorCode::NotFound,
+                    format!("Source does not exist: {:?}", src),
+                ));
             }
-            Err(e) => return Err(format!("Failed to read metadata: {e}")),
+            Err(e) => {
+                return Err(ClipboardError::new(
+                    ClipboardErrorCode::IoError,
+                    format!("Failed to read metadata: {e}"),
+                ))
+            }
         };
         if src_meta.file_type().is_symlink() {
-            return Err("Symlinks are not supported in clipboard".into());
+            return Err(ClipboardError::new(
+                ClipboardErrorCode::SymlinkUnsupported,
+                "Symlinks are not supported in clipboard",
+            ));
         }
 
         let name = src
             .file_name()
-            .ok_or_else(|| "Invalid source path".to_string())?;
+            .ok_or_else(|| ClipboardError::invalid_input("Invalid source path"))?;
         let target_base = dest.join(name);
         let mut rename_attempt = 0usize;
         let mut target = match policy {
@@ -258,7 +315,10 @@ fn paste_clipboard_impl(
         if matches!(policy, ConflictPolicy::Overwrite) {
             if let Some(target_meta) = metadata_if_exists_nofollow(&target)? {
                 if target_meta.file_type().is_symlink() {
-                    return Err("Refusing to overwrite symlinks".into());
+                    return Err(ClipboardError::new(
+                        ClipboardErrorCode::SymlinkUnsupported,
+                        "Refusing to overwrite symlinks",
+                    ));
                 }
                 // If both are dirs, merge instead of deleting target (Windows Explorer behavior).
                 if src_meta.is_dir() && target_meta.is_dir() {
@@ -276,7 +336,9 @@ fn paste_clipboard_impl(
                 }
                 // Prevent deleting parent/ancestor of the source.
                 if src.starts_with(&target) {
-                    return Err("Cannot overwrite a parent directory of the source item".into());
+                    return Err(ClipboardError::invalid_input(
+                        "Cannot overwrite a parent directory of the source item",
+                    ));
                 }
                 backup_existing_target(&target, &mut performed)?;
             }
@@ -330,13 +392,19 @@ fn paste_clipboard_impl(
                     if !performed.is_empty() {
                         let mut rollback = performed.clone();
                         if let Err(rb_err) = run_actions(&mut rollback, Direction::Backward) {
-                            return Err(format!(
-                                "Paste failed for {:?}: {}; rollback also failed: {}",
-                                src, err, rb_err
+                            return Err(ClipboardError::new(
+                                ClipboardErrorCode::RollbackFailed,
+                                format!(
+                                    "Paste failed for {:?}: {}; rollback also failed: {}",
+                                    src, err, rb_err
+                                ),
                             ));
                         }
                     }
-                    return Err(format!("Paste failed for {:?}: {}", src, err));
+                    return Err(ClipboardError::new(
+                        ClipboardErrorCode::IoError,
+                        format!("Paste failed for {:?}: {}", src, err),
+                    ));
                 }
             }
         }
