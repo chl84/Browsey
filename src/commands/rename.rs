@@ -1,7 +1,19 @@
-//! Rename preview helpers used by the advanced rename UI.
+//! Rename commands and preview helpers used by the advanced rename UI.
 
+use super::path_guard::{ensure_existing_dir_nonsymlink, ensure_existing_path_nonsymlink};
+use crate::{
+    fs_utils::sanitize_path_nofollow,
+    undo::{
+        assert_path_snapshot, is_destination_exists_error, move_with_fallback, run_actions,
+        snapshot_existing_path, Action, Direction, UndoState,
+    },
+};
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +64,130 @@ pub struct RenamePreviewRow {
 pub struct RenamePreviewResult {
     pub rows: Vec<RenamePreviewRow>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameEntryRequest {
+    pub path: String,
+    pub new_name: String,
+}
+
+fn build_rename_target(from: &Path, new_name: &str) -> Result<PathBuf, String> {
+    if new_name.trim().is_empty() {
+        return Err("New name cannot be empty".into());
+    }
+    let parent = from
+        .parent()
+        .ok_or_else(|| "Cannot rename root".to_string())?;
+    Ok(parent.join(new_name.trim()))
+}
+
+fn prepare_rename_pair(path: &str, new_name: &str) -> Result<(PathBuf, PathBuf), String> {
+    let from = sanitize_path_nofollow(path, true)?;
+    let to = build_rename_target(&from, new_name)?;
+    Ok((from, to))
+}
+
+fn apply_rename(from: &Path, to: &Path) -> Result<(), String> {
+    ensure_existing_path_nonsymlink(from)?;
+    let from_snapshot = snapshot_existing_path(from)?;
+    if let Some(parent) = to.parent() {
+        ensure_existing_dir_nonsymlink(parent)?;
+        let parent_snapshot = snapshot_existing_path(parent)?;
+        assert_path_snapshot(parent, &parent_snapshot)?;
+    } else {
+        return Err("Invalid destination path".into());
+    }
+    assert_path_snapshot(from, &from_snapshot)?;
+    match move_with_fallback(from, to) {
+        Ok(_) => Ok(()),
+        Err(e) if is_destination_exists_error(&e) => {
+            Err("A file or directory with that name already exists".into())
+        }
+        Err(e) => Err(format!("Failed to rename: {e}")),
+    }
+}
+
+pub(crate) fn rename_entry_impl(
+    path: &str,
+    new_name: &str,
+    state: &UndoState,
+) -> Result<String, String> {
+    let (from, to) = prepare_rename_pair(path, new_name)?;
+    apply_rename(&from, &to)?;
+    let _ = state.record_applied(Action::Rename {
+        from: from.clone(),
+        to: to.clone(),
+    });
+    Ok(to.to_string_lossy().to_string())
+}
+
+pub(crate) fn rename_entries_impl(
+    entries: Vec<RenameEntryRequest>,
+    undo: &UndoState,
+) -> Result<Vec<String>, String> {
+    if entries.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut pairs: Vec<(PathBuf, PathBuf)> = Vec::with_capacity(entries.len());
+    let mut seen_sources: HashSet<PathBuf> = HashSet::with_capacity(entries.len());
+    let mut seen_targets: HashSet<PathBuf> = HashSet::with_capacity(entries.len());
+
+    for (idx, entry) in entries.into_iter().enumerate() {
+        let (from, to) = prepare_rename_pair(entry.path.as_str(), entry.new_name.as_str())?;
+
+        if !seen_sources.insert(from.clone()) {
+            return Err(format!(
+                "Duplicate source path in request (item {})",
+                idx + 1
+            ));
+        }
+        if !seen_targets.insert(to.clone()) {
+            return Err(format!(
+                "Duplicate target name in request (item {})",
+                idx + 1
+            ));
+        }
+
+        pairs.push((from, to));
+    }
+
+    let mut performed: Vec<Action> = Vec::new();
+    let mut renamed_paths: Vec<String> = Vec::with_capacity(pairs.len());
+
+    for (from, to) in pairs {
+        if from == to {
+            continue;
+        }
+        if let Err(err) = apply_rename(&from, &to) {
+            if !performed.is_empty() {
+                let mut rollback = performed.clone();
+                if let Err(rb_err) = run_actions(&mut rollback, Direction::Backward) {
+                    return Err(format!("{}; rollback also failed: {}", err, rb_err));
+                }
+            }
+            return Err(err);
+        }
+
+        renamed_paths.push(to.to_string_lossy().to_string());
+        performed.push(Action::Rename {
+            from: from.clone(),
+            to: to.clone(),
+        });
+    }
+
+    if !performed.is_empty() {
+        let recorded = if performed.len() == 1 {
+            performed.pop().unwrap()
+        } else {
+            Action::Batch(performed)
+        };
+        let _ = undo.record_applied(recorded);
+    }
+
+    Ok(renamed_paths)
 }
 
 fn split_ext(name: &str) -> (&str, &str) {
@@ -171,6 +307,23 @@ pub(crate) fn compute_advanced_rename_preview(
 }
 
 #[tauri::command]
+pub fn rename_entry(
+    path: String,
+    new_name: String,
+    state: tauri::State<UndoState>,
+) -> Result<String, String> {
+    rename_entry_impl(path.as_str(), new_name.as_str(), state.inner())
+}
+
+#[tauri::command]
+pub fn rename_entries(
+    entries: Vec<RenameEntryRequest>,
+    undo: tauri::State<UndoState>,
+) -> Result<Vec<String>, String> {
+    rename_entries_impl(entries, undo.inner())
+}
+
+#[tauri::command]
 pub fn preview_rename_entries(
     entries: Vec<RenamePreviewEntry>,
     payload: AdvancedRenamePayload,
@@ -181,6 +334,10 @@ pub fn preview_rename_entries(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::{self, OpenOptions};
+    use std::io::Write;
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, SystemTime};
 
     fn sample_entries() -> Vec<RenamePreviewEntry> {
         vec![
@@ -193,6 +350,27 @@ mod tests {
                 name: "b.txt".into(),
             },
         ]
+    }
+
+    fn uniq_path(label: &str) -> PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        std::env::temp_dir().join(format!("browsey-rename-test-{label}-{ts}"))
+    }
+
+    fn write_file(path: &Path, content: &[u8]) {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .unwrap();
+        file.write_all(content).unwrap();
     }
 
     #[test]
@@ -233,5 +411,102 @@ mod tests {
         assert!(result.error.is_some());
         assert_eq!(result.rows[0].next, "a.txt");
         assert_eq!(result.rows[1].next, "b.txt");
+    }
+
+    #[test]
+    fn rename_entry_impl_supports_undo_redo() {
+        let dir = uniq_path("single");
+        let _ = fs::create_dir_all(&dir);
+        let from = dir.join("before.txt");
+        write_file(&from, b"data");
+        let state = UndoState::default();
+
+        let renamed = rename_entry_impl(from.to_string_lossy().as_ref(), "after.txt", &state)
+            .expect("rename should succeed");
+        let to = PathBuf::from(renamed);
+
+        assert!(!from.exists());
+        assert!(to.exists());
+
+        state.undo().expect("undo should succeed");
+        assert!(from.exists());
+        assert!(!to.exists());
+
+        state.redo().expect("redo should succeed");
+        assert!(!from.exists());
+        assert!(to.exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rename_entries_impl_rolls_back_when_later_item_fails() {
+        let dir = uniq_path("batch-rollback");
+        let _ = fs::create_dir_all(&dir);
+        let a = dir.join("a.txt");
+        let b = dir.join("b.txt");
+        let existing = dir.join("existing.txt");
+        write_file(&a, b"a");
+        write_file(&b, b"b");
+        write_file(&existing, b"existing");
+        let state = UndoState::default();
+
+        let err = rename_entries_impl(
+            vec![
+                RenameEntryRequest {
+                    path: a.to_string_lossy().to_string(),
+                    new_name: "a-renamed.txt".into(),
+                },
+                RenameEntryRequest {
+                    path: b.to_string_lossy().to_string(),
+                    new_name: "existing.txt".into(),
+                },
+            ],
+            &state,
+        )
+        .expect_err("batch should fail on second rename");
+
+        assert!(err.contains("already exists"), "unexpected error: {err}");
+        assert!(a.exists(), "first rename should be rolled back");
+        assert!(b.exists(), "second source should remain");
+        assert!(!dir.join("a-renamed.txt").exists());
+        assert!(existing.exists());
+        assert!(
+            state.undo().is_err(),
+            "failed batch should not record undo state"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rename_entries_impl_rejects_duplicate_source_paths() {
+        let dir = uniq_path("duplicate-source");
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("same.txt");
+        write_file(&path, b"same");
+        let state = UndoState::default();
+
+        let err = rename_entries_impl(
+            vec![
+                RenameEntryRequest {
+                    path: path.to_string_lossy().to_string(),
+                    new_name: "first.txt".into(),
+                },
+                RenameEntryRequest {
+                    path: path.to_string_lossy().to_string(),
+                    new_name: "second.txt".into(),
+                },
+            ],
+            &state,
+        )
+        .expect_err("duplicate source should fail");
+
+        assert!(
+            err.contains("Duplicate source path"),
+            "unexpected error: {err}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
