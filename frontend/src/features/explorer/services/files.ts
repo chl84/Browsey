@@ -5,7 +5,7 @@ export const openEntry = (entry: Entry) =>
   invoke<void>('open_entry', { path: entry.path })
 
 export const renameEntry = (path: string, newName: string) =>
-  invoke<void>('rename_entry', { path, newName })
+  invoke<string>('rename_entry', { path, newName })
 
 export const renameEntries = (entries: Array<{ path: string; newName: string }>) =>
   invoke<string[]>('rename_entries', { entries })
