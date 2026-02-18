@@ -110,9 +110,10 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> SetHiddenResult<(PathBuf, bool)
         .collect();
     let attrs = unsafe { GetFileAttributesW(wide.as_ptr()) };
     if attrs == u32::MAX {
-        return Err(SetHiddenError::new(
+        return Err(SetHiddenError::from_io_error(
             SetHiddenErrorCode::HiddenUpdateFailed,
             "GetFileAttributes failed",
+            std::io::Error::last_os_error(),
         ));
     }
     let is_hidden = attrs & FILE_ATTRIBUTE_HIDDEN != 0;
@@ -127,9 +128,10 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> SetHiddenResult<(PathBuf, bool)
     }
     let ok = unsafe { SetFileAttributesW(wide.as_ptr(), new_attrs) };
     if ok == 0 {
-        return Err(SetHiddenError::new(
+        return Err(SetHiddenError::from_io_error(
             SetHiddenErrorCode::HiddenUpdateFailed,
             "SetFileAttributes failed",
+            std::io::Error::last_os_error(),
         ));
     }
     Ok((path.to_path_buf(), true))

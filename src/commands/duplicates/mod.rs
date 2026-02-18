@@ -8,12 +8,16 @@ mod scan;
 
 use crate::{
     commands::fs::expand_path,
+    errors::api_error::ApiResult,
     fs_utils::{check_no_symlink_components, sanitize_path_follow},
     runtime_lifecycle,
     tasks::CancelState,
 };
+use error::{map_api_result, DuplicatesError, DuplicatesErrorCode, DuplicatesResult};
 use serde::Serialize;
 use std::{path::PathBuf, sync::atomic::Ordering};
+
+mod error;
 
 struct DuplicateScanInput {
     target: PathBuf,
@@ -44,13 +48,24 @@ pub struct DuplicateScanProgress {
 }
 
 #[tauri::command]
-pub async fn check_duplicates(
+pub async fn check_duplicates(target_path: String, start_path: String) -> ApiResult<Vec<String>> {
+    map_api_result(check_duplicates_impl(target_path, start_path).await)
+}
+
+async fn check_duplicates_impl(
     target_path: String,
     start_path: String,
-) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || check_duplicates_sync(target_path, start_path))
-        .await
-        .unwrap_or_else(|e| Err(format!("duplicate scan task panicked: {e}")))
+) -> DuplicatesResult<Vec<String>> {
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        check_duplicates_sync(target_path, start_path)
+    });
+    match task.await {
+        Ok(result) => result.map_err(DuplicatesError::from_external_message),
+        Err(error) => Err(DuplicatesError::new(
+            DuplicatesErrorCode::TaskFailed,
+            format!("duplicate scan task panicked: {error}"),
+        )),
+    }
 }
 
 #[tauri::command]
@@ -60,9 +75,29 @@ pub fn check_duplicates_stream(
     target_path: String,
     start_path: String,
     progress_event: Option<String>,
-) -> Result<(), String> {
-    let progress_event = progress_event.ok_or_else(|| "progress_event is required".to_string())?;
-    let cancel_state = cancel.inner().clone();
+) -> ApiResult<()> {
+    map_api_result(check_duplicates_stream_impl(
+        app,
+        cancel.inner().clone(),
+        target_path,
+        start_path,
+        progress_event,
+    ))
+}
+
+fn check_duplicates_stream_impl(
+    app: tauri::AppHandle,
+    cancel_state: CancelState,
+    target_path: String,
+    start_path: String,
+    progress_event: Option<String>,
+) -> DuplicatesResult<()> {
+    let progress_event = progress_event.ok_or_else(|| {
+        DuplicatesError::new(
+            DuplicatesErrorCode::InvalidInput,
+            "progress_event is required",
+        )
+    })?;
 
     tauri::async_runtime::spawn_blocking(move || {
         let send = |payload: DuplicateScanProgress| {

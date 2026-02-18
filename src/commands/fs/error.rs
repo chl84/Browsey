@@ -1,6 +1,11 @@
+#[cfg(target_os = "windows")]
+use crate::errors::domain::classify_io_error;
 use crate::errors::{
     api_error::ApiError,
-    domain::{classify_message_by_patterns, DomainError, ErrorCode},
+    domain::{
+        classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
+        IoErrorHint,
+    },
 };
 use std::fmt;
 
@@ -51,12 +56,38 @@ impl SetHiddenError {
 
     pub(super) fn from_external_message(message: impl Into<String>) -> Self {
         let message = message.into();
+        if let Some(hint) = classify_io_hint_from_message(&message) {
+            let code = match hint {
+                IoErrorHint::NotFound => Some(SetHiddenErrorCode::NotFound),
+                IoErrorHint::PermissionDenied => Some(SetHiddenErrorCode::PermissionDenied),
+                IoErrorHint::AlreadyExists => Some(SetHiddenErrorCode::TargetExists),
+                _ => None,
+            };
+            if let Some(code) = code {
+                return Self::new(code, message);
+            }
+        }
         let code = classify_message_by_patterns(
             &message,
             SET_HIDDEN_CLASSIFICATION_RULES,
             SetHiddenErrorCode::UnknownError,
         );
         Self::new(code, message)
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(super) fn from_io_error(
+        fallback: SetHiddenErrorCode,
+        context: &str,
+        error: std::io::Error,
+    ) -> Self {
+        let code = match classify_io_error(&error) {
+            IoErrorHint::NotFound => SetHiddenErrorCode::NotFound,
+            IoErrorHint::PermissionDenied => SetHiddenErrorCode::PermissionDenied,
+            IoErrorHint::AlreadyExists => SetHiddenErrorCode::TargetExists,
+            _ => fallback,
+        };
+        Self::new(code, format!("{context}: {error}"))
     }
 
     pub(super) fn code(&self) -> SetHiddenErrorCode {
