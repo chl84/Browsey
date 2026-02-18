@@ -1,6 +1,5 @@
 //! Streaming recursive search command that decorates entries with starred state.
 
-use super::tasks::CancelState;
 use crate::{
     commands::fs::expand_path,
     commands::listing::{ListingFacetBuilder, ListingFacets},
@@ -8,6 +7,7 @@ use crate::{
     entry::{normalize_key_for_db, FsEntry},
     runtime_lifecycle,
     sorting::SortSpec,
+    tasks::CancelState,
 };
 use serde::Serialize;
 use std::collections::HashSet;

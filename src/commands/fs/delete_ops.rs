@@ -1,10 +1,10 @@
 use super::{should_abort_fs_op, CancelState, DeleteProgressPayload, UndoState};
 use crate::{
-    commands::path_guard::{
+    fs_utils::sanitize_path_nofollow,
+    path_guard::{
         ensure_existing_dir_nonsymlink, ensure_existing_path_nonsymlink,
         ensure_no_symlink_components_existing_prefix,
     },
-    fs_utils::sanitize_path_nofollow,
     runtime_lifecycle,
     undo::{
         assert_path_snapshot, move_with_fallback, run_actions, snapshot_existing_path,

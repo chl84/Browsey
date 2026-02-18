@@ -1,12 +1,12 @@
 //! File-system oriented Tauri commands: listings, mounts, trash, opening, create/delete, and watch wiring.
 
-use super::tasks::CancelState;
 use crate::{
-    commands::path_guard::ensure_existing_dir_nonsymlink,
     entry::{CachedMeta, FsEntry},
     errors::api_error::ApiError,
     fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitize_path_nofollow},
+    path_guard::ensure_existing_dir_nonsymlink,
     runtime_lifecycle,
+    tasks::CancelState,
     undo::{is_destination_exists_error, move_with_fallback, temp_backup_path, Action, UndoState},
 };
 mod delete_ops;

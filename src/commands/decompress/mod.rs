@@ -19,8 +19,8 @@ use serde::Serialize;
 use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
-use super::tasks::{CancelGuard, CancelState};
 use crate::fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitize_path_nofollow};
+use crate::tasks::{CancelGuard, CancelState};
 use crate::undo::{temp_backup_path, Action, UndoState};
 
 use rar_format::{
