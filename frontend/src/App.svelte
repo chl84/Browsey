@@ -717,7 +717,7 @@
     const trimmed = path.trim()
     if (!trimmed) return
 
-    if (isMountUri(trimmed)) {
+    if (await isMountUri(trimmed)) {
       await openPartition(trimmed)
       return
     }
@@ -752,7 +752,7 @@
   }
 
   const openPartition = async (path: string) => {
-    if (isMountUri(path)) {
+    if (await isMountUri(path)) {
       try {
         const result = await connectNetworkUri(path)
         if (result.kind === 'unsupported') {
@@ -1742,7 +1742,7 @@
         actions = actions.filter((a) => a.id !== 'extract')
       }
       if (currentView === 'network') {
-        const networkActions = buildNetworkEntryContextActions(entry.path, selectionCount)
+        const networkActions = await buildNetworkEntryContextActions(entry.path, selectionCount)
         if (networkActions) {
           actions = networkActions
         }
@@ -2581,7 +2581,8 @@
     closeContextMenu()
     if (entry && id === 'copy-network-address') {
       const selectedPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
-      const payload = selectedPaths.filter((path) => isMountUri(path)).join('\n')
+      const uriFlags = await Promise.all(selectedPaths.map((path) => isMountUri(path)))
+      const payload = selectedPaths.filter((_, idx) => uriFlags[idx]).join('\n')
       const result = await copyTextToSystemClipboard(payload || entry.path)
       if (result.ok) {
         showToast(selectedPaths.length > 1 ? 'Server addresses copied' : 'Server address copied', 1500)
