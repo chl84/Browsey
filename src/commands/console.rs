@@ -1,10 +1,14 @@
 use std::path::Path;
 use std::process::Command;
 
+use crate::errors::api_error::ApiResult;
 use crate::fs_utils::sanitize_path_follow;
+use error::{map_api_result, ConsoleError, ConsoleErrorCode, ConsoleResult};
 
 #[cfg(target_os = "linux")]
 type Candidate = (&'static str, Vec<String>);
+
+mod error;
 
 #[cfg(target_os = "linux")]
 fn linux_terminal_candidates(dir: &str) -> Vec<Candidate> {
@@ -62,22 +66,35 @@ fn linux_terminal_candidates(dir: &str) -> Vec<Candidate> {
 }
 
 #[tauri::command]
-pub fn open_console(path: String) -> Result<(), String> {
-    let pb = sanitize_path_follow(&path, true)?;
+pub fn open_console(path: String) -> ApiResult<()> {
+    map_api_result(open_console_impl(path))
+}
+
+fn open_console_impl(path: String) -> ConsoleResult<()> {
+    let pb = sanitize_path_follow(&path, true).map_err(ConsoleError::from_external_message)?;
     if !pb.is_dir() {
-        return Err("Can only open console in a directory".into());
+        return Err(ConsoleError::new(
+            ConsoleErrorCode::NotDirectory,
+            "Can only open console in a directory",
+        ));
     }
     launch_terminal(&pb)
 }
 
-fn launch_terminal(dir: &Path) -> Result<(), String> {
+fn launch_terminal(dir: &Path) -> ConsoleResult<()> {
     #[cfg(target_os = "windows")]
     {
         Command::new("cmd")
             .args(["/C", "start", "cmd"])
             .current_dir(dir)
             .spawn()
-            .map_err(|e| format!("Failed to launch cmd: {e}"))?;
+            .map_err(|error| {
+                ConsoleError::from_io_error(
+                    ConsoleErrorCode::LaunchFailed,
+                    "Failed to launch cmd",
+                    error,
+                )
+            })?;
         return Ok(());
     }
 
@@ -88,7 +105,13 @@ fn launch_terminal(dir: &Path) -> Result<(), String> {
             .arg("Terminal")
             .arg(dir)
             .spawn()
-            .map_err(|e| format!("Failed to launch Terminal: {e}"))?;
+            .map_err(|error| {
+                ConsoleError::from_io_error(
+                    ConsoleErrorCode::LaunchFailed,
+                    "Failed to launch Terminal",
+                    error,
+                )
+            })?;
         return Ok(());
     }
 
@@ -97,22 +120,39 @@ fn launch_terminal(dir: &Path) -> Result<(), String> {
         // Strict Linux launch strategy: only known terminal binaries/args.
         let dir_arg = dir.to_string_lossy().to_string();
         let mut tried_bins = std::collections::BTreeSet::new();
+        let mut launch_error: Option<std::io::Error> = None;
         for (bin, args) in linux_terminal_candidates(&dir_arg) {
             let mut cmdline = Command::new(&bin);
             cmdline.current_dir(dir).args(&args);
             match cmdline.spawn() {
                 Ok(_) => return Ok(()),
-                Err(_) => {
+                Err(error) => {
                     tried_bins.insert(bin.to_string());
+                    if error.kind() != std::io::ErrorKind::NotFound && launch_error.is_none() {
+                        launch_error = Some(error);
+                    }
                 }
             }
         }
-        return Err(format!(
-            "Could not find a supported terminal emulator to launch (tried: {})",
-            tried_bins.into_iter().collect::<Vec<_>>().join(", ")
+        if let Some(error) = launch_error {
+            return Err(ConsoleError::from_io_error(
+                ConsoleErrorCode::LaunchFailed,
+                "Failed to launch terminal emulator",
+                error,
+            ));
+        }
+        return Err(ConsoleError::new(
+            ConsoleErrorCode::TerminalUnavailable,
+            format!(
+                "Could not find a supported terminal emulator to launch (tried: {})",
+                tried_bins.into_iter().collect::<Vec<_>>().join(", ")
+            ),
         ));
     }
 
     #[allow(unreachable_code)]
-    Err("Unsupported platform for opening console".into())
+    Err(ConsoleError::new(
+        ConsoleErrorCode::UnsupportedPlatform,
+        "Unsupported platform for opening console",
+    ))
 }

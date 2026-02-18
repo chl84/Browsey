@@ -6,12 +6,14 @@ use crate::{
         build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
         FsEntry,
     },
+    errors::api_error::ApiResult,
     fs_utils::{check_no_symlink_components, debug_log, sanitize_path_follow},
     icons::icon_ids::{FILE, GENERIC_FOLDER, SHORTCUT},
     sorting::{sort_entries, SortSpec},
     watcher::{self, WatchState},
 };
 use chrono::{Local, NaiveDateTime};
+use error::{map_api_result, ListingError, ListingErrorCode, ListingResult};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::{
@@ -23,6 +25,8 @@ use tracing::warn;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::prelude::*;
+
+mod error;
 
 const META_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -557,11 +561,23 @@ pub async fn list_dir(
     path: Option<String>,
     sort: Option<SortSpec>,
     app: tauri::AppHandle,
-) -> Result<DirListing, String> {
-    let app_clone = app.clone();
-    tauri::async_runtime::spawn_blocking(move || list_dir_sync(path, sort, app_clone))
-        .await
-        .unwrap_or_else(|e| Err(format!("list_dir task panicked: {e}")))
+) -> ApiResult<DirListing> {
+    map_api_result(list_dir_impl(path, sort, app).await)
+}
+
+async fn list_dir_impl(
+    path: Option<String>,
+    sort: Option<SortSpec>,
+    app: tauri::AppHandle,
+) -> ListingResult<DirListing> {
+    let task = tauri::async_runtime::spawn_blocking(move || list_dir_sync(path, sort, app));
+    match task.await {
+        Ok(result) => result.map_err(ListingError::from_external_message),
+        Err(error) => Err(ListingError::new(
+            ListingErrorCode::TaskFailed,
+            format!("list_dir task panicked: {error}"),
+        )),
+    }
 }
 
 #[tauri::command]
@@ -570,21 +586,42 @@ pub async fn list_facets(
     path: Option<String>,
     include_hidden: Option<bool>,
     app: tauri::AppHandle,
-) -> Result<ListingFacets, String> {
-    let app_clone = app.clone();
+) -> ApiResult<ListingFacets> {
+    map_api_result(list_facets_impl(scope, path, include_hidden, app).await)
+}
+
+async fn list_facets_impl(
+    scope: String,
+    path: Option<String>,
+    include_hidden: Option<bool>,
+    app: tauri::AppHandle,
+) -> ListingResult<ListingFacets> {
     let include_hidden = include_hidden.unwrap_or(true);
-    tauri::async_runtime::spawn_blocking(move || {
+    let task = tauri::async_runtime::spawn_blocking(move || {
         let entries = match scope.as_str() {
-            "dir" => list_dir_sync(path, None, app_clone.clone())?.entries,
-            "recent" => crate::commands::library::list_recent(None)?.entries,
-            "starred" => crate::commands::library::list_starred(None)?.entries,
+            "dir" => list_dir_sync(path, None, app.clone())?.entries,
+            "recent" => {
+                crate::commands::library::list_recent(None)
+                    .map_err(|error| error.message)?
+                    .entries
+            }
+            "starred" => {
+                crate::commands::library::list_starred(None)
+                    .map_err(|error| error.message)?
+                    .entries
+            }
             "trash" => crate::commands::fs::list_trash(None)?.entries,
             _ => return Err(format!("Unsupported facet scope: {scope}")),
         };
         Ok(build_listing_facets_with_hidden(&entries, include_hidden))
-    })
-    .await
-    .unwrap_or_else(|e| Err(format!("list_facets task panicked: {e}")))
+    });
+    match task.await {
+        Ok(result) => result.map_err(ListingError::from_external_message),
+        Err(error) => Err(ListingError::new(
+            ListingErrorCode::TaskFailed,
+            format!("list_facets task panicked: {error}"),
+        )),
+    }
 }
 
 fn watch_allow_all() -> bool {
@@ -645,24 +682,38 @@ pub fn watch_dir(
     path: Option<String>,
     state: tauri::State<WatchState>,
     app: tauri::AppHandle,
-) -> Result<(), String> {
-    let base_path = crate::commands::fs::expand_path(path)?;
+) -> ApiResult<()> {
+    map_api_result(watch_dir_impl(path, state, app))
+}
+
+fn watch_dir_impl(
+    path: Option<String>,
+    state: tauri::State<WatchState>,
+    app: tauri::AppHandle,
+) -> ListingResult<()> {
+    let base_path =
+        crate::commands::fs::expand_path(path).map_err(ListingError::from_external_message)?;
     let target = match sanitize_path_follow(&base_path.to_string_lossy(), true) {
         Ok(p) if p.exists() => p,
         _ => {
-            let home =
-                dirs_next::home_dir().ok_or_else(|| "Start directory not found".to_string())?;
-            sanitize_path_follow(&home.to_string_lossy(), true)?
+            let home = dirs_next::home_dir().ok_or_else(|| {
+                ListingError::new(ListingErrorCode::InvalidInput, "Start directory not found")
+            })?;
+            sanitize_path_follow(&home.to_string_lossy(), true)
+                .map_err(ListingError::from_external_message)?
         }
     };
 
-    check_no_symlink_components(&target)?;
+    check_no_symlink_components(&target).map_err(ListingError::from_external_message)?;
 
     if !watch_allow_all() {
         let allowed = watch_allowed_roots();
         let in_allowed = allowed.iter().any(|root| target.starts_with(root));
         if !in_allowed {
-            return Err("Watching this path is not allowed".into());
+            return Err(ListingError::new(
+                ListingErrorCode::WatchNotAllowed,
+                "Watching this path is not allowed",
+            ));
         }
     }
 

@@ -1,7 +1,8 @@
 use crate::errors::{
     api_error::{ApiError, ApiResult},
     domain::{
-        self, classify_io_error, classify_message_by_patterns, DomainError, ErrorCode, IoErrorHint,
+        self, classify_io_error, classify_io_hint_from_message, classify_message_by_patterns,
+        DomainError, ErrorCode, IoErrorHint,
     },
 };
 use std::fmt;
@@ -174,6 +175,17 @@ pub(super) fn map_api_result<T>(result: PermissionsResult<T>) -> ApiResult<T> {
 }
 
 fn classify_external_message(message: &str) -> PermissionsErrorCode {
+    if let Some(hint) = classify_io_hint_from_message(message) {
+        let io_code = match hint {
+            IoErrorHint::NotFound => Some(PermissionsErrorCode::NotFound),
+            IoErrorHint::PermissionDenied => Some(PermissionsErrorCode::PermissionDenied),
+            IoErrorHint::ReadOnlyFilesystem => Some(PermissionsErrorCode::ReadOnlyFilesystem),
+            _ => None,
+        };
+        if let Some(code) = io_code {
+            return code;
+        }
+    }
     classify_message_by_patterns(
         message,
         EXTERNAL_CLASSIFICATION_RULES,

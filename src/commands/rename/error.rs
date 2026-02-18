@@ -1,6 +1,9 @@
 use crate::errors::{
     api_error::ApiResult,
-    domain::{self, classify_message_by_patterns, DomainError, ErrorCode},
+    domain::{
+        self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
+        IoErrorHint,
+    },
 };
 use std::fmt;
 
@@ -61,6 +64,17 @@ impl RenameError {
 
     pub(super) fn from_external_message(message: impl Into<String>) -> Self {
         let message = message.into();
+        if let Some(hint) = classify_io_hint_from_message(&message) {
+            let code = match hint {
+                IoErrorHint::NotFound => Some(RenameErrorCode::NotFound),
+                IoErrorHint::PermissionDenied => Some(RenameErrorCode::PermissionDenied),
+                IoErrorHint::AlreadyExists => Some(RenameErrorCode::TargetExists),
+                _ => None,
+            };
+            if let Some(code) = code {
+                return Self::new(code, message);
+            }
+        }
         let code = classify_message_by_patterns(
             &message,
             CLASSIFICATION_RULES,

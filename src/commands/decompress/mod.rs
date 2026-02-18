@@ -1,3 +1,4 @@
+mod error;
 mod rar_format;
 mod seven_z_format;
 mod tar_format;
@@ -19,9 +20,13 @@ use serde::Serialize;
 use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
+use crate::errors::api_error::ApiResult;
 use crate::fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitize_path_nofollow};
 use crate::tasks::{CancelGuard, CancelState};
 use crate::undo::{temp_backup_path, Action, UndoState};
+use error::{
+    is_cancelled_message, map_api_result, DecompressError, DecompressErrorCode, DecompressResult,
+};
 
 use rar_format::{
     extract_rar, parse_rar_entries, rar_uncompressed_total_from_entries, single_root_in_rar,
@@ -89,7 +94,7 @@ pub(crate) fn are_extractable_archive_paths(paths: &[String]) -> bool {
 }
 
 #[tauri::command]
-pub fn can_extract_paths(paths: Vec<String>) -> Result<bool, String> {
+pub fn can_extract_paths(paths: Vec<String>) -> ApiResult<bool> {
     Ok(are_extractable_archive_paths(&paths))
 }
 
@@ -100,10 +105,27 @@ pub async fn extract_archive(
     undo: tauri::State<'_, UndoState>,
     path: String,
     progress_event: Option<String>,
-) -> Result<ExtractResult, String> {
-    let cancel_state = cancel.inner().clone();
-    let undo_state = undo.inner().clone();
-    let task = tauri::async_runtime::spawn_blocking(move || {
+) -> ApiResult<ExtractResult> {
+    map_api_result(
+        extract_archive_impl(
+            app,
+            cancel.inner().clone(),
+            undo.inner().clone(),
+            path,
+            progress_event,
+        )
+        .await,
+    )
+}
+
+async fn extract_archive_impl(
+    app: tauri::AppHandle,
+    cancel_state: CancelState,
+    undo_state: UndoState,
+    path: String,
+    progress_event: Option<String>,
+) -> DecompressResult<ExtractResult> {
+    let task = tauri::async_runtime::spawn_blocking(move || -> Result<ExtractResult, String> {
         do_extract(
             app,
             cancel_state,
@@ -115,8 +137,13 @@ pub async fn extract_archive(
             None,
         )
     });
-    task.await
-        .map_err(|e| format!("Extraction task failed: {e}"))?
+    match task.await {
+        Ok(result) => result.map_err(DecompressError::from_external_message),
+        Err(error) => Err(DecompressError::new(
+            DecompressErrorCode::TaskFailed,
+            format!("Extraction task failed: {error}"),
+        )),
+    }
 }
 
 #[tauri::command]
@@ -126,88 +153,113 @@ pub async fn extract_archives(
     undo: tauri::State<'_, UndoState>,
     paths: Vec<String>,
     progress_event: Option<String>,
-) -> Result<Vec<ExtractBatchItem>, String> {
+) -> ApiResult<Vec<ExtractBatchItem>> {
+    map_api_result(
+        extract_archives_impl(
+            app,
+            cancel.inner().clone(),
+            undo.inner().clone(),
+            paths,
+            progress_event,
+        )
+        .await,
+    )
+}
+
+async fn extract_archives_impl(
+    app: tauri::AppHandle,
+    cancel_state: CancelState,
+    undo_state: UndoState,
+    paths: Vec<String>,
+    progress_event: Option<String>,
+) -> DecompressResult<Vec<ExtractBatchItem>> {
     if paths.is_empty() {
         return Ok(Vec::new());
     }
-    let cancel_state = cancel.inner().clone();
-    let undo_state = undo.inner().clone();
 
     // Single cancel token for the whole batch if requested.
     let batch_guard = if let Some(evt) = progress_event.clone() {
-        Some(
-            cancel_state
-                .register(evt)
-                .map_err(|e| format!("Failed to register cancel: {e}"))?,
-        )
+        Some(cancel_state.register(evt).map_err(|error| {
+            DecompressError::new(
+                DecompressErrorCode::TaskFailed,
+                format!("Failed to register cancel: {error}"),
+            )
+        })?)
     } else {
         None
     };
     let batch_token = batch_guard.as_ref().map(|g| g.token());
 
-    let task = tauri::async_runtime::spawn_blocking(move || {
-        // Compute batch total hint inside blocking context to avoid nested runtimes.
-        let mut batch_total: u64 = 0;
-        for path in &paths {
-            let path_buf = PathBuf::from(path);
-            batch_total = batch_total.saturating_add(estimate_total_hint(&path_buf).unwrap_or(1));
-        }
-        if batch_total == 0 {
-            batch_total = 1;
-        }
+    let task =
+        tauri::async_runtime::spawn_blocking(move || -> Result<Vec<ExtractBatchItem>, String> {
+            // Compute batch total hint inside blocking context to avoid nested runtimes.
+            let mut batch_total: u64 = 0;
+            for path in &paths {
+                let path_buf = PathBuf::from(path);
+                batch_total =
+                    batch_total.saturating_add(estimate_total_hint(&path_buf).unwrap_or(1));
+            }
+            if batch_total == 0 {
+                batch_total = 1;
+            }
 
-        let shared_progress = progress_event
-            .as_ref()
-            .map(|evt| ProgressEmitter::new(app.clone(), evt.clone(), batch_total));
+            let shared_progress = progress_event
+                .as_ref()
+                .map(|evt| ProgressEmitter::new(app.clone(), evt.clone(), batch_total));
 
-        let mut results = Vec::new();
-        let batch_actions: Arc<Mutex<Vec<Action>>> = Arc::new(Mutex::new(Vec::new()));
-        for (_idx, path) in paths.into_iter().enumerate() {
-            let res = do_extract(
-                app.clone(),
-                cancel_state.clone(),
-                undo_state.clone(),
-                path.clone(),
-                progress_event.clone(), // only used for cancel registration in single mode
-                batch_token.clone(),
-                shared_progress.clone(),
-                Some(batch_actions.clone()),
-            );
-            match res {
-                Ok(r) => results.push(ExtractBatchItem {
-                    path,
-                    ok: true,
-                    result: Some(r),
-                    error: None,
-                }),
-                Err(e) => {
-                    let was_cancel = e.to_lowercase().contains("cancelled");
-                    results.push(ExtractBatchItem {
+            let mut results = Vec::new();
+            let batch_actions: Arc<Mutex<Vec<Action>>> = Arc::new(Mutex::new(Vec::new()));
+            for (_idx, path) in paths.into_iter().enumerate() {
+                let res = do_extract(
+                    app.clone(),
+                    cancel_state.clone(),
+                    undo_state.clone(),
+                    path.clone(),
+                    progress_event.clone(), // only used for cancel registration in single mode
+                    batch_token.clone(),
+                    shared_progress.clone(),
+                    Some(batch_actions.clone()),
+                );
+                match res {
+                    Ok(r) => results.push(ExtractBatchItem {
                         path,
-                        ok: false,
-                        result: None,
-                        error: Some(e),
-                    });
-                    if was_cancel {
-                        break;
+                        ok: true,
+                        result: Some(r),
+                        error: None,
+                    }),
+                    Err(e) => {
+                        let was_cancel = is_cancelled_message(&e);
+                        results.push(ExtractBatchItem {
+                            path,
+                            ok: false,
+                            result: None,
+                            error: Some(e),
+                        });
+                        if was_cancel {
+                            break;
+                        }
                     }
                 }
             }
-        }
-        // keep guard alive until loop ends
-        drop(batch_guard);
-        if let Ok(actions) = batch_actions.lock() {
-            if !actions.is_empty() {
-                let _ = undo_state.record_applied(Action::Batch(actions.clone()));
+            // keep guard alive until loop ends
+            drop(batch_guard);
+            if let Ok(actions) = batch_actions.lock() {
+                if !actions.is_empty() {
+                    let _ = undo_state.record_applied(Action::Batch(actions.clone()));
+                }
             }
-        }
-        if let Some(p) = shared_progress {
-            p.finish();
-        }
-        Ok(results)
-    });
-    task.await
-        .map_err(|e| format!("Batch extraction task failed: {e}"))?
+            if let Some(p) = shared_progress {
+                p.finish();
+            }
+            Ok(results)
+        });
+    match task.await {
+        Ok(result) => result.map_err(DecompressError::from_external_message),
+        Err(error) => Err(DecompressError::new(
+            DecompressErrorCode::TaskFailed,
+            format!("Batch extraction task failed: {error}"),
+        )),
+    }
 }
 
 fn do_extract(

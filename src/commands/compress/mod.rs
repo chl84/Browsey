@@ -15,12 +15,16 @@ use serde::Serialize;
 use walkdir::WalkDir;
 use zip::{write::SimpleFileOptions, CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
+use crate::errors::api_error::ApiResult;
 use crate::undo::{temp_backup_path, Action, UndoState};
 use crate::{
     fs_utils::sanitize_path_nofollow,
     runtime_lifecycle,
     tasks::{CancelGuard, CancelState},
 };
+use error::{map_api_result, CompressError, CompressErrorCode, CompressResult};
+
+mod error;
 
 const CHUNK: usize = 4 * 1024 * 1024;
 const FILE_READ_BUF: usize = 256 * 1024;
@@ -403,9 +407,30 @@ pub async fn compress_entries(
     name: Option<String>,
     level: Option<u32>,
     progress_event: Option<String>,
-) -> Result<String, String> {
-    let cancel_state = cancel.inner().clone();
-    let undo_state = undo.inner().clone();
+) -> ApiResult<String> {
+    map_api_result(
+        compress_entries_impl(
+            app,
+            cancel.inner().clone(),
+            undo.inner().clone(),
+            paths,
+            name,
+            level,
+            progress_event,
+        )
+        .await,
+    )
+}
+
+async fn compress_entries_impl(
+    app: tauri::AppHandle,
+    cancel_state: CancelState,
+    undo_state: UndoState,
+    paths: Vec<String>,
+    name: Option<String>,
+    level: Option<u32>,
+    progress_event: Option<String>,
+) -> CompressResult<String> {
     let task = tauri::async_runtime::spawn_blocking(move || {
         do_compress(
             app,
@@ -417,8 +442,13 @@ pub async fn compress_entries(
             progress_event,
         )
     });
-    task.await
-        .map_err(|e| format!("Compression task failed: {e}"))?
+    match task.await {
+        Ok(result) => result.map_err(CompressError::from_external_message),
+        Err(error) => Err(CompressError::new(
+            CompressErrorCode::TaskFailed,
+            format!("Compression task failed: {error}"),
+        )),
+    }
 }
 
 fn do_compress(

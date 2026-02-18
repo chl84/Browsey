@@ -46,34 +46,70 @@ pub enum IoErrorHint {
 }
 
 pub fn classify_io_error(error: &std::io::Error) -> IoErrorHint {
-    match error.kind() {
+    let from_kind = match error.kind() {
         ErrorKind::NotFound => IoErrorHint::NotFound,
         ErrorKind::PermissionDenied => IoErrorHint::PermissionDenied,
         ErrorKind::AlreadyExists => IoErrorHint::AlreadyExists,
         ErrorKind::InvalidInput => IoErrorHint::InvalidInput,
-        _ => {
-            if is_read_only_filesystem_error(error.raw_os_error()) {
-                IoErrorHint::ReadOnlyFilesystem
-            } else {
-                IoErrorHint::Other
-            }
+        _ => IoErrorHint::Other,
+    };
+    if from_kind != IoErrorHint::Other {
+        return from_kind;
+    }
+    error
+        .raw_os_error()
+        .map(classify_raw_os_error)
+        .unwrap_or(IoErrorHint::Other)
+}
+
+pub fn classify_raw_os_error(raw: i32) -> IoErrorHint {
+    #[cfg(windows)]
+    {
+        return match raw {
+            5 => IoErrorHint::PermissionDenied,     // ERROR_ACCESS_DENIED
+            2 | 3 => IoErrorHint::NotFound,         // ERROR_FILE_NOT_FOUND | ERROR_PATH_NOT_FOUND
+            80 | 183 => IoErrorHint::AlreadyExists, // ERROR_FILE_EXISTS | ERROR_ALREADY_EXISTS
+            19 => IoErrorHint::ReadOnlyFilesystem,  // ERROR_WRITE_PROTECT
+            87 => IoErrorHint::InvalidInput,        // ERROR_INVALID_PARAMETER
+            _ => IoErrorHint::Other,
+        };
+    }
+
+    #[cfg(unix)]
+    {
+        return match raw {
+            1 | 13 => IoErrorHint::PermissionDenied, // EPERM | EACCES
+            2 => IoErrorHint::NotFound,              // ENOENT
+            17 => IoErrorHint::AlreadyExists,        // EEXIST
+            22 => IoErrorHint::InvalidInput,         // EINVAL
+            30 => IoErrorHint::ReadOnlyFilesystem,   // EROFS
+            _ => IoErrorHint::Other,
+        };
+    }
+
+    #[allow(unreachable_code)]
+    IoErrorHint::Other
+}
+
+pub fn classify_io_hint_from_message(message: &str) -> Option<IoErrorHint> {
+    extract_raw_os_error(message).map(classify_raw_os_error)
+}
+
+fn extract_raw_os_error(message: &str) -> Option<i32> {
+    let needle = "os error ";
+    let start = message.to_ascii_lowercase().rfind(needle)? + needle.len();
+    let tail = &message[start..];
+    let mut end = 0usize;
+    for (idx, ch) in tail.char_indices() {
+        let is_num = ch.is_ascii_digit() || (idx == 0 && ch == '-');
+        if is_num {
+            end = idx + ch.len_utf8();
+        } else {
+            break;
         }
     }
-}
-
-#[cfg(unix)]
-fn is_read_only_filesystem_error(raw: Option<i32>) -> bool {
-    raw == Some(libc::EROFS)
-}
-
-#[cfg(windows)]
-fn is_read_only_filesystem_error(raw: Option<i32>) -> bool {
-    // ERROR_WRITE_PROTECT
-    raw == Some(19)
-}
-
-#[cfg(not(any(unix, windows)))]
-fn is_read_only_filesystem_error(raw: Option<i32>) -> bool {
-    let _ = raw;
-    false
+    if end == 0 {
+        return None;
+    }
+    tail[..end].parse::<i32>().ok()
 }
