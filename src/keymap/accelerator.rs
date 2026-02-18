@@ -1,7 +1,12 @@
-fn normalize_key_token(token: &str) -> Result<String, String> {
+use super::error::{KeymapCoreError, KeymapCoreErrorCode, KeymapCoreResult};
+
+fn normalize_key_token(token: &str) -> KeymapCoreResult<String> {
     let lowered = token.trim().to_ascii_lowercase();
     if lowered.is_empty() {
-        return Err("missing key".into());
+        return Err(KeymapCoreError::new(
+            KeymapCoreErrorCode::InvalidInput,
+            "missing key",
+        ));
     }
 
     let canonical = match lowered.as_str() {
@@ -26,18 +31,30 @@ fn normalize_key_token(token: &str) -> Result<String, String> {
                 if ch.is_ascii_alphanumeric() {
                     ch.to_ascii_uppercase().to_string()
                 } else {
-                    return Err(format!("unsupported key '{token}'"));
+                    return Err(KeymapCoreError::new(
+                        KeymapCoreErrorCode::InvalidAccelerator,
+                        format!("unsupported key '{token}'"),
+                    ));
                 }
             } else if lowered.starts_with('f') {
-                let number = lowered[1..]
-                    .parse::<u8>()
-                    .map_err(|_| format!("unsupported key '{token}'"))?;
+                let number = lowered[1..].parse::<u8>().map_err(|_| {
+                    KeymapCoreError::new(
+                        KeymapCoreErrorCode::InvalidAccelerator,
+                        format!("unsupported key '{token}'"),
+                    )
+                })?;
                 if !(1..=24).contains(&number) {
-                    return Err(format!("unsupported function key '{token}'"));
+                    return Err(KeymapCoreError::new(
+                        KeymapCoreErrorCode::InvalidAccelerator,
+                        format!("unsupported function key '{token}'"),
+                    ));
                 }
                 format!("F{number}")
             } else {
-                return Err(format!("unsupported key '{token}'"));
+                return Err(KeymapCoreError::new(
+                    KeymapCoreErrorCode::InvalidAccelerator,
+                    format!("unsupported key '{token}'"),
+                ));
             }
         }
     };
@@ -45,7 +62,7 @@ fn normalize_key_token(token: &str) -> Result<String, String> {
     Ok(canonical)
 }
 
-pub fn canonicalize_accelerator(raw: &str) -> Result<String, String> {
+pub fn canonicalize_accelerator(raw: &str) -> KeymapCoreResult<String> {
     let mut ctrl = false;
     let mut alt = false;
     let mut shift = false;
@@ -55,7 +72,10 @@ pub fn canonicalize_accelerator(raw: &str) -> Result<String, String> {
     for part in raw.split('+') {
         let token = part.trim();
         if token.is_empty() {
-            return Err("invalid shortcut format".into());
+            return Err(KeymapCoreError::new(
+                KeymapCoreErrorCode::InvalidInput,
+                "invalid shortcut format",
+            ));
         }
         part_count += 1;
         let lowered = token.to_ascii_lowercase();
@@ -65,7 +85,10 @@ pub fn canonicalize_accelerator(raw: &str) -> Result<String, String> {
             "shift" => shift = true,
             _ => {
                 if key.is_some() {
-                    return Err("shortcut may only include one non-modifier key".into());
+                    return Err(KeymapCoreError::new(
+                        KeymapCoreErrorCode::InvalidInput,
+                        "shortcut may only include one non-modifier key",
+                    ));
                 }
                 key = Some(normalize_key_token(token)?);
             }
@@ -73,10 +96,18 @@ pub fn canonicalize_accelerator(raw: &str) -> Result<String, String> {
     }
 
     if part_count == 0 {
-        return Err("shortcut cannot be empty".into());
+        return Err(KeymapCoreError::new(
+            KeymapCoreErrorCode::InvalidInput,
+            "shortcut cannot be empty",
+        ));
     }
 
-    let key = key.ok_or_else(|| "shortcut must include a key".to_string())?;
+    let key = key.ok_or_else(|| {
+        KeymapCoreError::new(
+            KeymapCoreErrorCode::InvalidInput,
+            "shortcut must include a key",
+        )
+    })?;
     let is_alnum_single = key.len() == 1
         && key
             .chars()
@@ -84,10 +115,16 @@ pub fn canonicalize_accelerator(raw: &str) -> Result<String, String> {
             .map(|ch| ch.is_ascii_alphanumeric())
             .unwrap_or(false);
     if is_alnum_single && !ctrl && !alt {
-        return Err("alphanumeric shortcuts require Ctrl/Cmd or Alt".into());
+        return Err(KeymapCoreError::new(
+            KeymapCoreErrorCode::InvalidAccelerator,
+            "alphanumeric shortcuts require Ctrl/Cmd or Alt",
+        ));
     }
     if ctrl && shift && !alt && key == "I" {
-        return Err("Ctrl+Shift+I is reserved".into());
+        return Err(KeymapCoreError::new(
+            KeymapCoreErrorCode::InvalidAccelerator,
+            "Ctrl+Shift+I is reserved",
+        ));
     }
 
     let mut parts: Vec<&str> = Vec::with_capacity(4);

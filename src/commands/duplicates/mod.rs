@@ -106,7 +106,7 @@ fn check_duplicates_stream_impl(
         let cancel_guard = match cancel_state.register(progress_event.clone()) {
             Ok(guard) => guard,
             Err(err) => {
-                send(error_payload(err));
+                send(error_payload(err.to_string()));
                 return;
             }
         };

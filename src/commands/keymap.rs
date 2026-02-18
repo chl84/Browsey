@@ -16,7 +16,8 @@ fn load_shortcuts_impl() -> KeymapResult<Vec<ShortcutBinding>> {
             format!("Failed to open shortcuts database: {error}"),
         )
     })?;
-    keymap_core::load_shortcuts(&conn).map_err(KeymapError::from_external_message)
+    keymap_core::load_shortcuts(&conn)
+        .map_err(|error| KeymapError::from_external_message(error.to_string()))
 }
 
 #[tauri::command]
@@ -38,7 +39,7 @@ fn set_shortcut_binding_impl(
         )
     })?;
     keymap_core::set_shortcut_binding(&conn, &command_id, &accelerator)
-        .map_err(KeymapError::from_external_message)
+        .map_err(|error| KeymapError::from_external_message(error.to_string()))
 }
 
 #[tauri::command]
@@ -54,7 +55,7 @@ fn reset_shortcut_binding_impl(command_id: String) -> KeymapResult<Vec<ShortcutB
         )
     })?;
     keymap_core::reset_shortcut_binding(&conn, &command_id)
-        .map_err(KeymapError::from_external_message)
+        .map_err(|error| KeymapError::from_external_message(error.to_string()))
 }
 
 #[tauri::command]
@@ -69,5 +70,6 @@ fn reset_all_shortcuts_impl() -> KeymapResult<Vec<ShortcutBinding>> {
             format!("Failed to open shortcuts database: {error}"),
         )
     })?;
-    keymap_core::reset_all_shortcuts(&conn).map_err(KeymapError::from_external_message)
+    keymap_core::reset_all_shortcuts(&conn)
+        .map_err(|error| KeymapError::from_external_message(error.to_string()))
 }

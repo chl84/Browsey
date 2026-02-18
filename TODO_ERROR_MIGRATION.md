@@ -27,13 +27,13 @@ Goal: Migrate remaining modules from `Result<..., String>` to the new code-based
 
 - [x] `src/clipboard`
 - [x] `src/db`
-- [ ] `src/entry`
+- [x] `src/entry`
 - [ ] `src/fs_utils`
-- [ ] `src/keymap`
+- [x] `src/keymap`
 - [ ] `src/metadata`
-- [ ] `src/path_guard`
+- [x] `src/path_guard`
 - [ ] `src/statusbar`
-- [ ] `src/tasks`
+- [x] `src/tasks`
 - [ ] `src/undo`
 - [ ] `src/watcher.rs`
 
