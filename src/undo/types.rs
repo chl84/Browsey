@@ -99,7 +99,7 @@ impl UndoManager {
     /// Apply a new action and push it onto the undo stack. Clears redo history.
     #[allow(dead_code)]
     pub fn apply(&mut self, mut action: Action) -> Result<(), String> {
-        super::execute_action(&mut action, Direction::Forward)?;
+        super::engine::execute_action(&mut action, Direction::Forward)?;
         self.undo_stack.push_back(action);
         self.redo_stack.clear();
         self.trim();
@@ -111,7 +111,7 @@ impl UndoManager {
             .undo_stack
             .pop_back()
             .ok_or_else(|| "Nothing to undo".to_string())?;
-        match super::execute_action(&mut action, Direction::Backward) {
+        match super::engine::execute_action(&mut action, Direction::Backward) {
             Ok(_) => {
                 self.redo_stack.push_back(action);
                 Ok(())
@@ -128,7 +128,7 @@ impl UndoManager {
             .redo_stack
             .pop_back()
             .ok_or_else(|| "Nothing to redo".to_string())?;
-        match super::execute_action(&mut action, Direction::Forward) {
+        match super::engine::execute_action(&mut action, Direction::Forward) {
             Ok(_) => {
                 self.undo_stack.push_back(action);
                 self.trim();
