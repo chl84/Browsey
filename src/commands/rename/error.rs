@@ -114,6 +114,12 @@ impl From<&str> for RenameError {
     }
 }
 
+impl From<crate::path_guard::PathGuardError> for RenameError {
+    fn from(error: crate::path_guard::PathGuardError) -> Self {
+        Self::from_external_message(error.to_string())
+    }
+}
+
 pub(crate) type RenameResult<T> = Result<T, RenameError>;
 
 pub(super) fn map_api_result<T>(result: RenameResult<T>) -> ApiResult<T> {

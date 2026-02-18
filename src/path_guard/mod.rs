@@ -4,25 +4,40 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) fn ensure_existing_path_nonsymlink(path: &Path) -> Result<fs::Metadata, String> {
-    check_no_symlink_components(path)?;
-    let meta = fs::symlink_metadata(path)
-        .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+mod error;
+
+pub(crate) use error::{PathGuardError, PathGuardErrorCode, PathGuardResult};
+
+pub(crate) fn ensure_existing_path_nonsymlink(path: &Path) -> PathGuardResult<fs::Metadata> {
+    check_no_symlink_components(path)
+        .map_err(|error| PathGuardError::new(PathGuardErrorCode::SymlinkUnsupported, error))?;
+    let meta = fs::symlink_metadata(path).map_err(|error| {
+        PathGuardError::from_io_error(
+            &format!("Failed to read metadata for {}", path.display()),
+            error,
+        )
+    })?;
     if meta.file_type().is_symlink() {
-        return Err(format!("Symlinks are not allowed: {}", path.display()));
+        return Err(PathGuardError::new(
+            PathGuardErrorCode::SymlinkUnsupported,
+            format!("Symlinks are not allowed: {}", path.display()),
+        ));
     }
     Ok(meta)
 }
 
-pub(crate) fn ensure_existing_dir_nonsymlink(path: &Path) -> Result<(), String> {
+pub(crate) fn ensure_existing_dir_nonsymlink(path: &Path) -> PathGuardResult<()> {
     let meta = ensure_existing_path_nonsymlink(path)?;
     if !meta.is_dir() {
-        return Err("Destination is not a directory".into());
+        return Err(PathGuardError::new(
+            PathGuardErrorCode::NotDirectory,
+            "Destination is not a directory",
+        ));
     }
     Ok(())
 }
 
-pub(crate) fn ensure_no_symlink_components_existing_prefix(path: &Path) -> Result<(), String> {
+pub(crate) fn ensure_no_symlink_components_existing_prefix(path: &Path) -> PathGuardResult<()> {
     let mut acc = PathBuf::new();
     for comp in path.components() {
         match comp {
@@ -47,17 +62,17 @@ pub(crate) fn ensure_no_symlink_components_existing_prefix(path: &Path) -> Resul
         match fs::symlink_metadata(&acc) {
             Ok(meta) => {
                 if meta.file_type().is_symlink() {
-                    return Err(format!(
-                        "Symlinks are not allowed in path: {}",
-                        acc.display()
+                    return Err(PathGuardError::new(
+                        PathGuardErrorCode::SymlinkUnsupported,
+                        format!("Symlinks are not allowed in path: {}", acc.display()),
                     ));
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => break,
             Err(e) => {
-                return Err(format!(
-                    "Failed to read metadata for {}: {e}",
-                    acc.display()
+                return Err(PathGuardError::from_io_error(
+                    &format!("Failed to read metadata for {}", acc.display()),
+                    e,
                 ));
             }
         }

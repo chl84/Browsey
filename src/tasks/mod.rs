@@ -6,6 +6,12 @@ use std::{
     },
 };
 
+mod error;
+
+use crate::errors::api_error::ApiResult;
+use error::map_api_result;
+pub use error::{TaskError, TaskErrorCode, TaskResult};
+
 #[derive(Clone, Default)]
 pub struct CancelState {
     inner: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
@@ -19,12 +25,14 @@ pub struct CancelGuard {
 }
 
 impl CancelState {
-    pub fn register(&self, id: String) -> Result<CancelGuard, String> {
+    pub fn register(&self, id: String) -> TaskResult<CancelGuard> {
         let flag = Arc::new(AtomicBool::new(false));
-        let mut map = self
-            .inner
-            .lock()
-            .map_err(|_| "Failed to lock cancel registry".to_string())?;
+        let mut map = self.inner.lock().map_err(|_| {
+            TaskError::new(
+                TaskErrorCode::RegistryLockFailed,
+                "Failed to lock cancel registry",
+            )
+        })?;
         map.insert(id.clone(), flag.clone());
         Ok(CancelGuard {
             id,
@@ -33,11 +41,13 @@ impl CancelState {
         })
     }
 
-    pub fn cancel(&self, id: &str) -> Result<bool, String> {
-        let map = self
-            .inner
-            .lock()
-            .map_err(|_| "Failed to lock cancel registry".to_string())?;
+    pub fn cancel(&self, id: &str) -> TaskResult<bool> {
+        let map = self.inner.lock().map_err(|_| {
+            TaskError::new(
+                TaskErrorCode::RegistryLockFailed,
+                "Failed to lock cancel registry",
+            )
+        })?;
         if let Some(flag) = map.get(id) {
             flag.store(true, Ordering::Relaxed);
             Ok(true)
@@ -46,11 +56,13 @@ impl CancelState {
         }
     }
 
-    pub fn cancel_all(&self) -> Result<usize, String> {
-        let map = self
-            .inner
-            .lock()
-            .map_err(|_| "Failed to lock cancel registry".to_string())?;
+    pub fn cancel_all(&self) -> TaskResult<usize> {
+        let map = self.inner.lock().map_err(|_| {
+            TaskError::new(
+                TaskErrorCode::RegistryLockFailed,
+                "Failed to lock cancel registry",
+            )
+        })?;
         for flag in map.values() {
             flag.store(true, Ordering::Relaxed);
         }
@@ -77,10 +89,16 @@ impl Drop for CancelGuard {
 }
 
 #[tauri::command]
-pub fn cancel_task(state: tauri::State<CancelState>, id: String) -> Result<(), String> {
-    match state.cancel(&id) {
-        Ok(true) => Ok(()),
-        Ok(false) => Err("Task not found or already finished".into()),
-        Err(e) => Err(e),
+pub fn cancel_task(state: tauri::State<CancelState>, id: String) -> ApiResult<()> {
+    map_api_result(cancel_task_impl(state, id))
+}
+
+fn cancel_task_impl(state: tauri::State<CancelState>, id: String) -> TaskResult<()> {
+    match state.cancel(&id)? {
+        true => Ok(()),
+        false => Err(TaskError::new(
+            TaskErrorCode::TaskNotFound,
+            "Task not found or already finished",
+        )),
     }
 }

@@ -20,7 +20,7 @@ pub fn entry_times_cmd(path: String) -> ApiResult<EntryTimes> {
 
 fn entry_times_cmd_impl(path: String) -> EntryMetadataResult<EntryTimes> {
     let pb = PathBuf::from(path);
-    entry_times(&pb).map_err(EntryMetadataError::from_external_message)
+    entry_times(&pb).map_err(|error| EntryMetadataError::from_external_message(error.to_string()))
 }
 
 #[tauri::command]

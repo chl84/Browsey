@@ -21,6 +21,10 @@ use windows_sys::Win32::Storage::FileSystem::GetDriveTypeW;
 #[cfg(target_os = "windows")]
 const DRIVE_REMOTE: u32 = 4;
 
+mod error;
+
+pub use error::{EntryError, EntryResult};
+
 #[derive(Clone)]
 pub struct CachedMeta {
     pub is_dir: bool,
@@ -244,8 +248,9 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -
     }
 }
 
-pub fn entry_times(path: &Path) -> Result<EntryTimes, String> {
-    let meta = fs::symlink_metadata(path).map_err(|e| format!("Failed to read metadata: {e}"))?;
+pub fn entry_times(path: &Path) -> EntryResult<EntryTimes> {
+    let meta = fs::symlink_metadata(path)
+        .map_err(|error| EntryError::from_io_error("Failed to read metadata", error))?;
     Ok(EntryTimes {
         accessed: fmt_time(meta.accessed().ok()),
         created: fmt_time(meta.created().ok()),
