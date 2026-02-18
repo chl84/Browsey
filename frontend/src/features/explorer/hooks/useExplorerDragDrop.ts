@@ -1,3 +1,4 @@
+import { onDestroy } from 'svelte'
 import { get, writable } from 'svelte/store'
 import { useDragDrop } from './useDragDrop'
 import { createNativeFileDrop } from './useNativeFileDrop'
@@ -53,6 +54,15 @@ export const useExplorerDragDrop = (deps: Deps) => {
       deps.focusEntryInCurrentList(first)
       deps.showToast('Dropped item navigated')
     },
+  })
+
+  const unsubscribeHover = nativeDrop.hovering.subscribe((hovering) => {
+    if (hovering && deps.currentView() === 'dir') {
+      deps.showToast('Drop to paste into this folder', 1500)
+    }
+  })
+  onDestroy(() => {
+    unsubscribeHover()
   })
 
   const setCopyModifierActive = (active: boolean) => {
@@ -260,7 +270,6 @@ export const useExplorerDragDrop = (deps: Deps) => {
   return {
     dragState,
     dragAction,
-    nativeDropHovering: nativeDrop.hovering,
     startNativeDrop: () => nativeDrop.start(),
     stopNativeDrop: () => nativeDrop.stop(),
     setCopyModifierActive,
