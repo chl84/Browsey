@@ -536,7 +536,10 @@ fn get_permissions_batch_uses_structured_error_codes_for_expected_failures() {
         .as_ref()
         .expect("missing path should include structured error");
     assert_eq!(error.code, "not_found");
-    assert!(error.message.to_ascii_lowercase().contains("does not exist"));
+    assert!(error
+        .message
+        .to_ascii_lowercase()
+        .contains("does not exist"));
 }
 
 #[test]

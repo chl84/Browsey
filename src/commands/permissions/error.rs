@@ -19,7 +19,10 @@ const CLASSIFICATION_RULES: &[(&str, &[&str])] = &[
             "no ownership changes were provided",
         ],
     ),
-    ("root_forbidden", &["refusing to operate on filesystem root"]),
+    (
+        "root_forbidden",
+        &["refusing to operate on filesystem root"],
+    ),
     (
         "symlink_unsupported",
         &[
@@ -29,11 +32,11 @@ const CLASSIFICATION_RULES: &[(&str, &[&str])] = &[
             "ownership changes are not supported on symlinks",
         ],
     ),
-    ("principal_not_found", &["user not found", "group not found"]),
     (
-        "group_unavailable",
-        &["group information is unavailable"],
+        "principal_not_found",
+        &["user not found", "group not found"],
     ),
+    ("group_unavailable", &["group information is unavailable"]),
     (
         "authentication_cancelled",
         &[
@@ -57,7 +60,10 @@ const CLASSIFICATION_RULES: &[(&str, &[&str])] = &[
     ("helper_start_failed", &["failed to start pkexec"]),
     (
         "helper_io_error",
-        &["failed to send helper request", "failed reading helper input"],
+        &[
+            "failed to send helper request",
+            "failed reading helper input",
+        ],
     ),
     ("helper_wait_failed", &["failed waiting for pkexec helper"]),
     (
@@ -70,10 +76,7 @@ const CLASSIFICATION_RULES: &[(&str, &[&str])] = &[
         ],
     ),
     ("read_only_filesystem", &["read-only file system"]),
-    (
-        "unsupported_platform",
-        &["not supported on this platform"],
-    ),
+    ("unsupported_platform", &["not supported on this platform"]),
     (
         "not_found",
         &["path does not exist", "no such file or directory"],
@@ -111,10 +114,7 @@ pub(super) fn classify_error_code(message: &str) -> &'static str {
     let normalized = message.to_ascii_lowercase();
 
     for &(code, patterns) in CLASSIFICATION_RULES {
-        if patterns
-            .iter()
-            .any(|pattern| normalized.contains(pattern))
-        {
+        if patterns.iter().any(|pattern| normalized.contains(pattern)) {
             return code;
         }
     }
