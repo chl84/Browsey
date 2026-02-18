@@ -2683,7 +2683,6 @@
   const {
     dragState,
     dragAction,
-    nativeDropHovering,
     startNativeDrop,
     stopNativeDrop,
     setCopyModifierActive,
@@ -2713,10 +2712,6 @@
     handlePasteOrMove,
     showToast,
   })
-
-  $: if ($nativeDropHovering && currentView === 'dir') {
-    showToast('Drop to paste into this folder', 1500)
-  }
 
   const resolveConflicts = async (policy: 'rename' | 'overwrite') => {
     if (!conflictDest) return
