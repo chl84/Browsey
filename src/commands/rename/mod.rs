@@ -10,7 +10,7 @@ use crate::{
     },
 };
 mod error;
-use error::map_api_result;
+use error::{map_api_result, RenameError, RenameErrorCode, RenameResult};
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -76,39 +76,46 @@ pub struct RenameEntryRequest {
     pub new_name: String,
 }
 
-fn build_rename_target(from: &Path, new_name: &str) -> Result<PathBuf, String> {
+fn build_rename_target(from: &Path, new_name: &str) -> RenameResult<PathBuf> {
     if new_name.trim().is_empty() {
-        return Err("New name cannot be empty".into());
+        return Err(RenameError::invalid_input("New name cannot be empty"));
     }
     let parent = from
         .parent()
-        .ok_or_else(|| "Cannot rename root".to_string())?;
+        .ok_or_else(|| RenameError::new(RenameErrorCode::RenameFailed, "Cannot rename root"))?;
     Ok(parent.join(new_name.trim()))
 }
 
-fn prepare_rename_pair(path: &str, new_name: &str) -> Result<(PathBuf, PathBuf), String> {
-    let from = sanitize_path_nofollow(path, true)?;
+fn prepare_rename_pair(path: &str, new_name: &str) -> RenameResult<(PathBuf, PathBuf)> {
+    let from = sanitize_path_nofollow(path, true).map_err(RenameError::from)?;
     let to = build_rename_target(&from, new_name)?;
     Ok((from, to))
 }
 
-fn apply_rename(from: &Path, to: &Path) -> Result<(), String> {
-    ensure_existing_path_nonsymlink(from)?;
-    let from_snapshot = snapshot_existing_path(from)?;
+fn apply_rename(from: &Path, to: &Path) -> RenameResult<()> {
+    ensure_existing_path_nonsymlink(from).map_err(RenameError::from)?;
+    let from_snapshot = snapshot_existing_path(from).map_err(RenameError::from)?;
     if let Some(parent) = to.parent() {
-        ensure_existing_dir_nonsymlink(parent)?;
-        let parent_snapshot = snapshot_existing_path(parent)?;
-        assert_path_snapshot(parent, &parent_snapshot)?;
+        ensure_existing_dir_nonsymlink(parent).map_err(RenameError::from)?;
+        let parent_snapshot = snapshot_existing_path(parent).map_err(RenameError::from)?;
+        assert_path_snapshot(parent, &parent_snapshot).map_err(RenameError::from)?;
     } else {
-        return Err("Invalid destination path".into());
+        return Err(RenameError::new(
+            RenameErrorCode::InvalidPath,
+            "Invalid destination path",
+        ));
     }
-    assert_path_snapshot(from, &from_snapshot)?;
+    assert_path_snapshot(from, &from_snapshot).map_err(RenameError::from)?;
     match move_with_fallback(from, to) {
         Ok(_) => Ok(()),
-        Err(e) if is_destination_exists_error(&e) => {
-            Err("A file or directory with that name already exists".into())
-        }
-        Err(e) => Err(format!("Failed to rename: {e}")),
+        Err(e) if is_destination_exists_error(&e) => Err(RenameError::new(
+            RenameErrorCode::TargetExists,
+            "A file or directory with that name already exists",
+        )),
+        Err(e) => Err(RenameError::new(
+            RenameErrorCode::RenameFailed,
+            format!("Failed to rename: {e}"),
+        )),
     }
 }
 
@@ -116,7 +123,7 @@ pub(crate) fn rename_entry_impl(
     path: &str,
     new_name: &str,
     state: &UndoState,
-) -> Result<String, String> {
+) -> RenameResult<String> {
     let (from, to) = prepare_rename_pair(path, new_name)?;
     apply_rename(&from, &to)?;
     let _ = state.record_applied(Action::Rename {
@@ -129,7 +136,7 @@ pub(crate) fn rename_entry_impl(
 pub(crate) fn rename_entries_impl(
     entries: Vec<RenameEntryRequest>,
     undo: &UndoState,
-) -> Result<Vec<String>, String> {
+) -> RenameResult<Vec<String>> {
     if entries.is_empty() {
         return Ok(Vec::new());
     }
@@ -142,15 +149,15 @@ pub(crate) fn rename_entries_impl(
         let (from, to) = prepare_rename_pair(entry.path.as_str(), entry.new_name.as_str())?;
 
         if !seen_sources.insert(from.clone()) {
-            return Err(format!(
-                "Duplicate source path in request (item {})",
-                idx + 1
+            return Err(RenameError::new(
+                RenameErrorCode::DuplicateSourcePath,
+                format!("Duplicate source path in request (item {})", idx + 1),
             ));
         }
         if !seen_targets.insert(to.clone()) {
-            return Err(format!(
-                "Duplicate target name in request (item {})",
-                idx + 1
+            return Err(RenameError::new(
+                RenameErrorCode::DuplicateTargetName,
+                format!("Duplicate target name in request (item {})", idx + 1),
             ));
         }
 
@@ -168,7 +175,10 @@ pub(crate) fn rename_entries_impl(
             if !performed.is_empty() {
                 let mut rollback = performed.clone();
                 if let Err(rb_err) = run_actions(&mut rollback, Direction::Backward) {
-                    return Err(format!("{}; rollback also failed: {}", err, rb_err));
+                    return Err(RenameError::new(
+                        RenameErrorCode::RollbackFailed,
+                        format!("{}; rollback also failed: {}", err, rb_err),
+                    ));
                 }
             }
             return Err(err);
@@ -473,7 +483,10 @@ mod tests {
         )
         .expect_err("batch should fail on second rename");
 
-        assert!(err.contains("already exists"), "unexpected error: {err}");
+        assert!(
+            err.to_string().contains("already exists"),
+            "unexpected error: {err}"
+        );
         assert!(a.exists(), "first rename should be rolled back");
         assert!(b.exists(), "second source should remain");
         assert!(!dir.join("a-renamed.txt").exists());
@@ -510,7 +523,7 @@ mod tests {
         .expect_err("duplicate source should fail");
 
         assert!(
-            err.contains("Duplicate source path"),
+            err.to_string().contains("Duplicate source path"),
             "unexpected error: {err}"
         );
 

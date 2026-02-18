@@ -1,9 +1,115 @@
-use crate::errors::api_error::{ApiError, ApiResult};
+use crate::errors::{
+    api_error::ApiResult,
+    domain::{self, classify_message_by_patterns, DomainError, ErrorCode},
+};
+use std::fmt;
 
-const CLASSIFICATION_RULES: &[(&str, &[&str])] = &[
-    ("path_not_absolute", &["path must be absolute"]),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RenameErrorCode {
+    PathNotAbsolute,
+    InvalidPath,
+    InvalidInput,
+    RootForbidden,
+    SymlinkUnsupported,
+    DuplicateSourcePath,
+    DuplicateTargetName,
+    TargetExists,
+    NotFound,
+    PermissionDenied,
+    RollbackFailed,
+    RenameFailed,
+    UnknownError,
+}
+
+impl ErrorCode for RenameErrorCode {
+    fn as_code_str(self) -> &'static str {
+        match self {
+            Self::PathNotAbsolute => "path_not_absolute",
+            Self::InvalidPath => "invalid_path",
+            Self::InvalidInput => "invalid_input",
+            Self::RootForbidden => "root_forbidden",
+            Self::SymlinkUnsupported => "symlink_unsupported",
+            Self::DuplicateSourcePath => "duplicate_source_path",
+            Self::DuplicateTargetName => "duplicate_target_name",
+            Self::TargetExists => "target_exists",
+            Self::NotFound => "not_found",
+            Self::PermissionDenied => "permission_denied",
+            Self::RollbackFailed => "rollback_failed",
+            Self::RenameFailed => "rename_failed",
+            Self::UnknownError => "unknown_error",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RenameError {
+    code: RenameErrorCode,
+    message: String,
+}
+
+impl RenameError {
+    pub(super) fn new(code: RenameErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    pub(super) fn invalid_input(message: impl Into<String>) -> Self {
+        Self::new(RenameErrorCode::InvalidInput, message)
+    }
+
+    pub(super) fn from_external_message(message: impl Into<String>) -> Self {
+        let message = message.into();
+        let code = classify_message_by_patterns(
+            &message,
+            CLASSIFICATION_RULES,
+            RenameErrorCode::UnknownError,
+        );
+        Self::new(code, message)
+    }
+}
+
+impl fmt::Display for RenameError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for RenameError {}
+
+impl DomainError for RenameError {
+    fn code_str(&self) -> &'static str {
+        self.code.as_code_str()
+    }
+
+    fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl From<String> for RenameError {
+    fn from(message: String) -> Self {
+        Self::from_external_message(message)
+    }
+}
+
+impl From<&str> for RenameError {
+    fn from(message: &str) -> Self {
+        Self::from_external_message(message)
+    }
+}
+
+pub(crate) type RenameResult<T> = Result<T, RenameError>;
+
+pub(super) fn map_api_result<T>(result: RenameResult<T>) -> ApiResult<T> {
+    domain::map_api_result(result)
+}
+
+const CLASSIFICATION_RULES: &[(RenameErrorCode, &[&str])] = &[
+    (RenameErrorCode::PathNotAbsolute, &["path must be absolute"]),
     (
-        "invalid_path",
+        RenameErrorCode::InvalidPath,
         &[
             "parent directory components are not allowed",
             "invalid path component (nul byte)",
@@ -12,64 +118,48 @@ const CLASSIFICATION_RULES: &[(&str, &[&str])] = &[
             "invalid destination path",
         ],
     ),
-    ("invalid_input", &["new name cannot be empty"]),
+    (RenameErrorCode::InvalidInput, &["new name cannot be empty"]),
     (
-        "root_forbidden",
+        RenameErrorCode::RootForbidden,
         &["refusing to operate on filesystem root"],
     ),
     (
-        "symlink_unsupported",
+        RenameErrorCode::SymlinkUnsupported,
         &[
             "symlinks are not allowed in path",
             "symlinks are not allowed:",
         ],
     ),
     (
-        "duplicate_source_path",
+        RenameErrorCode::DuplicateSourcePath,
         &["duplicate source path in request"],
     ),
     (
-        "duplicate_target_name",
+        RenameErrorCode::DuplicateTargetName,
         &["duplicate target name in request"],
     ),
     (
-        "target_exists",
+        RenameErrorCode::TargetExists,
         &[
             "a file or directory with that name already exists",
             "target already exists",
         ],
     ),
     (
-        "not_found",
+        RenameErrorCode::NotFound,
         &["path does not exist", "no such file or directory"],
     ),
     (
-        "permission_denied",
+        RenameErrorCode::PermissionDenied,
         &[
             "permission denied",
             "operation not permitted",
             "access is denied",
         ],
     ),
-    ("rollback_failed", &["rollback also failed"]),
-    ("rename_failed", &["failed to rename", "cannot rename root"]),
+    (RenameErrorCode::RollbackFailed, &["rollback also failed"]),
+    (
+        RenameErrorCode::RenameFailed,
+        &["failed to rename", "cannot rename root"],
+    ),
 ];
-
-pub(super) fn classify_error_code(message: &str) -> &'static str {
-    let normalized = message.to_ascii_lowercase();
-    for &(code, patterns) in CLASSIFICATION_RULES {
-        if patterns.iter().any(|pattern| normalized.contains(pattern)) {
-            return code;
-        }
-    }
-    "unknown_error"
-}
-
-pub(super) fn to_api_error(message: impl Into<String>) -> ApiError {
-    let message = message.into();
-    ApiError::new(classify_error_code(&message), message)
-}
-
-pub(super) fn map_api_result<T>(result: Result<T, String>) -> ApiResult<T> {
-    result.map_err(to_api_error)
-}

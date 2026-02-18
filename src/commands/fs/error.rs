@@ -1,9 +1,122 @@
-use crate::errors::api_error::ApiError;
+use crate::errors::{
+    api_error::ApiError,
+    domain::{classify_message_by_patterns, DomainError, ErrorCode},
+};
+use std::fmt;
 
-const SET_HIDDEN_CLASSIFICATION_RULES: &[(&str, &[&str])] = &[
-    ("path_not_absolute", &["path must be absolute"]),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SetHiddenErrorCode {
+    PathNotAbsolute,
+    InvalidPath,
+    InvalidInput,
+    RootForbidden,
+    SymlinkUnsupported,
+    TargetExists,
+    NotFound,
+    PermissionDenied,
+    HiddenUpdateFailed,
+    UnknownError,
+}
+
+impl ErrorCode for SetHiddenErrorCode {
+    fn as_code_str(self) -> &'static str {
+        match self {
+            Self::PathNotAbsolute => "path_not_absolute",
+            Self::InvalidPath => "invalid_path",
+            Self::InvalidInput => "invalid_input",
+            Self::RootForbidden => "root_forbidden",
+            Self::SymlinkUnsupported => "symlink_unsupported",
+            Self::TargetExists => "target_exists",
+            Self::NotFound => "not_found",
+            Self::PermissionDenied => "permission_denied",
+            Self::HiddenUpdateFailed => "hidden_update_failed",
+            Self::UnknownError => "unknown_error",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct SetHiddenError {
+    code: SetHiddenErrorCode,
+    message: String,
+}
+
+impl SetHiddenError {
+    pub(super) fn new(code: SetHiddenErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    pub(super) fn from_external_message(message: impl Into<String>) -> Self {
+        let message = message.into();
+        let code = classify_message_by_patterns(
+            &message,
+            SET_HIDDEN_CLASSIFICATION_RULES,
+            SetHiddenErrorCode::UnknownError,
+        );
+        Self::new(code, message)
+    }
+
+    pub(super) fn code(&self) -> SetHiddenErrorCode {
+        self.code
+    }
+
+    pub(super) fn to_api_error(&self) -> ApiError {
+        <Self as DomainError>::to_api_error(self)
+    }
+}
+
+impl fmt::Display for SetHiddenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for SetHiddenError {}
+
+impl DomainError for SetHiddenError {
+    fn code_str(&self) -> &'static str {
+        self.code.as_code_str()
+    }
+
+    fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl From<String> for SetHiddenError {
+    fn from(message: String) -> Self {
+        Self::from_external_message(message)
+    }
+}
+
+impl From<&str> for SetHiddenError {
+    fn from(message: &str) -> Self {
+        Self::from_external_message(message)
+    }
+}
+
+pub(super) type SetHiddenResult<T> = Result<T, SetHiddenError>;
+
+pub(super) fn is_expected_set_hidden_error(error: &SetHiddenError) -> bool {
+    matches!(
+        error.code(),
+        SetHiddenErrorCode::SymlinkUnsupported
+            | SetHiddenErrorCode::NotFound
+            | SetHiddenErrorCode::PermissionDenied
+            | SetHiddenErrorCode::TargetExists
+    )
+}
+
+const SET_HIDDEN_CLASSIFICATION_RULES: &[(SetHiddenErrorCode, &[&str])] = &[
     (
-        "invalid_path",
+        SetHiddenErrorCode::PathNotAbsolute,
+        &["path must be absolute"],
+    ),
+    (
+        SetHiddenErrorCode::InvalidPath,
         &[
             "parent directory components are not allowed",
             "invalid path component (nul byte)",
@@ -14,25 +127,25 @@ const SET_HIDDEN_CLASSIFICATION_RULES: &[(&str, &[&str])] = &[
             "missing parent",
         ],
     ),
-    ("invalid_input", &["no paths provided"]),
+    (SetHiddenErrorCode::InvalidInput, &["no paths provided"]),
     (
-        "root_forbidden",
+        SetHiddenErrorCode::RootForbidden,
         &["refusing to operate on filesystem root"],
     ),
     (
-        "symlink_unsupported",
+        SetHiddenErrorCode::SymlinkUnsupported,
         &[
             "symlinks are not allowed in path",
             "symlinks are not allowed:",
         ],
     ),
-    ("target_exists", &["target already exists"]),
+    (SetHiddenErrorCode::TargetExists, &["target already exists"]),
     (
-        "not_found",
+        SetHiddenErrorCode::NotFound,
         &["path does not exist", "no such file or directory"],
     ),
     (
-        "permission_denied",
+        SetHiddenErrorCode::PermissionDenied,
         &[
             "permission denied",
             "operation not permitted",
@@ -40,7 +153,7 @@ const SET_HIDDEN_CLASSIFICATION_RULES: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "hidden_update_failed",
+        SetHiddenErrorCode::HiddenUpdateFailed,
         &[
             "setfileattributes failed",
             "getfileattributes failed",
@@ -48,25 +161,3 @@ const SET_HIDDEN_CLASSIFICATION_RULES: &[(&str, &[&str])] = &[
         ],
     ),
 ];
-
-fn classify_set_hidden_error_code(message: &str) -> &'static str {
-    let normalized = message.to_ascii_lowercase();
-    for &(code, patterns) in SET_HIDDEN_CLASSIFICATION_RULES {
-        if patterns.iter().any(|pattern| normalized.contains(pattern)) {
-            return code;
-        }
-    }
-    "unknown_error"
-}
-
-pub(super) fn is_expected_set_hidden_error_code(code: &str) -> bool {
-    matches!(
-        code,
-        "symlink_unsupported" | "not_found" | "permission_denied" | "target_exists"
-    )
-}
-
-pub(super) fn to_set_hidden_api_error(message: impl Into<String>) -> ApiError {
-    let message = message.into();
-    ApiError::new(classify_set_hidden_error_code(&message), message)
-}

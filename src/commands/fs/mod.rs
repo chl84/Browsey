@@ -28,7 +28,7 @@ use std::{
 };
 
 pub use delete_ops::{delete_entries, delete_entry};
-use error::{is_expected_set_hidden_error_code, to_set_hidden_api_error};
+use error::{is_expected_set_hidden_error, SetHiddenError, SetHiddenErrorCode, SetHiddenResult};
 pub use open_ops::open_entry;
 pub use trash::{
     cleanup_stale_trash_staging, list_trash, move_to_trash, move_to_trash_many, purge_trash_items,
@@ -99,7 +99,7 @@ pub(crate) fn entry_from_cached(path: &Path, cached: &CachedMeta, starred: bool)
 }
 
 #[cfg(target_os = "windows")]
-fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(PathBuf, bool), String> {
+fn set_hidden_attr(path: &Path, hidden: bool) -> SetHiddenResult<(PathBuf, bool)> {
     use windows_sys::Win32::Storage::FileSystem::{
         GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN,
     };
@@ -110,7 +110,10 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(PathBuf, bool), String>
         .collect();
     let attrs = unsafe { GetFileAttributesW(wide.as_ptr()) };
     if attrs == u32::MAX {
-        return Err("GetFileAttributes failed".into());
+        return Err(SetHiddenError::new(
+            SetHiddenErrorCode::HiddenUpdateFailed,
+            "GetFileAttributes failed",
+        ));
     }
     let is_hidden = attrs & FILE_ATTRIBUTE_HIDDEN != 0;
     if hidden == is_hidden {
@@ -124,18 +127,21 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(PathBuf, bool), String>
     }
     let ok = unsafe { SetFileAttributesW(wide.as_ptr(), new_attrs) };
     if ok == 0 {
-        return Err("SetFileAttributes failed".into());
+        return Err(SetHiddenError::new(
+            SetHiddenErrorCode::HiddenUpdateFailed,
+            "SetFileAttributes failed",
+        ));
     }
     Ok((path.to_path_buf(), true))
 }
 
 #[cfg(not(target_os = "windows"))]
-fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(PathBuf, bool), String> {
+fn set_hidden_attr(path: &Path, hidden: bool) -> SetHiddenResult<(PathBuf, bool)> {
     // On Unix, hidden = leading dot. Rename within same directory.
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
-        .ok_or_else(|| "Invalid file name".to_string())?;
+        .ok_or_else(|| SetHiddenError::new(SetHiddenErrorCode::InvalidPath, "Invalid file name"))?;
     let is_dot = file_name.starts_with('.');
     if hidden == is_dot {
         return Ok((path.to_path_buf(), false));
@@ -146,9 +152,14 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(PathBuf, bool), String>
         file_name.trim_start_matches('.').to_string()
     };
     if target_name.is_empty() {
-        return Err("Cannot derive visible name".into());
+        return Err(SetHiddenError::new(
+            SetHiddenErrorCode::InvalidPath,
+            "Cannot derive visible name",
+        ));
     }
-    let parent = path.parent().ok_or_else(|| "Missing parent".to_string())?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| SetHiddenError::new(SetHiddenErrorCode::InvalidPath, "Missing parent"))?;
     let target = parent.join(&target_name);
     if target == path {
         return Ok((path.to_path_buf(), false));
@@ -156,10 +167,16 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(PathBuf, bool), String>
     match move_with_fallback(path, &target) {
         Ok(_) => {}
         Err(e) if is_destination_exists_error(&e) => {
-            return Err(format!("Target already exists: {}", target.display()));
+            return Err(SetHiddenError::new(
+                SetHiddenErrorCode::TargetExists,
+                format!("Target already exists: {}", target.display()),
+            ));
         }
         Err(e) => {
-            return Err(format!("Failed to rename: {e}"));
+            return Err(SetHiddenError::new(
+                SetHiddenErrorCode::HiddenUpdateFailed,
+                format!("Failed to rename: {e}"),
+            ));
         }
     }
     Ok((target, true))
@@ -201,10 +218,13 @@ pub fn set_hidden(
     let mut performed: Vec<Action> = Vec::new();
 
     for raw in targets {
-        match sanitize_path_nofollow(&raw, true).and_then(|pb| {
-            check_no_symlink_components(&pb)?;
-            set_hidden_attr(&pb, hidden).map(|(new_path, changed)| (pb, new_path, changed))
-        }) {
+        let result: SetHiddenResult<(PathBuf, PathBuf, bool)> = (|| {
+            let pb = sanitize_path_nofollow(&raw, true).map_err(SetHiddenError::from)?;
+            check_no_symlink_components(&pb).map_err(SetHiddenError::from)?;
+            let (new_path, changed) = set_hidden_attr(&pb, hidden)?;
+            Ok((pb, new_path, changed))
+        })();
+        match result {
             Ok((from_path, new_path, changed)) => {
                 if changed {
                     #[cfg(target_os = "windows")]
@@ -225,17 +245,16 @@ pub fn set_hidden(
                     error: None,
                 })
             }
-            Err(message) => {
+            Err(error) => {
                 failures += 1;
-                let error = to_set_hidden_api_error(message);
-                if !is_expected_set_hidden_error_code(&error.code) {
+                if !is_expected_set_hidden_error(&error) {
                     unexpected_failures += 1;
                 }
                 per_item.push(SetHiddenBatchItem {
                     path: raw.clone(),
                     ok: false,
                     new_path: raw,
-                    error: Some(error),
+                    error: Some(error.to_api_error()),
                 });
             }
         }
