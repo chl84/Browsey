@@ -26,7 +26,6 @@ export const useExplorerDragDrop = (deps: Deps) => {
 
   let dragPaths: string[] = []
   let copyModifierActive = false
-  let nativeDragActive = false
   const dropModePreviewCache = new Map<string, 'copy' | 'cut'>()
   const dropModePreviewInflight = new Map<string, Promise<'copy' | 'cut'>>()
   let dropModePreviewToken = 0
@@ -70,7 +69,6 @@ export const useExplorerDragDrop = (deps: Deps) => {
     dragPaths = []
     dragDrop.end()
     dragAction.set(null)
-    nativeDragActive = false
     clearDropModePreview()
   }
 
@@ -157,7 +155,6 @@ export const useExplorerDragDrop = (deps: Deps) => {
     const selectedPaths = selectedSet.has(entry.path) ? Array.from(selectedSet) : [entry.path]
     const nativeCopy = event.ctrlKey || event.metaKey
     if (event.altKey) {
-      nativeDragActive = true
       event.preventDefault()
       event.stopPropagation()
       void startNativeFileDrag(selectedPaths, nativeCopy ? 'copy' : 'move').then((ok) => {
@@ -166,7 +163,6 @@ export const useExplorerDragDrop = (deps: Deps) => {
       event.preventDefault()
       return
     }
-    nativeDragActive = false
     dragPaths = selectedPaths
     dragDrop.start(selectedPaths, event)
     if (!event.ctrlKey && !event.metaKey) {
