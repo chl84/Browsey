@@ -1,13 +1,22 @@
 import type { ContextAction } from '../explorer/hooks/useContextMenus'
-import { isExternallyOpenableUri, isMountUri, isMountableUri } from './uri'
+import { classifyNetworkUri } from './services'
 
 export const buildNetworkEntryContextActions = (
   path: string,
   selectionCount: number,
-): ContextAction[] | null => {
-  if (isMountUri(path)) {
-    const canOpen = selectionCount === 1 && (isMountableUri(path) || isExternallyOpenableUri(path))
-    const openLabel = isExternallyOpenableUri(path) ? 'Open in Browser' : 'Connect'
+): Promise<ContextAction[] | null> =>
+  buildNetworkEntryContextActionsInternal(path, selectionCount)
+
+const buildNetworkEntryContextActionsInternal = async (
+  path: string,
+  selectionCount: number,
+): Promise<ContextAction[] | null> => {
+  const classified = await classifyNetworkUri(path)
+  if (classified.kind !== 'not_uri') {
+    const isMountable = classified.kind === 'mountable'
+    const isExternal = classified.kind === 'external'
+    const canOpen = selectionCount === 1 && (isMountable || isExternal)
+    const openLabel = isExternal ? 'Open in Browser' : 'Connect'
     const actions: ContextAction[] = []
     if (canOpen) {
       actions.push({ id: 'open-network-target', label: openLabel })
