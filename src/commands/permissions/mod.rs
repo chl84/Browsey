@@ -17,7 +17,10 @@ mod tests;
 #[cfg(target_os = "windows")]
 mod windows_acl;
 
-use self::error::{is_expected_batch_error_code, map_api_result, to_api_error};
+use self::error::{
+    is_expected_batch_error, map_api_result, PermissionsError, PermissionsErrorCode,
+    PermissionsResult,
+};
 use ownership::{
     list_ownership_principals as list_ownership_principals_impl, set_ownership_batch,
     OwnershipPrincipalKind,
@@ -28,11 +31,11 @@ pub use ownership::maybe_run_ownership_helper_from_args;
 
 pub const OWNERSHIP_HELPER_FLAG: &str = "--browsey-ownership-helper";
 
-pub(super) fn ensure_absolute_path(raw: &str) -> Result<(), String> {
+pub(super) fn ensure_absolute_path(raw: &str) -> PermissionsResult<()> {
     if Path::new(raw).is_absolute() {
         Ok(())
     } else {
-        Err(format!("Path must be absolute: {raw}"))
+        Err(PermissionsError::path_not_absolute(raw))
     }
 }
 
@@ -348,7 +351,7 @@ fn aggregate_permissions(items: &[PermissionsBatchItem]) -> PermissionsBatchAggr
 pub(super) fn refresh_permissions_after_apply(
     path: String,
     changed_any: bool,
-) -> Result<PermissionInfo, String> {
+) -> PermissionsResult<PermissionInfo> {
     match get_permissions_impl(path.clone()) {
         Ok(info) => Ok(info),
         Err(err) if changed_any => {
@@ -473,15 +476,23 @@ pub fn get_permissions(path: String) -> ApiResult<PermissionInfo> {
     map_api_result(get_permissions_impl(path))
 }
 
-pub(super) fn get_permissions_impl(path: String) -> Result<PermissionInfo, String> {
+pub(super) fn get_permissions_impl(path: String) -> PermissionsResult<PermissionInfo> {
     debug!(path = %path, "get_permissions start");
     ensure_absolute_path(&path)?;
-    let target = sanitize_path_nofollow(&path, true)?;
-    check_no_symlink_components(&target)?;
-    let meta =
-        fs::symlink_metadata(&target).map_err(|e| format!("Failed to read metadata: {e}"))?;
+    let target = sanitize_path_nofollow(&path, true).map_err(PermissionsError::from)?;
+    check_no_symlink_components(&target).map_err(PermissionsError::from)?;
+    let meta = fs::symlink_metadata(&target).map_err(|e| {
+        PermissionsError::from_io_error(
+            PermissionsErrorCode::MetadataReadFailed,
+            "Failed to read metadata",
+            e,
+        )
+    })?;
     if meta.file_type().is_symlink() {
-        return Err("Permissions are not supported on symlinks".into());
+        return Err(PermissionsError::new(
+            PermissionsErrorCode::SymlinkUnsupported,
+            "Permissions are not supported on symlinks",
+        ));
     }
     debug!(path = %target.display(), "get_permissions resolved target");
 
@@ -550,9 +561,9 @@ pub(super) fn get_permissions_impl(path: String) -> Result<PermissionInfo, Strin
 
 pub(super) fn get_permissions_batch_impl(
     paths: Vec<String>,
-) -> Result<PermissionsBatchResult, String> {
+) -> PermissionsResult<PermissionsBatchResult> {
     if paths.is_empty() {
-        return Err("No paths provided".into());
+        return Err(PermissionsError::invalid_input("No paths provided"));
     }
 
     let mut per_item: Vec<PermissionsBatchItem> = Vec::with_capacity(paths.len());
@@ -577,17 +588,16 @@ pub(super) fn get_permissions_batch_impl(
                 permissions,
                 error: None,
             }),
-            Err(error_message) => {
+            Err(error) => {
                 failures += 1;
-                let error = to_api_error(error_message);
-                if !is_expected_batch_error_code(&error.code) {
+                if !is_expected_batch_error(&error) {
                     unexpected_failures += 1;
                 }
                 per_item.push(PermissionsBatchItem {
                     path,
                     ok: false,
                     permissions: permission_info_unsupported(),
-                    error: Some(error),
+                    error: Some(error.to_api_error()),
                 });
             }
         }
@@ -621,7 +631,7 @@ pub fn set_permissions(
     let targets: Vec<String> = match (paths, path) {
         (Some(list), _) if !list.is_empty() => list,
         (_, Some(single)) => vec![single],
-        _ => return map_api_result(Err("No paths provided".into())),
+        _ => return map_api_result(Err(PermissionsError::invalid_input("No paths provided"))),
     };
     map_api_result(set_permissions_batch(
         targets,
@@ -643,7 +653,7 @@ pub fn set_ownership(
     let targets: Vec<String> = match (paths, path) {
         (Some(list), _) if !list.is_empty() => list,
         (_, Some(single)) => vec![single],
-        _ => return map_api_result(Err("No paths provided".into())),
+        _ => return map_api_result(Err(PermissionsError::invalid_input("No paths provided"))),
     };
     map_api_result(set_ownership_batch(targets, owner, group))
 }
