@@ -11,7 +11,7 @@
   import { createColumnResize } from './features/explorer/hooks/columnWidths'
   import { createGlobalShortcuts } from './features/explorer/hooks/shortcuts'
   import { createBookmarkModal } from './features/explorer/hooks/bookmarkModal'
-  import { useDragDrop } from './features/explorer/hooks/useDragDrop'
+  import { useExplorerDragDrop } from './features/explorer/hooks/useExplorerDragDrop'
   import { useModalsController } from './features/explorer/hooks/useModalsController'
   import { useGridVirtualizer } from './features/explorer/hooks/useGridVirtualizer'
   import { addBookmark, removeBookmark } from './features/explorer/services/bookmarks'
@@ -23,7 +23,6 @@
     clearSystemClipboard,
     pasteClipboardCmd,
     pasteClipboardPreview,
-    resolveDropClipboardMode,
   } from './features/explorer/services/clipboard'
   import { undoAction, redoAction } from './features/explorer/services/history'
   import { cancelTask } from './features/explorer/services/activity'
@@ -68,8 +67,6 @@
   } from './features/shortcuts/keymap'
   import DragGhost from './ui/DragGhost.svelte'
   import TextContextMenu from './ui/TextContextMenu.svelte'
-  import { createNativeFileDrop } from './features/explorer/hooks/useNativeFileDrop'
-  import { startNativeFileDrag } from './features/explorer/services/nativeDrag'
   import {
     checkDuplicatesStream,
     type DuplicateScanProgress,
@@ -160,10 +157,7 @@
   let navGeneration = 0
 
   // Drag & clipboard
-  const dragDrop = useDragDrop()
   const { store: bookmarkStore } = bookmarkModal
-  const dragState = dragDrop.state
-  let dragAction: 'copy' | 'move' | null = null
   let clipboardMode: 'copy' | 'cut' = 'copy'
   let clipboardPaths = new Set<string>()
 
@@ -1453,7 +1447,7 @@
 
   const handleDocumentKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Control' || event.key === 'Meta') {
-      copyModifierActive = true
+      setCopyModifierActive(true)
     }
     if (event.defaultPrevented) {
       return
@@ -1652,7 +1646,7 @@
 
   const handleDocumentKeyup = (event: KeyboardEvent) => {
     if (event.key === 'Control' || event.key === 'Meta') {
-      copyModifierActive = false
+      setCopyModifierActive(false)
     }
   }
 
@@ -2650,246 +2644,6 @@
     await contextActions(id, entry)
   }
 
-  let dragPaths: string[] = []
-  let copyModifierActive = false
-  let nativeDragActive = false
-  const dropModePreviewCache = new Map<string, 'copy' | 'cut'>()
-  const dropModePreviewInflight = new Map<string, Promise<'copy' | 'cut'>>()
-  let dropModePreviewToken = 0
-  const nativeDrop = createNativeFileDrop({
-    onDrop: async (paths) => {
-      if (!paths || paths.length === 0) return
-      const curr = get(current)
-      const view = viewFromPath(curr ?? '')
-      // If we’re in a directory view, treat external drop as a copy-into-current.
-      if (view === 'dir' && curr) {
-        try {
-          await setClipboardCmd(paths, 'copy')
-          const ok = await handlePasteOrMove(curr)
-          if (ok) {
-            showToast(`Pasted ${paths.length} item${paths.length === 1 ? '' : 's'}`)
-          }
-        } catch (err) {
-          showToast(`Drop failed: ${err instanceof Error ? err.message : String(err)}`)
-        }
-        return
-      }
-      // Otherwise, navigate to the parent of the first path and select it.
-      const first = paths[0]
-      const dest = parentPath(first)
-      await loadDir(dest)
-      const list = get(entries)
-      const match = list.find((e) => normalizePath(e.path) === normalizePath(first))
-      if (match) {
-        selected.set(new Set([match.path]))
-        anchorIndex.set(list.findIndex((e) => e.path === match.path))
-        caretIndex.set(list.findIndex((e) => e.path === match.path))
-      }
-      showToast('Dropped item navigated')
-    },
-  })
-  const nativeDropHovering = nativeDrop.hovering
-  const nativeDropPosition = nativeDrop.position
-  $: if ($nativeDropHovering && currentView === 'dir') {
-    showToast('Drop to paste into this folder', 1500)
-  }
-  const handleRowDragStart = (entry: Entry, event: DragEvent) => {
-    if (currentView === 'network') {
-      event.preventDefault()
-      return
-    }
-    const selectedPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
-    const nativeCopy = event.ctrlKey || event.metaKey
-    if (event.altKey) {
-      nativeDragActive = true
-      event.preventDefault()
-      event.stopPropagation()
-      void startNativeFileDrag(selectedPaths, nativeCopy ? 'copy' : 'move').then((ok) => {
-        if (!ok) showToast('Native drag failed')
-      })
-      event.preventDefault()
-      return
-    }
-    nativeDragActive = false
-    dragPaths = selectedPaths
-    dragDrop.start(selectedPaths, event)
-    if (!event.ctrlKey && !event.metaKey) {
-      copyModifierActive = false
-    }
-    dragAction = null
-  }
-
-  const handleRowDragEnd = () => {
-    dragPaths = []
-    dragDrop.end()
-    dragAction = null
-    nativeDragActive = false
-    dropModePreviewCache.clear()
-    dropModePreviewInflight.clear()
-    dropModePreviewToken += 1
-  }
-
-  const dropModifierPrefersCopy = (_event: DragEvent) => copyModifierActive
-
-  const dropModeCacheKey = (paths: string[], dest: string, preferCopy: boolean) =>
-    `${preferCopy ? '1' : '0'}|${normalizePath(dest)}|${paths
-      .map((path) => normalizePath(path))
-      .sort()
-      .join('\u0000')}`
-
-  const modeToDragAction = (mode: 'copy' | 'cut'): 'copy' | 'move' =>
-    mode === 'copy' ? 'copy' : 'move'
-
-  const resolveDropModeCached = async (
-    paths: string[],
-    dest: string,
-    preferCopy: boolean,
-  ): Promise<'copy' | 'cut'> => {
-    const key = dropModeCacheKey(paths, dest, preferCopy)
-    const cached = dropModePreviewCache.get(key)
-    if (cached) return cached
-    const inflight = dropModePreviewInflight.get(key)
-    if (inflight) return inflight
-    const request = resolveDropClipboardMode(paths, dest, preferCopy)
-      .then((mode) => {
-        dropModePreviewCache.set(key, mode)
-        return mode
-      })
-      .finally(() => {
-        dropModePreviewInflight.delete(key)
-      })
-    dropModePreviewInflight.set(key, request)
-    return request
-  }
-
-  const previewDropAction = (paths: string[], dest: string, event: DragEvent) => {
-    if (paths.length === 0) {
-      dragAction = null
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'
-      return
-    }
-    const preferCopy = dropModifierPrefersCopy(event)
-    const key = dropModeCacheKey(paths, dest, preferCopy)
-    const cached = dropModePreviewCache.get(key)
-    if (cached) {
-      const action = modeToDragAction(cached)
-      dragAction = action
-      if (event.dataTransfer) event.dataTransfer.dropEffect = action
-      return
-    }
-
-    const fallback = preferCopy ? 'copy' : 'move'
-    dragAction = fallback
-    if (event.dataTransfer) event.dataTransfer.dropEffect = fallback
-
-    const token = ++dropModePreviewToken
-    void resolveDropModeCached(paths, dest, preferCopy)
-      .then((mode) => {
-        if (token !== dropModePreviewToken) return
-        if (get(dragState).target !== dest) return
-        dragAction = modeToDragAction(mode)
-      })
-      .catch(() => {
-        // Keep fallback action when mode preview resolution fails.
-      })
-  }
-
-  const resolveDropMode = async (
-    paths: string[],
-    dest: string,
-    event: DragEvent,
-  ): Promise<'copy' | 'cut'> => {
-    const preferCopy = dropModifierPrefersCopy(event)
-    return resolveDropModeCached(paths, dest, preferCopy)
-  }
-
-  const handleRowDragOver = (entry: Entry, event: DragEvent) => {
-    if (entry.kind !== 'dir') return
-    const allowed = dragDrop.canDropOn(dragPaths, entry.path)
-    dragDrop.setTarget(allowed ? entry.path : null)
-    if (allowed) {
-      previewDropAction([...dragPaths], entry.path, event)
-    } else {
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'
-      dragAction = null
-    }
-    dragDrop.setPosition(event.clientX, event.clientY)
-  }
-
-  const handleRowDragEnter = (entry: Entry, event: DragEvent) => {
-    handleRowDragOver(entry, event)
-  }
-
-  const handleRowDragLeave = (entry: Entry, event: DragEvent) => {
-    const target = event.currentTarget as HTMLElement | null
-    const related = event.relatedTarget as HTMLElement | null
-    if (target && related && target.contains(related)) {
-      return
-    }
-    if (dragDrop.canDropOn(dragPaths, entry.path)) {
-      dragDrop.setTarget(null)
-      dragAction = null
-      dropModePreviewToken += 1
-    }
-  }
-
-  const handleRowDrop = async (entry: Entry, event: DragEvent) => {
-    if (entry.kind !== 'dir') return
-    if (!dragDrop.canDropOn(dragPaths, entry.path)) return
-    event.preventDefault()
-    const sourcePaths = [...dragPaths]
-    if (sourcePaths.length === 0) return
-    try {
-      const mode = await resolveDropMode(sourcePaths, entry.path, event)
-      await setClipboardCmd(sourcePaths, mode)
-      await handlePasteOrMove(entry.path)
-    } catch (err) {
-      showToast(`Drop failed: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      handleRowDragEnd()
-    }
-  }
-
-
-  const handleBreadcrumbDragOver = (path: string, event: DragEvent) => {
-    if (dragPaths.length === 0) return
-    const allowed = dragDrop.canDropOn(dragPaths, path)
-    dragDrop.setTarget(allowed ? path : null)
-    if (allowed) {
-      previewDropAction([...dragPaths], path, event)
-    } else {
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'
-      dragAction = null
-    }
-    dragDrop.setPosition(event.clientX, event.clientY)
-    event.preventDefault()
-  }
-
-  const handleBreadcrumbDragLeave = (path: string) => {
-    if (get(dragState).target === path) {
-      dragDrop.setTarget(null)
-    }
-    dragAction = null
-    dropModePreviewToken += 1
-  }
-
-  const handleBreadcrumbDrop = async (path: string, event: DragEvent) => {
-    if (dragPaths.length === 0) return
-    if (!dragDrop.canDropOn(dragPaths, path)) return
-    event.preventDefault()
-    const sourcePaths = [...dragPaths]
-    if (sourcePaths.length === 0) return
-    try {
-      const mode = await resolveDropMode(sourcePaths, path, event)
-      await setClipboardCmd(sourcePaths, mode)
-      await handlePasteOrMove(path)
-    } catch (err) {
-      showToast(`Drop failed: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      handleRowDragEnd()
-    }
-  }
-
   const handlePasteOrMove = async (dest: string) => {
     const runPaste = async (target: string, policy: 'rename' | 'overwrite' = 'rename') => {
       const progressEvent = `copy-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -2924,6 +2678,44 @@
       showToast(`Paste failed: ${err instanceof Error ? err.message : String(err)}`)
       return false
     }
+  }
+
+  const {
+    dragState,
+    dragAction,
+    nativeDropHovering,
+    startNativeDrop,
+    stopNativeDrop,
+    setCopyModifierActive,
+    handleRowDragStart,
+    handleRowDragEnd,
+    handleRowDragEnter,
+    handleRowDragOver,
+    handleRowDrop,
+    handleRowDragLeave,
+    handleBreadcrumbDragOver,
+    handleBreadcrumbDragLeave,
+    handleBreadcrumbDrop,
+  } = useExplorerDragDrop({
+    currentView: () => currentView,
+    currentPath: () => get(current),
+    getSelectedSet: () => get(selected),
+    loadDir: (path: string) => loadDir(path),
+    focusEntryInCurrentList: (path: string) => {
+      const list = get(entries)
+      const match = list.find((e) => normalizePath(e.path) === normalizePath(path))
+      if (!match) return
+      const idx = list.findIndex((e) => e.path === match.path)
+      selected.set(new Set([match.path]))
+      anchorIndex.set(idx)
+      caretIndex.set(idx)
+    },
+    handlePasteOrMove,
+    showToast,
+  })
+
+  $: if ($nativeDropHovering && currentView === 'dir') {
+    showToast('Drop to paste into this folder', 1500)
   }
 
   const resolveConflicts = async (policy: 'rename' | 'overwrite') => {
@@ -2996,8 +2788,8 @@
     },
     loadShortcuts,
     applyShortcutBindings,
-    startNativeDrop: () => nativeDrop.start(),
-    stopNativeDrop: () => nativeDrop.stop(),
+    startNativeDrop,
+    stopNativeDrop,
     onMountStarted: (fs) => {
       activityApi.clearNow()
       activity.set({ label: `Connecting to ${fsLabel(fs)}…`, percent: null, cancel: null, cancelling: false })
@@ -3057,7 +2849,7 @@
   y={$dragState.position.y}
   count={$dragState.paths.length}
   allowed={$dragState.target !== null}
-  action={dragAction}
+  action={$dragAction}
 />
 <TextContextMenu
   open={$textMenuOpen}
@@ -3164,7 +2956,7 @@
     onRowDrop={handleRowDrop}
     onRowDragLeave={handleRowDragLeave}
     dragTargetPath={$dragState.target}
-    dragAllowed={dragPaths.length > 0}
+    dragAllowed={$dragState.paths.length > 0}
     dragging={$dragState.dragging}
     onBreadcrumbDragOver={handleBreadcrumbDragOver}
     onBreadcrumbDragLeave={handleBreadcrumbDragLeave}
