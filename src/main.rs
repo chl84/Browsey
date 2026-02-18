@@ -280,6 +280,7 @@ fn main() {
             entry_kind_cmd,
             entry_extra_metadata_cmd,
             set_hidden,
+            can_extract_paths,
             extract_archive,
             extract_archives,
             open_console,

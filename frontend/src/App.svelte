@@ -1716,13 +1716,6 @@
     try {
       const selectionCount = $selected.has(entry.path) ? $selected.size : 1
       const selectionPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
-      const selectionEntries =
-        selectionPaths.length <= 1
-          ? [entry]
-          : (() => {
-              const visibleByPath = new Map($visibleEntries.map((visibleEntry) => [visibleEntry.path, visibleEntry]))
-              return selectionPaths.map((p) => visibleByPath.get(p) ?? entry)
-            })()
 
       let actions = await invoke<ContextAction[]>('context_menu_actions', {
         count: selectionCount,
@@ -1730,16 +1723,12 @@
         starred: Boolean(entry.starred),
         view: currentView,
         clipboardHasItems: clipboardPaths.size > 0,
+        selectionPaths,
       })
       actions = actions.filter((action) => action.id !== 'new-folder')
       // Drop any leading dividers that can appear after filtering
       while (actions.length > 0 && actions[0].id.startsWith('divider')) {
         actions.shift()
-      }
-      // Only show Extract when all selected entries are extractable archives
-      const allExtractable = selectionEntries.length > 0 && selectionEntries.every(isExtractableArchive)
-      if (!allExtractable) {
-        actions = actions.filter((a) => a.id !== 'extract')
       }
       if (currentView === 'network') {
         const networkActions = await buildNetworkEntryContextActions(entry.path, selectionCount)
@@ -1978,38 +1967,23 @@
       })
   }
 
-
-  const isExtractableArchive = (entry: Entry) => {
-    if (entry.kind !== 'file') return false
-    const name = entry.name.toLowerCase()
-    return (
-      name.endsWith('.zip') ||
-      name.endsWith('.tar') ||
-      name.endsWith('.tar.gz') ||
-      name.endsWith('.tgz') ||
-      name.endsWith('.tar.bz2') ||
-      name.endsWith('.tbz2') ||
-      name.endsWith('.tar.xz') ||
-      name.endsWith('.txz') ||
-      name.endsWith('.tar.zst') ||
-      name.endsWith('.tzst') ||
-      name.endsWith('.7z') ||
-      name.endsWith('.rar') ||
-      name.endsWith('.gz') ||
-      name.endsWith('.bz2') ||
-      name.endsWith('.xz') ||
-      name.endsWith('.zst')
-    )
+  const canExtractPaths = async (paths: string[]): Promise<boolean> => {
+    if (paths.length === 0) return false
+    try {
+      return await invoke<boolean>('can_extract_paths', { paths })
+    } catch {
+      return false
+    }
   }
 
   const extractEntries = async (entriesToExtract: Entry[]) => {
     if (extracting) return
-    const allArchives = entriesToExtract.every(isExtractableArchive)
+    if (entriesToExtract.length === 0) return
+    const allArchives = await canExtractPaths(entriesToExtract.map((entry) => entry.path))
     if (!allArchives) {
       showToast('Extraction available for archive files only')
       return
     }
-    if (entriesToExtract.length === 0) return
 
     extracting = true
     const progressEvent = `extract-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -2248,7 +2222,7 @@
       }
       return
     }
-    if (isExtractableArchive(entry)) {
+    if (entry.kind === 'file' && await canExtractPaths([entry.path])) {
       await extractEntries([entry])
       return
     }
