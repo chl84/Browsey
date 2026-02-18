@@ -168,6 +168,9 @@
   export let advancedRenameSequenceStep = 1
   export let advancedRenameSequencePad = 2
   export let advancedRenameError = ''
+  export let advancedRenamePreview: { original: string; next: string }[] = []
+  export let advancedRenamePreviewError = ''
+  export let advancedRenamePreviewLoading = false
   export let onAdvancedRenameChange: (payload: AdvancedRenamePayload) => void = () => {}
   export let onConfirmAdvancedRename: () => void = () => {}
   export let onCancelAdvancedRename: () => void = () => {}
@@ -464,6 +467,9 @@
   sequenceStep={advancedRenameSequenceStep}
   sequencePad={advancedRenameSequencePad}
   error={advancedRenameError}
+  preview={advancedRenamePreview}
+  previewError={advancedRenamePreviewError}
+  previewLoading={advancedRenamePreviewLoading}
   onChange={onAdvancedRenameChange}
   onConfirm={onConfirmAdvancedRename}
   onCancel={onCancelAdvancedRename}

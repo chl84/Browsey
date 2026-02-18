@@ -269,6 +269,7 @@ fn main() {
             context_menu_actions,
             rename_entry,
             rename_entries,
+            preview_rename_entries,
             move_to_trash,
             move_to_trash_many,
             create_file,

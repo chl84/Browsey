@@ -3171,7 +3171,10 @@
   advancedRenameSequenceStep={$advancedRenameState.sequenceStep}
   advancedRenameSequencePad={$advancedRenameState.sequencePad}
   advancedRenameError={$advancedRenameState.error}
-  onAdvancedRenameChange={(payload) => advancedRenameState.update((s) => ({ ...s, ...payload, error: '' }))}
+  advancedRenamePreview={$advancedRenameState.preview}
+  advancedRenamePreviewError={$advancedRenameState.previewError}
+  advancedRenamePreviewLoading={$advancedRenameState.previewLoading}
+  onAdvancedRenameChange={(payload) => advancedRenameModal.change(payload)}
   onConfirmAdvancedRename={() => advancedRenameModal.confirm()}
   onCancelAdvancedRename={() => advancedRenameModal.close()}
   compressOpen={$compressState.open}

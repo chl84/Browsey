@@ -32,7 +32,10 @@ use windows_sys::Win32::Security::{
     GetSecurityDescriptorDacl, ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
 };
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
+use windows_sys::Win32::Storage::FileSystem::{
+    GetFileAttributesW, MoveFileExW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN,
+    MOVEFILE_WRITE_THROUGH,
+};
 
 const MAX_HISTORY: usize = 50;
 // Use a central directory for all undo backups.
@@ -62,6 +65,11 @@ pub enum Action {
     Delete {
         path: PathBuf,
         backup: PathBuf,
+    },
+    #[cfg(target_os = "windows")]
+    SetHidden {
+        path: PathBuf,
+        hidden: bool,
     },
     CreateFolder {
         path: PathBuf,
@@ -716,6 +724,14 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
             }
             Direction::Backward => move_with_fallback(backup, path),
         },
+        #[cfg(target_os = "windows")]
+        Action::SetHidden { path, hidden } => {
+            let next = match direction {
+                Direction::Forward => *hidden,
+                Direction::Backward => !*hidden,
+            };
+            set_windows_hidden_attr(path, next)
+        }
         Action::CreateFolder { path } => match direction {
             Direction::Forward => fs::create_dir(&*path)
                 .map_err(|e| format!("Failed to create directory {}: {e}", path.display())),
@@ -729,6 +745,43 @@ fn execute_action(action: &mut Action, direction: Direction) -> Result<(), Strin
             },
         },
     }
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_hidden_attr(path: &Path, hidden: bool) -> Result<(), String> {
+    check_no_symlink_components(path)?;
+    let no_follow = fs::symlink_metadata(path)
+        .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+    if no_follow.file_type().is_symlink() {
+        return Err(format!("Symlinks are not allowed: {}", path.display()));
+    }
+
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let attrs = unsafe { GetFileAttributesW(wide.as_ptr()) };
+    if attrs == u32::MAX {
+        return Err(format!("GetFileAttributes failed for {}", path.display()));
+    }
+
+    let is_hidden = attrs & FILE_ATTRIBUTE_HIDDEN != 0;
+    if is_hidden == hidden {
+        return Ok(());
+    }
+
+    let mut next = attrs;
+    if hidden {
+        next |= FILE_ATTRIBUTE_HIDDEN;
+    } else {
+        next &= !FILE_ATTRIBUTE_HIDDEN;
+    }
+    let ok = unsafe { SetFileAttributesW(wide.as_ptr(), next) };
+    if ok == 0 {
+        return Err(format!("SetFileAttributes failed for {}", path.display()));
+    }
+    Ok(())
 }
 
 fn execute_batch(actions: &mut [Action], direction: Direction) -> Result<(), String> {
