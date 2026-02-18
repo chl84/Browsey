@@ -12,10 +12,12 @@ mod fs_utils;
 mod icons;
 mod keymap;
 mod metadata;
+mod path_guard;
 mod runtime_lifecycle;
 mod sorting;
 mod statusbar;
 mod svg_options;
+mod tasks;
 mod undo;
 mod watcher;
 

@@ -8,9 +8,9 @@ mod scan;
 
 use crate::{
     commands::fs::expand_path,
-    commands::tasks::CancelState,
     fs_utils::{check_no_symlink_components, sanitize_path_follow},
     runtime_lifecycle,
+    tasks::CancelState,
 };
 use serde::Serialize;
 use std::{path::PathBuf, sync::atomic::Ordering};

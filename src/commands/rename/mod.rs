@@ -1,9 +1,9 @@
 //! Rename commands and preview helpers used by the advanced rename UI.
 
-use super::path_guard::{ensure_existing_dir_nonsymlink, ensure_existing_path_nonsymlink};
 use crate::{
     errors::api_error::ApiResult,
     fs_utils::sanitize_path_nofollow,
+    path_guard::{ensure_existing_dir_nonsymlink, ensure_existing_path_nonsymlink},
     undo::{
         assert_path_snapshot, is_destination_exists_error, move_with_fallback, run_actions,
         snapshot_existing_path, Action, Direction, UndoState,

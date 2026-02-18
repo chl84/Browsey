@@ -14,18 +14,17 @@ pub mod listing;
 pub mod meta;
 pub mod network;
 pub mod open_with;
-pub(crate) mod path_guard;
 pub mod permissions;
 pub mod rename;
 pub mod search;
 pub mod settings;
 pub mod system_clipboard;
-pub mod tasks;
 pub mod thumbnails;
 
 pub use crate::clipboard::{
     paste_clipboard_cmd, paste_clipboard_preview, resolve_drop_clipboard_mode, set_clipboard_cmd,
 };
+pub use crate::tasks::{cancel_task, CancelState};
 pub use about::about_info;
 pub use bookmarks::{add_bookmark, clear_bookmarks, get_bookmarks, remove_bookmark};
 pub use compress::compress_entries;
@@ -72,5 +71,4 @@ pub use settings::{
 pub use system_clipboard::clear_system_clipboard;
 pub use system_clipboard::copy_paths_to_system_clipboard;
 pub use system_clipboard::system_clipboard_paths;
-pub use tasks::{cancel_task, CancelState};
 pub use thumbnails::{clear_thumbnail_cache, get_thumbnail};

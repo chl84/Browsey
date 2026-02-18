@@ -15,9 +15,12 @@ use serde::Serialize;
 use walkdir::WalkDir;
 use zip::{write::SimpleFileOptions, CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
-use super::tasks::{CancelGuard, CancelState};
 use crate::undo::{temp_backup_path, Action, UndoState};
-use crate::{fs_utils::sanitize_path_nofollow, runtime_lifecycle};
+use crate::{
+    fs_utils::sanitize_path_nofollow,
+    runtime_lifecycle,
+    tasks::{CancelGuard, CancelState},
+};
 
 const CHUNK: usize = 4 * 1024 * 1024;
 const FILE_READ_BUF: usize = 256 * 1024;
