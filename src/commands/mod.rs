@@ -15,6 +15,7 @@ pub mod meta;
 pub mod network;
 pub mod open_with;
 pub mod permissions;
+pub mod rename;
 pub mod search;
 pub mod settings;
 pub mod system_clipboard;
@@ -52,6 +53,7 @@ pub use permissions::{
     get_permissions, get_permissions_batch, list_ownership_principals,
     maybe_run_ownership_helper_from_args, set_ownership, set_permissions,
 };
+pub use rename::preview_rename_entries;
 pub use search::search_stream;
 pub use settings::{
     load_archive_level, load_archive_name, load_confirm_delete, load_default_view, load_density,

@@ -3,6 +3,7 @@
 use super::tasks::CancelState;
 use crate::{
     entry::{CachedMeta, FsEntry},
+    errors::api_error::ApiError,
     fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitize_path_nofollow},
     runtime_lifecycle,
     undo::{
@@ -106,7 +107,7 @@ pub(crate) fn entry_from_cached(path: &Path, cached: &CachedMeta, starred: bool)
 }
 
 #[cfg(target_os = "windows")]
-fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
+fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(PathBuf, bool), String> {
     use windows_sys::Win32::Storage::FileSystem::{
         GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN,
     };
@@ -119,6 +120,10 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
     if attrs == u32::MAX {
         return Err("GetFileAttributes failed".into());
     }
+    let is_hidden = attrs & FILE_ATTRIBUTE_HIDDEN != 0;
+    if hidden == is_hidden {
+        return Ok((path.to_path_buf(), false));
+    }
     let mut new_attrs = attrs;
     if hidden {
         new_attrs |= FILE_ATTRIBUTE_HIDDEN;
@@ -129,11 +134,11 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
     if ok == 0 {
         return Err("SetFileAttributes failed".into());
     }
-    Ok(path.to_path_buf())
+    Ok((path.to_path_buf(), true))
 }
 
 #[cfg(not(target_os = "windows"))]
-fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
+fn set_hidden_attr(path: &Path, hidden: bool) -> Result<(PathBuf, bool), String> {
     // On Unix, hidden = leading dot. Rename within same directory.
     let file_name = path
         .file_name()
@@ -141,7 +146,7 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
         .ok_or_else(|| "Invalid file name".to_string())?;
     let is_dot = file_name.starts_with('.');
     if hidden == is_dot {
-        return Ok(path.to_path_buf());
+        return Ok((path.to_path_buf(), false));
     }
     let target_name = if hidden {
         format!(".{file_name}")
@@ -154,7 +159,7 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
     let parent = path.parent().ok_or_else(|| "Missing parent".to_string())?;
     let target = parent.join(&target_name);
     if target == path {
-        return Ok(path.to_path_buf());
+        return Ok((path.to_path_buf(), false));
     }
     match move_with_fallback(path, &target) {
         Ok(_) => {}
@@ -165,7 +170,83 @@ fn set_hidden_attr(path: &Path, hidden: bool) -> Result<PathBuf, String> {
             return Err(format!("Failed to rename: {e}"));
         }
     }
-    Ok(target)
+    Ok((target, true))
+}
+
+#[derive(Serialize)]
+pub struct SetHiddenBatchItem {
+    pub path: String,
+    pub ok: bool,
+    pub new_path: String,
+    pub error: Option<ApiError>,
+}
+
+#[derive(Serialize)]
+pub struct SetHiddenBatchResult {
+    pub per_item: Vec<SetHiddenBatchItem>,
+    pub failures: usize,
+    pub unexpected_failures: usize,
+}
+
+fn classify_set_hidden_error_code(message: &str) -> &'static str {
+    let normalized = message.to_ascii_lowercase();
+    if normalized.contains("path must be absolute") {
+        return "path_not_absolute";
+    }
+    if normalized.contains("parent directory components are not allowed")
+        || normalized.contains("invalid path component (nul byte)")
+        || normalized.contains("path contains nul byte")
+        || normalized.contains("unsupported path prefix")
+        || normalized.contains("invalid file name")
+        || normalized.contains("cannot derive visible name")
+        || normalized.contains("missing parent")
+    {
+        return "invalid_path";
+    }
+    if normalized.contains("no paths provided") {
+        return "invalid_input";
+    }
+    if normalized.contains("refusing to operate on filesystem root") {
+        return "root_forbidden";
+    }
+    if normalized.contains("symlinks are not allowed in path")
+        || normalized.contains("symlinks are not allowed:")
+    {
+        return "symlink_unsupported";
+    }
+    if normalized.contains("target already exists") {
+        return "target_exists";
+    }
+    if normalized.contains("path does not exist")
+        || normalized.contains("no such file or directory")
+    {
+        return "not_found";
+    }
+    if normalized.contains("permission denied")
+        || normalized.contains("operation not permitted")
+        || normalized.contains("access is denied")
+    {
+        return "permission_denied";
+    }
+    if normalized.contains("setfileattributes failed")
+        || normalized.contains("getfileattributes failed")
+        || normalized.contains("failed to rename")
+    {
+        return "hidden_update_failed";
+    }
+    "unknown_error"
+}
+
+fn is_expected_set_hidden_error_code(code: &str) -> bool {
+    matches!(
+        code,
+        "symlink_unsupported" | "not_found" | "permission_denied" | "target_exists"
+    )
+}
+
+fn to_set_hidden_api_error(message: impl Into<String>) -> ApiError {
+    let message = message.into();
+    ApiError::new(classify_set_hidden_error_code(&message), message)
 }
 
 #[tauri::command]
@@ -173,7 +254,8 @@ pub fn set_hidden(
     path: Option<String>,
     paths: Option<Vec<String>>,
     hidden: bool,
-) -> Result<Vec<String>, String> {
+    state: tauri::State<UndoState>,
+) -> Result<SetHiddenBatchResult, String> {
     let targets: Vec<String> = match (paths, path) {
         (Some(list), _) if !list.is_empty() => list,
         (_, Some(single)) => vec![single],
@@ -182,14 +264,66 @@ pub fn set_hidden(
     if targets.is_empty() {
         return Err("No paths provided".into());
     }
-    let mut results = Vec::with_capacity(targets.len());
+    let mut per_item: Vec<SetHiddenBatchItem> = Vec::with_capacity(targets.len());
+    let mut failures = 0usize;
+    let mut unexpected_failures = 0usize;
+    let mut performed: Vec<Action> = Vec::new();
+
     for raw in targets {
-        let pb = sanitize_path_nofollow(&raw, true)?;
-        check_no_symlink_components(&pb)?;
-        let new_path = set_hidden_attr(&pb, hidden)?;
-        results.push(new_path.to_string_lossy().into_owned());
+        match sanitize_path_nofollow(&raw, true).and_then(|pb| {
+            check_no_symlink_components(&pb)?;
+            set_hidden_attr(&pb, hidden).map(|(new_path, changed)| (pb, new_path, changed))
+        }) {
+            Ok((from_path, new_path, changed)) => {
+                if changed {
+                    #[cfg(target_os = "windows")]
+                    performed.push(Action::SetHidden {
+                        path: from_path,
+                        hidden,
+                    });
+                    #[cfg(not(target_os = "windows"))]
+                    performed.push(Action::Rename {
+                        from: from_path,
+                        to: new_path.clone(),
+                    });
+                }
+                per_item.push(SetHiddenBatchItem {
+                    path: raw,
+                    ok: true,
+                    new_path: new_path.to_string_lossy().into_owned(),
+                    error: None,
+                })
+            }
+            Err(message) => {
+                failures += 1;
+                let error = to_set_hidden_api_error(message);
+                if !is_expected_set_hidden_error_code(&error.code) {
+                    unexpected_failures += 1;
+                }
+                per_item.push(SetHiddenBatchItem {
+                    path: raw.clone(),
+                    ok: false,
+                    new_path: raw,
+                    error: Some(error),
+                });
+            }
+        }
     }
-    Ok(results)
+
+    if !performed.is_empty() {
+        let recorded = if performed.len() == 1 {
+            performed.remove(0)
+        } else {
+            Action::Batch(performed)
+        };
+        let _ = state.record_applied(recorded);
+    }
+
+    Ok(SetHiddenBatchResult {
+        per_item,
+        failures,
+        unexpected_failures,
+    })
 }
 
 #[tauri::command]

@@ -46,6 +46,19 @@ type PermissionBatchPayload = {
   unexpected_failures: number
 }
 
+type HiddenBatchItemPayload = {
+  path: string
+  ok: boolean
+  new_path: string
+  error?: InvokeApiError | string | null
+}
+
+type HiddenBatchPayload = {
+  per_item: HiddenBatchItemPayload[]
+  failures: number
+  unexpected_failures: number
+}
+
 export type ExtraMetadataField = {
   key: string
   label: string
@@ -744,36 +757,57 @@ export const createPropertiesModal = (deps: Deps) => {
       if (current.mutationsLocked) return
       const targets = current.targets.length > 0 ? current.targets : current.entry ? [current.entry] : []
       if (targets.length === 0) return
-      const failures: string[] = []
-      const newPaths: string[] = []
-      const successFlags: boolean[] = []
-      for (const t of targets) {
-        try {
-          const res = await invoke<string[]>('set_hidden', { paths: [t.path], hidden: next })
-          const np = res[0] ?? t.path
-          newPaths.push(np)
-          successFlags.push(true)
-        } catch (err) {
-          console.error('Failed to toggle hidden', err)
-          failures.push(t.name)
-          newPaths.push(t.path)
-          successFlags.push(false)
-        }
+      const activeToken = token
+
+      let batch: HiddenBatchPayload
+      try {
+        batch = await invoke<HiddenBatchPayload>('set_hidden', {
+          paths: targets.map((t) => t.path),
+          hidden: next,
+        })
+      } catch (err) {
+        if (activeToken !== token) return
+        console.error('Failed to toggle hidden', err)
+        showToast('Failed to toggle hidden')
+        return
       }
+
+      if (activeToken !== token) return
+      if (batch.unexpected_failures > 0) {
+        console.warn(
+          `Hidden toggle failures: ${batch.failures} selected item(s), ${batch.unexpected_failures} unexpected`,
+        )
+      }
+
+      const results = Array.isArray(batch.per_item) ? batch.per_item : []
+      const failures = targets
+        .map((target, idx) => ({ target, result: results[idx] }))
+        .filter(({ result }) => !result || !result.ok)
+        .map(({ target }) => target.name)
+
       state.update((s) => {
         const updatedTargets = s.targets.map((t, idx) => {
-          const np = newPaths[idx] ?? t.path
-          return successFlags[idx] ? { ...t, path: np, name: stdPathName(np), hidden: next } : t
+          const result = results[idx]
+          if (!result || !result.ok) return t
+          const np = result.new_path || t.path
+          return { ...t, path: np, name: stdPathName(np), hidden: next }
         })
+        const firstResult = results[0]
         const updatedEntry =
-          s.entry && newPaths.length > 0
-            ? successFlags[0]
-              ? { ...s.entry, path: newPaths[0], name: stdPathName(newPaths[0]), hidden: next }
+          s.entry && firstResult
+            ? firstResult.ok
+              ? {
+                  ...s.entry,
+                  path: firstResult.new_path || s.entry.path,
+                  name: stdPathName(firstResult.new_path || s.entry.path),
+                  hidden: next,
+                }
               : s.entry
             : s.entry
         const hiddenBits = updatedTargets.map((t) => t.hidden === true)
         return { ...s, targets: updatedTargets, entry: updatedEntry, hidden: combine(hiddenBits) }
       })
+
       if (failures.length > 0) {
         showToast(`Hidden toggle skipped for: ${failures.join(', ')}`)
       }

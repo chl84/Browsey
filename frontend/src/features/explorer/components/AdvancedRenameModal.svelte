@@ -7,7 +7,6 @@
     SequenceMode,
     SequencePlacement,
   } from '../modals/advancedRenameModal'
-  import { computeAdvancedRenamePreview } from '../modals/advancedRenameUtils'
 
   export let open = false
   export let entries: Entry[] = []
@@ -29,8 +28,9 @@
   let regexInput: HTMLInputElement | null = null
   let selectedThisOpen = false
   type PreviewRow = { original: string; next: string }
-  let preview: PreviewRow[] = []
-  let previewError = ''
+  export let preview: PreviewRow[] = []
+  export let previewError = ''
+  export let previewLoading = false
   $: visibleError = error || previewError
 
   const handleChange = () => {
@@ -59,28 +59,6 @@
   let sequenceExample = '—'
   $: sequenceExample =
     sequenceMode === 'numeric' ? '001, 002, 003…' : sequenceMode === 'alpha' ? 'AA, AB, AC…' : '—'
-
-  $: {
-    if (!open) {
-      preview = []
-      previewError = ''
-    } else {
-      const { rows, error: nextError } = computeAdvancedRenamePreview(entries, {
-        regex,
-        replacement,
-        prefix,
-        suffix,
-        caseSensitive,
-        sequenceMode,
-        sequencePlacement,
-        sequenceStart,
-        sequenceStep,
-        sequencePad,
-      })
-      preview = rows
-      previewError = nextError
-    }
-  }
 </script>
 
 {#if open}
@@ -212,6 +190,8 @@
           <div class="preview-box">
             {#if entries.length === 0}
               <div class="muted">No items selected</div>
+            {:else if previewLoading}
+              <div class="muted">Updating preview…</div>
             {:else}
               <ul>
                 {#each entries as entry, idx}

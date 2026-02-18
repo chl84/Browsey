@@ -206,6 +206,7 @@ dependencies = [
  "pdfium-render",
  "rar-stream",
  "rayon",
+ "regex",
  "resvg",
  "rusqlite",
  "serde",
