@@ -23,7 +23,9 @@ pub mod system_clipboard;
 pub mod tasks;
 pub mod thumbnails;
 
-pub use crate::clipboard::{paste_clipboard_cmd, paste_clipboard_preview, set_clipboard_cmd};
+pub use crate::clipboard::{
+    paste_clipboard_cmd, paste_clipboard_preview, resolve_drop_clipboard_mode, set_clipboard_cmd,
+};
 pub use about::about_info;
 pub use bookmarks::{add_bookmark, clear_bookmarks, get_bookmarks, remove_bookmark};
 pub use compress::compress_entries;
