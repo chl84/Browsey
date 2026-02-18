@@ -6,12 +6,12 @@ pub mod compress;
 pub mod console;
 pub mod decompress;
 pub mod duplicates;
+pub mod entry_metadata;
 pub mod file_types;
 pub mod fs;
 pub mod keymap;
 pub mod library;
 pub mod listing;
-pub mod meta;
 pub mod network;
 pub mod open_with;
 pub mod permissions;
@@ -31,6 +31,7 @@ pub use compress::compress_entries;
 pub use console::open_console;
 pub use decompress::{can_extract_paths, extract_archive, extract_archives};
 pub use duplicates::{check_duplicates, check_duplicates_stream};
+pub use entry_metadata::{entry_extra_metadata_cmd, entry_kind_cmd, entry_times_cmd};
 pub use file_types::detect_new_file_type;
 pub use fs::{
     create_file, create_folder, delete_entries, delete_entry, list_trash, move_to_trash,
@@ -43,7 +44,6 @@ pub use library::{
     clear_recents, clear_stars, list_recent, list_starred, remove_recent, toggle_star,
 };
 pub use listing::{list_dir, list_facets, watch_dir};
-pub use meta::{entry_extra_metadata_cmd, entry_kind_cmd, entry_times_cmd};
 pub use network::connect::connect_network_uri;
 pub use network::discovery::{list_network_devices, open_network_uri};
 pub use network::entries::list_network_entries;
