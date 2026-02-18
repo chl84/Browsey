@@ -36,7 +36,12 @@ pub(super) fn run_search_stream(
     let cancel_guard = match cancel_state.register(progress_event.clone()) {
         Ok(g) => g,
         Err(e) => {
-            send(Vec::new(), true, Some(e), Some(ListingFacets::default()));
+            send(
+                Vec::new(),
+                true,
+                Some(e.to_string()),
+                Some(ListingFacets::default()),
+            );
             return;
         }
     };
@@ -71,7 +76,12 @@ pub(super) fn run_search_stream(
     let star_set = match db::open().and_then(|conn| db::starred_set(&conn)) {
         Ok(set) => set,
         Err(e) => {
-            send(Vec::new(), true, Some(e), Some(ListingFacets::default()));
+            send(
+                Vec::new(),
+                true,
+                Some(e.to_string()),
+                Some(ListingFacets::default()),
+            );
             return;
         }
     };
