@@ -22,7 +22,8 @@ static NETWORK_DISCOVERY_CACHE: OnceCell<Mutex<(Instant, Vec<MountInfo>)>> = Onc
 
 #[cfg(not(target_os = "windows"))]
 fn network_discovery_cache() -> &'static Mutex<(Instant, Vec<MountInfo>)> {
-    NETWORK_DISCOVERY_CACHE.get_or_init(|| Mutex::new((instant_ago(DISCOVERY_CACHE_TTL), Vec::new())))
+    NETWORK_DISCOVERY_CACHE
+        .get_or_init(|| Mutex::new((instant_ago(DISCOVERY_CACHE_TTL), Vec::new())))
 }
 
 fn scheme_label(scheme: &str) -> &'static str {
