@@ -110,9 +110,9 @@ Acceptance:
 
 ### 7) Final cleanup
 
-- [ ] Remove dead locals/imports left in `ExplorerPage.svelte`.
-- [ ] Keep `ExplorerPage.svelte` as composition root only.
-- [ ] Add short note to docs/changelog describing structural split.
+- [x] Remove dead locals/imports left in `ExplorerPage.svelte`.
+- [x] Keep `ExplorerPage.svelte` as composition root only.
+- [x] Add short note to docs/changelog describing structural split.
 
 Acceptance:
 - `ExplorerPage.svelte` is significantly smaller and mostly wiring.
@@ -140,4 +140,4 @@ Acceptance:
 - [x] Step 4D complete
 - [x] Step 5 complete
 - [x] Step 6 complete
-- [ ] Step 7 complete
+- [x] Step 7 complete
