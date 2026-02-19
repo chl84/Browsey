@@ -20,13 +20,7 @@
   import {
     copyPathsToSystemClipboard,
   } from '@/features/explorer/services/clipboard.service'
-  import {
-    entryKind,
-    dirSizes,
-    canExtractPaths as canExtractPathsCmd,
-    extractArchive,
-    extractArchives,
-  } from '@/features/explorer/services/files.service'
+  import { dirSizes } from '@/features/explorer/services/files.service'
   import { fetchContextMenuActions } from '@/features/explorer/services/contextMenu.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
   import { cancelTask } from '@/features/explorer/services/activity.service'
@@ -148,7 +142,6 @@
   // View / navigation tracking
   let currentView: CurrentView = 'dir'
   let lastLocation = ''
-  let extracting = false
   useContextMenuBlocker()
 
   // --- Helpers -------------------------------------------------------------
@@ -1446,6 +1439,8 @@
     setClipboardPaths: (paths) => {
       clipboardPaths = paths
     },
+    shouldOpenDestAfterExtract: () => get(openDestAfterExtract),
+    loadPath: (path, opts) => loadRaw(path, opts),
     reloadCurrent,
     showToast,
     activityApi,
@@ -1456,6 +1451,8 @@
     pasteIntoCurrent,
     handlePasteOrMove,
     resolveConflicts,
+    canExtractPaths,
+    extractEntries,
     cancelConflicts,
   } = fileOps
 
@@ -1614,94 +1611,6 @@
       .finally(() => {
         checkDuplicatesModal.close()
       })
-  }
-
-  const canExtractPaths = async (paths: string[]): Promise<boolean> => {
-    if (paths.length === 0) return false
-    try {
-      return await canExtractPathsCmd(paths)
-    } catch {
-      return false
-    }
-  }
-
-  const extractEntries = async (entriesToExtract: Entry[]) => {
-    if (extracting) return
-    if (entriesToExtract.length === 0) return
-    const allArchives = await canExtractPaths(entriesToExtract.map((entry) => entry.path))
-    if (!allArchives) {
-      showToast('Extraction available for archive files only')
-      return
-    }
-
-    extracting = true
-    const progressEvent = `extract-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    await activityApi.start(
-      `Extracting${entriesToExtract.length > 1 ? ` ${entriesToExtract.length} items…` : '…'}`,
-      progressEvent,
-      () => activityApi.requestCancel(progressEvent)
-    )
-
-    const summarize = (skippedSymlinks: number, skippedOther: number) => {
-      const skipParts = []
-      if (skippedSymlinks > 0) skipParts.push(`${skippedSymlinks} symlink${skippedSymlinks === 1 ? '' : 's'}`)
-      if (skippedOther > 0) skipParts.push(`${skippedOther} entr${skippedOther === 1 ? 'y' : 'ies'}`)
-      return skipParts.length > 0 ? ` (skipped ${skipParts.join(', ')})` : ''
-    }
-
-    try {
-      if (entriesToExtract.length === 1) {
-        const entry = entriesToExtract[0]
-        const result = await extractArchive(entry.path, progressEvent)
-        if (get(openDestAfterExtract) && result?.destination) {
-          try {
-            const kind = await entryKind(result.destination)
-            const target = kind === 'dir' ? result.destination : parentPath(result.destination)
-            await loadRaw(target, { recordHistory: true })
-          } catch {
-            await reloadCurrent()
-          }
-        } else {
-          await reloadCurrent()
-        }
-        const suffix = summarize(result?.skipped_symlinks ?? 0, result?.skipped_entries ?? 0)
-        showToast(`Extracted to ${result.destination}${suffix}`)
-      } else {
-        const result = await extractArchives(entriesToExtract.map((e) => e.path), progressEvent)
-        const successes = result.filter((r) => r.ok && r.result)
-        const failures = result.filter((r) => !r.ok)
-        // In batch extraction, keep the current location stable even if
-        // "Open destination after extract" is enabled.
-        await reloadCurrent()
-        const totalSkippedSymlinks = successes.reduce(
-          (n, r) => n + (r.result?.skipped_symlinks ?? 0),
-          0
-        )
-        const totalSkippedOther = successes.reduce(
-          (n, r) => n + (r.result?.skipped_entries ?? 0),
-          0
-        )
-        const suffix = summarize(totalSkippedSymlinks, totalSkippedOther)
-        if (failures.length === 0) {
-          showToast(`Extracted ${successes.length} archives${suffix}`)
-        } else if (successes.length === 0) {
-          showToast(`Extraction failed for ${failures.length} archives`)
-        } else {
-          showToast(`Extracted ${successes.length} archives, ${failures.length} failed${suffix}`)
-        }
-      }
-    } catch (err) {
-      const msg = getErrorMessage(err)
-      if (msg.toLowerCase().includes('cancelled')) {
-        showToast('Extraction cancelled')
-      } else {
-        showToast(`Failed to extract: ${msg}`)
-      }
-    } finally {
-      extracting = false
-      activityApi.clearNow()
-      await activityApi.cleanup()
-    }
   }
 
   const contextActions = createContextActions({
