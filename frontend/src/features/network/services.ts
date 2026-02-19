@@ -1,5 +1,5 @@
 import { invoke } from '@/shared/lib/tauri'
-import type { Entry, Partition } from '../explorer/types'
+import type { Entry, Partition } from '../explorer/model/types'
 
 export type NetworkUriKind = 'not_uri' | 'mountable' | 'external' | 'unsupported'
 

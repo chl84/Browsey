@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
   import { partitionIcon } from '../utils'
-  import type { Partition } from '../types'
+  import type { Partition } from '../model/types'
 
   const dispatch = createEventDispatcher<{ eject: { path: string } }>()
 

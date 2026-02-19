@@ -1,5 +1,5 @@
 import { get, type Writable } from 'svelte/store'
-import type { Entry } from '../types'
+import type { Entry } from '../model/types'
 import { moveCaret } from '../helpers/navigationController'
 
 type Deps = {

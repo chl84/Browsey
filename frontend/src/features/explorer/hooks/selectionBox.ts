@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store'
-import type { Entry } from '../types'
-import { clampIndex, selectRange } from '../selection'
+import type { Entry } from '../model/types'
+import { clampIndex, selectRange } from '../model/selection'
 
 type Rect = { x: number; y: number; width: number; height: number }
 

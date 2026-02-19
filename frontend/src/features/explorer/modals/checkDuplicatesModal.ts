@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store'
-import type { Entry } from '../types'
+import type { Entry } from '../model/types'
 
 type DuplicateCandidate = {
   path: string

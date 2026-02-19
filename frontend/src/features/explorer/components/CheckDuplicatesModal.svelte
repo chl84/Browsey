@@ -1,6 +1,6 @@
 <script lang="ts">
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
-  import type { Entry } from '../types'
+  import type { Entry } from '../model/types'
 
   export let open = false
   export let target: Entry | null = null

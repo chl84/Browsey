@@ -4,7 +4,7 @@
   import ComboBox, { type ComboOption } from '../../shared/ui/ComboBox.svelte'
   import { getErrorMessage } from '@/shared/lib/error'
   import { onMount, onDestroy } from 'svelte'
-  import type { DefaultSortField, Density } from '../explorer/types'
+  import type { DefaultSortField, Density } from '../explorer/model/types'
   import {
     keyboardEventToAccelerator,
     type ShortcutBinding,

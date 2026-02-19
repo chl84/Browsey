@@ -1,5 +1,5 @@
 import { invoke } from '@/shared/lib/tauri'
-import type { Entry } from '../types'
+import type { Entry } from '../model/types'
 
 export const openEntry = (entry: Entry) =>
   invoke<void>('open_entry', { path: entry.path })

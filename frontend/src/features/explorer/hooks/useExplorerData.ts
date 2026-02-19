@@ -1,7 +1,7 @@
 import { onMount } from 'svelte'
 import { get } from 'svelte/store'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import type { Entry } from '../types'
+import type { Entry } from '../model/types'
 import { createExplorerState } from '../state'
 
 const isGvfsPath = (path: string | null | undefined) =>

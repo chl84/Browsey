@@ -1,5 +1,5 @@
 import { invoke } from '@/shared/lib/tauri'
-import type { DefaultSortField, Density } from '../types'
+import type { DefaultSortField, Density } from '../model/types'
 
 export const loadShowHidden = () => invoke<boolean | null>('load_show_hidden')
 
