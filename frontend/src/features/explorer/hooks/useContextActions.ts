@@ -1,14 +1,14 @@
 import { getErrorMessage } from '@/shared/lib/error'
 import type { Entry } from '../model/types'
 import type { ClipboardApi } from './useClipboard'
-import { copyPathsToSystemClipboard } from '../services/clipboard'
+import { copyPathsToSystemClipboard } from '../services/clipboard.service'
 import {
   restoreTrashItems,
   removeRecent,
   deleteEntries,
   moveToTrashMany,
   purgeTrashItems,
-} from '../services/trash'
+} from '../services/trash.service'
 
 export type CurrentView = 'recent' | 'starred' | 'trash' | 'network' | 'dir'
 

@@ -18,7 +18,7 @@
   import CheckDuplicatesModal from './CheckDuplicatesModal.svelte'
   import type { Column, Entry, ListingFacets, Partition, SortField } from '../model/types'
   import type { ContextAction } from '../hooks/useContextMenus'
-  import type { OpenWithApp, OpenWithChoice } from '../services/openWith'
+  import type { OpenWithApp, OpenWithChoice } from '../services/openWith.service'
   import type { AdvancedRenamePayload } from '../modals/advancedRenameModal'
 
   export let sidebarCollapsed = false

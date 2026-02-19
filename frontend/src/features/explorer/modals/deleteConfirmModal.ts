@@ -1,7 +1,7 @@
 import { writable, get } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import type { Entry } from '../model/types'
-import { deleteEntries, purgeTrashItems } from '../services/trash'
+import { deleteEntries, purgeTrashItems } from '../services/trash.service'
 
 type ActivityApi = {
   start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>

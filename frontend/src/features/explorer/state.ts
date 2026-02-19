@@ -15,7 +15,7 @@ import type {
   ListingFacets,
 } from './model/types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
-import { openEntry } from './services/files'
+import { openEntry } from './services/files.service'
 import {
   listDir,
   listFacets,
@@ -26,9 +26,9 @@ import {
   listMounts,
   searchStream,
   type FacetScope,
-} from './services/listing'
-import { cancelTask } from './services/activity'
-import { storeColumnWidths, loadSavedColumnWidths } from './services/layout'
+} from './services/listing.service'
+import { cancelTask } from './services/activity.service'
+import { storeColumnWidths, loadSavedColumnWidths } from './services/layout.service'
 import {
   loadShowHidden,
   storeShowHidden,
@@ -64,9 +64,9 @@ import {
   storeMountsPollMs,
   loadDoubleClickMs,
   storeDoubleClickMs,
-} from './services/settings'
-import { toggleStar as toggleStarService } from './services/star'
-import { getBookmarks } from './services/bookmarks'
+} from './services/settings.service'
+import { toggleStar as toggleStarService } from './services/star.service'
+import { getBookmarks } from './services/bookmarks.service'
 import { nameBucket } from './filters/nameFilters'
 import { modifiedBucket, sizeBucket, typeLabel } from './filters/columnBuckets'
 import { listNetworkEntries } from '../network'

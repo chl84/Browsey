@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store'
 import type { Entry } from '../model/types'
-import { renameEntry } from '../services/files'
+import { renameEntry } from '../services/files.service'
 
 type Deps = {
   loadPath: (path: string) => Promise<void>

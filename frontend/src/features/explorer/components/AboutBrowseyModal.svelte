@@ -1,7 +1,7 @@
 <script lang="ts">
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
   import { getErrorMessage } from '@/shared/lib/error'
-  import { loadAboutInfo, type AboutInfo } from '../services/about'
+  import { loadAboutInfo, type AboutInfo } from '../services/about.service'
 
   export let open = false
   export let onClose: () => void = () => {}

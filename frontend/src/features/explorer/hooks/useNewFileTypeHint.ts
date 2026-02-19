@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store'
-import { detectNewFileType, type NewFileTypeMatch } from '../services/fileTypes'
+import { detectNewFileType, type NewFileTypeMatch } from '../services/fileTypes.service'
 
 const LOOKUP_DEBOUNCE_MS = 80
 

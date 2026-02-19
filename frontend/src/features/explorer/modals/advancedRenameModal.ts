@@ -4,7 +4,7 @@ import {
   previewRenameEntries,
   renameEntries,
   type AdvancedRenamePreviewRow,
-} from '../services/files'
+} from '../services/files.service'
 
 export type SequenceMode = 'none' | 'numeric' | 'alpha'
 export type SequencePlacement = 'start' | 'end'
