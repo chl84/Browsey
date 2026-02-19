@@ -30,9 +30,9 @@ This plan is validated against current structure:
 
 ### 1) Create thin entry wrapper
 
-- [ ] Create `frontend/src/features/explorer/pages/ExplorerPage.svelte` by moving current `App.svelte` content as-is.
-- [ ] Reduce `frontend/src/App.svelte` to a thin wrapper that only renders `ExplorerPage`.
-- [ ] Run step-local checks:
+- [x] Create `frontend/src/features/explorer/pages/ExplorerPage.svelte` by moving current `App.svelte` content as-is.
+- [x] Reduce `frontend/src/App.svelte` to a thin wrapper that only renders `ExplorerPage`.
+- [x] Run step-local checks:
   - `rg -n "from './features/" frontend/src/features/explorer/pages/ExplorerPage.svelte` returns empty.
   - `rg -n "ExplorerShell" frontend/src/App.svelte` returns empty.
 
@@ -45,10 +45,10 @@ Acceptance:
 Target from current `App.svelte` sections:
 - `loadDir/loadRecent/loadStarred/loadNetwork/loadTrash`, `goBack/goForward`, `goToPath/openPartition`, pending-nav queue.
 
-- [ ] Add `frontend/src/features/explorer/hooks/useExplorerNavigation.ts`.
-- [ ] Reuse existing services/state calls; do not duplicate logic in multiple hooks.
-- [ ] Keep selection snapshot/restore behavior tied to navigation (`captureSelectionSnapshot`, `restoreSelectionForCurrent`, `centerSelectionIfAny`).
-- [ ] Run step-local check:
+- [x] Add `frontend/src/features/explorer/hooks/useExplorerNavigation.ts`.
+- [x] Reuse existing services/state calls; do not duplicate logic in multiple hooks.
+- [x] Keep selection snapshot/restore behavior tied to navigation (`captureSelectionSnapshot`, `restoreSelectionForCurrent`, `centerSelectionIfAny`).
+- [x] Run step-local check:
   - `rg -n "const (loadDir|loadRecent|loadStarred|loadNetwork|loadTrash|goBack|goForward|goToPath|openPartition) = async" frontend/src/features/explorer/pages/ExplorerPage.svelte` returns empty.
 
 Acceptance:
@@ -59,10 +59,10 @@ Acceptance:
 Target from current `App.svelte` sections:
 - Search session helpers and mode transitions (`normalizeSearchQuery`, `resetSearchSession`, `markSearchResultsStale`, `transitionTo*`, `setSearchModeState`, path submit/search submit).
 
-- [ ] Add `frontend/src/features/explorer/hooks/useExplorerSearchSession.ts`.
-- [ ] Move only search/path-session orchestration there.
-- [ ] Keep component event bindings unchanged.
-- [ ] Run step-local check:
+- [x] Add `frontend/src/features/explorer/hooks/useExplorerSearchSession.ts`.
+- [x] Move only search/path-session orchestration there.
+- [x] Keep component event bindings unchanged.
+- [x] Run step-local check:
   - `rg -n "const (normalizeSearchQuery|resetSearchSession|markSearchResultsStale|transitionToAddressMode|transitionToFilterMode|setSearchModeState) =" frontend/src/features/explorer/pages/ExplorerPage.svelte` returns empty.
 
 Acceptance:
@@ -130,9 +130,9 @@ Acceptance:
 
 ## Progress
 
-- [ ] Step 1 complete
-- [ ] Step 2 complete
-- [ ] Step 3 complete
+- [x] Step 1 complete
+- [x] Step 2 complete
+- [x] Step 3 complete
 - [ ] Step 4 complete
 - [ ] Step 4A complete
 - [ ] Step 4B complete
