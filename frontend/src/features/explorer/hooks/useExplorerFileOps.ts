@@ -7,6 +7,12 @@ import {
   pasteClipboardPreview,
   getSystemClipboardPaths,
 } from '../services/clipboard.service'
+import {
+  entryKind,
+  canExtractPaths as canExtractPathsCmd,
+  extractArchive,
+  extractArchives,
+} from '../services/files.service'
 import { setClipboardState, clearClipboardState } from '../stores/clipboard.store'
 import { normalizePath, parentPath } from '../utils'
 import type { Entry } from '../model/types'
@@ -31,6 +37,8 @@ type Deps = {
   getCurrentPath: () => string
   clipboardMode: () => 'copy' | 'cut'
   setClipboardPaths: (paths: Set<string>) => void
+  shouldOpenDestAfterExtract: () => boolean
+  loadPath: (path: string, opts?: { recordHistory?: boolean; silent?: boolean }) => Promise<void>
   reloadCurrent: () => Promise<void>
   showToast: (msg: string, durationMs?: number) => void
   activityApi: ActivityApi
@@ -38,6 +46,7 @@ type Deps = {
 
 export const useExplorerFileOps = (deps: Deps) => {
   let conflictDest: string | null = null
+  let extracting = false
   const conflictModalOpen = writable(false)
   const conflictList = writable<ConflictItem[]>([])
 
@@ -136,12 +145,101 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
   }
 
+  const canExtractPaths = async (paths: string[]): Promise<boolean> => {
+    if (paths.length === 0) return false
+    try {
+      return await canExtractPathsCmd(paths)
+    } catch {
+      return false
+    }
+  }
+
+  const extractEntries = async (entriesToExtract: Entry[]) => {
+    if (extracting) return
+    if (entriesToExtract.length === 0) return
+    const allArchives = await canExtractPaths(entriesToExtract.map((entry) => entry.path))
+    if (!allArchives) {
+      deps.showToast('Extraction available for archive files only')
+      return
+    }
+
+    extracting = true
+    const progressEvent = `extract-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    await deps.activityApi.start(
+      `Extracting${entriesToExtract.length > 1 ? ` ${entriesToExtract.length} items…` : '…'}`,
+      progressEvent,
+      () => deps.activityApi.requestCancel(progressEvent),
+    )
+
+    const summarize = (skippedSymlinks: number, skippedOther: number) => {
+      const skipParts = []
+      if (skippedSymlinks > 0) skipParts.push(`${skippedSymlinks} symlink${skippedSymlinks === 1 ? '' : 's'}`)
+      if (skippedOther > 0) skipParts.push(`${skippedOther} entr${skippedOther === 1 ? 'y' : 'ies'}`)
+      return skipParts.length > 0 ? ` (skipped ${skipParts.join(', ')})` : ''
+    }
+
+    try {
+      if (entriesToExtract.length === 1) {
+        const entry = entriesToExtract[0]
+        const result = await extractArchive(entry.path, progressEvent)
+        if (deps.shouldOpenDestAfterExtract() && result?.destination) {
+          try {
+            const kind = await entryKind(result.destination)
+            const target = kind === 'dir' ? result.destination : parentPath(result.destination)
+            await deps.loadPath(target, { recordHistory: true })
+          } catch {
+            await deps.reloadCurrent()
+          }
+        } else {
+          await deps.reloadCurrent()
+        }
+        const suffix = summarize(result?.skipped_symlinks ?? 0, result?.skipped_entries ?? 0)
+        deps.showToast(`Extracted to ${result.destination}${suffix}`)
+      } else {
+        const result = await extractArchives(entriesToExtract.map((entry) => entry.path), progressEvent)
+        const successes = result.filter((item) => item.ok && item.result)
+        const failures = result.filter((item) => !item.ok)
+        // In batch extraction, keep current location stable even if opening destination is enabled.
+        await deps.reloadCurrent()
+        const totalSkippedSymlinks = successes.reduce(
+          (count, item) => count + (item.result?.skipped_symlinks ?? 0),
+          0,
+        )
+        const totalSkippedOther = successes.reduce(
+          (count, item) => count + (item.result?.skipped_entries ?? 0),
+          0,
+        )
+        const suffix = summarize(totalSkippedSymlinks, totalSkippedOther)
+        if (failures.length === 0) {
+          deps.showToast(`Extracted ${successes.length} archives${suffix}`)
+        } else if (successes.length === 0) {
+          deps.showToast(`Extraction failed for ${failures.length} archives`)
+        } else {
+          deps.showToast(`Extracted ${successes.length} archives, ${failures.length} failed${suffix}`)
+        }
+      }
+    } catch (err) {
+      const msg = getErrorMessage(err)
+      if (msg.toLowerCase().includes('cancelled')) {
+        deps.showToast('Extraction cancelled')
+      } else {
+        deps.showToast(`Failed to extract: ${msg}`)
+      }
+    } finally {
+      extracting = false
+      deps.activityApi.clearNow()
+      await deps.activityApi.cleanup()
+    }
+  }
+
   return {
     conflictModalOpen,
     conflictList,
     pasteIntoCurrent,
     handlePasteOrMove,
     resolveConflicts,
+    canExtractPaths,
+    extractEntries,
     cancelConflicts: clearConflictState,
     hasPendingConflicts: () => get(conflictModalOpen),
   }
