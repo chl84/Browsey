@@ -2,6 +2,8 @@ use std::fs;
 use std::io::{self, ErrorKind};
 use std::path::Path;
 
+use crate::undo::UndoResult;
+
 use super::nofollow::{delete_entry_nofollow_io, rename_nofollow_io};
 use super::path_checks::{
     assert_path_snapshot, ensure_existing_dir_nonsymlink, ensure_existing_path_nonsymlink,
@@ -9,7 +11,7 @@ use super::path_checks::{
 };
 use super::types::{self, PathSnapshot};
 
-pub(crate) fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
+pub(crate) fn copy_entry(src: &Path, dest: &Path) -> UndoResult<()> {
     let meta = ensure_existing_path_nonsymlink(src)?;
     let src_snapshot = types::path_snapshot_from_meta(&meta);
     if let Some(parent) = dest.parent() {
@@ -27,7 +29,7 @@ pub(crate) fn copy_entry(src: &Path, dest: &Path) -> Result<(), String> {
     }
 }
 
-fn copy_file_noreplace(src: &Path, dest: &Path) -> Result<(), String> {
+fn copy_file_noreplace(src: &Path, dest: &Path) -> UndoResult<()> {
     let mut src_file =
         fs::File::open(src).map_err(|e| format!("Failed to open source file {:?}: {e}", src))?;
     let mut dst_file = fs::OpenOptions::new()
@@ -47,11 +49,11 @@ fn copy_file_noreplace(src: &Path, dest: &Path) -> Result<(), String> {
         .metadata()
         .map_err(|e| format!("Failed to read source permissions {:?}: {e}", src))?
         .permissions();
-    fs::set_permissions(dest, perms)
-        .map_err(|e| format!("Failed to set permissions on {:?}: {e}", dest))
+    Ok(fs::set_permissions(dest, perms)
+        .map_err(|e| format!("Failed to set permissions on {:?}: {e}", dest))?)
 }
 
-fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
+fn copy_dir(src: &Path, dest: &Path) -> UndoResult<()> {
     let src_snapshot = snapshot_existing_path(src)?;
     if let Some(parent) = dest.parent() {
         ensure_existing_dir_nonsymlink(parent)?;
@@ -81,13 +83,14 @@ fn copy_dir(src: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn delete_entry_path(path: &Path) -> Result<(), String> {
+pub(crate) fn delete_entry_path(path: &Path) -> UndoResult<()> {
     let snapshot = snapshot_existing_path(path)?;
     assert_path_snapshot(path, &snapshot)?;
-    delete_entry_nofollow_io(path).map_err(|e| format!("Failed to delete {}: {e}", path.display()))
+    Ok(delete_entry_nofollow_io(path)
+        .map_err(|e| format!("Failed to delete {}: {e}", path.display()))?)
 }
 
-pub fn move_with_fallback(src: &Path, dst: &Path) -> Result<(), String> {
+pub fn move_with_fallback(src: &Path, dst: &Path) -> UndoResult<()> {
     let src_meta = ensure_existing_path_nonsymlink(src)?;
     let src_snapshot = types::path_snapshot_from_meta(&src_meta);
     if let Some(parent) = dst.parent() {
@@ -106,7 +109,8 @@ pub fn move_with_fallback(src: &Path, dst: &Path) -> Result<(), String> {
                     "Failed to rename {} -> {}: {rename_err}",
                     src.display(),
                     dst.display()
-                ));
+                )
+                .into());
             }
             move_by_copy_delete_noreplace(src, dst, &src_snapshot)
         }
@@ -117,12 +121,12 @@ pub(crate) fn move_by_copy_delete_noreplace(
     src: &Path,
     dst: &Path,
     src_snapshot: &PathSnapshot,
-) -> Result<(), String> {
+) -> UndoResult<()> {
     // Controlled fallback when atomic no-replace rename is unavailable
     // (or across filesystems): copy + delete without destination overwrite.
     copy_entry(src, dst).and_then(|_| {
         assert_path_snapshot(src, src_snapshot)?;
-        delete_entry_path(src).map_err(|del_err| {
+        Ok(delete_entry_path(src).map_err(|del_err| {
             // Best effort: clean up destination if delete failed to avoid duplicates.
             let _ = delete_entry_path(dst);
             format!(
@@ -130,7 +134,7 @@ pub(crate) fn move_by_copy_delete_noreplace(
                 src.display(),
                 dst.display()
             )
-        })
+        })?)
     })
 }
 
@@ -142,8 +146,8 @@ fn is_noreplace_unsupported(err: &std::io::Error) -> bool {
     err.kind() == ErrorKind::Unsupported
 }
 
-pub(crate) fn is_destination_exists_error(err: &str) -> bool {
-    let lower = err.to_lowercase();
+pub(crate) fn is_destination_exists_error(err: &impl std::fmt::Display) -> bool {
+    let lower = err.to_string().to_lowercase();
     lower.contains("destination already exists")
         || lower.contains("already exists")
         || lower.contains("file exists")

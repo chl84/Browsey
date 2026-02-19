@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::{debug, warn};
 
+use crate::undo::UndoResult;
+
 /// Best-effort cleanup of stale `.browsey-undo` directories. Runs at startup to
 /// avoid leaving orphaned backups after a crash or restart (undo history is
 /// in-memory only).
@@ -82,7 +84,7 @@ fn default_undo_dir() -> PathBuf {
         .join("undo")
 }
 
-fn validate_undo_dir(path: &Path) -> Result<(), String> {
+fn validate_undo_dir(path: &Path) -> UndoResult<()> {
     if cfg!(test) {
         return Ok(());
     }
@@ -100,7 +102,8 @@ fn validate_undo_dir(path: &Path) -> Result<(), String> {
         return Err(format!(
             "Undo directory must reside under {}",
             default_parent.display()
-        ));
+        )
+        .into());
     }
     Ok(())
 }

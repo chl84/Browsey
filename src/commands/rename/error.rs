@@ -120,6 +120,18 @@ impl From<crate::path_guard::PathGuardError> for RenameError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for RenameError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        Self::from_external_message(error.to_string())
+    }
+}
+
+impl From<crate::undo::UndoError> for RenameError {
+    fn from(error: crate::undo::UndoError) -> Self {
+        Self::from_external_message(error.to_string())
+    }
+}
+
 pub(crate) type RenameResult<T> = Result<T, RenameError>;
 
 pub(super) fn map_api_result<T>(result: RenameResult<T>) -> ApiResult<T> {

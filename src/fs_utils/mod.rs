@@ -5,6 +5,10 @@ use tracing::debug;
 #[cfg(target_os = "windows")]
 use std::path::Prefix;
 
+mod error;
+
+pub use error::{FsUtilsError, FsUtilsErrorCode, FsUtilsResult};
+
 #[cfg(target_os = "windows")]
 fn normalize_drive_root(raw: &str) -> String {
     let mut chars = raw.chars();
@@ -22,7 +26,7 @@ fn normalize_drive_root(raw: &str) -> String {
     raw.to_string()
 }
 
-pub fn sanitize_path_follow(raw: &str, forbid_root: bool) -> Result<PathBuf, String> {
+pub fn sanitize_path_follow(raw: &str, forbid_root: bool) -> FsUtilsResult<PathBuf> {
     let raw = normalize_drive_root(raw);
     let pb = PathBuf::from(&raw);
     let is_net = is_network_path(&pb);
@@ -37,7 +41,11 @@ pub fn sanitize_path_follow(raw: &str, forbid_root: bool) -> Result<PathBuf, Str
         Ok(c) => c,
         Err(e) => {
             debug!(path = %pb.display(), error = ?e, "canonicalize failed");
-            return Err(format!("Failed to canonicalize path: {e}"));
+            return Err(FsUtilsError::from_io_error(
+                FsUtilsErrorCode::CanonicalizeFailed,
+                "Failed to canonicalize path",
+                e,
+            ));
         }
     };
 
@@ -52,12 +60,15 @@ pub fn sanitize_path_follow(raw: &str, forbid_root: bool) -> Result<PathBuf, Str
         && !is_removable_drive(&canon)
         && !is_network_path(&canon)
     {
-        return Err("Refusing to operate on filesystem root".into());
+        return Err(FsUtilsError::new(
+            FsUtilsErrorCode::RootForbidden,
+            "Refusing to operate on filesystem root",
+        ));
     }
     Ok(normalize_verbatim(&canon))
 }
 
-pub fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, String> {
+pub fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> FsUtilsResult<PathBuf> {
     let raw = normalize_drive_root(raw);
     let pb = PathBuf::from(&raw);
     let is_net = is_network_path(&pb);
@@ -67,9 +78,13 @@ pub fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, S
         network = is_net,
         "sanitize_nofollow start"
     );
-    let _meta = std::fs::symlink_metadata(&pb).map_err(|e| {
-        debug!(path = %pb.display(), error = ?e, "symlink_metadata failed");
-        format!("Path does not exist or unreadable: {e}")
+    let _meta = std::fs::symlink_metadata(&pb).map_err(|error| {
+        debug!(path = %pb.display(), error = ?error, "symlink_metadata failed");
+        FsUtilsError::from_io_error(
+            FsUtilsErrorCode::MetadataReadFailed,
+            "Path does not exist or unreadable",
+            error,
+        )
     })?;
     if forbid_root
         && pb.is_absolute()
@@ -77,7 +92,10 @@ pub fn sanitize_path_nofollow(raw: &str, forbid_root: bool) -> Result<PathBuf, S
         && !is_removable_drive(&pb)
         && !is_network_path(&pb)
     {
-        return Err("Refusing to operate on filesystem root".into());
+        return Err(FsUtilsError::new(
+            FsUtilsErrorCode::RootForbidden,
+            "Refusing to operate on filesystem root",
+        ));
     }
     Ok(normalize_verbatim(&pb))
 }
@@ -193,7 +211,7 @@ fn is_removable_drive(_path: &Path) -> bool {
     false
 }
 
-pub fn check_no_symlink_components(path: &Path) -> Result<(), String> {
+pub fn check_no_symlink_components(path: &Path) -> FsUtilsResult<()> {
     let mut acc = PathBuf::new();
     for comp in path.components() {
         match comp {
@@ -216,12 +234,17 @@ pub fn check_no_symlink_components(path: &Path) -> Result<(), String> {
         if acc.as_os_str().is_empty() {
             continue;
         }
-        let meta = std::fs::symlink_metadata(&acc)
-            .map_err(|e| format!("Failed to read metadata for {:?}: {e}", acc))?;
+        let meta = std::fs::symlink_metadata(&acc).map_err(|error| {
+            FsUtilsError::from_io_error(
+                FsUtilsErrorCode::MetadataReadFailed,
+                &format!("Failed to read metadata for {:?}", acc),
+                error,
+            )
+        })?;
         if meta.file_type().is_symlink() {
-            return Err(format!(
-                "Symlinks are not allowed in path: {}",
-                acc.display()
+            return Err(FsUtilsError::new(
+                FsUtilsErrorCode::SymlinkUnsupported,
+                format!("Symlinks are not allowed in path: {}", acc.display()),
             ));
         }
     }

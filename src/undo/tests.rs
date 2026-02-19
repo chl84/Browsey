@@ -219,7 +219,7 @@ fn batch_rolls_back_on_failure() {
             },
         ]))
         .unwrap_err();
-    assert!(err.contains("Batch action 2 failed"));
+    assert!(err.to_string().contains("Batch action 2 failed"));
     assert!(source.exists());
     assert!(existing.exists());
     assert!(!new_dir.exists());
@@ -239,8 +239,11 @@ fn move_with_fallback_refuses_existing_destination() {
     write_file(&dest, b"dest-data");
 
     let err = move_with_fallback(&source, &dest).expect_err("existing destination should fail");
+    let err_msg = err.to_string();
     assert!(
-        err.contains("File exists") || err.contains("already exists") || err.contains("rename"),
+        err_msg.contains("File exists")
+            || err_msg.contains("already exists")
+            || err_msg.contains("rename"),
         "unexpected error: {err}"
     );
     assert!(source.exists(), "source should remain when move fails");
@@ -322,11 +325,12 @@ fn undo_failure_restores_stack() {
 
     let _ = fs::remove_file(&backup);
     let err = mgr.undo().unwrap_err();
+    let err_msg = err.to_string();
     assert!(
-        err.contains("Backup")
-            || err.contains("rename")
-            || err.contains("metadata")
-            || err.contains("does not exist")
+        err_msg.contains("Backup")
+            || err_msg.contains("rename")
+            || err_msg.contains("metadata")
+            || err_msg.contains("does not exist")
     );
     assert!(mgr.can_undo());
     assert!(!mgr.can_redo());
@@ -377,7 +381,7 @@ fn path_snapshot_detects_replaced_path() {
     write_file(&path, b"second");
 
     let err = assert_path_snapshot(&path, &snapshot).expect_err("snapshot mismatch expected");
-    assert!(err.contains("Path changed during operation"));
+    assert!(err.to_string().contains("Path changed during operation"));
 
     let _ = fs::remove_dir_all(&dir);
 }

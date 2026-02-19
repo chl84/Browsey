@@ -1,9 +1,12 @@
 pub mod providers;
 pub mod types;
+mod error;
 
 use std::fs;
 use std::path::Path;
 use types::{ExtraMetadataResult, ExtraMetadataSection};
+
+pub use error::{MetadataError, MetadataErrorCode, MetadataResult};
 
 fn classify_kind(path: &Path, meta: &fs::Metadata) -> String {
     if meta.file_type().is_symlink() {
@@ -74,9 +77,13 @@ fn classify_kind(path: &Path, meta: &fs::Metadata) -> String {
     "generic".to_string()
 }
 
-pub fn collect_extra_metadata(path: &Path) -> Result<ExtraMetadataResult, String> {
-    let meta =
-        fs::symlink_metadata(path).map_err(|e| format!("Failed to read metadata for path: {e}"))?;
+pub fn collect_extra_metadata(path: &Path) -> MetadataResult<ExtraMetadataResult> {
+    let meta = fs::symlink_metadata(path).map_err(|error| {
+        MetadataError::new(
+            MetadataErrorCode::MetadataReadFailed,
+            format!("Failed to read metadata for path: {error}"),
+        )
+    })?;
     let kind = classify_kind(path, &meta);
 
     let mut sections: Vec<ExtraMetadataSection> = Vec::new();

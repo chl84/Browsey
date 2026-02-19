@@ -11,6 +11,8 @@ use std::path::{Component, Path, PathBuf};
 #[cfg(any(target_os = "windows", not(all(unix, target_os = "linux"))))]
 use std::fs;
 
+use crate::undo::UndoResult;
+
 #[cfg(not(all(unix, target_os = "linux")))]
 use crate::fs_utils::check_no_symlink_components;
 
@@ -352,11 +354,11 @@ pub(crate) fn delete_entry_nofollow_io(path: &Path) -> Result<(), std::io::Error
 }
 
 #[cfg(all(unix, target_os = "linux"))]
-pub(super) fn open_nofollow_path_fd(path: &Path) -> Result<OwnedFd, String> {
+pub(super) fn open_nofollow_path_fd(path: &Path) -> UndoResult<OwnedFd> {
     use std::io;
 
     if !path.is_absolute() {
-        return Err(format!("Path must be absolute: {}", path.display()));
+        return Err(format!("Path must be absolute: {}", path.display()).into());
     }
 
     let root = CString::new("/").map_err(|_| "Failed to build root path".to_string())?;
@@ -371,7 +373,8 @@ pub(super) fn open_nofollow_path_fd(path: &Path) -> Result<OwnedFd, String> {
             "Failed to open root while resolving {}: {}",
             path.display(),
             io::Error::last_os_error()
-        ));
+        )
+        .into());
     }
 
     let mut current = unsafe { OwnedFd::from_raw_fd(root_fd) };
@@ -383,7 +386,8 @@ pub(super) fn open_nofollow_path_fd(path: &Path) -> Result<OwnedFd, String> {
                 return Err(format!(
                     "Parent directory components are not allowed: {}",
                     path.display()
-                ));
+                )
+                .into());
             }
             Component::Normal(seg) => {
                 let seg_name = seg.to_string_lossy().into_owned();
@@ -405,12 +409,13 @@ pub(super) fn open_nofollow_path_fd(path: &Path) -> Result<OwnedFd, String> {
                         seg_name,
                         path.display(),
                         io::Error::last_os_error()
-                    ));
+                    )
+                    .into());
                 }
                 current = unsafe { OwnedFd::from_raw_fd(fd) };
             }
             Component::Prefix(_) => {
-                return Err(format!("Unsupported path prefix: {}", path.display()));
+                return Err(format!("Unsupported path prefix: {}", path.display()).into());
             }
         }
     }

@@ -8,6 +8,10 @@ use std::sync::atomic::Ordering;
 use std::os::unix::fs::MetadataExt;
 
 use crate::{commands::CancelState, runtime_lifecycle};
+use crate::errors::api_error::ApiResult;
+
+mod error;
+use error::{map_api_result, StatusbarError, StatusbarErrorCode, StatusbarResult};
 
 /// Height hint for the status bar in the UI.
 #[allow(dead_code)]
@@ -140,13 +144,23 @@ pub async fn dir_sizes(
     cancel: tauri::State<'_, CancelState>,
     paths: Vec<String>,
     progress_event: Option<String>,
-) -> Result<DirSizeResult, String> {
+) -> ApiResult<DirSizeResult> {
+    map_api_result(dir_sizes_impl(app, cancel, paths, progress_event).await)
+}
+
+async fn dir_sizes_impl(
+    app: tauri::AppHandle,
+    cancel: tauri::State<'_, CancelState>,
+    paths: Vec<String>,
+    progress_event: Option<String>,
+) -> StatusbarResult<DirSizeResult> {
     let cancel_state = cancel.inner().clone();
-    let task = tauri::async_runtime::spawn_blocking(move || -> Result<DirSizeResult, String> {
+    let task = tauri::async_runtime::spawn_blocking(move || -> StatusbarResult<DirSizeResult> {
         let cancel_guard = progress_event
             .as_ref()
             .map(|evt| cancel_state.register(evt.clone()))
-            .transpose()?;
+            .transpose()
+            .map_err(|error| StatusbarError::from_external_message(error.to_string()))?;
         let cancel_token = cancel_guard.as_ref().map(|g| g.token());
         let mut entries = Vec::new();
         let mut total: u64 = 0;
@@ -236,6 +250,11 @@ pub async fn dir_sizes(
         })
     });
 
-    task.await
-        .map_err(|e| format!("Failed to compute directory sizes: {e}"))?
+    match task.await {
+        Ok(result) => result,
+        Err(error) => Err(StatusbarError::new(
+            StatusbarErrorCode::TaskFailed,
+            format!("Failed to compute directory sizes: {error}"),
+        )),
+    }
 }

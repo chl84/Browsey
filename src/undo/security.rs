@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::fs_utils::check_no_symlink_components;
+use crate::undo::UndoResult;
 
 use super::nofollow;
 use super::{OwnershipSnapshot, PermissionsSnapshot};
@@ -26,12 +27,12 @@ use windows_sys::Win32::Security::{
     GetSecurityDescriptorDacl, ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
 };
 
-pub(crate) fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> Result<(), String> {
+pub(crate) fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> UndoResult<()> {
     check_no_symlink_components(path)?;
     let meta_no_follow = fs::symlink_metadata(path)
         .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
     if meta_no_follow.file_type().is_symlink() {
-        return Err(format!("Symlinks are not allowed: {}", path.display()));
+        return Err(format!("Symlinks are not allowed: {}", path.display()).into());
     }
     let meta = fs::metadata(path)
         .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
@@ -65,7 +66,8 @@ pub(crate) fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> Resu
                 "Failed to update permissions for {}: Win32 error {}",
                 path.display(),
                 status
-            ));
+            )
+            .into());
         }
     }
     #[cfg(unix)]
@@ -73,12 +75,12 @@ pub(crate) fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> Resu
         use std::os::unix::fs::PermissionsExt;
         perms.set_mode(snap.mode);
     }
-    fs::set_permissions(path, perms)
-        .map_err(|e| format!("Failed to update permissions for {}: {e}", path.display()))
+    Ok(fs::set_permissions(path, perms)
+        .map_err(|e| format!("Failed to update permissions for {}: {e}", path.display()))?)
 }
 
 #[allow(dead_code)]
-pub fn permissions_snapshot(path: &Path) -> Result<PermissionsSnapshot, String> {
+pub fn permissions_snapshot(path: &Path) -> UndoResult<PermissionsSnapshot> {
     let meta = fs::metadata(path)
         .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
     let readonly = meta.permissions().readonly();
@@ -98,14 +100,14 @@ pub fn permissions_snapshot(path: &Path) -> Result<PermissionsSnapshot, String> 
 }
 
 #[allow(dead_code)]
-pub fn ownership_snapshot(path: &Path) -> Result<OwnershipSnapshot, String> {
+pub fn ownership_snapshot(path: &Path) -> UndoResult<OwnershipSnapshot> {
     #[cfg(unix)]
     {
         check_no_symlink_components(path)?;
         let meta = fs::symlink_metadata(path)
             .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
         if meta.file_type().is_symlink() {
-            return Err(format!("Symlinks are not allowed: {}", path.display()));
+            return Err(format!("Symlinks are not allowed: {}", path.display()).into());
         }
         return Ok(OwnershipSnapshot {
             uid: meta.uid(),
@@ -123,7 +125,7 @@ pub(crate) fn set_ownership_nofollow(
     path: &Path,
     uid: Option<u32>,
     gid: Option<u32>,
-) -> Result<(), String> {
+) -> UndoResult<()> {
     #[cfg(all(unix, target_os = "linux"))]
     {
         use std::io;
@@ -159,7 +161,8 @@ pub(crate) fn set_ownership_nofollow(
             path.display(),
             err,
             suffix
-        ));
+        )
+        .into());
     }
     #[cfg(all(unix, not(target_os = "linux")))]
     {
@@ -198,7 +201,8 @@ pub(crate) fn set_ownership_nofollow(
             path.display(),
             err,
             suffix
-        ));
+        )
+        .into());
     }
     #[cfg(not(unix))]
     {
@@ -208,7 +212,7 @@ pub(crate) fn set_ownership_nofollow(
 }
 
 #[cfg(all(unix, target_os = "linux"))]
-pub(crate) fn set_unix_mode_nofollow(path: &Path, mode: u32) -> Result<(), String> {
+pub(crate) fn set_unix_mode_nofollow(path: &Path, mode: u32) -> UndoResult<()> {
     use std::io;
 
     let fd = nofollow::open_nofollow_path_fd(path)?;
@@ -229,17 +233,18 @@ pub(crate) fn set_unix_mode_nofollow(path: &Path, mode: u32) -> Result<(), Strin
         "Failed to update permissions for {}: {}",
         path.display(),
         err
-    ))
+    )
+    .into())
 }
 
-pub(crate) fn apply_ownership(path: &Path, snap: &OwnershipSnapshot) -> Result<(), String> {
+pub(crate) fn apply_ownership(path: &Path, snap: &OwnershipSnapshot) -> UndoResult<()> {
     #[cfg(unix)]
     {
         check_no_symlink_components(path)?;
         let meta = fs::symlink_metadata(path)
             .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
         if meta.file_type().is_symlink() {
-            return Err(format!("Symlinks are not allowed: {}", path.display()));
+            return Err(format!("Symlinks are not allowed: {}", path.display()).into());
         }
         let current_uid = meta.uid();
         let current_gid = meta.gid();

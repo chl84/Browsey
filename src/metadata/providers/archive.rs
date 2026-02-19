@@ -1,4 +1,5 @@
 use crate::metadata::types::{ExtraMetadataField, ExtraMetadataSection};
+use crate::metadata::{MetadataError, MetadataErrorCode, MetadataResult};
 use bzip2::read::BzDecoder;
 use flate2::read::GzDecoder;
 use std::fs::File;
@@ -125,16 +126,20 @@ fn kind_label(kind: ArchiveKind) -> &'static str {
     }
 }
 
-fn zip_metrics(path: &Path) -> Result<(u64, u64), String> {
-    let file = File::open(path).map_err(|e| format!("Failed to open zip: {e}"))?;
-    let mut archive = ZipArchive::new(file).map_err(|e| format!("Failed to read zip: {e}"))?;
+fn zip_metrics(path: &Path) -> MetadataResult<(u64, u64)> {
+    let file = File::open(path)
+        .map_err(|error| MetadataError::from_external_message(format!("Failed to open zip: {error}")))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|error| MetadataError::from_external_message(format!("Failed to read zip: {error}")))?;
 
     let mut entries = 0u64;
     let mut uncompressed = 0u64;
     for idx in 0..archive.len() {
         let file = archive
             .by_index(idx)
-            .map_err(|e| format!("Failed to read zip entry: {e}"))?;
+            .map_err(|error| {
+                MetadataError::from_external_message(format!("Failed to read zip entry: {error}"))
+            })?;
         if file.is_dir() {
             continue;
         }
@@ -144,8 +149,10 @@ fn zip_metrics(path: &Path) -> Result<(u64, u64), String> {
     Ok((entries, uncompressed))
 }
 
-fn tar_metrics(path: &Path, kind: ArchiveKind) -> Result<(u64, u64), String> {
-    let file = File::open(path).map_err(|e| format!("Failed to open archive: {e}"))?;
+fn tar_metrics(path: &Path, kind: ArchiveKind) -> MetadataResult<(u64, u64)> {
+    let file = File::open(path).map_err(|error| {
+        MetadataError::from_external_message(format!("Failed to open archive: {error}"))
+    })?;
     let reader = BufReader::new(file);
     match kind {
         ArchiveKind::Tar => tar_metrics_with_reader(reader),
@@ -153,24 +160,32 @@ fn tar_metrics(path: &Path, kind: ArchiveKind) -> Result<(u64, u64), String> {
         ArchiveKind::TarBz2 => tar_metrics_with_reader(BzDecoder::new(reader)),
         ArchiveKind::TarXz => tar_metrics_with_reader(XzDecoder::new(reader)),
         ArchiveKind::TarZstd => {
-            let decoder =
-                ZstdDecoder::new(reader).map_err(|e| format!("Failed to read zstd stream: {e}"))?;
+            let decoder = ZstdDecoder::new(reader).map_err(|error| {
+                MetadataError::from_external_message(format!("Failed to read zstd stream: {error}"))
+            })?;
             tar_metrics_with_reader(decoder)
         }
-        _ => Err("Unsupported tar variant".to_string()),
+        _ => Err(MetadataError::new(
+            MetadataErrorCode::UnsupportedArchiveVariant,
+            "Unsupported tar variant",
+        )),
     }
 }
 
-fn tar_metrics_with_reader<R: Read>(reader: R) -> Result<(u64, u64), String> {
+fn tar_metrics_with_reader<R: Read>(reader: R) -> MetadataResult<(u64, u64)> {
     let mut archive = Archive::new(reader);
     let mut entries = 0u64;
     let mut uncompressed = 0u64;
 
     let iter = archive
         .entries()
-        .map_err(|e| format!("Failed to iterate tar entries: {e}"))?;
+        .map_err(|error| {
+            MetadataError::from_external_message(format!("Failed to iterate tar entries: {error}"))
+        })?;
     for entry_result in iter {
-        let entry = entry_result.map_err(|e| format!("Failed to read tar entry: {e}"))?;
+        let entry = entry_result.map_err(|error| {
+            MetadataError::from_external_message(format!("Failed to read tar entry: {error}"))
+        })?;
         let header = entry.header();
         if header.entry_type().is_dir() {
             continue;
@@ -178,7 +193,11 @@ fn tar_metrics_with_reader<R: Read>(reader: R) -> Result<(u64, u64), String> {
         entries = entries.saturating_add(1);
         let size = header
             .size()
-            .map_err(|e| format!("Failed to read tar entry size: {e}"))?;
+            .map_err(|error| {
+                MetadataError::from_external_message(format!(
+                    "Failed to read tar entry size: {error}"
+                ))
+            })?;
         uncompressed = uncompressed.saturating_add(size);
     }
     Ok((entries, uncompressed))

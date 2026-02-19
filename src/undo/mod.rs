@@ -1,12 +1,16 @@
 mod backup;
 mod engine;
+mod error;
 mod nofollow;
 mod path_checks;
 mod path_ops;
 mod security;
 mod types;
 
+use crate::errors::api_error::ApiResult;
+
 pub use backup::{cleanup_stale_backups, temp_backup_path};
+pub use error::{UndoError, UndoResult};
 #[cfg(test)]
 pub(crate) use path_ops::move_by_copy_delete_noreplace;
 pub use path_ops::move_with_fallback;
@@ -27,11 +31,11 @@ pub(crate) use path_ops::{copy_entry, delete_entry_path, is_destination_exists_e
 mod tests;
 
 #[tauri::command]
-pub fn undo_action(state: tauri::State<'_, UndoState>) -> Result<(), String> {
-    state.undo()
+pub fn undo_action(state: tauri::State<'_, UndoState>) -> ApiResult<()> {
+    error::map_api_result(state.undo())
 }
 
 #[tauri::command]
-pub fn redo_action(state: tauri::State<'_, UndoState>) -> Result<(), String> {
-    state.redo()
+pub fn redo_action(state: tauri::State<'_, UndoState>) -> ApiResult<()> {
+    error::map_api_result(state.redo())
 }

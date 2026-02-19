@@ -28,14 +28,14 @@ Goal: Migrate remaining modules from `Result<..., String>` to the new code-based
 - [x] `src/clipboard`
 - [x] `src/db`
 - [x] `src/entry`
-- [ ] `src/fs_utils`
+- [x] `src/fs_utils`
 - [x] `src/keymap`
-- [ ] `src/metadata`
+- [x] `src/metadata`
 - [x] `src/path_guard`
-- [ ] `src/statusbar`
+- [x] `src/statusbar`
 - [x] `src/tasks`
-- [ ] `src/undo`
-- [ ] `src/watcher.rs`
+- [x] `src/undo`
+- [x] `src/watcher.rs`
 
 ## Already on new flow (reference)
 
