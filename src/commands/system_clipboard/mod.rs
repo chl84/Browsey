@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::{env, path::PathBuf, process::Command};
 
 use once_cell::sync::Lazy;
 use url::Url;
@@ -23,6 +23,23 @@ static WL_PASTE_BIN: Lazy<Option<PathBuf>> =
     Lazy::new(|| crate::binary_resolver::resolve_binary("wl-paste"));
 static XCLIP_BIN: Lazy<Option<PathBuf>> =
     Lazy::new(|| crate::binary_resolver::resolve_binary("xclip"));
+
+fn is_wayland_session() -> bool {
+    env::var("XDG_SESSION_TYPE")
+        .map(|value| value.eq_ignore_ascii_case("wayland"))
+        .unwrap_or(false)
+}
+
+fn is_gnome_desktop() -> bool {
+    let current = env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    let session = env::var("DESKTOP_SESSION").unwrap_or_default();
+    let combined = format!("{current}:{session}").to_lowercase();
+    combined.contains("gnome")
+}
+
+fn should_avoid_wl_clipboard() -> bool {
+    is_wayland_session() && is_gnome_desktop()
+}
 
 fn file_uri(path: &str) -> Result<String, String> {
     let cleaned = sanitize_path_follow(path, true)?;
@@ -124,6 +141,16 @@ fn copy_paths_to_system_clipboard_impl(
         }
         s
     };
+
+    if should_avoid_wl_clipboard() {
+        // wl-clipboard may briefly steal focus on GNOME Wayland due compositor
+        // clipboard access limitations. Prefer xclip when available; otherwise
+        // degrade to a no-op (Browsey keeps its own internal clipboard state).
+        if run_xclip("x-special/gnome-copied-files", &gnome_payload).is_ok() {
+            let _ = run_xclip("text/uri-list", &uri_list);
+        }
+        return Ok(());
+    }
 
     // Write both payloads: gnome for cut/copy semantics, uri-list for compatibility.
     let mut wrote = false;
@@ -235,6 +262,30 @@ pub fn system_clipboard_paths() -> ApiResult<SystemClipboardContent> {
 }
 
 fn system_clipboard_paths_impl() -> SystemClipboardResult<SystemClipboardContent> {
+    if should_avoid_wl_clipboard() {
+        // See should_avoid_wl_clipboard(): avoid wl-paste focus side-effects on
+        // GNOME Wayland and prefer X11 clipboard bridge if present.
+        if let Some(text) = read_xclip("x-special/gnome-copied-files")
+            .map_err(SystemClipboardError::from_external_message)?
+        {
+            if let Some(content) = parse_gnome_payload(&text) {
+                return Ok(content);
+            }
+        }
+        if let Some(text) =
+            read_xclip("text/uri-list").map_err(SystemClipboardError::from_external_message)?
+        {
+            let (paths, mode) = parse_uri_list(&text);
+            if !paths.is_empty() {
+                return Ok(SystemClipboardContent { mode, paths });
+            }
+        }
+        return Err(SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardEmpty,
+            "No file paths found in system clipboard",
+        ));
+    }
+
     // Try Wayland payload first
     if let Some(text) = read_wl_paste("x-special/gnome-copied-files")
         .map_err(SystemClipboardError::from_external_message)?
@@ -313,6 +364,13 @@ pub fn clear_system_clipboard() -> ApiResult<()> {
 }
 
 fn clear_system_clipboard_impl() -> SystemClipboardResult<()> {
+    if should_avoid_wl_clipboard() {
+        if clear_with_xclip().is_ok() {
+            return Ok(());
+        }
+        return Ok(());
+    }
+
     if clear_with_wl_copy().is_ok() {
         return Ok(());
     }
