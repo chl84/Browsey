@@ -1,7 +1,6 @@
 <script lang="ts">
   // --- Imports -------------------------------------------------------------
   import { onMount, onDestroy, tick } from 'svelte'
-  import { invoke } from '@/lib/tauri'
   import { getErrorMessage } from '@/lib/error'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { get, writable } from 'svelte/store'
@@ -24,7 +23,16 @@
     clearSystemClipboard,
     pasteClipboardCmd,
     pasteClipboardPreview,
+    getSystemClipboardPaths,
   } from './features/explorer/services/clipboard'
+  import {
+    entryKind,
+    dirSizes,
+    canExtractPaths as canExtractPathsCmd,
+    extractArchive,
+    extractArchives,
+  } from './features/explorer/services/files'
+  import { fetchContextMenuActions } from './features/explorer/services/contextMenu'
   import { undoAction, redoAction } from './features/explorer/services/history'
   import { cancelTask } from './features/explorer/services/activity'
   import { deleteEntries, moveToTrashMany, purgeTrashItems } from './features/explorer/services/trash'
@@ -86,13 +94,6 @@
   import './features/explorer/ExplorerLayout.css'
 
   // --- Types --------------------------------------------------------------
-  type ExtractResult = { destination: string; skipped_symlinks: number; skipped_entries: number }
-  type ExtractBatchItem = {
-    path: string
-    ok: boolean
-    result?: ExtractResult | null
-    error?: string | null
-  }
   type ViewMode = 'list' | 'grid'
   type SearchSession = {
     submittedQuery: string
@@ -724,7 +725,7 @@
     }
 
     try {
-      const kind = await invoke<'dir' | 'file'>('entry_kind_cmd', { path: trimmed })
+      const kind = await entryKind(trimmed)
       if (kind === 'dir') {
         if (trimmed !== get(current) && !get(loading)) {
           await loadDir(trimmed)
@@ -1049,7 +1050,7 @@
           onProgress(totals.bytes, totals.items)
         })
       }
-      const result = await invoke<{ total: number; total_items: number }>('dir_sizes', { paths, progressEvent })
+      const result = await dirSizes(paths, progressEvent)
       if (token !== dirSizeAbort) {
         void cancelTask(progressEvent).catch(() => {})
         return { total: 0, items: 0 }
@@ -1723,7 +1724,7 @@
       const selectionCount = $selected.has(entry.path) ? $selected.size : 1
       const selectionPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
 
-      let actions = await invoke<ContextAction[]>('context_menu_actions', {
+      let actions = await fetchContextMenuActions<ContextAction[]>({
         count: selectionCount,
         kind: entry.kind,
         starred: Boolean(entry.starred),
@@ -1763,7 +1764,7 @@
 
     // Always attempt to sync from system clipboard first, then paste.
     try {
-      const sys = await invoke<{ mode: 'copy' | 'cut'; paths: string[] }>('system_clipboard_paths')
+      const sys = await getSystemClipboardPaths()
       if (sys.paths.length > 0) {
         await setClipboardCmd(sys.paths, sys.mode)
         const stubEntries = sys.paths.map((p) => ({
@@ -1976,7 +1977,7 @@
   const canExtractPaths = async (paths: string[]): Promise<boolean> => {
     if (paths.length === 0) return false
     try {
-      return await invoke<boolean>('can_extract_paths', { paths })
+      return await canExtractPathsCmd(paths)
     } catch {
       return false
     }
@@ -2009,13 +2010,10 @@
     try {
       if (entriesToExtract.length === 1) {
         const entry = entriesToExtract[0]
-        const result = await invoke<ExtractResult>('extract_archive', {
-          path: entry.path,
-          progressEvent,
-        })
+        const result = await extractArchive(entry.path, progressEvent)
         if (get(openDestAfterExtract) && result?.destination) {
           try {
-            const kind = await invoke<'dir' | 'file'>('entry_kind_cmd', { path: result.destination })
+            const kind = await entryKind(result.destination)
             const target = kind === 'dir' ? result.destination : parentPath(result.destination)
             await loadRaw(target, { recordHistory: true })
           } catch {
@@ -2027,10 +2025,7 @@
         const suffix = summarize(result?.skipped_symlinks ?? 0, result?.skipped_entries ?? 0)
         showToast(`Extracted to ${result.destination}${suffix}`)
       } else {
-        const result = await invoke<ExtractBatchItem[]>('extract_archives', {
-          paths: entriesToExtract.map((e) => e.path),
-          progressEvent,
-        })
+        const result = await extractArchives(entriesToExtract.map((e) => e.path), progressEvent)
         const successes = result.filter((r) => r.ok && r.result)
         const failures = result.filter((r) => !r.ok)
         // In batch extraction, keep the current location stable even if
