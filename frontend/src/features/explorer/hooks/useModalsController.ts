@@ -16,6 +16,7 @@ type Deps = {
   getCurrentPath: () => string
   loadPath: (path: string, opts?: { recordHistory?: boolean; silent?: boolean }) => Promise<void>
   parentPath: (path: string) => string
+  checkDuplicatesModal?: ReturnType<typeof createCheckDuplicatesModal>
   computeDirStats: (
     paths: string[],
     onProgress?: (bytes: number, items: number) => void,
@@ -29,6 +30,7 @@ export const useModalsController = ({
   getCurrentPath,
   loadPath,
   parentPath,
+  checkDuplicatesModal: providedCheckDuplicatesModal,
   computeDirStats,
 }: Deps) => {
   const deleteModal = createDeleteConfirmModal({ activityApi, reloadCurrent, showToast })
@@ -74,7 +76,7 @@ export const useModalsController = ({
   })
   const compressState = compressModal.state
 
-  const checkDuplicatesModal = createCheckDuplicatesModal({ parentPath })
+  const checkDuplicatesModal = providedCheckDuplicatesModal ?? createCheckDuplicatesModal({ parentPath })
   const checkDuplicatesState = checkDuplicatesModal.state
 
   const actions = {
