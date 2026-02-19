@@ -510,6 +510,8 @@ export const docsPages: DocPage[] = [
         id: 'frontend',
         title: 'Frontend (Svelte)',
         bullets: [
+          'Explorer UI composition now lives in frontend/src/features/explorer/pages/ExplorerPage.svelte, while App.svelte is a thin entry wrapper',
+          'Explorer orchestration is split into dedicated hooks (navigation, search session, file ops, context menu, input handlers) to keep feature ownership explicit',
           'frontend/src/features/explorer/components/ holds the main shell plus list/grid/sidebar/topbar/modal components',
           'frontend/src/features/explorer/hooks/ orchestrates shortcuts, selection, clipboard flow, context menus, and modal wiring',
           'frontend/src/features/explorer/services/ is the invoke boundary: UI code calls service wrappers, not invoke directly',

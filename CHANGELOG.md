@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Frontend structure split: the former monolithic `App.svelte` explorer logic is now decomposed into feature hooks (`navigation`, `search session`, `file ops`, `context menu`, `input handlers`) with `ExplorerPage.svelte` as the composition root.
 - Backend error flow migration was expanded across remaining modules, replacing string-based failures with code-based `ApiError` mapping in command and core subsystems.
 - New domain-level error modules were introduced in core areas (`fs_utils`, `metadata`, `statusbar`, `undo`) to standardize classification and reduce ad-hoc text matching.
 - Undo internals were fully migrated to typed errors and split into focused internal modules (`backup`, `engine`, `nofollow`, `path_checks`, `path_ops`, `security`, `types`, `error`) with updated tests.

@@ -2,7 +2,7 @@
   // --- Imports -------------------------------------------------------------
   import { onMount, onDestroy, tick } from 'svelte'
   import { getErrorMessage } from '@/shared/lib/error'
-  import { get, writable } from 'svelte/store'
+  import { get } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from '@/features/explorer/utils'
   import { createListState } from '@/features/explorer/stores/list.store'
   import ExplorerShell from '@/features/explorer/components/ExplorerShell.svelte'
@@ -23,14 +23,13 @@
   } from '@/features/explorer/services/clipboard.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
   import { deleteEntries, moveToTrashMany, purgeTrashItems } from '@/features/explorer/services/trash.service'
-  import type { Entry, Partition, SortField, Density } from '@/features/explorer/model/types'
+  import type { Entry, Partition, SortField } from '@/features/explorer/model/types'
   import { toast, showToast } from '@/features/explorer/hooks/useToast'
   import { createClipboard } from '@/features/explorer/hooks/useClipboard'
   import { createContextMenus } from '@/features/explorer/hooks/useContextMenus'
   import { createContextActions, type CurrentView } from '@/features/explorer/hooks/useContextActions'
   import { createSelectionBox } from '@/features/explorer/hooks/useSelectionBox'
   import { createViewSwitchAnchor } from '@/features/explorer/hooks/useViewAnchor'
-  import { moveCaret } from '@/features/explorer/helpers/navigationController'
   import { loadDefaultView, storeDefaultView } from '@/features/explorer/services/settings.service'
   import { useContextMenuBlocker } from '@/features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from '@/features/explorer/hooks/useActivity'
@@ -502,8 +501,6 @@
   let gridRowHeight = 126
   let gridGap = 6
   const GRID_OVERSCAN = 4
-  let cursorX = 0
-  let cursorY = 0
 
   let viewAnchor = createViewSwitchAnchor({
     filteredEntries,
