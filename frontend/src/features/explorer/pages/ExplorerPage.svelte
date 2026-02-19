@@ -11,6 +11,7 @@
   import { createGlobalShortcuts } from '@/features/explorer/hooks/useShortcuts'
   import { createBookmarkModal } from '@/features/explorer/hooks/useBookmarkModal'
   import { useExplorerDragDrop } from '@/features/explorer/hooks/useExplorerDragDrop'
+  import { useExplorerContextMenuOps } from '@/features/explorer/hooks/useExplorerContextMenuOps'
   import { useModalsController } from '@/features/explorer/hooks/useModalsController'
   import { useGridVirtualizer } from '@/features/explorer/hooks/useGridVirtualizer'
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
@@ -19,19 +20,16 @@
   import {
     copyPathsToSystemClipboard,
   } from '@/features/explorer/services/clipboard.service'
-  import { fetchContextMenuActions } from '@/features/explorer/services/contextMenu.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
   import { deleteEntries, moveToTrashMany, purgeTrashItems } from '@/features/explorer/services/trash.service'
   import type { Entry, Partition, SortField, Density } from '@/features/explorer/model/types'
   import { toast, showToast } from '@/features/explorer/hooks/useToast'
   import { createClipboard } from '@/features/explorer/hooks/useClipboard'
   import { createContextMenus } from '@/features/explorer/hooks/useContextMenus'
-  import type { ContextAction } from '@/features/explorer/hooks/useContextMenus'
   import { createContextActions, type CurrentView } from '@/features/explorer/hooks/useContextActions'
   import { createSelectionBox } from '@/features/explorer/hooks/useSelectionBox'
   import { hitTestGridVirtualized } from '@/features/explorer/helpers/lassoHitTest'
   import { createViewSwitchAnchor } from '@/features/explorer/hooks/useViewAnchor'
-  import { ensureSelectionBeforeMenu } from '@/features/explorer/helpers/contextMenuHelpers'
   import { isScrollbarClick } from '@/features/explorer/helpers/scrollbar'
   import { moveCaret } from '@/features/explorer/helpers/navigationController'
   import { loadDefaultView, storeDefaultView } from '@/features/explorer/services/settings.service'
@@ -45,18 +43,11 @@
   import { useExplorerSearchSession } from '@/features/explorer/hooks/useExplorerSearchSession'
   import { createTextContextMenu } from '@/features/explorer/hooks/useTextContextMenu'
   import { createViewObservers } from '@/features/explorer/hooks/useViewObservers'
-  import {
-    buildNetworkEntryContextActions,
-    copyTextToSystemClipboard,
-    isMountUri,
-    networkBlankContextActions,
-  } from '@/features/network'
   import { loadShortcuts, setShortcutBinding } from '@/features/shortcuts/service'
   import {
     DEFAULT_SHORTCUTS,
     matchesAnyShortcut,
     matchesShortcut,
-    shortcutFor,
     type ShortcutBinding,
     type ShortcutCommandId,
   } from '@/features/shortcuts/keymap'
@@ -300,33 +291,6 @@
 
   const isShortcut = (event: KeyboardEvent, commandId: ShortcutCommandId) => {
     return matchesShortcut(event, shortcutBindings, commandId)
-  }
-
-  const commandForContextAction = (actionId: string): ShortcutCommandId | null => {
-    if (actionId === 'cut') return 'cut'
-    if (actionId === 'copy') return 'copy'
-    if (actionId === 'paste') return 'paste'
-    if (actionId === 'rename') return 'rename'
-    if (actionId === 'properties') return 'properties'
-    if (actionId === 'move-trash') return 'delete_to_wastebasket'
-    if (actionId === 'delete-permanent') return 'delete_permanently'
-    if (actionId === 'open-console') return 'open_console'
-    return null
-  }
-
-  const applyContextMenuShortcuts = (actions: ContextAction[]): ContextAction[] => {
-    return actions.map((action) => {
-      const commandId = commandForContextAction(action.id)
-      const nextShortcut = commandId
-        ? shortcutFor(shortcutBindings, commandId)?.accelerator ?? action.shortcut
-        : action.shortcut
-      const nextChildren = action.children ? applyContextMenuShortcuts(action.children) : undefined
-      return {
-        ...action,
-        ...(nextShortcut ? { shortcut: nextShortcut } : {}),
-        ...(nextChildren ? { children: nextChildren } : {}),
-      }
-    })
   }
 
   const applyShortcutBindings = (next: ShortcutBinding[]) => {
@@ -1313,45 +1277,6 @@
     closeBookmarkModal()
   }
 
-  const loadAndOpenContextMenu = async (entry: Entry, event: MouseEvent) => {
-    event.preventDefault()
-    event.stopPropagation()
-    try {
-      const selectionCount = $selected.has(entry.path) ? $selected.size : 1
-      const selectionPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
-
-      let actions = await fetchContextMenuActions<ContextAction[]>({
-        count: selectionCount,
-        kind: entry.kind,
-        starred: Boolean(entry.starred),
-        view: currentView,
-        clipboardHasItems: clipboardPaths.size > 0,
-        selectionPaths,
-      })
-      actions = actions.filter((action) => action.id !== 'new-folder')
-      // Drop any leading dividers that can appear after filtering
-      while (actions.length > 0 && actions[0].id.startsWith('divider')) {
-        actions.shift()
-      }
-      if (currentView === 'network') {
-        const networkActions = await buildNetworkEntryContextActions(entry.path, selectionCount)
-        if (networkActions) {
-          actions = networkActions
-        }
-      }
-      const inSearch = isSearchSessionEnabled
-      if (inSearch && selectionCount === 1 && !actions.some((a) => a.id === 'open-location')) {
-        actions.splice(1, 0, { id: 'open-location', label: 'Open item location' })
-      }
-      actions = applyContextMenuShortcuts(actions)
-      if (actions.length > 0) {
-        openContextMenu(entry, actions, event.clientX, event.clientY)
-      }
-    } catch (err) {
-      console.error('Failed to load context menu actions', err)
-    }
-  }
-
   const reloadCurrent = async () => {
     if (currentView === 'recent') {
       await loadRecent(false, false, { resetScroll: false })
@@ -1526,6 +1451,8 @@
     resetNewFileTypeHint()
   }
 
+  let pendingOpenCandidate: { path: string; atMs: number } | null = null
+
   const contextActions = createContextActions({
     getSelectedPaths: () => Array.from($selected),
     getSelectedSet: () => $selected,
@@ -1560,6 +1487,53 @@
       void openEntryLocation(entry)
     },
   })
+  const contextMenuOps = useExplorerContextMenuOps({
+    currentView: () => currentView,
+    isSearchSessionEnabled: () => isSearchSessionEnabled,
+    shortcutBindings: () => shortcutBindings,
+    getCurrentPath: () => get(current),
+    getContextMenuEntry: () => get(contextMenu).entry,
+    getClipboardPathCount: () => clipboardPaths.size,
+    getSelectedSet: () => get(selected),
+    getFilteredEntries: () => get(filteredEntries),
+    setSelection: (paths, anchor, caret) => {
+      selected.set(paths)
+      anchorIndex.set(anchor)
+      caretIndex.set(caret)
+    },
+    openContextMenu,
+    closeContextMenu,
+    openBlankContextMenu,
+    closeBlankContextMenu,
+    loadNetwork,
+    openPartition,
+    loadPartitions,
+    pasteIntoCurrent,
+    openNewFolderModal: () => {
+      newFolderName = newFolderModal.open()
+    },
+    openNewFileModal: () => {
+      newFileName = newFileModal.open()
+    },
+    openAdvancedRename: (entries) => {
+      advancedRenameModal.open(entries)
+    },
+    startRename: (entry) => {
+      renameValue = entry.name
+      modalActions.startRename(entry)
+    },
+    contextActions,
+    showToast,
+    onBeforeRowContextMenu: () => {
+      pendingOpenCandidate = null
+    },
+  })
+  const {
+    handleRowContextMenu,
+    handleBlankContextMenu,
+    handleBlankContextAction,
+    handleContextSelect,
+  } = contextMenuOps
 
   const copyCheckDuplicatesList = async () => {
     const list = $checkDuplicatesState.duplicates
@@ -1612,8 +1586,6 @@
     }
     open(entry)
   }
-
-  let pendingOpenCandidate: { path: string; atMs: number } | null = null
 
   const isOpenClickCandidate = (event: MouseEvent) =>
     event.button === 0 &&
@@ -1853,154 +1825,6 @@
     }
     pendingOpenCandidate = null
     handleRowsClick(event)
-  }
-
-  // --- Context menus ------------------------------------------------------
-  const handleRowContextMenu = (entry: Entry, event: MouseEvent) => {
-    pendingOpenCandidate = null
-    const idx = get(filteredEntries).findIndex((e) => e.path === entry.path)
-    ensureSelectionBeforeMenu($selected, entry.path, idx, (paths, anchor, caret) => {
-      selected.set(paths)
-      anchorIndex.set(anchor)
-      caretIndex.set(caret)
-    })
-    void loadAndOpenContextMenu(entry, event)
-  }
-
-  const handleBlankContextMenu = (event: MouseEvent) => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (currentView === 'network') {
-      selected.set(new Set())
-      anchorIndex.set(null)
-      caretIndex.set(null)
-      openBlankContextMenu(networkBlankContextActions(), event.clientX, event.clientY)
-      return
-    }
-    if (currentView !== 'dir') {
-      selected.set(new Set())
-      anchorIndex.set(null)
-      caretIndex.set(null)
-      closeBlankContextMenu()
-      return
-    }
-    const hasClipboardItems = clipboardPaths.size > 0
-    const openConsoleShortcut =
-      shortcutFor(shortcutBindings, 'open_console')?.accelerator ?? 'Ctrl+T'
-    const pasteShortcut =
-      shortcutFor(shortcutBindings, 'paste')?.accelerator ?? 'Ctrl+V'
-    selected.set(new Set())
-    anchorIndex.set(null)
-    caretIndex.set(null)
-    const actions: ContextAction[] = [
-      { id: 'new-file', label: 'New File…' },
-      { id: 'new-folder', label: 'New Folder…' },
-      { id: 'open-console', label: 'Open in console', shortcut: openConsoleShortcut },
-    ]
-    if (hasClipboardItems) {
-      actions.push({ id: 'paste', label: 'Paste', shortcut: pasteShortcut })
-    }
-    openBlankContextMenu(actions, event.clientX, event.clientY)
-  }
-
-  const handleBlankContextAction = async (id: string) => {
-    if (id === 'refresh-network') {
-      closeBlankContextMenu()
-      if (currentView === 'network') {
-        await loadNetwork(false, { resetScroll: false, forceRefresh: true })
-      }
-      return
-    }
-    if (currentView !== 'dir') return
-    closeBlankContextMenu()
-    if (id === 'new-folder') {
-      newFolderName = newFolderModal.open()
-      return
-    }
-    if (id === 'new-file') {
-      newFileName = newFileModal.open()
-      return
-    }
-    if (id === 'open-console') {
-      try {
-        await openConsole(get(current))
-      } catch (err) {
-        showToast(`Open console failed: ${getErrorMessage(err)}`)
-      }
-      return
-    }
-    if (id === 'paste') {
-      await pasteIntoCurrent()
-    }
-  }
-
-  const handleContextSelect = async (id: string) => {
-    const entry = $contextMenu.entry
-    closeContextMenu()
-    if (entry && id === 'copy-network-address') {
-      const selectedPaths = $selected.has(entry.path) ? Array.from($selected) : [entry.path]
-      const uriFlags = await Promise.all(selectedPaths.map((path) => isMountUri(path)))
-      const payload = selectedPaths.filter((_, idx) => uriFlags[idx]).join('\n')
-      const result = await copyTextToSystemClipboard(payload || entry.path)
-      if (result.ok) {
-        showToast(selectedPaths.length > 1 ? 'Server addresses copied' : 'Server address copied', 1500)
-      } else {
-        showToast(`Copy failed: ${result.error}`)
-      }
-      return
-    }
-    if (entry && id === 'open-network-target') {
-      await openPartition(entry.path)
-      return
-    }
-    if (entry && id === 'disconnect-network') {
-      try {
-        await ejectDrive(entry.path)
-        await loadPartitions({ forceNetworkRefresh: true })
-        if (currentView === 'network') {
-          await loadNetwork(false, { resetScroll: false, forceRefresh: true })
-        }
-        showToast('Disconnected')
-      } catch (err) {
-        showToast(`Disconnect failed: ${getErrorMessage(err)}`)
-      }
-      return
-    }
-    if (id === 'new-folder') {
-      if (currentView !== 'dir') {
-        showToast('Cannot create folder here')
-        return
-      }
-      newFolderName = newFolderModal.open()
-      return
-    }
-    if (id === 'new-file') {
-      if (currentView !== 'dir') {
-        showToast('Cannot create file here')
-        return
-      }
-      newFileName = newFileModal.open()
-      return
-    }
-    if (id === 'rename-advanced') {
-      const selectedPaths = $selected.size > 0 ? Array.from($selected) : entry ? [entry.path] : []
-      const entries =
-        selectedPaths.length > 0
-          ? (() => {
-              const selectedPathSet = new Set(selectedPaths)
-              return $filteredEntries.filter((e) => selectedPathSet.has(e.path))
-            })()
-          : entry
-            ? [entry]
-            : []
-      if (entries.length > 1) {
-        advancedRenameModal.open(entries)
-      } else {
-        modalActions.startRename(entry!)
-      }
-      return
-    }
-    await contextActions(id, entry)
   }
 
   const {
