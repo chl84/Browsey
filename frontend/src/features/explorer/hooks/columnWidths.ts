@@ -1,5 +1,5 @@
 import { get, type Writable } from 'svelte/store'
-import type { Column } from '../types'
+import type { Column } from '../model/types'
 
 export const createColumnResize = (
   cols: Writable<Column[]>,

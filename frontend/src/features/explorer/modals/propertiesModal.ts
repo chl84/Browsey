@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store'
 import { invoke } from '@/shared/lib/tauri'
-import type { Entry } from '../types'
+import type { Entry } from '../model/types'
 
 type AccessBit = boolean | 'mixed'
 type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }

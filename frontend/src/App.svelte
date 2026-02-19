@@ -36,7 +36,7 @@
   import { undoAction, redoAction } from './features/explorer/services/history'
   import { cancelTask } from './features/explorer/services/activity'
   import { deleteEntries, moveToTrashMany, purgeTrashItems } from './features/explorer/services/trash'
-  import type { Entry, Partition, SortField, Density } from './features/explorer/types'
+  import type { Entry, Partition, SortField, Density } from './features/explorer/model/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
   import { setClipboardState, clearClipboardState } from './features/explorer/stores/clipboardState'
@@ -49,7 +49,7 @@
   import { ensureSelectionBeforeMenu } from './features/explorer/helpers/contextMenuHelpers'
   import { isScrollbarClick } from './features/explorer/helpers/scrollbar'
   import { moveCaret } from './features/explorer/helpers/navigationController'
-  import { createSelectionMemory } from './features/explorer/selectionMemory'
+  import { createSelectionMemory } from './features/explorer/model/selectionMemory'
   import { loadDefaultView, storeDefaultView } from './features/explorer/services/settings'
   import { createGridKeyboardHandler } from './features/explorer/hooks/useGridHandlers'
   import { useContextMenuBlocker } from './features/explorer/hooks/useContextMenuBlocker'
@@ -75,7 +75,7 @@
     type ShortcutCommandId,
   } from './features/shortcuts/keymap'
   import DragGhost from './shared/ui/DragGhost.svelte'
-  import TextContextMenu from './shared/ui/TextContextMenu.svelte'
+  import TextContextMenu from './features/explorer/components/TextContextMenu.svelte'
   import {
     checkDuplicatesStream,
     type DuplicateScanProgress,

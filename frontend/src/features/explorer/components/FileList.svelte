@@ -3,7 +3,7 @@
   import FileRow from './FileRow.svelte'
   import SelectionBox from '../../../shared/ui/SelectionBox.svelte'
   import FileListColumnFilters from './FileListColumnFilters.svelte'
-  import type { Column, Entry, SortDirection, SortField, ListingFacets } from '../types'
+  import type { Column, Entry, SortDirection, SortField, ListingFacets } from '../model/types'
 
   export let cols: Column[] = []
   export let gridTemplate = ''

@@ -1,9 +1,9 @@
 <script lang="ts">
   import SelectionBox from '../../../shared/ui/SelectionBox.svelte'
   import { iconPath as assetIconPath, formatSize, formatItems } from '../utils'
-  import { iconPath as iconPathById } from '../icons'
-  import type { Entry } from '../types'
-  import { fullNameTooltip } from '../fullNameTooltip'
+  import { iconPath as iconPathById } from '../helpers/icons'
+  import type { Entry } from '../model/types'
+  import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import { createThumbnailLoader } from '../thumbnailLoader'
   import { onDestroy } from 'svelte'
   import { convertFileSrc } from '@/shared/lib/tauri'

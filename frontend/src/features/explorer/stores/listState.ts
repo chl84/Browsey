@@ -1,6 +1,6 @@
 import { get, writable } from 'svelte/store'
-import { clampIndex, clearSelection, selectRange } from '../selection'
-import type { Entry } from '../types'
+import { clampIndex, clearSelection, selectRange } from '../model/selection'
+import type { Entry } from '../model/types'
 import { applyClickSelection } from '../helpers/selectionController'
 import { isScrollbarClick } from '../helpers/scrollbar'
 

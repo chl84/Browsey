@@ -6,7 +6,7 @@ import { createNativeFileDrop } from './useNativeFileDrop'
 import { normalizePath, parentPath } from '../utils'
 import { resolveDropClipboardMode, setClipboardCmd } from '../services/clipboard'
 import { startNativeFileDrag } from '../services/nativeDrag'
-import type { Entry } from '../types'
+import type { Entry } from '../model/types'
 import type { CurrentView } from './useContextActions'
 
 type Deps = {

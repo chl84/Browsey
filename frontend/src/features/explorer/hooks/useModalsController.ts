@@ -7,7 +7,7 @@ import { createNewFolderModal } from '../modals/newFolderModal'
 import { createNewFileModal } from '../modals/newFileModal'
 import { createCompressModal } from '../modals/compressModal'
 import { createCheckDuplicatesModal } from '../modals/checkDuplicatesModal'
-import type { Entry } from '../types'
+import type { Entry } from '../model/types'
 
 type Deps = {
   activityApi: ReturnType<typeof import('./useActivity').createActivity>

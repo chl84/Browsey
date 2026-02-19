@@ -1,4 +1,4 @@
-import type { Partition } from './types'
+import type { Partition } from './model/types'
 
 export const iconPath = (file: string) => `/icons/scalable/${file}`
 

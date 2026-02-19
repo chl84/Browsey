@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store'
-import type { Entry } from '../types'
+import type { Entry } from '../model/types'
 import { renameEntry } from '../services/files'
 
 type Deps = {

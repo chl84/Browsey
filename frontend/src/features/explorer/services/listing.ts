@@ -1,5 +1,5 @@
 import { invoke } from '@/shared/lib/tauri'
-import type { Listing, ListingFacets, Partition, SortField, SortDirection } from '../types'
+import type { Listing, ListingFacets, Partition, SortField, SortDirection } from '../model/types'
 
 export type FacetScope = 'dir' | 'recent' | 'starred' | 'trash'
 

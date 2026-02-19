@@ -1,7 +1,7 @@
 <script lang="ts">
   import { iconPath as assetIconPath } from '../utils'
-  import { iconPath as iconPathById } from '../icons'
-  import type { Entry } from '../types'
+  import { iconPath as iconPathById } from '../helpers/icons'
+  import type { Entry } from '../model/types'
 
   const readOnlyIcon = assetIconPath('status/eye-svgrepo-com.svg')
   const lockIcon = assetIconPath('status/padlock.svg')

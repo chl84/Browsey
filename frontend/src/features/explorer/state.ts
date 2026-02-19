@@ -13,7 +13,7 @@ import type {
   DefaultSortField,
   Density,
   ListingFacets,
-} from './types'
+} from './model/types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files'
 import {

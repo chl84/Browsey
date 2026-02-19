@@ -1,7 +1,7 @@
 <script lang="ts">
   import ColumnFilterMenu from './ColumnFilterMenu.svelte'
   import ContextMenu from './ContextMenu.svelte'
-  import type { Entry, FilterOption, ListingFacets, SortField } from '../types'
+  import type { Entry, FilterOption, ListingFacets, SortField } from '../model/types'
   import { nameBucket, nameFilterLabel, nameFilterRank } from '../filters/nameFilters'
   import { modifiedBucket, modifiedFilterRank, sizeBucket, sizeFilterRank, typeLabel } from '../filters/columnBuckets'
 

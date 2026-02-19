@@ -1,5 +1,5 @@
 import { getErrorMessage } from '@/shared/lib/error'
-import type { Entry } from '../types'
+import type { Entry } from '../model/types'
 import type { ClipboardApi } from './useClipboard'
 import { copyPathsToSystemClipboard } from '../services/clipboard'
 import {

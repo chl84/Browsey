@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FilterOption } from '../types'
+  import type { FilterOption } from '../model/types'
 
   export let open = false
   export let loading = false
