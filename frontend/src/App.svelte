@@ -14,9 +14,9 @@
   import { useExplorerDragDrop } from './features/explorer/hooks/useExplorerDragDrop'
   import { useModalsController } from './features/explorer/hooks/useModalsController'
   import { useGridVirtualizer } from './features/explorer/hooks/useGridVirtualizer'
-  import { addBookmark, removeBookmark } from './features/explorer/services/bookmarks'
-  import { ejectDrive } from './features/explorer/services/drives'
-  import { openConsole } from './features/explorer/services/console'
+  import { addBookmark, removeBookmark } from './features/explorer/services/bookmarks.service'
+  import { ejectDrive } from './features/explorer/services/drives.service'
+  import { openConsole } from './features/explorer/services/console.service'
   import {
     copyPathsToSystemClipboard,
     setClipboardCmd,
@@ -24,18 +24,18 @@
     pasteClipboardCmd,
     pasteClipboardPreview,
     getSystemClipboardPaths,
-  } from './features/explorer/services/clipboard'
+  } from './features/explorer/services/clipboard.service'
   import {
     entryKind,
     dirSizes,
     canExtractPaths as canExtractPathsCmd,
     extractArchive,
     extractArchives,
-  } from './features/explorer/services/files'
-  import { fetchContextMenuActions } from './features/explorer/services/contextMenu'
-  import { undoAction, redoAction } from './features/explorer/services/history'
-  import { cancelTask } from './features/explorer/services/activity'
-  import { deleteEntries, moveToTrashMany, purgeTrashItems } from './features/explorer/services/trash'
+  } from './features/explorer/services/files.service'
+  import { fetchContextMenuActions } from './features/explorer/services/contextMenu.service'
+  import { undoAction, redoAction } from './features/explorer/services/history.service'
+  import { cancelTask } from './features/explorer/services/activity.service'
+  import { deleteEntries, moveToTrashMany, purgeTrashItems } from './features/explorer/services/trash.service'
   import type { Entry, Partition, SortField, Density } from './features/explorer/model/types'
   import { toast, showToast } from './features/explorer/hooks/useToast'
   import { createClipboard } from './features/explorer/hooks/useClipboard'
@@ -50,7 +50,7 @@
   import { isScrollbarClick } from './features/explorer/helpers/scrollbar'
   import { moveCaret } from './features/explorer/helpers/navigationController'
   import { createSelectionMemory } from './features/explorer/model/selectionMemory'
-  import { loadDefaultView, storeDefaultView } from './features/explorer/services/settings'
+  import { loadDefaultView, storeDefaultView } from './features/explorer/services/settings.service'
   import { createGridKeyboardHandler } from './features/explorer/hooks/useGridHandlers'
   import { useContextMenuBlocker } from './features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from './features/explorer/hooks/useActivity'
@@ -79,13 +79,13 @@
   import {
     checkDuplicatesStream,
     type DuplicateScanProgress,
-  } from './features/explorer/services/duplicates'
+  } from './features/explorer/services/duplicates.service'
   import {
     clearBookmarks,
     clearRecents,
     clearStars,
     clearThumbnailCache,
-  } from './features/explorer/services/data'
+  } from './features/explorer/services/data.service'
   import { createNewFileTypeHint } from './features/explorer/hooks/useNewFileTypeHint'
   import ConflictModal from './shared/ui/ConflictModal.svelte'
   import SettingsModal from './features/settings/SettingsModal.svelte'

@@ -1,7 +1,7 @@
 import { getErrorMessage } from '@/shared/lib/error'
 import { clipboardState, setClipboardPathsState, clearClipboardState } from '../stores/clipboardState'
 import type { Entry } from '../model/types'
-import { setClipboardCmd, pasteClipboardCmd } from '../services/clipboard'
+import { setClipboardCmd, pasteClipboardCmd } from '../services/clipboard.service'
 
 type Result = { ok: true } | { ok: false; error: string }
 type ClipboardMode = 'copy' | 'cut'

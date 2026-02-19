@@ -1,7 +1,7 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { get, writable } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
-import { cancelTask } from '../services/activity'
+import { cancelTask } from '../services/activity.service'
 
 export type ActivityState = {
   label: string

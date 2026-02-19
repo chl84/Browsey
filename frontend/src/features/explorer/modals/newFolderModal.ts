@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
-import { createFolder } from '../services/files'
+import { createFolder } from '../services/files.service'
 
 type Deps = {
   getCurrentPath: () => string | null

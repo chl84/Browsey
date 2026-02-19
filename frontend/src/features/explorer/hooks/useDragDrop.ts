@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store'
 import { onDestroy } from 'svelte'
-import { setClipboardCmd, pasteClipboardCmd } from '../services/clipboard'
+import { setClipboardCmd, pasteClipboardCmd } from '../services/clipboard.service'
 
 export type DragState = {
   dragging: boolean
