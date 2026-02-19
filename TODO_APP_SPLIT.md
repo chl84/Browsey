@@ -88,9 +88,9 @@ Acceptance:
 Target from current `App.svelte` sections:
 - `loadAndOpenContextMenu`, blank context menu open/select, row context menu delegates.
 
-- [ ] Add `frontend/src/features/explorer/hooks/useExplorerContextMenuOps.ts`.
-- [ ] Reuse `createContextMenus` and `createContextActions`; avoid parallel abstractions.
-- [ ] Run step-local check:
+- [x] Add `frontend/src/features/explorer/hooks/useExplorerContextMenuOps.ts`.
+- [x] Reuse `createContextMenus` and `createContextActions`; avoid parallel abstractions.
+- [x] Run step-local check:
   - `rg -n "const (loadAndOpenContextMenu|handleBlankContextMenu|handleBlankContextAction|handleContextSelect) =" frontend/src/features/explorer/pages/ExplorerPage.svelte` returns empty.
 
 Acceptance:
@@ -138,6 +138,6 @@ Acceptance:
 - [x] Step 4B complete
 - [x] Step 4C complete
 - [x] Step 4D complete
-- [ ] Step 5 complete
+- [x] Step 5 complete
 - [ ] Step 6 complete
 - [ ] Step 7 complete
