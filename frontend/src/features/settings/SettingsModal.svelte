@@ -2,6 +2,7 @@
   import ModalShell from '../../ui/ModalShell.svelte'
   import ConfirmActionModal from '../../ui/ConfirmActionModal.svelte'
   import ComboBox, { type ComboOption } from '../../ui/ComboBox.svelte'
+  import { getErrorMessage } from '@/lib/error'
   import { onMount, onDestroy } from 'svelte'
   import type { DefaultSortField, Density } from '../explorer/types'
   import {
@@ -380,7 +381,7 @@
       }
       clearTarget = null
     } catch (err) {
-      clearError = err instanceof Error ? err.message : String(err)
+      clearError = getErrorMessage(err)
     } finally {
       clearBusy = false
     }
@@ -418,7 +419,7 @@
       await onChangeShortcut(commandId, accelerator)
       shortcutCaptureId = null
     } catch (err) {
-      shortcutCaptureError = err instanceof Error ? err.message : String(err)
+      shortcutCaptureError = getErrorMessage(err)
     } finally {
       shortcutCaptureBusy = false
     }

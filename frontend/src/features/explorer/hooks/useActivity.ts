@@ -1,5 +1,6 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { get, writable } from 'svelte/store'
+import { getErrorMessage } from '@/lib/error'
 import { cancelTask } from '../services/activity'
 
 export type ActivityState = {
@@ -96,7 +97,7 @@ export const createActivity = (opts: Options = {}) => {
     try {
       await cancelTask(eventName)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       onError?.(`Cancel failed: ${msg}`)
       clearNow()
       await cleanup()

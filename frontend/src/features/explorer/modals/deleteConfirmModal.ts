@@ -1,4 +1,5 @@
 import { writable, get } from 'svelte/store'
+import { getErrorMessage } from '@/lib/error'
 import type { Entry } from '../types'
 import { deleteEntries, purgeTrashItems } from '../services/trash'
 
@@ -48,7 +49,7 @@ export const createDeleteConfirmModal = (deps: Deps) => {
       }
       await reloadCurrent()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       console.error('Failed to delete', err)
       showToast(`Delete failed: ${msg}`)
     } finally {

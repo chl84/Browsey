@@ -1,4 +1,5 @@
 import { listen } from '@tauri-apps/api/event'
+import { getErrorMessage } from '@/lib/error'
 import type { ShortcutBinding } from '../../shortcuts/keymap'
 
 type ViewMode = 'list' | 'grid'
@@ -47,7 +48,7 @@ export const createAppLifecycle = (deps: Deps) => {
     }
     const handleRejection = (event: PromiseRejectionEvent) => {
       const reason = event.reason
-      const msg = reason instanceof Error ? reason.message : String(reason)
+      const msg = getErrorMessage(reason)
       console.error('Unhandled rejection', reason)
       deps.onErrorToast(`Error: ${msg}`)
     }

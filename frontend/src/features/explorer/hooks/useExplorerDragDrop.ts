@@ -1,5 +1,6 @@
 import { onDestroy } from 'svelte'
 import { get, writable } from 'svelte/store'
+import { getErrorMessage } from '@/lib/error'
 import { useDragDrop } from './useDragDrop'
 import { createNativeFileDrop } from './useNativeFileDrop'
 import { normalizePath, parentPath } from '../utils'
@@ -44,7 +45,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
             deps.showToast(`Pasted ${paths.length} item${paths.length === 1 ? '' : 's'}`)
           }
         } catch (err) {
-          deps.showToast(`Drop failed: ${err instanceof Error ? err.message : String(err)}`)
+          deps.showToast(`Drop failed: ${getErrorMessage(err)}`)
         }
         return
       }
@@ -222,7 +223,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
       await setClipboardCmd(sourcePaths, mode)
       await deps.handlePasteOrMove(entry.path)
     } catch (err) {
-      deps.showToast(`Drop failed: ${err instanceof Error ? err.message : String(err)}`)
+      deps.showToast(`Drop failed: ${getErrorMessage(err)}`)
     } finally {
       handleRowDragEnd()
     }
@@ -261,7 +262,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
       await setClipboardCmd(sourcePaths, mode)
       await deps.handlePasteOrMove(path)
     } catch (err) {
-      deps.showToast(`Drop failed: ${err instanceof Error ? err.message : String(err)}`)
+      deps.showToast(`Drop failed: ${getErrorMessage(err)}`)
     } finally {
       handleRowDragEnd()
     }

@@ -1,5 +1,6 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/tauri'
 import { writable, get } from 'svelte/store'
+import { getErrorMessage } from '@/lib/error'
 import type { Entry } from '../types'
 
 type ActivityApi = {
@@ -69,7 +70,7 @@ const open = (entries: Entry[], defaultBase: string) => {
       showToast(`Created ${dest}`)
       return true
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       if (msg.toLowerCase().includes('cancelled')) {
         state.update((s) => ({ ...s, error: '' }))
         close()

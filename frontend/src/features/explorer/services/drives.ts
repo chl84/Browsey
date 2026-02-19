@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/tauri'
 
 export const ejectDrive = (path: string) => invoke<void>('eject_drive', { path })
 

@@ -1,3 +1,5 @@
+import { getErrorMessage } from '@/lib/error'
+
 type CopyResult = { ok: true } | { ok: false; error: string }
 
 const fallbackCopyText = (value: string): CopyResult => {
@@ -20,7 +22,7 @@ const fallbackCopyText = (value: string): CopyResult => {
     }
     return { ok: true }
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return { ok: false, error: getErrorMessage(err) }
   }
 }
 
@@ -35,4 +37,3 @@ export const copyTextToSystemClipboard = async (value: string): Promise<CopyResu
   }
   return fallbackCopyText(value)
 }
-

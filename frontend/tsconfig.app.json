@@ -5,6 +5,10 @@
     "target": "ES2022",
     "useDefineForClassFields": true,
     "module": "ESNext",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "types": ["svelte", "vite/client"],
     "noEmit": true,
     /**

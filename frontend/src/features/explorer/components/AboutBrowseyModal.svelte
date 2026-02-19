@@ -1,5 +1,6 @@
 <script lang="ts">
   import ModalShell from '../../../ui/ModalShell.svelte'
+  import { getErrorMessage } from '@/lib/error'
   import { loadAboutInfo, type AboutInfo } from '../services/about'
 
   export let open = false
@@ -30,7 +31,7 @@
     try {
       info = await loadAboutInfo()
     } catch (err) {
-      loadError = err instanceof Error ? err.message : String(err)
+      loadError = getErrorMessage(err)
     } finally {
       loading = false
     }

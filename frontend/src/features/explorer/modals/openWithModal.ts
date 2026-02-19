@@ -1,4 +1,5 @@
 import { writable, get } from 'svelte/store'
+import { getErrorMessage } from '@/lib/error'
 import type { Entry } from '../types'
 import type { OpenWithApp, OpenWithChoice } from '../services/openWith'
 import { fetchOpenWithApps, openWithSelection, defaultOpenWithApp } from '../services/openWith'
@@ -53,7 +54,7 @@ export const createOpenWithModal = (deps: Deps) => {
       state.update((s) => ({
         ...s,
         apps: [defaultOpenWithApp],
-        error: err instanceof Error ? err.message : String(err),
+        error: getErrorMessage(err),
       }))
     } finally {
       if (requestId === loadId) {
@@ -93,7 +94,7 @@ export const createOpenWithModal = (deps: Deps) => {
     } catch (err) {
       state.update((s) => ({
         ...s,
-        error: err instanceof Error ? err.message : String(err),
+        error: getErrorMessage(err),
       }))
     } finally {
       state.update((s) => ({ ...s, submitting: false }))
