@@ -496,12 +496,12 @@ export const docsPages: DocPage[] = [
         title: 'Backend (Rust / Tauri Commands)',
         bullets: [
           'src/main.rs wires app startup, command registration, event handlers, and shared runtime state',
-          'src/commands/ is capability-split: listing/fs/search/permissions/meta/settings/keymap/library/open_with/system_clipboard/tasks/console',
-          'Filesystem command internals are decomposed under src/commands/fs/ (delete/trash/path-guard/open/gvfs helpers) to keep critical paths isolated and testable',
+          'src/commands/ is capability-split into focused domains (for example listing/fs/search/permissions/rename/network/open_with/system_clipboard/settings/library)',
+          'Filesystem command internals are decomposed under src/commands/fs/ (delete/trash/open/error/platform helpers) to keep critical paths isolated and testable',
           'Long-running pipelines are isolated in submodules (src/commands/duplicates/, src/commands/decompress/, src/commands/thumbnails/) with progress + cancellation support',
           'src/metadata/providers/ contains type-specific extra-metadata providers (image, pdf, audio, video, archive, shared media_probe)',
           'src/keymap/ centralizes accelerator parsing/canonicalization and conflict validation for remappable shortcuts',
-          'Shared subsystems live outside commands (src/watcher.rs, src/clipboard.rs, src/undo.rs, src/db.rs, src/fs_utils.rs)',
+          'Shared subsystems live outside commands as dedicated modules (for example src/clipboard/, src/undo/, src/db/, src/fs_utils/, src/errors/, src/path_guard/, src/tasks/, src/context_menu/)',
           'Platform-specific behavior is isolated with cfg gates (for example Windows delete/eject details and Linux launcher/mount behavior)',
         ],
       },
@@ -541,19 +541,29 @@ export const docsPages: DocPage[] = [
         ],
         code: `src/
   main.rs
+  errors/{mod.rs,api_error.rs,domain.rs}
   commands/
-    listing.rs fs.rs search.rs permissions.rs meta.rs settings.rs keymap.rs
-    library.rs bookmarks.rs mounts.rs open_with.rs system_clipboard.rs tasks.rs console.rs
-    fs/{delete_ops.rs,open_ops.rs,path_guard.rs,trash_ops.rs,gvfs.rs}
+    mod.rs
+    about.rs bookmarks.rs console.rs keymap.rs library.rs
+    listing/ search/ rename/ permissions/ network/
+    fs/{mod.rs,delete_ops.rs,open_ops.rs,error.rs,windows.rs,trash/*}
     duplicates/{mod.rs,scan.rs}
     decompress/{mod.rs,zip_format.rs,tar_format.rs,seven_z_format.rs,rar_format.rs,util.rs}
-    thumbnails/{thumbnails_svg.rs,thumbnails_pdf.rs,thumbnails_video.rs}
+    entry_metadata/ file_types/ compress/ settings/ open_with/ system_clipboard/ thumbnails/
+  clipboard/{mod.rs,ops.rs,drop_mode.rs,error.rs}
+  undo/{mod.rs,error.rs,backup.rs,engine.rs,path_ops.rs,path_checks.rs,security.rs,nofollow.rs,types.rs}
+  db/{mod.rs,error.rs}
+  fs_utils/{mod.rs,error.rs}
+  path_guard/{mod.rs,error.rs}
+  tasks/{mod.rs,error.rs}
+  context_menu/{mod.rs,action.rs}
   metadata/providers/{image.rs,pdf.rs,audio.rs,video.rs,archive.rs,media_probe.rs}
-  keymap/{mod.rs,model.rs,accelerator.rs}
-  watcher.rs clipboard.rs undo.rs db.rs fs_utils.rs
+  keymap/{mod.rs,model.rs,accelerator.rs,error.rs}
+  watcher.rs runtime_lifecycle.rs
 
 frontend/src/
   App.svelte app.css main.ts
+  lib/{tauri.ts,error.ts}
   features/
     explorer/{components,hooks,stores,services,modals,helpers}
     settings/SettingsModal.svelte
@@ -619,7 +629,17 @@ capabilities/default.json`,
       {
         id: 'unreleased',
         title: 'Unreleased',
-        bullets: ['No changes yet.'],
+        bullets: [
+          'Backend error flow migration was expanded across remaining modules, replacing string-based failures with code-based ApiError mapping',
+          'Core error modules were added in fs_utils, metadata, statusbar, and undo to standardize domain-level classification',
+          'Undo internals were fully migrated to typed errors and split into focused modules (backup/engine/nofollow/path checks/path ops/security/types/error)',
+          'Frontend now uses a shared Tauri invoke wrapper plus a central error normalizer, fixing structured-error toasts that previously showed [object Object]',
+          'Drag/drop logic was extracted from App.svelte into dedicated explorer hooks to reduce coupling and dead code risk',
+          'Drop copy-vs-move policy resolution now lives in backend-facing flows instead of frontend heuristics',
+          'URI/network rule handling was further centralized in backend modules, reducing duplicated frontend scheme logic',
+          'Extract availability now comes from backend capability checks instead of frontend extension-only heuristics',
+          'Backend source layout was tightened with additional modular splits across commands and shared modules',
+        ],
       },
       {
         id: 'v044',

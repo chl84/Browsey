@@ -1,7 +1,14 @@
 # Changelog
 
 ## Unreleased
-- No changes yet.
+- Backend error flow migration was expanded across remaining modules, replacing string-based failures with code-based `ApiError` mapping in command and core subsystems.
+- New domain-level error modules were introduced in core areas (`fs_utils`, `metadata`, `statusbar`, `undo`) to standardize classification and reduce ad-hoc text matching.
+- Undo internals were fully migrated to typed errors and split into focused internal modules (`backup`, `engine`, `nofollow`, `path_checks`, `path_ops`, `security`, `types`, `error`) with updated tests.
+- Frontend error handling now uses a shared Tauri invoke wrapper plus error normalization utilities, eliminating `[object Object]` toast output for structured backend errors.
+- Drag/drop handling was moved out of `App.svelte` into dedicated explorer hooks, and backend policy resolution now owns copy-vs-move decisions for drop operations.
+- URI/network classification rules were further centralized in backend command modules, reducing duplicated frontend scheme mapping logic.
+- Extract-action availability is now sourced from backend command capabilities instead of frontend extension-only heuristics.
+- Backend source layout was tightened with additional modular splits across commands/core (for example `open_with`, `clipboard`, `undo`, `fs/trash`, `context_menu`, and related command domains).
 
 ## v0.4.4 — 2026-02-17
 - Destructive move hardening: removed Linux check-then-rename compatibility fallback when `renameat2(RENAME_NOREPLACE)` is unavailable; operations now use a controlled non-overwrite copy+delete fallback with explicit narrower (non-atomic) guarantees.
