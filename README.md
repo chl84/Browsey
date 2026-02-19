@@ -34,6 +34,7 @@ Common:
 - Node.js LTS + npm (frontend build/dev only)
 - PDFium is bundled in `resources/pdfium-<platform>/` so no system PDF libs are needed.
 - Optional for video thumbnails: `ffmpeg` in PATH (or `FFMPEG_BIN`), otherwise video files fall back to icons.
+- Linux (GNOME Wayland): install `xclip` for file clipboard interoperability between Browsey instances without GNOME shell focus/dock side-effects on `Ctrl+C` / `Ctrl+V`.
 
 Linux build deps (Fedora names; adapt to your distro):
 - `webkit2gtk4.1-devel` `javascriptcoregtk4.1-devel` `libsoup3-devel` `gtk3-devel`

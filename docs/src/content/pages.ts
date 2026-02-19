@@ -84,6 +84,7 @@ export const docsPages: DocPage[] = [
           'Node.js LTS and npm (frontend/dev/docs)',
           'Bundled PDFium in resources/pdfium-* (no extra system PDF libs needed)',
           'Optional ffmpeg in PATH (or FFMPEG_BIN) for video thumbnails',
+          'Linux (GNOME Wayland): install xclip for file clipboard interoperability between Browsey instances without GNOME shell focus/dock side-effects on Ctrl+C/Ctrl+V',
         ],
       },
       {
@@ -884,6 +885,15 @@ capabilities/default.json`,
           'Ensure a terminal emulator is installed (Browsey probes common terminal commands)',
           'Supported launch targets are: ptyxis, gnome-terminal, konsole, xfce4-terminal, tilix, alacritty, kitty, wezterm, foot, kgx',
           'The target path must be an existing directory',
+        ],
+      },
+      {
+        id: 'gnome-wayland-clipboard',
+        title: 'GNOME Wayland: Ctrl+C/Ctrl+V Triggers Dock/Top Bar',
+        bullets: [
+          'Install xclip and restart Browsey',
+          'Browsey avoids wl-clipboard for file clipboard operations on GNOME Wayland because it can briefly trigger shell focus transitions',
+          'With xclip installed, file clipboard copy/paste between Browsey instances works without dock/top-bar side-effects',
         ],
       },
       {
