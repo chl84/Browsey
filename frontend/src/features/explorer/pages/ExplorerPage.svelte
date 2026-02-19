@@ -66,10 +66,6 @@
   import DragGhost from '@/shared/ui/DragGhost.svelte'
   import TextContextMenu from '@/features/explorer/components/TextContextMenu.svelte'
   import {
-    checkDuplicatesStream,
-    type DuplicateScanProgress,
-  } from '@/features/explorer/services/duplicates.service'
-  import {
     clearBookmarks,
     clearRecents,
     clearStars,
@@ -1432,30 +1428,6 @@
     await loadRaw($current, { recordHistory: false })
   }
 
-  const fileOps = useExplorerFileOps({
-    currentView: () => currentView,
-    getCurrentPath: () => get(current),
-    clipboardMode: () => clipboardMode,
-    setClipboardPaths: (paths) => {
-      clipboardPaths = paths
-    },
-    shouldOpenDestAfterExtract: () => get(openDestAfterExtract),
-    loadPath: (path, opts) => loadRaw(path, opts),
-    reloadCurrent,
-    showToast,
-    activityApi,
-  })
-  const {
-    conflictModalOpen,
-    conflictList,
-    pasteIntoCurrent,
-    handlePasteOrMove,
-    resolveConflicts,
-    canExtractPaths,
-    extractEntries,
-    cancelConflicts,
-  } = fileOps
-
   const clearThumbnailCacheFromSettings = async () => {
     try {
       const result = await clearThumbnailCache()
@@ -1567,51 +1539,46 @@
     resetNewFileTypeHint()
   }
 
-  let duplicateScanToken = 0
-  let activeDuplicateProgressEvent: string | null = null
-  let unlistenDuplicateProgress: UnlistenFn | null = null
-
-  const duplicateProgressLabel = (payload: DuplicateScanProgress) => {
-    if (payload.phase === 'collecting') {
-      return `Scanning files: ${payload.scannedFiles} checked, ${payload.candidateFiles} candidate${payload.candidateFiles === 1 ? '' : 's'}`
-    }
-    if (payload.phase === 'comparing') {
-      return `Comparing bytes: ${payload.comparedFiles}/${payload.candidateFiles}`
-    }
-    return `Finished: ${payload.matchedFiles} identical ${payload.matchedFiles === 1 ? 'file' : 'files'}`
-  }
-
-  const cleanupDuplicateProgressListener = async () => {
-    if (unlistenDuplicateProgress) {
-      await unlistenDuplicateProgress()
-      unlistenDuplicateProgress = null
-    }
-    activeDuplicateProgressEvent = null
-  }
-
-  const stopDuplicateScan = async (invalidate = true) => {
-    if (invalidate) {
-      duplicateScanToken += 1
-    }
-    const cancelId = activeDuplicateProgressEvent
-    checkDuplicatesModal.stopScan()
-    if (cancelId) {
-      try {
-        await cancelTask(cancelId)
-      } catch {
-        // Task likely already completed or cleaned up.
+  const fileOps = useExplorerFileOps({
+    currentView: () => currentView,
+    getCurrentPath: () => get(current),
+    clipboardMode: () => clipboardMode,
+    setClipboardPaths: (paths) => {
+      clipboardPaths = paths
+    },
+    shouldOpenDestAfterExtract: () => get(openDestAfterExtract),
+    loadPath: (path, opts) => loadRaw(path, opts),
+    reloadCurrent,
+    getDuplicateScanInput: () => {
+      const state = get(checkDuplicatesState)
+      return {
+        target: state.target,
+        searchRoot: state.searchRoot,
+        scanning: state.scanning,
       }
-    }
-    await cleanupDuplicateProgressListener()
-  }
-
-  const closeCheckDuplicatesModal = () => {
-    void stopDuplicateScan(true)
-      .catch(() => {})
-      .finally(() => {
-        checkDuplicatesModal.close()
-      })
-  }
+    },
+    duplicateModalStart: () => checkDuplicatesModal.startScan(),
+    duplicateModalSetProgress: (percent, label) => checkDuplicatesModal.setProgress(percent, label),
+    duplicateModalFinish: (paths) => checkDuplicatesModal.finishScan(paths),
+    duplicateModalFail: (error) => checkDuplicatesModal.failScan(error),
+    duplicateModalStop: () => checkDuplicatesModal.stopScan(),
+    duplicateModalClose: () => checkDuplicatesModal.close(),
+    showToast,
+    activityApi,
+  })
+  const {
+    conflictModalOpen,
+    conflictList,
+    pasteIntoCurrent,
+    handlePasteOrMove,
+    resolveConflicts,
+    canExtractPaths,
+    extractEntries,
+    stopDuplicateScan,
+    closeCheckDuplicatesModal,
+    searchCheckDuplicates,
+    cancelConflicts,
+  } = fileOps
 
   const contextActions = createContextActions({
     getSelectedPaths: () => Array.from($selected),
@@ -1678,87 +1645,6 @@
     } catch (err) {
       const msg = getErrorMessage(err)
       showToast(`Copy failed: ${msg}`)
-    }
-  }
-
-  const searchCheckDuplicates = async () => {
-    const target = $checkDuplicatesState.target
-    const searchRoot = $checkDuplicatesState.searchRoot.trim()
-
-    if (!target) {
-      showToast('No target file selected')
-      return
-    }
-    if (!searchRoot) {
-      showToast('Choose a start folder first')
-      return
-    }
-    if ($checkDuplicatesState.scanning) {
-      return
-    }
-
-    await stopDuplicateScan(true)
-    const runToken = ++duplicateScanToken
-    const progressEvent = `duplicates-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    activeDuplicateProgressEvent = progressEvent
-    checkDuplicatesModal.startScan()
-
-    try {
-      unlistenDuplicateProgress = await listen<DuplicateScanProgress>(progressEvent, (event) => {
-        if (runToken !== duplicateScanToken) {
-          return
-        }
-
-        const payload = event.payload
-        checkDuplicatesModal.setProgress(payload.percent, duplicateProgressLabel(payload))
-
-        if (payload.error) {
-          checkDuplicatesModal.failScan(payload.error)
-          showToast(`Duplicate scan failed: ${payload.error}`)
-          if (activeDuplicateProgressEvent === progressEvent) {
-            void cleanupDuplicateProgressListener()
-          }
-          return
-        }
-
-        if (!payload.done) {
-          return
-        }
-
-        const paths = payload.duplicates ?? []
-        checkDuplicatesModal.finishScan(paths)
-        if (paths.length === 0) {
-          showToast('No identical files found', 1600)
-        } else {
-          showToast(
-            `Found ${paths.length} identical ${paths.length === 1 ? 'file' : 'files'}`,
-            1800,
-          )
-        }
-
-        if (activeDuplicateProgressEvent === progressEvent) {
-          void cleanupDuplicateProgressListener()
-        }
-      })
-
-      if (runToken !== duplicateScanToken) {
-        await cleanupDuplicateProgressListener()
-        return
-      }
-
-      await checkDuplicatesStream({
-        targetPath: target.path,
-        startPath: searchRoot,
-        progressEvent,
-      })
-    } catch (err) {
-      if (runToken !== duplicateScanToken) {
-        return
-      }
-      const msg = getErrorMessage(err)
-      checkDuplicatesModal.failScan(msg)
-      showToast(`Duplicate scan failed: ${msg}`)
-      await cleanupDuplicateProgressListener()
     }
   }
 

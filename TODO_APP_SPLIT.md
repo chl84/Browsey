@@ -76,7 +76,7 @@ Target from current `App.svelte` sections:
 - [x] Add `frontend/src/features/explorer/hooks/useExplorerFileOps.ts`.
 - [x] Sub-step A: move paste/conflict flow.
 - [x] Sub-step B: move extraction flow.
-- [ ] Sub-step C: move duplicate scan progress lifecycle.
+- [x] Sub-step C: move duplicate scan progress lifecycle.
 - [ ] Sub-step D: move `computeDirStats` orchestration.
 - [ ] Keep existing service calls, activity labels, and toast messages unless strictly needed.
 
@@ -136,7 +136,7 @@ Acceptance:
 - [ ] Step 4 complete
 - [x] Step 4A complete
 - [x] Step 4B complete
-- [ ] Step 4C complete
+- [x] Step 4C complete
 - [ ] Step 4D complete
 - [ ] Step 5 complete
 - [ ] Step 6 complete
