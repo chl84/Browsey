@@ -2,7 +2,6 @@
   // --- Imports -------------------------------------------------------------
   import { onMount, onDestroy, tick } from 'svelte'
   import { getErrorMessage } from '@/shared/lib/error'
-  import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { get, writable } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from '@/features/explorer/utils'
   import { createListState } from '@/features/explorer/stores/list.store'
@@ -20,10 +19,8 @@
   import {
     copyPathsToSystemClipboard,
   } from '@/features/explorer/services/clipboard.service'
-  import { dirSizes } from '@/features/explorer/services/files.service'
   import { fetchContextMenuActions } from '@/features/explorer/services/contextMenu.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
-  import { cancelTask } from '@/features/explorer/services/activity.service'
   import { deleteEntries, moveToTrashMany, purgeTrashItems } from '@/features/explorer/services/trash.service'
   import type { Entry, Partition, SortField, Density } from '@/features/explorer/model/types'
   import { toast, showToast } from '@/features/explorer/hooks/useToast'
@@ -76,6 +73,7 @@
   import SettingsModal from '@/features/settings/SettingsModal.svelte'
   import AboutBrowseyModal from '@/features/explorer/components/AboutBrowseyModal.svelte'
   import { anyModalOpen as anyModalOpenStore } from '@/shared/ui/modalOpenState'
+  import { createCheckDuplicatesModal } from '@/features/explorer/modals/checkDuplicatesModal'
   import '@/features/explorer/ExplorerLayout.css'
 
   // --- Types --------------------------------------------------------------
@@ -700,61 +698,7 @@
 
   const { startResize } = createColumnResize(cols, persistWidths, getListMaxWidth)
 
-  let dirSizeAbort = 0
-  let activeDirSizeProgressEvent: string | null = null
   let selectionText = ''
-
-  const computeDirStats = async (
-    paths: string[],
-    onProgress?: (bytes: number, items: number) => void,
-  ): Promise<{ total: number; items: number }> => {
-    if (paths.length === 0) return { total: 0, items: 0 }
-    if (activeDirSizeProgressEvent) {
-      void cancelTask(activeDirSizeProgressEvent).catch(() => {})
-      activeDirSizeProgressEvent = null
-    }
-    const token = ++dirSizeAbort
-    const progressEvent = `dir-size-progress-${token}-${Math.random().toString(16).slice(2)}`
-    activeDirSizeProgressEvent = progressEvent
-    let unlisten: UnlistenFn | null = null
-    const partials = new Map<string, { bytes: number; items: number }>()
-    try {
-      if (onProgress) {
-        unlisten = await listen<{ path: string; bytes: number; items: number }>(progressEvent, (event) => {
-          if (token !== dirSizeAbort) return
-          const { path, bytes, items } = event.payload
-          partials.set(path, { bytes, items })
-          const totals = Array.from(partials.values()).reduce(
-            (acc, v) => {
-              acc.bytes += v.bytes
-              acc.items += v.items
-              return acc
-            },
-            { bytes: 0, items: 0 },
-          )
-          onProgress(totals.bytes, totals.items)
-        })
-      }
-      const result = await dirSizes(paths, progressEvent)
-      if (token !== dirSizeAbort) {
-        void cancelTask(progressEvent).catch(() => {})
-        return { total: 0, items: 0 }
-      }
-      return { total: result.total ?? 0, items: result.total_items ?? 0 }
-    } catch (err) {
-      console.error('Failed to compute dir sizes', err)
-      return { total: 0, items: 0 }
-    } finally {
-      if (activeDirSizeProgressEvent === progressEvent) {
-        activeDirSizeProgressEvent = null
-      } else {
-        void cancelTask(progressEvent).catch(() => {})
-      }
-      if (unlisten) {
-        await unlisten()
-      }
-    }
-  }
 
   $: {
     const selectedEntries = $entries.filter((e) => $selected.has(e.path))
@@ -1503,42 +1447,8 @@
     }
   }
 
-  const {
-    deleteModal,
-    deleteState,
-    openWithModal,
-    openWithState,
-    propertiesModal,
-    propertiesState,
-    renameModal,
-    renameState,
-    advancedRenameModal,
-    advancedRenameState,
-    newFileModal,
-    newFileState,
-    newFolderModal,
-    newFolderState,
-    compressModal,
-    compressState,
-    checkDuplicatesModal,
-    checkDuplicatesState,
-    actions: modalActions,
-  } = useModalsController({
-    activityApi,
-    reloadCurrent,
-    showToast,
-    getCurrentPath: () => get(current),
-    loadPath: (path, opts) => loadRaw(path, opts),
-    parentPath,
-    computeDirStats,
-  })
-
-  $: if ($newFileState.open) {
-    scheduleNewFileTypeHintLookup(newFileName)
-  } else {
-    resetNewFileTypeHint()
-  }
-
+  const checkDuplicatesModal = createCheckDuplicatesModal({ parentPath })
+  const checkDuplicatesState = checkDuplicatesModal.state
   const fileOps = useExplorerFileOps({
     currentView: () => currentView,
     getCurrentPath: () => get(current),
@@ -1569,6 +1479,8 @@
   const {
     conflictModalOpen,
     conflictList,
+    computeDirStats,
+    abortDirStats,
     pasteIntoCurrent,
     handlePasteOrMove,
     resolveConflicts,
@@ -1579,6 +1491,40 @@
     searchCheckDuplicates,
     cancelConflicts,
   } = fileOps
+  const {
+    deleteModal,
+    deleteState,
+    openWithModal,
+    openWithState,
+    propertiesModal,
+    propertiesState,
+    renameModal,
+    renameState,
+    advancedRenameModal,
+    advancedRenameState,
+    newFileModal,
+    newFileState,
+    newFolderModal,
+    newFolderState,
+    compressModal,
+    compressState,
+    actions: modalActions,
+  } = useModalsController({
+    activityApi,
+    reloadCurrent,
+    showToast,
+    getCurrentPath: () => get(current),
+    loadPath: (path, opts) => loadRaw(path, opts),
+    parentPath,
+    checkDuplicatesModal,
+    computeDirStats,
+  })
+
+  $: if ($newFileState.open) {
+    scheduleNewFileTypeHintLookup(newFileName)
+  } else {
+    resetNewFileTypeHint()
+  }
 
   const contextActions = createContextActions({
     getSelectedPaths: () => Array.from($selected),
@@ -2166,17 +2112,13 @@
     },
     onErrorToast: showToast,
     onCleanup: () => {
-      if (activeDirSizeProgressEvent) {
-        void cancelTask(activeDirSizeProgressEvent).catch(() => {})
-        activeDirSizeProgressEvent = null
-      }
+      abortDirStats()
       if (scrollHoverTimer !== null) {
         clearTimeout(scrollHoverTimer)
         scrollHoverTimer = null
       }
       rowsElRef?.classList.remove('is-scrolling')
       viewObservers.cleanup()
-      dirSizeAbort++
     },
   })
 

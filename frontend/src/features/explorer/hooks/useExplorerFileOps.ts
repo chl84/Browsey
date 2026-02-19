@@ -10,6 +10,7 @@ import {
 } from '../services/clipboard.service'
 import {
   entryKind,
+  dirSizes,
   canExtractPaths as canExtractPathsCmd,
   extractArchive,
   extractArchives,
@@ -60,6 +61,8 @@ export const useExplorerFileOps = (deps: Deps) => {
   let duplicateScanToken = 0
   let activeDuplicateProgressEvent: string | null = null
   let unlistenDuplicateProgress: UnlistenFn | null = null
+  let dirSizeAbort = 0
+  let activeDirSizeProgressEvent: string | null = null
   const conflictModalOpen = writable(false)
   const conflictList = writable<ConflictItem[]>([])
 
@@ -368,9 +371,71 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
   }
 
+  const computeDirStats = async (
+    paths: string[],
+    onProgress?: (bytes: number, items: number) => void,
+  ): Promise<{ total: number; items: number }> => {
+    if (paths.length === 0) return { total: 0, items: 0 }
+    if (activeDirSizeProgressEvent) {
+      void cancelTask(activeDirSizeProgressEvent).catch(() => {})
+      activeDirSizeProgressEvent = null
+    }
+    const token = ++dirSizeAbort
+    const progressEvent = `dir-size-progress-${token}-${Math.random().toString(16).slice(2)}`
+    activeDirSizeProgressEvent = progressEvent
+    let unlisten: UnlistenFn | null = null
+    const partials = new Map<string, { bytes: number; items: number }>()
+    try {
+      if (onProgress) {
+        unlisten = await listen<{ path: string; bytes: number; items: number }>(progressEvent, (event) => {
+          if (token !== dirSizeAbort) return
+          const { path, bytes, items } = event.payload
+          partials.set(path, { bytes, items })
+          const totals = Array.from(partials.values()).reduce(
+            (acc, value) => {
+              acc.bytes += value.bytes
+              acc.items += value.items
+              return acc
+            },
+            { bytes: 0, items: 0 },
+          )
+          onProgress(totals.bytes, totals.items)
+        })
+      }
+      const result = await dirSizes(paths, progressEvent)
+      if (token !== dirSizeAbort) {
+        void cancelTask(progressEvent).catch(() => {})
+        return { total: 0, items: 0 }
+      }
+      return { total: result.total ?? 0, items: result.total_items ?? 0 }
+    } catch (err) {
+      console.error('Failed to compute dir sizes', err)
+      return { total: 0, items: 0 }
+    } finally {
+      if (activeDirSizeProgressEvent === progressEvent) {
+        activeDirSizeProgressEvent = null
+      } else {
+        void cancelTask(progressEvent).catch(() => {})
+      }
+      if (unlisten) {
+        await unlisten()
+      }
+    }
+  }
+
+  const abortDirStats = () => {
+    if (activeDirSizeProgressEvent) {
+      void cancelTask(activeDirSizeProgressEvent).catch(() => {})
+      activeDirSizeProgressEvent = null
+    }
+    dirSizeAbort += 1
+  }
+
   return {
     conflictModalOpen,
     conflictList,
+    computeDirStats,
+    abortDirStats,
     pasteIntoCurrent,
     handlePasteOrMove,
     resolveConflicts,

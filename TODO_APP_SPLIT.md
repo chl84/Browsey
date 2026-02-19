@@ -77,7 +77,7 @@ Target from current `App.svelte` sections:
 - [x] Sub-step A: move paste/conflict flow.
 - [x] Sub-step B: move extraction flow.
 - [x] Sub-step C: move duplicate scan progress lifecycle.
-- [ ] Sub-step D: move `computeDirStats` orchestration.
+- [x] Sub-step D: move `computeDirStats` orchestration.
 - [ ] Keep existing service calls, activity labels, and toast messages unless strictly needed.
 
 Acceptance:
@@ -133,11 +133,11 @@ Acceptance:
 - [x] Step 1 complete
 - [x] Step 2 complete
 - [x] Step 3 complete
-- [ ] Step 4 complete
+- [x] Step 4 complete
 - [x] Step 4A complete
 - [x] Step 4B complete
 - [x] Step 4C complete
-- [ ] Step 4D complete
+- [x] Step 4D complete
 - [ ] Step 5 complete
 - [ ] Step 6 complete
 - [ ] Step 7 complete
