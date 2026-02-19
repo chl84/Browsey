@@ -1,3 +1,4 @@
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { writable, get } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import {
@@ -13,6 +14,8 @@ import {
   extractArchive,
   extractArchives,
 } from '../services/files.service'
+import { checkDuplicatesStream, type DuplicateScanProgress } from '../services/duplicates.service'
+import { cancelTask } from '../services/activity.service'
 import { setClipboardState, clearClipboardState } from '../stores/clipboard.store'
 import { normalizePath, parentPath } from '../utils'
 import type { Entry } from '../model/types'
@@ -40,6 +43,13 @@ type Deps = {
   shouldOpenDestAfterExtract: () => boolean
   loadPath: (path: string, opts?: { recordHistory?: boolean; silent?: boolean }) => Promise<void>
   reloadCurrent: () => Promise<void>
+  getDuplicateScanInput: () => { target: Entry | null; searchRoot: string; scanning: boolean }
+  duplicateModalStart: () => void
+  duplicateModalSetProgress: (progressPercent: number, progressLabel: string) => void
+  duplicateModalFinish: (paths: string[]) => void
+  duplicateModalFail: (error: string) => void
+  duplicateModalStop: () => void
+  duplicateModalClose: () => void
   showToast: (msg: string, durationMs?: number) => void
   activityApi: ActivityApi
 }
@@ -47,6 +57,9 @@ type Deps = {
 export const useExplorerFileOps = (deps: Deps) => {
   let conflictDest: string | null = null
   let extracting = false
+  let duplicateScanToken = 0
+  let activeDuplicateProgressEvent: string | null = null
+  let unlistenDuplicateProgress: UnlistenFn | null = null
   const conflictModalOpen = writable(false)
   const conflictList = writable<ConflictItem[]>([])
 
@@ -232,6 +245,129 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
   }
 
+  const duplicateProgressLabel = (payload: DuplicateScanProgress) => {
+    if (payload.phase === 'collecting') {
+      return `Scanning files: ${payload.scannedFiles} checked, ${payload.candidateFiles} candidate${payload.candidateFiles === 1 ? '' : 's'}`
+    }
+    if (payload.phase === 'comparing') {
+      return `Comparing bytes: ${payload.comparedFiles}/${payload.candidateFiles}`
+    }
+    return `Finished: ${payload.matchedFiles} identical ${payload.matchedFiles === 1 ? 'file' : 'files'}`
+  }
+
+  const cleanupDuplicateProgressListener = async () => {
+    if (unlistenDuplicateProgress) {
+      await unlistenDuplicateProgress()
+      unlistenDuplicateProgress = null
+    }
+    activeDuplicateProgressEvent = null
+  }
+
+  const stopDuplicateScan = async (invalidate = true) => {
+    if (invalidate) {
+      duplicateScanToken += 1
+    }
+    const cancelId = activeDuplicateProgressEvent
+    deps.duplicateModalStop()
+    if (cancelId) {
+      try {
+        await cancelTask(cancelId)
+      } catch {
+        // Task likely already completed or cleaned up.
+      }
+    }
+    await cleanupDuplicateProgressListener()
+  }
+
+  const closeCheckDuplicatesModal = () => {
+    void stopDuplicateScan(true)
+      .catch(() => {})
+      .finally(() => {
+        deps.duplicateModalClose()
+      })
+  }
+
+  const searchCheckDuplicates = async () => {
+    const { target, searchRoot, scanning } = deps.getDuplicateScanInput()
+    const trimmedRoot = searchRoot.trim()
+
+    if (!target) {
+      deps.showToast('No target file selected')
+      return
+    }
+    if (!trimmedRoot) {
+      deps.showToast('Choose a start folder first')
+      return
+    }
+    if (scanning) {
+      return
+    }
+
+    await stopDuplicateScan(true)
+    const runToken = ++duplicateScanToken
+    const progressEvent = `duplicates-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    activeDuplicateProgressEvent = progressEvent
+    deps.duplicateModalStart()
+
+    try {
+      unlistenDuplicateProgress = await listen<DuplicateScanProgress>(progressEvent, (event) => {
+        if (runToken !== duplicateScanToken) {
+          return
+        }
+
+        const payload = event.payload
+        deps.duplicateModalSetProgress(payload.percent, duplicateProgressLabel(payload))
+
+        if (payload.error) {
+          deps.duplicateModalFail(payload.error)
+          deps.showToast(`Duplicate scan failed: ${payload.error}`)
+          if (activeDuplicateProgressEvent === progressEvent) {
+            void cleanupDuplicateProgressListener()
+          }
+          return
+        }
+
+        if (!payload.done) {
+          return
+        }
+
+        const paths = payload.duplicates ?? []
+        deps.duplicateModalFinish(paths)
+        if (paths.length === 0) {
+          deps.showToast('No identical files found', 1600)
+        } else {
+          deps.showToast(
+            `Found ${paths.length} identical ${paths.length === 1 ? 'file' : 'files'}`,
+            1800,
+          )
+        }
+
+        if (activeDuplicateProgressEvent === progressEvent) {
+          void cleanupDuplicateProgressListener()
+        }
+      })
+
+      if (runToken !== duplicateScanToken) {
+        await cleanupDuplicateProgressListener()
+        return
+      }
+
+      await checkDuplicatesStream({
+        targetPath: target.path,
+        startPath: trimmedRoot,
+        progressEvent,
+      })
+    } catch (err) {
+      if (runToken !== duplicateScanToken) {
+        return
+      }
+      const msg = getErrorMessage(err)
+      deps.duplicateModalFail(msg)
+      deps.showToast(`Duplicate scan failed: ${msg}`)
+      await cleanupDuplicateProgressListener()
+    }
+  }
+
   return {
     conflictModalOpen,
     conflictList,
@@ -240,6 +376,9 @@ export const useExplorerFileOps = (deps: Deps) => {
     resolveConflicts,
     canExtractPaths,
     extractEntries,
+    stopDuplicateScan,
+    closeCheckDuplicatesModal,
+    searchCheckDuplicates,
     cancelConflicts: clearConflictState,
     hasPendingConflicts: () => get(conflictModalOpen),
   }
