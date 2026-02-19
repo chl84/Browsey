@@ -158,6 +158,18 @@ impl From<&str> for PermissionsError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for PermissionsError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        Self::from_external_message(error.to_string())
+    }
+}
+
+impl From<crate::undo::UndoError> for PermissionsError {
+    fn from(error: crate::undo::UndoError) -> Self {
+        Self::from_external_message(error.to_string())
+    }
+}
+
 pub(in crate::commands) type PermissionsResult<T> = Result<T, PermissionsError>;
 
 pub(super) fn is_expected_batch_error(error: &PermissionsError) -> bool {

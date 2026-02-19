@@ -5,6 +5,8 @@ use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use crate::undo::UndoResult;
+
 const MAX_HISTORY: usize = 50;
 
 #[derive(Debug, Clone)]
@@ -98,7 +100,7 @@ impl UndoManager {
 
     /// Apply a new action and push it onto the undo stack. Clears redo history.
     #[allow(dead_code)]
-    pub fn apply(&mut self, mut action: Action) -> Result<(), String> {
+    pub fn apply(&mut self, mut action: Action) -> UndoResult<()> {
         super::engine::execute_action(&mut action, Direction::Forward)?;
         self.undo_stack.push_back(action);
         self.redo_stack.clear();
@@ -106,7 +108,7 @@ impl UndoManager {
         Ok(())
     }
 
-    pub fn undo(&mut self) -> Result<(), String> {
+    pub fn undo(&mut self) -> UndoResult<()> {
         let mut action = self
             .undo_stack
             .pop_back()
@@ -123,7 +125,7 @@ impl UndoManager {
         }
     }
 
-    pub fn redo(&mut self) -> Result<(), String> {
+    pub fn redo(&mut self) -> UndoResult<()> {
         let mut action = self
             .redo_stack
             .pop_back()
@@ -171,24 +173,24 @@ impl UndoState {
     }
 
     #[allow(dead_code)]
-    pub fn record(&self, action: Action) -> Result<(), String> {
+    pub fn record(&self, action: Action) -> UndoResult<()> {
         let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
         mgr.apply(action)?;
         Ok(())
     }
 
-    pub fn record_applied(&self, action: Action) -> Result<(), String> {
+    pub fn record_applied(&self, action: Action) -> UndoResult<()> {
         let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
         mgr.record_applied(action);
         Ok(())
     }
 
-    pub fn undo(&self) -> Result<(), String> {
+    pub fn undo(&self) -> UndoResult<()> {
         let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
         mgr.undo()
     }
 
-    pub fn redo(&self) -> Result<(), String> {
+    pub fn redo(&self) -> UndoResult<()> {
         let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
         mgr.redo()
     }

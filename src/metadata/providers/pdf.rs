@@ -1,4 +1,5 @@
 use crate::metadata::types::{ExtraMetadataField, ExtraMetadataSection};
+use crate::metadata::{MetadataError, MetadataErrorCode, MetadataResult};
 use pdfium_render::prelude::*;
 use std::path::{Path, PathBuf};
 
@@ -86,7 +87,7 @@ fn security_label(revision: PdfSecurityHandlerRevision) -> String {
     }
 }
 
-fn load_pdfium_bindings() -> Result<Box<dyn PdfiumLibraryBindings>, String> {
+fn load_pdfium_bindings() -> MetadataResult<Box<dyn PdfiumLibraryBindings>> {
     if let Ok(path) = std::env::var("PDFIUM_LIB_PATH") {
         if let Ok(bindings) = Pdfium::bind_to_library(&path) {
             return Ok(bindings);
@@ -133,5 +134,10 @@ fn load_pdfium_bindings() -> Result<Box<dyn PdfiumLibraryBindings>, String> {
         }
     }
 
-    Pdfium::bind_to_system_library().map_err(|e| format!("Pdfium load failed: {e}"))
+    Pdfium::bind_to_system_library().map_err(|error| {
+        MetadataError::new(
+            MetadataErrorCode::PdfiumLoadFailed,
+            format!("Pdfium load failed: {error}"),
+        )
+    })
 }

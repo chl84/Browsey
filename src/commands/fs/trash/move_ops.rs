@@ -108,7 +108,7 @@ fn prepare_trash_move(raw: &str) -> Result<PreparedTrashMove, String> {
     undo_copy_entry(&src, &backup)?;
     if let Err(err) = assert_path_snapshot(&src, &src_snapshot) {
         let _ = undo_delete_path(&backup);
-        return Err(err);
+        return Err(err.to_string());
     }
 
     Ok(PreparedTrashMove {

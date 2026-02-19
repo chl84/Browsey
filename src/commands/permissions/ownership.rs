@@ -313,8 +313,8 @@ fn resolve_gid_spec(spec: &str) -> PermissionsResult<u32> {
 }
 
 #[cfg(unix)]
-fn is_elevated_privileges_error(msg: &str) -> bool {
-    msg.contains("requires elevated privileges")
+fn is_elevated_privileges_error(msg: &impl std::fmt::Display) -> bool {
+    msg.to_string().contains("requires elevated privileges")
 }
 
 #[cfg(unix)]

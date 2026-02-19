@@ -129,6 +129,12 @@ impl From<&str> for SetHiddenError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for SetHiddenError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        Self::from_external_message(error.to_string())
+    }
+}
+
 pub(super) type SetHiddenResult<T> = Result<T, SetHiddenError>;
 
 pub(super) fn is_expected_set_hidden_error(error: &SetHiddenError) -> bool {

@@ -69,8 +69,11 @@ pub struct ConflictInfo {
 
 static CLIPBOARD: Lazy<Mutex<Option<ClipboardState>>> = Lazy::new(|| Mutex::new(None));
 
-fn map_clipboard_result<T>(result: Result<T, String>) -> ClipboardResult<T> {
-    result.map_err(ClipboardError::from_external_message)
+fn map_clipboard_result<T, E>(result: Result<T, E>) -> ClipboardResult<T>
+where
+    E: std::fmt::Display,
+{
+    result.map_err(|error| ClipboardError::from_external_message(error.to_string()))
 }
 
 fn policy_from_str(policy: &str) -> ClipboardResult<ConflictPolicy> {

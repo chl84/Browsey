@@ -4,6 +4,7 @@ use std::io::ErrorKind;
 use super::nofollow::delete_entry_nofollow_io;
 use super::path_ops::{copy_entry, delete_entry_path, move_with_fallback};
 use super::{Action, Direction};
+use crate::undo::UndoResult;
 
 #[cfg(target_os = "windows")]
 use std::path::Path;
@@ -16,11 +17,11 @@ use windows_sys::Win32::Storage::FileSystem::{
     GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN,
 };
 
-pub(crate) fn run_actions(actions: &mut [Action], direction: Direction) -> Result<(), String> {
+pub(crate) fn run_actions(actions: &mut [Action], direction: Direction) -> UndoResult<()> {
     execute_batch(actions, direction)
 }
 
-pub(super) fn execute_action(action: &mut Action, direction: Direction) -> Result<(), String> {
+pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoResult<()> {
     match action {
         Action::Batch(actions) => execute_batch(actions, direction),
         Action::Rename { from, to } | Action::Move { from, to } => {
@@ -67,27 +68,30 @@ pub(super) fn execute_action(action: &mut Action, direction: Direction) -> Resul
             set_windows_hidden_attr(path, next)
         }
         Action::CreateFolder { path } => match direction {
-            Direction::Forward => fs::create_dir(&*path)
-                .map_err(|e| format!("Failed to create directory {}: {e}", path.display())),
+            Direction::Forward => Ok(
+                fs::create_dir(&*path)
+                    .map_err(|e| format!("Failed to create directory {}: {e}", path.display()))?,
+            ),
             Direction::Backward => match delete_entry_nofollow_io(path) {
                 Ok(()) => Ok(()),
                 Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
                 Err(err) => Err(format!(
                     "Failed to remove directory {}: {err}",
                     path.display()
-                )),
+                )
+                .into()),
             },
         },
     }
 }
 
 #[cfg(target_os = "windows")]
-fn set_windows_hidden_attr(path: &Path, hidden: bool) -> Result<(), String> {
+fn set_windows_hidden_attr(path: &Path, hidden: bool) -> UndoResult<()> {
     check_no_symlink_components(path)?;
     let no_follow = fs::symlink_metadata(path)
         .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
     if no_follow.file_type().is_symlink() {
-        return Err(format!("Symlinks are not allowed: {}", path.display()));
+        return Err(format!("Symlinks are not allowed: {}", path.display()).into());
     }
 
     let wide: Vec<u16> = path
@@ -97,7 +101,7 @@ fn set_windows_hidden_attr(path: &Path, hidden: bool) -> Result<(), String> {
         .collect();
     let attrs = unsafe { GetFileAttributesW(wide.as_ptr()) };
     if attrs == u32::MAX {
-        return Err(format!("GetFileAttributes failed for {}", path.display()));
+        return Err(format!("GetFileAttributes failed for {}", path.display()).into());
     }
 
     let is_hidden = attrs & FILE_ATTRIBUTE_HIDDEN != 0;
@@ -113,12 +117,12 @@ fn set_windows_hidden_attr(path: &Path, hidden: bool) -> Result<(), String> {
     }
     let ok = unsafe { SetFileAttributesW(wide.as_ptr(), next) };
     if ok == 0 {
-        return Err(format!("SetFileAttributes failed for {}", path.display()));
+        return Err(format!("SetFileAttributes failed for {}", path.display()).into());
     }
     Ok(())
 }
 
-fn execute_batch(actions: &mut [Action], direction: Direction) -> Result<(), String> {
+fn execute_batch(actions: &mut [Action], direction: Direction) -> UndoResult<()> {
     let order: Vec<usize> = match direction {
         Direction::Forward => (0..actions.len()).collect(),
         Direction::Backward => (0..actions.len()).rev().collect(),
@@ -141,14 +145,15 @@ fn execute_batch(actions: &mut [Action], direction: Direction) -> Result<(), Str
                 }
             }
             if rollback_errors.is_empty() {
-                return Err(format!("Batch action {} failed: {}", idx + 1, err));
+                return Err(format!("Batch action {} failed: {}", idx + 1, err).into());
             } else {
                 return Err(format!(
                     "Batch action {} failed: {}; additional rollback issues: {}",
                     idx + 1,
                     err,
                     rollback_errors.join("; ")
-                ));
+                )
+                .into());
             }
         }
         completed.push(idx);
