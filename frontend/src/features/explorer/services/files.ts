@@ -43,3 +43,33 @@ export const createFolder = (base: string, name: string) =>
 
 export const createFile = (base: string, name: string) =>
   invoke<string>('create_file', { path: base, name })
+
+export type EntryKind = 'dir' | 'file'
+
+export const entryKind = (path: string) =>
+  invoke<EntryKind>('entry_kind_cmd', { path })
+
+export const dirSizes = (paths: string[], progressEvent?: string) =>
+  invoke<{ total: number; total_items: number }>('dir_sizes', { paths, progressEvent })
+
+export const canExtractPaths = (paths: string[]) =>
+  invoke<boolean>('can_extract_paths', { paths })
+
+export type ExtractResult = {
+  destination: string
+  skipped_symlinks: number
+  skipped_entries: number
+}
+
+export type ExtractBatchItem = {
+  path: string
+  ok: boolean
+  result?: ExtractResult | null
+  error?: string | null
+}
+
+export const extractArchive = (path: string, progressEvent?: string) =>
+  invoke<ExtractResult>('extract_archive', { path, progressEvent })
+
+export const extractArchives = (paths: string[], progressEvent?: string) =>
+  invoke<ExtractBatchItem[]>('extract_archives', { paths, progressEvent })

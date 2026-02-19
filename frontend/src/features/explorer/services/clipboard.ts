@@ -23,3 +23,6 @@ export const resolveDropClipboardMode = (
   dest: string,
   preferCopy: boolean,
 ) => invoke<'copy' | 'cut'>('resolve_drop_clipboard_mode', { paths, dest, preferCopy })
+
+export const getSystemClipboardPaths = () =>
+  invoke<{ mode: 'copy' | 'cut'; paths: string[] }>('system_clipboard_paths')
