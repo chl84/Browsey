@@ -101,9 +101,9 @@ Acceptance:
 Target from current `App.svelte` sections:
 - Document keydown/keyup, row/grid pointer handlers, click-open/double-click flow, scroll/hover suppression.
 
-- [ ] Prefer extending existing hooks first (`createGlobalShortcuts`, `createGridKeyboardHandler`, `createSelectionBox`, `useExplorerDragDrop`).
-- [ ] Add `frontend/src/features/explorer/hooks/useExplorerInputHandlers.ts` only if composition still needs a dedicated owner after extensions.
-- [ ] Keep all handler signatures that `ExplorerShell` depends on.
+- [x] Prefer extending existing hooks first (`createGlobalShortcuts`, `createGridKeyboardHandler`, `createSelectionBox`, `useExplorerDragDrop`).
+- [x] Add `frontend/src/features/explorer/hooks/useExplorerInputHandlers.ts` only if composition still needs a dedicated owner after extensions.
+- [x] Keep all handler signatures that `ExplorerShell` depends on.
 
 Acceptance:
 - Selection, lasso, keyboard nav, and open-on-click behavior unchanged.
@@ -139,5 +139,5 @@ Acceptance:
 - [x] Step 4C complete
 - [x] Step 4D complete
 - [x] Step 5 complete
-- [ ] Step 6 complete
+- [x] Step 6 complete
 - [ ] Step 7 complete
