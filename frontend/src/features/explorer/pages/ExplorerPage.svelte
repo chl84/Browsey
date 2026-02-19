@@ -12,6 +12,7 @@
   import { createBookmarkModal } from '@/features/explorer/hooks/useBookmarkModal'
   import { useExplorerDragDrop } from '@/features/explorer/hooks/useExplorerDragDrop'
   import { useExplorerContextMenuOps } from '@/features/explorer/hooks/useExplorerContextMenuOps'
+  import { useExplorerInputHandlers } from '@/features/explorer/hooks/useExplorerInputHandlers'
   import { useModalsController } from '@/features/explorer/hooks/useModalsController'
   import { useGridVirtualizer } from '@/features/explorer/hooks/useGridVirtualizer'
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
@@ -28,12 +29,9 @@
   import { createContextMenus } from '@/features/explorer/hooks/useContextMenus'
   import { createContextActions, type CurrentView } from '@/features/explorer/hooks/useContextActions'
   import { createSelectionBox } from '@/features/explorer/hooks/useSelectionBox'
-  import { hitTestGridVirtualized } from '@/features/explorer/helpers/lassoHitTest'
   import { createViewSwitchAnchor } from '@/features/explorer/hooks/useViewAnchor'
-  import { isScrollbarClick } from '@/features/explorer/helpers/scrollbar'
   import { moveCaret } from '@/features/explorer/helpers/navigationController'
   import { loadDefaultView, storeDefaultView } from '@/features/explorer/services/settings.service'
-  import { createGridKeyboardHandler } from '@/features/explorer/hooks/useGridHandlers'
   import { useContextMenuBlocker } from '@/features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from '@/features/explorer/hooks/useActivity'
   import { createAppLifecycle } from '@/features/explorer/hooks/useAppLifecycle'
@@ -87,8 +85,6 @@
   let gridElRef: HTMLDivElement | null = null
   let headerElRef: HTMLDivElement | null = null
   let pathInputEl: HTMLInputElement | null = null
-  const SCROLL_HOVER_SUPPRESS_MS = 150
-  let scrollHoverTimer: ReturnType<typeof setTimeout> | null = null
 
   // --- Nav + bookmarks -----------------------------------------------------
   const places = [
@@ -276,14 +272,6 @@
     return Math.max(0, el.clientWidth - paddingLeft - paddingRight)
   }
 
-  const getGridPadding = (el: HTMLDivElement) => {
-    const style = getComputedStyle(el)
-    return {
-      paddingLeft: parseFloat(style.paddingLeft) || 0,
-      paddingTop: parseFloat(style.paddingTop) || 0,
-    }
-  }
-
   const focusCurrentView = async () => {
     await tick()
     rowsElRef?.focus()
@@ -417,6 +405,8 @@
     }
   }
 
+  let rowsKeydownHandler: ((event: KeyboardEvent) => void) | null = null
+  let rowSelectionHandler: ((entry: Entry, absoluteIndex: number, event: MouseEvent) => void) | null = null
   $: rowsKeydownHandler = handleRowsKeydown($filteredEntries)
   $: rowSelectionHandler = handleRowClick($filteredEntries)
 
@@ -508,20 +498,12 @@
     }
   }
 
-  let selectionDrag = false
   let gridCardWidth = 120
   let gridRowHeight = 126
   let gridGap = 6
   const GRID_OVERSCAN = 4
   let cursorX = 0
   let cursorY = 0
-  const LASSO_GUTTER_WIDTH = 3
-
-  const inLassoGutter = (event: MouseEvent, el: HTMLElement | null) => {
-    if (!el) return false
-    const rect = el.getBoundingClientRect()
-    return event.clientX <= rect.left + LASSO_GUTTER_WIDTH
-  }
 
   let viewAnchor = createViewSwitchAnchor({
     filteredEntries,
@@ -1007,216 +989,6 @@
   })
   const { handleGlobalKeydown } = shortcuts
 
-  const handleDocumentKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'Control' || event.key === 'Meta') {
-      setCopyModifierActive(true)
-    }
-    if (event.defaultPrevented) {
-      return
-    }
-    const key = event.key.toLowerCase()
-    const inRows = rowsElRef?.contains(event.target as Node) ?? false
-    const blockingModalOpen = get(anyModalOpenStore)
-
-    if (blockingModalOpen && key !== 'escape') {
-      return
-    }
-
-    if ((event.ctrlKey || event.metaKey) && !isEditableTarget(event.target)) {
-      if (key === 'control' || key === 'meta' || key === 'alt' || key === 'shift') {
-        return
-      }
-      if (event.shiftKey && !event.altKey && key === 'i') {
-        return
-      }
-      const hasAppShortcut = matchesAnyShortcut(event, shortcutBindings)
-      if (!hasAppShortcut) {
-        event.preventDefault()
-        event.stopPropagation()
-        return
-      }
-      // Claim app-owned Ctrl/Cmd shortcuts immediately in capture phase so
-      // native/webview handlers do not also process the same accelerator.
-      event.preventDefault()
-      event.stopPropagation()
-    }
-
-    if (
-      key === 'tab' &&
-      mode === 'filter' &&
-      !event.shiftKey &&
-      rowsElRef &&
-      !inRows &&
-      pathInput.length > 0
-    ) {
-      const list = get(filteredEntries)
-      if (list.length > 0) {
-        event.preventDefault()
-        event.stopPropagation()
-        selected.set(new Set([list[0].path]))
-        anchorIndex.set(0)
-        caretIndex.set(0)
-        const selector =
-          viewMode === 'grid'
-            ? `.card[data-index=\"0\"]`
-            : `.row-viewport .row[data-index=\"0\"]`
-        const targetEl = rowsElRef.querySelector<HTMLElement>(selector)
-        if (targetEl) {
-          targetEl.focus()
-          targetEl.scrollIntoView({ block: 'nearest' })
-        } else {
-          rowsElRef.focus()
-        }
-        if (viewMode === 'grid') {
-          ensureGridVisible(0)
-        }
-        return
-      }
-    }
-
-    if (key === 'enter' && !isEditableTarget(event.target) && !inRows) {
-      const list = get(filteredEntries)
-      if (list.length > 0 && get(selected).size > 0) {
-        event.preventDefault()
-        event.stopPropagation()
-        const sel = get(selected)
-        let idx = list.findIndex((e) => sel.has(e.path))
-        if (idx < 0) idx = 0
-        anchorIndex.set(idx)
-        caretIndex.set(idx)
-        void handleOpenEntry(list[idx])
-        return
-      }
-    }
-
-    const arrowNav = key === 'arrowdown' || key === 'arrowup'
-    const arrowHoriz = key === 'arrowleft' || key === 'arrowright'
-    if ((arrowNav || (arrowHoriz && viewMode === 'grid')) && !isEditableTarget(event.target) && rowsElRef && !inRows) {
-      const list = get(filteredEntries)
-      if (list.length > 0) {
-        event.preventDefault()
-        event.stopPropagation()
-        rowsElRef.focus()
-        handleRowsKeydownCombined(event)
-        return
-      }
-    }
-    if (key === 'escape') {
-      if ($deleteState.open) {
-        event.preventDefault()
-        event.stopPropagation()
-        deleteModal.close()
-        return
-      }
-      if ($renameState.open) {
-        event.preventDefault()
-        event.stopPropagation()
-        renameModal.close()
-        return
-      }
-      if ($openWithState.open) {
-        event.preventDefault()
-        event.stopPropagation()
-        openWithModal.close()
-        return
-      }
-      if ($propertiesState.open) {
-        event.preventDefault()
-        event.stopPropagation()
-        propertiesModal.close()
-        return
-      }
-      if ($compressState.open) {
-        event.preventDefault()
-        event.stopPropagation()
-        compressModal.close()
-        return
-      }
-      if ($checkDuplicatesState.open) {
-        event.preventDefault()
-        event.stopPropagation()
-        closeCheckDuplicatesModal()
-        return
-      }
-      if ($newFolderState.open) {
-        event.preventDefault()
-        event.stopPropagation()
-        newFolderModal.close()
-        return
-      }
-      if ($newFileState.open) {
-        event.preventDefault()
-        event.stopPropagation()
-        newFileModal.close()
-        return
-      }
-      if (bookmarkModalOpen) {
-        event.preventDefault()
-        event.stopPropagation()
-        closeBookmarkModal()
-        return
-      }
-      if ($contextMenu.open) {
-        event.preventDefault()
-        event.stopPropagation()
-        closeContextMenu()
-        return
-      }
-      if ($blankMenu.open) {
-        event.preventDefault()
-        event.stopPropagation()
-        closeBlankContextMenu()
-        return
-      }
-      if (blockingModalOpen) {
-        return
-      }
-      if (mode === 'filter') {
-        event.preventDefault()
-        event.stopPropagation()
-        void transitionToAddressMode({ path: $current, blur: true })
-        return
-      }
-      if (isSearchSessionEnabled) {
-        event.preventDefault()
-        event.stopPropagation()
-        void transitionToAddressMode({ path: $current, blur: true })
-        return
-      }
-      if (inputFocused && mode === 'address') {
-        event.preventDefault()
-        event.stopPropagation()
-        pathInput = $current
-        blurPathInput()
-        return
-      }
-      if (inRows) {
-        event.preventDefault()
-        event.stopPropagation()
-        selected.set(new Set())
-        anchorIndex.set(null)
-        caretIndex.set(null)
-        return
-      }
-      const hasSelection = get(selected).size > 0
-      if (hasSelection) {
-        selected.set(new Set())
-        anchorIndex.set(null)
-        caretIndex.set(null)
-      }
-    }
-    if (blockingModalOpen) {
-      return
-    }
-    void handleGlobalKeydown(event)
-  }
-
-  const handleDocumentKeyup = (event: KeyboardEvent) => {
-    if (event.key === 'Control' || event.key === 'Meta') {
-      setCopyModifierActive(false)
-    }
-  }
-
   $: {
     if (viewMode === 'list') {
       // Recompute virtualization when viewport or scroll changes.
@@ -1451,7 +1223,7 @@
     resetNewFileTypeHint()
   }
 
-  let pendingOpenCandidate: { path: string; atMs: number } | null = null
+  let clearPendingOpenCandidate = () => {}
 
   const contextActions = createContextActions({
     getSelectedPaths: () => Array.from($selected),
@@ -1525,7 +1297,7 @@
     contextActions,
     showToast,
     onBeforeRowContextMenu: () => {
-      pendingOpenCandidate = null
+      clearPendingOpenCandidate()
     },
   })
   const {
@@ -1568,66 +1340,6 @@
     }
   }
 
-  const handleOpenEntry = async (entry: Entry) => {
-    pendingOpenCandidate = null
-    if (entry.kind === 'dir') {
-      if (currentView === 'network') {
-        await transitionToAddressMode({ path: entry.path, reloadOnDisable: false })
-        await openPartition(entry.path)
-      } else {
-        await transitionToAddressMode({ path: entry.path, reloadOnDisable: false })
-        await loadDir(entry.path)
-      }
-      return
-    }
-    if (entry.kind === 'file' && await canExtractPaths([entry.path])) {
-      await extractEntries([entry])
-      return
-    }
-    open(entry)
-  }
-
-  const isOpenClickCandidate = (event: MouseEvent) =>
-    event.button === 0 &&
-    !event.shiftKey &&
-    !event.ctrlKey &&
-    !event.metaKey &&
-    !event.altKey
-
-  const clickTimestampMs = (event: MouseEvent) => {
-    const stamp = Number(event.timeStamp)
-    return Number.isFinite(stamp) ? stamp : performance.now()
-  }
-
-  const resolveDoubleClickMs = () => {
-    const configured = get(doubleClickMs)
-    return Math.min(600, Math.max(150, Math.round(configured)))
-  }
-
-  const handleRowClickWithOpen = (entry: Entry, absoluteIndex: number, event: MouseEvent) => {
-    rowSelectionHandler(entry, absoluteIndex, event)
-
-    if (!isOpenClickCandidate(event)) {
-      pendingOpenCandidate = null
-      return
-    }
-
-    const nowMs = clickTimestampMs(event)
-    const thresholdMs = resolveDoubleClickMs()
-
-    if (
-      pendingOpenCandidate &&
-      pendingOpenCandidate.path === entry.path &&
-      nowMs - pendingOpenCandidate.atMs <= thresholdMs
-    ) {
-      pendingOpenCandidate = null
-      void handleOpenEntry(entry)
-      return
-    }
-
-    pendingOpenCandidate = { path: entry.path, atMs: nowMs }
-  }
-
   const openEntryLocation = async (entry: Entry) => {
     const dir = parentPath(entry.path)
     await loadDir(dir)
@@ -1641,190 +1353,6 @@
       anchorIndex.set(null)
       caretIndex.set(null)
     }
-  }
-
-  // --- Pointer handlers (list & grid) -------------------------------------
-  const handleRowsMouseDown = (event: MouseEvent) => {
-    const target = event.target as HTMLElement | null
-    if (viewMode === 'list') {
-      if (!rowsElRef) return
-      if (isScrollbarClick(event, rowsElRef)) return
-      if (inLassoGutter(event, rowsElRef)) return
-      if (target && target.closest('.row')) return
-      event.preventDefault()
-      rowsElRef.focus()
-      const list = get(filteredEntries)
-      if (list.length === 0) return
-      selectionDrag = false
-      const additive = event.ctrlKey || event.metaKey
-      const subtractive = !additive && event.shiftKey
-      const baseSelection = get(selected)
-      const baseAnchor = get(anchorIndex)
-      const baseCaret = get(caretIndex)
-      selectionBox.start(event, {
-        rowsEl: rowsElRef,
-        headerEl: headerElRef,
-        entries: list,
-        rowHeight: $rowHeight,
-        onSelect: (paths, anchor, caret) => {
-          if (subtractive) {
-            const next = new Set(baseSelection)
-            for (const path of paths) next.delete(path)
-            const anchorPath = baseAnchor !== null ? list[baseAnchor]?.path : null
-            const caretPath = baseCaret !== null ? list[baseCaret]?.path : null
-            anchorIndex.set(anchorPath && next.has(anchorPath) ? baseAnchor : null)
-            caretIndex.set(caretPath && next.has(caretPath) ? baseCaret : null)
-            selected.set(next)
-          } else if (additive) {
-            const merged = new Set(baseSelection)
-            for (const path of paths) merged.add(path)
-            selected.set(merged)
-            anchorIndex.set(baseAnchor ?? anchor)
-            caretIndex.set(baseCaret ?? caret)
-          } else {
-            selected.set(paths)
-            anchorIndex.set(anchor)
-            caretIndex.set(caret)
-          }
-        },
-        onEnd: (didDrag) => {
-          selectionDrag = didDrag
-        },
-      })
-      return
-    }
-
-    // Grid mode lasso selection
-    const gridEl = event.currentTarget as HTMLDivElement | null
-    if (!gridEl) return
-    if (isScrollbarClick(event, gridEl)) return
-    if (inLassoGutter(event, gridEl)) return
-    if (target && target.closest('.card')) return
-    const gridEntries = get(filteredEntries)
-    if (gridEntries.length === 0) return
-    const { paddingLeft: gridPaddingLeft, paddingTop: gridPaddingTop } = getGridPadding(gridEl)
-    event.preventDefault()
-    // When clicking blank space in grid mode, leave address edit mode and focus the grid.
-    blurPathInput()
-    gridEl.focus()
-    selectionDrag = false
-    const additive = event.ctrlKey || event.metaKey
-    const subtractive = !additive && event.shiftKey
-    const baseSelection = get(selected)
-    const baseAnchor = get(anchorIndex)
-    const baseCaret = get(caretIndex)
-      selectionBox.start(event, {
-        rowsEl: gridEl,
-        headerEl: null,
-        entries: gridEntries,
-        rowHeight: 1,
-        hitTest: (rect) =>
-        hitTestGridVirtualized(rect, gridEntries, {
-          gridCols: getGridCols(),
-          cardWidth: gridCardWidth,
-          cardHeight: gridRowHeight,
-          gap: gridGap,
-          paddingLeft: gridPaddingLeft,
-          paddingTop: gridPaddingTop,
-        }),
-      onSelect: (paths, anchor, caret) => {
-        if (subtractive) {
-          const next = new Set(baseSelection)
-          for (const path of paths) next.delete(path)
-          const anchorPath = baseAnchor !== null ? gridEntries[baseAnchor]?.path : null
-          const caretPath = baseCaret !== null ? gridEntries[baseCaret]?.path : null
-          anchorIndex.set(anchorPath && next.has(anchorPath) ? baseAnchor : null)
-          caretIndex.set(caretPath && next.has(caretPath) ? baseCaret : null)
-          selected.set(next)
-        } else if (additive) {
-          const merged = new Set(baseSelection)
-          for (const path of paths) merged.add(path)
-          selected.set(merged)
-          anchorIndex.set(baseAnchor ?? anchor ?? null)
-          caretIndex.set(baseCaret ?? caret ?? null)
-        } else {
-          selected.set(paths)
-          anchorIndex.set(anchor ?? null)
-          caretIndex.set(caret ?? null)
-        }
-      },
-      onEnd: (didDrag) => {
-        selectionDrag = didDrag
-      },
-    })
-  }
-
-  // --- Scroll / wheel routing --------------------------------------------
-  const suppressHoverWhileScrolling = () => {
-    const el = rowsElRef
-    if (!el) return
-    el.classList.add('is-scrolling')
-    if (scrollHoverTimer !== null) {
-      clearTimeout(scrollHoverTimer)
-    }
-    scrollHoverTimer = setTimeout(() => {
-      scrollHoverTimer = null
-      rowsElRef?.classList.remove('is-scrolling')
-    }, SCROLL_HOVER_SUPPRESS_MS)
-  }
-
-  const handleRowsScrollCombined = () => {
-    suppressHoverWhileScrolling()
-    if (viewMode === 'list') {
-      handleRowsScroll()
-    } else {
-      handleGridScroll()
-    }
-  }
-
-  // --- Keyboard navigation (grid) -----------------------------------------
-  const handleGridKeydown = createGridKeyboardHandler({
-    getFilteredEntries: () => get(filteredEntries),
-    selected,
-    anchorIndex,
-    caretIndex,
-    getGridCols,
-    ensureGridVisible,
-    handleOpenEntry,
-  })
-
-  const handleRowsKeydownCombined = (event: KeyboardEvent) => {
-    if (viewMode === 'list') {
-      rowsKeydownHandler(event)
-    } else {
-      handleGridKeydown(event)
-    }
-  }
-
-  const handleWheelCombined = (event: WheelEvent) => {
-    if (viewMode === 'list') {
-      handleWheel(event)
-    } else {
-      handleGridWheel(event)
-    }
-  }
-
-  // --- Click handling (row/grid blank vs cards) ---------------------------
-  const handleRowsClickSafe = (event: MouseEvent) => {
-    if (selectionDrag) {
-      selectionDrag = false
-      pendingOpenCandidate = null
-      return
-    }
-    if (isScrollbarClick(event, rowsElRef)) return
-    if (viewMode === 'grid') {
-      const target = event.target as HTMLElement | null
-      if (target && target.closest('.card')) return
-      pendingOpenCandidate = null
-      if (get(selected).size > 0) {
-        selected.set(new Set())
-        anchorIndex.set(null)
-        caretIndex.set(null)
-      }
-      return
-    }
-    pendingOpenCandidate = null
-    handleRowsClick(event)
   }
 
   const {
@@ -1859,6 +1387,97 @@
     handlePasteOrMove,
     showToast,
   })
+  const inputHandlers = useExplorerInputHandlers({
+    getViewMode: () => viewMode,
+    getMode: () => mode,
+    setPathInput: (value) => {
+      pathInput = value
+    },
+    getPathInput: () => pathInput,
+    isInputFocused: () => inputFocused,
+    getCurrentPath: () => get(current),
+    isSearchSessionEnabled: () => isSearchSessionEnabled,
+    getRowsEl: () => rowsElRef,
+    getHeaderEl: () => headerElRef,
+    getFilteredEntries: () => get(filteredEntries),
+    getSelected: () => get(selected),
+    setSelected: (next) => {
+      selected.set(next)
+    },
+    getAnchorIndex: () => get(anchorIndex),
+    setAnchorIndex: (next) => {
+      anchorIndex.set(next)
+    },
+    getCaretIndex: () => get(caretIndex),
+    setCaretIndex: (next) => {
+      caretIndex.set(next)
+    },
+    getRowHeight: () => get(rowHeight),
+    getDoubleClickMs: () => get(doubleClickMs),
+    setCopyModifierActive,
+    isEditableTarget,
+    hasAppShortcut: (event) => matchesAnyShortcut(event, shortcutBindings),
+    handleGlobalKeydown,
+    transitionToAddressMode,
+    blurPathInput,
+    ensureGridVisible,
+    getRowsKeydownHandler: () => rowsKeydownHandler,
+    getRowSelectionHandler: () => rowSelectionHandler,
+    selectionBox,
+    getGridCols,
+    getGridCardWidth: () => gridCardWidth,
+    getGridRowHeight: () => gridRowHeight,
+    getGridGap: () => gridGap,
+    handleRowsScroll,
+    handleGridScroll,
+    handleWheel,
+    handleGridWheel,
+    handleRowsClick,
+    currentView: () => currentView,
+    loadDir: (path) => loadDir(path),
+    openPartition: (path) => openPartition(path),
+    canExtractPaths,
+    extractEntries,
+    open,
+    isBlockingModalOpen: () => get(anyModalOpenStore),
+    isDeleteModalOpen: () => get(deleteState).open,
+    closeDeleteModal: () => deleteModal.close(),
+    isRenameModalOpen: () => get(renameState).open,
+    closeRenameModal: () => renameModal.close(),
+    isOpenWithModalOpen: () => get(openWithState).open,
+    closeOpenWithModal: () => openWithModal.close(),
+    isPropertiesModalOpen: () => get(propertiesState).open,
+    closePropertiesModal: () => propertiesModal.close(),
+    isCompressModalOpen: () => get(compressState).open,
+    closeCompressModal: () => compressModal.close(),
+    isCheckDuplicatesModalOpen: () => get(checkDuplicatesState).open,
+    closeCheckDuplicatesModal: () => closeCheckDuplicatesModal(),
+    isNewFolderModalOpen: () => get(newFolderState).open,
+    closeNewFolderModal: () => newFolderModal.close(),
+    isNewFileModalOpen: () => get(newFileState).open,
+    closeNewFileModal: () => newFileModal.close(),
+    isBookmarkModalOpen: () => bookmarkModalOpen,
+    closeBookmarkModal,
+    isContextMenuOpen: () => get(contextMenu).open,
+    closeContextMenu,
+    isBlankMenuOpen: () => get(blankMenu).open,
+    closeBlankContextMenu,
+    suppressHoverMs: 150,
+  })
+  const {
+    handleDocumentKeydown,
+    handleDocumentKeyup,
+    handleOpenEntry,
+    handleRowClickWithOpen,
+    handleRowsMouseDown,
+    handleRowsScrollCombined,
+    handleRowsKeydownCombined,
+    handleWheelCombined,
+    handleRowsClickSafe,
+    clearPendingOpenCandidate: clearPendingOpenCandidateHandler,
+    cleanupScrollHover,
+  } = inputHandlers
+  clearPendingOpenCandidate = clearPendingOpenCandidateHandler
 
   const closeRenameModal = () => {
     renameModal.close()
@@ -1937,11 +1556,7 @@
     onErrorToast: showToast,
     onCleanup: () => {
       abortDirStats()
-      if (scrollHoverTimer !== null) {
-        clearTimeout(scrollHoverTimer)
-        scrollHoverTimer = null
-      }
-      rowsElRef?.classList.remove('is-scrolling')
+      cleanupScrollHover()
       viewObservers.cleanup()
     },
   })
