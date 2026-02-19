@@ -1,5 +1,5 @@
 import { getErrorMessage } from '@/shared/lib/error'
-import { clipboardState, setClipboardPathsState, clearClipboardState } from '../stores/clipboardState'
+import { clipboardState, setClipboardPathsState, clearClipboardState } from '../stores/clipboard.store'
 import type { Entry } from '../model/types'
 import { setClipboardCmd, pasteClipboardCmd } from '../services/clipboard.service'
 
