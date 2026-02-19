@@ -56,6 +56,7 @@
   import { createAppLifecycle } from '@/features/explorer/hooks/useAppLifecycle'
   import { createTopbarActions } from '@/features/explorer/hooks/useTopbarActions'
   import { useExplorerNavigation } from '@/features/explorer/hooks/useExplorerNavigation'
+  import { useExplorerSearchSession } from '@/features/explorer/hooks/useExplorerSearchSession'
   import { createTextContextMenu } from '@/features/explorer/hooks/useTextContextMenu'
   import { createViewObservers } from '@/features/explorer/hooks/useViewObservers'
   import {
@@ -94,10 +95,6 @@
 
   // --- Types --------------------------------------------------------------
   type ViewMode = 'list' | 'grid'
-  type SearchSession = {
-    submittedQuery: string
-    clearedDraftQuery: string | null
-  }
 
   // --- Core UI state -------------------------------------------------------
   let sidebarCollapsed = false
@@ -110,10 +107,6 @@
   let inputFocused = false
   let filterActive = false
   let isSearchSessionEnabled = false
-  let searchSession: SearchSession = {
-    submittedQuery: '',
-    clearedDraftQuery: null,
-  }
 
   // DOM refs & observers
   let rowsElRef: HTMLDivElement | null = null
@@ -472,76 +465,6 @@
     recompute,
   } = createListState()
 
-  const normalizeSearchQuery = (value: string) => value.trim()
-
-  const patchSearchSession = (patch: Partial<SearchSession>) => {
-    const next: SearchSession = {
-      ...searchSession,
-      ...patch,
-    }
-    if (
-      next.submittedQuery === searchSession.submittedQuery &&
-      next.clearedDraftQuery === searchSession.clearedDraftQuery
-    ) {
-      return
-    }
-    searchSession = next
-  }
-
-  const resetSearchSession = () => {
-    patchSearchSession({
-      submittedQuery: '',
-      clearedDraftQuery: null,
-    })
-  }
-
-  const markSearchResultsStale = (draftQuery: string) => {
-    if (searchSession.clearedDraftQuery === draftQuery) return
-    cancelSearch()
-    filter.set(searchSession.submittedQuery)
-    patchSearchSession({ clearedDraftQuery: draftQuery })
-  }
-
-  const exitSearchSession = async (
-    options: {
-      reloadOnDisable?: boolean
-      skipToggle?: boolean
-    } = {},
-  ) => {
-    const { reloadOnDisable = true, skipToggle = false } = options
-    if (skipToggle) {
-      cancelSearch()
-      searchMode.set(false)
-    } else if (isSearchSessionEnabled) {
-      await toggleMode(false, { reloadOnDisable })
-    }
-    filter.set('')
-    resetSearchSession()
-  }
-
-  const transitionToAddressMode = async (
-    options: {
-      path?: string
-      blur?: boolean
-      reloadOnDisable?: boolean
-      skipToggle?: boolean
-    } = {},
-  ) => {
-    const { path = $current, blur = false, reloadOnDisable = true, skipToggle = false } = options
-    mode = 'address'
-    await exitSearchSession({ reloadOnDisable, skipToggle })
-    pathInput = path
-    if (blur) {
-      pathInputEl?.blur()
-    }
-  }
-
-  const transitionToFilterMode = async (path = '') => {
-    mode = 'filter'
-    await exitSearchSession({ reloadOnDisable: false })
-    pathInput = path
-  }
-
   $: rowsElStore.set(viewMode === 'list' ? rowsElRef : null)
   $: headerElStore.set(viewMode === 'list' ? headerElRef : null)
   $: {
@@ -739,6 +662,39 @@
   $: navigation.flushPendingNavigation()
   $: navigation.dropPendingNavIfCurrent()
 
+  const searchSession = useExplorerSearchSession({
+    getCurrentPath: () => get(current),
+    getPathInput: () => pathInput,
+    setPathInput: (value) => {
+      pathInput = value
+    },
+    blurPathInput: () => {
+      pathInputEl?.blur()
+    },
+    setMode: (next) => {
+      mode = next
+    },
+    getMode: () => mode,
+    isSearchSessionEnabled: () => isSearchSessionEnabled,
+    canUseSearch: () => currentView === 'dir',
+    cancelSearch,
+    setSearchMode: (value) => searchMode.set(value),
+    setFilterValue: (value) => filter.set(value),
+    toggleMode: (enabled, opts) => toggleMode(enabled, opts),
+    goToPath: (path) => goToPath(path),
+    runSearch: (query) => runSearch(query),
+  })
+  const {
+    transitionToAddressMode,
+    transitionToFilterMode,
+    setSearchModeState,
+    submitPath,
+    submitSearch,
+    enterAddressMode,
+    syncSearchSessionWithInput,
+    resetInputModeForNavigation,
+  } = searchSession
+
   $: {
     isSearchSessionEnabled = $searchMode
   }
@@ -750,30 +706,7 @@
     }
   }
 
-  $: {
-    if (!isSearchSessionEnabled) {
-      resetSearchSession()
-    } else {
-      const draftQuery = normalizeSearchQuery(pathInput)
-      const stale = draftQuery !== searchSession.submittedQuery
-      if (stale) {
-        markSearchResultsStale(draftQuery)
-      } else {
-        patchSearchSession({
-          clearedDraftQuery: null,
-        })
-      }
-    }
-  }
-
-  const resetInputModeForNavigation = (returnToBreadcrumb = false, currentPath = get(current)) => {
-    void transitionToAddressMode({
-      path: currentPath,
-      blur: returnToBreadcrumb,
-      reloadOnDisable: false,
-      skipToggle: true,
-    })
-  }
+  $: syncSearchSessionWithInput()
 
   $: {
     const curr = $current
@@ -883,24 +816,6 @@
   const ariaSort = (field: SortField) =>
     $sortField === field ? ($sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'
 
-  const submitPath = () => {
-    const trimmed = pathInput.trim()
-    if (!trimmed) return
-    void goToPath(trimmed)
-  }
-
-  const submitSearch = () => {
-    patchSearchSession({
-      submittedQuery: normalizeSearchQuery(pathInput),
-      clearedDraftQuery: null,
-    })
-    void runSearch(pathInput)
-  }
-
-  const enterAddressMode = async () => {
-    await transitionToAddressMode({ path: $current })
-  }
-
   const isHidden = (entry: Entry) => entry.hidden === true || entry.name.startsWith('.')
 
   const displayName = (entry: Entry) => {
@@ -941,21 +856,6 @@
   }
 
   const canUseSearch = () => currentView === 'dir'
-
-  const setSearchModeState = async (value: boolean) => {
-    if (value && !canUseSearch()) {
-      await transitionToFilterMode('')
-      return
-    }
-    if (!value) {
-      await transitionToAddressMode({ path: $current })
-      return
-    }
-    pathInput = ''
-    resetSearchSession()
-    await toggleMode(true)
-    mode = 'address'
-  }
 
   const { handleTopbarAction, handleTopbarViewModeChange } = createTopbarActions({
     openSettings: (initialFilter) => {
