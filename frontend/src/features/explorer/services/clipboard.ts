@@ -1,4 +1,4 @@
-import { invoke } from '@/lib/tauri'
+import { invoke } from '@/shared/lib/tauri'
 
 export const copyPathsToSystemClipboard = (paths: string[], mode: 'copy' | 'cut' = 'copy') =>
   invoke<void>('copy_paths_to_system_clipboard', { paths, mode })

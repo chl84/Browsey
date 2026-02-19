@@ -1,6 +1,6 @@
 <script lang="ts">
-  import ModalShell from '../../../ui/ModalShell.svelte'
-  import ComboBox, { type ComboOption } from '../../../ui/ComboBox.svelte'
+  import ModalShell from '../../../shared/ui/ModalShell.svelte'
+  import ComboBox, { type ComboOption } from '../../../shared/ui/ComboBox.svelte'
   import type { Entry } from '../types'
   export let open = false
   export let entry: Entry | null = null

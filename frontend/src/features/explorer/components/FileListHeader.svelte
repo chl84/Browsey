@@ -1,5 +1,5 @@
 <script lang="ts">
-  import ColumnResizer from '../../../ui/ColumnResizer.svelte'
+  import ColumnResizer from '../../../shared/ui/ColumnResizer.svelte'
   import type { Column, SortDirection, SortField } from '../types'
 
   export let cols: Column[] = []

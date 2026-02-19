@@ -1,6 +1,6 @@
-import { invoke } from '@/lib/tauri'
+import { invoke } from '@/shared/lib/tauri'
 import { writable, get } from 'svelte/store'
-import { getErrorMessage } from '@/lib/error'
+import { getErrorMessage } from '@/shared/lib/error'
 import type { Entry } from '../types'
 
 type ActivityApi = {

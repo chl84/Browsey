@@ -1,6 +1,6 @@
 <script lang="ts">
-  import ModalShell from '../../../ui/ModalShell.svelte'
-  import { autoSelectOnOpen } from '../../../ui/modalUtils'
+  import ModalShell from '../../../shared/ui/ModalShell.svelte'
+  import { autoSelectOnOpen } from '../../../shared/ui/modalUtils'
 
   export let open = false
   export let value = ''

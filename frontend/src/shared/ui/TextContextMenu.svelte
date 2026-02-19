@@ -1,11 +1,11 @@
 <script lang="ts">
-  import ContextMenu from '../features/explorer/components/ContextMenu.svelte'
+  import ContextMenu from '@/features/explorer/components/ContextMenu.svelte'
   import {
     DEFAULT_SHORTCUTS,
     shortcutFor,
     type ShortcutBinding,
     type ShortcutCommandId,
-  } from '../features/shortcuts/keymap'
+  } from '@/features/shortcuts/keymap'
 
   export let open = false
   export let x = 0

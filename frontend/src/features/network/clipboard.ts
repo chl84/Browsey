@@ -1,4 +1,4 @@
-import { getErrorMessage } from '@/lib/error'
+import { getErrorMessage } from '@/shared/lib/error'
 
 type CopyResult = { ok: true } | { ok: false; error: string }
 

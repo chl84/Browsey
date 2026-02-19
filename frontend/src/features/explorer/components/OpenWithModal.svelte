@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { OpenWithApp, OpenWithChoice } from '../services/openWith'
 
-  import ModalShell from '../../../ui/ModalShell.svelte'
+  import ModalShell from '../../../shared/ui/ModalShell.svelte'
 
   export let open = false
   export let apps: OpenWithApp[] = []

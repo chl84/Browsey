@@ -1,7 +1,7 @@
 <script lang="ts">
   // --- Imports -------------------------------------------------------------
   import { onMount, onDestroy, tick } from 'svelte'
-  import { getErrorMessage } from '@/lib/error'
+  import { getErrorMessage } from '@/shared/lib/error'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { get, writable } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from './features/explorer/utils'
@@ -74,8 +74,8 @@
     type ShortcutBinding,
     type ShortcutCommandId,
   } from './features/shortcuts/keymap'
-  import DragGhost from './ui/DragGhost.svelte'
-  import TextContextMenu from './ui/TextContextMenu.svelte'
+  import DragGhost from './shared/ui/DragGhost.svelte'
+  import TextContextMenu from './shared/ui/TextContextMenu.svelte'
   import {
     checkDuplicatesStream,
     type DuplicateScanProgress,
@@ -87,10 +87,10 @@
     clearThumbnailCache,
   } from './features/explorer/services/data'
   import { createNewFileTypeHint } from './features/explorer/hooks/useNewFileTypeHint'
-  import ConflictModal from './ui/ConflictModal.svelte'
+  import ConflictModal from './shared/ui/ConflictModal.svelte'
   import SettingsModal from './features/settings/SettingsModal.svelte'
   import AboutBrowseyModal from './features/explorer/components/AboutBrowseyModal.svelte'
-  import { anyModalOpen as anyModalOpenStore } from './ui/modalOpenState'
+  import { anyModalOpen as anyModalOpenStore } from './shared/ui/modalOpenState'
   import './features/explorer/ExplorerLayout.css'
 
   // --- Types --------------------------------------------------------------

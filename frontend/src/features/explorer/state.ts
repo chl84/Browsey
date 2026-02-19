@@ -1,5 +1,5 @@
-import { invoke } from '@/lib/tauri'
-import { getErrorMessage } from '@/lib/error'
+import { invoke } from '@/shared/lib/tauri'
+import { getErrorMessage } from '@/shared/lib/error'
 import { listen } from '@tauri-apps/api/event'
 import { derived, get, writable } from 'svelte/store'
 import type {

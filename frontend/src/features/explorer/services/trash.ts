@@ -1,4 +1,4 @@
-import { invoke } from '@/lib/tauri'
+import { invoke } from '@/shared/lib/tauri'
 
 export const deleteEntry = (path: string) =>
   invoke<void>('delete_entry', { path })
