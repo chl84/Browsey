@@ -49,18 +49,17 @@
   import { ensureSelectionBeforeMenu } from '@/features/explorer/helpers/contextMenuHelpers'
   import { isScrollbarClick } from '@/features/explorer/helpers/scrollbar'
   import { moveCaret } from '@/features/explorer/helpers/navigationController'
-  import { createSelectionMemory } from '@/features/explorer/model/selectionMemory'
   import { loadDefaultView, storeDefaultView } from '@/features/explorer/services/settings.service'
   import { createGridKeyboardHandler } from '@/features/explorer/hooks/useGridHandlers'
   import { useContextMenuBlocker } from '@/features/explorer/hooks/useContextMenuBlocker'
   import { createActivity } from '@/features/explorer/hooks/useActivity'
   import { createAppLifecycle } from '@/features/explorer/hooks/useAppLifecycle'
   import { createTopbarActions } from '@/features/explorer/hooks/useTopbarActions'
+  import { useExplorerNavigation } from '@/features/explorer/hooks/useExplorerNavigation'
   import { createTextContextMenu } from '@/features/explorer/hooks/useTextContextMenu'
   import { createViewObservers } from '@/features/explorer/hooks/useViewObservers'
   import {
     buildNetworkEntryContextActions,
-    connectNetworkUri,
     copyTextToSystemClipboard,
     isMountUri,
     networkBlankContextActions,
@@ -155,8 +154,6 @@
   let settingsInitialFilter = ''
   let thumbnailRefreshToken = 0
   let shortcutBindings: ShortcutBinding[] = DEFAULT_SHORTCUTS
-  let pendingNav: { path: string; opts?: { recordHistory?: boolean; silent?: boolean }; gen: number } | null = null
-  let navGeneration = 0
 
   // Drag & clipboard
   const { store: bookmarkStore } = bookmarkModal
@@ -545,276 +542,6 @@
     pathInput = path
   }
 
-  // --- Selection memory ----------------------------------------------------
-
-  const selectionMemory = createSelectionMemory()
-
-  const viewFromPath = (value: string): CurrentView =>
-    value === 'Recent'
-      ? 'recent'
-      : value === 'Starred'
-        ? 'starred'
-        : value === 'Network'
-          ? 'network'
-        : value.startsWith('Trash')
-          ? 'trash'
-          : 'dir'
-
-  const captureSelectionSnapshot = () => {
-    const curr = get(current)
-    if (!curr || viewFromPath(curr) !== 'dir') return
-    selectionMemory.capture(curr, get(filteredEntries), get(selected), get(anchorIndex), get(caretIndex))
-  }
-
-  const restoreSelectionForCurrent = () => {
-    const curr = get(current)
-    const view = curr ? viewFromPath(curr) : 'dir'
-    if (!curr || view !== 'dir') {
-      selected.set(new Set())
-      anchorIndex.set(null)
-      caretIndex.set(null)
-      return
-    }
-    const restored = selectionMemory.restore(curr, get(filteredEntries))
-    if (restored) {
-      selected.set(restored.selected)
-      anchorIndex.set(restored.anchorIndex)
-      caretIndex.set(restored.caretIndex)
-    } else {
-      selected.set(new Set())
-      anchorIndex.set(null)
-      caretIndex.set(null)
-    }
-  }
-
-  const centerSelectionIfAny = async () => {
-    const list = get(filteredEntries)
-    const sel = get(selected)
-    if (sel.size === 0 || list.length === 0) return
-    const idx =
-      get(caretIndex) ??
-      get(anchorIndex) ??
-      list.findIndex((e) => sel.has(e.path))
-    if (idx === null || idx < 0) return
-
-    await tick()
-    requestAnimationFrame(() => {
-      if (viewMode === 'list') {
-        const rowsEl = rowsElRef
-        if (!rowsEl) return
-        const headerH = headerElRef?.offsetHeight ?? 0
-        const viewport = rowsEl.clientHeight - headerH
-        const rowH = $rowHeight
-        const target = headerH + Math.max(0, idx * rowH - (viewport - rowH) / 2)
-        const maxScroll = Math.max(0, rowsEl.scrollHeight - rowsEl.clientHeight)
-        rowsEl.scrollTo({ top: Math.min(target, maxScroll), behavior: 'auto' })
-      } else {
-        const gridEl = gridElRef
-        const cols = getGridCols()
-        if (!gridEl || cols <= 0) return
-        const stride = gridRowHeight + gridGap
-        const row = Math.floor(idx / Math.max(1, cols))
-        const viewport = gridEl.clientHeight
-        const target = Math.max(0, row * stride - (viewport - stride) / 2)
-        const maxScroll =
-          Math.max(get(gridTotalHeight) - viewport, gridEl.scrollHeight - gridEl.clientHeight, 0)
-        gridEl.scrollTo({ top: Math.min(target, maxScroll), behavior: 'auto' })
-      }
-    })
-  }
-
-  const loadDir = async (
-    path?: string,
-    opts: { recordHistory?: boolean; silent?: boolean } = {},
-    navOpts: { resetScroll?: boolean } = {},
-  ) => {
-    const shouldResetScroll = navOpts.resetScroll ?? !opts.silent
-    if (shouldResetScroll) {
-      resetScrollPosition()
-    }
-    navGeneration += 1
-    pendingNav = null
-    captureSelectionSnapshot()
-    await loadRaw(path, opts)
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
-  }
-
-  const loadRecent = async (recordHistory = true, applySort = false, navOpts: { resetScroll?: boolean } = {}) => {
-    if (navOpts.resetScroll ?? true) {
-      resetScrollPosition()
-    }
-    captureSelectionSnapshot()
-    await loadRecentRaw(recordHistory, applySort)
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
-  }
-
-  const loadStarred = async (recordHistory = true, navOpts: { resetScroll?: boolean } = {}) => {
-    if (navOpts.resetScroll ?? true) {
-      resetScrollPosition()
-    }
-    captureSelectionSnapshot()
-    await loadStarredRaw(recordHistory)
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
-  }
-
-  const loadNetwork = async (
-    recordHistory = true,
-    navOpts: { resetScroll?: boolean; forceRefresh?: boolean } = {},
-  ) => {
-    if (navOpts.resetScroll ?? true) {
-      resetScrollPosition()
-    }
-    captureSelectionSnapshot()
-    await loadNetworkRaw(recordHistory, { forceRefresh: navOpts.forceRefresh === true })
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
-  }
-
-  const loadTrash = async (recordHistory = true, navOpts: { resetScroll?: boolean } = {}) => {
-    if (navOpts.resetScroll ?? true) {
-      resetScrollPosition()
-    }
-    captureSelectionSnapshot()
-    await loadTrashRaw(recordHistory)
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
-  }
-
-  const goBack = async () => {
-    captureSelectionSnapshot()
-    const before = get(current)
-    await goBackRaw()
-    if (get(current) !== before) {
-      resetScrollPosition()
-    }
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
-  }
-
-  const goForward = async () => {
-    captureSelectionSnapshot()
-    const before = get(current)
-    await goForwardRaw()
-    if (get(current) !== before) {
-      resetScrollPosition()
-    }
-    restoreSelectionForCurrent()
-    await centerSelectionIfAny()
-  }
-
-  const openPathAsFile = (path: string) => {
-    const name = path.split(/[\\/]+/).filter((segment) => segment.length > 0).pop() ?? path
-    open({
-      name,
-      path,
-      kind: 'file',
-      iconId: 0,
-    })
-  }
-
-  const goToPath = async (path: string) => {
-    const trimmed = path.trim()
-    if (!trimmed) return
-
-    if (await isMountUri(trimmed)) {
-      await openPartition(trimmed)
-      return
-    }
-
-    try {
-      const kind = await entryKind(trimmed)
-      if (kind === 'dir') {
-        if (trimmed !== get(current) && !get(loading)) {
-          await loadDir(trimmed)
-        }
-        return
-      }
-
-      openPathAsFile(trimmed)
-      pathInput = get(current)
-    } catch {
-      if (trimmed !== get(current) && !get(loading)) {
-        await loadDir(trimmed)
-      }
-    }
-  }
-
-  const loadDirIfIdle = async (path: string, opts: { recordHistory?: boolean; silent?: boolean } = {}) => {
-    if (get(loading)) {
-      if (pendingNav && pendingNav.path === path) {
-        return
-      }
-      pendingNav = { path, opts, gen: navGeneration + 1 }
-      return
-    }
-    await loadDir(path, opts)
-  }
-
-  const openPartition = async (path: string) => {
-    if (await isMountUri(path)) {
-      try {
-        const result = await connectNetworkUri(path)
-        if (result.kind === 'unsupported') {
-          showToast('Unsupported network protocol')
-          return
-        }
-        if (result.kind === 'mountable') {
-          await loadPartitions({ forceNetworkRefresh: true })
-          if (result.mountedPath) {
-            await loadDirIfIdle(result.mountedPath)
-          } else {
-            showToast('Mounted, but no mount path found')
-          }
-        }
-      } catch (err) {
-        showToast(`Connect failed: ${getErrorMessage(err)}`)
-      }
-      return
-    }
-
-    await loadDirIfIdle(path)
-  }
-
-  const handlePlace = (label: string, path: string) => {
-    captureSelectionSnapshot()
-    if (label === 'Recent') {
-      void loadRecent()
-      return
-    }
-    if (label === 'Starred') {
-      void loadStarred()
-      return
-    }
-    if (label === 'Network') {
-      void loadNetwork(true, { forceRefresh: true })
-      return
-    }
-    if (label === 'Wastebasket') {
-      void loadTrash()
-      return
-    }
-    if (path) {
-      void loadDir(path)
-    } else {
-      restoreSelectionForCurrent()
-    }
-  }
-
-  // If a navigation was queued while loading, execute it when idle.
-  $: if (!get(loading) && pendingNav) {
-    if (pendingNav.gen > navGeneration) {
-      const next = pendingNav
-      pendingNav = null
-      navGeneration = next.gen
-      void loadDir(next.path, next.opts ?? {})
-    } else {
-      pendingNav = null
-    }
-  }
-
   $: rowsElStore.set(viewMode === 'list' ? rowsElRef : null)
   $: headerElStore.set(viewMode === 'list' ? headerElRef : null)
   $: {
@@ -833,11 +560,6 @@
     const state = $clipboardStore
     clipboardMode = state.mode
     clipboardPaths = state.paths
-  }
-  $: currentView = viewFromPath($current)
-  // Drop stale pending nav if we already are at that path
-  $: if (pendingNav && pendingNav.path === get(current)) {
-    pendingNav = null
   }
   $: {
     const state = $bookmarkStore
@@ -967,6 +689,55 @@
     visibleEntries,
     config: gridConfig,
   })
+
+  const navigation = useExplorerNavigation({
+    current,
+    loading,
+    filteredEntries,
+    selected,
+    anchorIndex,
+    caretIndex,
+    rowHeight,
+    gridTotalHeight,
+    getViewMode: () => viewMode,
+    getRowsEl: () => rowsElRef,
+    getHeaderEl: () => headerElRef,
+    getGridEl: () => gridElRef,
+    getGridCols,
+    getGridRowHeight: () => gridRowHeight,
+    getGridGap: () => gridGap,
+    resetScrollPosition,
+    loadRaw: (path, opts) => loadRaw(path, opts),
+    loadRecentRaw: (recordHistory, applySort) => loadRecentRaw(recordHistory, applySort),
+    loadStarredRaw: (recordHistory) => loadStarredRaw(recordHistory),
+    loadNetworkRaw: (recordHistory, opts) => loadNetworkRaw(recordHistory, opts),
+    loadTrashRaw: (recordHistory) => loadTrashRaw(recordHistory),
+    goBackRaw: () => goBackRaw(),
+    goForwardRaw: () => goForwardRaw(),
+    open: (entry) => open(entry),
+    loadPartitions: (opts) => loadPartitions(opts),
+    showToast,
+    setPathInput: (value) => {
+      pathInput = value
+    },
+  })
+  const {
+    viewFromPath,
+    loadDir,
+    loadRecent,
+    loadStarred,
+    loadNetwork,
+    loadTrash,
+    goBack,
+    goForward,
+    goToPath,
+    loadDirIfIdle,
+    openPartition,
+    handlePlace,
+  } = navigation
+  $: currentView = viewFromPath($current)
+  $: navigation.flushPendingNavigation()
+  $: navigation.dropPendingNavIfCurrent()
 
   $: {
     isSearchSessionEnabled = $searchMode
