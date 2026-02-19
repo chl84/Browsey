@@ -1468,11 +1468,16 @@
       if (event.shiftKey && !event.altKey && key === 'i') {
         return
       }
-      if (!matchesAnyShortcut(event, shortcutBindings)) {
+      const hasAppShortcut = matchesAnyShortcut(event, shortcutBindings)
+      if (!hasAppShortcut) {
         event.preventDefault()
         event.stopPropagation()
         return
       }
+      // Claim app-owned Ctrl/Cmd shortcuts immediately in capture phase so
+      // native/webview handlers do not also process the same accelerator.
+      event.preventDefault()
+      event.stopPropagation()
     }
 
     if (
