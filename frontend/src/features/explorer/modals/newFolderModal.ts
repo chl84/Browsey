@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store'
-import { getErrorMessage } from '@/lib/error'
+import { getErrorMessage } from '@/shared/lib/error'
 import { createFolder } from '../services/files'
 
 type Deps = {

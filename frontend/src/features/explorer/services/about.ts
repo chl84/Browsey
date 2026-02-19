@@ -1,4 +1,4 @@
-import { invoke } from '@/lib/tauri'
+import { invoke } from '@/shared/lib/tauri'
 
 export type AboutBuildInfo = {
   profile: string

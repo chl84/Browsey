@@ -1,12 +1,12 @@
 <script lang="ts">
-  import SelectionBox from '../../../ui/SelectionBox.svelte'
+  import SelectionBox from '../../../shared/ui/SelectionBox.svelte'
   import { iconPath as assetIconPath, formatSize, formatItems } from '../utils'
   import { iconPath as iconPathById } from '../icons'
   import type { Entry } from '../types'
   import { fullNameTooltip } from '../fullNameTooltip'
   import { createThumbnailLoader } from '../thumbnailLoader'
   import { onDestroy } from 'svelte'
-  import { convertFileSrc } from '@/lib/tauri'
+  import { convertFileSrc } from '@/shared/lib/tauri'
 
   export let currentPath = ''
   export let videoThumbs = true

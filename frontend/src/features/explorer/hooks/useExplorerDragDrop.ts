@@ -1,6 +1,6 @@
 import { onDestroy } from 'svelte'
 import { get, writable } from 'svelte/store'
-import { getErrorMessage } from '@/lib/error'
+import { getErrorMessage } from '@/shared/lib/error'
 import { useDragDrop } from './useDragDrop'
 import { createNativeFileDrop } from './useNativeFileDrop'
 import { normalizePath, parentPath } from '../utils'

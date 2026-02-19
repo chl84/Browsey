@@ -1,6 +1,6 @@
 <script lang="ts">
-  import ModalShell from '../../../ui/ModalShell.svelte'
-  import { autoSelectOnOpen } from '../../../ui/modalUtils'
+  import ModalShell from '../../../shared/ui/ModalShell.svelte'
+  import { autoSelectOnOpen } from '../../../shared/ui/modalUtils'
   import type { Entry } from '../types'
   import type {
     AdvancedRenamePayload,

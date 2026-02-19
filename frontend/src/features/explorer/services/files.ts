@@ -1,4 +1,4 @@
-import { invoke } from '@/lib/tauri'
+import { invoke } from '@/shared/lib/tauri'
 import type { Entry } from '../types'
 
 export const openEntry = (entry: Entry) =>

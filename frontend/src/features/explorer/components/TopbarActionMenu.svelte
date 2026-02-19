@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import BinarySlider from '../../../ui/BinarySlider.svelte'
-  import CheckboxIndicator from '../../../ui/CheckboxIndicator.svelte'
+  import BinarySlider from '../../../shared/ui/BinarySlider.svelte'
+  import CheckboxIndicator from '../../../shared/ui/CheckboxIndicator.svelte'
 
   type TopbarActionId =
     | 'open-settings'

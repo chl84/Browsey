@@ -1,7 +1,7 @@
 <script lang="ts">
   import FileListHeader from './FileListHeader.svelte'
   import FileRow from './FileRow.svelte'
-  import SelectionBox from '../../../ui/SelectionBox.svelte'
+  import SelectionBox from '../../../shared/ui/SelectionBox.svelte'
   import FileListColumnFilters from './FileListColumnFilters.svelte'
   import type { Column, Entry, SortDirection, SortField, ListingFacets } from '../types'
 

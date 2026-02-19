@@ -1,4 +1,4 @@
-import { getErrorMessage } from '@/lib/error'
+import { getErrorMessage } from '@/shared/lib/error'
 import type { Entry } from '../types'
 import type { ClipboardApi } from './useClipboard'
 import { copyPathsToSystemClipboard } from '../services/clipboard'

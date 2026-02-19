@@ -1,5 +1,5 @@
 <script lang="ts">
-  import ModalShell from '../../../ui/ModalShell.svelte'
+  import ModalShell from '../../../shared/ui/ModalShell.svelte'
 
   export let open = false
   export let targetLabel = ''

@@ -1,4 +1,4 @@
-import { getErrorMessage } from '@/lib/error'
+import { getErrorMessage } from '@/shared/lib/error'
 import { clipboardState, setClipboardPathsState, clearClipboardState } from '../stores/clipboardState'
 import type { Entry } from '../types'
 import { setClipboardCmd, pasteClipboardCmd } from '../services/clipboard'
