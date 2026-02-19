@@ -19,11 +19,6 @@
   import { openConsole } from '@/features/explorer/services/console.service'
   import {
     copyPathsToSystemClipboard,
-    setClipboardCmd,
-    clearSystemClipboard,
-    pasteClipboardCmd,
-    pasteClipboardPreview,
-    getSystemClipboardPaths,
   } from '@/features/explorer/services/clipboard.service'
   import {
     entryKind,
@@ -39,7 +34,6 @@
   import type { Entry, Partition, SortField, Density } from '@/features/explorer/model/types'
   import { toast, showToast } from '@/features/explorer/hooks/useToast'
   import { createClipboard } from '@/features/explorer/hooks/useClipboard'
-  import { setClipboardState, clearClipboardState } from '@/features/explorer/stores/clipboard.store'
   import { createContextMenus } from '@/features/explorer/hooks/useContextMenus'
   import type { ContextAction } from '@/features/explorer/hooks/useContextMenus'
   import { createContextActions, type CurrentView } from '@/features/explorer/hooks/useContextActions'
@@ -56,6 +50,7 @@
   import { createAppLifecycle } from '@/features/explorer/hooks/useAppLifecycle'
   import { createTopbarActions } from '@/features/explorer/hooks/useTopbarActions'
   import { useExplorerNavigation } from '@/features/explorer/hooks/useExplorerNavigation'
+  import { useExplorerFileOps } from '@/features/explorer/hooks/useExplorerFileOps'
   import { useExplorerSearchSession } from '@/features/explorer/hooks/useExplorerSearchSession'
   import { createTextContextMenu } from '@/features/explorer/hooks/useTextContextMenu'
   import { createViewObservers } from '@/features/explorer/hooks/useViewObservers'
@@ -135,9 +130,6 @@
   let bookmarkCandidate: Entry | null = null
   let bookmarkInputEl: HTMLInputElement | null = null
   let renameValue = ''
-  let conflictModalOpen = false
-  let conflictList: { src: string; target: string; is_dir: boolean }[] = []
-  let conflictDest: string | null = null
   let compressName = 'Archive'
   let compressLevel = 6
   let newFolderName = 'New folder'
@@ -1427,47 +1419,6 @@
     }
   }
 
-  const pasteIntoCurrent = async () => {
-    if (currentView !== 'dir') {
-      showToast('Cannot paste here')
-      return false
-    }
-
-    // Always attempt to sync from system clipboard first, then paste.
-    try {
-      const sys = await getSystemClipboardPaths()
-      if (sys.paths.length > 0) {
-        await setClipboardCmd(sys.paths, sys.mode)
-        const stubEntries = sys.paths.map((p) => ({
-          path: p,
-          name: p.split('/').pop() ?? p,
-          kind: 'file',
-          iconId: 12,
-        }))
-        setClipboardState(sys.mode, stubEntries as unknown as Entry[])
-      }
-    } catch (err) {
-      const msg = getErrorMessage(err)
-      if (!msg.toLowerCase().includes('no file paths found')) {
-        showToast(`System clipboard unavailable: ${msg}`, 2000)
-      }
-    }
-
-    const ok = await handlePasteOrMove($current)
-    if (ok && clipboardMode === 'cut') {
-      // Clear internal and system clipboard after a successful move
-      clearClipboardState()
-      try {
-        await setClipboardCmd([], 'copy')
-        await clearSystemClipboard()
-      } catch {
-        // ignore; move already succeeded
-      }
-      clipboardPaths = new Set()
-    }
-    return ok
-  }
-
   const reloadCurrent = async () => {
     if (currentView === 'recent') {
       await loadRecent(false, false, { resetScroll: false })
@@ -1487,6 +1438,26 @@
     }
     await loadRaw($current, { recordHistory: false })
   }
+
+  const fileOps = useExplorerFileOps({
+    currentView: () => currentView,
+    getCurrentPath: () => get(current),
+    clipboardMode: () => clipboardMode,
+    setClipboardPaths: (paths) => {
+      clipboardPaths = paths
+    },
+    reloadCurrent,
+    showToast,
+    activityApi,
+  })
+  const {
+    conflictModalOpen,
+    conflictList,
+    pasteIntoCurrent,
+    handlePasteOrMove,
+    resolveConflicts,
+    cancelConflicts,
+  } = fileOps
 
   const clearThumbnailCacheFromSettings = async () => {
     try {
@@ -2291,42 +2262,6 @@
     await contextActions(id, entry)
   }
 
-  const handlePasteOrMove = async (dest: string) => {
-    const runPaste = async (target: string, policy: 'rename' | 'overwrite' = 'rename') => {
-      const progressEvent = `copy-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-      try {
-        await activityApi.start('Copying…', progressEvent, () => activityApi.requestCancel(progressEvent))
-        await pasteClipboardCmd(target, policy, progressEvent)
-        await reloadCurrent()
-        activityApi.hideSoon()
-        return true
-      } catch (err) {
-        activityApi.clearNow()
-        await activityApi.cleanup()
-        showToast(`Paste failed: ${getErrorMessage(err)}`)
-        return false
-      }
-    }
-    try {
-      const conflicts = await pasteClipboardPreview(dest)
-      if (conflicts && conflicts.length > 0) {
-        const destNorm = normalizePath(dest)
-        const selfPaste = conflicts.every((c) => normalizePath(parentPath(c.src)) === destNorm)
-        if (selfPaste) {
-          return await runPaste(dest, 'rename')
-        }
-        conflictList = conflicts
-        conflictDest = dest
-        conflictModalOpen = true
-        return false
-      }
-      return await runPaste(dest, 'rename')
-    } catch (err) {
-      showToast(`Paste failed: ${getErrorMessage(err)}`)
-      return false
-    }
-  }
-
   const {
     dragState,
     dragAction,
@@ -2359,25 +2294,6 @@
     handlePasteOrMove,
     showToast,
   })
-
-  const resolveConflicts = async (policy: 'rename' | 'overwrite') => {
-    if (!conflictDest) return
-    conflictModalOpen = false
-    try {
-      const progressEvent = `copy-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-      await activityApi.start('Copying…', progressEvent, () => activityApi.requestCancel(progressEvent))
-      await pasteClipboardCmd(conflictDest, policy, progressEvent)
-      await reloadCurrent()
-      activityApi.hideSoon()
-    } catch (err) {
-      activityApi.clearNow()
-      await activityApi.cleanup()
-      showToast(`Paste failed: ${getErrorMessage(err)}`)
-    } finally {
-      conflictDest = null
-      conflictList = []
-    }
-  }
 
   const closeRenameModal = () => {
     renameModal.close()
@@ -2707,13 +2623,9 @@
   toastMessage={$toast}
 />
 <ConflictModal
-  open={conflictModalOpen}
-  conflicts={conflictList}
-  onCancel={() => {
-    conflictModalOpen = false
-    conflictList = []
-    conflictDest = null
-  }}
+  open={$conflictModalOpen}
+  conflicts={$conflictList}
+  onCancel={cancelConflicts}
   onRenameAll={() => resolveConflicts('rename')}
   onOverwrite={() => resolveConflicts('overwrite')}
 />

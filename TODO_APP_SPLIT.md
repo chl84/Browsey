@@ -73,8 +73,8 @@ Acceptance:
 Target from current `App.svelte` sections:
 - `computeDirStats`, paste/conflict flow (`handlePasteOrMove`, `pasteIntoCurrent`, `resolveConflicts`), extract flow, duplicate progress lifecycle.
 
-- [ ] Add `frontend/src/features/explorer/hooks/useExplorerFileOps.ts`.
-- [ ] Sub-step A: move paste/conflict flow.
+- [x] Add `frontend/src/features/explorer/hooks/useExplorerFileOps.ts`.
+- [x] Sub-step A: move paste/conflict flow.
 - [ ] Sub-step B: move extraction flow.
 - [ ] Sub-step C: move duplicate scan progress lifecycle.
 - [ ] Sub-step D: move `computeDirStats` orchestration.
@@ -134,7 +134,7 @@ Acceptance:
 - [x] Step 2 complete
 - [x] Step 3 complete
 - [ ] Step 4 complete
-- [ ] Step 4A complete
+- [x] Step 4A complete
 - [ ] Step 4B complete
 - [ ] Step 4C complete
 - [ ] Step 4D complete
