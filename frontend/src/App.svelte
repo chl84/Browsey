@@ -1,7 +1,8 @@
 <script lang="ts">
   // --- Imports -------------------------------------------------------------
   import { onMount, onDestroy, tick } from 'svelte'
-  import { invoke } from '@tauri-apps/api/core'
+  import { invoke } from '@/lib/tauri'
+  import { getErrorMessage } from '@/lib/error'
   import { listen, type UnlistenFn } from '@tauri-apps/api/event'
   import { get, writable } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from './features/explorer/utils'
@@ -768,7 +769,7 @@
           }
         }
       } catch (err) {
-        showToast(`Connect failed: ${err instanceof Error ? err.message : String(err)}`)
+        showToast(`Connect failed: ${getErrorMessage(err)}`)
       }
       return
     }
@@ -1272,7 +1273,7 @@
       showToast('Copied', 1500)
       void copyPathsToSystemClipboard(paths).catch((err) => {
         showToast(
-          `Copied (system clipboard unavailable: ${err instanceof Error ? err.message : String(err)})`,
+          `Copied (system clipboard unavailable: ${getErrorMessage(err)})`,
           2500
         )
       })
@@ -1289,7 +1290,7 @@
       showToast('Cut', 1500)
       void copyPathsToSystemClipboard(paths, 'cut').catch((err) => {
         showToast(
-          `Cut (system clipboard unavailable: ${err instanceof Error ? err.message : String(err)})`,
+          `Cut (system clipboard unavailable: ${getErrorMessage(err)})`,
           2500
         )
       })
@@ -1342,7 +1343,7 @@
       } catch (err) {
         console.error(inTrashView ? 'Failed to delete from trash' : 'Failed to move to trash', err)
         showToast(
-          `${inTrashView ? 'Delete failed' : 'Move to trash failed'}: ${err instanceof Error ? err.message : String(err)}`,
+          `${inTrashView ? 'Delete failed' : 'Move to trash failed'}: ${getErrorMessage(err)}`,
           3000
         )
       } finally {
@@ -1381,7 +1382,7 @@
         showToast('Deleted')
         return true
       } catch (err) {
-        showToast(`Delete failed: ${err instanceof Error ? err.message : String(err)}`)
+        showToast(`Delete failed: ${getErrorMessage(err)}`)
         return false
       }
     },
@@ -1398,7 +1399,7 @@
         await openConsole(get(current))
         return true
       } catch (err) {
-        showToast(`Open console failed: ${err instanceof Error ? err.message : String(err)}`)
+        showToast(`Open console failed: ${getErrorMessage(err)}`)
         return false
       }
     },
@@ -1418,7 +1419,7 @@
         await reloadCurrent()
         return true
       } catch (err) {
-        showToast(`Undo failed: ${err instanceof Error ? err.message : String(err)}`)
+        showToast(`Undo failed: ${getErrorMessage(err)}`)
         return false
       }
     },
@@ -1429,7 +1430,7 @@
         await reloadCurrent()
         return true
       } catch (err) {
-        showToast(`Redo failed: ${err instanceof Error ? err.message : String(err)}`)
+        showToast(`Redo failed: ${getErrorMessage(err)}`)
         return false
       }
     },
@@ -1769,7 +1770,7 @@
         setClipboardState(sys.mode, stubEntries as unknown as Entry[])
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       if (!msg.toLowerCase().includes('no file paths found')) {
         showToast(`System clipboard unavailable: ${msg}`, 2000)
       }
@@ -1824,7 +1825,7 @@
         showToast('Thumbnail cache already empty', 1800)
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       showToast(`Clear thumbnail cache failed: ${msg}`)
       throw err
     }
@@ -1845,7 +1846,7 @@
         showToast('No stars to clear', 1600)
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       showToast(`Clear stars failed: ${msg}`)
       throw err
     }
@@ -1861,7 +1862,7 @@
         showToast('No bookmarks to clear', 1600)
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       showToast(`Clear bookmarks failed: ${msg}`)
       throw err
     }
@@ -1879,7 +1880,7 @@
         showToast('No recents to clear', 1600)
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       showToast(`Clear recents failed: ${msg}`)
       throw err
     }
@@ -2048,7 +2049,7 @@
         }
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       if (msg.toLowerCase().includes('cancelled')) {
         showToast('Extraction cancelled')
       } else {
@@ -2124,7 +2125,7 @@
       }
       showToast('Duplicate list copied', 1500)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       showToast(`Copy failed: ${msg}`)
     }
   }
@@ -2203,7 +2204,7 @@
       if (runToken !== duplicateScanToken) {
         return
       }
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       checkDuplicatesModal.failScan(msg)
       showToast(`Duplicate scan failed: ${msg}`)
       await cleanupDuplicateProgressListener()
@@ -2541,7 +2542,7 @@
       try {
         await openConsole(get(current))
       } catch (err) {
-        showToast(`Open console failed: ${err instanceof Error ? err.message : String(err)}`)
+        showToast(`Open console failed: ${getErrorMessage(err)}`)
       }
       return
     }
@@ -2578,7 +2579,7 @@
         }
         showToast('Disconnected')
       } catch (err) {
-        showToast(`Disconnect failed: ${err instanceof Error ? err.message : String(err)}`)
+        showToast(`Disconnect failed: ${getErrorMessage(err)}`)
       }
       return
     }
@@ -2631,7 +2632,7 @@
       } catch (err) {
         activityApi.clearNow()
         await activityApi.cleanup()
-        showToast(`Paste failed: ${err instanceof Error ? err.message : String(err)}`)
+        showToast(`Paste failed: ${getErrorMessage(err)}`)
         return false
       }
     }
@@ -2650,7 +2651,7 @@
       }
       return await runPaste(dest, 'rename')
     } catch (err) {
-      showToast(`Paste failed: ${err instanceof Error ? err.message : String(err)}`)
+      showToast(`Paste failed: ${getErrorMessage(err)}`)
       return false
     }
   }
@@ -2700,7 +2701,7 @@
     } catch (err) {
       activityApi.clearNow()
       await activityApi.cleanup()
-      showToast(`Paste failed: ${err instanceof Error ? err.message : String(err)}`)
+      showToast(`Paste failed: ${getErrorMessage(err)}`)
     } finally {
       conflictDest = null
       conflictList = []
@@ -2859,7 +2860,7 @@
       showToast(`Ejected ${path}`)
       await loadPartitions({ forceNetworkRefresh: true })
     } catch (err) {
-      showToast(`Eject failed: ${err instanceof Error ? err.message : String(err)}`)
+      showToast(`Eject failed: ${getErrorMessage(err)}`)
     }
   }}
   searchMode={isSearchSessionEnabled}

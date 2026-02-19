@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/tauri'
 
 export const cancelTask = (id: string) =>
   invoke<void>('cancel_task', { id })

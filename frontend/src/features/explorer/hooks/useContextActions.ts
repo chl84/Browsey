@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/error'
 import type { Entry } from '../types'
 import type { ClipboardApi } from './useClipboard'
 import { copyPathsToSystemClipboard } from '../services/clipboard'
@@ -74,7 +75,7 @@ export const createContextActions = (deps: Deps) => {
           await restoreTrashItems(ids)
           await reloadCurrent()
         } catch (err) {
-          showToast(`Restore failed: ${err instanceof Error ? err.message : String(err)}`)
+          showToast(`Restore failed: ${getErrorMessage(err)}`)
         }
       }
       return
@@ -97,7 +98,7 @@ export const createContextActions = (deps: Deps) => {
           await removeRecent(paths)
           await reloadCurrent()
         } catch (err) {
-          showToast(`Remove failed: ${err instanceof Error ? err.message : String(err)}`)
+          showToast(`Remove failed: ${getErrorMessage(err)}`)
         }
       }
       return
@@ -113,7 +114,7 @@ export const createContextActions = (deps: Deps) => {
         showToast('Cut', 1500)
         void copyPathsToSystemClipboard(paths, 'cut').catch((err) => {
           showToast(
-            `Cut (system clipboard unavailable: ${err instanceof Error ? err.message : String(err)})`,
+            `Cut (system clipboard unavailable: ${getErrorMessage(err)})`,
             2500
           )
         })
@@ -127,7 +128,7 @@ export const createContextActions = (deps: Deps) => {
       showToast('Copied', 1500)
       void copyPathsToSystemClipboard(paths).catch((err) => {
         showToast(
-          `Copied (system clipboard unavailable: ${err instanceof Error ? err.message : String(err)})`,
+          `Copied (system clipboard unavailable: ${getErrorMessage(err)})`,
           2500
         )
       })
@@ -184,7 +185,7 @@ export const createContextActions = (deps: Deps) => {
         }
         await reloadCurrent()
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
+        const message = getErrorMessage(err)
         showToast(
           currentView() === 'trash'
             ? `Delete failed: ${message}`
@@ -201,7 +202,7 @@ export const createContextActions = (deps: Deps) => {
           await purgeTrashItems(ids)
           await reloadCurrent()
         } catch (err) {
-          showToast(`Delete failed: ${err instanceof Error ? err.message : String(err)}`)
+          showToast(`Delete failed: ${getErrorMessage(err)}`)
         }
         return
       }
@@ -211,7 +212,7 @@ export const createContextActions = (deps: Deps) => {
           await deleteEntries(paths)
           await reloadCurrent()
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
+          const msg = getErrorMessage(err)
           showToast(`Delete failed: ${msg}`)
         }
         return

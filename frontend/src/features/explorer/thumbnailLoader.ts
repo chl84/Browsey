@@ -1,4 +1,5 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/tauri'
+import { getErrorMessage } from '@/lib/error'
 import { writable, type Readable } from 'svelte/store'
 
 type Options = {
@@ -122,12 +123,7 @@ export function createThumbnailLoader(opts: Options = {}) {
         retries.delete(path)
         return null
       }
-      const msg =
-        typeof err === 'string'
-          ? err
-          : err && typeof err === 'object' && 'message' in err
-            ? String((err as { message?: unknown }).message)
-            : String(err)
+      const msg = getErrorMessage(err)
 
       const isBusy = msg.toLowerCase().includes('too many concurrent thumbnails')
       if (isBusy) {

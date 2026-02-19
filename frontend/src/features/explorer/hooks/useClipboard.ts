@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/error'
 import { clipboardState, setClipboardPathsState, clearClipboardState } from '../stores/clipboardState'
 import type { Entry } from '../types'
 import { setClipboardCmd, pasteClipboardCmd } from '../services/clipboard'
@@ -13,7 +14,7 @@ const writeTextIfAvailable = async (value: string): Promise<Result> => {
     await navigator.clipboard.writeText(value)
     return { ok: true }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = getErrorMessage(err)
     return { ok: false, error: message }
   }
 }
@@ -32,7 +33,7 @@ export const createClipboard = () => {
       await setClipboardCmd(paths, mode)
       setClipboardPathsState(mode, paths)
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getErrorMessage(err)
       return { ok: false, error: message }
     }
     if (!writeTextResult.ok) {
@@ -63,7 +64,7 @@ export const createClipboard = () => {
       await pasteClipboardCmd(dest)
       return { ok: true }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = getErrorMessage(err)
       return { ok: false, error: message }
     }
   }

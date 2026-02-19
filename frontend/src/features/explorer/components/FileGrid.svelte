@@ -6,7 +6,7 @@
   import { fullNameTooltip } from '../fullNameTooltip'
   import { createThumbnailLoader } from '../thumbnailLoader'
   import { onDestroy } from 'svelte'
-  import { convertFileSrc } from '@tauri-apps/api/core'
+  import { convertFileSrc } from '@/lib/tauri'
 
   export let currentPath = ''
   export let videoThumbs = true

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/tauri'
 
 export const addBookmark = (label: string, path: string) =>
   invoke<void>('add_bookmark', { label, path })

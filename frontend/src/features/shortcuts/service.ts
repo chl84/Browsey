@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/tauri'
 import type { ShortcutBinding, ShortcutCommandId } from './keymap'
 
 export const loadShortcuts = () => invoke<ShortcutBinding[]>('load_shortcuts')

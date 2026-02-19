@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store'
+import { getErrorMessage } from '@/lib/error'
 import { createFolder } from '../services/files'
 
 type Deps = {
@@ -45,7 +46,7 @@ export const createNewFolderModal = (deps: Deps) => {
       close()
       return created
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = getErrorMessage(err)
       state.update((s) => ({ ...s, error: msg }))
       return null
     } finally {

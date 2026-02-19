@@ -1,4 +1,5 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/tauri'
+import { getErrorMessage } from '@/lib/error'
 import { listen } from '@tauri-apps/api/event'
 import { derived, get, writable } from 'svelte/store'
 import type {
@@ -416,7 +417,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       }
       await watchDir(result.current)
     } catch (err) {
-      error.set(err instanceof Error ? err.message : String(err))
+      error.set(getErrorMessage(err))
     } finally {
       if (!silent) {
         loading.set(false)
@@ -441,7 +442,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         pushHistory({ type: 'recent' })
       }
     } catch (err) {
-      error.set(err instanceof Error ? err.message : String(err))
+      error.set(getErrorMessage(err))
     } finally {
       loading.set(false)
     }
@@ -463,7 +464,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         pushHistory({ type: 'starred' })
       }
     } catch (err) {
-      error.set(err instanceof Error ? err.message : String(err))
+      error.set(getErrorMessage(err))
     } finally {
       loading.set(false)
     }
@@ -490,7 +491,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         pushHistory({ type: 'network' })
       }
     } catch (err) {
-      error.set(err instanceof Error ? err.message : String(err))
+      error.set(getErrorMessage(err))
     } finally {
       loading.set(false)
     }
@@ -512,7 +513,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         pushHistory({ type: 'trash' })
       }
     } catch (err) {
-      error.set(err instanceof Error ? err.message : String(err))
+      error.set(getErrorMessage(err))
     } finally {
       loading.set(false)
     }
@@ -670,7 +671,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         )
       }
     } catch (err) {
-      error.set(err instanceof Error ? err.message : String(err))
+      error.set(getErrorMessage(err))
     }
   }
 
@@ -865,7 +866,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       })
     } catch (err) {
       if (runId === searchRunId) {
-        error.set(err instanceof Error ? err.message : String(err))
+        error.set(getErrorMessage(err))
         searchRunning.set(false)
         loading.set(false)
         columnFacets.set(emptyListingFacets())
@@ -890,7 +891,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         cleanup()
         return
       }
-      error.set(err instanceof Error ? err.message : String(err))
+      error.set(getErrorMessage(err))
       searchRunning.set(false)
       loading.set(false)
       columnFacets.set(emptyListingFacets())
