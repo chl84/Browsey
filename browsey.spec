@@ -1,3 +1,6 @@
+%global _build_id_links none
+%global _missing_build_ids_terminate_build 0
+
 Name:           browsey
 Version:        0.4.4
 Release:        1%{?dist}
