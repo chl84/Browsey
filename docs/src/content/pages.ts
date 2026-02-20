@@ -55,6 +55,7 @@ export const docsPages: DocPage[] = [
         title: 'Supported Platforms',
         bullets: [
           'Linux: Tauri webview via WebKit',
+          'Primary Linux test environment: Fedora 43',
           'Windows: Tauri webview via WebView2',
           'macOS: not supported yet',
         ],

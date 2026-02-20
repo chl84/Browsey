@@ -28,6 +28,7 @@ Browsey is in active development with current feature work focused on Linux. Cor
 
 ## Requirements
 Supported platforms: Linux and Windows (macOS is not supported yet). Active development is currently Linux-first.
+Tested environment: Fedora 43 (primary Linux validation target).
 
 Common:
 - Rust (stable) via `rustup`
