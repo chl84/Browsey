@@ -10,7 +10,7 @@ srpm:
 	topdir="$$(mktemp -d)"; \
 	trap 'rm -rf "$$topdir"' EXIT; \
 	mkdir -p "$$topdir"/BUILD "$$topdir"/BUILDROOT "$$topdir"/RPMS "$$topdir"/SOURCES "$$topdir"/SPECS "$$topdir"/SRPMS; \
-	git archive --format=tar.gz --prefix="$$name-$$version/" -o "$$topdir/SOURCES/$$name-$$version.tar.gz" HEAD; \
+	tar --exclude-vcs --exclude='./target' --exclude='./frontend/node_modules' --exclude='./docs/node_modules' --exclude='./tmp' --exclude='./dist' --exclude='./frontend/dist' --exclude='./docs/dist' --transform "s,^\\./,$$name-$$version/," -czf "$$topdir/SOURCES/$$name-$$version.tar.gz" .; \
 	cp "$$spec_path" "$$topdir/SPECS/"; \
 	rpmbuild -bs --define "_topdir $$topdir" "$$topdir/SPECS/$$(basename "$$spec_path")"; \
 	mkdir -p "$$out_dir"; \
