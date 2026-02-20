@@ -7,8 +7,6 @@ License:        MIT
 URL:            https://github.com/chl84/Browsey
 Source0:        %{name}-%{version}.tar.gz
 
-BuildArch:      x86_64
-
 BuildRequires:  cargo
 BuildRequires:  rust
 BuildRequires:  nodejs
