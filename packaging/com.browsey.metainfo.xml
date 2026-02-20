@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.browsey.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Browsey</name>
+  <summary>Fast and minimalist file explorer</summary>
+  <description>
+    <p>
+      Browsey is a lightweight file explorer built with a Rust/Tauri backend and a
+      Svelte frontend.
+    </p>
+    <p>
+      It is designed for fast navigation in large folders while keeping familiar
+      desktop file-management workflows.
+    </p>
+    <ul>
+      <li>List and grid views with virtualized rendering</li>
+      <li>Recursive search, duplicate scans, and archive extract/compress tools</li>
+      <li>Clipboard operations, trash management, and properties/permissions editing</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.browsey.desktop</launchable>
+  <icon type="stock">browsey</icon>
+  <categories>
+    <category>Utility</category>
+    <category>FileTools</category>
+    <category>FileManager</category>
+  </categories>
+  <developer id="io.github.chl84">
+    <name>Browsey contributors</name>
+  </developer>
+  <url type="homepage">https://github.com/chl84/Browsey</url>
+  <url type="bugtracker">https://github.com/chl84/Browsey/issues</url>
+  <url type="vcs-browser">https://github.com/chl84/Browsey</url>
+  <content_rating type="oars-1.1"/>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/chl84/Browsey/main/resources/01_screenshot_browsey_fedora.png</image>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/chl84/Browsey/main/resources/02_screenshot_browsey_fedora.png</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.4.4" date="2026-02-20"/>
+  </releases>
+</component>
