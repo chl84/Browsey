@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Browsey
+Comment=Fast and minimalist file explorer
+Exec=browsey
+Icon=browsey
+Terminal=false
+StartupWMClass=browsey
+Categories=Utility;FileTools;FileManager;
+Keywords=files;explorer;manager;folders;

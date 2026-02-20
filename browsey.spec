@@ -18,6 +18,7 @@ BuildRequires:  pkgconfig(gtk+-3.0)
 BuildRequires:  pkgconfig(javascriptcoregtk-4.1)
 BuildRequires:  pkgconfig(libsoup-3.0)
 BuildRequires:  pkgconfig(webkit2gtk-4.1)
+BuildRequires:  desktop-file-utils
 
 Requires:       gtk3
 Requires:       webkit2gtk4.1
@@ -45,16 +46,10 @@ install -d %{buildroot}%{_libdir}/Browsey
 install -m 0644 THIRD_PARTY_NOTICES %{buildroot}%{_libdir}/Browsey/THIRD_PARTY_NOTICES
 
 install -d %{buildroot}%{_datadir}/applications
-cat > %{buildroot}%{_datadir}/applications/Browsey.desktop <<'DESKTOP'
-[Desktop Entry]
-Type=Application
-Name=Browsey
-Exec=browsey
-Icon=browsey
-Terminal=false
-StartupWMClass=browsey
-Categories=System;FileTools;FileManager;
-DESKTOP
+install -m 0644 packaging/com.browsey.desktop %{buildroot}%{_datadir}/applications/com.browsey.desktop
+
+install -d %{buildroot}%{_datadir}/metainfo
+install -m 0644 packaging/com.browsey.metainfo.xml %{buildroot}%{_datadir}/metainfo/com.browsey.metainfo.xml
 
 install -d %{buildroot}%{_datadir}/icons/hicolor/512x512/apps
 install -m 0644 resources/icons/icon.png %{buildroot}%{_datadir}/icons/hicolor/512x512/apps/browsey.png
@@ -65,7 +60,8 @@ install -m 0644 resources/icons/icon.png %{buildroot}%{_datadir}/icons/hicolor/5
 %{_bindir}/browsey
 %{_bindir}/libpdfium.so
 %{_libdir}/Browsey/THIRD_PARTY_NOTICES
-%{_datadir}/applications/Browsey.desktop
+%{_datadir}/applications/com.browsey.desktop
+%{_datadir}/metainfo/com.browsey.metainfo.xml
 %{_datadir}/icons/hicolor/512x512/apps/browsey.png
 
 %changelog
