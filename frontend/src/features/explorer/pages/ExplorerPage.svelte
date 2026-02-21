@@ -7,9 +7,9 @@
   import { createListState } from '@/features/explorer/state/list.store'
   import { ExplorerShell, useGridVirtualizer, createViewObservers } from '@/features/explorer/ui-shell'
   import { useExplorerData } from '@/features/explorer/hooks/useExplorerData'
-  import { createColumnResize } from '@/features/explorer/hooks/useColumnWidths'
-  import { createGlobalShortcuts } from '@/features/explorer/hooks/useShortcuts'
-  import { createBookmarkModal } from '@/features/explorer/hooks/useBookmarkModal'
+  import { createColumnResize } from '@/features/explorer/hooks/createColumnResize'
+  import { createGlobalShortcuts } from '@/features/explorer/hooks/createGlobalShortcuts'
+  import { createBookmarkModal } from '@/features/explorer/hooks/createBookmarkModal'
   import { useExplorerDragDrop, createClipboard, useExplorerFileOps } from '@/features/explorer/file-ops'
   import { useExplorerContextMenuOps } from '@/features/explorer/context'
   import { useExplorerInputHandlers } from '@/features/explorer/hooks/useExplorerInputHandlers'
@@ -30,8 +30,8 @@
   import { createViewSwitchAnchor } from '@/features/explorer/navigation'
   import { loadDefaultView, storeDefaultView } from '@/features/explorer/services/settings.service'
   import { useContextMenuBlocker } from '@/features/explorer/context'
-  import { createActivity } from '@/features/explorer/hooks/useActivity'
-  import { createAppLifecycle } from '@/features/explorer/hooks/useAppLifecycle'
+  import { createActivity } from '@/features/explorer/hooks/createActivity'
+  import { createAppLifecycle } from '@/features/explorer/hooks/createAppLifecycle'
   import { createTopbarActions, useExplorerNavigation, useExplorerSearchSession } from '@/features/explorer/navigation'
   import { createTextContextMenu } from '@/features/explorer/context'
   import {
@@ -51,7 +51,7 @@
     clearStars,
     clearThumbnailCache,
   } from '@/features/explorer/services/data.service'
-  import { createNewFileTypeHint } from '@/features/explorer/hooks/useNewFileTypeHint'
+  import { createNewFileTypeHint } from '@/features/explorer/hooks/createNewFileTypeHint'
   import ConflictModal from '@/shared/ui/ConflictModal.svelte'
   import { SettingsModal } from '@/features/settings'
   import AboutBrowseyModal from '@/features/explorer/components/AboutBrowseyModal.svelte'
