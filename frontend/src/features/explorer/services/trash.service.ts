@@ -1,8 +1,5 @@
 import { invoke } from '@/shared/lib/tauri'
 
-export const deleteEntry = (path: string) =>
-  invoke<void>('delete_entry', { path })
-
 export const deleteEntries = (paths: string[], progressEvent?: string) =>
   invoke<void>('delete_entries', { paths, progressEvent })
 

@@ -14,8 +14,6 @@ const idToRank: Map<string, number> = new Map(
   ORDERED_BUCKETS.map((bucket, index) => [bucket.id, index] as [string, number]),
 )
 
-export const nameFilterOptions = ORDERED_BUCKETS.map((bucket) => ({ ...bucket }))
-
 export const nameBucket = (value: string): string => {
   const ch = value.charAt(0)
   if (ch >= 'a' && ch <= 'f') return 'name:a-f'

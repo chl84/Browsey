@@ -52,4 +52,3 @@ export const normalizeError = (value: unknown): NormalizedError => {
 }
 
 export const getErrorMessage = (value: unknown): string => normalizeError(value).message
-export const getErrorCode = (value: unknown): string | undefined => normalizeError(value).code
