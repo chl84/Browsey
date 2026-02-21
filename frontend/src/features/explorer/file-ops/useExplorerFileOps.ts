@@ -20,7 +20,7 @@ import { cancelTask } from '../services/activity.service'
 import { setClipboardState, clearClipboardState } from './clipboard.store'
 import { normalizePath, parentPath } from '../utils'
 import type { Entry } from '../model/types'
-import type { CurrentView } from '../context/useContextActions'
+import type { CurrentView } from '../context/createContextActions'
 
 type ConflictItem = {
   src: string

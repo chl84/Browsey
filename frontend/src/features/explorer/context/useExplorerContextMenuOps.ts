@@ -11,8 +11,8 @@ import type { Entry } from '../model/types'
 import { openConsole } from '../services/console.service'
 import { fetchContextMenuActions } from '../services/contextMenu.service'
 import { ejectDrive } from '../services/drives.service'
-import type { CurrentView } from './useContextActions'
-import type { ContextAction } from './useContextMenus'
+import type { CurrentView } from './createContextActions'
+import type { ContextAction } from './createContextMenus'
 
 type Deps = {
   currentView: () => CurrentView

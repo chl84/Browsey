@@ -1,5 +1,5 @@
 export { useExplorerNavigation } from './useExplorerNavigation'
 export { useExplorerSearchSession } from './useExplorerSearchSession'
-export { createViewSwitchAnchor } from './useViewAnchor'
-export { createTopbarActions } from './useTopbarActions'
-export type { TopbarActionId } from './useTopbarActions'
+export { createViewSwitchAnchor } from './createViewAnchor'
+export { createTopbarActions } from './createTopbarActions'
+export type { TopbarActionId } from './createTopbarActions'

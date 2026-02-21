@@ -17,7 +17,7 @@ import Toast from '../../../../shared/ui/Toast.svelte'
 import CompressModal from '../../components/CompressModal.svelte'
 import CheckDuplicatesModal from '../../components/CheckDuplicatesModal.svelte'
 import type { Column, Entry, ListingFacets, Partition, SortField } from '../../model/types'
-import type { ContextAction } from '../../context/useContextMenus'
+import type { ContextAction } from '../../context/createContextMenus'
 import type { OpenWithApp, OpenWithChoice } from '../../services/openWith.service'
 import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
 
