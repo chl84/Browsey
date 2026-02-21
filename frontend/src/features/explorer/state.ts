@@ -1,155 +1,85 @@
-import { invoke } from '@/shared/lib/tauri'
 import { getErrorMessage } from '@/shared/lib/error'
 import { listen } from '@tauri-apps/api/event'
-import { derived, get, writable } from 'svelte/store'
-import type {
-  Column,
-  Entry,
-  Listing,
-  Location,
-  Partition,
-  SortDirection,
-  SortField,
-  DefaultSortField,
-  Density,
-  ListingFacets,
-} from './model/types'
+import { get } from 'svelte/store'
+import type { Entry, Listing, ListingFacets, Location, SortDirection, SortField } from './model/types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files.service'
 import {
   listDir,
-  listFacets,
   listRecent,
   listStarred,
   listTrash,
   watchDir,
   listMounts,
   searchStream,
-  type FacetScope,
 } from './services/listing.service'
 import { cancelTask } from './services/activity.service'
 import { storeColumnWidths, loadSavedColumnWidths } from './services/layout.service'
-import {
-  loadShowHidden,
-  storeShowHidden,
-  loadHiddenFilesLast,
-  storeHiddenFilesLast,
-  loadFoldersFirst,
-  storeFoldersFirst,
-  loadStartDir,
-  storeStartDir,
-  loadConfirmDelete,
-  storeConfirmDelete,
-  loadSortField,
-  storeSortField,
-  loadSortDirection,
-  storeSortDirection,
-  loadArchiveName,
-  storeArchiveName,
-  loadArchiveLevel,
-  storeArchiveLevel,
-  loadOpenDestAfterExtract,
-  storeOpenDestAfterExtract,
-  loadDensity,
-  storeDensity,
-  loadFfmpegPath,
-  storeFfmpegPath,
-  loadVideoThumbs,
-  storeVideoThumbs,
-  loadHardwareAcceleration,
-  storeHardwareAcceleration,
-  loadThumbCacheMb,
-  storeThumbCacheMb,
-  loadMountsPollMs,
-  storeMountsPollMs,
-  loadDoubleClickMs,
-  storeDoubleClickMs,
-} from './services/settings.service'
 import { toggleStar as toggleStarService } from './services/star.service'
 import { getBookmarks } from './services/bookmarks.service'
-import { nameBucket } from './filters/nameFilters'
-import { modifiedBucket, sizeBucket, typeLabel } from './filters/columnBuckets'
 import { listNetworkEntries } from '../network'
-
-const FILTER_DEBOUNCE_MS = 40
-
-type ColumnFilters = {
-  name: Set<string>
-  type: Set<string>
-  modified: Set<string>
-  size: Set<string>
-}
-
-const emptyListingFacets = (): ListingFacets => ({
-  name: [],
-  type: [],
-  modified: [],
-  size: [],
-})
-
-type ExplorerCallbacks = {
-  onEntriesChanged?: () => void
-  onCurrentChange?: (path: string) => void
-}
-
-const withNameLower = (entry: Entry): Entry => ({
-  ...entry,
-  nameLower: entry.nameLower ?? entry.name.toLowerCase(),
-})
-
-const mapNameLower = (list: Entry[]) => list.map(withNameLower)
-
-const defaultColumns: Column[] = [
-  { key: 'name', label: 'Name', sort: 'name', width: 320, min: 220, align: 'left' },
-  { key: 'type', label: 'Type', sort: 'type', width: 120, min: 80 },
-  { key: 'modified', label: 'Modified', sort: 'modified', width: 90, min: 80 },
-  { key: 'size', label: 'Size', sort: 'size', width: 90, min: 70, align: 'right' },
-  { key: 'star', label: '', sort: 'starred', width: 25, min: 25, resizable: false, sortable: false },
-]
-
-const sameLocation = (a?: Location, b?: Location) => {
-  if (!a || !b) return false
-  if (a.type !== b.type) return false
-  if (a.type === 'dir' && b.type === 'dir') {
-    return a.path === b.path
-  }
-  return true
-}
+import { emptyListingFacets, mapNameLower, sameLocation } from './state/helpers'
+import type { ExplorerCallbacks } from './state/helpers'
+import { createFilteringSlice } from './state/filteringSlice'
+import { createPreferenceSlice } from './state/preferencesSlice'
+import { createExplorerStores } from './state/stores'
 
 export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
-  const cols = writable<Column[]>(defaultColumns)
-  const gridTemplate = derived(cols, ($cols) => $cols.map((c) => `${Math.max(c.width, c.min)}px`).join(' '))
+  const {
+    cols,
+    gridTemplate,
+    current,
+    entries,
+    loading,
+    error,
+    filter,
+    searchMode,
+    searchRunning,
+    showHidden,
+    hiddenFilesLast,
+    foldersFirst,
+    startDirPref,
+    confirmDelete,
+    sortFieldPref,
+    sortDirectionPref,
+    sortField,
+    sortDirection,
+    density,
+    archiveName,
+    archiveLevel,
+    openDestAfterExtract,
+    videoThumbs,
+    hardwareAcceleration,
+    ffmpegPath,
+    thumbCacheMb,
+    mountsPollMs,
+    doubleClickMs,
+    bookmarks,
+    partitions,
+    history,
+    historyIndex,
+  } = createExplorerStores()
 
-  const current = writable('')
-  const entries = writable<Entry[]>([])
-  const loading = writable(false)
-  const error = writable('')
-  const filter = writable('')
-  const searchMode = writable(false)
-  const searchRunning = writable(false)
-  const showHidden = writable(true)
-  const hiddenFilesLast = writable(false)
-  const foldersFirst = writable(true)
-  const startDirPref = writable<string | null>(null)
-  const confirmDelete = writable(true)
-  const sortFieldPref = writable<DefaultSortField>('name')
-  const sortDirectionPref = writable<SortDirection>('asc')
-  const sortField = writable<SortField>('name')
-  const sortDirection = writable<SortDirection>('asc')
-  const density = writable<Density>('cozy')
-  const archiveName = writable<string>('Archive')
-  const archiveLevel = writable<number>(6)
-  const openDestAfterExtract = writable<boolean>(false)
-  const videoThumbs = writable<boolean>(true)
-  const hardwareAcceleration = writable<boolean>(true)
-  const ffmpegPath = writable<string>('')
-  const thumbCacheMb = writable<number>(300)
-  const mountsPollMs = writable<number>(8000)
-  const doubleClickMs = writable<number>(300)
-  const bookmarks = writable<{ label: string; path: string }[]>([])
-  const partitions = writable<Partition[]>([])
-  const history = writable<Location[]>([])
-  const historyIndex = writable(-1)
+  const {
+    visibleEntries,
+    filteredEntries,
+    columnFilters,
+    columnFacets,
+    columnFacetsLoading,
+    invalidateFacetCache,
+    clearFacetCache,
+    ensureColumnFacets,
+    resetColumnFilter,
+    toggleColumnFilter,
+  } = createFilteringSlice({
+    entries,
+    showHidden,
+    hiddenFilesLast,
+    foldersFirst,
+    filter,
+    searchMode,
+    current,
+  })
 
   // Search streaming coordination
   let searchRunId = 0
@@ -166,226 +96,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     cancelActiveSearch = null
   }
 
-  const applyFoldersFirst = (list: Entry[], foldersFirstOn: boolean) => {
-    if (!foldersFirstOn) return list
-    const dirs: Entry[] = []
-    const rest: Entry[] = []
-    for (const e of list) {
-      if (e.kind === 'dir') {
-        dirs.push(e)
-      } else {
-        rest.push(e)
-      }
-    }
-    return [...dirs, ...rest]
-  }
-
-  const visibleEntries = derived(
-    [entries, showHidden, hiddenFilesLast, foldersFirst],
-    ([$entries, $showHidden, $hiddenLast, $foldersFirst]) => {
-      const base = $showHidden
-        ? $entries
-        : $entries.filter((e) => !(e.hidden === true || e.name.startsWith('.')))
-      if ($showHidden && $hiddenLast) {
-        const hiddenList: Entry[] = []
-        const visibleList: Entry[] = []
-        for (const e of base) {
-          if (e.hidden === true || e.name.startsWith('.')) {
-            hiddenList.push(e)
-          } else {
-            visibleList.push(e)
-          }
-        }
-        return [
-          ...applyFoldersFirst(visibleList, $foldersFirst),
-          ...applyFoldersFirst(hiddenList, $foldersFirst),
-        ]
-      }
-      return applyFoldersFirst(base, $foldersFirst)
-    },
-  )
-
-  const columnFilters = writable<ColumnFilters>({
-    name: new Set(),
-    type: new Set(),
-    modified: new Set(),
-    size: new Set(),
-  })
-  const columnFacets = writable<ListingFacets>(emptyListingFacets())
-  const columnFacetsLoading = writable(false)
-  const facetCache = new Map<string, ListingFacets>()
-  let facetRequestSeq = 0
-
-  const currentFacetScope = (where: string): { scope: FacetScope; path?: string } | null => {
-    if (where === 'Recent') return { scope: 'recent' }
-    if (where === 'Starred') return { scope: 'starred' }
-    if (where === 'Network') return null
-    if (where === 'Trash') return { scope: 'trash' }
-    if (where.trim().length === 0) return null
-    return { scope: 'dir', path: where }
-  }
-
-  const facetCacheKey = (
-    context: { scope: FacetScope; path?: string },
-    includeHidden: boolean,
-  ): string => `${context.scope}|${context.path ?? ''}|hidden:${includeHidden ? 1 : 0}`
-
-  const invalidateFacetCache = () => {
-    facetRequestSeq += 1
-    facetCache.clear()
-    columnFacetsLoading.set(false)
-  }
-
-  const clearFacetCache = () => {
-    invalidateFacetCache()
-    columnFacets.set(emptyListingFacets())
-  }
-
-  const ensureColumnFacets = async () => {
-    if (get(searchMode)) {
-      return
-    }
-    const context = currentFacetScope(get(current))
-    if (!context) {
-      columnFacets.set(emptyListingFacets())
-      return
-    }
-
-    const includeHidden = get(showHidden)
-    const key = facetCacheKey(context, includeHidden)
-    const cached = facetCache.get(key)
-    if (cached) {
-      columnFacets.set(cached)
-      return
-    }
-
-    const req = ++facetRequestSeq
-    columnFacetsLoading.set(true)
-    try {
-      const facets = await listFacets({
-        scope: context.scope,
-        path: context.path,
-        includeHidden,
-      })
-      if (req !== facetRequestSeq) {
-        return
-      }
-      facetCache.set(key, facets)
-      const latest = currentFacetScope(get(current))
-      const latestKey = latest ? facetCacheKey(latest, get(showHidden)) : null
-      if (latestKey === key) {
-        columnFacets.set(facets)
-      }
-    } catch (err) {
-      console.error('Failed to load column facets', err)
-      if (req === facetRequestSeq) {
-        columnFacets.set(emptyListingFacets())
-      }
-    } finally {
-      if (req === facetRequestSeq) {
-        columnFacetsLoading.set(false)
-      }
-    }
-  }
-
-  const applyColumnFilters = (list: Entry[], filters: ColumnFilters) => {
-    const hasName = filters.name.size > 0
-    const hasType = filters.type.size > 0
-    const hasModified = filters.modified.size > 0
-    const hasSize = filters.size.size > 0
-    if (!hasName && !hasType && !hasModified && !hasSize) return list
-
-    return list.filter((e) => {
-      if (hasName) {
-        const bucket = nameBucket(e.nameLower ?? e.name.toLowerCase())
-        if (!filters.name.has(bucket)) return false
-      }
-
-      if (hasType) {
-        const label = typeLabel(e)
-        const id = `type:${label}`
-        if (!filters.type.has(id)) return false
-      }
-
-      if (hasModified) {
-        const bucket = modifiedBucket(e.modified)
-        if (!bucket) return false
-        const id = `modified:${bucket.label}`
-        if (!filters.modified.has(id)) return false
-      }
-
-      if (hasSize) {
-        if (e.kind !== 'file') return false
-        if (typeof e.size !== 'number') return false
-        const bucket = sizeBucket(e.size)
-        if (!bucket) return false
-        const id = `size:${bucket.label}`
-        if (!filters.size.has(id)) return false
-      }
-
-      return true
-    })
-  }
-
-  const filteredEntries = derived(
-    [visibleEntries, filter, columnFilters, searchMode],
-    ([$visible, $filter, $filters, $searchMode], set) => {
-      let timer: ReturnType<typeof setTimeout> | undefined
-      const needle = $filter.trim().toLowerCase()
-
-      const compute = () => {
-        let base =
-          needle.length === 0
-            ? $visible
-            : $visible.filter((e) => (e.nameLower ?? e.name.toLowerCase()).includes(needle))
-        base = applyColumnFilters(base, $filters)
-        set(base)
-      }
-
-      const shouldDebounce = needle.length > 0 && !$searchMode
-      if (shouldDebounce) {
-        timer = setTimeout(compute, FILTER_DEBOUNCE_MS)
-      } else {
-        compute()
-      }
-
-      return () => {
-        if (timer) {
-          clearTimeout(timer)
-        }
-      }
-    },
-    [] as Entry[],
-  )
-
   const sortPayload = () => ({
     field: get(sortField),
     direction: get(sortDirection),
   })
-
-  const resetColumnFilter = (field: SortField) => {
-    if (field !== 'name' && field !== 'type' && field !== 'modified' && field !== 'size') return
-    columnFilters.update((f) => ({
-      ...f,
-      [field]: new Set<string>(),
-    }))
-  }
-
-  const toggleColumnFilter = (field: SortField, id: string, checked: boolean) => {
-    if (field !== 'name' && field !== 'type' && field !== 'modified' && field !== 'size') return
-    columnFilters.update((f) => {
-      const next = {
-        ...f,
-        [field]: new Set(f[field]),
-      }
-      if (checked) {
-        next[field].add(id)
-      } else {
-        next[field].delete(id)
-      }
-      return next
-    })
-  }
 
   const pushHistory = (loc: Location) => {
     const list = get(history)
@@ -567,39 +281,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     await refreshForSort()
   }
 
-  const setSortFieldPref = async (field: DefaultSortField) => {
-    if (get(sortField) === field) return
-    sortField.set(field)
-    sortFieldPref.set(field)
-    void storeSortField(field)
-    await refreshForSort()
-  }
-
-  const setSortDirectionPref = async (dir: SortDirection) => {
-    if (get(sortDirection) === dir) return
-    sortDirection.set(dir)
-    sortDirectionPref.set(dir)
-    void storeSortDirection(dir)
-    await refreshForSort()
-  }
-
-  const setArchiveNamePref = (value: string) => {
-    const trimmed = value.trim().replace(/\.zip$/i, '')
-    if (trimmed.length === 0) {
-      // Allow empty in UI; keep last persisted value until user provides one.
-      archiveName.set('')
-      return
-    }
-    archiveName.set(trimmed)
-    void storeArchiveName(trimmed)
-  }
-
-  const setArchiveLevelPref = (value: number) => {
-    const lvl = Math.min(Math.max(Math.round(value), 0), 9)
-    archiveLevel.set(lvl)
-    void storeArchiveLevel(lvl)
-  }
-
   const sortSearchEntries = (
     list: Entry[],
     spec: { field: SortField; direction: SortDirection } = sortPayload(),
@@ -673,31 +354,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     } catch (err) {
       error.set(getErrorMessage(err))
     }
-  }
-
-  const toggleShowHidden = () => {
-    showHidden.update((v) => {
-      const next = !v
-      void storeShowHidden(next)
-      return next
-    })
-    clearFacetCache()
-  }
-
-  const toggleHiddenFilesLast = () => {
-    hiddenFilesLast.update((v) => {
-      const next = !v
-      void storeHiddenFilesLast(next)
-      return next
-    })
-  }
-
-  const toggleFoldersFirst = () => {
-    foldersFirst.update((v) => {
-      const next = !v
-      void storeFoldersFirst(next)
-      return next
-    })
   }
 
   const goUp = () => {
@@ -997,257 +653,67 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
-  const loadShowHiddenPref = async () => {
-    try {
-      const saved = await loadShowHidden()
-      if (typeof saved === 'boolean') {
-        showHidden.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load showHidden setting', err)
-    }
-  }
-
-  const loadHiddenFilesLastPref = async () => {
-    try {
-      const saved = await loadHiddenFilesLast()
-      if (typeof saved === 'boolean') {
-        hiddenFilesLast.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load hiddenFilesLast setting', err)
-    }
-  }
-
-  const loadStartDirPref = async () => {
-    try {
-      const saved = await loadStartDir()
-      if (typeof saved === 'string' && saved.trim().length > 0) {
-        startDirPref.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load startDir setting', err)
-    }
-  }
-
-  const setStartDirPref = (value: string) => {
-    const next = value.trim()
-    startDirPref.set(next || null)
-    void storeStartDir(next)
-  }
-
-  const loadConfirmDeletePref = async () => {
-    try {
-      const saved = await loadConfirmDelete()
-      if (typeof saved === 'boolean') {
-        confirmDelete.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load confirmDelete setting', err)
-    }
-  }
-
-  const toggleConfirmDelete = () => {
-    confirmDelete.update((v) => {
-      const next = !v
-      void storeConfirmDelete(next)
-      return next
-    })
-  }
-
-  const loadSortPref = async () => {
-    try {
-      const savedField = await loadSortField()
-      if (savedField === 'name' || savedField === 'type' || savedField === 'modified' || savedField === 'size') {
-        sortField.set(savedField)
-        sortFieldPref.set(savedField)
-      } else if (savedField !== null) {
-        await storeSortField('name')
-        sortField.set('name')
-        sortFieldPref.set('name')
-      }
-      const savedDir = await loadSortDirection()
-      if (savedDir === 'asc' || savedDir === 'desc') {
-        sortDirection.set(savedDir)
-        sortDirectionPref.set(savedDir)
-      }
-    } catch (err) {
-      console.error('Failed to load sort settings', err)
-    }
-  }
-
-  const loadArchiveNamePref = async () => {
-    try {
-      const saved = await loadArchiveName()
-      if (typeof saved === 'string' && saved.trim().length > 0) {
-        archiveName.set(saved.trim())
-      }
-    } catch (err) {
-      console.error('Failed to load archiveName setting', err)
-    }
-  }
-
-  const loadArchiveLevelPref = async () => {
-    try {
-      const saved = await loadArchiveLevel()
-      if (typeof saved === 'number' && saved >= 0 && saved <= 9) {
-        archiveLevel.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load archiveLevel setting', err)
-    }
-  }
-
-  const loadOpenDestAfterExtractPref = async () => {
-    try {
-      const saved = await loadOpenDestAfterExtract()
-      if (typeof saved === 'boolean') {
-        openDestAfterExtract.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load openDestAfterExtract setting', err)
-    }
-  }
-
-  const loadVideoThumbsPref = async () => {
-    try {
-      const saved = await loadVideoThumbs()
-      if (typeof saved === 'boolean') {
-        videoThumbs.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load videoThumbs setting', err)
-    }
-  }
-
-  const loadHardwareAccelerationPref = async () => {
-    try {
-      const saved = await loadHardwareAcceleration()
-      if (typeof saved === 'boolean') {
-        hardwareAcceleration.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load hardwareAcceleration setting', err)
-    }
-  }
-
-  const loadFfmpegPathPref = async () => {
-    try {
-      const saved = await loadFfmpegPath()
-      if (typeof saved === 'string') {
-        ffmpegPath.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load ffmpegPath setting', err)
-    }
-  }
-
-  const loadThumbCachePref = async () => {
-    try {
-      const saved = await loadThumbCacheMb()
-      if (typeof saved === 'number' && saved >= 50 && saved <= 1000) {
-        thumbCacheMb.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load thumbCacheMb setting', err)
-    }
-  }
-
-  const loadDensityPref = async () => {
-    try {
-      const saved = await loadDensity()
-      if (saved === 'cozy' || saved === 'compact') {
-        density.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load density setting', err)
-    }
-  }
-
-  const setDensityPref = (value: Density) => {
-    density.set(value)
-    void storeDensity(value)
-  }
-
-  const toggleOpenDestAfterExtract = () => {
-    openDestAfterExtract.update((v) => {
-      const next = !v
-      void storeOpenDestAfterExtract(next)
-      return next
-    })
-  }
-
-  const toggleVideoThumbs = () => {
-    videoThumbs.update((v) => {
-      const next = !v
-      void storeVideoThumbs(next)
-      return next
-    })
-  }
-
-  const setHardwareAccelerationPref = (value: boolean) => {
-    hardwareAcceleration.set(value)
-    void storeHardwareAcceleration(value)
-  }
-
-  const setFfmpegPathPref = (value: string) => {
-    const normalized = value.trim()
-    ffmpegPath.set(normalized)
-    void storeFfmpegPath(normalized)
-  }
-
-  const setThumbCachePref = (value: number) => {
-    const clamped = Math.min(1000, Math.max(50, Math.round(value)))
-    thumbCacheMb.set(clamped)
-    void storeThumbCacheMb(clamped)
-  }
-
-  const setMountsPollPref = (value: number) => {
-    const clamped = Math.min(10000, Math.max(500, Math.round(value)))
-    mountsPollMs.set(clamped)
-    void storeMountsPollMs(clamped)
-  }
-
-  const setDoubleClickMsPref = (value: number) => {
-    const clamped = Math.min(600, Math.max(150, Math.round(value)))
-    doubleClickMs.set(clamped)
-    void storeDoubleClickMs(clamped)
-  }
-
-  const loadMountsPollPref = async () => {
-    try {
-      const saved = await loadMountsPollMs()
-      if (typeof saved === 'number') {
-        const clamped = Math.min(10000, Math.max(500, Math.round(saved)))
-        mountsPollMs.set(clamped)
-      }
-    } catch (err) {
-      console.error('Failed to load mounts poll setting', err)
-    }
-  }
-
-  const loadDoubleClickMsPref = async () => {
-    try {
-      const saved = await loadDoubleClickMs()
-      if (typeof saved === 'number') {
-        const clamped = Math.min(600, Math.max(150, Math.round(saved)))
-        doubleClickMs.set(clamped)
-      }
-    } catch (err) {
-      console.error('Failed to load doubleClickMs setting', err)
-    }
-  }
-
-  const loadFoldersFirstPref = async () => {
-    try {
-      const saved = await loadFoldersFirst()
-      if (typeof saved === 'boolean') {
-        foldersFirst.set(saved)
-      }
-    } catch (err) {
-      console.error('Failed to load foldersFirst setting', err)
-    }
-  }
+  const {
+    setSortFieldPref,
+    setSortDirectionPref,
+    setArchiveNamePref,
+    setArchiveLevelPref,
+    toggleShowHidden,
+    toggleHiddenFilesLast,
+    toggleFoldersFirst,
+    setStartDirPref,
+    loadShowHiddenPref,
+    loadHiddenFilesLastPref,
+    loadStartDirPref,
+    loadConfirmDeletePref,
+    toggleConfirmDelete,
+    loadSortPref,
+    loadArchiveNamePref,
+    loadArchiveLevelPref,
+    loadOpenDestAfterExtractPref,
+    loadVideoThumbsPref,
+    loadHardwareAccelerationPref,
+    loadFfmpegPathPref,
+    loadThumbCachePref,
+    loadDensityPref,
+    setDensityPref,
+    toggleOpenDestAfterExtract,
+    toggleVideoThumbs,
+    setHardwareAccelerationPref,
+    setFfmpegPathPref,
+    setThumbCachePref,
+    setMountsPollPref,
+    setDoubleClickMsPref,
+    loadMountsPollPref,
+    loadDoubleClickMsPref,
+    loadFoldersFirstPref,
+  } = createPreferenceSlice(
+    {
+      showHidden,
+      hiddenFilesLast,
+      foldersFirst,
+      startDirPref,
+      confirmDelete,
+      sortField,
+      sortDirection,
+      sortFieldPref,
+      sortDirectionPref,
+      archiveName,
+      archiveLevel,
+      openDestAfterExtract,
+      videoThumbs,
+      hardwareAcceleration,
+      ffmpegPath,
+      thumbCacheMb,
+      mountsPollMs,
+      doubleClickMs,
+      density,
+    },
+    {
+      clearFacetCache,
+      refreshForSort,
+    },
+  )
 
   return {
     cols,
