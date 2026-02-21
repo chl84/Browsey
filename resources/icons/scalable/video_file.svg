@@ -3,9 +3,9 @@
     <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
     <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
 
-    <!-- Videoramme -->
+    <!-- Video frame -->
     <rect x="28" y="60" width="72" height="48" rx="0" fill="#E3DBF7" stroke="#2B2419" stroke-width="2" />
-    <!-- Filmhull topp/bunn -->
+    <!-- Film holes top/bottom -->
     <g fill="#C7B7F1">
       <rect x="36" y="62" width="8" height="8" rx="0" />
       <rect x="48" y="62" width="8" height="8" rx="0" />

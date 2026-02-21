@@ -258,7 +258,7 @@
   const selectionRect = selectionBox.rect
 
   function getListMaxWidth(): number | null {
-    // Sørg for at kolonner ikke kan bli bredere enn den synlige listen (inkl. stjernekolonnen).
+    // Ensure columns cannot become wider than the visible list (including the star column).
     const el = rowsElRef ?? headerElRef
     if (!el) return null
     const style = getComputedStyle(el)

@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
-  <!-- Bakre del av mappen -->
+  <!-- Rear part of folder -->
   <path d="M12 36V24H52L64 36H116V52H12V36Z" fill="#6B8FD6"></path>
 
-  <!-- Fremre del av mappen -->
+  <!-- Front part of folder -->
   <path d="M12 52H116V108H12Z" fill="#4F6FBF"></path>
 
-  <!-- Desktop-symbol: skjerm -->
+  <!-- Desktop symbol: monitor -->
   <rect x="34" y="66" width="60" height="32" rx="0" fill="rgba(243,232,210,0.25)"></rect>
 
-  <!-- Skjermfot -->
+  <!-- Monitor stand -->
   <rect x="56" y="100" width="16" height="4" rx="0" fill="rgba(243,232,210,0.55)"></rect>
   <rect x="50" y="104" width="28" height="4" rx="0" fill="rgba(243,232,210,0.45)"></rect>
 
-  <!-- Diskré kantlinje -->
+  <!-- Subtle outline -->
   <path d="M12 52H116" stroke="rgba(243,232,210,0.25)" stroke-width="2"></path>
 </svg>

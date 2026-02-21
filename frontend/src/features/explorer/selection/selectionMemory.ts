@@ -13,7 +13,7 @@ type RestoreResult = {
 }
 
 /**
- * Per-mappe minne for utvalg/anker/caret slik at vi kan gå tilbake uten å miste markering.
+ * Per-folder memory for selection/anchor/caret so we can navigate back without losing selection.
  */
 export const createSelectionMemory = () => {
   const MAX_SELECTION_SNAPSHOTS = 10
@@ -32,7 +32,7 @@ export const createSelectionMemory = () => {
     const anchorPath = anchorIndex !== null ? filteredEntries[anchorIndex]?.path ?? null : null
     const caretPath = caretIndex !== null ? filteredEntries[caretIndex]?.path ?? null : null
 
-    // Oppdater rekkefølge for LRU: fjern først om den finnes, så legg inn på nytt.
+    // Update LRU order: remove first if present, then insert again.
     if (memory.has(path)) {
       memory.delete(path)
     }

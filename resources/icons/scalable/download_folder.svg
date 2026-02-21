@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
   <path d="M12 36V24H52L64 36H116V52H12V36Z" fill="#6B8FD6"></path>
   <path d="M12 52H116V108H12Z" fill="#4F6FBF"></path>
-  <!-- Nedlastningspil, symmetrisk og kantet -->
+  <!-- Download arrow, symmetric and angular -->
   <rect x="58" y="64" width="12" height="24" fill="rgba(243,232,210,0.85)"></rect>
   <path d="M52 88L64 104L76 88H52Z" fill="rgba(243,232,210,0.85)"></path>
   <path d="M44 102h40" stroke="rgba(243,232,210,0.45)" stroke-width="6" stroke-linecap="butt"></path>

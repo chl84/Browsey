@@ -1,20 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
-  <!-- Bakre del av mappen -->
+  <!-- Rear part of folder -->
   <path d="M12 36V24H52L64 36H116V52H12V36Z" fill="#6B8FD6"></path>
 
-  <!-- Fremre del av mappen -->
+  <!-- Front part of folder -->
   <path d="M12 52H116V108H12Z" fill="#4F6FBF"></path>
 
-  <!-- Dokument-symbol: ark -->
+  <!-- Document symbol: sheet -->
   <path d="M44 66c0-2.2 1.8-4 4-4h26l10 10v24c0 2.2-1.8 4-4 4H48c-2.2 0-4-1.8-4-4V66Z" fill="rgba(243,232,210,0.22)"></path>
 
-  <!-- Brettet hjørne på arket -->
+  <!-- Folded corner on sheet -->
   <path d="M74 62v8c0 2.2 1.8 4 4 4h8L74 62Z" fill="rgba(243,232,210,0.38)"></path>
 
-  <!-- Tekstlinjer -->
+  <!-- Text lines -->
   <rect x="50" y="78" width="28" height="6" rx="0" fill="rgba(243,232,210,0.55)"></rect>
   <rect x="50" y="88" width="22" height="6" rx="0" fill="rgba(243,232,210,0.42)"></rect>
 
-  <!-- Diskré kantlinje -->
+  <!-- Subtle outline -->
   <path d="M12 52H116" stroke="rgba(243,232,210,0.25)" stroke-width="2"></path>
 </svg>

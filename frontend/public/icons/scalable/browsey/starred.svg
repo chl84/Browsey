@@ -1,14 +1,14 @@
-<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Stjerne ikon">
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Star icon">
   <g transform="translate(64 64) scale(1.1) translate(-64 -64)">
   <defs>
-    <!-- Gradient som fungerer i både lyst og mørkt tema -->
+    <!-- Gradient that works in both light and dark themes -->
     <linearGradient id="starGradient" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#FFD966"></stop>
       <stop offset="100%" stop-color="#F4B400"></stop>
     </linearGradient>
   </defs>
 
-  <!-- Stjerne -->
+  <!-- Star -->
   <g transform="translate(0 5)">
     <polygon points="64 10
             78 46
