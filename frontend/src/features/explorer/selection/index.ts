@@ -1,4 +1,4 @@
-export { createSelectionBox } from './useSelectionBox'
+export { createSelectionBox } from './createSelectionBox'
 export { hitTestGridVirtualized } from './lassoHitTest'
 export { applyClickSelection, clearSelection } from './selectionController'
 export { selectAllPaths, selectRange, clampIndex } from './selection'

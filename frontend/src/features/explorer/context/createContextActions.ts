@@ -1,6 +1,6 @@
 import { getErrorMessage } from '@/shared/lib/error'
 import type { Entry } from '../model/types'
-import type { ClipboardApi } from '../file-ops/useClipboard'
+import type { ClipboardApi } from '../file-ops/createClipboard'
 import { copyPathsToSystemClipboard } from '../services/clipboard.service'
 import {
   restoreTrashItems,

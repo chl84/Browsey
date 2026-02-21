@@ -40,7 +40,7 @@ type Deps = {
   ensureGridVisible: (index: number) => void
   getRowsKeydownHandler: () => ((event: KeyboardEvent) => void) | null
   getRowSelectionHandler: () => ((entry: Entry, absoluteIndex: number, event: MouseEvent) => void) | null
-  selectionBox: ReturnType<typeof import('../selection/useSelectionBox').createSelectionBox>
+  selectionBox: ReturnType<typeof import('../selection/createSelectionBox').createSelectionBox>
   getGridCols: () => number
   getGridCardWidth: () => number
   getGridRowHeight: () => number
