@@ -3,7 +3,7 @@
     <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
     <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
 
-    <!-- Regneark -->
+    <!-- Spreadsheet -->
     <rect x="28" y="60" width="72" height="48" rx="0" fill="#DAF1E2" stroke="#2B2419" stroke-width="2" />
     <path d="M28 76h72M28 92h72" stroke="#2B2419" stroke-opacity="0.55" stroke-width="2" stroke-linecap="round" />
     <path d="M52 60v48M76 60v48" stroke="#2B2419" stroke-opacity="0.55" stroke-width="2" stroke-linecap="round" />

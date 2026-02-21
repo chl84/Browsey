@@ -75,7 +75,7 @@ pub(super) fn extract_rar(
         let normalized = raw_name.replace('\\', "/");
         let raw_path = Path::new(&normalized).to_path_buf();
 
-        // rar-stream mangler komplett dekoder for komprimerte entries; avbryt heller enn å skrive korrupte data.
+        // rar-stream lacks a complete decoder for compressed entries; abort instead of writing corrupted data.
         if entry.is_compressed() {
             return Err(format!(
                 "RAR entry uses unsupported compression method: {raw_name}"

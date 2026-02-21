@@ -1,14 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="Kjørbar fil ikon">
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="Executable file icon">
   <g>
-    <!-- Dokument -->
+    <!-- Document -->
     <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter"></path>
 
-    <!-- Brettet hjørne -->
+    <!-- Folded corner -->
     <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter"></path>
 
-    <!-- Kjørbar-symbol: gir -->
+    <!-- Executable symbol: gear -->
     <g transform="translate(64 82)">
-      <!-- Tenner -->
+      <!-- Teeth -->
       <rect x="-3" y="-28" width="6" height="10" fill="#2B2419"></rect>
       <rect x="-3" y="18" width="6" height="10" fill="#2B2419"></rect>
       <rect x="-28" y="-3" width="10" height="6" fill="#2B2419"></rect>
@@ -18,7 +18,7 @@
       <rect x="-28" y="-3" width="10" height="6" transform="rotate(45)" fill="#2B2419"></rect>
       <rect x="18" y="-3" width="10" height="6" transform="rotate(45)" fill="#2B2419"></rect>
 
-      <!-- Gir-kropp -->
+      <!-- Gear body -->
       <circle cx="0" cy="0" r="20" fill="#E8DBC2" stroke="#2B2419" stroke-width="2"></circle>
       <circle cx="0" cy="0" r="8" fill="#F3E8D2" stroke="#2B2419" stroke-width="2"></circle>
     </g>

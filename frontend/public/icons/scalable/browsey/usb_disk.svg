@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
   <g transform="translate(64 64) scale(1.1) translate(-64 -64)">
-  <!-- USB-enhet kropp -->
+  <!-- USB device body -->
   <rect x="36" y="22" width="56" height="84" rx="0" fill="#5F7FD1"></rect>
 
-  <!-- Metalltopp / kontakt -->
+  <!-- Metal top / connector -->
   <rect x="40" y="22" width="48" height="22" rx="0" fill="#8FA6E8"></rect>
 
-  <!-- Kontakt-hull -->
+  <!-- Connector hole -->
   <rect x="48" y="28" width="10" height="6" rx="0" fill="rgba(255,255,255,0.55)"></rect>
   <rect x="70" y="28" width="10" height="6" rx="0" fill="rgba(255,255,255,0.55)"></rect>
 
-  <!-- Frontpanel -->
+  <!-- Front panel -->
   <rect x="44" y="54" width="40" height="30" rx="0" fill="rgba(255,255,255,0.22)"></rect>
 
   <!-- Status-LED -->

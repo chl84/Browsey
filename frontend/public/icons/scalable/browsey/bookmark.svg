@@ -1,7 +1,7 @@
-<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bokmerke ikon">
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bookmark icon">
   <g transform="translate(64 64) scale(1.1) translate(-64 -64)">
   <g transform="translate(0 4)">
-    <!-- Hovedform -->
+    <!-- Main shape -->
     <path d="M36 16
          H92
          V112
@@ -9,7 +9,7 @@
          L36 112
          Z" fill="#C8A874"></path>
 
-    <!-- Indre flate for dybde -->
+    <!-- Inner surface for depth -->
     <path d="M44 20
          H84
          V92
@@ -17,7 +17,7 @@
          L44 92
          Z" fill="#B89563"></path>
 
-    <!-- Markeringsfelt -->
+    <!-- Highlight area -->
     <rect x="50" y="32" width="28" height="10" rx="0" fill="#9E7C4A"></rect>
   </g>
   </g>

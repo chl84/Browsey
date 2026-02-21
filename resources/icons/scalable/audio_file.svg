@@ -1,22 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="Lydfil ikon">
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="Audio file icon">
   <g>
-    <!-- Dokument -->
+    <!-- Document -->
     <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter"></path>
 
-    <!-- Brettet hjørne -->
+    <!-- Folded corner -->
     <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter"></path>
 
-    <!-- Lydsymbol: notepar -->
-    <!-- Venstre note -->
+    <!-- Audio symbol: note pair -->
+    <!-- Left note -->
     <ellipse cx="50" cy="96" rx="9" ry="7" fill="#2B2419"></ellipse>
-    <!-- Forlenge stammene oppover, bunn beholdes på y=100 -->
+    <!-- Extend stems upward, keep baseline at y=100 -->
     <rect x="54" y="62" width="4" height="36" fill="#2B2419"></rect>
 
-    <!-- Høyre note -->
+    <!-- Right note -->
     <ellipse cx="75" cy="92" rx="8" ry="6" fill="#2B2419"></ellipse>
     <rect x="78" y="62" width="4" height="30" fill="#2B2419"></rect>
 
-    <!-- Felles bjelke -->
+    <!-- Shared beam -->
     <rect x="56" y="62" width="26" height="6" fill="#2B2419"></rect>
   </g>
 </svg>
