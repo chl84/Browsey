@@ -117,7 +117,7 @@ Acceptance:
 - [ ] Ensure each domain has clear entrypoint (`index.ts`) if externally consumed.
 - [ ] Remove leftover ambiguous names where safe.
 
-Started (current uncommitted batch, 2026-02-21):
+Completed batch (committed, 2026-02-21):
 - `frontend/src/features/explorer/hooks/useActivity.ts` -> `frontend/src/features/explorer/hooks/createActivity.ts`
 - `frontend/src/features/explorer/hooks/useAppLifecycle.ts` -> `frontend/src/features/explorer/hooks/createAppLifecycle.ts`
 - `frontend/src/features/explorer/hooks/useBookmarkModal.ts` -> `frontend/src/features/explorer/hooks/createBookmarkModal.ts`
@@ -125,6 +125,14 @@ Started (current uncommitted batch, 2026-02-21):
 - `frontend/src/features/explorer/hooks/useGridHandlers.ts` -> `frontend/src/features/explorer/hooks/createGridKeyboardHandler.ts`
 - `frontend/src/features/explorer/hooks/useNewFileTypeHint.ts` -> `frontend/src/features/explorer/hooks/createNewFileTypeHint.ts`
 - `frontend/src/features/explorer/hooks/useShortcuts.ts` -> `frontend/src/features/explorer/hooks/createGlobalShortcuts.ts`
+- `lint/check/build` green.
+- Manual Browsey smoke-test green.
+
+Started batch (current uncommitted, 2026-02-21):
+- `frontend/src/features/explorer/file-ops/useClipboard.ts` -> `frontend/src/features/explorer/file-ops/createClipboard.ts`
+- `frontend/src/features/explorer/file-ops/useNativeFileDrop.ts` -> `frontend/src/features/explorer/file-ops/createNativeFileDrop.ts`
+- `frontend/src/features/explorer/selection/useSelectionBox.ts` -> `frontend/src/features/explorer/selection/createSelectionBox.ts`
+- `frontend/src/features/explorer/ui-shell/hooks/useViewObservers.ts` -> `frontend/src/features/explorer/ui-shell/hooks/createViewObservers.ts`
 - `lint/check/build` green.
 - Manual Browsey smoke-test green.
 
