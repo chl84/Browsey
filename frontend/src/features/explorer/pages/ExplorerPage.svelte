@@ -41,14 +41,15 @@
   import { useExplorerSearchSession } from '@/features/explorer/hooks/useExplorerSearchSession'
   import { createTextContextMenu } from '@/features/explorer/hooks/useTextContextMenu'
   import { createViewObservers } from '@/features/explorer/hooks/useViewObservers'
-  import { loadShortcuts, setShortcutBinding } from '@/features/shortcuts/service'
   import {
     DEFAULT_SHORTCUTS,
+    loadShortcuts,
     matchesAnyShortcut,
     matchesShortcut,
+    setShortcutBinding,
     type ShortcutBinding,
     type ShortcutCommandId,
-  } from '@/features/shortcuts/keymap'
+  } from '@/features/shortcuts'
   import DragGhost from '@/shared/ui/DragGhost.svelte'
   import TextContextMenu from '@/features/explorer/components/TextContextMenu.svelte'
   import {
@@ -59,7 +60,7 @@
   } from '@/features/explorer/services/data.service'
   import { createNewFileTypeHint } from '@/features/explorer/hooks/useNewFileTypeHint'
   import ConflictModal from '@/shared/ui/ConflictModal.svelte'
-  import SettingsModal from '@/features/settings/SettingsModal.svelte'
+  import { SettingsModal } from '@/features/settings'
   import AboutBrowseyModal from '@/features/explorer/components/AboutBrowseyModal.svelte'
   import { anyModalOpen as anyModalOpenStore } from '@/shared/ui/modalOpenState'
   import { createCheckDuplicatesModal } from '@/features/explorer/modals/checkDuplicatesModal'

@@ -1,4 +1,4 @@
-import type { ShortcutCommandId } from '../../shortcuts/keymap'
+import type { ShortcutCommandId } from '@/features/shortcuts'
 
 type ShortcutArgs = {
   isBookmarkModalOpen: () => boolean

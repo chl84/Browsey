@@ -1,6 +1,6 @@
 import { getErrorMessage } from '@/shared/lib/error'
 import { derived, get, writable } from 'svelte/store'
-import { keyboardEventToAccelerator, type ShortcutBinding, type ShortcutCommandId } from '../../shortcuts/keymap'
+import { keyboardEventToAccelerator, type ShortcutBinding, type ShortcutCommandId } from '@/features/shortcuts'
 import {
   clearTargetCopy,
   type DataClearTarget,

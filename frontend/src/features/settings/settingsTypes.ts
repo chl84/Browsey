@@ -1,4 +1,4 @@
-import type { DefaultSortField, Density } from '../explorer/model/types'
+import type { DefaultSortField, Density } from '@/features/explorer'
 
 export type SortField = DefaultSortField
 export type SortDirection = 'asc' | 'desc'

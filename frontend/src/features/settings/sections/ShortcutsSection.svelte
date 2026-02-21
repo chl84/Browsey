@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ShortcutBinding, ShortcutCommandId } from '../../shortcuts/keymap'
+  import type { ShortcutBinding, ShortcutCommandId } from '@/features/shortcuts'
 
   export let show = false
   export let shortcutColumns: ShortcutBinding[][] = []
