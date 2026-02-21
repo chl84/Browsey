@@ -7,7 +7,7 @@ Goal: Standardize naming and placement conventions without behavior changes.
 ## Progress
 
 - [x] Create this TODO file in project root.
-- [ ] Work through phases below and check off continuously.
+- [x] Work through phases below and check off continuously.
 
 ## Constraints
 
@@ -175,9 +175,13 @@ Acceptance:
 
 ## Final Definition of Done
 
-- [ ] Naming rules documented and agreed.
+- [x] Naming rules documented and agreed.
 - [x] Low-risk rename backlog completed.
 - [x] Medium-risk rename backlog completed.
 - [x] Enforcement active.
 - [x] `lint/check/build` green.
 - [x] Manual smoke-test green.
+
+Agreement note (2026-02-21):
+- Naming rules accepted for current frontend structure, with one explicit temporary exception:
+  - `frontend/src/features/settings/hooks/useSettingsModalViewModel.ts`
