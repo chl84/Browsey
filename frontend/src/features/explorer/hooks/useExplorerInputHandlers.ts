@@ -2,7 +2,7 @@ import { hitTestGridVirtualized } from '../selection/lassoHitTest'
 import { isScrollbarClick } from '../helpers/scrollbar'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
-import { createGridKeyboardHandler } from './useGridHandlers'
+import { createGridKeyboardHandler } from './createGridKeyboardHandler'
 
 type ViewMode = 'list' | 'grid'
 type Mode = 'address' | 'filter'

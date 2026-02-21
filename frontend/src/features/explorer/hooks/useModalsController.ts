@@ -10,7 +10,7 @@ import { createCheckDuplicatesModal } from '../modals/checkDuplicatesModal'
 import type { Entry } from '../model/types'
 
 type Deps = {
-  activityApi: ReturnType<typeof import('./useActivity').createActivity>
+  activityApi: ReturnType<typeof import('./createActivity').createActivity>
   reloadCurrent: () => Promise<void>
   showToast: (msg: string, timeout?: number) => void
   getCurrentPath: () => string

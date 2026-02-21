@@ -92,8 +92,8 @@ Postpone/Defer (ambiguous naming intent, revisit after rename batches):
   - `npm --prefix frontend run lint`
   - `npm --prefix frontend run check`
   - `npm --prefix frontend run build`
-- [ ] Manual smoke-test on UI-relevant batches.
-- [ ] Commit each batch separately.
+- [x] Manual smoke-test on UI-relevant batches.
+- [x] Commit each batch separately.
 
 Completed in current batch (2026-02-21):
 - `frontend/src/features/explorer/context/useContextActions.ts` -> `frontend/src/features/explorer/context/createContextActions.ts`
@@ -116,6 +116,17 @@ Acceptance:
   - `state`
 - [ ] Ensure each domain has clear entrypoint (`index.ts`) if externally consumed.
 - [ ] Remove leftover ambiguous names where safe.
+
+Started (current uncommitted batch, 2026-02-21):
+- `frontend/src/features/explorer/hooks/useActivity.ts` -> `frontend/src/features/explorer/hooks/createActivity.ts`
+- `frontend/src/features/explorer/hooks/useAppLifecycle.ts` -> `frontend/src/features/explorer/hooks/createAppLifecycle.ts`
+- `frontend/src/features/explorer/hooks/useBookmarkModal.ts` -> `frontend/src/features/explorer/hooks/createBookmarkModal.ts`
+- `frontend/src/features/explorer/hooks/useColumnWidths.ts` -> `frontend/src/features/explorer/hooks/createColumnResize.ts`
+- `frontend/src/features/explorer/hooks/useGridHandlers.ts` -> `frontend/src/features/explorer/hooks/createGridKeyboardHandler.ts`
+- `frontend/src/features/explorer/hooks/useNewFileTypeHint.ts` -> `frontend/src/features/explorer/hooks/createNewFileTypeHint.ts`
+- `frontend/src/features/explorer/hooks/useShortcuts.ts` -> `frontend/src/features/explorer/hooks/createGlobalShortcuts.ts`
+- `lint/check/build` green.
+- Manual Browsey smoke-test green.
 
 Acceptance:
 - Naming is consistent within and across domains.
@@ -144,6 +155,7 @@ Acceptance:
 
 - [ ] Naming rules documented and agreed.
 - [ ] Low-risk rename backlog completed.
+- [ ] Medium-risk rename backlog completed.
 - [ ] Enforcement active.
 - [ ] `lint/check/build` green.
 - [ ] Manual smoke-test green.
