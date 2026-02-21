@@ -24,9 +24,9 @@
   ) => void = () => {}
   export let onToggleViewMode: (mode: 'list' | 'grid') => void = () => {}
 
-  import { getCurrentWindow } from '@tauri-apps/api/window'
-  import ThemeToggle from './ThemeToggle.svelte'
-  import TopbarActionMenu from './TopbarActionMenu.svelte'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import ThemeToggle from '../../components/ThemeToggle.svelte'
+import TopbarActionMenu from './TopbarActionMenu.svelte'
 
   const appWindow = getCurrentWindow()
 
