@@ -5,7 +5,7 @@ import { connectNetworkUri, isMountUri } from '@/features/network'
 import { entryKind } from '../services/files.service'
 import { createSelectionMemory } from '../selection/selectionMemory'
 import type { Entry } from '../model/types'
-import type { CurrentView } from '../context/useContextActions'
+import type { CurrentView } from '../context/createContextActions'
 
 type ViewMode = 'list' | 'grid'
 

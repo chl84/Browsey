@@ -1,7 +1,7 @@
 import { hitTestGridVirtualized } from '../selection/lassoHitTest'
 import { isScrollbarClick } from '../helpers/scrollbar'
 import type { Entry } from '../model/types'
-import type { CurrentView } from '../context/useContextActions'
+import type { CurrentView } from '../context/createContextActions'
 import { createGridKeyboardHandler } from './useGridHandlers'
 
 type ViewMode = 'list' | 'grid'

@@ -7,7 +7,7 @@ import { normalizePath, parentPath } from '../utils'
 import { resolveDropClipboardMode, setClipboardCmd } from '../services/clipboard.service'
 import { startNativeFileDrag } from '../services/nativeDrag.service'
 import type { Entry } from '../model/types'
-import type { CurrentView } from '../context/useContextActions'
+import type { CurrentView } from '../context/createContextActions'
 
 type Deps = {
   currentView: () => CurrentView
