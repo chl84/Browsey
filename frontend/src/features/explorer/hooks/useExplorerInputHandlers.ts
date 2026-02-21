@@ -1,7 +1,7 @@
 import { hitTestGridVirtualized } from '../selection/lassoHitTest'
 import { isScrollbarClick } from '../helpers/scrollbar'
 import type { Entry } from '../model/types'
-import type { CurrentView } from './useContextActions'
+import type { CurrentView } from '../context/useContextActions'
 import { createGridKeyboardHandler } from './useGridHandlers'
 
 type ViewMode = 'list' | 'grid'
@@ -40,7 +40,7 @@ type Deps = {
   ensureGridVisible: (index: number) => void
   getRowsKeydownHandler: () => ((event: KeyboardEvent) => void) | null
   getRowSelectionHandler: () => ((entry: Entry, absoluteIndex: number, event: MouseEvent) => void) | null
-  selectionBox: ReturnType<typeof import('./useSelectionBox').createSelectionBox>
+  selectionBox: ReturnType<typeof import('../selection/useSelectionBox').createSelectionBox>
   getGridCols: () => number
   getGridCardWidth: () => number
   getGridRowHeight: () => number
