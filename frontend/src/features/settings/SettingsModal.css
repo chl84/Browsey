@@ -1,0 +1,235 @@
+.settings-modal {
+  max-height: 80vh;
+  min-height: var(--settings-modal-min-height);
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-modal .settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--settings-form-column-gap);
+  flex-wrap: wrap;
+  margin-bottom: var(--settings-header-margin-bottom);
+}
+
+.settings-modal .settings-header h2 {
+  margin: 0;
+  font-size: var(--modal-header-size);
+  line-height: var(--modal-header-line);
+  flex: 0 0 var(--settings-form-label-width);
+  text-align: right;
+}
+
+.settings-modal .settings-filter {
+  min-width: var(--settings-filter-min-width);
+  flex: 1 1 var(--settings-filter-width);
+}
+
+.settings-modal .restore-btn {
+  padding: var(--settings-restore-padding-y) var(--settings-restore-padding-x);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: var(--settings-restore-font-size);
+  margin-left: auto;
+}
+
+.settings-modal .restore-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+}
+
+.settings-modal .settings-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-panel-gap);
+  padding-right: var(--settings-panel-padding-right);
+}
+
+.settings-modal .settings-panel.single {
+  padding-right: var(--settings-panel-padding-right);
+}
+
+.settings-modal .group-heading {
+  grid-column: 1;
+  font-weight: 700;
+  color: var(--fg-strong);
+  padding-top: 0;
+  text-align: right;
+  justify-self: end;
+}
+
+.settings-modal .group-spacer {
+  grid-column: 2;
+  min-height: 1px;
+}
+
+.settings-modal .group-divider {
+  grid-column: 1 / -1;
+  height: 0;
+  border-top: 1px solid var(--border);
+  margin-top: var(--settings-group-divider-margin-top);
+  margin-bottom: var(--settings-group-divider-margin-bottom);
+}
+
+.settings-modal .settings-table > .group-divider:first-child {
+  display: none;
+}
+
+.settings-modal .form-rows {
+  display: grid;
+  grid-template-columns: var(--settings-form-label-width) 1fr;
+  column-gap: var(--settings-form-column-gap);
+  row-gap: var(--settings-form-row-gap);
+  align-items: center;
+}
+
+.settings-modal .form-label {
+  text-align: right;
+  font-weight: 600;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+.settings-modal .form-control {
+  display: flex;
+  align-items: center;
+  gap: var(--settings-control-gap);
+  width: 100%;
+}
+
+.settings-modal .form-control.column {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--settings-control-gap-tight);
+}
+
+.settings-modal .form-control input[type='text'],
+.settings-modal .form-control textarea,
+.settings-modal .form-control .combo {
+  width: 100%;
+  max-width: 100%;
+}
+
+.settings-modal .form-control input[type='range'] {
+  flex: 1;
+}
+
+.settings-modal .form-control small {
+  color: var(--fg-muted);
+}
+
+.settings-modal .form-control.checkbox {
+  align-items: center;
+}
+
+.settings-modal .form-control.checkbox span {
+  color: var(--fg);
+}
+
+.settings-modal .form-control.radios {
+  gap: var(--settings-radios-gap);
+}
+
+.settings-modal .form-control.radios .radio {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--settings-control-gap-tight);
+  cursor: pointer;
+  color: var(--fg);
+}
+
+.settings-modal .archive-name {
+  display: flex;
+  align-items: center;
+  gap: var(--settings-archive-gap);
+}
+
+.settings-modal .archive-name input {
+  flex: 1;
+}
+
+.settings-modal .archive-name .suffix {
+  color: var(--fg-muted);
+  font-size: var(--settings-archive-suffix-size);
+  min-width: 32px;
+  text-align: left;
+}
+
+.settings-modal .key {
+  display: inline-flex;
+  min-width: 64px;
+  justify-content: center;
+  padding: var(--settings-key-padding-y) var(--settings-key-padding-x);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 0;
+  font-size: var(--settings-key-font-size);
+}
+
+.settings-modal .shortcuts-control {
+  align-items: stretch;
+}
+
+.settings-modal .shortcuts-row {
+  grid-column: 2;
+}
+
+.settings-modal .shortcuts-columns {
+  display: flex;
+  gap: var(--settings-shortcuts-columns-gap);
+  width: 100%;
+}
+
+.settings-modal .shortcuts-column {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-shortcuts-column-gap);
+}
+
+.settings-modal .shortcut-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--settings-shortcut-item-gap);
+  min-height: var(--settings-shortcut-item-min-height);
+}
+
+.settings-modal .shortcut-action {
+  color: var(--fg);
+}
+
+.settings-modal .shortcut-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--settings-shortcut-key-height);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.settings-modal .shortcut-key.capturing {
+  border-color: var(--border-accent);
+  background: var(--bg-hover);
+}
+
+.settings-modal .shortcuts-error {
+  margin-top: 8px;
+  color: var(--danger);
+  font-size: var(--settings-shortcut-error-size);
+}
+
+@media (max-width: 760px) {
+  .settings-modal .shortcuts-columns {
+    flex-direction: column;
+    gap: var(--settings-shortcuts-column-gap);
+  }
+}
