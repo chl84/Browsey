@@ -37,7 +37,11 @@ import type { Entry } from '@/features/explorer'
 
 - ESLint enforces boundary rules via `no-restricted-imports`.
 - Rule severity is `error`.
+- Naming drift is checked by `frontend/scripts/check-naming-conventions.mjs`.
 - CI gate runs:
   - `npm --prefix frontend run lint`
   - `npm --prefix frontend run check`
   - `npm --prefix frontend run build`
+
+Related:
+- See `ARCHITECTURE_NAMING.md` for file naming and placement conventions.

@@ -107,15 +107,15 @@ Acceptance:
 
 ## Phase 4: Domain Consistency Cleanup
 
-- [ ] Standardize naming within each explorer domain:
+- [x] Standardize naming within each explorer domain:
   - `context`
   - `navigation`
   - `selection`
   - `file-ops`
   - `ui-shell`
   - `state`
-- [ ] Ensure each domain has clear entrypoint (`index.ts`) if externally consumed.
-- [ ] Remove leftover ambiguous names where safe.
+- [x] Ensure each domain has clear entrypoint (`index.ts`) if externally consumed.
+- [x] Remove leftover ambiguous names where safe.
 
 Completed batch (committed, 2026-02-21):
 - `frontend/src/features/explorer/hooks/useActivity.ts` -> `frontend/src/features/explorer/hooks/createActivity.ts`
@@ -128,7 +128,7 @@ Completed batch (committed, 2026-02-21):
 - `lint/check/build` green.
 - Manual Browsey smoke-test green.
 
-Started batch (current uncommitted, 2026-02-21):
+Completed batch (committed, 2026-02-21):
 - `frontend/src/features/explorer/file-ops/useClipboard.ts` -> `frontend/src/features/explorer/file-ops/createClipboard.ts`
 - `frontend/src/features/explorer/file-ops/useNativeFileDrop.ts` -> `frontend/src/features/explorer/file-ops/createNativeFileDrop.ts`
 - `frontend/src/features/explorer/selection/useSelectionBox.ts` -> `frontend/src/features/explorer/selection/createSelectionBox.ts`
@@ -136,25 +136,39 @@ Started batch (current uncommitted, 2026-02-21):
 - `lint/check/build` green.
 - Manual Browsey smoke-test green.
 
+Verification snapshot:
+- No `frontend/src/features/explorer/**/use*.ts` file exports only `create*`.
+- Explorer domains with external/internal entrypoints expose `index.ts` where consumed:
+  - `context`, `navigation`, `selection`, `file-ops`, `ui-shell`, feature root.
+- Deferred exception remains outside explorer scope:
+  - `frontend/src/features/settings/hooks/useSettingsModalViewModel.ts`
+
 Acceptance:
 - Naming is consistent within and across domains.
 
 ## Phase 5: Enforcement
 
-- [ ] Add lightweight enforcement for naming/placement drift:
+- [x] Add lightweight enforcement for naming/placement drift:
   - lint restrictions and/or static checks.
-- [ ] Keep enforcement focused (avoid noisy broad rules).
+- [x] Keep enforcement focused (avoid noisy broad rules).
+
+Completed (2026-02-21):
+- Added `frontend/scripts/check-naming-conventions.mjs`.
+- Enforces: `use*.ts/js` must not export only `create*` (allowlist-based exception support).
+- Integrated into frontend lint:
+  - `frontend/package.json` -> `lint` runs ESLint + `lint:naming`.
+  - `frontend/package.json` -> new `lint:naming` script.
 
 Acceptance:
 - New violations are caught automatically in CI/local lint.
 
 ## Phase 6: Documentation
 
-- [ ] Add `ARCHITECTURE_NAMING.md` with:
+- [x] Add `ARCHITECTURE_NAMING.md` with:
   - conventions
   - examples
   - quick decision checklist
-- [ ] Link naming doc from relevant README/architecture docs if needed.
+- [x] Link naming doc from relevant README/architecture docs if needed.
 
 Acceptance:
 - Team has one clear naming reference.
@@ -162,8 +176,8 @@ Acceptance:
 ## Final Definition of Done
 
 - [ ] Naming rules documented and agreed.
-- [ ] Low-risk rename backlog completed.
-- [ ] Medium-risk rename backlog completed.
-- [ ] Enforcement active.
-- [ ] `lint/check/build` green.
-- [ ] Manual smoke-test green.
+- [x] Low-risk rename backlog completed.
+- [x] Medium-risk rename backlog completed.
+- [x] Enforcement active.
+- [x] `lint/check/build` green.
+- [x] Manual smoke-test green.
