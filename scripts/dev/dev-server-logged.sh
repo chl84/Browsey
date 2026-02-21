@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Run Tauri dev and tee output to a log file for GVFS debugging.
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 mkdir -p "$ROOT/.logs"

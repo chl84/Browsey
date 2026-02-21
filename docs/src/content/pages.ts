@@ -107,7 +107,7 @@ export const docsPages: DocPage[] = [
         id: 'run-dev',
         title: 'Run From Source (Development)',
         code: `npm --prefix frontend install\ncargo tauri dev --no-dev-server`,
-        note: 'Wrappers: scripts/dev-server.sh (Unix) and scripts/dev-server.bat (Windows).',
+        note: 'Wrappers: scripts/dev/dev-server.sh (Unix) and scripts/dev/dev-server.bat (Windows).',
       },
       {
         id: 'checks',
@@ -123,7 +123,7 @@ export const docsPages: DocPage[] = [
           'Windows NSIS: cargo tauri build --bundles nsis',
           'Linux RPM: cargo tauri build --bundles rpm',
         ],
-        note: 'Helpers: scripts/build-release.sh and scripts/build-release.bat.',
+        note: 'Helpers: scripts/build/build-release.sh and scripts/build/build-release.bat.',
       },
       {
         id: 'install-packages',
@@ -579,7 +579,7 @@ frontend/src/
 docs/src/content/pages.ts
 ARCHITECTURE_IMPORTS.md ARCHITECTURE_NAMING.md CHANGELOG.md
 docs/todo-archive/{README.md,TODO_*.md}
-scripts/{dev-server.*,build-release.*,docs-*.sh,docs-*.bat}
+scripts/{dev/*,build/*,docs/*,install/*,maintenance/*}
 resources/{icons/,schemas/,pdfium-linux-x64/,pdfium-win-x64/}
 capabilities/default.json`,
         note: 'When in doubt, add user-facing behavior notes in docs first, then keep README concise with links/summaries.',
@@ -595,7 +595,7 @@ capabilities/default.json`,
         id: 'app-dev-loop',
         title: 'App Development Loop',
         code: `npm --prefix frontend install\ncargo tauri dev --no-dev-server`,
-        note: 'Use scripts/dev-server.sh or scripts/dev-server.bat for convenience.',
+        note: 'Use scripts/dev/dev-server.sh or scripts/dev/dev-server.bat for convenience.',
       },
       {
         id: 'app-validation',
@@ -605,8 +605,8 @@ capabilities/default.json`,
       {
         id: 'docs-dev-loop',
         title: 'Docs Development Loop',
-        code: `npm --prefix docs install\n./scripts/docs-dev.sh\n./scripts/docs-check.sh\n./scripts/docs-build.sh`,
-        note: 'Also available: scripts/docs-install.sh + scripts/docs-preview.sh (and .bat equivalents on Windows).',
+        code: `npm --prefix docs install\n./scripts/docs/docs-dev.sh\n./scripts/docs/docs-check.sh\n./scripts/docs/docs-build.sh`,
+        note: 'Also available: scripts/docs/docs-install.sh + scripts/docs/docs-preview.sh (and .bat equivalents on Windows).',
       },
       {
         id: 'docs-pages-deploy',

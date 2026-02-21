@@ -4,7 +4,7 @@
   "version": "0.4.4",
   "identifier": "com.browsey",
   "build": {
-    "beforeDevCommand": "bash -lc 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && ./scripts/start-vite.sh'",
+    "beforeDevCommand": "bash -lc 'cd \"$(git rev-parse --show-toplevel 2>/dev/null || pwd)\" && ./scripts/dev/start-vite.sh'",
     "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:5173/",
     "frontendDist": "dist"
