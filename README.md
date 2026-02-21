@@ -105,6 +105,9 @@ Tauri bundles:
 - `frontend/src/`: Svelte UI with explorer features, settings UI, and shared components.
 - Data and cache: SQLite for app state (bookmarks/stars/recents/settings), on-disk thumbnail cache, plus undo/log directories in the user data path.
 - See docs for detailed module-level architecture and flow notes.
+- Repository architecture notes:
+  - `ARCHITECTURE_IMPORTS.md` for import boundary rules.
+  - `ARCHITECTURE_NAMING.md` for naming/placement conventions.
 
 ## Project layout
 - `src/` — Rust backend.

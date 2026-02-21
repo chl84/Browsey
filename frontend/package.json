@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
-    "lint": "eslint \"src/**/*.{ts,js,svelte}\""
+    "lint": "eslint \"src/**/*.{ts,js,svelte}\" && npm run lint:naming",
+    "lint:naming": "node scripts/check-naming-conventions.mjs"
   },
   "devDependencies": {
     "@typescript-eslint/parser": "^8.46.2",
