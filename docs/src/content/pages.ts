@@ -512,14 +512,16 @@ export const docsPages: DocPage[] = [
         title: 'Frontend (Svelte)',
         bullets: [
           'Explorer UI composition now lives in frontend/src/features/explorer/pages/ExplorerPage.svelte, while App.svelte is a thin entry wrapper',
-          'Explorer orchestration is split into dedicated hooks (navigation, search session, file ops, context menu, input handlers) to keep feature ownership explicit',
-          'frontend/src/features/explorer/components/ holds the main shell plus list/grid/sidebar/topbar/modal components',
-          'frontend/src/features/explorer/hooks/ orchestrates shortcuts, selection, clipboard flow, context menus, and modal wiring',
+          'Explorer internals are organized by domain (`context`, `navigation`, `file-ops`, `selection`, `ui-shell`, `state`) to keep ownership boundaries explicit',
+          'frontend/src/features/explorer/ui-shell/ owns shell composition (`ExplorerShell`, `Sidebar`, `Topbar`) and view observer/virtualization hooks',
+          'frontend/src/features/explorer/hooks/ and domain modules handle orchestration for navigation, search session, file ops, context menus, and input handlers',
           'frontend/src/features/explorer/services/ is the invoke boundary: UI code calls service wrappers, not invoke directly',
-          'frontend/src/features/explorer/stores/ + state.ts keep list/selection/clipboard state consistent across list and grid views',
-          'frontend/src/features/settings/SettingsModal.svelte owns interaction and data-maintenance controls',
+          'frontend/src/features/explorer/state/ contains internal slices/stores while preserving a stable `createExplorerState` API in state.ts',
+          'frontend/src/features/settings/ splits `SettingsModal` into section components plus a dedicated view-model hook',
           'frontend/src/features/shortcuts/ provides shortcut mapping metadata and frontend bridge logic',
-          'Reusable UI primitives live in frontend/src/ui/ (ModalShell, ConfirmActionModal, Toast, context menus, overlays)',
+          'Cross-feature imports are enforced through feature barrels (`@/features/<feature>`) with ESLint import-boundary rules',
+          'Naming convention drift is linted via `npm --prefix frontend run lint` (ESLint + naming checks)',
+          'Reusable UI primitives live in frontend/src/shared/ui/ (ModalShell, ConfirmActionModal, Toast, context menus, overlays)',
           'Global styling/theme density variables are centralized in frontend/src/app.css',
         ],
       },
@@ -567,14 +569,16 @@ export const docsPages: DocPage[] = [
 
 frontend/src/
   App.svelte app.css main.ts
-  lib/{tauri.ts,error.ts}
+  shared/{index.ts,lib/{tauri.ts,error.ts},ui/{ModalShell.svelte,ConfirmActionModal.svelte,Toast.svelte,...}}
   features/
-    explorer/{components,hooks,stores,services,modals,helpers}
-    settings/SettingsModal.svelte
-    shortcuts/{keymap.ts,service.ts}
-  ui/{ModalShell.svelte,ConfirmActionModal.svelte,Toast.svelte,TextContextMenu.svelte,...}
+    explorer/{pages,ui-shell,components,hooks,navigation,context,file-ops,selection,state,services,modals,filters,helpers,model}
+    settings/{SettingsModal.svelte,hooks,sections,settingsTypes.ts,index.ts}
+    network/{index.ts,uri.ts,services.ts,contextMenu.ts,clipboard.ts}
+    shortcuts/{index.ts,keymap.ts,service.ts}
 
 docs/src/content/pages.ts
+ARCHITECTURE_IMPORTS.md ARCHITECTURE_NAMING.md CHANGELOG.md
+docs/todo-archive/{README.md,TODO_*.md}
 scripts/{dev-server.*,build-release.*,docs-*.sh,docs-*.bat}
 resources/{icons/,schemas/,pdfium-linux-x64/,pdfium-win-x64/}
 capabilities/default.json`,
@@ -621,6 +625,7 @@ capabilities/default.json`,
           'Prefer updating docs content in docs/src/content/pages.ts for user-facing docs pages',
           'Keep docs statements aligned with README and changelog facts',
           'When behavior changes, update docs and release notes in the same PR',
+          'Use English for project documentation and inline technical comments',
         ],
       },
     ],
@@ -634,6 +639,13 @@ capabilities/default.json`,
         id: 'unreleased',
         title: 'Unreleased',
         bullets: [
+          'Frontend explorer modules were reorganized into explicit domains (`context`, `navigation`, `file-ops`, `selection`, `ui-shell`, `state`) with no intended behavior change',
+          'Explorer factory naming was standardized (`use*.ts` -> `create*.ts`) for factory modules to reduce naming ambiguity',
+          'Settings internals were modularized: `SettingsModal` is now split into section components plus a dedicated view-model hook',
+          'Frontend import boundaries are now enforced through feature barrels and ESLint deep-import restrictions',
+          'Naming conventions now have an automated lint check (`frontend/scripts/check-naming-conventions.mjs`) wired into `npm --prefix frontend run lint`',
+          'Architecture docs were expanded with explicit naming/import convention references (`ARCHITECTURE_NAMING.md`, `ARCHITECTURE_IMPORTS.md`)',
+          'Completed TODO execution plans were moved into `docs/todo-archive/`, and project text/comments were normalized to English',
           'Backend error flow migration was expanded across remaining modules, replacing string-based failures with code-based ApiError mapping',
           'Core error modules were added in fs_utils, metadata, statusbar, and undo to standardize domain-level classification',
           'Undo internals were fully migrated to typed errors and split into focused modules (backup/engine/nofollow/path checks/path ops/security/types/error)',
