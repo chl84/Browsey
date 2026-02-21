@@ -21,207 +21,206 @@
   import type { OpenWithApp, OpenWithChoice } from '../services/openWith.service'
   import type { AdvancedRenamePayload } from '../modals/advancedRenameModal'
 
-  export let sidebarCollapsed = false
-  export let places: { label: string; path: string }[] = []
-  export let bookmarks: { label: string; path: string }[] = []
-  export let partitions: Partition[] = []
-  export let onPlaceSelect: (label: string, path: string) => void = () => {}
-  export let onBookmarkSelect: (path: string) => void = () => {}
-  export let onRemoveBookmark: (path: string) => void = () => {}
-  export let onPartitionSelect: (path: string) => void = () => {}
-  export let onPartitionEject: (path: string) => void = () => {}
-
+  let sidebarCollapsed = false
+  let places: { label: string; path: string }[] = []
+  let bookmarks: { label: string; path: string }[] = []
+  let partitions: Partition[] = []
+  let onPlaceSelect: (label: string, path: string) => void = () => {}
+  let onBookmarkSelect: (path: string) => void = () => {}
+  let onRemoveBookmark: (path: string) => void = () => {}
+  let onPartitionSelect: (path: string) => void = () => {}
+  let onPartitionEject: (path: string) => void = () => {}
   export let pathInput = ''
   export let pathInputEl: HTMLInputElement | null = null
-  export let mode: 'address' | 'filter' = 'address'
-  export let searchMode = false
-  export let loading = false
-  export let viewMode: 'list' | 'grid' = 'list'
-  export let onFocus: () => void = () => {}
-  export let onBlur: () => void = () => {}
-  export let onSubmitPath: () => void = () => {}
-  export let onSearch: () => void = () => {}
-  export let onExitSearch: () => void = () => {}
-  export let onNavigateSegment: (path: string) => void = () => {}
-  export let onTopbarAction: (
+  let mode: 'address' | 'filter' = 'address'
+  let searchMode = false
+  let loading = false
+  let viewMode: 'list' | 'grid' = 'list'
+  let onFocus: () => void = () => {}
+  let onBlur: () => void = () => {}
+  let onSubmitPath: () => void = () => {}
+  let onSearch: () => void = () => {}
+  let onExitSearch: () => void = () => {}
+  let onNavigateSegment: (path: string) => void = () => {}
+  let onTopbarAction: (
     id: 'open-settings' | 'open-shortcuts' | 'search' | 'toggle-hidden' | 'refresh' | 'about'
   ) => void = () => {}
-  export let onTopbarViewModeChange: (mode: 'list' | 'grid') => void = () => {}
+  let onTopbarViewModeChange: (mode: 'list' | 'grid') => void = () => {}
 
-  export let noticeMessage = ''
-  export let searchRunning = false
-  export let filterActive = false
-  export let filterValue = ''
-  export let currentPath = ''
+  let noticeMessage = ''
+  let searchRunning = false
+  let filterActive = false
+  let filterValue = ''
+  let currentPath = ''
 
-  export let cols: Column[] = []
-  export let gridTemplate = ''
+  let cols: Column[] = []
+  let gridTemplate = ''
   export let rowsEl: HTMLDivElement | null = null
   export let headerEl: HTMLDivElement | null = null
-  export let filterSourceEntries: Entry[] = []
-  export let filteredEntries: Entry[] = []
-  export let visibleEntries: Entry[] = []
-  export let showHidden = false
-  export let columnFilters: {
+  let filterSourceEntries: Entry[] = []
+  let filteredEntries: Entry[] = []
+  let visibleEntries: Entry[] = []
+  let showHidden = false
+  let columnFilters: {
     name: Set<string>
     type: Set<string>
     modified: Set<string>
     size: Set<string>
   } = { name: new Set(), type: new Set(), modified: new Set(), size: new Set() }
-  export let columnFacets: ListingFacets = { name: [], type: [], modified: [], size: [] }
-  export let columnFacetsLoading = false
-  export let onEnsureColumnFacets: () => void | Promise<void> = () => {}
-  export let start = 0
-  export let offsetY = 0
-  export let totalHeight = 0
-  export let wide = false
-  export let selected: Set<string> = new Set()
-  export let sortField: SortField = 'name'
-  export let sortDirection: 'asc' | 'desc' = 'asc'
-  export let isHidden: (entry: Entry) => boolean = () => false
-  export let displayName: (entry: Entry) => string = (e) => e.name
-  export let formatSize: (n: number | null | undefined) => string = (n) => String(n ?? '')
-  export let formatItems: (n?: number | null) => string = (n) => String(n ?? '')
-  export let clipboardMode: 'copy' | 'cut' = 'copy'
-  export let clipboardPaths: Set<string> = new Set()
-  export let onRowsScroll: (e: Event) => void = () => {}
-  export let onWheel: (e: WheelEvent) => void = () => {}
-  export let onRowsKeydown: (e: KeyboardEvent) => void = () => {}
-  export let onRowsMousedown: (e: MouseEvent) => void = () => {}
-  export let onRowsClick: (e: MouseEvent) => void = () => {}
-  export let onRowsContextMenu: (e: MouseEvent) => void = () => {}
-  export let onChangeSort: (field: SortField) => void = () => {}
-  export let onToggleFilter: (field: SortField, id: string, checked: boolean) => void = () => {}
-  export let onResetFilter: (field: SortField) => void = () => {}
-  export let onStartResize: (col: number, event: PointerEvent) => void = () => {}
-  export let ariaSort: (field: SortField) => 'ascending' | 'descending' | 'none' = () => 'none'
-  export let onRowClick: (entry: Entry, absoluteIndex: number, event: MouseEvent) => void = () => {}
-  export let onOpen: (entry: Entry) => void = () => {}
-  export let onContextMenu: (entry: Entry, event: MouseEvent) => void = () => {}
-  export let onToggleStar: (entry: Entry) => void = () => {}
-  export let onRowDragStart: (entry: Entry, event: DragEvent) => void = () => {}
-  export let onRowDragEnd: (event: DragEvent) => void = () => {}
-  export let onRowDragOver: (entry: Entry, event: DragEvent) => void = () => {}
-  export let onRowDragEnter: (entry: Entry, event: DragEvent) => void = () => {}
-  export let onRowDrop: (entry: Entry, event: DragEvent) => void = () => {}
-  export let onRowDragLeave: (entry: Entry, event: DragEvent) => void = () => {}
+  let columnFacets: ListingFacets = { name: [], type: [], modified: [], size: [] }
+  let columnFacetsLoading = false
+  let onEnsureColumnFacets: () => void | Promise<void> = () => {}
+  let start = 0
+  let offsetY = 0
+  let totalHeight = 0
+  let wide = false
+  let selected: Set<string> = new Set()
+  let sortField: SortField = 'name'
+  let sortDirection: 'asc' | 'desc' = 'asc'
+  let isHidden: (entry: Entry) => boolean = () => false
+  let displayName: (entry: Entry) => string = (e) => e.name
+  let formatSize: (n: number | null | undefined) => string = (n) => String(n ?? '')
+  let formatItems: (n?: number | null) => string = (n) => String(n ?? '')
+  let clipboardMode: 'copy' | 'cut' = 'copy'
+  let clipboardPaths: Set<string> = new Set()
+  let onRowsScroll: (e: Event) => void = () => {}
+  let onWheel: (e: WheelEvent) => void = () => {}
+  let onRowsKeydown: (e: KeyboardEvent) => void = () => {}
+  let onRowsMousedown: (e: MouseEvent) => void = () => {}
+  let onRowsClick: (e: MouseEvent) => void = () => {}
+  let onRowsContextMenu: (e: MouseEvent) => void = () => {}
+  let onChangeSort: (field: SortField) => void = () => {}
+  let onToggleFilter: (field: SortField, id: string, checked: boolean) => void = () => {}
+  let onResetFilter: (field: SortField) => void = () => {}
+  let onStartResize: (col: number, event: PointerEvent) => void = () => {}
+  let ariaSort: (field: SortField) => 'ascending' | 'descending' | 'none' = () => 'none'
+  let onRowClick: (entry: Entry, absoluteIndex: number, event: MouseEvent) => void = () => {}
+  let onOpen: (entry: Entry) => void = () => {}
+  let onContextMenu: (entry: Entry, event: MouseEvent) => void = () => {}
+  let onToggleStar: (entry: Entry) => void = () => {}
+  let onRowDragStart: (entry: Entry, event: DragEvent) => void = () => {}
+  let onRowDragEnd: (event: DragEvent) => void = () => {}
+  let onRowDragOver: (entry: Entry, event: DragEvent) => void = () => {}
+  let onRowDragEnter: (entry: Entry, event: DragEvent) => void = () => {}
+  let onRowDrop: (entry: Entry, event: DragEvent) => void = () => {}
+  let onRowDragLeave: (entry: Entry, event: DragEvent) => void = () => {}
 
-  export let selectionText = ''
-  export let activity:
+  let selectionText = ''
+  let activity:
     | { label: string; percent: number | null; cancel?: (() => void) | null; cancelling?: boolean }
     | null = null
-  export let selectionActive = false
-  export let selectionRect: { x: number; y: number; width: number; height: number } = {
+  let selectionActive = false
+  let selectionRect: { x: number; y: number; width: number; height: number } = {
     x: 0,
     y: 0,
     width: 0,
     height: 0,
   }
-  export let dragTargetPath: string | null = null
-  export let dragAllowed = false
-  export let dragging = false
-  export let videoThumbs = true
-  export let thumbnailsEnabled = true
-  export let thumbnailRefreshToken = 0
+  let dragTargetPath: string | null = null
+  let dragAllowed = false
+  let dragging = false
+  let videoThumbs = true
+  let thumbnailsEnabled = true
+  let thumbnailRefreshToken = 0
 
-  export let contextMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
+  let contextMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
     open: false,
     x: 0,
     y: 0,
     actions: [],
   }
-  export let blankMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
+  let blankMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
     open: false,
     x: 0,
     y: 0,
     actions: [],
   }
-  export let onContextSelect: (id: string) => void = () => {}
-  export let onBlankContextSelect: (id: string) => void = () => {}
-  export let onCloseContextMenu: () => void = () => {}
-  export let onCloseBlankContextMenu: () => void = () => {}
-  export let onBreadcrumbDragOver: (path: string, e: DragEvent) => void = () => {}
-  export let onBreadcrumbDragLeave: (path: string, e: DragEvent) => void = () => {}
-  export let onBreadcrumbDrop: (path: string, e: DragEvent) => void = () => {}
+  let onContextSelect: (id: string) => void = () => {}
+  let onBlankContextSelect: (id: string) => void = () => {}
+  let onCloseContextMenu: () => void = () => {}
+  let onCloseBlankContextMenu: () => void = () => {}
+  let onBreadcrumbDragOver: (path: string, e: DragEvent) => void = () => {}
+  let onBreadcrumbDragLeave: (path: string, e: DragEvent) => void = () => {}
+  let onBreadcrumbDrop: (path: string, e: DragEvent) => void = () => {}
 
-  export let deleteConfirmOpen = false
-  export let deleteTargets: Entry[] = []
-  export let onConfirmDelete: () => void = () => {}
-  export let onCancelDelete: () => void = () => {}
+  let deleteConfirmOpen = false
+  let deleteTargets: Entry[] = []
+  let onConfirmDelete: () => void = () => {}
+  let onCancelDelete: () => void = () => {}
 
-  export let renameModalOpen = false
-  export let renameTarget: Entry | null = null
+  let renameModalOpen = false
+  let renameTarget: Entry | null = null
   export let renameValue = ''
-  export let renameError = ''
-  export let onConfirmRename: (name: string) => void = () => {}
-  export let onCancelRename: () => void = () => {}
-  export let advancedRenameOpen = false
-  export let advancedRenameEntries: Entry[] = []
-  export let advancedRenameRegex = ''
-  export let advancedRenameReplacement = ''
-  export let advancedRenamePrefix = ''
-  export let advancedRenameSuffix = ''
-  export let advancedRenameCaseSensitive = true
-  export let advancedRenameSequenceMode: 'none' | 'numeric' | 'alpha' = 'none'
-  export let advancedRenameSequencePlacement: 'start' | 'end' = 'end'
-  export let advancedRenameSequenceStart = 1
-  export let advancedRenameSequenceStep = 1
-  export let advancedRenameSequencePad = 2
-  export let advancedRenameError = ''
-  export let advancedRenamePreview: { original: string; next: string }[] = []
-  export let advancedRenamePreviewError = ''
-  export let advancedRenamePreviewLoading = false
-  export let onAdvancedRenameChange: (payload: AdvancedRenamePayload) => void = () => {}
-  export let onConfirmAdvancedRename: () => void = () => {}
-  export let onCancelAdvancedRename: () => void = () => {}
-  export let compressOpen = false
+  let renameError = ''
+  let onConfirmRename: (name: string) => void = () => {}
+  let onCancelRename: () => void = () => {}
+  let advancedRenameOpen = false
+  let advancedRenameEntries: Entry[] = []
+  let advancedRenameRegex = ''
+  let advancedRenameReplacement = ''
+  let advancedRenamePrefix = ''
+  let advancedRenameSuffix = ''
+  let advancedRenameCaseSensitive = true
+  let advancedRenameSequenceMode: 'none' | 'numeric' | 'alpha' = 'none'
+  let advancedRenameSequencePlacement: 'start' | 'end' = 'end'
+  let advancedRenameSequenceStart = 1
+  let advancedRenameSequenceStep = 1
+  let advancedRenameSequencePad = 2
+  let advancedRenameError = ''
+  let advancedRenamePreview: { original: string; next: string }[] = []
+  let advancedRenamePreviewError = ''
+  let advancedRenamePreviewLoading = false
+  let onAdvancedRenameChange: (payload: AdvancedRenamePayload) => void = () => {}
+  let onConfirmAdvancedRename: () => void = () => {}
+  let onCancelAdvancedRename: () => void = () => {}
+  let compressOpen = false
   export let compressName = ''
   export let compressLevel = 6
-  export let compressError = ''
-  export let onConfirmCompress: (name: string, level: number) => void = () => {}
-  export let onCancelCompress: () => void = () => {}
-  export let checkDuplicatesOpen = false
-  export let checkDuplicatesTarget: Entry | null = null
-  export let checkDuplicatesSearchRoot = ''
-  export let checkDuplicatesDuplicates: string[] = []
-  export let checkDuplicatesScanning = false
-  export let checkDuplicatesProgressPercent = 0
-  export let checkDuplicatesProgressLabel = ''
-  export let checkDuplicatesError = ''
-  export let onChangeCheckDuplicatesSearchRoot: (value: string) => void = () => {}
-  export let onCopyCheckDuplicates: () => void | Promise<void> = () => {}
-  export let onSearchCheckDuplicates: () => void | Promise<void> = () => {}
-  export let onCloseCheckDuplicates: () => void = () => {}
-  export let newFolderOpen = false
+  let compressError = ''
+  let onConfirmCompress: (name: string, level: number) => void = () => {}
+  let onCancelCompress: () => void = () => {}
+  let checkDuplicatesOpen = false
+  let checkDuplicatesTarget: Entry | null = null
+  let checkDuplicatesSearchRoot = ''
+  let checkDuplicatesDuplicates: string[] = []
+  let checkDuplicatesScanning = false
+  let checkDuplicatesProgressPercent = 0
+  let checkDuplicatesProgressLabel = ''
+  let checkDuplicatesError = ''
+  let onChangeCheckDuplicatesSearchRoot: (value: string) => void = () => {}
+  let onCopyCheckDuplicates: () => void | Promise<void> = () => {}
+  let onSearchCheckDuplicates: () => void | Promise<void> = () => {}
+  let onCloseCheckDuplicates: () => void = () => {}
+  let newFolderOpen = false
   export let newFolderName = ''
-  export let newFolderError = ''
-  export let onConfirmNewFolder: () => void = () => {}
-  export let onCancelNewFolder: () => void = () => {}
-  export let newFileOpen = false
+  let newFolderError = ''
+  let onConfirmNewFolder: () => void = () => {}
+  let onCancelNewFolder: () => void = () => {}
+  let newFileOpen = false
   export let newFileName = ''
-  export let newFileError = ''
-  export let newFileTypeHint = ''
-  export let onConfirmNewFile: () => void = () => {}
-  export let onCancelNewFile: () => void = () => {}
+  let newFileError = ''
+  let newFileTypeHint = ''
+  let onConfirmNewFile: () => void = () => {}
+  let onCancelNewFile: () => void = () => {}
 
-  export let openWithOpen = false
-  export let openWithApps: OpenWithApp[] = []
-  export let openWithLoading = false
-  export let openWithError = ''
-  export let openWithBusy = false
-  export let onConfirmOpenWith: (choice: OpenWithChoice) => void = () => {}
-  export let onCloseOpenWith: () => void = () => {}
+  let openWithOpen = false
+  let openWithApps: OpenWithApp[] = []
+  let openWithLoading = false
+  let openWithError = ''
+  let openWithBusy = false
+  let onConfirmOpenWith: (choice: OpenWithChoice) => void = () => {}
+  let onCloseOpenWith: () => void = () => {}
 
-  export let propertiesOpen = false
-  export let propertiesEntry: Entry | null = null
-  export let propertiesMutationsLocked = false
-  export let propertiesCount = 1
-  export let propertiesSize: number | null = null
-  export let propertiesItemCount: number | null = null
-  export let propertiesHidden: boolean | 'mixed' | null = null
-  export let propertiesExtraMetadataLoading = false
-  export let propertiesExtraMetadataError: string | null = null
-  export let propertiesExtraMetadata:
+  let propertiesOpen = false
+  let propertiesEntry: Entry | null = null
+  let propertiesMutationsLocked = false
+  let propertiesCount = 1
+  let propertiesSize: number | null = null
+  let propertiesItemCount: number | null = null
+  let propertiesHidden: boolean | 'mixed' | null = null
+  let propertiesExtraMetadataLoading = false
+  let propertiesExtraMetadataError: string | null = null
+  let propertiesExtraMetadata:
     | {
         kind: string
         sections: Array<{
@@ -231,16 +230,16 @@
         }>
       }
     | null = null
-  export let propertiesPermissionsLoading = false
-  export let propertiesOwnershipApplying = false
-  export let propertiesOwnershipError: string | null = null
-  export let propertiesOwnershipUsers: string[] = []
-  export let propertiesOwnershipGroups: string[] = []
-  export let propertiesOwnershipOptionsLoading = false
-  export let propertiesOwnershipOptionsError: string | null = null
+  let propertiesPermissionsLoading = false
+  let propertiesOwnershipApplying = false
+  let propertiesOwnershipError: string | null = null
+  let propertiesOwnershipUsers: string[] = []
+  let propertiesOwnershipGroups: string[] = []
+  let propertiesOwnershipOptionsLoading = false
+  let propertiesOwnershipOptionsError: string | null = null
   type AccessBit = boolean | 'mixed'
   type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
-  export let propertiesPermissions:
+  let propertiesPermissions:
     | {
         accessSupported: boolean
         executableSupported: boolean
@@ -254,21 +253,416 @@
         other: Access | null
       }
     | null = null
-  export let onTogglePermissionsAccess: (scope: 'owner' | 'group' | 'other', key: 'read' | 'write' | 'exec', next: boolean) => void =
+  let onTogglePermissionsAccess: (scope: 'owner' | 'group' | 'other', key: 'read' | 'write' | 'exec', next: boolean) => void =
     () => {}
-  export let onSetOwnership: (owner: string, group: string) => void | Promise<void> = () => {}
-  export let onToggleHidden: (next: boolean) => void = () => {}
-  export let onLoadPropertiesExtraMetadata: () => void = () => {}
-  export let onCloseProperties: () => void = () => {}
+  let onSetOwnership: (owner: string, group: string) => void | Promise<void> = () => {}
+  let onToggleHidden: (next: boolean) => void = () => {}
+  let onLoadPropertiesExtraMetadata: () => void = () => {}
+  let onCloseProperties: () => void = () => {}
 
-  export let bookmarkModalOpen = false
-  export let bookmarkCandidate: Entry | null = null
+  let bookmarkModalOpen = false
+  let bookmarkCandidate: Entry | null = null
   export let bookmarkName = ''
   export let bookmarkInputEl: HTMLInputElement | null = null
-  export let onConfirmBookmark: () => void = () => {}
-  export let onCancelBookmark: () => void = () => {}
+  let onConfirmBookmark: () => void = () => {}
+  let onCancelBookmark: () => void = () => {}
 
-  export let toastMessage: string | null = null
+  let toastMessage: string | null = null
+
+  type ExplorerShellSidebarProps = {
+    collapsed: boolean
+    places: typeof places
+    bookmarks: typeof bookmarks
+    partitions: typeof partitions
+    onPlaceSelect: typeof onPlaceSelect
+    onBookmarkSelect: typeof onBookmarkSelect
+    onRemoveBookmark: typeof onRemoveBookmark
+    onPartitionSelect: typeof onPartitionSelect
+    onPartitionEject: typeof onPartitionEject
+  }
+
+  type ExplorerShellTopbarProps = {
+    mode: typeof mode
+    searchMode: typeof searchMode
+    loading: typeof loading
+    viewMode: typeof viewMode
+    showHidden: typeof showHidden
+    activity: typeof activity
+    onFocus: typeof onFocus
+    onBlur: typeof onBlur
+    onSubmitPath: typeof onSubmitPath
+    onSearch: typeof onSearch
+    onExitSearch: typeof onExitSearch
+    onNavigateSegment: typeof onNavigateSegment
+    onTopbarAction: typeof onTopbarAction
+    onTopbarViewModeChange: typeof onTopbarViewModeChange
+  }
+
+  type ExplorerShellListingProps = {
+    noticeMessage: typeof noticeMessage
+    searchRunning: typeof searchRunning
+    filterActive: typeof filterActive
+    filterValue: typeof filterValue
+    currentPath: typeof currentPath
+    cols: typeof cols
+    gridTemplate: typeof gridTemplate
+    filterSourceEntries: typeof filterSourceEntries
+    filteredEntries: typeof filteredEntries
+    visibleEntries: typeof visibleEntries
+    columnFilters: typeof columnFilters
+    columnFacets: typeof columnFacets
+    columnFacetsLoading: typeof columnFacetsLoading
+    onEnsureColumnFacets: typeof onEnsureColumnFacets
+    start: typeof start
+    offsetY: typeof offsetY
+    totalHeight: typeof totalHeight
+    wide: typeof wide
+    selected: typeof selected
+    sortField: typeof sortField
+    sortDirection: typeof sortDirection
+    isHidden: typeof isHidden
+    displayName: typeof displayName
+    formatSize: typeof formatSize
+    formatItems: typeof formatItems
+    clipboardMode: typeof clipboardMode
+    clipboardPaths: typeof clipboardPaths
+    onRowsScroll: typeof onRowsScroll
+    onWheel: typeof onWheel
+    onRowsKeydown: typeof onRowsKeydown
+    onRowsMousedown: typeof onRowsMousedown
+    onRowsClick: typeof onRowsClick
+    onRowsContextMenu: typeof onRowsContextMenu
+    onChangeSort: typeof onChangeSort
+    onToggleFilter: typeof onToggleFilter
+    onResetFilter: typeof onResetFilter
+    onStartResize: typeof onStartResize
+    ariaSort: typeof ariaSort
+    onRowClick: typeof onRowClick
+    onOpen: typeof onOpen
+    onContextMenu: typeof onContextMenu
+    onToggleStar: typeof onToggleStar
+    onRowDragStart: typeof onRowDragStart
+    onRowDragEnd: typeof onRowDragEnd
+    onRowDragOver: typeof onRowDragOver
+    onRowDragEnter: typeof onRowDragEnter
+    onRowDrop: typeof onRowDrop
+    onRowDragLeave: typeof onRowDragLeave
+    dragTargetPath: typeof dragTargetPath
+    dragAllowed: typeof dragAllowed
+    dragging: typeof dragging
+    onBreadcrumbDragOver: typeof onBreadcrumbDragOver
+    onBreadcrumbDragLeave: typeof onBreadcrumbDragLeave
+    onBreadcrumbDrop: typeof onBreadcrumbDrop
+    selectionActive: typeof selectionActive
+    selectionRect: typeof selectionRect
+    videoThumbs: typeof videoThumbs
+    thumbnailsEnabled: typeof thumbnailsEnabled
+    thumbnailRefreshToken: typeof thumbnailRefreshToken
+  }
+
+  type ExplorerShellMenuProps = {
+    contextMenu: typeof contextMenu
+    blankMenu: typeof blankMenu
+    onContextSelect: typeof onContextSelect
+    onBlankContextSelect: typeof onBlankContextSelect
+    onCloseContextMenu: typeof onCloseContextMenu
+    onCloseBlankContextMenu: typeof onCloseBlankContextMenu
+  }
+
+  type ExplorerShellModalProps = {
+    deleteConfirmOpen: typeof deleteConfirmOpen
+    deleteTargets: typeof deleteTargets
+    onConfirmDelete: typeof onConfirmDelete
+    onCancelDelete: typeof onCancelDelete
+    renameModalOpen: typeof renameModalOpen
+    renameTarget: typeof renameTarget
+    renameError: typeof renameError
+    onConfirmRename: typeof onConfirmRename
+    onCancelRename: typeof onCancelRename
+    advancedRenameOpen: typeof advancedRenameOpen
+    advancedRenameEntries: typeof advancedRenameEntries
+    advancedRenameRegex: typeof advancedRenameRegex
+    advancedRenameReplacement: typeof advancedRenameReplacement
+    advancedRenamePrefix: typeof advancedRenamePrefix
+    advancedRenameSuffix: typeof advancedRenameSuffix
+    advancedRenameCaseSensitive: typeof advancedRenameCaseSensitive
+    advancedRenameSequenceMode: typeof advancedRenameSequenceMode
+    advancedRenameSequencePlacement: typeof advancedRenameSequencePlacement
+    advancedRenameSequenceStart: typeof advancedRenameSequenceStart
+    advancedRenameSequenceStep: typeof advancedRenameSequenceStep
+    advancedRenameSequencePad: typeof advancedRenameSequencePad
+    advancedRenameError: typeof advancedRenameError
+    advancedRenamePreview: typeof advancedRenamePreview
+    advancedRenamePreviewError: typeof advancedRenamePreviewError
+    advancedRenamePreviewLoading: typeof advancedRenamePreviewLoading
+    onAdvancedRenameChange: typeof onAdvancedRenameChange
+    onConfirmAdvancedRename: typeof onConfirmAdvancedRename
+    onCancelAdvancedRename: typeof onCancelAdvancedRename
+    compressOpen: typeof compressOpen
+    compressError: typeof compressError
+    onConfirmCompress: typeof onConfirmCompress
+    onCancelCompress: typeof onCancelCompress
+    checkDuplicatesOpen: typeof checkDuplicatesOpen
+    checkDuplicatesTarget: typeof checkDuplicatesTarget
+    checkDuplicatesSearchRoot: typeof checkDuplicatesSearchRoot
+    checkDuplicatesDuplicates: typeof checkDuplicatesDuplicates
+    checkDuplicatesScanning: typeof checkDuplicatesScanning
+    checkDuplicatesProgressPercent: typeof checkDuplicatesProgressPercent
+    checkDuplicatesProgressLabel: typeof checkDuplicatesProgressLabel
+    checkDuplicatesError: typeof checkDuplicatesError
+    onChangeCheckDuplicatesSearchRoot: typeof onChangeCheckDuplicatesSearchRoot
+    onCopyCheckDuplicates: typeof onCopyCheckDuplicates
+    onSearchCheckDuplicates: typeof onSearchCheckDuplicates
+    onCloseCheckDuplicates: typeof onCloseCheckDuplicates
+    newFolderOpen: typeof newFolderOpen
+    newFolderError: typeof newFolderError
+    onConfirmNewFolder: typeof onConfirmNewFolder
+    onCancelNewFolder: typeof onCancelNewFolder
+    newFileOpen: typeof newFileOpen
+    newFileError: typeof newFileError
+    newFileTypeHint: typeof newFileTypeHint
+    onConfirmNewFile: typeof onConfirmNewFile
+    onCancelNewFile: typeof onCancelNewFile
+    openWithOpen: typeof openWithOpen
+    openWithApps: typeof openWithApps
+    openWithLoading: typeof openWithLoading
+    openWithError: typeof openWithError
+    openWithBusy: typeof openWithBusy
+    onConfirmOpenWith: typeof onConfirmOpenWith
+    onCloseOpenWith: typeof onCloseOpenWith
+    propertiesOpen: typeof propertiesOpen
+    propertiesEntry: typeof propertiesEntry
+    propertiesMutationsLocked: typeof propertiesMutationsLocked
+    propertiesCount: typeof propertiesCount
+    propertiesSize: typeof propertiesSize
+    propertiesItemCount: typeof propertiesItemCount
+    propertiesHidden: typeof propertiesHidden
+    propertiesExtraMetadataLoading: typeof propertiesExtraMetadataLoading
+    propertiesExtraMetadataError: typeof propertiesExtraMetadataError
+    propertiesExtraMetadata: typeof propertiesExtraMetadata
+    propertiesPermissionsLoading: typeof propertiesPermissionsLoading
+    propertiesOwnershipApplying: typeof propertiesOwnershipApplying
+    propertiesOwnershipError: typeof propertiesOwnershipError
+    propertiesOwnershipUsers: typeof propertiesOwnershipUsers
+    propertiesOwnershipGroups: typeof propertiesOwnershipGroups
+    propertiesOwnershipOptionsLoading: typeof propertiesOwnershipOptionsLoading
+    propertiesOwnershipOptionsError: typeof propertiesOwnershipOptionsError
+    propertiesPermissions: typeof propertiesPermissions
+    onTogglePermissionsAccess: typeof onTogglePermissionsAccess
+    onSetOwnership: typeof onSetOwnership
+    onToggleHidden: typeof onToggleHidden
+    onLoadPropertiesExtraMetadata: typeof onLoadPropertiesExtraMetadata
+    onCloseProperties: typeof onCloseProperties
+    bookmarkModalOpen: typeof bookmarkModalOpen
+    bookmarkCandidate: typeof bookmarkCandidate
+    onConfirmBookmark: typeof onConfirmBookmark
+    onCancelBookmark: typeof onCancelBookmark
+    toastMessage: typeof toastMessage
+  }
+
+  type ExplorerShellStatusProps = {
+    selectionText: typeof selectionText
+  }
+
+  export let sidebarProps: ExplorerShellSidebarProps | any = {}
+  export let topbarProps: ExplorerShellTopbarProps | any = {}
+  export let listingProps: ExplorerShellListingProps | any = {}
+  export let menuProps: ExplorerShellMenuProps | any = {}
+  export let modalProps: ExplorerShellModalProps | any = {}
+  export let statusProps: ExplorerShellStatusProps | any = {}
+
+  $: ({
+    collapsed: sidebarCollapsed,
+    places,
+    bookmarks,
+    partitions,
+    onPlaceSelect,
+    onBookmarkSelect,
+    onRemoveBookmark,
+    onPartitionSelect,
+    onPartitionEject,
+  } = sidebarProps)
+
+  $: ({
+    mode,
+    searchMode,
+    loading,
+    viewMode,
+    showHidden,
+    activity,
+    onFocus,
+    onBlur,
+    onSubmitPath,
+    onSearch,
+    onExitSearch,
+    onNavigateSegment,
+    onTopbarAction,
+    onTopbarViewModeChange,
+  } = topbarProps)
+
+  $: ({
+    noticeMessage,
+    searchRunning,
+    filterActive,
+    filterValue,
+    currentPath,
+    cols,
+    gridTemplate,
+    filterSourceEntries,
+    filteredEntries,
+    visibleEntries,
+    columnFilters,
+    columnFacets,
+    columnFacetsLoading,
+    onEnsureColumnFacets,
+    start,
+    offsetY,
+    totalHeight,
+    wide,
+    selected,
+    sortField,
+    sortDirection,
+    isHidden,
+    displayName,
+    formatSize,
+    formatItems,
+    clipboardMode,
+    clipboardPaths,
+    onRowsScroll,
+    onWheel,
+    onRowsKeydown,
+    onRowsMousedown,
+    onRowsClick,
+    onRowsContextMenu,
+    onChangeSort,
+    onToggleFilter,
+    onResetFilter,
+    onStartResize,
+    ariaSort,
+    onRowClick,
+    onOpen,
+    onContextMenu,
+    onToggleStar,
+    onRowDragStart,
+    onRowDragEnd,
+    onRowDragOver,
+    onRowDragEnter,
+    onRowDrop,
+    onRowDragLeave,
+    dragTargetPath,
+    dragAllowed,
+    dragging,
+    onBreadcrumbDragOver,
+    onBreadcrumbDragLeave,
+    onBreadcrumbDrop,
+    selectionActive,
+    selectionRect,
+    videoThumbs,
+    thumbnailsEnabled,
+    thumbnailRefreshToken,
+  } = listingProps)
+
+  $: ({
+    contextMenu,
+    blankMenu,
+    onContextSelect,
+    onBlankContextSelect,
+    onCloseContextMenu,
+    onCloseBlankContextMenu,
+  } = menuProps)
+
+  $: ({
+    deleteConfirmOpen,
+    deleteTargets,
+    onConfirmDelete,
+    onCancelDelete,
+    renameModalOpen,
+    renameTarget,
+    renameError,
+    onConfirmRename,
+    onCancelRename,
+    advancedRenameOpen,
+    advancedRenameEntries,
+    advancedRenameRegex,
+    advancedRenameReplacement,
+    advancedRenamePrefix,
+    advancedRenameSuffix,
+    advancedRenameCaseSensitive,
+    advancedRenameSequenceMode,
+    advancedRenameSequencePlacement,
+    advancedRenameSequenceStart,
+    advancedRenameSequenceStep,
+    advancedRenameSequencePad,
+    advancedRenameError,
+    advancedRenamePreview,
+    advancedRenamePreviewError,
+    advancedRenamePreviewLoading,
+    onAdvancedRenameChange,
+    onConfirmAdvancedRename,
+    onCancelAdvancedRename,
+    compressOpen,
+    compressError,
+    onConfirmCompress,
+    onCancelCompress,
+    checkDuplicatesOpen,
+    checkDuplicatesTarget,
+    checkDuplicatesSearchRoot,
+    checkDuplicatesDuplicates,
+    checkDuplicatesScanning,
+    checkDuplicatesProgressPercent,
+    checkDuplicatesProgressLabel,
+    checkDuplicatesError,
+    onChangeCheckDuplicatesSearchRoot,
+    onCopyCheckDuplicates,
+    onSearchCheckDuplicates,
+    onCloseCheckDuplicates,
+    newFolderOpen,
+    newFolderError,
+    onConfirmNewFolder,
+    onCancelNewFolder,
+    newFileOpen,
+    newFileError,
+    newFileTypeHint,
+    onConfirmNewFile,
+    onCancelNewFile,
+    openWithOpen,
+    openWithApps,
+    openWithLoading,
+    openWithError,
+    openWithBusy,
+    onConfirmOpenWith,
+    onCloseOpenWith,
+    propertiesOpen,
+    propertiesEntry,
+    propertiesMutationsLocked,
+    propertiesCount,
+    propertiesSize,
+    propertiesItemCount,
+    propertiesHidden,
+    propertiesExtraMetadataLoading,
+    propertiesExtraMetadataError,
+    propertiesExtraMetadata,
+    propertiesPermissionsLoading,
+    propertiesOwnershipApplying,
+    propertiesOwnershipError,
+    propertiesOwnershipUsers,
+    propertiesOwnershipGroups,
+    propertiesOwnershipOptionsLoading,
+    propertiesOwnershipOptionsError,
+    propertiesPermissions,
+    onTogglePermissionsAccess,
+    onSetOwnership,
+    onToggleHidden,
+    onLoadPropertiesExtraMetadata,
+    onCloseProperties,
+    bookmarkModalOpen,
+    bookmarkCandidate,
+    onConfirmBookmark,
+    onCancelBookmark,
+    toastMessage,
+  } = modalProps)
+
+  $: ({ selectionText } = statusProps)
 
   $: hasActiveColumnFilters =
     columnFilters.name.size > 0 ||
