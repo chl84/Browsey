@@ -1,4 +1,4 @@
-import { hitTestGridVirtualized } from '../helpers/lassoHitTest'
+import { hitTestGridVirtualized } from '../selection/lassoHitTest'
 import { isScrollbarClick } from '../helpers/scrollbar'
 import type { Entry } from '../model/types'
 import type { CurrentView } from './useContextActions'

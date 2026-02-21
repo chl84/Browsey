@@ -11,4 +11,4 @@ export type {
   DefaultSortField,
   Density,
 } from './model/types'
-export type { ContextAction } from './hooks/useContextMenus'
+export type { ContextAction } from './context/useContextMenus'
