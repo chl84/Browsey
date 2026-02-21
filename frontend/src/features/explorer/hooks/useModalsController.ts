@@ -70,7 +70,6 @@ export const useModalsController = ({
 
   const compressModal = createCompressModal({
     activityApi,
-    getCurrentPath,
     reloadCurrent,
     showToast,
   })

@@ -2,6 +2,7 @@ use crate::errors::api_error::{ApiError, ApiResult};
 use std::io::ErrorKind;
 
 pub trait ErrorCode {
+    #[allow(clippy::wrong_self_convention)]
     fn as_code_str(self) -> &'static str;
 }
 

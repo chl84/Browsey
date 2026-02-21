@@ -209,7 +209,7 @@ async fn extract_archives_impl(
 
             let mut results = Vec::new();
             let batch_actions: Arc<Mutex<Vec<Action>>> = Arc::new(Mutex::new(Vec::new()));
-            for (_idx, path) in paths.into_iter().enumerate() {
+            for path in paths.into_iter() {
                 let res = do_extract(
                     app.clone(),
                     cancel_state.clone(),
@@ -262,6 +262,7 @@ async fn extract_archives_impl(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn do_extract(
     app: tauri::AppHandle,
     cancel_state: CancelState,
@@ -293,20 +294,17 @@ fn do_extract(
     let kind = detect_archive(&archive_path)?;
     let mut rar_entries: Option<Vec<RarInnerFile>> = None;
     let total_hint = match kind {
-        ArchiveKind::Zip => zip_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
-        ArchiveKind::Tar => tar_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len()),
-        ArchiveKind::TarGz => gzip_uncompressed_size(&archive_path).unwrap_or_else(|_| meta.len()),
-        ArchiveKind::SevenZ => {
-            sevenz_uncompressed_total(&archive_path).unwrap_or_else(|_| meta.len())
-        }
+        ArchiveKind::Zip => zip_uncompressed_total(&archive_path).unwrap_or(meta.len()),
+        ArchiveKind::Tar => tar_uncompressed_total(&archive_path).unwrap_or(meta.len()),
+        ArchiveKind::TarGz => gzip_uncompressed_size(&archive_path).unwrap_or(meta.len()),
+        ArchiveKind::SevenZ => sevenz_uncompressed_total(&archive_path).unwrap_or(meta.len()),
         ArchiveKind::Rar => {
             let entries = parse_rar_entries(&archive_path)?;
-            let total =
-                rar_uncompressed_total_from_entries(&entries).unwrap_or_else(|_| meta.len());
+            let total = rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len());
             rar_entries = Some(entries);
             total
         }
-        ArchiveKind::Gz => gzip_uncompressed_size(&archive_path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::Gz => gzip_uncompressed_size(&archive_path).unwrap_or(meta.len()),
         _ => meta.len(),
     }
     .max(1);
@@ -375,7 +373,7 @@ fn do_extract(
                 &stats,
                 progress.as_ref(),
                 &mut created,
-                cancel_token.as_deref(),
+                cancel_token,
                 &budget,
             )?;
             dest_dir
@@ -390,7 +388,7 @@ fn do_extract(
                 &stats,
                 progress.as_ref(),
                 &mut created,
-                cancel_token.as_deref(),
+                cancel_token,
                 &budget,
                 |reader| Ok(Box::new(reader) as Box<dyn Read>),
             )?;
@@ -406,7 +404,7 @@ fn do_extract(
                 &stats,
                 progress.as_ref(),
                 &mut created,
-                cancel_token.as_deref(),
+                cancel_token,
                 &budget,
                 |reader| Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>),
             )?;
@@ -422,7 +420,7 @@ fn do_extract(
                 &stats,
                 progress.as_ref(),
                 &mut created,
-                cancel_token.as_deref(),
+                cancel_token,
                 &budget,
                 |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
             )?;
@@ -438,7 +436,7 @@ fn do_extract(
                 &stats,
                 progress.as_ref(),
                 &mut created,
-                cancel_token.as_deref(),
+                cancel_token,
                 &budget,
                 |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
             )?;
@@ -454,7 +452,7 @@ fn do_extract(
                 &stats,
                 progress.as_ref(),
                 &mut created,
-                cancel_token.as_deref(),
+                cancel_token,
                 &budget,
                 |reader| {
                     ZstdDecoder::new(reader)
@@ -474,7 +472,7 @@ fn do_extract(
                 &stats,
                 progress.as_ref(),
                 &mut created,
-                cancel_token.as_deref(),
+                cancel_token,
                 &budget,
             )?;
             dest_dir
@@ -493,7 +491,7 @@ fn do_extract(
                 &stats,
                 progress.as_ref(),
                 &mut created,
-                cancel_token.as_deref(),
+                cancel_token,
                 &budget,
             )?;
             dest_dir
@@ -503,7 +501,7 @@ fn do_extract(
             parent,
             progress.as_ref(),
             &mut created,
-            cancel_token.as_deref(),
+            cancel_token,
             &budget,
             |reader| Ok(Box::new(MultiGzDecoder::new(reader)) as Box<dyn Read>),
         )?,
@@ -512,7 +510,7 @@ fn do_extract(
             parent,
             progress.as_ref(),
             &mut created,
-            cancel_token.as_deref(),
+            cancel_token,
             &budget,
             |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
         )?,
@@ -521,7 +519,7 @@ fn do_extract(
             parent,
             progress.as_ref(),
             &mut created,
-            cancel_token.as_deref(),
+            cancel_token,
             &budget,
             |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
         )?,
@@ -530,7 +528,7 @@ fn do_extract(
             parent,
             progress.as_ref(),
             &mut created,
-            cancel_token.as_deref(),
+            cancel_token,
             &budget,
             |reader| {
                 ZstdDecoder::new(reader)
@@ -787,18 +785,17 @@ fn estimate_total_hint(path: &Path) -> Result<u64, String> {
     let kind = detect_archive(path)?;
     let mut rar_entries: Option<Vec<RarInnerFile>> = None;
     let total = match kind {
-        ArchiveKind::Zip => zip_uncompressed_total(path).unwrap_or_else(|_| meta.len()),
-        ArchiveKind::Tar => tar_uncompressed_total(path).unwrap_or_else(|_| meta.len()),
-        ArchiveKind::TarGz => gzip_uncompressed_size(path).unwrap_or_else(|_| meta.len()),
-        ArchiveKind::SevenZ => sevenz_uncompressed_total(path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::Zip => zip_uncompressed_total(path).unwrap_or(meta.len()),
+        ArchiveKind::Tar => tar_uncompressed_total(path).unwrap_or(meta.len()),
+        ArchiveKind::TarGz => gzip_uncompressed_size(path).unwrap_or(meta.len()),
+        ArchiveKind::SevenZ => sevenz_uncompressed_total(path).unwrap_or(meta.len()),
         ArchiveKind::Rar => {
             let entries = parse_rar_entries(path)?;
-            let total =
-                rar_uncompressed_total_from_entries(&entries).unwrap_or_else(|_| meta.len());
+            let total = rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len());
             rar_entries = Some(entries);
             total
         }
-        ArchiveKind::Gz => gzip_uncompressed_size(path).unwrap_or_else(|_| meta.len()),
+        ArchiveKind::Gz => gzip_uncompressed_size(path).unwrap_or(meta.len()),
         _ => meta.len(),
     }
     .max(1);

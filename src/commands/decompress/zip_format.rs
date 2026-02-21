@@ -64,6 +64,7 @@ pub(super) fn single_root_in_zip(path: &Path) -> Result<Option<PathBuf>, String>
     Ok(root)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn extract_zip(
     path: &Path,
     dest_dir: &Path,

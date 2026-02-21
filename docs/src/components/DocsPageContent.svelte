@@ -10,7 +10,7 @@
 </script>
 
 <section class="content" aria-label={`${page.title} content`}>
-  {#each page.sections as section}
+  {#each page.sections as section (section.id)}
     <article
       id={sectionAnchorId(page.id, section.id)}
       class="card"
@@ -24,7 +24,7 @@
       {/if}
       {#if section.bullets && section.bullets.length > 0}
         <ul>
-          {#each section.bullets as bullet}
+          {#each section.bullets as bullet, bulletIndex (`${section.id}-${bulletIndex}-${bullet}`)}
             <li>{bullet}</li>
           {/each}
         </ul>

@@ -289,28 +289,28 @@ impl ProgressEmitter {
         let last = self.last_emit.load(Ordering::Relaxed);
         let now_ms = current_millis();
         let last_time = self.last_emit_time_ms.load(Ordering::Relaxed);
-        if done != last && now_ms.saturating_sub(last_time) >= 1000 {
-            if self
+        if done != last
+            && now_ms.saturating_sub(last_time) >= 1000
+            && self
                 .last_emit
                 .compare_exchange(last, done, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
-            {
-                let _ = self.last_emit_time_ms.compare_exchange(
-                    last_time,
-                    now_ms,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                );
-                let _ = runtime_lifecycle::emit_if_running(
-                    &self.app,
-                    &self.event,
-                    ExtractProgressPayload {
-                        bytes: done,
-                        total: self.total,
-                        finished: false,
-                    },
-                );
-            }
+        {
+            let _ = self.last_emit_time_ms.compare_exchange(
+                last_time,
+                now_ms,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            );
+            let _ = runtime_lifecycle::emit_if_running(
+                &self.app,
+                &self.event,
+                ExtractProgressPayload {
+                    bytes: done,
+                    total: self.total,
+                    finished: false,
+                },
+            );
         }
     }
 

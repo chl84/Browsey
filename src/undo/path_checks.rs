@@ -26,11 +26,7 @@ pub(super) fn ensure_existing_path_nonsymlink(path: &Path) -> UndoResult<fs::Met
     let meta = fs::symlink_metadata(path)
         .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
     if meta.file_type().is_symlink() {
-        return Err(format!(
-            "Refusing path with symlink target: {}",
-            path.display()
-        )
-        .into());
+        return Err(format!("Refusing path with symlink target: {}", path.display()).into());
     }
     Ok(meta)
 }

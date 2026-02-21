@@ -55,6 +55,7 @@ pub(super) fn single_root_in_7z(path: &Path) -> Result<Option<PathBuf>, String> 
     Ok(root)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn extract_7z(
     archive_path: &Path,
     dest_dir: &Path,

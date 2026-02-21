@@ -93,8 +93,7 @@ fn normalize_principal_query(raw: Option<String>) -> Option<String> {
 fn normalize_principal_limit(limit: Option<usize>) -> usize {
     limit
         .unwrap_or(DEFAULT_PRINCIPAL_LIST_LIMIT)
-        .max(1)
-        .min(MAX_PRINCIPAL_LIST_LIMIT)
+        .clamp(1, MAX_PRINCIPAL_LIST_LIMIT)
 }
 
 fn filter_principal_names(
@@ -618,13 +617,13 @@ pub fn maybe_run_ownership_helper_from_args() -> Option<i32> {
 
     #[cfg(unix)]
     {
-        return match run_ownership_helper_from_stdin() {
+        match run_ownership_helper_from_stdin() {
             Ok(()) => Some(0),
             Err(err) => {
                 eprintln!("{err}");
                 Some(1)
             }
-        };
+        }
     }
 
     #[cfg(not(unix))]

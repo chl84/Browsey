@@ -243,9 +243,9 @@
     toggleStar,
     goBack: goBackRaw,
     goForward: goForwardRaw,
-    loadBookmarks,
+    loadBookmarks: _loadBookmarks,
     loadPartitions,
-    loadSavedWidths,
+    loadSavedWidths: _loadSavedWidths,
     persistWidths,
     toggleColumnFilter,
     resetColumnFilter,
@@ -513,7 +513,7 @@
   }
 
   const {
-    gridCols,
+    gridCols: _gridCols,
     getGridCols,
     gridTotalHeight,
     handleGridScroll,

@@ -44,6 +44,8 @@ import { something } from '@/features/explorer/internal/privateFile'
 - `npm --prefix frontend run lint` also runs naming validation:
   - `frontend/scripts/check-naming-conventions.mjs`
   - Fails when `use*.ts/js` exports `create*` but no `use*`, except explicit allowlist entries.
+- Lint warning policy and current baseline are tracked in:
+  - `docs/quality/lint-baseline.md`
 
 ## Quick Decision Checklist
 

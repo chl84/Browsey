@@ -9,8 +9,9 @@ static SVG_FONT_DB: Lazy<Arc<fontdb::Database>> = Lazy::new(|| {
 });
 
 pub fn usvg_options_for_path(path: &Path) -> Options<'static> {
-    let mut options = Options::default();
-    options.resources_dir = path.parent().map(|p| p.to_path_buf());
-    options.fontdb = SVG_FONT_DB.clone();
-    options
+    Options {
+        resources_dir: path.parent().map(|p| p.to_path_buf()),
+        fontdb: SVG_FONT_DB.clone(),
+        ..Options::default()
+    }
 }

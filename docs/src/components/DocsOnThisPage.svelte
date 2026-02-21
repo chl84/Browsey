@@ -11,7 +11,7 @@
 <aside class="toc" aria-label="On this page">
   <h2>On this page</h2>
   <nav>
-    {#each page.sections as section}
+    {#each page.sections as section (section.id)}
       <a href={sectionHash(page.id, section.id)} class:active={section.id === activeSectionId}>
         {section.title}
       </a>

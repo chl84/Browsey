@@ -7,11 +7,11 @@ use super::{Action, Direction};
 use crate::undo::UndoResult;
 
 #[cfg(target_os = "windows")]
-use std::path::Path;
-#[cfg(target_os = "windows")]
 use crate::fs_utils::check_no_symlink_components;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
+#[cfg(target_os = "windows")]
+use std::path::Path;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Storage::FileSystem::{
     GetFileAttributesW, SetFileAttributesW, FILE_ATTRIBUTE_HIDDEN,
@@ -68,18 +68,14 @@ pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoR
             set_windows_hidden_attr(path, next)
         }
         Action::CreateFolder { path } => match direction {
-            Direction::Forward => Ok(
-                fs::create_dir(&*path)
-                    .map_err(|e| format!("Failed to create directory {}: {e}", path.display()))?,
-            ),
+            Direction::Forward => Ok(fs::create_dir(&*path)
+                .map_err(|e| format!("Failed to create directory {}: {e}", path.display()))?),
             Direction::Backward => match delete_entry_nofollow_io(path) {
                 Ok(()) => Ok(()),
                 Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
-                Err(err) => Err(format!(
-                    "Failed to remove directory {}: {err}",
-                    path.display()
-                )
-                .into()),
+                Err(err) => {
+                    Err(format!("Failed to remove directory {}: {err}", path.display()).into())
+                }
             },
         },
     }

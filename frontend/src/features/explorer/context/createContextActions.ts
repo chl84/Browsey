@@ -34,7 +34,6 @@ type Deps = {
 
 export const createContextActions = (deps: Deps) => {
   const {
-    getSelectedPaths,
     getSelectedSet,
     getFilteredEntries,
     currentView,

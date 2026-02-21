@@ -91,10 +91,7 @@ const METADATA_CLASSIFICATION_RULES: &[(MetadataErrorCode, &[&str])] = &[
             "failed to read zstd stream",
         ],
     ),
-    (
-        MetadataErrorCode::PdfiumLoadFailed,
-        &["pdfium load failed"],
-    ),
+    (MetadataErrorCode::PdfiumLoadFailed, &["pdfium load failed"]),
     (
         MetadataErrorCode::UnsupportedArchiveVariant,
         &["unsupported tar variant"],

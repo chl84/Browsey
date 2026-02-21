@@ -36,8 +36,8 @@ fn normalize_key_token(token: &str) -> KeymapCoreResult<String> {
                         format!("unsupported key '{token}'"),
                     ));
                 }
-            } else if lowered.starts_with('f') {
-                let number = lowered[1..].parse::<u8>().map_err(|_| {
+            } else if let Some(rest) = lowered.strip_prefix('f') {
+                let number = rest.parse::<u8>().map_err(|_| {
                     KeymapCoreError::new(
                         KeymapCoreErrorCode::InvalidAccelerator,
                         format!("unsupported key '{token}'"),

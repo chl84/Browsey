@@ -618,6 +618,7 @@ pub fn get_permissions_batch(paths: Vec<String>) -> ApiResult<PermissionsBatchRe
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn set_permissions(
     path: Option<String>,
     paths: Option<Vec<String>>,

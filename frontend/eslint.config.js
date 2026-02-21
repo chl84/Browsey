@@ -10,7 +10,7 @@ const pragmaticRuleTuning = {
   'no-undef': 'off',
   'no-unused-vars': 'off',
   '@typescript-eslint/no-unused-vars': [
-    'warn',
+    'error',
     {
       argsIgnorePattern: '^_',
       varsIgnorePattern: '^_',
@@ -19,9 +19,8 @@ const pragmaticRuleTuning = {
   ],
   '@typescript-eslint/no-explicit-any': 'off',
   '@typescript-eslint/no-unused-expressions': 'off',
-  // Keep these visible without blocking adoption.
-  'no-useless-escape': 'warn',
-  'no-unsafe-finally': 'warn',
+  'no-useless-escape': 'error',
+  'no-unsafe-finally': 'error',
   // Svelte recommended rules that are too noisy for current code style.
   'svelte/require-each-key': 'off',
   'svelte/infinite-reactive-loop': 'off',

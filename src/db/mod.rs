@@ -63,12 +63,10 @@ fn normalize_starred_paths(conn: &mut Connection) -> DbResult<()> {
             })
             .map_err(|e| DbError::from_external_message(format!("Failed to read starred: {e}")))?;
 
-        for r in rows {
-            if let Ok((raw, ts)) = r {
-                let norm = normalize_key_for_db(Path::new(&raw));
-                if norm != raw {
-                    fixes.push((raw, norm, ts));
-                }
+        for (raw, ts) in rows.flatten() {
+            let norm = normalize_key_for_db(Path::new(&raw));
+            if norm != raw {
+                fixes.push((raw, norm, ts));
             }
         }
     }
@@ -114,10 +112,8 @@ pub fn starred_set(conn: &Connection) -> DbResult<HashSet<String>> {
         .query_map([], |row: &Row| row.get::<_, String>(0))
         .map_err(|e| DbError::from_external_message(format!("Failed to read starred: {e}")))?;
     let mut set = HashSet::new();
-    for r in rows {
-        if let Ok(p) = r {
-            set.insert(normalize_key_for_db(Path::new(&p)));
-        }
+    for p in rows.flatten() {
+        set.insert(normalize_key_for_db(Path::new(&p)));
     }
     Ok(set)
 }
@@ -160,10 +156,8 @@ pub fn recent_paths(conn: &Connection) -> DbResult<Vec<String>> {
         .query_map(params![MAX_RECENT], |row: &Row| row.get::<_, String>(0))
         .map_err(|e| DbError::from_external_message(format!("Failed to read recent: {e}")))?;
     let mut res = Vec::new();
-    for r in rows {
-        if let Ok(p) = r {
-            res.push(p);
-        }
+    for p in rows.flatten() {
+        res.push(p);
     }
     Ok(res)
 }
@@ -178,10 +172,8 @@ pub fn starred_entries(conn: &Connection) -> DbResult<Vec<(String, i64)>> {
         })
         .map_err(|e| DbError::from_external_message(format!("Failed to read starred: {e}")))?;
     let mut res = Vec::new();
-    for r in rows {
-        if let Ok(p) = r {
-            res.push(p);
-        }
+    for p in rows.flatten() {
+        res.push(p);
     }
     Ok(res)
 }
@@ -236,10 +228,8 @@ pub fn list_bookmarks(conn: &Connection) -> DbResult<Vec<(String, String)>> {
         })
         .map_err(|e| DbError::from_external_message(format!("Failed to read bookmarks: {e}")))?;
     let mut res = Vec::new();
-    for r in rows {
-        if let Ok(b) = r {
-            res.push(b);
-        }
+    for b in rows.flatten() {
+        res.push(b);
     }
     Ok(res)
 }

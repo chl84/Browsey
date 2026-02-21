@@ -1,0 +1,46 @@
+name: Quality Debt Sweep
+description: Monthly checklist for recurring quality debt cleanup.
+title: "[Quality] Debt sweep YYYY-MM"
+labels:
+  - quality
+  - maintenance
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this issue to track recurring quality debt.
+
+  - type: checkboxes
+    id: lint_warnings
+    attributes:
+      label: Lint warnings
+      options:
+        - label: Review frontend lint output for warnings/regressions
+        - label: Review docs lint output for warnings/regressions
+        - label: Review Rust clippy output for warnings/regressions
+
+  - type: checkboxes
+    id: flaky_tests
+    attributes:
+      label: Flaky tests
+      options:
+        - label: Inspect recent CI failures for flaky frontend tests
+        - label: Inspect recent CI failures for flaky Rust tests
+        - label: File follow-up issues for unresolved flakes
+
+  - type: checkboxes
+    id: temporary_exceptions
+    attributes:
+      label: Temporary exceptions
+      options:
+        - label: Review temporary lint/test exceptions and suppressions
+        - label: Remove expired exceptions
+        - label: Update owner and removal plan for remaining exceptions
+
+  - type: textarea
+    id: findings
+    attributes:
+      label: Findings
+      description: Summarize key findings and links to follow-up issues/PRs.
+    validations:
+      required: true

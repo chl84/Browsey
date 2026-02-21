@@ -21,7 +21,7 @@ impl TrashBackend for SystemTrashBackend {
     fn rewrite_original_path(&self, item: &TrashItem, original_path: &Path) -> Result<(), String> {
         #[cfg(not(target_os = "windows"))]
         {
-            return super::staging::rewrite_trash_info_original_path(item, original_path);
+            super::staging::rewrite_trash_info_original_path(item, original_path)
         }
         #[cfg(target_os = "windows")]
         {
