@@ -18,6 +18,32 @@ Current gaps to close:
 - Rust CI lacks explicit style/lint gates (`fmt`, `clippy`) in visible workflows.
 - Testing remains heavy on manual smoke checks for critical UI workflows.
 
+## Current Baseline (2026-02-21)
+
+- Frontend:
+  - `npm --prefix frontend run lint`: 0 errors, 17 warnings
+  - `npm --prefix frontend run check`: green
+  - `npm --prefix frontend run build`: green
+- Warning breakdown:
+  - `@typescript-eslint/no-unused-vars`: 12
+  - `no-useless-escape`: 4
+  - `no-unsafe-finally`: 1
+
+## Execution Order
+
+1. Phase 1 + Phase 2 (measure and burn down warnings)
+2. Phase 3 (promote key rules to error)
+3. Phase 4 (docs lint gate)
+4. Phase 5 (Rust CI quality gates)
+5. Phase 6 (automated UI regression coverage)
+6. Phase 7 (maintenance/process guardrails)
+
+## Non-Goals (for this plan)
+
+- No feature work unrelated to quality hardening.
+- No backend API contract redesign.
+- No broad frontend architecture refactor (already completed in prior tracks).
+
 ## Quality Policy for This Plan
 
 - Keep behavior unchanged unless a step explicitly states otherwise.
@@ -28,6 +54,7 @@ Current gaps to close:
   - `npm --prefix frontend run check`
   - `npm --prefix frontend run build`
   - plus phase-specific checks below.
+- Manual smoke-test before commit when user-facing behavior paths are touched.
 
 ## Phase 1: Baseline and Tracking
 
@@ -44,6 +71,10 @@ Acceptance:
 - Warning baseline is documented and versioned.
 - Team has a measurable target for warning reduction.
 
+Exit Criteria:
+- Baseline report includes exact warning count, categories, and file ownership map.
+- "No new warnings" policy is documented in the report and referenced by contributors.
+
 ## Phase 2: Burn Down Existing Frontend Warnings
 
 - [ ] Remove low-risk warnings first:
@@ -57,6 +88,10 @@ Acceptance:
 - Frontend lint warning count is significantly reduced (target: 0 or near-0).
 - No behavior regressions from cleanup changes.
 
+Exit Criteria:
+- Target warning count: 0 (preferred) or <= 3 with explicit tracked exceptions.
+- All remaining warnings must be listed in `docs/quality/lint-baseline.md` with owners.
+
 ## Phase 3: Tighten Lint Rules Incrementally
 
 - [ ] Promote selected warning rules to errors after cleanup:
@@ -69,6 +104,10 @@ Acceptance:
 Acceptance:
 - Lint policy is stricter and blocks regression instead of only reporting debt.
 
+Exit Criteria:
+- Selected rules are `error` in `frontend/eslint.config.js`.
+- CI fails on reintroduction of those classes of issues.
+
 ## Phase 4: Add Docs Lint Gate
 
 - [ ] Introduce docs lint scripts (ESLint for docs TS/Svelte content).
@@ -77,6 +116,10 @@ Acceptance:
 
 Acceptance:
 - Docs quality gate includes lint + typecheck + build.
+
+Exit Criteria:
+- `.github/workflows/docs-pages.yml` includes docs lint step.
+- `npm --prefix docs run lint` is green in CI and locally.
 
 ## Phase 5: Harden Rust CI Quality Gates
 
@@ -88,6 +131,10 @@ Acceptance:
 
 Acceptance:
 - Rust style/lint/test checks are enforced automatically in CI.
+
+Exit Criteria:
+- Rust workflow fails on formatting/lint/test violations.
+- Workflow trigger paths cover backend Rust changes.
 
 ## Phase 6: Add Focused Automated UI Regression Coverage
 
@@ -101,6 +148,10 @@ Acceptance:
 
 Acceptance:
 - Critical flows are protected by automated regression checks, not only manual smoke tests.
+
+Exit Criteria:
+- At least one automated test exists for each listed critical flow area.
+- Tests run in CI with stable pass/fail signal (no flaky baseline).
 
 ## Phase 7: Release and Maintenance Guardrails
 
@@ -116,6 +167,10 @@ Acceptance:
 
 Acceptance:
 - Quality practices are repeatable and not person-dependent.
+
+Exit Criteria:
+- Checklist/template is versioned in repository.
+- A recurring quality-debt issue template exists and is usable.
 
 ## Definition of Done
 
