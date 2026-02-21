@@ -16,6 +16,7 @@
   import { useModalsController } from '@/features/explorer/hooks/useModalsController'
   import { useGridVirtualizer } from '@/features/explorer/hooks/useGridVirtualizer'
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
+  import type { OpenWithChoice } from '@/features/explorer/services/openWith.service'
   import { ejectDrive } from '@/features/explorer/services/drives.service'
   import { openConsole } from '@/features/explorer/services/console.service'
   import {
@@ -62,6 +63,7 @@
   import AboutBrowseyModal from '@/features/explorer/components/AboutBrowseyModal.svelte'
   import { anyModalOpen as anyModalOpenStore } from '@/shared/ui/modalOpenState'
   import { createCheckDuplicatesModal } from '@/features/explorer/modals/checkDuplicatesModal'
+  import type { AdvancedRenamePayload } from '@/features/explorer/modals/advancedRenameModal'
   import '@/features/explorer/ExplorerLayout.css'
 
   // --- Types --------------------------------------------------------------
@@ -1517,6 +1519,227 @@
     await compressModal.confirm(name, level)
   }
 
+  const handleSidebarBookmarkSelect = (path: string) => {
+    void loadDirIfIdle(path)
+  }
+
+  const handleSidebarRemoveBookmark = (path: string) => {
+    void removeBookmark(path)
+    bookmarksStore.update((list) => list.filter((b) => b.path !== path))
+  }
+
+  const handleSidebarPartitionSelect = (path: string) => {
+    void openPartition(path)
+  }
+
+  const handleSidebarPartitionEject = async (path: string) => {
+    try {
+      await ejectDrive(path)
+      partitionsStore.update((list) =>
+        list.filter((p) => p.path.trim().toUpperCase() !== path.trim().toUpperCase())
+      )
+      showToast(`Ejected ${path}`)
+      await loadPartitions({ forceNetworkRefresh: true })
+    } catch (err) {
+      showToast(`Eject failed: ${getErrorMessage(err)}`)
+    }
+  }
+
+  $: explorerShellSidebarProps = {
+    collapsed: sidebarCollapsed,
+    places,
+    bookmarks,
+    partitions,
+    onPlaceSelect: handlePlace,
+    onBookmarkSelect: handleSidebarBookmarkSelect,
+    onRemoveBookmark: handleSidebarRemoveBookmark,
+    onPartitionSelect: handleSidebarPartitionSelect,
+    onPartitionEject: handleSidebarPartitionEject,
+  }
+
+  $: explorerShellTopbarProps = {
+    mode,
+    searchMode: isSearchSessionEnabled,
+    loading: $loading,
+    viewMode,
+    showHidden: $showHidden,
+    activity: $activity,
+    onFocus: handleInputFocus,
+    onBlur: handleInputBlur,
+    onSubmitPath: submitPath,
+    onSearch: submitSearch,
+    onExitSearch: () => void transitionToAddressMode({ path: get(current), blur: true }),
+    onNavigateSegment: (path: string) => void navigateToBreadcrumb(path),
+    onTopbarAction: handleTopbarAction,
+    onTopbarViewModeChange: handleTopbarViewModeChange,
+  }
+
+  $: explorerShellListingProps = {
+    noticeMessage: $error,
+    searchRunning: $searchRunning,
+    filterActive,
+    filterValue: $filter,
+    currentPath: $current,
+    cols: $cols,
+    gridTemplate: $gridTemplate,
+    filterSourceEntries: $filterSourceEntries,
+    filteredEntries: $filteredEntries,
+    visibleEntries: $visibleEntries,
+    columnFilters: $columnFilters,
+    columnFacets: $columnFacets,
+    columnFacetsLoading: $columnFacetsLoading,
+    onEnsureColumnFacets: ensureColumnFacets,
+    start: $start,
+    offsetY: $offsetY,
+    totalHeight: $totalHeight,
+    wide: sidebarCollapsed,
+    selected: $selected,
+    sortField: $sortField,
+    sortDirection: $sortDirection,
+    isHidden,
+    displayName,
+    formatSize,
+    formatItems,
+    clipboardMode,
+    clipboardPaths,
+    onRowsScroll: handleRowsScrollCombined,
+    onWheel: handleWheelCombined,
+    onRowsKeydown: handleRowsKeydownCombined,
+    onRowsMousedown: handleRowsMouseDown,
+    onRowsClick: handleRowsClickSafe,
+    onRowsContextMenu: handleBlankContextMenu,
+    onChangeSort: changeSort,
+    onToggleFilter: (field: SortField, id: string, checked: boolean) => toggleColumnFilter(field, id, checked),
+    onResetFilter: (field: SortField) => resetColumnFilter(field),
+    onStartResize: startResize,
+    ariaSort,
+    onRowClick: handleRowClickWithOpen,
+    onOpen: handleOpenEntry,
+    onContextMenu: handleRowContextMenu,
+    onToggleStar: toggleStar,
+    onRowDragStart: handleRowDragStart,
+    onRowDragEnd: handleRowDragEnd,
+    onRowDragEnter: handleRowDragEnter,
+    onRowDragOver: handleRowDragOver,
+    onRowDrop: handleRowDrop,
+    onRowDragLeave: handleRowDragLeave,
+    dragTargetPath: $dragState.target,
+    dragAllowed: $dragState.paths.length > 0,
+    dragging: $dragState.dragging,
+    onBreadcrumbDragOver: handleBreadcrumbDragOver,
+    onBreadcrumbDragLeave: handleBreadcrumbDragLeave,
+    onBreadcrumbDrop: handleBreadcrumbDrop,
+    selectionActive: $selectionActive,
+    selectionRect: $selectionRect,
+    videoThumbs: $videoThumbs,
+    thumbnailsEnabled: currentView !== 'trash',
+    thumbnailRefreshToken,
+  }
+
+  $: explorerShellMenuProps = {
+    contextMenu: $contextMenu,
+    blankMenu: $blankMenu,
+    onContextSelect: handleContextSelect,
+    onBlankContextSelect: handleBlankContextAction,
+    onCloseContextMenu: closeContextMenu,
+    onCloseBlankContextMenu: closeBlankContextMenu,
+  }
+
+  $: explorerShellModalProps = {
+    deleteConfirmOpen: $deleteState.open,
+    deleteTargets: $deleteState.targets,
+    onConfirmDelete: deleteModal.confirm,
+    onCancelDelete: deleteModal.close,
+    renameModalOpen: $renameState.open,
+    renameTarget: $renameState.target,
+    renameError: $renameState.error,
+    onConfirmRename: confirmRename,
+    onCancelRename: closeRenameModal,
+    advancedRenameOpen: $advancedRenameState.open,
+    advancedRenameEntries: $advancedRenameState.entries,
+    advancedRenameRegex: $advancedRenameState.regex,
+    advancedRenameReplacement: $advancedRenameState.replacement,
+    advancedRenamePrefix: $advancedRenameState.prefix,
+    advancedRenameSuffix: $advancedRenameState.suffix,
+    advancedRenameCaseSensitive: $advancedRenameState.caseSensitive,
+    advancedRenameSequenceMode: $advancedRenameState.sequenceMode,
+    advancedRenameSequencePlacement: $advancedRenameState.sequencePlacement,
+    advancedRenameSequenceStart: $advancedRenameState.sequenceStart,
+    advancedRenameSequenceStep: $advancedRenameState.sequenceStep,
+    advancedRenameSequencePad: $advancedRenameState.sequencePad,
+    advancedRenameError: $advancedRenameState.error,
+    advancedRenamePreview: $advancedRenameState.preview,
+    advancedRenamePreviewError: $advancedRenameState.previewError,
+    advancedRenamePreviewLoading: $advancedRenameState.previewLoading,
+    onAdvancedRenameChange: (payload: AdvancedRenamePayload) => advancedRenameModal.change(payload),
+    onConfirmAdvancedRename: () => advancedRenameModal.confirm(),
+    onCancelAdvancedRename: () => advancedRenameModal.close(),
+    compressOpen: $compressState.open,
+    compressError: $compressState.error,
+    onConfirmCompress: confirmCompress,
+    onCancelCompress: closeCompress,
+    checkDuplicatesOpen: $checkDuplicatesState.open,
+    checkDuplicatesTarget: $checkDuplicatesState.target,
+    checkDuplicatesSearchRoot: $checkDuplicatesState.searchRoot,
+    checkDuplicatesDuplicates: $checkDuplicatesState.duplicates,
+    checkDuplicatesScanning: $checkDuplicatesState.scanning,
+    checkDuplicatesProgressPercent: $checkDuplicatesState.progressPercent,
+    checkDuplicatesProgressLabel: $checkDuplicatesState.progressLabel,
+    checkDuplicatesError: $checkDuplicatesState.error,
+    onChangeCheckDuplicatesSearchRoot: checkDuplicatesModal.setSearchRoot,
+    onCopyCheckDuplicates: copyCheckDuplicatesList,
+    onSearchCheckDuplicates: searchCheckDuplicates,
+    onCloseCheckDuplicates: closeCheckDuplicatesModal,
+    newFolderOpen: $newFolderState.open,
+    newFolderError: $newFolderState.error,
+    onConfirmNewFolder: confirmNewFolder,
+    onCancelNewFolder: closeNewFolderModal,
+    newFileOpen: $newFileState.open,
+    newFileError: $newFileState.error,
+    newFileTypeHint: $newFileTypeHint,
+    onConfirmNewFile: confirmNewFile,
+    onCancelNewFile: closeNewFileModal,
+    openWithOpen: $openWithState.open,
+    openWithApps: $openWithState.apps,
+    openWithLoading: $openWithState.loading,
+    openWithError: $openWithState.error,
+    openWithBusy: $openWithState.submitting,
+    onConfirmOpenWith: (choice: OpenWithChoice) => openWithModal.confirm(choice),
+    onCloseOpenWith: openWithModal.close,
+    propertiesOpen: $propertiesState.open,
+    propertiesEntry: $propertiesState.entry,
+    propertiesMutationsLocked: $propertiesState.mutationsLocked,
+    propertiesCount: $propertiesState.count,
+    propertiesSize: $propertiesState.size,
+    propertiesItemCount: $propertiesState.itemCount,
+    propertiesHidden: $propertiesState.hidden,
+    propertiesExtraMetadataLoading: $propertiesState.extraMetadataLoading,
+    propertiesExtraMetadataError: $propertiesState.extraMetadataError,
+    propertiesExtraMetadata: $propertiesState.extraMetadata,
+    propertiesPermissionsLoading: $propertiesState.permissionsLoading,
+    propertiesOwnershipApplying: $propertiesState.ownershipApplying,
+    propertiesOwnershipError: $propertiesState.ownershipError,
+    propertiesOwnershipUsers: $propertiesState.ownershipUsers,
+    propertiesOwnershipGroups: $propertiesState.ownershipGroups,
+    propertiesOwnershipOptionsLoading: $propertiesState.ownershipOptionsLoading,
+    propertiesOwnershipOptionsError: $propertiesState.ownershipOptionsError,
+    propertiesPermissions: $propertiesState.permissions,
+    onTogglePermissionsAccess: (scope: 'owner' | 'group' | 'other', key: 'read' | 'write' | 'exec', next: boolean) => propertiesModal.toggleAccess(scope, key, next),
+    onSetOwnership: (owner: string, group: string) => propertiesModal.setOwnership(owner, group),
+    onToggleHidden: (next: boolean) => propertiesModal.toggleHidden(next),
+    onLoadPropertiesExtraMetadata: () => propertiesModal.loadExtraIfNeeded(),
+    onCloseProperties: propertiesModal.close,
+    bookmarkModalOpen,
+    bookmarkCandidate,
+    onConfirmBookmark: confirmBookmark,
+    onCancelBookmark: closeBookmarkModal,
+    toastMessage: $toast,
+  }
+
+  $: explorerShellStatusProps = {
+    selectionText,
+  }
+
 
   const initLifecycle = createAppLifecycle({
     handleResize,
@@ -1591,209 +1814,24 @@
   shortcuts={shortcutBindings}
   onClose={closeTextContextMenu}
 />
-  <ExplorerShell
-    bind:pathInput
-    bind:pathInputEl
-    bind:rowsEl={rowsElRef}
+<ExplorerShell
+  bind:pathInput
+  bind:pathInputEl
+  bind:rowsEl={rowsElRef}
   bind:headerEl={headerElRef}
-  currentPath={$current}
   bind:bookmarkName
   bind:bookmarkInputEl
-  {viewMode}
-  {sidebarCollapsed}
-  {places}
-  {bookmarks}
-  {partitions}
-  onPlaceSelect={handlePlace}
-  onBookmarkSelect={(path) => void loadDirIfIdle(path)}
-  onRemoveBookmark={(path) => {
-    void removeBookmark(path)
-    bookmarksStore.update((list) => list.filter((b) => b.path !== path))
-  }}
-  onPartitionSelect={(path) => void openPartition(path)}
-  onPartitionEject={async (path) => {
-    try {
-      await ejectDrive(path)
-      partitionsStore.update((list) =>
-        list.filter((p) => p.path.trim().toUpperCase() !== path.trim().toUpperCase())
-      )
-      showToast(`Ejected ${path}`)
-      await loadPartitions({ forceNetworkRefresh: true })
-    } catch (err) {
-      showToast(`Eject failed: ${getErrorMessage(err)}`)
-    }
-  }}
-  searchMode={isSearchSessionEnabled}
-  loading={$loading}
-  activity={$activity}
-  onFocus={handleInputFocus}
-  onBlur={handleInputBlur}
-  onSubmitPath={submitPath}
-  onSearch={submitSearch}
-  onExitSearch={() => void transitionToAddressMode({ path: $current, blur: true })}
-  onNavigateSegment={(path) => void navigateToBreadcrumb(path)}
-  onTopbarAction={handleTopbarAction}
-  onTopbarViewModeChange={handleTopbarViewModeChange}
-  noticeMessage={$error}
-  searchRunning={$searchRunning}
-  {filterActive}
-  {mode}
-  filterValue={$filter}
-  showHidden={$showHidden}
-  columnFilters={$columnFilters}
-  columnFacets={$columnFacets}
-  columnFacetsLoading={$columnFacetsLoading}
-  onEnsureColumnFacets={ensureColumnFacets}
-  videoThumbs={$videoThumbs}
-  thumbnailsEnabled={currentView !== 'trash'}
-  {thumbnailRefreshToken}
-  cols={$cols}
-  gridTemplate={$gridTemplate}
-  filteredEntries={$filteredEntries}
-  filterSourceEntries={$filterSourceEntries}
-  visibleEntries={$visibleEntries}
-  start={$start}
-  offsetY={$offsetY}
-  totalHeight={$totalHeight}
-  wide={sidebarCollapsed}
-  selected={$selected}
-  sortField={$sortField}
-  sortDirection={$sortDirection}
-  isHidden={isHidden}
-  displayName={displayName}
-  {formatSize}
-  {formatItems}
-  clipboardMode={clipboardMode}
-  clipboardPaths={clipboardPaths}
-    onRowsScroll={handleRowsScrollCombined}
-    onWheel={handleWheelCombined}
-    onRowsKeydown={handleRowsKeydownCombined}
-    onRowsMousedown={handleRowsMouseDown}
-    onRowsClick={handleRowsClickSafe}
-    onRowsContextMenu={handleBlankContextMenu}
-    onChangeSort={changeSort}
-    onStartResize={startResize}
-    ariaSort={ariaSort}
-    onToggleFilter={(field, id, checked) => toggleColumnFilter(field, id, checked)}
-    onResetFilter={(field) => resetColumnFilter(field)}
-    onRowClick={handleRowClickWithOpen}
-    onOpen={handleOpenEntry}
-    onContextMenu={handleRowContextMenu}
-    onToggleStar={toggleStar}
-    onRowDragStart={handleRowDragStart}
-    onRowDragEnd={handleRowDragEnd}
-    onRowDragEnter={handleRowDragEnter}
-    onRowDragOver={handleRowDragOver}
-    onRowDrop={handleRowDrop}
-    onRowDragLeave={handleRowDragLeave}
-    dragTargetPath={$dragState.target}
-    dragAllowed={$dragState.paths.length > 0}
-    dragging={$dragState.dragging}
-    onBreadcrumbDragOver={handleBreadcrumbDragOver}
-    onBreadcrumbDragLeave={handleBreadcrumbDragLeave}
-    onBreadcrumbDrop={handleBreadcrumbDrop}
-  {selectionText}
-  selectionActive={$selectionActive}
-  selectionRect={$selectionRect}
-  contextMenu={$contextMenu}
-  blankMenu={$blankMenu}
-  onContextSelect={handleContextSelect}
-  onBlankContextSelect={handleBlankContextAction}
-  onCloseContextMenu={closeContextMenu}
-  onCloseBlankContextMenu={closeBlankContextMenu}
-  deleteConfirmOpen={$deleteState.open}
-  deleteTargets={$deleteState.targets}
-  onConfirmDelete={deleteModal.confirm}
-  onCancelDelete={deleteModal.close}
-  renameModalOpen={$renameState.open}
-  renameTarget={$renameState.target}
-  renameError={$renameState.error}
   bind:renameValue
-  onConfirmRename={confirmRename}
-  onCancelRename={closeRenameModal}
-  advancedRenameOpen={$advancedRenameState.open}
-  advancedRenameEntries={$advancedRenameState.entries}
-  advancedRenameRegex={$advancedRenameState.regex}
-  advancedRenameReplacement={$advancedRenameState.replacement}
-  advancedRenamePrefix={$advancedRenameState.prefix}
-  advancedRenameSuffix={$advancedRenameState.suffix}
-  advancedRenameCaseSensitive={$advancedRenameState.caseSensitive}
-  advancedRenameSequenceMode={$advancedRenameState.sequenceMode}
-  advancedRenameSequencePlacement={$advancedRenameState.sequencePlacement}
-  advancedRenameSequenceStart={$advancedRenameState.sequenceStart}
-  advancedRenameSequenceStep={$advancedRenameState.sequenceStep}
-  advancedRenameSequencePad={$advancedRenameState.sequencePad}
-  advancedRenameError={$advancedRenameState.error}
-  advancedRenamePreview={$advancedRenameState.preview}
-  advancedRenamePreviewError={$advancedRenameState.previewError}
-  advancedRenamePreviewLoading={$advancedRenameState.previewLoading}
-  onAdvancedRenameChange={(payload) => advancedRenameModal.change(payload)}
-  onConfirmAdvancedRename={() => advancedRenameModal.confirm()}
-  onCancelAdvancedRename={() => advancedRenameModal.close()}
-  compressOpen={$compressState.open}
   bind:compressName
   bind:compressLevel
-  compressError={$compressState.error}
-  onConfirmCompress={confirmCompress}
-  onCancelCompress={closeCompress}
-  checkDuplicatesOpen={$checkDuplicatesState.open}
-  checkDuplicatesTarget={$checkDuplicatesState.target}
-  checkDuplicatesSearchRoot={$checkDuplicatesState.searchRoot}
-  checkDuplicatesDuplicates={$checkDuplicatesState.duplicates}
-  checkDuplicatesScanning={$checkDuplicatesState.scanning}
-  checkDuplicatesProgressPercent={$checkDuplicatesState.progressPercent}
-  checkDuplicatesProgressLabel={$checkDuplicatesState.progressLabel}
-  checkDuplicatesError={$checkDuplicatesState.error}
-  onChangeCheckDuplicatesSearchRoot={checkDuplicatesModal.setSearchRoot}
-  onCopyCheckDuplicates={copyCheckDuplicatesList}
-  onSearchCheckDuplicates={searchCheckDuplicates}
-  onCloseCheckDuplicates={closeCheckDuplicatesModal}
-  newFolderOpen={$newFolderState.open}
   bind:newFolderName
-  newFolderError={$newFolderState.error}
-  onConfirmNewFolder={confirmNewFolder}
-  onCancelNewFolder={closeNewFolderModal}
-  newFileOpen={$newFileState.open}
   bind:newFileName
-  newFileError={$newFileState.error}
-  newFileTypeHint={$newFileTypeHint}
-  onConfirmNewFile={confirmNewFile}
-  onCancelNewFile={closeNewFileModal}
-  openWithOpen={$openWithState.open}
-  openWithApps={$openWithState.apps}
-  openWithLoading={$openWithState.loading}
-  openWithError={$openWithState.error}
-  openWithBusy={$openWithState.submitting}
-  onConfirmOpenWith={(choice) => openWithModal.confirm(choice)}
-  onCloseOpenWith={openWithModal.close}
-  propertiesOpen={$propertiesState.open}
-  propertiesEntry={$propertiesState.entry}
-  propertiesMutationsLocked={$propertiesState.mutationsLocked}
-  propertiesCount={$propertiesState.count}
-  propertiesSize={$propertiesState.size}
-  propertiesItemCount={$propertiesState.itemCount}
-  propertiesHidden={$propertiesState.hidden}
-  propertiesExtraMetadataLoading={$propertiesState.extraMetadataLoading}
-  propertiesExtraMetadataError={$propertiesState.extraMetadataError}
-  propertiesExtraMetadata={$propertiesState.extraMetadata}
-  propertiesPermissionsLoading={$propertiesState.permissionsLoading}
-  propertiesOwnershipApplying={$propertiesState.ownershipApplying}
-  propertiesOwnershipError={$propertiesState.ownershipError}
-  propertiesOwnershipUsers={$propertiesState.ownershipUsers}
-  propertiesOwnershipGroups={$propertiesState.ownershipGroups}
-  propertiesOwnershipOptionsLoading={$propertiesState.ownershipOptionsLoading}
-  propertiesOwnershipOptionsError={$propertiesState.ownershipOptionsError}
-  propertiesPermissions={$propertiesState.permissions}
-  onTogglePermissionsAccess={(scope, key, next) => propertiesModal.toggleAccess(scope, key, next)}
-  onSetOwnership={(owner, group) => propertiesModal.setOwnership(owner, group)}
-  onToggleHidden={(next) => propertiesModal.toggleHidden(next)}
-  onLoadPropertiesExtraMetadata={() => propertiesModal.loadExtraIfNeeded()}
-  onCloseProperties={propertiesModal.close}
-  bookmarkModalOpen={bookmarkModalOpen}
-  {bookmarkCandidate}
-  onConfirmBookmark={confirmBookmark}
-  onCancelBookmark={closeBookmarkModal}
-  toastMessage={$toast}
+  sidebarProps={explorerShellSidebarProps}
+  topbarProps={explorerShellTopbarProps}
+  listingProps={explorerShellListingProps}
+  menuProps={explorerShellMenuProps}
+  modalProps={explorerShellModalProps}
+  statusProps={explorerShellStatusProps}
 />
 <ConflictModal
   open={$conflictModalOpen}
