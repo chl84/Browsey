@@ -1,8 +1,8 @@
 <script lang="ts">
-  import BookmarksSection from './BookmarksSection.svelte'
-  import PartitionsSection from './PartitionsSection.svelte'
-  import PlacesSection from './PlacesSection.svelte'
-  import type { Partition } from '../model/types'
+import BookmarksSection from '../../components/BookmarksSection.svelte'
+import PartitionsSection from '../../components/PartitionsSection.svelte'
+import PlacesSection from '../../components/PlacesSection.svelte'
+import type { Partition } from '../../model/types'
 
   export let places: { label: string; path: string }[] = []
   export let bookmarks: { label: string; path: string }[] = []

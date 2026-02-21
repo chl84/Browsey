@@ -5,7 +5,7 @@
   import { get } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from '@/features/explorer/utils'
   import { createListState } from '@/features/explorer/state/list.store'
-  import ExplorerShell from '@/features/explorer/components/ExplorerShell.svelte'
+  import { ExplorerShell, useGridVirtualizer, createViewObservers } from '@/features/explorer/ui-shell'
   import { useExplorerData } from '@/features/explorer/hooks/useExplorerData'
   import { createColumnResize } from '@/features/explorer/hooks/useColumnWidths'
   import { createGlobalShortcuts } from '@/features/explorer/hooks/useShortcuts'
@@ -14,7 +14,6 @@
   import { useExplorerContextMenuOps } from '@/features/explorer/context'
   import { useExplorerInputHandlers } from '@/features/explorer/hooks/useExplorerInputHandlers'
   import { useModalsController } from '@/features/explorer/hooks/useModalsController'
-  import { useGridVirtualizer } from '@/features/explorer/hooks/useGridVirtualizer'
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
   import type { OpenWithChoice } from '@/features/explorer/services/openWith.service'
   import { ejectDrive } from '@/features/explorer/services/drives.service'
@@ -35,7 +34,6 @@
   import { createAppLifecycle } from '@/features/explorer/hooks/useAppLifecycle'
   import { createTopbarActions, useExplorerNavigation, useExplorerSearchSession } from '@/features/explorer/navigation'
   import { createTextContextMenu } from '@/features/explorer/context'
-  import { createViewObservers } from '@/features/explorer/hooks/useViewObservers'
   import {
     DEFAULT_SHORTCUTS,
     loadShortcuts,
