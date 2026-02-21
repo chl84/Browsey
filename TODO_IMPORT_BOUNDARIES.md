@@ -72,24 +72,24 @@ Acceptance:
 
 ## Phase 3: Enforce Rules in Lint (Warn Mode)
 
-- [ ] Introduce lint stack for frontend if missing:
+- [x] Introduce lint stack for frontend if missing:
   - ESLint + TypeScript + Svelte + import rules.
-- [ ] Add `no-restricted-imports` patterns for boundaries:
+- [x] Add `no-restricted-imports` patterns for boundaries:
   - Block deep cross-feature imports.
   - Allow same-feature internals.
   - Allow shared imports.
-- [ ] Add script:
+- [x] Add script:
   - `npm --prefix frontend run lint`
-- [ ] Run lint as warning-level for boundary rules initially.
+- [x] Run lint as warning-level for boundary rules initially.
 
 Acceptance:
 - CI/local lint reports boundary violations without blocking.
 
 ## Phase 4: Tighten to Error Mode
 
-- [ ] Fix remaining warnings.
-- [ ] Switch boundary rules from warning to error.
-- [ ] Add lint to CI gate.
+- [x] Fix remaining warnings.
+- [x] Switch boundary rules from warning to error.
+- [x] Add lint to CI gate.
 
 Acceptance:
 - Boundary violations fail CI.
@@ -135,6 +135,6 @@ Note:
 ## Definition of Done
 
 - [x] All cross-feature imports use barrels.
-- [ ] Boundary rules are enforced as errors in CI.
-- [ ] `ARCHITECTURE_IMPORTS.md` exists with policy examples.
+- [x] Boundary rules are enforced as errors in CI.
+- [x] `ARCHITECTURE_IMPORTS.md` exists with policy examples.
 - [ ] Frontend check/build/smoke tests pass.
