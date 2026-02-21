@@ -1,6 +1,15 @@
 # Changelog
 
 ## Unreleased
+- Frontend architecture cleanup (no intended behavior change): explorer modules were reorganized into explicit domains (`context`, `navigation`, `file-ops`, `selection`, `ui-shell`, `state`) and old wrapper paths were removed.
+- Explorer factory naming was standardized from `use*.ts` to `create*.ts` where files exported factory APIs, reducing naming ambiguity across hooks/helpers.
+- Explorer state internals were split into focused slices/stores while preserving the public `createExplorerState` API to avoid integration breakage.
+- Settings UI internals were modularized: `SettingsModal` is now split into tab/section components with a dedicated view-model hook.
+- Frontend boundaries are now enforced with feature barrels and ESLint restrictions for cross-feature deep imports (wired into CI/local lint).
+- Naming conventions now have automated lint enforcement via `frontend/scripts/check-naming-conventions.mjs` (`npm --prefix frontend run lint` runs ESLint + naming checks).
+- Architecture docs were expanded with naming/import guidance (`ARCHITECTURE_NAMING.md`, `ARCHITECTURE_IMPORTS.md`) and README cross-links.
+- Fedora/GNOME Software packaging metadata was added (AppStream + desktop metadata + packaging wiring) to improve distribution readiness.
+- Completed implementation TODO plans were archived under `docs/todo-archive/`, and remaining project text/comments were normalized to English.
 - Frontend structure split: the former monolithic `App.svelte` explorer logic is now decomposed into feature hooks (`navigation`, `search session`, `file ops`, `context menu`, `input handlers`) with `ExplorerPage.svelte` as the composition root.
 - Backend error flow migration was expanded across remaining modules, replacing string-based failures with code-based `ApiError` mapping in command and core subsystems.
 - New domain-level error modules were introduced in core areas (`fs_utils`, `metadata`, `statusbar`, `undo`) to standardize classification and reduce ad-hoc text matching.
