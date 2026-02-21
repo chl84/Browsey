@@ -17,7 +17,7 @@
   import CompressModal from './CompressModal.svelte'
   import CheckDuplicatesModal from './CheckDuplicatesModal.svelte'
   import type { Column, Entry, ListingFacets, Partition, SortField } from '../model/types'
-  import type { ContextAction } from '../hooks/useContextMenus'
+  import type { ContextAction } from '../context/useContextMenus'
   import type { OpenWithApp, OpenWithChoice } from '../services/openWith.service'
   import type { AdvancedRenamePayload } from '../modals/advancedRenameModal'
 

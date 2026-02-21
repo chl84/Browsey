@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import type { ContextAction } from '../hooks/useContextMenus'
+  import type { ContextAction } from '../context/useContextMenus'
 
   export let open = false
   export let x = 0
