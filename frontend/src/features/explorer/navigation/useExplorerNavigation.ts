@@ -117,10 +117,9 @@ export const useExplorerNavigation = (deps: Deps) => {
       if (deps.getViewMode() === 'list') {
         const rowsEl = deps.getRowsEl()
         if (!rowsEl) return
-        const headerH = deps.getHeaderEl()?.offsetHeight ?? 0
-        const viewport = rowsEl.clientHeight - headerH
+        const viewport = rowsEl.clientHeight
         const rowH = get(deps.rowHeight)
-        const target = headerH + Math.max(0, idx * rowH - (viewport - rowH) / 2)
+        const target = Math.max(0, idx * rowH - (viewport - rowH) / 2)
         const maxScroll = Math.max(0, rowsEl.scrollHeight - rowsEl.clientHeight)
         rowsEl.scrollTo({ top: Math.min(target, maxScroll), behavior: 'auto' })
       } else {

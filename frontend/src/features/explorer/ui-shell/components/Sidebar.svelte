@@ -46,7 +46,7 @@ import type { Partition } from '../../model/types'
     scrollbar-width: none;
     -ms-overflow-style: none;
     user-select: none;
-    width: auto;
+    width: var(--sidebar-max-width);
     max-width: var(--sidebar-max-width);
     transition:
       max-width 600ms cubic-bezier(0.4, 0.0, 0.2, 1),

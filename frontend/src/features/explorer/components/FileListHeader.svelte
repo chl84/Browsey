@@ -106,9 +106,7 @@
     font-size: var(--list-header-font-size);
     letter-spacing: 0.02em;
     text-transform: uppercase;
-    position: sticky;
-    top: 0;
-    z-index: 1;
+    position: relative;
     width: max-content;
     box-sizing: border-box;
     border-left: 1px solid transparent;

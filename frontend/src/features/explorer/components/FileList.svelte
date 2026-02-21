@@ -91,19 +91,7 @@
 </script>
 
 <section class="list" class:wide={wide}>
-  <div
-    class="rows"
-    bind:this={rowsEl}
-    on:scroll={onRowsScroll}
-    on:wheel={onWheel}
-    on:keydown={onRowsKeydown}
-    on:mousedown={onRowsMousedown}
-    on:click={onRowsClick}
-    on:contextmenu={onRowsContextMenu}
-    tabindex="0"
-    role="grid"
-    aria-label="File list"
-  >
+  <div class="header-wrap">
     <FileListHeader
       {cols}
       {gridTemplate}
@@ -117,6 +105,20 @@
       onFilterContextMenu={handleFilterContextMenu}
       filterActive={filterActive}
     />
+  </div>
+  <div
+    class="rows"
+    bind:this={rowsEl}
+    on:scroll={onRowsScroll}
+    on:wheel={onWheel}
+    on:keydown={onRowsKeydown}
+    on:mousedown={onRowsMousedown}
+    on:click={onRowsClick}
+    on:contextmenu={onRowsContextMenu}
+    tabindex="0"
+    role="grid"
+    aria-label="File list"
+  >
     {#if !loading && filteredEntries.length === 0}
       <div class="muted">No items here.</div>
     {:else}
@@ -194,9 +196,21 @@
     padding-right: 20px; /* move scrollbar inward ~8px to keep native resize grip clear */
     padding-bottom: 32px;
     position: relative;
+    isolation: isolate;
     user-select: none;
     cursor: default;
     scrollbar-gutter: stable;
+  }
+
+  .rows:focus,
+  .rows:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .header-wrap {
+    padding-left: var(--list-rows-padding-left, 15px);
+    padding-right: 20px;
   }
 
   .rows::-webkit-scrollbar-corner {
@@ -212,6 +226,7 @@
     top: 0;
     left: 0;
     right: 0;
+    z-index: 0;
   }
 
   .muted {

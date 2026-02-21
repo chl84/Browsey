@@ -27,11 +27,9 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
   let scrollRaf: number | null = null
   let pendingScrollTop = 0
 
-  const headerHeight = () => get(headerEl)?.offsetHeight ?? 0
-
   const updateViewportHeight = () => {
     const containerHeight = get(rowsEl)?.clientHeight ?? 0
-    const next = Math.max(0, containerHeight - headerHeight())
+    const next = Math.max(0, containerHeight)
     if (next !== get(viewportHeight)) {
       viewportHeight.set(next)
     }
@@ -52,7 +50,7 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
   const handleRowsScroll = () => {
     const el = get(rowsEl)
     if (!el) return
-    pendingScrollTop = Math.max(0, el.scrollTop - headerHeight())
+    pendingScrollTop = Math.max(0, el.scrollTop)
     if (scrollRaf !== null) return
     scrollRaf = requestAnimationFrame(() => {
       scrollRaf = null
@@ -130,7 +128,6 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
   const ensureRowVisible = (index: number) => {
     const el = get(rowsEl)
     if (!el) return
-    const headerOffset = headerHeight()
     const viewport = get(viewportHeight)
     const currentTop = get(scrollTop)
     const currentBottom = currentTop + viewport
@@ -140,9 +137,9 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
     let nextScroll: number | null = null
 
     if (rowTop < currentTop) {
-      nextScroll = headerOffset + rowTop
+      nextScroll = rowTop
     } else if (rowBottom > currentBottom) {
-      nextScroll = headerOffset + rowBottom - viewport
+      nextScroll = rowBottom - viewport
     }
 
     if (nextScroll !== null) {
