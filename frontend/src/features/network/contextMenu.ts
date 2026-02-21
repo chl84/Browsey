@@ -1,4 +1,4 @@
-import type { ContextAction } from '../explorer/hooks/useContextMenus'
+import type { ContextAction } from '@/features/explorer'
 import { classifyNetworkUri } from './services'
 
 export const buildNetworkEntryContextActions = (

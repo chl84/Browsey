@@ -5,7 +5,7 @@
     shortcutFor,
     type ShortcutBinding,
     type ShortcutCommandId,
-  } from '@/features/shortcuts/keymap'
+  } from '@/features/shortcuts'
 
   export let open = false
   export let x = 0

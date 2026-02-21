@@ -1,5 +1,5 @@
 <script lang="ts">
-  import ExplorerPage from '@/features/explorer/pages/ExplorerPage.svelte'
+  import { ExplorerPage } from '@/features/explorer'
 </script>
 
 <ExplorerPage />

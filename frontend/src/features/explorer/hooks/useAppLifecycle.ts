@@ -1,6 +1,6 @@
 import { listen } from '@tauri-apps/api/event'
 import { getErrorMessage } from '@/shared/lib/error'
-import type { ShortcutBinding } from '../../shortcuts/keymap'
+import type { ShortcutBinding } from '@/features/shortcuts'
 
 type ViewMode = 'list' | 'grid'
 type MountOutcome = 'connecting' | 'connected' | 'already_connected' | 'failed' | string

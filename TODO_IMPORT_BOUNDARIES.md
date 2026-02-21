@@ -22,33 +22,39 @@ Goal: Keep feature/shared boundaries strict by introducing clear public APIs (ba
 
 ## Quality Gates (each phase)
 
-- [ ] `npm --prefix frontend run check` passes.
-- [ ] `npm --prefix frontend run build` passes.
+- [x] `npm --prefix frontend run check` passes.
+- [x] `npm --prefix frontend run build` passes.
 - [ ] Smoke-test: navigation, search/filter, settings modal, context menus.
-- [ ] `rg` validation commands for import patterns pass.
+- [x] `rg` validation commands for import patterns pass.
 
 ## Baseline Audit
 
-- [ ] Map current deep imports:
+- [x] Map current deep imports:
   - `rg -n "from '@/features/[^']+/.+'" frontend/src`
-- [ ] Map shared->feature violations (should be none):
+- [x] Map shared->feature violations (should be none):
   - `rg -n "from '@/features/" frontend/src/shared`
-- [ ] List existing feature barrels:
+- [x] List existing feature barrels:
   - `find frontend/src/features -maxdepth 2 -name index.ts | sort`
 
 Acceptance:
 - We have a baseline list of violations and barrel gaps.
 
+Audit Findings (2026-02-21):
+- Deep feature imports (alias form) are common; majority are same-feature internals.
+- Cross-feature alias imports found: `explorer -> settings` (1), `explorer -> shortcuts` (4).
+- `shared -> features` violations: none.
+- Existing barrels before Phase 1: only `frontend/src/features/network/index.ts`.
+
 ## Phase 1: Add Public Barrels
 
-- [ ] Add/normalize:
+- [x] Add/normalize:
   - `frontend/src/features/explorer/index.ts`
   - `frontend/src/features/settings/index.ts`
   - `frontend/src/features/network/index.ts` (already exists; verify consistency)
   - `frontend/src/features/shortcuts/index.ts`
   - `frontend/src/shared/index.ts`
-- [ ] Export only intended surface (pages/components/hooks/services/types meant for external use).
-- [ ] Avoid wildcard exports when they expose internals accidentally.
+- [x] Export only intended surface (pages/components/hooks/services/types meant for external use).
+- [x] Avoid wildcard exports when they expose internals accidentally.
 
 Acceptance:
 - Each feature has one clear import entrypoint.
@@ -56,10 +62,10 @@ Acceptance:
 
 ## Phase 2: Migrate Imports to Barrels
 
-- [ ] Replace cross-feature deep imports with barrel imports.
-- [ ] Keep in-feature relative imports as-is unless cleanup is trivial.
-- [ ] Verify no forbidden deep import remains:
-  - `rg -n "from '@/features/[^']+/.+'" frontend/src`
+- [x] Replace cross-feature deep imports with barrel imports.
+- [x] Keep in-feature relative imports as-is unless cleanup is trivial.
+- [x] Verify no forbidden cross-feature deep import remains:
+  - `rg -n "from ['\"]@/features/[^/'\"]+/[^'\"]+['\"]" frontend/src frontend/src/App.svelte` + compare importer feature vs imported feature (result: `violations=0`).
 
 Acceptance:
 - Cross-feature imports only use `@/features/<feature>`.
@@ -128,7 +134,7 @@ Note:
 
 ## Definition of Done
 
-- [ ] All cross-feature imports use barrels.
+- [x] All cross-feature imports use barrels.
 - [ ] Boundary rules are enforced as errors in CI.
 - [ ] `ARCHITECTURE_IMPORTS.md` exists with policy examples.
 - [ ] Frontend check/build/smoke tests pass.

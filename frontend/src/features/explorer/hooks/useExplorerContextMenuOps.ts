@@ -5,7 +5,7 @@ import {
   isMountUri,
   networkBlankContextActions,
 } from '@/features/network'
-import { shortcutFor, type ShortcutBinding, type ShortcutCommandId } from '@/features/shortcuts/keymap'
+import { shortcutFor, type ShortcutBinding, type ShortcutCommandId } from '@/features/shortcuts'
 import { ensureSelectionBeforeMenu } from '../helpers/contextMenuHelpers'
 import type { Entry } from '../model/types'
 import { openConsole } from '../services/console.service'
