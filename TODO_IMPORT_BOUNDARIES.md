@@ -24,7 +24,7 @@ Goal: Keep feature/shared boundaries strict by introducing clear public APIs (ba
 
 - [x] `npm --prefix frontend run check` passes.
 - [x] `npm --prefix frontend run build` passes.
-- [ ] Smoke-test: navigation, search/filter, settings modal, context menus.
+- [x] Smoke-test: navigation, search/filter, settings modal, context menus.
 - [x] `rg` validation commands for import patterns pass.
 
 ## Baseline Audit
@@ -137,4 +137,4 @@ Note:
 - [x] All cross-feature imports use barrels.
 - [x] Boundary rules are enforced as errors in CI.
 - [x] `ARCHITECTURE_IMPORTS.md` exists with policy examples.
-- [ ] Frontend check/build/smoke tests pass.
+- [x] Frontend check/build/smoke tests pass.
