@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Build release RPM with ccache configured to use a writable temp directory.
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CCACHE_DIR="${CCACHE_DIR:-$ROOT/tmp/ccache}"
 CCACHE_TEMPDIR="${CCACHE_TEMPDIR:-$CCACHE_DIR/tmp}"
 

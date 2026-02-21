@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 :: Build Windows release bundle (NSIS) in one step. Frontend is built by Tauri's beforeBuildCommand.
-set ROOT=%~dp0..
+set ROOT=%~dp0\..\..
 
 pushd "%ROOT%" || exit /b 1
 

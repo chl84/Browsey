@@ -7,7 +7,7 @@ set -euo pipefail
 # - Upgrades to newest compatible versions.
 # - Updates lockfile and runs cargo check.
 
-ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 need_tool() {

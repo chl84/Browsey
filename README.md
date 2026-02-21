@@ -61,7 +61,7 @@ Windows:
    ```bash
    cargo tauri dev --no-dev-server
    ```
-   Convenience wrappers: `scripts/dev-server.sh` (Unix) or `scripts/dev-server.bat` (Windows).
+   Convenience wrappers: `scripts/dev/dev-server.sh` (Unix) or `scripts/dev/dev-server.bat` (Windows).
 
 Quick checks:
 ```bash
@@ -86,12 +86,12 @@ Tauri bundles:
   ```bash
   cargo tauri build --bundles nsis
   ```
-  or use `scripts/build-release.bat` (cleans old bundles, builds frontend, then bundles). Output lands in `target/release/bundle/nsis/`.
+  or use `scripts/build/build-release.bat` (cleans old bundles, builds frontend, then bundles). Output lands in `target/release/bundle/nsis/`.
 - Linux RPM (smallest on Fedora-like distros):
   ```bash
   cargo tauri build --bundles rpm
   ```
-  Helper: `scripts/build-release.sh`. Output in `target/release/bundle/rpm/`.
+  Helper: `scripts/build/build-release.sh`. Output in `target/release/bundle/rpm/`.
 
 ## Keyboard & interaction map (defaults)
 - Default bindings are remappable in Settings.
@@ -113,7 +113,7 @@ Tauri bundles:
 - `src/` — Rust backend.
 - `frontend/` — Svelte application UI.
 - `docs/` — standalone documentation app.
-- `scripts/` — developer/build helper scripts.
+- `scripts/` — helper scripts grouped by area (`build/`, `dev/`, `docs/`, `install/`, `maintenance/`).
 - `resources/` and `capabilities/` — bundled assets and Tauri capability files.
 
 ## Behavior notes

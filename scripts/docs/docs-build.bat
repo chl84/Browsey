@@ -1,10 +1,10 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-set ROOT=%~dp0..
+set ROOT=%~dp0\..\..
 
 pushd "%ROOT%" || exit /b 1
-npm --prefix "%ROOT%\docs" run dev -- %*
+npm --prefix "%ROOT%\docs" run build -- %*
 set ERR=%ERRORLEVEL%
 popd
 exit /b %ERR%
