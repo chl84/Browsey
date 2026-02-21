@@ -21,7 +21,7 @@ type Options = {
 export const createViewSwitchAnchor = ({ filteredEntries, rowHeight, gridRowHeight, gridGap }: Options) => {
   let anchorPath: string | null = null
 
-  const capture = ({ viewMode, rowsEl, headerEl, gridEl, gridCols }: Refs & { viewMode: ViewMode }) => {
+  const capture = ({ viewMode, rowsEl, gridEl, gridCols }: Refs & { viewMode: ViewMode }) => {
     const list = get(filteredEntries)
     if (list.length === 0) {
       anchorPath = null
@@ -29,9 +29,8 @@ export const createViewSwitchAnchor = ({ filteredEntries, rowHeight, gridRowHeig
     }
 
     if (viewMode === 'list') {
-      const headerHeight = headerEl?.offsetHeight ?? 0
-      const viewport = Math.max(0, (rowsEl?.clientHeight ?? 0) - headerHeight)
-      const midOffset = Math.max(0, (rowsEl?.scrollTop ?? 0) - headerHeight + viewport / 2)
+      const viewport = Math.max(0, rowsEl?.clientHeight ?? 0)
+      const midOffset = Math.max(0, (rowsEl?.scrollTop ?? 0) + viewport / 2)
       const idx = Math.min(list.length - 1, Math.floor(midOffset / rowHeight))
       anchorPath = list[idx]?.path ?? null
       return
@@ -50,7 +49,7 @@ export const createViewSwitchAnchor = ({ filteredEntries, rowHeight, gridRowHeig
     anchorPath = list[idx]?.path ?? null
   }
 
-  const scroll = ({ viewMode, rowsEl, headerEl, gridEl, gridCols }: Refs & { viewMode: ViewMode }) => {
+  const scroll = ({ viewMode, rowsEl, gridEl, gridCols }: Refs & { viewMode: ViewMode }) => {
     if (!anchorPath) return
     const list = get(filteredEntries)
     const anchor = anchorPath
@@ -67,9 +66,8 @@ export const createViewSwitchAnchor = ({ filteredEntries, rowHeight, gridRowHeig
     }
 
     if (viewMode === 'list') {
-      const headerHeight = headerEl?.offsetHeight ?? 0
-      const viewport = Math.max(0, (rowsEl?.clientHeight ?? 0) - headerHeight)
-      const target = headerHeight + idx * rowHeight - Math.max(0, viewport / 2 - rowHeight / 2)
+      const viewport = Math.max(0, rowsEl?.clientHeight ?? 0)
+      const target = idx * rowHeight - Math.max(0, viewport / 2 - rowHeight / 2)
       rowsEl?.scrollTo({ top: Math.max(0, target), behavior: 'auto' })
       return
     }

@@ -75,7 +75,8 @@ export const createSelectionBox = () => {
   const updateSelection = (clientX: number, clientY: number) => {
     if (!ctx) return
     const rowsRect = ctx.rowsEl.getBoundingClientRect()
-    const headerHeight = ctx.headerEl?.offsetHeight ?? 0
+    const headerInsideRows = !!ctx.headerEl && ctx.rowsEl.contains(ctx.headerEl)
+    const headerHeight = headerInsideRows ? (ctx.headerEl?.offsetHeight ?? 0) : 0
     const scrollY = ctx.rowsEl.scrollTop
     const scrollX = ctx.rowsEl.scrollLeft
     const contentHeight = ctx.hitTest ? ctx.rowsEl.scrollHeight : ctx.entries.length * ctx.rowHeight

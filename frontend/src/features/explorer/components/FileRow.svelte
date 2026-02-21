@@ -157,12 +157,10 @@
     background: var(--bg-hover);
     transform: none !important;
     box-shadow: none !important;
-    z-index: 1;
   }
 
   :global(.is-scrolling) .row:hover:not(.selected):not(.drop-target) {
     background: transparent;
-    z-index: auto;
   }
 
   .row.hidden {
