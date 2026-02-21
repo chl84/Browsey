@@ -244,7 +244,7 @@ pub async fn list_mounts() -> ApiResult<Vec<MountInfo>> {
 }
 
 async fn list_mounts_impl() -> NetworkResult<Vec<MountInfo>> {
-    let task = tauri::async_runtime::spawn_blocking(|| list_mounts_sync());
+    let task = tauri::async_runtime::spawn_blocking(list_mounts_sync);
     match task.await {
         Ok(result) => Ok(result),
         Err(error) => Err(NetworkError::new(
@@ -364,12 +364,10 @@ fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> Result<(
     }
 
     // Optional lazy unmount if we only saw busy errors
-    if busy_detected {
-        if let Ok(_) = command_output("umount", &["-l", &path]) {
-            invalidate_network_discovery_cache();
-            power_off_device(device);
-            return Ok(());
-        }
+    if busy_detected && command_output("umount", &["-l", &path]).is_ok() {
+        invalidate_network_discovery_cache();
+        power_off_device(device);
+        return Ok(());
     }
 
     let msg = if busy_detected {
@@ -384,7 +382,7 @@ fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> Result<(
         path,
         errors.join(" | ")
     ));
-    Err(msg.into())
+    Err(msg)
 }
 
 #[cfg(not(target_os = "windows"))]

@@ -56,6 +56,7 @@ pub(super) fn single_root_in_rar(path: &Path) -> Result<Option<PathBuf>, String>
     Ok(root)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn extract_rar(
     entries: Vec<RarInnerFile>,
     dest_dir: &Path,

@@ -340,7 +340,7 @@ fn set_permissions_noop_returns_actual_state() {
     assert!(info.owner.is_some());
     assert!(info.group.is_some());
     assert!(info.other.is_some());
-    assert_eq!(info.read_only, false);
+    assert!(!info.read_only);
     let after_mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
     assert_eq!(after_mode, before_mode);
 

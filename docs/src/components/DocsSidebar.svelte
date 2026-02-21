@@ -25,7 +25,7 @@
     <p class="nav-empty">No matching pages.</p>
   {:else}
     <nav aria-label="Documentation pages">
-      {#each pages as page}
+      {#each pages as page (page.id)}
         <a href={`#/${page.id}`} class:active={page.id === activePageId}>
           {page.title}
         </a>

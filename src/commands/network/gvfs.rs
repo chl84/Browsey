@@ -327,7 +327,9 @@ fn find_onedrive_uri_goa() -> Option<String> {
 #[cfg(not(target_os = "windows"))]
 fn list_onedrive_mountables() -> Option<Vec<(String, String)>> {
     const CACHE_TTL: Duration = Duration::from_secs(30);
-    static CACHE: OnceCell<Mutex<(Instant, Vec<(String, String)>)>> = OnceCell::new();
+    type OneDriveMountable = (String, String);
+    type CacheState = (Instant, Vec<OneDriveMountable>);
+    static CACHE: OnceCell<Mutex<CacheState>> = OnceCell::new();
     let cache = CACHE.get_or_init(|| Mutex::new((instant_ago(CACHE_TTL), Vec::new())));
 
     // Serve cached data if it is still fresh (30s) to avoid running `gio mount -li` too often.
@@ -406,11 +408,10 @@ pub fn mount_uri_status(uri: &str) -> MountUriStatus {
                     MountUriStatus::Connected
                 };
             }
-            if let Some(mut ts) = LOG_STATE
+            if let Ok(mut ts) = LOG_STATE
                 .get_or_init(|| Mutex::new(instant_ago(Duration::from_secs(600))))
                 .lock()
                 .map_err(|e| e.into_inner())
-                .ok()
             {
                 let now = Instant::now();
                 if now.duration_since(*ts) >= Duration::from_secs(300) {
@@ -431,8 +432,6 @@ pub fn mount_uri_status(uri: &str) -> MountUriStatus {
             if wait_for_mount_visibility(uri, &prefix, &before_entries, Duration::from_secs(1)) {
                 return if before_uri_visible {
                     MountUriStatus::AlreadyConnected
-                } else if uri_visible_in_gio(uri) {
-                    MountUriStatus::Connected
                 } else {
                     MountUriStatus::Connected
                 };
@@ -578,6 +577,123 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
     }
 
     mounts
+}
+#[cfg(not(target_os = "windows"))]
+fn short_label(fs: &str, display: &str, raw_name: &str) -> String {
+    if fs == "onedrive" {
+        // Prefer display name if already short; otherwise derive from raw mount name.
+        let trimmed = display.trim();
+        if !trimmed.is_empty() && trimmed.len() <= 32 {
+            return format!("OneDrive ({})", trimmed);
+        }
+
+        if let Some(user) = raw_name
+            .split(',')
+            .find_map(|part| part.strip_prefix("user="))
+        {
+            return format!("OneDrive ({})", user);
+        }
+
+        // Fallback: truncate display if it's too long and we don't have a user= hint.
+        let truncated = truncate_label(trimmed, 30);
+        return format!("OneDrive ({})", truncated);
+    }
+    display.to_string()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn truncate_label(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    if max <= 3 {
+        return "...".to_string();
+    }
+    let mut out = String::with_capacity(max);
+    out.push_str(&s[..max - 3]);
+    out.push_str("...");
+    out
+}
+
+#[cfg(not(target_os = "windows"))]
+fn parse_onedrive_mountables(stdout: &str) -> Vec<(String, String)> {
+    let mut entries = Vec::new();
+    let mut current_label: Option<String> = None;
+    let mut current_uri: Option<String> = None;
+    for line in stdout.lines() {
+        let l = line.trim();
+        if l.starts_with("Volume(") {
+            current_label = l
+                .trim_start_matches("Volume(")
+                .trim_end_matches(')')
+                .split("->")
+                .next()
+                .map(|s| s.trim().to_string());
+            current_uri = None;
+        }
+        if l.starts_with("uuid=") || l.starts_with("activation_root=") {
+            if let Some(rest) = l.split('=').nth(1) {
+                let val = rest.trim();
+                if val.to_ascii_lowercase().starts_with("onedrive://") {
+                    current_uri = Some(val.to_string());
+                }
+            }
+        }
+        if l.starts_with("can_mount=") {
+            if let Some(uri) = current_uri.take() {
+                let label = current_label.clone().unwrap_or_else(|| "OneDrive".into());
+                entries.push((short_label("onedrive", &label, &uri), uri));
+            }
+        }
+    }
+    entries
+}
+
+#[cfg(not(target_os = "windows"))]
+fn parse_onedrive_uri_goa(contents: &str) -> Option<String> {
+    let mut id: Option<String> = None;
+    let mut identity: Option<String> = None;
+    let mut presentation: Option<String> = None;
+    let mut provider = false;
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            if provider {
+                if let Some(chosen) = presentation.clone().or(identity.clone()).or(id.clone()) {
+                    return Some(format!("onedrive://{chosen}/"));
+                }
+            }
+            provider = false;
+            id = None;
+            identity = None;
+            presentation = None;
+            continue;
+        }
+        if line.eq_ignore_ascii_case("Provider=msgraph")
+            || line.eq_ignore_ascii_case("Provider=ms_graph")
+        {
+            provider = true;
+            continue;
+        }
+        if !provider {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("Id=") {
+            id = Some(rest.trim().to_string());
+        }
+        if let Some(rest) = line.strip_prefix("Identity=") {
+            identity = Some(rest.trim().to_string());
+        }
+        if let Some(rest) = line.strip_prefix("PresentationIdentity=") {
+            presentation = Some(rest.trim().to_string());
+        }
+    }
+    if provider {
+        if let Some(chosen) = presentation.or(identity).or(id) {
+            return Some(format!("onedrive://{chosen}/"));
+        }
+    }
+    None
 }
 
 #[cfg(target_os = "windows")]
@@ -729,122 +845,4 @@ Mount(Storage)
         assert!(has_mount_prefix_in_entries(&entries, "sftp"));
         assert!(!has_mount_prefix_in_entries(&entries, "nfs"));
     }
-}
-#[cfg(not(target_os = "windows"))]
-fn short_label(fs: &str, display: &str, raw_name: &str) -> String {
-    if fs == "onedrive" {
-        // Prefer display name if already short; otherwise derive from raw mount name.
-        let trimmed = display.trim();
-        if !trimmed.is_empty() && trimmed.len() <= 32 {
-            return format!("OneDrive ({})", trimmed);
-        }
-
-        if let Some(user) = raw_name
-            .split(',')
-            .find_map(|part| part.strip_prefix("user="))
-        {
-            return format!("OneDrive ({})", user);
-        }
-
-        // Fallback: truncate display if it's too long and we don't have a user= hint.
-        let truncated = truncate_label(trimmed, 30);
-        return format!("OneDrive ({})", truncated);
-    }
-    display.to_string()
-}
-
-#[cfg(not(target_os = "windows"))]
-fn truncate_label(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        return s.to_string();
-    }
-    if max <= 3 {
-        return "...".to_string();
-    }
-    let mut out = String::with_capacity(max);
-    out.push_str(&s[..max - 3]);
-    out.push_str("...");
-    out
-}
-
-#[cfg(not(target_os = "windows"))]
-fn parse_onedrive_mountables(stdout: &str) -> Vec<(String, String)> {
-    let mut entries = Vec::new();
-    let mut current_label: Option<String> = None;
-    let mut current_uri: Option<String> = None;
-    for line in stdout.lines() {
-        let l = line.trim();
-        if l.starts_with("Volume(") {
-            current_label = l
-                .trim_start_matches("Volume(")
-                .trim_end_matches(')')
-                .to_string()
-                .split("->")
-                .next()
-                .map(|s| s.trim().to_string());
-            current_uri = None;
-        }
-        if l.starts_with("uuid=") || l.starts_with("activation_root=") {
-            if let Some(rest) = l.split('=').nth(1) {
-                let val = rest.trim();
-                if val.to_ascii_lowercase().starts_with("onedrive://") {
-                    current_uri = Some(val.to_string());
-                }
-            }
-        }
-        if l.starts_with("can_mount=") {
-            if let Some(uri) = current_uri.take() {
-                let label = current_label.clone().unwrap_or_else(|| "OneDrive".into());
-                entries.push((short_label("onedrive", &label, &uri), uri));
-            }
-        }
-    }
-    entries
-}
-
-#[cfg(not(target_os = "windows"))]
-fn parse_onedrive_uri_goa(contents: &str) -> Option<String> {
-    let mut id: Option<String> = None;
-    let mut identity: Option<String> = None;
-    let mut presentation: Option<String> = None;
-    let mut provider = false;
-    for line in contents.lines() {
-        let line = line.trim();
-        if line.starts_with('[') && line.ends_with(']') {
-            if provider {
-                if let Some(chosen) = presentation.clone().or(identity.clone()).or(id.clone()) {
-                    return Some(format!("onedrive://{chosen}/"));
-                }
-            }
-            provider = false;
-            id = None;
-            identity = None;
-            presentation = None;
-            continue;
-        }
-        if line.eq_ignore_ascii_case("Provider=msgraph")
-            || line.eq_ignore_ascii_case("Provider=ms_graph")
-        {
-            provider = true;
-            continue;
-        }
-        if !provider {
-            continue;
-        }
-        if let Some(rest) = line.strip_prefix("Id=") {
-            id = Some(rest.trim().to_string());
-        }
-        if let Some(rest) = line.strip_prefix("Identity=") {
-            identity = Some(rest.trim().to_string());
-        }
-        if let Some(rest) = line.strip_prefix("PresentationIdentity=") {
-            presentation = Some(rest.trim().to_string());
-        }
-    }
-    if provider {
-        if let Some(chosen) = presentation.or(identity).or(id) {
-            return Some(format!("onedrive://{chosen}/"));
-        }
-    }
-    None
 }

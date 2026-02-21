@@ -88,7 +88,7 @@ pub fn permissions_snapshot(path: &Path) -> UndoResult<PermissionsSnapshot> {
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = meta.permissions().mode();
-        return Ok(PermissionsSnapshot { readonly, mode });
+        Ok(PermissionsSnapshot { readonly, mode })
     }
     #[cfg(target_os = "windows")]
     {
@@ -109,10 +109,10 @@ pub fn ownership_snapshot(path: &Path) -> UndoResult<OwnershipSnapshot> {
         if meta.file_type().is_symlink() {
             return Err(format!("Symlinks are not allowed: {}", path.display()).into());
         }
-        return Ok(OwnershipSnapshot {
+        Ok(OwnershipSnapshot {
             uid: meta.uid(),
             gid: meta.gid(),
-        });
+        })
     }
     #[cfg(not(unix))]
     {
@@ -156,13 +156,13 @@ pub(crate) fn set_ownership_nofollow(
             }
             _ => "",
         };
-        return Err(format!(
+        Err(format!(
             "Failed to change owner/group for {}: {}{}",
             path.display(),
             err,
             suffix
         )
-        .into());
+        .into())
     }
     #[cfg(all(unix, not(target_os = "linux")))]
     {
@@ -258,7 +258,7 @@ pub(crate) fn apply_ownership(path: &Path, snap: &OwnershipSnapshot) -> UndoResu
         } else {
             None
         };
-        return set_ownership_nofollow(path, uid, gid);
+        set_ownership_nofollow(path, uid, gid)
     }
     #[cfg(not(unix))]
     {

@@ -42,7 +42,7 @@ fn list_open_with_apps_impl(path: String) -> OpenWithResult<Vec<OpenWithApp>> {
         sanitize_path_follow(&path, false).map_err(OpenWithError::from_external_message)?;
     #[cfg(target_os = "linux")]
     {
-        return Ok(linux::list_linux_apps(&target));
+        Ok(linux::list_linux_apps(&target))
     }
     #[cfg(target_os = "windows")]
     {

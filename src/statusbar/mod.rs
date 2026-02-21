@@ -7,8 +7,8 @@ use std::sync::atomic::Ordering;
 #[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 
-use crate::{commands::CancelState, runtime_lifecycle};
 use crate::errors::api_error::ApiResult;
+use crate::{commands::CancelState, runtime_lifecycle};
 
 mod error;
 use error::{map_api_result, StatusbarError, StatusbarErrorCode, StatusbarResult};

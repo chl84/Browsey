@@ -5,6 +5,7 @@ use crate::errors::{
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::enum_variant_names)]
 pub(super) enum BookmarkErrorCode {
     DatabaseOpenFailed,
     BookmarksReadFailed,

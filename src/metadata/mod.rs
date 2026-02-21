@@ -1,6 +1,6 @@
+mod error;
 pub mod providers;
 pub mod types;
-mod error;
 
 use std::fs;
 use std::path::Path;

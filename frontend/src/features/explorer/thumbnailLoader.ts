@@ -17,11 +17,6 @@ const MAX_RETRIES = 3
 const BASE_BACKOFF_MS = 300
 type Priority = 'high' | 'low'
 
-type ObsEntry = {
-  node: Element
-  path: string
-}
-
 export function createThumbnailLoader(opts: Options = {}) {
   const maxConcurrent = opts.maxConcurrent ?? DEFAULT_CONCURRENCY
   const maxDim = opts.maxDim ?? DEFAULT_DIM

@@ -445,7 +445,7 @@ fn try_gio_copy_progress(
 
     if let Some(out) = stdout {
         let reader = std::io::BufReader::new(out);
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             if transfer_cancelled(cancel, Some(app)) {
                 let _ = child.kill();
                 let _ = child.wait();

@@ -85,9 +85,10 @@ static DECODE_POOL: Lazy<ThreadPool> = Lazy::new(|| {
         .expect("failed to build decode pool")
 });
 
-static INFLIGHT: Lazy<
-    std::sync::Mutex<HashMap<String, Vec<oneshot::Sender<Result<ThumbnailResponse, String>>>>>,
-> = Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
+type InflightWaiters = Vec<oneshot::Sender<Result<ThumbnailResponse, String>>>;
+type InflightMap = HashMap<String, InflightWaiters>;
+static INFLIGHT: Lazy<std::sync::Mutex<InflightMap>> =
+    Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
 static LOG_THUMBS: Lazy<bool> =
     Lazy::new(|| std::env::var("BROWSEY_DEBUG_THUMBS").is_ok() || cfg!(debug_assertions));
 static BLOCKING_SEM: Lazy<Semaphore> = Lazy::new(|| {
@@ -268,7 +269,7 @@ async fn get_thumbnail_impl(
             notify_waiters(&key, Ok(r.clone()));
             let mut counter = TRIM_COUNTER.lock().expect("trim counter poisoned");
             *counter = counter.wrapping_add(1);
-            if *counter % 100 == 0 {
+            if (*counter).is_multiple_of(100) {
                 let max_bytes = cache_max_bytes();
                 trim_cache(&cache_dir, max_bytes, CACHE_MAX_FILES);
             }
@@ -286,7 +287,7 @@ async fn get_thumbnail_impl(
 fn cache_dir() -> Result<PathBuf, String> {
     let base = dirs_next::cache_dir()
         .or_else(dirs_next::data_dir)
-        .unwrap_or_else(|| std::env::temp_dir());
+        .unwrap_or_else(std::env::temp_dir);
     Ok(base.join("browsey").join("thumbs"))
 }
 
@@ -579,12 +580,10 @@ fn decode_timeout_for_path(path: &Path) -> Duration {
         } else {
             Duration::from_millis(DECODE_TIMEOUT_MS_GVFS)
         }
+    } else if is_hdr_or_exr {
+        Duration::from_millis(DECODE_TIMEOUT_MS_HDR_EXR)
     } else {
-        if is_hdr_or_exr {
-            Duration::from_millis(DECODE_TIMEOUT_MS_HDR_EXR)
-        } else {
-            Duration::from_millis(DECODE_TIMEOUT_MS)
-        }
+        Duration::from_millis(DECODE_TIMEOUT_MS)
     }
 }
 

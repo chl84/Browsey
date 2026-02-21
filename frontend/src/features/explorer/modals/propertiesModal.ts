@@ -726,8 +726,9 @@ export const createPropertiesModal = (deps: Deps) => {
       }
       state.update((s) => ({ ...s, ownershipError: message }))
     } finally {
-      if (activeToken !== token) return
-      state.update((s) => ({ ...s, ownershipApplying: false }))
+      if (activeToken === token) {
+        state.update((s) => ({ ...s, ownershipApplying: false }))
+      }
     }
   }
 

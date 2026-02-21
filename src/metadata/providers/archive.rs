@@ -127,19 +127,19 @@ fn kind_label(kind: ArchiveKind) -> &'static str {
 }
 
 fn zip_metrics(path: &Path) -> MetadataResult<(u64, u64)> {
-    let file = File::open(path)
-        .map_err(|error| MetadataError::from_external_message(format!("Failed to open zip: {error}")))?;
-    let mut archive = ZipArchive::new(file)
-        .map_err(|error| MetadataError::from_external_message(format!("Failed to read zip: {error}")))?;
+    let file = File::open(path).map_err(|error| {
+        MetadataError::from_external_message(format!("Failed to open zip: {error}"))
+    })?;
+    let mut archive = ZipArchive::new(file).map_err(|error| {
+        MetadataError::from_external_message(format!("Failed to read zip: {error}"))
+    })?;
 
     let mut entries = 0u64;
     let mut uncompressed = 0u64;
     for idx in 0..archive.len() {
-        let file = archive
-            .by_index(idx)
-            .map_err(|error| {
-                MetadataError::from_external_message(format!("Failed to read zip entry: {error}"))
-            })?;
+        let file = archive.by_index(idx).map_err(|error| {
+            MetadataError::from_external_message(format!("Failed to read zip entry: {error}"))
+        })?;
         if file.is_dir() {
             continue;
         }
@@ -177,11 +177,9 @@ fn tar_metrics_with_reader<R: Read>(reader: R) -> MetadataResult<(u64, u64)> {
     let mut entries = 0u64;
     let mut uncompressed = 0u64;
 
-    let iter = archive
-        .entries()
-        .map_err(|error| {
-            MetadataError::from_external_message(format!("Failed to iterate tar entries: {error}"))
-        })?;
+    let iter = archive.entries().map_err(|error| {
+        MetadataError::from_external_message(format!("Failed to iterate tar entries: {error}"))
+    })?;
     for entry_result in iter {
         let entry = entry_result.map_err(|error| {
             MetadataError::from_external_message(format!("Failed to read tar entry: {error}"))
@@ -191,13 +189,9 @@ fn tar_metrics_with_reader<R: Read>(reader: R) -> MetadataResult<(u64, u64)> {
             continue;
         }
         entries = entries.saturating_add(1);
-        let size = header
-            .size()
-            .map_err(|error| {
-                MetadataError::from_external_message(format!(
-                    "Failed to read tar entry size: {error}"
-                ))
-            })?;
+        let size = header.size().map_err(|error| {
+            MetadataError::from_external_message(format!("Failed to read tar entry size: {error}"))
+        })?;
         uncompressed = uncompressed.saturating_add(size);
     }
     Ok((entries, uncompressed))

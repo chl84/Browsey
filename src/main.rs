@@ -100,7 +100,7 @@ impl std::io::Write for SizeLimitedWriter {
 
 fn init_logging() {
     static GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
-    let base = dirs_next::data_dir().unwrap_or_else(|| std::env::temp_dir());
+    let base = dirs_next::data_dir().unwrap_or_else(std::env::temp_dir);
     let log_dir = base.join("browsey").join("logs");
     if let Err(e) = std::fs::create_dir_all(&log_dir) {
         eprintln!("Failed to create log dir {:?}: {}", log_dir, e);
@@ -172,7 +172,7 @@ fn main() {
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
                 let app = window.app_handle();
-                runtime_lifecycle::begin_shutdown_from_app(&app);
+                runtime_lifecycle::begin_shutdown_from_app(app);
                 if let Some(cancel) = app.try_state::<CancelState>() {
                     let _ = cancel.cancel_all();
                 }
@@ -180,7 +180,7 @@ fn main() {
                     watch.stop_all();
                 }
                 runtime_lifecycle::wait_for_background_jobs_from_app(
-                    &app,
+                    app,
                     std::time::Duration::from_millis(250),
                 );
             }

@@ -1,5 +1,7 @@
 #[cfg(unix)]
 use std::ffi::{CStr, CString};
+#[cfg(any(target_os = "windows", not(all(unix, target_os = "linux"))))]
+use std::fs;
 use std::io::ErrorKind;
 #[cfg(all(unix, target_os = "linux"))]
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
@@ -8,8 +10,6 @@ use std::os::unix::ffi::OsStrExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
-#[cfg(any(target_os = "windows", not(all(unix, target_os = "linux"))))]
-use std::fs;
 
 use crate::undo::UndoResult;
 
@@ -48,8 +48,7 @@ fn parent_fd_and_name(path: &Path) -> Result<(OwnedFd, CString), std::io::Error>
             "Path contains invalid NUL byte",
         )
     })?;
-    let parent_fd = open_nofollow_path_fd(parent)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let parent_fd = open_nofollow_path_fd(parent).map_err(std::io::Error::other)?;
     Ok((parent_fd, c_name))
 }
 
@@ -93,10 +92,7 @@ pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::
 
     let src_stat = fstatat_nofollow(src_parent_fd.as_raw_fd(), &src_name)?;
     if (src_stat.st_mode & libc::S_IFMT) == libc::S_IFLNK {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Symlinks are not allowed",
-        ));
+        return Err(std::io::Error::other("Symlinks are not allowed"));
     }
 
     let rc = unsafe {
@@ -274,10 +270,7 @@ fn delete_dir_recursive_at(parent_fd: libc::c_int, name: &CString) -> Result<(),
         };
         let mode = child_stat.st_mode & libc::S_IFMT;
         if mode == libc::S_IFLNK {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Symlinks are not allowed",
-            ));
+            return Err(std::io::Error::other("Symlinks are not allowed"));
         }
         if mode == libc::S_IFDIR {
             delete_dir_recursive_at(child_fd.as_raw_fd(), &child_name)?;
@@ -299,10 +292,7 @@ fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
     let stat = fstatat_nofollow(parent_fd.as_raw_fd(), &name)?;
     let mode = stat.st_mode & libc::S_IFMT;
     if mode == libc::S_IFLNK {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Symlinks are not allowed",
-        ));
+        return Err(std::io::Error::other("Symlinks are not allowed"));
     }
     if mode == libc::S_IFDIR {
         delete_dir_recursive_at(parent_fd.as_raw_fd(), &name)

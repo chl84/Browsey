@@ -137,8 +137,7 @@ fn load_pdfium_bindings(
     // 4) System search
     Pdfium::bind_to_system_library()
         .map_err(|e| format!("Pdfium load failed: {e}"))
-        .map(|b| {
+        .inspect(|_b| {
             thumb_log("pdfium: using system library search");
-            b
         })
 }

@@ -37,5 +37,8 @@ jobs:
       - name: Typecheck
         run: npm --prefix frontend run check
 
+      - name: Test
+        run: npm --prefix frontend run test
+
       - name: Build
         run: npm --prefix frontend run build

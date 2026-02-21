@@ -78,6 +78,7 @@ pub(super) fn single_root_in_tar(
     Ok(root)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn extract_tar_with_reader<F>(
     archive_path: &Path,
     dest_dir: &Path,
@@ -107,6 +108,7 @@ where
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn extract_tar<R: Read>(
     reader: R,
     dest_dir: &Path,

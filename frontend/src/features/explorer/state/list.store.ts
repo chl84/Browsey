@@ -66,7 +66,6 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
 
   const handleRowsKeydown = (filteredEntries: Entry[]) => (event: KeyboardEvent) => {
     const key = event.key.toLowerCase()
-    const selectedSet = get(selected)
     if (key === 'escape') {
       event.preventDefault()
       event.stopPropagation()

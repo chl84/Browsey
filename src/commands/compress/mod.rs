@@ -200,11 +200,11 @@ fn with_entry_metadata(base: SimpleFileOptions, entry: &EntryMeta) -> SimpleFile
 }
 
 fn is_precompressed(path: &Path) -> bool {
-    match path
+    matches!(
+        path
         .extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_ascii_lowercase())
-    {
+        .map(|ext| ext.to_ascii_lowercase()),
         Some(ext)
             if matches!(
                 ext.as_str(),
@@ -231,12 +231,8 @@ fn is_precompressed(path: &Path) -> bool {
                     | "avi"
                     | "webm"
                     | "pdf"
-            ) =>
-        {
-            true
-        }
-        _ => false,
-    }
+            )
+    )
 }
 
 fn collect_entries(
@@ -336,28 +332,28 @@ impl ProgressEmitter {
         let last = self.last_emit.load(Ordering::Relaxed);
         let now_ms = current_millis();
         let last_time = self.last_emit_time_ms.load(Ordering::Relaxed);
-        if done != last && now_ms.saturating_sub(last_time) >= 1000 {
-            if self
+        if done != last
+            && now_ms.saturating_sub(last_time) >= 1000
+            && self
                 .last_emit
                 .compare_exchange(last, done, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
-            {
-                let _ = self.last_emit_time_ms.compare_exchange(
-                    last_time,
-                    now_ms,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                );
-                let _ = runtime_lifecycle::emit_if_running(
-                    &self.app,
-                    &self.event,
-                    CompressProgressPayload {
-                        bytes: done,
-                        total: self.total,
-                        finished: false,
-                    },
-                );
-            }
+        {
+            let _ = self.last_emit_time_ms.compare_exchange(
+                last_time,
+                now_ms,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            );
+            let _ = runtime_lifecycle::emit_if_running(
+                &self.app,
+                &self.event,
+                CompressProgressPayload {
+                    bytes: done,
+                    total: self.total,
+                    finished: false,
+                },
+            );
         }
     }
 
@@ -472,7 +468,7 @@ fn do_compress(
 
     let suggested = if resolved.len() == 1 {
         resolved
-            .get(0)
+            .first()
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
             .unwrap_or("archive")

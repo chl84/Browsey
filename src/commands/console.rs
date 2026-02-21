@@ -122,7 +122,7 @@ fn launch_terminal(dir: &Path) -> ConsoleResult<()> {
         let mut tried_bins = std::collections::BTreeSet::new();
         let mut launch_error: Option<std::io::Error> = None;
         for (bin, args) in linux_terminal_candidates(&dir_arg) {
-            let mut cmdline = Command::new(&bin);
+            let mut cmdline = Command::new(bin);
             cmdline.current_dir(dir).args(&args);
             match cmdline.spawn() {
                 Ok(_) => return Ok(()),

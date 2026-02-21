@@ -42,11 +42,7 @@ impl FsUtilsError {
         }
     }
 
-    pub fn from_io_error(
-        fallback: FsUtilsErrorCode,
-        context: &str,
-        error: std::io::Error,
-    ) -> Self {
+    pub fn from_io_error(fallback: FsUtilsErrorCode, context: &str, error: std::io::Error) -> Self {
         let code = match classify_io_error(&error) {
             IoErrorHint::NotFound => FsUtilsErrorCode::NotFound,
             IoErrorHint::PermissionDenied => FsUtilsErrorCode::PermissionDenied,

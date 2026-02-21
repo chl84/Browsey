@@ -1,7 +1,7 @@
 import { getErrorMessage } from '@/shared/lib/error'
 import { listen } from '@tauri-apps/api/event'
 import { get } from 'svelte/store'
-import type { Entry, Listing, ListingFacets, Location, SortDirection, SortField } from './model/types'
+import type { Entry, ListingFacets, Location, SortDirection, SortField } from './model/types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files.service'
 import {
@@ -609,7 +609,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       lastMountPaths = nextPaths
 
       if (removedMount && isUnderMount(get(current), removedMount)) {
-        const curr = get(current)
         error.set('Volume disconnected; returning to Home')
         void load(undefined)
       }

@@ -39,6 +39,9 @@ jobs:
       - name: Install docs dependencies
         run: npm --prefix docs ci
 
+      - name: Lint docs
+        run: npm --prefix docs run lint
+
       - name: Check docs
         run: npm --prefix docs run check
 

@@ -287,7 +287,7 @@ fn bucket_name(value: &str) -> (&'static str, i64) {
     if ('s'..='z').contains(&ch) {
         return ("name:s-z", 3);
     }
-    if ('0'..='9').contains(&ch) {
+    if ch.is_ascii_digit() {
         return ("name:0-9", 4);
     }
     ("name:other", 5)
@@ -316,7 +316,7 @@ fn display_path(path: &Path) -> String {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        return display_path_unix(path);
+        display_path_unix(path)
     }
 }
 

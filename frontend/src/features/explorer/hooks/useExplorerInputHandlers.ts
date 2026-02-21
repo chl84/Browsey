@@ -425,8 +425,8 @@ export const useExplorerInputHandlers = (deps: Deps) => {
         deps.setCaretIndex(0)
         const selector =
           deps.getViewMode() === 'grid'
-            ? `.card[data-index=\"0\"]`
-            : `.row-viewport .row[data-index=\"0\"]`
+            ? '.card[data-index="0"]'
+            : '.row-viewport .row[data-index="0"]'
         const targetEl = rowsEl.querySelector<HTMLElement>(selector)
         if (targetEl) {
           targetEl.focus()

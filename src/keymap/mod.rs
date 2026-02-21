@@ -117,10 +117,7 @@ fn save_overrides(conn: &Connection, overrides: &HashMap<String, String>) -> Key
 }
 
 fn load_overrides_or_default(conn: &Connection) -> HashMap<String, String> {
-    match load_overrides(conn) {
-        Ok(overrides) => overrides,
-        Err(_) => HashMap::new(),
-    }
+    load_overrides(conn).unwrap_or_default()
 }
 
 pub fn load_shortcuts(conn: &Connection) -> KeymapCoreResult<Vec<ShortcutBinding>> {
