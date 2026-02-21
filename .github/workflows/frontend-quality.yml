@@ -40,5 +40,11 @@ jobs:
       - name: Test
         run: npm --prefix frontend run test
 
+      - name: Install Playwright browser
+        run: npx --prefix frontend playwright install --with-deps chromium
+
+      - name: E2E smoke
+        run: npm --prefix frontend run test:e2e
+
       - name: Build
         run: npm --prefix frontend run build

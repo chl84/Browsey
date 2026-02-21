@@ -144,7 +144,7 @@ Exit Criteria:
   - clipboard/drag-drop orchestration boundaries
   - search mode transitions (`address`/`filter`/`search`)
 - [x] Prefer unit/integration tests around hooks/controllers before full E2E expansion.
-- [ ] Add one smoke-level E2E for the highest-risk user path.
+- [x] Add one smoke-level E2E for the highest-risk user path.
 
 Acceptance:
 - Critical flows are protected by automated regression checks, not only manual smoke tests.
