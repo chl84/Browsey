@@ -1,7 +1,7 @@
 import { get, writable } from 'svelte/store'
-import { clampIndex, clearSelection, selectRange } from '../model/selection'
+import { clampIndex, clearSelection, selectRange } from '../selection/selection'
 import type { Entry } from '../model/types'
-import { applyClickSelection } from '../helpers/selectionController'
+import { applyClickSelection } from '../selection/selectionController'
 import { isScrollbarClick } from '../helpers/scrollbar'
 
 const defaultRowHeight = 32

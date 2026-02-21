@@ -4,7 +4,7 @@
   import { getErrorMessage } from '@/shared/lib/error'
   import { get } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from '@/features/explorer/utils'
-  import { createListState } from '@/features/explorer/stores/list.store'
+  import { createListState } from '@/features/explorer/state/list.store'
   import ExplorerShell from '@/features/explorer/components/ExplorerShell.svelte'
   import { useExplorerData } from '@/features/explorer/hooks/useExplorerData'
   import { createColumnResize } from '@/features/explorer/hooks/useColumnWidths'
