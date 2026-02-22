@@ -111,11 +111,11 @@ Acceptance:
 Target:
 - `settingsOpen`, `aboutOpen`, and similar page-only UI shell toggles
 
-- [ ] Add `frontend/src/features/explorer/pages/useExplorerPageUiState.ts`.
-- [ ] Move simple open/close/toggle handlers for page-owned UI booleans.
-- [ ] Keep feature-specific modal business logic inside existing modal controllers/hooks.
-- [ ] Do not move bookmark modal orchestration here (covered by Step 5).
-- [ ] Return a small typed API for page and shell wiring.
+- [x] Add `frontend/src/features/explorer/pages/useExplorerPageUiState.ts`.
+- [x] Move simple open/close/toggle handlers for page-owned UI booleans.
+- [x] Keep feature-specific modal business logic inside existing modal controllers/hooks.
+- [x] Do not move bookmark modal orchestration here (covered by Step 5).
+- [x] Return a small typed API for page and shell wiring.
 
 Acceptance:
 - Page local `let ...Open = ...` noise is reduced without moving business logic to the wrong layer.
@@ -216,7 +216,7 @@ Acceptance:
 - [x] Step 1 complete
 - [x] Step 2 complete
 - [x] Step 3 complete
-- [ ] Step 4 complete
+- [x] Step 4 complete
 - [ ] Step 5 complete
 - [ ] Step 6 complete
 - [ ] Step 7 complete
