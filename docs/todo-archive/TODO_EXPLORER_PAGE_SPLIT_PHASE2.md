@@ -35,12 +35,12 @@ Out of scope:
 
 ## Quality Gates (Every Step)
 
-- [ ] `npm --prefix frontend run check` is green
-- [ ] `npm --prefix frontend run lint` is green
-- [ ] Relevant step-local tests are green (unit/e2e if touched)
-- [ ] Browsey manual smoke for touched area is green
-- [ ] `ExplorerPage.svelte` diff mostly shrinks (no accidental logic duplication)
-- [ ] Commit message reflects exact step scope
+- [x] `npm --prefix frontend run check` is green
+- [x] `npm --prefix frontend run lint` is green
+- [x] Relevant step-local tests are green (unit/e2e if touched)
+- [x] Browsey manual smoke for touched area is green
+- [x] `ExplorerPage.svelte` diff mostly shrinks (no accidental logic duplication)
+- [x] Commit message reflects exact step scope
 
 ## Dependencies and Risk Hotspots
 
@@ -182,34 +182,34 @@ Acceptance:
 
 ### 9) Final cleanup + dead code pass
 
-- [ ] Remove dead locals/imports introduced by extractions.
-- [ ] Re-run search checks for duplicate handlers/helpers after moves.
-- [ ] Confirm no new deep-import boundary regressions were introduced.
-- [ ] Update docs/changelog only if the refactor materially changes contributor-facing structure.
+- [x] Remove dead locals/imports introduced by extractions.
+- [x] Re-run search checks for duplicate handlers/helpers after moves.
+- [x] Confirm no new deep-import boundary regressions were introduced.
+- [x] Update docs/changelog only if the refactor materially changes contributor-facing structure. (Not needed for this refactor-only pass.)
 
 Acceptance:
 - `ExplorerPage.svelte` is materially smaller and clearly a composition root.
 
 ## Suggested Commit Boundaries
 
-- [ ] Commit 1: shell prop factory extraction
-- [ ] Commit 2: viewport/layout orchestration extraction
-- [ ] Commit 3: page UI state + bookmark modal flow extraction
-- [ ] Commit 4: lifecycle glue extraction
-- [ ] Commit 5: derived-state/helper extraction
-- [ ] Commit 6: dependency builder normalization + cleanup
+- [x] Commit 1: shell prop factory extraction (completed, with finer-grained commits than originally suggested)
+- [x] Commit 2: viewport/layout orchestration extraction (completed, with finer-grained commits than originally suggested)
+- [x] Commit 3: page UI state + bookmark modal flow extraction (completed as two commits, one per step)
+- [x] Commit 4: lifecycle glue extraction
+- [x] Commit 5: derived-state/helper extraction
+- [x] Commit 6: dependency builder normalization + cleanup (completed as multiple commits, incl. final cleanup pass)
 
 ## Manual Smoke Checklist (Run After Each Relevant Step)
 
-- [ ] Start app and open a normal directory
-- [ ] Switch list/grid view and verify virtualization still renders correctly
-- [ ] Keyboard navigation + Enter open + double-click open
-- [ ] Context menu on item and blank area
-- [ ] Drag/drop hover + drop indicators (no obvious regressions)
-- [ ] Bookmark modal open/confirm/cancel
-- [ ] Settings modal and About modal open/close
-- [ ] Search/filter/address mode transitions + `Esc`
-- [ ] Wheel scroll in list/grid (especially after viewport/layout extraction)
+- [x] Start app and open a normal directory
+- [x] Switch list/grid view and verify virtualization still renders correctly
+- [x] Keyboard navigation + Enter open + double-click open
+- [x] Context menu on item and blank area
+- [x] Drag/drop hover + drop indicators (no obvious regressions)
+- [x] Bookmark modal open/confirm/cancel
+- [x] Settings modal and About modal open/close
+- [x] Search/filter/address mode transitions + `Esc`
+- [x] Wheel scroll in list/grid (especially after viewport/layout extraction)
 
 ## Progress
 
@@ -221,4 +221,4 @@ Acceptance:
 - [x] Step 6 complete
 - [x] Step 7 complete
 - [x] Step 8 complete
-- [ ] Step 9 complete
+- [x] Step 9 complete
