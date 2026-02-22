@@ -83,10 +83,10 @@ Target:
 - Large prop/handler object assembly passed into `ExplorerShell`
 - Pure wiring/renaming logic only
 
-- [ ] Add `frontend/src/features/explorer/pages/createExplorerShellProps.ts` (or similarly named factory).
-- [ ] Move pure prop assembly (values + callbacks) out of `ExplorerPage.svelte`.
-- [ ] Keep `ExplorerShell` public API unchanged.
-- [ ] Keep the factory free of side effects and DOM access where possible.
+- [x] Add `frontend/src/features/explorer/pages/createExplorerShellProps.ts` (or similarly named factory).
+- [x] Move pure prop assembly (values + callbacks) out of `ExplorerPage.svelte`.
+- [x] Keep `ExplorerShell` public API unchanged.
+- [x] Keep the factory free of side effects and DOM access where possible.
 
 Acceptance:
 - `ExplorerPage.svelte` no longer contains one giant inline `ExplorerShell` props assembly object.
@@ -214,7 +214,7 @@ Acceptance:
 ## Progress
 
 - [x] Step 1 complete
-- [ ] Step 2 complete
+- [x] Step 2 complete
 - [ ] Step 3 complete
 - [ ] Step 4 complete
 - [ ] Step 5 complete
