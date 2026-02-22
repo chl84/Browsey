@@ -56,6 +56,7 @@
   import { anyModalOpen as anyModalOpenStore } from '@/shared/ui/modalOpenState'
   import { createCheckDuplicatesModal } from '@/features/explorer/modals/checkDuplicatesModal'
   import { buildExplorerSelectionText, computeSelectionAnchorRepair } from './explorerPageDerived'
+  import { createExplorerDragDropDeps, createExplorerInputHandlersDeps } from './explorerPageDeps'
   import { createExplorerShellProps } from './createExplorerShellProps'
   import { useBookmarkModalFlow } from './useBookmarkModalFlow'
   import { useExplorerPageLifecycle } from './useExplorerPageLifecycle'
@@ -1293,22 +1294,7 @@
     }
   }
 
-  const {
-    dragState,
-    dragAction,
-    startNativeDrop,
-    stopNativeDrop,
-    setCopyModifierActive,
-    handleRowDragStart,
-    handleRowDragEnd,
-    handleRowDragEnter,
-    handleRowDragOver,
-    handleRowDrop,
-    handleRowDragLeave,
-    handleBreadcrumbDragOver,
-    handleBreadcrumbDragLeave,
-    handleBreadcrumbDrop,
-  } = useExplorerDragDrop({
+  const dragDropDeps = createExplorerDragDropDeps({
     currentView: () => currentView,
     currentPath: () => get(current),
     getSelectedSet: () => get(selected),
@@ -1325,7 +1311,25 @@
     handlePasteOrMove,
     showToast,
   })
-  const inputHandlers = useExplorerInputHandlers({
+
+  const {
+    dragState,
+    dragAction,
+    startNativeDrop,
+    stopNativeDrop,
+    setCopyModifierActive,
+    handleRowDragStart,
+    handleRowDragEnd,
+    handleRowDragEnter,
+    handleRowDragOver,
+    handleRowDrop,
+    handleRowDragLeave,
+    handleBreadcrumbDragOver,
+    handleBreadcrumbDragLeave,
+    handleBreadcrumbDrop,
+  } = useExplorerDragDrop(dragDropDeps)
+
+  const inputHandlerDeps = createExplorerInputHandlersDeps({
     getViewMode: () => viewMode,
     getMode: () => mode,
     setPathInput: (value) => {
@@ -1400,6 +1404,7 @@
     closeBlankContextMenu,
     suppressHoverMs: 150,
   })
+  const inputHandlers = useExplorerInputHandlers(inputHandlerDeps)
   const {
     handleDocumentKeydown,
     handleDocumentKeyup,
