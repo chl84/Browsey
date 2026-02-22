@@ -172,10 +172,10 @@ Target:
   - `useExplorerInputHandlers`
   - `useModalsController`
 
-- [ ] Extract typed dependency builders in `pages/` (one builder per major hook, or grouped by concern).
-- [ ] Keep builders close to page to avoid cross-feature leakage.
-- [ ] Ensure builders are thin and do not hide behavior.
-- [ ] If a builder starts owning branching logic, stop and extract a real hook/helper instead.
+- [x] Extract typed dependency builders in `pages/` (one builder per major hook, or grouped by concern).
+- [x] Keep builders close to page to avoid cross-feature leakage.
+- [x] Ensure builders are thin and do not hide behavior.
+- [x] If a builder starts owning branching logic, stop and extract a real hook/helper instead.
 
 Acceptance:
 - Hook calls remain readable and the page no longer has multiple 50+ line inline dependency object literals.
@@ -220,5 +220,5 @@ Acceptance:
 - [x] Step 5 complete
 - [x] Step 6 complete
 - [x] Step 7 complete
-- [ ] Step 8 complete
+- [x] Step 8 complete
 - [ ] Step 9 complete
