@@ -235,7 +235,8 @@ body,
 
 html,
 body {
-  scroll-behavior: smooth;
+  /* Avoid global smooth interpolation in the app shell; explorer uses direct scroll positioning. */
+  scroll-behavior: auto;
 }
 
 :root[data-theme='light'] {

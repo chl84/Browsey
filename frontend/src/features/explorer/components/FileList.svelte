@@ -190,6 +190,7 @@
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
+    overscroll-behavior-y: contain;
     width: 100%;
     direction: ltr;
     padding-left: var(--list-rows-padding-left, 15px);

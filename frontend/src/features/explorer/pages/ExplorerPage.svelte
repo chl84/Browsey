@@ -381,7 +381,6 @@
     updateViewportHeight,
     handleResize: handleListResize,
     handleRowsScroll,
-    handleWheel,
     handleRowsKeydown,
     handleRowsClick,
     handleRowClick,
@@ -493,7 +492,7 @@
   let gridCardWidth = 120
   let gridRowHeight = 126
   let gridGap = 6
-  const GRID_OVERSCAN = 4
+  const GRID_OVERSCAN = 8
 
   let viewAnchor = createViewSwitchAnchor({
     filteredEntries,
@@ -514,7 +513,6 @@
     getGridCols,
     gridTotalHeight,
     handleGridScroll,
-    handleGridWheel,
     recomputeGrid,
     ensureGridVisible,
   } = useGridVirtualizer({
@@ -1420,8 +1418,6 @@
     getGridGap: () => gridGap,
     handleRowsScroll,
     handleGridScroll,
-    handleWheel,
-    handleGridWheel,
     handleRowsClick,
     currentView: () => currentView,
     loadDir: (path) => loadDir(path),

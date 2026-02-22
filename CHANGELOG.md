@@ -19,6 +19,8 @@
 - URI/network classification rules were further centralized in backend command modules, reducing duplicated frontend scheme mapping logic.
 - Extract-action availability is now sourced from backend command capabilities instead of frontend extension-only heuristics.
 - Backend source layout was tightened with additional modular splits across commands/core (for example `open_with`, `clipboard`, `undo`, `fs/trash`, `context_menu`, and related command domains).
+- Explorer wheel scrolling was simplified and stabilized: a single always-on wheel assist strategy now owns scrolling in list/grid, with centralized tuning and deterministic handling of non-cancelable wheel bursts.
+- Explorer wheel/rendering behavior under extreme wheel input was tuned by reducing per-event max step, increasing list/grid virtualization overscan, and snapping scroll targets to integer pixels to reduce transient flicker/half-tone artifacts.
 
 ## v0.4.4 — 2026-02-17
 - Destructive move hardening: removed Linux check-then-rename compatibility fallback when `renameat2(RENAME_NOREPLACE)` is unavailable; operations now use a controlled non-overwrite copy+delete fallback with explicit narrower (non-atomic) guarantees.

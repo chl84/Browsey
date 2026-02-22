@@ -5,7 +5,7 @@ import { applyClickSelection } from '../selection/selectionController'
 import { isScrollbarClick } from '../helpers/scrollbar'
 
 const defaultRowHeight = 32
-const overscan = 16
+const overscan = 24
 
 export type ListState = ReturnType<typeof createListState>
 
@@ -56,10 +56,6 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
       scrollRaf = null
       scrollTop.set(pendingScrollTop)
     })
-  }
-
-  const handleWheel = (_event: WheelEvent) => {
-    // Bruk nettleserens native scroll og momentum; ingen custom handling.
   }
 
   const handleRowsKeydown = (filteredEntries: Entry[]) => (event: KeyboardEvent) => {
@@ -186,7 +182,6 @@ export const createListState = (initialRowHeight: number = defaultRowHeight) => 
     updateViewportHeight,
     handleResize,
     handleRowsScroll,
-    handleWheel,
     handleRowsKeydown,
     handleRowsClick,
     handleRowClick,
