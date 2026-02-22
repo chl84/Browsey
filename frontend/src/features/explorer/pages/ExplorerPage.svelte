@@ -63,6 +63,13 @@
   // --- Types --------------------------------------------------------------
   type ViewMode = 'list' | 'grid'
 
+  /*
+   * Temporary ownership boundaries (Phase 2 split plan):
+   * - Keep this page as the composition root (DOM refs, top-level render, high-level orchestration).
+   * - Prefer extracting pure prop/dependency assembly and page-only glue into pages/* helpers/hooks.
+   * - Keep feature behavior inside existing feature hooks/services (navigation, file-ops, input, modals).
+   */
+
   // --- Core UI state -------------------------------------------------------
   let sidebarCollapsed = false
 
@@ -363,6 +370,7 @@
     }
   }
 
+  // --- Extraction seam: view state + metrics + navigation/search assembly --
   // --- List/grid derived state & handlers ---------------------------------
   const {
     selected,
@@ -1132,6 +1140,7 @@
     }
   }
 
+  // --- Extraction seam: file ops / modals / context / input wiring --------
   const checkDuplicatesModal = createCheckDuplicatesModal({ parentPath })
   const checkDuplicatesState = checkDuplicatesModal.state
   const fileOps = useExplorerFileOps({
@@ -1532,6 +1541,7 @@
     }
   }
 
+  // --- Extraction seam: ExplorerShell prop assembly (Step 2) --------------
   $: explorerShellSidebarProps = {
     collapsed: sidebarCollapsed,
     places,
@@ -1727,7 +1737,7 @@
     selectionText,
   }
 
-
+  // --- Extraction seam: app lifecycle glue (Step 6) -----------------------
   const initLifecycle = createAppLifecycle({
     handleResize,
     loadDefaultView,
@@ -1771,6 +1781,7 @@
   onMount(initLifecycle)
 </script>
 
+<!-- Render root: keep composition at page level; push glue/helpers out over time. -->
 <svelte:document
   on:keydown|capture={handleDocumentKeydown}
   on:keyup|capture={handleDocumentKeyup}
