@@ -24,8 +24,8 @@ export type Listing = {
   entries: Entry[]
 }
 
-export type SortField = 'name' | 'type' | 'modified' | 'size' | 'starred'
-export type DefaultSortField = Exclude<SortField, 'starred'>
+export type SortField = 'name' | 'type' | 'modified' | 'size'
+export type DefaultSortField = SortField
 export type SortDirection = 'asc' | 'desc'
 export type Density = 'cozy' | 'compact'
 

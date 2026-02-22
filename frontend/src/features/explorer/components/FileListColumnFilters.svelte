@@ -24,7 +24,6 @@
     type: false,
     modified: false,
     size: false,
-    starred: false,
   }
 
   let filterMenuOpen = false
@@ -231,7 +230,6 @@
     type: activeTypeFilters.size > 0,
     modified: activeModifiedFilters.size > 0,
     size: activeSizeFilters.size > 0,
-    starred: false,
   }
 
   $: if (filterMenuOpen && filterMenuField && isFilterField(filterMenuField)) {

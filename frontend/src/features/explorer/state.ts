@@ -330,8 +330,6 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
             return (a.modified ?? '').localeCompare(b.modified ?? '')
           case 'size':
             return compareSizeField(a, b)
-          case 'starred':
-            return Number(b.starred ?? false) - Number(a.starred ?? false)
           default:
             return 0
         }

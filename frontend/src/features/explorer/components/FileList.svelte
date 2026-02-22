@@ -78,7 +78,6 @@
     type: false,
     modified: false,
     size: false,
-    starred: false,
   }
 
   const handleFilterClick = (field: SortField, anchor: DOMRect) => {

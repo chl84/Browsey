@@ -10,7 +10,6 @@ pub enum SortField {
     Type,
     Modified,
     Size,
-    Starred,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
@@ -59,7 +58,6 @@ pub fn sort_entries(entries: &mut [FsEntry], spec: Option<SortSpec>) {
             )
         }),
         SortField::Size => entries.sort_by_cached_key(|e| SizeSortKey::from_entry(e, desc)),
-        SortField::Starred => sort_with(entries, desc, |e| (e.starred, e.name.to_lowercase())),
     };
 }
 
