@@ -231,6 +231,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
       }
     | null = null
   let propertiesPermissionsLoading = false
+  let propertiesPermissionsApplying = false
   let propertiesOwnershipApplying = false
   let propertiesOwnershipError: string | null = null
   let propertiesOwnershipUsers: string[] = []
@@ -441,6 +442,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     propertiesExtraMetadataError: typeof propertiesExtraMetadataError
     propertiesExtraMetadata: typeof propertiesExtraMetadata
     propertiesPermissionsLoading: typeof propertiesPermissionsLoading
+    propertiesPermissionsApplying: typeof propertiesPermissionsApplying
     propertiesOwnershipApplying: typeof propertiesOwnershipApplying
     propertiesOwnershipError: typeof propertiesOwnershipError
     propertiesOwnershipUsers: typeof propertiesOwnershipUsers
@@ -643,6 +645,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     propertiesExtraMetadataError,
     propertiesExtraMetadata,
     propertiesPermissionsLoading,
+    propertiesPermissionsApplying,
     propertiesOwnershipApplying,
     propertiesOwnershipError,
     propertiesOwnershipUsers,
@@ -928,6 +931,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   extraMetadataError={propertiesExtraMetadataError}
   extraMetadata={propertiesExtraMetadata}
   permissionsLoading={propertiesPermissionsLoading}
+  permissionsApplying={propertiesPermissionsApplying}
   ownershipApplying={propertiesOwnershipApplying}
   ownershipError={propertiesOwnershipError}
   ownershipUsers={propertiesOwnershipUsers}

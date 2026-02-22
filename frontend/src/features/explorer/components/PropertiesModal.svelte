@@ -15,6 +15,7 @@
   export let extraMetadataError: string | null = null
   export let extraMetadata: { kind: string; sections: ExtraSection[] } | null = null
   export let permissionsLoading = false
+  export let permissionsApplying = false
   export let ownershipApplying = false
   export let ownershipError: string | null = null
   export let ownershipUsers: string[] = []
@@ -322,7 +323,7 @@
                       type="checkbox"
                       use:indeterminate={permissions[scope].read}
                       checked={permissions[scope].read === true}
-                      disabled={mutationsLocked}
+                      disabled={mutationsLocked || permissionsApplying}
                       on:change={(e) =>
                         onToggleAccess(scope, 'read', (e.currentTarget as HTMLInputElement).checked)}
                     />
@@ -332,7 +333,7 @@
                       type="checkbox"
                       use:indeterminate={permissions[scope].write}
                       checked={permissions[scope].write === true}
-                      disabled={mutationsLocked}
+                      disabled={mutationsLocked || permissionsApplying}
                       on:change={(e) =>
                         onToggleAccess(scope, 'write', (e.currentTarget as HTMLInputElement).checked)}
                     />
@@ -342,7 +343,7 @@
                       type="checkbox"
                       use:indeterminate={permissions[scope].exec}
                       checked={permissions[scope].exec === true}
-                      disabled={mutationsLocked}
+                      disabled={mutationsLocked || permissionsApplying}
                       on:change={(e) =>
                         onToggleAccess(scope, 'exec', (e.currentTarget as HTMLInputElement).checked)}
                     />
