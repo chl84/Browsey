@@ -139,11 +139,11 @@ Target:
 - `onMount`/`onDestroy` listener registration glue
 - Global event subscription cleanup wiring
 
-- [ ] Add `frontend/src/features/explorer/pages/useExplorerPageLifecycle.ts`.
-- [ ] Move listener registration/cleanup orchestration that does not belong to feature-specific hooks.
-- [ ] Keep actual feature behavior in existing hooks (navigation, input, drag-drop, app lifecycle, etc.).
-- [ ] Avoid absorbing bookmark/modal business flows into lifecycle extraction (only registration/cleanup glue belongs here).
-- [ ] Avoid burying core page startup sequence; keep top-level flow readable.
+- [x] Add `frontend/src/features/explorer/pages/useExplorerPageLifecycle.ts`.
+- [x] Move listener registration/cleanup orchestration that does not belong to feature-specific hooks.
+- [x] Keep actual feature behavior in existing hooks (navigation, input, drag-drop, app lifecycle, etc.).
+- [x] Avoid absorbing bookmark/modal business flows into lifecycle extraction (only registration/cleanup glue belongs here).
+- [x] Avoid burying core page startup sequence; keep top-level flow readable.
 
 Acceptance:
 - `ExplorerPage.svelte` lifecycle sections become thin and declarative.
@@ -218,7 +218,7 @@ Acceptance:
 - [x] Step 3 complete
 - [x] Step 4 complete
 - [x] Step 5 complete
-- [ ] Step 6 complete
+- [x] Step 6 complete
 - [ ] Step 7 complete
 - [ ] Step 8 complete
 - [ ] Step 9 complete

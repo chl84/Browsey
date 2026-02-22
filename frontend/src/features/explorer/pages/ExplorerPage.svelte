@@ -30,7 +30,6 @@
   import { loadDefaultView, storeDefaultView } from '@/features/explorer/services/settings.service'
   import { useContextMenuBlocker } from '@/features/explorer/context'
   import { createActivity } from '@/features/explorer/hooks/createActivity'
-  import { createAppLifecycle } from '@/features/explorer/hooks/createAppLifecycle'
   import { createTopbarActions, useExplorerNavigation, useExplorerSearchSession } from '@/features/explorer/navigation'
   import { createTextContextMenu } from '@/features/explorer/context'
   import {
@@ -58,6 +57,7 @@
   import { createCheckDuplicatesModal } from '@/features/explorer/modals/checkDuplicatesModal'
   import { createExplorerShellProps } from './createExplorerShellProps'
   import { useBookmarkModalFlow } from './useBookmarkModalFlow'
+  import { useExplorerPageLifecycle } from './useExplorerPageLifecycle'
   import { useExplorerPageUiState } from './useExplorerPageUiState'
   import { useExplorerViewportLayout } from './useExplorerViewportLayout'
   import '@/features/explorer/ExplorerLayout.css'
@@ -996,14 +996,6 @@
   }
 
   // --- Lifecycle: global listeners ---------------------------------------
-  onDestroy(() => {
-    cancelToggleViewModeRaf()
-    resetNewFileTypeHint()
-    cancelSearch()
-    activityApi.clearNow()
-    void activityApi.cleanup()
-    void stopDuplicateScan(true)
-  })
 
   const { openBookmarkModal, closeBookmarkModal, confirmBookmark } = bookmarkModalFlow
 
@@ -1641,7 +1633,7 @@
   }))
 
   // --- Extraction seam: app lifecycle glue (Step 6) -----------------------
-  const initLifecycle = createAppLifecycle({
+  const pageLifecycle = useExplorerPageLifecycle({
     handleResize,
     loadDefaultView,
     applyDefaultView: (prefView) => {
@@ -1652,36 +1644,21 @@
     applyShortcutBindings,
     startNativeDrop,
     stopNativeDrop,
-    onMountStarted: (fs) => {
-      activityApi.clearNow()
-      activity.set({ label: `Connecting to ${fsLabel(fs)}…`, percent: null, cancel: null, cancelling: false })
-    },
-    onMountDone: (fs, ok, outcome) => {
-      const label =
-        outcome === 'already_connected'
-          ? `Already connected to ${fsLabel(fs)}`
-          : outcome === 'connected'
-            ? `Connected to ${fsLabel(fs)}`
-            : outcome === 'failed'
-              ? `Failed to connect to ${fsLabel(fs)}`
-              : ok
-                ? `Connected to ${fsLabel(fs)}`
-                : `Failed to connect to ${fsLabel(fs)}`
-      activity.set({ label, percent: null, cancel: null, cancelling: false })
-      activityApi.hideSoon()
-      if (outcome === 'already_connected') {
-        showToast('Already connected', 1400)
-      }
-    },
-    onErrorToast: showToast,
-    onCleanup: () => {
-      abortDirStats()
-      cleanupScrollHover()
-      viewObservers.cleanup()
-    },
+    fsLabel,
+    activityApi,
+    activity,
+    showToast,
+    abortDirStats,
+    cleanupScrollHover,
+    viewObservers,
+    cancelToggleViewModeRaf,
+    resetNewFileTypeHint,
+    cancelSearch,
+    stopDuplicateScan,
   })
 
-  onMount(initLifecycle)
+  onDestroy(pageLifecycle.handlePageDestroy)
+  onMount(pageLifecycle.initLifecycle)
 </script>
 
 <!-- Render root: keep composition at page level; push glue/helpers out over time. -->
