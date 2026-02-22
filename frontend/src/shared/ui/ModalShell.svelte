@@ -34,11 +34,12 @@
     countedAsOpen = false
   })
 
-  $: if (open && initialFocusSelector) {
+  $: if (open) {
     void tick().then(() => {
       if (!open || !modalEl) return
-      const focusTarget = modalEl.querySelector<HTMLElement>(initialFocusSelector)
-      if (!focusTarget) return
+      const focusTarget = initialFocusSelector
+        ? modalEl.querySelector<HTMLElement>(initialFocusSelector) ?? modalEl
+        : modalEl
       focusTarget.focus()
       if (
         selectTextOnFocus &&

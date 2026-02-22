@@ -24,9 +24,6 @@
         if (e.key === 'Enter') {
           e.preventDefault()
           onConfirm()
-        } else if (e.key === 'Escape') {
-          e.preventDefault()
-          onCancel()
         }
       }}
     />

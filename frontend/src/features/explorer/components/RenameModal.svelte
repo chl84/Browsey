@@ -43,9 +43,6 @@
         if (e.key === 'Enter') {
           e.preventDefault()
           onConfirm(value)
-        } else if (e.key === 'Escape') {
-          e.preventDefault()
-          onCancel()
         }
       }}
     />
