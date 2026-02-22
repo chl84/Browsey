@@ -26,7 +26,7 @@
   type HiddenBit = boolean | 'mixed' | null
   const scopes = ['owner', 'group', 'other'] as const
   type Scope = (typeof scopes)[number]
-  const tabs = ['basic', 'extra', 'permissions'] as const
+  const tabs = ['basic', 'extra', 'ownership', 'permissions'] as const
   type Tab = (typeof tabs)[number]
   export let permissions:
     | {
@@ -62,6 +62,7 @@
   const tabLabels = {
     basic: 'Basic',
     extra: 'Extra',
+    ownership: 'Ownership',
     permissions: 'Permissions',
   } as const
   const accessLabels: Record<Scope, string> = {
@@ -146,20 +147,23 @@
 </script>
 
 {#if open}
-  <ModalShell open={open} onClose={onClose} modalClass="properties-modal">
-    <svelte:fragment slot="header">Properties</svelte:fragment>
-
-    <div class="tabs">
-      {#each tabs as tab}
-        <button
-          type="button"
-          class:selected={activeTab === tab}
-          on:click={() => switchTab(tab)}
-        >
-          {tabLabels[tab]}
-        </button>
-      {/each}
-    </div>
+  <ModalShell open={open} onClose={onClose} modalClass="properties-modal" modalWidth="392px">
+    <svelte:fragment slot="header">
+      <div class="properties-header-block">
+        <div class="properties-header-title">Properties</div>
+        <div class="tabs">
+          {#each tabs as tab}
+            <button
+              type="button"
+              class:selected={activeTab === tab}
+              on:click={() => switchTab(tab)}
+            >
+              {tabLabels[tab]}
+            </button>
+          {/each}
+        </div>
+      </div>
+    </svelte:fragment>
 
     {#if activeTab === 'basic'}
       <div class="rows">
@@ -234,10 +238,10 @@
           <div class="row"><span class="label">Extra</span><span class="value">No extra metadata available</span></div>
         </div>
       {/if}
-    {:else if activeTab === 'permissions'}
+    {:else if activeTab === 'ownership'}
       {#if permissionsLoading}
         <div class="rows status-rows">
-          <div class="row"><span class="label">Permissions</span><span class="value">Loading…</span></div>
+          <div class="row"><span class="label">Ownership</span><span class="value">Loading…</span></div>
         </div>
       {:else if permissions}
         <div class="permissions-panel">
@@ -304,8 +308,20 @@
               </div>
             {/if}
           </div>
-
-          {#if permissions.accessSupported}
+        </div>
+      {:else}
+        <div class="rows status-rows">
+          <div class="row"><span class="label">Ownership</span><span class="value">Not available</span></div>
+        </div>
+      {/if}
+    {:else if activeTab === 'permissions'}
+      {#if permissionsLoading}
+        <div class="rows status-rows">
+          <div class="row"><span class="label">Permissions</span><span class="value">Loading…</span></div>
+        </div>
+      {:else if permissions}
+        {#if permissions.accessSupported}
+          <div class="permissions-panel">
             <div class="access">
               <div class="cell head"></div>
               <div class="cell head">Read</div>
@@ -347,15 +363,15 @@
                 {/if}
               {/each}
             </div>
-          {:else}
-            <div class="rows status-rows permissions-status">
-              <div class="row">
-                <span class="label">Permissions</span>
-                <span class="value">Not available for one or more selected items</span>
-              </div>
+          </div>
+        {:else}
+          <div class="rows status-rows permissions-status">
+            <div class="row">
+              <span class="label">Permissions</span>
+              <span class="value">Not available for one or more selected items</span>
             </div>
-          {/if}
-        </div>
+          </div>
+        {/if}
       {:else}
         <div class="rows status-rows">
           <div class="row"><span class="label">Permissions</span><span class="value">Not available</span></div>
@@ -371,11 +387,23 @@
 
 <style>
   /* Styling is inherited from global modal rules in app.css */
+  :global(.modal.properties-modal) {
+    overflow: visible;
+    container-type: inline-size;
+  }
+
+  :global(.modal.properties-modal > header) {
+    width: 100%;
+  }
+
   .rows {
     display: grid;
-    grid-template-columns: var(--properties-label-width) 1fr;
+    grid-template-columns: max-content minmax(0, 1fr);
     row-gap: var(--properties-row-gap);
     column-gap: var(--properties-col-gap);
+    width: fit-content;
+    max-width: 100%;
+    margin-inline: auto;
   }
 
   .row {
@@ -395,16 +423,17 @@
   .access {
     margin-top: 0;
     display: grid;
-    grid-template-columns: max-content repeat(3, var(--properties-access-col-width));
+    grid-template-columns: max-content repeat(3, 64px);
     row-gap: var(--properties-access-row-gap);
-    column-gap: var(--properties-access-col-gap);
+    column-gap: 8px;
     align-items: center;
     width: max-content;
+    margin-inline: auto;
   }
 
   .ownership {
     margin: 0;
-    width: 100%;
+    width: fit-content;
     max-width: 100%;
     grid-template-columns: max-content minmax(0, 1fr);
     row-gap: var(--properties-ownership-row-gap);
@@ -414,15 +443,35 @@
   .permissions-panel {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     gap: var(--properties-panel-gap);
     margin-top: var(--properties-panel-margin-top);
+    width: 100%;
+  }
+
+  .properties-header-block {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    width: fit-content;
+    max-width: 100%;
+    margin-inline: auto;
+  }
+
+  .properties-header-title {
+    font: inherit;
+    line-height: inherit;
+  }
+
+  .properties-header-block .tabs {
+    margin-bottom: 0;
   }
 
   .ownership .label {
     text-align: left;
     justify-self: start;
-    min-width: var(--properties-ownership-label-min-width);
+    min-width: 0;
   }
 
   .ownership .value {
@@ -498,6 +547,65 @@
     text-align: left;
     white-space: nowrap;
     justify-self: start;
-    padding-right: var(--properties-access-label-padding-right);
+    padding-right: 0;
+  }
+
+  @container (max-width: 300px) {
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      width: 100%;
+      justify-content: stretch;
+    }
+
+    .tabs button {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .rows {
+      grid-template-columns: 1fr;
+      width: 100%;
+      margin-inline: 0;
+    }
+
+    .label {
+      text-align: left;
+    }
+
+    .ownership {
+      grid-template-columns: 1fr;
+      width: 100%;
+      column-gap: 0;
+    }
+
+    .permissions-panel {
+      align-items: stretch;
+    }
+
+    .ownership .label {
+      min-width: 0;
+    }
+
+    .ownership .value {
+      width: 100%;
+    }
+
+    .ownership :global(.combo) {
+      width: 100%;
+      max-width: none;
+    }
+
+    .ownership-controls {
+      width: 100%;
+    }
+
+    .ownership-apply-button {
+      width: 100%;
+    }
+
+    .properties-header-block {
+      width: 100%;
+    }
   }
 </style>
