@@ -287,6 +287,36 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   ) => {
     const dir = spec.direction === 'asc' ? 1 : -1
     const kindRank = (k: string) => (k === 'dir' ? 0 : k === 'file' ? 1 : 2)
+    const sizeSortKindRank = (k: Entry['kind']) => {
+      switch (k) {
+        case 'file':
+          return 0
+        case 'link':
+          return 1
+        case 'dir':
+          return 3
+        default:
+          return 2
+      }
+    }
+    const compareOptionalNumber = (a: number | null | undefined, b: number | null | undefined) => {
+      const aHas = typeof a === 'number'
+      const bHas = typeof b === 'number'
+      if (aHas && bHas) return (a as number) - (b as number)
+      if (aHas && !bHas) return -1
+      if (!aHas && bHas) return 1
+      return 0
+    }
+    const compareSizeField = (a: Entry, b: Entry) => {
+      const rankCmp = sizeSortKindRank(a.kind) - sizeSortKindRank(b.kind)
+      if (rankCmp !== 0) return rankCmp
+      const aIsDir = a.kind === 'dir'
+      const numericCmp = aIsDir
+        ? compareOptionalNumber(a.items, b.items)
+        : compareOptionalNumber(a.size, b.size)
+      if (numericCmp !== 0) return dir * numericCmp
+      return dir * a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    }
     const sorted = [...list]
     sorted.sort((a, b) => {
       const cmp = (() => {
@@ -299,13 +329,14 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
           case 'modified':
             return (a.modified ?? '').localeCompare(b.modified ?? '')
           case 'size':
-            return (a.size ?? 0) - (b.size ?? 0)
+            return compareSizeField(a, b)
           case 'starred':
             return Number(b.starred ?? false) - Number(a.starred ?? false)
           default:
             return 0
         }
       })()
+      if (spec.field === 'size') return cmp
       return dir * cmp
     })
     return mapNameLower(sorted)
