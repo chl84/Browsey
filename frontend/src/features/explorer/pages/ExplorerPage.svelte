@@ -57,6 +57,7 @@
   import { anyModalOpen as anyModalOpenStore } from '@/shared/ui/modalOpenState'
   import { createCheckDuplicatesModal } from '@/features/explorer/modals/checkDuplicatesModal'
   import { createExplorerShellProps } from './createExplorerShellProps'
+  import { useExplorerPageUiState } from './useExplorerPageUiState'
   import { useExplorerViewportLayout } from './useExplorerViewportLayout'
   import '@/features/explorer/ExplorerLayout.css'
 
@@ -161,6 +162,18 @@
     scheduleLookup: scheduleNewFileTypeHintLookup,
     reset: resetNewFileTypeHint,
   } = createNewFileTypeHint()
+  const pageUiState = useExplorerPageUiState({
+    getSettingsOpen: () => settingsOpen,
+    setSettingsOpen: (next) => {
+      settingsOpen = next
+    },
+    setSettingsInitialFilter: (next) => {
+      settingsInitialFilter = next
+    },
+    setAboutOpen: (next) => {
+      aboutOpen = next
+    },
+  })
 
   const fsLabel = (fs?: string) => {
     const kind = (fs ?? '').toLowerCase()
@@ -689,17 +702,12 @@
   const canUseSearch = () => currentView === 'dir'
 
   const { handleTopbarAction, handleTopbarViewModeChange } = createTopbarActions({
-    openSettings: (initialFilter) => {
-      settingsInitialFilter = initialFilter
-      settingsOpen = true
-    },
+    openSettings: (initialFilter) => pageUiState.openSettings(initialFilter),
     isSearchMode: () => isSearchSessionEnabled,
     setSearchMode: setSearchModeState,
     focusPathInput,
     toggleShowHidden: () => toggleShowHidden(),
-    openAbout: () => {
-      aboutOpen = true
-    },
+    openAbout: pageUiState.openAbout,
     refresh: () => reloadCurrent(),
     getViewMode: () => viewMode,
     toggleViewMode: () => toggleViewMode(),
@@ -938,12 +946,7 @@
       }
     },
     onToggleSettings: async () => {
-      if (settingsOpen) {
-        settingsOpen = false
-      } else {
-        settingsInitialFilter = ''
-        settingsOpen = true
-      }
+      pageUiState.toggleSettings()
       return true
     },
   })
@@ -1743,7 +1746,7 @@
   onRenameAll={() => resolveConflicts('rename')}
   onOverwrite={() => resolveConflicts('overwrite')}
 />
-<AboutBrowseyModal open={aboutOpen} onClose={() => (aboutOpen = false)} />
+<AboutBrowseyModal open={aboutOpen} onClose={pageUiState.closeAbout} />
 {#if settingsOpen}
   <SettingsModal
     open
@@ -1794,6 +1797,6 @@
     onChangeSortField={setSortFieldPref}
     onChangeSortDirection={setSortDirectionPref}
     onChangeShortcut={updateShortcutBinding}
-    onClose={() => (settingsOpen = false)}
+    onClose={pageUiState.closeSettings}
   />
 {/if}
