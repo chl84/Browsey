@@ -111,10 +111,7 @@ const shouldLockMutations = (entries: Entry[]): boolean =>
 
 export type PermissionsState = {
   accessSupported: boolean
-  executableSupported: boolean
   ownershipSupported: boolean
-  readOnly: AccessBit | null
-  executable: AccessBit | null
   ownerName: string | null
   groupName: string | null
   owner: Access | null
@@ -150,10 +147,7 @@ const OWNERSHIP_PRINCIPAL_LIMIT = 2048
 
 const unsupportedPermissionsState = (): PermissionsState => ({
   accessSupported: false,
-  executableSupported: false,
   ownershipSupported: false,
-  readOnly: null,
-  executable: null,
   ownerName: null,
   groupName: null,
   owner: null,
@@ -442,10 +436,7 @@ export const createPropertiesModal = (deps: Deps) => {
         permissionsLoading: false,
         permissions: {
           accessSupported: aggregate.access_supported,
-          executableSupported: aggregate.executable_supported,
           ownershipSupported: aggregate.ownership_supported,
-          readOnly: aggregate.read_only ?? null,
-          executable: aggregate.executable ?? null,
           ownerName: aggregate.owner_name ?? null,
           groupName: aggregate.group_name ?? null,
           owner: aggregate.owner ?? null,
@@ -476,10 +467,7 @@ export const createPropertiesModal = (deps: Deps) => {
         permissionsLoading: false,
         permissions: {
           accessSupported: perms.access_supported,
-          executableSupported: perms.executable_supported,
           ownershipSupported: perms.ownership_supported === true,
-          readOnly: perms.read_only,
-          executable: perms.executable,
           ownerName: perms.owner_name ?? null,
           groupName: perms.group_name ?? null,
           owner: perms.owner ?? null,
@@ -618,10 +606,7 @@ export const createPropertiesModal = (deps: Deps) => {
         ...s,
         permissions: {
           accessSupported: perms.access_supported ?? currentPerms?.accessSupported ?? false,
-          executableSupported: perms.executable_supported ?? currentPerms?.executableSupported ?? false,
           ownershipSupported: perms.ownership_supported ?? currentPerms?.ownershipSupported ?? false,
-          readOnly: perms.read_only ?? currentPerms?.readOnly ?? null,
-          executable: perms.executable ?? currentPerms?.executable ?? null,
           ownerName: perms.owner_name ?? currentPerms?.ownerName ?? null,
           groupName: perms.group_name ?? currentPerms?.groupName ?? null,
           owner: perms.owner ?? currentPerms?.owner ?? null,
@@ -709,10 +694,7 @@ export const createPropertiesModal = (deps: Deps) => {
         ...s,
         permissions: {
           accessSupported: perms.access_supported ?? currentPerms?.accessSupported ?? false,
-          executableSupported: perms.executable_supported ?? currentPerms?.executableSupported ?? false,
           ownershipSupported: perms.ownership_supported ?? currentPerms?.ownershipSupported ?? false,
-          readOnly: perms.read_only ?? currentPerms?.readOnly ?? null,
-          executable: perms.executable ?? currentPerms?.executable ?? null,
           ownerName: perms.owner_name ?? currentPerms?.ownerName ?? null,
           groupName: perms.group_name ?? currentPerms?.groupName ?? null,
           owner: perms.owner ?? currentPerms?.owner ?? null,
