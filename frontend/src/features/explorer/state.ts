@@ -286,6 +286,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     spec: { field: SortField; direction: SortDirection } = sortPayload(),
   ) => {
     const dir = spec.direction === 'asc' ? 1 : -1
+    const compareString = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
     const kindRank = (k: string) => (k === 'dir' ? 0 : k === 'file' ? 1 : 2)
     const sizeSortKindRank = (k: Entry['kind']) => {
       switch (k) {
@@ -307,37 +308,61 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       if (!aHas && bHas) return 1
       return 0
     }
-    const compareSizeField = (a: Entry, b: Entry) => {
-      const rankCmp = sizeSortKindRank(a.kind) - sizeSortKindRank(b.kind)
+    const compareSizeField = (
+      a: { kindRank: number; numeric: number | null | undefined; nameKey: string },
+      b: { kindRank: number; numeric: number | null | undefined; nameKey: string },
+    ) => {
+      const rankCmp = a.kindRank - b.kindRank
       if (rankCmp !== 0) return rankCmp
-      const aIsDir = a.kind === 'dir'
-      const numericCmp = aIsDir
-        ? compareOptionalNumber(a.items, b.items)
-        : compareOptionalNumber(a.size, b.size)
+      const numericCmp = compareOptionalNumber(a.numeric, b.numeric)
       if (numericCmp !== 0) return dir * numericCmp
-      return dir * a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      return dir * compareString(a.nameKey, b.nameKey)
     }
-    const sorted = [...list]
-    sorted.sort((a, b) => {
+    const decorated = list.map((entry, index) => {
+      const nameKey = entry.nameLower ?? entry.name.toLowerCase()
+      return {
+        entry,
+        index,
+        nameKey,
+        typeKindRank: kindRank(entry.kind),
+        typeExtKey: (entry.ext ?? '').toLowerCase(),
+        modifiedKey: entry.modified ?? '',
+        sizeKey: {
+          kindRank: sizeSortKindRank(entry.kind),
+          numeric: entry.kind === 'dir' ? entry.items : entry.size,
+          nameKey,
+        },
+      }
+    })
+    decorated.sort((a, b) => {
       const cmp = (() => {
         switch (spec.field) {
           case 'name':
-            return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-          case 'type':
-            if (a.kind !== b.kind) return kindRank(a.kind) - kindRank(b.kind)
-            return (a.ext ?? '').localeCompare(b.ext ?? '', undefined, { sensitivity: 'base' })
-          case 'modified':
-            return (a.modified ?? '').localeCompare(b.modified ?? '')
+            return compareString(a.nameKey, b.nameKey)
+          case 'type': {
+            const kindCmp = a.typeKindRank - b.typeKindRank
+            if (kindCmp !== 0) return kindCmp
+            const extCmp = compareString(a.typeExtKey, b.typeExtKey)
+            if (extCmp !== 0) return extCmp
+            return compareString(a.nameKey, b.nameKey)
+          }
+          case 'modified': {
+            const modifiedCmp = compareString(a.modifiedKey, b.modifiedKey)
+            if (modifiedCmp !== 0) return modifiedCmp
+            return compareString(a.nameKey, b.nameKey)
+          }
           case 'size':
-            return compareSizeField(a, b)
+            return compareSizeField(a.sizeKey, b.sizeKey)
           default:
             return 0
         }
       })()
-      if (spec.field === 'size') return cmp
-      return dir * cmp
+      if (cmp !== 0) {
+        return spec.field === 'size' ? cmp : dir * cmp
+      }
+      return a.index - b.index
     })
-    return mapNameLower(sorted)
+    return mapNameLower(decorated.map((item) => item.entry))
   }
 
   const refreshForSort = async () => {
