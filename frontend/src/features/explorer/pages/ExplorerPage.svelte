@@ -55,6 +55,7 @@
   import AboutBrowseyModal from '@/features/explorer/components/AboutBrowseyModal.svelte'
   import { anyModalOpen as anyModalOpenStore } from '@/shared/ui/modalOpenState'
   import { createCheckDuplicatesModal } from '@/features/explorer/modals/checkDuplicatesModal'
+  import { buildExplorerSelectionText, computeSelectionAnchorRepair } from './explorerPageDerived'
   import { createExplorerShellProps } from './createExplorerShellProps'
   import { useBookmarkModalFlow } from './useBookmarkModalFlow'
   import { useExplorerPageLifecycle } from './useExplorerPageLifecycle'
@@ -643,40 +644,26 @@
   let selectionText = ''
 
   $: {
-    const selectedEntries = $entries.filter((e) => $selected.has(e.path))
-    const files = selectedEntries.filter((e) => e.kind === 'file')
-    const links = selectedEntries.filter((e) => e.kind === 'link')
-    const dirs = selectedEntries.filter((e) => e.kind === 'dir')
-    const fileBytes = files.reduce((sum, f) => sum + (f.size ?? 0), 0)
-    const fileCount = files.length + links.length
-
-    const dirLine = formatSelectionLine(dirs.length, 'folder')
-    const fileLine = formatSelectionLine(fileCount, 'file', fileBytes)
-
-    const hasFilter = $filter.trim().length > 0
-    const filterLine = hasFilter ? `${$filteredEntries.length} results` : ''
-
-    const parts = [filterLine, dirLine, fileLine].filter((p) => p.length > 0)
-    selectionText = parts.join(' | ')
+    selectionText = buildExplorerSelectionText({
+      entries: $entries,
+      selectedPaths: $selected,
+      filterValue: $filter,
+      filteredCount: $filteredEntries.length,
+      formatSelectionLine,
+    })
   }
 
   // Re-anchor keyboard navigation after returning to a view so arrows start from the selected item.
   $: {
-    const list = $filteredEntries
-    if ($selected.size > 0 && list.length > 0) {
-      const firstIdx = list.findIndex((e) => $selected.has(e.path))
-      if (firstIdx >= 0) {
-        const anchorValid =
-          $anchorIndex !== null &&
-          $anchorIndex < list.length &&
-          $selected.has(list[$anchorIndex].path)
-        const caretValid =
-          $caretIndex !== null &&
-          $caretIndex < list.length &&
-          $selected.has(list[$caretIndex].path)
-        if (!anchorValid) anchorIndex.set(firstIdx)
-        if (!caretValid) caretIndex.set(firstIdx)
-      }
+    const repair = computeSelectionAnchorRepair({
+      list: $filteredEntries,
+      selectedPaths: $selected,
+      anchorIndex: $anchorIndex,
+      caretIndex: $caretIndex,
+    })
+    if (repair) {
+      if (repair.nextAnchorIndex !== null) anchorIndex.set(repair.nextAnchorIndex)
+      if (repair.nextCaretIndex !== null) caretIndex.set(repair.nextCaretIndex)
     }
   }
 

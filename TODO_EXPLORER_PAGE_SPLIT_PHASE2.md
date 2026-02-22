@@ -153,11 +153,11 @@ Acceptance:
 Target:
 - Large `$:` blocks that mostly compute derived values and synchronize state
 
-- [ ] Identify pure derived-state computations vs side effects.
-- [ ] Move pure calculations into helper functions/factories under `frontend/src/features/explorer/pages/`.
-- [ ] Keep side-effectful `$:` blocks in page (or in dedicated hooks if clearly owned).
-- [ ] Avoid changing reactive ordering semantics in this step.
-- [ ] Add step-local smoke focus on search/filter mode transitions and selection/view sync after reactive cleanup.
+- [x] Identify pure derived-state computations vs side effects.
+- [x] Move pure calculations into helper functions/factories under `frontend/src/features/explorer/pages/`.
+- [x] Keep side-effectful `$:` blocks in page (or in dedicated hooks if clearly owned).
+- [x] Avoid changing reactive ordering semantics in this step.
+- [x] Add step-local smoke focus on search/filter mode transitions and selection/view sync after reactive cleanup.
 
 Acceptance:
 - Fewer large `$:` blocks in page; remaining ones are easier to reason about.
@@ -219,6 +219,6 @@ Acceptance:
 - [x] Step 4 complete
 - [x] Step 5 complete
 - [x] Step 6 complete
-- [ ] Step 7 complete
+- [x] Step 7 complete
 - [ ] Step 8 complete
 - [ ] Step 9 complete
