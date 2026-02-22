@@ -56,7 +56,15 @@
   import { anyModalOpen as anyModalOpenStore } from '@/shared/ui/modalOpenState'
   import { createCheckDuplicatesModal } from '@/features/explorer/modals/checkDuplicatesModal'
   import { buildExplorerSelectionText, computeSelectionAnchorRepair } from './explorerPageDerived'
-  import { createExplorerDragDropDeps, createExplorerInputHandlersDeps } from './explorerPageDeps'
+  import {
+    createExplorerContextActionsDeps,
+    createExplorerContextMenuOpsDeps,
+    createExplorerDragDropDeps,
+    createExplorerFileOpsDeps,
+    createExplorerInputHandlersDeps,
+    createExplorerModalsControllerDeps,
+    createExplorerNavigationDeps,
+  } from './explorerPageDeps'
   import { createExplorerShellProps } from './createExplorerShellProps'
   import { useBookmarkModalFlow } from './useBookmarkModalFlow'
   import { useExplorerPageLifecycle } from './useExplorerPageLifecycle'
@@ -536,7 +544,7 @@
     bookmarkModalFlow.syncDraftNameToModal(bookmarkModalOpen, bookmarkName)
   }
 
-  const navigation = useExplorerNavigation({
+  const navigation = useExplorerNavigation(createExplorerNavigationDeps({
     current,
     loading,
     filteredEntries,
@@ -566,7 +574,7 @@
     setPathInput: (value) => {
       pathInput = value
     },
-  })
+  }))
   const {
     viewFromPath,
     loadDir,
@@ -1085,7 +1093,7 @@
   // --- Extraction seam: file ops / modals / context / input wiring --------
   const checkDuplicatesModal = createCheckDuplicatesModal({ parentPath })
   const checkDuplicatesState = checkDuplicatesModal.state
-  const fileOps = useExplorerFileOps({
+  const fileOps = useExplorerFileOps(createExplorerFileOpsDeps({
     currentView: () => currentView,
     getCurrentPath: () => get(current),
     clipboardMode: () => clipboardMode,
@@ -1111,7 +1119,7 @@
     duplicateModalClose: () => checkDuplicatesModal.close(),
     showToast,
     activityApi,
-  })
+  }))
   const {
     conflictModalOpen,
     conflictList,
@@ -1145,7 +1153,7 @@
     compressModal,
     compressState,
     actions: modalActions,
-  } = useModalsController({
+  } = useModalsController(createExplorerModalsControllerDeps({
     activityApi,
     reloadCurrent,
     showToast,
@@ -1154,7 +1162,7 @@
     parentPath,
     checkDuplicatesModal,
     computeDirStats,
-  })
+  }))
 
   $: if ($newFileState.open) {
     scheduleNewFileTypeHintLookup(newFileName)
@@ -1164,7 +1172,7 @@
 
   let clearPendingOpenCandidate = () => {}
 
-  const contextActions = createContextActions({
+  const contextActions = createContextActions(createExplorerContextActionsDeps({
     getSelectedPaths: () => Array.from($selected),
     getSelectedSet: () => $selected,
     getFilteredEntries: () => $filteredEntries,
@@ -1197,8 +1205,8 @@
     openLocation: (entry) => {
       void openEntryLocation(entry)
     },
-  })
-  const contextMenuOps = useExplorerContextMenuOps({
+  }))
+  const contextMenuOps = useExplorerContextMenuOps(createExplorerContextMenuOpsDeps({
     currentView: () => currentView,
     isSearchSessionEnabled: () => isSearchSessionEnabled,
     shortcutBindings: () => shortcutBindings,
@@ -1238,7 +1246,7 @@
     onBeforeRowContextMenu: () => {
       clearPendingOpenCandidate()
     },
-  })
+  }))
   const {
     handleRowContextMenu,
     handleBlankContextMenu,

@@ -1,8 +1,17 @@
 import { useExplorerDragDrop } from '../file-ops'
+import { useExplorerFileOps } from '../file-ops'
+import { createContextActions, useExplorerContextMenuOps } from '../context'
 import { useExplorerInputHandlers } from '../hooks/useExplorerInputHandlers'
+import { useModalsController } from '../hooks/useModalsController'
+import { useExplorerNavigation } from '../navigation'
 
 type ExplorerInputHandlerDeps = Parameters<typeof useExplorerInputHandlers>[0]
 type ExplorerDragDropDeps = Parameters<typeof useExplorerDragDrop>[0]
+type ExplorerNavigationDeps = Parameters<typeof useExplorerNavigation>[0]
+type ExplorerFileOpsDeps = Parameters<typeof useExplorerFileOps>[0]
+type ExplorerModalsControllerDeps = Parameters<typeof useModalsController>[0]
+type ExplorerContextActionsDeps = Parameters<typeof createContextActions>[0]
+type ExplorerContextMenuOpsDeps = Parameters<typeof useExplorerContextMenuOps>[0]
 
 export const createExplorerInputHandlersDeps = (deps: ExplorerInputHandlerDeps): ExplorerInputHandlerDeps => ({
   getViewMode: deps.getViewMode,
@@ -80,4 +89,117 @@ export const createExplorerDragDropDeps = (deps: ExplorerDragDropDeps): Explorer
   focusEntryInCurrentList: deps.focusEntryInCurrentList,
   handlePasteOrMove: deps.handlePasteOrMove,
   showToast: deps.showToast,
+})
+
+export const createExplorerNavigationDeps = (deps: ExplorerNavigationDeps): ExplorerNavigationDeps => ({
+  current: deps.current,
+  loading: deps.loading,
+  filteredEntries: deps.filteredEntries,
+  selected: deps.selected,
+  anchorIndex: deps.anchorIndex,
+  caretIndex: deps.caretIndex,
+  rowHeight: deps.rowHeight,
+  gridTotalHeight: deps.gridTotalHeight,
+  getViewMode: deps.getViewMode,
+  getRowsEl: deps.getRowsEl,
+  getHeaderEl: deps.getHeaderEl,
+  getGridEl: deps.getGridEl,
+  getGridCols: deps.getGridCols,
+  getGridRowHeight: deps.getGridRowHeight,
+  getGridGap: deps.getGridGap,
+  resetScrollPosition: deps.resetScrollPosition,
+  loadRaw: deps.loadRaw,
+  loadRecentRaw: deps.loadRecentRaw,
+  loadStarredRaw: deps.loadStarredRaw,
+  loadNetworkRaw: deps.loadNetworkRaw,
+  loadTrashRaw: deps.loadTrashRaw,
+  goBackRaw: deps.goBackRaw,
+  goForwardRaw: deps.goForwardRaw,
+  open: deps.open,
+  loadPartitions: deps.loadPartitions,
+  showToast: deps.showToast,
+  setPathInput: deps.setPathInput,
+})
+
+export const createExplorerFileOpsDeps = (deps: ExplorerFileOpsDeps): ExplorerFileOpsDeps => ({
+  currentView: deps.currentView,
+  getCurrentPath: deps.getCurrentPath,
+  clipboardMode: deps.clipboardMode,
+  setClipboardPaths: deps.setClipboardPaths,
+  shouldOpenDestAfterExtract: deps.shouldOpenDestAfterExtract,
+  loadPath: deps.loadPath,
+  reloadCurrent: deps.reloadCurrent,
+  getDuplicateScanInput: deps.getDuplicateScanInput,
+  duplicateModalStart: deps.duplicateModalStart,
+  duplicateModalSetProgress: deps.duplicateModalSetProgress,
+  duplicateModalFinish: deps.duplicateModalFinish,
+  duplicateModalFail: deps.duplicateModalFail,
+  duplicateModalStop: deps.duplicateModalStop,
+  duplicateModalClose: deps.duplicateModalClose,
+  showToast: deps.showToast,
+  activityApi: deps.activityApi,
+})
+
+export const createExplorerModalsControllerDeps = (
+  deps: ExplorerModalsControllerDeps,
+): ExplorerModalsControllerDeps => ({
+  activityApi: deps.activityApi,
+  reloadCurrent: deps.reloadCurrent,
+  showToast: deps.showToast,
+  getCurrentPath: deps.getCurrentPath,
+  loadPath: deps.loadPath,
+  parentPath: deps.parentPath,
+  checkDuplicatesModal: deps.checkDuplicatesModal,
+  computeDirStats: deps.computeDirStats,
+})
+
+export const createExplorerContextActionsDeps = (
+  deps: ExplorerContextActionsDeps,
+): ExplorerContextActionsDeps => ({
+  getSelectedPaths: deps.getSelectedPaths,
+  getSelectedSet: deps.getSelectedSet,
+  getFilteredEntries: deps.getFilteredEntries,
+  currentView: deps.currentView,
+  confirmDeleteEnabled: deps.confirmDeleteEnabled,
+  reloadCurrent: deps.reloadCurrent,
+  clipboard: deps.clipboard,
+  showToast: deps.showToast,
+  openWith: deps.openWith,
+  openCompress: deps.openCompress,
+  openCheckDuplicates: deps.openCheckDuplicates,
+  extractEntries: deps.extractEntries,
+  startRename: deps.startRename,
+  startAdvancedRename: deps.startAdvancedRename,
+  confirmDelete: deps.confirmDelete,
+  openProperties: deps.openProperties,
+  openLocation: deps.openLocation,
+})
+
+export const createExplorerContextMenuOpsDeps = (
+  deps: ExplorerContextMenuOpsDeps,
+): ExplorerContextMenuOpsDeps => ({
+  currentView: deps.currentView,
+  isSearchSessionEnabled: deps.isSearchSessionEnabled,
+  shortcutBindings: deps.shortcutBindings,
+  getCurrentPath: deps.getCurrentPath,
+  getContextMenuEntry: deps.getContextMenuEntry,
+  getClipboardPathCount: deps.getClipboardPathCount,
+  getSelectedSet: deps.getSelectedSet,
+  getFilteredEntries: deps.getFilteredEntries,
+  setSelection: deps.setSelection,
+  openContextMenu: deps.openContextMenu,
+  closeContextMenu: deps.closeContextMenu,
+  openBlankContextMenu: deps.openBlankContextMenu,
+  closeBlankContextMenu: deps.closeBlankContextMenu,
+  loadNetwork: deps.loadNetwork,
+  openPartition: deps.openPartition,
+  loadPartitions: deps.loadPartitions,
+  pasteIntoCurrent: deps.pasteIntoCurrent,
+  openNewFolderModal: deps.openNewFolderModal,
+  openNewFileModal: deps.openNewFileModal,
+  openAdvancedRename: deps.openAdvancedRename,
+  startRename: deps.startRename,
+  contextActions: deps.contextActions,
+  showToast: deps.showToast,
+  onBeforeRowContextMenu: deps.onBeforeRowContextMenu,
 })
