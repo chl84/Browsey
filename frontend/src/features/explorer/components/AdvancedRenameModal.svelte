@@ -187,11 +187,9 @@
 
         <div class="panel preview preview-panel">
           <span>Preview</span>
-          <div class="preview-box">
+          <div class="preview-box" aria-busy={previewLoading}>
             {#if entries.length === 0}
               <div class="muted">No items selected</div>
-            {:else if previewLoading}
-              <div class="muted">Updating preview…</div>
             {:else}
               <ul>
                 {#each entries as entry, idx}
