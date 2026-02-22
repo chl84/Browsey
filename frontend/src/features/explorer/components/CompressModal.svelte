@@ -1,5 +1,6 @@
 <script lang="ts">
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
+  import Slider from '../../../shared/ui/Slider.svelte'
   import { autoSelectOnOpen } from '../../../shared/ui/modalUtils'
 
   export let open = false
@@ -58,8 +59,7 @@
     </label>
     <label class="field">
       <span>Compression level</span>
-      <input
-        type="range"
+      <Slider
         id="compress-archive-level"
         autocomplete="off"
         min="0"

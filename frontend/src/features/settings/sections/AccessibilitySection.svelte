@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Slider from '../../../shared/ui/Slider.svelte'
   import type { Settings } from '../settingsTypes'
 
   export let show = false
@@ -6,10 +7,6 @@
   export let showScrollbarWidthRow = false
   export let settings: Settings
   export let onPatch: (patch: Partial<Settings>) => void = () => {}
-  const onNumberInput = (key: 'scrollbarWidth') => (event: Event) => {
-    const target = event.currentTarget as HTMLInputElement
-    onPatch({ [key]: Number(target.value) } as Partial<Settings>)
-  }
 </script>
 
 {#if show}
@@ -31,13 +28,12 @@
   {#if showScrollbarWidthRow}
     <div class="form-label">Scrollbar width</div>
     <div class="form-control">
-      <input
-        type="range"
+      <Slider
         min="6"
         max="16"
         step="1"
         value={settings.scrollbarWidth}
-        on:input={onNumberInput('scrollbarWidth')}
+        on:input={(event) => onPatch({ scrollbarWidth: event.detail.value })}
       />
       <small>{settings.scrollbarWidth} px</small>
     </div>
