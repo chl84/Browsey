@@ -11,27 +11,33 @@
   import { createGlobalShortcuts } from '@/features/explorer/hooks/createGlobalShortcuts'
   import { createBookmarkModal } from '@/features/explorer/hooks/createBookmarkModal'
   import { useExplorerDragDrop, createClipboard, useExplorerFileOps } from '@/features/explorer/file-ops'
-  import { useExplorerContextMenuOps } from '@/features/explorer/context'
   import { useExplorerInputHandlers } from '@/features/explorer/hooks/useExplorerInputHandlers'
   import { useModalsController } from '@/features/explorer/hooks/useModalsController'
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
   import { ejectDrive } from '@/features/explorer/services/drives.service'
   import { openConsole } from '@/features/explorer/services/console.service'
-  import {
-    copyPathsToSystemClipboard,
-  } from '@/features/explorer/services/clipboard.service'
+  import { copyPathsToSystemClipboard } from '@/features/explorer/services/clipboard.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
   import { deleteEntries, moveToTrashMany, purgeTrashItems } from '@/features/explorer/services/trash.service'
   import type { Entry, Partition, SortField } from '@/features/explorer/model/types'
   import { toast, showToast } from '@/features/explorer/hooks/useToast'
-  import { createContextMenus, createContextActions, type CurrentView } from '@/features/explorer/context'
+  import {
+    createContextActions,
+    createContextMenus,
+    createTextContextMenu,
+    useContextMenuBlocker,
+    useExplorerContextMenuOps,
+    type CurrentView,
+  } from '@/features/explorer/context'
   import { createSelectionBox } from '@/features/explorer/selection'
-  import { createViewSwitchAnchor } from '@/features/explorer/navigation'
+  import {
+    createTopbarActions,
+    createViewSwitchAnchor,
+    useExplorerNavigation,
+    useExplorerSearchSession,
+  } from '@/features/explorer/navigation'
   import { loadDefaultView, storeDefaultView } from '@/features/explorer/services/settings.service'
-  import { useContextMenuBlocker } from '@/features/explorer/context'
   import { createActivity } from '@/features/explorer/hooks/createActivity'
-  import { createTopbarActions, useExplorerNavigation, useExplorerSearchSession } from '@/features/explorer/navigation'
-  import { createTextContextMenu } from '@/features/explorer/context'
   import {
     DEFAULT_SHORTCUTS,
     loadShortcuts,
@@ -41,8 +47,6 @@
     type ShortcutBinding,
     type ShortcutCommandId,
   } from '@/features/shortcuts'
-  import DragGhost from '@/shared/ui/DragGhost.svelte'
-  import TextContextMenu from '@/features/explorer/components/TextContextMenu.svelte'
   import {
     clearBookmarks,
     clearRecents,
@@ -50,9 +54,7 @@
     clearThumbnailCache,
   } from '@/features/explorer/services/data.service'
   import { createNewFileTypeHint } from '@/features/explorer/hooks/createNewFileTypeHint'
-  import ConflictModal from '@/shared/ui/ConflictModal.svelte'
   import { SettingsModal } from '@/features/settings'
-  import AboutBrowseyModal from '@/features/explorer/components/AboutBrowseyModal.svelte'
   import { anyModalOpen as anyModalOpenStore } from '@/shared/ui/modalOpenState'
   import { createCheckDuplicatesModal } from '@/features/explorer/modals/checkDuplicatesModal'
   import { buildExplorerSelectionText, computeSelectionAnchorRepair } from './explorerPageDerived'
@@ -65,7 +67,9 @@
     createExplorerModalsControllerDeps,
     createExplorerNavigationDeps,
   } from './explorerPageDeps'
+  import { createExplorerSettingsModalProps } from './createExplorerSettingsModalProps'
   import { createExplorerShellProps } from './createExplorerShellProps'
+  import ExplorerPageOverlays from './ExplorerPageOverlays.svelte'
   import { useBookmarkModalFlow } from './useBookmarkModalFlow'
   import { useExplorerPageLifecycle } from './useExplorerPageLifecycle'
   import { useExplorerPageUiState } from './useExplorerPageUiState'
@@ -1495,6 +1499,12 @@
     }
   }
 
+  const handleSettingsDefaultViewChange = (val: 'list' | 'grid') => {
+    viewMode = val
+    defaultViewPref = val
+    void storeDefaultView(val)
+  }
+
   // --- Extraction seam: ExplorerShell prop assembly (Step 2) --------------
   let explorerShellSidebarProps: any
   let explorerShellTopbarProps: any
@@ -1502,6 +1512,7 @@
   let explorerShellMenuProps: any
   let explorerShellModalProps: any
   let explorerShellStatusProps: any
+  let settingsModalProps: any
 
   $: ({
     sidebarProps: explorerShellSidebarProps,
@@ -1632,6 +1643,53 @@
     selectionText,
   }))
 
+  $: settingsModalProps = createExplorerSettingsModalProps({
+    settingsInitialFilter,
+    defaultViewPref,
+    showHidden: $showHidden,
+    hiddenFilesLast: $hiddenFilesLast,
+    foldersFirst: $foldersFirst,
+    confirmDelete: $confirmDelete,
+    density: $density,
+    archiveName: $archiveName,
+    archiveLevel: $archiveLevel,
+    openDestAfterExtract: $openDestAfterExtract,
+    videoThumbs: $videoThumbs,
+    hardwareAcceleration: $hardwareAcceleration,
+    ffmpegPath: $ffmpegPath,
+    thumbCacheMb: $thumbCacheMb,
+    mountsPollMs: $mountsPollMs,
+    doubleClickMs: $doubleClickMs,
+    startDir: $startDirPref ?? '~',
+    sortField: $sortFieldPref,
+    sortDirection: $sortDirectionPref,
+    shortcuts: shortcutBindings,
+    onChangeDefaultView: handleSettingsDefaultViewChange,
+    onToggleShowHidden: toggleShowHidden,
+    onToggleHiddenFilesLast: toggleHiddenFilesLast,
+    onToggleFoldersFirst: toggleFoldersFirst,
+    onToggleConfirmDelete: toggleConfirmDelete,
+    onChangeStartDir: setStartDirPref,
+    onChangeDensity: setDensityPref,
+    onChangeArchiveName: setArchiveNamePref,
+    onChangeArchiveLevel: setArchiveLevelPref,
+    onToggleOpenDestAfterExtract: toggleOpenDestAfterExtract,
+    onToggleVideoThumbs: toggleVideoThumbs,
+    onToggleHardwareAcceleration: setHardwareAccelerationPref,
+    onChangeFfmpegPath: setFfmpegPathPref,
+    onChangeThumbCacheMb: setThumbCachePref,
+    onChangeMountsPollMs: setMountsPollPref,
+    onChangeDoubleClickMs: setDoubleClickMsPref,
+    onClearThumbCache: clearThumbnailCacheFromSettings,
+    onClearStars: clearStarsFromSettings,
+    onClearBookmarks: clearBookmarksFromSettings,
+    onClearRecents: clearRecentsFromSettings,
+    onChangeSortField: setSortFieldPref,
+    onChangeSortDirection: setSortDirectionPref,
+    onChangeShortcut: updateShortcutBinding,
+    onClose: pageUiState.closeSettings,
+  })
+
   // --- Extraction seam: app lifecycle glue (Step 6) -----------------------
   const pageLifecycle = useExplorerPageLifecycle({
     handleResize,
@@ -1675,100 +1733,48 @@
     e.stopPropagation()
   }}
 />
-<DragGhost
-  visible={$dragState.dragging}
-  x={$dragState.position.x}
-  y={$dragState.position.y}
-  count={$dragState.paths.length}
-  allowed={$dragState.target !== null}
-  action={$dragAction}
-/>
-<TextContextMenu
-  open={$textMenuOpen}
-  x={$textMenuX}
-  y={$textMenuY}
-  target={$textMenuTarget}
-  readonly={$textMenuReadonly}
-  shortcuts={shortcutBindings}
-  onClose={closeTextContextMenu}
-/>
-<ExplorerShell
-  bind:pathInput
-  bind:pathInputEl
-  bind:rowsEl={rowsElRef}
-  bind:headerEl={headerElRef}
-  bind:bookmarkName
-  bind:bookmarkInputEl
-  bind:renameValue
-  bind:compressName
-  bind:compressLevel
-  bind:newFolderName
-  bind:newFileName
-  sidebarProps={explorerShellSidebarProps}
-  topbarProps={explorerShellTopbarProps}
-  listingProps={explorerShellListingProps}
-  menuProps={explorerShellMenuProps}
-  modalProps={explorerShellModalProps}
-  statusProps={explorerShellStatusProps}
-/>
-<ConflictModal
-  open={$conflictModalOpen}
-  conflicts={$conflictList}
-  onCancel={cancelConflicts}
-  onRenameAll={() => resolveConflicts('rename')}
-  onOverwrite={() => resolveConflicts('overwrite')}
-/>
-<AboutBrowseyModal open={aboutOpen} onClose={pageUiState.closeAbout} />
-{#if settingsOpen}
-  <SettingsModal
-    open
-    initialFilter={settingsInitialFilter}
-    defaultViewValue={defaultViewPref}
-    showHiddenValue={$showHidden}
-    hiddenFilesLastValue={$hiddenFilesLast}
-    foldersFirstValue={$foldersFirst}
-    confirmDeleteValue={$confirmDelete}
-    densityValue={$density}
-    archiveNameValue={$archiveName}
-    archiveLevelValue={$archiveLevel}
-    openDestAfterExtractValue={$openDestAfterExtract}
-    videoThumbsValue={$videoThumbs}
-    hardwareAccelerationValue={$hardwareAcceleration}
-    ffmpegPathValue={$ffmpegPath}
-    thumbCacheMbValue={$thumbCacheMb}
-    mountsPollMsValue={$mountsPollMs}
-    doubleClickMsValue={$doubleClickMs}
-    startDirValue={$startDirPref ?? '~'}
-    sortFieldValue={$sortFieldPref}
-    sortDirectionValue={$sortDirectionPref}
-    shortcuts={shortcutBindings}
-    onChangeDefaultView={(val) => {
-      viewMode = val
-      defaultViewPref = val
-      void storeDefaultView(val)
-    }}
-    onToggleShowHidden={toggleShowHidden}
-    onToggleHiddenFilesLast={toggleHiddenFilesLast}
-    onToggleFoldersFirst={toggleFoldersFirst}
-    onToggleConfirmDelete={toggleConfirmDelete}
-    onChangeStartDir={setStartDirPref}
-    onChangeDensity={setDensityPref}
-    onChangeArchiveName={setArchiveNamePref}
-    onChangeArchiveLevel={setArchiveLevelPref}
-    onToggleOpenDestAfterExtract={toggleOpenDestAfterExtract}
-    onToggleVideoThumbs={toggleVideoThumbs}
-    onToggleHardwareAcceleration={setHardwareAccelerationPref}
-    onChangeFfmpegPath={setFfmpegPathPref}
-    onChangeThumbCacheMb={setThumbCachePref}
-    onChangeMountsPollMs={setMountsPollPref}
-    onChangeDoubleClickMs={setDoubleClickMsPref}
-    onClearThumbCache={clearThumbnailCacheFromSettings}
-    onClearStars={clearStarsFromSettings}
-    onClearBookmarks={clearBookmarksFromSettings}
-    onClearRecents={clearRecentsFromSettings}
-    onChangeSortField={setSortFieldPref}
-    onChangeSortDirection={setSortDirectionPref}
-    onChangeShortcut={updateShortcutBinding}
-    onClose={pageUiState.closeSettings}
+<ExplorerPageOverlays
+  dragGhostVisible={$dragState.dragging}
+  dragGhostX={$dragState.position.x}
+  dragGhostY={$dragState.position.y}
+  dragGhostCount={$dragState.paths.length}
+  dragGhostAllowed={$dragState.target !== null}
+  dragGhostAction={$dragAction}
+  textMenuOpen={$textMenuOpen}
+  textMenuX={$textMenuX}
+  textMenuY={$textMenuY}
+  textMenuTarget={$textMenuTarget}
+  textMenuReadonly={$textMenuReadonly}
+  {shortcutBindings}
+  {closeTextContextMenu}
+  conflictModalOpen={$conflictModalOpen}
+  conflictList={$conflictList}
+  {cancelConflicts}
+  renameAllConflicts={() => resolveConflicts('rename')}
+  overwriteConflicts={() => resolveConflicts('overwrite')}
+  {aboutOpen}
+  closeAbout={pageUiState.closeAbout}
+>
+  <ExplorerShell
+    bind:pathInput
+    bind:pathInputEl
+    bind:rowsEl={rowsElRef}
+    bind:headerEl={headerElRef}
+    bind:bookmarkName
+    bind:bookmarkInputEl
+    bind:renameValue
+    bind:compressName
+    bind:compressLevel
+    bind:newFolderName
+    bind:newFileName
+    sidebarProps={explorerShellSidebarProps}
+    topbarProps={explorerShellTopbarProps}
+    listingProps={explorerShellListingProps}
+    menuProps={explorerShellMenuProps}
+    modalProps={explorerShellModalProps}
+    statusProps={explorerShellStatusProps}
   />
+</ExplorerPageOverlays>
+{#if settingsOpen}
+  <SettingsModal {...settingsModalProps} />
 {/if}
