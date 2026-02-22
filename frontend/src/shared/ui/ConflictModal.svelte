@@ -14,6 +14,7 @@
     onClose={onCancel}
     overlayClass="conflict-overlay"
     modalClass="conflict-modal"
+    initialFocusSelector="button[data-default-action='1']"
   >
     <svelte:fragment slot="header">Items already exist</svelte:fragment>
     <p>{conflicts.length} item{conflicts.length === 1 ? '' : 's'} are already present in the destination.</p>
@@ -29,7 +30,7 @@
     </div>
     <div slot="actions">
       <button class="secondary" type="button" on:click={onCancel}>Cancel</button>
-      <button class="secondary" type="button" on:click={onRenameAll}>Auto-rename</button>
+      <button class="secondary" type="button" data-default-action="1" on:click={onRenameAll}>Auto-rename</button>
       <button class="primary" type="button" on:click={onOverwrite}>Overwrite</button>
     </div>
   </ModalShell>

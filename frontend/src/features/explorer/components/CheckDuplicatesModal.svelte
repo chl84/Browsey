@@ -57,6 +57,12 @@
         value={searchRoot}
         disabled={scanning}
         on:input={(e) => onChangeSearchRoot((e.currentTarget as HTMLInputElement).value)}
+        on:keydown={(e) => {
+          if (e.key === 'Enter' && !scanning) {
+            e.preventDefault()
+            void onSearch()
+          }
+        }}
       />
     </label>
 

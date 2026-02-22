@@ -128,6 +128,31 @@ fn copy_file_best_effort_does_not_overwrite_existing_target() {
 }
 
 #[test]
+fn move_entry_does_not_overwrite_existing_target() {
+    let base = uniq_path("move-no-overwrite");
+    fs::create_dir_all(&base).unwrap();
+    let src = base.join("src.txt");
+    let dest = base.join("dest.txt");
+    write_file(&src, b"new-content");
+    write_file(&dest, b"old-content");
+
+    let err = move_entry(&src, &dest, None, None, None).unwrap_err();
+    assert!(is_destination_exists_error(&err), "unexpected error: {err}");
+    assert_eq!(
+        fs::read(&dest).unwrap(),
+        b"old-content",
+        "existing destination should remain unchanged"
+    );
+    assert_eq!(
+        fs::read(&src).unwrap(),
+        b"new-content",
+        "source should remain unchanged when move is blocked"
+    );
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
 fn rename_candidate_is_deterministic_without_exists_probe() {
     let base = uniq_path("candidate").join("report.pdf");
     assert_eq!(rename_candidate(&base, 0), base);
