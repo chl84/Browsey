@@ -80,10 +80,6 @@ export const useGridVirtualizer = ({
     })
   }
 
-  const handleGridWheel = (_event: WheelEvent) => {
-    // Bruk native scroll; ingen custom behandling.
-  }
-
   const ensureGridVisible = (index: number) => {
     const gridEl = getGridEl()
     const cols = getGridCols()
@@ -109,7 +105,6 @@ export const useGridVirtualizer = ({
     gridTotalHeight,
     recomputeGrid,
     handleGridScroll,
-    handleGridWheel,
     ensureGridVisible,
   }
 }

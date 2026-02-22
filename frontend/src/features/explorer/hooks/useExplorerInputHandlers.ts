@@ -1,5 +1,6 @@
 import { hitTestGridVirtualized } from '../selection/lassoHitTest'
 import { isScrollbarClick } from '../helpers/scrollbar'
+import { applyWheelScrollAssist } from '../helpers/wheelScrollHelper'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
 import { createGridKeyboardHandler } from './createGridKeyboardHandler'
@@ -47,8 +48,6 @@ type Deps = {
   getGridGap: () => number
   handleRowsScroll: () => void
   handleGridScroll: () => void
-  handleWheel: (event: WheelEvent) => void
-  handleGridWheel: (event: WheelEvent) => void
   handleRowsClick: (event: MouseEvent) => void
   currentView: () => CurrentView
   loadDir: (path: string) => Promise<void>
@@ -347,11 +346,9 @@ export const useExplorerInputHandlers = (deps: Deps) => {
   }
 
   const handleWheelCombined = (event: WheelEvent) => {
-    if (deps.getViewMode() === 'list') {
-      deps.handleWheel(event)
-    } else {
-      deps.handleGridWheel(event)
-    }
+    const rowsEl = deps.getRowsEl()
+    if (!rowsEl) return
+    applyWheelScrollAssist(rowsEl, event)
   }
 
   const handleRowsClickSafe = (event: MouseEvent) => {

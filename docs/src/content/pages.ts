@@ -655,6 +655,8 @@ capabilities/default.json`,
           'URI/network rule handling was further centralized in backend modules, reducing duplicated frontend scheme logic',
           'Extract availability now comes from backend capability checks instead of frontend extension-only heuristics',
           'Backend source layout was tightened with additional modular splits across commands and shared modules',
+          'Explorer wheel scrolling was simplified and stabilized with a single always-on wheel assist path, centralized tuning, and deterministic handling for non-cancelable wheel bursts',
+          'Extreme wheel-input behavior was tuned by lowering max per-event step, increasing list/grid virtualization overscan, and snapping scroll targets to integer pixels to reduce transient flicker/half-tone rendering artifacts',
         ],
       },
       {
