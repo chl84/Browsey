@@ -26,13 +26,12 @@
   type HiddenBit = boolean | 'mixed' | null
   const scopes = ['owner', 'group', 'other'] as const
   type Scope = (typeof scopes)[number]
+  const tabs = ['basic', 'extra', 'permissions'] as const
+  type Tab = (typeof tabs)[number]
   export let permissions:
     | {
         accessSupported: boolean
-        executableSupported: boolean
         ownershipSupported: boolean
-        readOnly: boolean | 'mixed' | null
-        executable: boolean | 'mixed' | null
         ownerName: string | null
         groupName: string | null
         owner: Access | null
@@ -106,8 +105,7 @@
   $: hiddenBit =
     hidden !== null ? hidden : entry ? (entry.hidden === true || entry.name.startsWith('.')) : false
 
-  let activeTab: 'basic' | 'extra' | 'permissions' = 'basic'
-  let availableTabs: Array<'basic' | 'extra' | 'permissions'> = ['basic', 'extra', 'permissions']
+  let activeTab: Tab = 'basic'
   let wasOpen = false
   let ownershipInputsInitialized = false
   let ownerInput = ''
@@ -122,12 +120,10 @@
     permissions?.groupName,
     groupInput,
   )
-  const switchTab = (tab: 'basic' | 'extra' | 'permissions') => {
+  const switchTab = (tab: Tab) => {
     activeTab = tab
     if (tab === 'extra') onActivateExtra()
   }
-  $: availableTabs = ['basic', 'extra', 'permissions']
-  $: if (!availableTabs.includes(activeTab)) activeTab = 'basic'
   $: {
     if (open && !wasOpen) {
       activeTab = 'basic'
@@ -154,7 +150,7 @@
     <svelte:fragment slot="header">Properties</svelte:fragment>
 
     <div class="tabs">
-      {#each availableTabs as tab}
+      {#each tabs as tab}
         <button
           type="button"
           class:selected={activeTab === tab}

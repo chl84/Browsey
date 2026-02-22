@@ -243,10 +243,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   let propertiesPermissions:
     | {
         accessSupported: boolean
-        executableSupported: boolean
         ownershipSupported: boolean
-        readOnly: AccessBit | null
-        executable: AccessBit | null
         ownerName: string | null
         groupName: string | null
         owner: Access | null
