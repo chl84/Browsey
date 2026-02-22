@@ -8,7 +8,12 @@
 </script>
 
 {#if open}
-  <ModalShell open={open} onClose={onCancel} overlayClass="danger-overlay">
+  <ModalShell
+    open={open}
+    onClose={onCancel}
+    overlayClass="danger-overlay"
+    initialFocusSelector="button[data-confirm-delete='1']"
+  >
     <svelte:fragment slot="header">Delete permanently?</svelte:fragment>
     <p class="muted">This cannot be undone.</p>
     <p class="path">{targetLabel}</p>
@@ -16,14 +21,9 @@
       <button type="button" class="secondary" on:click={onCancel}>Cancel</button>
       <button
         type="button"
+        data-confirm-delete="1"
         class="danger"
         on:click={onConfirm}
-        on:keydown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            onConfirm()
-          }
-        }}
       >
         Delete
       </button>
