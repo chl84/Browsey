@@ -57,6 +57,7 @@
   import { anyModalOpen as anyModalOpenStore } from '@/shared/ui/modalOpenState'
   import { createCheckDuplicatesModal } from '@/features/explorer/modals/checkDuplicatesModal'
   import { createExplorerShellProps } from './createExplorerShellProps'
+  import { useBookmarkModalFlow } from './useBookmarkModalFlow'
   import { useExplorerPageUiState } from './useExplorerPageUiState'
   import { useExplorerViewportLayout } from './useExplorerViewportLayout'
   import '@/features/explorer/ExplorerLayout.css'
@@ -172,6 +173,25 @@
     },
     setAboutOpen: (next) => {
       aboutOpen = next
+    },
+  })
+  const bookmarkModalFlow = useBookmarkModalFlow({
+    bookmarkModal,
+    getBookmarkInputEl: () => bookmarkInputEl,
+    getBookmarks: () => bookmarks,
+    setBookmarks: (next) => {
+      bookmarks = next
+    },
+    addBookmarkToStore: (entry) => {
+      bookmarksStore.update((list) => [...list, entry])
+    },
+    persistBookmark: (label, path) => {
+      void addBookmark(label, path)
+    },
+    setModalUiState: ({ open, name, candidate }) => {
+      bookmarkModalOpen = open
+      bookmarkName = name
+      bookmarkCandidate = candidate as Entry | null
     },
   })
 
@@ -432,9 +452,7 @@
   }
   $: {
     const state = $bookmarkStore
-    bookmarkModalOpen = state.open
-    bookmarkName = state.name
-    bookmarkCandidate = state.candidate as Entry | null
+    bookmarkModalFlow.syncFromStoreState(state)
   }
   let gridCardWidth = 120
   let gridRowHeight = 126
@@ -513,9 +531,7 @@
     viewportLayout.applyDensityMetrics()
   }
   $: {
-    if (bookmarkModalOpen) {
-      bookmarkModal.setName(bookmarkName)
-    }
+    bookmarkModalFlow.syncDraftNameToModal(bookmarkModalOpen, bookmarkName)
   }
 
   const navigation = useExplorerNavigation({
@@ -989,28 +1005,7 @@
     void stopDuplicateScan(true)
   })
 
-  const openBookmarkModal = async (entry: Entry) => {
-    bookmarkModal.openModal(entry)
-    await tick()
-    if (bookmarkInputEl) {
-      bookmarkInputEl.focus()
-      bookmarkInputEl.select()
-    }
-  }
-
-  const closeBookmarkModal = () => {
-    bookmarkModal.closeModal()
-  }
-
-  const confirmBookmark = () => {
-    const add = (label: string, path: string) => {
-      void addBookmark(label, path)
-      bookmarksStore.update((list) => [...list, { label, path }])
-    }
-    const { bookmarks: updated } = bookmarkModal.confirm(bookmarks, add)
-    bookmarks = updated
-    closeBookmarkModal()
-  }
+  const { openBookmarkModal, closeBookmarkModal, confirmBookmark } = bookmarkModalFlow
 
   const reloadCurrent = async () => {
     if (currentView === 'recent') {
