@@ -1,7 +1,6 @@
 import { getErrorMessage } from '@/shared/lib/error'
-import { listen } from '@tauri-apps/api/event'
 import { get } from 'svelte/store'
-import type { Entry, ListingFacets, Location, SortDirection, SortField } from './model/types'
+import type { Entry, Location, SortField } from './model/types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
 import { openEntry } from './services/files.service'
 import {
@@ -11,7 +10,6 @@ import {
   listTrash,
   watchDir,
   listMounts,
-  searchStream,
 } from './services/listing.service'
 import { cancelTask } from './services/activity.service'
 import { storeColumnWidths, loadSavedColumnWidths } from './services/layout.service'
@@ -20,11 +18,16 @@ import { getBookmarks } from './services/bookmarks.service'
 import { listNetworkEntries } from '../network'
 import { emptyListingFacets, mapNameLower, sameLocation } from './state/helpers'
 import type { ExplorerCallbacks } from './state/helpers'
+import { createSearchSession } from './state/createSearchSession'
+import { createSortRefreshDispatcher } from './state/createSortRefreshDispatcher'
 import { createFilteringSlice } from './state/filteringSlice'
+import { patchEntryStarred, removeEntryByPath } from './state/entryMutations'
 import { createPreferenceSlice } from './state/preferencesSlice'
+import { sortExplorerEntriesInMemory } from './state/searchSort'
 import { createExplorerStores } from './state/stores'
 
 export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
+  // Store composition root; keep the returned object shape as the stable public API.
   const {
     cols,
     gridTemplate,
@@ -60,6 +63,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     historyIndex,
   } = createExplorerStores()
 
+  // Filtering/faceting slice derived from base stores.
   const {
     visibleEntries,
     filteredEntries,
@@ -81,7 +85,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     current,
   })
 
-  // Search streaming coordination
+  // Search streaming coordination and cancellation guards.
   let searchRunId = 0
   let cancelActiveSearch: (() => void) | null = null
   let activeSearchCancelId: string | null = null
@@ -101,6 +105,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     direction: get(sortDirection),
   })
 
+  // Navigation/history and listing load flows.
   const pushHistory = (loc: Location) => {
     const list = get(history)
     const idx = get(historyIndex)
@@ -198,7 +203,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       partitions.set(mounts)
       const networkEntries = await listNetworkEntries(options.forceRefresh === true)
       current.set('Network')
-      entries.set(sortSearchEntries(networkEntries, sortPayload()))
+      entries.set(sortExplorerEntriesInMemory(networkEntries, sortPayload()))
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.('Network')
       if (recordHistory) {
@@ -281,110 +286,19 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     await refreshForSort()
   }
 
-  const sortSearchEntries = (
-    list: Entry[],
-    spec: { field: SortField; direction: SortDirection } = sortPayload(),
-  ) => {
-    const dir = spec.direction === 'asc' ? 1 : -1
-    const compareString = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
-    const kindRank = (k: string) => (k === 'dir' ? 0 : k === 'file' ? 1 : 2)
-    const sizeSortKindRank = (k: Entry['kind']) => {
-      switch (k) {
-        case 'file':
-          return 0
-        case 'link':
-          return 1
-        case 'dir':
-          return 3
-        default:
-          return 2
-      }
-    }
-    const compareOptionalNumber = (a: number | null | undefined, b: number | null | undefined) => {
-      const aHas = typeof a === 'number'
-      const bHas = typeof b === 'number'
-      if (aHas && bHas) return (a as number) - (b as number)
-      if (aHas && !bHas) return -1
-      if (!aHas && bHas) return 1
-      return 0
-    }
-    const compareSizeField = (
-      a: { kindRank: number; numeric: number | null | undefined; nameKey: string },
-      b: { kindRank: number; numeric: number | null | undefined; nameKey: string },
-    ) => {
-      const rankCmp = a.kindRank - b.kindRank
-      if (rankCmp !== 0) return rankCmp
-      const numericCmp = compareOptionalNumber(a.numeric, b.numeric)
-      if (numericCmp !== 0) return dir * numericCmp
-      return dir * compareString(a.nameKey, b.nameKey)
-    }
-    const decorated = list.map((entry, index) => {
-      const nameKey = entry.nameLower ?? entry.name.toLowerCase()
-      return {
-        entry,
-        index,
-        nameKey,
-        typeKindRank: kindRank(entry.kind),
-        typeExtKey: (entry.ext ?? '').toLowerCase(),
-        modifiedKey: entry.modified ?? '',
-        sizeKey: {
-          kindRank: sizeSortKindRank(entry.kind),
-          numeric: entry.kind === 'dir' ? entry.items : entry.size,
-          nameKey,
-        },
-      }
-    })
-    decorated.sort((a, b) => {
-      const cmp = (() => {
-        switch (spec.field) {
-          case 'name':
-            return compareString(a.nameKey, b.nameKey)
-          case 'type': {
-            const kindCmp = a.typeKindRank - b.typeKindRank
-            if (kindCmp !== 0) return kindCmp
-            const extCmp = compareString(a.typeExtKey, b.typeExtKey)
-            if (extCmp !== 0) return extCmp
-            return compareString(a.nameKey, b.nameKey)
-          }
-          case 'modified': {
-            const modifiedCmp = compareString(a.modifiedKey, b.modifiedKey)
-            if (modifiedCmp !== 0) return modifiedCmp
-            return compareString(a.nameKey, b.nameKey)
-          }
-          case 'size':
-            return compareSizeField(a.sizeKey, b.sizeKey)
-          default:
-            return 0
-        }
-      })()
-      if (cmp !== 0) {
-        return spec.field === 'size' ? cmp : dir * cmp
-      }
-      return a.index - b.index
-    })
-    return mapNameLower(decorated.map((item) => item.entry))
-  }
-
-  const refreshForSort = async () => {
-    const isSearchMode = get(searchMode)
-    const hasSearchQuery = get(filter).trim().length > 0
-    if (isSearchMode && hasSearchQuery) {
-      entries.set(sortSearchEntries(get(entries), sortPayload()))
-      return
-    }
-    const where = get(current)
-    if (where === 'Recent') {
-      await loadRecent(false, true)
-    } else if (where === 'Starred') {
-      await loadStarred(false)
-    } else if (where === 'Network') {
-      await loadNetwork(false)
-    } else if (where === 'Trash') {
-      await loadTrash(false)
-    } else {
-      await load(where, { recordHistory: false })
-    }
-  }
+  // Sort refresh routing across search/library/network/directory views.
+  const refreshForSort = createSortRefreshDispatcher({
+    hasActiveSearchSortTarget: () => get(searchMode) && get(filter).trim().length > 0,
+    sortActiveSearchEntries: () => {
+      entries.set(sortExplorerEntriesInMemory(get(entries), sortPayload()))
+    },
+    getCurrentWhere: () => get(current),
+    loadRecentForSort: () => loadRecent(false, true),
+    loadStarredForSort: () => loadStarred(false),
+    loadNetworkForSort: () => loadNetwork(false),
+    loadTrashForSort: () => loadTrash(false),
+    loadDirectoryForSort: (where) => load(where, { recordHistory: false }),
+  })
 
   const open = (entry: Entry) => {
     if (entry.kind === 'dir') {
@@ -399,11 +313,9 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       const newState = await toggleStarService(entry.path)
       const where = get(current)
       if (where === 'Starred' && !newState) {
-        entries.update((list) => list.filter((e) => e.path !== entry.path))
+        entries.update((list) => removeEntryByPath(list, entry.path))
       } else {
-        entries.update((list) =>
-          list.map((e) => (e.path === entry.path ? { ...e, starred: newState } : e))
-        )
+        entries.update((list) => patchEntryStarred(list, entry.path, newState))
       }
     } catch (err) {
       error.set(getErrorMessage(err))
@@ -429,6 +341,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  // Search mode and streaming orchestration (high-churn hotspot).
   const cancelSearch = () => {
     const hadActiveSearch = activeSearchCancelId !== null || get(searchRunning)
     invalidateSearchRun()
@@ -460,156 +373,31 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
-  const runSearch = async (needleRaw: string) => {
-    const needle = needleRaw.trim()
-    const progressEvent = `search-progress-${Math.random().toString(16).slice(2)}`
-    loading.set(true)
-    clearFacetCache()
-    error.set('')
-
-    invalidateSearchRun()
-    const runId = searchRunId
-
-    let buffer: Entry[] = []
-    let raf: number | null = null
-    let stop: (() => void) | null = null
-    let cleaned = false
-
-    const cleanup = () => {
-      if (cleaned) return
-      cleaned = true
-      if (raf !== null) {
-        cancelAnimationFrame(raf)
-        raf = null
-      }
-      buffer = []
-      if (stop) {
-        stop()
-        stop = null
-      }
-      if (cancelActiveSearch === cleanup) {
-        cancelActiveSearch = null
-      }
-      if (activeSearchCancelId === progressEvent) {
-        activeSearchCancelId = null
-      }
-    }
-
-    cancelActiveSearch = cleanup
-    activeSearchCancelId = progressEvent
-
-    if (needle.length === 0) {
-      searchRunning.set(false)
-      await load(get(current), { recordHistory: false })
-      if (runId === searchRunId) {
-        loading.set(false)
-      }
-      cleanup()
-      return cleanup
-    }
-    filter.set(needle)
-    searchRunning.set(true)
-    entries.set([])
-    callbacks.onEntriesChanged?.()
-
-    const flushBuffer = () => {
-      if (runId !== searchRunId) {
-        cleanup()
-        return
-      }
-      if (buffer.length === 0) {
-        raf = null
-        return
-      }
-      entries.update((list) => [...list, ...buffer])
-      callbacks.onEntriesChanged?.()
-      buffer = []
-      raf = null
-    }
-
-    const scheduleFlush = () => {
-      if (raf !== null) return
-      raf = requestAnimationFrame(flushBuffer)
-    }
-
-    let unlisten: () => void
-    try {
-      unlisten = await listen<{
-        entries: Entry[]
-        done: boolean
-        error?: string
-        facets?: ListingFacets
-      }>(progressEvent, (evt) => {
-        if (runId !== searchRunId) {
-          cleanup()
-          return
-        }
-        if (evt.payload.error) {
-          error.set(evt.payload.error)
-        }
-        if (evt.payload.done) {
-          if (raf !== null) {
-            cancelAnimationFrame(raf)
-            raf = null
-          }
-          const doneEntries =
-            evt.payload.entries && evt.payload.entries.length > 0
-              ? mapNameLower(evt.payload.entries)
-              : null
-          const finalEntries = doneEntries ?? [...get(entries), ...buffer]
-          buffer = []
-          // Keep streamed order on completion; sorting remains a manual UI action.
-          entries.set(finalEntries)
-          if (evt.payload.facets) {
-            columnFacets.set(evt.payload.facets)
-          }
-          callbacks.onEntriesChanged?.()
-          searchRunning.set(false)
-          loading.set(false)
-          cleanup()
-          return
-        }
-        if (evt.payload.entries && evt.payload.entries.length > 0) {
-          buffer.push(...mapNameLower(evt.payload.entries))
-          scheduleFlush()
-        }
-      })
-    } catch (err) {
-      if (runId === searchRunId) {
-        error.set(getErrorMessage(err))
-        searchRunning.set(false)
-        loading.set(false)
-        columnFacets.set(emptyListingFacets())
-      }
-      cleanup()
-      return cleanup
-    }
-    stop = unlisten
-    if (cleaned) {
-      stop()
-      stop = null
-      return cleanup
-    }
-
-    searchStream({
-      path: get(current),
-      query: needle,
-      sort: sortPayload(),
-      progressEvent,
-    }).catch((err) => {
-      if (runId !== searchRunId) {
-        cleanup()
-        return
-      }
-      error.set(getErrorMessage(err))
-      searchRunning.set(false)
-      loading.set(false)
-      columnFacets.set(emptyListingFacets())
-      cleanup()
-    })
-
-    return cleanup
-  }
+  const runSearch = createSearchSession({
+    entries,
+    loading,
+    error,
+    filter,
+    searchRunning,
+    columnFacets,
+    current,
+    clearFacetCache,
+    emptyListingFacets,
+    onEntriesChanged: callbacks.onEntriesChanged,
+    getErrorMessage,
+    loadCurrentForEmptyNeedle: () => load(get(current), { recordHistory: false }),
+    sortPayload,
+    invalidateSearchRun,
+    getSearchRunId: () => searchRunId,
+    getCancelActiveSearch: () => cancelActiveSearch,
+    setCancelActiveSearch: (fn) => {
+      cancelActiveSearch = fn
+    },
+    getActiveSearchCancelId: () => activeSearchCancelId,
+    setActiveSearchCancelId: (id) => {
+      activeSearchCancelId = id
+    },
+  })
 
   const toggleMode = async (
     checked: boolean,
@@ -652,7 +440,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       if (get(current) === 'Network') {
         try {
           const networkEntries = await listNetworkEntries(forceNetworkRefresh)
-          entries.set(sortSearchEntries(networkEntries, sortPayload()))
+          entries.set(sortExplorerEntriesInMemory(networkEntries, sortPayload()))
           callbacks.onEntriesChanged?.()
         } catch (err) {
           console.error('Failed to list network entries', err)
@@ -706,6 +494,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  // Preferences slice wiring and final state API assembly.
   const {
     setSortFieldPref,
     setSortDirectionPref,
