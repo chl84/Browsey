@@ -21,15 +21,17 @@
     closeOnEscape={!busy}
     closeOnOverlay={!busy}
     modalWidth="420px"
+    initialFocusSelector={danger ? "button[data-cancel='1']" : "button[data-confirm='1']"}
   >
     <svelte:fragment slot="header">{title}</svelte:fragment>
     {#if message}
       <p class="muted">{message}</p>
     {/if}
     <div slot="actions">
-      <button type="button" class="secondary" on:click={onCancel} disabled={busy}>{cancelLabel}</button>
+      <button type="button" data-cancel="1" class="secondary" on:click={onCancel} disabled={busy}>{cancelLabel}</button>
       <button
         type="button"
+        data-confirm="1"
         class={danger ? 'danger' : ''}
         on:click={onConfirm}
         disabled={busy}

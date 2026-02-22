@@ -537,6 +537,12 @@ pub(super) fn move_entry(
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<()> {
     ensure_not_child(src, dest)?;
+    if metadata_if_exists_nofollow(dest)?.is_some() {
+        return Err(ClipboardError::new(
+            ClipboardErrorCode::DestinationExists,
+            format!("Destination already exists: {}", dest.display()),
+        ));
+    }
     match fs::rename(src, dest) {
         Ok(_) => Ok(()),
         Err(_) => {
