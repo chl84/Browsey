@@ -58,34 +58,9 @@ pub fn sort_entries(entries: &mut [FsEntry], spec: Option<SortSpec>) {
                 e.name.to_lowercase(),
             )
         }),
-        SortField::Size => entries.sort_unstable_by(|a, b| compare_size_entries(a, b, desc)),
+        SortField::Size => entries.sort_by_cached_key(|e| SizeSortKey::from_entry(e, desc)),
         SortField::Starred => sort_with(entries, desc, |e| (e.starred, e.name.to_lowercase())),
     };
-}
-
-fn compare_size_entries(a: &FsEntry, b: &FsEntry, desc: bool) -> Ordering {
-    let a_rank = size_sort_kind_rank(&a.kind);
-    let b_rank = size_sort_kind_rank(&b.kind);
-    if a_rank != b_rank {
-        return a_rank.cmp(&b_rank);
-    }
-
-    let value_cmp = if a.kind == "dir" {
-        compare_optional_u64(a.items, b.items, desc)
-    } else {
-        compare_optional_u64(a.size, b.size, desc)
-    };
-
-    if value_cmp != Ordering::Equal {
-        return value_cmp;
-    }
-
-    let name_cmp = a.name.to_lowercase().cmp(&b.name.to_lowercase());
-    if desc {
-        name_cmp.reverse()
-    } else {
-        name_cmp
-    }
 }
 
 fn size_sort_kind_rank(kind: &str) -> u8 {
@@ -98,19 +73,71 @@ fn size_sort_kind_rank(kind: &str) -> u8 {
     }
 }
 
-fn compare_optional_u64(a: Option<u64>, b: Option<u64>, desc: bool) -> Ordering {
-    match (a, b) {
-        (Some(x), Some(y)) => {
-            if desc {
-                y.cmp(&x)
+#[derive(Clone, Eq, PartialEq)]
+struct SizeSortKey {
+    kind_rank: u8,
+    value_missing: bool,
+    value: u64,
+    name_lower: String,
+    desc: bool,
+}
+
+impl SizeSortKey {
+    fn from_entry(entry: &FsEntry, desc: bool) -> Self {
+        let value = if entry.kind == "dir" {
+            entry.items
+        } else {
+            entry.size
+        };
+        Self {
+            kind_rank: size_sort_kind_rank(&entry.kind),
+            value_missing: value.is_none(),
+            value: value.unwrap_or_default(),
+            name_lower: entry.name.to_lowercase(),
+            desc,
+        }
+    }
+}
+
+impl Ord for SizeSortKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let kind_cmp = self.kind_rank.cmp(&other.kind_rank);
+        if kind_cmp != Ordering::Equal {
+            return kind_cmp;
+        }
+
+        let missing_cmp = self.value_missing.cmp(&other.value_missing);
+        if missing_cmp != Ordering::Equal {
+            return missing_cmp;
+        }
+
+        if !self.value_missing {
+            let value_cmp = if self.desc {
+                other.value.cmp(&self.value)
             } else {
-                x.cmp(&y)
+                self.value.cmp(&other.value)
+            };
+            if value_cmp != Ordering::Equal {
+                return value_cmp;
             }
         }
-        // Keep unknown values after known values within the same group.
-        (Some(_), None) => Ordering::Less,
-        (None, Some(_)) => Ordering::Greater,
-        (None, None) => Ordering::Equal,
+
+        let name_cmp = if self.desc {
+            other.name_lower.cmp(&self.name_lower)
+        } else {
+            self.name_lower.cmp(&other.name_lower)
+        };
+        if name_cmp != Ordering::Equal {
+            return name_cmp;
+        }
+
+        self.desc.cmp(&other.desc)
+    }
+}
+
+impl PartialOrd for SizeSortKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
