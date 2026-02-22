@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Slider from '../../../shared/ui/Slider.svelte'
   import type { Settings } from '../settingsTypes'
 
   export let show = false
@@ -53,15 +54,14 @@
   {#if showThumbCacheRow}
     <div class="form-label">Cache size</div>
     <div class="form-control">
-      <input
-        type="range"
+      <Slider
         min="50"
         max="1000"
         step="50"
         value={settings.thumbCacheMb}
         disabled={thumbsDisabled}
         on:input={(e) => {
-          const next = Number((e.currentTarget as HTMLInputElement).value)
+          const next = e.detail.value
           onPatch({ thumbCacheMb: next })
           onChangeThumbCacheMb(next)
         }}

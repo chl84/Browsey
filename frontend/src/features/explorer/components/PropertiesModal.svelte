@@ -465,7 +465,7 @@
   }
 
   .properties-header-block .tabs {
-    margin-bottom: 0;
+    margin-bottom: 6px;
   }
 
   .ownership .label {

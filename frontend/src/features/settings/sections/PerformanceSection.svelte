@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Slider from '../../../shared/ui/Slider.svelte'
   import type { Settings } from '../settingsTypes'
 
   export let show = false
@@ -34,14 +35,13 @@
   {#if showMountsPollRow}
     <div class="form-label">Mounts poll (ms)</div>
     <div class="form-control">
-      <input
-        type="range"
+      <Slider
         min="500"
         max="10000"
         step="100"
         value={settings.mountsPollMs}
         on:input={(e) => {
-          const next = Number((e.currentTarget as HTMLInputElement).value)
+          const next = e.detail.value
           onPatch({ mountsPollMs: next })
           onChangeMountsPollMs(next)
         }}

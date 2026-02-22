@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Slider from '../../../shared/ui/Slider.svelte'
   import type { Settings } from '../settingsTypes'
 
   export let show = false
@@ -15,14 +16,13 @@
   {#if showDoubleClickRow}
     <div class="form-label">Double-click speed</div>
     <div class="form-control">
-      <input
-        type="range"
+      <Slider
         min="150"
         max="600"
         step="10"
         value={settings.doubleClickMs}
         on:input={(e) => {
-          const next = Number((e.currentTarget as HTMLInputElement).value)
+          const next = e.detail.value
           onPatch({ doubleClickMs: next })
           onChangeDoubleClickMs(next)
         }}
