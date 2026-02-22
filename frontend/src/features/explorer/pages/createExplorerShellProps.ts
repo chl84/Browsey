@@ -304,6 +304,7 @@ export const createExplorerShellProps = (p: Params) => ({
     propertiesExtraMetadataError: p.propertiesState.extraMetadataError,
     propertiesExtraMetadata: p.propertiesState.extraMetadata,
     propertiesPermissionsLoading: p.propertiesState.permissionsLoading,
+    propertiesPermissionsApplying: p.propertiesState.permissionsApplying,
     propertiesOwnershipApplying: p.propertiesState.ownershipApplying,
     propertiesOwnershipError: p.propertiesState.ownershipError,
     propertiesOwnershipUsers: p.propertiesState.ownershipUsers,

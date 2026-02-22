@@ -136,6 +136,7 @@ export type PropertiesState = {
   extraMetadata: ExtraMetadataPayload | null
   extraMetadataPath: string | null
   permissionsLoading: boolean
+  permissionsApplying: boolean
   permissions: PermissionsState | null
   ownershipUsers: string[]
   ownershipGroups: string[]
@@ -275,6 +276,7 @@ export const createPropertiesModal = (deps: Deps) => {
     extraMetadata: null,
     extraMetadataPath: null,
     permissionsLoading: false,
+    permissionsApplying: false,
     permissions: null,
     ownershipUsers: [],
     ownershipGroups: [],
@@ -303,6 +305,7 @@ export const createPropertiesModal = (deps: Deps) => {
       extraMetadata: null,
       extraMetadataPath: null,
       permissionsLoading: false,
+      permissionsApplying: false,
       permissions: null,
       ownershipUsers: [],
       ownershipGroups: [],
@@ -338,6 +341,7 @@ export const createPropertiesModal = (deps: Deps) => {
       extraMetadata: null,
       extraMetadataPath: null,
       permissionsLoading: !singleVirtualUri,
+      permissionsApplying: false,
       permissions: singleVirtualUri ? unsupportedPermissionsState() : null,
       ownershipUsers: [],
       ownershipGroups: [],
@@ -590,6 +594,7 @@ export const createPropertiesModal = (deps: Deps) => {
     if (opts.group && Object.keys(opts.group).length > 0) payload.group = { ...opts.group }
     if (opts.other && Object.keys(opts.other).length > 0) payload.other = { ...opts.other }
     const activeToken = token
+    state.update((s) => ({ ...s, permissionsApplying: true }))
 
     try {
       const perms = await invoke<{
@@ -605,7 +610,6 @@ export const createPropertiesModal = (deps: Deps) => {
         other?: Access
       }>('set_permissions', payload)
       if (targets.length > 1) {
-        state.update((s) => ({ ...s, permissionsLoading: true }))
         await loadPermissionsMulti(current.targets, activeToken)
         return
       }
@@ -645,6 +649,10 @@ export const createPropertiesModal = (deps: Deps) => {
 
       if (prevState) {
         state.update((s) => ({ ...s, permissions: prevState }))
+      }
+    } finally {
+      if (activeToken === token) {
+        state.update((s) => ({ ...s, permissionsApplying: false }))
       }
     }
   }
