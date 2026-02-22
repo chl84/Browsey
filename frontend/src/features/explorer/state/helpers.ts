@@ -33,7 +33,7 @@ export const defaultColumns: Column[] = [
   { key: 'type', label: 'Type', sort: 'type', width: 120, min: 80 },
   { key: 'modified', label: 'Modified', sort: 'modified', width: 90, min: 80 },
   { key: 'size', label: 'Size', sort: 'size', width: 90, min: 70, align: 'right' },
-  { key: 'star', label: '', sort: 'starred', width: 25, min: 25, resizable: false, sortable: false },
+  { key: 'star', label: '', sort: 'name', width: 25, min: 25, resizable: false, sortable: false },
 ]
 
 export const sameLocation = (a?: Location, b?: Location) => {

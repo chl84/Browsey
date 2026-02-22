@@ -15,7 +15,6 @@
     type: false,
     modified: false,
     size: false,
-    starred: false,
   }
   export let onChangeSort: (field: SortField) => void = () => {}
   export let onStartResize: (index: number, event: PointerEvent) => void = () => {}
