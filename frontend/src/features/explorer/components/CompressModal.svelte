@@ -50,9 +50,6 @@
             if (e.key === 'Enter') {
               e.preventDefault()
               confirmAndClose()
-            } else if (e.key === 'Escape') {
-              e.preventDefault()
-              onCancel()
             }
           }}
         />
