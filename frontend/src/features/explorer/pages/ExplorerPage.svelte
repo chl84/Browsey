@@ -57,6 +57,7 @@
   import { anyModalOpen as anyModalOpenStore } from '@/shared/ui/modalOpenState'
   import { createCheckDuplicatesModal } from '@/features/explorer/modals/checkDuplicatesModal'
   import { createExplorerShellProps } from './createExplorerShellProps'
+  import { useExplorerViewportLayout } from './useExplorerViewportLayout'
   import '@/features/explorer/ExplorerLayout.css'
 
   // --- Types --------------------------------------------------------------
@@ -422,80 +423,6 @@
     bookmarkName = state.name
     bookmarkCandidate = state.candidate as Entry | null
   }
-  $: {
-    const d = $density
-    if (typeof document !== 'undefined') {
-      document.body.classList.remove('density-cozy', 'density-compact')
-      document.body.classList.add(`density-${d}`)
-    }
-  }
-
-  const readCssNumber = (name: string, fallback: number) => {
-    if (typeof document === 'undefined') return fallback
-    const raw = getComputedStyle(document.body).getPropertyValue(name)
-    const parsed = parseFloat(raw)
-    return Number.isFinite(parsed) ? parsed : fallback
-  }
-
-  const applyDensityMetrics = () => {
-    const nextRowHeight = readCssNumber('--row-height', 32)
-    const nextGridGap = readCssNumber('--grid-gap', 6)
-    const nextGridCardWidth = readCssNumber('--grid-card-width', 120)
-    const nextGridRowHeight = readCssNumber('--grid-row-height', 126)
-
-    setRowHeight(nextRowHeight)
-    gridGap = nextGridGap
-    gridCardWidth = nextGridCardWidth
-    gridRowHeight = nextGridRowHeight
-
-    gridConfig.gap = nextGridGap
-    gridConfig.cardWidth = nextGridCardWidth
-    gridConfig.rowHeight = nextGridRowHeight
-
-    viewAnchor = createViewSwitchAnchor({
-      filteredEntries,
-      rowHeight: nextRowHeight,
-      gridRowHeight,
-      gridGap,
-    })
-
-    if (viewMode === 'grid') {
-      recomputeGrid()
-      const entriesList = get(filteredEntries)
-      if (entriesList.length > 0 && get(visibleEntries).length === 0 && gridElRef) {
-        const maxTop = Math.max(
-          0,
-          get(gridTotalHeight) - gridElRef.clientHeight,
-          gridElRef.scrollHeight - gridElRef.clientHeight
-        )
-        gridElRef.scrollTop = Math.min(gridElRef.scrollTop, maxTop)
-        recomputeGrid()
-      }
-    } else {
-      const rowsEl = rowsElRef
-      const entriesList = get(filteredEntries)
-      if (rowsEl) {
-        const viewport = rowsEl.clientHeight
-        const maxTop = Math.max(0, get(totalHeight) - viewport)
-        if (rowsEl.scrollTop > maxTop) {
-          rowsEl.scrollTop = maxTop
-        }
-      }
-      updateViewportHeight()
-      recompute(entriesList)
-    }
-  }
-
-  $: {
-    $density
-    applyDensityMetrics()
-  }
-  $: {
-    if (bookmarkModalOpen) {
-      bookmarkModal.setName(bookmarkName)
-    }
-  }
-
   let gridCardWidth = 120
   let gridRowHeight = 126
   let gridGap = 6
@@ -532,6 +459,51 @@
     visibleEntries,
     config: gridConfig,
   })
+
+  const viewportLayout = useExplorerViewportLayout({
+    getViewMode: () => viewMode,
+    setSidebarCollapsed: (collapsed) => {
+      sidebarCollapsed = collapsed
+    },
+    listResize: handleListResize,
+    recomputeGrid,
+    setDensityMetrics: ({ rowHeight: nextRowHeight, gridGap: nextGridGap, gridCardWidth: nextGridCardWidth, gridRowHeight: nextGridRowHeight }) => {
+      setRowHeight(nextRowHeight)
+      gridGap = nextGridGap
+      gridCardWidth = nextGridCardWidth
+      gridRowHeight = nextGridRowHeight
+      gridConfig.gap = nextGridGap
+      gridConfig.cardWidth = nextGridCardWidth
+      gridConfig.rowHeight = nextGridRowHeight
+    },
+    recreateViewAnchor: ({ rowHeight: nextRowHeight, gridGap: nextGridGap, gridRowHeight: nextGridRowHeight }) => {
+      viewAnchor = createViewSwitchAnchor({
+        filteredEntries,
+        rowHeight: nextRowHeight,
+        gridRowHeight: nextGridRowHeight,
+        gridGap: nextGridGap,
+      })
+    },
+    getFilteredEntries: () => get(filteredEntries),
+    getVisibleEntries: () => get(visibleEntries),
+    getGridTotalHeight: () => get(gridTotalHeight),
+    getTotalHeight: () => get(totalHeight),
+    getRowsEl: () => rowsElRef,
+    getGridEl: () => gridElRef,
+    updateViewportHeight,
+    recomputeList: (entriesList) => recompute(entriesList as Entry[]),
+  })
+
+  $: viewportLayout.applyDensityClass($density)
+  $: {
+    $density
+    viewportLayout.applyDensityMetrics()
+  }
+  $: {
+    if (bookmarkModalOpen) {
+      bookmarkModal.setName(bookmarkName)
+    }
+  }
 
   const navigation = useExplorerNavigation({
     current,
@@ -692,14 +664,7 @@
   }
 
   // --- UI sizing & viewport updates ---------------------------------------
-  const handleResize = () => {
-    if (typeof window === 'undefined') return
-    sidebarCollapsed = window.innerWidth < 700
-    handleListResize()
-    if (viewMode === 'grid') {
-      recomputeGrid()
-    }
-  }
+  const handleResize = () => viewportLayout.handleResize()
 
   // --- Path input focus/blur ----------------------------------------------
   const handleInputFocus = () => {

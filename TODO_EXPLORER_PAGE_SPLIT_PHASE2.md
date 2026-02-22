@@ -98,10 +98,10 @@ Target:
 - Grid/list size metric sync
 - Resize-driven recompute scheduling
 
-- [ ] Add `frontend/src/features/explorer/pages/useExplorerViewportLayout.ts`.
-- [ ] Move density-to-layout metric synchronization and related recompute triggers from the page.
-- [ ] Keep DOM refs (`rowsElRef`, `gridElRef`, `headerElRef`) owned by `ExplorerPage.svelte`; pass getters/setters into the hook.
-- [ ] Do not change virtualization algorithms in this step.
+- [x] Add `frontend/src/features/explorer/pages/useExplorerViewportLayout.ts`.
+- [x] Move density-to-layout metric synchronization and related recompute triggers from the page.
+- [x] Keep DOM refs (`rowsElRef`, `gridElRef`, `headerElRef`) owned by `ExplorerPage.svelte`; pass getters/setters into the hook.
+- [x] Do not change virtualization algorithms in this step.
 
 Acceptance:
 - Page no longer owns most layout/viewport synchronization details.
@@ -215,7 +215,7 @@ Acceptance:
 
 - [x] Step 1 complete
 - [x] Step 2 complete
-- [ ] Step 3 complete
+- [x] Step 3 complete
 - [ ] Step 4 complete
 - [ ] Step 5 complete
 - [ ] Step 6 complete
