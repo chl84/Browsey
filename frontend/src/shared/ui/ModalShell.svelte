@@ -17,14 +17,37 @@
   let overlayPointerDown = false
   let modalEl: HTMLDivElement | null = null
   let countedAsOpen = false
+  let restoreFocusTarget: HTMLElement | null = null
+
+  const captureRestoreFocusTarget = () => {
+    if (typeof document === 'undefined') return
+    const active = document.activeElement
+    restoreFocusTarget = active instanceof HTMLElement ? active : null
+  }
+
+  const restoreFocusAfterClose = () => {
+    const target = restoreFocusTarget
+    restoreFocusTarget = null
+    if (!target) return
+    void tick().then(() => {
+      if (open || !target.isConnected) return
+      const active = typeof document !== 'undefined' ? document.activeElement : null
+      if (active instanceof HTMLElement && active.isConnected && active !== document.body) {
+        return
+      }
+      target.focus()
+    })
+  }
 
   $: {
     if (open && !countedAsOpen) {
+      captureRestoreFocusTarget()
       modalOpenState.enter()
       countedAsOpen = true
     } else if (!open && countedAsOpen) {
       modalOpenState.leave()
       countedAsOpen = false
+      restoreFocusAfterClose()
     }
   }
 
@@ -67,6 +90,7 @@
     if (!closeOnEscape) return
     if (e.key === 'Escape') {
       e.preventDefault()
+      e.stopPropagation()
       onClose()
     }
   }
