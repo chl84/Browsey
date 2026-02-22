@@ -125,10 +125,10 @@ Acceptance:
 Target:
 - `createBookmarkModal()` integration and page glue (`openBookmarkModal`, `closeBookmarkModal`, confirm/apply path)
 
-- [ ] Add `frontend/src/features/explorer/pages/useBookmarkModalFlow.ts` (or extend existing bookmark hook if a better seam exists).
-- [ ] Move bookmark modal state sync + confirm flow glue out of the page.
-- [ ] Keep `bookmarkModalOpen` ownership clear (either inside this flow or `useExplorerPageUiState`, not split across both).
-- [ ] Keep bookmark service calls and toast behavior unchanged.
+- [x] Add `frontend/src/features/explorer/pages/useBookmarkModalFlow.ts` (or extend existing bookmark hook if a better seam exists).
+- [x] Move bookmark modal state sync + confirm flow glue out of the page.
+- [x] Keep `bookmarkModalOpen` ownership clear (either inside this flow or `useExplorerPageUiState`, not split across both).
+- [x] Keep bookmark service calls and toast behavior unchanged.
 
 Acceptance:
 - Bookmark modal orchestration is no longer spread across page locals + lifecycle blocks.
@@ -217,7 +217,7 @@ Acceptance:
 - [x] Step 2 complete
 - [x] Step 3 complete
 - [x] Step 4 complete
-- [ ] Step 5 complete
+- [x] Step 5 complete
 - [ ] Step 6 complete
 - [ ] Step 7 complete
 - [ ] Step 8 complete
