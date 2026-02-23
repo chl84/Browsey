@@ -6,6 +6,7 @@
   import { modifiedBucket, modifiedFilterRank, sizeBucket, sizeFilterRank, typeLabel } from '../filters/columnBuckets'
 
   export let loading = false
+  export let searchMode = false
   export let filterValue = ''
   export let filterSourceEntries: Entry[] = []
   export let columnFilters: {
@@ -81,8 +82,9 @@
 
   const entriesForFilterField = (field: FilterField): Entry[] => {
     const needle = filterValue.trim().toLowerCase()
+    const applyNameNeedleFilter = needle.length > 0 && !searchMode
     const base =
-      needle.length === 0
+      !applyNameNeedleFilter
         ? filterSourceEntries
         : filterSourceEntries.filter((e) => (e.nameLower ?? e.name.toLowerCase()).includes(needle))
     return base.filter((entry) => {
@@ -236,6 +238,7 @@
     // Keep these dependencies explicit so menu options recompute while popup is open.
     const deps = [
       filterValue,
+      searchMode,
       filterSourceEntries,
       columnFacets.name,
       columnFacets.type,

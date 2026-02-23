@@ -726,6 +726,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
         bind:rowsEl
         bind:headerEl
         {loading}
+        {searchMode}
         {columnFilters}
         {columnFacets}
         columnFacetsLoading={columnFacetsLoading}

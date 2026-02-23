@@ -3,10 +3,13 @@ use std::path::{Path, PathBuf};
 
 use blake3::Hasher;
 use image::codecs::png::{CompressionType as PngCompression, FilterType as PngFilter, PngEncoder};
-use image::ImageEncoder;
+use image::{DynamicImage, GrayImage, ImageEncoder, RgbImage};
+use image::metadata::Orientation;
+use image::ImageDecoder;
 use image::ImageReader;
 use image::Limits;
 use image::{imageops::FilterType, GenericImageView, ImageFormat};
+use jpeg_decoder::{Decoder as JpegScaleDecoder, ImageInfo as JpegImageInfo, PixelFormat as JpegPixelFormat};
 use once_cell::sync::Lazy;
 use rayon::ThreadPool;
 use rayon::ThreadPoolBuilder;
@@ -50,6 +53,7 @@ const CACHE_DEFAULT_MB: u64 = 300;
 const CACHE_MIN_MB: u64 = 50;
 const CACHE_MAX_MB: u64 = 1000;
 const MAX_DECODE_BYTES: u64 = (MAX_SOURCE_DIM as u64) * (MAX_SOURCE_DIM as u64) * 4;
+const JPEG_SCALED_DECODE_TARGET_MULTIPLIER: u32 = 4;
 
 fn cache_max_bytes() -> u64 {
     if let Ok(conn) = db::open() {
@@ -426,13 +430,33 @@ fn generate_thumbnail(
     }
 
     let timeout = decode_timeout_for_path(path);
-    let img = decode_with_timeout(reader, fmt, timeout)?;
+    let (img, orientation) = if fmt == ImageFormat::Jpeg {
+        match decode_jpeg_scaled_with_timeout(path, max_dim, timeout) {
+            Ok(img) => {
+                thumb_log(&format!("jpeg scaled decode used: {}", path.display()));
+                img
+            }
+            Err(err) => {
+                thumb_log(&format!(
+                    "jpeg scaled decode fallback: source={} reason={}",
+                    path.display(),
+                    err
+                ));
+                decode_with_timeout(reader, fmt, timeout)?
+            }
+        }
+    } else {
+        decode_with_timeout(reader, fmt, timeout)?
+    };
 
     let (src_w, src_h) = img.dimensions();
     if src_w > MAX_SOURCE_DIM || src_h > MAX_SOURCE_DIM {
         return Err("Image dimensions too large for thumbnail".into());
     }
-    let thumb = img.resize(max_dim, max_dim, FilterType::Nearest);
+    let mut thumb = img.resize(max_dim, max_dim, FilterType::Nearest);
+    if let Some(orientation) = orientation {
+        thumb.apply_orientation(orientation);
+    }
     let (w, h) = thumb.dimensions();
 
     // Save quickly: fast compression and no PNG filters to cut CPU time.
@@ -527,7 +551,7 @@ fn decode_with_timeout<R: BufRead + Seek + Send + 'static>(
     reader: ImageReader<R>,
     format: ImageFormat,
     timeout: Duration,
-) -> Result<image::DynamicImage, String> {
+) -> Result<(image::DynamicImage, Option<Orientation>), String> {
     // Apply codec limits to guard against pathological inputs.
     let mut limits = Limits::default();
     limits.max_image_width = Some(MAX_SOURCE_DIM);
@@ -548,7 +572,12 @@ fn decode_with_timeout<R: BufRead + Seek + Send + 'static>(
     let (tx, rx) = mpsc::channel();
 
     DECODE_POOL.spawn_fifo(move || {
-        let res = reader.decode();
+        let res = (|| {
+            let mut decoder = reader.into_decoder()?;
+            let orientation = decoder.orientation().ok();
+            let img = image::DynamicImage::from_decoder(decoder)?;
+            Ok::<_, image::ImageError>((img, orientation))
+        })();
         let _ = tx.send(res);
     });
 
@@ -560,6 +589,93 @@ fn decode_with_timeout<R: BufRead + Seek + Send + 'static>(
             Err("Decode timed out".into())
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => Err("Decode worker crashed".into()),
+    }
+}
+
+fn decode_jpeg_scaled_with_timeout(
+    path: &Path,
+    max_dim: u32,
+    timeout: Duration,
+) -> Result<(DynamicImage, Option<Orientation>), String> {
+    let file = fs::File::open(path).map_err(|e| format!("Open failed: {e}"))?;
+    let reader = std::io::BufReader::new(file);
+
+    let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let wrapped = CancelableReader {
+        inner: reader,
+        cancelled: cancel_flag.clone(),
+    };
+
+    let (tx, rx) = mpsc::channel();
+
+    DECODE_POOL.spawn_fifo(move || {
+        let res = (|| {
+            let mut decoder = JpegScaleDecoder::new(wrapped);
+            decoder.set_max_decoding_buffer_size(MAX_DECODE_BYTES.min(usize::MAX as u64) as usize);
+
+            decoder
+                .read_info()
+                .map_err(|e| format!("JPEG scaled decode failed: {e}"))?;
+
+            let src_info = decoder
+                .info()
+                .ok_or_else(|| "JPEG scaled decode missing metadata".to_string())?;
+            if u32::from(src_info.width) > MAX_SOURCE_DIM || u32::from(src_info.height) > MAX_SOURCE_DIM
+            {
+                return Err("Image dimensions too large for thumbnail".into());
+            }
+
+            let req_dim = max_dim
+                .saturating_mul(JPEG_SCALED_DECODE_TARGET_MULTIPLIER)
+                .clamp(1, u16::MAX as u32) as u16;
+            let _ = decoder
+                .scale(req_dim, req_dim)
+                .map_err(|e| format!("JPEG scaled decode setup failed: {e}"))?;
+
+            let pixels = decoder
+                .decode()
+                .map_err(|e| format!("JPEG scaled decode failed: {e}"))?;
+            let orientation = decoder
+                .exif_data()
+                .and_then(Orientation::from_exif_chunk);
+            let info = decoder
+                .info()
+                .ok_or_else(|| "JPEG scaled decode missing output metadata".to_string())?;
+            let img = jpeg_pixels_to_dynamic_image(pixels, info)?;
+            Ok((img, orientation))
+        })();
+        let _ = tx.send(res);
+    });
+
+    match rx.recv_timeout(timeout) {
+        Ok(Ok(img)) => Ok(img),
+        Ok(Err(e)) => Err(e),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            Err("Decode timed out".into())
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err("Decode worker crashed".into()),
+    }
+}
+
+fn jpeg_pixels_to_dynamic_image(pixels: Vec<u8>, info: JpegImageInfo) -> Result<DynamicImage, String> {
+    let w = u32::from(info.width);
+    let h = u32::from(info.height);
+    match info.pixel_format {
+        JpegPixelFormat::RGB24 => {
+            let img =
+                RgbImage::from_raw(w, h, pixels).ok_or_else(|| "JPEG RGB buffer size mismatch".to_string())?;
+            Ok(DynamicImage::ImageRgb8(img))
+        }
+        JpegPixelFormat::L8 => {
+            let img =
+                GrayImage::from_raw(w, h, pixels).ok_or_else(|| "JPEG L8 buffer size mismatch".to_string())?;
+            Ok(DynamicImage::ImageLuma8(img))
+        }
+        // Rare camera/legacy cases; fallback to the existing image crate path for compatibility.
+        JpegPixelFormat::L16 | JpegPixelFormat::CMYK32 => {
+            Err(format!("JPEG scaled decode unsupported pixel format: {:?}", info.pixel_format))
+        }
     }
 }
 
