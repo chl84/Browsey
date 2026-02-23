@@ -26,11 +26,17 @@ pub struct AdvancedRenamePayload {
     pub prefix: String,
     pub suffix: String,
     pub case_sensitive: bool,
+    #[serde(default = "default_keep_extension")]
+    pub keep_extension: bool,
     pub sequence_mode: SequenceMode,
     pub sequence_placement: SequencePlacement,
     pub sequence_start: i64,
     pub sequence_step: i64,
     pub sequence_pad: i64,
+}
+
+fn default_keep_extension() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -280,17 +286,31 @@ pub(crate) fn compute_advanced_rename_preview(
         .enumerate()
         .map(|(idx, entry)| {
             let source = entry.name.as_str();
+            let (source_stem, source_ext) = if payload.keep_extension {
+                split_ext(source)
+            } else {
+                (source, "")
+            };
+            let working_source = if payload.keep_extension {
+                source_stem
+            } else {
+                source
+            };
             let seq = format_sequence(idx, payload);
 
             let mut next = if let Some(regex) = pattern.as_ref() {
                 regex
-                    .replace_all(source, payload.replacement.as_str())
+                    .replace_all(working_source, payload.replacement.as_str())
                     .to_string()
             } else if trimmed.is_empty() && !payload.replacement.is_empty() {
                 payload.replacement.clone()
             } else {
-                source.to_string()
+                working_source.to_string()
             };
+
+            if payload.keep_extension {
+                next.push_str(source_ext);
+            }
 
             if !payload.prefix.is_empty() || !payload.suffix.is_empty() {
                 let (stem, ext) = split_ext(&next);
@@ -398,6 +418,7 @@ mod tests {
             prefix: "pre-".into(),
             suffix: "-suf".into(),
             case_sensitive: true,
+            keep_extension: true,
             sequence_mode: SequenceMode::Numeric,
             sequence_placement: SequencePlacement::End,
             sequence_start: 1,
@@ -418,6 +439,7 @@ mod tests {
             prefix: String::new(),
             suffix: String::new(),
             case_sensitive: true,
+            keep_extension: true,
             sequence_mode: SequenceMode::None,
             sequence_placement: SequencePlacement::End,
             sequence_start: 1,
@@ -428,6 +450,27 @@ mod tests {
         assert!(result.error.is_some());
         assert_eq!(result.rows[0].next, "a.txt");
         assert_eq!(result.rows[1].next, "b.txt");
+    }
+
+    #[test]
+    fn preview_can_modify_extension_when_keep_extension_is_disabled() {
+        let payload = AdvancedRenamePayload {
+            regex: "\\.txt$".into(),
+            replacement: ".bak".into(),
+            prefix: String::new(),
+            suffix: String::new(),
+            case_sensitive: true,
+            keep_extension: false,
+            sequence_mode: SequenceMode::None,
+            sequence_placement: SequencePlacement::End,
+            sequence_start: 1,
+            sequence_step: 1,
+            sequence_pad: 2,
+        };
+        let result = compute_advanced_rename_preview(&sample_entries(), &payload);
+        assert!(result.error.is_none());
+        assert_eq!(result.rows[0].next, "a.bak");
+        assert_eq!(result.rows[1].next, "b.bak");
     }
 
     #[test]

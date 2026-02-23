@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte'
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
   import { autoSelectOnOpen } from '../../../shared/ui/modalUtils'
   import type { Entry } from '../model/types'
@@ -15,6 +16,7 @@
   export let prefix = ''
   export let suffix = ''
   export let caseSensitive = true
+  export let keepExtension = true
   export let sequenceMode: SequenceMode = 'none'
   export let sequencePlacement: SequencePlacement = 'end'
   export let sequenceStart = 1
@@ -26,7 +28,10 @@
   export let onCancel: () => void = () => {}
 
   let regexInput: HTMLInputElement | null = null
+  let leftStackEl: HTMLDivElement | null = null
   let selectedThisOpen = false
+  let pairedPreviewPanelHeightPx: number | null = null
+  let leftStackResizeObserver: ResizeObserver | null = null
   type PreviewRow = { original: string; next: string }
   export let preview: PreviewRow[] = []
   export let previewError = ''
@@ -40,6 +45,7 @@
       prefix,
       suffix,
       caseSensitive,
+      keepExtension,
       sequenceMode,
       sequencePlacement,
       sequenceStart: Number(sequenceStart),
@@ -59,6 +65,44 @@
   let sequenceExample = '—'
   $: sequenceExample =
     sequenceMode === 'numeric' ? '001, 002, 003…' : sequenceMode === 'alpha' ? 'AA, AB, AC…' : '—'
+
+  const updatePairedPreviewPanelHeight = () => {
+    if (!open || !leftStackEl) {
+      pairedPreviewPanelHeightPx = null
+      return
+    }
+    pairedPreviewPanelHeightPx = Math.ceil(leftStackEl.getBoundingClientRect().height)
+  }
+
+  const bindLeftStackHeightObserver = (node: HTMLDivElement) => {
+    leftStackResizeObserver?.disconnect()
+    if (typeof ResizeObserver === 'undefined') {
+      leftStackResizeObserver = null
+      updatePairedPreviewPanelHeight()
+      return
+    }
+    const observer = new ResizeObserver(() => {
+      updatePairedPreviewPanelHeight()
+    })
+    observer.observe(node)
+    leftStackResizeObserver = observer
+    updatePairedPreviewPanelHeight()
+  }
+
+  $: if (open && leftStackEl) {
+    bindLeftStackHeightObserver(leftStackEl)
+  }
+
+  $: if (!open) {
+    pairedPreviewPanelHeightPx = null
+    leftStackResizeObserver?.disconnect()
+    leftStackResizeObserver = null
+  }
+
+  onDestroy(() => {
+    leftStackResizeObserver?.disconnect()
+    leftStackResizeObserver = null
+  })
 </script>
 
 {#if open}
@@ -78,7 +122,7 @@
       {/if}
 
       <div class="layout-grid">
-        <div class="left-stack">
+        <div class="left-stack" bind:this={leftStackEl}>
           <div class="panel">
             <div class="field">
               <label for="advanced-rename-regex">Match (regex optional)</label>
@@ -92,10 +136,16 @@
                 on:input={handleChange}
               />
               <div class="muted">Leave empty to apply replacement/prefix/suffix/sequence to full name.</div>
-              <label class="checkbox">
-                <input type="checkbox" bind:checked={caseSensitive} on:change={handleChange} />
-                <span>Case sensitive</span>
-              </label>
+              <div class="checkbox-row">
+                <label class="checkbox">
+                  <input type="checkbox" bind:checked={caseSensitive} on:change={handleChange} />
+                  <span>Case sensitive</span>
+                </label>
+                <label class="checkbox">
+                  <input type="checkbox" bind:checked={keepExtension} on:change={handleChange} />
+                  <span>Keep extension</span>
+                </label>
+              </div>
             </div>
 
             <label class="field">
@@ -185,7 +235,10 @@
           </div>
         </div>
 
-        <div class="panel preview preview-panel">
+        <div
+          class="panel preview preview-panel"
+          style={pairedPreviewPanelHeightPx ? `--paired-preview-panel-height:${pairedPreviewPanelHeightPx}px` : undefined}
+        >
           <span>Preview</span>
           <div class="preview-box" aria-busy={previewLoading}>
             {#if entries.length === 0}
@@ -265,6 +318,13 @@
     color: var(--fg);
   }
 
+  .checkbox-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--modal-field-gap) * 2);
+  }
+
   .sequence {
     border: 1px solid var(--border);
     padding: var(--modal-input-padding-x);
@@ -312,11 +372,13 @@
   @media (min-width: 700px) {
     .layout-grid {
       flex-wrap: nowrap;
-      align-items: stretch;
+      align-items: flex-start;
     }
     .preview-panel {
       margin-top: 0;
       min-height: 0;
+      height: var(--paired-preview-panel-height, auto);
+      max-height: var(--paired-preview-panel-height, none);
     }
     .preview-box {
       height: auto;

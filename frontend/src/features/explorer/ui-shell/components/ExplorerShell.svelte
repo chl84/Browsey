@@ -161,6 +161,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   let advancedRenamePrefix = ''
   let advancedRenameSuffix = ''
   let advancedRenameCaseSensitive = true
+  let advancedRenameKeepExtension = true
   let advancedRenameSequenceMode: 'none' | 'numeric' | 'alpha' = 'none'
   let advancedRenameSequencePlacement: 'start' | 'end' = 'end'
   let advancedRenameSequenceStart = 1
@@ -384,6 +385,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     advancedRenamePrefix: typeof advancedRenamePrefix
     advancedRenameSuffix: typeof advancedRenameSuffix
     advancedRenameCaseSensitive: typeof advancedRenameCaseSensitive
+    advancedRenameKeepExtension: typeof advancedRenameKeepExtension
     advancedRenameSequenceMode: typeof advancedRenameSequenceMode
     advancedRenameSequencePlacement: typeof advancedRenameSequencePlacement
     advancedRenameSequenceStart: typeof advancedRenameSequenceStart
@@ -587,6 +589,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     advancedRenamePrefix,
     advancedRenameSuffix,
     advancedRenameCaseSensitive,
+    advancedRenameKeepExtension,
     advancedRenameSequenceMode,
     advancedRenameSequencePlacement,
     advancedRenameSequenceStart,
@@ -855,6 +858,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   prefix={advancedRenamePrefix}
   suffix={advancedRenameSuffix}
   caseSensitive={advancedRenameCaseSensitive}
+  keepExtension={advancedRenameKeepExtension}
   sequenceMode={advancedRenameSequenceMode}
   sequencePlacement={advancedRenameSequencePlacement}
   sequenceStart={advancedRenameSequenceStart}

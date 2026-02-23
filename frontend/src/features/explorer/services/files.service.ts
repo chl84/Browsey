@@ -16,6 +16,7 @@ export type AdvancedRenamePreviewPayload = {
   prefix: string
   suffix: string
   caseSensitive: boolean
+  keepExtension: boolean
   sequenceMode: 'none' | 'numeric' | 'alpha'
   sequencePlacement: 'start' | 'end'
   sequenceStart: number

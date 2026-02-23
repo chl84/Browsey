@@ -59,14 +59,17 @@
     </label>
     <label class="field">
       <span>Compression level</span>
-      <Slider
-        id="compress-archive-level"
-        autocomplete="off"
-        min="0"
-        max="9"
-        step="1"
-        bind:value={level}
-      />
+      <div class="level-row">
+        <Slider
+          id="compress-archive-level"
+          autocomplete="off"
+          min="0"
+          max="9"
+          step="1"
+          bind:value={level}
+        />
+        <span class="level-value" aria-live="polite">{level}</span>
+      </div>
       <div class="muted">0 = store only, 9 = maximum compression</div>
     </label>
     <div slot="actions">
@@ -75,3 +78,19 @@
     </div>
   </ModalShell>
 {/if}
+
+<style>
+  .level-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--modal-field-gap);
+  }
+
+  .level-value {
+    min-width: 1ch;
+    text-align: right;
+    color: var(--fg);
+    font-variant-numeric: tabular-nums;
+  }
+</style>
