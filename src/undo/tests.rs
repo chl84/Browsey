@@ -378,7 +378,8 @@ fn path_snapshot_detects_replaced_path() {
 
     let snapshot = snapshot_existing_path(&path).expect("snapshot should succeed");
     let _ = fs::remove_file(&path);
-    write_file(&path, b"second");
+    // Replace with a different path kind to avoid inode-reuse flakiness on CI filesystems.
+    let _ = fs::create_dir(&path);
 
     let err = assert_path_snapshot(&path, &snapshot).expect_err("snapshot mismatch expected");
     assert!(err.to_string().contains("Path changed during operation"));
