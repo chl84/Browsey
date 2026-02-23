@@ -4,6 +4,7 @@ import { writable, type Readable } from 'svelte/store'
 
 type Options = {
   maxConcurrent?: number
+  maxConcurrentVideos?: number
   maxDim?: number
   initialGeneration?: string
   allowVideos?: boolean
@@ -11,7 +12,8 @@ type Options = {
 
 type ThumbMap = Map<string, string>
 
-const DEFAULT_CONCURRENCY = 2
+const DEFAULT_CONCURRENCY = 4
+const DEFAULT_VIDEO_CONCURRENCY = 1
 const DEFAULT_DIM = 96
 const MAX_RETRIES = 3
 const BASE_BACKOFF_MS = 300
@@ -19,6 +21,7 @@ type Priority = 'high' | 'low'
 
 export function createThumbnailLoader(opts: Options = {}) {
   const maxConcurrent = opts.maxConcurrent ?? DEFAULT_CONCURRENCY
+  const maxConcurrentVideos = Math.max(0, Math.min(opts.maxConcurrentVideos ?? DEFAULT_VIDEO_CONCURRENCY, maxConcurrent))
   const maxDim = opts.maxDim ?? DEFAULT_DIM
   let generation = opts.initialGeneration ?? 'init'
   let allowVideos = opts.allowVideos ?? true
@@ -29,6 +32,7 @@ export function createThumbnailLoader(opts: Options = {}) {
   const lowQueue: string[] = []
   const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
   let active = 0
+  let activeVideos = 0
   let destroyed = false
   const retries = new Map<string, number>()
   const videoExt = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'])
@@ -76,10 +80,12 @@ export function createThumbnailLoader(opts: Options = {}) {
   function pump() {
     if (destroyed) return
     while (active < maxConcurrent && (highQueue.length > 0 || lowQueue.length > 0)) {
-      const path = highQueue.shift() ?? lowQueue.shift()
+      const path = dequeueNextEligible()
       if (!path) break
       const genAtStart = generation
+      const isVideoTask = isVideo(path)
       active++
+      if (isVideoTask) activeVideos++
       loadThumb(path, genAtStart)
         .then((thumbPath) => {
           if (destroyed) return
@@ -98,9 +104,25 @@ export function createThumbnailLoader(opts: Options = {}) {
         })
         .finally(() => {
           active--
+          if (isVideoTask) activeVideos = Math.max(0, activeVideos - 1)
           pump()
         })
     }
+  }
+
+  function dequeueNextEligible(): string | undefined {
+    const high = highQueue.shift()
+    if (high) return high
+    if (lowQueue.length === 0) return undefined
+    if (maxConcurrentVideos < 1 || activeVideos >= maxConcurrentVideos) {
+      const nonVideoIndex = lowQueue.findIndex((p) => !isVideo(p))
+      if (nonVideoIndex >= 0) {
+        const [path] = lowQueue.splice(nonVideoIndex, 1)
+        return path
+      }
+      return undefined
+    }
+    return lowQueue.shift()
   }
 
   async function loadThumb(path: string, genAtStart: string): Promise<string | null> {

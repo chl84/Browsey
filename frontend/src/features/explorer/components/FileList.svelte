@@ -10,6 +10,7 @@
   export let rowsEl: HTMLDivElement | null = null
   export let headerEl: HTMLDivElement | null = null
   export let loading = false
+  export let searchMode = false
   export let filterSourceEntries: Entry[] = []
   export let filteredEntries: Entry[] = []
   export let visibleEntries: Entry[] = []
@@ -160,6 +161,7 @@
   bind:this={filterControls}
   bind:filterActive
   {loading}
+  {searchMode}
   filterValue={filterValue}
   filterSourceEntries={filterSourceEntries}
   {columnFilters}
