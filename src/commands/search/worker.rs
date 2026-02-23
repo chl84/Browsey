@@ -2,7 +2,7 @@ use super::SearchProgress;
 use crate::{
     commands::fs::expand_path,
     commands::listing::{ListingFacetBuilder, ListingFacets},
-    commands::search::query::{matches_query, parse_query},
+    commands::search::query::{matches_query, parse_query, simple_name_contains_needle_lc},
     db,
     entry::{normalize_key_for_db, FsEntry},
     runtime_lifecycle,
@@ -70,6 +70,7 @@ pub(super) fn run_search_stream(
             return;
         }
     };
+    let simple_name_contains_needle_lc = simple_name_contains_needle_lc(&parsed_query);
 
     let target = match expand_path(path) {
         Ok(p) if p.exists() => p,
@@ -142,6 +143,15 @@ pub(super) fn run_search_stream(
             };
             let is_link = file_type.is_symlink();
             let is_dir = file_type.is_dir();
+            if let Some(needle_lc) = simple_name_contains_needle_lc.as_deref() {
+                let name_lc = entry.file_name().to_string_lossy().to_lowercase();
+                if !name_lc.contains(needle_lc) {
+                    if is_dir && !is_link {
+                        stack.push(path);
+                    }
+                    continue;
+                }
+            }
             {
                 let meta = match std::fs::symlink_metadata(&path) {
                     Ok(m) => m,
