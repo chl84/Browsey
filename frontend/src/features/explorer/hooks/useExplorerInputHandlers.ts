@@ -8,6 +8,31 @@ import { createGridKeyboardHandler } from './createGridKeyboardHandler'
 type ViewMode = 'list' | 'grid'
 type Mode = 'address' | 'filter'
 
+const AUTO_EXTRACT_ON_OPEN_SUFFIXES = [
+  '.tar.gz',
+  '.tgz',
+  '.tar.bz2',
+  '.tbz2',
+  '.tar.xz',
+  '.txz',
+  '.tar.zst',
+  '.tzst',
+  '.tar',
+  '.zip',
+  '.7z',
+  '.rar',
+  '.gz',
+  '.bz2',
+  '.xz',
+  '.zst',
+]
+
+const shouldAutoExtractOnOpen = (entry: Entry) => {
+  if (entry.kind !== 'file') return false
+  const name = entry.name.toLowerCase()
+  return AUTO_EXTRACT_ON_OPEN_SUFFIXES.some((suffix) => name.endsWith(suffix))
+}
+
 type Deps = {
   getViewMode: () => ViewMode
   getMode: () => Mode
@@ -125,7 +150,7 @@ export const useExplorerInputHandlers = (deps: Deps) => {
       }
       return
     }
-    if (entry.kind === 'file' && (await deps.canExtractPaths([entry.path]))) {
+    if (shouldAutoExtractOnOpen(entry) && (await deps.canExtractPaths([entry.path]))) {
       await deps.extractEntries([entry])
       return
     }
