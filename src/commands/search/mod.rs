@@ -1,6 +1,7 @@
 //! Streaming recursive search command that decorates entries with starred state.
 
 mod error;
+mod query;
 mod types;
 mod worker;
 
