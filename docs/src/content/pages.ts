@@ -171,7 +171,7 @@ export const docsPages: DocPage[] = [
         body: 'Browsey supports a scoped AQS-like query syntax for recursive search. Parsing and matching are performed in the backend search stream (not in the frontend). Matching is case-insensitive.',
         bullets: [
           'Plain text (for example `foo`) uses `name:` semantics and performs a case-insensitive contains match on the entry basename.',
-          'Quoted text (for example `\"black\"`) is treated as an exact phrase/value token (case-insensitive exact match), so it matches `black` but not `black-1`.',
+          'Quoted text (for example `"black"`) is treated as an exact phrase/value token (case-insensitive exact match), so it matches `black` but not `black-1`.',
           'Field exact-value syntax uses `=`, for example `name:=file.txt` (case-insensitive exact equality for that field).',
           'Wildcards are supported in text fields: `*` matches zero or more characters, `?` matches exactly one character.',
           'Wildcard patterns match the full field value (not substring mode). Example: `filename:*.rs` matches `main.rs`; `*.` only matches names ending with a dot, while `*.*` is a practical “has extension” pattern.',
