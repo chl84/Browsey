@@ -249,6 +249,7 @@ export const createExplorerShellProps = (p: Params) => ({
     advancedRenamePrefix: p.advancedRenameState.prefix,
     advancedRenameSuffix: p.advancedRenameState.suffix,
     advancedRenameCaseSensitive: p.advancedRenameState.caseSensitive,
+    advancedRenameKeepExtension: p.advancedRenameState.keepExtension,
     advancedRenameSequenceMode: p.advancedRenameState.sequenceMode,
     advancedRenameSequencePlacement: p.advancedRenameState.sequencePlacement,
     advancedRenameSequenceStart: p.advancedRenameState.sequenceStart,

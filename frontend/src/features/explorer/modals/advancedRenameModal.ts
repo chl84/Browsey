@@ -15,6 +15,7 @@ export type AdvancedRenamePayload = {
   prefix: string
   suffix: string
   caseSensitive: boolean
+  keepExtension: boolean
   sequenceMode: SequenceMode
   sequencePlacement: SequencePlacement
   sequenceStart: number
@@ -44,6 +45,7 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast }: Deps) =>
     prefix: '',
     suffix: '',
     caseSensitive: true,
+    keepExtension: true,
     sequenceMode: 'none',
     sequencePlacement: 'end',
     sequenceStart: 1,
