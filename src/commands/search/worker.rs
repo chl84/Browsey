@@ -2,6 +2,7 @@ use super::SearchProgress;
 use crate::{
     commands::fs::expand_path,
     commands::listing::{ListingFacetBuilder, ListingFacets},
+    commands::search::query::{matches_query, parse_query},
     db,
     entry::{normalize_key_for_db, FsEntry},
     runtime_lifecycle,
@@ -12,6 +13,15 @@ use std::sync::atomic::Ordering;
 use tracing::{debug, warn};
 
 const SEARCH_BATCH_SIZE: usize = 256;
+
+fn invalid_query_progress(error: impl ToString) -> SearchProgress {
+    SearchProgress {
+        entries: Vec::new(),
+        done: true,
+        error: Some(format!("Invalid search query: {}", error.to_string())),
+        facets: Some(ListingFacets::default()),
+    }
+}
 
 pub(super) fn run_search_stream(
     app: tauri::AppHandle,
@@ -52,6 +62,14 @@ pub(super) fn run_search_stream(
         send(Vec::new(), true, None, Some(ListingFacets::default()));
         return;
     }
+    let parsed_query = match parse_query(needle) {
+        Ok(q) => q,
+        Err(e) => {
+            let payload = invalid_query_progress(e);
+            send(payload.entries, payload.done, payload.error, payload.facets);
+            return;
+        }
+    };
 
     let target = match expand_path(path) {
         Ok(p) if p.exists() => p,
@@ -88,7 +106,6 @@ pub(super) fn run_search_stream(
 
     let mut stack = vec![target];
     let mut seen: HashSet<String> = HashSet::new();
-    let needle_lc = needle.to_lowercase();
     let mut batch: Vec<FsEntry> = Vec::with_capacity(SEARCH_BATCH_SIZE);
     let mut facets = ListingFacetBuilder::default();
 
@@ -124,10 +141,8 @@ pub(super) fn run_search_stream(
                 Err(_) => continue,
             };
             let is_link = file_type.is_symlink();
-            let name_lc = entry.file_name().to_string_lossy().to_lowercase();
             let is_dir = file_type.is_dir();
-
-            if name_lc.contains(&needle_lc) {
+            {
                 let meta = match std::fs::symlink_metadata(&path) {
                     Ok(m) => m,
                     Err(_) => continue,
@@ -138,10 +153,12 @@ pub(super) fn run_search_stream(
                     if star_set.contains(&normalize_key_for_db(&path)) {
                         item.starred = true;
                     }
-                    facets.add(&item);
-                    batch.push(item);
-                    if batch.len() >= SEARCH_BATCH_SIZE {
-                        send(std::mem::take(&mut batch), false, None, None);
+                    if matches_query(&item, &parsed_query) {
+                        facets.add(&item);
+                        batch.push(item);
+                        if batch.len() >= SEARCH_BATCH_SIZE {
+                            send(std::mem::take(&mut batch), false, None, None);
+                        }
                     }
                 }
             }
@@ -160,4 +177,22 @@ pub(super) fn run_search_stream(
         return;
     }
     send(Vec::new(), true, None, Some(facets.finish()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::invalid_query_progress;
+
+    #[test]
+    fn invalid_query_progress_matches_search_error_payload_shape() {
+        let payload = invalid_query_progress("Unclosed group at position 0");
+        assert!(payload.done);
+        assert!(payload.entries.is_empty());
+        assert!(payload.facets.is_some());
+        assert!(payload
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Invalid search query"));
+    }
 }

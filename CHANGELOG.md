@@ -29,6 +29,7 @@
 - Properties modal UX and stability were improved: ownership moved to a dedicated tab, permission toggles are temporarily disabled during async apply (without flashing the whole permissions pane), the layout was tightened/resized/responsive-tuned, and owner/group dropdowns can overflow beyond modal bounds when needed.
 - A custom shared slider UI component was added (square thumb + square track) and wired into settings/compression controls, replacing native range styling inconsistencies.
 - Advanced Rename preview updates no longer visibly flicker/repaint the modal while typing; preview now updates in place without swapping the preview pane content.
+- Search now supports a scoped AQS-lite query syntax in backend streaming search (`AND`/`OR`/`NOT`, grouping, wildcards `*`/`?`, quoted exact phrases, exact-value `=`, and field filters for `name`, `filename`, `folder`, `path`, `hidden`, and `readonly`), and search-mode frontend filtering no longer re-filters backend AQS results as plain text.
 
 ## v0.4.4 — 2026-02-17
 - Destructive move hardening: removed Linux check-then-rename compatibility fallback when `renameat2(RENAME_NOREPLACE)` is unavailable; operations now use a controlled non-overwrite copy+delete fallback with explicit narrower (non-atomic) guarantees.

@@ -181,8 +181,9 @@ export const createFilteringSlice = (stores: Pick<
       const needle = $filter.trim().toLowerCase()
 
       const compute = () => {
+        const applyTextFilter = needle.length > 0 && !$searchMode
         let base =
-          needle.length === 0
+          !applyTextFilter
             ? $visible
             : $visible.filter((e) => (e.nameLower ?? e.name.toLowerCase()).includes(needle))
         base = applyColumnFilters(base, $filters)
