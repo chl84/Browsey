@@ -107,7 +107,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Define how a OneDrive account is represented (rclone remote name + optional subpath).
 - [x] Add backend command to list configured remotes (or a Browsey allowlist subset).
 - [x] Add backend command to select/validate a remote and normalize root path.
-- [ ] Implement browsing/listing for OneDrive via `rclone`.
+- [x] Implement browsing/listing for OneDrive via `rclone`.
 - [ ] Implement core file ops in OneDrive (`copy`, `move`, `rename`, `delete`, `mkdir`).
 - [ ] Trigger refresh after operations.
 - [ ] Implement cloud-aware paste conflict preview (no `Path::exists()`).
@@ -116,7 +116,7 @@ Recommended implementation sequence (v1 OneDrive):
 ## 8. Frontend integration (v1)
 
 - [ ] Add UI model support for cloud entries that are not local filesystem paths.
-- [ ] Update network/explorer flows to display rclone-based cloud endpoints.
+- [x] Update network/explorer flows to display rclone-based cloud endpoints.
 - [ ] Define OneDrive presentation in Network/sidebar without GVFS-specific assumptions.
 - [ ] Add clear labels/icons for rclone OneDrive endpoints.
 - [ ] Add basic operation activity/progress UI (at least busy state).

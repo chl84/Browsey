@@ -3,14 +3,8 @@ use std::{
     process::{Command, ExitStatus},
 };
 
-const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] = &[
-    "--retries",
-    "2",
-    "--low-level-retries",
-    "2",
-    "--stats",
-    "0",
-];
+const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] =
+    &["--retries", "2", "--low-level-retries", "2", "--stats", "0"];
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

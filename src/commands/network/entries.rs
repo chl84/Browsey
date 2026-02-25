@@ -1,6 +1,10 @@
-//! Build deduped network listing entries from mounts and discovered network targets.
+//! Build deduped network listing entries from mounts, discovered network targets, and cloud remotes.
 
-use crate::{commands::fs::MountInfo, entry::FsEntry, errors::api_error::ApiResult};
+use crate::{
+    commands::{cloud, cloud::types::CloudRemote, fs::MountInfo},
+    entry::FsEntry,
+    errors::api_error::ApiResult,
+};
 use std::collections::HashMap;
 
 use super::{
@@ -123,6 +127,26 @@ fn to_network_entry(mount: &MountInfo) -> FsEntry {
     }
 }
 
+fn to_cloud_network_entry(remote: &CloudRemote) -> FsEntry {
+    FsEntry {
+        name: remote.label.clone(),
+        path: remote.root_path.clone(),
+        kind: "dir".to_string(),
+        ext: None,
+        size: None,
+        items: None,
+        modified: None,
+        original_path: None,
+        trash_id: None,
+        icon_id: NETWORK_ICON_ID,
+        starred: false,
+        hidden: false,
+        network: true,
+        read_only: false,
+        read_denied: false,
+    }
+}
+
 pub(super) fn to_network_entries(mounts: &[MountInfo]) -> Vec<FsEntry> {
     let mut deduped: HashMap<String, MountInfo> = HashMap::new();
     for mount in mounts {
@@ -156,7 +180,13 @@ pub(super) fn to_network_entries(mounts: &[MountInfo]) -> Vec<FsEntry> {
 pub(super) fn list_network_entries_sync(force_refresh: bool) -> Vec<FsEntry> {
     let mut mounts_list = mounts::list_mounts_sync();
     mounts_list.extend(discovery::list_network_devices_sync(force_refresh));
-    to_network_entries(&mounts_list)
+    let mut entries = to_network_entries(&mounts_list);
+    entries.extend(
+        cloud::list_cloud_remotes_sync_best_effort()
+            .into_iter()
+            .map(|remote| to_cloud_network_entry(&remote)),
+    );
+    entries
 }
 
 #[tauri::command]
