@@ -49,3 +49,19 @@ pub struct CloudEntry {
     pub modified: Option<String>,
     pub capabilities: CloudCapabilities,
 }
+
+impl CloudCapabilities {
+    pub fn v1_core_rw() -> Self {
+        Self {
+            can_list: true,
+            can_mkdir: true,
+            can_delete: true,
+            can_rename: true,
+            can_move: true,
+            can_copy: true,
+            can_trash: false,
+            can_undo: false,
+            can_permissions: false,
+        }
+    }
+}

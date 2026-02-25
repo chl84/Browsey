@@ -41,6 +41,41 @@ impl CloudPath {
     pub fn is_root(&self) -> bool {
         self.path.is_empty()
     }
+
+    pub fn to_rclone_remote_spec(&self) -> String {
+        if self.path.is_empty() {
+            format!("{}:", self.remote)
+        } else {
+            format!("{}:{}", self.remote, self.path)
+        }
+    }
+
+    pub fn child_path(&self, name: &str) -> Result<Self, CloudPathParseError> {
+        if name.is_empty() {
+            return Err(CloudPathParseError::new(
+                "Cloud entry name must not be empty",
+            ));
+        }
+        if name.contains('/') || name.contains('\\') {
+            return Err(CloudPathParseError::new(
+                "Cloud entry name must not contain path separators",
+            ));
+        }
+        if name == "." || name == ".." {
+            return Err(CloudPathParseError::new(
+                "Cloud entry name must not be a relative segment",
+            ));
+        }
+        let path = if self.path.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}/{}", self.path, name)
+        };
+        Ok(Self {
+            remote: self.remote.clone(),
+            path,
+        })
+    }
 }
 
 impl fmt::Display for CloudPath {
@@ -183,5 +218,20 @@ mod tests {
     fn rejects_remote_with_colon() {
         let err = CloudPath::parse("rclone://remote:name/path").expect_err("should reject");
         assert!(err.to_string().contains("must not contain ':'"));
+    }
+
+    #[test]
+    fn builds_rclone_remote_spec() {
+        let root = CloudPath::parse("rclone://work").expect("root");
+        assert_eq!(root.to_rclone_remote_spec(), "work:");
+        let child = CloudPath::parse("rclone://work/folder/file.txt").expect("child");
+        assert_eq!(child.to_rclone_remote_spec(), "work:folder/file.txt");
+    }
+
+    #[test]
+    fn builds_child_path() {
+        let root = CloudPath::parse("rclone://work").expect("root");
+        let child = root.child_path("docs").expect("child path");
+        assert_eq!(child.to_string(), "rclone://work/docs");
     }
 }
