@@ -493,15 +493,29 @@ mod tests {
         classify_provider_kind, classify_rclone_message_code, is_rclone_not_found_text,
         map_rclone_error, parse_config_dump_types, parse_listremotes_plain, parse_lsjson_items,
         parse_lsjson_stat_item, parse_rclone_version_stdout, parse_rclone_version_triplet,
+        RcloneCloudProvider,
     };
     use crate::{
         commands::cloud::{
-            error::CloudCommandErrorCode, rclone_cli::RcloneCliError, rclone_cli::RcloneSubcommand,
-            types::CloudProviderKind,
+            error::CloudCommandErrorCode,
+            path::CloudPath,
+            provider::CloudProvider,
+            rclone_cli::RcloneCli,
+            rclone_cli::RcloneCliError,
+            rclone_cli::RcloneSubcommand,
+            types::{CloudEntryKind, CloudProviderKind},
         },
         errors::domain::{DomainError, ErrorCode},
     };
     use std::{process::ExitStatus, time::Duration};
+
+    #[cfg(unix)]
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        sync::atomic::{AtomicU64, Ordering},
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[cfg(unix)]
     fn fake_exit_status(code: i32) -> ExitStatus {
@@ -650,5 +664,181 @@ mod tests {
             err.code_str(),
             CloudCommandErrorCode::RateLimited.as_code_str()
         );
+    }
+
+    #[cfg(unix)]
+    struct FakeRcloneSandbox {
+        root: PathBuf,
+        script_path: PathBuf,
+        state_root: PathBuf,
+        log_path: PathBuf,
+    }
+
+    #[cfg(unix)]
+    impl FakeRcloneSandbox {
+        fn new() -> Self {
+            static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+            let unique = format!(
+                "browsey-fake-rclone-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("time")
+                    .as_nanos()
+                    + u128::from(NEXT_ID.fetch_add(1, Ordering::Relaxed))
+            );
+            let root = std::env::temp_dir().join(unique);
+            let state_root = root.join("state");
+            let script_path = root.join("rclone");
+            let log_path = root.join("fake-rclone.log");
+            fs::create_dir_all(&state_root).expect("create state root");
+            let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/fake-rclone.sh");
+            fs::copy(&source, &script_path).expect("copy fake rclone script");
+            let mut perms = fs::metadata(&script_path)
+                .expect("script metadata")
+                .permissions();
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o755);
+            fs::set_permissions(&script_path, perms).expect("chmod fake rclone");
+            Self {
+                root,
+                script_path,
+                state_root,
+                log_path,
+            }
+        }
+
+        fn provider(&self) -> RcloneCloudProvider {
+            RcloneCloudProvider::new(RcloneCli::new(self.script_path.as_os_str()))
+        }
+
+        fn remote_path(&self, remote: &str, rel: &str) -> PathBuf {
+            let base = self.state_root.join(remote);
+            if rel.is_empty() {
+                base
+            } else {
+                base.join(rel)
+            }
+        }
+
+        fn mkdir_remote(&self, remote: &str, rel: &str) {
+            fs::create_dir_all(self.remote_path(remote, rel)).expect("mkdir remote path");
+        }
+
+        fn write_remote_file(&self, remote: &str, rel: &str, content: &str) {
+            let path = self.remote_path(remote, rel);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("mkdir parent");
+            }
+            fs::write(path, content).expect("write remote file");
+        }
+
+        fn read_log(&self) -> String {
+            fs::read_to_string(&self.log_path).unwrap_or_default()
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for FakeRcloneSandbox {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[cfg(unix)]
+    fn cloud_path(raw: &str) -> CloudPath {
+        CloudPath::parse(raw).expect("valid cloud path")
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fake_rclone_shim_lists_remotes_and_directory_entries() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "Docs");
+        sandbox.write_remote_file("work", "note.txt", "hello cloud");
+        let provider = sandbox.provider();
+
+        let remotes = provider.list_remotes().expect("list remotes");
+        assert_eq!(remotes.len(), 1);
+        assert_eq!(remotes[0].id, "work");
+        assert_eq!(remotes[0].provider, CloudProviderKind::Onedrive);
+        assert_eq!(remotes[0].root_path, "rclone://work");
+
+        let entries = provider
+            .list_dir(&cloud_path("rclone://work"))
+            .expect("list dir");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "Docs");
+        assert_eq!(entries[0].kind, CloudEntryKind::Dir);
+        assert_eq!(entries[1].name, "note.txt");
+        assert_eq!(entries[1].kind, CloudEntryKind::File);
+        assert_eq!(entries[1].size, Some("hello cloud".len() as u64));
+
+        let log = sandbox.read_log();
+        assert!(log.contains("version"));
+        assert!(log.contains("listremotes"));
+        assert!(log.contains("config dump"));
+        assert!(log.contains("lsjson work:"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fake_rclone_shim_supports_copy_move_and_delete_operations() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "src/file.txt", "payload");
+        sandbox.write_remote_file("work", "trash/sub/old.txt", "gone");
+        let provider = sandbox.provider();
+
+        provider
+            .mkdir(&cloud_path("rclone://work/dst"))
+            .expect("mkdir dst");
+        provider
+            .copy_entry(
+                &cloud_path("rclone://work/src/file.txt"),
+                &cloud_path("rclone://work/dst/copied.txt"),
+                false,
+            )
+            .expect("copy file");
+        assert!(sandbox.remote_path("work", "dst/copied.txt").is_file());
+
+        let copied_stat = provider
+            .stat_path(&cloud_path("rclone://work/dst/copied.txt"))
+            .expect("stat copied")
+            .expect("copied exists");
+        assert_eq!(copied_stat.name, "copied.txt");
+        assert_eq!(copied_stat.kind, CloudEntryKind::File);
+
+        provider
+            .move_entry(
+                &cloud_path("rclone://work/dst/copied.txt"),
+                &cloud_path("rclone://work/dst/moved.txt"),
+                false,
+            )
+            .expect("move file");
+        assert!(!sandbox.remote_path("work", "dst/copied.txt").exists());
+        assert!(sandbox.remote_path("work", "dst/moved.txt").exists());
+
+        provider
+            .delete_file(&cloud_path("rclone://work/dst/moved.txt"))
+            .expect("delete file");
+        assert!(!sandbox.remote_path("work", "dst/moved.txt").exists());
+
+        provider
+            .delete_dir_empty(&cloud_path("rclone://work/dst"))
+            .expect("delete empty dir");
+        assert!(!sandbox.remote_path("work", "dst").exists());
+
+        provider
+            .delete_dir_recursive(&cloud_path("rclone://work/trash"))
+            .expect("purge dir");
+        assert!(!sandbox.remote_path("work", "trash").exists());
+
+        let log = sandbox.read_log();
+        assert!(log.contains("mkdir work:dst"));
+        assert!(log.contains("copyto work:src/file.txt work:dst/copied.txt"));
+        assert!(log.contains("moveto work:dst/copied.txt work:dst/moved.txt"));
+        assert!(log.contains("deletefile work:dst/moved.txt"));
+        assert!(log.contains("rmdir work:dst"));
+        assert!(log.contains("purge work:trash"));
     }
 }

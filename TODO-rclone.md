@@ -96,10 +96,10 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Add early routing for local path vs cloud path in relevant commands.
 - [x] Prevent cloud paths from entering `src/commands/fs/*`, `src/undo/*`, `nofollow`, or GVFS flows.
 - [x] Start with separate Tauri commands for cloud instead of rewriting all FS commands at once.
-- [ ] Ensure `src/commands/network/*` does not try to own rclone cloud operations.
+- [x] Ensure `src/commands/network/*` does not try to own rclone cloud operations.
 - [x] Keep `src/commands/network/gio_mounts.rs` for generic GIO/GVFS only (MTP/other mounts).
-- [ ] Identify exact integration seams in Browsey first (likely explorer listing + clipboard/paste preview + file ops service layer), and route there instead of adding ad-hoc bypasses.
-- [ ] Decide whether cloud entries reuse `Entry` directly or need a cloud-specific variant before conversion into `Entry`.
+- [x] Identify exact integration seams in Browsey first (likely explorer listing + clipboard/paste preview + file ops service layer), and route there instead of adding ad-hoc bypasses.
+- [x] Decide whether cloud entries reuse `Entry` directly or need a cloud-specific variant before conversion into `Entry`.
 - [ ] Ensure local-only helpers (`path_guard`, local metadata probes, `std::fs::*`) are never called on cloud paths during previews/actions.
 
 ## 7. OneDrive v1 feature delivery
@@ -115,16 +115,16 @@ Recommended implementation sequence (v1 OneDrive):
 
 ## 8. Frontend integration (v1)
 
-- [ ] Add UI model support for cloud entries that are not local filesystem paths.
+- [x] Add UI model support for cloud entries that are not local filesystem paths.
 - [x] Update network/explorer flows to display rclone-based cloud endpoints.
 - [x] Define OneDrive presentation in Network/sidebar without GVFS-specific assumptions.
 - [x] Add clear labels/icons for rclone OneDrive endpoints.
 - [ ] Add basic operation activity/progress UI (at least busy state).
 - [x] Gate context-menu actions based on backend capability flags.
 - [x] Ensure keyboard actions (`Delete`, `F2`, etc.) respect cloud capabilities.
-- [ ] Translate raw `rclone` errors into user-friendly UI messages.
+- [x] Translate raw `rclone` errors into user-friendly UI messages.
 - [x] Follow frontend naming conventions from `ARCHITECTURE_NAMING.md` (e.g. `*.service.ts` for Tauri invoke boundary).
-- [ ] Respect import-boundary rules from `ARCHITECTURE_IMPORTS.md` (cross-feature imports via public barrels only).
+- [x] Respect import-boundary rules from `ARCHITECTURE_IMPORTS.md` (cross-feature imports via public barrels only).
 - [x] Add/extend feature barrel exports (`frontend/src/features/network/index.ts`, `frontend/src/features/explorer/index.ts`) instead of deep cross-feature imports.
 - [x] Keep cloud `invoke` calls inside service modules (avoid calling `invoke(...)` directly from Svelte components).
 - [ ] Decide where cloud state lives (existing explorer state vs dedicated network/cloud store) before wiring multiple components.
@@ -175,8 +175,8 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Unit tests for cloud path parser/formatter.
 - [x] Unit tests for `rclone` command builder (expected args).
 - [x] Unit tests for `stderr`/exit-code mapping to `CloudErrorCode`.
-- [ ] Create a fake-`rclone` shim for deterministic backend tests.
-- [ ] Integration tests for list/copy/move/delete using fake `rclone` JSON output.
+- [x] Create a fake-`rclone` shim for deterministic backend tests.
+- [x] Integration tests for list/copy/move/delete using fake `rclone` JSON output.
 - [x] Frontend tests for conflict preview and disabled actions based on capabilities.
 - [x] Manual test checklist for OneDrive v1 (auth, large files, rename, delete, conflict, refresh).
 - [ ] Add backend tests for command registration wiring / argument serialization at Tauri boundary where practical.
@@ -230,5 +230,5 @@ Recommended implementation sequence (v1 OneDrive):
 - [ ] Backend + frontend checks are green (`cargo check`, `cargo test`, frontend check).
 - [ ] Manual test checklist completed on at least one OneDrive setup.
 - [ ] Docs updated with install/setup steps and known limitations.
-- [ ] Cloud integration follows frontend import/naming rules and does not introduce deep cross-feature imports.
+- [x] Cloud integration follows frontend import/naming rules and does not introduce deep cross-feature imports.
 - [ ] New backend commands are registered/typed consistently with Browsey's `ApiResult` + error-code conventions.
