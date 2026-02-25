@@ -153,17 +153,17 @@ Recommended implementation sequence (v1 OneDrive):
 
 ## 11. Security requirements (must be early)
 
-- [ ] No shell execution; argument-list invocation only.
-- [ ] Strict validation of remote names and path segments.
-- [ ] Do not accept arbitrary user-provided `rclone` flags.
-- [ ] Never log `rclone` config content or tokens.
+- [x] No shell execution; argument-list invocation only.
+- [x] Strict validation of remote names and path segments.
+- [x] Do not accept arbitrary user-provided `rclone` flags.
+- [x] Never log `rclone` config content or tokens.
 - [ ] Consider a Browsey remote allowlist/prefix policy.
 - [ ] Decide whether to use default `rclone` config path or explicit configurable path.
 
 ## 12. Cross-distro and packaging
 
-- [ ] Define Linux strategy for v1: `rclone` from `PATH`.
-- [ ] Show clear install/setup error when `rclone` is missing.
+- [x] Define Linux strategy for v1: `rclone` from `PATH`.
+- [x] Show clear install/setup error when `rclone` is missing.
 - [ ] Update docs/install guide with `rclone` requirement for cloud features.
 - [ ] Consider later support for custom binary path or bundling.
 - [ ] Test at least two Linux environments (e.g. Fedora + Ubuntu) with different `rclone` versions.
