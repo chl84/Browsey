@@ -11,8 +11,12 @@ const parentCloudPath = (path: string) => {
   return idx > 'rclone://'.length ? path.slice(0, idx) : path
 }
 
-export const openEntry = (entry: Entry) =>
-  invoke<void>('open_entry', { path: entry.path })
+export const openEntry = (entry: Entry) => {
+  if (isCloudPath(entry.path) && entry.kind !== 'dir') {
+    throw new Error('Opening cloud files directly is not supported yet')
+  }
+  return invoke<void>('open_entry', { path: entry.path })
+}
 
 export const renameEntry = async (path: string, newName: string) => {
   if (!isCloudPath(path)) {
@@ -23,8 +27,12 @@ export const renameEntry = async (path: string, newName: string) => {
   return dst
 }
 
-export const renameEntries = (entries: Array<{ path: string; newName: string }>) =>
-  invoke<string[]>('rename_entries', { entries })
+export const renameEntries = (entries: Array<{ path: string; newName: string }>) => {
+  if (entries.some((entry) => isCloudPath(entry.path))) {
+    throw new Error('Advanced rename is not supported for cloud entries yet')
+  }
+  return invoke<string[]>('rename_entries', { entries })
+}
 
 export type AdvancedRenamePreviewPayload = {
   regex: string
@@ -53,7 +61,12 @@ export type AdvancedRenamePreviewResult = {
 export const previewRenameEntries = (
   entries: Array<{ path: string; name: string }>,
   payload: AdvancedRenamePreviewPayload,
-) => invoke<AdvancedRenamePreviewResult>('preview_rename_entries', { entries, payload })
+) => {
+  if (entries.some((entry) => isCloudPath(entry.path))) {
+    throw new Error('Advanced rename preview is not supported for cloud entries yet')
+  }
+  return invoke<AdvancedRenamePreviewResult>('preview_rename_entries', { entries, payload })
+}
 
 export const createFolder = async (base: string, name: string) => {
   if (!isCloudPath(base)) {
@@ -64,19 +77,35 @@ export const createFolder = async (base: string, name: string) => {
   return created
 }
 
-export const createFile = (base: string, name: string) =>
-  invoke<string>('create_file', { path: base, name })
+export const createFile = (base: string, name: string) => {
+  if (isCloudPath(base)) {
+    throw new Error('Creating files directly in cloud folders is not supported yet')
+  }
+  return invoke<string>('create_file', { path: base, name })
+}
 
 export type EntryKind = 'dir' | 'file'
 
-export const entryKind = (path: string) =>
-  invoke<EntryKind>('entry_kind_cmd', { path })
+export const entryKind = (path: string) => {
+  if (isCloudPath(path)) {
+    throw new Error('Cloud entry type probing is not supported via local entryKind')
+  }
+  return invoke<EntryKind>('entry_kind_cmd', { path })
+}
 
-export const dirSizes = (paths: string[], progressEvent?: string) =>
-  invoke<{ total: number; total_items: number }>('dir_sizes', { paths, progressEvent })
+export const dirSizes = (paths: string[], progressEvent?: string) => {
+  if (paths.some(isCloudPath)) {
+    throw new Error('Directory size scan is not supported for cloud entries yet')
+  }
+  return invoke<{ total: number; total_items: number }>('dir_sizes', { paths, progressEvent })
+}
 
-export const canExtractPaths = (paths: string[]) =>
-  invoke<boolean>('can_extract_paths', { paths })
+export const canExtractPaths = (paths: string[]) => {
+  if (paths.some(isCloudPath)) {
+    return Promise.resolve(false)
+  }
+  return invoke<boolean>('can_extract_paths', { paths })
+}
 
 export type ExtractResult = {
   destination: string
@@ -91,8 +120,16 @@ export type ExtractBatchItem = {
   error?: string | null
 }
 
-export const extractArchive = (path: string, progressEvent?: string) =>
-  invoke<ExtractResult>('extract_archive', { path, progressEvent })
+export const extractArchive = (path: string, progressEvent?: string) => {
+  if (isCloudPath(path)) {
+    throw new Error('Archive extraction is not supported for cloud entries yet')
+  }
+  return invoke<ExtractResult>('extract_archive', { path, progressEvent })
+}
 
-export const extractArchives = (paths: string[], progressEvent?: string) =>
-  invoke<ExtractBatchItem[]>('extract_archives', { paths, progressEvent })
+export const extractArchives = (paths: string[], progressEvent?: string) => {
+  if (paths.some(isCloudPath)) {
+    throw new Error('Archive extraction is not supported for cloud entries yet')
+  }
+  return invoke<ExtractBatchItem[]>('extract_archives', { paths, progressEvent })
+}
