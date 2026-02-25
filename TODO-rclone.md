@@ -40,34 +40,34 @@ Recommended implementation sequence (v1 OneDrive):
 
 ## 2. Domain/path model (critical)
 
-- [ ] Introduce an explicit cloud path representation in backend (not local filesystem paths).
-- [ ] Define internal format for remote paths, e.g. `rclone://<remote>/<path>`.
-- [ ] Implement parser/validator for `rclone://...` (reject relative segments and ambiguous forms).
+- [x] Introduce an explicit cloud path representation in backend (not local filesystem paths).
+- [x] Define internal format for remote paths, e.g. `rclone://<remote>/<path>`.
+- [x] Implement parser/validator for `rclone://...` (reject relative segments and ambiguous forms).
 - [ ] Define escaping rules for names with spaces and special characters.
-- [ ] Separate display label from remote ID (e.g. `my-onedrive` vs "OneDrive (Work)").
-- [ ] Define per-path/provider capability metadata (delete, rename, copy, move, trash, permissions, etc.).
+- [x] Separate display label from remote ID (e.g. `my-onedrive` vs "OneDrive (Work)").
+- [x] Define per-path/provider capability metadata (delete, rename, copy, move, trash, permissions, etc.).
 
 ## 3. Backend architecture (new cloud module)
 
-- [ ] Create `src/commands/cloud/`.
-- [ ] Add `src/commands/cloud/mod.rs`.
-- [ ] Add `src/commands/cloud/rclone_cli.rs` (low-level wrapper around `std::process::Command`).
-- [ ] Add `src/commands/cloud/path.rs` (cloud path parsing/formatting).
-- [ ] Add `src/commands/cloud/types.rs` (`CloudEntry`, `CloudError`, capabilities, provider kind).
-- [ ] Add `src/commands/cloud/provider.rs` (provider trait/abstraction).
-- [ ] Add provider impl module (`providers/rclone.rs` or `providers/onedrive_rclone.rs` for v1).
-- [ ] Keep cloud code separate from local FS logic in `src/commands/fs/*` and `src/undo/*`.
-- [ ] Follow existing command-module pattern: local `error.rs` with `map_api_result(...)` and typed domain error codes.
-- [ ] Return `crate::errors::api_error::ApiResult<T>` from Tauri commands (match existing backend command style).
+- [x] Create `src/commands/cloud/`.
+- [x] Add `src/commands/cloud/mod.rs`.
+- [x] Add `src/commands/cloud/rclone_cli.rs` (low-level wrapper around `std::process::Command`).
+- [x] Add `src/commands/cloud/path.rs` (cloud path parsing/formatting).
+- [x] Add `src/commands/cloud/types.rs` (`CloudEntry`, `CloudError`, capabilities, provider kind).
+- [x] Add `src/commands/cloud/provider.rs` (provider trait/abstraction).
+- [x] Add provider impl module (`providers/rclone.rs` or `providers/onedrive_rclone.rs` for v1).
+- [x] Keep cloud code separate from local FS logic in `src/commands/fs/*` and `src/undo/*`.
+- [x] Follow existing command-module pattern: local `error.rs` with `map_api_result(...)` and typed domain error codes.
+- [x] Return `crate::errors::api_error::ApiResult<T>` from Tauri commands (match existing backend command style).
 - [ ] Decide which commands are sync vs `async` + `spawn_blocking` (rclone CLI calls should not block Tauri async runtime).
-- [ ] Add cloud module exports to `src/commands/mod.rs` (both `pub mod cloud;` and re-exports for new commands).
-- [ ] Register new Tauri commands in `src/main.rs` `tauri::generate_handler![...]`.
-- [ ] Keep command names aligned with Browsey naming style (`snake_case` invoke names, explicit verbs, minimal ambiguity).
+- [x] Add cloud module exports to `src/commands/mod.rs` (both `pub mod cloud;` and re-exports for new commands).
+- [x] Register new Tauri commands in `src/main.rs` `tauri::generate_handler![...]`.
+- [x] Keep command names aligned with Browsey naming style (`snake_case` invoke names, explicit verbs, minimal ambiguity).
 
 ## 4. rclone CLI wrapper (security + robustness)
 
-- [ ] Use only `Command::new(...).args([...])` (never shell strings).
-- [ ] Add allowlist of `rclone` subcommands Browsey may invoke.
+- [x] Use only `Command::new(...).args([...])` (never shell strings).
+- [x] Add allowlist of `rclone` subcommands Browsey may invoke.
 - [ ] Add default timeout policy per command type (short for `list/stat`, longer for copy/move).
 - [ ] Add retry policy for transient failures (network, timeout, rate-limit).
 - [ ] Normalize `stdout/stderr/exit code` into structured `CloudError`.
@@ -142,13 +142,13 @@ Recommended implementation sequence (v1 OneDrive):
 
 ## 10. Error model, logging, observability
 
-- [ ] Introduce `CloudErrorCode` (auth, network, rate_limit, timeout, binary_missing, invalid_path, unsupported, destination_exists, etc.).
+- [x] Introduce `CloudErrorCode` (auth, network, rate_limit, timeout, binary_missing, invalid_path, unsupported, destination_exists, etc.).
 - [ ] Log command name and duration, but not secrets/tokens.
 - [ ] Log scrubbed `stderr` on failures.
 - [ ] Add debug logging path for development (`RUST_LOG`) for rclone invocations.
 - [ ] Standardize user-facing error messages for common cloud failures (auth expired, remote missing, connectivity).
-- [ ] Map cloud errors into Browsey's existing `ApiError { code, message }` contract so frontend handling remains consistent.
-- [ ] Reuse module-local `error.rs` patterns (`*_ErrorCode`, `map_api_result`) for cloud commands instead of ad-hoc string errors.
+- [x] Map cloud errors into Browsey's existing `ApiError { code, message }` contract so frontend handling remains consistent.
+- [x] Reuse module-local `error.rs` patterns (`*_ErrorCode`, `map_api_result`) for cloud commands instead of ad-hoc string errors.
 - [ ] Add telemetry-friendly stable error codes before broad UI integration (avoid string-parsing in frontend).
 
 ## 11. Security requirements (must be early)
@@ -172,8 +172,8 @@ Recommended implementation sequence (v1 OneDrive):
 
 ## 13. Test strategy (important)
 
-- [ ] Unit tests for cloud path parser/formatter.
-- [ ] Unit tests for `rclone` command builder (expected args).
+- [x] Unit tests for cloud path parser/formatter.
+- [x] Unit tests for `rclone` command builder (expected args).
 - [ ] Unit tests for `stderr`/exit-code mapping to `CloudErrorCode`.
 - [ ] Create a fake-`rclone` shim for deterministic backend tests.
 - [ ] Integration tests for list/copy/move/delete using fake `rclone` JSON output.
@@ -199,8 +199,8 @@ Recommended implementation sequence (v1 OneDrive):
 
 ## 15. Prepare for Google Drive (phase 2)
 
-- [ ] Keep provider model generic so OneDrive is not hardcoded into shared types/commands.
-- [ ] Add `ProviderKind` from the start (`onedrive`, `gdrive`, `nextcloud`).
+- [x] Keep provider model generic so OneDrive is not hardcoded into shared types/commands.
+- [x] Add `ProviderKind` from the start (`onedrive`, `gdrive`, `nextcloud`).
 - [ ] Add capability matrix per provider.
 - [ ] Track Google Drive semantic differences (shortcuts, native docs types, trash behavior) as provider-specific TODOs.
 - [ ] Keep provider-specific error mapping isolated from shared `rclone` wrapper.
