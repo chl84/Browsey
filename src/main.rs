@@ -212,6 +212,7 @@ fn main() {
             move_cloud_entry,
             rename_cloud_entry,
             copy_cloud_entry,
+            preview_cloud_conflicts,
             normalize_cloud_path,
             list_network_devices,
             list_network_entries,

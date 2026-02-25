@@ -133,11 +133,11 @@ Recommended implementation sequence (v1 OneDrive):
 ## 9. Conflict model and overwrite policy
 
 - [ ] Define cloud conflict model aligned with existing Browsey overwrite/rename/cancel flow.
-- [ ] Add cloud preview command that returns conflicts without local filesystem checks.
-- [ ] Map `destination exists` style `rclone` errors to existing UI conflict behavior.
+- [x] Add cloud preview command that returns conflicts without local filesystem checks.
+- [x] Map `destination exists` style `rclone` errors to existing UI conflict behavior.
 - [ ] Define rename-on-conflict strategy in cloud (Browsey-generated new name vs provider-specific behavior).
 - [ ] Test edge cases: same name, case-only rename, file-vs-directory conflicts.
-- [ ] Align conflict preview payload shape with existing clipboard preview UI to minimize frontend branching.
+- [x] Align conflict preview payload shape with existing clipboard preview UI to minimize frontend branching.
 - [ ] Define normalization rules consistently (provider casing/path separators) so preview and execution agree.
 
 ## 10. Error model, logging, observability
