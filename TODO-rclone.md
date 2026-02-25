@@ -23,20 +23,20 @@ Recommended implementation sequence (v1 OneDrive):
 
 ## 1. Decisions and boundaries (before code)
 
-- [ ] Lock decision: `CLI-first` (`rclone` commands), not `rc API` in v1.
-- [ ] Define v1 scope (OneDrive): `list`, `mkdir`, `rename/move`, `copy`, `delete`, `refresh`.
-- [ ] Define out-of-scope for v1: `undo`, cloud trash, permissions, thumbnails, recursive search, duplicate scan.
+- [x] Lock decision: `CLI-first` (`rclone` commands), not `rc API` in v1.
+- [x] Define v1 scope (OneDrive): `list`, `mkdir`, `rename/move`, `copy`, `delete`, `refresh`.
+- [x] Define out-of-scope for v1: `undo`, cloud trash, permissions, thumbnails, recursive search, duplicate scan.
 - [x] Define minimum supported `rclone` version and how it is validated at first cloud use (runtime probe).
-- [ ] Decide whether Browsey requires global `rclone` in `PATH` or supports configurable binary path.
+- [x] Decide whether Browsey requires global `rclone` in `PATH` or supports configurable binary path (v1: global `rclone` in `PATH`; custom path deferred).
 - [ ] Decide how cloud support is surfaced in Browsey UX in v1: `Network` view only vs also direct path/open flows.
 - [ ] Decide whether cloud operations are behind a feature flag / experimental setting in first rollout.
-- [ ] Decide how cloud `delete` maps to Browsey semantics in v1 (`permanent delete` only vs future trash integration).
+- [x] Decide how cloud `delete` maps to Browsey semantics in v1 (`permanent delete` only vs future trash integration).
 - [ ] Define whether cross-boundary operations are supported in v1:
   - [ ] local -> cloud copy
   - [ ] cloud -> local copy
   - [ ] cloud -> cloud within same remote move/copy
   - [ ] cloud -> cloud across remotes (probably out of scope initially)
-- [ ] Define atomicity/rollback expectations for multi-entry cloud operations (best-effort vs stop-on-first-error).
+- [x] Define atomicity/rollback expectations for multi-entry cloud operations (current v1 behavior: stop-on-first-error, no rollback of earlier successful cloud ops).
 
 ## 2. Domain/path model (critical)
 
