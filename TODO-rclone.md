@@ -100,7 +100,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Keep `src/commands/network/gio_mounts.rs` for generic GIO/GVFS only (MTP/other mounts).
 - [x] Identify exact integration seams in Browsey first (likely explorer listing + clipboard/paste preview + file ops service layer), and route there instead of adding ad-hoc bypasses.
 - [x] Decide whether cloud entries reuse `Entry` directly or need a cloud-specific variant before conversion into `Entry`.
-- [ ] Ensure local-only helpers (`path_guard`, local metadata probes, `std::fs::*`) are never called on cloud paths during previews/actions.
+- [x] Ensure local-only helpers (`path_guard`, local metadata probes, `std::fs::*`) are never called on cloud paths during previews/actions.
 
 ## 7. OneDrive v1 feature delivery
 
@@ -127,16 +127,16 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Respect import-boundary rules from `ARCHITECTURE_IMPORTS.md` (cross-feature imports via public barrels only).
 - [x] Add/extend feature barrel exports (`frontend/src/features/network/index.ts`, `frontend/src/features/explorer/index.ts`) instead of deep cross-feature imports.
 - [x] Keep cloud `invoke` calls inside service modules (avoid calling `invoke(...)` directly from Svelte components).
-- [ ] Decide where cloud state lives (existing explorer state vs dedicated network/cloud store) before wiring multiple components.
+- [x] Decide where cloud state lives (existing explorer state vs dedicated network/cloud store) before wiring multiple components (v1 uses existing explorer state/services + cloud path routing).
 - [ ] Ensure refresh/watch UX is clear for cloud paths (no `watch_dir` support; use manual/poll refresh semantics).
 
 ## 9. Conflict model and overwrite policy
 
-- [ ] Define cloud conflict model aligned with existing Browsey overwrite/rename/cancel flow.
+- [x] Define cloud conflict model aligned with existing Browsey overwrite/rename/cancel flow.
 - [x] Add cloud preview command that returns conflicts without local filesystem checks.
 - [x] Map `destination exists` style `rclone` errors to existing UI conflict behavior.
 - [x] Define rename-on-conflict strategy in cloud (Browsey-generated new name vs provider-specific behavior).
-- [ ] Test edge cases: same name, case-only rename, file-vs-directory conflicts.
+- [x] Test edge cases: same name, case-only rename, file-vs-directory conflicts.
 - [x] Align conflict preview payload shape with existing clipboard preview UI to minimize frontend branching.
 - [ ] Define normalization rules consistently (provider casing/path separators) so preview and execution agree.
 

@@ -131,4 +131,83 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       },
     ])
   })
+
+  it('preserves directory conflict kind from cloud preview', async () => {
+    setClipboardPathsState('copy', ['rclone://work/src/Folder'])
+    previewCloudConflictsMock.mockResolvedValue([
+      {
+        src: 'rclone://work/src/Folder',
+        target: 'rclone://work/dest/Folder',
+        exists: true,
+        isDir: true,
+      },
+    ])
+
+    const deps = createDeps()
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('rclone://work/dest')
+
+    expect(ok).toBe(false)
+    expect(get(fileOps.conflictList)).toEqual([
+      {
+        src: 'rclone://work/src/Folder',
+        target: 'rclone://work/dest/Folder',
+        is_dir: true,
+      },
+    ])
+  })
+
+  it('auto-renames on self-paste conflict in cloud and avoids local clipboard helpers', async () => {
+    setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
+    previewCloudConflictsMock.mockResolvedValue([
+      {
+        src: 'rclone://work/src/report.txt',
+        target: 'rclone://work/src/report.txt',
+        exists: true,
+        isDir: false,
+      },
+    ])
+    statCloudEntryMock
+      .mockResolvedValueOnce({ path: 'rclone://work/src/report.txt', kind: 'file' })
+      .mockResolvedValueOnce(null)
+
+    const deps = createDeps()
+    deps.getCurrentPath = () => 'rclone://work/src'
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('rclone://work/src')
+
+    expect(ok).toBe(true)
+    expect(copyCloudEntryMock).toHaveBeenCalledWith(
+      'rclone://work/src/report.txt',
+      'rclone://work/src/report-1.txt',
+      { overwrite: false },
+    )
+    expect(previewCloudConflictsMock).toHaveBeenCalled()
+    expect(pasteClipboardPreviewMock).not.toHaveBeenCalled()
+    expect(pasteClipboardCmdMock).not.toHaveBeenCalled()
+  })
+
+  it('skips system clipboard sync on cloud destinations when pasting into current', async () => {
+    setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
+    previewCloudConflictsMock.mockResolvedValue([])
+    statCloudEntryMock.mockResolvedValue(null)
+
+    const deps = createDeps()
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.pasteIntoCurrent()
+
+    expect(ok).toBe(true)
+    expect(getSystemClipboardPathsMock).not.toHaveBeenCalled()
+    expect(setClipboardCmdMock).not.toHaveBeenCalled()
+    expect(pasteClipboardPreviewMock).not.toHaveBeenCalled()
+    expect(pasteClipboardCmdMock).not.toHaveBeenCalled()
+    expect(copyCloudEntryMock).toHaveBeenCalledWith(
+      'rclone://work/src/report.txt',
+      'rclone://work/dest/report.txt',
+      { overwrite: false },
+    )
+  })
 })

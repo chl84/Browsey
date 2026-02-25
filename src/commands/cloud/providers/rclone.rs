@@ -841,4 +841,23 @@ mod tests {
         assert!(log.contains("rmdir work:dst"));
         assert!(log.contains("purge work:trash"));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn fake_rclone_shim_supports_case_only_rename() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "docs/report.txt", "payload");
+        let provider = sandbox.provider();
+
+        provider
+            .move_entry(
+                &cloud_path("rclone://work/docs/report.txt"),
+                &cloud_path("rclone://work/docs/Report.txt"),
+                false,
+            )
+            .expect("case-only rename");
+
+        assert!(!sandbox.remote_path("work", "docs/report.txt").exists());
+        assert!(sandbox.remote_path("work", "docs/Report.txt").exists());
+    }
 }
