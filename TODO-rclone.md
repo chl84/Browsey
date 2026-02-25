@@ -75,7 +75,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Add version check (`rclone version`) and capability check on first use.
 - [x] Add clear error for missing binary (`rclone` not found).
 - [x] Ensure command execution uses `spawn_blocking` or equivalent isolation for blocking process I/O.
-- [ ] Decide stdout/stderr size limits to avoid huge buffers in logs/UI on provider failures.
+- [x] Decide stdout/stderr size limits to avoid huge buffers in logs/UI on provider failures.
 - [ ] Ensure child processes are terminated/cancelled cleanly on app shutdown (Browsey runtime lifecycle integration).
 
 ## 5. rclone command mapping (OneDrive v1)

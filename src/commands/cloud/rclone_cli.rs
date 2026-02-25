@@ -7,6 +7,7 @@ use tracing::{debug, warn};
 
 const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] =
     &["--retries", "2", "--low-level-retries", "2", "--stats", "0"];
+const RCLONE_FAILURE_OUTPUT_MAX_CHARS: usize = 16 * 1024;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -193,6 +194,8 @@ impl RcloneCli {
             );
             Ok(RcloneTextOutput { stdout, stderr })
         } else {
+            let stdout = truncate_failure_output(stdout);
+            let stderr = truncate_failure_output(stderr);
             let stderr_preview = scrub_log_text(&stderr);
             let stdout_preview = scrub_log_text(&stdout);
             warn!(
@@ -241,9 +244,23 @@ fn scrub_log_text(raw: &str) -> String {
     out
 }
 
+fn truncate_failure_output(raw: String) -> String {
+    if raw.chars().count() <= RCLONE_FAILURE_OUTPUT_MAX_CHARS {
+        return raw;
+    }
+    let mut truncated = raw
+        .chars()
+        .take(RCLONE_FAILURE_OUTPUT_MAX_CHARS)
+        .collect::<String>();
+    truncated.push_str("… [truncated]");
+    truncated
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{scrub_log_text, RcloneCli, RcloneCommandSpec, RcloneSubcommand};
+    use super::{
+        scrub_log_text, truncate_failure_output, RcloneCli, RcloneCommandSpec, RcloneSubcommand,
+    };
     use std::ffi::OsString;
 
     #[test]
@@ -307,5 +324,13 @@ mod tests {
         let long = "x".repeat(500);
         let truncated = scrub_log_text(&long);
         assert!(truncated.ends_with('…'));
+    }
+
+    #[test]
+    fn truncates_failure_output_to_bounded_size() {
+        let long = "y".repeat(20_000);
+        let truncated = truncate_failure_output(long);
+        assert!(truncated.ends_with("… [truncated]"));
+        assert!(truncated.chars().count() <= 16 * 1024 + "… [truncated]".chars().count());
     }
 }
