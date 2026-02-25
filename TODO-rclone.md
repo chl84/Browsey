@@ -128,7 +128,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Add/extend feature barrel exports (`frontend/src/features/network/index.ts`, `frontend/src/features/explorer/index.ts`) instead of deep cross-feature imports.
 - [x] Keep cloud `invoke` calls inside service modules (avoid calling `invoke(...)` directly from Svelte components).
 - [x] Decide where cloud state lives (existing explorer state vs dedicated network/cloud store) before wiring multiple components (v1 uses existing explorer state/services + cloud path routing).
-- [ ] Ensure refresh/watch UX is clear for cloud paths (no `watch_dir` support; use manual/poll refresh semantics).
+- [x] Ensure refresh/watch UX is clear for cloud paths (no `watch_dir` support; use manual/poll refresh semantics).
 
 ## 9. Conflict model and overwrite policy
 
