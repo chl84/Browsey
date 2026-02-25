@@ -491,10 +491,29 @@ fn parse_lsjson_stat_item(stdout: &str) -> Result<LsJsonItem, String> {
 mod tests {
     use super::{
         classify_provider_kind, classify_rclone_message_code, is_rclone_not_found_text,
-        parse_config_dump_types, parse_listremotes_plain, parse_lsjson_items,
+        map_rclone_error, parse_config_dump_types, parse_listremotes_plain, parse_lsjson_items,
         parse_lsjson_stat_item, parse_rclone_version_stdout, parse_rclone_version_triplet,
     };
-    use crate::commands::cloud::{error::CloudCommandErrorCode, types::CloudProviderKind};
+    use crate::{
+        commands::cloud::{
+            error::CloudCommandErrorCode, rclone_cli::RcloneCliError, rclone_cli::RcloneSubcommand,
+            types::CloudProviderKind,
+        },
+        errors::domain::{DomainError, ErrorCode},
+    };
+    use std::{process::ExitStatus, time::Duration};
+
+    #[cfg(unix)]
+    fn fake_exit_status(code: i32) -> ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        ExitStatus::from_raw(code << 8)
+    }
+
+    #[cfg(windows)]
+    fn fake_exit_status(code: u32) -> ExitStatus {
+        use std::os::windows::process::ExitStatusExt;
+        ExitStatus::from_raw(code)
+    }
 
     #[test]
     fn parses_listremotes_plain_output() {
@@ -606,5 +625,30 @@ mod tests {
         );
         assert_eq!(parse_rclone_version_triplet("v1.69.1"), None);
         assert_eq!(parse_rclone_version_triplet("1.69"), None);
+    }
+
+    #[test]
+    fn maps_rclone_timeout_to_cloud_timeout_error_code() {
+        let err = map_rclone_error(RcloneCliError::Timeout {
+            subcommand: RcloneSubcommand::CopyTo,
+            timeout: Duration::from_secs(10),
+            stdout: String::new(),
+            stderr: "timed out".to_string(),
+        });
+        assert_eq!(err.code_str(), CloudCommandErrorCode::Timeout.as_code_str());
+        assert!(err.to_string().contains("timed out"));
+    }
+
+    #[test]
+    fn maps_rclone_nonzero_stderr_to_cloud_error_code() {
+        let err = map_rclone_error(RcloneCliError::NonZero {
+            status: fake_exit_status(1),
+            stdout: String::new(),
+            stderr: "HTTP error 429: too many requests".to_string(),
+        });
+        assert_eq!(
+            err.code_str(),
+            CloudCommandErrorCode::RateLimited.as_code_str()
+        );
     }
 }
