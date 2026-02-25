@@ -110,7 +110,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Implement browsing/listing for OneDrive via `rclone`.
 - [ ] Implement core file ops in OneDrive (`copy`, `move`, `rename`, `delete`, `mkdir`).
 - [ ] Trigger refresh after operations.
-- [ ] Implement cloud-aware paste conflict preview (no `Path::exists()`).
+- [x] Implement cloud-aware paste conflict preview (no `Path::exists()`).
 - [ ] Disable or hide unsupported actions in v1 (trash, undo, permissions, etc.) with clear UI messaging.
 
 ## 8. Frontend integration (v1)
@@ -135,7 +135,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [ ] Define cloud conflict model aligned with existing Browsey overwrite/rename/cancel flow.
 - [x] Add cloud preview command that returns conflicts without local filesystem checks.
 - [x] Map `destination exists` style `rclone` errors to existing UI conflict behavior.
-- [ ] Define rename-on-conflict strategy in cloud (Browsey-generated new name vs provider-specific behavior).
+- [x] Define rename-on-conflict strategy in cloud (Browsey-generated new name vs provider-specific behavior).
 - [ ] Test edge cases: same name, case-only rename, file-vs-directory conflicts.
 - [x] Align conflict preview payload shape with existing clipboard preview UI to minimize frontend branching.
 - [ ] Define normalization rules consistently (provider casing/path separators) so preview and execution agree.

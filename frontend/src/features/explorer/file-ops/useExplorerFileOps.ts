@@ -2,6 +2,12 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { writable, get } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import {
+  copyCloudEntry,
+  moveCloudEntry,
+  previewCloudConflicts,
+  statCloudEntry,
+} from '@/features/network'
+import {
   setClipboardCmd,
   clearSystemClipboard,
   pasteClipboardCmd,
@@ -17,7 +23,7 @@ import {
 } from '../services/files.service'
 import { checkDuplicatesStream, type DuplicateScanProgress } from '../services/duplicates.service'
 import { cancelTask } from '../services/activity.service'
-import { setClipboardState, clearClipboardState } from './clipboard.store'
+import { clipboardState, setClipboardState, clearClipboardState } from './clipboard.store'
 import { normalizePath, parentPath } from '../utils'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
@@ -26,6 +32,28 @@ type ConflictItem = {
   src: string
   target: string
   is_dir: boolean
+}
+
+const isCloudPath = (path: string) => path.startsWith('rclone://')
+
+const cloudLeafName = (path: string) => {
+  const idx = path.lastIndexOf('/')
+  return idx >= 0 ? path.slice(idx + 1) : path
+}
+
+const cloudJoin = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`
+
+const cloudRenameCandidate = (base: string, idx: number) => {
+  if (idx === 0) return base
+  const slash = base.lastIndexOf('/')
+  const parent = slash >= 0 ? base.slice(0, slash) : ''
+  const original = slash >= 0 ? base.slice(slash + 1) : base
+  const dot = original.lastIndexOf('.')
+  const hasExt = dot > 0
+  const stem = hasExt ? original.slice(0, dot) : original
+  const ext = hasExt ? original.slice(dot + 1) : ''
+  const name = hasExt ? `${stem}-${idx}.${ext}` : `${stem}-${idx}`
+  return parent ? `${parent}/${name}` : name
 }
 
 type ActivityApi = {
@@ -72,7 +100,77 @@ export const useExplorerFileOps = (deps: Deps) => {
     conflictDest = null
   }
 
+  const getClipboardPaths = () => Array.from(get(clipboardState).paths)
+
+  const classifyPasteRoute = (dest: string): 'local' | 'cloud' | 'unsupported' => {
+    const sources = getClipboardPaths()
+    if (sources.length === 0) return isCloudPath(dest) ? 'cloud' : 'local'
+    const sourceCloudCount = sources.filter(isCloudPath).length
+    const destCloud = isCloudPath(dest)
+    if (sourceCloudCount === 0 && !destCloud) return 'local'
+    if (sourceCloudCount === sources.length && destCloud) return 'cloud'
+    return 'unsupported'
+  }
+
+  const runCloudPaste = async (target: string, policy: 'rename' | 'overwrite' = 'rename') => {
+    const state = get(clipboardState)
+    const sources = Array.from(state.paths)
+    if (sources.length === 0) {
+      deps.showToast('Clipboard is empty')
+      return false
+    }
+    if (!sources.every(isCloudPath) || !isCloudPath(target)) {
+      deps.showToast('Cloud paste currently supports cloud-to-cloud only')
+      return false
+    }
+
+    const progressEvent = `cloud-copy-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    try {
+      await deps.activityApi.start('Copying…', progressEvent, () => deps.activityApi.requestCancel(progressEvent))
+      for (const src of sources) {
+        const leaf = cloudLeafName(src)
+        if (!leaf) {
+          throw new Error(`Invalid cloud source path: ${src}`)
+        }
+        const targetBase = cloudJoin(target, leaf)
+        let finalTarget = targetBase
+        if (policy === 'rename') {
+          let idx = 0
+          while (true) {
+            finalTarget = cloudRenameCandidate(targetBase, idx)
+            const existing = await statCloudEntry(finalTarget)
+            if (!existing) break
+            idx += 1
+          }
+        }
+
+        if (state.mode === 'cut') {
+          await moveCloudEntry(src, finalTarget, { overwrite: policy === 'overwrite' })
+        } else {
+          await copyCloudEntry(src, finalTarget, { overwrite: policy === 'overwrite' })
+        }
+      }
+
+      await deps.reloadCurrent()
+      deps.activityApi.hideSoon()
+      return true
+    } catch (err) {
+      deps.activityApi.clearNow()
+      await deps.activityApi.cleanup()
+      deps.showToast(`Paste failed: ${getErrorMessage(err)}`)
+      return false
+    }
+  }
+
   const runPaste = async (target: string, policy: 'rename' | 'overwrite' = 'rename') => {
+    const route = classifyPasteRoute(target)
+    if (route === 'cloud') {
+      return runCloudPaste(target, policy)
+    }
+    if (route === 'unsupported') {
+      deps.showToast('Mixed local/cloud paste is not supported yet')
+      return false
+    }
     const progressEvent = `copy-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       await deps.activityApi.start('Copying…', progressEvent, () => deps.activityApi.requestCancel(progressEvent))
@@ -90,7 +188,20 @@ export const useExplorerFileOps = (deps: Deps) => {
 
   const handlePasteOrMove = async (dest: string) => {
     try {
-      const conflicts = await pasteClipboardPreview(dest)
+      const route = classifyPasteRoute(dest)
+      if (route === 'unsupported') {
+        deps.showToast('Mixed local/cloud paste is not supported yet')
+        return false
+      }
+
+      const conflicts =
+        route === 'cloud'
+          ? (await previewCloudConflicts(getClipboardPaths(), dest)).map((c) => ({
+              src: c.src,
+              target: c.target,
+              is_dir: c.isDir,
+            }))
+          : await pasteClipboardPreview(dest)
       if (conflicts && conflicts.length > 0) {
         const destNorm = normalizePath(dest)
         const selfPaste = conflicts.every((c) => normalizePath(parentPath(c.src)) === destNorm)
@@ -116,22 +227,24 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
 
     // Always attempt to sync from system clipboard first, then paste.
-    try {
-      const sys = await getSystemClipboardPaths()
-      if (sys.paths.length > 0) {
-        await setClipboardCmd(sys.paths, sys.mode)
-        const stubEntries = sys.paths.map((path) => ({
-          path,
-          name: path.split('/').pop() ?? path,
-          kind: 'file',
-          iconId: 12,
-        }))
-        setClipboardState(sys.mode, stubEntries as unknown as Entry[])
-      }
-    } catch (err) {
-      const msg = getErrorMessage(err)
-      if (!msg.toLowerCase().includes('no file paths found')) {
-        deps.showToast(`System clipboard unavailable: ${msg}`, 2000)
+    if (!isCloudPath(deps.getCurrentPath())) {
+      try {
+        const sys = await getSystemClipboardPaths()
+        if (sys.paths.length > 0) {
+          await setClipboardCmd(sys.paths, sys.mode)
+          const stubEntries = sys.paths.map((path) => ({
+            path,
+            name: path.split('/').pop() ?? path,
+            kind: 'file',
+            iconId: 12,
+          }))
+          setClipboardState(sys.mode, stubEntries as unknown as Entry[])
+        }
+      } catch (err) {
+        const msg = getErrorMessage(err)
+        if (!msg.toLowerCase().includes('no file paths found')) {
+          deps.showToast(`System clipboard unavailable: ${msg}`, 2000)
+        }
       }
     }
 
