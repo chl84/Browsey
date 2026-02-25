@@ -8,6 +8,7 @@ use super::super::{
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
+    env,
     sync::OnceLock,
 };
 use tracing::debug;
@@ -21,6 +22,7 @@ pub(in crate::commands::cloud) struct RcloneCloudProvider {
 }
 
 static RCLONE_RUNTIME_PROBE: OnceLock<Result<(), CloudCommandError>> = OnceLock::new();
+static RCLONE_REMOTE_POLICY: OnceLock<RcloneRemotePolicy> = OnceLock::new();
 
 #[allow(dead_code)]
 impl RcloneCloudProvider {
@@ -63,6 +65,9 @@ impl CloudProvider for RcloneCloudProvider {
         let mut seen = HashSet::new();
         for remote_id in remote_ids {
             if !seen.insert(remote_id.clone()) {
+                continue;
+            }
+            if !remote_allowed_by_policy(&remote_id) {
                 continue;
             }
             let Some(provider) = config_map
@@ -246,6 +251,54 @@ fn probe_rclone_runtime(cli: &RcloneCli) -> CloudCommandResult<()> {
     }
     debug!(version = %version, "rclone runtime probe succeeded");
     Ok(())
+}
+
+#[derive(Debug, Clone, Default)]
+struct RcloneRemotePolicy {
+    allowlist: Option<HashSet<String>>,
+    prefix: Option<String>,
+}
+
+fn remote_allowed_by_policy(remote_id: &str) -> bool {
+    let policy = RCLONE_REMOTE_POLICY.get_or_init(load_remote_policy_from_env);
+    remote_allowed_by_policy_with(policy, remote_id)
+}
+
+fn remote_allowed_by_policy_with(policy: &RcloneRemotePolicy, remote_id: &str) -> bool {
+    if let Some(allowlist) = &policy.allowlist {
+        if !allowlist.contains(remote_id) {
+            return false;
+        }
+    }
+    if let Some(prefix) = &policy.prefix {
+        if !remote_id.starts_with(prefix) {
+            return false;
+        }
+    }
+    true
+}
+
+fn load_remote_policy_from_env() -> RcloneRemotePolicy {
+    let allowlist = env::var("BROWSEY_RCLONE_REMOTE_ALLOWLIST")
+        .ok()
+        .and_then(|raw| {
+            let set = raw
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(ToOwned::to_owned)
+                .collect::<HashSet<_>>();
+            if set.is_empty() {
+                None
+            } else {
+                Some(set)
+            }
+        });
+    let prefix = env::var("BROWSEY_RCLONE_REMOTE_PREFIX")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    RcloneRemotePolicy { allowlist, prefix }
 }
 
 fn parse_rclone_version_stdout(stdout: &str) -> Option<String> {
@@ -597,7 +650,7 @@ mod tests {
         is_rclone_not_found_text, map_rclone_error, map_rclone_error_for_provider,
         parse_config_dump_summaries, parse_listremotes_plain, parse_lsjson_items,
         parse_lsjson_stat_item, parse_rclone_version_stdout, parse_rclone_version_triplet,
-        RcloneCloudProvider,
+        remote_allowed_by_policy_with, RcloneCloudProvider, RcloneRemotePolicy,
     };
     use crate::{
         commands::cloud::{
@@ -868,6 +921,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn remote_policy_filters_by_allowlist_and_prefix() {
+        let policy = RcloneRemotePolicy {
+            allowlist: Some(
+                ["browsey-work", "browsey-personal"]
+                    .into_iter()
+                    .map(ToOwned::to_owned)
+                    .collect(),
+            ),
+            prefix: Some("browsey-".to_string()),
+        };
+        assert!(remote_allowed_by_policy_with(&policy, "browsey-work"));
+        assert!(!remote_allowed_by_policy_with(&policy, "work"));
+        assert!(!remote_allowed_by_policy_with(&policy, "browsey-other"));
+    }
+
     #[cfg(unix)]
     struct FakeRcloneSandbox {
         root: PathBuf,
@@ -977,7 +1046,7 @@ mod tests {
         assert_eq!(entries[1].size, Some("hello cloud".len() as u64));
 
         let log = sandbox.read_log();
-        assert!(log.contains("version"));
+        // `rclone version` may be skipped here because runtime probe is cached process-wide.
         assert!(log.contains("listremotes"));
         assert!(log.contains("config dump"));
         assert!(log.contains("lsjson work:"));
