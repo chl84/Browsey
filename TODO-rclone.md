@@ -144,8 +144,8 @@ Recommended implementation sequence (v1 OneDrive):
 
 - [x] Introduce `CloudErrorCode` (auth, network, rate_limit, timeout, binary_missing, invalid_path, unsupported, destination_exists, etc.).
 - [x] Log command name and duration, but not secrets/tokens.
-- [ ] Log scrubbed `stderr` on failures.
-- [ ] Add debug logging path for development (`RUST_LOG`) for rclone invocations.
+- [x] Log scrubbed `stderr` on failures.
+- [x] Add debug logging path for development (`RUST_LOG`) for rclone invocations.
 - [x] Standardize user-facing error messages for common cloud failures (auth expired, remote missing, connectivity).
 - [x] Map cloud errors into Browsey's existing `ApiError { code, message }` contract so frontend handling remains consistent.
 - [x] Reuse module-local `error.rs` patterns (`*_ErrorCode`, `map_api_result`) for cloud commands instead of ad-hoc string errors.

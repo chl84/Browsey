@@ -181,6 +181,7 @@ impl RcloneCli {
     ) -> Result<RcloneTextOutput, RcloneCliError> {
         let subcommand = spec.subcommand;
         let started = Instant::now();
+        debug!(command = subcommand.as_str(), "running rclone command");
         let output = self.command(spec).output().map_err(RcloneCliError::Io)?;
         let elapsed_ms = started.elapsed().as_millis() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -192,10 +193,14 @@ impl RcloneCli {
             );
             Ok(RcloneTextOutput { stdout, stderr })
         } else {
+            let stderr_preview = scrub_log_text(&stderr);
+            let stdout_preview = scrub_log_text(&stdout);
             warn!(
                 command = subcommand.as_str(),
                 elapsed_ms,
                 status = %output.status,
+                stderr = %stderr_preview,
+                stdout = %stdout_preview,
                 "rclone command failed"
             );
             Err(RcloneCliError::NonZero {
@@ -207,9 +212,38 @@ impl RcloneCli {
     }
 }
 
+fn scrub_log_text(raw: &str) -> String {
+    const MAX_CHARS: usize = 320;
+    if raw.trim().is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    for (idx, line) in raw.lines().enumerate() {
+        if idx > 0 {
+            out.push_str(" | ");
+        }
+        let lower = line.to_ascii_lowercase();
+        if lower.contains("token")
+            || lower.contains("secret")
+            || lower.contains("password")
+            || lower.contains("authorization")
+        {
+            out.push_str("[redacted]");
+        } else {
+            out.push_str(line.trim());
+        }
+        if out.chars().count() >= MAX_CHARS {
+            let mut truncated = out.chars().take(MAX_CHARS).collect::<String>();
+            truncated.push('…');
+            return truncated;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{RcloneCli, RcloneCommandSpec, RcloneSubcommand};
+    use super::{scrub_log_text, RcloneCli, RcloneCommandSpec, RcloneSubcommand};
     use std::ffi::OsString;
 
     #[test]
@@ -262,5 +296,16 @@ mod tests {
         let spec = RcloneCommandSpec::new(RcloneSubcommand::ConfigDump);
         let argv = spec.argv();
         assert_eq!(argv, vec![OsString::from("config"), OsString::from("dump")]);
+    }
+
+    #[test]
+    fn scrub_log_text_redacts_and_truncates() {
+        let scrubbed = scrub_log_text("token=abc123\npermission denied");
+        assert!(scrubbed.contains("[redacted]"));
+        assert!(scrubbed.contains("permission denied"));
+
+        let long = "x".repeat(500);
+        let truncated = scrub_log_text(&long);
+        assert!(truncated.ends_with('…'));
     }
 }
