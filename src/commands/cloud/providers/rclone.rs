@@ -382,6 +382,10 @@ fn map_rclone_error_for_provider(
             CloudCommandErrorCode::NetworkError,
             format!("Failed to run rclone: {io}"),
         ),
+        RcloneCliError::Shutdown { .. } => CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            "Application is shutting down; cloud operation was cancelled",
+        ),
         RcloneCliError::Timeout {
             subcommand,
             timeout,
