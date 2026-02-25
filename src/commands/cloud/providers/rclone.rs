@@ -6,13 +6,19 @@ use super::super::{
     types::{CloudCapabilities, CloudEntry, CloudEntryKind, CloudProviderKind, CloudRemote},
 };
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+};
+use tracing::debug;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub(in crate::commands::cloud) struct RcloneCloudProvider {
     cli: RcloneCli,
 }
+
+static RCLONE_RUNTIME_PROBE: OnceLock<Result<(), CloudCommandError>> = OnceLock::new();
 
 #[allow(dead_code)]
 impl RcloneCloudProvider {
@@ -23,10 +29,19 @@ impl RcloneCloudProvider {
     pub fn cli(&self) -> &RcloneCli {
         &self.cli
     }
+
+    fn ensure_runtime_ready(&self) -> CloudCommandResult<()> {
+        let result = RCLONE_RUNTIME_PROBE.get_or_init(|| probe_rclone_runtime(&self.cli));
+        match result {
+            Ok(_) => Ok(()),
+            Err(error) => Err(error.clone()),
+        }
+    }
 }
 
 impl CloudProvider for RcloneCloudProvider {
     fn list_remotes(&self) -> CloudCommandResult<Vec<CloudRemote>> {
+        self.ensure_runtime_ready()?;
         let output = self
             .cli
             .run_capture_text(RcloneCommandSpec::new(RcloneSubcommand::ListRemotes))
@@ -67,6 +82,7 @@ impl CloudProvider for RcloneCloudProvider {
     }
 
     fn stat_path(&self, path: &CloudPath) -> CloudCommandResult<Option<CloudEntry>> {
+        self.ensure_runtime_ready()?;
         let spec = RcloneCommandSpec::new(RcloneSubcommand::LsJson)
             .arg("--stat")
             .arg(path.to_rclone_remote_spec());
@@ -87,6 +103,7 @@ impl CloudProvider for RcloneCloudProvider {
     }
 
     fn list_dir(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
+        self.ensure_runtime_ready()?;
         let output = self
             .cli
             .run_capture_text(
@@ -123,6 +140,7 @@ impl CloudProvider for RcloneCloudProvider {
     }
 
     fn mkdir(&self, path: &CloudPath) -> CloudCommandResult<()> {
+        self.ensure_runtime_ready()?;
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(path.to_rclone_remote_spec()),
@@ -132,6 +150,7 @@ impl CloudProvider for RcloneCloudProvider {
     }
 
     fn delete_file(&self, path: &CloudPath) -> CloudCommandResult<()> {
+        self.ensure_runtime_ready()?;
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::DeleteFile)
@@ -142,6 +161,7 @@ impl CloudProvider for RcloneCloudProvider {
     }
 
     fn delete_dir_recursive(&self, path: &CloudPath) -> CloudCommandResult<()> {
+        self.ensure_runtime_ready()?;
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::Purge).arg(path.to_rclone_remote_spec()),
@@ -151,6 +171,7 @@ impl CloudProvider for RcloneCloudProvider {
     }
 
     fn delete_dir_empty(&self, path: &CloudPath) -> CloudCommandResult<()> {
+        self.ensure_runtime_ready()?;
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::Rmdir).arg(path.to_rclone_remote_spec()),
@@ -165,6 +186,7 @@ impl CloudProvider for RcloneCloudProvider {
         dst: &CloudPath,
         overwrite: bool,
     ) -> CloudCommandResult<()> {
+        self.ensure_runtime_ready()?;
         ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
         self.cli
             .run_capture_text(
@@ -182,6 +204,7 @@ impl CloudProvider for RcloneCloudProvider {
         dst: &CloudPath,
         overwrite: bool,
     ) -> CloudCommandResult<()> {
+        self.ensure_runtime_ready()?;
         ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
         self.cli
             .run_capture_text(
@@ -192,6 +215,33 @@ impl CloudProvider for RcloneCloudProvider {
             .map_err(map_rclone_error)?;
         Ok(())
     }
+}
+
+fn probe_rclone_runtime(cli: &RcloneCli) -> CloudCommandResult<()> {
+    let output = cli
+        .run_capture_text(RcloneCommandSpec::new(RcloneSubcommand::Version))
+        .map_err(map_rclone_error)?;
+    let version = parse_rclone_version_stdout(&output.stdout).ok_or_else(|| {
+        CloudCommandError::new(
+            CloudCommandErrorCode::Unsupported,
+            "Unexpected `rclone version` output; cannot verify rclone runtime",
+        )
+    })?;
+    debug!(version = %version, "rclone runtime probe succeeded");
+    Ok(())
+}
+
+fn parse_rclone_version_stdout(stdout: &str) -> Option<String> {
+    let line = stdout
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default();
+    let version = line.strip_prefix("rclone v")?.trim();
+    if version.is_empty() {
+        return None;
+    }
+    Some(version.to_string())
 }
 
 fn ensure_destination_overwrite_policy(
@@ -365,7 +415,7 @@ mod tests {
     use super::{
         classify_provider_kind, classify_rclone_message_code, is_rclone_not_found_text,
         parse_config_dump_types, parse_listremotes_plain, parse_lsjson_items,
-        parse_lsjson_stat_item,
+        parse_lsjson_stat_item, parse_rclone_version_stdout,
     };
     use crate::commands::cloud::{error::CloudCommandErrorCode, types::CloudProviderKind};
 
@@ -449,5 +499,12 @@ mod tests {
             classify_rclone_message_code("object not found"),
             CloudCommandErrorCode::NotFound
         );
+    }
+
+    #[test]
+    fn parses_rclone_version_output() {
+        let out = "rclone v1.69.1\n- os/version: fedora 41\n";
+        assert_eq!(parse_rclone_version_stdout(out).as_deref(), Some("1.69.1"));
+        assert_eq!(parse_rclone_version_stdout("not-rclone\n"), None);
     }
 }

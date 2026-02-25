@@ -43,7 +43,7 @@ type Deps = {
 
 const isCloudPath = (path: string) => path.startsWith('rclone://')
 
-const filterByCapabilities = (actions: ContextAction[], entries: Entry[]): ContextAction[] => {
+export const filterByCapabilities = (actions: ContextAction[], entries: Entry[]): ContextAction[] => {
   if (entries.length === 0) return actions
   const caps = entries
     .map((entry) => entry.capabilities ?? null)

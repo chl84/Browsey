@@ -72,7 +72,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Add retry policy for transient failures (network, timeout, rate-limit).
 - [ ] Normalize `stdout/stderr/exit code` into structured `CloudError`.
 - [ ] Scrub/redact logs so secrets/tokens/config details are never logged.
-- [ ] Add version check (`rclone version`) and capability check on first use.
+- [x] Add version check (`rclone version`) and capability check on first use.
 - [x] Add clear error for missing binary (`rclone` not found).
 - [x] Ensure command execution uses `spawn_blocking` or equivalent isolation for blocking process I/O.
 - [ ] Decide stdout/stderr size limits to avoid huge buffers in logs/UI on provider failures.
