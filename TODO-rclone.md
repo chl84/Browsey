@@ -43,7 +43,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Introduce an explicit cloud path representation in backend (not local filesystem paths).
 - [x] Define internal format for remote paths, e.g. `rclone://<remote>/<path>`.
 - [x] Implement parser/validator for `rclone://...` (reject relative segments and ambiguous forms).
-- [ ] Define escaping rules for names with spaces and special characters.
+- [x] Define escaping rules for names with spaces and special characters.
 - [x] Separate display label from remote ID (e.g. `my-onedrive` vs "OneDrive (Work)").
 - [x] Define per-path/provider capability metadata (delete, rename, copy, move, trash, permissions, etc.).
 
@@ -203,14 +203,14 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Add `ProviderKind` from the start (`onedrive`, `gdrive`, `nextcloud`).
 - [x] Add capability matrix per provider.
 - [ ] Track Google Drive semantic differences (shortcuts, native docs types, trash behavior) as provider-specific TODOs.
-- [ ] Keep provider-specific error mapping isolated from shared `rclone` wrapper.
+- [x] Keep provider-specific error mapping isolated from shared `rclone` wrapper.
 
 ## 16. Prepare for Nextcloud (phase 3)
 
-- [ ] Model Nextcloud as its own provider (likely via `rclone` WebDAV backend).
-- [ ] Reserve provider-specific config/validation fields (URL, vendor, app password).
-- [ ] Handle TLS/certificate errors cleanly in backend error model and UI.
-- [ ] Test path normalization and special characters carefully for WebDAV.
+- [x] Model Nextcloud as its own provider (likely via `rclone` WebDAV backend).
+- [x] Reserve provider-specific config/validation fields (URL, vendor, app password).
+- [x] Handle TLS/certificate errors cleanly in backend error model and UI.
+- [x] Test path normalization and special characters carefully for WebDAV.
 - [ ] Verify conflict/rename semantics for Nextcloud via `rclone`.
 
 ## 17. Documentation and migration
@@ -229,6 +229,6 @@ Recommended implementation sequence (v1 OneDrive):
 - [ ] Conflict preview and overwrite flow work against cloud storage.
 - [x] Backend + frontend checks are green (`cargo check`, `cargo test`, frontend check).
 - [ ] Manual test checklist completed on at least one OneDrive setup.
-- [ ] Docs updated with install/setup steps and known limitations.
+- [x] Docs updated with install/setup steps and known limitations.
 - [x] Cloud integration follows frontend import/naming rules and does not introduce deep cross-feature imports.
 - [x] New backend commands are registered/typed consistently with Browsey's `ApiResult` + error-code conventions.

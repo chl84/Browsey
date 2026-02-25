@@ -55,7 +55,7 @@ impl CloudProvider for RcloneCloudProvider {
             .cli
             .run_capture_text(RcloneCommandSpec::new(RcloneSubcommand::ConfigDump))
             .map_err(map_rclone_error)?;
-        let type_map = parse_config_dump_types(&config_dump.stdout).map_err(|message| {
+        let config_map = parse_config_dump_summaries(&config_dump.stdout).map_err(|message| {
             CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, message)
         })?;
 
@@ -65,9 +65,9 @@ impl CloudProvider for RcloneCloudProvider {
             if !seen.insert(remote_id.clone()) {
                 continue;
             }
-            let Some(provider) = type_map
+            let Some(provider) = config_map
                 .get(&remote_id)
-                .and_then(|ty| classify_provider_kind(ty))
+                .and_then(classify_provider_kind_from_config)
             else {
                 continue;
             };
@@ -311,6 +311,13 @@ fn cloud_entry_from_item(path: &CloudPath, item: LsJsonItem) -> CloudEntry {
 }
 
 fn map_rclone_error(error: RcloneCliError) -> CloudCommandError {
+    map_rclone_error_for_provider(CloudProviderKind::Onedrive, error)
+}
+
+fn map_rclone_error_for_provider(
+    provider: CloudProviderKind,
+    error: RcloneCliError,
+) -> CloudCommandError {
     match error {
         RcloneCliError::Io(io) if io.kind() == std::io::ErrorKind::NotFound => {
             CloudCommandError::new(
@@ -340,25 +347,47 @@ fn map_rclone_error(error: RcloneCliError) -> CloudCommandError {
             } else {
                 stdout
             };
-            let code = classify_rclone_message_code(&msg);
+            let code = classify_rclone_message_code(provider, &msg);
             CloudCommandError::new(code, msg.trim())
         }
     }
 }
 
-fn classify_rclone_message_code(message: &str) -> CloudCommandErrorCode {
+fn classify_rclone_message_code(
+    provider: CloudProviderKind,
+    message: &str,
+) -> CloudCommandErrorCode {
+    if let Some(code) = classify_common_rclone_message_code(message) {
+        return code;
+    }
+    if let Some(code) = classify_provider_rclone_message_code(provider, message) {
+        return code;
+    }
+    CloudCommandErrorCode::UnknownError
+}
+
+fn classify_common_rclone_message_code(message: &str) -> Option<CloudCommandErrorCode> {
     let lower = message.to_ascii_lowercase();
     if lower.contains("didn't find section") || lower.contains("not configured") {
-        return CloudCommandErrorCode::InvalidConfig;
+        return Some(CloudCommandErrorCode::InvalidConfig);
     }
     if lower.contains("already exists")
         || lower.contains("duplicate object")
         || lower.contains("destination exists")
     {
-        return CloudCommandErrorCode::DestinationExists;
+        return Some(CloudCommandErrorCode::DestinationExists);
     }
     if lower.contains("permission denied") || lower.contains("access denied") {
-        return CloudCommandErrorCode::PermissionDenied;
+        return Some(CloudCommandErrorCode::PermissionDenied);
+    }
+    if lower.contains("x509:")
+        || lower.contains("certificate verify failed")
+        || lower.contains("self signed certificate")
+        || lower.contains("unknown authority")
+        || lower.contains("failed to verify certificate")
+        || lower.contains("certificate has expired")
+    {
+        return Some(CloudCommandErrorCode::TlsCertificateError);
     }
     if lower.contains("too many requests")
         || lower.contains("rate limit")
@@ -367,7 +396,7 @@ fn classify_rclone_message_code(message: &str) -> CloudCommandErrorCode {
         || lower.contains("status code 429")
         || lower.contains("http error 429")
     {
-        return CloudCommandErrorCode::RateLimited;
+        return Some(CloudCommandErrorCode::RateLimited);
     }
     if lower.contains("unauthorized")
         || lower.contains("authentication failed")
@@ -378,10 +407,10 @@ fn classify_rclone_message_code(message: &str) -> CloudCommandErrorCode {
         || lower.contains("status code 401")
         || lower.contains("http error 401")
     {
-        return CloudCommandErrorCode::AuthRequired;
+        return Some(CloudCommandErrorCode::AuthRequired);
     }
     if lower.contains("timed out") || lower.contains("timeout") {
-        return CloudCommandErrorCode::Timeout;
+        return Some(CloudCommandErrorCode::Timeout);
     }
     if lower.contains("connection")
         || lower.contains("network")
@@ -390,12 +419,36 @@ fn classify_rclone_message_code(message: &str) -> CloudCommandErrorCode {
         || lower.contains("name resolution")
         || lower.contains("tls handshake")
     {
-        return CloudCommandErrorCode::NetworkError;
+        return Some(CloudCommandErrorCode::NetworkError);
     }
     if is_rclone_not_found_text(message, "") {
-        return CloudCommandErrorCode::NotFound;
+        return Some(CloudCommandErrorCode::NotFound);
     }
-    CloudCommandErrorCode::UnknownError
+    None
+}
+
+fn classify_provider_rclone_message_code(
+    provider: CloudProviderKind,
+    message: &str,
+) -> Option<CloudCommandErrorCode> {
+    let lower = message.to_ascii_lowercase();
+    match provider {
+        CloudProviderKind::Onedrive => {
+            // OneDrive-specific provider messages can be mapped here as we encounter them.
+            if lower.contains("activitylimitreached") {
+                return Some(CloudCommandErrorCode::RateLimited);
+            }
+            None
+        }
+        CloudProviderKind::Gdrive => {
+            // Google Drive-specific semantics/messages are intentionally isolated here.
+            None
+        }
+        CloudProviderKind::Nextcloud => {
+            // Nextcloud/WebDAV-specific semantics/messages are intentionally isolated here.
+            None
+        }
+    }
 }
 
 fn is_rclone_not_found_text(stderr: &str, stdout: &str) -> bool {
@@ -429,7 +482,17 @@ fn parse_listremotes_plain(stdout: &str) -> Result<Vec<String>, String> {
     Ok(remotes)
 }
 
-fn parse_config_dump_types(stdout: &str) -> Result<HashMap<String, String>, String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RcloneRemoteConfigSummary {
+    backend_type: String,
+    vendor: Option<String>,
+    url: Option<String>,
+    has_password: bool,
+}
+
+fn parse_config_dump_summaries(
+    stdout: &str,
+) -> Result<HashMap<String, RcloneRemoteConfigSummary>, String> {
     let value: Value = serde_json::from_str(stdout)
         .map_err(|e| format!("Invalid rclone config dump JSON: {e}"))?;
     let obj = value
@@ -437,13 +500,30 @@ fn parse_config_dump_types(stdout: &str) -> Result<HashMap<String, String>, Stri
         .ok_or_else(|| "Expected top-level object from rclone config dump".to_string())?;
     let mut out = HashMap::new();
     for (remote, config) in obj {
-        if let Some(ty) = config
-            .as_object()
-            .and_then(|cfg| cfg.get("type"))
+        let Some(cfg) = config.as_object() else {
+            continue;
+        };
+        let Some(backend_type) = cfg.get("type").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let vendor = cfg
+            .get("vendor")
             .and_then(|v| v.as_str())
-        {
-            out.insert(remote.to_string(), ty.to_ascii_lowercase());
-        }
+            .map(|v| v.to_ascii_lowercase());
+        let url = cfg
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string());
+        let has_password = cfg.contains_key("pass") || cfg.contains_key("password");
+        out.insert(
+            remote.to_string(),
+            RcloneRemoteConfigSummary {
+                backend_type: backend_type.to_ascii_lowercase(),
+                vendor,
+                url,
+                has_password,
+            },
+        );
     }
     Ok(out)
 }
@@ -456,6 +536,28 @@ fn classify_provider_kind(rclone_type: &str) -> Option<CloudProviderKind> {
         // Nextcloud is commonly configured through rclone's webdav backend; we avoid guessing here.
         _ => None,
     }
+}
+
+fn classify_provider_kind_from_config(
+    cfg: &RcloneRemoteConfigSummary,
+) -> Option<CloudProviderKind> {
+    if let Some(kind) = classify_provider_kind(&cfg.backend_type) {
+        return Some(kind);
+    }
+    if cfg.backend_type == "webdav" {
+        if cfg.vendor.as_deref() == Some("nextcloud") {
+            return Some(CloudProviderKind::Nextcloud);
+        }
+        if cfg
+            .url
+            .as_deref()
+            .map(|url| url.to_ascii_lowercase().contains("nextcloud"))
+            .unwrap_or(false)
+        {
+            return Some(CloudProviderKind::Nextcloud);
+        }
+    }
+    None
 }
 
 fn format_remote_label(remote_id: &str, provider: CloudProviderKind) -> String {
@@ -490,8 +592,10 @@ fn parse_lsjson_stat_item(stdout: &str) -> Result<LsJsonItem, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_provider_kind, classify_rclone_message_code, is_rclone_not_found_text,
-        map_rclone_error, parse_config_dump_types, parse_listremotes_plain, parse_lsjson_items,
+        classify_provider_kind, classify_provider_kind_from_config,
+        classify_provider_rclone_message_code, classify_rclone_message_code,
+        is_rclone_not_found_text, map_rclone_error, map_rclone_error_for_provider,
+        parse_config_dump_summaries, parse_listremotes_plain, parse_lsjson_items,
         parse_lsjson_stat_item, parse_rclone_version_stdout, parse_rclone_version_triplet,
         RcloneCloudProvider,
     };
@@ -536,15 +640,27 @@ mod tests {
     }
 
     #[test]
-    fn parses_config_dump_type_map() {
+    fn parses_config_dump_config_summaries() {
         let json = r#"{
           "work": {"type":"onedrive","token":"secret"},
           "photos": {"type":"drive"},
+          "nc": {"type":"webdav","vendor":"nextcloud","url":"https://cloud.example/remote.php/dav/files/chris","pass":"***"},
           "misc": {"provider":"something"}
         }"#;
-        let map = parse_config_dump_types(json).expect("parse json");
-        assert_eq!(map.get("work").map(String::as_str), Some("onedrive"));
-        assert_eq!(map.get("photos").map(String::as_str), Some("drive"));
+        let map = parse_config_dump_summaries(json).expect("parse json");
+        assert_eq!(
+            map.get("work").map(|c| c.backend_type.as_str()),
+            Some("onedrive")
+        );
+        assert_eq!(
+            map.get("photos").map(|c| c.backend_type.as_str()),
+            Some("drive")
+        );
+        assert_eq!(
+            map.get("nc").and_then(|c| c.vendor.as_deref()),
+            Some("nextcloud")
+        );
+        assert!(map.get("nc").map(|c| c.has_password).unwrap_or(false));
         assert!(!map.contains_key("misc"));
     }
 
@@ -559,6 +675,30 @@ mod tests {
             Some(CloudProviderKind::Gdrive)
         );
         assert_eq!(classify_provider_kind("webdav"), None);
+    }
+
+    #[test]
+    fn classifies_nextcloud_from_webdav_config_metadata() {
+        let map = parse_config_dump_summaries(
+            r#"{
+              "nc-vendor": {"type":"webdav","vendor":"nextcloud","url":"https://cloud.example/remote.php/dav/files/chris"},
+              "nc-url": {"type":"webdav","url":"https://nextcloud.example/remote.php/dav/files/chris"},
+              "plain-webdav": {"type":"webdav","url":"https://dav.example/remote.php/webdav"}
+            }"#,
+        )
+        .expect("parse config dump");
+        assert_eq!(
+            classify_provider_kind_from_config(map.get("nc-vendor").expect("nc-vendor")),
+            Some(CloudProviderKind::Nextcloud)
+        );
+        assert_eq!(
+            classify_provider_kind_from_config(map.get("nc-url").expect("nc-url")),
+            Some(CloudProviderKind::Nextcloud)
+        );
+        assert_eq!(
+            classify_provider_kind_from_config(map.get("plain-webdav").expect("plain-webdav")),
+            None
+        );
     }
 
     #[test]
@@ -598,28 +738,62 @@ mod tests {
     #[test]
     fn classifies_common_rclone_error_messages() {
         assert_eq!(
-            classify_rclone_message_code("Failed to move: destination exists"),
+            classify_rclone_message_code(
+                CloudProviderKind::Onedrive,
+                "Failed to move: destination exists"
+            ),
             CloudCommandErrorCode::DestinationExists
         );
         assert_eq!(
-            classify_rclone_message_code("Permission denied"),
+            classify_rclone_message_code(CloudProviderKind::Onedrive, "Permission denied"),
             CloudCommandErrorCode::PermissionDenied
         );
         assert_eq!(
-            classify_rclone_message_code("object not found"),
+            classify_rclone_message_code(CloudProviderKind::Onedrive, "object not found"),
             CloudCommandErrorCode::NotFound
         );
         assert_eq!(
-            classify_rclone_message_code("HTTP error 429: too many requests"),
+            classify_rclone_message_code(
+                CloudProviderKind::Onedrive,
+                "HTTP error 429: too many requests"
+            ),
             CloudCommandErrorCode::RateLimited
         );
         assert_eq!(
-            classify_rclone_message_code("authentication failed: token expired"),
+            classify_rclone_message_code(
+                CloudProviderKind::Onedrive,
+                "authentication failed: token expired"
+            ),
             CloudCommandErrorCode::AuthRequired
         );
         assert_eq!(
-            classify_rclone_message_code("dial tcp: i/o timeout"),
+            classify_rclone_message_code(
+                CloudProviderKind::Nextcloud,
+                "x509: certificate signed by unknown authority"
+            ),
+            CloudCommandErrorCode::TlsCertificateError
+        );
+        assert_eq!(
+            classify_rclone_message_code(CloudProviderKind::Onedrive, "dial tcp: i/o timeout"),
             CloudCommandErrorCode::Timeout
+        );
+    }
+
+    #[test]
+    fn provider_specific_rclone_message_mapping_is_isolated() {
+        assert_eq!(
+            classify_provider_rclone_message_code(
+                CloudProviderKind::Onedrive,
+                "graph returned ActivityLimitReached"
+            ),
+            Some(CloudCommandErrorCode::RateLimited)
+        );
+        assert_eq!(
+            classify_provider_rclone_message_code(
+                CloudProviderKind::Gdrive,
+                "graph returned ActivityLimitReached"
+            ),
+            None
         );
     }
 
@@ -663,6 +837,34 @@ mod tests {
         assert_eq!(
             err.code_str(),
             CloudCommandErrorCode::RateLimited.as_code_str()
+        );
+    }
+
+    #[test]
+    fn provider_specific_error_mapping_does_not_leak_between_providers() {
+        let onedrive_err = map_rclone_error_for_provider(
+            CloudProviderKind::Onedrive,
+            RcloneCliError::NonZero {
+                status: fake_exit_status(1),
+                stdout: String::new(),
+                stderr: "ActivityLimitReached".to_string(),
+            },
+        );
+        let gdrive_err = map_rclone_error_for_provider(
+            CloudProviderKind::Gdrive,
+            RcloneCliError::NonZero {
+                status: fake_exit_status(1),
+                stdout: String::new(),
+                stderr: "ActivityLimitReached".to_string(),
+            },
+        );
+        assert_eq!(
+            onedrive_err.code_str(),
+            CloudCommandErrorCode::RateLimited.as_code_str()
+        );
+        assert_eq!(
+            gdrive_err.code_str(),
+            CloudCommandErrorCode::UnknownError.as_code_str()
         );
     }
 
