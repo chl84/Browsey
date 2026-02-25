@@ -340,3 +340,37 @@ fn map_spawn_result<T>(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_cloud_path, normalize_cloud_path_impl};
+
+    #[test]
+    fn normalize_cloud_path_command_returns_normalized_path() {
+        let out = normalize_cloud_path("rclone://work/docs/file.txt".to_string())
+            .expect("normalize_cloud_path should succeed");
+        assert_eq!(out, "rclone://work/docs/file.txt");
+    }
+
+    #[test]
+    fn normalize_cloud_path_command_maps_invalid_path_to_api_error() {
+        let err = normalize_cloud_path("rclone://work/../docs".to_string())
+            .expect_err("normalize_cloud_path should fail for relative segments");
+        assert_eq!(err.code, "invalid_path");
+        assert!(
+            err.message.contains("Invalid cloud path"),
+            "unexpected message: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn normalize_cloud_path_impl_rejects_non_rclone_paths() {
+        let err =
+            normalize_cloud_path_impl("/tmp/file.txt".to_string()).expect_err("should reject");
+        assert_eq!(
+            err.to_string(),
+            "Invalid cloud path: Path must start with rclone://"
+        );
+    }
+}

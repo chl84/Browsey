@@ -67,6 +67,14 @@ pub struct CloudRootSelection {
 }
 
 impl CloudCapabilities {
+    pub fn v1_for_provider(provider: CloudProviderKind) -> Self {
+        match provider {
+            CloudProviderKind::Onedrive => Self::v1_core_rw(),
+            CloudProviderKind::Gdrive => Self::v1_core_rw(),
+            CloudProviderKind::Nextcloud => Self::v1_core_rw(),
+        }
+    }
+
     pub fn v1_core_rw() -> Self {
         Self {
             can_list: true,
@@ -79,5 +87,22 @@ impl CloudCapabilities {
             can_undo: false,
             can_permissions: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CloudCapabilities, CloudProviderKind};
+
+    #[test]
+    fn provider_capability_matrix_is_defined_for_v1_providers() {
+        let onedrive = CloudCapabilities::v1_for_provider(CloudProviderKind::Onedrive);
+        let gdrive = CloudCapabilities::v1_for_provider(CloudProviderKind::Gdrive);
+        let nextcloud = CloudCapabilities::v1_for_provider(CloudProviderKind::Nextcloud);
+
+        assert!(onedrive.can_list && onedrive.can_copy && onedrive.can_move);
+        assert!(gdrive.can_list && gdrive.can_copy && gdrive.can_move);
+        assert!(nextcloud.can_list && nextcloud.can_copy && nextcloud.can_move);
+        assert!(!onedrive.can_trash && !gdrive.can_trash && !nextcloud.can_trash);
     }
 }

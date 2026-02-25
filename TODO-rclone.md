@@ -138,7 +138,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Define rename-on-conflict strategy in cloud (Browsey-generated new name vs provider-specific behavior).
 - [x] Test edge cases: same name, case-only rename, file-vs-directory conflicts.
 - [x] Align conflict preview payload shape with existing clipboard preview UI to minimize frontend branching.
-- [ ] Define normalization rules consistently (provider casing/path separators) so preview and execution agree.
+- [x] Define normalization rules consistently (provider casing/path separators) so preview and execution agree.
 
 ## 10. Error model, logging, observability
 
@@ -179,7 +179,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Integration tests for list/copy/move/delete using fake `rclone` JSON output.
 - [x] Frontend tests for conflict preview and disabled actions based on capabilities.
 - [x] Manual test checklist for OneDrive v1 (auth, large files, rename, delete, conflict, refresh).
-- [ ] Add backend tests for command registration wiring / argument serialization at Tauri boundary where practical.
+- [x] Add backend tests for command registration wiring / argument serialization at Tauri boundary where practical.
 - [x] Run Browsey standard quality gates before each milestone PR:
   - [x] `cargo check`
   - [x] `cargo test`
@@ -201,7 +201,7 @@ Recommended implementation sequence (v1 OneDrive):
 
 - [x] Keep provider model generic so OneDrive is not hardcoded into shared types/commands.
 - [x] Add `ProviderKind` from the start (`onedrive`, `gdrive`, `nextcloud`).
-- [ ] Add capability matrix per provider.
+- [x] Add capability matrix per provider.
 - [ ] Track Google Drive semantic differences (shortcuts, native docs types, trash behavior) as provider-specific TODOs.
 - [ ] Keep provider-specific error mapping isolated from shared `rclone` wrapper.
 
