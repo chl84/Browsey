@@ -164,7 +164,7 @@ Recommended implementation sequence (v1 OneDrive):
 
 - [x] Define Linux strategy for v1: `rclone` from `PATH`.
 - [x] Show clear install/setup error when `rclone` is missing.
-- [ ] Update docs/install guide with `rclone` requirement for cloud features.
+- [x] Update docs/install guide with `rclone` requirement for cloud features.
 - [ ] Consider later support for custom binary path or bundling.
 - [ ] Test at least two Linux environments (e.g. Fedora + Ubuntu) with different `rclone` versions.
 - [ ] Decide whether `rclone` path is persisted in Browsey settings (and add settings keys through `src/commands/settings/mod.rs` if yes).
@@ -178,7 +178,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [ ] Create a fake-`rclone` shim for deterministic backend tests.
 - [ ] Integration tests for list/copy/move/delete using fake `rclone` JSON output.
 - [x] Frontend tests for conflict preview and disabled actions based on capabilities.
-- [ ] Manual test checklist for OneDrive v1 (auth, large files, rename, delete, conflict, refresh).
+- [x] Manual test checklist for OneDrive v1 (auth, large files, rename, delete, conflict, refresh).
 - [ ] Add backend tests for command registration wiring / argument serialization at Tauri boundary where practical.
 - [ ] Run Browsey standard quality gates before each milestone PR:
   - [ ] `cargo check`
@@ -215,12 +215,12 @@ Recommended implementation sequence (v1 OneDrive):
 
 ## 17. Documentation and migration
 
-- [ ] Update README/docs when first `rclone`-OneDrive support lands.
-- [ ] Document that GVFS OneDrive is no longer supported and why (robustness / FUSE ghost-state issues).
-- [ ] Add short migration guide from GVFS/GOA OneDrive to `rclone` remote.
-- [ ] Document v1 limitations clearly.
-- [ ] Document Browsey-specific setup flow (where to configure remote name/path in UI/settings).
-- [ ] Document security posture and limitations (external `rclone` dependency, PATH lookup, config ownership).
+- [x] Update README/docs when first `rclone`-OneDrive support lands.
+- [x] Document that GVFS OneDrive is no longer supported and why (robustness / FUSE ghost-state issues).
+- [x] Add short migration guide from GVFS/GOA OneDrive to `rclone` remote.
+- [x] Document v1 limitations clearly.
+- [x] Document Browsey-specific setup flow (where to configure remote name/path in UI/settings).
+- [x] Document security posture and limitations (external `rclone` dependency, PATH lookup, config ownership).
 
 ## 18. Definition of Done (OneDrive v1)
 
