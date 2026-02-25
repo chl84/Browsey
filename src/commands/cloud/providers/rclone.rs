@@ -76,7 +76,7 @@ impl CloudProvider for RcloneCloudProvider {
                 label: format_remote_label(&remote_id, provider),
                 provider,
                 root_path: format!("rclone://{remote_id}"),
-                capabilities: CloudCapabilities::v1_core_rw(),
+                capabilities: CloudCapabilities::v1_for_provider(provider),
             });
         }
         remotes.sort_by(|a, b| a.label.cmp(&b.label));
