@@ -109,16 +109,110 @@ async fn create_cloud_folder_impl(path: String) -> CloudCommandResult<()> {
 }
 
 #[tauri::command]
+pub async fn delete_cloud_file(path: String) -> ApiResult<()> {
+    map_api_result(delete_cloud_file_impl(path).await)
+}
+
+async fn delete_cloud_file_impl(path: String) -> CloudCommandResult<()> {
+    let path = parse_cloud_path_arg(path)?;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let provider = RcloneCloudProvider::default();
+        provider.delete_file(&path)
+    });
+    map_spawn_result(task.await, "cloud delete file task failed")
+}
+
+#[tauri::command]
+pub async fn delete_cloud_dir_recursive(path: String) -> ApiResult<()> {
+    map_api_result(delete_cloud_dir_recursive_impl(path).await)
+}
+
+async fn delete_cloud_dir_recursive_impl(path: String) -> CloudCommandResult<()> {
+    let path = parse_cloud_path_arg(path)?;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let provider = RcloneCloudProvider::default();
+        provider.delete_dir_recursive(&path)
+    });
+    map_spawn_result(task.await, "cloud delete dir task failed")
+}
+
+#[tauri::command]
+pub async fn delete_cloud_dir_empty(path: String) -> ApiResult<()> {
+    map_api_result(delete_cloud_dir_empty_impl(path).await)
+}
+
+async fn delete_cloud_dir_empty_impl(path: String) -> CloudCommandResult<()> {
+    let path = parse_cloud_path_arg(path)?;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let provider = RcloneCloudProvider::default();
+        provider.delete_dir_empty(&path)
+    });
+    map_spawn_result(task.await, "cloud rmdir task failed")
+}
+
+#[tauri::command]
+pub async fn move_cloud_entry(src: String, dst: String) -> ApiResult<()> {
+    map_api_result(move_cloud_entry_impl(src, dst).await)
+}
+
+async fn move_cloud_entry_impl(src: String, dst: String) -> CloudCommandResult<()> {
+    let src = parse_cloud_path_arg(src)?;
+    let dst = parse_cloud_path_arg(dst)?;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let provider = RcloneCloudProvider::default();
+        provider.move_entry(&src, &dst)
+    });
+    map_spawn_result(task.await, "cloud move task failed")
+}
+
+#[tauri::command]
+pub async fn rename_cloud_entry(src: String, dst: String) -> ApiResult<()> {
+    map_api_result(move_cloud_entry_impl(src, dst).await)
+}
+
+#[tauri::command]
+pub async fn copy_cloud_entry(src: String, dst: String) -> ApiResult<()> {
+    map_api_result(copy_cloud_entry_impl(src, dst).await)
+}
+
+async fn copy_cloud_entry_impl(src: String, dst: String) -> CloudCommandResult<()> {
+    let src = parse_cloud_path_arg(src)?;
+    let dst = parse_cloud_path_arg(dst)?;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let provider = RcloneCloudProvider::default();
+        provider.copy_entry(&src, &dst)
+    });
+    map_spawn_result(task.await, "cloud copy task failed")
+}
+
+#[tauri::command]
 pub fn normalize_cloud_path(path: String) -> ApiResult<String> {
     map_api_result(normalize_cloud_path_impl(path))
 }
 
 fn normalize_cloud_path_impl(path: String) -> CloudCommandResult<String> {
-    let path = CloudPath::parse(&path).map_err(|error| {
+    let path = parse_cloud_path_arg(path)?;
+    Ok(path.to_string())
+}
+
+fn parse_cloud_path_arg(path: String) -> CloudCommandResult<CloudPath> {
+    CloudPath::parse(&path).map_err(|error| {
         CloudCommandError::new(
             CloudCommandErrorCode::InvalidPath,
             format!("Invalid cloud path: {error}"),
         )
-    })?;
-    Ok(path.to_string())
+    })
+}
+
+fn map_spawn_result<T>(
+    result: Result<CloudCommandResult<T>, tauri::Error>,
+    context: &str,
+) -> CloudCommandResult<T> {
+    match result {
+        Ok(inner) => inner,
+        Err(error) => Err(CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            format!("{context}: {error}"),
+        )),
+    }
 }

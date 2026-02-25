@@ -130,6 +130,56 @@ impl CloudProvider for RcloneCloudProvider {
             .map_err(map_rclone_error)?;
         Ok(())
     }
+
+    fn delete_file(&self, path: &CloudPath) -> CloudCommandResult<()> {
+        self.cli
+            .run_capture_text(
+                RcloneCommandSpec::new(RcloneSubcommand::DeleteFile)
+                    .arg(path.to_rclone_remote_spec()),
+            )
+            .map_err(map_rclone_error)?;
+        Ok(())
+    }
+
+    fn delete_dir_recursive(&self, path: &CloudPath) -> CloudCommandResult<()> {
+        self.cli
+            .run_capture_text(
+                RcloneCommandSpec::new(RcloneSubcommand::Purge).arg(path.to_rclone_remote_spec()),
+            )
+            .map_err(map_rclone_error)?;
+        Ok(())
+    }
+
+    fn delete_dir_empty(&self, path: &CloudPath) -> CloudCommandResult<()> {
+        self.cli
+            .run_capture_text(
+                RcloneCommandSpec::new(RcloneSubcommand::Rmdir).arg(path.to_rclone_remote_spec()),
+            )
+            .map_err(map_rclone_error)?;
+        Ok(())
+    }
+
+    fn move_entry(&self, src: &CloudPath, dst: &CloudPath) -> CloudCommandResult<()> {
+        self.cli
+            .run_capture_text(
+                RcloneCommandSpec::new(RcloneSubcommand::MoveTo)
+                    .arg(src.to_rclone_remote_spec())
+                    .arg(dst.to_rclone_remote_spec()),
+            )
+            .map_err(map_rclone_error)?;
+        Ok(())
+    }
+
+    fn copy_entry(&self, src: &CloudPath, dst: &CloudPath) -> CloudCommandResult<()> {
+        self.cli
+            .run_capture_text(
+                RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
+                    .arg(src.to_rclone_remote_spec())
+                    .arg(dst.to_rclone_remote_spec()),
+            )
+            .map_err(map_rclone_error)?;
+        Ok(())
+    }
 }
 
 fn cloud_entry_from_item(path: &CloudPath, item: LsJsonItem) -> CloudEntry {
@@ -165,14 +215,30 @@ fn map_rclone_error(error: RcloneCliError) -> CloudCommandError {
             } else {
                 stdout
             };
-            let lower = msg.to_ascii_lowercase();
-            if lower.contains("didn't find section") || lower.contains("not configured") {
-                CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, msg.trim())
-            } else {
-                CloudCommandError::new(CloudCommandErrorCode::UnknownError, msg.trim())
-            }
+            let code = classify_rclone_message_code(&msg);
+            CloudCommandError::new(code, msg.trim())
         }
     }
+}
+
+fn classify_rclone_message_code(message: &str) -> CloudCommandErrorCode {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("didn't find section") || lower.contains("not configured") {
+        return CloudCommandErrorCode::InvalidConfig;
+    }
+    if lower.contains("already exists")
+        || lower.contains("duplicate object")
+        || lower.contains("destination exists")
+    {
+        return CloudCommandErrorCode::DestinationExists;
+    }
+    if lower.contains("permission denied") || lower.contains("access denied") {
+        return CloudCommandErrorCode::PermissionDenied;
+    }
+    if is_rclone_not_found_text(message, "") {
+        return CloudCommandErrorCode::NotFound;
+    }
+    CloudCommandErrorCode::UnknownError
 }
 
 fn is_rclone_not_found_text(stderr: &str, stdout: &str) -> bool {
@@ -267,10 +333,11 @@ fn parse_lsjson_stat_item(stdout: &str) -> Result<LsJsonItem, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_provider_kind, is_rclone_not_found_text, parse_config_dump_types,
-        parse_listremotes_plain, parse_lsjson_items, parse_lsjson_stat_item,
+        classify_provider_kind, classify_rclone_message_code, is_rclone_not_found_text,
+        parse_config_dump_types, parse_listremotes_plain, parse_lsjson_items,
+        parse_lsjson_stat_item,
     };
-    use crate::commands::cloud::types::CloudProviderKind;
+    use crate::commands::cloud::{error::CloudCommandErrorCode, types::CloudProviderKind};
 
     #[test]
     fn parses_listremotes_plain_output() {
@@ -336,5 +403,21 @@ mod tests {
         ));
         assert!(is_rclone_not_found_text("", "directory not found"));
         assert!(!is_rclone_not_found_text("permission denied", ""));
+    }
+
+    #[test]
+    fn classifies_common_rclone_error_messages() {
+        assert_eq!(
+            classify_rclone_message_code("Failed to move: destination exists"),
+            CloudCommandErrorCode::DestinationExists
+        );
+        assert_eq!(
+            classify_rclone_message_code("Permission denied"),
+            CloudCommandErrorCode::PermissionDenied
+        );
+        assert_eq!(
+            classify_rclone_message_code("object not found"),
+            CloudCommandErrorCode::NotFound
+        );
     }
 }

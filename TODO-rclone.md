@@ -83,11 +83,11 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Folder listing via `lsjson` (name, type, size, modified time, optional hashes if needed later).
 - [x] Stat/existence check for a single path.
 - [x] Create directory (`mkdir`).
-- [ ] Delete file (validate correct command/flags for supported `rclone` version).
-- [ ] Delete directory recursively (`purge` or explicit strategy).
-- [ ] Delete empty directory (`rmdir`) as optional optimization.
-- [ ] Rename/move (map to `moveto` for file and directory).
-- [ ] Copy (map to `copyto` for file and directory).
+- [x] Delete file (validate correct command/flags for supported `rclone` version).
+- [x] Delete directory recursively (`purge` or explicit strategy).
+- [x] Delete empty directory (`rmdir`) as optional optimization.
+- [x] Rename/move (map to `moveto` for file and directory).
+- [x] Copy (map to `copyto` for file and directory).
 - [ ] Define overwrite behavior and map `rclone` errors to Browsey conflict model.
 - [ ] Centralize standard flags (JSON output, retries, reduced noise, etc.).
 

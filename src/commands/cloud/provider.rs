@@ -12,4 +12,14 @@ pub(super) trait CloudProvider: Send + Sync {
     fn list_dir(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>>;
 
     fn mkdir(&self, path: &CloudPath) -> CloudCommandResult<()>;
+
+    fn delete_file(&self, path: &CloudPath) -> CloudCommandResult<()>;
+
+    fn delete_dir_recursive(&self, path: &CloudPath) -> CloudCommandResult<()>;
+
+    fn delete_dir_empty(&self, path: &CloudPath) -> CloudCommandResult<()>;
+
+    fn move_entry(&self, src: &CloudPath, dst: &CloudPath) -> CloudCommandResult<()>;
+
+    fn copy_entry(&self, src: &CloudPath, dst: &CloudPath) -> CloudCommandResult<()>;
 }

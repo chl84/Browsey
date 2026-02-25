@@ -8,6 +8,9 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum CloudCommandErrorCode {
     InvalidPath,
+    NotFound,
+    PermissionDenied,
+    DestinationExists,
     Unsupported,
     BinaryMissing,
     InvalidConfig,
@@ -19,6 +22,9 @@ impl ErrorCode for CloudCommandErrorCode {
     fn as_code_str(self) -> &'static str {
         match self {
             Self::InvalidPath => "invalid_path",
+            Self::NotFound => "not_found",
+            Self::PermissionDenied => "permission_denied",
+            Self::DestinationExists => "destination_exists",
             Self::Unsupported => "unsupported",
             Self::BinaryMissing => "binary_missing",
             Self::InvalidConfig => "invalid_config",
