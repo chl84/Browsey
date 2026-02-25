@@ -4,6 +4,7 @@ use crate::{
     commands::{cloud, cloud::types::CloudRemote, fs::MountInfo},
     entry::FsEntry,
     errors::api_error::ApiResult,
+    icons::icon_ids,
 };
 use std::collections::HashMap;
 
@@ -14,6 +15,7 @@ use super::{
 };
 
 const NETWORK_ICON_ID: u16 = 10;
+const CLOUD_ICON_ID: u16 = icon_ids::CLOUD;
 
 const NETWORK_FS: &[&str] = &[
     "mtp",
@@ -118,7 +120,7 @@ fn to_network_entry(mount: &MountInfo) -> FsEntry {
         modified: None,
         original_path: None,
         trash_id: None,
-        icon_id: NETWORK_ICON_ID,
+        icon_id: CLOUD_ICON_ID,
         starred: false,
         hidden: false,
         network: true,

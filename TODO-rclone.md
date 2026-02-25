@@ -117,8 +117,8 @@ Recommended implementation sequence (v1 OneDrive):
 
 - [ ] Add UI model support for cloud entries that are not local filesystem paths.
 - [x] Update network/explorer flows to display rclone-based cloud endpoints.
-- [ ] Define OneDrive presentation in Network/sidebar without GVFS-specific assumptions.
-- [ ] Add clear labels/icons for rclone OneDrive endpoints.
+- [x] Define OneDrive presentation in Network/sidebar without GVFS-specific assumptions.
+- [x] Add clear labels/icons for rclone OneDrive endpoints.
 - [ ] Add basic operation activity/progress UI (at least busy state).
 - [ ] Gate context-menu actions based on backend capability flags.
 - [ ] Ensure keyboard actions (`Delete`, `F2`, etc.) respect cloud capabilities.
