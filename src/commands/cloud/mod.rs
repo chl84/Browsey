@@ -15,29 +15,47 @@ use providers::rclone::RcloneCloudProvider;
 use types::{CloudEntry, CloudRemote};
 
 #[tauri::command]
-pub fn list_cloud_remotes() -> ApiResult<Vec<CloudRemote>> {
-    map_api_result(list_cloud_remotes_impl())
+pub async fn list_cloud_remotes() -> ApiResult<Vec<CloudRemote>> {
+    map_api_result(list_cloud_remotes_impl().await)
 }
 
-fn list_cloud_remotes_impl() -> CloudCommandResult<Vec<CloudRemote>> {
-    let provider = RcloneCloudProvider::default();
-    provider.list_remotes()
+async fn list_cloud_remotes_impl() -> CloudCommandResult<Vec<CloudRemote>> {
+    let task = tauri::async_runtime::spawn_blocking(|| {
+        let provider = RcloneCloudProvider::default();
+        provider.list_remotes()
+    });
+    match task.await {
+        Ok(result) => result,
+        Err(error) => Err(CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            format!("cloud remote list task failed: {error}"),
+        )),
+    }
 }
 
 #[tauri::command]
-pub fn list_cloud_entries(path: String) -> ApiResult<Vec<CloudEntry>> {
-    map_api_result(list_cloud_entries_impl(path))
+pub async fn list_cloud_entries(path: String) -> ApiResult<Vec<CloudEntry>> {
+    map_api_result(list_cloud_entries_impl(path).await)
 }
 
-fn list_cloud_entries_impl(path: String) -> CloudCommandResult<Vec<CloudEntry>> {
+async fn list_cloud_entries_impl(path: String) -> CloudCommandResult<Vec<CloudEntry>> {
     let path = CloudPath::parse(&path).map_err(|error| {
         CloudCommandError::new(
             CloudCommandErrorCode::InvalidPath,
             format!("Invalid cloud path: {error}"),
         )
     })?;
-    let provider = RcloneCloudProvider::default();
-    provider.list_dir(&path)
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let provider = RcloneCloudProvider::default();
+        provider.list_dir(&path)
+    });
+    match task.await {
+        Ok(result) => result,
+        Err(error) => Err(CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            format!("cloud list task failed: {error}"),
+        )),
+    }
 }
 
 #[tauri::command]

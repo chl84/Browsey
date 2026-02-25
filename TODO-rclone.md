@@ -59,7 +59,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Keep cloud code separate from local FS logic in `src/commands/fs/*` and `src/undo/*`.
 - [x] Follow existing command-module pattern: local `error.rs` with `map_api_result(...)` and typed domain error codes.
 - [x] Return `crate::errors::api_error::ApiResult<T>` from Tauri commands (match existing backend command style).
-- [ ] Decide which commands are sync vs `async` + `spawn_blocking` (rclone CLI calls should not block Tauri async runtime).
+- [x] Decide which commands are sync vs `async` + `spawn_blocking` (rclone CLI calls should not block Tauri async runtime).
 - [x] Add cloud module exports to `src/commands/mod.rs` (both `pub mod cloud;` and re-exports for new commands).
 - [x] Register new Tauri commands in `src/main.rs` `tauri::generate_handler![...]`.
 - [x] Keep command names aligned with Browsey naming style (`snake_case` invoke names, explicit verbs, minimal ambiguity).
@@ -73,14 +73,14 @@ Recommended implementation sequence (v1 OneDrive):
 - [ ] Normalize `stdout/stderr/exit code` into structured `CloudError`.
 - [ ] Scrub/redact logs so secrets/tokens/config details are never logged.
 - [ ] Add version check (`rclone version`) and capability check on first use.
-- [ ] Add clear error for missing binary (`rclone` not found).
-- [ ] Ensure command execution uses `spawn_blocking` or equivalent isolation for blocking process I/O.
+- [x] Add clear error for missing binary (`rclone` not found).
+- [x] Ensure command execution uses `spawn_blocking` or equivalent isolation for blocking process I/O.
 - [ ] Decide stdout/stderr size limits to avoid huge buffers in logs/UI on provider failures.
 - [ ] Ensure child processes are terminated/cancelled cleanly on app shutdown (Browsey runtime lifecycle integration).
 
 ## 5. rclone command mapping (OneDrive v1)
 
-- [ ] Folder listing via `lsjson` (name, type, size, modified time, optional hashes if needed later).
+- [x] Folder listing via `lsjson` (name, type, size, modified time, optional hashes if needed later).
 - [ ] Stat/existence check for a single path.
 - [ ] Create directory (`mkdir`).
 - [ ] Delete file (validate correct command/flags for supported `rclone` version).
@@ -105,7 +105,7 @@ Recommended implementation sequence (v1 OneDrive):
 ## 7. OneDrive v1 feature delivery
 
 - [ ] Define how a OneDrive account is represented (rclone remote name + optional subpath).
-- [ ] Add backend command to list configured remotes (or a Browsey allowlist subset).
+- [x] Add backend command to list configured remotes (or a Browsey allowlist subset).
 - [ ] Add backend command to select/validate a remote and normalize root path.
 - [ ] Implement browsing/listing for OneDrive via `rclone`.
 - [ ] Implement core file ops in OneDrive (`copy`, `move`, `rename`, `delete`, `mkdir`).

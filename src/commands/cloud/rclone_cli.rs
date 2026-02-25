@@ -1,6 +1,6 @@
 use std::{
     ffi::{OsStr, OsString},
-    process::Command,
+    process::{Command, ExitStatus},
 };
 
 #[allow(dead_code)]
@@ -8,6 +8,7 @@ use std::{
 pub enum RcloneSubcommand {
     Version,
     ListRemotes,
+    ConfigDump,
     LsJson,
     Mkdir,
     DeleteFile,
@@ -23,6 +24,7 @@ impl RcloneSubcommand {
         match self {
             Self::Version => "version",
             Self::ListRemotes => "listremotes",
+            Self::ConfigDump => "config",
             Self::LsJson => "lsjson",
             Self::Mkdir => "mkdir",
             Self::DeleteFile => "deletefile",
@@ -58,8 +60,11 @@ impl RcloneCommandSpec {
 
     #[allow(dead_code)]
     pub fn argv(&self) -> Vec<OsString> {
-        let mut argv = Vec::with_capacity(1 + self.args.len());
+        let mut argv = Vec::with_capacity(2 + self.args.len());
         argv.push(OsString::from(self.subcommand.as_str()));
+        if self.subcommand == RcloneSubcommand::ConfigDump {
+            argv.push(OsString::from("dump"));
+        }
         argv.extend(self.args.iter().cloned());
         argv
     }
@@ -68,12 +73,63 @@ impl RcloneCommandSpec {
     pub fn into_command(self, binary: &OsStr) -> Command {
         let mut command = Command::new(binary);
         command.arg(self.subcommand.as_str());
+        if self.subcommand == RcloneSubcommand::ConfigDump {
+            command.arg("dump");
+        }
         for arg in self.args {
             command.arg(arg);
         }
         command
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RcloneTextOutput {
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[derive(Debug)]
+pub enum RcloneCliError {
+    Io(std::io::Error),
+    NonZero {
+        status: ExitStatus,
+        stdout: String,
+        stderr: String,
+    },
+}
+
+impl std::fmt::Display for RcloneCliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(error) => write!(f, "{error}"),
+            Self::NonZero {
+                status,
+                stdout,
+                stderr,
+            } => {
+                let mut parts = Vec::new();
+                if !stdout.trim().is_empty() {
+                    parts.push(format!("stdout: {}", stdout.trim()));
+                }
+                if !stderr.trim().is_empty() {
+                    parts.push(format!("stderr: {}", stderr.trim()));
+                }
+                if parts.is_empty() {
+                    write!(f, "rclone failed with status {status}")
+                } else {
+                    write!(
+                        f,
+                        "rclone failed with status {status} ({})",
+                        parts.join(" | ")
+                    )
+                }
+            }
+        }
+    }
+}
+
+impl std::error::Error for RcloneCliError {}
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -106,6 +162,24 @@ impl RcloneCli {
     pub fn command(&self, spec: RcloneCommandSpec) -> Command {
         spec.into_command(&self.binary)
     }
+
+    pub fn run_capture_text(
+        &self,
+        spec: RcloneCommandSpec,
+    ) -> Result<RcloneTextOutput, RcloneCliError> {
+        let output = self.command(spec).output().map_err(RcloneCliError::Io)?;
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        if output.status.success() {
+            Ok(RcloneTextOutput { stdout, stderr })
+        } else {
+            Err(RcloneCliError::NonZero {
+                status: output.status,
+                stdout,
+                stderr,
+            })
+        }
+    }
 }
 
 #[cfg(test)]
@@ -137,5 +211,12 @@ mod tests {
             command.get_program(),
             std::ffi::OsStr::new("/usr/bin/rclone")
         );
+    }
+
+    #[test]
+    fn config_dump_builds_two_word_subcommand() {
+        let spec = RcloneCommandSpec::new(RcloneSubcommand::ConfigDump);
+        let argv = spec.argv();
+        assert_eq!(argv, vec![OsString::from("config"), OsString::from("dump")]);
     }
 }
