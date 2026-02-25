@@ -157,7 +157,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Strict validation of remote names and path segments.
 - [x] Do not accept arbitrary user-provided `rclone` flags.
 - [x] Never log `rclone` config content or tokens.
-- [ ] Consider a Browsey remote allowlist/prefix policy.
+- [x] Consider a Browsey remote allowlist/prefix policy (implemented optional env-based policy: `BROWSEY_RCLONE_REMOTE_ALLOWLIST` / `BROWSEY_RCLONE_REMOTE_PREFIX`).
 - [ ] Decide whether to use default `rclone` config path or explicit configurable path.
 
 ## 12. Cross-distro and packaging
@@ -202,7 +202,13 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Keep provider model generic so OneDrive is not hardcoded into shared types/commands.
 - [x] Add `ProviderKind` from the start (`onedrive`, `gdrive`, `nextcloud`).
 - [x] Add capability matrix per provider.
-- [ ] Track Google Drive semantic differences (shortcuts, native docs types, trash behavior) as provider-specific TODOs.
+- [x] Track Google Drive semantic differences (shortcuts, native docs types, trash behavior) as provider-specific TODOs.
+  - [ ] Decide v1/v2 handling of Google Drive shortcuts (`application/vnd.google-apps.shortcut`) in listing and copy/move flows.
+  - [ ] Decide how native Google Docs/Sheets/Slides types appear in Browsey (`entry kind`, size, open/export affordances).
+  - [ ] Define delete/trash semantics for Google Drive vs Browsey permanent delete/trash UI expectations.
+  - [ ] Verify duplicate-name and parent-folder semantics on Google Drive through `rclone` (conflict preview assumptions may differ).
+  - [ ] Decide whether Shared Drives are supported in initial Google Drive rollout and how they are surfaced in Network view.
+  - [ ] Map provider-specific rate-limit/auth error texts for Google Drive into existing cloud error codes (without polluting common mapping).
 - [x] Keep provider-specific error mapping isolated from shared `rclone` wrapper.
 
 ## 16. Prepare for Nextcloud (phase 3)
