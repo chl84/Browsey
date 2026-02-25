@@ -100,6 +100,7 @@ mod tests {
             network: false,
             read_only: false,
             read_denied: false,
+            capabilities: None,
         }
     }
 

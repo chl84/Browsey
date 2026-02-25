@@ -2,7 +2,7 @@
 
 use crate::{
     commands::{cloud, cloud::types::CloudRemote, fs::MountInfo},
-    entry::FsEntry,
+    entry::{EntryCapabilities, FsEntry},
     errors::api_error::ApiResult,
     icons::icon_ids,
 };
@@ -126,6 +126,7 @@ fn to_network_entry(mount: &MountInfo) -> FsEntry {
         network: true,
         read_only: false,
         read_denied: false,
+        capabilities: None,
     }
 }
 
@@ -146,6 +147,17 @@ fn to_cloud_network_entry(remote: &CloudRemote) -> FsEntry {
         network: true,
         read_only: false,
         read_denied: false,
+        capabilities: Some(EntryCapabilities {
+            can_list: remote.capabilities.can_list,
+            can_mkdir: remote.capabilities.can_mkdir,
+            can_delete: remote.capabilities.can_delete,
+            can_rename: remote.capabilities.can_rename,
+            can_move: remote.capabilities.can_move,
+            can_copy: remote.capabilities.can_copy,
+            can_trash: remote.capabilities.can_trash,
+            can_undo: remote.capabilities.can_undo,
+            can_permissions: remote.capabilities.can_permissions,
+        }),
     }
 }
 

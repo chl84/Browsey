@@ -1,3 +1,15 @@
+export type EntryCapabilities = {
+  canList: boolean
+  canMkdir: boolean
+  canDelete: boolean
+  canRename: boolean
+  canMove: boolean
+  canCopy: boolean
+  canTrash: boolean
+  canUndo: boolean
+  canPermissions: boolean
+}
+
 export type Entry = {
   name: string
   nameLower?: string
@@ -17,6 +29,7 @@ export type Entry = {
   network?: boolean
   readOnly?: boolean
   readDenied?: boolean
+  capabilities?: EntryCapabilities | null
 }
 
 export type Listing = {
