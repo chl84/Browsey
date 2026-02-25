@@ -1,6 +1,11 @@
 use std::{
+    collections::HashMap,
     ffi::{OsStr, OsString},
-    process::{Command, ExitStatus, Stdio},
+    process::{Child, Command, ExitStatus, Output, Stdio},
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, Mutex, OnceLock,
+    },
     time::{Duration, Instant},
 };
 use tracing::{debug, warn};
@@ -9,6 +14,13 @@ use wait_timeout::ChildExt;
 const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] =
     &["--retries", "2", "--low-level-retries", "2", "--stats", "0"];
 const RCLONE_FAILURE_OUTPUT_MAX_CHARS: usize = 16 * 1024;
+const RCLONE_SHUTDOWN_POLL_SLICE_MS: u64 = 100;
+
+type SharedChild = Arc<Mutex<Option<Child>>>;
+
+static RCLONE_SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+static RCLONE_RUNNING_CHILDREN: OnceLock<Mutex<HashMap<u64, SharedChild>>> = OnceLock::new();
+static RCLONE_CHILD_KEY_SEQ: AtomicU64 = AtomicU64::new(1);
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,6 +120,9 @@ pub struct RcloneTextOutput {
 #[derive(Debug)]
 pub enum RcloneCliError {
     Io(std::io::Error),
+    Shutdown {
+        subcommand: RcloneSubcommand,
+    },
     Timeout {
         subcommand: RcloneSubcommand,
         timeout: Duration,
@@ -125,6 +140,13 @@ impl std::fmt::Display for RcloneCliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io(error) => write!(f, "{error}"),
+            Self::Shutdown { subcommand } => {
+                write!(
+                    f,
+                    "rclone {} cancelled because application is shutting down",
+                    subcommand.as_str()
+                )
+            }
             Self::Timeout {
                 subcommand,
                 timeout,
@@ -227,44 +249,24 @@ impl RcloneCli {
         spec: RcloneCommandSpec,
     ) -> Result<RcloneTextOutput, RcloneCliError> {
         let subcommand = spec.subcommand;
+        if RCLONE_SHUTTING_DOWN.load(Ordering::SeqCst) {
+            return Err(RcloneCliError::Shutdown { subcommand });
+        }
         let timeout = subcommand.default_timeout();
         let started = Instant::now();
         debug!(command = subcommand.as_str(), "running rclone command");
         let mut command = self.command(spec);
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
-        let mut child = command.spawn().map_err(RcloneCliError::Io)?;
-        let status = match child.wait_timeout(timeout).map_err(RcloneCliError::Io)? {
-            Some(status) => status,
-            None => {
-                let _ = child.kill();
-                let output = child.wait_with_output().map_err(RcloneCliError::Io)?;
-                let stdout =
-                    truncate_failure_output(String::from_utf8_lossy(&output.stdout).into_owned());
-                let stderr =
-                    truncate_failure_output(String::from_utf8_lossy(&output.stderr).into_owned());
-                let elapsed_ms = started.elapsed().as_millis() as u64;
-                warn!(
-                    command = subcommand.as_str(),
-                    elapsed_ms,
-                    timeout_ms = timeout.as_millis() as u64,
-                    stderr = %scrub_log_text(&stderr),
-                    stdout = %scrub_log_text(&stdout),
-                    "rclone command timed out"
-                );
-                return Err(RcloneCliError::Timeout {
-                    subcommand,
-                    timeout,
-                    stdout,
-                    stderr,
-                });
-            }
-        };
-        let output = child.wait_with_output().map_err(RcloneCliError::Io)?;
+        let child = Arc::new(Mutex::new(Some(
+            command.spawn().map_err(RcloneCliError::Io)?,
+        )));
+        let _registration = RunningChildRegistration::register(child.clone());
+        let output = wait_for_child_output_or_cancel(&child, subcommand, timeout, started)?;
         let elapsed_ms = started.elapsed().as_millis() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        if status.success() {
+        if output.status.success() {
             debug!(
                 command = subcommand.as_str(),
                 elapsed_ms, "rclone command succeeded"
@@ -284,12 +286,143 @@ impl RcloneCli {
                 "rclone command failed"
             );
             Err(RcloneCliError::NonZero {
-                status,
+                status: output.status,
                 stdout,
                 stderr,
             })
         }
     }
+}
+
+pub(crate) fn begin_shutdown_and_kill_children() -> usize {
+    RCLONE_SHUTTING_DOWN.store(true, Ordering::SeqCst);
+    let children = match rclone_child_registry().lock() {
+        Ok(registry) => registry.values().cloned().collect::<Vec<_>>(),
+        Err(_) => return 0,
+    };
+    let mut killed = 0usize;
+    for child in children {
+        if child_kill(&child).is_ok() {
+            killed += 1;
+        }
+    }
+    if killed > 0 {
+        debug!(
+            killed,
+            "requested shutdown of running rclone child processes"
+        );
+    }
+    killed
+}
+
+fn wait_for_child_output_or_cancel(
+    child: &SharedChild,
+    subcommand: RcloneSubcommand,
+    timeout: Duration,
+    started: Instant,
+) -> Result<Output, RcloneCliError> {
+    let poll = Duration::from_millis(RCLONE_SHUTDOWN_POLL_SLICE_MS);
+    loop {
+        if RCLONE_SHUTTING_DOWN.load(Ordering::SeqCst) {
+            let _ = child_kill(child);
+            let _ = child_wait_with_output(child);
+            return Err(RcloneCliError::Shutdown { subcommand });
+        }
+
+        let elapsed = started.elapsed();
+        if elapsed >= timeout {
+            let _ = child_kill(child);
+            let output = child_wait_with_output(child).map_err(RcloneCliError::Io)?;
+            let stdout =
+                truncate_failure_output(String::from_utf8_lossy(&output.stdout).into_owned());
+            let stderr =
+                truncate_failure_output(String::from_utf8_lossy(&output.stderr).into_owned());
+            let elapsed_ms = elapsed.as_millis() as u64;
+            warn!(
+                command = subcommand.as_str(),
+                elapsed_ms,
+                timeout_ms = timeout.as_millis() as u64,
+                stderr = %scrub_log_text(&stderr),
+                stdout = %scrub_log_text(&stdout),
+                "rclone command timed out"
+            );
+            return Err(RcloneCliError::Timeout {
+                subcommand,
+                timeout,
+                stdout,
+                stderr,
+            });
+        }
+
+        let remaining = timeout.saturating_sub(elapsed);
+        let slice = remaining.min(poll);
+        match child_wait_timeout(child, slice).map_err(RcloneCliError::Io)? {
+            Some(_) => {
+                return child_wait_with_output(child).map_err(RcloneCliError::Io);
+            }
+            None => continue,
+        }
+    }
+}
+
+fn rclone_child_registry() -> &'static Mutex<HashMap<u64, SharedChild>> {
+    RCLONE_RUNNING_CHILDREN.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+struct RunningChildRegistration {
+    key: u64,
+}
+
+impl RunningChildRegistration {
+    fn register(child: SharedChild) -> Self {
+        let key = RCLONE_CHILD_KEY_SEQ.fetch_add(1, Ordering::SeqCst);
+        if let Ok(mut registry) = rclone_child_registry().lock() {
+            registry.insert(key, child);
+        }
+        Self { key }
+    }
+}
+
+impl Drop for RunningChildRegistration {
+    fn drop(&mut self) {
+        if let Ok(mut registry) = rclone_child_registry().lock() {
+            registry.remove(&self.key);
+        }
+    }
+}
+
+fn child_wait_timeout(
+    child: &SharedChild,
+    timeout: Duration,
+) -> std::io::Result<Option<ExitStatus>> {
+    let mut guard = child
+        .lock()
+        .map_err(|_| std::io::Error::other("failed to lock rclone child process"))?;
+    let child = guard
+        .as_mut()
+        .ok_or_else(|| std::io::Error::other("rclone child process already consumed"))?;
+    child.wait_timeout(timeout)
+}
+
+fn child_kill(child: &SharedChild) -> std::io::Result<()> {
+    let mut guard = child
+        .lock()
+        .map_err(|_| std::io::Error::other("failed to lock rclone child process"))?;
+    match guard.as_mut() {
+        Some(child) => child.kill(),
+        None => Ok(()),
+    }
+}
+
+fn child_wait_with_output(child: &SharedChild) -> std::io::Result<Output> {
+    let mut guard = child
+        .lock()
+        .map_err(|_| std::io::Error::other("failed to lock rclone child process"))?;
+    let child = guard
+        .take()
+        .ok_or_else(|| std::io::Error::other("rclone child process already consumed"))?;
+    drop(guard);
+    child.wait_with_output()
 }
 
 fn scrub_log_text(raw: &str) -> String {
