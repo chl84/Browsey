@@ -1,4 +1,4 @@
-//! Mount/eject handling for local, GVFS, and OneDrive mounts.
+//! Mount/eject handling for local and GVFS mounts.
 
 use crate::{
     commands::fs::MountInfo, errors::api_error::ApiResult, fs_utils::debug_log, watcher::WatchState,
@@ -9,7 +9,7 @@ use tauri::Emitter;
 
 #[cfg(not(target_os = "windows"))]
 use {
-    super::{discovery, gvfs},
+    super::{discovery, gio_mounts},
     dirs_next,
     std::fs,
     std::process::{Command, Stdio},
@@ -123,7 +123,7 @@ fn linux_mounts() -> Vec<MountInfo> {
     let gvfs_root = dirs_next::runtime_dir().map(|p| p.join("gvfs"));
 
     // Surface GVFS-backed MTP endpoints (e.g., Android phones).
-    mounts.extend(gvfs::list_gvfs_mounts());
+    mounts.extend(gio_mounts::list_gvfs_mounts());
 
     if let Ok(contents) = fs::read_to_string("/proc/self/mounts") {
         for line in contents.lines() {
@@ -175,7 +175,7 @@ fn linux_mounts() -> Vec<MountInfo> {
                 .map(|p| same_mount_path(&target, p))
                 .unwrap_or(false);
 
-            // Keep GVFS endpoints (MTP/OneDrive), but hide the generic gvfs root mount from Partitions.
+            // Keep GVFS endpoints (for example MTP), but hide the generic gvfs root mount from Partitions.
             if is_gvfs_root {
                 continue;
             }
@@ -270,26 +270,9 @@ fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> Result<(
     // Drop watcher to avoid open handles during unmount
     watcher.replace(None);
 
-    // Normalize OneDrive: if called on activation_root (onedrive://...), map to actual mount path.
-    let lower = path.to_ascii_lowercase();
-    let mut path = path;
-    let mut is_onedrive = lower.contains("onedrive");
+    let path = path;
 
-    if lower.starts_with("onedrive://") {
-        if let Some(actual) = gvfs::list_gvfs_mounts()
-            .into_iter()
-            .find(|m| m.fs == "onedrive" && !m.path.to_ascii_lowercase().starts_with("onedrive://"))
-            .map(|m| m.path)
-        {
-            path = actual;
-        } else {
-            // Nothing mounted; treat as already ejected.
-            return Ok(());
-        }
-        is_onedrive = true;
-    }
-
-    gvfs::ensure_gvfsd_fuse_running();
+    gio_mounts::ensure_gvfsd_fuse_running();
 
     let device = block_device_for_mount(&path);
 
@@ -312,24 +295,6 @@ fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> Result<(
             }
             busy_detected |= e.busy;
             errors.push(format!("gio mount -u: {}", e.message));
-        }
-    }
-
-    // OneDrive over GVFS sometimes needs a scheme-level unmount to talk to the right backend.
-    if is_onedrive {
-        match command_output("gio", &["mount", "--unmount-scheme=onedrive"]) {
-            Ok(_) => {
-                invalidate_network_discovery_cache();
-                power_off_device(device);
-                return Ok(());
-            }
-            Err(e) => {
-                busy_detected |= e.busy;
-                errors.push(format!(
-                    "gio mount --unmount-scheme=onedrive: {}",
-                    e.message
-                ));
-            }
         }
     }
 
@@ -410,11 +375,12 @@ async fn mount_partition_impl(path: String, app: tauri::AppHandle) -> Result<(),
 
     if lower.contains("://") {
         let path_for_mount = path.clone();
-        let status =
-            tauri::async_runtime::spawn_blocking(move || gvfs::mount_uri_status(&path_for_mount))
-                .await
-                .unwrap_or(gvfs::MountUriStatus::Failed);
-        let ok = !matches!(status, gvfs::MountUriStatus::Failed);
+        let status = tauri::async_runtime::spawn_blocking(move || {
+            gio_mounts::mount_uri_status(&path_for_mount)
+        })
+        .await
+        .unwrap_or(gio_mounts::MountUriStatus::Failed);
+        let ok = !matches!(status, gio_mounts::MountUriStatus::Failed);
         let outcome = status.as_str();
         let duration_ms = started.elapsed().as_millis() as u64;
         let _ = app.emit(

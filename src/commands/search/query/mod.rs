@@ -4,9 +4,9 @@ mod eval;
 mod lexer;
 mod parser;
 
+use self::ast::{Predicate, TextField, TextMatchMode};
 pub use ast::Expr;
 pub use error::QueryError;
-use self::ast::{Predicate, TextField, TextMatchMode};
 
 pub fn parse_query(input: &str) -> Result<Expr, QueryError> {
     parser::parse(input)
@@ -35,7 +35,10 @@ mod tests {
     #[test]
     fn detects_simple_name_contains_query() {
         let expr = parse_query("photo").expect("parse");
-        assert_eq!(simple_name_contains_needle_lc(&expr).as_deref(), Some("photo"));
+        assert_eq!(
+            simple_name_contains_needle_lc(&expr).as_deref(),
+            Some("photo")
+        );
     }
 
     #[test]

@@ -66,11 +66,10 @@
 - Network discovery now aggregates GVFS (`gio mount -li`), Avahi/mDNS, and SSDP sources to surface broader SFTP/SMB/NFS/FTP/WebDAV/AFP/HTTP/HTTPS endpoints.
 - Address bar + URI handling now supports broader server-address aliases (`ssh`→`sftp`, `webdav`/`webdavs`→`dav`/`davs`, `ftps` accepted as FTP-family alias for normalization/matching).
 - Mount UX now reports explicit outcomes (`Connecting`, `Already connected`, `Connected`, `Failed`) from backend to frontend activity labels.
-- GVFS mount visibility checks were hardened with retries and stricter mounted-URI validation; OneDrive mountables no longer false-positive as already connected.
-- Linux partitions now hide the generic GVFS root mount while still surfacing concrete GVFS endpoints (for example active OneDrive/MTP mounts).
+- GVFS mount visibility checks were hardened with retries and stricter mounted-URI validation.
+- Linux partitions now hide the generic GVFS root mount while still surfacing concrete GVFS endpoints (for example active MTP mounts).
 - Network context menu is now URI-aware: mountable URIs show `Connect`/`Copy Server Address`, HTTP(S) URIs show `Open in Browser`, mounted paths keep `Open`/`Disconnect`.
 - Properties modal now supports virtual network URIs in the Extra tab by showing parsed URI fields (address/protocol/user/host/port/path/query/fragment) without failing filesystem metadata probes.
-- OneDrive entries in `Network` are now account-deduplicated during mount/eject transition windows to avoid temporary duplicate rows.
 - Column-filter UX was refined: facet staleness/parity issues were fixed, active filter indicators were improved for both list and grid modes, and grid now shows an explicit active-filter notice when headers are hidden.
 
 ## v0.4.3 — 2026-02-13
@@ -108,7 +107,7 @@
 - Asset protocol scope made portable via cache-dir placeholder, restoring thumbnail access across machines.
 - Archive handling: added 7z and RAR extraction, batch extract with shared progress/cancel and undo, plus safer single-root handling and ZIP level/name persistence.
 - Thumbnails: switched to PDFium backend with bundled binaries, faster decode pipeline (pool scaling, retries, timeouts), two-generation cache and video-thumb preference; PDF caching and resource lookup fixed.
-- GVFS/OneDrive/MTP: better mount detection, polling/cancel/debounce to avoid UI hangs; copy/move now supports progress, cancel, and gio fallback; clearer cloud labels and icons.
+- GVFS/MTP: better mount detection, polling/cancel/debounce to avoid UI hangs; copy/move now supports progress, cancel, and gio fallback; clearer cloud labels and icons.
 - Scroll/viewport perf: list scroll and wheel events now rAF-throttled; entry-meta refresh batched to reduce jank.
 - Drag/drop & clipboard: native file drop support with correct copy/move hints; system clipboard cut/copy integration and conflict modal readability improvements.
 - Settings & UX: persistent defaults for view, start directory, folders-first, hidden-last, show hidden, confirm delete, density (cozy/compact); cleaned settings UI and removed unused theme/icon controls.
