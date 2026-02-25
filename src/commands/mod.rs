@@ -29,8 +29,9 @@ pub use crate::tasks::{cancel_task, CancelState};
 pub use about::about_info;
 pub use bookmarks::{add_bookmark, clear_bookmarks, get_bookmarks, remove_bookmark};
 pub use cloud::{
-    create_cloud_folder, list_cloud_entries, list_cloud_remotes, normalize_cloud_path,
-    stat_cloud_entry,
+    copy_cloud_entry, create_cloud_folder, delete_cloud_dir_empty, delete_cloud_dir_recursive,
+    delete_cloud_file, list_cloud_entries, list_cloud_remotes, move_cloud_entry,
+    normalize_cloud_path, rename_cloud_entry, stat_cloud_entry,
 };
 pub use compress::compress_entries;
 pub use console::open_console;
