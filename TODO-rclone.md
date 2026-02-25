@@ -177,7 +177,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [ ] Unit tests for `stderr`/exit-code mapping to `CloudErrorCode`.
 - [ ] Create a fake-`rclone` shim for deterministic backend tests.
 - [ ] Integration tests for list/copy/move/delete using fake `rclone` JSON output.
-- [ ] Frontend tests for conflict preview and disabled actions based on capabilities.
+- [x] Frontend tests for conflict preview and disabled actions based on capabilities.
 - [ ] Manual test checklist for OneDrive v1 (auth, large files, rename, delete, conflict, refresh).
 - [ ] Add backend tests for command registration wiring / argument serialization at Tauri boundary where practical.
 - [ ] Run Browsey standard quality gates before each milestone PR:
