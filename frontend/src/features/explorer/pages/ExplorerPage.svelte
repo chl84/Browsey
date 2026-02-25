@@ -808,6 +808,9 @@
         return false
       }
       showToast('Copied', 1500)
+      if (paths.some(isCloudPath)) {
+        return true
+      }
       void copyPathsToSystemClipboard(paths).catch((err) => {
         showToast(
           `Copied (system clipboard unavailable: ${getErrorMessage(err)})`,
@@ -825,6 +828,9 @@
         return false
       }
       showToast('Cut', 1500)
+      if (paths.some(isCloudPath)) {
+        return true
+      }
       void copyPathsToSystemClipboard(paths, 'cut').catch((err) => {
         showToast(
           `Cut (system clipboard unavailable: ${getErrorMessage(err)})`,
