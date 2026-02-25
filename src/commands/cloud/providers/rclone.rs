@@ -66,6 +66,26 @@ impl CloudProvider for RcloneCloudProvider {
         Ok(remotes)
     }
 
+    fn stat_path(&self, path: &CloudPath) -> CloudCommandResult<Option<CloudEntry>> {
+        let spec = RcloneCommandSpec::new(RcloneSubcommand::LsJson)
+            .arg("--stat")
+            .arg(path.to_rclone_remote_spec());
+        match self.cli.run_capture_text(spec) {
+            Ok(output) => {
+                let item = parse_lsjson_stat_item(&output.stdout).map_err(|message| {
+                    CloudCommandError::new(CloudCommandErrorCode::UnknownError, message)
+                })?;
+                Ok(Some(cloud_entry_from_item(path, item)))
+            }
+            Err(RcloneCliError::NonZero { stderr, stdout, .. })
+                if is_rclone_not_found_text(&stderr, &stdout) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(map_rclone_error(error)),
+        }
+    }
+
     fn list_dir(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
         let output = self
             .cli
@@ -84,18 +104,7 @@ impl CloudProvider for RcloneCloudProvider {
                     format!("Invalid entry name from rclone lsjson: {error}"),
                 )
             })?;
-            entries.push(CloudEntry {
-                name: item.name,
-                path: child_path.to_string(),
-                kind: if item.is_dir {
-                    CloudEntryKind::Dir
-                } else {
-                    CloudEntryKind::File
-                },
-                size: if item.is_dir { None } else { item.size },
-                modified: item.mod_time,
-                capabilities: CloudCapabilities::v1_core_rw(),
-            });
+            entries.push(cloud_entry_from_item(&child_path, item));
         }
         entries.sort_by(|a, b| {
             let rank_a = if matches!(a.kind, CloudEntryKind::Dir) {
@@ -111,6 +120,30 @@ impl CloudProvider for RcloneCloudProvider {
             rank_a.cmp(&rank_b).then_with(|| a.name.cmp(&b.name))
         });
         Ok(entries)
+    }
+
+    fn mkdir(&self, path: &CloudPath) -> CloudCommandResult<()> {
+        self.cli
+            .run_capture_text(
+                RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(path.to_rclone_remote_spec()),
+            )
+            .map_err(map_rclone_error)?;
+        Ok(())
+    }
+}
+
+fn cloud_entry_from_item(path: &CloudPath, item: LsJsonItem) -> CloudEntry {
+    CloudEntry {
+        name: item.name,
+        path: path.to_string(),
+        kind: if item.is_dir {
+            CloudEntryKind::Dir
+        } else {
+            CloudEntryKind::File
+        },
+        size: if item.is_dir { None } else { item.size },
+        modified: item.mod_time,
+        capabilities: CloudCapabilities::v1_core_rw(),
     }
 }
 
@@ -140,6 +173,19 @@ fn map_rclone_error(error: RcloneCliError) -> CloudCommandError {
             }
         }
     }
+}
+
+fn is_rclone_not_found_text(stderr: &str, stdout: &str) -> bool {
+    let hay = if !stderr.trim().is_empty() {
+        stderr
+    } else {
+        stdout
+    };
+    let lower = hay.to_ascii_lowercase();
+    lower.contains("not found")
+        || lower.contains("object not found")
+        || lower.contains("directory not found")
+        || lower.contains("file not found")
 }
 
 fn parse_listremotes_plain(stdout: &str) -> Result<Vec<String>, String> {
@@ -214,11 +260,15 @@ fn parse_lsjson_items(stdout: &str) -> Result<Vec<LsJsonItem>, String> {
     serde_json::from_str(stdout).map_err(|e| format!("Invalid rclone lsjson output: {e}"))
 }
 
+fn parse_lsjson_stat_item(stdout: &str) -> Result<LsJsonItem, String> {
+    serde_json::from_str(stdout).map_err(|e| format!("Invalid rclone lsjson --stat output: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_provider_kind, parse_config_dump_types, parse_listremotes_plain,
-        parse_lsjson_items,
+        classify_provider_kind, is_rclone_not_found_text, parse_config_dump_types,
+        parse_listremotes_plain, parse_lsjson_items, parse_lsjson_stat_item,
     };
     use crate::commands::cloud::types::CloudProviderKind;
 
@@ -266,5 +316,25 @@ mod tests {
         assert!(items[0].is_dir);
         assert_eq!(items[1].name, "note.txt");
         assert_eq!(items[1].size, Some(12));
+    }
+
+    #[test]
+    fn parses_lsjson_stat_item() {
+        let json =
+            r#"{"Name":"note.txt","IsDir":false,"Size":12,"ModTime":"2026-02-25T10:01:00Z"}"#;
+        let item = parse_lsjson_stat_item(json).expect("parse lsjson stat");
+        assert_eq!(item.name, "note.txt");
+        assert!(!item.is_dir);
+        assert_eq!(item.size, Some(12));
+    }
+
+    #[test]
+    fn detects_not_found_rclone_messages() {
+        assert!(is_rclone_not_found_text(
+            "Failed to lsjson: object not found",
+            ""
+        ));
+        assert!(is_rclone_not_found_text("", "directory not found"));
+        assert!(!is_rclone_not_found_text("permission denied", ""));
     }
 }
