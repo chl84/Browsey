@@ -93,7 +93,7 @@ Recommended implementation sequence (v1 OneDrive):
 
 ## 6. Routing in existing backend
 
-- [ ] Add early routing for local path vs cloud path in relevant commands.
+- [x] Add early routing for local path vs cloud path in relevant commands.
 - [ ] Prevent cloud paths from entering `src/commands/fs/*`, `src/undo/*`, `nofollow`, or GVFS flows.
 - [ ] Start with separate Tauri commands for cloud instead of rewriting all FS commands at once.
 - [ ] Ensure `src/commands/network/*` does not try to own rclone cloud operations.
@@ -123,10 +123,10 @@ Recommended implementation sequence (v1 OneDrive):
 - [ ] Gate context-menu actions based on backend capability flags.
 - [ ] Ensure keyboard actions (`Delete`, `F2`, etc.) respect cloud capabilities.
 - [ ] Translate raw `rclone` errors into user-friendly UI messages.
-- [ ] Follow frontend naming conventions from `ARCHITECTURE_NAMING.md` (e.g. `*.service.ts` for Tauri invoke boundary).
+- [x] Follow frontend naming conventions from `ARCHITECTURE_NAMING.md` (e.g. `*.service.ts` for Tauri invoke boundary).
 - [ ] Respect import-boundary rules from `ARCHITECTURE_IMPORTS.md` (cross-feature imports via public barrels only).
-- [ ] Add/extend feature barrel exports (`frontend/src/features/network/index.ts`, `frontend/src/features/explorer/index.ts`) instead of deep cross-feature imports.
-- [ ] Keep cloud `invoke` calls inside service modules (avoid calling `invoke(...)` directly from Svelte components).
+- [x] Add/extend feature barrel exports (`frontend/src/features/network/index.ts`, `frontend/src/features/explorer/index.ts`) instead of deep cross-feature imports.
+- [x] Keep cloud `invoke` calls inside service modules (avoid calling `invoke(...)` directly from Svelte components).
 - [ ] Decide where cloud state lives (existing explorer state vs dedicated network/cloud store) before wiring multiple components.
 - [ ] Ensure refresh/watch UX is clear for cloud paths (no `watch_dir` support; use manual/poll refresh semantics).
 
