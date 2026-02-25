@@ -31,6 +31,7 @@ pub mod icon_ids {
     pub const PRESENTATION_FILE: IconId = 18;
     pub const AUDIO_FILE: IconId = 19;
     pub const EXECUTABLE_FILE: IconId = 20;
+    pub const CLOUD: IconId = 21;
 }
 
 use icon_ids::*;
