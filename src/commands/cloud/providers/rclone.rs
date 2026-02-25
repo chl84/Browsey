@@ -632,10 +632,18 @@ struct LsJsonItem {
     name: String,
     #[serde(default)]
     is_dir: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_lsjson_size")]
     size: Option<u64>,
     #[serde(default)]
     mod_time: Option<String>,
+}
+
+fn deserialize_lsjson_size<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = <Option<i64> as serde::Deserialize>::deserialize(deserializer)?;
+    Ok(raw.and_then(|n| u64::try_from(n).ok()))
 }
 
 fn parse_lsjson_items(stdout: &str) -> Result<Vec<LsJsonItem>, String> {
@@ -770,6 +778,18 @@ mod tests {
         assert!(items[0].is_dir);
         assert_eq!(items[1].name, "note.txt");
         assert_eq!(items[1].size, Some(12));
+    }
+
+    #[test]
+    fn parses_lsjson_items_with_negative_directory_size() {
+        let json = r#"[
+          {"Name":"Folder","IsDir":true,"Size":-1,"ModTime":"2026-02-25T10:00:00Z"}
+        ]"#;
+        let items = parse_lsjson_items(json).expect("parse lsjson with -1 dir size");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "Folder");
+        assert!(items[0].is_dir);
+        assert_eq!(items[0].size, None);
     }
 
     #[test]

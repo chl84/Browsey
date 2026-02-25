@@ -249,6 +249,11 @@ export const useExplorerNavigation = (deps: Deps) => {
   }
 
   const openPartition = async (path: string) => {
+    if (isCloudPath(path)) {
+      await loadDirIfIdle(path)
+      return
+    }
+
     if (await isMountUri(path)) {
       try {
         const result = await connectNetworkUri(path)
