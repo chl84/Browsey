@@ -109,9 +109,9 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Add backend command to select/validate a remote and normalize root path.
 - [x] Implement browsing/listing for OneDrive via `rclone`.
 - [x] Implement core file ops in OneDrive (`copy`, `move`, `rename`, `delete`, `mkdir`).
-- [ ] Trigger refresh after operations.
+- [x] Trigger refresh after operations.
 - [x] Implement cloud-aware paste conflict preview (no `Path::exists()`).
-- [ ] Disable or hide unsupported actions in v1 (trash, undo, permissions, etc.) with clear UI messaging.
+- [x] Disable or hide unsupported actions in v1 (trash, undo, permissions, etc.) with clear UI messaging.
 
 ## 8. Frontend integration (v1)
 
@@ -121,7 +121,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Add clear labels/icons for rclone OneDrive endpoints.
 - [ ] Add basic operation activity/progress UI (at least busy state).
 - [ ] Gate context-menu actions based on backend capability flags.
-- [ ] Ensure keyboard actions (`Delete`, `F2`, etc.) respect cloud capabilities.
+- [x] Ensure keyboard actions (`Delete`, `F2`, etc.) respect cloud capabilities.
 - [ ] Translate raw `rclone` errors into user-friendly UI messages.
 - [x] Follow frontend naming conventions from `ARCHITECTURE_NAMING.md` (e.g. `*.service.ts` for Tauri invoke boundary).
 - [ ] Respect import-boundary rules from `ARCHITECTURE_IMPORTS.md` (cross-feature imports via public barrels only).
@@ -146,7 +146,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Log command name and duration, but not secrets/tokens.
 - [ ] Log scrubbed `stderr` on failures.
 - [ ] Add debug logging path for development (`RUST_LOG`) for rclone invocations.
-- [ ] Standardize user-facing error messages for common cloud failures (auth expired, remote missing, connectivity).
+- [x] Standardize user-facing error messages for common cloud failures (auth expired, remote missing, connectivity).
 - [x] Map cloud errors into Browsey's existing `ApiError { code, message }` contract so frontend handling remains consistent.
 - [x] Reuse module-local `error.rs` patterns (`*_ErrorCode`, `map_api_result`) for cloud commands instead of ad-hoc string errors.
 - [ ] Add telemetry-friendly stable error codes before broad UI integration (avoid string-parsing in frontend).

@@ -221,6 +221,8 @@
     return 'network resource'
   }
 
+  const isCloudPath = (path: string) => path.startsWith('rclone://')
+
   // --- Data + preferences --------------------------------------------------
   const explorer = useExplorerData({
     onCurrentChange: (path) => {
@@ -844,9 +846,10 @@
       const entries = $filteredEntries.filter((e) => selectedPathSet.has(e.path))
       if (entries.length === 0) return false
       const hasNetwork = entries.some((e) => e.network)
+      const hasCloud = entries.some((e) => isCloudPath(e.path))
       const inTrashView = currentView === 'trash'
 
-      if (permanent || (hasNetwork && !inTrashView)) {
+      if (permanent || (hasNetwork && !inTrashView) || (hasCloud && !inTrashView)) {
         deleteModal.open(entries, inTrashView ? 'trash' : 'default')
         return true
       }
@@ -921,6 +924,10 @@
     },
     onOpenConsole: async () => {
       if (currentView !== 'dir') return false
+      if (isCloudPath(get(current))) {
+        showToast('Open in console is not available for cloud folders')
+        return true
+      }
       try {
         await openConsole(get(current))
         return true

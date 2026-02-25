@@ -41,6 +41,44 @@ type Deps = {
   onBeforeRowContextMenu?: () => void
 }
 
+const isCloudPath = (path: string) => path.startsWith('rclone://')
+
+const filterUnsupportedCloudActions = (actions: ContextAction[]): ContextAction[] => {
+  const unsupported = new Set([
+    'move-trash',
+    'open-console',
+    'new-file',
+    'open-with',
+    'rename-advanced',
+    'compress',
+    'extract',
+    'check-duplicates',
+  ])
+  const filtered = actions
+    .filter((action) => !unsupported.has(action.id))
+    .map((action) => ({
+      ...action,
+      ...(action.children
+        ? { children: filterUnsupportedCloudActions(action.children) }
+        : {}),
+    }))
+    .filter((action) => !action.children || action.children.length > 0)
+
+  const cleaned: ContextAction[] = []
+  for (const action of filtered) {
+    const isDivider = action.id.startsWith('divider')
+    const prevIsDivider = cleaned.length > 0 && cleaned[cleaned.length - 1].id.startsWith('divider')
+    if (isDivider && (cleaned.length === 0 || prevIsDivider)) {
+      continue
+    }
+    cleaned.push(action)
+  }
+  while (cleaned.length > 0 && cleaned[cleaned.length - 1].id.startsWith('divider')) {
+    cleaned.pop()
+  }
+  return cleaned
+}
+
 const commandForContextAction = (actionId: string): ShortcutCommandId | null => {
   if (actionId === 'cut') return 'cut'
   if (actionId === 'copy') return 'copy'
@@ -110,6 +148,9 @@ export const useExplorerContextMenuOps = (deps: Deps) => {
       ) {
         actions.splice(1, 0, { id: 'open-location', label: 'Open item location' })
       }
+      if (selectionPaths.every(isCloudPath)) {
+        actions = filterUnsupportedCloudActions(actions)
+      }
       actions = applyContextMenuShortcuts(actions)
       if (actions.length > 0) {
         deps.openContextMenu(entry, actions, event.clientX, event.clientY)
@@ -145,11 +186,14 @@ export const useExplorerContextMenuOps = (deps: Deps) => {
     const openConsoleShortcut =
       shortcutFor(deps.shortcutBindings(), 'open_console')?.accelerator ?? 'Ctrl+T'
     const pasteShortcut = shortcutFor(deps.shortcutBindings(), 'paste')?.accelerator ?? 'Ctrl+V'
+    const isCloudDir = isCloudPath(deps.getCurrentPath())
     const actions: ContextAction[] = [
-      { id: 'new-file', label: 'New File…' },
       { id: 'new-folder', label: 'New Folder…' },
-      { id: 'open-console', label: 'Open in console', shortcut: openConsoleShortcut },
     ]
+    if (!isCloudDir) {
+      actions.unshift({ id: 'new-file', label: 'New File…' })
+      actions.push({ id: 'open-console', label: 'Open in console', shortcut: openConsoleShortcut })
+    }
     if (deps.getClipboardPathCount() > 0) {
       actions.push({ id: 'paste', label: 'Paste', shortcut: pasteShortcut })
     }
