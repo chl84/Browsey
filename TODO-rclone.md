@@ -180,13 +180,13 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Frontend tests for conflict preview and disabled actions based on capabilities.
 - [x] Manual test checklist for OneDrive v1 (auth, large files, rename, delete, conflict, refresh).
 - [ ] Add backend tests for command registration wiring / argument serialization at Tauri boundary where practical.
-- [ ] Run Browsey standard quality gates before each milestone PR:
-  - [ ] `cargo check`
-  - [ ] `cargo test`
-  - [ ] `cargo fmt`
-  - [ ] `npm --prefix frontend run check`
-  - [ ] `npm --prefix frontend run lint`
-- [ ] Run `npm --prefix frontend run build` before merge of major frontend integration changes.
+- [x] Run Browsey standard quality gates before each milestone PR:
+  - [x] `cargo check`
+  - [x] `cargo test`
+  - [x] `cargo fmt`
+  - [x] `npm --prefix frontend run check`
+  - [x] `npm --prefix frontend run lint`
+- [x] Run `npm --prefix frontend run build` before merge of major frontend integration changes.
 
 ## 14. Explicitly unsupported in v1 (document clearly)
 
@@ -227,8 +227,8 @@ Recommended implementation sequence (v1 OneDrive):
 - [ ] OneDrive can be browsed via `rclone` without GVFS paths.
 - [ ] `copy`/`move`/`rename`/`delete`/`mkdir` work reliably without GVFS ghost/`ENOTEMPTY` issues.
 - [ ] Conflict preview and overwrite flow work against cloud storage.
-- [ ] Backend + frontend checks are green (`cargo check`, `cargo test`, frontend check).
+- [x] Backend + frontend checks are green (`cargo check`, `cargo test`, frontend check).
 - [ ] Manual test checklist completed on at least one OneDrive setup.
 - [ ] Docs updated with install/setup steps and known limitations.
 - [x] Cloud integration follows frontend import/naming rules and does not introduce deep cross-feature imports.
-- [ ] New backend commands are registered/typed consistently with Browsey's `ApiResult` + error-code conventions.
+- [x] New backend commands are registered/typed consistently with Browsey's `ApiResult` + error-code conventions.
