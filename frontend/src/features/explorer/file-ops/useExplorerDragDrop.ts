@@ -3,6 +3,7 @@ import { get, writable } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import { useDragDrop } from './useDragDrop'
 import { createNativeFileDrop } from './createNativeFileDrop'
+import { setClipboardPathsState } from './clipboard.store'
 import { normalizePath, parentPath } from '../utils'
 import { resolveDropClipboardMode, setClipboardCmd } from '../services/clipboard.service'
 import { startNativeFileDrag } from '../services/nativeDrag.service'
@@ -21,6 +22,8 @@ type Deps = {
 
 type DragAction = 'copy' | 'move' | null
 
+const isCloudPath = (path: string) => path.startsWith('rclone://')
+
 export const useExplorerDragDrop = (deps: Deps) => {
   const dragDrop = useDragDrop()
   const dragState = dragDrop.state
@@ -38,6 +41,10 @@ export const useExplorerDragDrop = (deps: Deps) => {
       const curr = deps.currentPath()
       const view = deps.currentView()
       if (view === 'dir' && curr) {
+        if (isCloudPath(curr)) {
+          deps.showToast('Dropping local files into cloud folders is not supported yet')
+          return
+        }
         try {
           await setClipboardCmd(paths, 'copy')
           const ok = await deps.handlePasteOrMove(curr)
@@ -153,6 +160,10 @@ export const useExplorerDragDrop = (deps: Deps) => {
     dest: string,
     event: DragEvent,
   ): Promise<'copy' | 'cut'> => {
+    const allCloud = paths.length > 0 && paths.every(isCloudPath)
+    if (allCloud && isCloudPath(dest)) {
+      return dropModifierPrefersCopy(event) ? 'copy' : 'cut'
+    }
     const preferCopy = dropModifierPrefersCopy(event)
     return resolveDropModeCached(paths, dest, preferCopy)
   }
@@ -220,7 +231,14 @@ export const useExplorerDragDrop = (deps: Deps) => {
     if (sourcePaths.length === 0) return
     try {
       const mode = await resolveDropMode(sourcePaths, entry.path, event)
-      await setClipboardCmd(sourcePaths, mode)
+      const cloudCount = sourcePaths.filter(isCloudPath).length
+      if (cloudCount === sourcePaths.length && isCloudPath(entry.path)) {
+        setClipboardPathsState(mode, sourcePaths)
+      } else if (cloudCount > 0 || isCloudPath(entry.path)) {
+        throw new Error('Mixed local/cloud drag-and-drop is not supported yet')
+      } else {
+        await setClipboardCmd(sourcePaths, mode)
+      }
       await deps.handlePasteOrMove(entry.path)
     } catch (err) {
       deps.showToast(`Drop failed: ${getErrorMessage(err)}`)
@@ -259,7 +277,14 @@ export const useExplorerDragDrop = (deps: Deps) => {
     if (sourcePaths.length === 0) return
     try {
       const mode = await resolveDropMode(sourcePaths, path, event)
-      await setClipboardCmd(sourcePaths, mode)
+      const cloudCount = sourcePaths.filter(isCloudPath).length
+      if (cloudCount === sourcePaths.length && isCloudPath(path)) {
+        setClipboardPathsState(mode, sourcePaths)
+      } else if (cloudCount > 0 || isCloudPath(path)) {
+        throw new Error('Mixed local/cloud drag-and-drop is not supported yet')
+      } else {
+        await setClipboardCmd(sourcePaths, mode)
+      }
       await deps.handlePasteOrMove(path)
     } catch (err) {
       deps.showToast(`Drop failed: ${getErrorMessage(err)}`)

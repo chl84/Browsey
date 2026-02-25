@@ -6,6 +6,8 @@ import { setClipboardCmd, pasteClipboardCmd } from '../services/clipboard.servic
 type Result = { ok: true } | { ok: false; error: string }
 type ClipboardMode = 'copy' | 'cut'
 
+const isCloudPath = (path: string) => path.startsWith('rclone://')
+
 const writeTextIfAvailable = async (value: string): Promise<Result> => {
   if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
     return { ok: false, error: 'System clipboard is not available' }
@@ -30,7 +32,14 @@ export const createClipboard = () => {
       ? await writeTextIfAvailable(paths.join('\n'))
       : { ok: true }
     try {
-      await setClipboardCmd(paths, mode)
+      const cloudCount = paths.filter(isCloudPath).length
+      if (cloudCount === paths.length) {
+        // Cloud clipboard currently lives in frontend state; backend clipboard remains local-only.
+      } else if (cloudCount > 0) {
+        return { ok: false, error: 'Mixed local/cloud clipboard is not supported yet' }
+      } else {
+        await setClipboardCmd(paths, mode)
+      }
       setClipboardPathsState(mode, paths)
     } catch (err) {
       const message = getErrorMessage(err)
