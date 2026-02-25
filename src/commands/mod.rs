@@ -32,6 +32,7 @@ pub use cloud::{
     copy_cloud_entry, create_cloud_folder, delete_cloud_dir_empty, delete_cloud_dir_recursive,
     delete_cloud_file, list_cloud_entries, list_cloud_remotes, move_cloud_entry,
     normalize_cloud_path, preview_cloud_conflicts, rename_cloud_entry, stat_cloud_entry,
+    validate_cloud_root,
 };
 pub use compress::compress_entries;
 pub use console::open_console;

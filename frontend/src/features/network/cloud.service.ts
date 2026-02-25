@@ -23,6 +23,12 @@ export type CloudRemote = {
   capabilities: CloudCapabilities
 }
 
+export type CloudRootSelection = {
+  remote: CloudRemote
+  rootPath: string
+  isRemoteRoot: boolean
+}
+
 export type CloudEntry = {
   name: string
   path: string
@@ -41,6 +47,9 @@ export type CloudConflictInfo = {
 
 export const listCloudRemotes = () =>
   invoke<CloudRemote[]>('list_cloud_remotes')
+
+export const validateCloudRoot = (path: string) =>
+  invoke<CloudRootSelection>('validate_cloud_root', { path })
 
 export const listCloudEntries = (path: string) =>
   invoke<CloudEntry[]>('list_cloud_entries', { path })

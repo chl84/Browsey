@@ -17,6 +17,7 @@ export {
 } from './services'
 export {
   listCloudRemotes,
+  validateCloudRoot,
   listCloudEntries,
   statCloudEntry,
   normalizeCloudPath,
@@ -34,6 +35,7 @@ export type {
   CloudEntryKind,
   CloudCapabilities,
   CloudRemote,
+  CloudRootSelection,
   CloudEntry,
   CloudConflictInfo,
 } from './cloud.service'

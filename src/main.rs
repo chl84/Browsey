@@ -203,6 +203,7 @@ fn main() {
             list_facets,
             list_mounts,
             list_cloud_remotes,
+            validate_cloud_root,
             list_cloud_entries,
             stat_cloud_entry,
             create_cloud_folder,
