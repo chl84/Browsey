@@ -190,12 +190,12 @@ Recommended implementation sequence (v1 OneDrive):
 
 ## 14. Explicitly unsupported in v1 (document clearly)
 
-- [ ] Undo for cloud operations.
-- [ ] Trash/recycle bin for cloud operations.
-- [ ] Permissions/ownership management for cloud.
-- [ ] Open-with directly from cloud without local temp-cache strategy.
-- [ ] Thumbnails from cloud without explicit download/cache pipeline.
-- [ ] Recursive search / duplicate scan on cloud.
+- [x] Undo for cloud operations (intentionally unsupported in v1; documented).
+- [x] Trash/recycle bin for cloud operations (intentionally unsupported in v1; documented).
+- [x] Permissions/ownership management for cloud (intentionally unsupported in v1; documented).
+- [x] Open-with directly from cloud without local temp-cache strategy (intentionally unsupported in v1; documented).
+- [x] Thumbnails from cloud without explicit download/cache pipeline (intentionally unsupported in v1; documented).
+- [x] Recursive search / duplicate scan on cloud (intentionally unsupported in v1; documented).
 
 ## 15. Prepare for Google Drive (phase 2)
 
