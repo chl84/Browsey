@@ -84,6 +84,7 @@ export const docsPages: DocPage[] = [
           'Rust stable toolchain via rustup',
           'Node.js LTS and npm (frontend/dev/docs)',
           'Bundled PDFium in resources/pdfium-* (no extra system PDF libs needed)',
+          'Optional cloud support (OneDrive/Google Drive/Nextcloud via rclone): install rclone and keep it available in PATH (Linux v1 strategy)',
           'Optional ffmpeg in PATH (or FFMPEG_BIN) for video thumbnails',
           'Linux (GNOME Wayland): install xclip for file clipboard interoperability between Browsey instances without GNOME shell focus/dock side-effects on Ctrl+C/Ctrl+V',
         ],
@@ -102,6 +103,18 @@ export const docsPages: DocPage[] = [
           'Visual Studio Build Tools (C++ workload) or full Visual Studio',
           'Rust via rustup and Node.js LTS',
         ],
+      },
+      {
+        id: 'cloud-rclone-setup',
+        title: 'Cloud Setup (rclone-backed, v1)',
+        bullets: [
+          'Browsey cloud support is rclone-backed and Linux-first in v1 (OneDrive is the primary target)',
+          'Install rclone separately and ensure it is discoverable in PATH (Browsey does not bundle it)',
+          'Configure remotes outside Browsey with `rclone config` (for example an `onedrive` remote)',
+          'Browsey discovers supported rclone remotes in Network view and opens them as `rclone://...` paths',
+          'No in-app cloud login/credential management UI is implemented yet',
+        ],
+        note: 'Browsey validates rclone on first cloud use and requires a minimum supported rclone version.',
       },
       {
         id: 'run-dev',
@@ -245,6 +258,7 @@ export const docsPages: DocPage[] = [
           'Delete sends to wastebasket when supported',
           'Shift+Delete performs permanent delete',
           'On Windows, network locations use permanent-delete flow (recycle bin is unavailable there)',
+          'Cloud (`rclone://`) paths currently use permanent-delete semantics in v1 (no cloud trash integration yet)',
         ],
       },
       {
@@ -252,10 +266,33 @@ export const docsPages: DocPage[] = [
         title: 'Network View and Server Addresses',
         bullets: [
           'Network view merges mounted endpoints with discovered LAN devices/resources',
+          'Supported rclone cloud remotes (for example OneDrive) also appear in Network view when rclone is installed and configured',
           'Address bar accepts mountable server URIs (for example `sftp://`, `smb://`, `nfs://`, `ftp://`, `dav://`, `davs://`, `afp://`)',
           'URI aliases are normalized for compatibility (`ssh://` as SFTP, `webdav://`/`webdavs://` as DAV/DAVS, and `ftps://` in the FTP family)',
           'Context menus adapt to entry type: URI entries show Connect/Open in Browser + Copy Server Address, mounted entries show Open/Disconnect + Copy Mount Path',
+          'rclone cloud paths use manual/explicit refresh in some flows because filesystem watch support is not available for `rclone://` paths',
           'Connection activity states are explicit: Connecting, Already connected, Connected, Failed',
+        ],
+      },
+      {
+        id: 'onedrive-rclone-migration',
+        title: 'OneDrive Migration (GVFS/GOA to rclone)',
+        bullets: [
+          'Browsey no longer relies on GVFS/GOA OneDrive mounts for OneDrive file operations',
+          'Reason: GVFS/FUSE OneDrive can expose ghost/stale entries and inconsistent delete semantics (for example ENOTEMPTY on folders that appear empty)',
+          'Install and configure an `onedrive` remote in rclone (`rclone config`)',
+          'Open the discovered remote from Browsey Network view, or navigate directly to a `rclone://<remote>/<subpath>` path',
+        ],
+      },
+      {
+        id: 'cloud-v1-limitations',
+        title: 'Cloud v1 Limitations (rclone paths)',
+        bullets: [
+          'No cloud trash/recycle-bin integration (delete is permanent)',
+          'No undo/redo for cloud file operations',
+          'No mixed local/cloud clipboard or drag-drop transfers yet',
+          'No advanced rename, archive extract/compress, duplicate scan, or thumbnails for cloud entries',
+          'No direct open-with flow for cloud files without a local temp-cache strategy',
         ],
       },
       {
