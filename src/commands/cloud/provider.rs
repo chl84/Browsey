@@ -19,7 +19,17 @@ pub(super) trait CloudProvider: Send + Sync {
 
     fn delete_dir_empty(&self, path: &CloudPath) -> CloudCommandResult<()>;
 
-    fn move_entry(&self, src: &CloudPath, dst: &CloudPath) -> CloudCommandResult<()>;
+    fn move_entry(
+        &self,
+        src: &CloudPath,
+        dst: &CloudPath,
+        overwrite: bool,
+    ) -> CloudCommandResult<()>;
 
-    fn copy_entry(&self, src: &CloudPath, dst: &CloudPath) -> CloudCommandResult<()>;
+    fn copy_entry(
+        &self,
+        src: &CloudPath,
+        dst: &CloudPath,
+        overwrite: bool,
+    ) -> CloudCommandResult<()>;
 }

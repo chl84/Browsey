@@ -210,36 +210,48 @@ async fn delete_cloud_dir_empty_impl(path: String) -> CloudCommandResult<()> {
 }
 
 #[tauri::command]
-pub async fn move_cloud_entry(src: String, dst: String) -> ApiResult<()> {
-    map_api_result(move_cloud_entry_impl(src, dst).await)
+pub async fn move_cloud_entry(src: String, dst: String, overwrite: Option<bool>) -> ApiResult<()> {
+    map_api_result(move_cloud_entry_impl(src, dst, overwrite.unwrap_or(false)).await)
 }
 
-async fn move_cloud_entry_impl(src: String, dst: String) -> CloudCommandResult<()> {
+async fn move_cloud_entry_impl(
+    src: String,
+    dst: String,
+    overwrite: bool,
+) -> CloudCommandResult<()> {
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = RcloneCloudProvider::default();
-        provider.move_entry(&src, &dst)
+        provider.move_entry(&src, &dst, overwrite)
     });
     map_spawn_result(task.await, "cloud move task failed")
 }
 
 #[tauri::command]
-pub async fn rename_cloud_entry(src: String, dst: String) -> ApiResult<()> {
-    map_api_result(move_cloud_entry_impl(src, dst).await)
+pub async fn rename_cloud_entry(
+    src: String,
+    dst: String,
+    overwrite: Option<bool>,
+) -> ApiResult<()> {
+    map_api_result(move_cloud_entry_impl(src, dst, overwrite.unwrap_or(false)).await)
 }
 
 #[tauri::command]
-pub async fn copy_cloud_entry(src: String, dst: String) -> ApiResult<()> {
-    map_api_result(copy_cloud_entry_impl(src, dst).await)
+pub async fn copy_cloud_entry(src: String, dst: String, overwrite: Option<bool>) -> ApiResult<()> {
+    map_api_result(copy_cloud_entry_impl(src, dst, overwrite.unwrap_or(false)).await)
 }
 
-async fn copy_cloud_entry_impl(src: String, dst: String) -> CloudCommandResult<()> {
+async fn copy_cloud_entry_impl(
+    src: String,
+    dst: String,
+    overwrite: bool,
+) -> CloudCommandResult<()> {
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = RcloneCloudProvider::default();
-        provider.copy_entry(&src, &dst)
+        provider.copy_entry(&src, &dst, overwrite)
     });
     map_spawn_result(task.await, "cloud copy task failed")
 }

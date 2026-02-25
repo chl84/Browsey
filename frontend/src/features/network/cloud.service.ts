@@ -45,6 +45,10 @@ export type CloudConflictInfo = {
   isDir: boolean
 }
 
+export type CloudWriteOptions = {
+  overwrite?: boolean
+}
+
 export const listCloudRemotes = () =>
   invoke<CloudRemote[]>('list_cloud_remotes')
 
@@ -72,14 +76,14 @@ export const deleteCloudDirRecursive = (path: string) =>
 export const deleteCloudDirEmpty = (path: string) =>
   invoke<void>('delete_cloud_dir_empty', { path })
 
-export const moveCloudEntry = (src: string, dst: string) =>
-  invoke<void>('move_cloud_entry', { src, dst })
+export const moveCloudEntry = (src: string, dst: string, options?: CloudWriteOptions) =>
+  invoke<void>('move_cloud_entry', { src, dst, overwrite: options?.overwrite ?? false })
 
-export const renameCloudEntry = (src: string, dst: string) =>
-  invoke<void>('rename_cloud_entry', { src, dst })
+export const renameCloudEntry = (src: string, dst: string, options?: CloudWriteOptions) =>
+  invoke<void>('rename_cloud_entry', { src, dst, overwrite: options?.overwrite ?? false })
 
-export const copyCloudEntry = (src: string, dst: string) =>
-  invoke<void>('copy_cloud_entry', { src, dst })
+export const copyCloudEntry = (src: string, dst: string, options?: CloudWriteOptions) =>
+  invoke<void>('copy_cloud_entry', { src, dst, overwrite: options?.overwrite ?? false })
 
 export const previewCloudConflicts = (sources: string[], destDir: string) =>
   invoke<CloudConflictInfo[]>('preview_cloud_conflicts', { sources, dest_dir: destDir })

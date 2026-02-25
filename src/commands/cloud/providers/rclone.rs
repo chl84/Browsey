@@ -159,7 +159,13 @@ impl CloudProvider for RcloneCloudProvider {
         Ok(())
     }
 
-    fn move_entry(&self, src: &CloudPath, dst: &CloudPath) -> CloudCommandResult<()> {
+    fn move_entry(
+        &self,
+        src: &CloudPath,
+        dst: &CloudPath,
+        overwrite: bool,
+    ) -> CloudCommandResult<()> {
+        ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::MoveTo)
@@ -170,7 +176,13 @@ impl CloudProvider for RcloneCloudProvider {
         Ok(())
     }
 
-    fn copy_entry(&self, src: &CloudPath, dst: &CloudPath) -> CloudCommandResult<()> {
+    fn copy_entry(
+        &self,
+        src: &CloudPath,
+        dst: &CloudPath,
+        overwrite: bool,
+    ) -> CloudCommandResult<()> {
+        ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
@@ -180,6 +192,24 @@ impl CloudProvider for RcloneCloudProvider {
             .map_err(map_rclone_error)?;
         Ok(())
     }
+}
+
+fn ensure_destination_overwrite_policy(
+    provider: &impl CloudProvider,
+    src: &CloudPath,
+    dst: &CloudPath,
+    overwrite: bool,
+) -> CloudCommandResult<()> {
+    if overwrite || src == dst {
+        return Ok(());
+    }
+    if provider.stat_path(dst)?.is_some() {
+        return Err(CloudCommandError::new(
+            CloudCommandErrorCode::DestinationExists,
+            format!("Destination already exists: {dst}"),
+        ));
+    }
+    Ok(())
 }
 
 fn cloud_entry_from_item(path: &CloudPath, item: LsJsonItem) -> CloudEntry {
