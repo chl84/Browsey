@@ -322,6 +322,18 @@ fn map_rclone_error(error: RcloneCliError) -> CloudCommandError {
             CloudCommandErrorCode::UnknownError,
             format!("Failed to run rclone: {io}"),
         ),
+        RcloneCliError::Timeout {
+            subcommand,
+            timeout,
+            ..
+        } => CloudCommandError::new(
+            CloudCommandErrorCode::UnknownError,
+            format!(
+                "rclone {} timed out after {}s",
+                subcommand.as_str(),
+                timeout.as_secs()
+            ),
+        ),
         RcloneCliError::NonZero { stderr, stdout, .. } => {
             let msg = if !stderr.trim().is_empty() {
                 stderr

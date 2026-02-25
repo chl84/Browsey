@@ -68,7 +68,7 @@ Recommended implementation sequence (v1 OneDrive):
 
 - [x] Use only `Command::new(...).args([...])` (never shell strings).
 - [x] Add allowlist of `rclone` subcommands Browsey may invoke.
-- [ ] Add default timeout policy per command type (short for `list/stat`, longer for copy/move).
+- [x] Add default timeout policy per command type (short for `list/stat`, longer for copy/move).
 - [x] Add retry policy for transient failures (network, timeout, rate-limit).
 - [ ] Normalize `stdout/stderr/exit code` into structured `CloudError`.
 - [ ] Scrub/redact logs so secrets/tokens/config details are never logged.

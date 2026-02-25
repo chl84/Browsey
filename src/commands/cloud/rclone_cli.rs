@@ -1,9 +1,10 @@
 use std::{
     ffi::{OsStr, OsString},
-    process::{Command, ExitStatus},
-    time::Instant,
+    process::{Command, ExitStatus, Stdio},
+    time::{Duration, Instant},
 };
 use tracing::{debug, warn};
+use wait_timeout::ChildExt;
 
 const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] =
     &["--retries", "2", "--low-level-retries", "2", "--stats", "0"];
@@ -38,6 +39,15 @@ impl RcloneSubcommand {
             Self::Rmdir => "rmdir",
             Self::MoveTo => "moveto",
             Self::CopyTo => "copyto",
+        }
+    }
+
+    pub fn default_timeout(self) -> Duration {
+        match self {
+            Self::Version | Self::ListRemotes | Self::ConfigDump => Duration::from_secs(8),
+            Self::LsJson | Self::Mkdir | Self::DeleteFile | Self::Rmdir => Duration::from_secs(20),
+            Self::Purge => Duration::from_secs(120),
+            Self::MoveTo | Self::CopyTo => Duration::from_secs(300),
         }
     }
 }
@@ -98,6 +108,12 @@ pub struct RcloneTextOutput {
 #[derive(Debug)]
 pub enum RcloneCliError {
     Io(std::io::Error),
+    Timeout {
+        subcommand: RcloneSubcommand,
+        timeout: Duration,
+        stdout: String,
+        stderr: String,
+    },
     NonZero {
         status: ExitStatus,
         stdout: String,
@@ -109,6 +125,36 @@ impl std::fmt::Display for RcloneCliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io(error) => write!(f, "{error}"),
+            Self::Timeout {
+                subcommand,
+                timeout,
+                stdout,
+                stderr,
+            } => {
+                let mut parts = Vec::new();
+                if !stdout.trim().is_empty() {
+                    parts.push(format!("stdout: {}", stdout.trim()));
+                }
+                if !stderr.trim().is_empty() {
+                    parts.push(format!("stderr: {}", stderr.trim()));
+                }
+                if parts.is_empty() {
+                    write!(
+                        f,
+                        "rclone {} timed out after {}s",
+                        subcommand.as_str(),
+                        timeout.as_secs()
+                    )
+                } else {
+                    write!(
+                        f,
+                        "rclone {} timed out after {}s ({})",
+                        subcommand.as_str(),
+                        timeout.as_secs(),
+                        parts.join(" | ")
+                    )
+                }
+            }
             Self::NonZero {
                 status,
                 stdout,
@@ -181,13 +227,44 @@ impl RcloneCli {
         spec: RcloneCommandSpec,
     ) -> Result<RcloneTextOutput, RcloneCliError> {
         let subcommand = spec.subcommand;
+        let timeout = subcommand.default_timeout();
         let started = Instant::now();
         debug!(command = subcommand.as_str(), "running rclone command");
-        let output = self.command(spec).output().map_err(RcloneCliError::Io)?;
+        let mut command = self.command(spec);
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
+        let mut child = command.spawn().map_err(RcloneCliError::Io)?;
+        let status = match child.wait_timeout(timeout).map_err(RcloneCliError::Io)? {
+            Some(status) => status,
+            None => {
+                let _ = child.kill();
+                let output = child.wait_with_output().map_err(RcloneCliError::Io)?;
+                let stdout =
+                    truncate_failure_output(String::from_utf8_lossy(&output.stdout).into_owned());
+                let stderr =
+                    truncate_failure_output(String::from_utf8_lossy(&output.stderr).into_owned());
+                let elapsed_ms = started.elapsed().as_millis() as u64;
+                warn!(
+                    command = subcommand.as_str(),
+                    elapsed_ms,
+                    timeout_ms = timeout.as_millis() as u64,
+                    stderr = %scrub_log_text(&stderr),
+                    stdout = %scrub_log_text(&stdout),
+                    "rclone command timed out"
+                );
+                return Err(RcloneCliError::Timeout {
+                    subcommand,
+                    timeout,
+                    stdout,
+                    stderr,
+                });
+            }
+        };
+        let output = child.wait_with_output().map_err(RcloneCliError::Io)?;
         let elapsed_ms = started.elapsed().as_millis() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-        if output.status.success() {
+        if status.success() {
             debug!(
                 command = subcommand.as_str(),
                 elapsed_ms, "rclone command succeeded"
@@ -207,7 +284,7 @@ impl RcloneCli {
                 "rclone command failed"
             );
             Err(RcloneCliError::NonZero {
-                status: output.status,
+                status,
                 stdout,
                 stderr,
             })
@@ -313,6 +390,13 @@ mod tests {
         let spec = RcloneCommandSpec::new(RcloneSubcommand::ConfigDump);
         let argv = spec.argv();
         assert_eq!(argv, vec![OsString::from("config"), OsString::from("dump")]);
+    }
+
+    #[test]
+    fn subcommands_have_reasonable_default_timeouts() {
+        assert_eq!(RcloneSubcommand::Version.default_timeout().as_secs(), 8);
+        assert_eq!(RcloneSubcommand::LsJson.default_timeout().as_secs(), 20);
+        assert_eq!(RcloneSubcommand::CopyTo.default_timeout().as_secs(), 300);
     }
 
     #[test]
