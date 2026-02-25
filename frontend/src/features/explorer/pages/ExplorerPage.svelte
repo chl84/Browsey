@@ -211,7 +211,6 @@
 
   const fsLabel = (fs?: string) => {
     const kind = (fs ?? '').toLowerCase()
-    if (kind === 'onedrive') return 'OneDrive'
     if (kind === 'mtp') return 'MTP device'
     if (kind === 'sftp' || kind === 'ssh') return 'SFTP server'
     if (kind === 'smb' || kind === 'cifs') return 'SMB server'

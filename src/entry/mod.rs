@@ -150,7 +150,7 @@ pub fn is_network_location(path: &Path) -> bool {
 
 #[cfg(not(target_os = "windows"))]
 pub fn is_network_location(_path: &Path) -> bool {
-    // Treat GVFS-backed mounts (e.g., mtp/OneDrive under /run/user/.../gvfs) as "network"
+    // Treat GVFS-backed mounts (e.g., MTP under /run/user/.../gvfs) as "network"
     // so we avoid heavy metadata calls and use lazy refresh.
     let s = _path.to_string_lossy();
     s.contains("/gvfs/") || s.contains("\\gvfs\\")
