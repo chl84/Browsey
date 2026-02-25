@@ -2,6 +2,7 @@
 
 pub mod about;
 pub mod bookmarks;
+pub mod cloud;
 pub mod compress;
 pub mod console;
 pub mod decompress;
@@ -27,6 +28,7 @@ pub use crate::clipboard::{
 pub use crate::tasks::{cancel_task, CancelState};
 pub use about::about_info;
 pub use bookmarks::{add_bookmark, clear_bookmarks, get_bookmarks, remove_bookmark};
+pub use cloud::{list_cloud_entries, list_cloud_remotes, normalize_cloud_path};
 pub use compress::compress_entries;
 pub use console::open_console;
 pub use decompress::{can_extract_paths, extract_archive, extract_archives};
