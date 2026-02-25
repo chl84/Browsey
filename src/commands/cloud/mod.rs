@@ -12,7 +12,7 @@ use error::{map_api_result, CloudCommandError, CloudCommandErrorCode, CloudComma
 use path::CloudPath;
 use provider::CloudProvider;
 use providers::rclone::RcloneCloudProvider;
-use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote};
+use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote, CloudRootSelection};
 
 #[tauri::command]
 pub async fn list_cloud_remotes() -> ApiResult<Vec<CloudRemote>> {
@@ -31,6 +31,50 @@ async fn list_cloud_remotes_impl() -> CloudCommandResult<Vec<CloudRemote>> {
             format!("cloud remote list task failed: {error}"),
         )),
     }
+}
+
+#[tauri::command]
+pub async fn validate_cloud_root(path: String) -> ApiResult<CloudRootSelection> {
+    map_api_result(validate_cloud_root_impl(path).await)
+}
+
+async fn validate_cloud_root_impl(path: String) -> CloudCommandResult<CloudRootSelection> {
+    let path = parse_cloud_path_arg(path)?;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let provider = RcloneCloudProvider::default();
+        let remotes = provider.list_remotes()?;
+        let remote = remotes
+            .into_iter()
+            .find(|remote| remote.id == path.remote())
+            .ok_or_else(|| {
+                CloudCommandError::new(
+                    CloudCommandErrorCode::InvalidConfig,
+                    format!("Cloud remote is not configured or unsupported: {}", path.remote()),
+                )
+            })?;
+
+        if !path.is_root() {
+            let stat = provider.stat_path(&path)?.ok_or_else(|| {
+                CloudCommandError::new(
+                    CloudCommandErrorCode::NotFound,
+                    format!("Cloud root path does not exist: {path}"),
+                )
+            })?;
+            if !matches!(stat.kind, CloudEntryKind::Dir) {
+                return Err(CloudCommandError::new(
+                    CloudCommandErrorCode::InvalidPath,
+                    format!("Cloud root path must be a directory: {path}"),
+                ));
+            }
+        }
+
+        Ok(CloudRootSelection {
+            remote,
+            root_path: path.to_string(),
+            is_remote_root: path.is_root(),
+        })
+    });
+    map_spawn_result(task.await, "cloud root validation task failed")
 }
 
 #[tauri::command]

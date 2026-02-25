@@ -3,6 +3,15 @@ use std::{
     process::{Command, ExitStatus},
 };
 
+const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] = &[
+    "--retries",
+    "2",
+    "--low-level-retries",
+    "2",
+    "--stats",
+    "0",
+];
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RcloneSubcommand {
@@ -160,7 +169,14 @@ impl RcloneCli {
 
     #[allow(dead_code)]
     pub fn command(&self, spec: RcloneCommandSpec) -> Command {
-        spec.into_command(&self.binary)
+        let mut command = Command::new(&self.binary);
+        for arg in RCLONE_DEFAULT_GLOBAL_ARGS {
+            command.arg(arg);
+        }
+        for arg in spec.argv() {
+            command.arg(arg);
+        }
+        command
     }
 
     pub fn run_capture_text(
@@ -210,6 +226,25 @@ mod tests {
         assert_eq!(
             command.get_program(),
             std::ffi::OsStr::new("/usr/bin/rclone")
+        );
+    }
+
+    #[test]
+    fn cli_injects_default_global_flags() {
+        let cli = RcloneCli::default();
+        let command = cli.command(RcloneCommandSpec::new(RcloneSubcommand::Version));
+        let args: Vec<_> = command.get_args().map(|a| a.to_os_string()).collect();
+        assert_eq!(
+            args,
+            vec![
+                OsString::from("--retries"),
+                OsString::from("2"),
+                OsString::from("--low-level-retries"),
+                OsString::from("2"),
+                OsString::from("--stats"),
+                OsString::from("0"),
+                OsString::from("version"),
+            ]
         );
     }
 

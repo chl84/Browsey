@@ -58,6 +58,14 @@ pub struct CloudConflictInfo {
     pub is_dir: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRootSelection {
+    pub remote: CloudRemote,
+    pub root_path: String,
+    pub is_remote_root: bool,
+}
+
 impl CloudCapabilities {
     pub fn v1_core_rw() -> Self {
         Self {

@@ -69,7 +69,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Use only `Command::new(...).args([...])` (never shell strings).
 - [x] Add allowlist of `rclone` subcommands Browsey may invoke.
 - [ ] Add default timeout policy per command type (short for `list/stat`, longer for copy/move).
-- [ ] Add retry policy for transient failures (network, timeout, rate-limit).
+- [x] Add retry policy for transient failures (network, timeout, rate-limit).
 - [ ] Normalize `stdout/stderr/exit code` into structured `CloudError`.
 - [ ] Scrub/redact logs so secrets/tokens/config details are never logged.
 - [ ] Add version check (`rclone version`) and capability check on first use.
@@ -89,7 +89,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Rename/move (map to `moveto` for file and directory).
 - [x] Copy (map to `copyto` for file and directory).
 - [ ] Define overwrite behavior and map `rclone` errors to Browsey conflict model.
-- [ ] Centralize standard flags (JSON output, retries, reduced noise, etc.).
+- [x] Centralize standard flags (JSON output, retries, reduced noise, etc.).
 
 ## 6. Routing in existing backend
 
@@ -104,9 +104,9 @@ Recommended implementation sequence (v1 OneDrive):
 
 ## 7. OneDrive v1 feature delivery
 
-- [ ] Define how a OneDrive account is represented (rclone remote name + optional subpath).
+- [x] Define how a OneDrive account is represented (rclone remote name + optional subpath).
 - [x] Add backend command to list configured remotes (or a Browsey allowlist subset).
-- [ ] Add backend command to select/validate a remote and normalize root path.
+- [x] Add backend command to select/validate a remote and normalize root path.
 - [ ] Implement browsing/listing for OneDrive via `rclone`.
 - [ ] Implement core file ops in OneDrive (`copy`, `move`, `rename`, `delete`, `mkdir`).
 - [ ] Trigger refresh after operations.
