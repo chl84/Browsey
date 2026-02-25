@@ -1,7 +1,9 @@
 use std::{
     ffi::{OsStr, OsString},
     process::{Command, ExitStatus},
+    time::Instant,
 };
+use tracing::{debug, warn};
 
 const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] =
     &["--retries", "2", "--low-level-retries", "2", "--stats", "0"];
@@ -177,12 +179,25 @@ impl RcloneCli {
         &self,
         spec: RcloneCommandSpec,
     ) -> Result<RcloneTextOutput, RcloneCliError> {
+        let subcommand = spec.subcommand;
+        let started = Instant::now();
         let output = self.command(spec).output().map_err(RcloneCliError::Io)?;
+        let elapsed_ms = started.elapsed().as_millis() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         if output.status.success() {
+            debug!(
+                command = subcommand.as_str(),
+                elapsed_ms, "rclone command succeeded"
+            );
             Ok(RcloneTextOutput { stdout, stderr })
         } else {
+            warn!(
+                command = subcommand.as_str(),
+                elapsed_ms,
+                status = %output.status,
+                "rclone command failed"
+            );
             Err(RcloneCliError::NonZero {
                 status: output.status,
                 stdout,

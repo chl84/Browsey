@@ -88,16 +88,16 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Delete empty directory (`rmdir`) as optional optimization.
 - [x] Rename/move (map to `moveto` for file and directory).
 - [x] Copy (map to `copyto` for file and directory).
-- [ ] Define overwrite behavior and map `rclone` errors to Browsey conflict model.
+- [x] Define overwrite behavior and map `rclone` errors to Browsey conflict model.
 - [x] Centralize standard flags (JSON output, retries, reduced noise, etc.).
 
 ## 6. Routing in existing backend
 
 - [x] Add early routing for local path vs cloud path in relevant commands.
 - [x] Prevent cloud paths from entering `src/commands/fs/*`, `src/undo/*`, `nofollow`, or GVFS flows.
-- [ ] Start with separate Tauri commands for cloud instead of rewriting all FS commands at once.
+- [x] Start with separate Tauri commands for cloud instead of rewriting all FS commands at once.
 - [ ] Ensure `src/commands/network/*` does not try to own rclone cloud operations.
-- [ ] Keep `src/commands/network/gio_mounts.rs` for generic GIO/GVFS only (MTP/other mounts).
+- [x] Keep `src/commands/network/gio_mounts.rs` for generic GIO/GVFS only (MTP/other mounts).
 - [ ] Identify exact integration seams in Browsey first (likely explorer listing + clipboard/paste preview + file ops service layer), and route there instead of adding ad-hoc bypasses.
 - [ ] Decide whether cloud entries reuse `Entry` directly or need a cloud-specific variant before conversion into `Entry`.
 - [ ] Ensure local-only helpers (`path_guard`, local metadata probes, `std::fs::*`) are never called on cloud paths during previews/actions.
@@ -143,7 +143,7 @@ Recommended implementation sequence (v1 OneDrive):
 ## 10. Error model, logging, observability
 
 - [x] Introduce `CloudErrorCode` (auth, network, rate_limit, timeout, binary_missing, invalid_path, unsupported, destination_exists, etc.).
-- [ ] Log command name and duration, but not secrets/tokens.
+- [x] Log command name and duration, but not secrets/tokens.
 - [ ] Log scrubbed `stderr` on failures.
 - [ ] Add debug logging path for development (`RUST_LOG`) for rclone invocations.
 - [ ] Standardize user-facing error messages for common cloud failures (auth expired, remote missing, connectivity).
