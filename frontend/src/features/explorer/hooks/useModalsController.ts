@@ -45,6 +45,7 @@ export const useModalsController = ({
   const renameModal = createRenameModal({
     loadPath: (path: string) => loadPath(path, { recordHistory: false }),
     parentPath,
+    activityApi,
   })
   const renameState = renameModal.state
 
@@ -58,6 +59,7 @@ export const useModalsController = ({
     getCurrentPath,
     loadPath: (path: string) => loadPath(path, { recordHistory: false }),
     showToast,
+    activityApi,
   })
   const newFolderState = newFolderModal.state
 

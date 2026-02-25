@@ -899,20 +899,32 @@
         modalActions.confirmDelete(list, inTrashView ? 'trash' : 'default')
         return true
       }
+      const label = 'Deleting…'
+      const progressEvent = `delete-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
       try {
+        await activityApi.start(label, progressEvent)
         if (inTrashView) {
           const ids = list.map((e) => e.trash_id ?? e.path)
           await purgeTrashItems(ids)
         } else {
           const paths = list.map((e) => e.path)
-          await deleteEntries(paths)
+          await deleteEntries(paths, progressEvent)
         }
         await reloadCurrent()
+        activityApi.hideSoon()
         showToast('Deleted')
         return true
       } catch (err) {
+        activityApi.clearNow()
+        await activityApi.cleanup()
         showToast(`Delete failed: ${getErrorMessage(err)}`)
         return false
+      } finally {
+        const hadTimer = activityApi.hasHideTimer()
+        await activityApi.cleanup(true)
+        if (!hadTimer) {
+          activityApi.clearNow()
+        }
       }
     },
     onProperties: async () => {
