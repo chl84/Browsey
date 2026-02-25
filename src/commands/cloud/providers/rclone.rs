@@ -12,6 +12,8 @@ use std::{
 };
 use tracing::debug;
 
+const MIN_RCLONE_VERSION: (u64, u64, u64) = (1, 67, 0);
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub(in crate::commands::cloud) struct RcloneCloudProvider {
@@ -227,6 +229,21 @@ fn probe_rclone_runtime(cli: &RcloneCli) -> CloudCommandResult<()> {
             "Unexpected `rclone version` output; cannot verify rclone runtime",
         )
     })?;
+    let numeric = parse_rclone_version_triplet(&version).ok_or_else(|| {
+        CloudCommandError::new(
+            CloudCommandErrorCode::Unsupported,
+            format!("Unsupported rclone version format: {version}"),
+        )
+    })?;
+    if numeric < MIN_RCLONE_VERSION {
+        return Err(CloudCommandError::new(
+            CloudCommandErrorCode::Unsupported,
+            format!(
+                "rclone v{version} is too old; Browsey requires rclone v{}.{}.{} or newer",
+                MIN_RCLONE_VERSION.0, MIN_RCLONE_VERSION.1, MIN_RCLONE_VERSION.2
+            ),
+        ));
+    }
     debug!(version = %version, "rclone runtime probe succeeded");
     Ok(())
 }
@@ -242,6 +259,22 @@ fn parse_rclone_version_stdout(stdout: &str) -> Option<String> {
         return None;
     }
     Some(version.to_string())
+}
+
+fn parse_rclone_version_triplet(version: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = version.split('.');
+    let major = parse_leading_digits(parts.next()?)?;
+    let minor = parse_leading_digits(parts.next()?)?;
+    let patch = parse_leading_digits(parts.next()?)?;
+    Some((major, minor, patch))
+}
+
+fn parse_leading_digits(part: &str) -> Option<u64> {
+    let digits: String = part.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse().ok()
 }
 
 fn ensure_destination_overwrite_policy(
@@ -415,7 +448,7 @@ mod tests {
     use super::{
         classify_provider_kind, classify_rclone_message_code, is_rclone_not_found_text,
         parse_config_dump_types, parse_listremotes_plain, parse_lsjson_items,
-        parse_lsjson_stat_item, parse_rclone_version_stdout,
+        parse_lsjson_stat_item, parse_rclone_version_stdout, parse_rclone_version_triplet,
     };
     use crate::commands::cloud::{error::CloudCommandErrorCode, types::CloudProviderKind};
 
@@ -506,5 +539,16 @@ mod tests {
         let out = "rclone v1.69.1\n- os/version: fedora 41\n";
         assert_eq!(parse_rclone_version_stdout(out).as_deref(), Some("1.69.1"));
         assert_eq!(parse_rclone_version_stdout("not-rclone\n"), None);
+    }
+
+    #[test]
+    fn parses_rclone_version_triplet_with_suffixes() {
+        assert_eq!(parse_rclone_version_triplet("1.69.1"), Some((1, 69, 1)));
+        assert_eq!(
+            parse_rclone_version_triplet("1.68.0-beta.1"),
+            Some((1, 68, 0))
+        );
+        assert_eq!(parse_rclone_version_triplet("v1.69.1"), None);
+        assert_eq!(parse_rclone_version_triplet("1.69"), None);
     }
 }

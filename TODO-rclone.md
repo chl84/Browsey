@@ -26,7 +26,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [ ] Lock decision: `CLI-first` (`rclone` commands), not `rc API` in v1.
 - [ ] Define v1 scope (OneDrive): `list`, `mkdir`, `rename/move`, `copy`, `delete`, `refresh`.
 - [ ] Define out-of-scope for v1: `undo`, cloud trash, permissions, thumbnails, recursive search, duplicate scan.
-- [ ] Define minimum supported `rclone` version and how it is validated at startup.
+- [x] Define minimum supported `rclone` version and how it is validated at first cloud use (runtime probe).
 - [ ] Decide whether Browsey requires global `rclone` in `PATH` or supports configurable binary path.
 - [ ] Decide how cloud support is surfaced in Browsey UX in v1: `Network` view only vs also direct path/open flows.
 - [ ] Decide whether cloud operations are behind a feature flag / experimental setting in first rollout.
