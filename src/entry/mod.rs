@@ -65,6 +65,20 @@ fn meta_cache() -> &'static Mutex<HashMap<String, CachedMeta>> {
 }
 
 #[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryCapabilities {
+    pub can_list: bool,
+    pub can_mkdir: bool,
+    pub can_delete: bool,
+    pub can_rename: bool,
+    pub can_move: bool,
+    pub can_copy: bool,
+    pub can_trash: bool,
+    pub can_undo: bool,
+    pub can_permissions: bool,
+}
+
+#[derive(Serialize, Clone)]
 pub struct FsEntry {
     pub name: String,
     pub path: String,
@@ -84,6 +98,8 @@ pub struct FsEntry {
     pub read_only: bool,
     #[serde(rename = "readDenied")]
     pub read_denied: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<EntryCapabilities>,
 }
 
 #[derive(Serialize, Clone)]
@@ -245,6 +261,7 @@ pub fn build_entry(path: &Path, meta: &Metadata, is_link: bool, starred: bool) -
         network: is_network_location(path),
         read_only: meta.permissions().readonly(),
         read_denied: !can_read(path),
+        capabilities: None,
     }
 }
 

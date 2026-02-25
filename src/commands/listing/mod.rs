@@ -5,7 +5,7 @@ use crate::{
     db,
     entry::{
         build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
-        FsEntry,
+        EntryCapabilities, FsEntry,
     },
     errors::api_error::ApiResult,
     fs_utils::{check_no_symlink_components, debug_log, sanitize_path_follow},
@@ -411,6 +411,7 @@ fn stub_entry(path: &Path, file_type: Option<fs::FileType>, starred: bool) -> Fs
         network: is_network_location(path),
         read_only: false,
         read_denied: false,
+        capabilities: None,
     }
 }
 
@@ -441,6 +442,17 @@ fn fs_entry_from_cloud_entry(entry: BrowseyCloudEntry) -> FsEntry {
         network: true,
         read_only: false,
         read_denied: false,
+        capabilities: Some(EntryCapabilities {
+            can_list: entry.capabilities.can_list,
+            can_mkdir: entry.capabilities.can_mkdir,
+            can_delete: entry.capabilities.can_delete,
+            can_rename: entry.capabilities.can_rename,
+            can_move: entry.capabilities.can_move,
+            can_copy: entry.capabilities.can_copy,
+            can_trash: entry.capabilities.can_trash,
+            can_undo: entry.capabilities.can_undo,
+            can_permissions: entry.capabilities.can_permissions,
+        }),
     }
 }
 
