@@ -133,10 +133,10 @@ impl std::fmt::Display for RcloneCliError {
             } => {
                 let mut parts = Vec::new();
                 if !stdout.trim().is_empty() {
-                    parts.push(format!("stdout: {}", stdout.trim()));
+                    parts.push(format!("stdout: {}", scrub_log_text(stdout)));
                 }
                 if !stderr.trim().is_empty() {
-                    parts.push(format!("stderr: {}", stderr.trim()));
+                    parts.push(format!("stderr: {}", scrub_log_text(stderr)));
                 }
                 if parts.is_empty() {
                     write!(
@@ -162,10 +162,10 @@ impl std::fmt::Display for RcloneCliError {
             } => {
                 let mut parts = Vec::new();
                 if !stdout.trim().is_empty() {
-                    parts.push(format!("stdout: {}", stdout.trim()));
+                    parts.push(format!("stdout: {}", scrub_log_text(stdout)));
                 }
                 if !stderr.trim().is_empty() {
-                    parts.push(format!("stderr: {}", stderr.trim()));
+                    parts.push(format!("stderr: {}", scrub_log_text(stderr)));
                 }
                 if parts.is_empty() {
                     write!(f, "rclone failed with status {status}")

@@ -56,6 +56,14 @@ const userCloudErrorMessage = (code: string | undefined, message: string) => {
       return 'Cloud support requires rclone to be installed and available in PATH'
     case 'invalid_config':
       return 'The configured cloud remote is missing or invalid in rclone'
+    case 'auth_required':
+      return 'Cloud authentication is required or has expired. Reconnect the rclone remote and try again'
+    case 'rate_limited':
+      return 'Cloud provider rate limit reached. Wait a bit and try again'
+    case 'timeout':
+      return 'Cloud operation timed out. Check the network connection and try again'
+    case 'network_error':
+      return 'Cloud connection failed. Check the network and try again'
     case 'destination_exists':
       return 'A file or folder with the same name already exists'
     case 'permission_denied':
@@ -70,12 +78,6 @@ const userCloudErrorMessage = (code: string | undefined, message: string) => {
       const lower = message.toLowerCase()
       if (lower.includes('token') && (lower.includes('expired') || lower.includes('invalid'))) {
         return 'Cloud authentication may have expired. Reconnect the rclone remote and try again'
-      }
-      if (lower.includes('timeout') || lower.includes('timed out')) {
-        return 'Cloud operation timed out. Check the network connection and try again'
-      }
-      if (lower.includes('network') || lower.includes('connection')) {
-        return 'Cloud connection failed. Check the network and try again'
       }
       return message
     }

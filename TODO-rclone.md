@@ -70,8 +70,8 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Add allowlist of `rclone` subcommands Browsey may invoke.
 - [x] Add default timeout policy per command type (short for `list/stat`, longer for copy/move).
 - [x] Add retry policy for transient failures (network, timeout, rate-limit).
-- [ ] Normalize `stdout/stderr/exit code` into structured `CloudError`.
-- [ ] Scrub/redact logs so secrets/tokens/config details are never logged.
+- [x] Normalize `stdout/stderr/exit code` into structured `CloudError`.
+- [x] Scrub/redact logs so secrets/tokens/config details are never logged.
 - [x] Add version check (`rclone version`) and capability check on first use.
 - [x] Add clear error for missing binary (`rclone` not found).
 - [x] Ensure command execution uses `spawn_blocking` or equivalent isolation for blocking process I/O.
@@ -149,7 +149,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Standardize user-facing error messages for common cloud failures (auth expired, remote missing, connectivity).
 - [x] Map cloud errors into Browsey's existing `ApiError { code, message }` contract so frontend handling remains consistent.
 - [x] Reuse module-local `error.rs` patterns (`*_ErrorCode`, `map_api_result`) for cloud commands instead of ad-hoc string errors.
-- [ ] Add telemetry-friendly stable error codes before broad UI integration (avoid string-parsing in frontend).
+- [x] Add telemetry-friendly stable error codes before broad UI integration (avoid string-parsing in frontend).
 
 ## 11. Security requirements (must be early)
 
