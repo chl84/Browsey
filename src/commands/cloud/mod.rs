@@ -12,7 +12,7 @@ use error::{map_api_result, CloudCommandError, CloudCommandErrorCode, CloudComma
 use path::CloudPath;
 use provider::CloudProvider;
 use providers::rclone::RcloneCloudProvider;
-use types::{CloudEntry, CloudRemote};
+use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote};
 
 #[tauri::command]
 pub async fn list_cloud_remotes() -> ApiResult<Vec<CloudRemote>> {
@@ -183,6 +183,59 @@ async fn copy_cloud_entry_impl(src: String, dst: String) -> CloudCommandResult<(
         provider.copy_entry(&src, &dst)
     });
     map_spawn_result(task.await, "cloud copy task failed")
+}
+
+#[tauri::command]
+pub async fn preview_cloud_conflicts(
+    sources: Vec<String>,
+    dest_dir: String,
+) -> ApiResult<Vec<CloudConflictInfo>> {
+    map_api_result(preview_cloud_conflicts_impl(sources, dest_dir).await)
+}
+
+async fn preview_cloud_conflicts_impl(
+    sources: Vec<String>,
+    dest_dir: String,
+) -> CloudCommandResult<Vec<CloudConflictInfo>> {
+    let dest_dir = parse_cloud_path_arg(dest_dir)?;
+    let sources = sources
+        .into_iter()
+        .map(parse_cloud_path_arg)
+        .collect::<CloudCommandResult<Vec<_>>>()?;
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let provider = RcloneCloudProvider::default();
+        let mut conflicts = Vec::new();
+        for src in &sources {
+            let name = src.leaf_name().map_err(|error| {
+                CloudCommandError::new(
+                    CloudCommandErrorCode::InvalidPath,
+                    format!("Invalid source cloud path for conflict preview: {error}"),
+                )
+            })?;
+            let target = dest_dir.child_path(name).map_err(|error| {
+                CloudCommandError::new(
+                    CloudCommandErrorCode::InvalidPath,
+                    format!("Invalid target cloud path for conflict preview: {error}"),
+                )
+            })?;
+            let existing = provider.stat_path(&target)?;
+            let exists = existing.is_some();
+            let is_dir = existing
+                .as_ref()
+                .map(|entry| matches!(entry.kind, CloudEntryKind::Dir))
+                .unwrap_or(false);
+            if exists {
+                conflicts.push(CloudConflictInfo {
+                    src: src.to_string(),
+                    target: target.to_string(),
+                    exists,
+                    is_dir,
+                });
+            }
+        }
+        Ok(conflicts)
+    });
+    map_spawn_result(task.await, "cloud conflict preview task failed")
 }
 
 #[tauri::command]

@@ -50,6 +50,14 @@ pub struct CloudEntry {
     pub capabilities: CloudCapabilities,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudConflictInfo {
+    pub src: String,
+    pub target: String,
+    pub exists: bool,
+    pub is_dir: bool,
+}
+
 impl CloudCapabilities {
     pub fn v1_core_rw() -> Self {
         Self {

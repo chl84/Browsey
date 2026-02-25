@@ -76,6 +76,19 @@ impl CloudPath {
             path,
         })
     }
+
+    pub fn leaf_name(&self) -> Result<&str, CloudPathParseError> {
+        if self.path.is_empty() {
+            return Err(CloudPathParseError::new(
+                "Cloud root path does not have a leaf name",
+            ));
+        }
+        self.path
+            .rsplit('/')
+            .next()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| CloudPathParseError::new("Invalid cloud path leaf name"))
+    }
 }
 
 impl fmt::Display for CloudPath {
@@ -233,5 +246,13 @@ mod tests {
         let root = CloudPath::parse("rclone://work").expect("root");
         let child = root.child_path("docs").expect("child path");
         assert_eq!(child.to_string(), "rclone://work/docs");
+    }
+
+    #[test]
+    fn gets_leaf_name() {
+        let child = CloudPath::parse("rclone://work/docs/file.txt").expect("child");
+        assert_eq!(child.leaf_name().expect("leaf"), "file.txt");
+        let root = CloudPath::parse("rclone://work").expect("root");
+        assert!(root.leaf_name().is_err());
     }
 }
