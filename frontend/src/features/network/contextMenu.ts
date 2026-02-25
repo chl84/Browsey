@@ -11,6 +11,21 @@ const buildNetworkEntryContextActionsInternal = async (
   path: string,
   selectionCount: number,
 ): Promise<ContextAction[] | null> => {
+  if (path.startsWith('rclone://')) {
+    if (selectionCount !== 1) {
+      return [
+        { id: 'copy-path', label: 'Copy Paths' },
+        { id: 'properties', label: 'Properties' },
+      ]
+    }
+    return [
+      { id: 'open-network-target', label: 'Open' },
+      { id: 'divider-network-cloud', label: '---' },
+      { id: 'copy-path', label: 'Copy Path' },
+      { id: 'properties', label: 'Properties' },
+    ]
+  }
+
   const classified = await classifyNetworkUri(path)
   if (classified.kind !== 'not_uri') {
     const isMountable = classified.kind === 'mountable'

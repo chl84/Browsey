@@ -77,9 +77,7 @@ fn reject_cloud_clipboard_path(path: &str, op: &str) -> ClipboardResult<()> {
     if is_cloud_path_str(path) {
         return Err(ClipboardError::new(
             ClipboardErrorCode::InvalidInput,
-            format!(
-                "Cloud paths are not supported in local clipboard {op} flow yet: {path}"
-            ),
+            format!("Cloud paths are not supported in local clipboard {op} flow yet: {path}"),
         ));
     }
     Ok(())

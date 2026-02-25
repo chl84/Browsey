@@ -12,7 +12,19 @@ use error::{map_api_result, CloudCommandError, CloudCommandErrorCode, CloudComma
 use path::CloudPath;
 use provider::CloudProvider;
 use providers::rclone::RcloneCloudProvider;
+use tracing::warn;
 use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote, CloudRootSelection};
+
+pub(crate) fn list_cloud_remotes_sync_best_effort() -> Vec<CloudRemote> {
+    let provider = RcloneCloudProvider::default();
+    match provider.list_remotes() {
+        Ok(remotes) => remotes,
+        Err(error) => {
+            warn!(error = %error, "cloud remote discovery failed; omitting cloud remotes from Network view");
+            Vec::new()
+        }
+    }
+}
 
 #[tauri::command]
 pub async fn list_cloud_remotes() -> ApiResult<Vec<CloudRemote>> {
@@ -49,7 +61,10 @@ async fn validate_cloud_root_impl(path: String) -> CloudCommandResult<CloudRootS
             .ok_or_else(|| {
                 CloudCommandError::new(
                     CloudCommandErrorCode::InvalidConfig,
-                    format!("Cloud remote is not configured or unsupported: {}", path.remote()),
+                    format!(
+                        "Cloud remote is not configured or unsupported: {}",
+                        path.remote()
+                    ),
                 )
             })?;
 
