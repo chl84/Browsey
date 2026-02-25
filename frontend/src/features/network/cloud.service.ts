@@ -64,6 +64,8 @@ const userCloudErrorMessage = (code: string | undefined, message: string) => {
       return 'Cloud operation timed out. Check the network connection and try again'
     case 'network_error':
       return 'Cloud connection failed. Check the network and try again'
+    case 'tls_certificate_error':
+      return 'Cloud TLS certificate validation failed. Check the server certificate or trust settings and try again'
     case 'destination_exists':
       return 'A file or folder with the same name already exists'
     case 'permission_denied':

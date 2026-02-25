@@ -42,6 +42,9 @@ impl CloudPath {
         self.path.is_empty()
     }
 
+    // This builds the `remote:path` argument passed as a single argv item to `rclone`.
+    // We intentionally preserve spaces and other non-separator characters as-is; command
+    // escaping is handled by `std::process::Command`, not by string shell-escaping here.
     pub fn to_rclone_remote_spec(&self) -> String {
         if self.path.is_empty() {
             format!("{}:", self.remote)
@@ -242,10 +245,49 @@ mod tests {
     }
 
     #[test]
+    fn preserves_spaces_and_special_characters_in_path_segments() {
+        let path = CloudPath::parse("rclone://work/Docs 2026/report #1 (final).txt").expect("path");
+        assert_eq!(path.rel_path(), "Docs 2026/report #1 (final).txt");
+        assert_eq!(
+            path.to_rclone_remote_spec(),
+            "work:Docs 2026/report #1 (final).txt"
+        );
+    }
+
+    #[test]
     fn builds_child_path() {
         let root = CloudPath::parse("rclone://work").expect("root");
         let child = root.child_path("docs").expect("child path");
         assert_eq!(child.to_string(), "rclone://work/docs");
+    }
+
+    #[test]
+    fn child_path_allows_spaces_and_symbols_but_rejects_separators() {
+        let root = CloudPath::parse("rclone://work/base").expect("root");
+        let child = root
+            .child_path("report #1 (draft).txt")
+            .expect("child path with spaces");
+        assert_eq!(
+            child.to_string(),
+            "rclone://work/base/report #1 (draft).txt"
+        );
+        assert!(root.child_path("nested/name").is_err());
+        assert!(root.child_path(r"nested\\name").is_err());
+    }
+
+    #[test]
+    fn preserves_webdav_style_names_without_reencoding() {
+        let path = CloudPath::parse("rclone://nc/Documents/Projekt Å/100% plan + notes.txt")
+            .expect("webdav-ish path");
+        assert_eq!(
+            path.to_rclone_remote_spec(),
+            "nc:Documents/Projekt Å/100% plan + notes.txt"
+        );
+        let child = path.child_path("räksmörgås #2.txt").expect("unicode child");
+        assert_eq!(
+            child.to_rclone_remote_spec(),
+            "nc:Documents/Projekt Å/100% plan + notes.txt/räksmörgås #2.txt"
+        );
     }
 
     #[test]
