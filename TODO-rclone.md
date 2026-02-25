@@ -94,7 +94,7 @@ Recommended implementation sequence (v1 OneDrive):
 ## 6. Routing in existing backend
 
 - [x] Add early routing for local path vs cloud path in relevant commands.
-- [ ] Prevent cloud paths from entering `src/commands/fs/*`, `src/undo/*`, `nofollow`, or GVFS flows.
+- [x] Prevent cloud paths from entering `src/commands/fs/*`, `src/undo/*`, `nofollow`, or GVFS flows.
 - [ ] Start with separate Tauri commands for cloud instead of rewriting all FS commands at once.
 - [ ] Ensure `src/commands/network/*` does not try to own rclone cloud operations.
 - [ ] Keep `src/commands/network/gio_mounts.rs` for generic GIO/GVFS only (MTP/other mounts).
