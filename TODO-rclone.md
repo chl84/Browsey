@@ -81,8 +81,8 @@ Recommended implementation sequence (v1 OneDrive):
 ## 5. rclone command mapping (OneDrive v1)
 
 - [x] Folder listing via `lsjson` (name, type, size, modified time, optional hashes if needed later).
-- [ ] Stat/existence check for a single path.
-- [ ] Create directory (`mkdir`).
+- [x] Stat/existence check for a single path.
+- [x] Create directory (`mkdir`).
 - [ ] Delete file (validate correct command/flags for supported `rclone` version).
 - [ ] Delete directory recursively (`purge` or explicit strategy).
 - [ ] Delete empty directory (`rmdir`) as optional optimization.

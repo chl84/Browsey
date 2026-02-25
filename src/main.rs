@@ -204,6 +204,8 @@ fn main() {
             list_mounts,
             list_cloud_remotes,
             list_cloud_entries,
+            stat_cloud_entry,
+            create_cloud_folder,
             normalize_cloud_path,
             list_network_devices,
             list_network_entries,
