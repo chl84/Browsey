@@ -174,7 +174,7 @@ Recommended implementation sequence (v1 OneDrive):
 
 - [x] Unit tests for cloud path parser/formatter.
 - [x] Unit tests for `rclone` command builder (expected args).
-- [ ] Unit tests for `stderr`/exit-code mapping to `CloudErrorCode`.
+- [x] Unit tests for `stderr`/exit-code mapping to `CloudErrorCode`.
 - [ ] Create a fake-`rclone` shim for deterministic backend tests.
 - [ ] Integration tests for list/copy/move/delete using fake `rclone` JSON output.
 - [x] Frontend tests for conflict preview and disabled actions based on capabilities.
