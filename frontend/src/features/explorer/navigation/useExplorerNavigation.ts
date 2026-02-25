@@ -52,6 +52,7 @@ type Deps = {
 
 export const useExplorerNavigation = (deps: Deps) => {
   const selectionMemory = createSelectionMemory()
+  const isCloudPath = (path: string) => path.startsWith('rclone://')
 
   let pendingNav: PendingNav | null = null
   let navGeneration = 0
@@ -275,6 +276,13 @@ export const useExplorerNavigation = (deps: Deps) => {
   const goToPath = async (path: string) => {
     const trimmed = path.trim()
     if (!trimmed) return
+
+    if (isCloudPath(trimmed)) {
+      if (trimmed !== get(deps.current) && !get(deps.loading)) {
+        await loadDir(trimmed)
+      }
+      return
+    }
 
     if (await isMountUri(trimmed)) {
       await openPartition(trimmed)

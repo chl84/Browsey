@@ -28,14 +28,14 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Define out-of-scope for v1: `undo`, cloud trash, permissions, thumbnails, recursive search, duplicate scan.
 - [x] Define minimum supported `rclone` version and how it is validated at first cloud use (runtime probe).
 - [x] Decide whether Browsey requires global `rclone` in `PATH` or supports configurable binary path (v1: global `rclone` in `PATH`; custom path deferred).
-- [ ] Decide how cloud support is surfaced in Browsey UX in v1: `Network` view only vs also direct path/open flows.
-- [ ] Decide whether cloud operations are behind a feature flag / experimental setting in first rollout.
+- [x] Decide how cloud support is surfaced in Browsey UX in v1: `Network` view + explicit `rclone://...` path/open flows.
+- [x] Decide whether cloud operations are behind a feature flag / experimental setting in first rollout (v1: no feature flag).
 - [x] Decide how cloud `delete` maps to Browsey semantics in v1 (`permanent delete` only vs future trash integration).
-- [ ] Define whether cross-boundary operations are supported in v1:
-  - [ ] local -> cloud copy
-  - [ ] cloud -> local copy
-  - [ ] cloud -> cloud within same remote move/copy
-  - [ ] cloud -> cloud across remotes (probably out of scope initially)
+- [x] Define whether cross-boundary operations are supported in v1:
+  - [x] local -> cloud copy (not supported in v1)
+  - [x] cloud -> local copy (not supported in v1)
+  - [x] cloud -> cloud within same remote move/copy (supported in v1)
+  - [x] cloud -> cloud across remotes (supported via same cloud flow, best-effort / not separately validated yet)
 - [x] Define atomicity/rollback expectations for multi-entry cloud operations (current v1 behavior: stop-on-first-error, no rollback of earlier successful cloud ops).
 
 ## 2. Domain/path model (critical)
@@ -158,16 +158,16 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Do not accept arbitrary user-provided `rclone` flags.
 - [x] Never log `rclone` config content or tokens.
 - [x] Consider a Browsey remote allowlist/prefix policy (implemented optional env-based policy: `BROWSEY_RCLONE_REMOTE_ALLOWLIST` / `BROWSEY_RCLONE_REMOTE_PREFIX`).
-- [ ] Decide whether to use default `rclone` config path or explicit configurable path.
+- [x] Decide whether to use default `rclone` config path or explicit configurable path (v1: default config path only; override deferred).
 
 ## 12. Cross-distro and packaging
 
 - [x] Define Linux strategy for v1: `rclone` from `PATH`.
 - [x] Show clear install/setup error when `rclone` is missing.
 - [x] Update docs/install guide with `rclone` requirement for cloud features.
-- [ ] Consider later support for custom binary path or bundling.
+- [x] Consider later support for custom binary path or bundling (defer until packaging/runtime validation shows a concrete need).
 - [ ] Test at least two Linux environments (e.g. Fedora + Ubuntu) with different `rclone` versions.
-- [ ] Decide whether `rclone` path is persisted in Browsey settings (and add settings keys through `src/commands/settings/mod.rs` if yes).
+- [x] Decide whether `rclone` path is persisted in Browsey settings (and add settings keys through `src/commands/settings/mod.rs` if yes) (v1: no, because PATH-only strategy).
 - [ ] Validate packaging impact for AppImage/Flatpak builds (PATH visibility and external binary discovery).
 
 ## 13. Test strategy (important)
@@ -203,11 +203,11 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Add `ProviderKind` from the start (`onedrive`, `gdrive`, `nextcloud`).
 - [x] Add capability matrix per provider.
 - [x] Track Google Drive semantic differences (shortcuts, native docs types, trash behavior) as provider-specific TODOs.
-  - [ ] Decide v1/v2 handling of Google Drive shortcuts (`application/vnd.google-apps.shortcut`) in listing and copy/move flows.
-  - [ ] Decide how native Google Docs/Sheets/Slides types appear in Browsey (`entry kind`, size, open/export affordances).
-  - [ ] Define delete/trash semantics for Google Drive vs Browsey permanent delete/trash UI expectations.
+  - [x] Decide v1/v2 handling of Google Drive shortcuts (`application/vnd.google-apps.shortcut`) in listing and copy/move flows (defer shortcut-specific handling to v2; treat as unsupported special-case until validated).
+  - [x] Decide how native Google Docs/Sheets/Slides types appear in Browsey (`entry kind`, size, open/export affordances) (initial plan: treat as cloud file entries; no direct open/export UX in v1).
+  - [x] Define delete/trash semantics for Google Drive vs Browsey permanent delete/trash UI expectations (align with v1 cloud permanent-delete semantics; revisit with cloud trash support).
   - [ ] Verify duplicate-name and parent-folder semantics on Google Drive through `rclone` (conflict preview assumptions may differ).
-  - [ ] Decide whether Shared Drives are supported in initial Google Drive rollout and how they are surfaced in Network view.
+  - [x] Decide whether Shared Drives are supported in initial Google Drive rollout and how they are surfaced in Network view (initial rollout: not explicitly supported/tested; defer until Google Drive validation phase).
   - [ ] Map provider-specific rate-limit/auth error texts for Google Drive into existing cloud error codes (without polluting common mapping).
 - [x] Keep provider-specific error mapping isolated from shared `rclone` wrapper.
 
