@@ -1,11 +1,27 @@
 import { invoke } from '@/shared/lib/tauri'
+import { createCloudFolder, renameCloudEntry } from '@/features/network'
 import type { Entry } from '../model/types'
+
+const isCloudPath = (path: string) => path.startsWith('rclone://')
+
+const joinCloudPath = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`
+
+const parentCloudPath = (path: string) => {
+  const idx = path.lastIndexOf('/')
+  return idx > 'rclone://'.length ? path.slice(0, idx) : path
+}
 
 export const openEntry = (entry: Entry) =>
   invoke<void>('open_entry', { path: entry.path })
 
-export const renameEntry = (path: string, newName: string) =>
-  invoke<string>('rename_entry', { path, newName })
+export const renameEntry = async (path: string, newName: string) => {
+  if (!isCloudPath(path)) {
+    return invoke<string>('rename_entry', { path, newName })
+  }
+  const dst = joinCloudPath(parentCloudPath(path), newName)
+  await renameCloudEntry(path, dst, { overwrite: false })
+  return dst
+}
 
 export const renameEntries = (entries: Array<{ path: string; newName: string }>) =>
   invoke<string[]>('rename_entries', { entries })
@@ -39,8 +55,14 @@ export const previewRenameEntries = (
   payload: AdvancedRenamePreviewPayload,
 ) => invoke<AdvancedRenamePreviewResult>('preview_rename_entries', { entries, payload })
 
-export const createFolder = (base: string, name: string) =>
-  invoke<string>('create_folder', { path: base, name })
+export const createFolder = async (base: string, name: string) => {
+  if (!isCloudPath(base)) {
+    return invoke<string>('create_folder', { path: base, name })
+  }
+  const created = joinCloudPath(base, name)
+  await createCloudFolder(created)
+  return created
+}
 
 export const createFile = (base: string, name: string) =>
   invoke<string>('create_file', { path: base, name })
