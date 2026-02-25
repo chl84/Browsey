@@ -133,4 +133,4 @@ export const copyCloudEntry = (src: string, dst: string, options?: CloudWriteOpt
   invokeCloud<void>('copy_cloud_entry', { src, dst, overwrite: options?.overwrite ?? false })
 
 export const previewCloudConflicts = (sources: string[], destDir: string) =>
-  invokeCloud<CloudConflictInfo[]>('preview_cloud_conflicts', { sources, dest_dir: destDir })
+  invokeCloud<CloudConflictInfo[]>('preview_cloud_conflicts', { sources, destDir })

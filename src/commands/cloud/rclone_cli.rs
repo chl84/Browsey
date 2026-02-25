@@ -57,7 +57,9 @@ impl RcloneSubcommand {
     pub fn default_timeout(self) -> Duration {
         match self {
             Self::Version | Self::ListRemotes | Self::ConfigDump => Duration::from_secs(8),
-            Self::LsJson | Self::Mkdir | Self::DeleteFile | Self::Rmdir => Duration::from_secs(20),
+            // OneDrive metadata/listing calls can be bursty and occasionally exceed 20s.
+            Self::LsJson => Duration::from_secs(60),
+            Self::Mkdir | Self::DeleteFile | Self::Rmdir => Duration::from_secs(20),
             Self::Purge => Duration::from_secs(120),
             Self::MoveTo | Self::CopyTo => Duration::from_secs(300),
         }
@@ -528,7 +530,7 @@ mod tests {
     #[test]
     fn subcommands_have_reasonable_default_timeouts() {
         assert_eq!(RcloneSubcommand::Version.default_timeout().as_secs(), 8);
-        assert_eq!(RcloneSubcommand::LsJson.default_timeout().as_secs(), 20);
+        assert_eq!(RcloneSubcommand::LsJson.default_timeout().as_secs(), 60);
         assert_eq!(RcloneSubcommand::CopyTo.default_timeout().as_secs(), 300);
     }
 

@@ -33,6 +33,7 @@ type Deps = {
 }
 
 export const createContextActions = (deps: Deps) => {
+  const isCloudPath = (path: string) => path.startsWith('rclone://')
   const {
     getSelectedSet,
     getFilteredEntries,
@@ -111,6 +112,7 @@ export const createContextActions = (deps: Deps) => {
           return
         }
         showToast('Cut', 1500)
+        if (paths.some(isCloudPath)) return
         void copyPathsToSystemClipboard(paths, 'cut').catch((err) => {
           showToast(
             `Cut (system clipboard unavailable: ${getErrorMessage(err)})`,
@@ -125,6 +127,7 @@ export const createContextActions = (deps: Deps) => {
         return
       }
       showToast('Copied', 1500)
+      if (paths.some(isCloudPath)) return
       void copyPathsToSystemClipboard(paths).catch((err) => {
         showToast(
           `Copied (system clipboard unavailable: ${getErrorMessage(err)})`,
