@@ -319,7 +319,7 @@ fn map_rclone_error(error: RcloneCliError) -> CloudCommandError {
             )
         }
         RcloneCliError::Io(io) => CloudCommandError::new(
-            CloudCommandErrorCode::UnknownError,
+            CloudCommandErrorCode::NetworkError,
             format!("Failed to run rclone: {io}"),
         ),
         RcloneCliError::Timeout {
@@ -327,7 +327,7 @@ fn map_rclone_error(error: RcloneCliError) -> CloudCommandError {
             timeout,
             ..
         } => CloudCommandError::new(
-            CloudCommandErrorCode::UnknownError,
+            CloudCommandErrorCode::Timeout,
             format!(
                 "rclone {} timed out after {}s",
                 subcommand.as_str(),
@@ -359,6 +359,38 @@ fn classify_rclone_message_code(message: &str) -> CloudCommandErrorCode {
     }
     if lower.contains("permission denied") || lower.contains("access denied") {
         return CloudCommandErrorCode::PermissionDenied;
+    }
+    if lower.contains("too many requests")
+        || lower.contains("rate limit")
+        || lower.contains("rate-limited")
+        || lower.contains("retry after")
+        || lower.contains("status code 429")
+        || lower.contains("http error 429")
+    {
+        return CloudCommandErrorCode::RateLimited;
+    }
+    if lower.contains("unauthorized")
+        || lower.contains("authentication failed")
+        || lower.contains("login required")
+        || lower.contains("invalid_grant")
+        || lower.contains("token expired")
+        || lower.contains("expired token")
+        || lower.contains("status code 401")
+        || lower.contains("http error 401")
+    {
+        return CloudCommandErrorCode::AuthRequired;
+    }
+    if lower.contains("timed out") || lower.contains("timeout") {
+        return CloudCommandErrorCode::Timeout;
+    }
+    if lower.contains("connection")
+        || lower.contains("network")
+        || lower.contains("dial tcp")
+        || lower.contains("no such host")
+        || lower.contains("name resolution")
+        || lower.contains("tls handshake")
+    {
+        return CloudCommandErrorCode::NetworkError;
     }
     if is_rclone_not_found_text(message, "") {
         return CloudCommandErrorCode::NotFound;
@@ -543,6 +575,18 @@ mod tests {
         assert_eq!(
             classify_rclone_message_code("object not found"),
             CloudCommandErrorCode::NotFound
+        );
+        assert_eq!(
+            classify_rclone_message_code("HTTP error 429: too many requests"),
+            CloudCommandErrorCode::RateLimited
+        );
+        assert_eq!(
+            classify_rclone_message_code("authentication failed: token expired"),
+            CloudCommandErrorCode::AuthRequired
+        );
+        assert_eq!(
+            classify_rclone_message_code("dial tcp: i/o timeout"),
+            CloudCommandErrorCode::Timeout
         );
     }
 

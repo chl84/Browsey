@@ -9,6 +9,10 @@ use std::fmt;
 pub(super) enum CloudCommandErrorCode {
     InvalidPath,
     NotFound,
+    Timeout,
+    NetworkError,
+    RateLimited,
+    AuthRequired,
     PermissionDenied,
     DestinationExists,
     Unsupported,
@@ -23,6 +27,10 @@ impl ErrorCode for CloudCommandErrorCode {
         match self {
             Self::InvalidPath => "invalid_path",
             Self::NotFound => "not_found",
+            Self::Timeout => "timeout",
+            Self::NetworkError => "network_error",
+            Self::RateLimited => "rate_limited",
+            Self::AuthRequired => "auth_required",
             Self::PermissionDenied => "permission_denied",
             Self::DestinationExists => "destination_exists",
             Self::Unsupported => "unsupported",
