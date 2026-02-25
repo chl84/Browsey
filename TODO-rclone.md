@@ -108,7 +108,7 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Add backend command to list configured remotes (or a Browsey allowlist subset).
 - [x] Add backend command to select/validate a remote and normalize root path.
 - [x] Implement browsing/listing for OneDrive via `rclone`.
-- [ ] Implement core file ops in OneDrive (`copy`, `move`, `rename`, `delete`, `mkdir`).
+- [x] Implement core file ops in OneDrive (`copy`, `move`, `rename`, `delete`, `mkdir`).
 - [ ] Trigger refresh after operations.
 - [x] Implement cloud-aware paste conflict preview (no `Path::exists()`).
 - [ ] Disable or hide unsupported actions in v1 (trash, undo, permissions, etc.) with clear UI messaging.
