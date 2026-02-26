@@ -16,7 +16,10 @@ use std::collections::HashMap;
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
-use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote, CloudRootSelection};
+use types::{
+    CloudConflictInfo, CloudEntry, CloudEntryKind, CloudProviderKind, CloudRemote,
+    CloudRootSelection,
+};
 
 const CLOUD_REMOTE_DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(45);
 const CLOUD_DIR_LISTING_CACHE_TTL: Duration = Duration::from_secs(4);
@@ -211,18 +214,38 @@ fn should_retry_cloud_dir_error(error: &CloudCommandError) -> bool {
     )
 }
 
-fn invalidate_cloud_dir_listing_cache_path(path: &CloudPath) {
-    if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
-        guard.remove(&path.to_string());
-    }
+fn invalidate_cloud_dir_listing_cache_path_locked(
+    cache: &mut HashMap<String, CachedCloudDirListing>,
+    path: &CloudPath,
+) {
+    let key = path.to_string();
+    let subtree_prefix = format!("{key}/");
+    cache.retain(|cached_path, _| cached_path != &key && !cached_path.starts_with(&subtree_prefix));
 }
 
 fn invalidate_cloud_dir_listing_cache_for_write_paths(paths: &[CloudPath]) {
-    for path in paths {
-        invalidate_cloud_dir_listing_cache_path(path);
-        if let Some(parent) = path.parent_dir_path() {
-            invalidate_cloud_dir_listing_cache_path(&parent);
+    if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
+        for path in paths {
+            invalidate_cloud_dir_listing_cache_path_locked(&mut guard, path);
+            if let Some(parent) = path.parent_dir_path() {
+                invalidate_cloud_dir_listing_cache_path_locked(&mut guard, &parent);
+            }
         }
+    }
+}
+
+fn cloud_provider_kind_for_remote(remote_id: &str) -> Option<CloudProviderKind> {
+    list_cloud_remotes_cached(false)
+        .ok()
+        .and_then(|remotes| remotes.into_iter().find(|remote| remote.id == remote_id))
+        .map(|remote| remote.provider)
+}
+
+fn cloud_conflict_name_key(provider: Option<CloudProviderKind>, name: &str) -> String {
+    match provider {
+        // OneDrive is effectively case-insensitive for path conflicts.
+        Some(CloudProviderKind::Onedrive) => name.to_ascii_lowercase(),
+        _ => name.to_string(),
     }
 }
 
@@ -692,8 +715,9 @@ async fn preview_cloud_conflicts_impl(
     let source_count = sources.len();
     let dest_dir_for_log = dest_dir.clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
+        let provider = cloud_provider_kind_for_remote(dest_dir.remote());
         let dest_entries = list_cloud_dir_cached(&dest_dir)?;
-        build_conflicts_from_dest_listing(&sources, &dest_dir, &dest_entries)
+        build_conflicts_from_dest_listing(&sources, &dest_dir, &dest_entries, provider)
     });
     let result = map_spawn_result(task.await, "cloud conflict preview task failed");
     let elapsed_ms = started.elapsed().as_millis() as u64;
@@ -722,11 +746,12 @@ fn build_conflicts_from_dest_listing(
     sources: &[CloudPath],
     dest_dir: &CloudPath,
     dest_entries: &[CloudEntry],
+    provider: Option<CloudProviderKind>,
 ) -> CloudCommandResult<Vec<CloudConflictInfo>> {
-    let mut name_to_is_dir: HashMap<&str, bool> = HashMap::with_capacity(dest_entries.len());
+    let mut name_to_is_dir: HashMap<String, bool> = HashMap::with_capacity(dest_entries.len());
     for entry in dest_entries {
         name_to_is_dir
-            .entry(entry.name.as_str())
+            .entry(cloud_conflict_name_key(provider, &entry.name))
             .or_insert(matches!(entry.kind, CloudEntryKind::Dir));
     }
 
@@ -738,7 +763,8 @@ fn build_conflicts_from_dest_listing(
                 format!("Invalid source cloud path for conflict preview: {error}"),
             )
         })?;
-        let Some(is_dir) = name_to_is_dir.get(name) else {
+        let key = cloud_conflict_name_key(provider, name);
+        let Some(is_dir) = name_to_is_dir.get(&key) else {
             continue;
         };
         let target = dest_dir.child_path(name).map_err(|error| {
@@ -798,7 +824,7 @@ mod tests {
     };
     use crate::commands::cloud::{
         path::CloudPath,
-        types::{CloudCapabilities, CloudEntry, CloudEntryKind},
+        types::{CloudCapabilities, CloudEntry, CloudEntryKind, CloudProviderKind},
     };
     use std::{
         collections::HashMap,
@@ -868,6 +894,7 @@ mod tests {
             &[src_file.clone(), src_dir.clone(), src_missing],
             &dest_dir,
             &dest_entries,
+            None,
         )
         .expect("conflicts");
 
@@ -881,7 +908,35 @@ mod tests {
     }
 
     #[test]
-    fn cloud_listing_cache_prunes_stale_entries_and_invalidates_parent() {
+    fn conflict_preview_is_case_insensitive_for_onedrive_names() {
+        let src_file = CloudPath::parse("rclone://work/src/report.txt").expect("src file");
+        let dest_dir = CloudPath::parse("rclone://work/dest").expect("dest");
+        let dest_entries = vec![CloudEntry {
+            name: "Report.txt".to_string(),
+            path: "rclone://work/dest/Report.txt".to_string(),
+            kind: CloudEntryKind::File,
+            size: Some(1),
+            modified: None,
+            capabilities: CloudCapabilities::v1_core_rw(),
+        }];
+
+        let conflicts = build_conflicts_from_dest_listing(
+            &[src_file.clone()],
+            &dest_dir,
+            &dest_entries,
+            Some(CloudProviderKind::Onedrive),
+        )
+        .expect("conflicts");
+
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].src, src_file.to_string());
+        // Preview target remains the requested path casing from source leaf.
+        assert_eq!(conflicts[0].target, "rclone://work/dest/report.txt");
+        assert!(!conflicts[0].is_dir);
+    }
+
+    #[test]
+    fn cloud_listing_cache_prunes_stale_entries_and_invalidates_parent_subtree() {
         let now = Instant::now();
         let stale = now - (super::CLOUD_DIR_LISTING_CACHE_TTL + Duration::from_millis(1));
         let fresh = now - Duration::from_millis(10);
@@ -895,6 +950,20 @@ mod tests {
         );
         cache.insert(
             "rclone://work/docs".to_string(),
+            CachedCloudDirListing {
+                fetched_at: fresh,
+                entries: Vec::new(),
+            },
+        );
+        cache.insert(
+            "rclone://work/docs/subdir".to_string(),
+            CachedCloudDirListing {
+                fetched_at: fresh,
+                entries: Vec::new(),
+            },
+        );
+        cache.insert(
+            "rclone://work/docs/subdir/deeper".to_string(),
             CachedCloudDirListing {
                 fetched_at: fresh,
                 entries: Vec::new(),
@@ -923,6 +992,8 @@ mod tests {
 
         let global = cloud_dir_listing_cache().lock().expect("cache lock");
         assert!(!global.contains_key("rclone://work/docs"));
+        assert!(!global.contains_key("rclone://work/docs/subdir"));
+        assert!(!global.contains_key("rclone://work/docs/subdir/deeper"));
         assert!(global.contains_key("rclone://work/other"));
         drop(global);
 
