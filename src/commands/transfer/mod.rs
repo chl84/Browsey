@@ -909,6 +909,15 @@ async fn preview_local_to_cloud_conflicts(
 
     let provider = cloud::cloud_provider_kind_for_remote(dest.remote());
     let dest_entries = cloud::list_cloud_entries(dest.to_string()).await?;
+    build_local_to_cloud_conflicts_from_entries(local_sources, &dest, provider, &dest_entries)
+}
+
+fn build_local_to_cloud_conflicts_from_entries(
+    local_sources: Vec<PathBuf>,
+    dest: &CloudPath,
+    provider: Option<CloudProviderKind>,
+    dest_entries: &[crate::commands::cloud::types::CloudEntry],
+) -> ApiResult<Vec<MixedTransferConflictInfo>> {
     let mut name_to_is_dir: HashMap<String, bool> = HashMap::with_capacity(dest_entries.len());
     for entry in dest_entries {
         let key = cloud::cloud_conflict_name_key(provider, &entry.name);
@@ -1023,6 +1032,7 @@ fn list_local_dir_entries(dest: &Path) -> ApiResult<Vec<(String, bool)>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::cloud::types::{CloudCapabilities, CloudEntry};
     #[cfg(unix)]
     use std::sync::atomic::{AtomicU64, Ordering};
     #[cfg(unix)]
@@ -1060,6 +1070,18 @@ mod tests {
         fs::remove_file(&file_path).ok();
         fs::remove_dir(&dir_path).ok();
         fs::remove_dir(&base).ok();
+    }
+
+    fn cloud_entry(name: &str, kind: CloudEntryKind) -> CloudEntry {
+        let provider = CloudProviderKind::Onedrive;
+        CloudEntry {
+            name: name.to_string(),
+            path: format!("rclone://work/{name}"),
+            kind,
+            size: None,
+            modified: None,
+            capabilities: CloudCapabilities::v1_for_provider(provider),
+        }
     }
 
     #[cfg(unix)]
@@ -1362,6 +1384,86 @@ mod tests {
             }
             _ => panic!("expected local->cloud route"),
         }
+        fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn mixed_preview_local_to_cloud_matches_onedrive_case_insensitive_and_preserves_kind() {
+        let base = std::env::temp_dir().join(format!(
+            "browsey-transfer-preview-local-cloud-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("epoch")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&base).expect("create temp base");
+        let local_file = base.join("Report.txt");
+        let local_dir = base.join("FolderA");
+        fs::write(&local_file, b"x").expect("write local file");
+        fs::create_dir_all(&local_dir).expect("create local dir");
+
+        let dest = CloudPath::parse("rclone://work/dest").expect("cloud path");
+        let conflicts = build_local_to_cloud_conflicts_from_entries(
+            vec![local_file.clone(), local_dir.clone()],
+            &dest,
+            Some(CloudProviderKind::Onedrive),
+            &[
+                cloud_entry("report.txt", CloudEntryKind::File),
+                cloud_entry("FolderA", CloudEntryKind::Dir),
+            ],
+        )
+        .expect("build conflicts");
+
+        assert_eq!(conflicts.len(), 2);
+        assert!(conflicts
+            .iter()
+            .any(|c| c.src == local_file.to_string_lossy() && !c.is_dir));
+        assert!(conflicts
+            .iter()
+            .any(|c| c.src == local_dir.to_string_lossy() && c.is_dir));
+
+        fs::remove_file(&local_file).ok();
+        fs::remove_dir_all(&local_dir).ok();
+        fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn mixed_preview_cloud_to_local_reports_file_and_dir_conflicts() {
+        let base = std::env::temp_dir().join(format!(
+            "browsey-transfer-preview-cloud-local-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("epoch")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&base).expect("create temp base");
+        let local_file = base.join("report.txt");
+        let local_dir = base.join("FolderA");
+        fs::write(&local_file, b"x").expect("write local file");
+        fs::create_dir_all(&local_dir).expect("mkdir local dir");
+
+        let conflicts = preview_cloud_to_local_conflicts(
+            vec![
+                "rclone://work/src/report.txt".to_string(),
+                "rclone://work/src/FolderA".to_string(),
+                "rclone://work/src/other.txt".to_string(),
+            ],
+            base.to_string_lossy().to_string(),
+        )
+        .expect("preview cloud->local conflicts");
+
+        assert_eq!(conflicts.len(), 2);
+        assert!(conflicts
+            .iter()
+            .any(|c| c.src.ends_with("/report.txt") && !c.is_dir));
+        assert!(conflicts
+            .iter()
+            .any(|c| c.src.ends_with("/FolderA") && c.is_dir));
+
+        fs::remove_file(&local_file).ok();
+        fs::remove_dir_all(&local_dir).ok();
         fs::remove_dir_all(&base).ok();
     }
 
