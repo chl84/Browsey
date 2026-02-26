@@ -727,9 +727,10 @@ mod tests {
         classify_provider_kind, classify_provider_kind_from_config,
         classify_provider_rclone_message_code, classify_rclone_message_code,
         is_rclone_not_found_text, map_rclone_error, map_rclone_error_for_provider,
-        normalize_cloud_modified_time_value, parse_config_dump_summaries, parse_listremotes_plain, parse_lsjson_items,
-        parse_lsjson_stat_item, parse_rclone_version_stdout, parse_rclone_version_triplet,
-        remote_allowed_by_policy_with, RcloneCloudProvider, RcloneRemotePolicy,
+        normalize_cloud_modified_time_value, parse_config_dump_summaries, parse_listremotes_plain,
+        parse_lsjson_items, parse_lsjson_stat_item, parse_rclone_version_stdout,
+        parse_rclone_version_triplet, remote_allowed_by_policy_with, RcloneCloudProvider,
+        RcloneRemotePolicy,
     };
     use crate::{
         commands::cloud::{
@@ -873,7 +874,10 @@ mod tests {
     fn normalizes_rclone_rfc3339_mod_time_to_browsey_format() {
         let out = normalize_cloud_modified_time_value("2026-02-25T10:01:45Z");
         assert!(out.len() == 16, "expected YYYY-MM-DD HH:MM, got {out}");
-        assert!(out.contains(' '), "expected local Browsey time format, got {out}");
+        assert!(
+            out.contains(' '),
+            "expected local Browsey time format, got {out}"
+        );
         assert!(!out.contains('T'), "expected normalized format, got {out}");
     }
 

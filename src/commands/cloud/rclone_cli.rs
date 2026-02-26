@@ -252,10 +252,7 @@ impl RcloneCli {
     ) -> Result<RcloneTextOutput, RcloneCliError> {
         let subcommand = spec.subcommand;
         let lsjson_stat = subcommand == RcloneSubcommand::LsJson
-            && spec
-                .args
-                .iter()
-                .any(|arg| arg == &OsString::from("--stat"));
+            && spec.args.iter().any(|arg| arg == &OsString::from("--stat"));
         if RCLONE_SHUTTING_DOWN.load(Ordering::SeqCst) {
             return Err(RcloneCliError::Shutdown { subcommand });
         }
