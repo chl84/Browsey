@@ -35,7 +35,7 @@
 ## Fase 4: Robusthet under treghet / throttling
 
 - [ ] Bounded concurrency per remote (unngå for mange samtidige rclone-kall)
-- [ ] Kort retry/backoff for metadata/listing (`lsjson`) ved transient feil
+- [x] Kort retry/backoff for metadata/listing (`lsjson`) ved transient feil
 - [ ] Forbedre cloud UX-meldinger ved treg refresh (ikke rapporter write som feil)
 - [ ] Verifiser oppførsel ved flere raske operasjoner etter hverandre
 
