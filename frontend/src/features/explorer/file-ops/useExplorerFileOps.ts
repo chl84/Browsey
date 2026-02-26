@@ -128,6 +128,18 @@ export const useExplorerFileOps = (deps: Deps) => {
 
   const getClipboardPaths = () => Array.from(get(clipboardState).paths)
 
+  const clearCutClipboardAfterMoveSuccess = async () => {
+    if (get(clipboardState).mode !== 'cut') return
+    clearClipboardState()
+    try {
+      await setClipboardCmd([], 'copy')
+      await clearSystemClipboard()
+    } catch {
+      // Ignore; move already succeeded.
+    }
+    deps.setClipboardPaths(new Set())
+  }
+
   const classifyPasteRoute = (dest: string): 'local' | 'cloud' | 'unsupported' => {
     const sources = getClipboardPaths()
     if (sources.length === 0) return isCloudPath(dest) ? 'cloud' : 'local'
@@ -281,6 +293,7 @@ export const useExplorerFileOps = (deps: Deps) => {
       }
 
       deps.activityApi.hideSoon()
+      await clearCutClipboardAfterMoveSuccess()
       refreshCloudViewAfterWrite('Paste')
       return true
     } catch (err) {
@@ -311,6 +324,7 @@ export const useExplorerFileOps = (deps: Deps) => {
       await pasteClipboardCmd(target, policy, progressEvent)
       await deps.reloadCurrent()
       deps.activityApi.hideSoon()
+      await clearCutClipboardAfterMoveSuccess()
       return true
     } catch (err) {
       deps.activityApi.clearNow()
@@ -360,8 +374,13 @@ export const useExplorerFileOps = (deps: Deps) => {
       return false
     }
 
+    const internalClipboard = get(clipboardState)
+    const preferInternalCutClipboard =
+      internalClipboard.mode === 'cut' && internalClipboard.paths.size > 0
+
     // Always attempt to sync from system clipboard first, then paste.
-    if (!isCloudPath(deps.getCurrentPath())) {
+    // But keep Browsey's internal cut clipboard authoritative to preserve move semantics.
+    if (!isCloudPath(deps.getCurrentPath()) && !preferInternalCutClipboard) {
       try {
         const sys = await getSystemClipboardPaths()
         if (sys.paths.length > 0) {
@@ -383,17 +402,6 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
 
     const ok = await handlePasteOrMove(deps.getCurrentPath())
-    if (ok && deps.clipboardMode() === 'cut') {
-      // Clear internal and system clipboard after a successful move.
-      clearClipboardState()
-      try {
-        await setClipboardCmd([], 'copy')
-        await clearSystemClipboard()
-      } catch {
-        // Ignore; move already succeeded.
-      }
-      deps.setClipboardPaths(new Set())
-    }
     return ok
   }
 

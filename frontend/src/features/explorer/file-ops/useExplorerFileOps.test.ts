@@ -49,7 +49,7 @@ vi.mock('../services/activity.service', () => ({
   cancelTask: vi.fn(),
 }))
 
-import { clearClipboardState, setClipboardPathsState } from './clipboard.store'
+import { clipboardState, clearClipboardState, setClipboardPathsState } from './clipboard.store'
 import { useExplorerFileOps } from './useExplorerFileOps'
 
 type ActivityApi = {
@@ -355,6 +355,50 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     const ok = await fileOps.handlePasteOrMove('/tmp/dest')
 
     expect(ok).toBe(true)
+    expect(pasteClipboardCmdMock).toHaveBeenCalledWith(
+      '/tmp/dest',
+      'rename',
+      expect.stringMatching(/^cut-progress-/),
+    )
+    expect(activityApi.start).toHaveBeenCalledWith(
+      'Moving…',
+      expect.stringMatching(/^cut-progress-/),
+      expect.any(Function),
+    )
+  })
+
+  it('clears cut clipboard state after successful move via handlePasteOrMove', async () => {
+    setClipboardPathsState('cut', ['/tmp/src/report.txt'])
+    pasteClipboardPreviewMock.mockResolvedValue([])
+
+    const deps = createDeps()
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('/tmp/dest')
+
+    expect(ok).toBe(true)
+    expect(get(clipboardState).mode).toBe('copy')
+    expect(Array.from(get(clipboardState).paths)).toEqual([])
+    expect(setClipboardCmdMock).toHaveBeenCalledWith([], 'copy')
+    expect(clearSystemClipboardMock).toHaveBeenCalled()
+  })
+
+  it('prefers internal cut clipboard over system clipboard sync in pasteIntoCurrent', async () => {
+    setClipboardPathsState('cut', ['/tmp/src/report.txt'])
+    getSystemClipboardPathsMock.mockResolvedValue({
+      mode: 'copy',
+      paths: ['/tmp/other/file.txt'],
+    })
+    pasteClipboardPreviewMock.mockResolvedValue([])
+
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp/dest'
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.pasteIntoCurrent()
+
+    expect(ok).toBe(true)
+    expect(getSystemClipboardPathsMock).not.toHaveBeenCalled()
     expect(pasteClipboardCmdMock).toHaveBeenCalledWith(
       '/tmp/dest',
       'rename',
