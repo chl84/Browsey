@@ -192,9 +192,12 @@ impl CloudProvider for RcloneCloudProvider {
         src: &CloudPath,
         dst: &CloudPath,
         overwrite: bool,
+        prechecked: bool,
     ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
-        ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
+        if !prechecked {
+            ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
+        }
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::MoveTo)
@@ -210,9 +213,12 @@ impl CloudProvider for RcloneCloudProvider {
         src: &CloudPath,
         dst: &CloudPath,
         overwrite: bool,
+        prechecked: bool,
     ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
-        ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
+        if !prechecked {
+            ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
+        }
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
@@ -1092,6 +1098,7 @@ mod tests {
                 &cloud_path("rclone://work/src/file.txt"),
                 &cloud_path("rclone://work/dst/copied.txt"),
                 false,
+                false,
             )
             .expect("copy file");
         assert!(sandbox.remote_path("work", "dst/copied.txt").is_file());
@@ -1107,6 +1114,7 @@ mod tests {
             .move_entry(
                 &cloud_path("rclone://work/dst/copied.txt"),
                 &cloud_path("rclone://work/dst/moved.txt"),
+                false,
                 false,
             )
             .expect("move file");
@@ -1149,10 +1157,32 @@ mod tests {
                 &cloud_path("rclone://work/docs/report.txt"),
                 &cloud_path("rclone://work/docs/Report.txt"),
                 false,
+                false,
             )
             .expect("case-only rename");
 
         assert!(!sandbox.remote_path("work", "docs/report.txt").exists());
         assert!(sandbox.remote_path("work", "docs/Report.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fake_rclone_shim_skips_destination_stat_when_copy_is_prechecked() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "src/file.txt", "payload");
+        let provider = sandbox.provider();
+
+        provider
+            .copy_entry(
+                &cloud_path("rclone://work/src/file.txt"),
+                &cloud_path("rclone://work/dst/copied.txt"),
+                false,
+                true,
+            )
+            .expect("copy file");
+
+        let log = sandbox.read_log();
+        assert!(log.contains("copyto work:src/file.txt work:dst/copied.txt"));
+        assert!(!log.contains("lsjson --stat work:dst/copied.txt"));
     }
 }

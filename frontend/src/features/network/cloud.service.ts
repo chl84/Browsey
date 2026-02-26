@@ -48,6 +48,7 @@ export type CloudConflictInfo = {
 
 export type CloudWriteOptions = {
   overwrite?: boolean
+  prechecked?: boolean
 }
 
 const userCloudErrorMessage = (code: string | undefined, message: string) => {
@@ -124,13 +125,28 @@ export const deleteCloudDirEmpty = (path: string) =>
   invokeCloud<void>('delete_cloud_dir_empty', { path })
 
 export const moveCloudEntry = (src: string, dst: string, options?: CloudWriteOptions) =>
-  invokeCloud<void>('move_cloud_entry', { src, dst, overwrite: options?.overwrite ?? false })
+  invokeCloud<void>('move_cloud_entry', {
+    src,
+    dst,
+    overwrite: options?.overwrite ?? false,
+    prechecked: options?.prechecked ?? false,
+  })
 
 export const renameCloudEntry = (src: string, dst: string, options?: CloudWriteOptions) =>
-  invokeCloud<void>('rename_cloud_entry', { src, dst, overwrite: options?.overwrite ?? false })
+  invokeCloud<void>('rename_cloud_entry', {
+    src,
+    dst,
+    overwrite: options?.overwrite ?? false,
+    prechecked: options?.prechecked ?? false,
+  })
 
 export const copyCloudEntry = (src: string, dst: string, options?: CloudWriteOptions) =>
-  invokeCloud<void>('copy_cloud_entry', { src, dst, overwrite: options?.overwrite ?? false })
+  invokeCloud<void>('copy_cloud_entry', {
+    src,
+    dst,
+    overwrite: options?.overwrite ?? false,
+    prechecked: options?.prechecked ?? false,
+  })
 
 export const previewCloudConflicts = (sources: string[], destDir: string) =>
   invokeCloud<CloudConflictInfo[]>('preview_cloud_conflicts', { sources, destDir })

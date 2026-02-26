@@ -196,7 +196,7 @@ pub(super) fn list_network_entries_sync(force_refresh: bool) -> Vec<FsEntry> {
     mounts_list.extend(discovery::list_network_devices_sync(force_refresh));
     let mut entries = to_network_entries(&mounts_list);
     entries.extend(
-        cloud::list_cloud_remotes_sync_best_effort()
+        cloud::list_cloud_remotes_sync_best_effort(force_refresh)
             .into_iter()
             .map(|remote| to_cloud_network_entry(&remote)),
     );

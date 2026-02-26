@@ -24,6 +24,7 @@ pub(super) trait CloudProvider: Send + Sync {
         src: &CloudPath,
         dst: &CloudPath,
         overwrite: bool,
+        prechecked: bool,
     ) -> CloudCommandResult<()>;
 
     fn copy_entry(
@@ -31,5 +32,6 @@ pub(super) trait CloudProvider: Send + Sync {
         src: &CloudPath,
         dst: &CloudPath,
         overwrite: bool,
+        prechecked: bool,
     ) -> CloudCommandResult<()>;
 }

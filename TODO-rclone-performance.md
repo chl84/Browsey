@@ -21,13 +21,13 @@
 - [x] Bytt `preview_cloud_conflicts` til én listing av dest-mappe (ikke `stat` per source)
 - [x] Bygg konfliktsett i minne fra dest-listing
 - [x] Fjern `statCloudEntry`-loop ved rename-on-conflict i frontend
-- [ ] Unngå dobbel overwrite-precheck når konfliktpreview allerede er gjort
+- [x] Unngå dobbel overwrite-precheck når konfliktpreview allerede er gjort
 - [ ] Verifiser at cloud paste gjør færre `lsjson/--stat`-kall i logg
 
 ## Fase 3: Caching for navigering og Network-view
 
-- [ ] Cache cloud remote discovery (`listremotes + config dump`) med TTL
-- [ ] Invalider remote-cache ved eksplisitt Network-refresh
+- [x] Cache cloud remote discovery (`listremotes + config dump`) med TTL
+- [x] Invalider remote-cache ved eksplisitt Network-refresh
 - [ ] Cache cloud directory listing (`rclone://...`) med kort TTL
 - [ ] Invalider listing-cache ved cloud write-ops (copy/move/rename/mkdir/delete)
 - [ ] Reduser dobbel cloud-listing i `list_facets` (bruk cache eller eksisterende entries)

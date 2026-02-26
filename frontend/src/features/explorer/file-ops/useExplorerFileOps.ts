@@ -214,9 +214,15 @@ export const useExplorerFileOps = (deps: Deps) => {
         }
 
         if (state.mode === 'cut') {
-          await moveCloudEntry(src, finalTarget, { overwrite: policy === 'overwrite' })
+          await moveCloudEntry(src, finalTarget, {
+            overwrite: policy === 'overwrite',
+            prechecked: true,
+          })
         } else {
-          await copyCloudEntry(src, finalTarget, { overwrite: policy === 'overwrite' })
+          await copyCloudEntry(src, finalTarget, {
+            overwrite: policy === 'overwrite',
+            prechecked: true,
+          })
         }
       }
 
