@@ -24,6 +24,7 @@ const pasteClipboardCmdMock = vi.fn()
 const setClipboardCmdMock = vi.fn()
 const clearSystemClipboardMock = vi.fn()
 const getSystemClipboardPathsMock = vi.fn()
+const previewMixedTransferConflictsMock = vi.fn()
 
 vi.mock('../services/clipboard.service', () => ({
   setClipboardCmd: (...args: unknown[]) => setClipboardCmdMock(...args),
@@ -31,6 +32,10 @@ vi.mock('../services/clipboard.service', () => ({
   pasteClipboardCmd: (...args: unknown[]) => pasteClipboardCmdMock(...args),
   pasteClipboardPreview: (...args: unknown[]) => pasteClipboardPreviewMock(...args),
   getSystemClipboardPaths: (...args: unknown[]) => getSystemClipboardPathsMock(...args),
+}))
+
+vi.mock('../services/transfer.service', () => ({
+  previewMixedTransferConflicts: (...args: unknown[]) => previewMixedTransferConflictsMock(...args),
 }))
 
 vi.mock('../services/files.service', () => ({
@@ -97,6 +102,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     pasteClipboardPreviewMock.mockResolvedValue([])
     getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: [] })
     previewCloudConflictsMock.mockResolvedValue([])
+    previewMixedTransferConflictsMock.mockResolvedValue([])
     listCloudEntriesMock.mockResolvedValue([])
     listCloudRemotesMock.mockResolvedValue([])
     copyCloudEntryMock.mockResolvedValue(undefined)
@@ -159,6 +165,66 @@ describe('useExplorerFileOps cloud conflict preview', () => {
         is_dir: true,
       },
     ])
+  })
+
+  it('uses mixed conflict preview for local-to-cloud paste and opens conflict modal', async () => {
+    setClipboardPathsState('copy', ['/tmp/src/report.txt'])
+    previewMixedTransferConflictsMock.mockResolvedValue([
+      {
+        src: '/tmp/src/report.txt',
+        target: 'rclone://work/dest/report.txt',
+        exists: true,
+        isDir: false,
+      },
+    ])
+
+    const deps = createDeps()
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('rclone://work/dest')
+
+    expect(ok).toBe(false)
+    expect(previewMixedTransferConflictsMock).toHaveBeenCalledWith(
+      ['/tmp/src/report.txt'],
+      'rclone://work/dest',
+    )
+    expect(previewCloudConflictsMock).not.toHaveBeenCalled()
+    expect(pasteClipboardPreviewMock).not.toHaveBeenCalled()
+    expect(get(fileOps.conflictModalOpen)).toBe(true)
+    expect(get(fileOps.conflictList)).toEqual([
+      {
+        src: '/tmp/src/report.txt',
+        target: 'rclone://work/dest/report.txt',
+        is_dir: false,
+      },
+    ])
+  })
+
+  it('uses mixed conflict preview for cloud-to-local paste and opens conflict modal', async () => {
+    setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
+    previewMixedTransferConflictsMock.mockResolvedValue([
+      {
+        src: 'rclone://work/src/report.txt',
+        target: '/tmp/dest/report.txt',
+        exists: true,
+        isDir: false,
+      },
+    ])
+
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp/dest'
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('/tmp/dest')
+
+    expect(ok).toBe(false)
+    expect(previewMixedTransferConflictsMock).toHaveBeenCalledWith(
+      ['rclone://work/src/report.txt'],
+      '/tmp/dest',
+    )
+    expect(previewCloudConflictsMock).not.toHaveBeenCalled()
+    expect(pasteClipboardPreviewMock).not.toHaveBeenCalled()
+    expect(get(fileOps.conflictModalOpen)).toBe(true)
   })
 
   it('auto-renames on self-paste conflict in cloud and avoids local clipboard helpers', async () => {
@@ -343,6 +409,19 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       expect.stringMatching(/^cloud-cut-/),
       expect.any(Function),
     )
+  })
+
+  it('keeps mixed execute blocked after mixed preview routing is enabled', async () => {
+    setClipboardPathsState('copy', ['/tmp/src/report.txt'])
+    previewMixedTransferConflictsMock.mockResolvedValue([])
+
+    const deps = createDeps()
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('rclone://work/dest')
+
+    expect(ok).toBe(false)
+    expect(deps.showToast).toHaveBeenCalledWith('Mixed local/cloud paste execute is not supported yet')
   })
 
   it('shows Moving… activity label for local cut paste', async () => {

@@ -16,6 +16,7 @@ import {
   pasteClipboardPreview,
   getSystemClipboardPaths,
 } from '../services/clipboard.service'
+import { previewMixedTransferConflicts } from '../services/transfer.service'
 import {
   entryKind,
   dirSizes,
@@ -140,13 +141,17 @@ export const useExplorerFileOps = (deps: Deps) => {
     deps.setClipboardPaths(new Set())
   }
 
-  const classifyPasteRoute = (dest: string): 'local' | 'cloud' | 'unsupported' => {
+  type PasteRoute = 'local' | 'cloud' | 'local_to_cloud' | 'cloud_to_local' | 'unsupported'
+
+  const classifyPasteRoute = (dest: string): PasteRoute => {
     const sources = getClipboardPaths()
     if (sources.length === 0) return isCloudPath(dest) ? 'cloud' : 'local'
     const sourceCloudCount = sources.filter(isCloudPath).length
     const destCloud = isCloudPath(dest)
     if (sourceCloudCount === 0 && !destCloud) return 'local'
     if (sourceCloudCount === sources.length && destCloud) return 'cloud'
+    if (sourceCloudCount === 0 && destCloud) return 'local_to_cloud'
+    if (sourceCloudCount === sources.length && !destCloud) return 'cloud_to_local'
     return 'unsupported'
   }
 
@@ -309,6 +314,10 @@ export const useExplorerFileOps = (deps: Deps) => {
     if (route === 'cloud') {
       return runCloudPaste(target, policy)
     }
+    if (route === 'local_to_cloud' || route === 'cloud_to_local') {
+      deps.showToast('Mixed local/cloud paste execute is not supported yet')
+      return false
+    }
     if (route === 'unsupported') {
       deps.showToast('Mixed local/cloud paste is not supported yet')
       return false
@@ -349,6 +358,12 @@ export const useExplorerFileOps = (deps: Deps) => {
               target: c.target,
               is_dir: c.isDir,
             }))
+          : route === 'local_to_cloud' || route === 'cloud_to_local'
+            ? (await previewMixedTransferConflicts(getClipboardPaths(), dest)).map((c) => ({
+                src: c.src,
+                target: c.target,
+                is_dir: c.isDir,
+              }))
           : await pasteClipboardPreview(dest)
       if (conflicts && conflicts.length > 0) {
         const destNorm = normalizePath(dest)
