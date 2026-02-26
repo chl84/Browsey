@@ -15,8 +15,8 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 - [x] Opprett egen cross-boundary transfer-modul (f.eks. `src/commands/transfer/`)
 - [x] Definer tydelige request/response-typer for mixed preview + copy/move
 - [x] Legg til Tauri commands for mixed conflict preview
-- [ ] Legg til Tauri commands for mixed `copy`
-- [ ] Legg til Tauri commands for mixed `move`
+- [x] Legg til Tauri commands for mixed `copy`
+- [x] Legg til Tauri commands for mixed `move`
 - [x] Gjenbruk eksisterende cloud path/parser/provider (`rclone`) der det er mulig
 
 ## Konfliktpreview (robust + effektiv)
@@ -29,8 +29,8 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 
 ## Execute (copy/move)
 
-- [ ] Implementer `local -> cloud` file copy/move via `rclone`
-- [ ] Implementer `cloud -> local` file copy/move via `rclone`
+- [x] Implementer `local -> cloud` file copy/move via `rclone` (filer; mapper senere)
+- [x] Implementer `cloud -> local` file copy/move via `rclone` (filer; mapper senere)
 - [ ] Verifiser og implementer mappe-copy/move semantikk eksplisitt (ikke anta)
 - [ ] Koble `overwrite` / `rename` policy til preview-resultat (`prechecked=true` der mulig)
 - [ ] Behold provider-aware error mapping for mixed ops
@@ -39,10 +39,10 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 
 - [x] Utvid paste-route klassifisering (`local`, `cloud`, `local_to_cloud`, `cloud_to_local`, `unsupported`)
 - [x] Koble mixed conflict preview til eksisterende konfliktmodal
-- [ ] Koble mixed execute til eksisterende paste-flyt (`handlePasteOrMove`)
-- [ ] Behold korrekt activity-label (`Copying…` / `Moving…`) for mixed ops
-- [ ] Behold cut-clipboard clear etter vellykket move (ingen halvtone-regresjon)
-- [ ] Bruk bakgrunns-refresh/soft-fail der refresh er treg (spesielt cloud-destinasjon)
+- [x] Koble mixed execute til eksisterende paste-flyt (`handlePasteOrMove`)
+- [x] Behold korrekt activity-label (`Copying…` / `Moving…`) for mixed ops
+- [x] Behold cut-clipboard clear etter vellykket move (ingen halvtone-regresjon)
+- [x] Bruk bakgrunns-refresh/soft-fail der refresh er treg (spesielt cloud-destinasjon)
 
 ## Drag-and-drop og shortcuts
 
@@ -64,8 +64,8 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 - [ ] Backend tester for `cloud -> local` copy/move (file + dir)
 - [ ] Backend tester for mixed conflict preview (rename/overwrite)
 - [x] Frontend tester for route-klassifisering og konfliktmodal (mixed)
-- [ ] Frontend tester for `Moving…`/`Copying…` labels i mixed ops
-- [ ] Frontend tester for cut-state reset etter mixed move
+- [x] Frontend tester for `Moving…`/`Copying…` labels i mixed ops
+- [x] Frontend tester for cut-state reset etter mixed move
 
 ## Manuell validering (OneDrive + Google Drive)
 

@@ -1,9 +1,11 @@
 use crate::commands::cloud;
 use crate::commands::cloud::path::CloudPath;
+use crate::commands::cloud::rclone_cli::{RcloneCli, RcloneCliError, RcloneCommandSpec, RcloneSubcommand};
 use crate::commands::cloud::types::CloudEntryKind;
 use crate::errors::api_error::{ApiError, ApiResult};
 use crate::fs_utils::sanitize_path_follow;
 use serde::{Deserialize, Serialize};
+use std::ffi::OsString;
 use std::collections::HashMap;
 use std::fs;
 use std::io::ErrorKind;
@@ -16,6 +18,28 @@ pub struct MixedTransferConflictInfo {
     pub target: String,
     pub exists: bool,
     pub is_dir: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MixedTransferWriteOptions {
+    pub overwrite: bool,
+    pub prechecked: bool,
+}
+
+impl Default for MixedTransferWriteOptions {
+    fn default() -> Self {
+        Self {
+            overwrite: false,
+            prechecked: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MixedTransferOp {
+    Copy,
+    Move,
 }
 
 #[tauri::command]
@@ -50,12 +74,378 @@ pub async fn preview_mixed_transfer_conflicts(
     }
 }
 
+#[tauri::command]
+pub async fn copy_mixed_entries(
+    sources: Vec<String>,
+    dest_dir: String,
+    overwrite: Option<bool>,
+    prechecked: Option<bool>,
+) -> ApiResult<Vec<String>> {
+    execute_mixed_entries(
+        MixedTransferOp::Copy,
+        sources,
+        dest_dir,
+        MixedTransferWriteOptions {
+            overwrite: overwrite.unwrap_or(false),
+            prechecked: prechecked.unwrap_or(false),
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn move_mixed_entries(
+    sources: Vec<String>,
+    dest_dir: String,
+    overwrite: Option<bool>,
+    prechecked: Option<bool>,
+) -> ApiResult<Vec<String>> {
+    execute_mixed_entries(
+        MixedTransferOp::Move,
+        sources,
+        dest_dir,
+        MixedTransferWriteOptions {
+            overwrite: overwrite.unwrap_or(false),
+            prechecked: prechecked.unwrap_or(false),
+        },
+    )
+    .await
+}
+
 fn is_cloud_path(path: &str) -> bool {
     path.starts_with("rclone://")
 }
 
+#[derive(Debug)]
+enum MixedTransferRoute {
+    LocalToCloud { sources: Vec<PathBuf>, dest_dir: CloudPath },
+    CloudToLocal { sources: Vec<CloudPath>, dest_dir: PathBuf },
+}
+
 fn api_err(code: &str, message: impl Into<String>) -> ApiError {
     ApiError::new(code, message.into())
+}
+
+async fn execute_mixed_entries(
+    op: MixedTransferOp,
+    sources: Vec<String>,
+    dest_dir: String,
+    options: MixedTransferWriteOptions,
+) -> ApiResult<Vec<String>> {
+    let route = validate_mixed_transfer_route(sources, dest_dir).await?;
+    let task = tauri::async_runtime::spawn_blocking(move || execute_mixed_entries_blocking(op, route, options));
+    match task.await {
+        Ok(result) => result,
+        Err(error) => Err(api_err(
+            "task_failed",
+            format!("Mixed transfer task failed: {error}"),
+        )),
+    }
+}
+
+async fn validate_mixed_transfer_route(
+    sources: Vec<String>,
+    dest_dir: String,
+) -> ApiResult<MixedTransferRoute> {
+    if sources.is_empty() {
+        return Err(api_err("invalid_input", "No sources provided"));
+    }
+
+    let dest_is_cloud = is_cloud_path(&dest_dir);
+    let source_cloud_count = sources.iter().filter(|p| is_cloud_path(p)).count();
+    if source_cloud_count > 0 && source_cloud_count < sources.len() {
+        return Err(api_err(
+            "unsupported",
+            "Mixed local/cloud selection is not supported",
+        ));
+    }
+
+    match (source_cloud_count == sources.len(), dest_is_cloud) {
+        (false, true) => validate_local_to_cloud_route(sources, dest_dir).await,
+        (true, false) => validate_cloud_to_local_route(sources, dest_dir).await,
+        (false, false) => Err(api_err(
+            "unsupported",
+            "Use local clipboard paste for local-to-local transfers",
+        )),
+        (true, true) => Err(api_err(
+            "unsupported",
+            "Use cloud clipboard paste for cloud-to-cloud transfers",
+        )),
+    }
+}
+
+async fn validate_local_to_cloud_route(
+    sources: Vec<String>,
+    dest_dir: String,
+) -> ApiResult<MixedTransferRoute> {
+    let dest = CloudPath::parse(&dest_dir).map_err(|e| {
+        api_err(
+            "invalid_path",
+            format!("Invalid cloud destination path: {e}"),
+        )
+    })?;
+
+    if !dest.is_root() {
+        match cloud::stat_cloud_entry(dest.to_string()).await? {
+            Some(entry) if matches!(entry.kind, CloudEntryKind::Dir) => {}
+            Some(_) => {
+                return Err(api_err(
+                    "invalid_path",
+                    "Cloud destination must be a directory",
+                ))
+            }
+            None => return Err(api_err("not_found", "Cloud destination directory was not found")),
+        }
+    }
+
+    let mut local_sources = Vec::with_capacity(sources.len());
+    for raw in sources {
+        let path = sanitize_path_follow(&raw, true).map_err(|e| api_err("invalid_path", e.to_string()))?;
+        let meta = fs::symlink_metadata(&path)
+            .map_err(|e| api_err("io_error", format!("Failed to read source metadata: {e}")))?;
+        if meta.file_type().is_symlink() {
+            return Err(api_err(
+                "symlink_unsupported",
+                "Symlinks are not supported for mixed local/cloud transfers yet",
+            ));
+        }
+        if meta.is_dir() {
+            return Err(api_err(
+                "unsupported",
+                "Directory mixed local/cloud transfers are not supported yet",
+            ));
+        }
+        local_sources.push(path);
+    }
+
+    Ok(MixedTransferRoute::LocalToCloud {
+        sources: local_sources,
+        dest_dir: dest,
+    })
+}
+
+async fn validate_cloud_to_local_route(
+    sources: Vec<String>,
+    dest_dir: String,
+) -> ApiResult<MixedTransferRoute> {
+    let dest = sanitize_path_follow(&dest_dir, false).map_err(|e| api_err("invalid_path", e.to_string()))?;
+    let dest_meta = fs::symlink_metadata(&dest)
+        .map_err(|e| api_err("io_error", format!("Failed to read destination metadata: {e}")))?;
+    if !dest_meta.is_dir() {
+        return Err(api_err("invalid_path", "Local destination must be a directory"));
+    }
+
+    let mut cloud_sources = Vec::with_capacity(sources.len());
+    for raw in sources {
+        let path = CloudPath::parse(&raw)
+            .map_err(|e| api_err("invalid_path", format!("Invalid cloud source path: {e}")))?;
+        match cloud::stat_cloud_entry(path.to_string()).await? {
+            Some(entry) if matches!(entry.kind, CloudEntryKind::File) => cloud_sources.push(path),
+            Some(_) => {
+                return Err(api_err(
+                    "unsupported",
+                    "Directory mixed local/cloud transfers are not supported yet",
+                ))
+            }
+            None => return Err(api_err("not_found", "Cloud source was not found")),
+        }
+    }
+
+    Ok(MixedTransferRoute::CloudToLocal {
+        sources: cloud_sources,
+        dest_dir: dest,
+    })
+}
+
+fn execute_mixed_entries_blocking(
+    op: MixedTransferOp,
+    route: MixedTransferRoute,
+    options: MixedTransferWriteOptions,
+) -> ApiResult<Vec<String>> {
+    let cli = RcloneCli::default();
+    let mut created = Vec::new();
+    match route {
+        MixedTransferRoute::LocalToCloud { sources, dest_dir } => {
+            for src in sources {
+                let leaf = local_leaf_name(&src)?;
+                let target = dest_dir.child_path(leaf).map_err(|e| {
+                    api_err("invalid_path", format!("Invalid cloud target path: {e}"))
+                })?;
+                execute_rclone_transfer(
+                    &cli,
+                    op,
+                    LocalOrCloudArg::Local(src.clone()),
+                    LocalOrCloudArg::Cloud(target.clone()),
+                    options,
+                    Some(dest_dir.remote()),
+                )?;
+                created.push(target.to_string());
+            }
+        }
+        MixedTransferRoute::CloudToLocal { sources, dest_dir } => {
+            for src in sources {
+                let leaf = src
+                    .leaf_name()
+                    .map_err(|e| api_err("invalid_path", format!("Invalid cloud source path: {e}")))?;
+                let target = dest_dir.join(leaf);
+                execute_rclone_transfer(
+                    &cli,
+                    op,
+                    LocalOrCloudArg::Cloud(src.clone()),
+                    LocalOrCloudArg::Local(target.clone()),
+                    options,
+                    Some(src.remote()),
+                )?;
+                created.push(target.to_string_lossy().to_string());
+            }
+        }
+    }
+    Ok(created)
+}
+
+#[derive(Debug, Clone)]
+enum LocalOrCloudArg {
+    Local(PathBuf),
+    Cloud(CloudPath),
+}
+
+impl LocalOrCloudArg {
+    fn to_os_arg(&self) -> OsString {
+        match self {
+            Self::Local(path) => path.as_os_str().to_os_string(),
+            Self::Cloud(path) => OsString::from(path.to_rclone_remote_spec()),
+        }
+    }
+
+    fn local_path(&self) -> Option<&Path> {
+        match self {
+            Self::Local(path) => Some(path.as_path()),
+            Self::Cloud(_) => None,
+        }
+    }
+
+    fn cloud_path(&self) -> Option<&CloudPath> {
+        match self {
+            Self::Cloud(path) => Some(path),
+            Self::Local(_) => None,
+        }
+    }
+}
+
+fn execute_rclone_transfer(
+    cli: &RcloneCli,
+    op: MixedTransferOp,
+    src: LocalOrCloudArg,
+    dst: LocalOrCloudArg,
+    options: MixedTransferWriteOptions,
+    cloud_remote_for_error_mapping: Option<&str>,
+) -> ApiResult<()> {
+    if !options.overwrite && !options.prechecked && mixed_target_exists(cli, &dst, cloud_remote_for_error_mapping)? {
+        return Err(api_err(
+            "destination_exists",
+            "A file or folder with the same name already exists",
+        ));
+    }
+
+    let subcommand = match op {
+        MixedTransferOp::Copy => RcloneSubcommand::CopyTo,
+        MixedTransferOp::Move => RcloneSubcommand::MoveTo,
+    };
+
+    let spec = RcloneCommandSpec::new(subcommand)
+        .arg(src.to_os_arg())
+        .arg(dst.to_os_arg());
+
+    cli.run_capture_text(spec)
+        .map_err(|error| map_rclone_cli_error(error, cloud_remote_for_error_mapping))?;
+    Ok(())
+}
+
+fn mixed_target_exists(
+    cli: &RcloneCli,
+    dst: &LocalOrCloudArg,
+    cloud_remote_for_error_mapping: Option<&str>,
+) -> ApiResult<bool> {
+    if let Some(path) = dst.local_path() {
+        return match fs::symlink_metadata(path) {
+            Ok(_) => Ok(true),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(api_err(
+                "io_error",
+                format!("Failed to read destination metadata: {e}"),
+            )),
+        };
+    }
+
+    let Some(cloud_path) = dst.cloud_path() else {
+        return Ok(false);
+    };
+    let spec = RcloneCommandSpec::new(RcloneSubcommand::LsJson)
+        .arg("--stat")
+        .arg(cloud_path.to_rclone_remote_spec());
+    match cli.run_capture_text(spec) {
+        Ok(_) => Ok(true),
+        Err(RcloneCliError::NonZero { stderr, stdout, .. }) if is_rclone_not_found_text(&stderr, &stdout) => {
+            Ok(false)
+        }
+        Err(error) => Err(map_rclone_cli_error(error, cloud_remote_for_error_mapping)),
+    }
+}
+
+fn map_rclone_cli_error(error: RcloneCliError, _cloud_remote: Option<&str>) -> ApiError {
+    match error {
+        RcloneCliError::Io(io) if io.kind() == std::io::ErrorKind::NotFound => {
+            api_err("binary_missing", "rclone not found in PATH")
+        }
+        RcloneCliError::Io(io) => api_err("network_error", format!("Failed to run rclone: {io}")),
+        RcloneCliError::Shutdown { .. } => api_err(
+            "task_failed",
+            "Application is shutting down; transfer was cancelled",
+        ),
+        RcloneCliError::Timeout { subcommand, timeout, .. } => api_err(
+            "timeout",
+            format!(
+                "rclone {} timed out after {}s",
+                subcommand.as_str(),
+                timeout.as_secs()
+            ),
+        ),
+        RcloneCliError::NonZero { stderr, stdout, .. } => {
+            let msg_ref = if !stderr.trim().is_empty() {
+                stderr.as_str()
+            } else {
+                stdout.as_str()
+            };
+            let lower = msg_ref.to_lowercase();
+            let not_found = is_rclone_not_found_text(&stderr, &stdout);
+            let code = if lower.contains("quota exceeded") || lower.contains("rate_limit_exceeded") || lower.contains("too many requests") {
+                "rate_limited"
+            } else if lower.contains("unauthorized") || lower.contains("invalid_grant") || lower.contains("token") && lower.contains("expired") {
+                "auth_required"
+            } else if lower.contains("permission denied") || lower.contains("access denied") {
+                "permission_denied"
+            } else if lower.contains("already exists") || lower.contains("destination exists") || lower.contains("file exists") {
+                "destination_exists"
+            } else if not_found {
+                "not_found"
+            } else if lower.contains("x509") || lower.contains("certificate") {
+                "tls_certificate_error"
+            } else {
+                "unknown_error"
+            };
+            api_err(code, msg_ref.trim())
+        }
+    }
+}
+
+fn is_rclone_not_found_text(stderr: &str, stdout: &str) -> bool {
+    let combined = if !stderr.trim().is_empty() { stderr } else { stdout };
+    let lower = combined.to_lowercase();
+    lower.contains("not found")
+        || lower.contains("object not found")
+        || lower.contains("directory not found")
+        || lower.contains("file not found")
+        || lower.contains("404")
 }
 
 async fn preview_local_to_cloud_conflicts(

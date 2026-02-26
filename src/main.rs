@@ -198,6 +198,8 @@ fn main() {
             copy_cloud_entry,
             preview_cloud_conflicts,
             preview_mixed_transfer_conflicts,
+            copy_mixed_entries,
+            move_mixed_entries,
             normalize_cloud_path,
             list_network_devices,
             list_network_entries,

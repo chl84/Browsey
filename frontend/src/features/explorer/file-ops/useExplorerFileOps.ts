@@ -16,7 +16,11 @@ import {
   pasteClipboardPreview,
   getSystemClipboardPaths,
 } from '../services/clipboard.service'
-import { previewMixedTransferConflicts } from '../services/transfer.service'
+import {
+  copyMixedEntries,
+  moveMixedEntries,
+  previewMixedTransferConflicts,
+} from '../services/transfer.service'
 import {
   entryKind,
   dirSizes,
@@ -315,8 +319,59 @@ export const useExplorerFileOps = (deps: Deps) => {
       return runCloudPaste(target, policy)
     }
     if (route === 'local_to_cloud' || route === 'cloud_to_local') {
-      deps.showToast('Mixed local/cloud paste execute is not supported yet')
-      return false
+      const activeConflictRename =
+        policy === 'rename' && conflictDest === target && get(conflictList).length > 0
+      if (activeConflictRename) {
+        deps.showToast('Rename on conflict for local/cloud paste is not supported yet')
+        return false
+      }
+
+      const state = get(clipboardState)
+      const sources = Array.from(state.paths)
+      if (sources.length === 0) {
+        deps.showToast('Clipboard is empty')
+        return false
+      }
+
+      const progressEvent = `mixed-${state.mode}-${Date.now()}-${Math.random()
+        .toString(16)
+        .slice(2)}`
+      try {
+        await deps.activityApi.start(
+          pasteActivityLabel(state.mode),
+          progressEvent,
+          () => deps.activityApi.requestCancel(progressEvent),
+        )
+
+        if (state.mode === 'cut') {
+          await moveMixedEntries(sources, target, {
+            overwrite: policy === 'overwrite',
+            prechecked: true,
+          })
+        } else {
+          await copyMixedEntries(sources, target, {
+            overwrite: policy === 'overwrite',
+            prechecked: true,
+          })
+        }
+
+        if (route === 'local_to_cloud') {
+          deps.activityApi.hideSoon()
+          await clearCutClipboardAfterMoveSuccess()
+          refreshCloudViewAfterWrite('Paste')
+          return true
+        }
+
+        await deps.reloadCurrent()
+        deps.activityApi.hideSoon()
+        await clearCutClipboardAfterMoveSuccess()
+        return true
+      } catch (err) {
+        deps.activityApi.clearNow()
+        await deps.activityApi.cleanup()
+        deps.showToast(`Paste failed: ${getErrorMessage(err)}`)
+        return false
+      }
     }
     if (route === 'unsupported') {
       deps.showToast('Mixed local/cloud paste is not supported yet')
