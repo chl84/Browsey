@@ -98,6 +98,7 @@ pub(crate) fn entry_from_cached(path: &Path, cached: &CachedMeta, starred: bool)
         network: cached.network,
         read_only: cached.read_only,
         read_denied: cached.read_denied,
+        capabilities: None,
     }
 }
 

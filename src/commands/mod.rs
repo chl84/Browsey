@@ -2,6 +2,7 @@
 
 pub mod about;
 pub mod bookmarks;
+pub mod cloud;
 pub mod compress;
 pub mod console;
 pub mod decompress;
@@ -20,6 +21,7 @@ pub mod search;
 pub mod settings;
 pub mod system_clipboard;
 pub mod thumbnails;
+pub mod transfer;
 
 pub use crate::clipboard::{
     paste_clipboard_cmd, paste_clipboard_preview, resolve_drop_clipboard_mode, set_clipboard_cmd,
@@ -27,6 +29,12 @@ pub use crate::clipboard::{
 pub use crate::tasks::{cancel_task, CancelState};
 pub use about::about_info;
 pub use bookmarks::{add_bookmark, clear_bookmarks, get_bookmarks, remove_bookmark};
+pub use cloud::{
+    copy_cloud_entry, create_cloud_folder, delete_cloud_dir_empty, delete_cloud_dir_recursive,
+    delete_cloud_file, list_cloud_entries, list_cloud_remotes, move_cloud_entry,
+    normalize_cloud_path, preview_cloud_conflicts, rename_cloud_entry, stat_cloud_entry,
+    validate_cloud_root,
+};
 pub use compress::compress_entries;
 pub use console::open_console;
 pub use decompress::{can_extract_paths, extract_archive, extract_archives};
@@ -72,3 +80,7 @@ pub use system_clipboard::clear_system_clipboard;
 pub use system_clipboard::copy_paths_to_system_clipboard;
 pub use system_clipboard::system_clipboard_paths;
 pub use thumbnails::{clear_thumbnail_cache, get_thumbnail};
+pub use transfer::{
+    copy_mixed_entries, copy_mixed_entry_to, move_mixed_entries, move_mixed_entry_to,
+    preview_mixed_transfer_conflicts,
+};

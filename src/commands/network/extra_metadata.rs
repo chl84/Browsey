@@ -78,23 +78,6 @@ fn parse_uri_for_extra(value: &str) -> Option<ParsedUri> {
         Some(decoded_path)
     };
 
-    if protocol == "onedrive" {
-        let account = safe_percent_decode(authority);
-        return Some(ParsedUri {
-            protocol,
-            user: None,
-            host: if account.is_empty() {
-                None
-            } else {
-                Some(account)
-            },
-            port: None,
-            path,
-            query,
-            fragment,
-        });
-    }
-
     let (user, host_port) = match authority.rsplit_once('@') {
         Some((left, right)) => {
             let decoded_user = safe_percent_decode(left.trim());
@@ -221,15 +204,7 @@ pub(crate) fn build_network_uri_extra_metadata(path: &str) -> ExtraMetadataResul
             fields.push(ExtraMetadataField::new("user", "User", user));
         }
         if let Some(host) = parsed.host {
-            fields.push(ExtraMetadataField::new(
-                "host",
-                if parsed.protocol == "onedrive" {
-                    "Account"
-                } else {
-                    "Host"
-                },
-                host,
-            ));
+            fields.push(ExtraMetadataField::new("host", "Host", host));
         }
         if let Some(port) = parsed.port {
             fields.push(ExtraMetadataField::new("port", "Port", port));
@@ -268,7 +243,7 @@ mod tests {
     #[test]
     fn looks_like_uri_path_checks_scheme_shape() {
         assert!(looks_like_uri_path("sftp://host/path"));
-        assert!(looks_like_uri_path("onedrive://account"));
+        assert!(looks_like_uri_path("dav://server/share"));
         assert!(!looks_like_uri_path("://broken"));
         assert!(!looks_like_uri_path("/home/chris"));
     }
@@ -289,10 +264,10 @@ mod tests {
     }
 
     #[test]
-    fn build_network_uri_extra_metadata_uses_account_label_for_onedrive() {
-        let result = build_network_uri_extra_metadata("onedrive://Business%20Account/Documents");
-        assert_eq!(value_for_key(&result, "protocol"), Some("ONEDRIVE"));
-        assert_eq!(value_for_key(&result, "host"), Some("Business Account"));
+    fn build_network_uri_extra_metadata_uses_host_label_for_network_uri() {
+        let result = build_network_uri_extra_metadata("dav://files.example.local/Documents");
+        assert_eq!(value_for_key(&result, "protocol"), Some("DAV"));
+        assert_eq!(value_for_key(&result, "host"), Some("files.example.local"));
         assert_eq!(value_for_key(&result, "path"), Some("/Documents"));
     }
 }

@@ -1,10 +1,11 @@
 //! Directory listing and watcher wiring.
 
 use crate::{
+    commands::cloud::types::{CloudEntry as BrowseyCloudEntry, CloudEntryKind},
     db,
     entry::{
         build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
-        FsEntry,
+        EntryCapabilities, FsEntry,
     },
     errors::api_error::ApiResult,
     fs_utils::{check_no_symlink_components, debug_log, sanitize_path_follow},
@@ -410,7 +411,60 @@ fn stub_entry(path: &Path, file_type: Option<fs::FileType>, starred: bool) -> Fs
         network: is_network_location(path),
         read_only: false,
         read_denied: false,
+        capabilities: None,
     }
+}
+
+fn is_cloud_path_str(path: &str) -> bool {
+    path.starts_with("rclone://")
+}
+
+fn fs_entry_from_cloud_entry(entry: BrowseyCloudEntry) -> FsEntry {
+    let is_dir = matches!(entry.kind, CloudEntryKind::Dir);
+    let ext = if is_dir {
+        None
+    } else {
+        entry.name.rsplit_once('.').map(|(_, ext)| ext.to_string())
+    };
+    FsEntry {
+        name: entry.name.clone(),
+        path: entry.path,
+        kind: if is_dir { "dir" } else { "file" }.to_string(),
+        ext,
+        size: if is_dir { None } else { entry.size },
+        items: None,
+        modified: entry.modified,
+        original_path: None,
+        trash_id: None,
+        icon_id: if is_dir { GENERIC_FOLDER } else { FILE },
+        starred: false,
+        hidden: entry.name.starts_with('.'),
+        network: true,
+        read_only: false,
+        read_denied: false,
+        capabilities: Some(EntryCapabilities {
+            can_list: entry.capabilities.can_list,
+            can_mkdir: entry.capabilities.can_mkdir,
+            can_delete: entry.capabilities.can_delete,
+            can_rename: entry.capabilities.can_rename,
+            can_move: entry.capabilities.can_move,
+            can_copy: entry.capabilities.can_copy,
+            can_trash: entry.capabilities.can_trash,
+            can_undo: entry.capabilities.can_undo,
+            can_permissions: entry.capabilities.can_permissions,
+        }),
+    }
+}
+
+fn listing_error_from_api(error: crate::errors::api_error::ApiError) -> ListingError {
+    let code = match error.code.as_str() {
+        "invalid_path" => ListingErrorCode::InvalidPath,
+        "not_found" => ListingErrorCode::NotFound,
+        "permission_denied" => ListingErrorCode::PermissionDenied,
+        "task_failed" => ListingErrorCode::TaskFailed,
+        _ => ListingErrorCode::UnknownError,
+    };
+    ListingError::new(code, error.message)
 }
 
 fn spawn_meta_refresh(app: tauri::AppHandle, jobs: Vec<(PathBuf, Option<fs::FileType>, bool)>) {
@@ -571,6 +625,20 @@ async fn list_dir_impl(
     sort: Option<SortSpec>,
     app: tauri::AppHandle,
 ) -> ListingResult<DirListing> {
+    if let Some(raw_path) = path.as_deref() {
+        if is_cloud_path_str(raw_path) {
+            let entries = crate::commands::cloud::list_cloud_entries(raw_path.to_string())
+                .await
+                .map_err(listing_error_from_api)?;
+            let mut mapped: Vec<FsEntry> =
+                entries.into_iter().map(fs_entry_from_cloud_entry).collect();
+            sort_entries(&mut mapped, sort);
+            return Ok(DirListing {
+                current: raw_path.to_string(),
+                entries: mapped,
+            });
+        }
+    }
     let task = tauri::async_runtime::spawn_blocking(move || list_dir_sync(path, sort, app));
     match task.await {
         Ok(result) => result.map_err(ListingError::from_external_message),
@@ -598,6 +666,21 @@ async fn list_facets_impl(
     app: tauri::AppHandle,
 ) -> ListingResult<ListingFacets> {
     let include_hidden = include_hidden.unwrap_or(true);
+    if scope == "dir" {
+        if let Some(raw_path) = path.as_deref() {
+            if is_cloud_path_str(raw_path) {
+                let cloud_entries =
+                    crate::commands::cloud::list_cloud_entries(raw_path.to_string())
+                        .await
+                        .map_err(listing_error_from_api)?;
+                let entries: Vec<FsEntry> = cloud_entries
+                    .into_iter()
+                    .map(fs_entry_from_cloud_entry)
+                    .collect();
+                return Ok(build_listing_facets_with_hidden(&entries, include_hidden));
+            }
+        }
+    }
     let task = tauri::async_runtime::spawn_blocking(move || {
         let entries = match scope.as_str() {
             "dir" => list_dir_sync(path, None, app.clone())?.entries,
@@ -696,6 +779,12 @@ fn watch_dir_impl(
     state: tauri::State<WatchState>,
     app: tauri::AppHandle,
 ) -> ListingResult<()> {
+    if let Some(raw_path) = path.as_deref() {
+        if is_cloud_path_str(raw_path) {
+            state.replace(None);
+            return Ok(());
+        }
+    }
     let base_path =
         crate::commands::fs::expand_path(path).map_err(ListingError::from_external_message)?;
     let target = match sanitize_path_follow(&base_path.to_string_lossy(), true) {
