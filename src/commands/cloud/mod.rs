@@ -13,12 +13,49 @@ use path::CloudPath;
 use provider::CloudProvider;
 use providers::rclone::RcloneCloudProvider;
 use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tracing::warn;
 use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote, CloudRootSelection};
 
-pub(crate) fn list_cloud_remotes_sync_best_effort() -> Vec<CloudRemote> {
+const CLOUD_REMOTE_DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(45);
+
+#[derive(Debug, Clone)]
+struct CachedCloudRemoteDiscovery {
+    fetched_at: Instant,
+    remotes: Vec<CloudRemote>,
+}
+
+fn cloud_remote_discovery_cache() -> &'static Mutex<Option<CachedCloudRemoteDiscovery>> {
+    static CACHE: OnceLock<Mutex<Option<CachedCloudRemoteDiscovery>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn list_cloud_remotes_cached(force_refresh: bool) -> CloudCommandResult<Vec<CloudRemote>> {
+    let now = Instant::now();
+    if !force_refresh {
+        if let Ok(guard) = cloud_remote_discovery_cache().lock() {
+            if let Some(cached) = guard.as_ref() {
+                if now.duration_since(cached.fetched_at) <= CLOUD_REMOTE_DISCOVERY_CACHE_TTL {
+                    return Ok(cached.remotes.clone());
+                }
+            }
+        }
+    }
+
     let provider = RcloneCloudProvider::default();
-    match provider.list_remotes() {
+    let remotes = provider.list_remotes()?;
+    if let Ok(mut guard) = cloud_remote_discovery_cache().lock() {
+        *guard = Some(CachedCloudRemoteDiscovery {
+            fetched_at: now,
+            remotes: remotes.clone(),
+        });
+    }
+    Ok(remotes)
+}
+
+pub(crate) fn list_cloud_remotes_sync_best_effort(force_refresh: bool) -> Vec<CloudRemote> {
+    match list_cloud_remotes_cached(force_refresh) {
         Ok(remotes) => remotes,
         Err(error) => {
             warn!(error = %error, "cloud remote discovery failed; omitting cloud remotes from Network view");
@@ -33,10 +70,7 @@ pub async fn list_cloud_remotes() -> ApiResult<Vec<CloudRemote>> {
 }
 
 async fn list_cloud_remotes_impl() -> CloudCommandResult<Vec<CloudRemote>> {
-    let task = tauri::async_runtime::spawn_blocking(|| {
-        let provider = RcloneCloudProvider::default();
-        provider.list_remotes()
-    });
+    let task = tauri::async_runtime::spawn_blocking(|| list_cloud_remotes_cached(false));
     match task.await {
         Ok(result) => result,
         Err(error) => Err(CloudCommandError::new(
@@ -211,20 +245,34 @@ async fn delete_cloud_dir_empty_impl(path: String) -> CloudCommandResult<()> {
 }
 
 #[tauri::command]
-pub async fn move_cloud_entry(src: String, dst: String, overwrite: Option<bool>) -> ApiResult<()> {
-    map_api_result(move_cloud_entry_impl(src, dst, overwrite.unwrap_or(false)).await)
+pub async fn move_cloud_entry(
+    src: String,
+    dst: String,
+    overwrite: Option<bool>,
+    prechecked: Option<bool>,
+) -> ApiResult<()> {
+    map_api_result(
+        move_cloud_entry_impl(
+            src,
+            dst,
+            overwrite.unwrap_or(false),
+            prechecked.unwrap_or(false),
+        )
+        .await,
+    )
 }
 
 async fn move_cloud_entry_impl(
     src: String,
     dst: String,
     overwrite: bool,
+    prechecked: bool,
 ) -> CloudCommandResult<()> {
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = RcloneCloudProvider::default();
-        provider.move_entry(&src, &dst, overwrite)
+        provider.move_entry(&src, &dst, overwrite, prechecked)
     });
     map_spawn_result(task.await, "cloud move task failed")
 }
@@ -234,25 +282,48 @@ pub async fn rename_cloud_entry(
     src: String,
     dst: String,
     overwrite: Option<bool>,
+    prechecked: Option<bool>,
 ) -> ApiResult<()> {
-    map_api_result(move_cloud_entry_impl(src, dst, overwrite.unwrap_or(false)).await)
+    map_api_result(
+        move_cloud_entry_impl(
+            src,
+            dst,
+            overwrite.unwrap_or(false),
+            prechecked.unwrap_or(false),
+        )
+        .await,
+    )
 }
 
 #[tauri::command]
-pub async fn copy_cloud_entry(src: String, dst: String, overwrite: Option<bool>) -> ApiResult<()> {
-    map_api_result(copy_cloud_entry_impl(src, dst, overwrite.unwrap_or(false)).await)
+pub async fn copy_cloud_entry(
+    src: String,
+    dst: String,
+    overwrite: Option<bool>,
+    prechecked: Option<bool>,
+) -> ApiResult<()> {
+    map_api_result(
+        copy_cloud_entry_impl(
+            src,
+            dst,
+            overwrite.unwrap_or(false),
+            prechecked.unwrap_or(false),
+        )
+        .await,
+    )
 }
 
 async fn copy_cloud_entry_impl(
     src: String,
     dst: String,
     overwrite: bool,
+    prechecked: bool,
 ) -> CloudCommandResult<()> {
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = RcloneCloudProvider::default();
-        provider.copy_entry(&src, &dst, overwrite)
+        provider.copy_entry(&src, &dst, overwrite, prechecked)
     });
     map_spawn_result(task.await, "cloud copy task failed")
 }

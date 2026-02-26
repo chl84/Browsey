@@ -180,7 +180,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(copyCloudEntryMock).toHaveBeenCalledWith(
       'rclone://work/src/report.txt',
       'rclone://work/src/report-1.txt',
-      { overwrite: false },
+      { overwrite: false, prechecked: true },
     )
     expect(previewCloudConflictsMock).toHaveBeenCalled()
     expect(pasteClipboardPreviewMock).not.toHaveBeenCalled()
@@ -205,7 +205,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(copyCloudEntryMock).toHaveBeenCalledWith(
       'rclone://work/src/report.txt',
       'rclone://work/dest/report.txt',
-      { overwrite: false },
+      { overwrite: false, prechecked: true },
     )
   })
 
@@ -228,7 +228,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       expect(copyCloudEntryMock).toHaveBeenCalledWith(
         'rclone://work/src/report.txt',
         'rclone://work/dest/report.txt',
-        { overwrite: false },
+        { overwrite: false, prechecked: true },
       )
 
       await vi.advanceTimersByTimeAsync(250)
