@@ -62,7 +62,7 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 
 - [x] Backend tester for `local -> cloud` copy/move (file + dir)
 - [x] Backend tester for `cloud -> local` copy/move (file + dir)
-- [ ] Backend tester for mixed conflict preview (rename/overwrite)
+- [x] Backend tester for mixed conflict preview (rename/overwrite)
 - [x] Frontend tester for route-klassifisering og konfliktmodal (mixed)
 - [x] Frontend tester for `Moving…`/`Copying…` labels i mixed ops
 - [x] Frontend tester for cut-state reset etter mixed move
