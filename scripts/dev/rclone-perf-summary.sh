@@ -25,7 +25,7 @@ function print_op_stats(op,   count, sum, max, avg) {
 /cloud command timing/ {
   op = ""
   ms = ""
-  if (match($0, /op=([A-Za-z0-9_]+)/, m)) op = m[1]
+  if (match($0, /op="?([A-Za-z0-9_]+)"?/, m)) op = m[1]
   if (match($0, /elapsed_ms=([0-9]+)/, t)) ms = t[1] + 0
   if (op != "" && ms != "") {
     op_count[op] += 1
@@ -34,7 +34,7 @@ function print_op_stats(op,   count, sum, max, avg) {
   }
 }
 
-/rclone command succeeded/ && /command=lsjson/ {
+/rclone command succeeded/ && /command="?lsjson"?/ {
   if ($0 ~ /stat=true/) {
     lsjson_stat += 1
   } else if ($0 ~ /stat=false/) {
