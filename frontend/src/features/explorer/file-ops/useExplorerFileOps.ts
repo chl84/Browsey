@@ -112,6 +112,27 @@ export const useExplorerFileOps = (deps: Deps) => {
     return 'unsupported'
   }
 
+  const refreshCloudViewAfterWrite = (opLabel: string) => {
+    const refreshTarget = deps.getCurrentPath()
+    void (async () => {
+      // If the user already navigated away, skip the refresh for this operation.
+      if (deps.getCurrentPath() !== refreshTarget) {
+        return
+      }
+      try {
+        await deps.reloadCurrent()
+      } catch {
+        if (deps.getCurrentPath() !== refreshTarget) {
+          return
+        }
+        deps.showToast(
+          `${opLabel} completed, but refresh took too long. Press F5 to refresh.`,
+          3500,
+        )
+      }
+    })()
+  }
+
   const runCloudPaste = async (target: string, policy: 'rename' | 'overwrite' = 'rename') => {
     const state = get(clipboardState)
     const sources = Array.from(state.paths)
@@ -151,8 +172,8 @@ export const useExplorerFileOps = (deps: Deps) => {
         }
       }
 
-      await deps.reloadCurrent()
       deps.activityApi.hideSoon()
+      refreshCloudViewAfterWrite('Paste')
       return true
     } catch (err) {
       deps.activityApi.clearNow()
