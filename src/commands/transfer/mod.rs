@@ -225,12 +225,6 @@ async fn validate_local_to_cloud_route(
                 "Symlinks are not supported for mixed local/cloud transfers yet",
             ));
         }
-        if meta.is_dir() {
-            return Err(api_err(
-                "unsupported",
-                "Directory mixed local/cloud transfers are not supported yet",
-            ));
-        }
         local_sources.push(path);
     }
 
@@ -264,14 +258,11 @@ async fn validate_cloud_to_local_route(
         let path = CloudPath::parse(&raw)
             .map_err(|e| api_err("invalid_path", format!("Invalid cloud source path: {e}")))?;
         match cloud::stat_cloud_entry(path.to_string()).await? {
-            Some(entry) if matches!(entry.kind, CloudEntryKind::File) => cloud_sources.push(path),
-            Some(_) => {
-                return Err(api_err(
-                    "unsupported",
-                    "Directory mixed local/cloud transfers are not supported yet",
-                ))
+            Some(entry) if matches!(entry.kind, CloudEntryKind::File | CloudEntryKind::Dir) => {
+                cloud_sources.push(path)
             }
             None => return Err(api_err("not_found", "Cloud source was not found")),
+            Some(_) => return Err(api_err("unsupported", "Unsupported cloud entry type")),
         }
     }
 
@@ -848,6 +839,64 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn mixed_execute_local_to_cloud_directory_copy_and_move_via_fake_rclone() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "dest");
+        let cli = sandbox.cli();
+
+        let copy_dir = sandbox.local_path("src/folder-copy");
+        fs::create_dir_all(copy_dir.join("nested")).expect("mkdir local copy dir");
+        fs::write(copy_dir.join("nested/file.txt"), b"copy-dir").expect("write local nested");
+        let copy_route = MixedTransferRoute::LocalToCloud {
+            sources: vec![copy_dir.clone()],
+            dest_dir: sandbox.cloud_path("rclone://work/dest"),
+        };
+        let copy_out = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            copy_route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+        )
+        .expect("copy dir local->cloud");
+        assert_eq!(copy_out, vec!["rclone://work/dest/folder-copy".to_string()]);
+        assert!(copy_dir.exists(), "copy should preserve local source dir");
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "dest/folder-copy/nested/file.txt"))
+                .expect("read remote nested"),
+            "copy-dir"
+        );
+
+        let move_dir = sandbox.local_path("src/folder-move");
+        fs::create_dir_all(move_dir.join("nested")).expect("mkdir local move dir");
+        fs::write(move_dir.join("nested/file.txt"), b"move-dir").expect("write local nested move");
+        let move_route = MixedTransferRoute::LocalToCloud {
+            sources: vec![move_dir.clone()],
+            dest_dir: sandbox.cloud_path("rclone://work/dest"),
+        };
+        let move_out = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Move,
+            move_route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+        )
+        .expect("move dir local->cloud");
+        assert_eq!(move_out, vec!["rclone://work/dest/folder-move".to_string()]);
+        assert!(!move_dir.exists(), "move should remove local source dir");
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "dest/folder-move/nested/file.txt"))
+                .expect("read moved remote nested"),
+            "move-dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn mixed_execute_cloud_to_local_file_copy_and_move_via_fake_rclone() {
         let sandbox = FakeRcloneSandbox::new();
         sandbox.write_remote_file("work", "src/copy.txt", "copy-payload");
@@ -912,7 +961,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_local_to_cloud_route_rejects_directory_source() {
+    fn validate_local_to_cloud_route_allows_directory_source() {
         let base = std::env::temp_dir().join(format!(
             "browsey-transfer-dir-reject-{}-{}",
             std::process::id(),
@@ -927,9 +976,81 @@ mod tests {
             vec![src_dir.to_string_lossy().to_string()],
             "rclone://work".to_string(),
         ));
-        let err = result.expect_err("directory mixed local->cloud should be unsupported");
-        assert_eq!(err.code, "unsupported");
+        let route = result.expect("directory mixed local->cloud should be accepted");
+        match route {
+            MixedTransferRoute::LocalToCloud { sources, .. } => {
+                assert_eq!(sources, vec![src_dir.clone()]);
+            }
+            _ => panic!("expected local->cloud route"),
+        }
         fs::remove_dir_all(&base).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_cloud_to_local_directory_copy_and_move_via_fake_rclone() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "src/folder-copy/nested/file.txt", "copy-dir");
+        sandbox.write_remote_file("work", "src/folder-move/nested/file.txt", "move-dir");
+        let cli = sandbox.cli();
+        let local_dest = sandbox.local_path("dest");
+        fs::create_dir_all(&local_dest).expect("mkdir local dest");
+
+        let copy_route = MixedTransferRoute::CloudToLocal {
+            sources: vec![sandbox.cloud_path("rclone://work/src/folder-copy")],
+            dest_dir: local_dest.clone(),
+        };
+        let copy_out = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            copy_route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+        )
+        .expect("copy dir cloud->local");
+        assert_eq!(
+            copy_out,
+            vec![local_dest.join("folder-copy").to_string_lossy().to_string()]
+        );
+        assert_eq!(
+            fs::read_to_string(local_dest.join("folder-copy/nested/file.txt"))
+                .expect("read local copied dir"),
+            "copy-dir"
+        );
+        assert!(
+            sandbox.remote_path("work", "src/folder-copy").exists(),
+            "copy should preserve remote source dir"
+        );
+
+        let move_route = MixedTransferRoute::CloudToLocal {
+            sources: vec![sandbox.cloud_path("rclone://work/src/folder-move")],
+            dest_dir: local_dest.clone(),
+        };
+        let move_out = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Move,
+            move_route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+        )
+        .expect("move dir cloud->local");
+        assert_eq!(
+            move_out,
+            vec![local_dest.join("folder-move").to_string_lossy().to_string()]
+        );
+        assert_eq!(
+            fs::read_to_string(local_dest.join("folder-move/nested/file.txt"))
+                .expect("read local moved dir"),
+            "move-dir"
+        );
+        assert!(
+            !sandbox.remote_path("work", "src/folder-move").exists(),
+            "move should remove remote source dir"
+        );
     }
 
     #[test]
