@@ -30,7 +30,7 @@ export const createActivity = (opts: Options = {}) => {
     activityHideTimer = setTimeout(() => {
       activity.set(null)
       activityHideTimer = null
-    }, 2000)
+    }, 1200)
   }
 
   const hasHideTimer = () => activityHideTimer !== null
