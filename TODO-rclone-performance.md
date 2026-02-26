@@ -2,7 +2,7 @@
 
 ## Fase 0: Baseline og måling
 
-- [ ] Legg inn enkel timing/logging for cloud operasjoner (`conflict preview`, `write`, `refresh`)
+- [x] Legg inn enkel timing/logging for cloud operasjoner (`conflict preview`, `write`, `refresh`)
 - [ ] Definer og kjør baseline-test i OneDrive testmappe (navigering, copy, rename, delete)
 - [ ] Noter før/etter-tider for hver optimalisering
 
