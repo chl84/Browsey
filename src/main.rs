@@ -200,6 +200,8 @@ fn main() {
             preview_mixed_transfer_conflicts,
             copy_mixed_entries,
             move_mixed_entries,
+            copy_mixed_entry_to,
+            move_mixed_entry_to,
             normalize_cloud_path,
             list_network_devices,
             list_network_entries,

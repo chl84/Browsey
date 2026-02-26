@@ -80,4 +80,7 @@ pub use system_clipboard::clear_system_clipboard;
 pub use system_clipboard::copy_paths_to_system_clipboard;
 pub use system_clipboard::system_clipboard_paths;
 pub use thumbnails::{clear_thumbnail_cache, get_thumbnail};
-pub use transfer::{copy_mixed_entries, move_mixed_entries, preview_mixed_transfer_conflicts};
+pub use transfer::{
+    copy_mixed_entries, copy_mixed_entry_to, move_mixed_entries, move_mixed_entry_to,
+    preview_mixed_transfer_conflicts,
+};
