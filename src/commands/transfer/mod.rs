@@ -287,6 +287,15 @@ fn execute_mixed_entries_blocking(
     options: MixedTransferWriteOptions,
 ) -> ApiResult<Vec<String>> {
     let cli = RcloneCli::default();
+    execute_mixed_entries_blocking_with_cli(&cli, op, route, options)
+}
+
+fn execute_mixed_entries_blocking_with_cli(
+    cli: &RcloneCli,
+    op: MixedTransferOp,
+    route: MixedTransferRoute,
+    options: MixedTransferWriteOptions,
+) -> ApiResult<Vec<String>> {
     let mut created = Vec::new();
     match route {
         MixedTransferRoute::LocalToCloud { sources, dest_dir } => {
@@ -296,7 +305,7 @@ fn execute_mixed_entries_blocking(
                     api_err("invalid_path", format!("Invalid cloud target path: {e}"))
                 })?;
                 execute_rclone_transfer(
-                    &cli,
+                    cli,
                     op,
                     LocalOrCloudArg::Local(src.clone()),
                     LocalOrCloudArg::Cloud(target.clone()),
@@ -313,7 +322,7 @@ fn execute_mixed_entries_blocking(
                 })?;
                 let target = dest_dir.join(leaf);
                 execute_rclone_transfer(
-                    &cli,
+                    cli,
                     op,
                     LocalOrCloudArg::Cloud(src.clone()),
                     LocalOrCloudArg::Local(target.clone()),
@@ -655,6 +664,10 @@ fn list_local_dir_entries(dest: &Path) -> ApiResult<Vec<(String, bool)>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::sync::atomic::{AtomicU64, Ordering};
+    #[cfg(unix)]
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn local_leaf_name_rejects_root_like_path() {
@@ -686,6 +699,237 @@ mod tests {
         fs::remove_file(&file_path).ok();
         fs::remove_dir(&dir_path).ok();
         fs::remove_dir(&base).ok();
+    }
+
+    #[cfg(unix)]
+    struct FakeRcloneSandbox {
+        root: PathBuf,
+        script_path: PathBuf,
+        state_root: PathBuf,
+        local_root: PathBuf,
+    }
+
+    #[cfg(unix)]
+    impl FakeRcloneSandbox {
+        fn new() -> Self {
+            static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+            let unique = format!(
+                "browsey-transfer-fake-rclone-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("time")
+                    .as_nanos()
+                    + u128::from(NEXT_ID.fetch_add(1, Ordering::Relaxed))
+            );
+            let root = std::env::temp_dir().join(unique);
+            let state_root = root.join("state");
+            let local_root = root.join("local");
+            let script_path = root.join("rclone");
+            fs::create_dir_all(&state_root).expect("create state root");
+            fs::create_dir_all(&local_root).expect("create local root");
+            let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/fake-rclone.sh");
+            fs::copy(&source, &script_path).expect("copy fake rclone script");
+            let mut perms = fs::metadata(&script_path)
+                .expect("script metadata")
+                .permissions();
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o755);
+            fs::set_permissions(&script_path, perms).expect("chmod fake rclone");
+            Self {
+                root,
+                script_path,
+                state_root,
+                local_root,
+            }
+        }
+
+        fn cli(&self) -> RcloneCli {
+            RcloneCli::new(self.script_path.as_os_str())
+        }
+
+        fn cloud_path(&self, raw: &str) -> CloudPath {
+            CloudPath::parse(raw).expect("valid cloud path")
+        }
+
+        fn remote_path(&self, remote: &str, rel: &str) -> PathBuf {
+            let base = self.state_root.join(remote);
+            if rel.is_empty() {
+                base
+            } else {
+                base.join(rel)
+            }
+        }
+
+        fn local_path(&self, rel: &str) -> PathBuf {
+            self.local_root.join(rel)
+        }
+
+        fn mkdir_remote(&self, remote: &str, rel: &str) {
+            fs::create_dir_all(self.remote_path(remote, rel)).expect("mkdir remote");
+        }
+
+        fn write_remote_file(&self, remote: &str, rel: &str, content: &str) {
+            let path = self.remote_path(remote, rel);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("mkdir remote parent");
+            }
+            fs::write(path, content).expect("write remote file");
+        }
+
+        fn write_local_file(&self, rel: &str, content: &str) -> PathBuf {
+            let path = self.local_path(rel);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("mkdir local parent");
+            }
+            fs::write(&path, content).expect("write local file");
+            path
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for FakeRcloneSandbox {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_local_to_cloud_file_copy_and_move_via_fake_rclone() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "dest");
+        let cli = sandbox.cli();
+
+        let copy_src = sandbox.write_local_file("src/copy.txt", "copy-payload");
+        let copy_route = MixedTransferRoute::LocalToCloud {
+            sources: vec![copy_src.clone()],
+            dest_dir: sandbox.cloud_path("rclone://work/dest"),
+        };
+        let copy_out = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            copy_route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+        )
+        .expect("copy local->cloud");
+        assert_eq!(copy_out, vec!["rclone://work/dest/copy.txt".to_string()]);
+        assert!(copy_src.exists(), "copy should preserve local source");
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "dest/copy.txt")).expect("read remote"),
+            "copy-payload"
+        );
+
+        let move_src = sandbox.write_local_file("src/move.txt", "move-payload");
+        let move_route = MixedTransferRoute::LocalToCloud {
+            sources: vec![move_src.clone()],
+            dest_dir: sandbox.cloud_path("rclone://work/dest"),
+        };
+        let move_out = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Move,
+            move_route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+        )
+        .expect("move local->cloud");
+        assert_eq!(move_out, vec!["rclone://work/dest/move.txt".to_string()]);
+        assert!(!move_src.exists(), "move should remove local source");
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "dest/move.txt")).expect("read remote"),
+            "move-payload"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_cloud_to_local_file_copy_and_move_via_fake_rclone() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "src/copy.txt", "copy-payload");
+        sandbox.write_remote_file("work", "src/move.txt", "move-payload");
+        let cli = sandbox.cli();
+        let local_dest = sandbox.local_path("dest");
+        fs::create_dir_all(&local_dest).expect("mkdir local dest");
+
+        let copy_route = MixedTransferRoute::CloudToLocal {
+            sources: vec![sandbox.cloud_path("rclone://work/src/copy.txt")],
+            dest_dir: local_dest.clone(),
+        };
+        let copy_out = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            copy_route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+        )
+        .expect("copy cloud->local");
+        assert_eq!(
+            copy_out,
+            vec![local_dest.join("copy.txt").to_string_lossy().to_string()]
+        );
+        assert_eq!(
+            fs::read_to_string(local_dest.join("copy.txt")).expect("read local copy"),
+            "copy-payload"
+        );
+        assert!(
+            sandbox.remote_path("work", "src/copy.txt").exists(),
+            "copy should preserve remote source"
+        );
+
+        let move_route = MixedTransferRoute::CloudToLocal {
+            sources: vec![sandbox.cloud_path("rclone://work/src/move.txt")],
+            dest_dir: local_dest.clone(),
+        };
+        let move_out = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Move,
+            move_route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+        )
+        .expect("move cloud->local");
+        assert_eq!(
+            move_out,
+            vec![local_dest.join("move.txt").to_string_lossy().to_string()]
+        );
+        assert_eq!(
+            fs::read_to_string(local_dest.join("move.txt")).expect("read local move"),
+            "move-payload"
+        );
+        assert!(
+            !sandbox.remote_path("work", "src/move.txt").exists(),
+            "move should remove remote source"
+        );
+    }
+
+    #[test]
+    fn validate_local_to_cloud_route_rejects_directory_source() {
+        let base = std::env::temp_dir().join(format!(
+            "browsey-transfer-dir-reject-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("epoch")
+                .as_nanos()
+        ));
+        let src_dir = base.join("folder");
+        fs::create_dir_all(&src_dir).expect("create dir source");
+        let result = tauri::async_runtime::block_on(validate_local_to_cloud_route(
+            vec![src_dir.to_string_lossy().to_string()],
+            "rclone://work".to_string(),
+        ));
+        let err = result.expect_err("directory mixed local->cloud should be unsupported");
+        assert_eq!(err.code, "unsupported");
+        fs::remove_dir_all(&base).ok();
     }
 
     #[test]
