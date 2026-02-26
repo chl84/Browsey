@@ -125,6 +125,44 @@ pub async fn move_mixed_entries(
     .await
 }
 
+#[tauri::command]
+pub async fn copy_mixed_entry_to(
+    src: String,
+    dst: String,
+    overwrite: Option<bool>,
+    prechecked: Option<bool>,
+) -> ApiResult<String> {
+    execute_mixed_entry_to(
+        MixedTransferOp::Copy,
+        src,
+        dst,
+        MixedTransferWriteOptions {
+            overwrite: overwrite.unwrap_or(false),
+            prechecked: prechecked.unwrap_or(false),
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn move_mixed_entry_to(
+    src: String,
+    dst: String,
+    overwrite: Option<bool>,
+    prechecked: Option<bool>,
+) -> ApiResult<String> {
+    execute_mixed_entry_to(
+        MixedTransferOp::Move,
+        src,
+        dst,
+        MixedTransferWriteOptions {
+            overwrite: overwrite.unwrap_or(false),
+            prechecked: prechecked.unwrap_or(false),
+        },
+    )
+    .await
+}
+
 fn is_cloud_path(path: &str) -> bool {
     path.starts_with("rclone://")
 }
@@ -149,6 +187,13 @@ enum MixedRouteHint {
     CloudToCloud,
     MixedSelection,
     Unknown,
+}
+
+#[derive(Debug, Clone)]
+struct MixedTransferPair {
+    src: LocalOrCloudArg,
+    dst: LocalOrCloudArg,
+    cloud_remote_for_error_mapping: Option<String>,
 }
 
 fn api_err(code: &str, message: impl Into<String>) -> ApiError {
@@ -243,6 +288,38 @@ fn log_mixed_execute_result(
     }
 }
 
+fn log_mixed_single_execute_result(
+    op: MixedTransferOp,
+    result: &ApiResult<String>,
+    route_hint: MixedRouteHint,
+    started: Instant,
+) {
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    let op_name = match op {
+        MixedTransferOp::Copy => "mixed_write_copy",
+        MixedTransferOp::Move => "mixed_write_move",
+    };
+    match result {
+        Ok(_) => info!(
+            op = op_name,
+            route = route_hint_label(route_hint),
+            source_count = 1usize,
+            outputs = 1usize,
+            elapsed_ms,
+            "mixed transfer completed"
+        ),
+        Err(err) => warn!(
+            op = op_name,
+            route = route_hint_label(route_hint),
+            source_count = 1usize,
+            elapsed_ms,
+            error_code = %err.code,
+            error_message = %err.message,
+            "mixed transfer failed"
+        ),
+    }
+}
+
 async fn execute_mixed_entries(
     op: MixedTransferOp,
     sources: Vec<String>,
@@ -274,6 +351,36 @@ async fn execute_mixed_entries(
     result
 }
 
+async fn execute_mixed_entry_to(
+    op: MixedTransferOp,
+    src: String,
+    dst: String,
+    options: MixedTransferWriteOptions,
+) -> ApiResult<String> {
+    let started = Instant::now();
+    let route_hint = mixed_route_hint(std::slice::from_ref(&src), &dst);
+    let pair = match validate_mixed_transfer_pair(src, dst).await {
+        Ok(pair) => pair,
+        Err(err) => {
+            let result = Err(err);
+            log_mixed_single_execute_result(op, &result, route_hint, started);
+            return result;
+        }
+    };
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        execute_mixed_entry_to_blocking(op, pair, options)
+    });
+    let result = match task.await {
+        Ok(result) => result,
+        Err(error) => Err(api_err(
+            "task_failed",
+            format!("Mixed transfer task failed: {error}"),
+        )),
+    };
+    log_mixed_single_execute_result(op, &result, route_hint, started);
+    result
+}
+
 async fn validate_mixed_transfer_route(
     sources: Vec<String>,
     dest_dir: String,
@@ -294,6 +401,111 @@ async fn validate_mixed_transfer_route(
     match (source_cloud_count == sources.len(), dest_is_cloud) {
         (false, true) => validate_local_to_cloud_route(sources, dest_dir).await,
         (true, false) => validate_cloud_to_local_route(sources, dest_dir).await,
+        (false, false) => Err(api_err(
+            "unsupported",
+            "Use local clipboard paste for local-to-local transfers",
+        )),
+        (true, true) => Err(api_err(
+            "unsupported",
+            "Use cloud clipboard paste for cloud-to-cloud transfers",
+        )),
+    }
+}
+
+async fn validate_mixed_transfer_pair(src: String, dst: String) -> ApiResult<MixedTransferPair> {
+    let src_is_cloud = is_cloud_path(&src);
+    let dst_is_cloud = is_cloud_path(&dst);
+    match (src_is_cloud, dst_is_cloud) {
+        (false, true) => {
+            let src_path = sanitize_path_follow(&src, true)
+                .map_err(|e| api_err("invalid_path", e.to_string()))?;
+            let src_meta = fs::symlink_metadata(&src_path)
+                .map_err(|e| api_err("io_error", format!("Failed to read source metadata: {e}")))?;
+            if src_meta.file_type().is_symlink() {
+                return Err(api_err(
+                    "symlink_unsupported",
+                    "Symlinks are not supported for mixed local/cloud transfers yet",
+                ));
+            }
+
+            let dst_path = CloudPath::parse(&dst).map_err(|e| {
+                api_err(
+                    "invalid_path",
+                    format!("Invalid cloud destination path: {e}"),
+                )
+            })?;
+            if dst_path.is_root() {
+                return Err(api_err(
+                    "invalid_path",
+                    "Cloud destination path must include a file or folder name",
+                ));
+            }
+            let Some(parent) = dst_path.parent_dir_path() else {
+                return Err(api_err(
+                    "invalid_path",
+                    "Invalid cloud destination parent path",
+                ));
+            };
+            if !parent.is_root() {
+                match cloud::stat_cloud_entry(parent.to_string()).await? {
+                    Some(entry) if matches!(entry.kind, CloudEntryKind::Dir) => {}
+                    Some(_) => {
+                        return Err(api_err(
+                            "invalid_path",
+                            "Cloud destination parent must be a directory",
+                        ))
+                    }
+                    None => {
+                        return Err(api_err(
+                            "not_found",
+                            "Cloud destination parent was not found",
+                        ))
+                    }
+                }
+            }
+            Ok(MixedTransferPair {
+                src: LocalOrCloudArg::Local(src_path),
+                dst: LocalOrCloudArg::Cloud(dst_path.clone()),
+                cloud_remote_for_error_mapping: Some(dst_path.remote().to_string()),
+            })
+        }
+        (true, false) => {
+            let src_path = CloudPath::parse(&src)
+                .map_err(|e| api_err("invalid_path", format!("Invalid cloud source path: {e}")))?;
+            match cloud::stat_cloud_entry(src_path.to_string()).await? {
+                Some(entry) if matches!(entry.kind, CloudEntryKind::File | CloudEntryKind::Dir) => {
+                }
+                Some(_) => return Err(api_err("unsupported", "Unsupported cloud entry type")),
+                None => return Err(api_err("not_found", "Cloud source was not found")),
+            }
+
+            let dst_path = sanitize_path_follow(&dst, false)
+                .map_err(|e| api_err("invalid_path", e.to_string()))?;
+            let parent = dst_path.parent().ok_or_else(|| {
+                api_err(
+                    "invalid_path",
+                    "Local destination path must include a parent directory",
+                )
+            })?;
+            let parent_meta = fs::symlink_metadata(parent).map_err(|e| {
+                api_err(
+                    "io_error",
+                    format!("Failed to read destination parent metadata: {e}"),
+                )
+            })?;
+            if !parent_meta.is_dir() {
+                return Err(api_err(
+                    "invalid_path",
+                    "Local destination parent must be a directory",
+                ));
+            }
+
+            Ok(MixedTransferPair {
+                src: LocalOrCloudArg::Cloud(src_path.clone()),
+                dst: LocalOrCloudArg::Local(dst_path),
+                cloud_remote_for_error_mapping: Some(src_path.remote().to_string()),
+            })
+        }
         (false, false) => Err(api_err(
             "unsupported",
             "Use local clipboard paste for local-to-local transfers",
@@ -400,6 +612,41 @@ fn execute_mixed_entries_blocking(
 ) -> ApiResult<Vec<String>> {
     let cli = RcloneCli::default();
     execute_mixed_entries_blocking_with_cli(&cli, op, route, options)
+}
+
+fn execute_mixed_entry_to_blocking(
+    op: MixedTransferOp,
+    pair: MixedTransferPair,
+    options: MixedTransferWriteOptions,
+) -> ApiResult<String> {
+    let cli = RcloneCli::default();
+    execute_mixed_entry_to_blocking_with_cli(&cli, op, pair, options)
+}
+
+fn execute_mixed_entry_to_blocking_with_cli(
+    cli: &RcloneCli,
+    op: MixedTransferOp,
+    pair: MixedTransferPair,
+    options: MixedTransferWriteOptions,
+) -> ApiResult<String> {
+    let MixedTransferPair {
+        src,
+        dst,
+        cloud_remote_for_error_mapping,
+    } = pair;
+    let out = match &dst {
+        LocalOrCloudArg::Local(path) => path.to_string_lossy().to_string(),
+        LocalOrCloudArg::Cloud(path) => path.to_string(),
+    };
+    execute_rclone_transfer(
+        cli,
+        op,
+        src,
+        dst,
+        options,
+        cloud_remote_for_error_mapping.as_deref(),
+    )?;
+    Ok(out)
 }
 
 fn execute_mixed_entries_blocking_with_cli(
@@ -779,6 +1026,8 @@ mod tests {
     #[cfg(unix)]
     use std::sync::atomic::{AtomicU64, Ordering};
     #[cfg(unix)]
+    use std::sync::Mutex;
+    #[cfg(unix)]
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -907,8 +1156,15 @@ mod tests {
     }
 
     #[cfg(unix)]
+    fn fake_rclone_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        LOCK.lock().expect("lock fake rclone test")
+    }
+
+    #[cfg(unix)]
     #[test]
     fn mixed_execute_local_to_cloud_file_copy_and_move_via_fake_rclone() {
+        let _guard = fake_rclone_test_lock();
         let sandbox = FakeRcloneSandbox::new();
         sandbox.mkdir_remote("work", "dest");
         let cli = sandbox.cli();
@@ -961,6 +1217,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn mixed_execute_local_to_cloud_directory_copy_and_move_via_fake_rclone() {
+        let _guard = fake_rclone_test_lock();
         let sandbox = FakeRcloneSandbox::new();
         sandbox.mkdir_remote("work", "dest");
         let cli = sandbox.cli();
@@ -1019,6 +1276,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn mixed_execute_cloud_to_local_file_copy_and_move_via_fake_rclone() {
+        let _guard = fake_rclone_test_lock();
         let sandbox = FakeRcloneSandbox::new();
         sandbox.write_remote_file("work", "src/copy.txt", "copy-payload");
         sandbox.write_remote_file("work", "src/move.txt", "move-payload");
@@ -1110,6 +1368,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn mixed_execute_cloud_to_local_directory_copy_and_move_via_fake_rclone() {
+        let _guard = fake_rclone_test_lock();
         let sandbox = FakeRcloneSandbox::new();
         sandbox.write_remote_file("work", "src/folder-copy/nested/file.txt", "copy-dir");
         sandbox.write_remote_file("work", "src/folder-move/nested/file.txt", "move-dir");

@@ -1,6 +1,6 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { writable, get } from 'svelte/store'
-import { getErrorMessage } from '@/shared/lib/error'
+import { getErrorMessage, normalizeError } from '@/shared/lib/error'
 import {
   copyCloudEntry,
   listCloudEntries,
@@ -17,7 +17,9 @@ import {
   getSystemClipboardPaths,
 } from '../services/clipboard.service'
 import {
+  copyMixedEntryTo,
   copyMixedEntries,
+  moveMixedEntryTo,
   moveMixedEntries,
   previewMixedTransferConflicts,
 } from '../services/transfer.service'
@@ -49,6 +51,12 @@ const cloudLeafName = (path: string) => {
   return idx >= 0 ? path.slice(idx + 1) : path
 }
 
+const localLeafName = (path: string) => {
+  const normalized = normalizePath(path)
+  const idx = normalized.lastIndexOf('/')
+  return idx >= 0 ? normalized.slice(idx + 1) : normalized
+}
+
 const cloudRemoteId = (path: string) => {
   if (!path.startsWith('rclone://')) return null
   const rest = path.slice('rclone://'.length)
@@ -57,6 +65,13 @@ const cloudRemoteId = (path: string) => {
 }
 
 const cloudJoin = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`
+
+const localJoin = (dir: string, name: string) => {
+  const normalized = normalizePath(dir)
+  if (normalized === '/') return `/${name}`
+  if (/^[A-Za-z]:\/$/.test(normalized)) return `${normalized}${name}`
+  return `${normalized.replace(/\/+$/, '')}/${name}`
+}
 
 const cloudRenameCandidate = (base: string, idx: number) => {
   if (idx === 0) return base
@@ -319,13 +334,6 @@ export const useExplorerFileOps = (deps: Deps) => {
       return runCloudPaste(target, policy)
     }
     if (route === 'local_to_cloud' || route === 'cloud_to_local') {
-      const activeConflictRename =
-        policy === 'rename' && conflictDest === target && get(conflictList).length > 0
-      if (activeConflictRename) {
-        deps.showToast('Rename on conflict for local/cloud paste is not supported yet')
-        return false
-      }
-
       const state = get(clipboardState)
       const sources = Array.from(state.paths)
       if (sources.length === 0) {
@@ -343,14 +351,67 @@ export const useExplorerFileOps = (deps: Deps) => {
           () => deps.activityApi.requestCancel(progressEvent),
         )
 
-        if (state.mode === 'cut') {
+        if (policy === 'rename') {
+          let cloudDestProvider: CloudProviderKind | null = null
+          let reservedCloudDestNames: Set<string> | null = null
+          if (route === 'local_to_cloud') {
+            const [destEntries, destProvider] = await Promise.all([
+              listCloudEntries(target),
+              cloudProviderForPath(target),
+            ])
+            cloudDestProvider = destProvider
+            reservedCloudDestNames = new Set(
+              destEntries.map((entry) => cloudConflictNameKey(cloudDestProvider, entry.name)),
+            )
+          }
+
+          for (const src of sources) {
+            const leaf = route === 'local_to_cloud' ? localLeafName(src) : cloudLeafName(src)
+            if (!leaf) {
+              throw new Error(`Invalid source path: ${src}`)
+            }
+            const targetBase =
+              route === 'local_to_cloud' ? cloudJoin(target, leaf) : localJoin(target, leaf)
+
+            let idx = 0
+            // Retry rename candidates on destination_exists until a slot is found.
+            while (true) {
+              const finalTarget = cloudRenameCandidate(targetBase, idx)
+              if (reservedCloudDestNames && route === 'local_to_cloud') {
+                const candidateLeaf = cloudLeafName(finalTarget)
+                const candidateKey = cloudConflictNameKey(cloudDestProvider, candidateLeaf)
+                if (reservedCloudDestNames.has(candidateKey)) {
+                  idx += 1
+                  continue
+                }
+                reservedCloudDestNames.add(candidateKey)
+              }
+              try {
+                const opts = { overwrite: false, prechecked: idx === 0 }
+                if (state.mode === 'cut') {
+                  await moveMixedEntryTo(src, finalTarget, opts)
+                } else {
+                  await copyMixedEntryTo(src, finalTarget, opts)
+                }
+                break
+              } catch (err) {
+                const normalized = normalizeError(err)
+                if (normalized.code === 'destination_exists') {
+                  idx += 1
+                  continue
+                }
+                throw normalized
+              }
+            }
+          }
+        } else if (state.mode === 'cut') {
           await moveMixedEntries(sources, target, {
-            overwrite: policy === 'overwrite',
+            overwrite: true,
             prechecked: true,
           })
         } else {
           await copyMixedEntries(sources, target, {
-            overwrite: policy === 'overwrite',
+            overwrite: true,
             prechecked: true,
           })
         }

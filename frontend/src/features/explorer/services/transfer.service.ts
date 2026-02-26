@@ -38,3 +38,27 @@ export const moveMixedEntries = (
     overwrite: options?.overwrite ?? false,
     prechecked: options?.prechecked ?? false,
   })
+
+export const copyMixedEntryTo = (
+  src: string,
+  dst: string,
+  options?: MixedTransferWriteOptions,
+) =>
+  invoke<string>('copy_mixed_entry_to', {
+    src,
+    dst,
+    overwrite: options?.overwrite ?? false,
+    prechecked: options?.prechecked ?? false,
+  })
+
+export const moveMixedEntryTo = (
+  src: string,
+  dst: string,
+  options?: MixedTransferWriteOptions,
+) =>
+  invoke<string>('move_mixed_entry_to', {
+    src,
+    dst,
+    overwrite: options?.overwrite ?? false,
+    prechecked: options?.prechecked ?? false,
+  })
