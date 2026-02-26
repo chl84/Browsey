@@ -18,9 +18,9 @@
 
 ## Fase 2: Færre rclone-kall i paste/conflict
 
-- [ ] Bytt `preview_cloud_conflicts` til én listing av dest-mappe (ikke `stat` per source)
-- [ ] Bygg konfliktsett i minne fra dest-listing
-- [ ] Fjern `statCloudEntry`-loop ved rename-on-conflict i frontend
+- [x] Bytt `preview_cloud_conflicts` til én listing av dest-mappe (ikke `stat` per source)
+- [x] Bygg konfliktsett i minne fra dest-listing
+- [x] Fjern `statCloudEntry`-loop ved rename-on-conflict i frontend
 - [ ] Unngå dobbel overwrite-precheck når konfliktpreview allerede er gjort
 - [ ] Verifiser at cloud paste gjør færre `lsjson/--stat`-kall i logg
 

@@ -6,13 +6,13 @@ vi.mock('@tauri-apps/api/event', () => ({
 }))
 
 const previewCloudConflictsMock = vi.fn()
-const statCloudEntryMock = vi.fn()
+const listCloudEntriesMock = vi.fn()
 const copyCloudEntryMock = vi.fn()
 const moveCloudEntryMock = vi.fn()
 
 vi.mock('@/features/network', () => ({
   previewCloudConflicts: (...args: unknown[]) => previewCloudConflictsMock(...args),
-  statCloudEntry: (...args: unknown[]) => statCloudEntryMock(...args),
+  listCloudEntries: (...args: unknown[]) => listCloudEntriesMock(...args),
   copyCloudEntry: (...args: unknown[]) => copyCloudEntryMock(...args),
   moveCloudEntry: (...args: unknown[]) => moveCloudEntryMock(...args),
 }))
@@ -95,7 +95,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     pasteClipboardPreviewMock.mockResolvedValue([])
     getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: [] })
     previewCloudConflictsMock.mockResolvedValue([])
-    statCloudEntryMock.mockResolvedValue(null)
+    listCloudEntriesMock.mockResolvedValue([])
     copyCloudEntryMock.mockResolvedValue(undefined)
     moveCloudEntryMock.mockResolvedValue(undefined)
   })
@@ -168,9 +168,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
         isDir: false,
       },
     ])
-    statCloudEntryMock
-      .mockResolvedValueOnce({ path: 'rclone://work/src/report.txt', kind: 'file' })
-      .mockResolvedValueOnce(null)
+    listCloudEntriesMock.mockResolvedValue([{ name: 'report.txt', path: '', kind: 'file' }])
 
     const deps = createDeps()
     deps.getCurrentPath = () => 'rclone://work/src'
@@ -192,7 +190,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
   it('skips system clipboard sync on cloud destinations when pasting into current', async () => {
     setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
     previewCloudConflictsMock.mockResolvedValue([])
-    statCloudEntryMock.mockResolvedValue(null)
+    listCloudEntriesMock.mockResolvedValue([])
 
     const deps = createDeps()
     const fileOps = useExplorerFileOps(deps)
@@ -216,7 +214,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     try {
       setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
       previewCloudConflictsMock.mockResolvedValue([])
-      statCloudEntryMock.mockResolvedValue(null)
+      listCloudEntriesMock.mockResolvedValue([])
 
       const deps = createDeps()
       deps.reloadCurrent = vi.fn(async () => {
@@ -254,7 +252,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     try {
       setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
       previewCloudConflictsMock.mockResolvedValue([])
-      statCloudEntryMock.mockResolvedValue(null)
+      listCloudEntriesMock.mockResolvedValue([])
 
       const deps = createDeps()
       deps.reloadCurrent = vi.fn(async () => {})
