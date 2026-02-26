@@ -92,6 +92,21 @@ impl CloudPath {
             .filter(|s| !s.is_empty())
             .ok_or_else(|| CloudPathParseError::new("Invalid cloud path leaf name"))
     }
+
+    pub fn parent_dir_path(&self) -> Option<Self> {
+        if self.path.is_empty() {
+            return None;
+        }
+        let parent_rel = self
+            .path
+            .rsplit_once('/')
+            .map(|(parent, _)| parent)
+            .unwrap_or("");
+        Some(Self {
+            remote: self.remote.clone(),
+            path: parent_rel.to_string(),
+        })
+    }
 }
 
 impl fmt::Display for CloudPath {
@@ -296,5 +311,23 @@ mod tests {
         assert_eq!(child.leaf_name().expect("leaf"), "file.txt");
         let root = CloudPath::parse("rclone://work").expect("root");
         assert!(root.leaf_name().is_err());
+    }
+
+    #[test]
+    fn gets_parent_dir_path() {
+        let root = CloudPath::parse("rclone://work").expect("root");
+        assert!(root.parent_dir_path().is_none());
+
+        let top = CloudPath::parse("rclone://work/docs").expect("top");
+        assert_eq!(
+            top.parent_dir_path().expect("parent").to_string(),
+            "rclone://work"
+        );
+
+        let nested = CloudPath::parse("rclone://work/docs/file.txt").expect("nested");
+        assert_eq!(
+            nested.parent_dir_path().expect("parent").to_string(),
+            "rclone://work/docs"
+        );
     }
 }

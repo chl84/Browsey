@@ -669,7 +669,11 @@ async fn list_facets_impl(
     if scope == "dir" {
         if let Some(raw_path) = path.as_deref() {
             if is_cloud_path_str(raw_path) {
-                let entries = list_dir_impl(path, None, app).await?.entries;
+                let cloud_entries = crate::commands::cloud::list_cloud_entries(raw_path.to_string())
+                    .await
+                    .map_err(listing_error_from_api)?;
+                let entries: Vec<FsEntry> =
+                    cloud_entries.into_iter().map(fs_entry_from_cloud_entry).collect();
                 return Ok(build_listing_facets_with_hidden(&entries, include_hidden));
             }
         }
