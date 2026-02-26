@@ -362,7 +362,11 @@ export const useExplorerFileOps = (deps: Deps) => {
           return true
         }
 
-        await deps.reloadCurrent()
+        try {
+          await deps.reloadCurrent()
+        } catch {
+          deps.showToast('Paste completed, but refresh failed. Press F5 to refresh.', 3500)
+        }
         deps.activityApi.hideSoon()
         await clearCutClipboardAfterMoveSuccess()
         return true

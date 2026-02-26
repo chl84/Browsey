@@ -464,6 +464,30 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(Array.from(get(clipboardState).paths)).toEqual([])
   })
 
+  it('treats cloud-to-local refresh failure as soft failure after mixed write succeeds', async () => {
+    setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
+    previewMixedTransferConflictsMock.mockResolvedValue([])
+
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp/dest'
+    deps.reloadCurrent = vi.fn(async () => {
+      throw new Error('refresh failed')
+    })
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('/tmp/dest')
+
+    expect(ok).toBe(true)
+    expect(copyMixedEntriesMock).toHaveBeenCalledWith(['rclone://work/src/report.txt'], '/tmp/dest', {
+      overwrite: false,
+      prechecked: true,
+    })
+    expect(deps.showToast).toHaveBeenCalledWith(
+      'Paste completed, but refresh failed. Press F5 to refresh.',
+      3500,
+    )
+  })
+
   it('keeps mixed rename-on-conflict unsupported for execute until explicit target mapping is implemented', async () => {
     setClipboardPathsState('copy', ['/tmp/src/report.txt'])
     previewMixedTransferConflictsMock.mockResolvedValue([
