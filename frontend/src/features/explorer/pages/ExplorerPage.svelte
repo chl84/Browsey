@@ -141,7 +141,7 @@
   // View / navigation tracking
   let currentView: CurrentView = 'dir'
   let lastLocation = ''
-  let lastCloudRefreshHintPath = ''
+  let hasShownCloudRefreshHint = false
   useContextMenuBlocker()
 
   // --- Helpers -------------------------------------------------------------
@@ -233,12 +233,10 @@
       }
       pathInput = path
       if (isCloudPath(path)) {
-        if (lastCloudRefreshHintPath !== path) {
-          lastCloudRefreshHintPath = path
+        if (!hasShownCloudRefreshHint) {
+          hasShownCloudRefreshHint = true
           showToast('Cloud folders use manual refresh (F5); live watch is not available yet', 2600)
         }
-      } else {
-        lastCloudRefreshHintPath = ''
       }
     },
   })

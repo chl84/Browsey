@@ -60,7 +60,7 @@ export const createActivity = (opts: Options = {}) => {
       clearTimeout(activityHideTimer)
       activityHideTimer = null
     }
-    activity.set({ label, percent: 0, cancel: onCancel ?? null, cancelling: false })
+    activity.set({ label, percent: null, cancel: onCancel ?? null, cancelling: false })
     activityUnlisten = await listen<ProgressPayload>(eventName, (event) => {
       const payload = event.payload
       let pct =
