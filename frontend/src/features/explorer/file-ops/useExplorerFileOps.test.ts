@@ -7,12 +7,14 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 const previewCloudConflictsMock = vi.fn()
 const listCloudEntriesMock = vi.fn()
+const listCloudRemotesMock = vi.fn()
 const copyCloudEntryMock = vi.fn()
 const moveCloudEntryMock = vi.fn()
 
 vi.mock('@/features/network', () => ({
   previewCloudConflicts: (...args: unknown[]) => previewCloudConflictsMock(...args),
   listCloudEntries: (...args: unknown[]) => listCloudEntriesMock(...args),
+  listCloudRemotes: (...args: unknown[]) => listCloudRemotesMock(...args),
   copyCloudEntry: (...args: unknown[]) => copyCloudEntryMock(...args),
   moveCloudEntry: (...args: unknown[]) => moveCloudEntryMock(...args),
 }))
@@ -96,6 +98,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     getSystemClipboardPathsMock.mockResolvedValue({ mode: 'copy', paths: [] })
     previewCloudConflictsMock.mockResolvedValue([])
     listCloudEntriesMock.mockResolvedValue([])
+    listCloudRemotesMock.mockResolvedValue([])
     copyCloudEntryMock.mockResolvedValue(undefined)
     moveCloudEntryMock.mockResolvedValue(undefined)
   })
@@ -185,6 +188,51 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(previewCloudConflictsMock).toHaveBeenCalled()
     expect(pasteClipboardPreviewMock).not.toHaveBeenCalled()
     expect(pasteClipboardCmdMock).not.toHaveBeenCalled()
+  })
+
+  it('treats OneDrive cloud rename-on-conflict set as case-insensitive', async () => {
+    setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
+    previewCloudConflictsMock.mockResolvedValue([
+      {
+        src: 'rclone://work/src/report.txt',
+        target: 'rclone://work/src/report.txt',
+        exists: true,
+        isDir: false,
+      },
+    ])
+    listCloudEntriesMock.mockResolvedValue([{ name: 'Report.txt', path: '', kind: 'file' }])
+    listCloudRemotesMock.mockResolvedValue([
+      {
+        id: 'work',
+        label: 'work (OneDrive)',
+        provider: 'onedrive',
+        rootPath: 'rclone://work',
+        capabilities: {
+          canList: true,
+          canMkdir: true,
+          canDelete: true,
+          canRename: true,
+          canMove: true,
+          canCopy: true,
+          canTrash: false,
+          canUndo: false,
+          canPermissions: false,
+        },
+      },
+    ])
+
+    const deps = createDeps()
+    deps.getCurrentPath = () => 'rclone://work/src'
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('rclone://work/src')
+
+    expect(ok).toBe(true)
+    expect(copyCloudEntryMock).toHaveBeenCalledWith(
+      'rclone://work/src/report.txt',
+      'rclone://work/src/report-1.txt',
+      { overwrite: false, prechecked: true },
+    )
   })
 
   it('skips system clipboard sync on cloud destinations when pasting into current', async () => {

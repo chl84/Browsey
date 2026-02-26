@@ -4,8 +4,10 @@ import { getErrorMessage } from '@/shared/lib/error'
 import {
   copyCloudEntry,
   listCloudEntries,
+  listCloudRemotes,
   moveCloudEntry,
   previewCloudConflicts,
+  type CloudProviderKind,
 } from '@/features/network'
 import {
   setClipboardCmd,
@@ -42,6 +44,13 @@ const cloudLeafName = (path: string) => {
   return idx >= 0 ? path.slice(idx + 1) : path
 }
 
+const cloudRemoteId = (path: string) => {
+  if (!path.startsWith('rclone://')) return null
+  const rest = path.slice('rclone://'.length)
+  const slash = rest.indexOf('/')
+  return slash >= 0 ? rest.slice(0, slash) : rest
+}
+
 const cloudJoin = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`
 
 const cloudRenameCandidate = (base: string, idx: number) => {
@@ -55,6 +64,15 @@ const cloudRenameCandidate = (base: string, idx: number) => {
   const ext = hasExt ? original.slice(dot + 1) : ''
   const name = hasExt ? `${stem}-${idx}.${ext}` : `${stem}-${idx}`
   return parent ? `${parent}/${name}` : name
+}
+
+const cloudConflictNameKey = (provider: CloudProviderKind | null, name: string) => {
+  switch (provider) {
+    case 'onedrive':
+      return name.toLowerCase()
+    default:
+      return name
+  }
 }
 
 type ActivityApi = {
@@ -98,6 +116,7 @@ export const useExplorerFileOps = (deps: Deps) => {
   const cloudRefreshInFlight = new Map<string, Promise<void>>()
   const cloudRefreshPending = new Set<string>()
   const cloudRefreshLabels = new Map<string, string>()
+  const cloudRemoteProviders = new Map<string, CloudProviderKind | null>()
 
   const clearConflictState = () => {
     conflictModalOpen.set(false)
@@ -170,6 +189,27 @@ export const useExplorerFileOps = (deps: Deps) => {
     cloudRefreshTimers.set(refreshTarget, timer)
   }
 
+  const cloudProviderForPath = async (path: string): Promise<CloudProviderKind | null> => {
+    const remote = cloudRemoteId(path)
+    if (!remote) return null
+    if (cloudRemoteProviders.has(remote)) {
+      return cloudRemoteProviders.get(remote) ?? null
+    }
+    try {
+      const remotes = await listCloudRemotes()
+      for (const entry of remotes) {
+        cloudRemoteProviders.set(entry.id, entry.provider)
+      }
+      if (!cloudRemoteProviders.has(remote)) {
+        cloudRemoteProviders.set(remote, null)
+      }
+      return cloudRemoteProviders.get(remote) ?? null
+    } catch {
+      cloudRemoteProviders.set(remote, null)
+      return null
+    }
+  }
+
   const runCloudPaste = async (target: string, policy: 'rename' | 'overwrite' = 'rename') => {
     const state = get(clipboardState)
     const sources = Array.from(state.paths)
@@ -186,9 +226,16 @@ export const useExplorerFileOps = (deps: Deps) => {
     try {
       await deps.activityApi.start('Copying…', progressEvent, () => deps.activityApi.requestCancel(progressEvent))
       let reservedDestNames: Set<string> | null = null
+      let provider: CloudProviderKind | null = null
       if (policy === 'rename') {
-        const destEntries = await listCloudEntries(target)
-        reservedDestNames = new Set(destEntries.map((entry) => entry.name))
+        const [destEntries, destProvider] = await Promise.all([
+          listCloudEntries(target),
+          cloudProviderForPath(target),
+        ])
+        provider = destProvider
+        reservedDestNames = new Set(
+          destEntries.map((entry) => cloudConflictNameKey(provider, entry.name)),
+        )
       }
       for (const src of sources) {
         const leaf = cloudLeafName(src)
@@ -205,8 +252,9 @@ export const useExplorerFileOps = (deps: Deps) => {
             if (!candidateLeaf) {
               throw new Error(`Invalid cloud target path: ${finalTarget}`)
             }
-            if (!reservedDestNames?.has(candidateLeaf)) {
-              reservedDestNames?.add(candidateLeaf)
+            const candidateKey = cloudConflictNameKey(provider, candidateLeaf)
+            if (!reservedDestNames?.has(candidateKey)) {
+              reservedDestNames?.add(candidateKey)
               break
             }
             idx += 1

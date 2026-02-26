@@ -105,18 +105,19 @@ impl CloudProvider for RcloneCloudProvider {
             {
                 Ok(None)
             }
-            Err(error) => Err(map_rclone_error(error)),
+            Err(error) => Err(map_rclone_error_for_remote(path.remote(), error)),
         }
     }
 
     fn list_dir(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
         self.ensure_runtime_ready()?;
-        let output = self
-            .cli
-            .run_capture_text(
-                RcloneCommandSpec::new(RcloneSubcommand::LsJson).arg(path.to_rclone_remote_spec()),
-            )
-            .map_err(map_rclone_error)?;
+        let output = self.cli.run_capture_text(
+            RcloneCommandSpec::new(RcloneSubcommand::LsJson).arg(path.to_rclone_remote_spec()),
+        );
+        let output = match output {
+            Ok(output) => output,
+            Err(error) => return Err(map_rclone_error_for_remote(path.remote(), error)),
+        };
         let items = parse_lsjson_items(&output.stdout).map_err(|message| {
             CloudCommandError::new(CloudCommandErrorCode::UnknownError, message)
         })?;
@@ -152,7 +153,7 @@ impl CloudProvider for RcloneCloudProvider {
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(path.to_rclone_remote_spec()),
             )
-            .map_err(map_rclone_error)?;
+            .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         Ok(())
     }
 
@@ -163,7 +164,7 @@ impl CloudProvider for RcloneCloudProvider {
                 RcloneCommandSpec::new(RcloneSubcommand::DeleteFile)
                     .arg(path.to_rclone_remote_spec()),
             )
-            .map_err(map_rclone_error)?;
+            .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         Ok(())
     }
 
@@ -173,7 +174,7 @@ impl CloudProvider for RcloneCloudProvider {
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::Purge).arg(path.to_rclone_remote_spec()),
             )
-            .map_err(map_rclone_error)?;
+            .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         Ok(())
     }
 
@@ -183,7 +184,7 @@ impl CloudProvider for RcloneCloudProvider {
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::Rmdir).arg(path.to_rclone_remote_spec()),
             )
-            .map_err(map_rclone_error)?;
+            .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         Ok(())
     }
 
@@ -204,7 +205,7 @@ impl CloudProvider for RcloneCloudProvider {
                     .arg(src.to_rclone_remote_spec())
                     .arg(dst.to_rclone_remote_spec()),
             )
-            .map_err(map_rclone_error)?;
+            .map_err(|error| map_rclone_error_for_paths(&[src, dst], error))?;
         Ok(())
     }
 
@@ -225,7 +226,7 @@ impl CloudProvider for RcloneCloudProvider {
                     .arg(src.to_rclone_remote_spec())
                     .arg(dst.to_rclone_remote_spec()),
             )
-            .map_err(map_rclone_error)?;
+            .map_err(|error| map_rclone_error_for_paths(&[src, dst], error))?;
         Ok(())
     }
 }
@@ -373,8 +374,34 @@ fn map_rclone_error(error: RcloneCliError) -> CloudCommandError {
     map_rclone_error_for_provider(CloudProviderKind::Onedrive, error)
 }
 
-fn map_rclone_error_for_provider(
-    provider: CloudProviderKind,
+fn provider_kind_for_remote(remote_id: &str) -> Option<CloudProviderKind> {
+    crate::commands::cloud::list_cloud_remotes_sync_best_effort(false)
+        .into_iter()
+        .find(|remote| remote.id == remote_id)
+        .map(|remote| remote.provider)
+}
+
+fn map_rclone_error_for_remote(remote_id: &str, error: RcloneCliError) -> CloudCommandError {
+    let providers = provider_kind_for_remote(remote_id)
+        .into_iter()
+        .collect::<Vec<_>>();
+    map_rclone_error_for_providers(&providers, error)
+}
+
+fn map_rclone_error_for_paths(paths: &[&CloudPath], error: RcloneCliError) -> CloudCommandError {
+    let mut providers = Vec::new();
+    for path in paths {
+        if let Some(kind) = provider_kind_for_remote(path.remote()) {
+            if !providers.contains(&kind) {
+                providers.push(kind);
+            }
+        }
+    }
+    map_rclone_error_for_providers(&providers, error)
+}
+
+fn map_rclone_error_for_providers(
+    providers: &[CloudProviderKind],
     error: RcloneCliError,
 ) -> CloudCommandError {
     match error {
@@ -410,21 +437,38 @@ fn map_rclone_error_for_provider(
             } else {
                 stdout
             };
-            let code = classify_rclone_message_code(provider, &msg);
+            let code = classify_rclone_message_code_for_providers(providers, &msg);
             CloudCommandError::new(code, msg.trim())
         }
     }
 }
 
+fn map_rclone_error_for_provider(
+    provider: CloudProviderKind,
+    error: RcloneCliError,
+) -> CloudCommandError {
+    map_rclone_error_for_providers(&[provider], error)
+}
+
+#[allow(dead_code)]
 fn classify_rclone_message_code(
     provider: CloudProviderKind,
+    message: &str,
+) -> CloudCommandErrorCode {
+    classify_rclone_message_code_for_providers(&[provider], message)
+}
+
+fn classify_rclone_message_code_for_providers(
+    providers: &[CloudProviderKind],
     message: &str,
 ) -> CloudCommandErrorCode {
     if let Some(code) = classify_common_rclone_message_code(message) {
         return code;
     }
-    if let Some(code) = classify_provider_rclone_message_code(provider, message) {
-        return code;
+    for provider in providers {
+        if let Some(code) = classify_provider_rclone_message_code(*provider, message) {
+            return code;
+        }
     }
     CloudCommandErrorCode::UnknownError
 }
