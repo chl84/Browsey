@@ -13,6 +13,8 @@ type ActivityApi = {
 type Deps = {
   loadPath: (path: string) => Promise<void>
   parentPath: (path: string) => string
+  getCurrentPath?: () => string | null
+  showToast?: (msg: string, durationMs?: number) => void
   activityApi?: ActivityApi
 }
 
@@ -23,9 +25,10 @@ export type RenameModalState = {
 }
 
 export const createRenameModal = (deps: Deps) => {
-  const { loadPath, parentPath, activityApi } = deps
+  const { loadPath, parentPath, getCurrentPath, showToast, activityApi } = deps
   const state = writable<RenameModalState>({ open: false, target: null, error: '' })
   let busy = false
+  const isCloudPath = (path: string) => path.startsWith('rclone://')
 
   const invokeErrorMessage = (err: unknown): string => {
     if (err instanceof Error && err.message.trim().length > 0) return err.message
@@ -76,7 +79,24 @@ export const createRenameModal = (deps: Deps) => {
         await activityApi.start('Renaming…', progressEvent)
       }
       await renameEntry(current.target.path, trimmed)
-      await loadPath(parentPath(current.target.path))
+      const refreshPath = parentPath(current.target.path)
+      if (isCloudPath(current.target.path)) {
+        void (async () => {
+          if (getCurrentPath && getCurrentPath() !== refreshPath) {
+            return
+          }
+          try {
+            await loadPath(refreshPath)
+          } catch {
+            if (getCurrentPath && getCurrentPath() !== refreshPath) {
+              return
+            }
+            showToast?.('Rename completed, but refresh took too long. Press F5 to refresh.', 3500)
+          }
+        })()
+      } else {
+        await loadPath(refreshPath)
+      }
       close()
       activityApi?.hideSoon()
       return true

@@ -33,7 +33,12 @@ export const useModalsController = ({
   checkDuplicatesModal: providedCheckDuplicatesModal,
   computeDirStats,
 }: Deps) => {
-  const deleteModal = createDeleteConfirmModal({ activityApi, reloadCurrent, showToast })
+  const deleteModal = createDeleteConfirmModal({
+    activityApi,
+    reloadCurrent,
+    getCurrentPath,
+    showToast,
+  })
   const deleteState = deleteModal.state
 
   const openWithModal = createOpenWithModal({ showToast })
@@ -45,6 +50,8 @@ export const useModalsController = ({
   const renameModal = createRenameModal({
     loadPath: (path: string) => loadPath(path, { recordHistory: false }),
     parentPath,
+    getCurrentPath,
+    showToast,
     activityApi,
   })
   const renameState = renameModal.state

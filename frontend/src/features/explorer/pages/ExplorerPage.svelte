@@ -918,6 +918,7 @@
       const progressEvent = `delete-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
       try {
         await activityApi.start(label, progressEvent)
+        const cloudDelete = !inTrashView && list.some((e) => isCloudPath(e.path))
         if (inTrashView) {
           const ids = list.map((e) => e.trash_id ?? e.path)
           await purgeTrashItems(ids)
@@ -925,7 +926,24 @@
           const paths = list.map((e) => e.path)
           await deleteEntries(paths, progressEvent)
         }
-        await reloadCurrent()
+        if (cloudDelete) {
+          const refreshTarget = get(current)
+          void (async () => {
+            if (get(current) !== refreshTarget) {
+              return
+            }
+            try {
+              await reloadCurrent()
+            } catch {
+              if (get(current) !== refreshTarget) {
+                return
+              }
+              showToast('Delete completed, but refresh took too long. Press F5 to refresh.', 3500)
+            }
+          })()
+        } else {
+          await reloadCurrent()
+        }
         activityApi.hideSoon()
         showToast('Deleted')
         return true
