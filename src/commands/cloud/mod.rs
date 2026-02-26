@@ -19,6 +19,7 @@ use tracing::warn;
 use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote, CloudRootSelection};
 
 const CLOUD_REMOTE_DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(45);
+const CLOUD_DIR_LISTING_CACHE_TTL: Duration = Duration::from_secs(4);
 
 #[derive(Debug, Clone)]
 struct CachedCloudRemoteDiscovery {
@@ -26,9 +27,20 @@ struct CachedCloudRemoteDiscovery {
     remotes: Vec<CloudRemote>,
 }
 
+#[derive(Debug, Clone)]
+struct CachedCloudDirListing {
+    fetched_at: Instant,
+    entries: Vec<CloudEntry>,
+}
+
 fn cloud_remote_discovery_cache() -> &'static Mutex<Option<CachedCloudRemoteDiscovery>> {
     static CACHE: OnceLock<Mutex<Option<CachedCloudRemoteDiscovery>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn cloud_dir_listing_cache() -> &'static Mutex<HashMap<String, CachedCloudDirListing>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, CachedCloudDirListing>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn list_cloud_remotes_cached(force_refresh: bool) -> CloudCommandResult<Vec<CloudRemote>> {
@@ -52,6 +64,47 @@ fn list_cloud_remotes_cached(force_refresh: bool) -> CloudCommandResult<Vec<Clou
         });
     }
     Ok(remotes)
+}
+
+fn list_cloud_dir_cached(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
+    let now = Instant::now();
+    let key = path.to_string();
+    if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
+        guard.retain(|_, cached| {
+            now.duration_since(cached.fetched_at) <= CLOUD_DIR_LISTING_CACHE_TTL
+        });
+        if let Some(cached) = guard.get(&key) {
+            return Ok(cached.entries.clone());
+        }
+    }
+
+    let provider = RcloneCloudProvider::default();
+    let entries = provider.list_dir(path)?;
+    if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
+        guard.insert(
+            key,
+            CachedCloudDirListing {
+                fetched_at: now,
+                entries: entries.clone(),
+            },
+        );
+    }
+    Ok(entries)
+}
+
+fn invalidate_cloud_dir_listing_cache_path(path: &CloudPath) {
+    if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
+        guard.remove(&path.to_string());
+    }
+}
+
+fn invalidate_cloud_dir_listing_cache_for_write_paths(paths: &[CloudPath]) {
+    for path in paths {
+        invalidate_cloud_dir_listing_cache_path(path);
+        if let Some(parent) = path.parent_dir_path() {
+            invalidate_cloud_dir_listing_cache_path(&parent);
+        }
+    }
 }
 
 pub(crate) fn list_cloud_remotes_sync_best_effort(force_refresh: bool) -> Vec<CloudRemote> {
@@ -133,16 +186,8 @@ pub async fn list_cloud_entries(path: String) -> ApiResult<Vec<CloudEntry>> {
 }
 
 async fn list_cloud_entries_impl(path: String) -> CloudCommandResult<Vec<CloudEntry>> {
-    let path = CloudPath::parse(&path).map_err(|error| {
-        CloudCommandError::new(
-            CloudCommandErrorCode::InvalidPath,
-            format!("Invalid cloud path: {error}"),
-        )
-    })?;
-    let task = tauri::async_runtime::spawn_blocking(move || {
-        let provider = RcloneCloudProvider::default();
-        provider.list_dir(&path)
-    });
+    let path = parse_cloud_path_arg(path)?;
+    let task = tauri::async_runtime::spawn_blocking(move || list_cloud_dir_cached(&path));
     match task.await {
         Ok(result) => result,
         Err(error) => Err(CloudCommandError::new(
@@ -189,12 +234,17 @@ async fn create_cloud_folder_impl(path: String) -> CloudCommandResult<()> {
             format!("Invalid cloud path: {error}"),
         )
     })?;
+    let path_for_invalidate = path.clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = RcloneCloudProvider::default();
         provider.mkdir(&path)
     });
     match task.await {
-        Ok(result) => result,
+        Ok(result) => {
+            result?;
+            invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
+            Ok(())
+        }
         Err(error) => Err(CloudCommandError::new(
             CloudCommandErrorCode::TaskFailed,
             format!("cloud mkdir task failed: {error}"),
@@ -209,11 +259,14 @@ pub async fn delete_cloud_file(path: String) -> ApiResult<()> {
 
 async fn delete_cloud_file_impl(path: String) -> CloudCommandResult<()> {
     let path = parse_cloud_path_arg(path)?;
+    let path_for_invalidate = path.clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = RcloneCloudProvider::default();
         provider.delete_file(&path)
     });
-    map_spawn_result(task.await, "cloud delete file task failed")
+    map_spawn_result(task.await, "cloud delete file task failed")?;
+    invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
+    Ok(())
 }
 
 #[tauri::command]
@@ -223,11 +276,14 @@ pub async fn delete_cloud_dir_recursive(path: String) -> ApiResult<()> {
 
 async fn delete_cloud_dir_recursive_impl(path: String) -> CloudCommandResult<()> {
     let path = parse_cloud_path_arg(path)?;
+    let path_for_invalidate = path.clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = RcloneCloudProvider::default();
         provider.delete_dir_recursive(&path)
     });
-    map_spawn_result(task.await, "cloud delete dir task failed")
+    map_spawn_result(task.await, "cloud delete dir task failed")?;
+    invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
+    Ok(())
 }
 
 #[tauri::command]
@@ -237,11 +293,14 @@ pub async fn delete_cloud_dir_empty(path: String) -> ApiResult<()> {
 
 async fn delete_cloud_dir_empty_impl(path: String) -> CloudCommandResult<()> {
     let path = parse_cloud_path_arg(path)?;
+    let path_for_invalidate = path.clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = RcloneCloudProvider::default();
         provider.delete_dir_empty(&path)
     });
-    map_spawn_result(task.await, "cloud rmdir task failed")
+    map_spawn_result(task.await, "cloud rmdir task failed")?;
+    invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
+    Ok(())
 }
 
 #[tauri::command]
@@ -270,11 +329,14 @@ async fn move_cloud_entry_impl(
 ) -> CloudCommandResult<()> {
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
+    let invalidate_paths = vec![src.clone(), dst.clone()];
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = RcloneCloudProvider::default();
         provider.move_entry(&src, &dst, overwrite, prechecked)
     });
-    map_spawn_result(task.await, "cloud move task failed")
+    map_spawn_result(task.await, "cloud move task failed")?;
+    invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
+    Ok(())
 }
 
 #[tauri::command]
@@ -321,11 +383,14 @@ async fn copy_cloud_entry_impl(
 ) -> CloudCommandResult<()> {
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
+    let invalidate_paths = vec![dst.clone()];
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = RcloneCloudProvider::default();
         provider.copy_entry(&src, &dst, overwrite, prechecked)
     });
-    map_spawn_result(task.await, "cloud copy task failed")
+    map_spawn_result(task.await, "cloud copy task failed")?;
+    invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
+    Ok(())
 }
 
 #[tauri::command]

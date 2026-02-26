@@ -28,9 +28,9 @@
 
 - [x] Cache cloud remote discovery (`listremotes + config dump`) med TTL
 - [x] Invalider remote-cache ved eksplisitt Network-refresh
-- [ ] Cache cloud directory listing (`rclone://...`) med kort TTL
-- [ ] Invalider listing-cache ved cloud write-ops (copy/move/rename/mkdir/delete)
-- [ ] Reduser dobbel cloud-listing i `list_facets` (bruk cache eller eksisterende entries)
+- [x] Cache cloud directory listing (`rclone://...`) med kort TTL
+- [x] Invalider listing-cache ved cloud write-ops (copy/move/rename/mkdir/delete)
+- [x] Reduser dobbel cloud-listing i `list_facets` (bruk cache eller eksisterende entries)
 
 ## Fase 4: Robusthet under treghet / throttling
 
