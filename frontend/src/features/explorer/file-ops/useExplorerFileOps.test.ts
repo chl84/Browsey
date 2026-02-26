@@ -579,4 +579,32 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       expect.any(Function),
     )
   })
+
+  it('prefers internal copy clipboard over stale system clipboard sync in pasteIntoCurrent', async () => {
+    setClipboardPathsState('copy', ['/tmp/src/report.txt'])
+    getSystemClipboardPathsMock.mockResolvedValue({
+      mode: 'cut',
+      paths: ['/tmp/other/file.txt'],
+    })
+    pasteClipboardPreviewMock.mockResolvedValue([])
+
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp/dest'
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.pasteIntoCurrent()
+
+    expect(ok).toBe(true)
+    expect(getSystemClipboardPathsMock).not.toHaveBeenCalled()
+    expect(pasteClipboardCmdMock).toHaveBeenCalledWith(
+      '/tmp/dest',
+      'rename',
+      expect.stringMatching(/^copy-progress-/),
+    )
+    expect(activityApi.start).toHaveBeenCalledWith(
+      'Copying…',
+      expect.stringMatching(/^copy-progress-/),
+      expect.any(Function),
+    )
+  })
 })
