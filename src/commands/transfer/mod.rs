@@ -479,8 +479,7 @@ async fn validate_mixed_transfer_pair(src: String, dst: String) -> ApiResult<Mix
                 None => return Err(api_err("not_found", "Cloud source was not found")),
             }
 
-            let dst_path = sanitize_path_follow(&dst, false)
-                .map_err(|e| api_err("invalid_path", e.to_string()))?;
+            let dst_path = sanitize_local_target_path_allow_missing(&dst)?;
             let parent = dst_path.parent().ok_or_else(|| {
                 api_err(
                     "invalid_path",
@@ -515,6 +514,29 @@ async fn validate_mixed_transfer_pair(src: String, dst: String) -> ApiResult<Mix
             "Use cloud clipboard paste for cloud-to-cloud transfers",
         )),
     }
+}
+
+fn sanitize_local_target_path_allow_missing(raw: &str) -> ApiResult<PathBuf> {
+    let pb = PathBuf::from(raw);
+    let file_name = pb
+        .file_name()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty() && *s != "." && *s != "..")
+        .ok_or_else(|| {
+            api_err(
+                "invalid_path",
+                "Local destination path must include a file or folder name",
+            )
+        })?;
+    let parent_raw = pb.parent().ok_or_else(|| {
+        api_err(
+            "invalid_path",
+            "Local destination path must include a parent directory",
+        )
+    })?;
+    let parent = sanitize_path_follow(&parent_raw.to_string_lossy(), false)
+        .map_err(|e| api_err("invalid_path", e.to_string()))?;
+    Ok(parent.join(file_name))
 }
 
 async fn validate_local_to_cloud_route(
@@ -1070,6 +1092,26 @@ mod tests {
         fs::remove_file(&file_path).ok();
         fs::remove_dir(&dir_path).ok();
         fs::remove_dir(&base).ok();
+    }
+
+    #[test]
+    fn sanitize_local_target_path_allow_missing_accepts_missing_leaf_when_parent_exists() {
+        let base = std::env::temp_dir().join(format!(
+            "browsey-transfer-target-sanitize-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("epoch")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&base).expect("create temp dir");
+        let target = base.join("new-file.txt");
+
+        let out = sanitize_local_target_path_allow_missing(&target.to_string_lossy())
+            .expect("should allow missing leaf");
+        assert_eq!(out, target);
+
+        fs::remove_dir_all(&base).ok();
     }
 
     fn cloud_entry(name: &str, kind: CloudEntryKind) -> CloudEntry {
