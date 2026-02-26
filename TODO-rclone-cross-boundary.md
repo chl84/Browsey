@@ -37,8 +37,8 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 
 ## Frontend routing + UX
 
-- [ ] Utvid paste-route klassifisering (`local`, `cloud`, `local_to_cloud`, `cloud_to_local`, `unsupported`)
-- [ ] Koble mixed conflict preview til eksisterende konfliktmodal
+- [x] Utvid paste-route klassifisering (`local`, `cloud`, `local_to_cloud`, `cloud_to_local`, `unsupported`)
+- [x] Koble mixed conflict preview til eksisterende konfliktmodal
 - [ ] Koble mixed execute til eksisterende paste-flyt (`handlePasteOrMove`)
 - [ ] Behold korrekt activity-label (`Copying…` / `Moving…`) for mixed ops
 - [ ] Behold cut-clipboard clear etter vellykket move (ingen halvtone-regresjon)
@@ -63,7 +63,7 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 - [ ] Backend tester for `local -> cloud` copy/move (file + dir)
 - [ ] Backend tester for `cloud -> local` copy/move (file + dir)
 - [ ] Backend tester for mixed conflict preview (rename/overwrite)
-- [ ] Frontend tester for route-klassifisering og konfliktmodal (mixed)
+- [x] Frontend tester for route-klassifisering og konfliktmodal (mixed)
 - [ ] Frontend tester for `Moving…`/`Copying…` labels i mixed ops
 - [ ] Frontend tester for cut-state reset etter mixed move
 
