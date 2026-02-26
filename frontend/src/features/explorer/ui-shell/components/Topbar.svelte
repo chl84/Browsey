@@ -75,8 +75,29 @@ import PulseTravelIndicator from '@/shared/ui/PulseTravelIndicator.svelte'
 
   const detectSeparator = (path: string) => (path.includes('\\') && !path.includes('/') ? '\\' : '/')
 
+  const buildRcloneBreadcrumbs = (path: string) => {
+    if (!path.startsWith('rclone://')) return null
+    const rest = path.slice('rclone://'.length)
+    const parts = rest.split('/').filter((p) => p.length > 0)
+    if (parts.length === 0) {
+      return [{ label: path, path }]
+    }
+
+    const [remote, ...segments] = parts
+    const crumbs: { label: string; path: string }[] = []
+    let acc = `rclone://${remote}`
+    crumbs.push({ label: remote, path: acc })
+    for (const segment of segments) {
+      acc = `${acc}/${segment}`
+      crumbs.push({ label: segment, path: acc })
+    }
+    return crumbs
+  }
+
   const buildBreadcrumbs = (path: string) => {
     if (!path) return []
+    const rcloneCrumbs = buildRcloneBreadcrumbs(path)
+    if (rcloneCrumbs) return rcloneCrumbs
     const sep = detectSeparator(path)
     const driveMatch = path.match(/^[A-Za-z]:/)
     const crumbs: { label: string; path: string }[] = []

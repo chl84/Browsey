@@ -237,6 +237,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
       } else if (cloudCount > 0 || isCloudPath(entry.path)) {
         throw new Error('Mixed local/cloud drag-and-drop is not supported yet')
       } else {
+        setClipboardPathsState(mode, sourcePaths)
         await setClipboardCmd(sourcePaths, mode)
       }
       await deps.handlePasteOrMove(entry.path)
@@ -283,6 +284,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
       } else if (cloudCount > 0 || isCloudPath(path)) {
         throw new Error('Mixed local/cloud drag-and-drop is not supported yet')
       } else {
+        setClipboardPathsState(mode, sourcePaths)
         await setClipboardCmd(sourcePaths, mode)
       }
       await deps.handlePasteOrMove(path)
