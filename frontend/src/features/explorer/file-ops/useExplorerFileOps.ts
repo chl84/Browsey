@@ -449,12 +449,12 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
 
     const internalClipboard = get(clipboardState)
-    const preferInternalCutClipboard =
-      internalClipboard.mode === 'cut' && internalClipboard.paths.size > 0
+    const preferInternalClipboard = internalClipboard.paths.size > 0
 
-    // Always attempt to sync from system clipboard first, then paste.
-    // But keep Browsey's internal cut clipboard authoritative to preserve move semantics.
-    if (!isCloudPath(deps.getCurrentPath()) && !preferInternalCutClipboard) {
+    // Attempt to sync from system clipboard only when Browsey has no internal clipboard paths.
+    // When Browsey already has local/cut/copy entries, keep that as source of truth to avoid
+    // racing against stale system clipboard contents.
+    if (!isCloudPath(deps.getCurrentPath()) && !preferInternalClipboard) {
       try {
         const sys = await getSystemClipboardPaths()
         if (sys.paths.length > 0) {
