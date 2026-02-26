@@ -56,7 +56,7 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 - [ ] Unngå unødvendige ekstra metadata-kall i mixed preview/execute
 - [ ] Bruk eksisterende cloud cache/retry der det gir mening
 - [ ] Ikke gjør hele operasjonen til feil hvis write lykkes men refresh feiler
-- [ ] Logg nok timing/feilkontekst til å feilsøke quota/timeouts
+- [x] Logg nok timing/feilkontekst til å feilsøke quota/timeouts
 
 ## Tester
 

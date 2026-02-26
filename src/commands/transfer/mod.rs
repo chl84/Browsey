@@ -12,6 +12,8 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
+use tracing::{info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -49,20 +51,27 @@ pub async fn preview_mixed_transfer_conflicts(
     sources: Vec<String>,
     dest_dir: String,
 ) -> ApiResult<Vec<MixedTransferConflictInfo>> {
+    let started = Instant::now();
+    let source_count = sources.len();
+    let route_hint = mixed_route_hint(&sources, &dest_dir);
     if sources.is_empty() {
-        return Ok(Vec::new());
+        let result = Ok(Vec::new());
+        log_mixed_preview_result(&result, route_hint, source_count, started);
+        return result;
     }
 
     let dest_is_cloud = is_cloud_path(&dest_dir);
     let source_cloud_count = sources.iter().filter(|p| is_cloud_path(p)).count();
     if source_cloud_count > 0 && source_cloud_count < sources.len() {
-        return Err(api_err(
+        let result = Err(api_err(
             "unsupported",
             "Mixed local/cloud selection is not supported",
         ));
+        log_mixed_preview_result(&result, route_hint, source_count, started);
+        return result;
     }
 
-    match (source_cloud_count == sources.len(), dest_is_cloud) {
+    let result = match (source_cloud_count == sources.len(), dest_is_cloud) {
         (false, true) => preview_local_to_cloud_conflicts(sources, dest_dir).await,
         (true, false) => preview_cloud_to_local_conflicts(sources, dest_dir),
         (false, false) => Err(api_err(
@@ -73,7 +82,9 @@ pub async fn preview_mixed_transfer_conflicts(
             "unsupported",
             "Use cloud clipboard preview for cloud-to-cloud transfers",
         )),
-    }
+    };
+    log_mixed_preview_result(&result, route_hint, source_count, started);
+    result
 }
 
 #[tauri::command]
@@ -130,8 +141,106 @@ enum MixedTransferRoute {
     },
 }
 
+#[derive(Debug, Clone, Copy)]
+enum MixedRouteHint {
+    LocalToCloud,
+    CloudToLocal,
+    LocalToLocal,
+    CloudToCloud,
+    MixedSelection,
+    Unknown,
+}
+
 fn api_err(code: &str, message: impl Into<String>) -> ApiError {
     ApiError::new(code, message.into())
+}
+
+fn mixed_route_hint(sources: &[String], dest_dir: &str) -> MixedRouteHint {
+    if sources.is_empty() {
+        return MixedRouteHint::Unknown;
+    }
+    let dest_is_cloud = is_cloud_path(dest_dir);
+    let source_cloud_count = sources.iter().filter(|p| is_cloud_path(p)).count();
+    match (source_cloud_count, sources.len(), dest_is_cloud) {
+        (0, _, true) => MixedRouteHint::LocalToCloud,
+        (n, total, false) if n == total => MixedRouteHint::CloudToLocal,
+        (0, _, false) => MixedRouteHint::LocalToLocal,
+        (n, total, true) if n == total => MixedRouteHint::CloudToCloud,
+        (n, total, _) if n > 0 && n < total => MixedRouteHint::MixedSelection,
+        _ => MixedRouteHint::Unknown,
+    }
+}
+
+fn route_hint_label(hint: MixedRouteHint) -> &'static str {
+    match hint {
+        MixedRouteHint::LocalToCloud => "local_to_cloud",
+        MixedRouteHint::CloudToLocal => "cloud_to_local",
+        MixedRouteHint::LocalToLocal => "local_to_local",
+        MixedRouteHint::CloudToCloud => "cloud_to_cloud",
+        MixedRouteHint::MixedSelection => "mixed_selection",
+        MixedRouteHint::Unknown => "unknown",
+    }
+}
+
+fn log_mixed_preview_result(
+    result: &ApiResult<Vec<MixedTransferConflictInfo>>,
+    route_hint: MixedRouteHint,
+    source_count: usize,
+    started: Instant,
+) {
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    match result {
+        Ok(conflicts) => info!(
+            op = "mixed_conflict_preview",
+            route = route_hint_label(route_hint),
+            source_count,
+            conflicts = conflicts.len(),
+            elapsed_ms,
+            "mixed conflict preview completed"
+        ),
+        Err(err) => warn!(
+            op = "mixed_conflict_preview",
+            route = route_hint_label(route_hint),
+            source_count,
+            elapsed_ms,
+            error_code = %err.code,
+            error_message = %err.message,
+            "mixed conflict preview failed"
+        ),
+    }
+}
+
+fn log_mixed_execute_result(
+    op: MixedTransferOp,
+    result: &ApiResult<Vec<String>>,
+    route_hint: MixedRouteHint,
+    source_count: usize,
+    started: Instant,
+) {
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    let op_name = match op {
+        MixedTransferOp::Copy => "mixed_write_copy",
+        MixedTransferOp::Move => "mixed_write_move",
+    };
+    match result {
+        Ok(created) => info!(
+            op = op_name,
+            route = route_hint_label(route_hint),
+            source_count,
+            outputs = created.len(),
+            elapsed_ms,
+            "mixed transfer completed"
+        ),
+        Err(err) => warn!(
+            op = op_name,
+            route = route_hint_label(route_hint),
+            source_count,
+            elapsed_ms,
+            error_code = %err.code,
+            error_message = %err.message,
+            "mixed transfer failed"
+        ),
+    }
 }
 
 async fn execute_mixed_entries(
@@ -140,17 +249,29 @@ async fn execute_mixed_entries(
     dest_dir: String,
     options: MixedTransferWriteOptions,
 ) -> ApiResult<Vec<String>> {
-    let route = validate_mixed_transfer_route(sources, dest_dir).await?;
+    let started = Instant::now();
+    let source_count = sources.len();
+    let route_hint = mixed_route_hint(&sources, &dest_dir);
+    let route = match validate_mixed_transfer_route(sources, dest_dir).await {
+        Ok(route) => route,
+        Err(err) => {
+            let result = Err(err);
+            log_mixed_execute_result(op, &result, route_hint, source_count, started);
+            return result;
+        }
+    };
     let task = tauri::async_runtime::spawn_blocking(move || {
         execute_mixed_entries_blocking(op, route, options)
     });
-    match task.await {
+    let result = match task.await {
         Ok(result) => result,
         Err(error) => Err(api_err(
             "task_failed",
             format!("Mixed transfer task failed: {error}"),
         )),
-    }
+    };
+    log_mixed_execute_result(op, &result, route_hint, source_count, started);
+    result
 }
 
 async fn validate_mixed_transfer_route(
