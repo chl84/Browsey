@@ -15,7 +15,7 @@ use providers::rclone::RcloneCloudProvider;
 use std::collections::HashMap;
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote, CloudRootSelection};
 
 const CLOUD_REMOTE_DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(45);
@@ -305,15 +305,35 @@ pub async fn list_cloud_entries(path: String) -> ApiResult<Vec<CloudEntry>> {
 }
 
 async fn list_cloud_entries_impl(path: String) -> CloudCommandResult<Vec<CloudEntry>> {
+    let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
+    let path_for_log = path.clone();
     let task = tauri::async_runtime::spawn_blocking(move || list_cloud_dir_cached(&path));
-    match task.await {
+    let result = match task.await {
         Ok(result) => result,
         Err(error) => Err(CloudCommandError::new(
             CloudCommandErrorCode::TaskFailed,
             format!("cloud list task failed: {error}"),
         )),
+    };
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    match &result {
+        Ok(entries) => info!(
+            op = "cloud_list_entries",
+            path = %path_for_log,
+            entry_count = entries.len(),
+            elapsed_ms,
+            "cloud command timing"
+        ),
+        Err(error) => debug!(
+            op = "cloud_list_entries",
+            path = %path_for_log,
+            elapsed_ms,
+            error = %error,
+            "cloud command failed"
+        ),
     }
+    result
 }
 
 #[tauri::command]
@@ -345,8 +365,10 @@ pub async fn create_cloud_folder(path: String) -> ApiResult<()> {
 }
 
 async fn create_cloud_folder_impl(path: String) -> CloudCommandResult<()> {
+    let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
+    let path_for_log = path.clone();
     let remote = path.remote().to_string();
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
@@ -354,7 +376,7 @@ async fn create_cloud_folder_impl(path: String) -> CloudCommandResult<()> {
             provider.mkdir(&path)
         })
     });
-    match task.await {
+    let result = match task.await {
         Ok(result) => {
             result?;
             invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
@@ -364,7 +386,24 @@ async fn create_cloud_folder_impl(path: String) -> CloudCommandResult<()> {
             CloudCommandErrorCode::TaskFailed,
             format!("cloud mkdir task failed: {error}"),
         )),
+    };
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    match &result {
+        Ok(()) => info!(
+            op = "cloud_write_mkdir",
+            path = %path_for_log,
+            elapsed_ms,
+            "cloud command timing"
+        ),
+        Err(error) => debug!(
+            op = "cloud_write_mkdir",
+            path = %path_for_log,
+            elapsed_ms,
+            error = %error,
+            "cloud command failed"
+        ),
     }
+    result
 }
 
 #[tauri::command]
@@ -373,8 +412,10 @@ pub async fn delete_cloud_file(path: String) -> ApiResult<()> {
 }
 
 async fn delete_cloud_file_impl(path: String) -> CloudCommandResult<()> {
+    let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
+    let path_for_log = path.clone();
     let remote = path.remote().to_string();
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
@@ -382,9 +423,26 @@ async fn delete_cloud_file_impl(path: String) -> CloudCommandResult<()> {
             provider.delete_file(&path)
         })
     });
-    map_spawn_result(task.await, "cloud delete file task failed")?;
-    invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
-    Ok(())
+    let result = map_spawn_result(task.await, "cloud delete file task failed").map(|_| {
+        invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
+    });
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    match &result {
+        Ok(()) => info!(
+            op = "cloud_write_delete_file",
+            path = %path_for_log,
+            elapsed_ms,
+            "cloud command timing"
+        ),
+        Err(error) => debug!(
+            op = "cloud_write_delete_file",
+            path = %path_for_log,
+            elapsed_ms,
+            error = %error,
+            "cloud command failed"
+        ),
+    }
+    result
 }
 
 #[tauri::command]
@@ -393,8 +451,10 @@ pub async fn delete_cloud_dir_recursive(path: String) -> ApiResult<()> {
 }
 
 async fn delete_cloud_dir_recursive_impl(path: String) -> CloudCommandResult<()> {
+    let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
+    let path_for_log = path.clone();
     let remote = path.remote().to_string();
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
@@ -402,9 +462,26 @@ async fn delete_cloud_dir_recursive_impl(path: String) -> CloudCommandResult<()>
             provider.delete_dir_recursive(&path)
         })
     });
-    map_spawn_result(task.await, "cloud delete dir task failed")?;
-    invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
-    Ok(())
+    let result = map_spawn_result(task.await, "cloud delete dir task failed").map(|_| {
+        invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
+    });
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    match &result {
+        Ok(()) => info!(
+            op = "cloud_write_delete_dir_recursive",
+            path = %path_for_log,
+            elapsed_ms,
+            "cloud command timing"
+        ),
+        Err(error) => debug!(
+            op = "cloud_write_delete_dir_recursive",
+            path = %path_for_log,
+            elapsed_ms,
+            error = %error,
+            "cloud command failed"
+        ),
+    }
+    result
 }
 
 #[tauri::command]
@@ -413,8 +490,10 @@ pub async fn delete_cloud_dir_empty(path: String) -> ApiResult<()> {
 }
 
 async fn delete_cloud_dir_empty_impl(path: String) -> CloudCommandResult<()> {
+    let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
+    let path_for_log = path.clone();
     let remote = path.remote().to_string();
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
@@ -422,9 +501,26 @@ async fn delete_cloud_dir_empty_impl(path: String) -> CloudCommandResult<()> {
             provider.delete_dir_empty(&path)
         })
     });
-    map_spawn_result(task.await, "cloud rmdir task failed")?;
-    invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
-    Ok(())
+    let result = map_spawn_result(task.await, "cloud rmdir task failed").map(|_| {
+        invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
+    });
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    match &result {
+        Ok(()) => info!(
+            op = "cloud_write_delete_dir_empty",
+            path = %path_for_log,
+            elapsed_ms,
+            "cloud command timing"
+        ),
+        Err(error) => debug!(
+            op = "cloud_write_delete_dir_empty",
+            path = %path_for_log,
+            elapsed_ms,
+            error = %error,
+            "cloud command failed"
+        ),
+    }
+    result
 }
 
 #[tauri::command]
@@ -451,8 +547,11 @@ async fn move_cloud_entry_impl(
     overwrite: bool,
     prechecked: bool,
 ) -> CloudCommandResult<()> {
+    let started = Instant::now();
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
+    let src_for_log = src.clone();
+    let dst_for_log = dst.clone();
     let invalidate_paths = vec![src.clone(), dst.clone()];
     let remotes = vec![src.remote().to_string(), dst.remote().to_string()];
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -461,9 +560,32 @@ async fn move_cloud_entry_impl(
             provider.move_entry(&src, &dst, overwrite, prechecked)
         })
     });
-    map_spawn_result(task.await, "cloud move task failed")?;
-    invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
-    Ok(())
+    let result = map_spawn_result(task.await, "cloud move task failed").map(|_| {
+        invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
+    });
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    match &result {
+        Ok(()) => info!(
+            op = "cloud_write_move",
+            src = %src_for_log,
+            dst = %dst_for_log,
+            overwrite,
+            prechecked,
+            elapsed_ms,
+            "cloud command timing"
+        ),
+        Err(error) => debug!(
+            op = "cloud_write_move",
+            src = %src_for_log,
+            dst = %dst_for_log,
+            overwrite,
+            prechecked,
+            elapsed_ms,
+            error = %error,
+            "cloud command failed"
+        ),
+    }
+    result
 }
 
 #[tauri::command]
@@ -508,8 +630,11 @@ async fn copy_cloud_entry_impl(
     overwrite: bool,
     prechecked: bool,
 ) -> CloudCommandResult<()> {
+    let started = Instant::now();
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
+    let src_for_log = src.clone();
+    let dst_for_log = dst.clone();
     let invalidate_paths = vec![dst.clone()];
     let remotes = vec![src.remote().to_string(), dst.remote().to_string()];
     let task = tauri::async_runtime::spawn_blocking(move || {
@@ -518,9 +643,32 @@ async fn copy_cloud_entry_impl(
             provider.copy_entry(&src, &dst, overwrite, prechecked)
         })
     });
-    map_spawn_result(task.await, "cloud copy task failed")?;
-    invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
-    Ok(())
+    let result = map_spawn_result(task.await, "cloud copy task failed").map(|_| {
+        invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
+    });
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    match &result {
+        Ok(()) => info!(
+            op = "cloud_write_copy",
+            src = %src_for_log,
+            dst = %dst_for_log,
+            overwrite,
+            prechecked,
+            elapsed_ms,
+            "cloud command timing"
+        ),
+        Err(error) => debug!(
+            op = "cloud_write_copy",
+            src = %src_for_log,
+            dst = %dst_for_log,
+            overwrite,
+            prechecked,
+            elapsed_ms,
+            error = %error,
+            "cloud command failed"
+        ),
+    }
+    result
 }
 
 #[tauri::command]
@@ -535,16 +683,39 @@ async fn preview_cloud_conflicts_impl(
     sources: Vec<String>,
     dest_dir: String,
 ) -> CloudCommandResult<Vec<CloudConflictInfo>> {
+    let started = Instant::now();
     let dest_dir = parse_cloud_path_arg(dest_dir)?;
     let sources = sources
         .into_iter()
         .map(parse_cloud_path_arg)
         .collect::<CloudCommandResult<Vec<_>>>()?;
+    let source_count = sources.len();
+    let dest_dir_for_log = dest_dir.clone();
     let task = tauri::async_runtime::spawn_blocking(move || {
         let dest_entries = list_cloud_dir_cached(&dest_dir)?;
         build_conflicts_from_dest_listing(&sources, &dest_dir, &dest_entries)
     });
-    map_spawn_result(task.await, "cloud conflict preview task failed")
+    let result = map_spawn_result(task.await, "cloud conflict preview task failed");
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    match &result {
+        Ok(conflicts) => info!(
+            op = "cloud_conflict_preview",
+            dest_dir = %dest_dir_for_log,
+            source_count,
+            conflict_count = conflicts.len(),
+            elapsed_ms,
+            "cloud command timing"
+        ),
+        Err(error) => debug!(
+            op = "cloud_conflict_preview",
+            dest_dir = %dest_dir_for_log,
+            source_count,
+            elapsed_ms,
+            error = %error,
+            "cloud command failed"
+        ),
+    }
+    result
 }
 
 fn build_conflicts_from_dest_listing(
