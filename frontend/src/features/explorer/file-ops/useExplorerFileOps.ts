@@ -3,9 +3,9 @@ import { writable, get } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import {
   copyCloudEntry,
+  listCloudEntries,
   moveCloudEntry,
   previewCloudConflicts,
-  statCloudEntry,
 } from '@/features/network'
 import {
   setClipboardCmd,
@@ -185,6 +185,11 @@ export const useExplorerFileOps = (deps: Deps) => {
     const progressEvent = `cloud-copy-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       await deps.activityApi.start('Copying…', progressEvent, () => deps.activityApi.requestCancel(progressEvent))
+      let reservedDestNames: Set<string> | null = null
+      if (policy === 'rename') {
+        const destEntries = await listCloudEntries(target)
+        reservedDestNames = new Set(destEntries.map((entry) => entry.name))
+      }
       for (const src of sources) {
         const leaf = cloudLeafName(src)
         if (!leaf) {
@@ -196,8 +201,14 @@ export const useExplorerFileOps = (deps: Deps) => {
           let idx = 0
           while (true) {
             finalTarget = cloudRenameCandidate(targetBase, idx)
-            const existing = await statCloudEntry(finalTarget)
-            if (!existing) break
+            const candidateLeaf = cloudLeafName(finalTarget)
+            if (!candidateLeaf) {
+              throw new Error(`Invalid cloud target path: ${finalTarget}`)
+            }
+            if (!reservedDestNames?.has(candidateLeaf)) {
+              reservedDestNames?.add(candidateLeaf)
+              break
+            }
             idx += 1
           }
         }

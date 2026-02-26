@@ -12,6 +12,7 @@ use error::{map_api_result, CloudCommandError, CloudCommandErrorCode, CloudComma
 use path::CloudPath;
 use provider::CloudProvider;
 use providers::rclone::RcloneCloudProvider;
+use std::collections::HashMap;
 use tracing::warn;
 use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote, CloudRootSelection};
 
@@ -275,38 +276,49 @@ async fn preview_cloud_conflicts_impl(
         .collect::<CloudCommandResult<Vec<_>>>()?;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = RcloneCloudProvider::default();
-        let mut conflicts = Vec::new();
-        for src in &sources {
-            let name = src.leaf_name().map_err(|error| {
-                CloudCommandError::new(
-                    CloudCommandErrorCode::InvalidPath,
-                    format!("Invalid source cloud path for conflict preview: {error}"),
-                )
-            })?;
-            let target = dest_dir.child_path(name).map_err(|error| {
-                CloudCommandError::new(
-                    CloudCommandErrorCode::InvalidPath,
-                    format!("Invalid target cloud path for conflict preview: {error}"),
-                )
-            })?;
-            let existing = provider.stat_path(&target)?;
-            let exists = existing.is_some();
-            let is_dir = existing
-                .as_ref()
-                .map(|entry| matches!(entry.kind, CloudEntryKind::Dir))
-                .unwrap_or(false);
-            if exists {
-                conflicts.push(CloudConflictInfo {
-                    src: src.to_string(),
-                    target: target.to_string(),
-                    exists,
-                    is_dir,
-                });
-            }
-        }
-        Ok(conflicts)
+        let dest_entries = provider.list_dir(&dest_dir)?;
+        build_conflicts_from_dest_listing(&sources, &dest_dir, &dest_entries)
     });
     map_spawn_result(task.await, "cloud conflict preview task failed")
+}
+
+fn build_conflicts_from_dest_listing(
+    sources: &[CloudPath],
+    dest_dir: &CloudPath,
+    dest_entries: &[CloudEntry],
+) -> CloudCommandResult<Vec<CloudConflictInfo>> {
+    let mut name_to_is_dir: HashMap<&str, bool> = HashMap::with_capacity(dest_entries.len());
+    for entry in dest_entries {
+        name_to_is_dir
+            .entry(entry.name.as_str())
+            .or_insert(matches!(entry.kind, CloudEntryKind::Dir));
+    }
+
+    let mut conflicts = Vec::new();
+    for src in sources {
+        let name = src.leaf_name().map_err(|error| {
+            CloudCommandError::new(
+                CloudCommandErrorCode::InvalidPath,
+                format!("Invalid source cloud path for conflict preview: {error}"),
+            )
+        })?;
+        let Some(is_dir) = name_to_is_dir.get(name) else {
+            continue;
+        };
+        let target = dest_dir.child_path(name).map_err(|error| {
+            CloudCommandError::new(
+                CloudCommandErrorCode::InvalidPath,
+                format!("Invalid target cloud path for conflict preview: {error}"),
+            )
+        })?;
+        conflicts.push(CloudConflictInfo {
+            src: src.to_string(),
+            target: target.to_string(),
+            exists: true,
+            is_dir: *is_dir,
+        });
+    }
+    Ok(conflicts)
 }
 
 #[tauri::command]
@@ -343,7 +355,13 @@ fn map_spawn_result<T>(
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_cloud_path, normalize_cloud_path_impl};
+    use super::{
+        build_conflicts_from_dest_listing, normalize_cloud_path, normalize_cloud_path_impl,
+    };
+    use crate::commands::cloud::{
+        path::CloudPath,
+        types::{CloudCapabilities, CloudEntry, CloudEntryKind},
+    };
 
     #[test]
     fn normalize_cloud_path_command_returns_normalized_path() {
@@ -372,5 +390,46 @@ mod tests {
             err.to_string(),
             "Invalid cloud path: Path must start with rclone://"
         );
+    }
+
+    #[test]
+    fn conflict_preview_uses_dest_listing_names() {
+        let src_file = CloudPath::parse("rclone://work/src/report.txt").expect("src file");
+        let src_dir = CloudPath::parse("rclone://work/src/Folder").expect("src dir");
+        let src_missing = CloudPath::parse("rclone://work/src/notes.txt").expect("src missing");
+        let dest_dir = CloudPath::parse("rclone://work/dest").expect("dest");
+        let dest_entries = vec![
+            CloudEntry {
+                name: "report.txt".to_string(),
+                path: "rclone://work/dest/report.txt".to_string(),
+                kind: CloudEntryKind::File,
+                size: Some(1),
+                modified: None,
+                capabilities: CloudCapabilities::v1_core_rw(),
+            },
+            CloudEntry {
+                name: "Folder".to_string(),
+                path: "rclone://work/dest/Folder".to_string(),
+                kind: CloudEntryKind::Dir,
+                size: None,
+                modified: None,
+                capabilities: CloudCapabilities::v1_core_rw(),
+            },
+        ];
+
+        let conflicts = build_conflicts_from_dest_listing(
+            &[src_file.clone(), src_dir.clone(), src_missing],
+            &dest_dir,
+            &dest_entries,
+        )
+        .expect("conflicts");
+
+        assert_eq!(conflicts.len(), 2);
+        assert_eq!(conflicts[0].src, src_file.to_string());
+        assert_eq!(conflicts[0].target, "rclone://work/dest/report.txt");
+        assert!(!conflicts[0].is_dir);
+        assert_eq!(conflicts[1].src, src_dir.to_string());
+        assert_eq!(conflicts[1].target, "rclone://work/dest/Folder");
+        assert!(conflicts[1].is_dir);
     }
 }
