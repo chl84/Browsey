@@ -212,35 +212,67 @@ describe('useExplorerFileOps cloud conflict preview', () => {
   })
 
   it('treats cloud paste as successful when refresh fails and shows refresh hint', async () => {
-    setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
-    previewCloudConflictsMock.mockResolvedValue([])
-    statCloudEntryMock.mockResolvedValue(null)
+    vi.useFakeTimers()
+    try {
+      setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
+      previewCloudConflictsMock.mockResolvedValue([])
+      statCloudEntryMock.mockResolvedValue(null)
 
-    const deps = createDeps()
-    deps.reloadCurrent = vi.fn(async () => {
-      throw new Error('Cloud operation timed out')
-    })
-    const fileOps = useExplorerFileOps(deps)
+      const deps = createDeps()
+      deps.reloadCurrent = vi.fn(async () => {
+        throw new Error('Cloud operation timed out')
+      })
+      const fileOps = useExplorerFileOps(deps)
 
-    const ok = await fileOps.pasteIntoCurrent()
+      const ok = await fileOps.pasteIntoCurrent()
 
-    expect(ok).toBe(true)
-    expect(copyCloudEntryMock).toHaveBeenCalledWith(
-      'rclone://work/src/report.txt',
-      'rclone://work/dest/report.txt',
-      { overwrite: false },
-    )
+      expect(ok).toBe(true)
+      expect(copyCloudEntryMock).toHaveBeenCalledWith(
+        'rclone://work/src/report.txt',
+        'rclone://work/dest/report.txt',
+        { overwrite: false },
+      )
 
-    await Promise.resolve()
-    await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(250)
+      await Promise.resolve()
 
-    expect(deps.showToast).toHaveBeenCalledWith(
-      'Paste completed, but refresh took too long. Press F5 to refresh.',
-      3500,
-    )
-    const toastCalls = (deps.showToast as unknown as { mock: { calls: unknown[][] } }).mock.calls
-    expect(toastCalls.some((args) => String(args[0] ?? '').startsWith('Paste failed:'))).toBe(
-      false,
-    )
+      expect(deps.showToast).toHaveBeenCalledWith(
+        'Paste completed, but refresh took too long. Press F5 to refresh.',
+        3500,
+      )
+      const toastCalls = (deps.showToast as unknown as { mock: { calls: unknown[][] } }).mock.calls
+      expect(toastCalls.some((args) => String(args[0] ?? '').startsWith('Paste failed:'))).toBe(
+        false,
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('coalesces cloud refresh requests for repeated paste into the same folder', async () => {
+    vi.useFakeTimers()
+    try {
+      setClipboardPathsState('copy', ['rclone://work/src/report.txt'])
+      previewCloudConflictsMock.mockResolvedValue([])
+      statCloudEntryMock.mockResolvedValue(null)
+
+      const deps = createDeps()
+      deps.reloadCurrent = vi.fn(async () => {})
+      const fileOps = useExplorerFileOps(deps)
+
+      const first = await fileOps.pasteIntoCurrent()
+      const second = await fileOps.pasteIntoCurrent()
+
+      expect(first).toBe(true)
+      expect(second).toBe(true)
+      expect(deps.reloadCurrent).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(250)
+      await Promise.resolve()
+
+      expect(deps.reloadCurrent).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
