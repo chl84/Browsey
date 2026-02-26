@@ -46,13 +46,13 @@
 - [x] Frontend-tester for refresh-koordinator / coalescing
 - [x] Frontend-tester for bakgrunns-refresh på rename/mkdir/delete
 - [ ] Manuell OneDrive ytelsestest (samme sjekkliste som baseline)
-- [ ] Oppdater `TODO-rclone.md` med perf-status når første pakke er ferdig
+- [x] Oppdater `TODO-rclone.md` med perf-status når første pakke er ferdig
 
 ## Anbefalt PR-rekkefølge
 
-- [ ] PR1: Refresh-koordinator + bakgrunns-refresh for cloud write-ops
-- [ ] PR2: Batch konfliktpreview + fjern `stat`-loop i rename-on-conflict
-- [ ] PR3: Remote discovery cache (Network-view)
-- [ ] PR4: Cloud listing cache + invalidering
-- [ ] PR5: Cloud facets uten dobbel listing
-- [ ] PR6: Bounded concurrency + metadata retry/backoff
+- [x] PR1: Refresh-koordinator + bakgrunns-refresh for cloud write-ops
+- [x] PR2: Batch konfliktpreview + fjern `stat`-loop i rename-on-conflict
+- [x] PR3: Remote discovery cache (Network-view)
+- [x] PR4: Cloud listing cache + invalidering
+- [x] PR5: Cloud facets uten dobbel listing
+- [x] PR6: Bounded concurrency + metadata retry/backoff

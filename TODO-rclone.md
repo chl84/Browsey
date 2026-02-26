@@ -151,6 +151,14 @@ Recommended implementation sequence (v1 OneDrive):
 - [x] Reuse module-local `error.rs` patterns (`*_ErrorCode`, `map_api_result`) for cloud commands instead of ad-hoc string errors.
 - [x] Add telemetry-friendly stable error codes before broad UI integration (avoid string-parsing in frontend).
 
+Performance status (OneDrive v1, first optimization package):
+- [x] Background refresh + refresh coalescing for cloud paste/write flows.
+- [x] Reduced paste/conflict metadata calls (batch destination listing, no `stat` loop for rename-on-conflict, skip duplicate overwrite precheck after preview).
+- [x] Cloud remote/listing caches with invalidation on writes.
+- [x] Listing retry/backoff + bounded per-remote concurrency.
+- [x] Added frontend/backend perf-focused tests (coalescing, modal background refresh, cache/conflict backend tests).
+- [ ] Manual perf verification against real OneDrive (`lsjson/--stat` count reduction in logs, rapid-op behavior, before/after timings).
+
 ## 11. Security requirements (must be early)
 
 - [x] No shell execution; argument-list invocation only.
