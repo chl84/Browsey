@@ -105,6 +105,8 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     direction: get(sortDirection),
   })
 
+  const isCloudDirectoryPath = (where: string) => where.startsWith('rclone://')
+
   // Navigation/history and listing load flows.
   const pushHistory = (loc: Location) => {
     const list = get(history)
@@ -297,7 +299,14 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadStarredForSort: () => loadStarred(false),
     loadNetworkForSort: () => loadNetwork(false),
     loadTrashForSort: () => loadTrash(false),
-    loadDirectoryForSort: (where) => load(where, { recordHistory: false }),
+    loadDirectoryForSort: async (where) => {
+      if (isCloudDirectoryPath(where)) {
+        entries.set(sortExplorerEntriesInMemory(get(entries), sortPayload()))
+        callbacks.onEntriesChanged?.()
+        return
+      }
+      await load(where, { recordHistory: false })
+    },
   })
 
   const open = (entry: Entry) => {
