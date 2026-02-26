@@ -5,6 +5,7 @@ use super::super::{
     rclone_cli::{RcloneCli, RcloneCliError, RcloneCommandSpec, RcloneSubcommand},
     types::{CloudCapabilities, CloudEntry, CloudEntryKind, CloudProviderKind, CloudRemote},
 };
+use chrono::{DateTime, Local};
 use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
@@ -365,9 +366,25 @@ fn cloud_entry_from_item(path: &CloudPath, item: LsJsonItem) -> CloudEntry {
             CloudEntryKind::File
         },
         size: if item.is_dir { None } else { item.size },
-        modified: item.mod_time,
+        modified: normalize_cloud_modified_time(item.mod_time),
         capabilities: CloudCapabilities::v1_core_rw(),
     }
+}
+
+fn normalize_cloud_modified_time(raw: Option<String>) -> Option<String> {
+    raw.map(|value| normalize_cloud_modified_time_value(&value))
+}
+
+fn normalize_cloud_modified_time_value(value: &str) -> String {
+    // rclone lsjson uses RFC3339 timestamps; normalize to Browsey's local display format
+    // to keep sorting/filtering/facet bucketing consistent with local filesystem entries.
+    DateTime::parse_from_rfc3339(value)
+        .map(|dt| {
+            dt.with_timezone(&Local)
+                .format("%Y-%m-%d %H:%M")
+                .to_string()
+        })
+        .unwrap_or_else(|_| value.to_string())
 }
 
 fn map_rclone_error(error: RcloneCliError) -> CloudCommandError {
@@ -710,7 +727,7 @@ mod tests {
         classify_provider_kind, classify_provider_kind_from_config,
         classify_provider_rclone_message_code, classify_rclone_message_code,
         is_rclone_not_found_text, map_rclone_error, map_rclone_error_for_provider,
-        parse_config_dump_summaries, parse_listremotes_plain, parse_lsjson_items,
+        normalize_cloud_modified_time_value, parse_config_dump_summaries, parse_listremotes_plain, parse_lsjson_items,
         parse_lsjson_stat_item, parse_rclone_version_stdout, parse_rclone_version_triplet,
         remote_allowed_by_policy_with, RcloneCloudProvider, RcloneRemotePolicy,
     };
@@ -850,6 +867,14 @@ mod tests {
         assert_eq!(item.name, "note.txt");
         assert!(!item.is_dir);
         assert_eq!(item.size, Some(12));
+    }
+
+    #[test]
+    fn normalizes_rclone_rfc3339_mod_time_to_browsey_format() {
+        let out = normalize_cloud_modified_time_value("2026-02-25T10:01:45Z");
+        assert!(out.len() == 16, "expected YYYY-MM-DD HH:MM, got {out}");
+        assert!(out.contains(' '), "expected local Browsey time format, got {out}");
+        assert!(!out.contains('T'), "expected normalized format, got {out}");
     }
 
     #[test]

@@ -27,6 +27,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import ThemeToggle from '../../components/ThemeToggle.svelte'
 import TopbarActionMenu from './TopbarActionMenu.svelte'
+import PulseTravelIndicator from '@/shared/ui/PulseTravelIndicator.svelte'
 
   const appWindow = getCurrentWindow()
 
@@ -235,6 +236,8 @@ import TopbarActionMenu from './TopbarActionMenu.svelte'
             <div class="progress-fill" style={`width:${Math.min(100, Math.max(0, activity.percent))}%;`}></div>
           </div>
           <span class="percent">{Math.min(100, Math.max(0, activity.percent)).toFixed(0)}%</span>
+        {:else}
+          <PulseTravelIndicator />
         {/if}
         {#if activity.cancel}
           <button
