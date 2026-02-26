@@ -33,7 +33,7 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 - [x] Implementer `cloud -> local` file copy/move via `rclone` (filer; mapper senere)
 - [ ] Verifiser og implementer mappe-copy/move semantikk eksplisitt (ikke anta)
 - [ ] Koble `overwrite` / `rename` policy til preview-resultat (`prechecked=true` der mulig)
-- [ ] Behold provider-aware error mapping for mixed ops
+- [x] Behold provider-aware error mapping for mixed ops
 
 ## Frontend routing + UX
 

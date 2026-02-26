@@ -1,12 +1,14 @@
 use crate::commands::cloud;
 use crate::commands::cloud::path::CloudPath;
-use crate::commands::cloud::rclone_cli::{RcloneCli, RcloneCliError, RcloneCommandSpec, RcloneSubcommand};
-use crate::commands::cloud::types::CloudEntryKind;
+use crate::commands::cloud::rclone_cli::{
+    RcloneCli, RcloneCliError, RcloneCommandSpec, RcloneSubcommand,
+};
+use crate::commands::cloud::types::{CloudEntryKind, CloudProviderKind};
 use crate::errors::api_error::{ApiError, ApiResult};
 use crate::fs_utils::sanitize_path_follow;
 use serde::{Deserialize, Serialize};
-use std::ffi::OsString;
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -118,8 +120,14 @@ fn is_cloud_path(path: &str) -> bool {
 
 #[derive(Debug)]
 enum MixedTransferRoute {
-    LocalToCloud { sources: Vec<PathBuf>, dest_dir: CloudPath },
-    CloudToLocal { sources: Vec<CloudPath>, dest_dir: PathBuf },
+    LocalToCloud {
+        sources: Vec<PathBuf>,
+        dest_dir: CloudPath,
+    },
+    CloudToLocal {
+        sources: Vec<CloudPath>,
+        dest_dir: PathBuf,
+    },
 }
 
 fn api_err(code: &str, message: impl Into<String>) -> ApiError {
@@ -133,7 +141,9 @@ async fn execute_mixed_entries(
     options: MixedTransferWriteOptions,
 ) -> ApiResult<Vec<String>> {
     let route = validate_mixed_transfer_route(sources, dest_dir).await?;
-    let task = tauri::async_runtime::spawn_blocking(move || execute_mixed_entries_blocking(op, route, options));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        execute_mixed_entries_blocking(op, route, options)
+    });
     match task.await {
         Ok(result) => result,
         Err(error) => Err(api_err(
@@ -194,13 +204,19 @@ async fn validate_local_to_cloud_route(
                     "Cloud destination must be a directory",
                 ))
             }
-            None => return Err(api_err("not_found", "Cloud destination directory was not found")),
+            None => {
+                return Err(api_err(
+                    "not_found",
+                    "Cloud destination directory was not found",
+                ))
+            }
         }
     }
 
     let mut local_sources = Vec::with_capacity(sources.len());
     for raw in sources {
-        let path = sanitize_path_follow(&raw, true).map_err(|e| api_err("invalid_path", e.to_string()))?;
+        let path =
+            sanitize_path_follow(&raw, true).map_err(|e| api_err("invalid_path", e.to_string()))?;
         let meta = fs::symlink_metadata(&path)
             .map_err(|e| api_err("io_error", format!("Failed to read source metadata: {e}")))?;
         if meta.file_type().is_symlink() {
@@ -228,11 +244,19 @@ async fn validate_cloud_to_local_route(
     sources: Vec<String>,
     dest_dir: String,
 ) -> ApiResult<MixedTransferRoute> {
-    let dest = sanitize_path_follow(&dest_dir, false).map_err(|e| api_err("invalid_path", e.to_string()))?;
-    let dest_meta = fs::symlink_metadata(&dest)
-        .map_err(|e| api_err("io_error", format!("Failed to read destination metadata: {e}")))?;
+    let dest = sanitize_path_follow(&dest_dir, false)
+        .map_err(|e| api_err("invalid_path", e.to_string()))?;
+    let dest_meta = fs::symlink_metadata(&dest).map_err(|e| {
+        api_err(
+            "io_error",
+            format!("Failed to read destination metadata: {e}"),
+        )
+    })?;
     if !dest_meta.is_dir() {
-        return Err(api_err("invalid_path", "Local destination must be a directory"));
+        return Err(api_err(
+            "invalid_path",
+            "Local destination must be a directory",
+        ));
     }
 
     let mut cloud_sources = Vec::with_capacity(sources.len());
@@ -284,9 +308,9 @@ fn execute_mixed_entries_blocking(
         }
         MixedTransferRoute::CloudToLocal { sources, dest_dir } => {
             for src in sources {
-                let leaf = src
-                    .leaf_name()
-                    .map_err(|e| api_err("invalid_path", format!("Invalid cloud source path: {e}")))?;
+                let leaf = src.leaf_name().map_err(|e| {
+                    api_err("invalid_path", format!("Invalid cloud source path: {e}"))
+                })?;
                 let target = dest_dir.join(leaf);
                 execute_rclone_transfer(
                     &cli,
@@ -340,7 +364,10 @@ fn execute_rclone_transfer(
     options: MixedTransferWriteOptions,
     cloud_remote_for_error_mapping: Option<&str>,
 ) -> ApiResult<()> {
-    if !options.overwrite && !options.prechecked && mixed_target_exists(cli, &dst, cloud_remote_for_error_mapping)? {
+    if !options.overwrite
+        && !options.prechecked
+        && mixed_target_exists(cli, &dst, cloud_remote_for_error_mapping)?
+    {
         return Err(api_err(
             "destination_exists",
             "A file or folder with the same name already exists",
@@ -385,14 +412,16 @@ fn mixed_target_exists(
         .arg(cloud_path.to_rclone_remote_spec());
     match cli.run_capture_text(spec) {
         Ok(_) => Ok(true),
-        Err(RcloneCliError::NonZero { stderr, stdout, .. }) if is_rclone_not_found_text(&stderr, &stdout) => {
+        Err(RcloneCliError::NonZero { stderr, stdout, .. })
+            if is_rclone_not_found_text(&stderr, &stdout) =>
+        {
             Ok(false)
         }
         Err(error) => Err(map_rclone_cli_error(error, cloud_remote_for_error_mapping)),
     }
 }
 
-fn map_rclone_cli_error(error: RcloneCliError, _cloud_remote: Option<&str>) -> ApiError {
+fn map_rclone_cli_error(error: RcloneCliError, cloud_remote: Option<&str>) -> ApiError {
     match error {
         RcloneCliError::Io(io) if io.kind() == std::io::ErrorKind::NotFound => {
             api_err("binary_missing", "rclone not found in PATH")
@@ -402,7 +431,11 @@ fn map_rclone_cli_error(error: RcloneCliError, _cloud_remote: Option<&str>) -> A
             "task_failed",
             "Application is shutting down; transfer was cancelled",
         ),
-        RcloneCliError::Timeout { subcommand, timeout, .. } => api_err(
+        RcloneCliError::Timeout {
+            subcommand,
+            timeout,
+            ..
+        } => api_err(
             "timeout",
             format!(
                 "rclone {} timed out after {}s",
@@ -416,20 +449,33 @@ fn map_rclone_cli_error(error: RcloneCliError, _cloud_remote: Option<&str>) -> A
             } else {
                 stdout.as_str()
             };
-            let lower = msg_ref.to_lowercase();
+            let lower = msg_ref.to_ascii_lowercase();
             let not_found = is_rclone_not_found_text(&stderr, &stdout);
-            let code = if lower.contains("quota exceeded") || lower.contains("rate_limit_exceeded") || lower.contains("too many requests") {
+            let provider = cloud_remote.and_then(cloud::cloud_provider_kind_for_remote);
+            let provider_code = provider_specific_rclone_code(provider, &lower);
+            let code = if lower.contains("quota exceeded")
+                || lower.contains("rate_limit_exceeded")
+                || lower.contains("too many requests")
+            {
                 "rate_limited"
-            } else if lower.contains("unauthorized") || lower.contains("invalid_grant") || lower.contains("token") && lower.contains("expired") {
+            } else if lower.contains("unauthorized")
+                || lower.contains("invalid_grant")
+                || lower.contains("token") && lower.contains("expired")
+            {
                 "auth_required"
             } else if lower.contains("permission denied") || lower.contains("access denied") {
                 "permission_denied"
-            } else if lower.contains("already exists") || lower.contains("destination exists") || lower.contains("file exists") {
+            } else if lower.contains("already exists")
+                || lower.contains("destination exists")
+                || lower.contains("file exists")
+            {
                 "destination_exists"
             } else if not_found {
                 "not_found"
             } else if lower.contains("x509") || lower.contains("certificate") {
                 "tls_certificate_error"
+            } else if let Some(code) = provider_code {
+                code
             } else {
                 "unknown_error"
             };
@@ -438,8 +484,35 @@ fn map_rclone_cli_error(error: RcloneCliError, _cloud_remote: Option<&str>) -> A
     }
 }
 
+fn provider_specific_rclone_code(
+    provider: Option<CloudProviderKind>,
+    lower_message: &str,
+) -> Option<&'static str> {
+    match provider {
+        Some(CloudProviderKind::Onedrive) => {
+            if lower_message.contains("activitylimitreached") {
+                return Some("rate_limited");
+            }
+            None
+        }
+        Some(CloudProviderKind::Gdrive) => {
+            if lower_message.contains("userratelimitexceeded")
+                || lower_message.contains("ratelimitexceeded")
+            {
+                return Some("rate_limited");
+            }
+            None
+        }
+        Some(CloudProviderKind::Nextcloud) | None => None,
+    }
+}
+
 fn is_rclone_not_found_text(stderr: &str, stdout: &str) -> bool {
-    let combined = if !stderr.trim().is_empty() { stderr } else { stdout };
+    let combined = if !stderr.trim().is_empty() {
+        stderr
+    } else {
+        stdout
+    };
     let lower = combined.to_lowercase();
     lower.contains("not found")
         || lower.contains("object not found")
@@ -613,5 +686,27 @@ mod tests {
         fs::remove_file(&file_path).ok();
         fs::remove_dir(&dir_path).ok();
         fs::remove_dir(&base).ok();
+    }
+
+    #[test]
+    fn provider_specific_error_mapping_handles_onedrive_activity_limit() {
+        assert_eq!(
+            provider_specific_rclone_code(
+                Some(CloudProviderKind::Onedrive),
+                "activitylimitreached"
+            ),
+            Some("rate_limited")
+        );
+        assert_eq!(
+            provider_specific_rclone_code(Some(CloudProviderKind::Gdrive), "userratelimitexceeded"),
+            Some("rate_limited")
+        );
+        assert_eq!(
+            provider_specific_rclone_code(
+                Some(CloudProviderKind::Nextcloud),
+                "activitylimitreached"
+            ),
+            None
+        );
     }
 }
