@@ -15,11 +15,12 @@ use providers::rclone::RcloneCloudProvider;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tracing::warn;
+use tracing::{debug, warn};
 use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote, CloudRootSelection};
 
 const CLOUD_REMOTE_DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(45);
 const CLOUD_DIR_LISTING_CACHE_TTL: Duration = Duration::from_secs(4);
+const CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS: &[u64] = &[150, 400];
 
 #[derive(Debug, Clone)]
 struct CachedCloudRemoteDiscovery {
@@ -78,8 +79,7 @@ fn list_cloud_dir_cached(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>
         }
     }
 
-    let provider = RcloneCloudProvider::default();
-    let entries = provider.list_dir(path)?;
+    let entries = list_cloud_dir_with_retry(path)?;
     if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
         guard.insert(
             key,
@@ -90,6 +90,41 @@ fn list_cloud_dir_cached(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>
         );
     }
     Ok(entries)
+}
+
+fn list_cloud_dir_with_retry(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
+    let provider = RcloneCloudProvider::default();
+    let mut attempt = 0usize;
+    loop {
+        match provider.list_dir(path) {
+            Ok(entries) => return Ok(entries),
+            Err(error) if should_retry_cloud_dir_error(&error) => {
+                let Some(backoff_ms) = CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS.get(attempt).copied()
+                else {
+                    return Err(error);
+                };
+                attempt += 1;
+                debug!(
+                    attempt,
+                    backoff_ms,
+                    path = %path,
+                    error = %error,
+                    "retrying cloud directory listing after transient error"
+                );
+                std::thread::sleep(Duration::from_millis(backoff_ms));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn should_retry_cloud_dir_error(error: &CloudCommandError) -> bool {
+    matches!(
+        error.code(),
+        CloudCommandErrorCode::Timeout
+            | CloudCommandErrorCode::NetworkError
+            | CloudCommandErrorCode::RateLimited
+    )
 }
 
 fn invalidate_cloud_dir_listing_cache_path(path: &CloudPath) {

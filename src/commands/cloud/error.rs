@@ -57,6 +57,10 @@ impl CloudCommandError {
             message: message.into(),
         }
     }
+
+    pub(super) fn code(&self) -> CloudCommandErrorCode {
+        self.code
+    }
 }
 
 impl fmt::Display for CloudCommandError {
