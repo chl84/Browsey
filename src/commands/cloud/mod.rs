@@ -234,14 +234,14 @@ fn invalidate_cloud_dir_listing_cache_for_write_paths(paths: &[CloudPath]) {
     }
 }
 
-fn cloud_provider_kind_for_remote(remote_id: &str) -> Option<CloudProviderKind> {
+pub(crate) fn cloud_provider_kind_for_remote(remote_id: &str) -> Option<CloudProviderKind> {
     list_cloud_remotes_cached(false)
         .ok()
         .and_then(|remotes| remotes.into_iter().find(|remote| remote.id == remote_id))
         .map(|remote| remote.provider)
 }
 
-fn cloud_conflict_name_key(provider: Option<CloudProviderKind>, name: &str) -> String {
+pub(crate) fn cloud_conflict_name_key(provider: Option<CloudProviderKind>, name: &str) -> String {
     match provider {
         // OneDrive is effectively case-insensitive for path conflicts.
         Some(CloudProviderKind::Onedrive) => name.to_ascii_lowercase(),

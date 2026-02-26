@@ -21,6 +21,7 @@ pub mod search;
 pub mod settings;
 pub mod system_clipboard;
 pub mod thumbnails;
+pub mod transfer;
 
 pub use crate::clipboard::{
     paste_clipboard_cmd, paste_clipboard_preview, resolve_drop_clipboard_mode, set_clipboard_cmd,
@@ -79,3 +80,4 @@ pub use system_clipboard::clear_system_clipboard;
 pub use system_clipboard::copy_paths_to_system_clipboard;
 pub use system_clipboard::system_clipboard_paths;
 pub use thumbnails::{clear_thumbnail_cache, get_thumbnail};
+pub use transfer::preview_mixed_transfer_conflicts;

@@ -12,20 +12,20 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 
 ## Backend foundation
 
-- [ ] Opprett egen cross-boundary transfer-modul (f.eks. `src/commands/transfer/`)
-- [ ] Definer tydelige request/response-typer for mixed preview + copy/move
-- [ ] Legg til Tauri commands for mixed conflict preview
+- [x] Opprett egen cross-boundary transfer-modul (f.eks. `src/commands/transfer/`)
+- [x] Definer tydelige request/response-typer for mixed preview + copy/move
+- [x] Legg til Tauri commands for mixed conflict preview
 - [ ] Legg til Tauri commands for mixed `copy`
 - [ ] Legg til Tauri commands for mixed `move`
-- [ ] Gjenbruk eksisterende cloud path/parser/provider (`rclone`) der det er mulig
+- [x] Gjenbruk eksisterende cloud path/parser/provider (`rclone`) der det er mulig
 
 ## Konfliktpreview (robust + effektiv)
 
-- [ ] Implementer `local -> cloud` preview med én cloud dest-listing (ikke `stat`-loop)
-- [ ] Implementer `cloud -> local` preview med én lokal dest-listing (ikke `stat`-loop)
+- [x] Implementer `local -> cloud` preview med én cloud dest-listing (ikke `stat`-loop)
+- [x] Implementer `cloud -> local` preview med én lokal dest-listing (ikke `stat`-loop)
 - [ ] Behold rename-on-conflict (`-1`, `-2`, ...) med reservasjon i minnesett
-- [ ] Bruk provider-aware navnesammenligning for cloud mål (OneDrive case-insensitiv)
-- [ ] Returner payload kompatibel med eksisterende konfliktmodal
+- [x] Bruk provider-aware navnesammenligning for cloud mål (OneDrive case-insensitiv)
+- [x] Returner payload kompatibel med eksisterende konfliktmodal
 
 ## Execute (copy/move)
 
