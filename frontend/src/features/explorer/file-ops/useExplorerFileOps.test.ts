@@ -321,4 +321,49 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       vi.useRealTimers()
     }
   })
+
+  it('shows Moving… activity label for cloud cut paste', async () => {
+    setClipboardPathsState('cut', ['rclone://work/src/report.txt'])
+    previewCloudConflictsMock.mockResolvedValue([])
+    listCloudEntriesMock.mockResolvedValue([])
+
+    const deps = createDeps()
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('rclone://work/dest')
+
+    expect(ok).toBe(true)
+    expect(moveCloudEntryMock).toHaveBeenCalledWith(
+      'rclone://work/src/report.txt',
+      'rclone://work/dest/report.txt',
+      { overwrite: false, prechecked: true },
+    )
+    expect(activityApi.start).toHaveBeenCalledWith(
+      'Moving…',
+      expect.stringMatching(/^cloud-cut-/),
+      expect.any(Function),
+    )
+  })
+
+  it('shows Moving… activity label for local cut paste', async () => {
+    setClipboardPathsState('cut', ['/tmp/src/report.txt'])
+    pasteClipboardPreviewMock.mockResolvedValue([])
+
+    const deps = createDeps()
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('/tmp/dest')
+
+    expect(ok).toBe(true)
+    expect(pasteClipboardCmdMock).toHaveBeenCalledWith(
+      '/tmp/dest',
+      'rename',
+      expect.stringMatching(/^cut-progress-/),
+    )
+    expect(activityApi.start).toHaveBeenCalledWith(
+      'Moving…',
+      expect.stringMatching(/^cut-progress-/),
+      expect.any(Function),
+    )
+  })
 })

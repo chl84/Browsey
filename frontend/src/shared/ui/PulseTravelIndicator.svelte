@@ -24,7 +24,6 @@
   .track {
     position: absolute;
     inset: 0;
-    border-radius: 999px;
     background: color-mix(in srgb, var(--border) 70%, transparent);
     opacity: 0.9;
   }
@@ -35,7 +34,6 @@
     left: 0;
     width: var(--pti-height);
     height: var(--pti-height);
-    border-radius: 999px;
     background:
       radial-gradient(circle at 35% 35%, color-mix(in srgb, white 65%, var(--border-accent)) 0 32%, transparent 36%),
       var(--border-accent);

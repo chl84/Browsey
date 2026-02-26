@@ -75,6 +75,8 @@ const cloudConflictNameKey = (provider: CloudProviderKind | null, name: string) 
   }
 }
 
+const pasteActivityLabel = (mode: 'copy' | 'cut') => (mode === 'cut' ? 'Moving…' : 'Copying…')
+
 type ActivityApi = {
   start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
   requestCancel: (eventName: string) => Promise<void> | void
@@ -222,9 +224,13 @@ export const useExplorerFileOps = (deps: Deps) => {
       return false
     }
 
-    const progressEvent = `cloud-copy-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const progressEvent = `cloud-${state.mode}-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
-      await deps.activityApi.start('Copying…', progressEvent, () => deps.activityApi.requestCancel(progressEvent))
+      await deps.activityApi.start(
+        pasteActivityLabel(state.mode),
+        progressEvent,
+        () => deps.activityApi.requestCancel(progressEvent),
+      )
       let reservedDestNames: Set<string> | null = null
       let provider: CloudProviderKind | null = null
       if (policy === 'rename') {
@@ -294,9 +300,14 @@ export const useExplorerFileOps = (deps: Deps) => {
       deps.showToast('Mixed local/cloud paste is not supported yet')
       return false
     }
-    const progressEvent = `copy-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const mode = get(clipboardState).mode
+    const progressEvent = `${mode}-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
-      await deps.activityApi.start('Copying…', progressEvent, () => deps.activityApi.requestCancel(progressEvent))
+      await deps.activityApi.start(
+        pasteActivityLabel(mode),
+        progressEvent,
+        () => deps.activityApi.requestCancel(progressEvent),
+      )
       await pasteClipboardCmd(target, policy, progressEvent)
       await deps.reloadCurrent()
       deps.activityApi.hideSoon()
