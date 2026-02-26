@@ -7,7 +7,7 @@ const makeDeps = () => {
   let mode: Mode = 'address'
   let pathInput = ''
   let searchEnabled = false
-  let currentPath = '/home/chris'
+  let currentPath = '/home/user'
   let searchAllowed = true
 
   const deps = {

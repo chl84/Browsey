@@ -106,8 +106,8 @@ mod tests {
 
     #[test]
     fn matches_filename_only_for_files_and_links() {
-        let dir = sample_entry("src", "/home/chris/src", "dir");
-        let file = sample_entry("main.rs", "/home/chris/src/main.rs", "file");
+        let dir = sample_entry("src", "/home/user/src", "dir");
+        let file = sample_entry("main.rs", "/home/user/src/main.rs", "file");
         let expr = Expr::Predicate(Predicate::Text {
             field: TextField::Filename,
             matcher: TextMatcher {
@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn matches_folder_against_parent_path() {
-        let file = sample_entry("main.rs", "/home/chris/Projects/app/main.rs", "file");
+        let file = sample_entry("main.rs", "/home/user/Projects/app/main.rs", "file");
         let expr = Expr::Predicate(Predicate::Text {
             field: TextField::Folder,
             matcher: TextMatcher {
