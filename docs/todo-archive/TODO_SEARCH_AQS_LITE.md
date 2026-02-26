@@ -194,7 +194,7 @@ Quality gate:
 
 - [x] `filename:report`
 - [x] `folder:Downloads`
-- [x] `path:/home/chris`
+- [x] `path:/home/user`
 - [x] `hidden:true`
 - [x] `hidden:false`
 - [x] `readonly:true`

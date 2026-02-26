@@ -65,5 +65,5 @@ install -m 0644 resources/icons/icon.png %{buildroot}%{_datadir}/icons/hicolor/5
 %{_datadir}/icons/hicolor/512x512/apps/browsey.png
 
 %changelog
-* Fri Feb 20 2026 Chris <chris@example.com> - 0.4.4-1
+* Fri Feb 20 2026 Browsey Maintainers <maintainers@example.com> - 0.4.4-1
 - Initial COPR spec for Browsey

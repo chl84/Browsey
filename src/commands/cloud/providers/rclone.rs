@@ -777,7 +777,7 @@ mod tests {
         let json = r#"{
           "work": {"type":"onedrive","token":"secret"},
           "photos": {"type":"drive"},
-          "nc": {"type":"webdav","vendor":"nextcloud","url":"https://cloud.example/remote.php/dav/files/chris","pass":"***"},
+          "nc": {"type":"webdav","vendor":"nextcloud","url":"https://cloud.example/remote.php/dav/files/user","pass":"***"},
           "misc": {"provider":"something"}
         }"#;
         let map = parse_config_dump_summaries(json).expect("parse json");
@@ -814,8 +814,8 @@ mod tests {
     fn classifies_nextcloud_from_webdav_config_metadata() {
         let map = parse_config_dump_summaries(
             r#"{
-              "nc-vendor": {"type":"webdav","vendor":"nextcloud","url":"https://cloud.example/remote.php/dav/files/chris"},
-              "nc-url": {"type":"webdav","url":"https://nextcloud.example/remote.php/dav/files/chris"},
+              "nc-vendor": {"type":"webdav","vendor":"nextcloud","url":"https://cloud.example/remote.php/dav/files/user"},
+              "nc-url": {"type":"webdav","url":"https://nextcloud.example/remote.php/dav/files/user"},
               "plain-webdav": {"type":"webdav","url":"https://dav.example/remote.php/webdav"}
             }"#,
         )

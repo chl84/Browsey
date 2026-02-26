@@ -245,7 +245,7 @@ mod tests {
         assert!(looks_like_uri_path("sftp://host/path"));
         assert!(looks_like_uri_path("dav://server/share"));
         assert!(!looks_like_uri_path("://broken"));
-        assert!(!looks_like_uri_path("/home/chris"));
+        assert!(!looks_like_uri_path("/home/user"));
     }
 
     #[test]
