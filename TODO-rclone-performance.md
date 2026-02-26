@@ -11,10 +11,10 @@
 - [x] Cloud paste: bakgrunns-refresh i stedet for å blokkere hele operasjonen
 - [x] Innfør refresh-koordinator (single-flight) per cloud-mappe
 - [x] Debounce/coalesce flere refresh-requests tett på hverandre
-- [ ] Bruk samme bakgrunns-refresh-mønster for cloud `rename`
-- [ ] Bruk samme bakgrunns-refresh-mønster for cloud `mkdir`
-- [ ] Bruk samme bakgrunns-refresh-mønster for cloud `delete`
-- [ ] Bruk samme bakgrunns-refresh-mønster for cloud `move`
+- [x] Bruk samme bakgrunns-refresh-mønster for cloud `rename`
+- [x] Bruk samme bakgrunns-refresh-mønster for cloud `mkdir`
+- [x] Bruk samme bakgrunns-refresh-mønster for cloud `delete`
+- [x] Bruk samme bakgrunns-refresh-mønster for cloud `move`
 
 ## Fase 2: Færre rclone-kall i paste/conflict
 

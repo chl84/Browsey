@@ -26,6 +26,7 @@ export const createNewFolderModal = (deps: Deps) => {
   const { getCurrentPath, loadPath, showToast, activityApi } = deps
   const state = writable<NewFolderState>({ open: false, error: '' })
   let busy = false
+  const isCloudPath = (path: string) => path.startsWith('rclone://')
 
   const defaultName = () => 'New folder'
 
@@ -55,7 +56,23 @@ export const createNewFolderModal = (deps: Deps) => {
         await activityApi.start('Creating folder…', progressEvent)
       }
       const created: string = await createFolder(base, trimmed)
-      await loadPath(base)
+      if (isCloudPath(base)) {
+        void (async () => {
+          if (getCurrentPath() !== base) {
+            return
+          }
+          try {
+            await loadPath(base)
+          } catch {
+            if (getCurrentPath() !== base) {
+              return
+            }
+            showToast('Folder created, but refresh took too long. Press F5 to refresh.')
+          }
+        })()
+      } else {
+        await loadPath(base)
+      }
       close()
       activityApi?.hideSoon()
       return created

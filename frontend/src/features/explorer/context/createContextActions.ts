@@ -212,7 +212,13 @@ export const createContextActions = (deps: Deps) => {
         const paths = selectionEntries().map((e) => e.path)
         try {
           await deleteEntries(paths)
-          await reloadCurrent()
+          if (paths.some(isCloudPath)) {
+            void reloadCurrent().catch(() => {
+              showToast('Delete completed, but refresh took too long. Press F5 to refresh.')
+            })
+          } else {
+            await reloadCurrent()
+          }
         } catch (err) {
           const msg = getErrorMessage(err)
           showToast(`Delete failed: ${msg}`)
