@@ -13,7 +13,7 @@ use path::CloudPath;
 use provider::CloudProvider;
 use providers::rclone::RcloneCloudProvider;
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote, CloudRootSelection};
@@ -21,6 +21,7 @@ use types::{CloudConflictInfo, CloudEntry, CloudEntryKind, CloudRemote, CloudRoo
 const CLOUD_REMOTE_DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(45);
 const CLOUD_DIR_LISTING_CACHE_TTL: Duration = Duration::from_secs(4);
 const CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS: &[u64] = &[150, 400];
+const CLOUD_REMOTE_MAX_CONCURRENT_OPS: usize = 2;
 
 #[derive(Debug, Clone)]
 struct CachedCloudRemoteDiscovery {
@@ -34,6 +35,17 @@ struct CachedCloudDirListing {
     entries: Vec<CloudEntry>,
 }
 
+#[derive(Debug, Default)]
+struct CloudRemoteOpLimiter {
+    counts: Mutex<HashMap<String, usize>>,
+    cv: Condvar,
+}
+
+#[derive(Debug)]
+struct CloudRemotePermitGuard {
+    remotes: Vec<String>,
+}
+
 fn cloud_remote_discovery_cache() -> &'static Mutex<Option<CachedCloudRemoteDiscovery>> {
     static CACHE: OnceLock<Mutex<Option<CachedCloudRemoteDiscovery>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(None))
@@ -42,6 +54,70 @@ fn cloud_remote_discovery_cache() -> &'static Mutex<Option<CachedCloudRemoteDisc
 fn cloud_dir_listing_cache() -> &'static Mutex<HashMap<String, CachedCloudDirListing>> {
     static CACHE: OnceLock<Mutex<HashMap<String, CachedCloudDirListing>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cloud_remote_op_limiter() -> &'static CloudRemoteOpLimiter {
+    static LIMITER: OnceLock<CloudRemoteOpLimiter> = OnceLock::new();
+    LIMITER.get_or_init(CloudRemoteOpLimiter::default)
+}
+
+fn with_cloud_remote_permits<T>(
+    mut remotes: Vec<String>,
+    f: impl FnOnce() -> CloudCommandResult<T>,
+) -> CloudCommandResult<T> {
+    remotes.sort();
+    remotes.dedup();
+    let _guard = acquire_cloud_remote_permits(remotes);
+    f()
+}
+
+fn acquire_cloud_remote_permits(remotes: Vec<String>) -> CloudRemotePermitGuard {
+    if remotes.is_empty() {
+        return CloudRemotePermitGuard { remotes };
+    }
+    let limiter = cloud_remote_op_limiter();
+    let mut counts = match limiter.counts.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    loop {
+        let available = remotes.iter().all(|remote| {
+            counts.get(remote).copied().unwrap_or(0) < CLOUD_REMOTE_MAX_CONCURRENT_OPS
+        });
+        if available {
+            for remote in &remotes {
+                *counts.entry(remote.clone()).or_insert(0) += 1;
+            }
+            return CloudRemotePermitGuard { remotes };
+        }
+        counts = match limiter.cv.wait(counts) {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+    }
+}
+
+impl Drop for CloudRemotePermitGuard {
+    fn drop(&mut self) {
+        if self.remotes.is_empty() {
+            return;
+        }
+        let limiter = cloud_remote_op_limiter();
+        let mut counts = match limiter.counts.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        for remote in &self.remotes {
+            match counts.get_mut(remote) {
+                Some(count) if *count > 1 => *count -= 1,
+                Some(_) => {
+                    counts.remove(remote);
+                }
+                None => {}
+            }
+        }
+        limiter.cv.notify_all();
+    }
 }
 
 fn list_cloud_remotes_cached(force_refresh: bool) -> CloudCommandResult<Vec<CloudRemote>> {
@@ -71,9 +147,7 @@ fn list_cloud_dir_cached(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>
     let now = Instant::now();
     let key = path.to_string();
     if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
-        guard.retain(|_, cached| {
-            now.duration_since(cached.fetched_at) <= CLOUD_DIR_LISTING_CACHE_TTL
-        });
+        prune_cloud_dir_listing_cache_locked(&mut guard, now);
         if let Some(cached) = guard.get(&key) {
             return Ok(cached.entries.clone());
         }
@@ -92,30 +166,40 @@ fn list_cloud_dir_cached(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>
     Ok(entries)
 }
 
+fn prune_cloud_dir_listing_cache_locked(
+    cache: &mut HashMap<String, CachedCloudDirListing>,
+    now: Instant,
+) {
+    cache.retain(|_, cached| now.duration_since(cached.fetched_at) <= CLOUD_DIR_LISTING_CACHE_TTL);
+}
+
 fn list_cloud_dir_with_retry(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
-    let provider = RcloneCloudProvider::default();
-    let mut attempt = 0usize;
-    loop {
-        match provider.list_dir(path) {
-            Ok(entries) => return Ok(entries),
-            Err(error) if should_retry_cloud_dir_error(&error) => {
-                let Some(backoff_ms) = CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS.get(attempt).copied()
-                else {
-                    return Err(error);
-                };
-                attempt += 1;
-                debug!(
-                    attempt,
-                    backoff_ms,
-                    path = %path,
-                    error = %error,
-                    "retrying cloud directory listing after transient error"
-                );
-                std::thread::sleep(Duration::from_millis(backoff_ms));
+    with_cloud_remote_permits(vec![path.remote().to_string()], || {
+        let provider = RcloneCloudProvider::default();
+        let mut attempt = 0usize;
+        loop {
+            match provider.list_dir(path) {
+                Ok(entries) => return Ok(entries),
+                Err(error) if should_retry_cloud_dir_error(&error) => {
+                    let Some(backoff_ms) =
+                        CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS.get(attempt).copied()
+                    else {
+                        return Err(error);
+                    };
+                    attempt += 1;
+                    debug!(
+                        attempt,
+                        backoff_ms,
+                        path = %path,
+                        error = %error,
+                        "retrying cloud directory listing after transient error"
+                    );
+                    std::thread::sleep(Duration::from_millis(backoff_ms));
+                }
+                Err(error) => return Err(error),
             }
-            Err(error) => return Err(error),
         }
-    }
+    })
 }
 
 fn should_retry_cloud_dir_error(error: &CloudCommandError) -> bool {
@@ -238,15 +322,13 @@ pub async fn stat_cloud_entry(path: String) -> ApiResult<Option<CloudEntry>> {
 }
 
 async fn stat_cloud_entry_impl(path: String) -> CloudCommandResult<Option<CloudEntry>> {
-    let path = CloudPath::parse(&path).map_err(|error| {
-        CloudCommandError::new(
-            CloudCommandErrorCode::InvalidPath,
-            format!("Invalid cloud path: {error}"),
-        )
-    })?;
+    let path = parse_cloud_path_arg(path)?;
+    let remote = path.remote().to_string();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let provider = RcloneCloudProvider::default();
-        provider.stat_path(&path)
+        with_cloud_remote_permits(vec![remote], || {
+            let provider = RcloneCloudProvider::default();
+            provider.stat_path(&path)
+        })
     });
     match task.await {
         Ok(result) => result,
@@ -263,16 +345,14 @@ pub async fn create_cloud_folder(path: String) -> ApiResult<()> {
 }
 
 async fn create_cloud_folder_impl(path: String) -> CloudCommandResult<()> {
-    let path = CloudPath::parse(&path).map_err(|error| {
-        CloudCommandError::new(
-            CloudCommandErrorCode::InvalidPath,
-            format!("Invalid cloud path: {error}"),
-        )
-    })?;
+    let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
+    let remote = path.remote().to_string();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let provider = RcloneCloudProvider::default();
-        provider.mkdir(&path)
+        with_cloud_remote_permits(vec![remote], || {
+            let provider = RcloneCloudProvider::default();
+            provider.mkdir(&path)
+        })
     });
     match task.await {
         Ok(result) => {
@@ -295,9 +375,12 @@ pub async fn delete_cloud_file(path: String) -> ApiResult<()> {
 async fn delete_cloud_file_impl(path: String) -> CloudCommandResult<()> {
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
+    let remote = path.remote().to_string();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let provider = RcloneCloudProvider::default();
-        provider.delete_file(&path)
+        with_cloud_remote_permits(vec![remote], || {
+            let provider = RcloneCloudProvider::default();
+            provider.delete_file(&path)
+        })
     });
     map_spawn_result(task.await, "cloud delete file task failed")?;
     invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
@@ -312,9 +395,12 @@ pub async fn delete_cloud_dir_recursive(path: String) -> ApiResult<()> {
 async fn delete_cloud_dir_recursive_impl(path: String) -> CloudCommandResult<()> {
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
+    let remote = path.remote().to_string();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let provider = RcloneCloudProvider::default();
-        provider.delete_dir_recursive(&path)
+        with_cloud_remote_permits(vec![remote], || {
+            let provider = RcloneCloudProvider::default();
+            provider.delete_dir_recursive(&path)
+        })
     });
     map_spawn_result(task.await, "cloud delete dir task failed")?;
     invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
@@ -329,9 +415,12 @@ pub async fn delete_cloud_dir_empty(path: String) -> ApiResult<()> {
 async fn delete_cloud_dir_empty_impl(path: String) -> CloudCommandResult<()> {
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
+    let remote = path.remote().to_string();
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let provider = RcloneCloudProvider::default();
-        provider.delete_dir_empty(&path)
+        with_cloud_remote_permits(vec![remote], || {
+            let provider = RcloneCloudProvider::default();
+            provider.delete_dir_empty(&path)
+        })
     });
     map_spawn_result(task.await, "cloud rmdir task failed")?;
     invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
@@ -365,9 +454,12 @@ async fn move_cloud_entry_impl(
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
     let invalidate_paths = vec![src.clone(), dst.clone()];
+    let remotes = vec![src.remote().to_string(), dst.remote().to_string()];
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let provider = RcloneCloudProvider::default();
-        provider.move_entry(&src, &dst, overwrite, prechecked)
+        with_cloud_remote_permits(remotes, || {
+            let provider = RcloneCloudProvider::default();
+            provider.move_entry(&src, &dst, overwrite, prechecked)
+        })
     });
     map_spawn_result(task.await, "cloud move task failed")?;
     invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
@@ -419,9 +511,12 @@ async fn copy_cloud_entry_impl(
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
     let invalidate_paths = vec![dst.clone()];
+    let remotes = vec![src.remote().to_string(), dst.remote().to_string()];
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let provider = RcloneCloudProvider::default();
-        provider.copy_entry(&src, &dst, overwrite, prechecked)
+        with_cloud_remote_permits(remotes, || {
+            let provider = RcloneCloudProvider::default();
+            provider.copy_entry(&src, &dst, overwrite, prechecked)
+        })
     });
     map_spawn_result(task.await, "cloud copy task failed")?;
     invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
@@ -446,8 +541,7 @@ async fn preview_cloud_conflicts_impl(
         .map(parse_cloud_path_arg)
         .collect::<CloudCommandResult<Vec<_>>>()?;
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let provider = RcloneCloudProvider::default();
-        let dest_entries = provider.list_dir(&dest_dir)?;
+        let dest_entries = list_cloud_dir_cached(&dest_dir)?;
         build_conflicts_from_dest_listing(&sources, &dest_dir, &dest_entries)
     });
     map_spawn_result(task.await, "cloud conflict preview task failed")
@@ -527,11 +621,22 @@ fn map_spawn_result<T>(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_conflicts_from_dest_listing, normalize_cloud_path, normalize_cloud_path_impl,
+        acquire_cloud_remote_permits, build_conflicts_from_dest_listing, cloud_dir_listing_cache,
+        invalidate_cloud_dir_listing_cache_for_write_paths, normalize_cloud_path,
+        normalize_cloud_path_impl, prune_cloud_dir_listing_cache_locked, CachedCloudDirListing,
     };
     use crate::commands::cloud::{
         path::CloudPath,
         types::{CloudCapabilities, CloudEntry, CloudEntryKind},
+    };
+    use std::{
+        collections::HashMap,
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Barrier,
+        },
+        thread,
+        time::{Duration, Instant},
     };
 
     #[test]
@@ -602,5 +707,95 @@ mod tests {
         assert_eq!(conflicts[1].src, src_dir.to_string());
         assert_eq!(conflicts[1].target, "rclone://work/dest/Folder");
         assert!(conflicts[1].is_dir);
+    }
+
+    #[test]
+    fn cloud_listing_cache_prunes_stale_entries_and_invalidates_parent() {
+        let now = Instant::now();
+        let stale = now - (super::CLOUD_DIR_LISTING_CACHE_TTL + Duration::from_millis(1));
+        let fresh = now - Duration::from_millis(10);
+        let mut cache = HashMap::new();
+        cache.insert(
+            "rclone://work/stale".to_string(),
+            CachedCloudDirListing {
+                fetched_at: stale,
+                entries: Vec::new(),
+            },
+        );
+        cache.insert(
+            "rclone://work/docs".to_string(),
+            CachedCloudDirListing {
+                fetched_at: fresh,
+                entries: Vec::new(),
+            },
+        );
+        cache.insert(
+            "rclone://work/other".to_string(),
+            CachedCloudDirListing {
+                fetched_at: fresh,
+                entries: Vec::new(),
+            },
+        );
+
+        prune_cloud_dir_listing_cache_locked(&mut cache, now);
+        assert!(!cache.contains_key("rclone://work/stale"));
+        assert!(cache.contains_key("rclone://work/docs"));
+
+        {
+            let mut global = cloud_dir_listing_cache().lock().expect("cache lock");
+            global.clear();
+            global.extend(cache);
+        }
+
+        let file_path = CloudPath::parse("rclone://work/docs/file.txt").expect("file path");
+        invalidate_cloud_dir_listing_cache_for_write_paths(&[file_path]);
+
+        let global = cloud_dir_listing_cache().lock().expect("cache lock");
+        assert!(!global.contains_key("rclone://work/docs"));
+        assert!(global.contains_key("rclone://work/other"));
+        drop(global);
+
+        let mut global = cloud_dir_listing_cache().lock().expect("cache lock");
+        global.clear();
+    }
+
+    #[test]
+    fn remote_permit_limiter_bounds_same_remote_concurrency() {
+        let barrier = Arc::new(Barrier::new(4));
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_seen = Arc::new(AtomicUsize::new(0));
+        let mut handles = Vec::new();
+
+        for _ in 0..3 {
+            let barrier = Arc::clone(&barrier);
+            let active = Arc::clone(&active);
+            let max_seen = Arc::clone(&max_seen);
+            handles.push(thread::spawn(move || {
+                barrier.wait();
+                let _permit = acquire_cloud_remote_permits(vec!["test-remote".to_string()]);
+                let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                loop {
+                    let prev = max_seen.load(Ordering::SeqCst);
+                    if current <= prev {
+                        break;
+                    }
+                    if max_seen
+                        .compare_exchange(prev, current, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+                thread::sleep(Duration::from_millis(40));
+                active.fetch_sub(1, Ordering::SeqCst);
+            }));
+        }
+
+        barrier.wait();
+        for handle in handles {
+            handle.join().expect("thread should finish");
+        }
+
+        assert!(max_seen.load(Ordering::SeqCst) <= super::CLOUD_REMOTE_MAX_CONCURRENT_OPS);
     }
 }

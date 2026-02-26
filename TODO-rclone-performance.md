@@ -34,16 +34,16 @@
 
 ## Fase 4: Robusthet under treghet / throttling
 
-- [ ] Bounded concurrency per remote (unngå for mange samtidige rclone-kall)
+- [x] Bounded concurrency per remote (unngå for mange samtidige rclone-kall)
 - [x] Kort retry/backoff for metadata/listing (`lsjson`) ved transient feil
-- [ ] Forbedre cloud UX-meldinger ved treg refresh (ikke rapporter write som feil)
+- [x] Forbedre cloud UX-meldinger ved treg refresh (ikke rapporter write som feil)
 - [ ] Verifiser oppførsel ved flere raske operasjoner etter hverandre
 
 ## Fase 5: Tester og verifisering
 
-- [ ] Backend-tester for batch konfliktpreview
-- [ ] Backend-tester for cache TTL + invalidering
-- [ ] Frontend-tester for refresh-koordinator / coalescing
+- [x] Backend-tester for batch konfliktpreview
+- [x] Backend-tester for cache TTL + invalidering
+- [x] Frontend-tester for refresh-koordinator / coalescing
 - [ ] Frontend-tester for bakgrunns-refresh på rename/mkdir/delete
 - [ ] Manuell OneDrive ytelsestest (samme sjekkliste som baseline)
 - [ ] Oppdater `TODO-rclone.md` med perf-status når første pakke er ferdig
