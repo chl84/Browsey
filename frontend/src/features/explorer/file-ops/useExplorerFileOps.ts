@@ -35,6 +35,7 @@ type ConflictItem = {
 }
 
 const isCloudPath = (path: string) => path.startsWith('rclone://')
+const CLOUD_REFRESH_DEBOUNCE_MS = 200
 
 const cloudLeafName = (path: string) => {
   const idx = path.lastIndexOf('/')
@@ -93,6 +94,10 @@ export const useExplorerFileOps = (deps: Deps) => {
   let activeDirSizeProgressEvent: string | null = null
   const conflictModalOpen = writable(false)
   const conflictList = writable<ConflictItem[]>([])
+  const cloudRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const cloudRefreshInFlight = new Map<string, Promise<void>>()
+  const cloudRefreshPending = new Set<string>()
+  const cloudRefreshLabels = new Map<string, string>()
 
   const clearConflictState = () => {
     conflictModalOpen.set(false)
@@ -112,25 +117,57 @@ export const useExplorerFileOps = (deps: Deps) => {
     return 'unsupported'
   }
 
-  const refreshCloudViewAfterWrite = (opLabel: string) => {
-    const refreshTarget = deps.getCurrentPath()
-    void (async () => {
-      // If the user already navigated away, skip the refresh for this operation.
+  const runCloudRefreshOnce = async (refreshTarget: string) => {
+    const opLabel = cloudRefreshLabels.get(refreshTarget) ?? 'Cloud operation'
+    // If the user already navigated away, skip the refresh for this operation.
+    if (deps.getCurrentPath() !== refreshTarget) {
+      return
+    }
+    try {
+      await deps.reloadCurrent()
+    } catch {
       if (deps.getCurrentPath() !== refreshTarget) {
         return
       }
-      try {
-        await deps.reloadCurrent()
-      } catch {
-        if (deps.getCurrentPath() !== refreshTarget) {
-          return
-        }
-        deps.showToast(
-          `${opLabel} completed, but refresh took too long. Press F5 to refresh.`,
-          3500,
-        )
-      }
+      deps.showToast(
+        `${opLabel} completed, but refresh took too long. Press F5 to refresh.`,
+        3500,
+      )
+    }
+  }
+
+  const flushCloudRefresh = (refreshTarget: string) => {
+    if (cloudRefreshInFlight.has(refreshTarget)) {
+      cloudRefreshPending.add(refreshTarget)
+      return
+    }
+    const task = (async () => {
+      do {
+        cloudRefreshPending.delete(refreshTarget)
+        await runCloudRefreshOnce(refreshTarget)
+      } while (cloudRefreshPending.has(refreshTarget))
     })()
+    cloudRefreshInFlight.set(refreshTarget, task)
+    void task.finally(() => {
+      cloudRefreshInFlight.delete(refreshTarget)
+      if (!cloudRefreshTimers.has(refreshTarget) && !cloudRefreshPending.has(refreshTarget)) {
+        cloudRefreshLabels.delete(refreshTarget)
+      }
+    })
+  }
+
+  const refreshCloudViewAfterWrite = (opLabel: string) => {
+    const refreshTarget = deps.getCurrentPath()
+    cloudRefreshLabels.set(refreshTarget, opLabel)
+    const existingTimer = cloudRefreshTimers.get(refreshTarget)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+    }
+    const timer = setTimeout(() => {
+      cloudRefreshTimers.delete(refreshTarget)
+      flushCloudRefresh(refreshTarget)
+    }, CLOUD_REFRESH_DEBOUNCE_MS)
+    cloudRefreshTimers.set(refreshTarget, timer)
   }
 
   const runCloudPaste = async (target: string, policy: 'rename' | 'overwrite' = 'rename') => {

@@ -9,8 +9,8 @@
 ## Fase 1: Refresh-ytelse (høy UX-effekt)
 
 - [x] Cloud paste: bakgrunns-refresh i stedet for å blokkere hele operasjonen
-- [ ] Innfør refresh-koordinator (single-flight) per cloud-mappe
-- [ ] Debounce/coalesce flere refresh-requests tett på hverandre
+- [x] Innfør refresh-koordinator (single-flight) per cloud-mappe
+- [x] Debounce/coalesce flere refresh-requests tett på hverandre
 - [ ] Bruk samme bakgrunns-refresh-mønster for cloud `rename`
 - [ ] Bruk samme bakgrunns-refresh-mønster for cloud `mkdir`
 - [ ] Bruk samme bakgrunns-refresh-mønster for cloud `delete`
