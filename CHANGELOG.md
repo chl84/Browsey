@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## v0.4.5 — 2026-02-26
+- Added rclone-backed cloud file support (Linux-first) with direct `rclone://...` paths and Network-view discovery for supported remotes (OneDrive primary target in v1, plus Google Drive/Nextcloud provider groundwork).
+- Added core cloud file operations via rclone (`list`, `mkdir`, `copy`, `move/rename`, `delete`) with provider-aware conflict preview, overwrite/auto-rename handling, and capability-driven UI restrictions for unsupported cloud actions.
+- Added mixed local-disk <-> cloud copy/move support (files and folders) for clipboard and in-app drag/drop flows, including conflict preview integration, rename-on-conflict retries, provider-aware error mapping, and refresh soft-fail behavior.
+- Cloud UX/performance improvements: background refresh for cloud write operations, refresh coalescing, reduced conflict-preview metadata calls, cloud remote/listing caches with invalidation, bounded per-remote concurrency, and retry/backoff for transient metadata/listing failures.
+- Cloud routing hardening: `rclone://` paths no longer enter local FS/undo/GVFS paths, cloud sorting avoids remote reloads on column-sort clicks, and breadcrumbs/direct navigation now handle `rclone://` paths correctly.
+- Added cloud-specific UX polish: indeterminate activity indicator for operations without meaningful byte progress, session-only manual-refresh hint for cloud folders, and corrected activity labels (`Copying` vs `Moving`) across paste/drag flows.
+- OneDrive/GVFS backend support was removed in favor of rclone-backed cloud integration, and generic Linux GIO/GVFS mount helpers were renamed/refactored (`gvfs.rs` -> `gio_mounts.rs`).
+- Added cloud/rclone observability and diagnostics (timing logs, scrubbed command failure logs, perf summary helper script, fake-rclone test shim, and expanded backend/frontend test coverage for cloud and mixed-transfer flows).
 - Frontend architecture cleanup (no intended behavior change): explorer modules were reorganized into explicit domains (`context`, `navigation`, `file-ops`, `selection`, `ui-shell`, `state`) and old wrapper paths were removed.
 - Explorer factory naming was standardized from `use*.ts` to `create*.ts` where files exported factory APIs, reducing naming ambiguity across hooks/helpers.
 - Explorer state internals were split into focused slices/stores while preserving the public `createExplorerState` API to avoid integration breakage.
