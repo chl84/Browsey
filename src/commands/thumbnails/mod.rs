@@ -3,13 +3,15 @@ use std::path::{Path, PathBuf};
 
 use blake3::Hasher;
 use image::codecs::png::{CompressionType as PngCompression, FilterType as PngFilter, PngEncoder};
-use image::{DynamicImage, GrayImage, ImageEncoder, RgbImage};
 use image::metadata::Orientation;
 use image::ImageDecoder;
 use image::ImageReader;
 use image::Limits;
 use image::{imageops::FilterType, GenericImageView, ImageFormat};
-use jpeg_decoder::{Decoder as JpegScaleDecoder, ImageInfo as JpegImageInfo, PixelFormat as JpegPixelFormat};
+use image::{DynamicImage, GrayImage, ImageEncoder, RgbImage};
+use jpeg_decoder::{
+    Decoder as JpegScaleDecoder, ImageInfo as JpegImageInfo, PixelFormat as JpegPixelFormat,
+};
 use once_cell::sync::Lazy;
 use rayon::ThreadPool;
 use rayon::ThreadPoolBuilder;
@@ -620,7 +622,8 @@ fn decode_jpeg_scaled_with_timeout(
             let src_info = decoder
                 .info()
                 .ok_or_else(|| "JPEG scaled decode missing metadata".to_string())?;
-            if u32::from(src_info.width) > MAX_SOURCE_DIM || u32::from(src_info.height) > MAX_SOURCE_DIM
+            if u32::from(src_info.width) > MAX_SOURCE_DIM
+                || u32::from(src_info.height) > MAX_SOURCE_DIM
             {
                 return Err("Image dimensions too large for thumbnail".into());
             }
@@ -635,9 +638,7 @@ fn decode_jpeg_scaled_with_timeout(
             let pixels = decoder
                 .decode()
                 .map_err(|e| format!("JPEG scaled decode failed: {e}"))?;
-            let orientation = decoder
-                .exif_data()
-                .and_then(Orientation::from_exif_chunk);
+            let orientation = decoder.exif_data().and_then(Orientation::from_exif_chunk);
             let info = decoder
                 .info()
                 .ok_or_else(|| "JPEG scaled decode missing output metadata".to_string())?;
@@ -658,24 +659,28 @@ fn decode_jpeg_scaled_with_timeout(
     }
 }
 
-fn jpeg_pixels_to_dynamic_image(pixels: Vec<u8>, info: JpegImageInfo) -> Result<DynamicImage, String> {
+fn jpeg_pixels_to_dynamic_image(
+    pixels: Vec<u8>,
+    info: JpegImageInfo,
+) -> Result<DynamicImage, String> {
     let w = u32::from(info.width);
     let h = u32::from(info.height);
     match info.pixel_format {
         JpegPixelFormat::RGB24 => {
-            let img =
-                RgbImage::from_raw(w, h, pixels).ok_or_else(|| "JPEG RGB buffer size mismatch".to_string())?;
+            let img = RgbImage::from_raw(w, h, pixels)
+                .ok_or_else(|| "JPEG RGB buffer size mismatch".to_string())?;
             Ok(DynamicImage::ImageRgb8(img))
         }
         JpegPixelFormat::L8 => {
-            let img =
-                GrayImage::from_raw(w, h, pixels).ok_or_else(|| "JPEG L8 buffer size mismatch".to_string())?;
+            let img = GrayImage::from_raw(w, h, pixels)
+                .ok_or_else(|| "JPEG L8 buffer size mismatch".to_string())?;
             Ok(DynamicImage::ImageLuma8(img))
         }
         // Rare camera/legacy cases; fallback to the existing image crate path for compatibility.
-        JpegPixelFormat::L16 | JpegPixelFormat::CMYK32 => {
-            Err(format!("JPEG scaled decode unsupported pixel format: {:?}", info.pixel_format))
-        }
+        JpegPixelFormat::L16 | JpegPixelFormat::CMYK32 => Err(format!(
+            "JPEG scaled decode unsupported pixel format: {:?}",
+            info.pixel_format
+        )),
     }
 }
 

@@ -47,6 +47,7 @@ pdfium-render = "0.8.37"
 which = "8.0.0"
 url = "2.5.8"
 rar-stream = { version = "4.0.0", default-features = false, features = ["async"] }
+wait-timeout = "0.2.1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_NetworkManagement_WNet", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Ioctl", "Win32_System_IO", "Win32_Security", "Win32_Security_Authorization"] }

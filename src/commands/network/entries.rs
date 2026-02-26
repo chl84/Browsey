@@ -1,6 +1,11 @@
-//! Build deduped network listing entries from mounts and discovered network targets.
+//! Build deduped network listing entries from mounts, discovered network targets, and cloud remotes.
 
-use crate::{commands::fs::MountInfo, entry::FsEntry, errors::api_error::ApiResult};
+use crate::{
+    commands::{cloud, cloud::types::CloudRemote, fs::MountInfo},
+    entry::{EntryCapabilities, FsEntry},
+    errors::api_error::ApiResult,
+    icons::icon_ids,
+};
 use std::collections::HashMap;
 
 use super::{
@@ -10,10 +15,10 @@ use super::{
 };
 
 const NETWORK_ICON_ID: u16 = 10;
+const CLOUD_ICON_ID: u16 = icon_ids::CLOUD;
 
 const NETWORK_FS: &[&str] = &[
     "mtp",
-    "onedrive",
     "sftp",
     "ssh",
     "cifs",
@@ -37,7 +42,7 @@ const NETWORK_FS: &[&str] = &[
 fn is_known_network_uri_scheme(scheme: &str) -> bool {
     matches!(
         scheme,
-        "onedrive" | "sftp" | "smb" | "nfs" | "ftp" | "dav" | "davs" | "afp" | "http" | "https"
+        "sftp" | "smb" | "nfs" | "ftp" | "dav" | "davs" | "afp" | "http" | "https"
     )
 }
 
@@ -99,22 +104,6 @@ fn normalize_path(p: &str) -> String {
     }
 }
 
-fn onedrive_account_key(raw_path: &str) -> Option<String> {
-    let path = raw_path.trim();
-    let scheme = uri_scheme(path)?;
-    if scheme != "onedrive" {
-        return None;
-    }
-    let rest = &path["onedrive://".len()..];
-    let slash = rest.find('/').unwrap_or(rest.len());
-    let account = rest[..slash].trim().to_ascii_lowercase();
-    if account.is_empty() {
-        None
-    } else {
-        Some(format!("onedrive://{account}"))
-    }
-}
-
 fn to_network_entry(mount: &MountInfo) -> FsEntry {
     let label = mount.label.trim();
     FsEntry {
@@ -131,22 +120,48 @@ fn to_network_entry(mount: &MountInfo) -> FsEntry {
         modified: None,
         original_path: None,
         trash_id: None,
+        icon_id: CLOUD_ICON_ID,
+        starred: false,
+        hidden: false,
+        network: true,
+        read_only: false,
+        read_denied: false,
+        capabilities: None,
+    }
+}
+
+fn to_cloud_network_entry(remote: &CloudRemote) -> FsEntry {
+    FsEntry {
+        name: remote.label.clone(),
+        path: remote.root_path.clone(),
+        kind: "dir".to_string(),
+        ext: None,
+        size: None,
+        items: None,
+        modified: None,
+        original_path: None,
+        trash_id: None,
         icon_id: NETWORK_ICON_ID,
         starred: false,
         hidden: false,
         network: true,
         read_only: false,
         read_denied: false,
+        capabilities: Some(EntryCapabilities {
+            can_list: remote.capabilities.can_list,
+            can_mkdir: remote.capabilities.can_mkdir,
+            can_delete: remote.capabilities.can_delete,
+            can_rename: remote.capabilities.can_rename,
+            can_move: remote.capabilities.can_move,
+            can_copy: remote.capabilities.can_copy,
+            can_trash: remote.capabilities.can_trash,
+            can_undo: remote.capabilities.can_undo,
+            can_permissions: remote.capabilities.can_permissions,
+        }),
     }
 }
 
 pub(super) fn to_network_entries(mounts: &[MountInfo]) -> Vec<FsEntry> {
-    let onedrive_mounted = mounts.iter().any(|mount| {
-        let fs_lc = mount.fs.to_ascii_lowercase();
-        let path_lc = mount.path.trim().to_ascii_lowercase();
-        fs_lc == "onedrive" && !path_lc.starts_with("onedrive://")
-    });
-
     let mut deduped: HashMap<String, MountInfo> = HashMap::new();
     for mount in mounts {
         if !is_network_mount(mount) {
@@ -154,28 +169,21 @@ pub(super) fn to_network_entries(mounts: &[MountInfo]) -> Vec<FsEntry> {
         }
 
         let raw_path = mount.path.trim();
-        let raw_path_lc = raw_path.to_ascii_lowercase();
         let scheme = uri_scheme(raw_path);
-
-        if onedrive_mounted && raw_path_lc.starts_with("onedrive://") {
-            continue;
-        }
         if let Some(s) = scheme.as_deref() {
             if !is_known_network_uri_scheme(s) {
                 continue;
             }
         }
 
-        let key = onedrive_account_key(raw_path)
-            .or_else(|| {
-                let normalized = normalize_path(raw_path);
-                if normalized.is_empty() {
-                    None
-                } else {
-                    Some(normalized)
-                }
-            })
-            .unwrap_or_else(|| raw_path.to_string());
+        let key = {
+            let normalized = normalize_path(raw_path);
+            if normalized.is_empty() {
+                raw_path.to_string()
+            } else {
+                normalized
+            }
+        };
 
         deduped.entry(key).or_insert_with(|| mount.clone());
     }
@@ -186,7 +194,13 @@ pub(super) fn to_network_entries(mounts: &[MountInfo]) -> Vec<FsEntry> {
 pub(super) fn list_network_entries_sync(force_refresh: bool) -> Vec<FsEntry> {
     let mut mounts_list = mounts::list_mounts_sync();
     mounts_list.extend(discovery::list_network_devices_sync(force_refresh));
-    to_network_entries(&mounts_list)
+    let mut entries = to_network_entries(&mounts_list);
+    entries.extend(
+        cloud::list_cloud_remotes_sync_best_effort(force_refresh)
+            .into_iter()
+            .map(|remote| to_cloud_network_entry(&remote)),
+    );
+    entries
 }
 
 #[tauri::command]
@@ -225,21 +239,6 @@ mod tests {
         let mounts = vec![mount("Custom", "foo+bar://host/path", "foo")];
         let entries = to_network_entries(&mounts);
         assert!(entries.is_empty());
-    }
-
-    #[test]
-    fn to_network_entries_hides_onedrive_activation_root_when_mounted() {
-        let mounts = vec![
-            mount("OneDrive root", "onedrive://account-123/", "onedrive"),
-            mount(
-                "OneDrive mounted",
-                "/run/user/1000/gvfs/onedrive:host=example",
-                "onedrive",
-            ),
-        ];
-        let entries = to_network_entries(&mounts);
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].path, "/run/user/1000/gvfs/onedrive:host=example");
     }
 
     #[test]

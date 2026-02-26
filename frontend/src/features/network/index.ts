@@ -15,3 +15,27 @@ export {
   classifyNetworkUri,
   resolveMountedPathForUri,
 } from './services'
+export {
+  listCloudRemotes,
+  validateCloudRoot,
+  listCloudEntries,
+  statCloudEntry,
+  normalizeCloudPath,
+  createCloudFolder,
+  deleteCloudFile,
+  deleteCloudDirRecursive,
+  deleteCloudDirEmpty,
+  moveCloudEntry,
+  renameCloudEntry,
+  copyCloudEntry,
+  previewCloudConflicts,
+} from './cloud.service'
+export type {
+  CloudProviderKind,
+  CloudEntryKind,
+  CloudCapabilities,
+  CloudRemote,
+  CloudRootSelection,
+  CloudEntry,
+  CloudConflictInfo,
+} from './cloud.service'

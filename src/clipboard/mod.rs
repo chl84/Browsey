@@ -69,6 +69,20 @@ pub struct ConflictInfo {
 
 static CLIPBOARD: Lazy<Mutex<Option<ClipboardState>>> = Lazy::new(|| Mutex::new(None));
 
+fn is_cloud_path_str(path: &str) -> bool {
+    path.starts_with("rclone://")
+}
+
+fn reject_cloud_clipboard_path(path: &str, op: &str) -> ClipboardResult<()> {
+    if is_cloud_path_str(path) {
+        return Err(ClipboardError::new(
+            ClipboardErrorCode::InvalidInput,
+            format!("Cloud paths are not supported in local clipboard {op} flow yet: {path}"),
+        ));
+    }
+    Ok(())
+}
+
 fn map_clipboard_result<T, E>(result: Result<T, E>) -> ClipboardResult<T>
 where
     E: std::fmt::Display,
@@ -139,6 +153,7 @@ fn set_clipboard_impl(paths: Vec<String>, mode: String) -> ClipboardResult<()> {
 
     let mut entries = Vec::new();
     for p in paths {
+        reject_cloud_clipboard_path(&p, "set")?;
         let meta = fs::symlink_metadata(&p).map_err(|e| {
             ClipboardError::new(
                 ClipboardErrorCode::NotFound,
@@ -169,6 +184,7 @@ pub fn paste_clipboard_preview(dest: String) -> ApiResult<Vec<ConflictInfo>> {
 }
 
 fn paste_clipboard_preview_impl(dest: String) -> ClipboardResult<Vec<ConflictInfo>> {
+    reject_cloud_clipboard_path(&dest, "preview")?;
     let dest = map_clipboard_result(sanitize_path_follow(&dest, false))?;
     let Some(state) = current_clipboard() else {
         return Err(ClipboardError::new(
@@ -244,6 +260,7 @@ fn paste_clipboard_impl(
     if runtime_lifecycle::is_shutting_down(&app) {
         return Err(ClipboardError::cancelled());
     }
+    reject_cloud_clipboard_path(&dest, "paste")?;
     let dest = map_clipboard_result(sanitize_path_follow(&dest, false))?;
     let state = current_clipboard().ok_or_else(|| {
         ClipboardError::new(ClipboardErrorCode::ClipboardEmpty, "Clipboard is empty")

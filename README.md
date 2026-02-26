@@ -34,6 +34,7 @@ Common:
 - Rust (stable) via `rustup`
 - Node.js LTS + npm (frontend build/dev only)
 - PDFium is bundled in `resources/pdfium-<platform>/` so no system PDF libs are needed.
+- Optional for cloud remotes (OneDrive/Google Drive/Nextcloud via `rclone`): `rclone` in `PATH` (Linux v1 strategy).
 - Optional for video thumbnails: `ffmpeg` in PATH (or `FFMPEG_BIN`), otherwise video files fall back to icons.
 - Linux (GNOME Wayland): install `xclip` for file clipboard interoperability between Browsey instances without GNOME shell focus/dock side-effects on `Ctrl+C` / `Ctrl+V`.
 
@@ -50,6 +51,34 @@ Windows:
 - Fedora/RPM: download the latest `Browsey-<version>-1.x86_64.rpm` from Releases and install with `sudo rpm -Uvh --replacepkgs Browsey-<version>-1.x86_64.rpm`.
 - Windows: grab the NSIS installer from Releases and run it (bundled by `cargo tauri build --bundles nsis`).
 - From source: clone, run `npm --prefix frontend install`, then `cargo tauri dev --no-dev-server` (or `cargo tauri build` for a release bundle).
+- Cloud features require a separately installed `rclone` binary discoverable in `PATH` (Browsey does not bundle `rclone`).
+
+## Cloud (rclone) v1 notes (experimental)
+- Browsey cloud support is currently `rclone`-backed and Linux-first. OneDrive is the primary target in v1.
+- In-app account login/setup is not implemented yet. Configure remotes externally with `rclone config`.
+- Browsey discovers supported `rclone` remotes in `Network` view and opens them as `rclone://...` paths.
+- Current v1 limitations (cloud paths):
+  - no trash/recycle-bin integration (delete is permanent)
+  - no undo/redo for cloud operations
+  - no advanced rename, archive extract/compress, duplicate scan, thumbnails, or direct open-with for cloud files
+  - no mixed local/cloud clipboard or drag-drop transfers yet
+- Browsey validates `rclone` on first cloud use and requires a minimum supported `rclone` version.
+
+### OneDrive via rclone (migration from GVFS/GOA)
+- Browsey no longer relies on GNOME Online Accounts / GVFS OneDrive mounts for OneDrive file operations.
+- Reason: GVFS/FUSE OneDrive can report stale/ghost entries and inconsistent delete semantics (for example `ENOTEMPTY` on visually empty folders).
+- Migration path:
+  1. Install `rclone` and run `rclone config`
+  2. Create an `onedrive` remote (for example `work-onedrive`)
+  3. Start Browsey and open `Network`
+  4. Open the discovered `work-onedrive (OneDrive)` entry
+  5. (Optional) Use a deeper `rclone://work-onedrive/path/...` location if you want a subfolder root
+
+### Cloud security posture (current)
+- Browsey executes `rclone` via argument lists (`Command`), not shell command strings.
+- Browsey does not accept arbitrary user-provided `rclone` flags.
+- Browsey uses the user-owned `rclone` configuration (default config path) and does not take ownership of credentials.
+- Cloud command logs redact common secret/token-like text and truncate large failure output.
 
 ## Development
 1) Install system deps (above).
@@ -124,6 +153,7 @@ Tauri bundles:
 - HDR/EXR image thumbnail decoding uses a longer timeout window than standard image formats.
 - Archive extraction enforces a total output cap (100 GB) and total entry cap (2,000,000 entries).
 - Linux console launch uses a strict allowlist of terminal binaries/arguments (no env-injected command strings).
+- Cloud remotes are `rclone`-backed (experimental) and use manual refresh semantics in some flows because filesystem watching is not available for `rclone://` paths.
 
 ## Disclaimer
 Browsey performs file operations (copy, move, rename, compress, trash, delete). Use it at your own risk, keep backups of important data, and verify paths before destructive actions. The software is provided as-is without warranties; contributors are not liable for data loss or other damage.

@@ -41,6 +41,71 @@ type Deps = {
   onBeforeRowContextMenu?: () => void
 }
 
+const isCloudPath = (path: string) => path.startsWith('rclone://')
+
+export const filterByCapabilities = (actions: ContextAction[], entries: Entry[]): ContextAction[] => {
+  if (entries.length === 0) return actions
+  const caps = entries
+    .map((entry) => entry.capabilities ?? null)
+    .filter((value): value is NonNullable<Entry['capabilities']> => Boolean(value))
+  if (caps.length !== entries.length) {
+    return actions
+  }
+  const all = {
+    canMkdir: caps.every((c) => c.canMkdir),
+    canDelete: caps.every((c) => c.canDelete),
+    canRename: caps.every((c) => c.canRename),
+    canMove: caps.every((c) => c.canMove),
+    canCopy: caps.every((c) => c.canCopy),
+    canTrash: caps.every((c) => c.canTrash),
+  }
+
+  const unsupported = new Set<string>()
+  if (!all.canRename) unsupported.add('rename')
+  if (!all.canMove) unsupported.add('cut')
+  if (!all.canCopy) unsupported.add('copy')
+  if (!all.canDelete) unsupported.add('delete-permanent')
+  if (!all.canTrash) unsupported.add('move-trash')
+
+  return actions.filter((action) => !unsupported.has(action.id))
+}
+
+const filterUnsupportedCloudActions = (actions: ContextAction[]): ContextAction[] => {
+  const unsupported = new Set([
+    'move-trash',
+    'open-console',
+    'new-file',
+    'open-with',
+    'rename-advanced',
+    'compress',
+    'extract',
+    'check-duplicates',
+  ])
+  const filtered = actions
+    .filter((action) => !unsupported.has(action.id))
+    .map((action) => ({
+      ...action,
+      ...(action.children
+        ? { children: filterUnsupportedCloudActions(action.children) }
+        : {}),
+    }))
+    .filter((action) => !action.children || action.children.length > 0)
+
+  const cleaned: ContextAction[] = []
+  for (const action of filtered) {
+    const isDivider = action.id.startsWith('divider')
+    const prevIsDivider = cleaned.length > 0 && cleaned[cleaned.length - 1].id.startsWith('divider')
+    if (isDivider && (cleaned.length === 0 || prevIsDivider)) {
+      continue
+    }
+    cleaned.push(action)
+  }
+  while (cleaned.length > 0 && cleaned[cleaned.length - 1].id.startsWith('divider')) {
+    cleaned.pop()
+  }
+  return cleaned
+}
+
 const commandForContextAction = (actionId: string): ShortcutCommandId | null => {
   if (actionId === 'cut') return 'cut'
   if (actionId === 'copy') return 'copy'
@@ -84,6 +149,11 @@ export const useExplorerContextMenuOps = (deps: Deps) => {
     try {
       const selectionPaths = selectedPathsForEntry(entry)
       const selectionCount = selectionPaths.length
+      const selectedPathSet = new Set(selectionPaths)
+      const selectionEntries =
+        selectionCount > 1
+          ? deps.getFilteredEntries().filter((candidate) => selectedPathSet.has(candidate.path))
+          : [entry]
 
       let actions = await fetchContextMenuActions<ContextAction[]>({
         count: selectionCount,
@@ -109,6 +179,10 @@ export const useExplorerContextMenuOps = (deps: Deps) => {
         !actions.some((action) => action.id === 'open-location')
       ) {
         actions.splice(1, 0, { id: 'open-location', label: 'Open item location' })
+      }
+      actions = filterByCapabilities(actions, selectionEntries)
+      if (selectionPaths.every(isCloudPath)) {
+        actions = filterUnsupportedCloudActions(actions)
       }
       actions = applyContextMenuShortcuts(actions)
       if (actions.length > 0) {
@@ -145,11 +219,14 @@ export const useExplorerContextMenuOps = (deps: Deps) => {
     const openConsoleShortcut =
       shortcutFor(deps.shortcutBindings(), 'open_console')?.accelerator ?? 'Ctrl+T'
     const pasteShortcut = shortcutFor(deps.shortcutBindings(), 'paste')?.accelerator ?? 'Ctrl+V'
+    const isCloudDir = isCloudPath(deps.getCurrentPath())
     const actions: ContextAction[] = [
-      { id: 'new-file', label: 'New File…' },
       { id: 'new-folder', label: 'New Folder…' },
-      { id: 'open-console', label: 'Open in console', shortcut: openConsoleShortcut },
     ]
+    if (!isCloudDir) {
+      actions.unshift({ id: 'new-file', label: 'New File…' })
+      actions.push({ id: 'open-console', label: 'Open in console', shortcut: openConsoleShortcut })
+    }
     if (deps.getClipboardPathCount() > 0) {
       actions.push({ id: 'paste', label: 'Paste', shortcut: pasteShortcut })
     }

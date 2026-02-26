@@ -3,6 +3,7 @@ import { get, writable } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import { useDragDrop } from './useDragDrop'
 import { createNativeFileDrop } from './createNativeFileDrop'
+import { setClipboardPathsState } from './clipboard.store'
 import { normalizePath, parentPath } from '../utils'
 import { resolveDropClipboardMode, setClipboardCmd } from '../services/clipboard.service'
 import { startNativeFileDrag } from '../services/nativeDrag.service'
@@ -20,6 +21,12 @@ type Deps = {
 }
 
 type DragAction = 'copy' | 'move' | null
+
+const isCloudPath = (path: string) => path.startsWith('rclone://')
+const isMixedCloudSelection = (paths: string[]) => {
+  const cloudCount = paths.filter(isCloudPath).length
+  return cloudCount > 0 && cloudCount < paths.length
+}
 
 export const useExplorerDragDrop = (deps: Deps) => {
   const dragDrop = useDragDrop()
@@ -39,7 +46,12 @@ export const useExplorerDragDrop = (deps: Deps) => {
       const view = deps.currentView()
       if (view === 'dir' && curr) {
         try {
-          await setClipboardCmd(paths, 'copy')
+          if (isCloudPath(curr)) {
+            // Native drops are local paths; use Browsey's internal clipboard state for mixed local->cloud paste.
+            setClipboardPathsState('copy', paths)
+          } else {
+            await setClipboardCmd(paths, 'copy')
+          }
           const ok = await deps.handlePasteOrMove(curr)
           if (ok) {
             deps.showToast(`Pasted ${paths.length} item${paths.length === 1 ? '' : 's'}`)
@@ -153,6 +165,11 @@ export const useExplorerDragDrop = (deps: Deps) => {
     dest: string,
     event: DragEvent,
   ): Promise<'copy' | 'cut'> => {
+    const cloudCount = paths.filter(isCloudPath).length
+    const anyCloudInRoute = cloudCount > 0 || isCloudPath(dest)
+    if (anyCloudInRoute) {
+      return dropModifierPrefersCopy(event) ? 'copy' : 'cut'
+    }
     const preferCopy = dropModifierPrefersCopy(event)
     return resolveDropModeCached(paths, dest, preferCopy)
   }
@@ -219,8 +236,17 @@ export const useExplorerDragDrop = (deps: Deps) => {
     const sourcePaths = [...dragPaths]
     if (sourcePaths.length === 0) return
     try {
+      if (isMixedCloudSelection(sourcePaths)) {
+        throw new Error('Mixed local/cloud selection in one drag is not supported')
+      }
       const mode = await resolveDropMode(sourcePaths, entry.path, event)
-      await setClipboardCmd(sourcePaths, mode)
+      const cloudCount = sourcePaths.filter(isCloudPath).length
+      if (cloudCount > 0 || isCloudPath(entry.path)) {
+        setClipboardPathsState(mode, sourcePaths)
+      } else {
+        setClipboardPathsState(mode, sourcePaths)
+        await setClipboardCmd(sourcePaths, mode)
+      }
       await deps.handlePasteOrMove(entry.path)
     } catch (err) {
       deps.showToast(`Drop failed: ${getErrorMessage(err)}`)
@@ -258,8 +284,17 @@ export const useExplorerDragDrop = (deps: Deps) => {
     const sourcePaths = [...dragPaths]
     if (sourcePaths.length === 0) return
     try {
+      if (isMixedCloudSelection(sourcePaths)) {
+        throw new Error('Mixed local/cloud selection in one drag is not supported')
+      }
       const mode = await resolveDropMode(sourcePaths, path, event)
-      await setClipboardCmd(sourcePaths, mode)
+      const cloudCount = sourcePaths.filter(isCloudPath).length
+      if (cloudCount > 0 || isCloudPath(path)) {
+        setClipboardPathsState(mode, sourcePaths)
+      } else {
+        setClipboardPathsState(mode, sourcePaths)
+        await setClipboardCmd(sourcePaths, mode)
+      }
       await deps.handlePasteOrMove(path)
     } catch (err) {
       deps.showToast(`Drop failed: ${getErrorMessage(err)}`)

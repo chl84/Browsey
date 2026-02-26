@@ -32,7 +32,6 @@ fn network_discovery_cache() -> &'static Mutex<(Instant, Vec<MountInfo>)> {
 
 fn scheme_label(scheme: &str) -> &'static str {
     match scheme {
-        "onedrive" => "OneDrive",
         "sftp" => "SFTP",
         "smb" => "SMB",
         "nfs" => "NFS",

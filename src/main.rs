@@ -169,23 +169,6 @@ fn main() {
         .manage(CancelState::default())
         .manage(UndoState::default())
         .manage(RuntimeLifecycle::default())
-        .on_window_event(|window, event| match event {
-            tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
-                let app = window.app_handle();
-                runtime_lifecycle::begin_shutdown_from_app(app);
-                if let Some(cancel) = app.try_state::<CancelState>() {
-                    let _ = cancel.cancel_all();
-                }
-                if let Some(watch) = app.try_state::<WatchState>() {
-                    watch.stop_all();
-                }
-                runtime_lifecycle::wait_for_background_jobs_from_app(
-                    app,
-                    std::time::Duration::from_millis(250),
-                );
-            }
-            _ => {}
-        })
         .setup(|app| {
             for window in &app.config().app.windows {
                 if window.create {
@@ -202,6 +185,24 @@ fn main() {
             list_dir,
             list_facets,
             list_mounts,
+            list_cloud_remotes,
+            validate_cloud_root,
+            list_cloud_entries,
+            stat_cloud_entry,
+            create_cloud_folder,
+            delete_cloud_file,
+            delete_cloud_dir_recursive,
+            delete_cloud_dir_empty,
+            move_cloud_entry,
+            rename_cloud_entry,
+            copy_cloud_entry,
+            preview_cloud_conflicts,
+            preview_mixed_transfer_conflicts,
+            copy_mixed_entries,
+            move_mixed_entries,
+            copy_mixed_entry_to,
+            move_mixed_entry_to,
+            normalize_cloud_path,
             list_network_devices,
             list_network_entries,
             connect_network_uri,
@@ -315,7 +316,7 @@ fn main() {
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| match event {
-        tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+        tauri::RunEvent::Exit => {
             runtime_lifecycle::begin_shutdown_from_app(app_handle);
             if let Some(cancel) = app_handle.try_state::<CancelState>() {
                 let _ = cancel.cancel_all();
@@ -323,6 +324,7 @@ fn main() {
             if let Some(watch) = app_handle.try_state::<WatchState>() {
                 watch.stop_all();
             }
+            let _ = commands::cloud::rclone_cli::begin_shutdown_and_kill_children();
             runtime_lifecycle::wait_for_background_jobs_from_app(
                 app_handle,
                 std::time::Duration::from_millis(250),

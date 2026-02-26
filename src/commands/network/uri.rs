@@ -26,7 +26,6 @@ pub struct NetworkUriClassification {
 
 pub(crate) fn canonical_scheme(raw: &str) -> Option<&'static str> {
     match raw.trim().to_ascii_lowercase().as_str() {
-        "onedrive" => Some("onedrive"),
         "sftp" | "ssh" | "sshfs" | "fuse.sshfs" => Some("sftp"),
         "smb" | "smb3" | "smbfs" | "cifs" | "smb-share" => Some("smb"),
         "nfs" | "nfs4" => Some("nfs"),
@@ -116,7 +115,7 @@ pub(crate) fn classify_uri(uri: &str) -> NetworkUriClassification {
 
     let kind = if matches!(
         scheme.as_str(),
-        "onedrive" | "sftp" | "smb" | "nfs" | "ftp" | "dav" | "davs" | "afp"
+        "sftp" | "smb" | "nfs" | "ftp" | "dav" | "davs" | "afp"
     ) {
         NetworkUriKind::Mountable
     } else if matches!(scheme.as_str(), "http" | "https") {

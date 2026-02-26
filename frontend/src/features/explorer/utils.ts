@@ -21,9 +21,6 @@ export const navIcon = (label: string) => {
 
 export const partitionIcon = (part: Partition) => {
   const fs = (part.fs ?? '').toLowerCase()
-  if (fs === 'onedrive') {
-    return iconPath('browsey/cloud.svg')
-  }
   if (fs === 'sftp') {
     return iconPath('browsey/network.svg')
   }

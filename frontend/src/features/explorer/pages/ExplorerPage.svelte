@@ -141,6 +141,7 @@
   // View / navigation tracking
   let currentView: CurrentView = 'dir'
   let lastLocation = ''
+  let hasShownCloudRefreshHint = false
   useContextMenuBlocker()
 
   // --- Helpers -------------------------------------------------------------
@@ -211,7 +212,6 @@
 
   const fsLabel = (fs?: string) => {
     const kind = (fs ?? '').toLowerCase()
-    if (kind === 'onedrive') return 'OneDrive'
     if (kind === 'mtp') return 'MTP device'
     if (kind === 'sftp' || kind === 'ssh') return 'SFTP server'
     if (kind === 'smb' || kind === 'cifs') return 'SMB server'
@@ -222,6 +222,8 @@
     return 'network resource'
   }
 
+  const isCloudPath = (path: string) => path.startsWith('rclone://')
+
   // --- Data + preferences --------------------------------------------------
   const explorer = useExplorerData({
     onCurrentChange: (path) => {
@@ -230,6 +232,12 @@
         return
       }
       pathInput = path
+      if (isCloudPath(path)) {
+        if (!hasShownCloudRefreshHint) {
+          hasShownCloudRefreshHint = true
+          showToast('Cloud folders use manual refresh (F5); live watch is not available yet', 2600)
+        }
+      }
     },
   })
 
@@ -798,6 +806,9 @@
         return false
       }
       showToast('Copied', 1500)
+      if (paths.some(isCloudPath)) {
+        return true
+      }
       void copyPathsToSystemClipboard(paths).catch((err) => {
         showToast(
           `Copied (system clipboard unavailable: ${getErrorMessage(err)})`,
@@ -815,6 +826,9 @@
         return false
       }
       showToast('Cut', 1500)
+      if (paths.some(isCloudPath)) {
+        return true
+      }
       void copyPathsToSystemClipboard(paths, 'cut').catch((err) => {
         showToast(
           `Cut (system clipboard unavailable: ${getErrorMessage(err)})`,
@@ -845,9 +859,10 @@
       const entries = $filteredEntries.filter((e) => selectedPathSet.has(e.path))
       if (entries.length === 0) return false
       const hasNetwork = entries.some((e) => e.network)
+      const hasCloud = entries.some((e) => isCloudPath(e.path))
       const inTrashView = currentView === 'trash'
 
-      if (permanent || (hasNetwork && !inTrashView)) {
+      if (permanent || (hasNetwork && !inTrashView) || (hasCloud && !inTrashView)) {
         deleteModal.open(entries, inTrashView ? 'trash' : 'default')
         return true
       }
@@ -897,20 +912,50 @@
         modalActions.confirmDelete(list, inTrashView ? 'trash' : 'default')
         return true
       }
+      const label = 'Deleting…'
+      const progressEvent = `delete-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
       try {
+        await activityApi.start(label, progressEvent)
+        const cloudDelete = !inTrashView && list.some((e) => isCloudPath(e.path))
         if (inTrashView) {
           const ids = list.map((e) => e.trash_id ?? e.path)
           await purgeTrashItems(ids)
         } else {
           const paths = list.map((e) => e.path)
-          await deleteEntries(paths)
+          await deleteEntries(paths, progressEvent)
         }
-        await reloadCurrent()
+        if (cloudDelete) {
+          const refreshTarget = get(current)
+          void (async () => {
+            if (get(current) !== refreshTarget) {
+              return
+            }
+            try {
+              await reloadCurrent()
+            } catch {
+              if (get(current) !== refreshTarget) {
+                return
+              }
+              showToast('Delete completed, but refresh took too long. Press F5 to refresh.', 3500)
+            }
+          })()
+        } else {
+          await reloadCurrent()
+        }
+        activityApi.hideSoon()
         showToast('Deleted')
         return true
       } catch (err) {
+        activityApi.clearNow()
+        await activityApi.cleanup()
         showToast(`Delete failed: ${getErrorMessage(err)}`)
         return false
+      } finally {
+        const hadTimer = activityApi.hasHideTimer()
+        await activityApi.cleanup(true)
+        if (!hadTimer) {
+          activityApi.clearNow()
+        }
       }
     },
     onProperties: async () => {
@@ -922,6 +967,10 @@
     },
     onOpenConsole: async () => {
       if (currentView !== 'dir') return false
+      if (isCloudPath(get(current))) {
+        showToast('Open in console is not available for cloud folders')
+        return true
+      }
       try {
         await openConsole(get(current))
         return true
