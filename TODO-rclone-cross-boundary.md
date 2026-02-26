@@ -46,9 +46,9 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 
 ## Drag-and-drop og shortcuts
 
-- [ ] Aktiver `local -> cloud` drag-and-drop
-- [ ] Aktiver `cloud -> local` drag-and-drop
-- [ ] Behold blokkering for mixed selection i samme drag
+- [x] Aktiver `local -> cloud` drag-and-drop (in-app drag)
+- [x] Aktiver `cloud -> local` drag-and-drop (in-app drag)
+- [x] Behold blokkering for mixed selection i samme drag
 - [ ] Verifiser `Ctrl+C` / `Ctrl+X` / `Ctrl+V` begge retninger
 
 ## Robusthet og ytelse
@@ -60,8 +60,10 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 
 ## Tester
 
-- [ ] Backend tester for `local -> cloud` copy/move (file + dir)
-- [ ] Backend tester for `cloud -> local` copy/move (file + dir)
+- [x] Backend tester for `local -> cloud` copy/move (file)
+- [x] Backend tester for `cloud -> local` copy/move (file)
+- [x] Backend test for `local -> cloud` dir route rejection (v1 unsupported)
+- [ ] Backend tester for mappe-copy/move i mixed execute når dir-semantikk er implementert
 - [ ] Backend tester for mixed conflict preview (rename/overwrite)
 - [x] Frontend tester for route-klassifisering og konfliktmodal (mixed)
 - [x] Frontend tester for `Moving…`/`Copying…` labels i mixed ops

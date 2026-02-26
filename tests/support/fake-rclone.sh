@@ -31,11 +31,13 @@ idx=$((idx + 1))
 
 map_spec_path() {
   local spec="$1"
+  if [[ "$spec" != *:* ]]; then
+    printf '%s' "$spec"
+    return
+  fi
   local remote="${spec%%:*}"
   local rel=""
-  if [[ "$spec" == *:* ]]; then
-    rel="${spec#*:}"
-  fi
+  rel="${spec#*:}"
   if [[ -z "$remote" ]]; then
     echo "invalid remote spec" >&2
     exit 2
