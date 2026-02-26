@@ -4,11 +4,11 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 
 ## V1 scope (låst)
 
-- [ ] Støtt `copy` og `move` mellom lokal disk og `rclone://...`
-- [ ] Støtt både filer og mapper
-- [ ] `stop-on-first-error` for batch (ingen rollback i v1)
-- [ ] Ingen undo for cross-boundary i v1
-- [ ] Ingen mixed selection (lokal + cloud i samme paste/drag) i v1
+- [x] Støtt `copy` og `move` mellom lokal disk og `rclone://...`
+- [x] Støtt både filer og mapper (rename-on-conflict for mixed execute gjenstår)
+- [x] `stop-on-first-error` for batch (ingen rollback i v1)
+- [x] Ingen undo for cross-boundary i v1
+- [x] Ingen mixed selection (lokal + cloud i samme paste/drag) i v1
 
 ## Backend foundation
 
@@ -29,9 +29,9 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 
 ## Execute (copy/move)
 
-- [x] Implementer `local -> cloud` file copy/move via `rclone` (filer; mapper senere)
-- [x] Implementer `cloud -> local` file copy/move via `rclone` (filer; mapper senere)
-- [ ] Verifiser og implementer mappe-copy/move semantikk eksplisitt (ikke anta)
+- [x] Implementer `local -> cloud` file copy/move via `rclone` (filer + mapper)
+- [x] Implementer `cloud -> local` file copy/move via `rclone` (filer + mapper)
+- [x] Verifiser og implementer mappe-copy/move semantikk eksplisitt (fake-rclone tester; manuell cloud-verifisering gjenstår)
 - [ ] Koble `overwrite` / `rename` policy til preview-resultat (`prechecked=true` der mulig)
 - [x] Behold provider-aware error mapping for mixed ops
 
@@ -60,10 +60,8 @@ Mål: støtte `local -> cloud` og `cloud -> local` for filer/mapper i Browsey, u
 
 ## Tester
 
-- [x] Backend tester for `local -> cloud` copy/move (file)
-- [x] Backend tester for `cloud -> local` copy/move (file)
-- [x] Backend test for `local -> cloud` dir route rejection (v1 unsupported)
-- [ ] Backend tester for mappe-copy/move i mixed execute når dir-semantikk er implementert
+- [x] Backend tester for `local -> cloud` copy/move (file + dir)
+- [x] Backend tester for `cloud -> local` copy/move (file + dir)
 - [ ] Backend tester for mixed conflict preview (rename/overwrite)
 - [x] Frontend tester for route-klassifisering og konfliktmodal (mixed)
 - [x] Frontend tester for `Moving…`/`Copying…` labels i mixed ops
