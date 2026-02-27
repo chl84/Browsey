@@ -28,6 +28,7 @@ pub enum RcloneSubcommand {
     Version,
     ListRemotes,
     ConfigDump,
+    Rc,
     LsJson,
     Mkdir,
     DeleteFile,
@@ -44,6 +45,7 @@ impl RcloneSubcommand {
             Self::Version => "version",
             Self::ListRemotes => "listremotes",
             Self::ConfigDump => "config",
+            Self::Rc => "rc",
             Self::LsJson => "lsjson",
             Self::Mkdir => "mkdir",
             Self::DeleteFile => "deletefile",
@@ -57,6 +59,7 @@ impl RcloneSubcommand {
     pub fn default_timeout(self) -> Duration {
         match self {
             Self::Version | Self::ListRemotes | Self::ConfigDump => Duration::from_secs(8),
+            Self::Rc => Duration::from_secs(45),
             // OneDrive metadata/listing calls can be bursty and occasionally exceed 20s.
             Self::LsJson => Duration::from_secs(60),
             Self::Mkdir | Self::DeleteFile | Self::Rmdir => Duration::from_secs(20),
