@@ -18,9 +18,9 @@ export const deleteEntries = async (paths: string[], progressEvent?: string) => 
       continue
     }
     if (entry.kind === 'dir') {
-      await deleteCloudDirRecursive(path)
+      await deleteCloudDirRecursive(path, progressEvent)
     } else {
-      await deleteCloudFile(path)
+      await deleteCloudFile(path, progressEvent)
     }
   }
 }

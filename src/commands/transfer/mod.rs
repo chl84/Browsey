@@ -6,12 +6,17 @@ use crate::commands::cloud::rclone_cli::{
 use crate::commands::cloud::types::{CloudEntryKind, CloudProviderKind};
 use crate::errors::api_error::{ApiError, ApiResult};
 use crate::fs_utils::sanitize_path_follow;
+use crate::tasks::{CancelGuard, CancelState};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::Instant;
 use tracing::{info, warn};
 
@@ -93,6 +98,8 @@ pub async fn copy_mixed_entries(
     dest_dir: String,
     overwrite: Option<bool>,
     prechecked: Option<bool>,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
 ) -> ApiResult<Vec<String>> {
     execute_mixed_entries(
         MixedTransferOp::Copy,
@@ -102,6 +109,8 @@ pub async fn copy_mixed_entries(
             overwrite: overwrite.unwrap_or(false),
             prechecked: prechecked.unwrap_or(false),
         },
+        cancel.inner().clone(),
+        progress_event,
     )
     .await
 }
@@ -112,6 +121,8 @@ pub async fn move_mixed_entries(
     dest_dir: String,
     overwrite: Option<bool>,
     prechecked: Option<bool>,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
 ) -> ApiResult<Vec<String>> {
     execute_mixed_entries(
         MixedTransferOp::Move,
@@ -121,6 +132,8 @@ pub async fn move_mixed_entries(
             overwrite: overwrite.unwrap_or(false),
             prechecked: prechecked.unwrap_or(false),
         },
+        cancel.inner().clone(),
+        progress_event,
     )
     .await
 }
@@ -131,6 +144,8 @@ pub async fn copy_mixed_entry_to(
     dst: String,
     overwrite: Option<bool>,
     prechecked: Option<bool>,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
 ) -> ApiResult<String> {
     execute_mixed_entry_to(
         MixedTransferOp::Copy,
@@ -140,6 +155,8 @@ pub async fn copy_mixed_entry_to(
             overwrite: overwrite.unwrap_or(false),
             prechecked: prechecked.unwrap_or(false),
         },
+        cancel.inner().clone(),
+        progress_event,
     )
     .await
 }
@@ -150,6 +167,8 @@ pub async fn move_mixed_entry_to(
     dst: String,
     overwrite: Option<bool>,
     prechecked: Option<bool>,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
 ) -> ApiResult<String> {
     execute_mixed_entry_to(
         MixedTransferOp::Move,
@@ -159,6 +178,8 @@ pub async fn move_mixed_entry_to(
             overwrite: overwrite.unwrap_or(false),
             prechecked: prechecked.unwrap_or(false),
         },
+        cancel.inner().clone(),
+        progress_event,
     )
     .await
 }
@@ -325,6 +346,8 @@ async fn execute_mixed_entries(
     sources: Vec<String>,
     dest_dir: String,
     options: MixedTransferWriteOptions,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
 ) -> ApiResult<Vec<String>> {
     let started = Instant::now();
     let source_count = sources.len();
@@ -337,8 +360,10 @@ async fn execute_mixed_entries(
             return result;
         }
     };
+    let _cancel_guard = register_mixed_cancel(&cancel_state, &progress_event)?;
+    let cancel_token = _cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
-        execute_mixed_entries_blocking(op, route, options)
+        execute_mixed_entries_blocking(op, route, options, cancel_token)
     });
     let result = match task.await {
         Ok(result) => result,
@@ -356,6 +381,8 @@ async fn execute_mixed_entry_to(
     src: String,
     dst: String,
     options: MixedTransferWriteOptions,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
 ) -> ApiResult<String> {
     let started = Instant::now();
     let route_hint = mixed_route_hint(std::slice::from_ref(&src), &dst);
@@ -367,8 +394,10 @@ async fn execute_mixed_entry_to(
             return result;
         }
     };
+    let _cancel_guard = register_mixed_cancel(&cancel_state, &progress_event)?;
+    let cancel_token = _cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
-        execute_mixed_entry_to_blocking(op, pair, options)
+        execute_mixed_entry_to_blocking(op, pair, options, cancel_token)
     });
     let result = match task.await {
         Ok(result) => result,
@@ -631,18 +660,20 @@ fn execute_mixed_entries_blocking(
     op: MixedTransferOp,
     route: MixedTransferRoute,
     options: MixedTransferWriteOptions,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> ApiResult<Vec<String>> {
     let cli = RcloneCli::default();
-    execute_mixed_entries_blocking_with_cli(&cli, op, route, options)
+    execute_mixed_entries_blocking_with_cli(&cli, op, route, options, cancel)
 }
 
 fn execute_mixed_entry_to_blocking(
     op: MixedTransferOp,
     pair: MixedTransferPair,
     options: MixedTransferWriteOptions,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> ApiResult<String> {
     let cli = RcloneCli::default();
-    execute_mixed_entry_to_blocking_with_cli(&cli, op, pair, options)
+    execute_mixed_entry_to_blocking_with_cli(&cli, op, pair, options, cancel)
 }
 
 fn execute_mixed_entry_to_blocking_with_cli(
@@ -650,7 +681,11 @@ fn execute_mixed_entry_to_blocking_with_cli(
     op: MixedTransferOp,
     pair: MixedTransferPair,
     options: MixedTransferWriteOptions,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> ApiResult<String> {
+    if transfer_cancelled(cancel.as_deref()) {
+        return Err(api_err("cancelled", "Transfer cancelled"));
+    }
     let MixedTransferPair {
         src,
         dst,
@@ -667,6 +702,7 @@ fn execute_mixed_entry_to_blocking_with_cli(
         dst,
         options,
         cloud_remote_for_error_mapping.as_deref(),
+        cancel.as_deref(),
     )?;
     Ok(out)
 }
@@ -676,11 +712,15 @@ fn execute_mixed_entries_blocking_with_cli(
     op: MixedTransferOp,
     route: MixedTransferRoute,
     options: MixedTransferWriteOptions,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> ApiResult<Vec<String>> {
     let mut created = Vec::new();
     match route {
         MixedTransferRoute::LocalToCloud { sources, dest_dir } => {
             for src in sources {
+                if transfer_cancelled(cancel.as_deref()) {
+                    return Err(api_err("cancelled", "Transfer cancelled"));
+                }
                 let leaf = local_leaf_name(&src)?;
                 let target = dest_dir.child_path(leaf).map_err(|e| {
                     api_err("invalid_path", format!("Invalid cloud target path: {e}"))
@@ -692,12 +732,16 @@ fn execute_mixed_entries_blocking_with_cli(
                     LocalOrCloudArg::Cloud(target.clone()),
                     options,
                     Some(dest_dir.remote()),
+                    cancel.as_deref(),
                 )?;
                 created.push(target.to_string());
             }
         }
         MixedTransferRoute::CloudToLocal { sources, dest_dir } => {
             for src in sources {
+                if transfer_cancelled(cancel.as_deref()) {
+                    return Err(api_err("cancelled", "Transfer cancelled"));
+                }
                 let leaf = src.leaf_name().map_err(|e| {
                     api_err("invalid_path", format!("Invalid cloud source path: {e}"))
                 })?;
@@ -709,6 +753,7 @@ fn execute_mixed_entries_blocking_with_cli(
                     LocalOrCloudArg::Local(target.clone()),
                     options,
                     Some(src.remote()),
+                    cancel.as_deref(),
                 )?;
                 created.push(target.to_string_lossy().to_string());
             }
@@ -753,10 +798,14 @@ fn execute_rclone_transfer(
     dst: LocalOrCloudArg,
     options: MixedTransferWriteOptions,
     cloud_remote_for_error_mapping: Option<&str>,
+    cancel: Option<&AtomicBool>,
 ) -> ApiResult<()> {
+    if transfer_cancelled(cancel) {
+        return Err(api_err("cancelled", "Transfer cancelled"));
+    }
     if !options.overwrite
         && !options.prechecked
-        && mixed_target_exists(cli, &dst, cloud_remote_for_error_mapping)?
+        && mixed_target_exists(cli, &dst, cloud_remote_for_error_mapping, cancel)?
     {
         return Err(api_err(
             "destination_exists",
@@ -773,7 +822,7 @@ fn execute_rclone_transfer(
         .arg(src.to_os_arg())
         .arg(dst.to_os_arg());
 
-    cli.run_capture_text(spec)
+    cli.run_capture_text_with_cancel(spec, cancel)
         .map_err(|error| map_rclone_cli_error(error, cloud_remote_for_error_mapping))?;
     Ok(())
 }
@@ -782,7 +831,11 @@ fn mixed_target_exists(
     cli: &RcloneCli,
     dst: &LocalOrCloudArg,
     cloud_remote_for_error_mapping: Option<&str>,
+    cancel: Option<&AtomicBool>,
 ) -> ApiResult<bool> {
+    if transfer_cancelled(cancel) {
+        return Err(api_err("cancelled", "Transfer cancelled"));
+    }
     if let Some(path) = dst.local_path() {
         return match fs::symlink_metadata(path) {
             Ok(_) => Ok(true),
@@ -800,7 +853,7 @@ fn mixed_target_exists(
     let spec = RcloneCommandSpec::new(RcloneSubcommand::LsJson)
         .arg("--stat")
         .arg(cloud_path.to_rclone_remote_spec());
-    match cli.run_capture_text(spec) {
+    match cli.run_capture_text_with_cancel(spec, cancel) {
         Ok(_) => Ok(true),
         Err(RcloneCliError::NonZero { stderr, stdout, .. })
             if is_rclone_not_found_text(&stderr, &stdout) =>
@@ -821,6 +874,7 @@ fn map_rclone_cli_error(error: RcloneCliError, cloud_remote: Option<&str>) -> Ap
             "task_failed",
             "Application is shutting down; transfer was cancelled",
         ),
+        RcloneCliError::Cancelled { .. } => api_err("cancelled", "Transfer cancelled"),
         RcloneCliError::Timeout {
             subcommand,
             timeout,
@@ -872,6 +926,28 @@ fn map_rclone_cli_error(error: RcloneCliError, cloud_remote: Option<&str>) -> Ap
             api_err(code, msg_ref.trim())
         }
     }
+}
+
+fn register_mixed_cancel(
+    cancel_state: &CancelState,
+    progress_event: &Option<String>,
+) -> ApiResult<Option<CancelGuard>> {
+    progress_event
+        .as_ref()
+        .map(|event| cancel_state.register(event.clone()))
+        .transpose()
+        .map_err(|error| {
+            api_err(
+                "task_failed",
+                format!("Failed to register cancel token: {error}"),
+            )
+        })
+}
+
+fn transfer_cancelled(cancel: Option<&AtomicBool>) -> bool {
+    cancel
+        .map(|token| token.load(Ordering::SeqCst))
+        .unwrap_or(false)
 }
 
 fn provider_specific_rclone_code(
@@ -1246,6 +1322,7 @@ mod tests {
                 overwrite: false,
                 prechecked: true,
             },
+            None,
         )
         .expect("copy local->cloud");
         assert_eq!(copy_out, vec!["rclone://work/dest/copy.txt".to_string()]);
@@ -1268,6 +1345,7 @@ mod tests {
                 overwrite: false,
                 prechecked: true,
             },
+            None,
         )
         .expect("move local->cloud");
         assert_eq!(move_out, vec!["rclone://work/dest/move.txt".to_string()]);
@@ -1301,6 +1379,7 @@ mod tests {
                 overwrite: false,
                 prechecked: true,
             },
+            None,
         )
         .expect("copy dir local->cloud");
         assert_eq!(copy_out, vec!["rclone://work/dest/folder-copy".to_string()]);
@@ -1326,6 +1405,7 @@ mod tests {
                 overwrite: false,
                 prechecked: true,
             },
+            None,
         )
         .expect("move dir local->cloud");
         assert_eq!(move_out, vec!["rclone://work/dest/folder-move".to_string()]);
@@ -1360,6 +1440,7 @@ mod tests {
                 overwrite: false,
                 prechecked: true,
             },
+            None,
         )
         .expect("copy cloud->local");
         assert_eq!(
@@ -1387,6 +1468,7 @@ mod tests {
                 overwrite: false,
                 prechecked: true,
             },
+            None,
         )
         .expect("move cloud->local");
         assert_eq!(
@@ -1532,6 +1614,7 @@ mod tests {
                 overwrite: false,
                 prechecked: true,
             },
+            None,
         )
         .expect("copy dir cloud->local");
         assert_eq!(
@@ -1560,6 +1643,7 @@ mod tests {
                 overwrite: false,
                 prechecked: true,
             },
+            None,
         )
         .expect("move dir cloud->local");
         assert_eq!(

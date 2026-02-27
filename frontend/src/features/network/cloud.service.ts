@@ -49,6 +49,7 @@ export type CloudConflictInfo = {
 export type CloudWriteOptions = {
   overwrite?: boolean
   prechecked?: boolean
+  progressEvent?: string
 }
 
 const userCloudErrorMessage = (code: string | undefined, message: string) => {
@@ -112,17 +113,17 @@ export const statCloudEntry = (path: string) =>
 export const normalizeCloudPath = (path: string) =>
   invokeCloud<string>('normalize_cloud_path', { path })
 
-export const createCloudFolder = (path: string) =>
-  invokeCloud<void>('create_cloud_folder', { path })
+export const createCloudFolder = (path: string, progressEvent?: string) =>
+  invokeCloud<void>('create_cloud_folder', { path, progressEvent })
 
-export const deleteCloudFile = (path: string) =>
-  invokeCloud<void>('delete_cloud_file', { path })
+export const deleteCloudFile = (path: string, progressEvent?: string) =>
+  invokeCloud<void>('delete_cloud_file', { path, progressEvent })
 
-export const deleteCloudDirRecursive = (path: string) =>
-  invokeCloud<void>('delete_cloud_dir_recursive', { path })
+export const deleteCloudDirRecursive = (path: string, progressEvent?: string) =>
+  invokeCloud<void>('delete_cloud_dir_recursive', { path, progressEvent })
 
-export const deleteCloudDirEmpty = (path: string) =>
-  invokeCloud<void>('delete_cloud_dir_empty', { path })
+export const deleteCloudDirEmpty = (path: string, progressEvent?: string) =>
+  invokeCloud<void>('delete_cloud_dir_empty', { path, progressEvent })
 
 export const moveCloudEntry = (src: string, dst: string, options?: CloudWriteOptions) =>
   invokeCloud<void>('move_cloud_entry', {
@@ -130,6 +131,7 @@ export const moveCloudEntry = (src: string, dst: string, options?: CloudWriteOpt
     dst,
     overwrite: options?.overwrite ?? false,
     prechecked: options?.prechecked ?? false,
+    progressEvent: options?.progressEvent,
   })
 
 export const renameCloudEntry = (src: string, dst: string, options?: CloudWriteOptions) =>
@@ -138,6 +140,7 @@ export const renameCloudEntry = (src: string, dst: string, options?: CloudWriteO
     dst,
     overwrite: options?.overwrite ?? false,
     prechecked: options?.prechecked ?? false,
+    progressEvent: options?.progressEvent,
   })
 
 export const copyCloudEntry = (src: string, dst: string, options?: CloudWriteOptions) =>
@@ -146,6 +149,7 @@ export const copyCloudEntry = (src: string, dst: string, options?: CloudWriteOpt
     dst,
     overwrite: options?.overwrite ?? false,
     prechecked: options?.prechecked ?? false,
+    progressEvent: options?.progressEvent,
   })
 
 export const previewCloudConflicts = (sources: string[], destDir: string) =>

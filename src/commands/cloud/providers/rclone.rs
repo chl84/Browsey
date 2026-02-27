@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
     env,
-    sync::OnceLock,
+    sync::{atomic::AtomicBool, OnceLock},
 };
 use tracing::debug;
 
@@ -245,9 +245,12 @@ impl CloudProvider for RcloneCloudProvider {
         Ok(entries)
     }
 
-    fn mkdir(&self, path: &CloudPath) -> CloudCommandResult<()> {
+    fn mkdir(&self, path: &CloudPath, cancel: Option<&AtomicBool>) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
-        if self.rc.is_write_enabled() {
+        if is_cancelled(cancel) {
+            return Err(cloud_write_cancelled_error());
+        }
+        if self.rc.is_write_enabled() && cancel.is_none() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_mkdir(&fs_spec, path.rel_path()) {
                 Ok(_) => return Ok(()),
@@ -261,16 +264,20 @@ impl CloudProvider for RcloneCloudProvider {
             }
         }
         self.cli
-            .run_capture_text(
+            .run_capture_text_with_cancel(
                 RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(path.to_rclone_remote_spec()),
+                cancel,
             )
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         Ok(())
     }
 
-    fn delete_file(&self, path: &CloudPath) -> CloudCommandResult<()> {
+    fn delete_file(&self, path: &CloudPath, cancel: Option<&AtomicBool>) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
-        if self.rc.is_write_enabled() {
+        if is_cancelled(cancel) {
+            return Err(cloud_write_cancelled_error());
+        }
+        if self.rc.is_write_enabled() && cancel.is_none() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_deletefile(&fs_spec, path.rel_path()) {
                 Ok(_) => return Ok(()),
@@ -284,17 +291,25 @@ impl CloudProvider for RcloneCloudProvider {
             }
         }
         self.cli
-            .run_capture_text(
+            .run_capture_text_with_cancel(
                 RcloneCommandSpec::new(RcloneSubcommand::DeleteFile)
                     .arg(path.to_rclone_remote_spec()),
+                cancel,
             )
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         Ok(())
     }
 
-    fn delete_dir_recursive(&self, path: &CloudPath) -> CloudCommandResult<()> {
+    fn delete_dir_recursive(
+        &self,
+        path: &CloudPath,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
-        if self.rc.is_write_enabled() {
+        if is_cancelled(cancel) {
+            return Err(cloud_write_cancelled_error());
+        }
+        if self.rc.is_write_enabled() && cancel.is_none() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_purge(&fs_spec, path.rel_path()) {
                 Ok(_) => return Ok(()),
@@ -308,16 +323,24 @@ impl CloudProvider for RcloneCloudProvider {
             }
         }
         self.cli
-            .run_capture_text(
+            .run_capture_text_with_cancel(
                 RcloneCommandSpec::new(RcloneSubcommand::Purge).arg(path.to_rclone_remote_spec()),
+                cancel,
             )
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         Ok(())
     }
 
-    fn delete_dir_empty(&self, path: &CloudPath) -> CloudCommandResult<()> {
+    fn delete_dir_empty(
+        &self,
+        path: &CloudPath,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
-        if self.rc.is_write_enabled() {
+        if is_cancelled(cancel) {
+            return Err(cloud_write_cancelled_error());
+        }
+        if self.rc.is_write_enabled() && cancel.is_none() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_rmdir(&fs_spec, path.rel_path()) {
                 Ok(_) => return Ok(()),
@@ -331,8 +354,9 @@ impl CloudProvider for RcloneCloudProvider {
             }
         }
         self.cli
-            .run_capture_text(
+            .run_capture_text_with_cancel(
                 RcloneCommandSpec::new(RcloneSubcommand::Rmdir).arg(path.to_rclone_remote_spec()),
+                cancel,
             )
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         Ok(())
@@ -344,12 +368,16 @@ impl CloudProvider for RcloneCloudProvider {
         dst: &CloudPath,
         overwrite: bool,
         prechecked: bool,
+        cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if is_cancelled(cancel) {
+            return Err(cloud_write_cancelled_error());
+        }
         if !prechecked {
             ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
         }
-        if self.rc.is_write_enabled() {
+        if self.rc.is_write_enabled() && cancel.is_none() {
             let src_fs = format!("{}:", src.remote());
             let dst_fs = format!("{}:", dst.remote());
             match self
@@ -368,10 +396,11 @@ impl CloudProvider for RcloneCloudProvider {
             }
         }
         self.cli
-            .run_capture_text(
+            .run_capture_text_with_cancel(
                 RcloneCommandSpec::new(RcloneSubcommand::MoveTo)
                     .arg(src.to_rclone_remote_spec())
                     .arg(dst.to_rclone_remote_spec()),
+                cancel,
             )
             .map_err(|error| map_rclone_error_for_paths(&[src, dst], error))?;
         Ok(())
@@ -383,12 +412,16 @@ impl CloudProvider for RcloneCloudProvider {
         dst: &CloudPath,
         overwrite: bool,
         prechecked: bool,
+        cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if is_cancelled(cancel) {
+            return Err(cloud_write_cancelled_error());
+        }
         if !prechecked {
             ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
         }
-        if self.rc.is_write_enabled() {
+        if self.rc.is_write_enabled() && cancel.is_none() {
             let src_fs = format!("{}:", src.remote());
             let dst_fs = format!("{}:", dst.remote());
             match self
@@ -407,10 +440,11 @@ impl CloudProvider for RcloneCloudProvider {
             }
         }
         self.cli
-            .run_capture_text(
+            .run_capture_text_with_cancel(
                 RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
                     .arg(src.to_rclone_remote_spec())
                     .arg(dst.to_rclone_remote_spec()),
+                cancel,
             )
             .map_err(|error| map_rclone_error_for_paths(&[src, dst], error))?;
         Ok(())
@@ -621,6 +655,7 @@ fn map_rclone_error_for_providers(
             CloudCommandErrorCode::TaskFailed,
             "Application is shutting down; cloud operation was cancelled",
         ),
+        RcloneCliError::Cancelled { .. } => cloud_write_cancelled_error(),
         RcloneCliError::Timeout {
             subcommand,
             timeout,
@@ -643,6 +678,19 @@ fn map_rclone_error_for_providers(
             CloudCommandError::new(code, msg.trim())
         }
     }
+}
+
+fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {
+    cancel
+        .map(|token| token.load(std::sync::atomic::Ordering::SeqCst))
+        .unwrap_or(false)
+}
+
+fn cloud_write_cancelled_error() -> CloudCommandError {
+    CloudCommandError::new(
+        CloudCommandErrorCode::TaskFailed,
+        "Cloud operation cancelled",
+    )
 }
 
 fn map_rclone_error_for_provider(
@@ -1410,7 +1458,7 @@ mod tests {
         let provider = sandbox.provider();
 
         provider
-            .mkdir(&cloud_path("rclone://work/dst"))
+            .mkdir(&cloud_path("rclone://work/dst"), None)
             .expect("mkdir dst");
         provider
             .copy_entry(
@@ -1418,6 +1466,7 @@ mod tests {
                 &cloud_path("rclone://work/dst/copied.txt"),
                 false,
                 false,
+                None,
             )
             .expect("copy file");
         assert!(sandbox.remote_path("work", "dst/copied.txt").is_file());
@@ -1435,23 +1484,24 @@ mod tests {
                 &cloud_path("rclone://work/dst/moved.txt"),
                 false,
                 false,
+                None,
             )
             .expect("move file");
         assert!(!sandbox.remote_path("work", "dst/copied.txt").exists());
         assert!(sandbox.remote_path("work", "dst/moved.txt").exists());
 
         provider
-            .delete_file(&cloud_path("rclone://work/dst/moved.txt"))
+            .delete_file(&cloud_path("rclone://work/dst/moved.txt"), None)
             .expect("delete file");
         assert!(!sandbox.remote_path("work", "dst/moved.txt").exists());
 
         provider
-            .delete_dir_empty(&cloud_path("rclone://work/dst"))
+            .delete_dir_empty(&cloud_path("rclone://work/dst"), None)
             .expect("delete empty dir");
         assert!(!sandbox.remote_path("work", "dst").exists());
 
         provider
-            .delete_dir_recursive(&cloud_path("rclone://work/trash"))
+            .delete_dir_recursive(&cloud_path("rclone://work/trash"), None)
             .expect("purge dir");
         assert!(!sandbox.remote_path("work", "trash").exists());
 
@@ -1477,6 +1527,7 @@ mod tests {
                 &cloud_path("rclone://work/docs/Report.txt"),
                 false,
                 false,
+                None,
             )
             .expect("case-only rename");
 
@@ -1519,7 +1570,7 @@ mod tests {
         let provider = sandbox.provider_with_forced_rc();
 
         provider
-            .mkdir(&cloud_path("rclone://work/new-folder"))
+            .mkdir(&cloud_path("rclone://work/new-folder"), None)
             .expect("mkdir with fallback");
         assert!(sandbox.remote_path("work", "new-folder").is_dir());
 
@@ -1543,17 +1594,17 @@ mod tests {
         let provider = sandbox.provider_with_forced_rc();
 
         provider
-            .delete_file(&cloud_path("rclone://work/trash/file.txt"))
+            .delete_file(&cloud_path("rclone://work/trash/file.txt"), None)
             .expect("delete file with fallback");
         assert!(!sandbox.remote_path("work", "trash/file.txt").exists());
 
         provider
-            .delete_dir_empty(&cloud_path("rclone://work/trash"))
+            .delete_dir_empty(&cloud_path("rclone://work/trash"), None)
             .expect("delete empty dir with fallback");
         assert!(!sandbox.remote_path("work", "trash").exists());
 
         provider
-            .delete_dir_recursive(&cloud_path("rclone://work/trash-deep"))
+            .delete_dir_recursive(&cloud_path("rclone://work/trash-deep"), None)
             .expect("delete recursive dir with fallback");
         assert!(!sandbox.remote_path("work", "trash-deep").exists());
 
@@ -1589,6 +1640,7 @@ mod tests {
                 &cloud_path("rclone://work/dst/copied.txt"),
                 false,
                 false,
+                None,
             )
             .expect("copy with fallback");
         assert!(sandbox.remote_path("work", "dst/copied.txt").exists());
@@ -1599,6 +1651,7 @@ mod tests {
                 &cloud_path("rclone://work/dst/moved.txt"),
                 false,
                 false,
+                None,
             )
             .expect("move with fallback");
         assert!(!sandbox.remote_path("work", "dst/copied.txt").exists());
@@ -1633,6 +1686,7 @@ mod tests {
                 &cloud_path("rclone://work/dst/file.txt"),
                 false,
                 false,
+                None,
             )
             .expect_err("copy should fail when destination exists");
         assert_eq!(
@@ -1658,6 +1712,7 @@ mod tests {
                 &cloud_path("rclone://work/dst/file.txt"),
                 false,
                 false,
+                None,
             )
             .expect_err("move should fail when destination exists");
         assert_eq!(
@@ -1687,6 +1742,7 @@ mod tests {
                 &cloud_path("rclone://work/dst/file.txt"),
                 true,
                 false,
+                None,
             )
             .expect("copy should overwrite destination");
         let copied = fs::read_to_string(sandbox.remote_path("work", "dst/file.txt"))
@@ -1707,6 +1763,7 @@ mod tests {
                 &cloud_path("rclone://work/dst/copied.txt"),
                 false,
                 true,
+                None,
             )
             .expect("copy file");
 
@@ -1728,6 +1785,7 @@ mod tests {
                 &cloud_path("rclone://work/dst/moved.txt"),
                 false,
                 true,
+                None,
             )
             .expect("move file");
 

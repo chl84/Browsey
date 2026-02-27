@@ -129,6 +129,9 @@ pub enum RcloneCliError {
     Shutdown {
         subcommand: RcloneSubcommand,
     },
+    Cancelled {
+        subcommand: RcloneSubcommand,
+    },
     Timeout {
         subcommand: RcloneSubcommand,
         timeout: Duration,
@@ -152,6 +155,9 @@ impl std::fmt::Display for RcloneCliError {
                     "rclone {} cancelled because application is shutting down",
                     subcommand.as_str()
                 )
+            }
+            Self::Cancelled { subcommand } => {
+                write!(f, "rclone {} cancelled", subcommand.as_str())
             }
             Self::Timeout {
                 subcommand,
@@ -254,6 +260,14 @@ impl RcloneCli {
         &self,
         spec: RcloneCommandSpec,
     ) -> Result<RcloneTextOutput, RcloneCliError> {
+        self.run_capture_text_with_cancel(spec, None)
+    }
+
+    pub fn run_capture_text_with_cancel(
+        &self,
+        spec: RcloneCommandSpec,
+        cancel_token: Option<&AtomicBool>,
+    ) -> Result<RcloneTextOutput, RcloneCliError> {
         let subcommand = spec.subcommand;
         let lsjson_stat = subcommand == RcloneSubcommand::LsJson
             && spec.args.iter().any(|arg| arg == &OsString::from("--stat"));
@@ -270,7 +284,8 @@ impl RcloneCli {
             command.spawn().map_err(RcloneCliError::Io)?,
         )));
         let _registration = RunningChildRegistration::register(child.clone());
-        let output = wait_for_child_output_or_cancel(&child, subcommand, timeout, started)?;
+        let output =
+            wait_for_child_output_or_cancel(&child, subcommand, timeout, started, cancel_token)?;
         let elapsed_ms = started.elapsed().as_millis() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -337,6 +352,7 @@ fn wait_for_child_output_or_cancel(
     subcommand: RcloneSubcommand,
     timeout: Duration,
     started: Instant,
+    cancel_token: Option<&AtomicBool>,
 ) -> Result<Output, RcloneCliError> {
     let poll = Duration::from_millis(RCLONE_SHUTDOWN_POLL_SLICE_MS);
     loop {
@@ -344,6 +360,14 @@ fn wait_for_child_output_or_cancel(
             let _ = child_kill(child);
             let _ = child_wait_with_output(child);
             return Err(RcloneCliError::Shutdown { subcommand });
+        }
+        if cancel_token
+            .map(|token| token.load(Ordering::SeqCst))
+            .unwrap_or(false)
+        {
+            let _ = child_kill(child);
+            let _ = child_wait_with_output(child);
+            return Err(RcloneCliError::Cancelled { subcommand });
         }
 
         let elapsed = started.elapsed();

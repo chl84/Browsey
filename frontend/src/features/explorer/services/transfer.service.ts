@@ -10,6 +10,7 @@ export type MixedTransferConflictInfo = {
 export type MixedTransferWriteOptions = {
   overwrite?: boolean
   prechecked?: boolean
+  progressEvent?: string
 }
 
 export const previewMixedTransferConflicts = (sources: string[], destDir: string) =>
@@ -25,6 +26,7 @@ export const copyMixedEntries = (
     destDir,
     overwrite: options?.overwrite ?? false,
     prechecked: options?.prechecked ?? false,
+    progressEvent: options?.progressEvent,
   })
 
 export const moveMixedEntries = (
@@ -37,6 +39,7 @@ export const moveMixedEntries = (
     destDir,
     overwrite: options?.overwrite ?? false,
     prechecked: options?.prechecked ?? false,
+    progressEvent: options?.progressEvent,
   })
 
 export const copyMixedEntryTo = (
@@ -49,6 +52,7 @@ export const copyMixedEntryTo = (
     dst,
     overwrite: options?.overwrite ?? false,
     prechecked: options?.prechecked ?? false,
+    progressEvent: options?.progressEvent,
   })
 
 export const moveMixedEntryTo = (
@@ -61,4 +65,5 @@ export const moveMixedEntryTo = (
     dst,
     overwrite: options?.overwrite ?? false,
     prechecked: options?.prechecked ?? false,
+    progressEvent: options?.progressEvent,
   })

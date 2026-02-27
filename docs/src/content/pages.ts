@@ -117,6 +117,29 @@ export const docsPages: DocPage[] = [
         note: 'Browsey validates rclone on first cloud use and requires a minimum supported rclone version.',
       },
       {
+        id: 'cloud-rclone-ops-model',
+        title: 'Cloud Runtime Model (rclone rc + fallback)',
+        bullets: [
+          'On Linux, Browsey uses a long-lived `rclone rcd` daemon for cloud read and write paths by default.',
+          'Browsey always keeps a CLI fallback path (`rclone` per-command) for compatibility and error recovery.',
+          'The rc daemon uses a Unix socket under `XDG_RUNTIME_DIR` and is started lazily on first cloud call.',
+          'Cloud write calls are cancellable from Browsey activity UI when a progress task is active.',
+          'Per-remote concurrency and short cooldowns are enforced to reduce burst/rate-limit pressure.',
+        ],
+        note: 'Runtime toggles for debugging/rollback: `BROWSEY_RCLONE_RC`, `BROWSEY_RCLONE_RC_READ`, `BROWSEY_RCLONE_RC_WRITE`.',
+      },
+      {
+        id: 'cloud-rclone-troubleshooting',
+        title: 'Cloud Troubleshooting',
+        bullets: [
+          'If cloud paths fail immediately, run `rclone version` and `rclone listremotes` in the same shell/session used to launch Browsey.',
+          'For Google Drive `rate_limited`/quota errors, wait and retry; avoid rapid repeated refresh/sort/list actions.',
+          'If rc startup fails, Browsey falls back to CLI automatically; confirm with backend logs/perf summary script.',
+          'Use Browsey debug health command (`cloud_rc_health`) to inspect rc enabled state and daemon/socket status.',
+          'If operations hang, use activity cancel first; if needed restart Browsey to reset daemon/session state cleanly.',
+        ],
+      },
+      {
         id: 'run-dev',
         title: 'Run From Source (Development)',
         code: `npm --prefix frontend install\ncargo tauri dev --no-dev-server`,
