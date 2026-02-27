@@ -1,6 +1,11 @@
 use super::rclone_cli::{RcloneCliError, RcloneSubcommand};
 use regex::Regex;
 use serde_json::{json, Value};
+#[cfg(test)]
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use std::{
     env,
     ffi::OsString,
@@ -175,11 +180,29 @@ pub struct RcloneRcHealth {
     pub socket_exists: bool,
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ForcedAsyncStatusErrorMode {
+    CopyFile,
+    DeleteFile,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone)]
+struct ForcedAsyncStatusErrorState {
+    mode: ForcedAsyncStatusErrorMode,
+    job_id: u64,
+    status_error_kind: io::ErrorKind,
+    job_stop_calls: Arc<AtomicUsize>,
+}
+
 #[derive(Debug, Clone)]
 pub struct RcloneRcClient {
     binary: OsString,
     read_enabled_override: Option<bool>,
     write_enabled_override: Option<bool>,
+    #[cfg(test)]
+    forced_async_status_error: Option<ForcedAsyncStatusErrorState>,
 }
 
 impl Default for RcloneRcClient {
@@ -188,6 +211,8 @@ impl Default for RcloneRcClient {
             binary: std::ffi::OsString::from("rclone"),
             read_enabled_override: None,
             write_enabled_override: None,
+            #[cfg(test)]
+            forced_async_status_error: None,
         }
     }
 }
@@ -198,6 +223,8 @@ impl RcloneRcClient {
             binary: binary.into(),
             read_enabled_override: None,
             write_enabled_override: None,
+            #[cfg(test)]
+            forced_async_status_error: None,
         }
     }
 
@@ -224,6 +251,42 @@ impl RcloneRcClient {
         self.read_enabled_override = Some(enabled);
         self.write_enabled_override = Some(enabled);
         self
+    }
+
+    #[cfg(test)]
+    pub fn with_forced_async_status_error_on_copy_for_tests(
+        mut self,
+        status_error_kind: io::ErrorKind,
+    ) -> Self {
+        self.forced_async_status_error = Some(ForcedAsyncStatusErrorState {
+            mode: ForcedAsyncStatusErrorMode::CopyFile,
+            job_id: 9101,
+            status_error_kind,
+            job_stop_calls: Arc::new(AtomicUsize::new(0)),
+        });
+        self
+    }
+
+    #[cfg(test)]
+    pub fn with_forced_async_status_error_on_delete_for_tests(
+        mut self,
+        status_error_kind: io::ErrorKind,
+    ) -> Self {
+        self.forced_async_status_error = Some(ForcedAsyncStatusErrorState {
+            mode: ForcedAsyncStatusErrorMode::DeleteFile,
+            job_id: 9102,
+            status_error_kind,
+            job_stop_calls: Arc::new(AtomicUsize::new(0)),
+        });
+        self
+    }
+
+    #[cfg(test)]
+    pub fn forced_job_stop_calls_for_tests(&self) -> usize {
+        self.forced_async_status_error
+            .as_ref()
+            .map(|state| state.job_stop_calls.load(Ordering::SeqCst))
+            .unwrap_or(0)
     }
 
     pub fn list_remotes(&self) -> Result<Value, RcloneCliError> {
@@ -489,6 +552,11 @@ impl RcloneRcClient {
     }
 
     fn run_method(&self, method: RcloneRcMethod, payload: Value) -> Result<Value, RcloneCliError> {
+        #[cfg(test)]
+        if let Some(forced) = self.run_method_forced_async_status_error_for_tests(method, &payload)
+        {
+            return forced;
+        }
         if allowlisted_method_from_name(method.as_str()).is_none() {
             return Err(RcloneCliError::Io(io::Error::new(
                 io::ErrorKind::PermissionDenied,
@@ -550,6 +618,48 @@ impl RcloneRcClient {
                 continue;
             }
             return result;
+        }
+    }
+
+    #[cfg(test)]
+    fn run_method_forced_async_status_error_for_tests(
+        &self,
+        method: RcloneRcMethod,
+        payload: &Value,
+    ) -> Option<Result<Value, RcloneCliError>> {
+        let state = self.forced_async_status_error.as_ref()?;
+        match method {
+            RcloneRcMethod::OperationsCopyFile
+                if state.mode == ForcedAsyncStatusErrorMode::CopyFile =>
+            {
+                if payload.get("_async").and_then(Value::as_bool) == Some(true) {
+                    Some(Ok(json!({ "jobid": state.job_id })))
+                } else {
+                    Some(Err(RcloneCliError::Io(io::Error::other(
+                        "forced copy async test expected `_async: true` payload",
+                    ))))
+                }
+            }
+            RcloneRcMethod::OperationsDeleteFile
+                if state.mode == ForcedAsyncStatusErrorMode::DeleteFile =>
+            {
+                if payload.get("_async").and_then(Value::as_bool) == Some(true) {
+                    Some(Ok(json!({ "jobid": state.job_id })))
+                } else {
+                    Some(Err(RcloneCliError::Io(io::Error::other(
+                        "forced delete async test expected `_async: true` payload",
+                    ))))
+                }
+            }
+            RcloneRcMethod::JobStatus => Some(Err(RcloneCliError::Io(io::Error::new(
+                state.status_error_kind,
+                "forced job/status transport error for tests",
+            )))),
+            RcloneRcMethod::JobStop => {
+                state.job_stop_calls.fetch_add(1, Ordering::SeqCst);
+                Some(Ok(json!({ "stopped": true })))
+            }
+            _ => None,
         }
     }
 
@@ -1351,6 +1461,46 @@ mod tests {
             RcloneRcMethod::OperationsDeleteFile,
             &non_transport_error
         ));
+    }
+
+    #[test]
+    fn async_copy_job_status_error_returns_unknown_and_stops_job() {
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let client = super::RcloneRcClient::default()
+            .with_enabled_override_for_tests(true)
+            .with_forced_async_status_error_on_copy_for_tests(io::ErrorKind::ConnectionReset);
+
+        let err = client
+            .operations_copyfile(
+                "work:",
+                "src/file.txt",
+                "work:",
+                "dst/file.txt",
+                Some(&cancel),
+            )
+            .expect_err("forced copy job/status error should fail");
+        assert!(matches!(
+            err,
+            super::RcloneCliError::AsyncJobStateUnknown { .. }
+        ));
+        assert_eq!(client.forced_job_stop_calls_for_tests(), 1);
+    }
+
+    #[test]
+    fn async_delete_job_status_error_returns_unknown_and_stops_job() {
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let client = super::RcloneRcClient::default()
+            .with_enabled_override_for_tests(true)
+            .with_forced_async_status_error_on_delete_for_tests(io::ErrorKind::NotConnected);
+
+        let err = client
+            .operations_deletefile("work:", "dst/file.txt", Some(&cancel))
+            .expect_err("forced delete job/status error should fail");
+        assert!(matches!(
+            err,
+            super::RcloneCliError::AsyncJobStateUnknown { .. }
+        ));
+        assert_eq!(client.forced_job_stop_calls_for_tests(), 1);
     }
 
     #[test]
