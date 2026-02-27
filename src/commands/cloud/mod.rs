@@ -1069,7 +1069,7 @@ mod tests {
         }];
 
         let conflicts = build_conflicts_from_dest_listing(
-            &[src_file.clone()],
+            std::slice::from_ref(&src_file),
             &dest_dir,
             &dest_entries,
             Some(CloudProviderKind::Onedrive),

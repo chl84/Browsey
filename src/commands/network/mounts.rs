@@ -270,8 +270,6 @@ fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> Result<(
     // Drop watcher to avoid open handles during unmount
     watcher.replace(None);
 
-    let path = path;
-
     gio_mounts::ensure_gvfsd_fuse_running();
 
     let device = block_device_for_mount(&path);
