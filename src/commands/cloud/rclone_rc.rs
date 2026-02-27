@@ -1,4 +1,5 @@
 use super::rclone_cli::{RcloneCliError, RcloneSubcommand};
+use regex::Regex;
 use serde_json::{json, Value};
 use std::{
     env,
@@ -20,6 +21,7 @@ const RCLONE_RC_STARTUP_TIMEOUT: Duration = Duration::from_secs(4);
 const RCLONE_RC_REQUEST_TIMEOUT: Duration = Duration::from_secs(45);
 const RCLONE_RC_NOOP_TIMEOUT: Duration = Duration::from_secs(2);
 const RCLONE_RC_STARTUP_POLL_SLICE: Duration = Duration::from_millis(80);
+const RCLONE_RC_ERROR_TEXT_MAX_CHARS: usize = 2048;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RcloneRcMethod {
@@ -51,6 +53,14 @@ struct RcloneRcDaemon {
 #[derive(Debug, Default)]
 struct RcloneRcState {
     daemon: Option<RcloneRcDaemon>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RcloneRcHealth {
+    pub enabled: bool,
+    pub daemon_running: bool,
+    pub socket_path: Option<String>,
+    pub socket_exists: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -144,6 +154,10 @@ impl RcloneRcClient {
             if daemon_is_running(existing)? && existing.socket_path.exists() {
                 return Ok(existing.socket_path.clone());
             }
+            info!(
+                socket = %existing.socket_path.display(),
+                "restarting stale rclone rcd daemon"
+            );
             let _ = kill_daemon(existing);
             state.daemon = None;
         }
@@ -169,6 +183,33 @@ pub fn begin_shutdown_and_kill_daemon() -> io::Result<()> {
     Ok(())
 }
 
+pub fn health_snapshot() -> RcloneRcHealth {
+    let enabled = rc_enabled();
+    let mut daemon_running = false;
+    let mut socket_path = None;
+    let mut socket_exists = false;
+
+    if let Ok(mut state) = rclone_rc_state().lock() {
+        if let Some(daemon) = state.daemon.as_mut() {
+            socket_path = Some(daemon.socket_path.display().to_string());
+            socket_exists = daemon.socket_path.exists();
+            daemon_running = daemon
+                .child
+                .try_wait()
+                .ok()
+                .and_then(|status| status)
+                .is_none();
+        }
+    }
+
+    RcloneRcHealth {
+        enabled,
+        daemon_running,
+        socket_path,
+        socket_exists,
+    }
+}
+
 fn rc_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
@@ -190,6 +231,7 @@ fn rclone_rc_state() -> &'static Mutex<RcloneRcState> {
 }
 
 fn spawn_daemon(binary: &OsString) -> Result<RcloneRcDaemon, RcloneCliError> {
+    let startup_started = Instant::now();
     let state_dir = rc_state_dir_path()?;
     prepare_state_dir(&state_dir).map_err(RcloneCliError::Io)?;
     let socket_path = state_dir.join(format!("rcd-{}.sock", std::process::id()));
@@ -228,7 +270,14 @@ fn spawn_daemon(binary: &OsString) -> Result<RcloneRcDaemon, RcloneCliError> {
                 json!({}),
                 RCLONE_RC_NOOP_TIMEOUT,
             ) {
-                Ok(_) => break,
+                Ok(_) => {
+                    info!(
+                        socket = %socket_path.display(),
+                        startup_ms = startup_started.elapsed().as_millis() as u64,
+                        "rclone rcd daemon is ready"
+                    );
+                    break;
+                }
                 Err(error) => {
                     debug!(error = %error, "rclone rcd startup probe not ready yet");
                 }
@@ -406,19 +455,50 @@ fn parse_http_response_body<'a>(
         .and_then(|n| n.parse::<u16>().ok())
         .unwrap_or(0);
     if !(200..300).contains(&status_code) {
+        let body_scrubbed = scrub_rc_error_text(body.trim());
         return Err(RcloneCliError::Io(io::Error::other(format!(
             "rclone rc {} failed with HTTP {} ({})",
             method.as_str(),
             status_code,
-            body.trim()
+            body_scrubbed
         ))));
     }
     Ok(body)
 }
 
+fn scrub_rc_error_text(raw: &str) -> String {
+    let mut out = raw.to_string();
+    for re in sensitive_json_regexes() {
+        out = re.replace_all(&out, "$1\"***\"").to_string();
+    }
+    if out.chars().count() > RCLONE_RC_ERROR_TEXT_MAX_CHARS {
+        out = out
+            .chars()
+            .take(RCLONE_RC_ERROR_TEXT_MAX_CHARS)
+            .collect::<String>();
+        out.push_str("… [truncated]");
+    }
+    out
+}
+
+fn sensitive_json_regexes() -> &'static Vec<Regex> {
+    static REGEXES: OnceLock<Vec<Regex>> = OnceLock::new();
+    REGEXES.get_or_init(|| {
+        [
+            r#"("access_token"\s*:\s*)"[^"]*""#,
+            r#"("refresh_token"\s*:\s*)"[^"]*""#,
+            r#"("token"\s*:\s*)"[^"]*""#,
+            r#"("pass(word)?"\s*:\s*)"[^"]*""#,
+        ]
+        .iter()
+        .map(|pattern| Regex::new(pattern).expect("valid sensitive JSON regex"))
+        .collect()
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_http_response_body, RcloneRcMethod};
+    use super::{parse_http_response_body, scrub_rc_error_text, RcloneRcMethod};
 
     #[test]
     fn rc_method_allowlist_maps_to_expected_endpoint_names() {
@@ -441,11 +521,29 @@ mod tests {
 
     #[test]
     fn rejects_non_2xx_http_response() {
-        let response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"error\":\"boom\"}";
+        let response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"error\":\"boom\",\"access_token\":\"abc\",\"token\":\"def\"}";
         let err = parse_http_response_body(response, RcloneRcMethod::CoreNoop).expect_err("err");
         assert!(
             err.to_string().contains("HTTP 500"),
             "unexpected error text: {err}"
         );
+        assert!(
+            !err.to_string().contains("\"abc\"") && !err.to_string().contains("\"def\""),
+            "sensitive values should be redacted: {err}"
+        );
+    }
+
+    #[test]
+    fn scrubs_and_truncates_sensitive_rc_error_text() {
+        let raw = format!(
+            "{{\"access_token\":\"a\",\"refresh_token\":\"b\",\"pass\":\"c\",\"token\":\"d\",\"pad\":\"{}\"}}",
+            "x".repeat(3000)
+        );
+        let scrubbed = scrub_rc_error_text(&raw);
+        assert!(scrubbed.contains("\"access_token\":\"***\""));
+        assert!(scrubbed.contains("\"refresh_token\":\"***\""));
+        assert!(scrubbed.contains("\"pass\":\"***\""));
+        assert!(scrubbed.contains("\"token\":\"***\""));
+        assert!(scrubbed.contains("[truncated]"));
     }
 }

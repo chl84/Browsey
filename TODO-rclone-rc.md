@@ -26,7 +26,7 @@ Principles (keep it simple):
   - [x] no `--rc-serve`
   - [x] no metrics endpoint
 - [x] Enforce backend method allowlist (no dynamic method names from UI).
-- [ ] Keep payload/log redaction and avoid logging sensitive fields.
+- [x] Keep payload/log redaction and avoid logging sensitive fields.
 
 ## 2. Lifecycle manager (minimal first)
 
@@ -82,10 +82,10 @@ Definition of Done (phase-2):
 
 ## 7. Observability (minimal but useful)
 
-- [ ] Structured logs for daemon lifecycle (start/ready/restart/shutdown).
+- [x] Structured logs for daemon lifecycle (start/ready/restart/shutdown).
 - [x] Structured logs for method + latency + result (`rc` vs `cli` fallback).
-- [ ] Extend `scripts/dev/rclone-perf-summary.sh` with `rc` buckets.
-- [ ] Add one dev health check command (debug only) for daemon/socket status.
+- [x] Extend `scripts/dev/rclone-perf-summary.sh` with `rc` buckets.
+- [x] Add one dev health check command (debug only) for daemon/socket status.
 
 ## 8. Testing (focus on parity + safety)
 
