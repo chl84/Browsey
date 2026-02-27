@@ -93,8 +93,6 @@ fn method_is_retry_safe(method: RcloneRcMethod) -> bool {
         RcloneRcMethod::CoreNoop
             | RcloneRcMethod::ConfigListRemotes
             | RcloneRcMethod::ConfigDump
-            | RcloneRcMethod::OperationsList
-            | RcloneRcMethod::OperationsStat
             | RcloneRcMethod::JobStatus
             | RcloneRcMethod::JobStop
     )
@@ -506,6 +504,11 @@ impl RcloneRcClient {
             attempt += 1;
             let started = Instant::now();
             let result = run_rc_command_via_socket(&socket_path, method, payload.clone(), timeout);
+            if let Err(error) = &result {
+                if should_recycle_daemon_after_error(method, error) {
+                    self.recycle_daemon_after_error(method, error);
+                }
+            }
             let should_retry = result
                 .as_ref()
                 .err()
@@ -527,6 +530,23 @@ impl RcloneRcClient {
                 continue;
             }
             return result;
+        }
+    }
+
+    fn recycle_daemon_after_error(&self, method: RcloneRcMethod, error: &RcloneCliError) {
+        let mut state = match rclone_rc_state().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if let Some(mut daemon) = state.daemon.take() {
+            let socket = daemon.socket_path.display().to_string();
+            let _ = kill_daemon(&mut daemon);
+            warn!(
+                method = method.as_str(),
+                error = %error,
+                socket = %socket,
+                "recycled rclone rcd daemon after transport-level rc failure"
+            );
         }
     }
 
@@ -613,6 +633,28 @@ fn is_cancelled(cancel_token: Option<&AtomicBool>) -> bool {
     cancel_token
         .map(|token| token.load(std::sync::atomic::Ordering::SeqCst))
         .unwrap_or(false)
+}
+
+fn should_recycle_daemon_after_error(method: RcloneRcMethod, error: &RcloneCliError) -> bool {
+    if !matches!(
+        method,
+        RcloneRcMethod::OperationsList | RcloneRcMethod::OperationsStat
+    ) {
+        return false;
+    }
+    match error {
+        RcloneCliError::Timeout { .. } => true,
+        RcloneCliError::Io(io) => matches!(
+            io.kind(),
+            io::ErrorKind::TimedOut
+                | io::ErrorKind::WouldBlock
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::ConnectionAborted
+                | io::ErrorKind::BrokenPipe
+                | io::ErrorKind::NotConnected
+        ),
+        _ => false,
+    }
 }
 
 pub fn begin_shutdown_and_kill_daemon() -> io::Result<()> {
@@ -1231,10 +1273,11 @@ mod tests {
 
     #[test]
     fn retry_policy_only_allows_retry_safe_methods() {
-        assert!(method_is_retry_safe(RcloneRcMethod::OperationsList));
+        assert!(!method_is_retry_safe(RcloneRcMethod::OperationsStat));
         assert!(method_is_retry_safe(RcloneRcMethod::ConfigDump));
         assert!(method_is_retry_safe(RcloneRcMethod::JobStatus));
         assert!(method_is_retry_safe(RcloneRcMethod::JobStop));
+        assert!(!method_is_retry_safe(RcloneRcMethod::OperationsList));
         assert!(!method_is_retry_safe(RcloneRcMethod::OperationsMkdir));
         assert!(!method_is_retry_safe(RcloneRcMethod::OperationsDeleteFile));
         assert!(!method_is_retry_safe(RcloneRcMethod::OperationsMoveFile));
