@@ -127,6 +127,7 @@ fn is_retryable_rc_error(error: &RcloneCliError) -> bool {
         ),
         RcloneCliError::Shutdown { .. }
         | RcloneCliError::Cancelled { .. }
+        | RcloneCliError::AsyncJobStateUnknown { .. }
         | RcloneCliError::NonZero { .. } => false,
     }
 }
@@ -422,7 +423,26 @@ impl RcloneRcClient {
                 });
             }
 
-            let status = self.job_status(job_id)?;
+            let status = match self.job_status(job_id) {
+                Ok(status) => status,
+                Err(error) => {
+                    if let Err(stop_error) = self.job_stop(job_id) {
+                        warn!(
+                            method = method.as_str(),
+                            job_id,
+                            status_error = %error,
+                            stop_error = %stop_error,
+                            "failed to stop async rclone rc job after status polling error"
+                        );
+                    }
+                    return Err(RcloneCliError::AsyncJobStateUnknown {
+                        subcommand: RcloneSubcommand::Rc,
+                        operation: method.as_str().to_string(),
+                        job_id,
+                        reason: error.to_string(),
+                    });
+                }
+            };
             let finished = status
                 .get("finished")
                 .and_then(Value::as_bool)
@@ -1297,6 +1317,14 @@ mod tests {
         assert!(!is_retryable_rc_error(&super::RcloneCliError::Io(
             io::Error::other("http 403")
         )));
+        assert!(!is_retryable_rc_error(
+            &super::RcloneCliError::AsyncJobStateUnknown {
+                subcommand: super::RcloneSubcommand::Rc,
+                operation: "operations/copyfile".to_string(),
+                job_id: 9,
+                reason: "job status unavailable".to_string(),
+            }
+        ));
     }
 
     #[test]

@@ -354,6 +354,9 @@ impl CloudProvider for RcloneCloudProvider {
                     return Ok(());
                 }
                 Err(RcloneCliError::Cancelled { .. }) => return Err(cloud_write_cancelled_error()),
+                Err(error) if !should_fallback_to_cli_after_rc_error(&error) => {
+                    return Err(map_rclone_error_for_remote(path.remote(), error));
+                }
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
@@ -582,6 +585,9 @@ impl CloudProvider for RcloneCloudProvider {
                     return Ok(());
                 }
                 Err(RcloneCliError::Cancelled { .. }) => return Err(cloud_write_cancelled_error()),
+                Err(error) if !should_fallback_to_cli_after_rc_error(&error) => {
+                    return Err(map_rclone_error_for_paths(&[src, dst], error));
+                }
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
@@ -638,6 +644,7 @@ fn classify_rc_fallback_reason(error: &RcloneCliError) -> &'static str {
         RcloneCliError::Timeout { .. } => "rc_timeout",
         RcloneCliError::Shutdown { .. } => "rc_shutdown",
         RcloneCliError::Cancelled { .. } => "rc_cancelled",
+        RcloneCliError::AsyncJobStateUnknown { .. } => "rc_async_job_unknown",
         RcloneCliError::NonZero { .. } => "rc_nonzero",
         RcloneCliError::Io(io) => match io.kind() {
             std::io::ErrorKind::WouldBlock => "rc_startup_cooldown",
@@ -857,6 +864,18 @@ fn map_rclone_error_for_providers(
             "Application is shutting down; cloud operation was cancelled",
         ),
         RcloneCliError::Cancelled { .. } => cloud_write_cancelled_error(),
+        RcloneCliError::AsyncJobStateUnknown {
+            operation,
+            job_id,
+            reason,
+            ..
+        } => CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            format!(
+                "Cloud operation status is unknown after rclone rc {operation} job {job_id}; Browsey did not retry automatically to avoid duplicate operations. Refresh and verify the destination before retrying. Cause: {}",
+                reason.trim()
+            ),
+        ),
         RcloneCliError::Timeout {
             subcommand,
             timeout,
@@ -879,6 +898,10 @@ fn map_rclone_error_for_providers(
             CloudCommandError::new(code, msg.trim())
         }
     }
+}
+
+fn should_fallback_to_cli_after_rc_error(error: &RcloneCliError) -> bool {
+    !matches!(error, RcloneCliError::AsyncJobStateUnknown { .. })
 }
 
 fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {
@@ -1216,8 +1239,8 @@ mod tests {
         is_rclone_not_found_text, map_rclone_error, map_rclone_error_for_provider,
         normalize_cloud_modified_time_value, parse_config_dump_summaries, parse_listremotes_plain,
         parse_lsjson_items, parse_lsjson_stat_item, parse_rclone_version_stdout,
-        parse_rclone_version_triplet, remote_allowed_by_policy_with, RcloneCloudProvider,
-        RcloneRemotePolicy,
+        parse_rclone_version_triplet, remote_allowed_by_policy_with,
+        should_fallback_to_cli_after_rc_error, RcloneCloudProvider, RcloneRemotePolicy,
     };
     use crate::{
         commands::cloud::{
@@ -1482,6 +1505,49 @@ mod tests {
             err.code_str(),
             CloudCommandErrorCode::RateLimited.as_code_str()
         );
+    }
+
+    #[test]
+    fn maps_async_job_unknown_to_task_failed_with_guidance() {
+        let err = map_rclone_error(RcloneCliError::AsyncJobStateUnknown {
+            subcommand: RcloneSubcommand::Rc,
+            operation: "operations/copyfile".to_string(),
+            job_id: 42,
+            reason: "job/status failed: connection reset".to_string(),
+        });
+        assert_eq!(
+            err.code_str(),
+            CloudCommandErrorCode::TaskFailed.as_code_str()
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("status is unknown"),
+            "unexpected message: {msg}"
+        );
+        assert!(
+            msg.contains("did not retry automatically"),
+            "unexpected message: {msg}"
+        );
+        assert!(msg.contains("job 42"), "unexpected message: {msg}");
+    }
+
+    #[test]
+    fn async_job_unknown_error_is_not_cli_fallback_safe() {
+        let unknown = RcloneCliError::AsyncJobStateUnknown {
+            subcommand: RcloneSubcommand::Rc,
+            operation: "operations/deletefile".to_string(),
+            job_id: 7,
+            reason: "job/status timed out".to_string(),
+        };
+        assert!(!should_fallback_to_cli_after_rc_error(&unknown));
+
+        let timeout = RcloneCliError::Timeout {
+            subcommand: RcloneSubcommand::Rc,
+            timeout: Duration::from_secs(5),
+            stdout: String::new(),
+            stderr: "timed out".to_string(),
+        };
+        assert!(should_fallback_to_cli_after_rc_error(&timeout));
     }
 
     #[test]

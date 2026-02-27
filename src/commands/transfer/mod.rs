@@ -866,6 +866,18 @@ fn map_rclone_cli_error(error: RcloneCliError, cloud_remote: Option<&str>) -> Ap
             "Application is shutting down; transfer was cancelled",
         ),
         RcloneCliError::Cancelled { .. } => api_err("cancelled", "Transfer cancelled"),
+        RcloneCliError::AsyncJobStateUnknown {
+            operation,
+            job_id,
+            reason,
+            ..
+        } => api_err(
+            "task_failed",
+            format!(
+                "Transfer status is unknown after rclone rc {operation} job {job_id}; Browsey did not retry automatically to avoid duplicate operations. Refresh and verify destination state before retrying. Cause: {}",
+                reason.trim()
+            ),
+        ),
         RcloneCliError::Timeout {
             subcommand,
             timeout,
