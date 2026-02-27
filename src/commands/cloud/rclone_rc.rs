@@ -18,7 +18,10 @@ use wait_timeout::ChildExt;
 const RCLONE_RC_ENABLE_ENV: &str = "BROWSEY_RCLONE_RC";
 const RCLONE_RC_STATE_DIR_NAME: &str = "browsey-rclone-rc";
 const RCLONE_RC_STARTUP_TIMEOUT: Duration = Duration::from_secs(4);
-const RCLONE_RC_REQUEST_TIMEOUT: Duration = Duration::from_secs(45);
+const RCLONE_RC_READ_TIMEOUT: Duration = Duration::from_secs(25);
+const RCLONE_RC_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
+const RCLONE_RC_MAX_RETRIES: usize = 1;
+const RCLONE_RC_RETRY_BACKOFF: Duration = Duration::from_millis(120);
 const RCLONE_RC_NOOP_TIMEOUT: Duration = Duration::from_secs(2);
 const RCLONE_RC_STARTUP_POLL_SLICE: Duration = Duration::from_millis(80);
 const RCLONE_RC_ERROR_TEXT_MAX_CHARS: usize = 2048;
@@ -30,6 +33,12 @@ pub enum RcloneRcMethod {
     ConfigDump,
     OperationsList,
     OperationsStat,
+    OperationsMkdir,
+    OperationsDeleteFile,
+    OperationsPurge,
+    OperationsRmdir,
+    OperationsCopyFile,
+    OperationsMoveFile,
 }
 
 impl RcloneRcMethod {
@@ -40,7 +49,74 @@ impl RcloneRcMethod {
             Self::ConfigDump => "config/dump",
             Self::OperationsList => "operations/list",
             Self::OperationsStat => "operations/stat",
+            Self::OperationsMkdir => "operations/mkdir",
+            Self::OperationsDeleteFile => "operations/deletefile",
+            Self::OperationsPurge => "operations/purge",
+            Self::OperationsRmdir => "operations/rmdir",
+            Self::OperationsCopyFile => "operations/copyfile",
+            Self::OperationsMoveFile => "operations/movefile",
         }
+    }
+}
+
+fn method_timeout(method: RcloneRcMethod) -> Duration {
+    match method {
+        RcloneRcMethod::CoreNoop
+        | RcloneRcMethod::ConfigListRemotes
+        | RcloneRcMethod::ConfigDump
+        | RcloneRcMethod::OperationsList
+        | RcloneRcMethod::OperationsStat => RCLONE_RC_READ_TIMEOUT,
+        RcloneRcMethod::OperationsMkdir
+        | RcloneRcMethod::OperationsDeleteFile
+        | RcloneRcMethod::OperationsPurge
+        | RcloneRcMethod::OperationsRmdir
+        | RcloneRcMethod::OperationsCopyFile
+        | RcloneRcMethod::OperationsMoveFile => RCLONE_RC_WRITE_TIMEOUT,
+    }
+}
+
+fn method_is_retry_safe(method: RcloneRcMethod) -> bool {
+    matches!(
+        method,
+        RcloneRcMethod::CoreNoop
+            | RcloneRcMethod::ConfigListRemotes
+            | RcloneRcMethod::ConfigDump
+            | RcloneRcMethod::OperationsList
+            | RcloneRcMethod::OperationsStat
+    )
+}
+
+fn is_retryable_rc_error(error: &RcloneCliError) -> bool {
+    match error {
+        RcloneCliError::Timeout { .. } => true,
+        RcloneCliError::Io(io) => matches!(
+            io.kind(),
+            io::ErrorKind::TimedOut
+                | io::ErrorKind::WouldBlock
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::ConnectionAborted
+                | io::ErrorKind::Interrupted
+                | io::ErrorKind::BrokenPipe
+                | io::ErrorKind::NotConnected
+        ),
+        RcloneCliError::Shutdown { .. } | RcloneCliError::NonZero { .. } => false,
+    }
+}
+
+fn allowlisted_method_from_name(method_name: &str) -> Option<RcloneRcMethod> {
+    match method_name {
+        "core/noop" => Some(RcloneRcMethod::CoreNoop),
+        "config/listremotes" => Some(RcloneRcMethod::ConfigListRemotes),
+        "config/dump" => Some(RcloneRcMethod::ConfigDump),
+        "operations/list" => Some(RcloneRcMethod::OperationsList),
+        "operations/stat" => Some(RcloneRcMethod::OperationsStat),
+        "operations/mkdir" => Some(RcloneRcMethod::OperationsMkdir),
+        "operations/deletefile" => Some(RcloneRcMethod::OperationsDeleteFile),
+        "operations/purge" => Some(RcloneRcMethod::OperationsPurge),
+        "operations/rmdir" => Some(RcloneRcMethod::OperationsRmdir),
+        "operations/copyfile" => Some(RcloneRcMethod::OperationsCopyFile),
+        "operations/movefile" => Some(RcloneRcMethod::OperationsMoveFile),
+        _ => None,
     }
 }
 
@@ -66,12 +142,14 @@ pub struct RcloneRcHealth {
 #[derive(Debug, Clone)]
 pub struct RcloneRcClient {
     binary: OsString,
+    enabled_override: Option<bool>,
 }
 
 impl Default for RcloneRcClient {
     fn default() -> Self {
         Self {
             binary: OsString::from("rclone"),
+            enabled_override: None,
         }
     }
 }
@@ -80,11 +158,21 @@ impl RcloneRcClient {
     pub fn new(binary: impl Into<OsString>) -> Self {
         Self {
             binary: binary.into(),
+            enabled_override: None,
         }
     }
 
     pub fn is_enabled(&self) -> bool {
+        if let Some(enabled) = self.enabled_override {
+            return enabled;
+        }
         rc_enabled()
+    }
+
+    #[cfg(test)]
+    pub fn with_enabled_override_for_tests(mut self, enabled: bool) -> Self {
+        self.enabled_override = Some(enabled);
+        self
     }
 
     pub fn list_remotes(&self) -> Result<Value, RcloneCliError> {
@@ -123,18 +211,135 @@ impl RcloneRcClient {
         )
     }
 
+    pub fn operations_mkdir(
+        &self,
+        fs_spec: &str,
+        remote_path: &str,
+    ) -> Result<Value, RcloneCliError> {
+        self.run_method(
+            RcloneRcMethod::OperationsMkdir,
+            json!({
+                "fs": fs_spec,
+                "remote": remote_path,
+            }),
+        )
+    }
+
+    pub fn operations_deletefile(
+        &self,
+        fs_spec: &str,
+        remote_path: &str,
+    ) -> Result<Value, RcloneCliError> {
+        self.run_method(
+            RcloneRcMethod::OperationsDeleteFile,
+            json!({
+                "fs": fs_spec,
+                "remote": remote_path,
+            }),
+        )
+    }
+
+    pub fn operations_purge(
+        &self,
+        fs_spec: &str,
+        remote_path: &str,
+    ) -> Result<Value, RcloneCliError> {
+        self.run_method(
+            RcloneRcMethod::OperationsPurge,
+            json!({
+                "fs": fs_spec,
+                "remote": remote_path,
+            }),
+        )
+    }
+
+    pub fn operations_rmdir(
+        &self,
+        fs_spec: &str,
+        remote_path: &str,
+    ) -> Result<Value, RcloneCliError> {
+        self.run_method(
+            RcloneRcMethod::OperationsRmdir,
+            json!({
+                "fs": fs_spec,
+                "remote": remote_path,
+            }),
+        )
+    }
+
+    pub fn operations_copyfile(
+        &self,
+        src_fs: &str,
+        src_remote: &str,
+        dst_fs: &str,
+        dst_remote: &str,
+    ) -> Result<Value, RcloneCliError> {
+        self.run_method(
+            RcloneRcMethod::OperationsCopyFile,
+            json!({
+                "srcFs": src_fs,
+                "srcRemote": src_remote,
+                "dstFs": dst_fs,
+                "dstRemote": dst_remote,
+            }),
+        )
+    }
+
+    pub fn operations_movefile(
+        &self,
+        src_fs: &str,
+        src_remote: &str,
+        dst_fs: &str,
+        dst_remote: &str,
+    ) -> Result<Value, RcloneCliError> {
+        self.run_method(
+            RcloneRcMethod::OperationsMoveFile,
+            json!({
+                "srcFs": src_fs,
+                "srcRemote": src_remote,
+                "dstFs": dst_fs,
+                "dstRemote": dst_remote,
+            }),
+        )
+    }
+
     fn run_method(&self, method: RcloneRcMethod, payload: Value) -> Result<Value, RcloneCliError> {
+        if allowlisted_method_from_name(method.as_str()).is_none() {
+            return Err(RcloneCliError::Io(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "rclone rc method is not allowlisted",
+            )));
+        }
         let socket_path = self.ensure_daemon_ready()?;
-        let started = Instant::now();
-        let result =
-            run_rc_command_via_socket(&socket_path, method, payload, RCLONE_RC_REQUEST_TIMEOUT);
-        debug!(
-            method = method.as_str(),
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            success = result.is_ok(),
-            "rclone rc method completed"
-        );
-        result
+        let timeout = method_timeout(method);
+        let retry_safe = method_is_retry_safe(method);
+        let mut attempt = 0usize;
+        loop {
+            attempt += 1;
+            let started = Instant::now();
+            let result = run_rc_command_via_socket(&socket_path, method, payload.clone(), timeout);
+            let should_retry = result
+                .as_ref()
+                .err()
+                .map(|error| {
+                    retry_safe && attempt <= RCLONE_RC_MAX_RETRIES && is_retryable_rc_error(error)
+                })
+                .unwrap_or(false);
+            debug!(
+                method = method.as_str(),
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                timeout_ms = timeout.as_millis() as u64,
+                attempt,
+                success = result.is_ok(),
+                will_retry = should_retry,
+                "rclone rc method completed"
+            );
+            if should_retry {
+                std::thread::sleep(RCLONE_RC_RETRY_BACKOFF);
+                continue;
+            }
+            return result;
+        }
     }
 
     fn ensure_daemon_ready(&self) -> Result<PathBuf, RcloneCliError> {
@@ -235,9 +440,7 @@ fn spawn_daemon(binary: &OsString) -> Result<RcloneRcDaemon, RcloneCliError> {
     let state_dir = rc_state_dir_path()?;
     prepare_state_dir(&state_dir).map_err(RcloneCliError::Io)?;
     let socket_path = state_dir.join(format!("rcd-{}.sock", std::process::id()));
-    if socket_path.exists() {
-        let _ = fs::remove_file(&socket_path);
-    }
+    cleanup_stale_socket(&socket_path).map_err(RcloneCliError::Io)?;
 
     let mut child = Command::new(binary)
         .arg("rcd")
@@ -337,6 +540,21 @@ fn prepare_state_dir(path: &Path) -> io::Result<()> {
         fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
     }
     Ok(())
+}
+
+fn cleanup_stale_socket(path: &Path) -> io::Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_dir() {
+                return Err(io::Error::other(
+                    "rc socket path points to a directory; refusing to remove",
+                ));
+            }
+            fs::remove_file(path)
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 fn run_rc_command_via_socket(
@@ -498,7 +716,66 @@ fn sensitive_json_regexes() -> &'static Vec<Regex> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_http_response_body, scrub_rc_error_text, RcloneRcMethod};
+    use super::{
+        allowlisted_method_from_name, cleanup_stale_socket, is_retryable_rc_error, kill_daemon,
+        method_is_retry_safe, method_timeout, parse_http_response_body, prepare_state_dir,
+        run_rc_command_via_socket, scrub_rc_error_text, RcloneRcDaemon, RcloneRcMethod,
+        RCLONE_RC_READ_TIMEOUT, RCLONE_RC_WRITE_TIMEOUT,
+    };
+    use serde_json::{json, Value};
+    use std::io;
+    use std::time::Duration;
+
+    #[cfg(unix)]
+    use std::{
+        fs,
+        io::{Read, Write},
+        os::unix::fs::symlink,
+        os::unix::net::UnixListener,
+        path::PathBuf,
+        process::Command,
+        sync::atomic::{AtomicU64, Ordering},
+        thread,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    #[cfg(unix)]
+    fn unique_test_dir(label: &str) -> PathBuf {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let unique = format!(
+            "browsey-rclone-rc-test-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+                + u128::from(NEXT_ID.fetch_add(1, Ordering::Relaxed))
+        );
+        let root = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&root).expect("create temp test dir");
+        root
+    }
+
+    #[cfg(unix)]
+    fn spawn_fake_rc_http_server(
+        response: &'static str,
+        delay: Duration,
+    ) -> (PathBuf, PathBuf, thread::JoinHandle<()>) {
+        let root = unique_test_dir("sock");
+        let socket_path = root.join("rc.sock");
+        let listener = UnixListener::bind(&socket_path).expect("bind unix socket");
+        let handle = thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut request = [0u8; 4096];
+                let _ = stream.read(&mut request);
+                if !delay.is_zero() {
+                    thread::sleep(delay);
+                }
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        (root, socket_path, handle)
+    }
 
     #[test]
     fn rc_method_allowlist_maps_to_expected_endpoint_names() {
@@ -510,6 +787,85 @@ mod tests {
         assert_eq!(RcloneRcMethod::ConfigDump.as_str(), "config/dump");
         assert_eq!(RcloneRcMethod::OperationsList.as_str(), "operations/list");
         assert_eq!(RcloneRcMethod::OperationsStat.as_str(), "operations/stat");
+        assert_eq!(RcloneRcMethod::OperationsMkdir.as_str(), "operations/mkdir");
+        assert_eq!(
+            RcloneRcMethod::OperationsDeleteFile.as_str(),
+            "operations/deletefile"
+        );
+        assert_eq!(RcloneRcMethod::OperationsPurge.as_str(), "operations/purge");
+        assert_eq!(RcloneRcMethod::OperationsRmdir.as_str(), "operations/rmdir");
+        assert_eq!(
+            RcloneRcMethod::OperationsCopyFile.as_str(),
+            "operations/copyfile"
+        );
+        assert_eq!(
+            RcloneRcMethod::OperationsMoveFile.as_str(),
+            "operations/movefile"
+        );
+    }
+
+    #[test]
+    fn rc_method_allowlist_rejects_unsafe_or_unknown_method_names() {
+        assert_eq!(
+            allowlisted_method_from_name("core/noop"),
+            Some(RcloneRcMethod::CoreNoop)
+        );
+        assert_eq!(
+            allowlisted_method_from_name("operations/list"),
+            Some(RcloneRcMethod::OperationsList)
+        );
+        assert_eq!(allowlisted_method_from_name("../core/noop"), None);
+        assert_eq!(allowlisted_method_from_name("core/noop?x=1"), None);
+        assert_eq!(allowlisted_method_from_name("sync/copy"), None);
+    }
+
+    #[test]
+    fn rc_method_timeouts_are_classified_by_endpoint_class() {
+        assert_eq!(
+            method_timeout(RcloneRcMethod::OperationsList),
+            RCLONE_RC_READ_TIMEOUT
+        );
+        assert_eq!(
+            method_timeout(RcloneRcMethod::ConfigListRemotes),
+            RCLONE_RC_READ_TIMEOUT
+        );
+        assert_eq!(
+            method_timeout(RcloneRcMethod::OperationsMkdir),
+            RCLONE_RC_WRITE_TIMEOUT
+        );
+        assert_eq!(
+            method_timeout(RcloneRcMethod::OperationsDeleteFile),
+            RCLONE_RC_WRITE_TIMEOUT
+        );
+        assert_eq!(
+            method_timeout(RcloneRcMethod::OperationsCopyFile),
+            RCLONE_RC_WRITE_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn retry_policy_only_allows_retry_safe_methods() {
+        assert!(method_is_retry_safe(RcloneRcMethod::OperationsList));
+        assert!(method_is_retry_safe(RcloneRcMethod::ConfigDump));
+        assert!(!method_is_retry_safe(RcloneRcMethod::OperationsMkdir));
+        assert!(!method_is_retry_safe(RcloneRcMethod::OperationsDeleteFile));
+        assert!(!method_is_retry_safe(RcloneRcMethod::OperationsMoveFile));
+    }
+
+    #[test]
+    fn retry_policy_recognizes_transient_rc_errors() {
+        assert!(is_retryable_rc_error(&super::RcloneCliError::Timeout {
+            subcommand: super::RcloneSubcommand::Rc,
+            timeout: Duration::from_secs(1),
+            stdout: String::new(),
+            stderr: String::new(),
+        }));
+        assert!(is_retryable_rc_error(&super::RcloneCliError::Io(
+            io::Error::new(io::ErrorKind::ConnectionReset, "reset")
+        )));
+        assert!(!is_retryable_rc_error(&super::RcloneCliError::Io(
+            io::Error::other("http 403")
+        )));
     }
 
     #[test]
@@ -545,5 +901,157 @@ mod tests {
         assert!(scrubbed.contains("\"pass\":\"***\""));
         assert!(scrubbed.contains("\"token\":\"***\""));
         assert!(scrubbed.contains("[truncated]"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rc_socket_request_success_path_parses_json_body() {
+        let response =
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"ok\":true,\"n\":1}";
+        let (root, socket_path, handle) =
+            spawn_fake_rc_http_server(response, Duration::from_millis(0));
+        let value = run_rc_command_via_socket(
+            &socket_path,
+            RcloneRcMethod::CoreNoop,
+            json!({"ping":"pong"}),
+            Duration::from_secs(1),
+        )
+        .expect("rc success response");
+        assert_eq!(value.get("ok"), Some(&Value::Bool(true)));
+        assert_eq!(value.get("n"), Some(&Value::from(1)));
+        handle.join().expect("join fake server");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rc_socket_request_returns_timeout_when_server_stalls() {
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"ok\":true}";
+        let (root, socket_path, handle) =
+            spawn_fake_rc_http_server(response, Duration::from_millis(220));
+        let err = run_rc_command_via_socket(
+            &socket_path,
+            RcloneRcMethod::CoreNoop,
+            json!({}),
+            Duration::from_millis(40),
+        )
+        .expect_err("expected timeout");
+        assert!(
+            matches!(err, super::RcloneCliError::Timeout { .. }),
+            "unexpected error: {err}"
+        );
+        handle.join().expect("join fake server");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rc_socket_request_rejects_malformed_json_payload() {
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\nnot-json";
+        let (root, socket_path, handle) =
+            spawn_fake_rc_http_server(response, Duration::from_millis(0));
+        let err = run_rc_command_via_socket(
+            &socket_path,
+            RcloneRcMethod::CoreNoop,
+            json!({}),
+            Duration::from_secs(1),
+        )
+        .expect_err("expected malformed payload failure");
+        assert!(
+            err.to_string().contains("invalid JSON"),
+            "unexpected error: {err}"
+        );
+        handle.join().expect("join fake server");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rc_socket_request_fails_cleanly_when_socket_is_unavailable() {
+        let root = unique_test_dir("missing");
+        let socket_path = root.join("missing.sock");
+        let err = run_rc_command_via_socket(
+            &socket_path,
+            RcloneRcMethod::CoreNoop,
+            json!({}),
+            Duration::from_millis(60),
+        )
+        .expect_err("expected unavailable socket error");
+        assert!(
+            matches!(err, super::RcloneCliError::Io(_)),
+            "unexpected error: {err}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lifecycle_kill_daemon_terminates_process_and_cleans_socket_path() {
+        let root = unique_test_dir("daemon");
+        let socket_path = root.join("daemon.sock");
+        fs::write(&socket_path, "placeholder").expect("create socket placeholder");
+        let child = Command::new("sh")
+            .arg("-c")
+            .arg("sleep 30")
+            .spawn()
+            .expect("spawn sleep child");
+        let mut daemon = RcloneRcDaemon { socket_path, child };
+        kill_daemon(&mut daemon).expect("kill daemon");
+        assert!(
+            daemon
+                .child
+                .try_wait()
+                .expect("query child status")
+                .is_some(),
+            "child process should be terminated"
+        );
+        assert!(
+            !daemon.socket_path.exists(),
+            "socket path should be removed by shutdown"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lifecycle_prepare_state_dir_enforces_user_only_permissions() {
+        let root = unique_test_dir("state-dir-perms");
+        let state_dir = root.join("rc-state");
+        prepare_state_dir(&state_dir).expect("prepare state dir");
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(&state_dir)
+            .expect("state dir metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o700);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stale_socket_cleanup_removes_symlink_without_touching_target() {
+        let root = unique_test_dir("stale-symlink");
+        let target_file = root.join("target.txt");
+        fs::write(&target_file, "keep-me").expect("write target file");
+        let stale_socket = root.join("rcd.sock");
+        symlink(&target_file, &stale_socket).expect("create stale symlink");
+
+        cleanup_stale_socket(&stale_socket).expect("cleanup stale socket");
+        assert!(!stale_socket.exists(), "stale symlink should be removed");
+        let target = fs::read_to_string(&target_file).expect("read target");
+        assert_eq!(target, "keep-me");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stale_socket_cleanup_removes_regular_file() {
+        let root = unique_test_dir("stale-file");
+        let stale_socket = root.join("rcd.sock");
+        fs::write(&stale_socket, "stale").expect("write stale socket file");
+        cleanup_stale_socket(&stale_socket).expect("cleanup stale regular file");
+        assert!(!stale_socket.exists());
+        let _ = fs::remove_dir_all(root);
     }
 }
