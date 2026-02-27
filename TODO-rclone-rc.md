@@ -83,7 +83,7 @@ Definition of Done (phase-2):
 ## 7. Observability (minimal but useful)
 
 - [ ] Structured logs for daemon lifecycle (start/ready/restart/shutdown).
-- [ ] Structured logs for method + latency + result (`rc` vs `cli` fallback).
+- [x] Structured logs for method + latency + result (`rc` vs `cli` fallback).
 - [ ] Extend `scripts/dev/rclone-perf-summary.sh` with `rc` buckets.
 - [ ] Add one dev health check command (debug only) for daemon/socket status.
 
