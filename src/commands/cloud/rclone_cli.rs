@@ -132,6 +132,12 @@ pub enum RcloneCliError {
     Cancelled {
         subcommand: RcloneSubcommand,
     },
+    AsyncJobStateUnknown {
+        subcommand: RcloneSubcommand,
+        operation: String,
+        job_id: u64,
+        reason: String,
+    },
     Timeout {
         subcommand: RcloneSubcommand,
         timeout: Duration,
@@ -158,6 +164,32 @@ impl std::fmt::Display for RcloneCliError {
             }
             Self::Cancelled { subcommand } => {
                 write!(f, "rclone {} cancelled", subcommand.as_str())
+            }
+            Self::AsyncJobStateUnknown {
+                subcommand,
+                operation,
+                job_id,
+                reason,
+            } => {
+                let reason = scrub_log_text(reason);
+                if reason.is_empty() {
+                    write!(
+                        f,
+                        "rclone {} {} job {} has unknown completion state",
+                        subcommand.as_str(),
+                        operation,
+                        job_id
+                    )
+                } else {
+                    write!(
+                        f,
+                        "rclone {} {} job {} has unknown completion state ({})",
+                        subcommand.as_str(),
+                        operation,
+                        job_id,
+                        reason
+                    )
+                }
             }
             Self::Timeout {
                 subcommand,
