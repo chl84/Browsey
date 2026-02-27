@@ -13,7 +13,7 @@ use std::{
     env,
     sync::{atomic::AtomicBool, OnceLock},
 };
-use tracing::debug;
+use tracing::{debug, info};
 
 const MIN_RCLONE_VERSION: (u64, u64, u64) = (1, 67, 0);
 
@@ -134,11 +134,18 @@ impl RcloneCloudProvider {
 impl CloudProvider for RcloneCloudProvider {
     fn list_remotes(&self) -> CloudCommandResult<Vec<CloudRemote>> {
         self.ensure_runtime_ready()?;
+        let mut fell_back_from_rc = false;
+        let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_read_enabled() {
             match self.list_remotes_via_rc() {
-                Ok(remotes) => return Ok(remotes),
+                Ok(remotes) => {
+                    log_backend_selected("cloud_list_remotes", "rc", false, None);
+                    return Ok(remotes);
+                }
                 Err(error) => {
-                    debug!(
+                    fell_back_from_rc = true;
+                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    info!(
                         error = %error,
                         "rclone rc remote discovery failed; falling back to CLI listremotes"
                     );
@@ -159,16 +166,29 @@ impl CloudProvider for RcloneCloudProvider {
         let config_map = parse_config_dump_summaries(&config_dump.stdout).map_err(|message| {
             CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, message)
         })?;
+        log_backend_selected(
+            "cloud_list_remotes",
+            "cli",
+            fell_back_from_rc,
+            fallback_reason,
+        );
         Ok(build_cloud_remotes(remote_ids, config_map))
     }
 
     fn stat_path(&self, path: &CloudPath) -> CloudCommandResult<Option<CloudEntry>> {
         self.ensure_runtime_ready()?;
+        let mut fell_back_from_rc = false;
+        let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_read_enabled() {
             match self.stat_path_via_rc(path) {
-                Ok(entry) => return Ok(entry),
+                Ok(entry) => {
+                    log_backend_selected("cloud_stat_entry", "rc", false, None);
+                    return Ok(entry);
+                }
                 Err(error) => {
-                    debug!(
+                    fell_back_from_rc = true;
+                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    info!(
                         path = %path,
                         error = %error,
                         "rclone rc stat failed; falling back to CLI lsjson --stat"
@@ -184,11 +204,23 @@ impl CloudProvider for RcloneCloudProvider {
                 let item = parse_lsjson_stat_item(&output.stdout).map_err(|message| {
                     CloudCommandError::new(CloudCommandErrorCode::UnknownError, message)
                 })?;
+                log_backend_selected(
+                    "cloud_stat_entry",
+                    "cli",
+                    fell_back_from_rc,
+                    fallback_reason,
+                );
                 Ok(Some(cloud_entry_from_item(path, item)))
             }
             Err(RcloneCliError::NonZero { stderr, stdout, .. })
                 if is_rclone_not_found_text(&stderr, &stdout) =>
             {
+                log_backend_selected(
+                    "cloud_stat_entry",
+                    "cli",
+                    fell_back_from_rc,
+                    fallback_reason,
+                );
                 Ok(None)
             }
             Err(error) => Err(map_rclone_error_for_remote(path.remote(), error)),
@@ -197,11 +229,18 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn list_dir(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
         self.ensure_runtime_ready()?;
+        let mut fell_back_from_rc = false;
+        let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_read_enabled() {
             match self.list_dir_via_rc(path) {
-                Ok(entries) => return Ok(entries),
+                Ok(entries) => {
+                    log_backend_selected("cloud_list_entries", "rc", false, None);
+                    return Ok(entries);
+                }
                 Err(error) => {
-                    debug!(
+                    fell_back_from_rc = true;
+                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    info!(
                         path = %path,
                         error = %error,
                         "rclone rc list failed; falling back to CLI lsjson"
@@ -242,6 +281,12 @@ impl CloudProvider for RcloneCloudProvider {
             };
             rank_a.cmp(&rank_b).then_with(|| a.name.cmp(&b.name))
         });
+        log_backend_selected(
+            "cloud_list_entries",
+            "cli",
+            fell_back_from_rc,
+            fallback_reason,
+        );
         Ok(entries)
     }
 
@@ -250,12 +295,19 @@ impl CloudProvider for RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
+        let mut fell_back_from_rc = false;
+        let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_write_enabled() && cancel.is_none() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_mkdir(&fs_spec, path.rel_path()) {
-                Ok(_) => return Ok(()),
+                Ok(_) => {
+                    log_backend_selected("cloud_write_mkdir", "rc", false, None);
+                    return Ok(());
+                }
                 Err(error) => {
-                    debug!(
+                    fell_back_from_rc = true;
+                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    info!(
                         path = %path,
                         error = %error,
                         "rclone rc mkdir failed; falling back to CLI mkdir"
@@ -269,6 +321,18 @@ impl CloudProvider for RcloneCloudProvider {
                 cancel,
             )
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
+        log_backend_selected(
+            "cloud_write_mkdir",
+            "cli",
+            fell_back_from_rc,
+            if fell_back_from_rc {
+                fallback_reason
+            } else if cancel.is_some() {
+                Some("cancelable_cli")
+            } else {
+                None
+            },
+        );
         Ok(())
     }
 
@@ -277,12 +341,19 @@ impl CloudProvider for RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
+        let mut fell_back_from_rc = false;
+        let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_write_enabled() && cancel.is_none() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_deletefile(&fs_spec, path.rel_path()) {
-                Ok(_) => return Ok(()),
+                Ok(_) => {
+                    log_backend_selected("cloud_write_delete_file", "rc", false, None);
+                    return Ok(());
+                }
                 Err(error) => {
-                    debug!(
+                    fell_back_from_rc = true;
+                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    info!(
                         path = %path,
                         error = %error,
                         "rclone rc deletefile failed; falling back to CLI deletefile"
@@ -297,6 +368,18 @@ impl CloudProvider for RcloneCloudProvider {
                 cancel,
             )
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
+        log_backend_selected(
+            "cloud_write_delete_file",
+            "cli",
+            fell_back_from_rc,
+            if fell_back_from_rc {
+                fallback_reason
+            } else if cancel.is_some() {
+                Some("cancelable_cli")
+            } else {
+                None
+            },
+        );
         Ok(())
     }
 
@@ -309,12 +392,19 @@ impl CloudProvider for RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
+        let mut fell_back_from_rc = false;
+        let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_write_enabled() && cancel.is_none() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_purge(&fs_spec, path.rel_path()) {
-                Ok(_) => return Ok(()),
+                Ok(_) => {
+                    log_backend_selected("cloud_write_delete_dir_recursive", "rc", false, None);
+                    return Ok(());
+                }
                 Err(error) => {
-                    debug!(
+                    fell_back_from_rc = true;
+                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    info!(
                         path = %path,
                         error = %error,
                         "rclone rc purge failed; falling back to CLI purge"
@@ -328,6 +418,18 @@ impl CloudProvider for RcloneCloudProvider {
                 cancel,
             )
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
+        log_backend_selected(
+            "cloud_write_delete_dir_recursive",
+            "cli",
+            fell_back_from_rc,
+            if fell_back_from_rc {
+                fallback_reason
+            } else if cancel.is_some() {
+                Some("cancelable_cli")
+            } else {
+                None
+            },
+        );
         Ok(())
     }
 
@@ -340,12 +442,19 @@ impl CloudProvider for RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
+        let mut fell_back_from_rc = false;
+        let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_write_enabled() && cancel.is_none() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_rmdir(&fs_spec, path.rel_path()) {
-                Ok(_) => return Ok(()),
+                Ok(_) => {
+                    log_backend_selected("cloud_write_delete_dir_empty", "rc", false, None);
+                    return Ok(());
+                }
                 Err(error) => {
-                    debug!(
+                    fell_back_from_rc = true;
+                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    info!(
                         path = %path,
                         error = %error,
                         "rclone rc rmdir failed; falling back to CLI rmdir"
@@ -359,6 +468,18 @@ impl CloudProvider for RcloneCloudProvider {
                 cancel,
             )
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
+        log_backend_selected(
+            "cloud_write_delete_dir_empty",
+            "cli",
+            fell_back_from_rc,
+            if fell_back_from_rc {
+                fallback_reason
+            } else if cancel.is_some() {
+                Some("cancelable_cli")
+            } else {
+                None
+            },
+        );
         Ok(())
     }
 
@@ -377,6 +498,8 @@ impl CloudProvider for RcloneCloudProvider {
         if !prechecked {
             ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
         }
+        let mut fell_back_from_rc = false;
+        let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_write_enabled() && cancel.is_none() {
             let src_fs = format!("{}:", src.remote());
             let dst_fs = format!("{}:", dst.remote());
@@ -384,9 +507,14 @@ impl CloudProvider for RcloneCloudProvider {
                 .rc
                 .operations_movefile(&src_fs, src.rel_path(), &dst_fs, dst.rel_path())
             {
-                Ok(_) => return Ok(()),
+                Ok(_) => {
+                    log_backend_selected("cloud_write_move", "rc", false, None);
+                    return Ok(());
+                }
                 Err(error) => {
-                    debug!(
+                    fell_back_from_rc = true;
+                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    info!(
                         src = %src,
                         dst = %dst,
                         error = %error,
@@ -403,6 +531,18 @@ impl CloudProvider for RcloneCloudProvider {
                 cancel,
             )
             .map_err(|error| map_rclone_error_for_paths(&[src, dst], error))?;
+        log_backend_selected(
+            "cloud_write_move",
+            "cli",
+            fell_back_from_rc,
+            if fell_back_from_rc {
+                fallback_reason
+            } else if cancel.is_some() {
+                Some("cancelable_cli")
+            } else {
+                None
+            },
+        );
         Ok(())
     }
 
@@ -421,6 +561,8 @@ impl CloudProvider for RcloneCloudProvider {
         if !prechecked {
             ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
         }
+        let mut fell_back_from_rc = false;
+        let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_write_enabled() && cancel.is_none() {
             let src_fs = format!("{}:", src.remote());
             let dst_fs = format!("{}:", dst.remote());
@@ -428,9 +570,14 @@ impl CloudProvider for RcloneCloudProvider {
                 .rc
                 .operations_copyfile(&src_fs, src.rel_path(), &dst_fs, dst.rel_path())
             {
-                Ok(_) => return Ok(()),
+                Ok(_) => {
+                    log_backend_selected("cloud_write_copy", "rc", false, None);
+                    return Ok(());
+                }
                 Err(error) => {
-                    debug!(
+                    fell_back_from_rc = true;
+                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    info!(
                         src = %src,
                         dst = %dst,
                         error = %error,
@@ -447,7 +594,53 @@ impl CloudProvider for RcloneCloudProvider {
                 cancel,
             )
             .map_err(|error| map_rclone_error_for_paths(&[src, dst], error))?;
+        log_backend_selected(
+            "cloud_write_copy",
+            "cli",
+            fell_back_from_rc,
+            if fell_back_from_rc {
+                fallback_reason
+            } else if cancel.is_some() {
+                Some("cancelable_cli")
+            } else {
+                None
+            },
+        );
         Ok(())
+    }
+}
+
+fn log_backend_selected(
+    op: &'static str,
+    backend: &'static str,
+    fallback: bool,
+    reason: Option<&'static str>,
+) {
+    info!(
+        op,
+        backend,
+        fallback_from_rc = fallback,
+        reason = reason.unwrap_or(""),
+        "cloud provider backend selected"
+    );
+}
+
+fn classify_rc_fallback_reason(error: &RcloneCliError) -> &'static str {
+    match error {
+        RcloneCliError::Timeout { .. } => "rc_timeout",
+        RcloneCliError::Shutdown { .. } => "rc_shutdown",
+        RcloneCliError::Cancelled { .. } => "rc_cancelled",
+        RcloneCliError::NonZero { .. } => "rc_nonzero",
+        RcloneCliError::Io(io) => match io.kind() {
+            std::io::ErrorKind::WouldBlock => "rc_startup_cooldown",
+            std::io::ErrorKind::TimedOut => "rc_io_timeout",
+            std::io::ErrorKind::ConnectionRefused => "rc_connect_refused",
+            std::io::ErrorKind::NotConnected => "rc_not_connected",
+            std::io::ErrorKind::Unsupported => "rc_unsupported",
+            std::io::ErrorKind::PermissionDenied => "rc_permission_denied",
+            std::io::ErrorKind::NotFound => "rc_not_found",
+            _ => "rc_io_error",
+        },
     }
 }
 
@@ -1374,6 +1567,7 @@ mod tests {
         }
 
         fn provider_with_forced_rc(&self) -> RcloneCloudProvider {
+            crate::commands::cloud::rclone_rc::reset_state_for_tests();
             let cli = RcloneCli::new(self.script_path.as_os_str());
             let rc = RcloneRcClient::new(self.script_path.as_os_str())
                 .with_enabled_override_for_tests(true);
@@ -1550,7 +1744,11 @@ mod tests {
 
         let log = sandbox.read_log();
         assert!(
-            log.contains("rcd --rc --rc-addr"),
+            log.contains("rcd --rc-no-auth"),
+            "expected rc daemon to start without auth on private unix socket, log:\n{log}"
+        );
+        assert!(
+            log.contains("--rc-addr"),
             "expected rc daemon startup attempt before fallback, log:\n{log}"
         );
         assert!(
@@ -1576,7 +1774,11 @@ mod tests {
 
         let log = sandbox.read_log();
         assert!(
-            log.contains("rcd --rc --rc-addr"),
+            log.contains("rcd --rc-no-auth"),
+            "expected rc daemon to start without auth on private unix socket, log:\n{log}"
+        );
+        assert!(
+            log.contains("--rc-addr"),
             "expected rc daemon startup attempt before fallback, log:\n{log}"
         );
         assert!(
@@ -1610,7 +1812,11 @@ mod tests {
 
         let log = sandbox.read_log();
         assert!(
-            log.contains("rcd --rc --rc-addr"),
+            log.contains("rcd --rc-no-auth"),
+            "expected rc daemon to start without auth on private unix socket, log:\n{log}"
+        );
+        assert!(
+            log.contains("--rc-addr"),
             "expected rc daemon startup attempt before fallback, log:\n{log}"
         );
         assert!(
@@ -1659,7 +1865,11 @@ mod tests {
 
         let log = sandbox.read_log();
         assert!(
-            log.contains("rcd --rc --rc-addr"),
+            log.contains("rcd --rc-no-auth"),
+            "expected rc daemon to start without auth on private unix socket, log:\n{log}"
+        );
+        assert!(
+            log.contains("--rc-addr"),
             "expected rc daemon startup attempt before fallback, log:\n{log}"
         );
         assert!(

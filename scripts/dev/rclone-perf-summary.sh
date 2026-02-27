@@ -33,6 +33,17 @@ function print_rc_stats(method,   count, sum, max, avg, ok, fail) {
   printf("  %-24s count=%-4d avg_ms=%-8.1f max_ms=%-6d ok=%-4d fail=%d\n", method, count, avg, max, ok, fail)
 }
 
+function print_backend_stats(key,   split_pos, op, backend, count, fallback, pct_fallback) {
+  count = backend_count[key]
+  if (count == 0) return
+  split_pos = index(key, SUBSEP)
+  op = substr(key, 1, split_pos - 1)
+  backend = substr(key, split_pos + 1)
+  fallback = backend_fallback_count[key] + 0
+  pct_fallback = (count > 0) ? (fallback * 100.0 / count) : 0
+  printf("  %-24s backend=%-4s count=%-4d fallback=%-4d (%.1f%%)\n", op, backend, count, fallback, pct_fallback)
+}
+
 /cloud command timing/ {
   op = ""
   ms = ""
@@ -74,6 +85,20 @@ function print_rc_stats(method,   count, sum, max, avg, ok, fail) {
   }
 }
 
+/cloud provider backend selected/ {
+  op = ""
+  backend = ""
+  fallback = ""
+  if (match($0, /op="?([A-Za-z0-9_]+)"?/, m)) op = m[1]
+  if (match($0, /backend="?([A-Za-z0-9_]+)"?/, b)) backend = b[1]
+  if (match($0, /fallback_from_rc=(true|false)/, f)) fallback = f[1]
+  if (op != "" && backend != "") {
+    key = op SUBSEP backend
+    backend_count[key] += 1
+    if (fallback == "true") backend_fallback_count[key] += 1
+  }
+}
+
 END {
   print "Cloud command timings (from backend info logs):"
   if (length(op_count) == 0) {
@@ -97,6 +122,15 @@ END {
   } else {
     for (method in rc_count) {
       print_rc_stats(method)
+    }
+  }
+  print ""
+  print "Cloud provider backend usage (from provider logs):"
+  if (length(backend_count) == 0) {
+    print "  (none found)"
+  } else {
+    for (key in backend_count) {
+      print_backend_stats(key)
     }
   }
 }
