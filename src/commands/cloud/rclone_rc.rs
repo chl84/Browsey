@@ -8,7 +8,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{Mutex, OnceLock},
+    sync::{atomic::AtomicBool, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 use tracing::{debug, info, warn};
@@ -25,6 +25,7 @@ const RCLONE_RC_MAX_RETRIES: usize = 1;
 const RCLONE_RC_RETRY_BACKOFF: Duration = Duration::from_millis(120);
 const RCLONE_RC_NOOP_TIMEOUT: Duration = Duration::from_secs(2);
 const RCLONE_RC_STARTUP_POLL_SLICE: Duration = Duration::from_millis(80);
+const RCLONE_RC_ASYNC_POLL_SLICE: Duration = Duration::from_millis(120);
 #[cfg(not(test))]
 const RCLONE_RC_START_FAILURE_COOLDOWN: Duration = Duration::from_secs(30);
 #[cfg(test)]
@@ -44,6 +45,8 @@ pub enum RcloneRcMethod {
     OperationsRmdir,
     OperationsCopyFile,
     OperationsMoveFile,
+    JobStatus,
+    JobStop,
 }
 
 impl RcloneRcMethod {
@@ -60,6 +63,8 @@ impl RcloneRcMethod {
             Self::OperationsRmdir => "operations/rmdir",
             Self::OperationsCopyFile => "operations/copyfile",
             Self::OperationsMoveFile => "operations/movefile",
+            Self::JobStatus => "job/status",
+            Self::JobStop => "job/stop",
         }
     }
 }
@@ -70,13 +75,15 @@ fn method_timeout(method: RcloneRcMethod) -> Duration {
         | RcloneRcMethod::ConfigListRemotes
         | RcloneRcMethod::ConfigDump
         | RcloneRcMethod::OperationsList
-        | RcloneRcMethod::OperationsStat => RCLONE_RC_READ_TIMEOUT,
+        | RcloneRcMethod::OperationsStat
+        | RcloneRcMethod::JobStatus => RCLONE_RC_READ_TIMEOUT,
         RcloneRcMethod::OperationsMkdir
         | RcloneRcMethod::OperationsDeleteFile
         | RcloneRcMethod::OperationsPurge
         | RcloneRcMethod::OperationsRmdir
         | RcloneRcMethod::OperationsCopyFile
-        | RcloneRcMethod::OperationsMoveFile => RCLONE_RC_WRITE_TIMEOUT,
+        | RcloneRcMethod::OperationsMoveFile
+        | RcloneRcMethod::JobStop => RCLONE_RC_WRITE_TIMEOUT,
     }
 }
 
@@ -88,7 +95,23 @@ fn method_is_retry_safe(method: RcloneRcMethod) -> bool {
             | RcloneRcMethod::ConfigDump
             | RcloneRcMethod::OperationsList
             | RcloneRcMethod::OperationsStat
+            | RcloneRcMethod::JobStatus
+            | RcloneRcMethod::JobStop
     )
+}
+
+fn async_method_total_timeout(method: RcloneRcMethod) -> Duration {
+    match method {
+        RcloneRcMethod::OperationsCopyFile | RcloneRcMethod::OperationsMoveFile => {
+            Duration::from_secs(300)
+        }
+        RcloneRcMethod::OperationsPurge => Duration::from_secs(300),
+        RcloneRcMethod::OperationsDeleteFile | RcloneRcMethod::OperationsRmdir => {
+            Duration::from_secs(120)
+        }
+        RcloneRcMethod::OperationsMkdir => Duration::from_secs(45),
+        _ => RCLONE_RC_WRITE_TIMEOUT,
+    }
 }
 
 fn is_retryable_rc_error(error: &RcloneCliError) -> bool {
@@ -123,6 +146,8 @@ fn allowlisted_method_from_name(method_name: &str) -> Option<RcloneRcMethod> {
         "operations/rmdir" => Some(RcloneRcMethod::OperationsRmdir),
         "operations/copyfile" => Some(RcloneRcMethod::OperationsCopyFile),
         "operations/movefile" => Some(RcloneRcMethod::OperationsMoveFile),
+        "job/status" => Some(RcloneRcMethod::JobStatus),
+        "job/stop" => Some(RcloneRcMethod::JobStop),
         _ => None,
     }
 }
@@ -256,13 +281,16 @@ impl RcloneRcClient {
         &self,
         fs_spec: &str,
         remote_path: &str,
+        cancel_token: Option<&AtomicBool>,
     ) -> Result<Value, RcloneCliError> {
-        self.run_method(
+        let payload = json!({
+            "fs": fs_spec,
+            "remote": remote_path,
+        });
+        self.run_method_async_if_cancelable(
             RcloneRcMethod::OperationsDeleteFile,
-            json!({
-                "fs": fs_spec,
-                "remote": remote_path,
-            }),
+            payload,
+            cancel_token,
         )
     }
 
@@ -300,15 +328,18 @@ impl RcloneRcClient {
         src_remote: &str,
         dst_fs: &str,
         dst_remote: &str,
+        cancel_token: Option<&AtomicBool>,
     ) -> Result<Value, RcloneCliError> {
-        self.run_method(
+        let payload = json!({
+            "srcFs": src_fs,
+            "srcRemote": src_remote,
+            "dstFs": dst_fs,
+            "dstRemote": dst_remote,
+        });
+        self.run_method_async_if_cancelable(
             RcloneRcMethod::OperationsCopyFile,
-            json!({
-                "srcFs": src_fs,
-                "srcRemote": src_remote,
-                "dstFs": dst_fs,
-                "dstRemote": dst_remote,
-            }),
+            payload,
+            cancel_token,
         )
     }
 
@@ -330,6 +361,115 @@ impl RcloneRcClient {
         )
     }
 
+    fn job_status(&self, job_id: u64) -> Result<Value, RcloneCliError> {
+        self.run_method(RcloneRcMethod::JobStatus, json!({ "jobid": job_id }))
+    }
+
+    fn job_stop(&self, job_id: u64) -> Result<Value, RcloneCliError> {
+        self.run_method(RcloneRcMethod::JobStop, json!({ "jobid": job_id }))
+    }
+
+    fn run_method_async_if_cancelable(
+        &self,
+        method: RcloneRcMethod,
+        payload: Value,
+        cancel_token: Option<&AtomicBool>,
+    ) -> Result<Value, RcloneCliError> {
+        if cancel_token.is_none() {
+            return self.run_method(method, payload);
+        }
+        self.run_method_async_with_job_control(method, payload, cancel_token)
+    }
+
+    fn run_method_async_with_job_control(
+        &self,
+        method: RcloneRcMethod,
+        mut payload: Value,
+        cancel_token: Option<&AtomicBool>,
+    ) -> Result<Value, RcloneCliError> {
+        let Some(payload_obj) = payload.as_object_mut() else {
+            return Err(RcloneCliError::Io(io::Error::other(format!(
+                "rclone rc {} async payload must be a JSON object",
+                method.as_str()
+            ))));
+        };
+        payload_obj.insert("_async".to_string(), Value::Bool(true));
+
+        let kickoff = self.run_method(method, payload)?;
+        let job_id = kickoff
+            .get("jobid")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                RcloneCliError::Io(io::Error::other(format!(
+                    "rclone rc {} async response missing numeric `jobid`",
+                    method.as_str()
+                )))
+            })?;
+
+        let total_timeout = async_method_total_timeout(method);
+        let deadline = Instant::now() + total_timeout;
+
+        loop {
+            if is_cancelled(cancel_token) {
+                if let Err(error) = self.job_stop(job_id) {
+                    warn!(
+                        method = method.as_str(),
+                        job_id,
+                        error = %error,
+                        "failed to stop cancelled rclone rc job"
+                    );
+                }
+                return Err(RcloneCliError::Cancelled {
+                    subcommand: RcloneSubcommand::Rc,
+                });
+            }
+
+            let status = self.job_status(job_id)?;
+            let finished = status
+                .get("finished")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if finished {
+                let success = status
+                    .get("success")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if success {
+                    return Ok(status);
+                }
+                let message = status
+                    .get("error")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|msg| !msg.is_empty())
+                    .unwrap_or("rclone rc async job failed");
+                return Err(RcloneCliError::Io(io::Error::other(format!(
+                    "rclone rc {} async job {job_id} failed: {message}",
+                    method.as_str()
+                ))));
+            }
+
+            if Instant::now() >= deadline {
+                if let Err(error) = self.job_stop(job_id) {
+                    warn!(
+                        method = method.as_str(),
+                        job_id,
+                        error = %error,
+                        "failed to stop timed-out rclone rc job"
+                    );
+                }
+                return Err(RcloneCliError::Timeout {
+                    subcommand: RcloneSubcommand::Rc,
+                    timeout: total_timeout,
+                    stdout: String::new(),
+                    stderr: format!("rclone rc {} async job {job_id} timed out", method.as_str()),
+                });
+            }
+
+            std::thread::sleep(RCLONE_RC_ASYNC_POLL_SLICE);
+        }
+    }
+
     fn run_method(&self, method: RcloneRcMethod, payload: Value) -> Result<Value, RcloneCliError> {
         if allowlisted_method_from_name(method.as_str()).is_none() {
             return Err(RcloneCliError::Io(io::Error::new(
@@ -348,7 +488,9 @@ impl RcloneRcClient {
             | RcloneRcMethod::OperationsPurge
             | RcloneRcMethod::OperationsRmdir
             | RcloneRcMethod::OperationsCopyFile
-            | RcloneRcMethod::OperationsMoveFile => self.is_write_enabled(),
+            | RcloneRcMethod::OperationsMoveFile
+            | RcloneRcMethod::JobStatus
+            | RcloneRcMethod::JobStop => self.is_write_enabled(),
         };
         if !method_enabled {
             return Err(RcloneCliError::Io(io::Error::new(
@@ -465,6 +607,12 @@ impl RcloneRcClient {
         state.daemon = Some(daemon);
         Ok(socket_path)
     }
+}
+
+fn is_cancelled(cancel_token: Option<&AtomicBool>) -> bool {
+    cancel_token
+        .map(|token| token.load(std::sync::atomic::Ordering::SeqCst))
+        .unwrap_or(false)
 }
 
 pub fn begin_shutdown_and_kill_daemon() -> io::Result<()> {
@@ -1011,6 +1159,8 @@ mod tests {
             RcloneRcMethod::OperationsMoveFile.as_str(),
             "operations/movefile"
         );
+        assert_eq!(RcloneRcMethod::JobStatus.as_str(), "job/status");
+        assert_eq!(RcloneRcMethod::JobStop.as_str(), "job/stop");
     }
 
     #[test]
@@ -1022,6 +1172,14 @@ mod tests {
         assert_eq!(
             allowlisted_method_from_name("operations/list"),
             Some(RcloneRcMethod::OperationsList)
+        );
+        assert_eq!(
+            allowlisted_method_from_name("job/status"),
+            Some(RcloneRcMethod::JobStatus)
+        );
+        assert_eq!(
+            allowlisted_method_from_name("job/stop"),
+            Some(RcloneRcMethod::JobStop)
         );
         assert_eq!(allowlisted_method_from_name("../rc/noop"), None);
         assert_eq!(allowlisted_method_from_name("rc/noop?x=1"), None);
@@ -1061,12 +1219,22 @@ mod tests {
             method_timeout(RcloneRcMethod::OperationsCopyFile),
             RCLONE_RC_WRITE_TIMEOUT
         );
+        assert_eq!(
+            method_timeout(RcloneRcMethod::JobStatus),
+            RCLONE_RC_READ_TIMEOUT
+        );
+        assert_eq!(
+            method_timeout(RcloneRcMethod::JobStop),
+            RCLONE_RC_WRITE_TIMEOUT
+        );
     }
 
     #[test]
     fn retry_policy_only_allows_retry_safe_methods() {
         assert!(method_is_retry_safe(RcloneRcMethod::OperationsList));
         assert!(method_is_retry_safe(RcloneRcMethod::ConfigDump));
+        assert!(method_is_retry_safe(RcloneRcMethod::JobStatus));
+        assert!(method_is_retry_safe(RcloneRcMethod::JobStop));
         assert!(!method_is_retry_safe(RcloneRcMethod::OperationsMkdir));
         assert!(!method_is_retry_safe(RcloneRcMethod::OperationsDeleteFile));
         assert!(!method_is_retry_safe(RcloneRcMethod::OperationsMoveFile));

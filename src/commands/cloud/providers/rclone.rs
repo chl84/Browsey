@@ -343,13 +343,17 @@ impl CloudProvider for RcloneCloudProvider {
         }
         let mut fell_back_from_rc = false;
         let mut fallback_reason: Option<&'static str> = None;
-        if self.rc.is_write_enabled() && cancel.is_none() {
+        if self.rc.is_write_enabled() {
             let fs_spec = format!("{}:", path.remote());
-            match self.rc.operations_deletefile(&fs_spec, path.rel_path()) {
+            match self
+                .rc
+                .operations_deletefile(&fs_spec, path.rel_path(), cancel)
+            {
                 Ok(_) => {
                     log_backend_selected("cloud_write_delete_file", "rc", false, None);
                     return Ok(());
                 }
+                Err(RcloneCliError::Cancelled { .. }) => return Err(cloud_write_cancelled_error()),
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
@@ -563,17 +567,21 @@ impl CloudProvider for RcloneCloudProvider {
         }
         let mut fell_back_from_rc = false;
         let mut fallback_reason: Option<&'static str> = None;
-        if self.rc.is_write_enabled() && cancel.is_none() {
+        if self.rc.is_write_enabled() {
             let src_fs = format!("{}:", src.remote());
             let dst_fs = format!("{}:", dst.remote());
-            match self
-                .rc
-                .operations_copyfile(&src_fs, src.rel_path(), &dst_fs, dst.rel_path())
-            {
+            match self.rc.operations_copyfile(
+                &src_fs,
+                src.rel_path(),
+                &dst_fs,
+                dst.rel_path(),
+                cancel,
+            ) {
                 Ok(_) => {
                     log_backend_selected("cloud_write_copy", "rc", false, None);
                     return Ok(());
                 }
+                Err(RcloneCliError::Cancelled { .. }) => return Err(cloud_write_cancelled_error()),
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
