@@ -6,13 +6,12 @@ use std::{
     ffi::OsString,
     fs, io,
     io::{Read, Write},
-    net::Shutdown,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Mutex, OnceLock},
     time::{Duration, Instant},
 };
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use wait_timeout::ChildExt;
 
 const RCLONE_RC_ENABLE_ENV: &str = "BROWSEY_RCLONE_RC";
@@ -26,6 +25,10 @@ const RCLONE_RC_MAX_RETRIES: usize = 1;
 const RCLONE_RC_RETRY_BACKOFF: Duration = Duration::from_millis(120);
 const RCLONE_RC_NOOP_TIMEOUT: Duration = Duration::from_secs(2);
 const RCLONE_RC_STARTUP_POLL_SLICE: Duration = Duration::from_millis(80);
+#[cfg(not(test))]
+const RCLONE_RC_START_FAILURE_COOLDOWN: Duration = Duration::from_secs(30);
+#[cfg(test)]
+const RCLONE_RC_START_FAILURE_COOLDOWN: Duration = Duration::from_millis(1);
 const RCLONE_RC_ERROR_TEXT_MAX_CHARS: usize = 2048;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +49,7 @@ pub enum RcloneRcMethod {
 impl RcloneRcMethod {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::CoreNoop => "core/noop",
+            Self::CoreNoop => "rc/noop",
             Self::ConfigListRemotes => "config/listremotes",
             Self::ConfigDump => "config/dump",
             Self::OperationsList => "operations/list",
@@ -109,7 +112,7 @@ fn is_retryable_rc_error(error: &RcloneCliError) -> bool {
 
 fn allowlisted_method_from_name(method_name: &str) -> Option<RcloneRcMethod> {
     match method_name {
-        "core/noop" => Some(RcloneRcMethod::CoreNoop),
+        "rc/noop" => Some(RcloneRcMethod::CoreNoop),
         "config/listremotes" => Some(RcloneRcMethod::ConfigListRemotes),
         "config/dump" => Some(RcloneRcMethod::ConfigDump),
         "operations/list" => Some(RcloneRcMethod::OperationsList),
@@ -127,12 +130,15 @@ fn allowlisted_method_from_name(method_name: &str) -> Option<RcloneRcMethod> {
 #[derive(Debug)]
 struct RcloneRcDaemon {
     socket_path: PathBuf,
+    binary: OsString,
     child: Child,
 }
 
 #[derive(Debug, Default)]
 struct RcloneRcState {
     daemon: Option<RcloneRcDaemon>,
+    startup_blocked_until: Option<Instant>,
+    startup_blocked_binary: Option<OsString>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -155,7 +161,7 @@ pub struct RcloneRcClient {
 impl Default for RcloneRcClient {
     fn default() -> Self {
         Self {
-            binary: OsString::from("rclone"),
+            binary: std::ffi::OsString::from("rclone"),
             read_enabled_override: None,
             write_enabled_override: None,
         }
@@ -365,7 +371,7 @@ impl RcloneRcClient {
                     retry_safe && attempt <= RCLONE_RC_MAX_RETRIES && is_retryable_rc_error(error)
                 })
                 .unwrap_or(false);
-            debug!(
+            info!(
                 method = method.as_str(),
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 timeout_ms = timeout.as_millis() as u64,
@@ -394,6 +400,37 @@ impl RcloneRcClient {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
+        let now = Instant::now();
+        if let Some(until) = state.startup_blocked_until {
+            let binary_matches = state
+                .startup_blocked_binary
+                .as_ref()
+                .map(|blocked| blocked == &self.binary)
+                .unwrap_or(false);
+            if until > now && binary_matches {
+                return Err(RcloneCliError::Io(io::Error::new(
+                    io::ErrorKind::WouldBlock,
+                    format!(
+                        "rclone rc startup cooldown active ({}ms remaining)",
+                        until.saturating_duration_since(now).as_millis() as u64
+                    ),
+                )));
+            }
+            state.startup_blocked_until = None;
+            state.startup_blocked_binary = None;
+        }
+
+        if let Some(existing) = state.daemon.as_mut() {
+            if existing.binary != self.binary {
+                info!(
+                    existing_binary = %existing.binary.to_string_lossy(),
+                    requested_binary = %self.binary.to_string_lossy(),
+                    "restarting rclone rcd daemon for different binary path"
+                );
+                let _ = kill_daemon(existing);
+                state.daemon = None;
+            }
+        }
 
         if let Some(existing) = state.daemon.as_mut() {
             if daemon_is_running(existing)? && existing.socket_path.exists() {
@@ -407,9 +444,24 @@ impl RcloneRcClient {
             state.daemon = None;
         }
 
-        let daemon = spawn_daemon(&self.binary)?;
+        let daemon = match spawn_daemon(&self.binary) {
+            Ok(daemon) => daemon,
+            Err(error) => {
+                let cooldown_until = Instant::now() + RCLONE_RC_START_FAILURE_COOLDOWN;
+                state.startup_blocked_until = Some(cooldown_until);
+                state.startup_blocked_binary = Some(self.binary.clone());
+                warn!(
+                    cooldown_ms = RCLONE_RC_START_FAILURE_COOLDOWN.as_millis() as u64,
+                    error = %error,
+                    "rclone rcd startup failed; applying startup cooldown"
+                );
+                return Err(error);
+            }
+        };
         let socket_path = daemon.socket_path.clone();
         info!(socket = %socket_path.display(), "started rclone rcd daemon");
+        state.startup_blocked_until = None;
+        state.startup_blocked_binary = None;
         state.daemon = Some(daemon);
         Ok(socket_path)
     }
@@ -426,6 +478,19 @@ pub fn begin_shutdown_and_kill_daemon() -> io::Result<()> {
         info!(socket = %socket_display, "stopped rclone rcd daemon");
     }
     Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn reset_state_for_tests() {
+    let mut state = match rclone_rc_state().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if let Some(mut daemon) = state.daemon.take() {
+        let _ = kill_daemon(&mut daemon);
+    }
+    state.startup_blocked_until = None;
+    state.startup_blocked_binary = None;
 }
 
 pub fn health_snapshot() -> RcloneRcHealth {
@@ -513,7 +578,9 @@ fn spawn_daemon(binary: &OsString) -> Result<RcloneRcDaemon, RcloneCliError> {
 
     let mut child = Command::new(binary)
         .arg("rcd")
-        .arg("--rc")
+        // We bind to a private unix socket in XDG_RUNTIME_DIR/browsey-rclone-rc (0700),
+        // so we can keep auth disabled without exposing an HTTP listener.
+        .arg("--rc-no-auth")
         .arg("--rc-addr")
         .arg(format!("unix://{}", socket_path.display()))
         .arg("--rc-server-read-timeout")
@@ -568,7 +635,11 @@ fn spawn_daemon(binary: &OsString) -> Result<RcloneRcDaemon, RcloneCliError> {
         std::thread::sleep(RCLONE_RC_STARTUP_POLL_SLICE);
     }
 
-    Ok(RcloneRcDaemon { socket_path, child })
+    Ok(RcloneRcDaemon {
+        socket_path,
+        binary: binary.clone(),
+        child,
+    })
 }
 
 fn daemon_is_running(daemon: &mut RcloneRcDaemon) -> Result<bool, RcloneCliError> {
@@ -650,7 +721,7 @@ fn run_rc_command_via_socket(
     if body.trim().is_empty() {
         return Ok(json!({}));
     }
-    serde_json::from_str::<Value>(body).map_err(|error| {
+    serde_json::from_str::<Value>(&body).map_err(|error| {
         RcloneCliError::Io(io::Error::other(format!(
             "invalid JSON from rclone rc {}: {error}",
             method.as_str()
@@ -686,9 +757,6 @@ fn send_rc_http_request_over_unix_socket(
     stream
         .write_all(request.as_bytes())
         .map_err(|error| map_rc_io_error(error, timeout, "write"))?;
-    stream
-        .shutdown(Shutdown::Write)
-        .map_err(RcloneCliError::Io)?;
 
     let mut response_bytes = Vec::new();
     stream
@@ -723,10 +791,10 @@ fn map_rc_io_error(error: io::Error, timeout: Duration, phase: &str) -> RcloneCl
     }
 }
 
-fn parse_http_response_body<'a>(
-    response_text: &'a str,
+fn parse_http_response_body(
+    response_text: &str,
     method: RcloneRcMethod,
-) -> Result<&'a str, RcloneCliError> {
+) -> Result<String, RcloneCliError> {
     let Some((header, body)) = response_text.split_once("\r\n\r\n") else {
         return Err(RcloneCliError::Io(io::Error::other(format!(
             "invalid HTTP response from rclone rc {}",
@@ -741,8 +809,22 @@ fn parse_http_response_body<'a>(
         .nth(1)
         .and_then(|n| n.parse::<u16>().ok())
         .unwrap_or(0);
+    let chunked = lines.any(|line| {
+        let mut parts = line.splitn(2, ':');
+        let name = parts.next().unwrap_or_default().trim();
+        let value = parts.next().unwrap_or_default().trim();
+        name.eq_ignore_ascii_case("transfer-encoding")
+            && value
+                .split(',')
+                .any(|encoding| encoding.trim().eq_ignore_ascii_case("chunked"))
+    });
+    let decoded_body = if chunked {
+        decode_chunked_http_body(body, method)?
+    } else {
+        body.to_string()
+    };
     if !(200..300).contains(&status_code) {
-        let body_scrubbed = scrub_rc_error_text(body.trim());
+        let body_scrubbed = scrub_rc_error_text(decoded_body.trim());
         return Err(RcloneCliError::Io(io::Error::other(format!(
             "rclone rc {} failed with HTTP {} ({})",
             method.as_str(),
@@ -750,7 +832,65 @@ fn parse_http_response_body<'a>(
             body_scrubbed
         ))));
     }
-    Ok(body)
+    Ok(decoded_body)
+}
+
+fn decode_chunked_http_body(body: &str, method: RcloneRcMethod) -> Result<String, RcloneCliError> {
+    let bytes = body.as_bytes();
+    let mut cursor = 0usize;
+    let mut out = Vec::<u8>::new();
+
+    loop {
+        let Some(line_end_offset) = bytes[cursor..].windows(2).position(|w| w == b"\r\n") else {
+            return Err(RcloneCliError::Io(io::Error::other(format!(
+                "invalid chunked HTTP response from rclone rc {}: missing chunk size line terminator",
+                method.as_str()
+            ))));
+        };
+        let line_end = cursor + line_end_offset;
+        let size_line = std::str::from_utf8(&bytes[cursor..line_end]).map_err(|error| {
+            RcloneCliError::Io(io::Error::other(format!(
+                "invalid chunked HTTP response from rclone rc {}: non-utf8 chunk size: {error}",
+                method.as_str()
+            )))
+        })?;
+        let size_hex = size_line.split(';').next().unwrap_or_default().trim();
+        let chunk_size = usize::from_str_radix(size_hex, 16).map_err(|error| {
+            RcloneCliError::Io(io::Error::other(format!(
+                "invalid chunked HTTP response from rclone rc {}: bad chunk size `{size_hex}`: {error}",
+                method.as_str()
+            )))
+        })?;
+        cursor = line_end + 2;
+
+        if chunk_size == 0 {
+            break;
+        }
+
+        let chunk_end = cursor.saturating_add(chunk_size);
+        if chunk_end + 2 > bytes.len() {
+            return Err(RcloneCliError::Io(io::Error::other(format!(
+                "invalid chunked HTTP response from rclone rc {}: truncated chunk payload",
+                method.as_str()
+            ))));
+        }
+
+        out.extend_from_slice(&bytes[cursor..chunk_end]);
+        if &bytes[chunk_end..chunk_end + 2] != b"\r\n" {
+            return Err(RcloneCliError::Io(io::Error::other(format!(
+                "invalid chunked HTTP response from rclone rc {}: missing chunk terminator",
+                method.as_str()
+            ))));
+        }
+        cursor = chunk_end + 2;
+    }
+
+    String::from_utf8(out).map_err(|error| {
+        RcloneCliError::Io(io::Error::other(format!(
+            "invalid UTF-8 body from chunked rclone rc {} response: {error}",
+            method.as_str()
+        )))
+    })
 }
 
 fn scrub_rc_error_text(raw: &str) -> String {
@@ -848,7 +988,7 @@ mod tests {
 
     #[test]
     fn rc_method_allowlist_maps_to_expected_endpoint_names() {
-        assert_eq!(RcloneRcMethod::CoreNoop.as_str(), "core/noop");
+        assert_eq!(RcloneRcMethod::CoreNoop.as_str(), "rc/noop");
         assert_eq!(
             RcloneRcMethod::ConfigListRemotes.as_str(),
             "config/listremotes"
@@ -876,15 +1016,15 @@ mod tests {
     #[test]
     fn rc_method_allowlist_rejects_unsafe_or_unknown_method_names() {
         assert_eq!(
-            allowlisted_method_from_name("core/noop"),
+            allowlisted_method_from_name("rc/noop"),
             Some(RcloneRcMethod::CoreNoop)
         );
         assert_eq!(
             allowlisted_method_from_name("operations/list"),
             Some(RcloneRcMethod::OperationsList)
         );
-        assert_eq!(allowlisted_method_from_name("../core/noop"), None);
-        assert_eq!(allowlisted_method_from_name("core/noop?x=1"), None);
+        assert_eq!(allowlisted_method_from_name("../rc/noop"), None);
+        assert_eq!(allowlisted_method_from_name("rc/noop?x=1"), None);
         assert_eq!(allowlisted_method_from_name("sync/copy"), None);
     }
 
@@ -951,6 +1091,23 @@ mod tests {
     #[test]
     fn parses_success_http_response_body() {
         let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"ok\":true}";
+        let body = parse_http_response_body(response, RcloneRcMethod::CoreNoop).expect("body");
+        assert_eq!(body, "{\"ok\":true}");
+    }
+
+    #[test]
+    fn parses_chunked_success_http_response_body() {
+        let response = concat!(
+            "HTTP/1.1 200 OK\r\n",
+            "Transfer-Encoding: chunked\r\n",
+            "\r\n",
+            "4\r\n",
+            "{\"ok\r\n",
+            "7\r\n",
+            "\":true}\r\n",
+            "0\r\n",
+            "\r\n"
+        );
         let body = parse_http_response_body(response, RcloneRcMethod::CoreNoop).expect("body");
         assert_eq!(body, "{\"ok\":true}");
     }
@@ -1075,7 +1232,11 @@ mod tests {
             .arg("sleep 30")
             .spawn()
             .expect("spawn sleep child");
-        let mut daemon = RcloneRcDaemon { socket_path, child };
+        let mut daemon = RcloneRcDaemon {
+            socket_path,
+            binary: std::ffi::OsString::from("rclone"),
+            child,
+        };
         kill_daemon(&mut daemon).expect("kill daemon");
         assert!(
             daemon
