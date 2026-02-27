@@ -69,7 +69,7 @@ Definition of Done (phase-1):
 - [x] Keep mixed local<->cloud flow behavior unchanged.
 
 Definition of Done (phase-2):
-- [ ] Write path parity with current CLI behavior (incl. conflict handling).
+- [x] Write path parity with current CLI behavior (incl. conflict handling).
 - [x] Fallback to CLI preserves operation correctness.
 
 ## 6. Reliability and performance hardening
@@ -78,7 +78,7 @@ Definition of Done (phase-2):
 - [x] Add bounded retries/backoff for transient errors.
 - [x] Keep bounded per-remote concurrency limits.
 - [ ] Add cancellation for long-running write calls where supported.
-- [ ] Add a short cooldown after rate-limit bursts (especially Google Drive).
+- [x] Add a short cooldown after rate-limit bursts (especially Google Drive).
 
 ## 7. Observability (minimal but useful)
 
@@ -110,7 +110,7 @@ Definition of Done (phase-2):
 ## 10. Rollout plan
 
 - [x] Stage A: hidden read-path `rc` with CLI fallback default.
-- [ ] Stage B: default read-path `rc` on Linux.
+- [x] Stage B: default read-path `rc` on Linux.
 - [x] Stage C: hidden write-path `rc` with fallback.
 - [ ] Stage D: default write-path `rc` on Linux.
 - [ ] Stage E: document final ops model + troubleshooting.

@@ -16,6 +16,8 @@ use tracing::{debug, info};
 use wait_timeout::ChildExt;
 
 const RCLONE_RC_ENABLE_ENV: &str = "BROWSEY_RCLONE_RC";
+const RCLONE_RC_READ_ENABLE_ENV: &str = "BROWSEY_RCLONE_RC_READ";
+const RCLONE_RC_WRITE_ENABLE_ENV: &str = "BROWSEY_RCLONE_RC_WRITE";
 const RCLONE_RC_STATE_DIR_NAME: &str = "browsey-rclone-rc";
 const RCLONE_RC_STARTUP_TIMEOUT: Duration = Duration::from_secs(4);
 const RCLONE_RC_READ_TIMEOUT: Duration = Duration::from_secs(25);
@@ -134,6 +136,8 @@ struct RcloneRcState {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RcloneRcHealth {
     pub enabled: bool,
+    pub read_enabled: bool,
+    pub write_enabled: bool,
     pub daemon_running: bool,
     pub socket_path: Option<String>,
     pub socket_exists: bool,
@@ -142,14 +146,16 @@ pub struct RcloneRcHealth {
 #[derive(Debug, Clone)]
 pub struct RcloneRcClient {
     binary: OsString,
-    enabled_override: Option<bool>,
+    read_enabled_override: Option<bool>,
+    write_enabled_override: Option<bool>,
 }
 
 impl Default for RcloneRcClient {
     fn default() -> Self {
         Self {
             binary: OsString::from("rclone"),
-            enabled_override: None,
+            read_enabled_override: None,
+            write_enabled_override: None,
         }
     }
 }
@@ -158,20 +164,33 @@ impl RcloneRcClient {
     pub fn new(binary: impl Into<OsString>) -> Self {
         Self {
             binary: binary.into(),
-            enabled_override: None,
+            read_enabled_override: None,
+            write_enabled_override: None,
         }
     }
 
     pub fn is_enabled(&self) -> bool {
-        if let Some(enabled) = self.enabled_override {
+        self.is_read_enabled() || self.is_write_enabled()
+    }
+
+    pub fn is_read_enabled(&self) -> bool {
+        if let Some(enabled) = self.read_enabled_override {
             return enabled;
         }
-        rc_enabled()
+        rc_read_enabled()
+    }
+
+    pub fn is_write_enabled(&self) -> bool {
+        if let Some(enabled) = self.write_enabled_override {
+            return enabled;
+        }
+        rc_write_enabled()
     }
 
     #[cfg(test)]
     pub fn with_enabled_override_for_tests(mut self, enabled: bool) -> Self {
-        self.enabled_override = Some(enabled);
+        self.read_enabled_override = Some(enabled);
+        self.write_enabled_override = Some(enabled);
         self
     }
 
@@ -310,6 +329,25 @@ impl RcloneRcClient {
                 "rclone rc method is not allowlisted",
             )));
         }
+        let method_enabled = match method {
+            RcloneRcMethod::CoreNoop => self.is_enabled(),
+            RcloneRcMethod::ConfigListRemotes
+            | RcloneRcMethod::ConfigDump
+            | RcloneRcMethod::OperationsList
+            | RcloneRcMethod::OperationsStat => self.is_read_enabled(),
+            RcloneRcMethod::OperationsMkdir
+            | RcloneRcMethod::OperationsDeleteFile
+            | RcloneRcMethod::OperationsPurge
+            | RcloneRcMethod::OperationsRmdir
+            | RcloneRcMethod::OperationsCopyFile
+            | RcloneRcMethod::OperationsMoveFile => self.is_write_enabled(),
+        };
+        if !method_enabled {
+            return Err(RcloneCliError::Io(io::Error::new(
+                io::ErrorKind::Unsupported,
+                format!("rclone rc method {} backend is disabled", method.as_str()),
+            )));
+        }
         let socket_path = self.ensure_daemon_ready()?;
         let timeout = method_timeout(method);
         let retry_safe = method_is_retry_safe(method);
@@ -389,7 +427,9 @@ pub fn begin_shutdown_and_kill_daemon() -> io::Result<()> {
 }
 
 pub fn health_snapshot() -> RcloneRcHealth {
-    let enabled = rc_enabled();
+    let read_enabled = rc_read_enabled();
+    let write_enabled = rc_write_enabled();
+    let enabled = read_enabled || write_enabled;
     let mut daemon_running = false;
     let mut socket_path = None;
     let mut socket_exists = false;
@@ -409,24 +449,51 @@ pub fn health_snapshot() -> RcloneRcHealth {
 
     RcloneRcHealth {
         enabled,
+        read_enabled,
+        write_enabled,
         daemon_running,
         socket_path,
         socket_exists,
     }
 }
 
-fn rc_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
+fn parse_rc_toggle_env(var_name: &str) -> Option<bool> {
+    let value = env::var(var_name).ok()?;
+    parse_rc_toggle_value(&value)
+}
+
+fn parse_rc_toggle_value(value: &str) -> Option<bool> {
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+fn rc_read_enabled() -> bool {
+    static READ_ENABLED: OnceLock<bool> = OnceLock::new();
+    *READ_ENABLED.get_or_init(|| {
         if !cfg!(target_os = "linux") {
             return false;
         }
-        matches!(
-            env::var(RCLONE_RC_ENABLE_ENV)
-                .ok()
-                .map(|v| v.trim().to_ascii_lowercase()),
-            Some(ref v) if v == "1" || v == "true" || v == "yes" || v == "on"
-        )
+        if let Some(all_enabled) = parse_rc_toggle_env(RCLONE_RC_ENABLE_ENV) {
+            return all_enabled;
+        }
+        parse_rc_toggle_env(RCLONE_RC_READ_ENABLE_ENV).unwrap_or(true)
+    })
+}
+
+fn rc_write_enabled() -> bool {
+    static WRITE_ENABLED: OnceLock<bool> = OnceLock::new();
+    *WRITE_ENABLED.get_or_init(|| {
+        if !cfg!(target_os = "linux") {
+            return false;
+        }
+        if let Some(all_enabled) = parse_rc_toggle_env(RCLONE_RC_ENABLE_ENV) {
+            return all_enabled;
+        }
+        parse_rc_toggle_env(RCLONE_RC_WRITE_ENABLE_ENV).unwrap_or(false)
     })
 }
 
@@ -718,9 +785,9 @@ fn sensitive_json_regexes() -> &'static Vec<Regex> {
 mod tests {
     use super::{
         allowlisted_method_from_name, cleanup_stale_socket, is_retryable_rc_error, kill_daemon,
-        method_is_retry_safe, method_timeout, parse_http_response_body, prepare_state_dir,
-        run_rc_command_via_socket, scrub_rc_error_text, RcloneRcDaemon, RcloneRcMethod,
-        RCLONE_RC_READ_TIMEOUT, RCLONE_RC_WRITE_TIMEOUT,
+        method_is_retry_safe, method_timeout, parse_http_response_body, parse_rc_toggle_value,
+        prepare_state_dir, run_rc_command_via_socket, scrub_rc_error_text, RcloneRcDaemon,
+        RcloneRcMethod, RCLONE_RC_READ_TIMEOUT, RCLONE_RC_WRITE_TIMEOUT,
     };
     use serde_json::{json, Value};
     use std::io;
@@ -817,6 +884,17 @@ mod tests {
         assert_eq!(allowlisted_method_from_name("../core/noop"), None);
         assert_eq!(allowlisted_method_from_name("core/noop?x=1"), None);
         assert_eq!(allowlisted_method_from_name("sync/copy"), None);
+    }
+
+    #[test]
+    fn parses_rc_toggle_values() {
+        assert_eq!(parse_rc_toggle_value("1"), Some(true));
+        assert_eq!(parse_rc_toggle_value("true"), Some(true));
+        assert_eq!(parse_rc_toggle_value("ON"), Some(true));
+        assert_eq!(parse_rc_toggle_value("0"), Some(false));
+        assert_eq!(parse_rc_toggle_value("false"), Some(false));
+        assert_eq!(parse_rc_toggle_value("Off"), Some(false));
+        assert_eq!(parse_rc_toggle_value("maybe"), None);
     }
 
     #[test]

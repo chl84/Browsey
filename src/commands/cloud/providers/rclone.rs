@@ -134,7 +134,7 @@ impl RcloneCloudProvider {
 impl CloudProvider for RcloneCloudProvider {
     fn list_remotes(&self) -> CloudCommandResult<Vec<CloudRemote>> {
         self.ensure_runtime_ready()?;
-        if self.rc.is_enabled() {
+        if self.rc.is_read_enabled() {
             match self.list_remotes_via_rc() {
                 Ok(remotes) => return Ok(remotes),
                 Err(error) => {
@@ -164,7 +164,7 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn stat_path(&self, path: &CloudPath) -> CloudCommandResult<Option<CloudEntry>> {
         self.ensure_runtime_ready()?;
-        if self.rc.is_enabled() {
+        if self.rc.is_read_enabled() {
             match self.stat_path_via_rc(path) {
                 Ok(entry) => return Ok(entry),
                 Err(error) => {
@@ -197,7 +197,7 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn list_dir(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
         self.ensure_runtime_ready()?;
-        if self.rc.is_enabled() {
+        if self.rc.is_read_enabled() {
             match self.list_dir_via_rc(path) {
                 Ok(entries) => return Ok(entries),
                 Err(error) => {
@@ -247,7 +247,7 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn mkdir(&self, path: &CloudPath) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
-        if self.rc.is_enabled() {
+        if self.rc.is_write_enabled() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_mkdir(&fs_spec, path.rel_path()) {
                 Ok(_) => return Ok(()),
@@ -270,7 +270,7 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn delete_file(&self, path: &CloudPath) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
-        if self.rc.is_enabled() {
+        if self.rc.is_write_enabled() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_deletefile(&fs_spec, path.rel_path()) {
                 Ok(_) => return Ok(()),
@@ -294,7 +294,7 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn delete_dir_recursive(&self, path: &CloudPath) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
-        if self.rc.is_enabled() {
+        if self.rc.is_write_enabled() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_purge(&fs_spec, path.rel_path()) {
                 Ok(_) => return Ok(()),
@@ -317,7 +317,7 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn delete_dir_empty(&self, path: &CloudPath) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
-        if self.rc.is_enabled() {
+        if self.rc.is_write_enabled() {
             let fs_spec = format!("{}:", path.remote());
             match self.rc.operations_rmdir(&fs_spec, path.rel_path()) {
                 Ok(_) => return Ok(()),
@@ -349,7 +349,7 @@ impl CloudProvider for RcloneCloudProvider {
         if !prechecked {
             ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
         }
-        if self.rc.is_enabled() {
+        if self.rc.is_write_enabled() {
             let src_fs = format!("{}:", src.remote());
             let dst_fs = format!("{}:", dst.remote());
             match self
@@ -388,7 +388,7 @@ impl CloudProvider for RcloneCloudProvider {
         if !prechecked {
             ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
         }
-        if self.rc.is_enabled() {
+        if self.rc.is_write_enabled() {
             let src_fs = format!("{}:", src.remote());
             let dst_fs = format!("{}:", dst.remote());
             match self
@@ -1646,6 +1646,56 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn move_preserves_destination_exists_conflict_policy() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "src/file.txt", "source");
+        sandbox.write_remote_file("work", "dst/file.txt", "existing");
+        let provider = sandbox.provider_with_forced_rc();
+
+        let err = provider
+            .move_entry(
+                &cloud_path("rclone://work/src/file.txt"),
+                &cloud_path("rclone://work/dst/file.txt"),
+                false,
+                false,
+            )
+            .expect_err("move should fail when destination exists");
+        assert_eq!(
+            err.code_str(),
+            CloudCommandErrorCode::DestinationExists.as_code_str()
+        );
+        assert!(
+            sandbox.remote_path("work", "src/file.txt").exists(),
+            "source must stay in place after rejected move"
+        );
+        let existing = fs::read_to_string(sandbox.remote_path("work", "dst/file.txt"))
+            .expect("read existing destination");
+        assert_eq!(existing, "existing");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_with_overwrite_true_replaces_destination() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "src/file.txt", "source");
+        sandbox.write_remote_file("work", "dst/file.txt", "existing");
+        let provider = sandbox.provider_with_forced_rc();
+
+        provider
+            .copy_entry(
+                &cloud_path("rclone://work/src/file.txt"),
+                &cloud_path("rclone://work/dst/file.txt"),
+                true,
+                false,
+            )
+            .expect("copy should overwrite destination");
+        let copied = fs::read_to_string(sandbox.remote_path("work", "dst/file.txt"))
+            .expect("read overwritten destination");
+        assert_eq!(copied, "source");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn fake_rclone_shim_skips_destination_stat_when_copy_is_prechecked() {
         let sandbox = FakeRcloneSandbox::new();
         sandbox.write_remote_file("work", "src/file.txt", "payload");
@@ -1663,5 +1713,26 @@ mod tests {
         let log = sandbox.read_log();
         assert!(log.contains("copyto work:src/file.txt work:dst/copied.txt"));
         assert!(!log.contains("lsjson --stat work:dst/copied.txt"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fake_rclone_shim_skips_destination_stat_when_move_is_prechecked() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "src/file.txt", "payload");
+        let provider = sandbox.provider();
+
+        provider
+            .move_entry(
+                &cloud_path("rclone://work/src/file.txt"),
+                &cloud_path("rclone://work/dst/moved.txt"),
+                false,
+                true,
+            )
+            .expect("move file");
+
+        let log = sandbox.read_log();
+        assert!(log.contains("moveto work:src/file.txt work:dst/moved.txt"));
+        assert!(!log.contains("lsjson --stat work:dst/moved.txt"));
     }
 }

@@ -26,6 +26,7 @@ const CLOUD_REMOTE_DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(45);
 const CLOUD_DIR_LISTING_CACHE_TTL: Duration = Duration::from_secs(4);
 const CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS: &[u64] = &[150, 400];
 const CLOUD_REMOTE_MAX_CONCURRENT_OPS: usize = 2;
+const CLOUD_REMOTE_RATE_LIMIT_COOLDOWN: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone)]
 struct CachedCloudRemoteDiscovery {
@@ -41,8 +42,14 @@ struct CachedCloudDirListing {
 
 #[derive(Debug, Default)]
 struct CloudRemoteOpLimiter {
-    counts: Mutex<HashMap<String, usize>>,
+    state: Mutex<CloudRemoteOpState>,
     cv: Condvar,
+}
+
+#[derive(Debug, Default)]
+struct CloudRemoteOpState {
+    counts: HashMap<String, usize>,
+    cooldown_until: HashMap<String, Instant>,
 }
 
 #[derive(Debug)]
@@ -72,7 +79,13 @@ fn with_cloud_remote_permits<T>(
     remotes.sort();
     remotes.dedup();
     let _guard = acquire_cloud_remote_permits(remotes);
-    f()
+    let result = f();
+    if let Err(error) = &result {
+        if error.code() == CloudCommandErrorCode::RateLimited {
+            note_remote_rate_limit_cooldown(&_guard.remotes);
+        }
+    }
+    result
 }
 
 fn acquire_cloud_remote_permits(remotes: Vec<String>) -> CloudRemotePermitGuard {
@@ -80,25 +93,68 @@ fn acquire_cloud_remote_permits(remotes: Vec<String>) -> CloudRemotePermitGuard 
         return CloudRemotePermitGuard { remotes };
     }
     let limiter = cloud_remote_op_limiter();
-    let mut counts = match limiter.counts.lock() {
+    let mut state = match limiter.state.lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
     loop {
-        let available = remotes.iter().all(|remote| {
-            counts.get(remote).copied().unwrap_or(0) < CLOUD_REMOTE_MAX_CONCURRENT_OPS
+        let now = Instant::now();
+        state.cooldown_until.retain(|_, deadline| *deadline > now);
+        let has_capacity = remotes.iter().all(|remote| {
+            state.counts.get(remote).copied().unwrap_or(0) < CLOUD_REMOTE_MAX_CONCURRENT_OPS
         });
-        if available {
+        let next_cooldown_deadline = remotes
+            .iter()
+            .filter_map(|remote| state.cooldown_until.get(remote).copied())
+            .min();
+        if has_capacity && next_cooldown_deadline.is_none() {
             for remote in &remotes {
-                *counts.entry(remote.clone()).or_insert(0) += 1;
+                *state.counts.entry(remote.clone()).or_insert(0) += 1;
             }
             return CloudRemotePermitGuard { remotes };
         }
-        counts = match limiter.cv.wait(counts) {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        if let Some(deadline) = next_cooldown_deadline {
+            let wait = deadline.saturating_duration_since(now);
+            state = match limiter.cv.wait_timeout(state, wait) {
+                Ok((guard, _)) => guard,
+                Err(poisoned) => poisoned.into_inner().0,
+            };
+        } else {
+            state = match limiter.cv.wait(state) {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+        }
     }
+}
+
+fn note_remote_rate_limit_cooldown(remotes: &[String]) {
+    if remotes.is_empty() {
+        return;
+    }
+    let limiter = cloud_remote_op_limiter();
+    let now = Instant::now();
+    let cooldown_deadline = now + CLOUD_REMOTE_RATE_LIMIT_COOLDOWN;
+    let mut state = match limiter.state.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    for remote in remotes {
+        let entry = state
+            .cooldown_until
+            .entry(remote.clone())
+            .or_insert(cooldown_deadline);
+        if *entry < cooldown_deadline {
+            *entry = cooldown_deadline;
+        }
+    }
+    drop(state);
+    limiter.cv.notify_all();
+    debug!(
+        remotes = ?remotes,
+        cooldown_ms = CLOUD_REMOTE_RATE_LIMIT_COOLDOWN.as_millis() as u64,
+        "applied cloud remote rate-limit cooldown"
+    );
 }
 
 impl Drop for CloudRemotePermitGuard {
@@ -107,15 +163,15 @@ impl Drop for CloudRemotePermitGuard {
             return;
         }
         let limiter = cloud_remote_op_limiter();
-        let mut counts = match limiter.counts.lock() {
+        let mut state = match limiter.state.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
         for remote in &self.remotes {
-            match counts.get_mut(remote) {
+            match state.counts.get_mut(remote) {
                 Some(count) if *count > 1 => *count -= 1,
                 Some(_) => {
-                    counts.remove(remote);
+                    state.counts.remove(remote);
                 }
                 None => {}
             }
@@ -825,10 +881,12 @@ fn map_spawn_result<T>(
 mod tests {
     use super::{
         acquire_cloud_remote_permits, build_conflicts_from_dest_listing, cloud_dir_listing_cache,
-        invalidate_cloud_dir_listing_cache_for_write_paths, normalize_cloud_path,
-        normalize_cloud_path_impl, prune_cloud_dir_listing_cache_locked, CachedCloudDirListing,
+        cloud_remote_op_limiter, invalidate_cloud_dir_listing_cache_for_write_paths,
+        normalize_cloud_path, normalize_cloud_path_impl, prune_cloud_dir_listing_cache_locked,
+        with_cloud_remote_permits, CachedCloudDirListing,
     };
     use crate::commands::cloud::{
+        error::{CloudCommandError, CloudCommandErrorCode},
         path::CloudPath,
         types::{CloudCapabilities, CloudEntry, CloudEntryKind, CloudProviderKind},
     };
@@ -841,6 +899,11 @@ mod tests {
         thread,
         time::{Duration, Instant},
     };
+
+    fn unique_test_remote(prefix: &str) -> String {
+        static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
+        format!("{prefix}-{}", NEXT_ID.fetch_add(1, Ordering::Relaxed))
+    }
 
     #[test]
     fn normalize_cloud_path_command_returns_normalized_path() {
@@ -1045,5 +1108,49 @@ mod tests {
         }
 
         assert!(max_seen.load(Ordering::SeqCst) <= super::CLOUD_REMOTE_MAX_CONCURRENT_OPS);
+    }
+
+    #[test]
+    fn rate_limited_result_applies_remote_cooldown() {
+        let remote = unique_test_remote("cooldown-remote");
+
+        let result: Result<(), CloudCommandError> =
+            with_cloud_remote_permits(vec![remote.clone()], || {
+                Err(CloudCommandError::new(
+                    CloudCommandErrorCode::RateLimited,
+                    "provider rate limit",
+                ))
+            });
+        let err = result.expect_err("expected rate-limited error");
+        assert_eq!(err.code(), CloudCommandErrorCode::RateLimited);
+
+        let limiter = cloud_remote_op_limiter();
+        let state = limiter.state.lock().expect("limiter lock");
+        let deadline = state
+            .cooldown_until
+            .get(&remote)
+            .copied()
+            .expect("cooldown deadline should be set");
+        assert!(deadline > Instant::now());
+    }
+
+    #[test]
+    fn acquire_remote_permit_waits_for_active_cooldown_window() {
+        let remote = unique_test_remote("cooldown-wait-remote");
+        let limiter = cloud_remote_op_limiter();
+        {
+            let mut state = limiter.state.lock().expect("limiter lock");
+            state
+                .cooldown_until
+                .insert(remote.clone(), Instant::now() + Duration::from_millis(120));
+        }
+        let started = Instant::now();
+        let _permit = acquire_cloud_remote_permits(vec![remote]);
+        let waited = started.elapsed();
+        assert!(
+            waited >= Duration::from_millis(100),
+            "expected to wait for cooldown, waited only {:?}",
+            waited
+        );
     }
 }
