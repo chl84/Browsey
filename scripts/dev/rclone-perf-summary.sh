@@ -22,6 +22,17 @@ function print_op_stats(op,   count, sum, max, avg) {
   printf("  %-32s count=%-4d avg_ms=%-8.1f max_ms=%d\n", op, count, avg, max)
 }
 
+function print_rc_stats(method,   count, sum, max, avg, ok, fail) {
+  count = rc_count[method]
+  if (count == 0) return
+  sum = rc_sum_ms[method]
+  max = rc_max_ms[method]
+  avg = sum / count
+  ok = rc_ok_count[method] + 0
+  fail = rc_fail_count[method] + 0
+  printf("  %-24s count=%-4d avg_ms=%-8.1f max_ms=%-6d ok=%-4d fail=%d\n", method, count, avg, max, ok, fail)
+}
+
 /cloud command timing/ {
   op = ""
   ms = ""
@@ -44,6 +55,25 @@ function print_op_stats(op,   count, sum, max, avg) {
   }
 }
 
+/rclone rc method completed/ {
+  method = ""
+  ms = ""
+  ok = ""
+  if (match($0, /method="?([^" ]+)"?/, m)) method = m[1]
+  if (match($0, /elapsed_ms=([0-9]+)/, t)) ms = t[1] + 0
+  if (match($0, /success=(true|false)/, s)) ok = s[1]
+  if (method != "" && ms != "") {
+    rc_count[method] += 1
+    rc_sum_ms[method] += ms
+    if (ms > rc_max_ms[method]) rc_max_ms[method] = ms
+    if (ok == "true") {
+      rc_ok_count[method] += 1
+    } else if (ok == "false") {
+      rc_fail_count[method] += 1
+    }
+  }
+}
+
 END {
   print "Cloud command timings (from backend info logs):"
   if (length(op_count) == 0) {
@@ -59,6 +89,15 @@ END {
   printf("  lsjson dir listing  count=%d\n", lsjson_list + 0)
   if ((lsjson_unknown + 0) > 0) {
     printf("  lsjson (unknown)    count=%d\n", lsjson_unknown + 0)
+  }
+  print ""
+  print "rclone rc method timings (from rclone_rc logs):"
+  if (length(rc_count) == 0) {
+    print "  (none found)"
+  } else {
+    for (method in rc_count) {
+      print_rc_stats(method)
+    }
   }
 }
 ' "$LOG_PATH"

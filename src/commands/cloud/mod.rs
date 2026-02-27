@@ -265,6 +265,11 @@ pub async fn list_cloud_remotes() -> ApiResult<Vec<CloudRemote>> {
     map_api_result(list_cloud_remotes_impl().await)
 }
 
+#[tauri::command]
+pub fn cloud_rc_health() -> ApiResult<rclone_rc::RcloneRcHealth> {
+    map_api_result(Ok(rclone_rc::health_snapshot()))
+}
+
 async fn list_cloud_remotes_impl() -> CloudCommandResult<Vec<CloudRemote>> {
     let task = tauri::async_runtime::spawn_blocking(|| list_cloud_remotes_cached(false));
     match task.await {
