@@ -655,13 +655,7 @@ fn is_cancelled(cancel_token: Option<&AtomicBool>) -> bool {
         .unwrap_or(false)
 }
 
-fn should_recycle_daemon_after_error(method: RcloneRcMethod, error: &RcloneCliError) -> bool {
-    if !matches!(
-        method,
-        RcloneRcMethod::OperationsList | RcloneRcMethod::OperationsStat
-    ) {
-        return false;
-    }
+fn should_recycle_daemon_after_error(_method: RcloneRcMethod, error: &RcloneCliError) -> bool {
     match error {
         RcloneCliError::Timeout { .. } => true,
         RcloneCliError::Io(io) => matches!(
@@ -670,8 +664,11 @@ fn should_recycle_daemon_after_error(method: RcloneRcMethod, error: &RcloneCliEr
                 | io::ErrorKind::WouldBlock
                 | io::ErrorKind::ConnectionReset
                 | io::ErrorKind::ConnectionAborted
+                | io::ErrorKind::ConnectionRefused
+                | io::ErrorKind::Interrupted
                 | io::ErrorKind::BrokenPipe
                 | io::ErrorKind::NotConnected
+                | io::ErrorKind::NotFound
         ),
         _ => false,
     }
@@ -1138,8 +1135,9 @@ mod tests {
     use super::{
         allowlisted_method_from_name, cleanup_stale_socket, is_retryable_rc_error, kill_daemon,
         method_is_retry_safe, method_timeout, parse_http_response_body, parse_rc_toggle_value,
-        prepare_state_dir, run_rc_command_via_socket, scrub_rc_error_text, RcloneRcDaemon,
-        RcloneRcMethod, RCLONE_RC_READ_TIMEOUT, RCLONE_RC_WRITE_TIMEOUT,
+        prepare_state_dir, run_rc_command_via_socket, scrub_rc_error_text,
+        should_recycle_daemon_after_error, RcloneRcDaemon, RcloneRcMethod, RCLONE_RC_READ_TIMEOUT,
+        RCLONE_RC_WRITE_TIMEOUT,
     };
     use serde_json::{json, Value};
     use std::io;
@@ -1324,6 +1322,34 @@ mod tests {
                 job_id: 9,
                 reason: "job status unavailable".to_string(),
             }
+        ));
+    }
+
+    #[test]
+    fn daemon_recycle_policy_includes_write_methods_on_transport_errors() {
+        let transport_error =
+            super::RcloneCliError::Io(io::Error::new(io::ErrorKind::ConnectionReset, "reset"));
+        assert!(should_recycle_daemon_after_error(
+            RcloneRcMethod::OperationsList,
+            &transport_error
+        ));
+        assert!(should_recycle_daemon_after_error(
+            RcloneRcMethod::OperationsDeleteFile,
+            &transport_error
+        ));
+        assert!(should_recycle_daemon_after_error(
+            RcloneRcMethod::OperationsCopyFile,
+            &transport_error
+        ));
+        assert!(should_recycle_daemon_after_error(
+            RcloneRcMethod::JobStop,
+            &transport_error
+        ));
+
+        let non_transport_error = super::RcloneCliError::Io(io::Error::other("http 403"));
+        assert!(!should_recycle_daemon_after_error(
+            RcloneRcMethod::OperationsDeleteFile,
+            &non_transport_error
         ));
     }
 
