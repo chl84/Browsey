@@ -22,6 +22,10 @@ const MIN_RCLONE_VERSION: (u64, u64, u64) = (1, 67, 0);
 pub(in crate::commands::cloud) struct RcloneCloudProvider {
     cli: RcloneCli,
     rc: RcloneRcClient,
+    #[cfg(test)]
+    force_async_unknown_deletefile_for_tests: bool,
+    #[cfg(test)]
+    force_async_unknown_copyfile_for_tests: bool,
 }
 
 static RCLONE_RUNTIME_PROBE: OnceLock<Result<(), CloudCommandError>> = OnceLock::new();
@@ -31,7 +35,14 @@ static RCLONE_REMOTE_POLICY: OnceLock<RcloneRemotePolicy> = OnceLock::new();
 impl RcloneCloudProvider {
     pub fn new(cli: RcloneCli) -> Self {
         let rc = RcloneRcClient::new(cli.binary().to_os_string());
-        Self { cli, rc }
+        Self {
+            cli,
+            rc,
+            #[cfg(test)]
+            force_async_unknown_deletefile_for_tests: false,
+            #[cfg(test)]
+            force_async_unknown_copyfile_for_tests: false,
+        }
     }
 
     pub fn cli(&self) -> &RcloneCli {
@@ -62,6 +73,18 @@ impl RcloneCloudProvider {
             )))
         })?;
         Ok(build_cloud_remotes(remote_ids, config_map))
+    }
+
+    #[cfg(test)]
+    fn with_forced_async_unknown_deletefile_for_tests(mut self) -> Self {
+        self.force_async_unknown_deletefile_for_tests = true;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_forced_async_unknown_copyfile_for_tests(mut self) -> Self {
+        self.force_async_unknown_copyfile_for_tests = true;
+        self
     }
 
     fn list_dir_via_rc(&self, path: &CloudPath) -> Result<Vec<CloudEntry>, RcloneCliError> {
@@ -345,10 +368,28 @@ impl CloudProvider for RcloneCloudProvider {
         let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_write_enabled() {
             let fs_spec = format!("{}:", path.remote());
-            match self
-                .rc
-                .operations_deletefile(&fs_spec, path.rel_path(), cancel)
-            {
+            let rc_result = {
+                #[cfg(test)]
+                {
+                    if self.force_async_unknown_deletefile_for_tests {
+                        Err(RcloneCliError::AsyncJobStateUnknown {
+                            subcommand: RcloneSubcommand::Rc,
+                            operation: "operations/deletefile".to_string(),
+                            job_id: 4201,
+                            reason: "injected test fault after async rc kickoff".to_string(),
+                        })
+                    } else {
+                        self.rc
+                            .operations_deletefile(&fs_spec, path.rel_path(), cancel)
+                    }
+                }
+                #[cfg(not(test))]
+                {
+                    self.rc
+                        .operations_deletefile(&fs_spec, path.rel_path(), cancel)
+                }
+            };
+            match rc_result {
                 Ok(_) => {
                     log_backend_selected("cloud_write_delete_file", "rc", false, None);
                     return Ok(());
@@ -573,13 +614,38 @@ impl CloudProvider for RcloneCloudProvider {
         if self.rc.is_write_enabled() {
             let src_fs = format!("{}:", src.remote());
             let dst_fs = format!("{}:", dst.remote());
-            match self.rc.operations_copyfile(
-                &src_fs,
-                src.rel_path(),
-                &dst_fs,
-                dst.rel_path(),
-                cancel,
-            ) {
+            let rc_result = {
+                #[cfg(test)]
+                {
+                    if self.force_async_unknown_copyfile_for_tests {
+                        Err(RcloneCliError::AsyncJobStateUnknown {
+                            subcommand: RcloneSubcommand::Rc,
+                            operation: "operations/copyfile".to_string(),
+                            job_id: 4202,
+                            reason: "injected test fault after async rc kickoff".to_string(),
+                        })
+                    } else {
+                        self.rc.operations_copyfile(
+                            &src_fs,
+                            src.rel_path(),
+                            &dst_fs,
+                            dst.rel_path(),
+                            cancel,
+                        )
+                    }
+                }
+                #[cfg(not(test))]
+                {
+                    self.rc.operations_copyfile(
+                        &src_fs,
+                        src.rel_path(),
+                        &dst_fs,
+                        dst.rel_path(),
+                        cancel,
+                    )
+                }
+            };
+            match rc_result {
                 Ok(_) => {
                     log_backend_selected("cloud_write_copy", "rc", false, None);
                     return Ok(());
@@ -1645,7 +1711,12 @@ mod tests {
             let cli = RcloneCli::new(self.script_path.as_os_str());
             let rc = RcloneRcClient::new(self.script_path.as_os_str())
                 .with_enabled_override_for_tests(true);
-            RcloneCloudProvider { cli, rc }
+            RcloneCloudProvider {
+                cli,
+                rc,
+                force_async_unknown_deletefile_for_tests: false,
+                force_async_unknown_copyfile_for_tests: false,
+            }
         }
 
         fn remote_path(&self, remote: &str, rel: &str) -> PathBuf {
@@ -1953,6 +2024,76 @@ mod tests {
         assert!(
             log.contains("moveto work:dst/copied.txt work:dst/moved.txt"),
             "expected CLI move fallback call, log:\n{log}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_file_does_not_fallback_to_cli_when_rc_async_status_is_unknown() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "dst/moved.txt", "payload");
+        let provider = sandbox
+            .provider_with_forced_rc()
+            .with_forced_async_unknown_deletefile_for_tests();
+
+        let err = provider
+            .delete_file(&cloud_path("rclone://work/dst/moved.txt"), None)
+            .expect_err("delete should fail with unknown async rc job state");
+        assert_eq!(
+            err.code_str(),
+            CloudCommandErrorCode::TaskFailed.as_code_str()
+        );
+        let message = err.to_string();
+        assert!(
+            message.contains("status is unknown"),
+            "unexpected message: {message}"
+        );
+        assert!(
+            message.contains("did not retry automatically"),
+            "unexpected message: {message}"
+        );
+        let log = sandbox.read_log();
+        assert!(
+            !log.contains("deletefile work:dst/moved.txt"),
+            "CLI deletefile must not run after unknown async rc state, log:\n{log}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_does_not_fallback_to_cli_when_rc_async_status_is_unknown() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "src/file.txt", "payload");
+        let provider = sandbox
+            .provider_with_forced_rc()
+            .with_forced_async_unknown_copyfile_for_tests();
+
+        let err = provider
+            .copy_entry(
+                &cloud_path("rclone://work/src/file.txt"),
+                &cloud_path("rclone://work/dst/copied.txt"),
+                false,
+                true,
+                None,
+            )
+            .expect_err("copy should fail with unknown async rc job state");
+        assert_eq!(
+            err.code_str(),
+            CloudCommandErrorCode::TaskFailed.as_code_str()
+        );
+        let message = err.to_string();
+        assert!(
+            message.contains("status is unknown"),
+            "unexpected message: {message}"
+        );
+        assert!(
+            message.contains("did not retry automatically"),
+            "unexpected message: {message}"
+        );
+        let log = sandbox.read_log();
+        assert!(
+            !log.contains("copyto work:src/file.txt work:dst/copied.txt"),
+            "CLI copyto must not run after unknown async rc state, log:\n{log}"
         );
     }
 
