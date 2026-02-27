@@ -5,6 +5,7 @@ pub mod path;
 pub mod provider;
 pub mod providers;
 pub mod rclone_cli;
+pub mod rclone_rc;
 pub mod types;
 
 use crate::errors::api_error::ApiResult;

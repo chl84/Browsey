@@ -3,6 +3,7 @@ use super::super::{
     path::CloudPath,
     provider::CloudProvider,
     rclone_cli::{RcloneCli, RcloneCliError, RcloneCommandSpec, RcloneSubcommand},
+    rclone_rc::RcloneRcClient,
     types::{CloudCapabilities, CloudEntry, CloudEntryKind, CloudProviderKind, CloudRemote},
 };
 use chrono::{DateTime, Local};
@@ -20,6 +21,7 @@ const MIN_RCLONE_VERSION: (u64, u64, u64) = (1, 67, 0);
 #[derive(Debug, Clone, Default)]
 pub(in crate::commands::cloud) struct RcloneCloudProvider {
     cli: RcloneCli,
+    rc: RcloneRcClient,
 }
 
 static RCLONE_RUNTIME_PROBE: OnceLock<Result<(), CloudCommandError>> = OnceLock::new();
@@ -28,7 +30,8 @@ static RCLONE_REMOTE_POLICY: OnceLock<RcloneRemotePolicy> = OnceLock::new();
 #[allow(dead_code)]
 impl RcloneCloudProvider {
     pub fn new(cli: RcloneCli) -> Self {
-        Self { cli }
+        let rc = RcloneRcClient::new(cli.binary().to_os_string());
+        Self { cli, rc }
     }
 
     pub fn cli(&self) -> &RcloneCli {
@@ -42,11 +45,106 @@ impl RcloneCloudProvider {
             Err(error) => Err(error.clone()),
         }
     }
+
+    fn list_remotes_via_rc(&self) -> Result<Vec<CloudRemote>, RcloneCliError> {
+        let remotes_value = self.rc.list_remotes()?;
+        let remote_ids = parse_listremotes_rc_json(&remotes_value)
+            .map_err(|msg| RcloneCliError::Io(std::io::Error::other(msg)))?;
+        let config_dump_value = self.rc.config_dump()?;
+        let config_dump_text = serde_json::to_string(&config_dump_value).map_err(|error| {
+            RcloneCliError::Io(std::io::Error::other(format!(
+                "invalid rclone rc config dump payload: {error}"
+            )))
+        })?;
+        let config_map = parse_config_dump_summaries(&config_dump_text).map_err(|msg| {
+            RcloneCliError::Io(std::io::Error::other(format!(
+                "Invalid rclone rc config dump payload: {msg}"
+            )))
+        })?;
+        Ok(build_cloud_remotes(remote_ids, config_map))
+    }
+
+    fn list_dir_via_rc(&self, path: &CloudPath) -> Result<Vec<CloudEntry>, RcloneCliError> {
+        let fs_spec = format!("{}:", path.remote());
+        let response = self.rc.operations_list(&fs_spec, path.rel_path())?;
+        let list = response
+            .get("list")
+            .ok_or_else(|| {
+                RcloneCliError::Io(std::io::Error::other(
+                    "Invalid rclone rc operations/list payload: missing `list` field",
+                ))
+            })?
+            .clone();
+        let list_json = serde_json::to_string(&list).map_err(|error| {
+            RcloneCliError::Io(std::io::Error::other(format!(
+                "Invalid rclone rc operations/list payload: {error}"
+            )))
+        })?;
+        let items = parse_lsjson_items(&list_json).map_err(|message| {
+            RcloneCliError::Io(std::io::Error::other(format!(
+                "Invalid rclone rc operations/list item payload: {message}"
+            )))
+        })?;
+        let mut entries = Vec::with_capacity(items.len());
+        for item in items {
+            let child_path = path.child_path(&item.name).map_err(|error| {
+                RcloneCliError::Io(std::io::Error::other(format!(
+                    "Invalid entry name from rclone rc operations/list: {error}"
+                )))
+            })?;
+            entries.push(cloud_entry_from_item(&child_path, item));
+        }
+        entries.sort_by(|a, b| {
+            let rank_a = if matches!(a.kind, CloudEntryKind::Dir) {
+                0
+            } else {
+                1
+            };
+            let rank_b = if matches!(b.kind, CloudEntryKind::Dir) {
+                0
+            } else {
+                1
+            };
+            rank_a.cmp(&rank_b).then_with(|| a.name.cmp(&b.name))
+        });
+        Ok(entries)
+    }
+
+    fn stat_path_via_rc(&self, path: &CloudPath) -> Result<Option<CloudEntry>, RcloneCliError> {
+        let fs_spec = format!("{}:", path.remote());
+        let response = self.rc.operations_stat(&fs_spec, path.rel_path())?;
+        let item_value = response.get("item").cloned().unwrap_or(Value::Null);
+        if item_value.is_null() {
+            return Ok(None);
+        }
+        let item_json = serde_json::to_string(&item_value).map_err(|error| {
+            RcloneCliError::Io(std::io::Error::other(format!(
+                "Invalid rclone rc operations/stat payload: {error}"
+            )))
+        })?;
+        let item = parse_lsjson_stat_item(&item_json).map_err(|message| {
+            RcloneCliError::Io(std::io::Error::other(format!(
+                "Invalid rclone rc operations/stat item payload: {message}"
+            )))
+        })?;
+        Ok(Some(cloud_entry_from_item(path, item)))
+    }
 }
 
 impl CloudProvider for RcloneCloudProvider {
     fn list_remotes(&self) -> CloudCommandResult<Vec<CloudRemote>> {
         self.ensure_runtime_ready()?;
+        if self.rc.is_enabled() {
+            match self.list_remotes_via_rc() {
+                Ok(remotes) => return Ok(remotes),
+                Err(error) => {
+                    debug!(
+                        error = %error,
+                        "rclone rc remote discovery failed; falling back to CLI listremotes"
+                    );
+                }
+            }
+        }
         let output = self
             .cli
             .run_capture_text(RcloneCommandSpec::new(RcloneSubcommand::ListRemotes))
@@ -61,36 +159,23 @@ impl CloudProvider for RcloneCloudProvider {
         let config_map = parse_config_dump_summaries(&config_dump.stdout).map_err(|message| {
             CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, message)
         })?;
-
-        let mut remotes = Vec::new();
-        let mut seen = HashSet::new();
-        for remote_id in remote_ids {
-            if !seen.insert(remote_id.clone()) {
-                continue;
-            }
-            if !remote_allowed_by_policy(&remote_id) {
-                continue;
-            }
-            let Some(provider) = config_map
-                .get(&remote_id)
-                .and_then(classify_provider_kind_from_config)
-            else {
-                continue;
-            };
-            remotes.push(CloudRemote {
-                id: remote_id.clone(),
-                label: format_remote_label(&remote_id, provider),
-                provider,
-                root_path: format!("rclone://{remote_id}"),
-                capabilities: CloudCapabilities::v1_for_provider(provider),
-            });
-        }
-        remotes.sort_by(|a, b| a.label.cmp(&b.label));
-        Ok(remotes)
+        Ok(build_cloud_remotes(remote_ids, config_map))
     }
 
     fn stat_path(&self, path: &CloudPath) -> CloudCommandResult<Option<CloudEntry>> {
         self.ensure_runtime_ready()?;
+        if self.rc.is_enabled() {
+            match self.stat_path_via_rc(path) {
+                Ok(entry) => return Ok(entry),
+                Err(error) => {
+                    debug!(
+                        path = %path,
+                        error = %error,
+                        "rclone rc stat failed; falling back to CLI lsjson --stat"
+                    );
+                }
+            }
+        }
         let spec = RcloneCommandSpec::new(RcloneSubcommand::LsJson)
             .arg("--stat")
             .arg(path.to_rclone_remote_spec());
@@ -112,6 +197,18 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn list_dir(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
         self.ensure_runtime_ready()?;
+        if self.rc.is_enabled() {
+            match self.list_dir_via_rc(path) {
+                Ok(entries) => return Ok(entries),
+                Err(error) => {
+                    debug!(
+                        path = %path,
+                        error = %error,
+                        "rclone rc list failed; falling back to CLI lsjson"
+                    );
+                }
+            }
+        }
         let output = self.cli.run_capture_text(
             RcloneCommandSpec::new(RcloneSubcommand::LsJson).arg(path.to_rclone_remote_spec()),
         );
@@ -606,6 +703,28 @@ fn parse_listremotes_plain(stdout: &str) -> Result<Vec<String>, String> {
     Ok(remotes)
 }
 
+fn parse_listremotes_rc_json(value: &Value) -> Result<Vec<String>, String> {
+    let remotes = value
+        .get("remotes")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            "Missing `remotes` array in rclone rc config/listremotes output".to_string()
+        })?;
+    let mut out = Vec::new();
+    for entry in remotes {
+        let Some(name) = entry.as_str() else {
+            return Err(
+                "Non-string remote entry in rclone rc config/listremotes output".to_string(),
+            );
+        };
+        if name.trim().is_empty() {
+            return Err("Empty remote name in rclone rc config/listremotes output".to_string());
+        }
+        out.push(name.to_string());
+    }
+    Ok(out)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RcloneRemoteConfigSummary {
     backend_type: String,
@@ -691,6 +810,37 @@ fn format_remote_label(remote_id: &str, provider: CloudProviderKind) -> String {
         CloudProviderKind::Nextcloud => "Nextcloud",
     };
     format!("{remote_id} ({provider_label})")
+}
+
+fn build_cloud_remotes(
+    remote_ids: Vec<String>,
+    config_map: HashMap<String, RcloneRemoteConfigSummary>,
+) -> Vec<CloudRemote> {
+    let mut remotes = Vec::new();
+    let mut seen = HashSet::new();
+    for remote_id in remote_ids {
+        if !seen.insert(remote_id.clone()) {
+            continue;
+        }
+        if !remote_allowed_by_policy(&remote_id) {
+            continue;
+        }
+        let Some(provider) = config_map
+            .get(&remote_id)
+            .and_then(classify_provider_kind_from_config)
+        else {
+            continue;
+        };
+        remotes.push(CloudRemote {
+            id: remote_id.clone(),
+            label: format_remote_label(&remote_id, provider),
+            provider,
+            root_path: format!("rclone://{remote_id}"),
+            capabilities: CloudCapabilities::v1_for_provider(provider),
+        });
+    }
+    remotes.sort_by(|a, b| a.label.cmp(&b.label));
+    remotes
 }
 
 #[derive(Debug, serde::Deserialize)]

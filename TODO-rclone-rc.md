@@ -10,50 +10,50 @@ Principles (keep it simple):
 
 ## 0. Lock decisions (one-time)
 
-- [ ] Linux-first only for `rc` (Unix socket transport).
-- [ ] Keep CLI fallback always available in v1.
-- [ ] Scope phase-1 to read path only (`list remotes`, `list dir`, `stat`).
-- [ ] Defer write ops to phase-2+ after read path is stable.
-- [ ] Keep unsupported cloud features unchanged (undo, cloud trash, open-with, etc.).
+- [x] Linux-first only for `rc` (Unix socket transport).
+- [x] Keep CLI fallback always available in v1.
+- [x] Scope phase-1 to read path only (`list remotes`, `list dir`, `stat`).
+- [x] Defer write ops to phase-2+ after read path is stable.
+- [x] Keep unsupported cloud features unchanged (undo, cloud trash, open-with, etc.).
 
 ## 1. Security baseline (must pass before enabling `rc`)
 
-- [ ] Use Unix socket only: `--rc-addr unix:///run/user/<uid>/browsey-rclone-<nonce>.sock`.
-- [ ] Ensure runtime dir/socket ownership + permissions are user-only (`0700` dir).
+- [x] Use Unix socket only: `--rc-addr unix:///run/user/<uid>/browsey-rclone-<nonce>.sock`.
+- [x] Ensure runtime dir/socket ownership + permissions are user-only (`0700` dir).
 - [ ] Start `rclone rcd` with minimal surface:
-  - [ ] no `--rc-web-gui`
-  - [ ] no `--rc-files`
-  - [ ] no `--rc-serve`
-  - [ ] no metrics endpoint
-- [ ] Enforce backend method allowlist (no dynamic method names from UI).
+  - [x] no `--rc-web-gui`
+  - [x] no `--rc-files`
+  - [x] no `--rc-serve`
+  - [x] no metrics endpoint
+- [x] Enforce backend method allowlist (no dynamic method names from UI).
 - [ ] Keep payload/log redaction and avoid logging sensitive fields.
 
 ## 2. Lifecycle manager (minimal first)
 
-- [ ] Add `rclone rcd` manager module (`spawn`, `ready`, `shutdown`).
-- [ ] Lazy-start daemon on first cloud call.
-- [ ] Add bounded readiness timeout + health check.
-- [ ] Handle stale socket on startup (remove if orphaned).
-- [ ] Ensure clean shutdown on app exit (reuse current shutdown hooks).
-- [ ] Ensure single daemon instance per app process.
+- [x] Add `rclone rcd` manager module (`spawn`, `ready`, `shutdown`).
+- [x] Lazy-start daemon on first cloud call.
+- [x] Add bounded readiness timeout + health check.
+- [x] Handle stale socket on startup (remove if orphaned).
+- [x] Ensure clean shutdown on app exit (reuse current shutdown hooks).
+- [x] Ensure single daemon instance per app process.
 
 ## 3. Integration strategy (smart simplification)
 
-- [ ] Do **not** start with a broad new trait hierarchy.
-- [ ] Add a narrow backend switch point in cloud provider code:
-  - [ ] `backend = rc if healthy, else cli`
-- [ ] Keep existing `CloudErrorCode` mapping unchanged at call sites.
-- [ ] Keep provider-specific mapping in provider layer (not in transport layer).
+- [x] Do **not** start with a broad new trait hierarchy.
+- [x] Add a narrow backend switch point in cloud provider code:
+  - [x] `backend = rc if healthy, else cli`
+- [x] Keep existing `CloudErrorCode` mapping unchanged at call sites.
+- [x] Keep provider-specific mapping in provider layer (not in transport layer).
 
 ## 4. Phase-1 vertical slice: read path only
 
-- [ ] Implement `rc` calls for:
-  - [ ] remote discovery
-  - [ ] dir listing
-  - [ ] stat/existence
-- [ ] Keep existing caches/retry/concurrency policy wired the same.
+- [x] Implement `rc` calls for:
+  - [x] remote discovery
+  - [x] dir listing
+  - [x] stat/existence
+- [x] Keep existing caches/retry/concurrency policy wired the same.
 - [ ] Ensure sorting/navigation does not add extra remote calls.
-- [ ] Add automatic fallback to CLI on `rc` connect/timeout/protocol failure.
+- [x] Add automatic fallback to CLI on `rc` connect/timeout/protocol failure.
 
 Definition of Done (phase-1):
 - [ ] Read path works end-to-end with unchanged frontend behavior.
@@ -109,7 +109,7 @@ Definition of Done (phase-2):
 
 ## 10. Rollout plan
 
-- [ ] Stage A: hidden read-path `rc` with CLI fallback default.
+- [x] Stage A: hidden read-path `rc` with CLI fallback default.
 - [ ] Stage B: default read-path `rc` on Linux.
 - [ ] Stage C: hidden write-path `rc` with fallback.
 - [ ] Stage D: default write-path `rc` on Linux.
