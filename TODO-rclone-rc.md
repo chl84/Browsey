@@ -77,7 +77,7 @@ Definition of Done (phase-2):
 - [x] Add endpoint-class timeouts (`read`, `write`).
 - [x] Add bounded retries/backoff for transient errors.
 - [x] Keep bounded per-remote concurrency limits.
-- [ ] Add cancellation for long-running write calls where supported.
+- [x] Add cancellation for long-running write calls where supported.
 - [x] Add a short cooldown after rate-limit bursts (especially Google Drive).
 
 ## 7. Observability (minimal but useful)
@@ -112,5 +112,5 @@ Definition of Done (phase-2):
 - [x] Stage A: hidden read-path `rc` with CLI fallback default.
 - [x] Stage B: default read-path `rc` on Linux.
 - [x] Stage C: hidden write-path `rc` with fallback.
-- [ ] Stage D: default write-path `rc` on Linux.
-- [ ] Stage E: document final ops model + troubleshooting.
+- [x] Stage D: default write-path `rc` on Linux.
+- [x] Stage E: document final ops model + troubleshooting.

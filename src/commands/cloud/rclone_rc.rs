@@ -101,7 +101,9 @@ fn is_retryable_rc_error(error: &RcloneCliError) -> bool {
                 | io::ErrorKind::BrokenPipe
                 | io::ErrorKind::NotConnected
         ),
-        RcloneCliError::Shutdown { .. } | RcloneCliError::NonZero { .. } => false,
+        RcloneCliError::Shutdown { .. }
+        | RcloneCliError::Cancelled { .. }
+        | RcloneCliError::NonZero { .. } => false,
     }
 }
 
@@ -493,7 +495,7 @@ fn rc_write_enabled() -> bool {
         if let Some(all_enabled) = parse_rc_toggle_env(RCLONE_RC_ENABLE_ENV) {
             return all_enabled;
         }
-        parse_rc_toggle_env(RCLONE_RC_WRITE_ENABLE_ENV).unwrap_or(false)
+        parse_rc_toggle_env(RCLONE_RC_WRITE_ENABLE_ENV).unwrap_or(true)
     })
 }
 

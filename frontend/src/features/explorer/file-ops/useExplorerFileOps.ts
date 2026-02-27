@@ -307,11 +307,13 @@ export const useExplorerFileOps = (deps: Deps) => {
           await moveCloudEntry(src, finalTarget, {
             overwrite: policy === 'overwrite',
             prechecked: true,
+            progressEvent,
           })
         } else {
           await copyCloudEntry(src, finalTarget, {
             overwrite: policy === 'overwrite',
             prechecked: true,
+            progressEvent,
           })
         }
       }
@@ -387,7 +389,7 @@ export const useExplorerFileOps = (deps: Deps) => {
                 reservedCloudDestNames.add(candidateKey)
               }
               try {
-                const opts = { overwrite: false, prechecked: idx === 0 }
+                const opts = { overwrite: false, prechecked: idx === 0, progressEvent }
                 if (state.mode === 'cut') {
                   await moveMixedEntryTo(src, finalTarget, opts)
                 } else {
@@ -408,11 +410,13 @@ export const useExplorerFileOps = (deps: Deps) => {
           await moveMixedEntries(sources, target, {
             overwrite: true,
             prechecked: true,
+            progressEvent,
           })
         } else {
           await copyMixedEntries(sources, target, {
             overwrite: true,
             prechecked: true,
+            progressEvent,
           })
         }
 

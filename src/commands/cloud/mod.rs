@@ -9,6 +9,7 @@ pub mod rclone_rc;
 pub mod types;
 
 use crate::errors::api_error::ApiResult;
+use crate::tasks::{CancelGuard, CancelState};
 use error::{map_api_result, CloudCommandError, CloudCommandErrorCode, CloudCommandResult};
 use path::CloudPath;
 use provider::CloudProvider;
@@ -445,20 +446,30 @@ async fn stat_cloud_entry_impl(path: String) -> CloudCommandResult<Option<CloudE
 }
 
 #[tauri::command]
-pub async fn create_cloud_folder(path: String) -> ApiResult<()> {
-    map_api_result(create_cloud_folder_impl(path).await)
+pub async fn create_cloud_folder(
+    path: String,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
+) -> ApiResult<()> {
+    map_api_result(create_cloud_folder_impl(path, cancel.inner().clone(), progress_event).await)
 }
 
-async fn create_cloud_folder_impl(path: String) -> CloudCommandResult<()> {
+async fn create_cloud_folder_impl(
+    path: String,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
+) -> CloudCommandResult<()> {
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
     let path_for_log = path.clone();
     let remote = path.remote().to_string();
+    let _cancel_guard = register_cloud_cancel(&cancel_state, &progress_event)?;
+    let cancel_token = _cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
             let provider = RcloneCloudProvider::default();
-            provider.mkdir(&path)
+            provider.mkdir(&path, cancel_token.as_deref())
         })
     });
     let result = match task.await {
@@ -492,20 +503,30 @@ async fn create_cloud_folder_impl(path: String) -> CloudCommandResult<()> {
 }
 
 #[tauri::command]
-pub async fn delete_cloud_file(path: String) -> ApiResult<()> {
-    map_api_result(delete_cloud_file_impl(path).await)
+pub async fn delete_cloud_file(
+    path: String,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
+) -> ApiResult<()> {
+    map_api_result(delete_cloud_file_impl(path, cancel.inner().clone(), progress_event).await)
 }
 
-async fn delete_cloud_file_impl(path: String) -> CloudCommandResult<()> {
+async fn delete_cloud_file_impl(
+    path: String,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
+) -> CloudCommandResult<()> {
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
     let path_for_log = path.clone();
     let remote = path.remote().to_string();
+    let _cancel_guard = register_cloud_cancel(&cancel_state, &progress_event)?;
+    let cancel_token = _cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
             let provider = RcloneCloudProvider::default();
-            provider.delete_file(&path)
+            provider.delete_file(&path, cancel_token.as_deref())
         })
     });
     let result = map_spawn_result(task.await, "cloud delete file task failed").map(|_| {
@@ -531,20 +552,32 @@ async fn delete_cloud_file_impl(path: String) -> CloudCommandResult<()> {
 }
 
 #[tauri::command]
-pub async fn delete_cloud_dir_recursive(path: String) -> ApiResult<()> {
-    map_api_result(delete_cloud_dir_recursive_impl(path).await)
+pub async fn delete_cloud_dir_recursive(
+    path: String,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
+) -> ApiResult<()> {
+    map_api_result(
+        delete_cloud_dir_recursive_impl(path, cancel.inner().clone(), progress_event).await,
+    )
 }
 
-async fn delete_cloud_dir_recursive_impl(path: String) -> CloudCommandResult<()> {
+async fn delete_cloud_dir_recursive_impl(
+    path: String,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
+) -> CloudCommandResult<()> {
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
     let path_for_log = path.clone();
     let remote = path.remote().to_string();
+    let _cancel_guard = register_cloud_cancel(&cancel_state, &progress_event)?;
+    let cancel_token = _cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
             let provider = RcloneCloudProvider::default();
-            provider.delete_dir_recursive(&path)
+            provider.delete_dir_recursive(&path, cancel_token.as_deref())
         })
     });
     let result = map_spawn_result(task.await, "cloud delete dir task failed").map(|_| {
@@ -570,20 +603,30 @@ async fn delete_cloud_dir_recursive_impl(path: String) -> CloudCommandResult<()>
 }
 
 #[tauri::command]
-pub async fn delete_cloud_dir_empty(path: String) -> ApiResult<()> {
-    map_api_result(delete_cloud_dir_empty_impl(path).await)
+pub async fn delete_cloud_dir_empty(
+    path: String,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
+) -> ApiResult<()> {
+    map_api_result(delete_cloud_dir_empty_impl(path, cancel.inner().clone(), progress_event).await)
 }
 
-async fn delete_cloud_dir_empty_impl(path: String) -> CloudCommandResult<()> {
+async fn delete_cloud_dir_empty_impl(
+    path: String,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
+) -> CloudCommandResult<()> {
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
     let path_for_log = path.clone();
     let remote = path.remote().to_string();
+    let _cancel_guard = register_cloud_cancel(&cancel_state, &progress_event)?;
+    let cancel_token = _cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
             let provider = RcloneCloudProvider::default();
-            provider.delete_dir_empty(&path)
+            provider.delete_dir_empty(&path, cancel_token.as_deref())
         })
     });
     let result = map_spawn_result(task.await, "cloud rmdir task failed").map(|_| {
@@ -614,6 +657,8 @@ pub async fn move_cloud_entry(
     dst: String,
     overwrite: Option<bool>,
     prechecked: Option<bool>,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
 ) -> ApiResult<()> {
     map_api_result(
         move_cloud_entry_impl(
@@ -621,6 +666,8 @@ pub async fn move_cloud_entry(
             dst,
             overwrite.unwrap_or(false),
             prechecked.unwrap_or(false),
+            cancel.inner().clone(),
+            progress_event,
         )
         .await,
     )
@@ -631,6 +678,8 @@ async fn move_cloud_entry_impl(
     dst: String,
     overwrite: bool,
     prechecked: bool,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
 ) -> CloudCommandResult<()> {
     let started = Instant::now();
     let src = parse_cloud_path_arg(src)?;
@@ -639,10 +688,12 @@ async fn move_cloud_entry_impl(
     let dst_for_log = dst.clone();
     let invalidate_paths = vec![src.clone(), dst.clone()];
     let remotes = vec![src.remote().to_string(), dst.remote().to_string()];
+    let _cancel_guard = register_cloud_cancel(&cancel_state, &progress_event)?;
+    let cancel_token = _cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(remotes, || {
             let provider = RcloneCloudProvider::default();
-            provider.move_entry(&src, &dst, overwrite, prechecked)
+            provider.move_entry(&src, &dst, overwrite, prechecked, cancel_token.as_deref())
         })
     });
     let result = map_spawn_result(task.await, "cloud move task failed").map(|_| {
@@ -679,6 +730,8 @@ pub async fn rename_cloud_entry(
     dst: String,
     overwrite: Option<bool>,
     prechecked: Option<bool>,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
 ) -> ApiResult<()> {
     map_api_result(
         move_cloud_entry_impl(
@@ -686,6 +739,8 @@ pub async fn rename_cloud_entry(
             dst,
             overwrite.unwrap_or(false),
             prechecked.unwrap_or(false),
+            cancel.inner().clone(),
+            progress_event,
         )
         .await,
     )
@@ -697,6 +752,8 @@ pub async fn copy_cloud_entry(
     dst: String,
     overwrite: Option<bool>,
     prechecked: Option<bool>,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
 ) -> ApiResult<()> {
     map_api_result(
         copy_cloud_entry_impl(
@@ -704,6 +761,8 @@ pub async fn copy_cloud_entry(
             dst,
             overwrite.unwrap_or(false),
             prechecked.unwrap_or(false),
+            cancel.inner().clone(),
+            progress_event,
         )
         .await,
     )
@@ -714,6 +773,8 @@ async fn copy_cloud_entry_impl(
     dst: String,
     overwrite: bool,
     prechecked: bool,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
 ) -> CloudCommandResult<()> {
     let started = Instant::now();
     let src = parse_cloud_path_arg(src)?;
@@ -722,10 +783,12 @@ async fn copy_cloud_entry_impl(
     let dst_for_log = dst.clone();
     let invalidate_paths = vec![dst.clone()];
     let remotes = vec![src.remote().to_string(), dst.remote().to_string()];
+    let _cancel_guard = register_cloud_cancel(&cancel_state, &progress_event)?;
+    let cancel_token = _cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(remotes, || {
             let provider = RcloneCloudProvider::default();
-            provider.copy_entry(&src, &dst, overwrite, prechecked)
+            provider.copy_entry(&src, &dst, overwrite, prechecked, cancel_token.as_deref())
         })
     });
     let result = map_spawn_result(task.await, "cloud copy task failed").map(|_| {
@@ -875,6 +938,22 @@ fn map_spawn_result<T>(
             format!("{context}: {error}"),
         )),
     }
+}
+
+fn register_cloud_cancel(
+    cancel_state: &CancelState,
+    progress_event: &Option<String>,
+) -> CloudCommandResult<Option<CancelGuard>> {
+    progress_event
+        .as_ref()
+        .map(|event| cancel_state.register(event.clone()))
+        .transpose()
+        .map_err(|error| {
+            CloudCommandError::new(
+                CloudCommandErrorCode::TaskFailed,
+                format!("Failed to register cloud cancel token: {error}"),
+            )
+        })
 }
 
 #[cfg(test)]

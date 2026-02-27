@@ -3,6 +3,7 @@ use super::{
     path::CloudPath,
     types::{CloudEntry, CloudRemote},
 };
+use std::sync::atomic::AtomicBool;
 
 pub(super) trait CloudProvider: Send + Sync {
     fn list_remotes(&self) -> CloudCommandResult<Vec<CloudRemote>>;
@@ -11,13 +12,21 @@ pub(super) trait CloudProvider: Send + Sync {
 
     fn list_dir(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>>;
 
-    fn mkdir(&self, path: &CloudPath) -> CloudCommandResult<()>;
+    fn mkdir(&self, path: &CloudPath, cancel: Option<&AtomicBool>) -> CloudCommandResult<()>;
 
-    fn delete_file(&self, path: &CloudPath) -> CloudCommandResult<()>;
+    fn delete_file(&self, path: &CloudPath, cancel: Option<&AtomicBool>) -> CloudCommandResult<()>;
 
-    fn delete_dir_recursive(&self, path: &CloudPath) -> CloudCommandResult<()>;
+    fn delete_dir_recursive(
+        &self,
+        path: &CloudPath,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()>;
 
-    fn delete_dir_empty(&self, path: &CloudPath) -> CloudCommandResult<()>;
+    fn delete_dir_empty(
+        &self,
+        path: &CloudPath,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()>;
 
     fn move_entry(
         &self,
@@ -25,6 +34,7 @@ pub(super) trait CloudProvider: Send + Sync {
         dst: &CloudPath,
         overwrite: bool,
         prechecked: bool,
+        cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()>;
 
     fn copy_entry(
@@ -33,5 +43,6 @@ pub(super) trait CloudProvider: Send + Sync {
         dst: &CloudPath,
         overwrite: bool,
         prechecked: bool,
+        cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()>;
 }

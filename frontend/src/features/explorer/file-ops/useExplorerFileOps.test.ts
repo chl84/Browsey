@@ -261,7 +261,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(copyCloudEntryMock).toHaveBeenCalledWith(
       'rclone://work/src/report.txt',
       'rclone://work/src/report-1.txt',
-      { overwrite: false, prechecked: true },
+      expect.objectContaining({ overwrite: false, prechecked: true }),
     )
     expect(previewCloudConflictsMock).toHaveBeenCalled()
     expect(pasteClipboardPreviewMock).not.toHaveBeenCalled()
@@ -309,7 +309,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(copyCloudEntryMock).toHaveBeenCalledWith(
       'rclone://work/src/report.txt',
       'rclone://work/src/report-1.txt',
-      { overwrite: false, prechecked: true },
+      expect.objectContaining({ overwrite: false, prechecked: true }),
     )
   })
 
@@ -331,7 +331,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(copyCloudEntryMock).toHaveBeenCalledWith(
       'rclone://work/src/report.txt',
       'rclone://work/dest/report.txt',
-      { overwrite: false, prechecked: true },
+      expect.objectContaining({ overwrite: false, prechecked: true }),
     )
   })
 
@@ -354,7 +354,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       expect(copyCloudEntryMock).toHaveBeenCalledWith(
         'rclone://work/src/report.txt',
         'rclone://work/dest/report.txt',
-        { overwrite: false, prechecked: true },
+        expect.objectContaining({ overwrite: false, prechecked: true }),
       )
 
       await vi.advanceTimersByTimeAsync(250)
@@ -414,7 +414,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(moveCloudEntryMock).toHaveBeenCalledWith(
       'rclone://work/src/report.txt',
       'rclone://work/dest/report.txt',
-      { overwrite: false, prechecked: true },
+      expect.objectContaining({ overwrite: false, prechecked: true }),
     )
     expect(activityApi.start).toHaveBeenCalledWith(
       'Moving…',
@@ -436,7 +436,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(copyMixedEntryToMock).toHaveBeenCalledWith(
       '/tmp/src/report.txt',
       'rclone://work/dest/report.txt',
-      { overwrite: false, prechecked: true },
+      expect.objectContaining({ overwrite: false, prechecked: true }),
     )
     expect(activityApi.start).toHaveBeenCalledWith(
       'Copying…',
@@ -460,7 +460,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(moveMixedEntryToMock).toHaveBeenCalledWith(
       'rclone://work/src/report.txt',
       '/tmp/dest/report.txt',
-      { overwrite: false, prechecked: true },
+      expect.objectContaining({ overwrite: false, prechecked: true }),
     )
     expect(activityApi.start).toHaveBeenCalledWith(
       'Moving…',
@@ -489,7 +489,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(copyMixedEntryToMock).toHaveBeenCalledWith(
       'rclone://work/src/report.txt',
       '/tmp/dest/report.txt',
-      { overwrite: false, prechecked: true },
+      expect.objectContaining({ overwrite: false, prechecked: true }),
     )
     expect(deps.showToast).toHaveBeenCalledWith(
       'Paste completed, but refresh failed. Press F5 to refresh.',
@@ -521,15 +521,20 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     await fileOps.resolveConflicts('rename')
 
     expect(copyMixedEntriesMock).not.toHaveBeenCalled()
-    expect(copyMixedEntryToMock).toHaveBeenNthCalledWith(1, '/tmp/src/report.txt', 'rclone://work/dest/report.txt', {
-      overwrite: false,
-      prechecked: true,
-    })
+    expect(copyMixedEntryToMock).toHaveBeenNthCalledWith(
+      1,
+      '/tmp/src/report.txt',
+      'rclone://work/dest/report.txt',
+      expect.objectContaining({
+        overwrite: false,
+        prechecked: true,
+      }),
+    )
     expect(copyMixedEntryToMock).toHaveBeenNthCalledWith(
       2,
       '/tmp/src/report.txt',
       'rclone://work/dest/report-1.txt',
-      { overwrite: false, prechecked: false },
+      expect.objectContaining({ overwrite: false, prechecked: false }),
     )
   })
 
