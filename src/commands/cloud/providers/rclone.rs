@@ -247,6 +247,19 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn mkdir(&self, path: &CloudPath) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if self.rc.is_enabled() {
+            let fs_spec = format!("{}:", path.remote());
+            match self.rc.operations_mkdir(&fs_spec, path.rel_path()) {
+                Ok(_) => return Ok(()),
+                Err(error) => {
+                    debug!(
+                        path = %path,
+                        error = %error,
+                        "rclone rc mkdir failed; falling back to CLI mkdir"
+                    );
+                }
+            }
+        }
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(path.to_rclone_remote_spec()),
@@ -257,6 +270,19 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn delete_file(&self, path: &CloudPath) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if self.rc.is_enabled() {
+            let fs_spec = format!("{}:", path.remote());
+            match self.rc.operations_deletefile(&fs_spec, path.rel_path()) {
+                Ok(_) => return Ok(()),
+                Err(error) => {
+                    debug!(
+                        path = %path,
+                        error = %error,
+                        "rclone rc deletefile failed; falling back to CLI deletefile"
+                    );
+                }
+            }
+        }
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::DeleteFile)
@@ -268,6 +294,19 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn delete_dir_recursive(&self, path: &CloudPath) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if self.rc.is_enabled() {
+            let fs_spec = format!("{}:", path.remote());
+            match self.rc.operations_purge(&fs_spec, path.rel_path()) {
+                Ok(_) => return Ok(()),
+                Err(error) => {
+                    debug!(
+                        path = %path,
+                        error = %error,
+                        "rclone rc purge failed; falling back to CLI purge"
+                    );
+                }
+            }
+        }
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::Purge).arg(path.to_rclone_remote_spec()),
@@ -278,6 +317,19 @@ impl CloudProvider for RcloneCloudProvider {
 
     fn delete_dir_empty(&self, path: &CloudPath) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if self.rc.is_enabled() {
+            let fs_spec = format!("{}:", path.remote());
+            match self.rc.operations_rmdir(&fs_spec, path.rel_path()) {
+                Ok(_) => return Ok(()),
+                Err(error) => {
+                    debug!(
+                        path = %path,
+                        error = %error,
+                        "rclone rc rmdir failed; falling back to CLI rmdir"
+                    );
+                }
+            }
+        }
         self.cli
             .run_capture_text(
                 RcloneCommandSpec::new(RcloneSubcommand::Rmdir).arg(path.to_rclone_remote_spec()),
@@ -296,6 +348,24 @@ impl CloudProvider for RcloneCloudProvider {
         self.ensure_runtime_ready()?;
         if !prechecked {
             ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
+        }
+        if self.rc.is_enabled() {
+            let src_fs = format!("{}:", src.remote());
+            let dst_fs = format!("{}:", dst.remote());
+            match self
+                .rc
+                .operations_movefile(&src_fs, src.rel_path(), &dst_fs, dst.rel_path())
+            {
+                Ok(_) => return Ok(()),
+                Err(error) => {
+                    debug!(
+                        src = %src,
+                        dst = %dst,
+                        error = %error,
+                        "rclone rc movefile failed; falling back to CLI moveto"
+                    );
+                }
+            }
         }
         self.cli
             .run_capture_text(
@@ -317,6 +387,24 @@ impl CloudProvider for RcloneCloudProvider {
         self.ensure_runtime_ready()?;
         if !prechecked {
             ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
+        }
+        if self.rc.is_enabled() {
+            let src_fs = format!("{}:", src.remote());
+            let dst_fs = format!("{}:", dst.remote());
+            match self
+                .rc
+                .operations_copyfile(&src_fs, src.rel_path(), &dst_fs, dst.rel_path())
+            {
+                Ok(_) => return Ok(()),
+                Err(error) => {
+                    debug!(
+                        src = %src,
+                        dst = %dst,
+                        error = %error,
+                        "rclone rc copyfile failed; falling back to CLI copyto"
+                    );
+                }
+            }
         }
         self.cli
             .run_capture_text(
@@ -890,6 +978,7 @@ mod tests {
             rclone_cli::RcloneCli,
             rclone_cli::RcloneCliError,
             rclone_cli::RcloneSubcommand,
+            rclone_rc::RcloneRcClient,
             types::{CloudEntryKind, CloudProviderKind},
         },
         errors::domain::{DomainError, ErrorCode},
@@ -1236,6 +1325,13 @@ mod tests {
             RcloneCloudProvider::new(RcloneCli::new(self.script_path.as_os_str()))
         }
 
+        fn provider_with_forced_rc(&self) -> RcloneCloudProvider {
+            let cli = RcloneCli::new(self.script_path.as_os_str());
+            let rc = RcloneRcClient::new(self.script_path.as_os_str())
+                .with_enabled_override_for_tests(true);
+            RcloneCloudProvider { cli, rc }
+        }
+
         fn remote_path(&self, remote: &str, rel: &str) -> PathBuf {
             let base = self.state_root.join(remote);
             if rel.is_empty() {
@@ -1386,6 +1482,166 @@ mod tests {
 
         assert!(!sandbox.remote_path("work", "docs/report.txt").exists());
         assert!(sandbox.remote_path("work", "docs/Report.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_path_falls_back_to_cli_when_rc_startup_fails() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "note.txt", "hello");
+        let provider = sandbox.provider_with_forced_rc();
+
+        let entries = provider
+            .list_dir(&cloud_path("rclone://work"))
+            .expect("list dir with fallback");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "note.txt");
+
+        let log = sandbox.read_log();
+        assert!(
+            log.contains("rcd --rc --rc-addr"),
+            "expected rc daemon startup attempt before fallback, log:\n{log}"
+        );
+        assert!(
+            log.contains("unix://"),
+            "expected unix socket rc endpoint (no TCP listener), log:\n{log}"
+        );
+        assert!(
+            log.contains("lsjson work:"),
+            "expected CLI fallback list call after rc failure, log:\n{log}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mkdir_falls_back_to_cli_when_rc_startup_fails() {
+        let sandbox = FakeRcloneSandbox::new();
+        let provider = sandbox.provider_with_forced_rc();
+
+        provider
+            .mkdir(&cloud_path("rclone://work/new-folder"))
+            .expect("mkdir with fallback");
+        assert!(sandbox.remote_path("work", "new-folder").is_dir());
+
+        let log = sandbox.read_log();
+        assert!(
+            log.contains("rcd --rc --rc-addr"),
+            "expected rc daemon startup attempt before fallback, log:\n{log}"
+        );
+        assert!(
+            log.contains("mkdir work:new-folder"),
+            "expected CLI mkdir fallback call after rc failure, log:\n{log}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_ops_fall_back_to_cli_when_rc_startup_fails() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "trash/file.txt", "payload");
+        sandbox.write_remote_file("work", "trash-deep/sub/old.txt", "payload");
+        let provider = sandbox.provider_with_forced_rc();
+
+        provider
+            .delete_file(&cloud_path("rclone://work/trash/file.txt"))
+            .expect("delete file with fallback");
+        assert!(!sandbox.remote_path("work", "trash/file.txt").exists());
+
+        provider
+            .delete_dir_empty(&cloud_path("rclone://work/trash"))
+            .expect("delete empty dir with fallback");
+        assert!(!sandbox.remote_path("work", "trash").exists());
+
+        provider
+            .delete_dir_recursive(&cloud_path("rclone://work/trash-deep"))
+            .expect("delete recursive dir with fallback");
+        assert!(!sandbox.remote_path("work", "trash-deep").exists());
+
+        let log = sandbox.read_log();
+        assert!(
+            log.contains("rcd --rc --rc-addr"),
+            "expected rc daemon startup attempt before fallback, log:\n{log}"
+        );
+        assert!(
+            log.contains("deletefile work:trash/file.txt"),
+            "expected CLI deletefile fallback call, log:\n{log}"
+        );
+        assert!(
+            log.contains("rmdir work:trash"),
+            "expected CLI rmdir fallback call, log:\n{log}"
+        );
+        assert!(
+            log.contains("purge work:trash-deep"),
+            "expected CLI purge fallback call, log:\n{log}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_move_ops_fall_back_to_cli_when_rc_startup_fails() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "src/file.txt", "payload");
+        let provider = sandbox.provider_with_forced_rc();
+
+        provider
+            .copy_entry(
+                &cloud_path("rclone://work/src/file.txt"),
+                &cloud_path("rclone://work/dst/copied.txt"),
+                false,
+                false,
+            )
+            .expect("copy with fallback");
+        assert!(sandbox.remote_path("work", "dst/copied.txt").exists());
+
+        provider
+            .move_entry(
+                &cloud_path("rclone://work/dst/copied.txt"),
+                &cloud_path("rclone://work/dst/moved.txt"),
+                false,
+                false,
+            )
+            .expect("move with fallback");
+        assert!(!sandbox.remote_path("work", "dst/copied.txt").exists());
+        assert!(sandbox.remote_path("work", "dst/moved.txt").exists());
+
+        let log = sandbox.read_log();
+        assert!(
+            log.contains("rcd --rc --rc-addr"),
+            "expected rc daemon startup attempt before fallback, log:\n{log}"
+        );
+        assert!(
+            log.contains("copyto work:src/file.txt work:dst/copied.txt"),
+            "expected CLI copy fallback call, log:\n{log}"
+        );
+        assert!(
+            log.contains("moveto work:dst/copied.txt work:dst/moved.txt"),
+            "expected CLI move fallback call, log:\n{log}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_preserves_destination_exists_conflict_policy() {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "src/file.txt", "source");
+        sandbox.write_remote_file("work", "dst/file.txt", "existing");
+        let provider = sandbox.provider_with_forced_rc();
+
+        let err = provider
+            .copy_entry(
+                &cloud_path("rclone://work/src/file.txt"),
+                &cloud_path("rclone://work/dst/file.txt"),
+                false,
+                false,
+            )
+            .expect_err("copy should fail when destination exists");
+        assert_eq!(
+            err.code_str(),
+            CloudCommandErrorCode::DestinationExists.as_code_str()
+        );
+        let existing = fs::read_to_string(sandbox.remote_path("work", "dst/file.txt"))
+            .expect("read existing destination");
+        assert_eq!(existing, "existing");
     }
 
     #[cfg(unix)]
