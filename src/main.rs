@@ -316,8 +316,8 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|app_handle, event| match event {
-        tauri::RunEvent::Exit => {
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
             runtime_lifecycle::begin_shutdown_from_app(app_handle);
             if let Some(cancel) = app_handle.try_state::<CancelState>() {
                 let _ = cancel.cancel_all();
@@ -332,6 +332,5 @@ fn main() {
                 std::time::Duration::from_millis(250),
             );
         }
-        _ => {}
     });
 }

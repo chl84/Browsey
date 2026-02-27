@@ -29,20 +29,11 @@ pub struct MixedTransferConflictInfo {
     pub is_dir: bool,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MixedTransferWriteOptions {
     pub overwrite: bool,
     pub prechecked: bool,
-}
-
-impl Default for MixedTransferWriteOptions {
-    fn default() -> Self {
-        Self {
-            overwrite: false,
-            prechecked: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -918,10 +909,8 @@ fn map_rclone_cli_error(error: RcloneCliError, cloud_remote: Option<&str>) -> Ap
                 "not_found"
             } else if lower.contains("x509") || lower.contains("certificate") {
                 "tls_certificate_error"
-            } else if let Some(code) = provider_code {
-                code
             } else {
-                "unknown_error"
+                provider_code.unwrap_or("unknown_error")
             };
             api_err(code, msg_ref.trim())
         }
