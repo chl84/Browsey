@@ -4,6 +4,8 @@ use std::{
     env,
     ffi::OsString,
     fs, io,
+    io::{Read, Write},
+    net::Shutdown,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Mutex, OnceLock},
@@ -113,13 +115,16 @@ impl RcloneRcClient {
 
     fn run_method(&self, method: RcloneRcMethod, payload: Value) -> Result<Value, RcloneCliError> {
         let socket_path = self.ensure_daemon_ready()?;
-        run_rc_command_via_socket(
-            &self.binary,
-            &socket_path,
-            method,
-            payload,
-            RCLONE_RC_REQUEST_TIMEOUT,
-        )
+        let started = Instant::now();
+        let result =
+            run_rc_command_via_socket(&socket_path, method, payload, RCLONE_RC_REQUEST_TIMEOUT);
+        debug!(
+            method = method.as_str(),
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            success = result.is_ok(),
+            "rclone rc method completed"
+        );
+        result
     }
 
     fn ensure_daemon_ready(&self) -> Result<PathBuf, RcloneCliError> {
@@ -218,7 +223,6 @@ fn spawn_daemon(binary: &OsString) -> Result<RcloneRcDaemon, RcloneCliError> {
         }
         if socket_path.exists() {
             match run_rc_command_via_socket(
-                binary,
                 &socket_path,
                 RcloneRcMethod::CoreNoop,
                 json!({}),
@@ -287,59 +291,30 @@ fn prepare_state_dir(path: &Path) -> io::Result<()> {
 }
 
 fn run_rc_command_via_socket(
-    binary: &OsString,
     socket_path: &Path,
     method: RcloneRcMethod,
     payload: Value,
     timeout: Duration,
 ) -> Result<Value, RcloneCliError> {
+    if !cfg!(unix) {
+        return Err(RcloneCliError::Io(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "rclone rc unix socket transport is only supported on unix targets",
+        )));
+    }
     let payload_text = serde_json::to_string(&payload).map_err(|error| {
         RcloneCliError::Io(io::Error::other(format!(
             "failed to encode rclone rc payload: {error}"
         )))
     })?;
 
-    let mut child = Command::new(binary)
-        .arg("rc")
-        .arg("--unix-socket")
-        .arg(socket_path)
-        .arg("--json")
-        .arg(payload_text)
-        .arg(method.as_str())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(RcloneCliError::Io)?;
-
-    match child.wait_timeout(timeout).map_err(RcloneCliError::Io)? {
-        Some(_) => {}
-        None => {
-            let _ = child.kill();
-            let output = child.wait_with_output().map_err(RcloneCliError::Io)?;
-            return Err(RcloneCliError::Timeout {
-                subcommand: RcloneSubcommand::Rc,
-                timeout,
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-            });
-        }
-    }
-
-    let output = child.wait_with_output().map_err(RcloneCliError::Io)?;
-    if !output.status.success() {
-        return Err(RcloneCliError::NonZero {
-            status: output.status,
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        });
-    }
-    let mut stdout = String::new();
-    stdout.push_str(&String::from_utf8_lossy(&output.stdout));
-    if stdout.trim().is_empty() {
+    let response_text =
+        send_rc_http_request_over_unix_socket(socket_path, method, &payload_text, timeout)?;
+    let body = parse_http_response_body(&response_text, method)?;
+    if body.trim().is_empty() {
         return Ok(json!({}));
     }
-    serde_json::from_str::<Value>(&stdout).map_err(|error| {
+    serde_json::from_str::<Value>(body).map_err(|error| {
         RcloneCliError::Io(io::Error::other(format!(
             "invalid JSON from rclone rc {}: {error}",
             method.as_str()
@@ -347,9 +322,103 @@ fn run_rc_command_via_socket(
     })
 }
 
+#[cfg(unix)]
+fn send_rc_http_request_over_unix_socket(
+    socket_path: &Path,
+    method: RcloneRcMethod,
+    payload_text: &str,
+    timeout: Duration,
+) -> Result<String, RcloneCliError> {
+    use std::os::unix::net::UnixStream;
+
+    let mut stream = UnixStream::connect(socket_path)
+        .map_err(|error| map_rc_io_error(error, timeout, "connect"))?;
+    stream
+        .set_read_timeout(Some(timeout))
+        .map_err(RcloneCliError::Io)?;
+    stream
+        .set_write_timeout(Some(timeout))
+        .map_err(RcloneCliError::Io)?;
+
+    let request = format!(
+        "POST /{} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        method.as_str(),
+        payload_text.len(),
+        payload_text
+    );
+
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| map_rc_io_error(error, timeout, "write"))?;
+    stream
+        .shutdown(Shutdown::Write)
+        .map_err(RcloneCliError::Io)?;
+
+    let mut response_bytes = Vec::new();
+    stream
+        .read_to_end(&mut response_bytes)
+        .map_err(|error| map_rc_io_error(error, timeout, "read"))?;
+    Ok(String::from_utf8_lossy(&response_bytes).to_string())
+}
+
+#[cfg(not(unix))]
+fn send_rc_http_request_over_unix_socket(
+    _socket_path: &Path,
+    _method: RcloneRcMethod,
+    _payload_text: &str,
+    _timeout: Duration,
+) -> Result<String, RcloneCliError> {
+    Err(RcloneCliError::Io(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "rclone rc unix socket transport is only supported on unix targets",
+    )))
+}
+
+fn map_rc_io_error(error: io::Error, timeout: Duration, phase: &str) -> RcloneCliError {
+    if error.kind() == io::ErrorKind::TimedOut || error.kind() == io::ErrorKind::WouldBlock {
+        RcloneCliError::Timeout {
+            subcommand: RcloneSubcommand::Rc,
+            timeout,
+            stdout: String::new(),
+            stderr: format!("rclone rc socket {phase} timed out"),
+        }
+    } else {
+        RcloneCliError::Io(error)
+    }
+}
+
+fn parse_http_response_body<'a>(
+    response_text: &'a str,
+    method: RcloneRcMethod,
+) -> Result<&'a str, RcloneCliError> {
+    let Some((header, body)) = response_text.split_once("\r\n\r\n") else {
+        return Err(RcloneCliError::Io(io::Error::other(format!(
+            "invalid HTTP response from rclone rc {}",
+            method.as_str()
+        ))));
+    };
+
+    let mut lines = header.lines();
+    let status_line = lines.next().unwrap_or_default();
+    let status_code = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|n| n.parse::<u16>().ok())
+        .unwrap_or(0);
+    if !(200..300).contains(&status_code) {
+        return Err(RcloneCliError::Io(io::Error::other(format!(
+            "rclone rc {} failed with HTTP {} ({})",
+            method.as_str(),
+            status_code,
+            body.trim()
+        ))));
+    }
+    Ok(body)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::RcloneRcMethod;
+    use super::{parse_http_response_body, RcloneRcMethod};
 
     #[test]
     fn rc_method_allowlist_maps_to_expected_endpoint_names() {
@@ -361,5 +430,22 @@ mod tests {
         assert_eq!(RcloneRcMethod::ConfigDump.as_str(), "config/dump");
         assert_eq!(RcloneRcMethod::OperationsList.as_str(), "operations/list");
         assert_eq!(RcloneRcMethod::OperationsStat.as_str(), "operations/stat");
+    }
+
+    #[test]
+    fn parses_success_http_response_body() {
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"ok\":true}";
+        let body = parse_http_response_body(response, RcloneRcMethod::CoreNoop).expect("body");
+        assert_eq!(body, "{\"ok\":true}");
+    }
+
+    #[test]
+    fn rejects_non_2xx_http_response() {
+        let response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"error\":\"boom\"}";
+        let err = parse_http_response_body(response, RcloneRcMethod::CoreNoop).expect_err("err");
+        assert!(
+            err.to_string().contains("HTTP 500"),
+            "unexpected error text: {err}"
+        );
     }
 }
