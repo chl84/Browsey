@@ -11,11 +11,17 @@ use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
     env,
-    sync::{atomic::AtomicBool, OnceLock},
+    ffi::OsString,
+    sync::{atomic::AtomicBool, Mutex, OnceLock},
+    time::{Duration, Instant},
 };
 use tracing::{debug, info};
 
 const MIN_RCLONE_VERSION: (u64, u64, u64) = (1, 67, 0);
+#[cfg(not(test))]
+const RCLONE_RUNTIME_PROBE_FAILURE_RETRY_BACKOFF: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const RCLONE_RUNTIME_PROBE_FAILURE_RETRY_BACKOFF: Duration = Duration::from_millis(1);
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
@@ -28,8 +34,32 @@ pub(in crate::commands::cloud) struct RcloneCloudProvider {
     force_async_unknown_copyfile_for_tests: bool,
 }
 
-static RCLONE_RUNTIME_PROBE: OnceLock<Result<(), CloudCommandError>> = OnceLock::new();
+#[derive(Debug, Clone)]
+enum RuntimeProbeCacheEntry {
+    Ready,
+    Failed {
+        error: CloudCommandError,
+        retry_after: Instant,
+    },
+}
+
+type RuntimeProbeCache = HashMap<OsString, RuntimeProbeCacheEntry>;
+
+static RCLONE_RUNTIME_PROBE: OnceLock<Mutex<RuntimeProbeCache>> = OnceLock::new();
 static RCLONE_REMOTE_POLICY: OnceLock<RcloneRemotePolicy> = OnceLock::new();
+
+fn runtime_probe_cache() -> &'static Mutex<RuntimeProbeCache> {
+    RCLONE_RUNTIME_PROBE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[cfg(test)]
+fn reset_runtime_probe_cache_for_tests() {
+    let mut cache = match runtime_probe_cache().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    cache.clear();
+}
 
 #[allow(dead_code)]
 impl RcloneCloudProvider {
@@ -50,11 +80,44 @@ impl RcloneCloudProvider {
     }
 
     fn ensure_runtime_ready(&self) -> CloudCommandResult<()> {
-        let result = RCLONE_RUNTIME_PROBE.get_or_init(|| probe_rclone_runtime(&self.cli));
-        match result {
-            Ok(_) => Ok(()),
-            Err(error) => Err(error.clone()),
+        let binary = self.cli.binary().to_os_string();
+        let now = Instant::now();
+        {
+            let cache = match runtime_probe_cache().lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            if let Some(entry) = cache.get(&binary) {
+                match entry {
+                    RuntimeProbeCacheEntry::Ready => return Ok(()),
+                    RuntimeProbeCacheEntry::Failed { error, retry_after } if *retry_after > now => {
+                        return Err(error.clone());
+                    }
+                    RuntimeProbeCacheEntry::Failed { .. } => {}
+                }
+            }
         }
+
+        let probe_result = probe_rclone_runtime(&self.cli);
+        let mut cache = match runtime_probe_cache().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        match &probe_result {
+            Ok(()) => {
+                cache.insert(binary, RuntimeProbeCacheEntry::Ready);
+            }
+            Err(error) => {
+                cache.insert(
+                    binary,
+                    RuntimeProbeCacheEntry::Failed {
+                        error: error.clone(),
+                        retry_after: Instant::now() + RCLONE_RUNTIME_PROBE_FAILURE_RETRY_BACKOFF,
+                    },
+                );
+            }
+        }
+        probe_result
     }
 
     fn list_remotes_via_rc(&self) -> Result<Vec<CloudRemote>, RcloneCliError> {
@@ -1306,7 +1369,8 @@ mod tests {
         normalize_cloud_modified_time_value, parse_config_dump_summaries, parse_listremotes_plain,
         parse_lsjson_items, parse_lsjson_stat_item, parse_rclone_version_stdout,
         parse_rclone_version_triplet, remote_allowed_by_policy_with,
-        should_fallback_to_cli_after_rc_error, RcloneCloudProvider, RcloneRemotePolicy,
+        reset_runtime_probe_cache_for_tests, should_fallback_to_cli_after_rc_error,
+        RcloneCloudProvider, RcloneRemotePolicy, RCLONE_RUNTIME_PROBE_FAILURE_RETRY_BACKOFF,
     };
     use crate::{
         commands::cloud::{
@@ -1328,6 +1392,7 @@ mod tests {
         fs,
         path::{Path, PathBuf},
         sync::atomic::{AtomicU64, Ordering},
+        thread,
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -1658,6 +1723,54 @@ mod tests {
         assert!(remote_allowed_by_policy_with(&policy, "browsey-work"));
         assert!(!remote_allowed_by_policy_with(&policy, "work"));
         assert!(!remote_allowed_by_policy_with(&policy, "browsey-other"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_probe_recovers_after_initial_failure_for_same_binary_path() {
+        use std::os::unix::fs::PermissionsExt;
+
+        reset_runtime_probe_cache_for_tests();
+
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let unique = format!(
+            "browsey-rclone-runtime-probe-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+                + u128::from(NEXT_ID.fetch_add(1, Ordering::Relaxed))
+        );
+        let root = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&root).expect("create temp root");
+
+        let binary_path = root.join("rclone");
+        let provider = RcloneCloudProvider::new(RcloneCli::new(binary_path.as_os_str()));
+
+        let first = provider
+            .ensure_runtime_ready()
+            .expect_err("initial runtime probe should fail with missing binary");
+        assert_eq!(
+            first.code_str(),
+            CloudCommandErrorCode::BinaryMissing.as_code_str()
+        );
+
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/fake-rclone.sh");
+        fs::copy(&source, &binary_path).expect("copy fake rclone script");
+        let mut perms = fs::metadata(&binary_path)
+            .expect("script metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&binary_path, perms).expect("chmod fake rclone");
+
+        thread::sleep(RCLONE_RUNTIME_PROBE_FAILURE_RETRY_BACKOFF + Duration::from_millis(3));
+        provider
+            .ensure_runtime_ready()
+            .expect("runtime probe should recover after binary appears");
+
+        let _ = fs::remove_dir_all(&root);
+        reset_runtime_probe_cache_for_tests();
     }
 
     #[cfg(unix)]
