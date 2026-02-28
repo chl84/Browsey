@@ -1,4 +1,6 @@
-use super::{CloudProviderKind, HashMap, Value};
+use super::CloudProviderKind;
+use serde_json::Value;
+use std::collections::HashMap;
 
 pub(super) fn parse_listremotes_plain(stdout: &str) -> Result<Vec<String>, String> {
     let mut remotes = Vec::new();

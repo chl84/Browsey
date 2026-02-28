@@ -264,7 +264,7 @@ impl Default for RcloneCli {
 }
 
 impl RcloneCli {
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn new(binary: impl Into<OsString>) -> Self {
         Self {
             binary: binary.into(),
