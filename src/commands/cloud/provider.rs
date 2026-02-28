@@ -6,7 +6,7 @@ use super::{
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
-pub(super) trait CloudProvider: Send + Sync {
+pub(crate) trait CloudProvider: Send + Sync {
     fn list_remotes(&self) -> CloudCommandResult<Vec<CloudRemote>>;
 
     fn stat_path(&self, path: &CloudPath) -> CloudCommandResult<Option<CloudEntry>>;

@@ -20,7 +20,7 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
 #[derive(Debug, Clone, Default)]
-pub(in crate::commands::cloud) struct RcloneCloudProvider {
+pub(crate) struct RcloneCloudProvider {
     cli: RcloneCli,
     rc: RcloneRcClient,
 }
