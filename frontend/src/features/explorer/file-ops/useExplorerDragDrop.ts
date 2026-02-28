@@ -255,7 +255,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     }
   }
 
-  const handleBreadcrumbDragOver = (path: string, event: DragEvent) => {
+  const handlePathDragOver = (path: string, event: DragEvent) => {
     if (dragPaths.length === 0) return
     const allowed = dragDrop.canDropOn(dragPaths, path)
     dragDrop.setTarget(allowed ? path : null)
@@ -269,7 +269,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     event.preventDefault()
   }
 
-  const handleBreadcrumbDragLeave = (path: string) => {
+  const handlePathDragLeave = (path: string) => {
     if (get(dragState).target === path) {
       dragDrop.setTarget(null)
     }
@@ -277,7 +277,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     dropModePreviewToken += 1
   }
 
-  const handleBreadcrumbDrop = async (path: string, event: DragEvent) => {
+  const handlePathDrop = async (path: string, event: DragEvent) => {
     if (dragPaths.length === 0) return
     if (!dragDrop.canDropOn(dragPaths, path)) return
     event.preventDefault()
@@ -303,6 +303,30 @@ export const useExplorerDragDrop = (deps: Deps) => {
     }
   }
 
+  const handleBreadcrumbDragOver = (path: string, event: DragEvent) => {
+    handlePathDragOver(path, event)
+  }
+
+  const handleBreadcrumbDragLeave = (path: string) => {
+    handlePathDragLeave(path)
+  }
+
+  const handleBreadcrumbDrop = async (path: string, event: DragEvent) => {
+    await handlePathDrop(path, event)
+  }
+
+  const handleBookmarkDragOver = (path: string, event: DragEvent) => {
+    handlePathDragOver(path, event)
+  }
+
+  const handleBookmarkDragLeave = (path: string) => {
+    handlePathDragLeave(path)
+  }
+
+  const handleBookmarkDrop = async (path: string, event: DragEvent) => {
+    await handlePathDrop(path, event)
+  }
+
   return {
     dragState,
     dragAction,
@@ -318,5 +342,8 @@ export const useExplorerDragDrop = (deps: Deps) => {
     handleBreadcrumbDragOver,
     handleBreadcrumbDragLeave,
     handleBreadcrumbDrop,
+    handleBookmarkDragOver,
+    handleBookmarkDragLeave,
+    handleBookmarkDrop,
   }
 }
