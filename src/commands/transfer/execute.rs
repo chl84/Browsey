@@ -38,6 +38,11 @@ struct TransferProgressPayload {
     finished: bool,
 }
 
+struct CloudToLocalBatchProgressPlan {
+    total_bytes: u64,
+    file_sizes: Vec<u64>,
+}
+
 pub(super) async fn execute_mixed_entries(
     op: MixedTransferOp,
     sources: Vec<String>,
@@ -60,13 +65,9 @@ pub(super) async fn execute_mixed_entries(
     };
     let cancel_guard = register_mixed_cancel(&cancel_state, &progress_event)?;
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
-    let progress = if source_count == 1 {
-        progress_event
-            .clone()
-            .map(|event_name| TransferProgressContext { app, event_name })
-    } else {
-        None
-    };
+    let progress = progress_event
+        .clone()
+        .map(|event_name| TransferProgressContext { app, event_name });
     let task = tauri::async_runtime::spawn_blocking(move || {
         execute_mixed_entries_blocking(op, route, options, cancel_token, progress)
     });
@@ -232,7 +233,14 @@ fn execute_mixed_entries_blocking_with_cli(
             }
         }
         MixedTransferRoute::CloudToLocal { sources, dest_dir } => {
-            for src in sources {
+            let batch_source_count = sources.len();
+            let progress_plan = if batch_source_count > 1 {
+                build_cloud_to_local_batch_progress_plan(cli, &sources)?
+            } else {
+                None
+            };
+            let mut completed_bytes = 0_u64;
+            for (index, src) in sources.into_iter().enumerate() {
                 if transfer_cancelled(cancel.as_deref()) {
                     return Err(transfer_err(
                         TransferErrorCode::Cancelled,
@@ -246,16 +254,35 @@ fn execute_mixed_entries_blocking_with_cli(
                     )
                 })?;
                 let target = dest_dir.join(leaf);
-                execute_rclone_transfer(
-                    cli,
-                    op,
-                    LocalOrCloudArg::Cloud(src.clone()),
-                    LocalOrCloudArg::Local(target.clone()),
-                    options,
-                    Some(src.remote()),
-                    cancel.as_deref(),
-                    progress.as_ref(),
-                )?;
+                if let Some(plan) = progress_plan.as_ref() {
+                    execute_cloud_to_local_file_transfer_with_aggregate_progress(
+                        cli,
+                        op,
+                        &src,
+                        &target,
+                        cancel.as_deref(),
+                        progress.as_ref().expect("progress context for batch plan"),
+                        completed_bytes,
+                        plan.total_bytes,
+                        plan.file_sizes[index],
+                    )?;
+                    completed_bytes = completed_bytes.saturating_add(plan.file_sizes[index]);
+                } else {
+                    execute_rclone_transfer(
+                        cli,
+                        op,
+                        LocalOrCloudArg::Cloud(src.clone()),
+                        LocalOrCloudArg::Local(target.clone()),
+                        options,
+                        Some(src.remote()),
+                        cancel.as_deref(),
+                        if batch_source_count == 1 {
+                            progress.as_ref()
+                        } else {
+                            None
+                        },
+                    )?;
+                }
                 if op == MixedTransferOp::Move {
                     moved_cloud_sources.push(src.clone());
                 }
@@ -381,6 +408,71 @@ fn try_execute_cloud_to_local_file_transfer_with_progress(
     });
 
     Ok(Some(result))
+}
+
+fn build_cloud_to_local_batch_progress_plan(
+    cli: &RcloneCli,
+    sources: &[CloudPath],
+) -> TransferResult<Option<CloudToLocalBatchProgressPlan>> {
+    let provider = mixed_cloud_provider_for_cli(cli);
+    let mut file_sizes = Vec::with_capacity(sources.len());
+    let mut total_bytes = 0_u64;
+    for src in sources {
+        let Some(entry) = provider
+            .stat_path(src)
+            .map_err(map_cloud_error_to_transfer)?
+        else {
+            return Err(transfer_err(
+                TransferErrorCode::NotFound,
+                "Cloud source was not found",
+            ));
+        };
+        if !matches!(entry.kind, CloudEntryKind::File) {
+            return Ok(None);
+        }
+        let size = entry.size.unwrap_or(1);
+        file_sizes.push(size);
+        total_bytes = total_bytes.saturating_add(size);
+    }
+    if total_bytes == 0 {
+        return Ok(None);
+    }
+    Ok(Some(CloudToLocalBatchProgressPlan {
+        total_bytes,
+        file_sizes,
+    }))
+}
+
+fn execute_cloud_to_local_file_transfer_with_aggregate_progress(
+    cli: &RcloneCli,
+    op: MixedTransferOp,
+    src: &CloudPath,
+    dst: &std::path::Path,
+    cancel: Option<&AtomicBool>,
+    progress: &TransferProgressContext,
+    completed_before: u64,
+    total_bytes: u64,
+    file_size: u64,
+) -> TransferResult<()> {
+    let provider = mixed_cloud_provider_for_cli(cli);
+    provider
+        .download_file_with_progress(src, dst, &progress.event_name, cancel, |bytes, _| {
+            let aggregate = completed_before.saturating_add(bytes.min(file_size));
+            emit_transfer_progress(progress, aggregate, total_bytes, false);
+        })
+        .map_err(map_cloud_error_to_transfer)?;
+    if op == MixedTransferOp::Move {
+        provider
+            .delete_file(src, cancel)
+            .map_err(map_cloud_error_to_transfer)?;
+    }
+    emit_transfer_progress(
+        progress,
+        completed_before.saturating_add(file_size),
+        total_bytes,
+        false,
+    );
+    Ok(())
 }
 
 fn mixed_target_exists(
