@@ -2,6 +2,8 @@
 import BookmarksSection from '../../components/BookmarksSection.svelte'
 import PartitionsSection from '../../components/PartitionsSection.svelte'
 import PlacesSection from '../../components/PlacesSection.svelte'
+import TextField from '../../../../shared/ui/TextField.svelte'
+import { filterSidebarEntries } from '../sidebarFilter'
 import type { Partition } from '../../model/types'
 
   export let places: { label: string; path: string }[] = []
@@ -17,26 +19,67 @@ import type { Partition } from '../../model/types'
   export let onBookmarkDrop: (path: string, e: DragEvent) => void = () => {}
   export let onPartitionSelect: (path: string) => void = () => {}
   export let onPartitionEject: (path: string) => void = () => {}
+
+  let sidebarFilter = ''
+  let filteredPlaces = places
+  let filteredBookmarks = bookmarks
+  let filteredPartitions = partitions
+  let hasFilter = false
+  let hasMatches = true
+
+  $: ({ places: filteredPlaces, bookmarks: filteredBookmarks, partitions: filteredPartitions } =
+    filterSidebarEntries({
+      query: sidebarFilter,
+      places,
+      bookmarks,
+      partitions,
+    }))
+  $: hasFilter = sidebarFilter.trim().length > 0
+  $: hasMatches =
+    filteredPlaces.length > 0 || filteredBookmarks.length > 0 || filteredPartitions.length > 0
 </script>
 
 <aside class="sidebar" class:collapsed={collapsed}>
   <div class="drag-top" data-tauri-drag-region></div>
   <div class="sidebar-scroll">
-    <PlacesSection places={places} onSelect={onPlaceSelect} />
-    <BookmarksSection
-      {bookmarks}
-      {dragTargetPath}
-      onSelect={onBookmarkSelect}
-      onRemove={onRemoveBookmark}
-      onDragOver={onBookmarkDragOver}
-      onDragLeave={onBookmarkDragLeave}
-      onDrop={onBookmarkDrop}
-    />
-    <PartitionsSection
-      partitions={partitions}
-      onSelect={onPartitionSelect}
-      on:eject={(e) => onPartitionEject(e.detail.path)}
-    />
+    <div class="sidebar-filter-wrap">
+      <TextField
+        type="search"
+        variant="sidebar"
+        className="sidebar-filter"
+        placeholder="Filter sidebar"
+        aria-label="Filter sidebar"
+        bind:value={sidebarFilter}
+      />
+    </div>
+
+    {#if filteredPlaces.length > 0}
+      <PlacesSection places={filteredPlaces} onSelect={onPlaceSelect} />
+    {/if}
+
+    {#if filteredBookmarks.length > 0}
+      <BookmarksSection
+        bookmarks={filteredBookmarks}
+        {dragTargetPath}
+        onSelect={onBookmarkSelect}
+        onRemove={onRemoveBookmark}
+        onDragOver={onBookmarkDragOver}
+        onDragLeave={onBookmarkDragLeave}
+        onDrop={onBookmarkDrop}
+      />
+    {/if}
+
+    {#if filteredPartitions.length > 0}
+      <PartitionsSection
+        partitions={filteredPartitions}
+        onSelect={onPartitionSelect}
+        on:eject={(e) => onPartitionEject(e.detail.path)}
+      />
+    {/if}
+
+    {#if hasFilter && !hasMatches}
+      <div class="sidebar-empty">No sidebar matches</div>
+    {/if}
   </div>
 </aside>
 
@@ -99,5 +142,15 @@ import type { Partition } from '../../model/types'
 
   .sidebar-scroll::-webkit-scrollbar {
     display: none;
+  }
+
+  .sidebar-filter-wrap {
+    padding: 0 6px;
+  }
+
+  .sidebar-empty {
+    color: var(--fg-dim);
+    font-size: var(--font-size-small);
+    padding: 0 10px;
   }
 </style>
