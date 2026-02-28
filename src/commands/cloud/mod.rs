@@ -24,7 +24,7 @@ use types::{
 };
 
 const CLOUD_REMOTE_DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(45);
-const CLOUD_DIR_LISTING_CACHE_TTL: Duration = Duration::from_secs(4);
+const CLOUD_DIR_LISTING_CACHE_TTL: Duration = Duration::from_secs(20);
 const CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS: &[u64] = &[150, 400];
 const CLOUD_REMOTE_MAX_CONCURRENT_OPS: usize = 2;
 const CLOUD_REMOTE_RATE_LIMIT_COOLDOWN: Duration = Duration::from_secs(3);
@@ -210,6 +210,14 @@ fn list_cloud_dir_cached(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>
     if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
         prune_cloud_dir_listing_cache_locked(&mut guard, now);
         if let Some(cached) = guard.get(&key) {
+            info!(
+                op = "cloud_list_entries",
+                phase = "cache_hit",
+                path = %path,
+                age_ms = now.duration_since(cached.fetched_at).as_millis() as u64,
+                entry_count = cached.entries.len(),
+                "cloud command phase timing"
+            );
             return Ok(cached.entries.clone());
         }
     }
@@ -235,32 +243,73 @@ fn prune_cloud_dir_listing_cache_locked(
 }
 
 fn list_cloud_dir_with_retry(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
-    with_cloud_remote_permits(vec![path.remote().to_string()], || {
-        let provider = RcloneCloudProvider::default();
-        let mut attempt = 0usize;
-        loop {
-            match provider.list_dir(path) {
-                Ok(entries) => return Ok(entries),
-                Err(error) if should_retry_cloud_dir_error(&error) => {
-                    let Some(backoff_ms) =
-                        CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS.get(attempt).copied()
-                    else {
-                        return Err(error);
-                    };
-                    attempt += 1;
+    let permit_started = Instant::now();
+    let guard = acquire_cloud_remote_permits(vec![path.remote().to_string()]);
+    let permit_wait_ms = permit_started.elapsed().as_millis() as u64;
+    let provider = RcloneCloudProvider::default();
+    let fetch_started = Instant::now();
+    let mut attempt = 0usize;
+    loop {
+        match provider.list_dir(path) {
+            Ok(entries) => {
+                info!(
+                    op = "cloud_list_entries",
+                    phase = "backend_fetch",
+                    path = %path,
+                    permit_wait_ms,
+                    fetch_ms = fetch_started.elapsed().as_millis() as u64,
+                    attempts = attempt + 1,
+                    entry_count = entries.len(),
+                    "cloud command phase timing"
+                );
+                return Ok(entries);
+            }
+            Err(error) if should_retry_cloud_dir_error(&error) => {
+                let Some(backoff_ms) = CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS.get(attempt).copied()
+                else {
+                    if error.code() == CloudCommandErrorCode::RateLimited {
+                        note_remote_rate_limit_cooldown(&guard.remotes);
+                    }
                     debug!(
-                        attempt,
-                        backoff_ms,
+                        op = "cloud_list_entries",
+                        phase = "backend_fetch",
                         path = %path,
+                        permit_wait_ms,
+                        fetch_ms = fetch_started.elapsed().as_millis() as u64,
+                        attempts = attempt + 1,
                         error = %error,
-                        "retrying cloud directory listing after transient error"
+                        "cloud command failed after retries"
                     );
-                    std::thread::sleep(Duration::from_millis(backoff_ms));
+                    return Err(error);
+                };
+                attempt += 1;
+                debug!(
+                    attempt,
+                    backoff_ms,
+                    path = %path,
+                    error = %error,
+                    "retrying cloud directory listing after transient error"
+                );
+                std::thread::sleep(Duration::from_millis(backoff_ms));
+            }
+            Err(error) => {
+                if error.code() == CloudCommandErrorCode::RateLimited {
+                    note_remote_rate_limit_cooldown(&guard.remotes);
                 }
-                Err(error) => return Err(error),
+                debug!(
+                    op = "cloud_list_entries",
+                    phase = "backend_fetch",
+                    path = %path,
+                    permit_wait_ms,
+                    fetch_ms = fetch_started.elapsed().as_millis() as u64,
+                    attempts = attempt + 1,
+                    error = %error,
+                    "cloud command failed"
+                );
+                return Err(error);
             }
         }
-    })
+    }
 }
 
 fn should_retry_cloud_dir_error(error: &CloudCommandError) -> bool {
