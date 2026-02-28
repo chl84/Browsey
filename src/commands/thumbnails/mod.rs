@@ -35,7 +35,7 @@ mod error;
 use crate::db;
 use crate::errors::api_error::ApiResult;
 use crate::fs_utils::debug_log;
-use error::{map_api_result, ThumbnailError};
+use error::{map_api_result, map_external_result, ThumbnailError, ThumbnailResult};
 
 const MAX_DIM_DEFAULT: u32 = 96;
 const MAX_DIM_HARD_LIMIT: u32 = 512;
@@ -91,7 +91,7 @@ static DECODE_POOL: Lazy<ThreadPool> = Lazy::new(|| {
         .expect("failed to build decode pool")
 });
 
-type InflightWaiters = Vec<oneshot::Sender<Result<ThumbnailResponse, String>>>;
+type InflightWaiters = Vec<oneshot::Sender<ThumbnailResult<ThumbnailResponse>>>;
 type InflightMap = HashMap<String, InflightWaiters>;
 static INFLIGHT: Lazy<std::sync::Mutex<InflightMap>> =
     Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
@@ -120,24 +120,33 @@ pub struct ThumbnailCacheClearResult {
 
 #[tauri::command]
 pub fn clear_thumbnail_cache() -> ApiResult<ThumbnailCacheClearResult> {
-    map_api_result(clear_thumbnail_cache_impl().map_err(ThumbnailError::from_external_message))
+    map_api_result(clear_thumbnail_cache_impl())
 }
 
-fn clear_thumbnail_cache_impl() -> Result<ThumbnailCacheClearResult, String> {
-    let dir = cache_dir()?;
+fn clear_thumbnail_cache_impl() -> ThumbnailResult<ThumbnailCacheClearResult> {
+    let dir = map_external_result(cache_dir())?;
     if !dir.exists() {
-        fs::create_dir_all(&dir)
-            .map_err(|e| format!("Failed to create thumbnail cache dir: {e}"))?;
+        fs::create_dir_all(&dir).map_err(|e| {
+            ThumbnailError::from_external_message(format!(
+                "Failed to create thumbnail cache dir: {e}"
+            ))
+        })?;
         return Ok(ThumbnailCacheClearResult {
             removed_files: 0,
             removed_bytes: 0,
         });
     }
 
-    let (removed_files, removed_bytes) = thumbnail_cache_stats(&dir)?;
+    let (removed_files, removed_bytes) = map_external_result(thumbnail_cache_stats(&dir))?;
 
-    fs::remove_dir_all(&dir).map_err(|e| format!("Failed to clear thumbnail cache: {e}"))?;
-    fs::create_dir_all(&dir).map_err(|e| format!("Failed to recreate thumbnail cache dir: {e}"))?;
+    fs::remove_dir_all(&dir).map_err(|e| {
+        ThumbnailError::from_external_message(format!("Failed to clear thumbnail cache: {e}"))
+    })?;
+    fs::create_dir_all(&dir).map_err(|e| {
+        ThumbnailError::from_external_message(format!(
+            "Failed to recreate thumbnail cache dir: {e}"
+        ))
+    })?;
 
     Ok(ThumbnailCacheClearResult {
         removed_files,
@@ -152,11 +161,7 @@ pub async fn get_thumbnail(
     max_dim: Option<u32>,
     generation: Option<String>,
 ) -> ApiResult<ThumbnailResponse> {
-    map_api_result(
-        get_thumbnail_impl(app_handle, path, max_dim, generation)
-            .await
-            .map_err(ThumbnailError::from_external_message),
-    )
+    map_api_result(get_thumbnail_impl(app_handle, path, max_dim, generation).await)
 }
 
 async fn get_thumbnail_impl(
@@ -164,26 +169,34 @@ async fn get_thumbnail_impl(
     path: String,
     max_dim: Option<u32>,
     generation: Option<String>,
-) -> Result<ThumbnailResponse, String> {
+) -> ThumbnailResult<ThumbnailResponse> {
     let max_dim = max_dim
         .unwrap_or(MAX_DIM_DEFAULT)
         .clamp(MIN_DIM_HARD_LIMIT, MAX_DIM_HARD_LIMIT);
 
-    let target = sanitize_input_path(&path)?;
+    let target = map_external_result(sanitize_input_path(&path))?;
     // Quick permission check (fail fast on unreadable files)
     if let Err(e) = fs::File::open(&target) {
-        return Err(format!("Cannot read file: {e}"));
+        return Err(ThumbnailError::from_external_message(format!(
+            "Cannot read file: {e}"
+        )));
     }
-    let meta = fs::metadata(&target).map_err(|e| format!("Failed to read metadata: {e}"))?;
+    let meta = fs::metadata(&target).map_err(|e| {
+        ThumbnailError::from_external_message(format!("Failed to read metadata: {e}"))
+    })?;
     if !meta.is_file() {
-        return Err("Target is not a file".to_string());
+        return Err(ThumbnailError::from_external_message(
+            "Target is not a file",
+        ));
     }
     let kind = thumb_kind(&target);
     let mut ffmpeg_override: Option<PathBuf> = None;
     if matches!(kind, ThumbKind::Video) {
         if let Ok(conn) = db::open() {
             if let Ok(Some(false)) = db::get_setting_bool(&conn, "videoThumbs") {
-                return Err("Video thumbnails disabled".to_string());
+                return Err(ThumbnailError::from_external_message(
+                    "Video thumbnails disabled",
+                ));
             }
             if let Ok(Some(path)) = db::get_setting_string(&conn, "ffmpegPath") {
                 let trimmed = path.trim();
@@ -198,16 +211,17 @@ async fn get_thumbnail_impl(
         _ => MAX_FILE_BYTES,
     };
     if meta.len() > size_limit {
-        return Err(format!(
+        return Err(ThumbnailError::from_external_message(format!(
             "File too large for thumbnail (>{} MB)",
             size_limit / 1024 / 1024
-        ));
+        )));
     }
     let mtime = meta.modified().ok();
 
-    let cache_dir = cache_dir()?;
-    fs::create_dir_all(&cache_dir)
-        .map_err(|e| format!("Failed to create thumbnail cache dir: {e}"))?;
+    let cache_dir = map_external_result(cache_dir())?;
+    fs::create_dir_all(&cache_dir).map_err(|e| {
+        ThumbnailError::from_external_message(format!("Failed to create thumbnail cache dir: {e}"))
+    })?;
 
     let key = cache_key(&target, mtime, max_dim);
     let cache_path = cache_dir.join(format!("{key}.png"));
@@ -223,9 +237,9 @@ async fn get_thumbnail_impl(
 
     // In-flight deduplication
     if let Some(rx) = register_or_wait(&key) {
-        let res: Result<Result<ThumbnailResponse, String>, _> = rx.await;
+        let res: Result<ThumbnailResult<ThumbnailResponse>, _> = rx.await;
         return res
-            .map_err(|_| "Thumbnail task cancelled".to_string())?
+            .map_err(|_| ThumbnailError::from_external_message("Thumbnail task cancelled"))?
             .map(|mut r| {
                 r.cached = true;
                 r
@@ -243,7 +257,7 @@ async fn get_thumbnail_impl(
     let permit_global = BLOCKING_SEM
         .acquire_many(permits)
         .await
-        .map_err(|_| "Semaphore closed".to_string())?;
+        .map_err(|_| ThumbnailError::from_external_message("Semaphore closed"))?;
 
     let res = tauri::async_runtime::spawn_blocking(move || {
         let res_dir_opt = app_handle.path().resource_dir().ok();
@@ -257,7 +271,7 @@ async fn get_thumbnail_impl(
         )
     })
     .await
-    .map_err(|e| format!("Thumbnail task cancelled: {e}"));
+    .map_err(|e| ThumbnailError::from_external_message(format!("Thumbnail task cancelled: {e}")));
 
     if let Err(err) = res.as_ref() {
         // Make sure callers waiting on the same key get released even on panics/JoinError.
@@ -266,7 +280,7 @@ async fn get_thumbnail_impl(
 
     drop(permit_global);
 
-    let res = res?;
+    let res = map_external_result(res?);
 
     static TRIM_COUNTER: Lazy<std::sync::Mutex<u32>> = Lazy::new(|| std::sync::Mutex::new(0));
 
@@ -494,10 +508,10 @@ pub(super) fn thumb_log(msg: &str) {
     }
 }
 
-fn register_or_wait(key: &str) -> Option<oneshot::Receiver<Result<ThumbnailResponse, String>>> {
+fn register_or_wait(key: &str) -> Option<oneshot::Receiver<ThumbnailResult<ThumbnailResponse>>> {
     let mut map = INFLIGHT.lock().expect("inflight poisoned");
     if let Some(waiters) = map.get_mut(key) {
-        let (tx, rx) = oneshot::channel::<Result<ThumbnailResponse, String>>();
+        let (tx, rx) = oneshot::channel::<ThumbnailResult<ThumbnailResponse>>();
         waiters.push(tx);
         return Some(rx);
     }
@@ -505,7 +519,7 @@ fn register_or_wait(key: &str) -> Option<oneshot::Receiver<Result<ThumbnailRespo
     None
 }
 
-fn notify_waiters(key: &str, result: Result<ThumbnailResponse, String>) {
+fn notify_waiters(key: &str, result: ThumbnailResult<ThumbnailResponse>) {
     let waiters = {
         let mut map = INFLIGHT.lock().expect("inflight poisoned");
         map.remove(key)
