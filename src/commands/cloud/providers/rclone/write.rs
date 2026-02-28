@@ -10,7 +10,7 @@ use crate::commands::cloud::rclone_rc::{
 use serde_json::Value;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
-use tracing::info;
+use tracing::debug;
 
 impl RcloneCloudProvider {
     pub(super) fn upload_file_with_progress_impl<F>(
@@ -81,7 +81,7 @@ impl RcloneCloudProvider {
                     let _ = self.rc.core_stats_delete(progress_group);
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    info!(
+                    debug!(
                         src = %local_src.display(),
                         dst = %dst,
                         error = %error,
@@ -182,7 +182,7 @@ impl RcloneCloudProvider {
                     let _ = self.rc.core_stats_delete(progress_group);
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    info!(
+                    debug!(
                         src = %src,
                         dst = %local_dest.display(),
                         error = %error,
@@ -250,7 +250,7 @@ impl RcloneCloudProvider {
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    info!(
+                    debug!(
                         path = %path,
                         error = %error,
                         "rclone rc mkdir failed; falling back to CLI mkdir"
@@ -307,7 +307,7 @@ impl RcloneCloudProvider {
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    info!(
+                    debug!(
                         path = %path,
                         error = %error,
                         "rclone rc deletefile failed; falling back to CLI deletefile"
@@ -358,7 +358,7 @@ impl RcloneCloudProvider {
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    info!(
+                    debug!(
                         path = %path,
                         error = %error,
                         "rclone rc purge failed; falling back to CLI purge"
@@ -408,7 +408,7 @@ impl RcloneCloudProvider {
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    info!(
+                    debug!(
                         path = %path,
                         error = %error,
                         "rclone rc rmdir failed; falling back to CLI rmdir"
@@ -468,7 +468,7 @@ impl RcloneCloudProvider {
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    info!(
+                    debug!(
                         src = %src,
                         dst = %dst,
                         error = %error,
@@ -538,7 +538,7 @@ impl RcloneCloudProvider {
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    info!(
+                    debug!(
                         src = %src,
                         dst = %dst,
                         error = %error,

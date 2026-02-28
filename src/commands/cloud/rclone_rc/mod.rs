@@ -18,7 +18,7 @@ use std::{
     io,
     time::{Duration, Instant},
 };
-use tracing::info;
+use tracing::debug;
 
 const RCLONE_RC_ENABLE_ENV: &str = "BROWSEY_RCLONE_RC";
 const RCLONE_RC_READ_ENABLE_ENV: &str = "BROWSEY_RCLONE_RC_READ";
@@ -280,7 +280,7 @@ impl RcloneRcClient {
                     retry_safe && attempt <= RCLONE_RC_MAX_RETRIES && is_retryable_rc_error(error)
                 })
                 .unwrap_or(false);
-            info!(
+            debug!(
                 method = method.as_str(),
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 timeout_ms = timeout.as_millis() as u64,

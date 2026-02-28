@@ -8,7 +8,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 use wait_timeout::ChildExt;
 
 const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] =
@@ -322,19 +322,12 @@ impl RcloneCli {
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         if output.status.success() {
-            if subcommand == RcloneSubcommand::LsJson {
-                info!(
-                    command = subcommand.as_str(),
-                    stat = lsjson_stat,
-                    elapsed_ms,
-                    "rclone command succeeded"
-                );
-            } else {
-                debug!(
-                    command = subcommand.as_str(),
-                    elapsed_ms, "rclone command succeeded"
-                );
-            }
+            debug!(
+                command = subcommand.as_str(),
+                stat = lsjson_stat,
+                elapsed_ms,
+                "rclone command succeeded"
+            );
             Ok(RcloneTextOutput { stdout, stderr })
         } else {
             let stdout = truncate_failure_output(stdout);

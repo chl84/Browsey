@@ -8,7 +8,7 @@ use super::{
 };
 use std::collections::HashMap;
 use std::time::Instant;
-use tracing::{debug, info};
+use tracing::debug;
 
 pub(super) async fn preview_cloud_conflicts_impl(
     sources: Vec<String>,
@@ -30,7 +30,7 @@ pub(super) async fn preview_cloud_conflicts_impl(
     let result = map_spawn_result(task.await, "cloud conflict preview task failed");
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
-        Ok(conflicts) => info!(
+        Ok(conflicts) => debug!(
             op = "cloud_conflict_preview",
             dest_dir = %dest_dir_for_log,
             source_count,

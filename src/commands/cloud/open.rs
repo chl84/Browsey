@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant, SystemTime};
-use tracing::{debug, info};
+use tracing::debug;
 
 const CLOUD_OPEN_CACHE_DIRNAME: &str = "cloud-open";
 const CLOUD_OPEN_PART_SUFFIX: &str = ".part";
@@ -80,7 +80,7 @@ pub(super) async fn open_cloud_entry_impl(
     let result = map_spawn_result(task.await, "cloud open task failed");
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
-        Ok(()) => info!(
+        Ok(()) => debug!(
             op = "cloud_open_file",
             path = %path_for_log,
             elapsed_ms,

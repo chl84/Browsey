@@ -12,7 +12,7 @@ use std::{
     sync::OnceLock,
     time::Instant,
 };
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 impl RcloneRcClient {
     pub(super) fn recycle_daemon_after_error(
@@ -70,7 +70,7 @@ impl RcloneRcClient {
 
         if let Some(existing) = state.daemon.as_mut() {
             if existing.binary != self.binary {
-                info!(
+                debug!(
                     existing_binary = %existing.binary.to_string_lossy(),
                     requested_binary = %self.binary.to_string_lossy(),
                     "restarting rclone rcd daemon for different binary path"
@@ -84,7 +84,7 @@ impl RcloneRcClient {
             if daemon_is_running(existing)? && existing.socket_path.exists() {
                 return Ok(existing.socket_path.clone());
             }
-            info!(
+            debug!(
                 socket = %existing.socket_path.display(),
                 "restarting stale rclone rcd daemon"
             );
@@ -107,7 +107,7 @@ impl RcloneRcClient {
             }
         };
         let socket_path = daemon.socket_path.clone();
-        info!(socket = %socket_path.display(), "started rclone rcd daemon");
+        debug!(socket = %socket_path.display(), "started rclone rcd daemon");
         state.startup_blocked_until = None;
         state.startup_blocked_binary = None;
         state.daemon = Some(daemon);
