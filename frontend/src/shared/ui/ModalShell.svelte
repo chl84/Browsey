@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import { modalOpenState } from './modalOpenState'
+  import { applyContainedWheelScrollAssist } from '../lib/wheelScrollAssist'
 
   export let open = false
   export let title: string | null = null
@@ -94,6 +95,11 @@
       onClose()
     }
   }
+
+  const handleWheel = (event: WheelEvent) => {
+    if (!modalEl) return
+    applyContainedWheelScrollAssist(modalEl, event)
+  }
 </script>
 
 {#if open}
@@ -113,6 +119,7 @@
       style={modalWidth ? `--modal-width: ${modalWidth};` : undefined}
       on:click|stopPropagation
       on:keydown={handleKeydown}
+      on:wheel={handleWheel}
       bind:this={modalEl}
     >
       {#if title || $$slots.header}

@@ -220,16 +220,20 @@
 
   .grid {
     display: block;
+    width: 100%;
     height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior-y: contain;
     min-height: 0;
+    direction: ltr;
     position: relative;
+    isolation: isolate;
     user-select: none;
     cursor: default;
-    padding: 20px;
+    padding: 20px 20px 32px;
     box-sizing: border-box;
+    scrollbar-gutter: stable;
   }
 
   .grid:focus,
