@@ -1,9 +1,6 @@
 use crate::errors::{
     api_error::ApiResult,
-    domain::{
-        self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint,
-    },
+    domain::{self, DomainError, ErrorCode},
 };
 use std::fmt;
 
@@ -12,14 +9,11 @@ pub(super) enum NetworkErrorCode {
     InvalidUri,
     UnsupportedUri,
     UnsupportedScheme,
-    NotFound,
-    PermissionDenied,
     OpenFailed,
     DiscoveryFailed,
     MountFailed,
     EjectFailed,
     TaskFailed,
-    UnknownError,
 }
 
 impl ErrorCode for NetworkErrorCode {
@@ -28,14 +22,11 @@ impl ErrorCode for NetworkErrorCode {
             Self::InvalidUri => "invalid_uri",
             Self::UnsupportedUri => "unsupported_uri",
             Self::UnsupportedScheme => "unsupported_scheme",
-            Self::NotFound => "not_found",
-            Self::PermissionDenied => "permission_denied",
             Self::OpenFailed => "open_failed",
             Self::DiscoveryFailed => "discovery_failed",
             Self::MountFailed => "mount_failed",
             Self::EjectFailed => "eject_failed",
             Self::TaskFailed => "task_failed",
-            Self::UnknownError => "unknown_error",
         }
     }
 }
@@ -52,26 +43,6 @@ impl NetworkError {
             code,
             message: message.into(),
         }
-    }
-
-    pub(super) fn from_external_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        if let Some(hint) = classify_io_hint_from_message(&message) {
-            let code = match hint {
-                IoErrorHint::NotFound => Some(NetworkErrorCode::NotFound),
-                IoErrorHint::PermissionDenied => Some(NetworkErrorCode::PermissionDenied),
-                _ => None,
-            };
-            if let Some(code) = code {
-                return Self::new(code, message);
-            }
-        }
-        let code = classify_message_by_patterns(
-            &message,
-            NETWORK_CLASSIFICATION_RULES,
-            NetworkErrorCode::UnknownError,
-        );
-        Self::new(code, message)
     }
 }
 
@@ -98,32 +69,3 @@ pub(super) type NetworkResult<T> = Result<T, NetworkError>;
 pub(super) fn map_api_result<T>(result: NetworkResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
-
-const NETWORK_CLASSIFICATION_RULES: &[(NetworkErrorCode, &[&str])] = &[
-    (
-        NetworkErrorCode::TaskFailed,
-        &["task failed", "task panicked"],
-    ),
-    (
-        NetworkErrorCode::UnsupportedUri,
-        &["unsupported uri", "network mounts are not supported"],
-    ),
-    (
-        NetworkErrorCode::UnsupportedScheme,
-        &["only http/https uris are supported"],
-    ),
-    (NetworkErrorCode::InvalidUri, &["invalid uri"]),
-    (
-        NetworkErrorCode::OpenFailed,
-        &["failed to open uri", "failed to open"],
-    ),
-    (
-        NetworkErrorCode::DiscoveryFailed,
-        &["network discovery failed", "network listing failed"],
-    ),
-    (NetworkErrorCode::MountFailed, &["failed to mount"]),
-    (
-        NetworkErrorCode::EjectFailed,
-        &["eject failed", "volume is in use"],
-    ),
-];

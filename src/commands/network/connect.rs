@@ -9,7 +9,7 @@ use super::error::NetworkErrorCode;
 use super::mounts;
 use super::{
     discovery,
-    error::{map_api_result, NetworkError, NetworkResult},
+    error::{map_api_result, NetworkResult},
     uri::{self, NetworkUriKind},
 };
 
@@ -50,8 +50,7 @@ async fn connect_network_uri_impl(
         }),
         NetworkUriKind::External => {
             let target = normalized_uri.unwrap_or_default();
-            discovery::open_network_uri(target)
-                .map_err(|error| NetworkError::from_external_message(error.message))?;
+            discovery::open_network_uri_impl(target)?;
             Ok(ConnectNetworkUriResult {
                 kind,
                 normalized_uri: classified.normalized_uri,
@@ -95,8 +94,7 @@ async fn connect_network_uri_impl(uri: String) -> NetworkResult<ConnectNetworkUr
         }),
         NetworkUriKind::External => {
             let target = normalized_uri.unwrap_or_default();
-            discovery::open_network_uri(target)
-                .map_err(|error| NetworkError::from_external_message(error.message))?;
+            discovery::open_network_uri_impl(target)?;
             Ok(ConnectNetworkUriResult {
                 kind,
                 normalized_uri: classified.normalized_uri,

@@ -386,7 +386,7 @@ pub async fn list_network_devices() -> ApiResult<Vec<MountInfo>> {
 
 #[tauri::command]
 pub fn open_network_uri(uri: String) -> ApiResult<()> {
-    map_api_result(open_network_uri_impl(uri).map_err(NetworkError::from_external_message))
+    map_api_result(open_network_uri_impl(uri))
 }
 
 async fn list_network_devices_impl() -> NetworkResult<Vec<MountInfo>> {
@@ -400,15 +400,28 @@ async fn list_network_devices_impl() -> NetworkResult<Vec<MountInfo>> {
     }
 }
 
-pub(super) fn open_network_uri_impl(uri: String) -> Result<(), String> {
+pub(super) fn open_network_uri_impl(uri: String) -> NetworkResult<()> {
     let Some((scheme, normalized)) = canonicalize_uri(&uri) else {
-        return Err("Unsupported URI".into());
+        return Err(NetworkError::new(
+            NetworkErrorCode::UnsupportedUri,
+            "Unsupported URI",
+        ));
     };
     if !matches!(scheme.as_str(), "http" | "https") {
-        return Err("Only HTTP/HTTPS URIs are supported".into());
+        return Err(NetworkError::new(
+            NetworkErrorCode::UnsupportedScheme,
+            "Only HTTP/HTTPS URIs are supported",
+        ));
     }
-    let parsed = Url::parse(&normalized).map_err(|e| format!("Invalid URI: {e}"))?;
-    open::that_detached(parsed.as_str()).map_err(|e| format!("Failed to open URI: {e}"))
+    let parsed = Url::parse(&normalized).map_err(|e| {
+        NetworkError::new(NetworkErrorCode::InvalidUri, format!("Invalid URI: {e}"))
+    })?;
+    open::that_detached(parsed.as_str()).map_err(|e| {
+        NetworkError::new(
+            NetworkErrorCode::OpenFailed,
+            format!("Failed to open URI: {e}"),
+        )
+    })
 }
 
 #[cfg(test)]
