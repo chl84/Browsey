@@ -3,18 +3,67 @@
 use crate::{
     commands::listing::DirListing,
     db,
-    entry::{build_entry, normalize_key_for_db},
+    entry::{
+        build_entry, get_cached_meta, is_network_location, normalize_key_for_db, store_cached_meta,
+    },
     errors::api_error::ApiResult,
     sorting::{sort_entries, SortSpec},
 };
 use error::{map_api_result, LibraryError, LibraryErrorCode, LibraryResult};
 use std::collections::HashSet;
-use std::{fs, path::PathBuf};
-use tracing::error;
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    sync::mpsc,
+    time::Duration,
+};
 #[cfg(debug_assertions)]
 use tracing::info;
+use tracing::{error, warn};
 
 mod error;
+
+const RECENT_META_CACHE_TTL: Duration = Duration::from_secs(30);
+const RECENT_NETWORK_METADATA_TIMEOUT: Duration = Duration::from_millis(150);
+
+enum RecentMetadataProbe {
+    Available(fs::Metadata),
+    Missing,
+    TimedOut,
+    Failed(io::Error),
+}
+
+fn should_prune_recent_error(error: &io::Error) -> bool {
+    matches!(error.kind(), io::ErrorKind::NotFound)
+        || matches!(error.raw_os_error(), Some(2) | Some(3) | Some(20))
+}
+
+fn probe_recent_metadata(path: &Path) -> RecentMetadataProbe {
+    let result = if is_network_location(path) {
+        let path = path.to_path_buf();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(fs::symlink_metadata(&path));
+        });
+        match rx.recv_timeout(RECENT_NETWORK_METADATA_TIMEOUT) {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout) => return RecentMetadataProbe::TimedOut,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return RecentMetadataProbe::Failed(io::Error::other(
+                    "recent metadata probe channel closed",
+                ))
+            }
+        }
+    } else {
+        fs::symlink_metadata(path)
+    };
+
+    match result {
+        Ok(meta) => RecentMetadataProbe::Available(meta),
+        Err(error) if should_prune_recent_error(&error) => RecentMetadataProbe::Missing,
+        Err(error) => RecentMetadataProbe::Failed(error),
+    }
+}
 
 #[tauri::command]
 pub fn toggle_star(path: String) -> ApiResult<bool> {
@@ -83,7 +132,7 @@ pub fn list_recent(sort: Option<SortSpec>) -> ApiResult<DirListing> {
 }
 
 fn list_recent_impl(sort: Option<SortSpec>) -> LibraryResult<DirListing> {
-    let conn = db::open().map_err(|error| {
+    let mut conn = db::open().map_err(|error| {
         LibraryError::new(
             LibraryErrorCode::DatabaseOpenFailed,
             format!("Failed to open library database: {error}"),
@@ -95,18 +144,49 @@ fn list_recent_impl(sort: Option<SortSpec>) -> LibraryResult<DirListing> {
             format!("Failed to read starred set: {error}"),
         )
     })?;
-    let mut out = Vec::new();
-    for p in db::recent_paths(&conn).map_err(|error| {
+    let recent_paths = db::recent_paths(&conn).map_err(|error| {
         LibraryError::new(
             LibraryErrorCode::ListFailed,
             format!("Failed to list recent paths: {error}"),
         )
-    })? {
+    })?;
+    let mut out = Vec::new();
+    let mut stale_paths = Vec::new();
+    for p in recent_paths {
         let pb = PathBuf::from(&p);
-        if let Ok(meta) = fs::symlink_metadata(&pb) {
-            let is_link = meta.file_type().is_symlink();
-            let starred = star_set.contains(&normalize_key_for_db(&pb));
-            out.push(build_entry(&pb, &meta, is_link, starred));
+        let starred = star_set.contains(&normalize_key_for_db(&pb));
+
+        if is_network_location(&pb) {
+            if let Some(cached) = get_cached_meta(&pb, RECENT_META_CACHE_TTL) {
+                out.push(crate::commands::fs::entry_from_cached(
+                    &pb, &cached, starred,
+                ));
+                continue;
+            }
+        }
+
+        match probe_recent_metadata(&pb) {
+            RecentMetadataProbe::Available(meta) => {
+                let is_link = meta.file_type().is_symlink();
+                store_cached_meta(&pb, &meta, is_link);
+                out.push(build_entry(&pb, &meta, is_link, starred));
+            }
+            RecentMetadataProbe::Missing => stale_paths.push(p),
+            RecentMetadataProbe::TimedOut => {
+                warn!("Skipping slow recent path probe for {}", pb.display());
+            }
+            RecentMetadataProbe::Failed(error) => {
+                warn!(
+                    "Skipping recent path {} after metadata failure: {}",
+                    pb.display(),
+                    error
+                );
+            }
+        }
+    }
+    if !stale_paths.is_empty() {
+        if let Err(error) = db::delete_recent_paths(&mut conn, &stale_paths) {
+            warn!("Failed to prune stale recent entries: {}", error);
         }
     }
     if sort.is_some() {
@@ -182,4 +262,22 @@ fn clear_recents_impl() -> LibraryResult<u64> {
         )
     })?;
     Ok(removed as u64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_prune_recent_error;
+    use std::io;
+
+    #[test]
+    fn prunes_not_found_recent_errors() {
+        let error = io::Error::new(io::ErrorKind::NotFound, "missing");
+        assert!(should_prune_recent_error(&error));
+    }
+
+    #[test]
+    fn keeps_permission_denied_recent_errors() {
+        let error = io::Error::new(io::ErrorKind::PermissionDenied, "denied");
+        assert!(!should_prune_recent_error(&error));
+    }
 }
