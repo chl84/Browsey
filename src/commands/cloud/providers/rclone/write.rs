@@ -4,6 +4,9 @@ use super::{
     CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudPath, CloudProvider,
     RcloneCliError, RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
 };
+use crate::commands::cloud::rclone_rc::{
+    RcCopyFileFromLocalProgressSpec, RcCopyFileToLocalProgressSpec,
+};
 use serde_json::Value;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
@@ -51,12 +54,14 @@ impl RcloneCloudProvider {
             let local_parent_str = local_parent.to_string_lossy().to_string();
             let dst_fs = format!("{}:", dst.remote());
             match self.rc.operations_copyfile_from_local_with_progress(
-                &local_parent_str,
-                local_name,
-                &dst_fs,
-                dst.rel_path(),
-                progress_group,
-                cancel,
+                RcCopyFileFromLocalProgressSpec {
+                    src_dir: &local_parent_str,
+                    src_remote: local_name,
+                    dst_fs: &dst_fs,
+                    dst_remote: dst.rel_path(),
+                    group: progress_group,
+                    cancel_token: cancel,
+                },
                 |stats| {
                     if let Some((bytes, total)) = rc_stats_progress(&stats) {
                         on_progress(bytes, total);
@@ -150,12 +155,14 @@ impl RcloneCloudProvider {
             let src_fs = format!("{}:", src.remote());
             let local_parent_str = local_parent.to_string_lossy().to_string();
             match self.rc.operations_copyfile_to_local_with_progress(
-                &src_fs,
-                src.rel_path(),
-                &local_parent_str,
-                local_name,
-                progress_group,
-                cancel,
+                RcCopyFileToLocalProgressSpec {
+                    src_fs: &src_fs,
+                    src_remote: src.rel_path(),
+                    dst_dir: &local_parent_str,
+                    dst_remote: local_name,
+                    group: progress_group,
+                    cancel_token: cancel,
+                },
                 |stats| {
                     if let Some((bytes, total)) = rc_stats_progress(&stats) {
                         on_progress(bytes, total);

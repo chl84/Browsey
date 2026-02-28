@@ -48,6 +48,21 @@ struct LocalToCloudBatchProgressPlan {
     file_sizes: Vec<u64>,
 }
 
+struct RcloneTransferContext<'a> {
+    cli: &'a RcloneCli,
+    cloud_remote_for_error_mapping: Option<&'a str>,
+    cancel: Option<&'a AtomicBool>,
+    progress: Option<&'a TransferProgressContext>,
+}
+
+struct AggregateTransferProgress<'a> {
+    cancel: Option<&'a AtomicBool>,
+    progress: &'a TransferProgressContext,
+    completed_before: u64,
+    total_bytes: u64,
+    file_size: u64,
+}
+
 pub(super) async fn execute_mixed_entries(
     op: MixedTransferOp,
     sources: Vec<String>,
@@ -179,14 +194,16 @@ fn execute_mixed_entry_to_blocking_with_cli(
         LocalOrCloudArg::Cloud(path) => path.to_string(),
     };
     execute_rclone_transfer(
-        cli,
+        RcloneTransferContext {
+            cli,
+            cloud_remote_for_error_mapping: cloud_remote_for_error_mapping.as_deref(),
+            cancel: cancel.as_deref(),
+            progress: progress.as_ref(),
+        },
         op,
         src,
         dst,
         options,
-        cloud_remote_for_error_mapping.as_deref(),
-        cancel.as_deref(),
-        progress.as_ref(),
     )?;
     if let Some(path) = invalidate_target.as_ref() {
         cloud::invalidate_cloud_write_paths(std::slice::from_ref(path));
@@ -250,27 +267,31 @@ fn execute_mixed_entries_blocking_with_cli(
                         op,
                         &src,
                         &target,
-                        cancel.as_deref(),
-                        progress.as_ref().expect("progress context for batch plan"),
-                        completed_bytes,
-                        plan.total_bytes,
-                        plan.file_sizes[index],
+                        AggregateTransferProgress {
+                            cancel: cancel.as_deref(),
+                            progress: progress.as_ref().expect("progress context for batch plan"),
+                            completed_before: completed_bytes,
+                            total_bytes: plan.total_bytes,
+                            file_size: plan.file_sizes[index],
+                        },
                     )?;
                     completed_bytes = completed_bytes.saturating_add(plan.file_sizes[index]);
                 } else {
                     execute_rclone_transfer(
-                        cli,
+                        RcloneTransferContext {
+                            cli,
+                            cloud_remote_for_error_mapping: Some(dest_dir.remote()),
+                            cancel: cancel.as_deref(),
+                            progress: if batch_source_count == 1 {
+                                progress.as_ref()
+                            } else {
+                                None
+                            },
+                        },
                         op,
                         LocalOrCloudArg::Local(src.clone()),
                         LocalOrCloudArg::Cloud(target.clone()),
                         options,
-                        Some(dest_dir.remote()),
-                        cancel.as_deref(),
-                        if batch_source_count == 1 {
-                            progress.as_ref()
-                        } else {
-                            None
-                        },
                     )?;
                 }
                 cloud_write_targets.push(target.clone());
@@ -319,27 +340,31 @@ fn execute_mixed_entries_blocking_with_cli(
                         op,
                         &src,
                         &target,
-                        cancel.as_deref(),
-                        progress.as_ref().expect("progress context for batch plan"),
-                        completed_bytes,
-                        plan.total_bytes,
-                        plan.file_sizes[index],
+                        AggregateTransferProgress {
+                            cancel: cancel.as_deref(),
+                            progress: progress.as_ref().expect("progress context for batch plan"),
+                            completed_before: completed_bytes,
+                            total_bytes: plan.total_bytes,
+                            file_size: plan.file_sizes[index],
+                        },
                     )?;
                     completed_bytes = completed_bytes.saturating_add(plan.file_sizes[index]);
                 } else {
                     execute_rclone_transfer(
-                        cli,
+                        RcloneTransferContext {
+                            cli,
+                            cloud_remote_for_error_mapping: Some(src.remote()),
+                            cancel: cancel.as_deref(),
+                            progress: if batch_source_count == 1 {
+                                progress.as_ref()
+                            } else {
+                                None
+                            },
+                        },
                         op,
                         LocalOrCloudArg::Cloud(src.clone()),
                         LocalOrCloudArg::Local(target.clone()),
                         options,
-                        Some(src.remote()),
-                        cancel.as_deref(),
-                        if batch_source_count == 1 {
-                            progress.as_ref()
-                        } else {
-                            None
-                        },
                     )?;
                 }
                 if op == MixedTransferOp::Move {
@@ -359,15 +384,18 @@ fn execute_mixed_entries_blocking_with_cli(
 }
 
 fn execute_rclone_transfer(
-    cli: &RcloneCli,
+    ctx: RcloneTransferContext<'_>,
     op: MixedTransferOp,
     src: LocalOrCloudArg,
     dst: LocalOrCloudArg,
     options: MixedTransferWriteOptions,
-    cloud_remote_for_error_mapping: Option<&str>,
-    cancel: Option<&AtomicBool>,
-    progress: Option<&TransferProgressContext>,
 ) -> TransferResult<()> {
+    let RcloneTransferContext {
+        cli,
+        cloud_remote_for_error_mapping,
+        cancel,
+        progress,
+    } = ctx;
     if transfer_cancelled(cancel) {
         return Err(transfer_err(
             TransferErrorCode::Cancelled,
@@ -601,12 +629,15 @@ fn execute_cloud_to_local_file_transfer_with_aggregate_progress(
     op: MixedTransferOp,
     src: &CloudPath,
     dst: &std::path::Path,
-    cancel: Option<&AtomicBool>,
-    progress: &TransferProgressContext,
-    completed_before: u64,
-    total_bytes: u64,
-    file_size: u64,
+    aggregate: AggregateTransferProgress<'_>,
 ) -> TransferResult<()> {
+    let AggregateTransferProgress {
+        cancel,
+        progress,
+        completed_before,
+        total_bytes,
+        file_size,
+    } = aggregate;
     let provider = mixed_cloud_provider_for_cli(cli);
     provider
         .download_file_with_progress(src, dst, &progress.event_name, cancel, |bytes, _| {
@@ -633,12 +664,15 @@ fn execute_local_to_cloud_file_transfer_with_aggregate_progress(
     op: MixedTransferOp,
     src: &std::path::Path,
     dst: &CloudPath,
-    cancel: Option<&AtomicBool>,
-    progress: &TransferProgressContext,
-    completed_before: u64,
-    total_bytes: u64,
-    file_size: u64,
+    aggregate: AggregateTransferProgress<'_>,
 ) -> TransferResult<()> {
+    let AggregateTransferProgress {
+        cancel,
+        progress,
+        completed_before,
+        total_bytes,
+        file_size,
+    } = aggregate;
     let provider = mixed_cloud_provider_for_cli(cli);
     provider
         .upload_file_with_progress(src, dst, &progress.event_name, cancel, |bytes, _| {
@@ -858,7 +892,7 @@ fn remove_local_source_after_mixed_file_move(path: &std::path::Path) -> Transfer
 fn mixed_cloud_provider_for_cli(cli: &RcloneCli) -> RcloneCloudProvider {
     #[cfg(test)]
     {
-        return RcloneCloudProvider::new(cli.clone());
+        RcloneCloudProvider::new(cli.clone())
     }
     #[cfg(not(test))]
     {
