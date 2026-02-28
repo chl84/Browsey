@@ -198,6 +198,7 @@ fn main() {
             rename_cloud_entry,
             copy_cloud_entry,
             preview_cloud_conflicts,
+            open_cloud_entry,
             preview_mixed_transfer_conflicts,
             copy_mixed_entries,
             move_mixed_entries,

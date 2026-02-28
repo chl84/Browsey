@@ -647,6 +647,36 @@ fn fake_rclone_shim_supports_copy_move_and_delete_operations() {
 
 #[cfg(unix)]
 #[test]
+fn fake_rclone_shim_downloads_cloud_file_to_local_path() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "src/file.txt", "payload");
+    let provider = sandbox.provider();
+    let local_root = sandbox.root.join("local-downloads");
+    let local_target = local_root.join("file.txt");
+
+    provider
+        .download_file(
+            &cloud_path("rclone://work/src/file.txt"),
+            &local_target,
+            None,
+        )
+        .expect("download file");
+
+    let downloaded = fs::read_to_string(&local_target).expect("read downloaded file");
+    assert_eq!(downloaded, "payload");
+
+    let log = sandbox.read_log();
+    assert!(
+        log.contains(&format!(
+            "copyto work:src/file.txt {}",
+            local_target.display()
+        )),
+        "expected CLI copyto call for download, log:\n{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn fake_rclone_shim_supports_case_only_rename() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "docs/report.txt", "payload");

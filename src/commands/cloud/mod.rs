@@ -6,6 +6,7 @@ mod error;
 mod events;
 mod limits;
 mod list;
+mod open;
 pub mod path;
 pub mod provider;
 pub mod providers;
@@ -261,6 +262,11 @@ pub async fn copy_cloud_entry(
         )
         .await,
     )
+}
+
+#[tauri::command]
+pub async fn open_cloud_entry(path: String) -> ApiResult<()> {
+    map_api_result(open::open_cloud_entry_impl(path).await)
 }
 
 async fn copy_cloud_entry_impl(

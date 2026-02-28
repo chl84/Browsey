@@ -3,6 +3,7 @@ use super::{
     path::CloudPath,
     types::{CloudEntry, CloudRemote},
 };
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
 pub(super) trait CloudProvider: Send + Sync {
@@ -43,6 +44,13 @@ pub(super) trait CloudProvider: Send + Sync {
         dst: &CloudPath,
         overwrite: bool,
         prechecked: bool,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()>;
+
+    fn download_file(
+        &self,
+        src: &CloudPath,
+        local_dest: &Path,
         cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()>;
 }

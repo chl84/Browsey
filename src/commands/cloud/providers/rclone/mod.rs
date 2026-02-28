@@ -16,6 +16,7 @@ use super::super::{
     rclone_rc::RcloneRcClient,
     types::{CloudCapabilities, CloudEntry, CloudEntryKind, CloudProviderKind, CloudRemote},
 };
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
 #[derive(Debug, Clone, Default)]
@@ -93,5 +94,14 @@ impl CloudProvider for RcloneCloudProvider {
         cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()> {
         self.copy_entry_impl(src, dst, overwrite, prechecked, cancel)
+    }
+
+    fn download_file(
+        &self,
+        src: &CloudPath,
+        local_dest: &Path,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()> {
+        self.download_file_impl(src, local_dest, cancel)
     }
 }
