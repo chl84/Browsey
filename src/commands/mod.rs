@@ -30,10 +30,10 @@ pub use crate::tasks::{cancel_task, CancelState};
 pub use about::about_info;
 pub use bookmarks::{add_bookmark, clear_bookmarks, get_bookmarks, remove_bookmark};
 pub use cloud::{
-    cloud_rc_health, copy_cloud_entry, create_cloud_folder, delete_cloud_dir_empty,
-    delete_cloud_dir_recursive, delete_cloud_file, list_cloud_entries, list_cloud_remotes,
-    move_cloud_entry, normalize_cloud_path, open_cloud_entry, preview_cloud_conflicts,
-    rename_cloud_entry, stat_cloud_entry, validate_cloud_root,
+    clear_cloud_open_cache, cloud_rc_health, copy_cloud_entry, create_cloud_folder,
+    delete_cloud_dir_empty, delete_cloud_dir_recursive, delete_cloud_file, list_cloud_entries,
+    list_cloud_remotes, move_cloud_entry, normalize_cloud_path, open_cloud_entry,
+    preview_cloud_conflicts, rename_cloud_entry, stat_cloud_entry, validate_cloud_root,
 };
 pub use compress::compress_entries;
 pub use console::open_console;

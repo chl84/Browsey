@@ -1,6 +1,86 @@
-import { derived, writable } from 'svelte/store'
+import { derived, writable, type Writable } from 'svelte/store'
 import type { DefaultSortField, Density, Entry, Location, Partition, SortDirection, SortField } from '../model/types'
 import { defaultColumns } from './helpers'
+
+const NAV_LOADING_DELAY_MS = 150
+const NAV_LOADING_MIN_VISIBLE_MS = 180
+
+const createDelayedLoadingStore = (): Writable<boolean> => {
+  const visible = writable(false)
+  let requested = false
+  let visibleNow = false
+  let visibleSince = 0
+  let showTimer: ReturnType<typeof setTimeout> | null = null
+  let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+  const clearShowTimer = () => {
+    if (showTimer) {
+      clearTimeout(showTimer)
+      showTimer = null
+    }
+  }
+
+  const clearHideTimer = () => {
+    if (hideTimer) {
+      clearTimeout(hideTimer)
+      hideTimer = null
+    }
+  }
+
+  const setVisible = (next: boolean) => {
+    visibleNow = next
+    if (next) {
+      visibleSince = Date.now()
+    } else {
+      visibleSince = 0
+    }
+    visible.set(next)
+  }
+
+  const store: Writable<boolean> = {
+    subscribe: visible.subscribe,
+    set(next) {
+      requested = next
+      if (next) {
+        clearHideTimer()
+        if (visibleNow || showTimer) {
+          return
+        }
+        showTimer = setTimeout(() => {
+          showTimer = null
+          if (!requested || visibleNow) {
+            return
+          }
+          setVisible(true)
+        }, NAV_LOADING_DELAY_MS)
+        return
+      }
+
+      clearShowTimer()
+      if (!visibleNow) {
+        return
+      }
+      const elapsed = Date.now() - visibleSince
+      const remaining = Math.max(0, NAV_LOADING_MIN_VISIBLE_MS - elapsed)
+      clearHideTimer()
+      if (remaining === 0) {
+        setVisible(false)
+        return
+      }
+      hideTimer = setTimeout(() => {
+        hideTimer = null
+        if (requested) {
+          return
+        }
+        setVisible(false)
+      }, remaining)
+    },
+    update(updater) {
+      store.set(updater(visibleNow))
+    },
+  }
+  return store
+}
 
 export const createExplorerStores = () => {
   const cols = writable(defaultColumns)
@@ -8,7 +88,7 @@ export const createExplorerStores = () => {
 
   const current = writable('')
   const entries = writable<Entry[]>([])
-  const loading = writable(false)
+  const loading = createDelayedLoadingStore()
   const error = writable('')
   const filter = writable('')
   const searchMode = writable(false)

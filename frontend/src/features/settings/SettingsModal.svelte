@@ -60,6 +60,7 @@
   export let onChangeMountsPollMs: (value: number) => void = () => {}
   export let onChangeDoubleClickMs: (value: number) => void = () => {}
   export let onClearThumbCache: () => Promise<void> | void = () => {}
+  export let onClearCloudOpenCache: () => Promise<void> | void = () => {}
   export let onClearStars: () => Promise<void> | void = () => {}
   export let onClearBookmarks: () => Promise<void> | void = () => {}
   export let onClearRecents: () => Promise<void> | void = () => {}
@@ -97,6 +98,7 @@
     onClose: () => onClose(),
     onChangeShortcut: (commandId, accelerator) => onChangeShortcut(commandId, accelerator),
     onClearThumbCache: () => onClearThumbCache(),
+    onClearCloudOpenCache: () => onClearCloudOpenCache(),
     onClearStars: () => onClearStars(),
     onClearBookmarks: () => onClearBookmarks(),
     onClearRecents: () => onClearRecents(),

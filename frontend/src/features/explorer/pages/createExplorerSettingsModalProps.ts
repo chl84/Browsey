@@ -42,6 +42,7 @@ type Params = {
   onChangeMountsPollMs: SettingsModalProps['onChangeMountsPollMs']
   onChangeDoubleClickMs: SettingsModalProps['onChangeDoubleClickMs']
   onClearThumbCache: SettingsModalProps['onClearThumbCache']
+  onClearCloudOpenCache: SettingsModalProps['onClearCloudOpenCache']
   onClearStars: SettingsModalProps['onClearStars']
   onClearBookmarks: SettingsModalProps['onClearBookmarks']
   onClearRecents: SettingsModalProps['onClearRecents']
@@ -90,6 +91,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   onChangeMountsPollMs: p.onChangeMountsPollMs,
   onChangeDoubleClickMs: p.onChangeDoubleClickMs,
   onClearThumbCache: p.onClearThumbCache,
+  onClearCloudOpenCache: p.onClearCloudOpenCache,
   onClearStars: p.onClearStars,
   onClearBookmarks: p.onClearBookmarks,
   onClearRecents: p.onClearRecents,
@@ -98,4 +100,3 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   onChangeShortcut: p.onChangeShortcut,
   onClose: p.onClose,
 })
-
