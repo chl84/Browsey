@@ -1409,6 +1409,9 @@
     handleBreadcrumbDragOver,
     handleBreadcrumbDragLeave,
     handleBreadcrumbDrop,
+    handleBookmarkDragOver,
+    handleBookmarkDragLeave,
+    handleBookmarkDrop,
   } = useExplorerDragDrop(dragDropDeps)
 
   const inputHandlerDeps = createExplorerInputHandlersDeps({
@@ -1599,6 +1602,9 @@
     handlePlace,
     handleSidebarBookmarkSelect,
     handleSidebarRemoveBookmark,
+    handleBookmarkDragOver,
+    handleBookmarkDragLeave,
+    handleBookmarkDrop,
     handleSidebarPartitionSelect,
     handleSidebarPartitionEject,
     mode,

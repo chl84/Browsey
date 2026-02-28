@@ -4,6 +4,10 @@
   export let bookmarks: { label: string; path: string }[] = []
   export let onSelect: (path: string) => void = () => {}
   export let onRemove: (path: string) => void = () => {}
+  export let dragTargetPath: string | null = null
+  export let onDragOver: (path: string, e: DragEvent) => void = () => {}
+  export let onDragLeave: (path: string, e: DragEvent) => void = () => {}
+  export let onDrop: (path: string, e: DragEvent) => void = () => {}
 
 const bookmarkIcon = iconPath('browsey/bookmark.svg')
 </script>
@@ -13,9 +17,14 @@ const bookmarkIcon = iconPath('browsey/bookmark.svg')
   {#each bookmarks as mark}
     <div
       class="nav bookmark"
+      class:drop-target={dragTargetPath === mark.path}
       role="button"
       tabindex="0"
       on:click={() => onSelect(mark.path)}
+      on:dragenter|preventDefault={(e) => onDragOver(mark.path, e)}
+      on:dragover|preventDefault={(e) => onDragOver(mark.path, e)}
+      on:dragleave={(e) => onDragLeave(mark.path, e)}
+      on:drop|preventDefault={(e) => onDrop(mark.path, e)}
       on:keydown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -100,6 +109,12 @@ const bookmarkIcon = iconPath('browsey/bookmark.svg')
 
   .nav.bookmark {
     position: relative;
+  }
+
+  .nav.bookmark.drop-target {
+    background: var(--bg-hover);
+    outline: 1px solid var(--border-accent);
+    outline-offset: -1px;
   }
 
   .nav-icon {

@@ -28,6 +28,9 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   let onPlaceSelect: (label: string, path: string) => void = () => {}
   let onBookmarkSelect: (path: string) => void = () => {}
   let onRemoveBookmark: (path: string) => void = () => {}
+  let onBookmarkDragOver: (path: string, e: DragEvent) => void = () => {}
+  let onBookmarkDragLeave: (path: string, e: DragEvent) => void = () => {}
+  let onBookmarkDrop: (path: string, e: DragEvent) => void = () => {}
   let onPartitionSelect: (path: string) => void = () => {}
   let onPartitionEject: (path: string) => void = () => {}
   export let pathInput = ''
@@ -276,6 +279,10 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     onPlaceSelect: typeof onPlaceSelect
     onBookmarkSelect: typeof onBookmarkSelect
     onRemoveBookmark: typeof onRemoveBookmark
+    dragTargetPath: typeof dragTargetPath
+    onBookmarkDragOver: typeof onBookmarkDragOver
+    onBookmarkDragLeave: typeof onBookmarkDragLeave
+    onBookmarkDrop: typeof onBookmarkDrop
     onPartitionSelect: typeof onPartitionSelect
     onPartitionEject: typeof onPartitionEject
   }
@@ -480,6 +487,10 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     onPlaceSelect,
     onBookmarkSelect,
     onRemoveBookmark,
+    dragTargetPath,
+    onBookmarkDragOver,
+    onBookmarkDragLeave,
+    onBookmarkDrop,
     onPartitionSelect,
     onPartitionEject,
   } = sidebarProps)
@@ -685,6 +696,10 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
       onPlaceSelect={onPlaceSelect}
       onBookmarkSelect={onBookmarkSelect}
       onRemoveBookmark={onRemoveBookmark}
+      {dragTargetPath}
+      onBookmarkDragOver={onBookmarkDragOver}
+      onBookmarkDragLeave={onBookmarkDragLeave}
+      onBookmarkDrop={onBookmarkDrop}
       onPartitionSelect={onPartitionSelect}
       onPartitionEject={onPartitionEject}
     />

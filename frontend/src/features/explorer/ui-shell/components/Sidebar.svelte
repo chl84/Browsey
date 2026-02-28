@@ -11,6 +11,10 @@ import type { Partition } from '../../model/types'
   export let onPlaceSelect: (label: string, path: string) => void = () => {}
   export let onBookmarkSelect: (path: string) => void = () => {}
   export let onRemoveBookmark: (path: string) => void = () => {}
+  export let dragTargetPath: string | null = null
+  export let onBookmarkDragOver: (path: string, e: DragEvent) => void = () => {}
+  export let onBookmarkDragLeave: (path: string, e: DragEvent) => void = () => {}
+  export let onBookmarkDrop: (path: string, e: DragEvent) => void = () => {}
   export let onPartitionSelect: (path: string) => void = () => {}
   export let onPartitionEject: (path: string) => void = () => {}
 </script>
@@ -19,7 +23,15 @@ import type { Partition } from '../../model/types'
   <div class="drag-top" data-tauri-drag-region></div>
   <div class="sidebar-scroll">
     <PlacesSection places={places} onSelect={onPlaceSelect} />
-    <BookmarksSection bookmarks={bookmarks} onSelect={onBookmarkSelect} onRemove={onRemoveBookmark} />
+    <BookmarksSection
+      {bookmarks}
+      {dragTargetPath}
+      onSelect={onBookmarkSelect}
+      onRemove={onRemoveBookmark}
+      onDragOver={onBookmarkDragOver}
+      onDragLeave={onBookmarkDragLeave}
+      onDrop={onBookmarkDrop}
+    />
     <PartitionsSection
       partitions={partitions}
       onSelect={onPartitionSelect}
