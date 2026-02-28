@@ -137,6 +137,22 @@ pub(crate) fn invalidate_cloud_dir_listing_cache_for_write_paths(paths: &[CloudP
     }
 }
 
+#[cfg(test)]
+pub(crate) fn store_cloud_dir_listing_cache_entry_for_tests(
+    path: &CloudPath,
+    entries: Vec<CloudEntry>,
+) {
+    store_cloud_dir_listing_cache_entry(path.to_string(), Instant::now(), entries);
+}
+
+#[cfg(test)]
+pub(crate) fn cloud_dir_listing_cache_contains_for_tests(path: &CloudPath) -> bool {
+    match cloud_dir_listing_cache().lock() {
+        Ok(guard) => guard.contains_key(&path.to_string()),
+        Err(poisoned) => poisoned.into_inner().contains_key(&path.to_string()),
+    }
+}
+
 fn prune_cloud_dir_listing_cache_locked(
     cache: &mut HashMap<String, CachedCloudDirListing>,
     now: Instant,

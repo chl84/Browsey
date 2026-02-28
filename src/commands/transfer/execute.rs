@@ -6,6 +6,7 @@ use super::route::{
 };
 use super::{MixedTransferOp, MixedTransferWriteOptions};
 use crate::commands::cloud;
+use crate::commands::cloud::path::CloudPath;
 use crate::commands::cloud::rclone_cli::{
     RcloneCli, RcloneCliError, RcloneCommandSpec, RcloneSubcommand,
 };
@@ -126,6 +127,10 @@ fn execute_mixed_entry_to_blocking_with_cli(
         dst,
         cloud_remote_for_error_mapping,
     } = pair;
+    let invalidate_target = match &dst {
+        LocalOrCloudArg::Cloud(path) => Some(path.clone()),
+        LocalOrCloudArg::Local(_) => None,
+    };
     let out = match &dst {
         LocalOrCloudArg::Local(path) => path.to_string_lossy().to_string(),
         LocalOrCloudArg::Cloud(path) => path.to_string(),
@@ -139,6 +144,9 @@ fn execute_mixed_entry_to_blocking_with_cli(
         cloud_remote_for_error_mapping.as_deref(),
         cancel.as_deref(),
     )?;
+    if let Some(path) = invalidate_target.as_ref() {
+        cloud::invalidate_cloud_write_paths(std::slice::from_ref(path));
+    }
     Ok(out)
 }
 
@@ -150,6 +158,7 @@ fn execute_mixed_entries_blocking_with_cli(
     cancel: Option<Arc<AtomicBool>>,
 ) -> TransferResult<Vec<String>> {
     let mut created = Vec::new();
+    let mut cloud_write_targets = Vec::<CloudPath>::new();
     match route {
         MixedTransferRoute::LocalToCloud { sources, dest_dir } => {
             for src in sources {
@@ -175,6 +184,7 @@ fn execute_mixed_entries_blocking_with_cli(
                     Some(dest_dir.remote()),
                     cancel.as_deref(),
                 )?;
+                cloud_write_targets.push(target.clone());
                 created.push(target.to_string());
             }
         }
@@ -205,6 +215,9 @@ fn execute_mixed_entries_blocking_with_cli(
                 created.push(target.to_string_lossy().to_string());
             }
         }
+    }
+    if !cloud_write_targets.is_empty() {
+        cloud::invalidate_cloud_write_paths(&cloud_write_targets);
     }
     Ok(created)
 }
@@ -589,6 +602,102 @@ mod tests {
         assert_eq!(
             fs::read_to_string(sandbox.remote_path("work", "dest/move.txt")).expect("read remote"),
             "move-payload"
+        );
+    }
+
+    fn sample_cloud_cache_entry(
+        path: &str,
+        name: &str,
+    ) -> crate::commands::cloud::types::CloudEntry {
+        crate::commands::cloud::types::CloudEntry {
+            name: name.to_string(),
+            path: path.to_string(),
+            kind: crate::commands::cloud::types::CloudEntryKind::File,
+            size: Some(1),
+            modified: None,
+            capabilities: crate::commands::cloud::types::CloudCapabilities::v1_core_rw(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_local_to_cloud_batch_invalidates_destination_cloud_cache() {
+        let _guard = fake_rclone_test_lock();
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "dest");
+        let cli = sandbox.cli();
+        let dest_dir = sandbox.cloud_path("rclone://work/dest");
+        crate::commands::cloud::store_cloud_dir_listing_cache_entry_for_tests(
+            &dest_dir,
+            vec![sample_cloud_cache_entry(
+                "rclone://work/dest/stale.txt",
+                "stale.txt",
+            )],
+        );
+        assert!(crate::commands::cloud::cloud_dir_listing_cache_contains_for_tests(&dest_dir));
+
+        let copy_src = sandbox.write_local_file("src/cache-batch.txt", "copy-payload");
+        let copy_route = MixedTransferRoute::LocalToCloud {
+            sources: vec![copy_src],
+            dest_dir: dest_dir.clone(),
+        };
+        execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            copy_route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            None,
+        )
+        .expect("copy local->cloud should succeed");
+
+        assert!(
+            !crate::commands::cloud::cloud_dir_listing_cache_contains_for_tests(&dest_dir),
+            "mixed local->cloud batch write should invalidate destination dir cache"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_local_to_cloud_single_target_invalidates_destination_cloud_cache() {
+        let _guard = fake_rclone_test_lock();
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "dest");
+        let cli = sandbox.cli();
+        let dest_dir = sandbox.cloud_path("rclone://work/dest");
+        crate::commands::cloud::store_cloud_dir_listing_cache_entry_for_tests(
+            &dest_dir,
+            vec![sample_cloud_cache_entry(
+                "rclone://work/dest/stale.txt",
+                "stale.txt",
+            )],
+        );
+        assert!(crate::commands::cloud::cloud_dir_listing_cache_contains_for_tests(&dest_dir));
+
+        let copy_src = sandbox.write_local_file("src/cache-single.txt", "copy-payload");
+        let pair = MixedTransferPair {
+            src: LocalOrCloudArg::Local(copy_src),
+            dst: LocalOrCloudArg::Cloud(sandbox.cloud_path("rclone://work/dest/cache-single.txt")),
+            cloud_remote_for_error_mapping: Some("work".to_string()),
+        };
+
+        execute_mixed_entry_to_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            pair,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            None,
+        )
+        .expect("single local->cloud copy should succeed");
+
+        assert!(
+            !crate::commands::cloud::cloud_dir_listing_cache_contains_for_tests(&dest_dir),
+            "mixed local->cloud single write should invalidate destination dir cache"
         );
     }
 

@@ -37,6 +37,23 @@ pub(crate) fn cloud_conflict_name_key(provider: Option<CloudProviderKind>, name:
     }
 }
 
+pub(crate) fn invalidate_cloud_write_paths(paths: &[CloudPath]) {
+    cache::invalidate_cloud_dir_listing_cache_for_write_paths(paths);
+}
+
+#[cfg(test)]
+pub(crate) fn store_cloud_dir_listing_cache_entry_for_tests(
+    path: &CloudPath,
+    entries: Vec<CloudEntry>,
+) {
+    cache::store_cloud_dir_listing_cache_entry_for_tests(path, entries);
+}
+
+#[cfg(test)]
+pub(crate) fn cloud_dir_listing_cache_contains_for_tests(path: &CloudPath) -> bool {
+    cache::cloud_dir_listing_cache_contains_for_tests(path)
+}
+
 pub(crate) fn list_cloud_remotes_sync_best_effort(force_refresh: bool) -> Vec<CloudRemote> {
     match list_cloud_remotes_cached(force_refresh) {
         Ok(remotes) => remotes,
