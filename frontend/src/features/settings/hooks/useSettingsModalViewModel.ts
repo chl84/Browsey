@@ -12,6 +12,7 @@ type ViewModelDeps = {
   onClose: () => void
   onChangeShortcut: (commandId: ShortcutCommandId, accelerator: string) => Promise<void> | void
   onClearThumbCache: () => Promise<void> | void
+  onClearCloudOpenCache: () => Promise<void> | void
   onClearStars: () => Promise<void> | void
   onClearBookmarks: () => Promise<void> | void
   onClearRecents: () => Promise<void> | void
@@ -134,11 +135,13 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     try {
       if (target === 'thumb-cache') {
         await deps.onClearThumbCache()
+      } else if (target === 'cloud-open-cache') {
+        await deps.onClearCloudOpenCache()
       } else if (target === 'stars') {
         await deps.onClearStars()
       } else if (target === 'bookmarks') {
         await deps.onClearBookmarks()
-      } else {
+      } else if (target === 'recents') {
         await deps.onClearRecents()
       }
       clearTarget.set(null)

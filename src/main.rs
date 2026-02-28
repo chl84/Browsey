@@ -312,7 +312,8 @@ fn main() {
             undo_action,
             redo_action,
             get_thumbnail,
-            clear_thumbnail_cache
+            clear_thumbnail_cache,
+            clear_cloud_open_cache
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

@@ -50,6 +50,7 @@
   } from '@/features/shortcuts'
   import {
     clearBookmarks,
+    clearCloudOpenCache,
     clearRecents,
     clearStars,
     clearThumbnailCache,
@@ -1109,6 +1110,24 @@
     }
   }
 
+  const clearCloudOpenCacheFromSettings = async () => {
+    try {
+      const result = await clearCloudOpenCache()
+      if (result.removed_files > 0) {
+        showToast(
+          `Cleared cloud file cache: ${result.removed_files} file${result.removed_files === 1 ? '' : 's'} (${formatSize(result.removed_bytes)})`,
+          2200,
+        )
+      } else {
+        showToast('Cloud file cache already empty', 1800)
+      }
+    } catch (err) {
+      const msg = getErrorMessage(err)
+      showToast(`Clear cloud file cache failed: ${msg}`)
+      throw err
+    }
+  }
+
   const clearStarsFromSettings = async () => {
     try {
       const removed = await clearStars()
@@ -1757,6 +1776,7 @@
     onChangeMountsPollMs: setMountsPollPref,
     onChangeDoubleClickMs: setDoubleClickMsPref,
     onClearThumbCache: clearThumbnailCacheFromSettings,
+    onClearCloudOpenCache: clearCloudOpenCacheFromSettings,
     onClearStars: clearStarsFromSettings,
     onClearBookmarks: clearBookmarksFromSettings,
     onClearRecents: clearRecentsFromSettings,

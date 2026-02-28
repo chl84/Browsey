@@ -23,6 +23,18 @@
     </button>
   </div>
 
+  <div class="form-label">Clear cloud file cache</div>
+  <div class="form-control">
+    <button
+      type="button"
+      class="secondary"
+      disabled={clearBusy}
+      on:click={() => onRequestClear('cloud-open-cache')}
+    >
+      {clearBusy && clearTarget === 'cloud-open-cache' ? 'Clearing...' : 'Clear'}
+    </button>
+  </div>
+
   <div class="form-label">Clear stars</div>
   <div class="form-control">
     <button type="button" class="secondary" disabled={clearBusy} on:click={() => onRequestClear('stars')}>

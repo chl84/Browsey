@@ -3,7 +3,7 @@ import type { DefaultSortField, Density } from '@/features/explorer'
 export type SortField = DefaultSortField
 export type SortDirection = 'asc' | 'desc'
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
-export type DataClearTarget = 'thumb-cache' | 'stars' | 'bookmarks' | 'recents'
+export type DataClearTarget = 'thumb-cache' | 'cloud-open-cache' | 'stars' | 'bookmarks' | 'recents'
 
 export type Settings = {
   startDir: string
@@ -61,6 +61,11 @@ export const clearTargetCopy = {
   'thumb-cache': {
     title: 'Clear thumbnail cache?',
     message: 'This removes all cached thumbnail files on disk and refreshes the UI.',
+    confirmLabel: 'Clear cache',
+  },
+  'cloud-open-cache': {
+    title: 'Clear cloud file cache?',
+    message: 'This removes cached local copies of cloud files opened through Browsey.',
     confirmLabel: 'Clear cache',
   },
   stars: {

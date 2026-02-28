@@ -277,6 +277,11 @@ pub async fn open_cloud_entry(
     )
 }
 
+#[tauri::command]
+pub fn clear_cloud_open_cache() -> ApiResult<open::CloudOpenCacheClearResult> {
+    map_api_result(open::clear_cloud_open_cache_impl())
+}
+
 async fn copy_cloud_entry_impl(
     src: String,
     dst: String,
