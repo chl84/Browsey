@@ -197,6 +197,7 @@ pub(super) fn spawn_daemon(binary: &OsString) -> Result<RcloneRcDaemon, RcloneCl
             });
         }
         if socket_path.exists() {
+            harden_and_validate_socket_path(&socket_path).map_err(RcloneCliError::Io)?;
             match run_rc_command_via_socket(
                 &socket_path,
                 RcloneRcMethod::CoreNoop,
@@ -276,6 +277,32 @@ pub(super) fn prepare_state_dir(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+fn harden_and_validate_socket_path(path: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+
+        let metadata = fs::symlink_metadata(path)?;
+        if !metadata.file_type().is_socket() {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "rc socket path is not a unix socket",
+            ));
+        }
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+        let mode = fs::symlink_metadata(path)?.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!("rc socket path has insecure permissions: {mode:o}"),
+            ));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
 pub(super) fn cleanup_stale_socket(path: &Path) -> io::Result<()> {
     match fs::symlink_metadata(path) {
         Ok(metadata) => {
@@ -294,8 +321,8 @@ pub(super) fn cleanup_stale_socket(path: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        cleanup_stale_socket, kill_daemon, parse_rc_toggle_value, prepare_state_dir,
-        should_recycle_daemon_after_error, RcloneRcDaemon,
+        cleanup_stale_socket, harden_and_validate_socket_path, kill_daemon, parse_rc_toggle_value,
+        prepare_state_dir, should_recycle_daemon_after_error, RcloneRcDaemon,
     };
     use crate::commands::cloud::rclone_cli::{RcloneCliError, RcloneSubcommand};
     use crate::commands::cloud::rclone_rc::{
@@ -306,6 +333,7 @@ mod tests {
     use std::{
         fs,
         os::unix::fs::symlink,
+        os::unix::net::UnixListener,
         path::PathBuf,
         process::Command,
         sync::atomic::{AtomicU64, Ordering},
@@ -415,6 +443,36 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(mode, 0o700);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lifecycle_socket_hardening_enforces_owner_only_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = unique_test_dir("socket-hardening");
+        let socket_path = root.join("rc.sock");
+        let listener = UnixListener::bind(&socket_path).expect("bind unix socket");
+        harden_and_validate_socket_path(&socket_path).expect("harden socket path");
+        let mode = fs::symlink_metadata(&socket_path)
+            .expect("socket metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode & 0o077, 0);
+        drop(listener);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lifecycle_socket_hardening_rejects_non_socket_paths() {
+        let root = unique_test_dir("socket-hardening-rejects-file");
+        let file_path = root.join("not-a-socket");
+        fs::write(&file_path, b"nope").expect("write regular file");
+        let err = harden_and_validate_socket_path(&file_path).expect_err("should reject file");
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
         let _ = fs::remove_dir_all(root);
     }
 
