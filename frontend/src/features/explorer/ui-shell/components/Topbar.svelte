@@ -6,7 +6,13 @@
   export let viewMode: 'list' | 'grid' = 'list'
   export let showHidden = false
   export let activity:
-    | { label: string; percent: number | null; cancel?: (() => void) | null; cancelling?: boolean }
+    | {
+        label: string
+        detail?: string | null
+        percent: number | null
+        cancel?: (() => void) | null
+        cancelling?: boolean
+      }
     | null = null
   export let pathInputEl: HTMLInputElement | null = null
   export let onSubmitPath: () => void = () => {}
@@ -252,6 +258,9 @@ import PulseTravelIndicator from '@/shared/ui/PulseTravelIndicator.svelte'
     {#if activity}
       <div class="pill progress" class:cancelling={activity.cancelling}>
         <span>{activity.label}</span>
+        {#if activity.detail}
+          <span class="detail">{activity.detail}</span>
+        {/if}
         {#if activity.percent !== null}
           <div class="progress-bar" aria-hidden="true">
             <div class="progress-fill" style={`width:${Math.min(100, Math.max(0, activity.percent))}%;`}></div>
@@ -398,6 +407,11 @@ import PulseTravelIndicator from '@/shared/ui/PulseTravelIndicator.svelte'
   }
 
   .percent {
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-muted);
+  }
+
+  .detail {
     font-variant-numeric: tabular-nums;
     color: var(--fg-muted);
   }

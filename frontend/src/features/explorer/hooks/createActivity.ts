@@ -5,6 +5,7 @@ import { cancelTask } from '../services/activity.service'
 
 export type ActivityState = {
   label: string
+  detail?: string | null
   percent: number | null
   cancel?: (() => void) | null
   cancelling?: boolean
@@ -14,6 +15,22 @@ export type ProgressPayload = { bytes: number; total: number; finished?: boolean
 
 type Options = {
   onError?: (message: string) => void
+}
+
+const formatByteProgress = (bytes: number, total: number) => {
+  const formatSize = (value: number) => {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB']
+    let size = value
+    let unitIndex = 0
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024
+      unitIndex += 1
+    }
+    const precision = unitIndex === 0 ? 0 : size >= 100 ? 0 : size >= 10 ? 1 : 2
+    return `${size.toFixed(precision)} ${units[unitIndex]}`
+  }
+
+  return `${formatSize(bytes)} / ${formatSize(total)}`
 }
 
 export const createActivity = (opts: Options = {}) => {
@@ -60,7 +77,7 @@ export const createActivity = (opts: Options = {}) => {
       clearTimeout(activityHideTimer)
       activityHideTimer = null
     }
-    activity.set({ label, percent: null, cancel: onCancel ?? null, cancelling: false })
+    activity.set({ label, detail: null, percent: null, cancel: onCancel ?? null, cancelling: false })
     activityUnlisten = await listen<ProgressPayload>(eventName, (event) => {
       const payload = event.payload
       let pct =
@@ -71,9 +88,11 @@ export const createActivity = (opts: Options = {}) => {
       const existing = get(activity)
       const cancelling = existing?.cancelling ?? false
       const displayLabel = cancelling ? 'Cancelling…' : label
+      const detail = payload.total > 0 ? formatByteProgress(payload.bytes, payload.total) : null
       if (payload.finished) {
         activity.set({
           label: cancelling ? 'Cancelling…' : 'Finalizing…',
+          detail,
           percent: pct ?? null,
           cancel: null,
           cancelling,
@@ -82,6 +101,7 @@ export const createActivity = (opts: Options = {}) => {
       } else {
         activity.set({
           label: displayLabel,
+          detail: cancelling ? null : detail,
           percent: pct,
           cancel: cancelling ? null : existing?.cancel ?? onCancel ?? null,
           cancelling,
