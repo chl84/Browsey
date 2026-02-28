@@ -76,10 +76,10 @@ Acceptance:
 - [x] Convert to `src/commands/cloud/providers/rclone/`
 - [x] Extract runtime probe/cache into `runtime.rs`
 - [x] Extract read-path logic (`list_dir`, `stat_path`) into `read.rs`
-- [ ] Extract write-path logic (`mkdir`, `delete`, `move`, `copy`) into `write.rs`
-- [ ] Extract rc/cli backend selection + logging helpers into `logging.rs` if still large enough
+- [x] Extract write-path logic (`mkdir`, `delete`, `move`, `copy`) into `write.rs`
+- [x] Extract rc/cli backend selection + logging helpers into `logging.rs` if still large enough
 - [x] Extract `lsjson`/stat parsing helpers into `parse.rs`
-- [ ] Keep the `RcloneCloudProvider` type and trait impl in `mod.rs`
+- [x] Keep the `RcloneCloudProvider` type and trait impl in `mod.rs`
 
 Acceptance:
 - Provider orchestration stays readable and does not own all parsing/fallback/runtime details inline.
