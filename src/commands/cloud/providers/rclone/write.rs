@@ -1,8 +1,8 @@
 use super::{
-    classify_rc_fallback_reason, log_backend_selected, map_rclone_error_for_paths,
-    map_rclone_error_for_remote, CloudCommandError, CloudCommandErrorCode, CloudCommandResult,
-    CloudPath, CloudProvider, RcloneCliError, RcloneCloudProvider, RcloneCommandSpec,
-    RcloneSubcommand,
+    error::{map_rclone_error_for_paths, map_rclone_error_for_remote},
+    logging::{classify_rc_fallback_reason, log_backend_selected},
+    CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudPath, CloudProvider,
+    RcloneCliError, RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
 };
 use std::sync::atomic::AtomicBool;
 use tracing::info;

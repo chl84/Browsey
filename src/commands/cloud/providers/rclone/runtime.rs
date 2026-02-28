@@ -1,5 +1,5 @@
 use super::{
-    map_rclone_error,
+    error::map_rclone_error,
     parse::{parse_rclone_version_stdout, parse_rclone_version_triplet},
     CloudCommandError, CloudCommandErrorCode, CloudCommandResult, RcloneCli, RcloneCloudProvider,
     RcloneCommandSpec, RcloneSubcommand,

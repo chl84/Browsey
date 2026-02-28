@@ -178,6 +178,7 @@ impl Default for RcloneRcClient {
 }
 
 impl RcloneRcClient {
+    #[cfg(test)]
     pub fn new(binary: impl Into<OsString>) -> Self {
         Self {
             binary: binary.into(),
