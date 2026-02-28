@@ -60,9 +60,7 @@ async fn connect_network_uri_impl(
         }
         NetworkUriKind::Mountable => {
             let target = normalized_uri.unwrap_or_default();
-            mounts::mount_partition(target.clone(), app)
-                .await
-                .map_err(|error| NetworkError::from_external_message(error.message))?;
+            mounts::mount_partition_impl(target.clone(), app).await?;
             let mounted_path =
                 uri::resolve_mounted_path_for_uri_in_mounts(&target, &mounts::list_mounts_sync());
             Ok(ConnectNetworkUriResult {

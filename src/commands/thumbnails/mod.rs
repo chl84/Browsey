@@ -124,7 +124,7 @@ pub fn clear_thumbnail_cache() -> ApiResult<ThumbnailCacheClearResult> {
 }
 
 fn clear_thumbnail_cache_impl() -> ThumbnailResult<ThumbnailCacheClearResult> {
-    let dir = map_external_result(cache_dir())?;
+    let dir = cache_dir()?;
     if !dir.exists() {
         fs::create_dir_all(&dir).map_err(|e| {
             ThumbnailError::from_external_message(format!(
@@ -137,7 +137,7 @@ fn clear_thumbnail_cache_impl() -> ThumbnailResult<ThumbnailCacheClearResult> {
         });
     }
 
-    let (removed_files, removed_bytes) = map_external_result(thumbnail_cache_stats(&dir))?;
+    let (removed_files, removed_bytes) = thumbnail_cache_stats(&dir)?;
 
     fs::remove_dir_all(&dir).map_err(|e| {
         ThumbnailError::from_external_message(format!("Failed to clear thumbnail cache: {e}"))
@@ -174,7 +174,7 @@ async fn get_thumbnail_impl(
         .unwrap_or(MAX_DIM_DEFAULT)
         .clamp(MIN_DIM_HARD_LIMIT, MAX_DIM_HARD_LIMIT);
 
-    let target = map_external_result(sanitize_input_path(&path))?;
+    let target = sanitize_input_path(&path)?;
     // Quick permission check (fail fast on unreadable files)
     if let Err(e) = fs::File::open(&target) {
         return Err(ThumbnailError::from_external_message(format!(
@@ -218,7 +218,7 @@ async fn get_thumbnail_impl(
     }
     let mtime = meta.modified().ok();
 
-    let cache_dir = map_external_result(cache_dir())?;
+    let cache_dir = cache_dir()?;
     fs::create_dir_all(&cache_dir).map_err(|e| {
         ThumbnailError::from_external_message(format!("Failed to create thumbnail cache dir: {e}"))
     })?;
@@ -280,7 +280,7 @@ async fn get_thumbnail_impl(
 
     drop(permit_global);
 
-    let res = map_external_result(res?);
+    let res = res?;
 
     static TRIM_COUNTER: Lazy<std::sync::Mutex<u32>> = Lazy::new(|| std::sync::Mutex::new(0));
 
@@ -304,27 +304,38 @@ async fn get_thumbnail_impl(
     res
 }
 
-fn cache_dir() -> Result<PathBuf, String> {
+fn cache_dir() -> ThumbnailResult<PathBuf> {
     let base = dirs_next::cache_dir()
         .or_else(dirs_next::data_dir)
         .unwrap_or_else(std::env::temp_dir);
     Ok(base.join("browsey").join("thumbs"))
 }
 
-fn thumbnail_cache_stats(root: &Path) -> Result<(u64, u64), String> {
+fn thumbnail_cache_stats(root: &Path) -> ThumbnailResult<(u64, u64)> {
     let mut dirs = vec![root.to_path_buf()];
     let mut files = 0_u64;
     let mut bytes = 0_u64;
 
     while let Some(dir) = dirs.pop() {
-        let entries = fs::read_dir(&dir)
-            .map_err(|e| format!("Failed to read thumbnail cache dir {}: {e}", dir.display()))?;
+        let entries = fs::read_dir(&dir).map_err(|e| {
+            ThumbnailError::from_external_message(format!(
+                "Failed to read thumbnail cache dir {}: {e}",
+                dir.display()
+            ))
+        })?;
         for entry in entries {
-            let entry = entry.map_err(|e| format!("Failed to read thumbnail cache entry: {e}"))?;
+            let entry = entry.map_err(|e| {
+                ThumbnailError::from_external_message(format!(
+                    "Failed to read thumbnail cache entry: {e}"
+                ))
+            })?;
             let path = entry.path();
-            let ty = entry
-                .file_type()
-                .map_err(|e| format!("Failed to read file type {}: {e}", path.display()))?;
+            let ty = entry.file_type().map_err(|e| {
+                ThumbnailError::from_external_message(format!(
+                    "Failed to read file type {}: {e}",
+                    path.display()
+                ))
+            })?;
 
             if ty.is_dir() {
                 dirs.push(path);
@@ -334,7 +345,12 @@ fn thumbnail_cache_stats(root: &Path) -> Result<(u64, u64), String> {
                 files += 1;
                 let len = entry
                     .metadata()
-                    .map_err(|e| format!("Failed to read metadata {}: {e}", path.display()))?
+                    .map_err(|e| {
+                        ThumbnailError::from_external_message(format!(
+                            "Failed to read metadata {}: {e}",
+                            path.display()
+                        ))
+                    })?
                     .len();
                 bytes = bytes.saturating_add(len);
             }
@@ -375,15 +391,15 @@ fn generate_thumbnail(
     resource_dir: Option<&Path>,
     generation: Option<&str>,
     ffmpeg_override: Option<PathBuf>,
-) -> Result<ThumbnailResponse, String> {
+) -> ThumbnailResult<ThumbnailResponse> {
     if matches!(thumb_kind(path), ThumbKind::Video) {
-        let (w, h) = render_video_thumbnail(
+        let (w, h) = map_external_result(render_video_thumbnail(
             path,
             cache_path,
             max_dim,
             generation,
             ffmpeg_override.as_deref(),
-        )?;
+        ))?;
         return Ok(ThumbnailResponse {
             path: cache_path.to_string_lossy().into_owned(),
             width: w,
@@ -398,7 +414,12 @@ fn generate_thumbnail(
         .map(|s| s.eq_ignore_ascii_case("pdf"))
         .unwrap_or(false)
     {
-        let (w, h) = render_pdf_thumbnail(path, cache_path, max_dim, resource_dir)?;
+        let (w, h) = map_external_result(render_pdf_thumbnail(
+            path,
+            cache_path,
+            max_dim,
+            resource_dir,
+        ))?;
         return Ok(ThumbnailResponse {
             path: cache_path.to_string_lossy().into_owned(),
             width: w,
@@ -413,7 +434,7 @@ fn generate_thumbnail(
         .map(|s| s.eq_ignore_ascii_case("svg"))
         .unwrap_or(false)
     {
-        let (w, h) = render_svg_thumbnail(path, cache_path, max_dim)?;
+        let (w, h) = map_external_result(render_svg_thumbnail(path, cache_path, max_dim))?;
         return Ok(ThumbnailResponse {
             path: cache_path.to_string_lossy().into_owned(),
             width: w,
@@ -423,12 +444,16 @@ fn generate_thumbnail(
     }
 
     let reader = ImageReader::open(path)
-        .map_err(|e| format!("Open failed: {e}"))?
+        .map_err(|e| ThumbnailError::from_external_message(format!("Open failed: {e}")))?
         .with_guessed_format()
-        .map_err(|e| format!("Failed to guess format: {e}"))?;
+        .map_err(|e| {
+            ThumbnailError::from_external_message(format!("Failed to guess format: {e}"))
+        })?;
 
     // format allowlist (image crate supported set)
-    let fmt = reader.format().ok_or("Unsupported image format")?;
+    let fmt = reader
+        .format()
+        .ok_or_else(|| ThumbnailError::from_external_message("Unsupported image format"))?;
     match fmt {
         ImageFormat::Png
         | ImageFormat::Jpeg
@@ -442,7 +467,11 @@ fn generate_thumbnail(
         | ImageFormat::Hdr
         | ImageFormat::OpenExr
         | ImageFormat::Dds => {}
-        _ => return Err("Unsupported image format".into()),
+        _ => {
+            return Err(ThumbnailError::from_external_message(
+                "Unsupported image format",
+            ))
+        }
     }
 
     let timeout = decode_timeout_for_path(path);
@@ -458,16 +487,18 @@ fn generate_thumbnail(
                     path.display(),
                     err
                 ));
-                decode_with_timeout(reader, fmt, timeout)?
+                map_external_result(decode_with_timeout(reader, fmt, timeout))?
             }
         }
     } else {
-        decode_with_timeout(reader, fmt, timeout)?
+        map_external_result(decode_with_timeout(reader, fmt, timeout))?
     };
 
     let (src_w, src_h) = img.dimensions();
     if src_w > MAX_SOURCE_DIM || src_h > MAX_SOURCE_DIM {
-        return Err("Image dimensions too large for thumbnail".into());
+        return Err(ThumbnailError::from_external_message(
+            "Image dimensions too large for thumbnail",
+        ));
     }
     let mut thumb = img.resize(max_dim, max_dim, FilterType::Nearest);
     if let Some(orientation) = orientation {
@@ -477,8 +508,9 @@ fn generate_thumbnail(
 
     // Save quickly: fast compression and no PNG filters to cut CPU time.
     {
-        let file =
-            fs::File::create(cache_path).map_err(|e| format!("Save thumbnail failed: {e}"))?;
+        let file = fs::File::create(cache_path).map_err(|e| {
+            ThumbnailError::from_external_message(format!("Save thumbnail failed: {e}"))
+        })?;
         let writer = std::io::BufWriter::new(file);
         let encoder =
             PngEncoder::new_with_quality(writer, PngCompression::Fast, PngFilter::NoFilter);
@@ -486,7 +518,9 @@ fn generate_thumbnail(
         let (w, h) = rgba.dimensions();
         encoder
             .write_image(&rgba, w, h, image::ColorType::Rgba8.into())
-            .map_err(|e| format!("Save thumbnail failed: {e}"))?;
+            .map_err(|e| {
+                ThumbnailError::from_external_message(format!("Save thumbnail failed: {e}"))
+            })?;
     }
 
     thumb_log(&format!(
@@ -768,13 +802,13 @@ impl<R: Seek> Seek for CancelableReader<R> {
     }
 }
 
-fn sanitize_input_path(raw: &str) -> Result<PathBuf, String> {
+fn sanitize_input_path(raw: &str) -> ThumbnailResult<PathBuf> {
     let pb = PathBuf::from(raw);
 
     // basic poison checks
     let raw_lc = raw.to_lowercase();
     if raw_lc.contains('\0') {
-        return Err("Invalid path".into());
+        return Err(ThumbnailError::from_external_message("Invalid path"));
     }
 
     // deny obvious special trees on unix
@@ -782,15 +816,20 @@ fn sanitize_input_path(raw: &str) -> Result<PathBuf, String> {
     {
         if raw.starts_with("/proc/") || raw == "/proc" || raw.starts_with("/dev/") || raw == "/dev"
         {
-            return Err("Refusing to thumbnail special device/proc files".into());
+            return Err(ThumbnailError::from_external_message(
+                "Refusing to thumbnail special device/proc files",
+            ));
         }
     }
 
     // canonicalize to resolve traversal and detect symlinks
-    let meta =
-        fs::symlink_metadata(&pb).map_err(|e| format!("Path does not exist or unreadable: {e}"))?;
+    let meta = fs::symlink_metadata(&pb).map_err(|e| {
+        ThumbnailError::from_external_message(format!("Path does not exist or unreadable: {e}"))
+    })?;
     if meta.file_type().is_symlink() {
-        return Err("Refusing to thumbnail symlinked files".into());
+        return Err(ThumbnailError::from_external_message(
+            "Refusing to thumbnail symlinked files",
+        ));
     }
 
     #[cfg(target_os = "windows")]
@@ -801,13 +840,15 @@ fn sanitize_input_path(raw: &str) -> Result<PathBuf, String> {
         const FILE_TYPE_CHAR: u32 = 0x0000_2000;
         let attrs = meta.file_attributes();
         if attrs & (FILE_TYPE_PIPE | FILE_TYPE_CHAR) != 0 {
-            return Err("Refusing to thumbnail special device files".into());
+            return Err(ThumbnailError::from_external_message(
+                "Refusing to thumbnail special device files",
+            ));
         }
     }
 
-    let canon = pb
-        .canonicalize()
-        .map_err(|e| format!("Failed to canonicalize path: {e}"))?;
+    let canon = pb.canonicalize().map_err(|e| {
+        ThumbnailError::from_external_message(format!("Failed to canonicalize path: {e}"))
+    })?;
 
     Ok(canon)
 }

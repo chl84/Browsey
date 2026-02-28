@@ -262,11 +262,11 @@ pub(super) fn list_mounts_sync() -> Vec<MountInfo> {
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
 pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> ApiResult<()> {
-    map_api_result(eject_drive_impl(path, watcher).map_err(NetworkError::from_external_message))
+    map_api_result(eject_drive_impl(path, watcher))
 }
 
 #[cfg(not(target_os = "windows"))]
-fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> Result<(), String> {
+fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> NetworkResult<()> {
     // Drop watcher to avoid open handles during unmount
     watcher.replace(None);
 
@@ -345,21 +345,17 @@ fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> Result<(
         path,
         errors.join(" | ")
     ));
-    Err(msg)
+    Err(NetworkError::new(NetworkErrorCode::EjectFailed, msg))
 }
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
 pub async fn mount_partition(path: String, app: tauri::AppHandle) -> ApiResult<()> {
-    map_api_result(
-        mount_partition_impl(path, app)
-            .await
-            .map_err(NetworkError::from_external_message),
-    )
+    map_api_result(mount_partition_impl(path, app).await)
 }
 
 #[cfg(not(target_os = "windows"))]
-async fn mount_partition_impl(path: String, app: tauri::AppHandle) -> Result<(), String> {
+pub(super) async fn mount_partition_impl(path: String, app: tauri::AppHandle) -> NetworkResult<()> {
     let lower = path.to_ascii_lowercase();
     let scheme = lower
         .split_once("://")
@@ -377,7 +373,12 @@ async fn mount_partition_impl(path: String, app: tauri::AppHandle) -> Result<(),
             gio_mounts::mount_uri_status(&path_for_mount)
         })
         .await
-        .unwrap_or(gio_mounts::MountUriStatus::Failed);
+        .map_err(|error| {
+            NetworkError::new(
+                NetworkErrorCode::TaskFailed,
+                format!("mount task failed: {error}"),
+            )
+        })?;
         let ok = !matches!(status, gio_mounts::MountUriStatus::Failed);
         let outcome = status.as_str();
         let duration_ms = started.elapsed().as_millis() as u64;
@@ -395,7 +396,10 @@ async fn mount_partition_impl(path: String, app: tauri::AppHandle) -> Result<(),
             invalidate_network_discovery_cache();
             Ok(())
         } else {
-            Err(format!("Failed to mount {fs_kind}"))
+            Err(NetworkError::new(
+                NetworkErrorCode::MountFailed,
+                format!("Failed to mount {fs_kind}"),
+            ))
         }
     } else {
         let duration_ms = started.elapsed().as_millis() as u64;

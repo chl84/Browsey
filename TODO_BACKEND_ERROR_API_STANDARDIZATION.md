@@ -61,7 +61,7 @@ Tasks:
 - [x] Introduce `ThumbnailResult<T>` alias in call sites instead of raw `Result<T, String>` where errors cross internal boundaries
 - [x] Replace stringly-typed in-flight coordination payloads with `ThumbnailResult<ThumbnailResponse>` where practical
 - [x] Convert major orchestration helpers in `mod.rs` to return `ThumbnailResult<_>`
-- [ ] Keep low-level library adapters string-based only if immediately mapped at the boundary
+- [x] Keep low-level library adapters string-based only if immediately mapped at the boundary
 - [x] Ensure `map_api_result(...)` stays only at Tauri command entry points
 
 Acceptance:
@@ -73,9 +73,9 @@ Current issue:
 - `error.rs` exists, but `mounts.rs` mixes `NetworkResult<_>` with raw `Result<_, String>`, especially on non-Windows paths.
 
 Tasks:
-- [ ] Standardize `mounts.rs` to return `NetworkResult<_>` for orchestration paths
-- [ ] Convert `eject_drive_impl` and `mount_partition_impl` to typed errors on all supported platforms
-- [ ] Map command/process execution failures into `NetworkError` close to the process boundary
+- [x] Standardize `mounts.rs` to return `NetworkResult<_>` for orchestration paths
+- [x] Convert `eject_drive_impl` and `mount_partition_impl` to typed errors on all supported platforms
+- [x] Map command/process execution failures into `NetworkError` close to the process boundary
 - [ ] Keep discovery helpers simple, but do not leak raw string errors through command orchestration
 
 Acceptance:
