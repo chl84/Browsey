@@ -35,6 +35,20 @@ impl RcloneCloudProvider {
     pub fn cli(&self) -> &RcloneCli {
         &self.cli
     }
+
+    pub(crate) fn download_file_with_progress<F>(
+        &self,
+        src: &CloudPath,
+        local_dest: &Path,
+        progress_group: &str,
+        cancel: Option<&AtomicBool>,
+        on_progress: F,
+    ) -> CloudCommandResult<()>
+    where
+        F: FnMut(u64, u64),
+    {
+        self.download_file_with_progress_impl(src, local_dest, progress_group, cancel, on_progress)
+    }
 }
 
 impl CloudProvider for RcloneCloudProvider {

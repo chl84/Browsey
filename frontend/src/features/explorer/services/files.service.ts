@@ -1,5 +1,5 @@
 import { invoke } from '@/shared/lib/tauri'
-import { createCloudFolder, renameCloudEntry } from '@/features/network'
+import { createCloudFolder, openCloudEntry, renameCloudEntry } from '@/features/network'
 import type { Entry } from '../model/types'
 
 const isCloudPath = (path: string) => path.startsWith('rclone://')
@@ -11,9 +11,9 @@ const parentCloudPath = (path: string) => {
   return idx > 'rclone://'.length ? path.slice(0, idx) : path
 }
 
-export const openEntry = (entry: Entry) => {
+export const openEntry = (entry: Entry, options?: { progressEvent?: string }) => {
   if (isCloudPath(entry.path) && entry.kind !== 'dir') {
-    return invoke<void>('open_cloud_entry', { path: entry.path })
+    return openCloudEntry(entry.path, options?.progressEvent)
   }
   return invoke<void>('open_entry', { path: entry.path })
 }

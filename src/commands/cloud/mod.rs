@@ -265,8 +265,15 @@ pub async fn copy_cloud_entry(
 }
 
 #[tauri::command]
-pub async fn open_cloud_entry(path: String) -> ApiResult<()> {
-    map_api_result(open::open_cloud_entry_impl(path).await)
+pub async fn open_cloud_entry(
+    path: String,
+    app: tauri::AppHandle,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
+) -> ApiResult<()> {
+    map_api_result(
+        open::open_cloud_entry_impl(path, app, cancel.inner().clone(), progress_event).await,
+    )
 }
 
 async fn copy_cloud_entry_impl(

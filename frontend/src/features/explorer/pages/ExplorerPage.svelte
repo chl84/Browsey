@@ -4,6 +4,7 @@
   import { getErrorMessage } from '@/shared/lib/error'
   import { get } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from '@/features/explorer/utils'
+  import { openEntry as openExplorerEntry } from '@/features/explorer/services/files.service'
   import { createListState } from '@/features/explorer/state/list.store'
   import { ExplorerShell, useGridVirtualizer, createViewObservers } from '@/features/explorer/ui-shell'
   import { useExplorerData } from '@/features/explorer/hooks/useExplorerData'
@@ -237,6 +238,26 @@
           hasShownCloudRefreshHint = true
           showToast('Cloud folders use manual refresh (F5); live watch is not available yet', 2600)
         }
+      }
+    },
+    onOpenEntry: async (entry) => {
+      if (!isCloudPath(entry.path) || entry.kind === 'dir') {
+        await openExplorerEntry(entry)
+        return
+      }
+      const progressEvent = `cloud-open-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      await activityApi.start(
+        'Opening cloud file…',
+        progressEvent,
+        () => activityApi.requestCancel(progressEvent),
+      )
+      try {
+        await openExplorerEntry(entry, { progressEvent })
+        activityApi.hideSoon()
+      } catch (err) {
+        activityApi.clearNow()
+        await activityApi.cleanup()
+        showToast(getErrorMessage(err))
       }
     },
   })

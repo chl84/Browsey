@@ -152,5 +152,8 @@ export const copyCloudEntry = (src: string, dst: string, options?: CloudWriteOpt
     progressEvent: options?.progressEvent,
   })
 
+export const openCloudEntry = (path: string, progressEvent?: string) =>
+  invokeCloud<void>('open_cloud_entry', { path, progressEvent })
+
 export const previewCloudConflicts = (sources: string[], destDir: string) =>
   invokeCloud<CloudConflictInfo[]>('preview_cloud_conflicts', { sources, destDir })

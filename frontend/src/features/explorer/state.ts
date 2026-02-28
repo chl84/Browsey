@@ -313,7 +313,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     if (entry.kind === 'dir') {
       void load(entry.path)
     } else {
-      void openEntry(entry)
+      if (callbacks.onOpenEntry) {
+        void callbacks.onOpenEntry(entry)
+      } else {
+        void openEntry(entry)
+      }
     }
   }
 
