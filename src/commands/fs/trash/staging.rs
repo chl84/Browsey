@@ -1,3 +1,4 @@
+use super::super::error::{map_external_result, FsError, FsErrorCode, FsResult};
 use super::backend::TrashBackend;
 use crate::undo::{
     assert_path_snapshot, is_destination_exists_error, move_with_fallback, PathSnapshot,
@@ -71,8 +72,8 @@ pub(super) fn trash_delete_via_staged_rename<B: TrashBackend>(
     src: &Path,
     src_snapshot: &PathSnapshot,
     backend: &B,
-) -> Result<PathBuf, String> {
-    assert_path_snapshot(src, src_snapshot)?;
+) -> FsResult<PathBuf> {
+    map_external_result(assert_path_snapshot(src, src_snapshot))?;
     #[cfg(target_os = "windows")]
     {
         backend.delete_path(src)?;
@@ -80,14 +81,15 @@ pub(super) fn trash_delete_via_staged_rename<B: TrashBackend>(
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let staged = stage_for_trash(src)?;
+        let staged = map_external_result(stage_for_trash(src))?;
         if let Err(err) = add_trash_stage_journal_entry(&staged, src) {
             let rollback = move_with_fallback(&staged, src)
                 .err()
                 .map(|e| format!("; rollback failed: {e}"))
                 .unwrap_or_default();
-            return Err(format!(
-                "Failed to persist staged trash journal entry: {err}{rollback}"
+            return Err(FsError::new(
+                FsErrorCode::TrashFailed,
+                format!("Failed to persist staged trash journal entry: {err}{rollback}"),
             ));
         }
         match backend.delete_path(&staged) {
@@ -104,7 +106,10 @@ pub(super) fn trash_delete_via_staged_rename<B: TrashBackend>(
                     .err()
                     .map(|e| format!("; rollback failed: {e}"))
                     .unwrap_or_default();
-                Err(format!("Failed to move to trash: {err}{rollback}"))
+                Err(FsError::new(
+                    FsErrorCode::TrashFailed,
+                    format!("Failed to move to trash: {err}{rollback}"),
+                ))
             }
         }
     }
@@ -152,7 +157,7 @@ pub(super) fn encode_trash_info_path(path: &Path) -> String {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub(super) fn decode_percent_encoded_unix_path(encoded: &str) -> Result<PathBuf, String> {
+pub(super) fn decode_percent_encoded_unix_path(encoded: &str) -> FsResult<PathBuf> {
     fn hex_val(byte: u8) -> Option<u8> {
         match byte {
             b'0'..=b'9' => Some(byte - b'0'),
@@ -168,20 +173,29 @@ pub(super) fn decode_percent_encoded_unix_path(encoded: &str) -> Result<PathBuf,
     while i < bytes.len() {
         if bytes[i] == b'%' {
             if i + 2 >= bytes.len() {
-                return Err(format!("Invalid percent encoding: '{encoded}'"));
+                return Err(FsError::new(
+                    FsErrorCode::InvalidPath,
+                    format!("Invalid percent encoding: '{encoded}'"),
+                ));
             }
             let hi = hex_val(bytes[i + 1]).ok_or_else(|| {
-                format!(
-                    "Invalid percent encoding at index {} in '{}'",
-                    i + 1,
-                    encoded
+                FsError::new(
+                    FsErrorCode::InvalidPath,
+                    format!(
+                        "Invalid percent encoding at index {} in '{}'",
+                        i + 1,
+                        encoded
+                    ),
                 )
             })?;
             let lo = hex_val(bytes[i + 2]).ok_or_else(|| {
-                format!(
-                    "Invalid percent encoding at index {} in '{}'",
-                    i + 2,
-                    encoded
+                FsError::new(
+                    FsErrorCode::InvalidPath,
+                    format!(
+                        "Invalid percent encoding at index {} in '{}'",
+                        i + 2,
+                        encoded
+                    ),
                 )
             })?;
             out.push((hi << 4) | lo);
@@ -197,14 +211,17 @@ pub(super) fn decode_percent_encoded_unix_path(encoded: &str) -> Result<PathBuf,
 #[cfg(not(target_os = "windows"))]
 pub(super) fn load_trash_stage_journal_entries_at(
     path: &Path,
-) -> Result<Vec<TrashStageJournalEntry>, String> {
+) -> FsResult<Vec<TrashStageJournalEntry>> {
     let content = match std::fs::read_to_string(path) {
         Ok(content) => content,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(err) => {
-            return Err(format!(
-                "Failed to read trash stage journal {}: {err}",
-                path.display()
+            return Err(FsError::new(
+                FsErrorCode::TrashFailed,
+                format!(
+                    "Failed to read trash stage journal {}: {err}",
+                    path.display()
+                ),
             ));
         }
     };
@@ -265,7 +282,7 @@ pub(super) fn load_trash_stage_journal_entries_at(
 }
 
 #[cfg(not(target_os = "windows"))]
-fn load_trash_stage_journal_entries() -> Result<Vec<TrashStageJournalEntry>, String> {
+fn load_trash_stage_journal_entries() -> FsResult<Vec<TrashStageJournalEntry>> {
     load_trash_stage_journal_entries_at(&trash_stage_journal_path())
 }
 
@@ -273,12 +290,15 @@ fn load_trash_stage_journal_entries() -> Result<Vec<TrashStageJournalEntry>, Str
 pub(super) fn store_trash_stage_journal_entries_at(
     path: &Path,
     entries: &[TrashStageJournalEntry],
-) -> Result<(), String> {
+) -> FsResult<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
-            format!(
-                "Failed to create trash stage journal directory {}: {e}",
-                parent.display()
+            FsError::new(
+                FsErrorCode::TrashFailed,
+                format!(
+                    "Failed to create trash stage journal directory {}: {e}",
+                    parent.display()
+                ),
             )
         })?;
     }
@@ -286,9 +306,12 @@ pub(super) fn store_trash_stage_journal_entries_at(
     if entries.is_empty() {
         if let Err(err) = std::fs::remove_file(path) {
             if err.kind() != std::io::ErrorKind::NotFound {
-                return Err(format!(
-                    "Failed to remove trash stage journal {}: {err}",
-                    path.display()
+                return Err(FsError::new(
+                    FsErrorCode::TrashFailed,
+                    format!(
+                        "Failed to remove trash stage journal {}: {err}",
+                        path.display()
+                    ),
                 ));
             }
         }
@@ -305,29 +328,38 @@ pub(super) fn store_trash_stage_journal_entries_at(
 
     let tmp_path = path.with_extension("tsv.tmp");
     std::fs::write(&tmp_path, content).map_err(|e| {
-        format!(
-            "Failed to write temporary trash stage journal {}: {e}",
-            tmp_path.display()
+        FsError::new(
+            FsErrorCode::TrashFailed,
+            format!(
+                "Failed to write temporary trash stage journal {}: {e}",
+                tmp_path.display()
+            ),
         )
     })?;
     std::fs::rename(&tmp_path, path).map_err(|e| {
-        format!(
-            "Failed to finalize trash stage journal {}: {e}",
-            path.display()
+        FsError::new(
+            FsErrorCode::TrashFailed,
+            format!(
+                "Failed to finalize trash stage journal {}: {e}",
+                path.display()
+            ),
         )
     })
 }
 
 #[cfg(not(target_os = "windows"))]
-fn store_trash_stage_journal_entries(entries: &[TrashStageJournalEntry]) -> Result<(), String> {
+fn store_trash_stage_journal_entries(entries: &[TrashStageJournalEntry]) -> FsResult<()> {
     store_trash_stage_journal_entries_at(&trash_stage_journal_path(), entries)
 }
 
 #[cfg(not(target_os = "windows"))]
-fn add_trash_stage_journal_entry(staged: &Path, original: &Path) -> Result<(), String> {
-    let _guard = trash_stage_journal_lock()
-        .lock()
-        .map_err(|_| "Trash stage journal lock poisoned".to_string())?;
+fn add_trash_stage_journal_entry(staged: &Path, original: &Path) -> FsResult<()> {
+    let _guard = trash_stage_journal_lock().lock().map_err(|_| {
+        FsError::new(
+            FsErrorCode::TrashFailed,
+            "Trash stage journal lock poisoned",
+        )
+    })?;
     let mut entries = load_trash_stage_journal_entries()?;
     let new_entry = TrashStageJournalEntry {
         staged: staged.to_path_buf(),
@@ -340,10 +372,13 @@ fn add_trash_stage_journal_entry(staged: &Path, original: &Path) -> Result<(), S
 }
 
 #[cfg(not(target_os = "windows"))]
-fn remove_trash_stage_journal_entry(staged: &Path, original: &Path) -> Result<(), String> {
-    let _guard = trash_stage_journal_lock()
-        .lock()
-        .map_err(|_| "Trash stage journal lock poisoned".to_string())?;
+fn remove_trash_stage_journal_entry(staged: &Path, original: &Path) -> FsResult<()> {
+    let _guard = trash_stage_journal_lock().lock().map_err(|_| {
+        FsError::new(
+            FsErrorCode::TrashFailed,
+            "Trash stage journal lock poisoned",
+        )
+    })?;
     let mut entries = load_trash_stage_journal_entries()?;
     entries.retain(|entry| !(entry.staged == staged && entry.original == original));
     store_trash_stage_journal_entries(&entries)
@@ -419,12 +454,15 @@ pub(super) fn cleanup_stale_trash_staging_at(path: &Path) {
 pub(super) fn rewrite_trash_info_original_path(
     item: &TrashItem,
     original_path: &Path,
-) -> Result<(), String> {
+) -> FsResult<()> {
     let info_path = PathBuf::from(&item.id);
     let contents = std::fs::read_to_string(&info_path).map_err(|e| {
-        format!(
-            "Failed to read trash info file {}: {e}",
-            info_path.display()
+        FsError::new(
+            FsErrorCode::TrashFailed,
+            format!(
+                "Failed to read trash info file {}: {e}",
+                info_path.display()
+            ),
         )
     })?;
 
@@ -450,9 +488,12 @@ pub(super) fn rewrite_trash_info_original_path(
     }
 
     std::fs::write(&info_path, output).map_err(|e| {
-        format!(
-            "Failed to update trash info file {}: {e}",
-            info_path.display()
+        FsError::new(
+            FsErrorCode::TrashFailed,
+            format!(
+                "Failed to update trash info file {}: {e}",
+                info_path.display()
+            ),
         )
     })
 }
