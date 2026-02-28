@@ -63,9 +63,9 @@ Acceptance:
 ### 2) Split `src/commands/cloud/rclone_rc.rs`
 
 - [x] Extract daemon lifecycle/health/recycle logic into `src/commands/cloud/rclone_rc/daemon.rs`
-- [ ] Extract generic request/client helpers into `src/commands/cloud/rclone_rc/client.rs`
-- [ ] Extract async job control (`job/status`, `job/stop`, cancel flow) into `src/commands/cloud/rclone_rc/jobs.rs`
-- [ ] Extract typed `operations/*` and `config/*` wrappers into `src/commands/cloud/rclone_rc/methods.rs`
+- [x] Extract generic request/client helpers into `src/commands/cloud/rclone_rc/client.rs`
+- [x] Extract async job control (`job/status`, `job/stop`, cancel flow) into `src/commands/cloud/rclone_rc/jobs.rs`
+- [x] Extract typed `operations/*` and `config/*` wrappers into `src/commands/cloud/rclone_rc/methods.rs`
 - [x] Keep shared rc state and public entry points in `src/commands/cloud/rclone_rc/mod.rs`
 
 Acceptance:
@@ -73,12 +73,12 @@ Acceptance:
 
 ### 3) Split `src/commands/cloud/providers/rclone.rs`
 
-- [ ] Convert to `src/commands/cloud/providers/rclone/`
-- [ ] Extract runtime probe/cache into `runtime.rs`
-- [ ] Extract read-path logic (`list_dir`, `stat_path`) into `read.rs`
+- [x] Convert to `src/commands/cloud/providers/rclone/`
+- [x] Extract runtime probe/cache into `runtime.rs`
+- [x] Extract read-path logic (`list_dir`, `stat_path`) into `read.rs`
 - [ ] Extract write-path logic (`mkdir`, `delete`, `move`, `copy`) into `write.rs`
 - [ ] Extract rc/cli backend selection + logging helpers into `logging.rs` if still large enough
-- [ ] Extract `lsjson`/stat parsing helpers into `parse.rs`
+- [x] Extract `lsjson`/stat parsing helpers into `parse.rs`
 - [ ] Keep the `RcloneCloudProvider` type and trait impl in `mod.rs`
 
 Acceptance:
