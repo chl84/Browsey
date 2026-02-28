@@ -4,6 +4,11 @@
 - Added rclone-backed cloud file support (Linux-first) with direct `rclone://...` paths and Network-view discovery for supported remotes (OneDrive primary target in v1, plus Google Drive/Nextcloud provider groundwork).
 - Added core cloud file operations via rclone (`list`, `mkdir`, `copy`, `move/rename`, `delete`) with provider-aware conflict preview, overwrite/auto-rename handling, and capability-driven UI restrictions for unsupported cloud actions.
 - Added mixed local-disk <-> cloud copy/move support (files and folders) for clipboard and in-app drag/drop flows, including conflict preview integration, rename-on-conflict retries, provider-aware error mapping, and refresh soft-fail behavior.
+- Cloud files can now be opened directly from `rclone://...` paths through a managed local cache, including `Enter`/double-click behavior for supported file entries.
+- Cloud file open and mixed cloud/local file transfers now report real byte progress when rclone rc progress data is available, with aggregated batch progress for multi-file uploads/downloads and richer byte detail in the activity pill.
+- Mixed local-to-cloud writes now invalidate cloud listing cache correctly, so successful uploads appear after refresh without stale cached listings hiding the result.
+- Recent view now prunes dead entries automatically and bounds slow network/GVFS metadata probes, reducing cases where an empty or mostly-stale Recent view opens slowly.
+- Explorer drag/drop now supports dropping entries onto bookmark targets in the sidebar, using the same copy/move routing and conflict behavior as breadcrumb drops.
 - Cloud UX/performance improvements: background refresh for cloud write operations, refresh coalescing, reduced conflict-preview metadata calls, cloud remote/listing caches with invalidation, bounded per-remote concurrency, and retry/backoff for transient metadata/listing failures.
 - Cloud routing hardening: `rclone://` paths no longer enter local FS/undo/GVFS paths, cloud sorting avoids remote reloads on column-sort clicks, and breadcrumbs/direct navigation now handle `rclone://` paths correctly.
 - Added cloud-specific UX polish: indeterminate activity indicator for operations without meaningful byte progress, session-only manual-refresh hint for cloud folders, and corrected activity labels (`Copying` vs `Moving`) across paste/drag flows.
