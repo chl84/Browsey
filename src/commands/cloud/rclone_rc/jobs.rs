@@ -78,9 +78,29 @@ impl RcloneRcClient {
     fn run_method_async_with_job_control(
         &self,
         method: RcloneRcMethod,
-        mut payload: Value,
+        payload: Value,
         cancel_token: Option<&AtomicBool>,
     ) -> Result<Value, RcloneCliError> {
+        self.run_method_async_with_job_control_and_progress(
+            method,
+            payload,
+            None,
+            cancel_token,
+            |_| {},
+        )
+    }
+
+    pub(super) fn run_method_async_with_job_control_and_progress<F>(
+        &self,
+        method: RcloneRcMethod,
+        mut payload: Value,
+        group: Option<&str>,
+        cancel_token: Option<&AtomicBool>,
+        mut on_progress: F,
+    ) -> Result<Value, RcloneCliError>
+    where
+        F: FnMut(Value),
+    {
         let Some(payload_obj) = payload.as_object_mut() else {
             return Err(RcloneCliError::Io(io::Error::other(format!(
                 "rclone rc {} async payload must be a JSON object",
@@ -88,6 +108,9 @@ impl RcloneRcClient {
             ))));
         };
         payload_obj.insert("_async".to_string(), Value::Bool(true));
+        if let Some(group) = group {
+            payload_obj.insert("_group".to_string(), Value::String(group.to_string()));
+        }
 
         let kickoff = self.run_method(method, payload)?;
         let job_id = kickoff
@@ -118,6 +141,12 @@ impl RcloneRcClient {
                 });
             }
 
+            if let Some(group) = group {
+                if let Ok(stats) = self.core_stats(Some(group), true) {
+                    on_progress(stats);
+                }
+            }
+
             let status = match self.job_status(job_id) {
                 Ok(status) => status,
                 Err(error) => {
@@ -143,6 +172,11 @@ impl RcloneRcClient {
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             if finished {
+                if let Some(group) = group {
+                    if let Ok(stats) = self.core_stats(Some(group), true) {
+                        on_progress(stats);
+                    }
+                }
                 let success = status
                     .get("success")
                     .and_then(Value::as_bool)

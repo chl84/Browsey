@@ -3,6 +3,18 @@ use serde_json::{json, Value};
 use std::sync::atomic::AtomicBool;
 
 impl RcloneRcClient {
+    pub fn core_stats(&self, group: Option<&str>, short: bool) -> Result<Value, RcloneCliError> {
+        let mut payload = json!({ "short": short });
+        if let Some(group) = group {
+            payload["group"] = Value::String(group.to_string());
+        }
+        self.run_method(RcloneRcMethod::CoreStats, payload)
+    }
+
+    pub fn core_stats_delete(&self, group: &str) -> Result<Value, RcloneCliError> {
+        self.run_method(RcloneRcMethod::CoreStatsDelete, json!({ "group": group }))
+    }
+
     pub fn list_remotes(&self) -> Result<Value, RcloneCliError> {
         self.run_method(RcloneRcMethod::ConfigListRemotes, json!({}))
     }
@@ -116,6 +128,37 @@ impl RcloneRcClient {
             RcloneRcMethod::OperationsCopyFile,
             payload,
             cancel_token,
+        )
+    }
+
+    pub fn operations_copyfile_to_local_with_progress<F>(
+        &self,
+        src_fs: &str,
+        src_remote: &str,
+        dst_dir: &str,
+        dst_remote: &str,
+        group: &str,
+        cancel_token: Option<&AtomicBool>,
+        on_progress: F,
+    ) -> Result<Value, RcloneCliError>
+    where
+        F: FnMut(Value),
+    {
+        let payload = json!({
+            "srcFs": src_fs,
+            "srcRemote": src_remote,
+            "dstFs": {
+                "type": "local",
+                "_root": dst_dir,
+            },
+            "dstRemote": dst_remote,
+        });
+        self.run_method_async_with_job_control_and_progress(
+            RcloneRcMethod::OperationsCopyFile,
+            payload,
+            Some(group),
+            cancel_token,
+            on_progress,
         )
     }
 

@@ -40,6 +40,8 @@ const RCLONE_RC_ERROR_TEXT_MAX_CHARS: usize = 2048;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RcloneRcMethod {
     CoreNoop,
+    CoreStats,
+    CoreStatsDelete,
     ConfigListRemotes,
     ConfigDump,
     OperationsList,
@@ -58,6 +60,8 @@ impl RcloneRcMethod {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::CoreNoop => "rc/noop",
+            Self::CoreStats => "core/stats",
+            Self::CoreStatsDelete => "core/stats-delete",
             Self::ConfigListRemotes => "config/listremotes",
             Self::ConfigDump => "config/dump",
             Self::OperationsList => "operations/list",
@@ -77,6 +81,8 @@ impl RcloneRcMethod {
 fn method_timeout(method: RcloneRcMethod) -> Duration {
     match method {
         RcloneRcMethod::CoreNoop
+        | RcloneRcMethod::CoreStats
+        | RcloneRcMethod::CoreStatsDelete
         | RcloneRcMethod::ConfigListRemotes
         | RcloneRcMethod::ConfigDump
         | RcloneRcMethod::OperationsList
@@ -96,6 +102,8 @@ fn method_is_retry_safe(method: RcloneRcMethod) -> bool {
     matches!(
         method,
         RcloneRcMethod::CoreNoop
+            | RcloneRcMethod::CoreStats
+            | RcloneRcMethod::CoreStatsDelete
             | RcloneRcMethod::ConfigListRemotes
             | RcloneRcMethod::ConfigDump
             | RcloneRcMethod::JobStatus
@@ -140,6 +148,8 @@ fn is_retryable_rc_error(error: &RcloneCliError) -> bool {
 fn allowlisted_method_from_name(method_name: &str) -> Option<RcloneRcMethod> {
     match method_name {
         "rc/noop" => Some(RcloneRcMethod::CoreNoop),
+        "core/stats" => Some(RcloneRcMethod::CoreStats),
+        "core/stats-delete" => Some(RcloneRcMethod::CoreStatsDelete),
         "config/listremotes" => Some(RcloneRcMethod::ConfigListRemotes),
         "config/dump" => Some(RcloneRcMethod::ConfigDump),
         "operations/list" => Some(RcloneRcMethod::OperationsList),
@@ -228,7 +238,9 @@ impl RcloneRcClient {
         }
         let method_enabled = match method {
             RcloneRcMethod::CoreNoop => self.is_enabled(),
-            RcloneRcMethod::ConfigListRemotes
+            RcloneRcMethod::CoreStats
+            | RcloneRcMethod::CoreStatsDelete
+            | RcloneRcMethod::ConfigListRemotes
             | RcloneRcMethod::ConfigDump
             | RcloneRcMethod::OperationsList
             | RcloneRcMethod::OperationsStat => self.is_read_enabled(),

@@ -28,6 +28,7 @@ export {
   moveCloudEntry,
   renameCloudEntry,
   copyCloudEntry,
+  openCloudEntry,
   previewCloudConflicts,
 } from './cloud.service'
 export type {

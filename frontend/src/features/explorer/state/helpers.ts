@@ -12,6 +12,7 @@ export type ColumnFilters = {
 export type ExplorerCallbacks = {
   onEntriesChanged?: () => void
   onCurrentChange?: (path: string) => void
+  onOpenEntry?: (entry: Entry) => void | Promise<void>
 }
 
 export const emptyListingFacets = (): ListingFacets => ({

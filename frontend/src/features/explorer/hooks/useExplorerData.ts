@@ -17,6 +17,7 @@ type CloudDirRefreshedEvent = {
 type Options = {
   onEntriesChanged?: () => void
   onCurrentChange?: (path: string) => void
+  onOpenEntry?: (entry: Entry) => void | Promise<void>
   initialPath?: string
   partitionsPollMs?: number
 }
@@ -25,6 +26,7 @@ export const useExplorerData = (options: Options = {}) => {
   const explorer = createExplorerState({
     onEntriesChanged: options.onEntriesChanged,
     onCurrentChange: options.onCurrentChange,
+    onOpenEntry: options.onOpenEntry,
   })
 
   const {

@@ -4,11 +4,104 @@ use super::{
     CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudPath, CloudProvider,
     RcloneCliError, RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
 };
+use serde_json::Value;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use tracing::info;
 
 impl RcloneCloudProvider {
+    pub(super) fn download_file_with_progress_impl<F>(
+        &self,
+        src: &CloudPath,
+        local_dest: &Path,
+        progress_group: &str,
+        cancel: Option<&AtomicBool>,
+        mut on_progress: F,
+    ) -> CloudCommandResult<()>
+    where
+        F: FnMut(u64, u64),
+    {
+        self.ensure_runtime_ready()?;
+        if is_cancelled(cancel) {
+            return Err(cloud_write_cancelled_error());
+        }
+
+        let Some(local_parent) = local_dest.parent() else {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::InvalidPath,
+                format!(
+                    "Local destination must include a parent directory: {}",
+                    local_dest.display()
+                ),
+            ));
+        };
+        let Some(local_name) = local_dest.file_name().and_then(|name| name.to_str()) else {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::InvalidPath,
+                format!(
+                    "Local destination must include a valid file name: {}",
+                    local_dest.display()
+                ),
+            ));
+        };
+
+        let mut fell_back_from_rc = false;
+        let mut fallback_reason: Option<&'static str> = None;
+        if self.rc.is_write_enabled() {
+            let src_fs = format!("{}:", src.remote());
+            let local_parent_str = local_parent.to_string_lossy().to_string();
+            match self.rc.operations_copyfile_to_local_with_progress(
+                &src_fs,
+                src.rel_path(),
+                &local_parent_str,
+                local_name,
+                progress_group,
+                cancel,
+                |stats| {
+                    if let Some((bytes, total)) = rc_stats_progress(&stats) {
+                        on_progress(bytes, total);
+                    }
+                },
+            ) {
+                Ok(_) => {
+                    let _ = self.rc.core_stats_delete(progress_group);
+                    return Ok(());
+                }
+                Err(RcloneCliError::Cancelled { .. }) => return Err(cloud_write_cancelled_error()),
+                Err(error) if !should_fallback_to_cli_after_rc_error(&error) => {
+                    let _ = self.rc.core_stats_delete(progress_group);
+                    return Err(map_rclone_error_for_remote(src.remote(), error));
+                }
+                Err(error) => {
+                    let _ = self.rc.core_stats_delete(progress_group);
+                    fell_back_from_rc = true;
+                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    info!(
+                        src = %src,
+                        dst = %local_dest.display(),
+                        error = %error,
+                        "rclone rc download failed; falling back to CLI copyto"
+                    );
+                }
+            }
+        }
+
+        self.download_file_impl(src, local_dest, cancel)?;
+        log_backend_selected(
+            "cloud_open_file_download",
+            "cli",
+            fell_back_from_rc,
+            if fell_back_from_rc {
+                fallback_reason
+            } else if cancel.is_some() {
+                Some("cancelable_cli")
+            } else {
+                None
+            },
+        );
+        Ok(())
+    }
+
     pub(super) fn download_file_impl(
         &self,
         src: &CloudPath,
@@ -370,6 +463,22 @@ impl RcloneCloudProvider {
         );
         Ok(())
     }
+}
+
+fn rc_stats_progress(stats: &Value) -> Option<(u64, u64)> {
+    let bytes = stats.get("bytes").and_then(Value::as_u64)?;
+    let total = stats
+        .get("totalBytes")
+        .and_then(Value::as_u64)
+        .or_else(|| {
+            stats
+                .get("transferring")
+                .and_then(Value::as_array)
+                .and_then(|items| items.first())
+                .and_then(|item| item.get("size"))
+                .and_then(Value::as_u64)
+        })?;
+    Some((bytes.min(total), total))
 }
 
 fn ensure_destination_overwrite_policy(

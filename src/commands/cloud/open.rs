@@ -4,13 +4,17 @@ use super::{
     map_spawn_result, parse_cloud_path_arg,
     provider::CloudProvider,
     providers::rclone::RcloneCloudProvider,
+    register_cloud_cancel,
     types::CloudEntryKind,
 };
 use crate::commands::fs::open_path_without_recent;
+use crate::runtime_lifecycle;
+use crate::tasks::CancelState;
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 use tracing::{debug, info};
 
@@ -24,13 +28,35 @@ struct CloudOpenCacheMetadata {
     modified: Option<String>,
 }
 
-pub(super) async fn open_cloud_entry_impl(path: String) -> CloudCommandResult<()> {
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudOpenProgressPayload {
+    bytes: u64,
+    total: u64,
+    finished: bool,
+}
+
+pub(super) async fn open_cloud_entry_impl(
+    path: String,
+    app: tauri::AppHandle,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
+) -> CloudCommandResult<()> {
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_log = path.clone();
     let remote = path.remote().to_string();
+    let cancel_guard = register_cloud_cancel(&cancel_state, &progress_event)?;
+    let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
-        with_cloud_remote_permits(vec![remote], || materialize_and_open_cloud_file(&path))
+        with_cloud_remote_permits(vec![remote], || {
+            materialize_and_open_cloud_file(
+                &path,
+                &app,
+                progress_event.as_deref(),
+                cancel_token.as_deref(),
+            )
+        })
     });
     let result = map_spawn_result(task.await, "cloud open task failed");
     let elapsed_ms = started.elapsed().as_millis() as u64;
@@ -52,7 +78,12 @@ pub(super) async fn open_cloud_entry_impl(path: String) -> CloudCommandResult<()
     result
 }
 
-fn materialize_and_open_cloud_file(path: &super::path::CloudPath) -> CloudCommandResult<()> {
+fn materialize_and_open_cloud_file(
+    path: &super::path::CloudPath,
+    app: &tauri::AppHandle,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> CloudCommandResult<()> {
     let provider = RcloneCloudProvider::default();
     let entry = provider.stat_path(path)?.ok_or_else(|| {
         CloudCommandError::new(
@@ -75,8 +106,32 @@ fn materialize_and_open_cloud_file(path: &super::path::CloudPath) -> CloudComman
         modified: entry.modified.clone(),
     };
 
-    if !cache_is_fresh(&cache_path, &metadata_path, &expected_meta) {
-        download_cloud_file_to_cache(&provider, path, &cache_path, &metadata_path, &expected_meta)?;
+    if cache_is_fresh(&cache_path, &metadata_path, &expected_meta) {
+        emit_cloud_open_progress(
+            app,
+            progress_event,
+            entry.size.unwrap_or(1),
+            entry.size.unwrap_or(1),
+            true,
+        );
+    } else {
+        download_cloud_file_to_cache(
+            &provider,
+            path,
+            &cache_path,
+            &metadata_path,
+            &expected_meta,
+            app,
+            progress_event,
+            cancel,
+        )?;
+        emit_cloud_open_progress(
+            app,
+            progress_event,
+            entry.size.unwrap_or(1),
+            entry.size.unwrap_or(1),
+            true,
+        );
     }
 
     open_path_without_recent(&cache_path).map_err(|error| {
@@ -107,6 +162,9 @@ fn download_cloud_file_to_cache(
     cache_path: &Path,
     metadata_path: &Path,
     metadata: &CloudOpenCacheMetadata,
+    app: &tauri::AppHandle,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
 ) -> CloudCommandResult<()> {
     if let Some(parent) = cache_path.parent() {
         fs::create_dir_all(parent).map_err(|error| {
@@ -130,7 +188,17 @@ fn download_cloud_file_to_cache(
     let _ = fs::remove_file(&part_path);
     let _ = fs::remove_file(&part_meta_path);
 
-    provider.download_file(src, &part_path, None)?;
+    if let Some(event_name) = progress_event {
+        provider.download_file_with_progress(
+            src,
+            &part_path,
+            event_name,
+            cancel,
+            |bytes, total| emit_cloud_open_progress(app, Some(event_name), bytes, total, false),
+        )?;
+    } else {
+        provider.download_file(src, &part_path, cancel)?;
+    }
 
     let raw_meta = serde_json::to_vec(metadata).map_err(|error| {
         CloudCommandError::new(
@@ -157,6 +225,30 @@ fn download_cloud_file_to_cache(
         )
     })?;
     Ok(())
+}
+
+fn emit_cloud_open_progress(
+    app: &tauri::AppHandle,
+    progress_event: Option<&str>,
+    bytes: u64,
+    total: u64,
+    finished: bool,
+) {
+    let Some(event_name) = progress_event else {
+        return;
+    };
+    if total == 0 {
+        return;
+    }
+    let _ = runtime_lifecycle::emit_if_running(
+        app,
+        event_name,
+        CloudOpenProgressPayload {
+            bytes,
+            total,
+            finished,
+        },
+    );
 }
 
 fn cloud_open_cache_path(
