@@ -52,7 +52,7 @@ Out of scope:
 - [x] Extract remote permit/cooldown limiter into `src/commands/cloud/limits.rs`
 - [x] Extract cloud refresh event payload + emit helpers into `src/commands/cloud/events.rs`
 - [x] Keep Tauri command entry points in `src/commands/cloud/mod.rs`
-- [ ] Keep command-specific orchestration in clearly named sibling modules if needed:
+- [x] Keep command-specific orchestration in clearly named sibling modules if needed:
   - `list.rs`
   - `write.rs`
   - `conflicts.rs`
@@ -91,7 +91,7 @@ Acceptance:
 - [x] `cargo test rclone_ --quiet`
 - [x] Any moved tests still live next to the code they validate
 - [x] No new circular module dependencies
-- [ ] No behavior change hidden inside a “split” commit
+- [x] No behavior change hidden inside a “split” commit
 
 ## Commit Strategy
 
