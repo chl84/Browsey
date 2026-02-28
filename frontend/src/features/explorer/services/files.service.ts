@@ -13,7 +13,7 @@ const parentCloudPath = (path: string) => {
 
 export const openEntry = (entry: Entry) => {
   if (isCloudPath(entry.path) && entry.kind !== 'dir') {
-    throw new Error('Opening cloud files directly is not supported yet')
+    return invoke<void>('open_cloud_entry', { path: entry.path })
   }
   return invoke<void>('open_entry', { path: entry.path })
 }

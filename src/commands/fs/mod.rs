@@ -33,6 +33,7 @@ use error::{
     SetHiddenErrorCode, SetHiddenResult,
 };
 pub use open_ops::open_entry;
+pub(crate) use open_ops::open_path_without_recent;
 pub use trash::{
     cleanup_stale_trash_staging, list_trash, move_to_trash, move_to_trash_many, purge_trash_items,
     restore_trash_items,

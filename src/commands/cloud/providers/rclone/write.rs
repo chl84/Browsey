@@ -4,10 +4,32 @@ use super::{
     CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudPath, CloudProvider,
     RcloneCliError, RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
 };
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use tracing::info;
 
 impl RcloneCloudProvider {
+    pub(super) fn download_file_impl(
+        &self,
+        src: &CloudPath,
+        local_dest: &Path,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()> {
+        self.ensure_runtime_ready()?;
+        if is_cancelled(cancel) {
+            return Err(cloud_write_cancelled_error());
+        }
+        self.cli
+            .run_capture_text_with_cancel(
+                RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
+                    .arg(src.to_rclone_remote_spec())
+                    .arg(local_dest.as_os_str()),
+                cancel,
+            )
+            .map_err(|error| map_rclone_error_for_remote(src.remote(), error))?;
+        Ok(())
+    }
+
     pub(super) fn mkdir_impl(
         &self,
         path: &CloudPath,

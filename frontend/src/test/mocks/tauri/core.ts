@@ -146,6 +146,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'can_extract_paths':
       return false as T
     case 'open_entry':
+    case 'open_cloud_entry':
       return undefined as T
     default:
       return null as T
