@@ -1,6 +1,7 @@
 <script lang="ts">
   import ModalShell from '../../shared/ui/ModalShell.svelte'
   import ConfirmActionModal from '../../shared/ui/ConfirmActionModal.svelte'
+  import TextField from '../../shared/ui/TextField.svelte'
   import { onMount } from 'svelte'
   import type { DefaultSortField, Density } from '@/features/explorer'
   import type { ShortcutBinding, ShortcutCommandId } from '@/features/shortcuts'
@@ -198,7 +199,12 @@
     <svelte:fragment slot="header">
       <div class="settings-header">
         <h2>Settings</h2>
-        <input class="settings-filter" type="search" placeholder="Filter settings" bind:value={$filter} />
+        <TextField
+          className="settings-filter"
+          type="search"
+          placeholder="Filter settings"
+          bind:value={$filter}
+        />
         <button type="button" class="restore-btn" on:click={handleRestoreDefaults}>Restore defaults</button>
       </div>
     </svelte:fragment>
