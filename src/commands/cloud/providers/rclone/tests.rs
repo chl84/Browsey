@@ -5,9 +5,9 @@ use super::{
     },
     parse::{
         classify_provider_kind, classify_provider_kind_from_config, parse_config_dump_summaries,
-        parse_listremotes_plain, parse_lsjson_items, parse_lsjson_items_value,
-        parse_lsjson_stat_item, parse_lsjson_stat_item_value, parse_rclone_version_stdout,
-        parse_rclone_version_triplet,
+        parse_config_dump_summaries_value, parse_listremotes_plain, parse_lsjson_items,
+        parse_lsjson_items_value, parse_lsjson_stat_item, parse_lsjson_stat_item_value,
+        parse_rclone_version_stdout, parse_rclone_version_triplet,
     },
     read::normalize_cloud_modified_time_value,
     remotes::{remote_allowed_by_policy_with, RcloneRemotePolicy},
@@ -66,6 +66,31 @@ fn parses_config_dump_config_summaries() {
           "misc": {"provider":"something"}
         }"#;
     let map = parse_config_dump_summaries(json).expect("parse json");
+    assert_eq!(
+        map.get("work").map(|c| c.backend_type.as_str()),
+        Some("onedrive")
+    );
+    assert_eq!(
+        map.get("photos").map(|c| c.backend_type.as_str()),
+        Some("drive")
+    );
+    assert_eq!(
+        map.get("nc").and_then(|c| c.vendor.as_deref()),
+        Some("nextcloud")
+    );
+    assert!(map.get("nc").map(|c| c.has_password).unwrap_or(false));
+    assert!(!map.contains_key("misc"));
+}
+
+#[test]
+fn parses_config_dump_config_summaries_from_value() {
+    let value = serde_json::json!({
+        "work": {"type":"onedrive","token":"secret"},
+        "photos": {"type":"drive"},
+        "nc": {"type":"webdav","vendor":"nextcloud","url":"https://cloud.example/remote.php/dav/files/user","pass":"***"},
+        "misc": {"provider":"something"}
+    });
+    let map = parse_config_dump_summaries_value(value).expect("parse value");
     assert_eq!(
         map.get("work").map(|c| c.backend_type.as_str()),
         Some("onedrive")

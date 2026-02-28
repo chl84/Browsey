@@ -55,6 +55,12 @@ pub(super) fn parse_config_dump_summaries(
 ) -> Result<HashMap<String, RcloneRemoteConfigSummary>, String> {
     let value: Value = serde_json::from_str(stdout)
         .map_err(|e| format!("Invalid rclone config dump JSON: {e}"))?;
+    parse_config_dump_summaries_value(value)
+}
+
+pub(super) fn parse_config_dump_summaries_value(
+    value: Value,
+) -> Result<HashMap<String, RcloneRemoteConfigSummary>, String> {
     let obj = value
         .as_object()
         .ok_or_else(|| "Expected top-level object from rclone config dump".to_string())?;

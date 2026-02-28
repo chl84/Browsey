@@ -2,8 +2,9 @@ use super::{
     error::map_rclone_error,
     logging::{classify_rc_fallback_reason, log_backend_selected},
     parse::{
-        classify_provider_kind_from_config, parse_config_dump_summaries, parse_listremotes_plain,
-        parse_listremotes_rc_json, RcloneRemoteConfigSummary,
+        classify_provider_kind_from_config, parse_config_dump_summaries,
+        parse_config_dump_summaries_value, parse_listremotes_plain, parse_listremotes_rc_json,
+        RcloneRemoteConfigSummary,
     },
     CloudCapabilities, CloudCommandError, CloudCommandErrorCode, CloudCommandResult,
     CloudProviderKind, CloudRemote, RcloneCliError, RcloneCloudProvider, RcloneCommandSpec,
@@ -56,9 +57,10 @@ impl RcloneCloudProvider {
             .cli
             .run_capture_text(RcloneCommandSpec::new(RcloneSubcommand::ConfigDump))
             .map_err(map_rclone_error)?;
-        let config_map = parse_config_dump_summaries(&config_dump.stdout).map_err(|message| {
-            CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, message)
-        })?;
+        let config_map = parse_config_dump_summaries_bytes(config_dump.stdout.into_bytes())
+            .map_err(|message| {
+                CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, message)
+            })?;
         log_backend_selected(
             "cloud_list_remotes",
             "cli",
@@ -73,12 +75,7 @@ impl RcloneCloudProvider {
         let remote_ids = parse_listremotes_rc_json(&remotes_value)
             .map_err(|msg| RcloneCliError::Io(std::io::Error::other(msg)))?;
         let config_dump_value = self.rc.config_dump()?;
-        let config_dump_text = serde_json::to_string(&config_dump_value).map_err(|error| {
-            RcloneCliError::Io(std::io::Error::other(format!(
-                "invalid rclone rc config dump payload: {error}"
-            )))
-        })?;
-        let config_map = parse_config_dump_summaries(&config_dump_text).map_err(|msg| {
+        let config_map = parse_config_dump_summaries_value(config_dump_value).map_err(|msg| {
             RcloneCliError::Io(std::io::Error::other(format!(
                 "Invalid rclone rc config dump payload: {msg}"
             )))
@@ -167,4 +164,14 @@ fn build_cloud_remotes(
     }
     remotes.sort_by(|a, b| a.label.cmp(&b.label));
     remotes
+}
+
+fn parse_config_dump_summaries_bytes(
+    mut stdout: Vec<u8>,
+) -> Result<HashMap<String, RcloneRemoteConfigSummary>, String> {
+    let parse_result = std::str::from_utf8(&stdout)
+        .map_err(|error| format!("Invalid UTF-8 in rclone config dump output: {error}"))
+        .and_then(parse_config_dump_summaries);
+    stdout.fill(0);
+    parse_result
 }
