@@ -162,6 +162,37 @@ impl RcloneRcClient {
         )
     }
 
+    pub fn operations_copyfile_from_local_with_progress<F>(
+        &self,
+        src_dir: &str,
+        src_remote: &str,
+        dst_fs: &str,
+        dst_remote: &str,
+        group: &str,
+        cancel_token: Option<&AtomicBool>,
+        on_progress: F,
+    ) -> Result<Value, RcloneCliError>
+    where
+        F: FnMut(Value),
+    {
+        let payload = json!({
+            "srcFs": {
+                "type": "local",
+                "_root": src_dir,
+            },
+            "srcRemote": src_remote,
+            "dstFs": dst_fs,
+            "dstRemote": dst_remote,
+        });
+        self.run_method_async_with_job_control_and_progress(
+            RcloneRcMethod::OperationsCopyFile,
+            payload,
+            Some(group),
+            cancel_token,
+            on_progress,
+        )
+    }
+
     pub fn operations_movefile(
         &self,
         src_fs: &str,

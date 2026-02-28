@@ -10,6 +10,105 @@ use std::sync::atomic::AtomicBool;
 use tracing::info;
 
 impl RcloneCloudProvider {
+    pub(super) fn upload_file_with_progress_impl<F>(
+        &self,
+        local_src: &Path,
+        dst: &CloudPath,
+        progress_group: &str,
+        cancel: Option<&AtomicBool>,
+        mut on_progress: F,
+    ) -> CloudCommandResult<()>
+    where
+        F: FnMut(u64, u64),
+    {
+        self.ensure_runtime_ready()?;
+        if is_cancelled(cancel) {
+            return Err(cloud_write_cancelled_error());
+        }
+
+        let Some(local_parent) = local_src.parent() else {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::InvalidPath,
+                format!(
+                    "Local source must include a parent directory: {}",
+                    local_src.display()
+                ),
+            ));
+        };
+        let Some(local_name) = local_src.file_name().and_then(|name| name.to_str()) else {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::InvalidPath,
+                format!(
+                    "Local source must include a valid file name: {}",
+                    local_src.display()
+                ),
+            ));
+        };
+
+        let mut fell_back_from_rc = false;
+        let mut fallback_reason: Option<&'static str> = None;
+        if self.rc.is_write_enabled() {
+            let local_parent_str = local_parent.to_string_lossy().to_string();
+            let dst_fs = format!("{}:", dst.remote());
+            match self.rc.operations_copyfile_from_local_with_progress(
+                &local_parent_str,
+                local_name,
+                &dst_fs,
+                dst.rel_path(),
+                progress_group,
+                cancel,
+                |stats| {
+                    if let Some((bytes, total)) = rc_stats_progress(&stats) {
+                        on_progress(bytes, total);
+                    }
+                },
+            ) {
+                Ok(_) => {
+                    let _ = self.rc.core_stats_delete(progress_group);
+                    return Ok(());
+                }
+                Err(RcloneCliError::Cancelled { .. }) => return Err(cloud_write_cancelled_error()),
+                Err(error) if !should_fallback_to_cli_after_rc_error(&error) => {
+                    let _ = self.rc.core_stats_delete(progress_group);
+                    return Err(map_rclone_error_for_remote(dst.remote(), error));
+                }
+                Err(error) => {
+                    let _ = self.rc.core_stats_delete(progress_group);
+                    fell_back_from_rc = true;
+                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    info!(
+                        src = %local_src.display(),
+                        dst = %dst,
+                        error = %error,
+                        "rclone rc upload failed; falling back to CLI copyto"
+                    );
+                }
+            }
+        }
+
+        self.cli
+            .run_capture_text_with_cancel(
+                RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
+                    .arg(local_src.as_os_str())
+                    .arg(dst.to_rclone_remote_spec()),
+                cancel,
+            )
+            .map_err(|error| map_rclone_error_for_remote(dst.remote(), error))?;
+        log_backend_selected(
+            "cloud_upload_file_upload",
+            "cli",
+            fell_back_from_rc,
+            if fell_back_from_rc {
+                fallback_reason
+            } else if cancel.is_some() {
+                Some("cancelable_cli")
+            } else {
+                None
+            },
+        );
+        Ok(())
+    }
+
     pub(super) fn download_file_with_progress_impl<F>(
         &self,
         src: &CloudPath,
