@@ -627,9 +627,10 @@ async fn list_dir_impl(
 ) -> ListingResult<DirListing> {
     if let Some(raw_path) = path.as_deref() {
         if is_cloud_path_str(raw_path) {
-            let entries = crate::commands::cloud::list_cloud_entries(raw_path.to_string())
-                .await
-                .map_err(listing_error_from_api)?;
+            let entries =
+                crate::commands::cloud::list_cloud_entries(raw_path.to_string(), app.clone())
+                    .await
+                    .map_err(listing_error_from_api)?;
             let mut mapped: Vec<FsEntry> =
                 entries.into_iter().map(fs_entry_from_cloud_entry).collect();
             sort_entries(&mut mapped, sort);
@@ -670,7 +671,7 @@ async fn list_facets_impl(
         if let Some(raw_path) = path.as_deref() {
             if is_cloud_path_str(raw_path) {
                 let cloud_entries =
-                    crate::commands::cloud::list_cloud_entries(raw_path.to_string())
+                    crate::commands::cloud::list_cloud_entries(raw_path.to_string(), app.clone())
                         .await
                         .map_err(listing_error_from_api)?;
                 let entries: Vec<FsEntry> = cloud_entries

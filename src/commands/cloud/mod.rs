@@ -9,11 +9,13 @@ pub mod rclone_rc;
 pub mod types;
 
 use crate::errors::api_error::ApiResult;
+use crate::runtime_lifecycle;
 use crate::tasks::{CancelGuard, CancelState};
 use error::{map_api_result, CloudCommandError, CloudCommandErrorCode, CloudCommandResult};
 use path::CloudPath;
 use provider::CloudProvider;
 use providers::rclone::RcloneCloudProvider;
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -29,6 +31,7 @@ const CLOUD_DIR_LISTING_STALE_MAX_AGE: Duration = Duration::from_secs(60);
 const CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS: &[u64] = &[150, 400];
 const CLOUD_REMOTE_MAX_CONCURRENT_OPS: usize = 2;
 const CLOUD_REMOTE_RATE_LIMIT_COOLDOWN: Duration = Duration::from_secs(3);
+const CLOUD_DIR_REFRESHED_EVENT: &str = "cloud-dir-refreshed";
 
 #[derive(Debug, Clone)]
 struct CachedCloudRemoteDiscovery {
@@ -83,6 +86,13 @@ fn cloud_remote_op_limiter() -> &'static CloudRemoteOpLimiter {
 enum CloudDirListingCacheLookup {
     Fresh(CachedCloudDirListing),
     Stale(CachedCloudDirListing),
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudDirRefreshedEvent {
+    path: String,
+    entry_count: usize,
 }
 
 fn with_cloud_remote_permits<T>(
@@ -217,6 +227,13 @@ fn list_cloud_remotes_cached(force_refresh: bool) -> CloudCommandResult<Vec<Clou
 }
 
 fn list_cloud_dir_cached(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
+    list_cloud_dir_cached_with_refresh_event(path, None)
+}
+
+fn list_cloud_dir_cached_with_refresh_event(
+    path: &CloudPath,
+    refresh_event_app: Option<tauri::AppHandle>,
+) -> CloudCommandResult<Vec<CloudEntry>> {
     let now = Instant::now();
     let key = path.to_string();
     if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
@@ -243,7 +260,11 @@ fn list_cloud_dir_cached(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>
                         entry_count = cached.entries.len(),
                         "cloud command phase timing"
                     );
-                    schedule_cloud_dir_listing_refresh(path.clone(), key.clone());
+                    schedule_cloud_dir_listing_refresh(
+                        path.clone(),
+                        key.clone(),
+                        refresh_event_app.clone(),
+                    );
                     return Ok(cached.entries);
                 }
             }
@@ -292,7 +313,11 @@ fn store_cloud_dir_listing_cache_entry(key: String, fetched_at: Instant, entries
     }
 }
 
-fn schedule_cloud_dir_listing_refresh(path: CloudPath, key: String) {
+fn schedule_cloud_dir_listing_refresh(
+    path: CloudPath,
+    key: String,
+    refresh_event_app: Option<tauri::AppHandle>,
+) {
     {
         let mut inflight = match cloud_dir_listing_refresh_inflight().lock() {
             Ok(guard) => guard,
@@ -304,11 +329,40 @@ fn schedule_cloud_dir_listing_refresh(path: CloudPath, key: String) {
     }
 
     std::thread::spawn(move || {
+        let _background_guard = if let Some(app) = refresh_event_app.as_ref() {
+            if let Some(handle) = runtime_lifecycle::handle_from_app(app) {
+                match handle.try_enter_background_job() {
+                    Some(guard) => Some(guard),
+                    None => {
+                        let mut inflight = match cloud_dir_listing_refresh_inflight().lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
+                        inflight.remove(&key);
+                        return;
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         let started = Instant::now();
         let refresh_result = run_cloud_dir_listing_refresh(&path);
         match refresh_result {
             Ok(entries) => {
                 store_cloud_dir_listing_cache_entry(key.clone(), Instant::now(), entries.clone());
+                if let Some(app) = refresh_event_app.as_ref() {
+                    let _ = runtime_lifecycle::emit_if_running(
+                        app,
+                        CLOUD_DIR_REFRESHED_EVENT,
+                        CloudDirRefreshedEvent {
+                            path: path.to_string(),
+                            entry_count: entries.len(),
+                        },
+                    );
+                }
                 info!(
                     op = "cloud_list_entries",
                     phase = "background_refresh",
@@ -573,15 +627,20 @@ async fn validate_cloud_root_impl(path: String) -> CloudCommandResult<CloudRootS
 }
 
 #[tauri::command]
-pub async fn list_cloud_entries(path: String) -> ApiResult<Vec<CloudEntry>> {
-    map_api_result(list_cloud_entries_impl(path).await)
+pub async fn list_cloud_entries(path: String, app: tauri::AppHandle) -> ApiResult<Vec<CloudEntry>> {
+    map_api_result(list_cloud_entries_impl(path, app).await)
 }
 
-async fn list_cloud_entries_impl(path: String) -> CloudCommandResult<Vec<CloudEntry>> {
+async fn list_cloud_entries_impl(
+    path: String,
+    app: tauri::AppHandle,
+) -> CloudCommandResult<Vec<CloudEntry>> {
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_log = path.clone();
-    let task = tauri::async_runtime::spawn_blocking(move || list_cloud_dir_cached(&path));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        list_cloud_dir_cached_with_refresh_event(&path, Some(app))
+    });
     let result = match task.await {
         Ok(result) => result,
         Err(error) => Err(CloudCommandError::new(
