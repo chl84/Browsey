@@ -22,7 +22,9 @@ use crate::{
     runtime_lifecycle,
     tasks::{CancelGuard, CancelState},
 };
-use error::{map_api_result, CompressError, CompressErrorCode, CompressResult};
+use error::{
+    map_api_result, map_external_result, CompressError, CompressErrorCode, CompressResult,
+};
 
 mod error;
 
@@ -79,46 +81,59 @@ fn current_millis() -> u64 {
         .unwrap_or(0)
 }
 
-fn ensure_same_parent(paths: &[PathBuf]) -> Result<PathBuf, String> {
+fn ensure_same_parent(paths: &[PathBuf]) -> CompressResult<PathBuf> {
     let mut parent: Option<PathBuf> = None;
     for p in paths {
         match p.parent() {
             Some(par) => match parent {
                 Some(ref prev) if prev != par => {
-                    return Err("All items must be in the same folder to compress together".into())
+                    return Err(CompressError::from_external_message(
+                        "All items must be in the same folder to compress together",
+                    ))
                 }
                 Some(_) => {}
                 None => parent = Some(par.to_path_buf()),
             },
-            None => return Err("Cannot compress filesystem root".into()),
+            None => {
+                return Err(CompressError::from_external_message(
+                    "Cannot compress filesystem root",
+                ))
+            }
         }
     }
-    parent.ok_or_else(|| "Missing parent for paths".into())
+    parent.ok_or_else(|| CompressError::from_external_message("Missing parent for paths"))
 }
 
-fn resolve_input_path(raw: &str) -> Result<PathBuf, String> {
-    let pb = sanitize_path_nofollow(raw, true)?;
+fn resolve_input_path(raw: &str) -> CompressResult<PathBuf> {
+    let pb = sanitize_path_nofollow(raw, true)
+        .map_err(|error| CompressError::from_external_message(error.to_string()))?;
     let abs = if pb.is_absolute() {
         pb
     } else {
         env::current_dir()
-            .map_err(|e| format!("Failed to resolve current directory: {e}"))?
+            .map_err(|e| {
+                CompressError::from_external_message(format!(
+                    "Failed to resolve current directory: {e}"
+                ))
+            })?
             .join(pb)
     };
     Ok(abs)
 }
 
-fn safe_name(name: &str) -> Result<String, String> {
+fn safe_name(name: &str) -> CompressResult<String> {
     if name.trim().is_empty() {
-        return Err("Name cannot be empty".into());
+        return Err(CompressError::from_external_message("Name cannot be empty"));
     }
     if name.contains(['/', '\\']) {
-        return Err("Name cannot contain path separators".into());
+        return Err(CompressError::from_external_message(
+            "Name cannot contain path separators",
+        ));
     }
     Ok(name.to_string())
 }
 
-fn destination_path(parent: &Path, name: &str, idx: usize) -> Result<PathBuf, String> {
+fn destination_path(parent: &Path, name: &str, idx: usize) -> CompressResult<PathBuf> {
     let mut base = safe_name(name)?;
     let lower = base.to_lowercase();
     let has_zip = lower.ends_with(".zip");
@@ -239,14 +254,14 @@ fn collect_entries(
     base: &Path,
     input: &[PathBuf],
     store_precompressed: bool,
-) -> Result<(Vec<EntryMeta>, u64), String> {
+) -> CompressResult<(Vec<EntryMeta>, u64)> {
     let mut out = Vec::new();
     let mut total_size = 0u64;
 
-    let mut push_entry = |p: PathBuf, meta: fs::Metadata| -> Result<(), String> {
+    let mut push_entry = |p: PathBuf, meta: fs::Metadata| -> CompressResult<()> {
         let rel = p
             .strip_prefix(base)
-            .map_err(|_| "Paths must share the same parent")?
+            .map_err(|_| CompressError::from_external_message("Paths must share the same parent"))?
             .to_path_buf();
         let file_type = meta.file_type();
         if file_type.is_file() {
@@ -258,8 +273,12 @@ fn collect_entries(
         let kind = if file_type.is_dir() {
             EntryKind::Dir
         } else if file_type.is_symlink() {
-            let target = fs::read_link(&p)
-                .map_err(|e| format!("Failed to read symlink target for {}: {e}", p.display()))?;
+            let target = fs::read_link(&p).map_err(|e| {
+                CompressError::from_external_message(format!(
+                    "Failed to read symlink target for {}: {e}",
+                    p.display()
+                ))
+            })?;
             EntryKind::Symlink { target }
         } else {
             let precompressed = store_precompressed && is_precompressed(&p);
@@ -278,13 +297,17 @@ fn collect_entries(
     };
 
     for path in input {
-        let meta =
-            fs::symlink_metadata(path).map_err(|e| format!("Failed to read metadata: {e}"))?;
+        let meta = fs::symlink_metadata(path).map_err(|e| {
+            CompressError::from_external_message(format!("Failed to read metadata: {e}"))
+        })?;
         if meta.is_dir() {
             for entry in WalkDir::new(path).follow_links(false) {
-                let entry = entry.map_err(|e| format!("Failed to read directory: {e}"))?;
-                let meta = fs::symlink_metadata(entry.path())
-                    .map_err(|e| format!("Failed to read metadata: {e}"))?;
+                let entry = entry.map_err(|e| {
+                    CompressError::from_external_message(format!("Failed to read directory: {e}"))
+                })?;
+                let meta = fs::symlink_metadata(entry.path()).map_err(|e| {
+                    CompressError::from_external_message(format!("Failed to read metadata: {e}"))
+                })?;
                 push_entry(entry.into_path(), meta)?;
             }
         } else {
@@ -439,7 +462,7 @@ async fn compress_entries_impl(
         )
     });
     match task.await {
-        Ok(result) => result.map_err(CompressError::from_external_message),
+        Ok(result) => result,
         Err(error) => Err(CompressError::new(
             CompressErrorCode::TaskFailed,
             format!("Compression task failed: {error}"),
@@ -455,9 +478,9 @@ fn do_compress(
     name: Option<String>,
     level: Option<u32>,
     progress_event: Option<String>,
-) -> Result<String, String> {
+) -> CompressResult<String> {
     if paths.is_empty() {
-        return Err("Nothing to compress".into());
+        return Err(CompressError::from_external_message("Nothing to compress"));
     }
     let mut resolved: Vec<PathBuf> = Vec::new();
     for raw in paths {
@@ -491,7 +514,11 @@ fn do_compress(
                 dest_idx = dest_idx.saturating_add(1);
                 continue;
             }
-            Err(e) => return Err(format!("Failed to create destination: {e}")),
+            Err(e) => {
+                return Err(CompressError::from_external_message(format!(
+                    "Failed to create destination: {e}"
+                )))
+            }
         }
     };
 
@@ -500,7 +527,7 @@ fn do_compress(
     let store_precompressed = lvl == 0;
     let (entries, total_size) = collect_entries(&parent, &resolved, store_precompressed)?;
     if entries.is_empty() {
-        return Err("Nothing to compress".into());
+        return Err(CompressError::from_external_message("Nothing to compress"));
     }
     let progress_id = progress_event;
     let progress = progress_id
@@ -509,7 +536,13 @@ fn do_compress(
     let cancel_guard: Option<CancelGuard> = progress_id
         .as_ref()
         .map(|evt| cancel_state.register(evt.clone()))
-        .transpose()?;
+        .transpose()
+        .map_err(|error| {
+            CompressError::new(
+                CompressErrorCode::TaskFailed,
+                format!("Failed to register cancel: {error}"),
+            )
+        })?;
     let cancel_token = cancel_guard.as_ref().map(|c| c.token());
     let mut cleanup = CompressionCleanup::new(dest.clone());
     let mut buf = vec![0u8; CHUNK];
@@ -535,15 +568,16 @@ fn do_compress(
 
     let mut entries = entries;
     if entries.is_empty() {
-        return Err("Nothing to compress".into());
+        return Err(CompressError::from_external_message("Nothing to compress"));
     }
     entries.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
 
-    let result: Result<(), String> = (|| {
+    let result: CompressResult<()> = (|| {
         for entry in &entries {
-            check_cancel(cancel_token.as_deref())
-                .map_err(|e| map_copy_err("Compression cancelled", e))?;
-            add_path_to_zip(
+            check_cancel(cancel_token.as_deref()).map_err(|e| {
+                CompressError::from_external_message(map_copy_err("Compression cancelled", e))
+            })?;
+            map_external_result(add_path_to_zip(
                 &mut writer,
                 entry,
                 &deflated_opts,
@@ -551,12 +585,12 @@ fn do_compress(
                 progress.as_ref(),
                 cancel_token.as_deref(),
                 &mut buf,
-            )?;
+            ))?;
         }
 
-        writer
-            .finish()
-            .map_err(|e| format!("Failed to finalize zip: {e}"))?;
+        writer.finish().map_err(|e| {
+            CompressError::from_external_message(format!("Failed to finalize zip: {e}"))
+        })?;
 
         if let Some(p) = progress.as_ref() {
             p.finish();
