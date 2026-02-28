@@ -1,10 +1,10 @@
+use super::error::{transfer_err, transfer_err_code as api_err, TransferErrorCode, TransferResult};
 use super::logging::log_mixed_preview_result;
-use super::route::{api_err, is_cloud_path, local_leaf_name, mixed_route_hint};
+use super::route::{is_cloud_path, local_leaf_name, mixed_route_hint};
 use super::MixedTransferConflictInfo;
 use crate::commands::cloud;
 use crate::commands::cloud::path::CloudPath;
 use crate::commands::cloud::types::{CloudEntryKind, CloudProviderKind};
-use crate::errors::api_error::ApiResult;
 use crate::fs_utils::sanitize_path_follow;
 use std::collections::HashMap;
 use std::fs;
@@ -16,7 +16,7 @@ pub(super) async fn preview_mixed_transfer_conflicts(
     sources: Vec<String>,
     dest_dir: String,
     app: tauri::AppHandle,
-) -> ApiResult<Vec<MixedTransferConflictInfo>> {
+) -> TransferResult<Vec<MixedTransferConflictInfo>> {
     let started = Instant::now();
     let source_count = sources.len();
     let route_hint = mixed_route_hint(&sources, &dest_dir);
@@ -57,7 +57,7 @@ async fn preview_local_to_cloud_conflicts(
     sources: Vec<String>,
     dest_dir: String,
     app: tauri::AppHandle,
-) -> ApiResult<Vec<MixedTransferConflictInfo>> {
+) -> TransferResult<Vec<MixedTransferConflictInfo>> {
     let dest = CloudPath::parse(&dest_dir).map_err(|e| {
         api_err(
             "invalid_path",
@@ -68,9 +68,10 @@ async fn preview_local_to_cloud_conflicts(
     let local_sources = sources
         .into_iter()
         .map(|raw| {
-            sanitize_path_follow(&raw, true).map_err(|e| api_err("invalid_path", e.to_string()))
+            sanitize_path_follow(&raw, true)
+                .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))
         })
-        .collect::<ApiResult<Vec<PathBuf>>>()?;
+        .collect::<TransferResult<Vec<PathBuf>>>()?;
 
     let provider = cloud::cloud_provider_kind_for_remote(dest.remote());
     let dest_entries = cloud::list_cloud_entries(dest.to_string(), app).await?;
@@ -82,7 +83,7 @@ fn build_local_to_cloud_conflicts_from_entries(
     dest: &CloudPath,
     provider: Option<CloudProviderKind>,
     dest_entries: &[crate::commands::cloud::types::CloudEntry],
-) -> ApiResult<Vec<MixedTransferConflictInfo>> {
+) -> TransferResult<Vec<MixedTransferConflictInfo>> {
     let mut name_to_is_dir: HashMap<String, bool> = HashMap::with_capacity(dest_entries.len());
     for entry in dest_entries {
         let key = cloud::cloud_conflict_name_key(provider, &entry.name);
@@ -98,9 +99,12 @@ fn build_local_to_cloud_conflicts_from_entries(
         let Some(is_dir) = name_to_is_dir.get(&key).copied() else {
             continue;
         };
-        let target = dest
-            .child_path(name)
-            .map_err(|e| api_err("invalid_path", format!("Invalid cloud target path: {e}")))?;
+        let target = dest.child_path(name).map_err(|e| {
+            transfer_err(
+                TransferErrorCode::InvalidPath,
+                format!("Invalid cloud target path: {e}"),
+            )
+        })?;
         conflicts.push(MixedTransferConflictInfo {
             src: src.to_string_lossy().to_string(),
             target: target.to_string(),
@@ -115,16 +119,20 @@ fn build_local_to_cloud_conflicts_from_entries(
 fn preview_cloud_to_local_conflicts(
     sources: Vec<String>,
     dest_dir: String,
-) -> ApiResult<Vec<MixedTransferConflictInfo>> {
+) -> TransferResult<Vec<MixedTransferConflictInfo>> {
     let dest = sanitize_path_follow(&dest_dir, false)
-        .map_err(|e| api_err("invalid_path", e.to_string()))?;
+        .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))?;
     let cloud_sources = sources
         .into_iter()
         .map(|raw| {
-            CloudPath::parse(&raw)
-                .map_err(|e| api_err("invalid_path", format!("Invalid cloud source path: {e}")))
+            CloudPath::parse(&raw).map_err(|e| {
+                transfer_err(
+                    TransferErrorCode::InvalidPath,
+                    format!("Invalid cloud source path: {e}"),
+                )
+            })
         })
-        .collect::<ApiResult<Vec<CloudPath>>>()?;
+        .collect::<TransferResult<Vec<CloudPath>>>()?;
 
     let dest_entries = list_local_dir_entries(&dest)?;
     let mut name_to_is_dir: HashMap<String, bool> = HashMap::with_capacity(dest_entries.len());
@@ -134,9 +142,12 @@ fn preview_cloud_to_local_conflicts(
 
     let mut conflicts = Vec::new();
     for src in cloud_sources {
-        let name = src
-            .leaf_name()
-            .map_err(|e| api_err("invalid_path", format!("Invalid cloud source path: {e}")))?;
+        let name = src.leaf_name().map_err(|e| {
+            transfer_err(
+                TransferErrorCode::InvalidPath,
+                format!("Invalid cloud source path: {e}"),
+            )
+        })?;
         let Some(is_dir) = name_to_is_dir.get(name).copied() else {
             continue;
         };
@@ -152,7 +163,7 @@ fn preview_cloud_to_local_conflicts(
     Ok(conflicts)
 }
 
-fn list_local_dir_entries(dest: &Path) -> ApiResult<Vec<(String, bool)>> {
+fn list_local_dir_entries(dest: &Path) -> TransferResult<Vec<(String, bool)>> {
     let mut out = Vec::new();
     let rd = fs::read_dir(dest).map_err(|e| {
         api_err(
@@ -161,8 +172,12 @@ fn list_local_dir_entries(dest: &Path) -> ApiResult<Vec<(String, bool)>> {
         )
     })?;
     for item in rd {
-        let item =
-            item.map_err(|e| api_err("io_error", format!("Failed to read directory entry: {e}")))?;
+        let item = item.map_err(|e| {
+            transfer_err(
+                TransferErrorCode::IoError,
+                format!("Failed to read directory entry: {e}"),
+            )
+        })?;
         let name = item.file_name();
         let Some(name) = name.to_str().map(|s| s.to_string()) else {
             continue;

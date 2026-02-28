@@ -1,11 +1,11 @@
+use super::error::TransferResult;
 use super::route::{route_hint_label, MixedRouteHint};
 use super::{MixedTransferConflictInfo, MixedTransferOp};
-use crate::errors::api_error::ApiResult;
 use std::time::Instant;
 use tracing::{info, warn};
 
 pub(super) fn log_mixed_preview_result(
-    result: &ApiResult<Vec<MixedTransferConflictInfo>>,
+    result: &TransferResult<Vec<MixedTransferConflictInfo>>,
     route_hint: MixedRouteHint,
     source_count: usize,
     started: Instant,
@@ -25,8 +25,8 @@ pub(super) fn log_mixed_preview_result(
             route = route_hint_label(route_hint),
             source_count,
             elapsed_ms,
-            error_code = %err.code,
-            error_message = %err.message,
+            error_code = err.code_str(),
+            error_message = err.message(),
             "mixed conflict preview failed"
         ),
     }
@@ -34,7 +34,7 @@ pub(super) fn log_mixed_preview_result(
 
 pub(super) fn log_mixed_execute_result(
     op: MixedTransferOp,
-    result: &ApiResult<Vec<String>>,
+    result: &TransferResult<Vec<String>>,
     route_hint: MixedRouteHint,
     source_count: usize,
     started: Instant,
@@ -58,8 +58,8 @@ pub(super) fn log_mixed_execute_result(
             route = route_hint_label(route_hint),
             source_count,
             elapsed_ms,
-            error_code = %err.code,
-            error_message = %err.message,
+            error_code = err.code_str(),
+            error_message = err.message(),
             "mixed transfer failed"
         ),
     }
@@ -67,7 +67,7 @@ pub(super) fn log_mixed_execute_result(
 
 pub(super) fn log_mixed_single_execute_result(
     op: MixedTransferOp,
-    result: &ApiResult<String>,
+    result: &TransferResult<String>,
     route_hint: MixedRouteHint,
     started: Instant,
 ) {
@@ -90,8 +90,8 @@ pub(super) fn log_mixed_single_execute_result(
             route = route_hint_label(route_hint),
             source_count = 1usize,
             elapsed_ms,
-            error_code = %err.code,
-            error_message = %err.message,
+            error_code = err.code_str(),
+            error_message = err.message(),
             "mixed transfer failed"
         ),
     }

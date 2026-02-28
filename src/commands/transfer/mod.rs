@@ -1,3 +1,4 @@
+mod error;
 mod execute;
 mod logging;
 mod preview;
@@ -5,6 +6,7 @@ mod route;
 
 use crate::errors::api_error::ApiResult;
 use crate::tasks::CancelState;
+use error::map_api_result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -35,7 +37,7 @@ pub async fn preview_mixed_transfer_conflicts(
     dest_dir: String,
     app: tauri::AppHandle,
 ) -> ApiResult<Vec<MixedTransferConflictInfo>> {
-    preview::preview_mixed_transfer_conflicts(sources, dest_dir, app).await
+    map_api_result(preview::preview_mixed_transfer_conflicts(sources, dest_dir, app).await)
 }
 
 #[tauri::command]
@@ -47,18 +49,20 @@ pub async fn copy_mixed_entries(
     cancel: tauri::State<'_, CancelState>,
     progress_event: Option<String>,
 ) -> ApiResult<Vec<String>> {
-    execute::execute_mixed_entries(
-        MixedTransferOp::Copy,
-        sources,
-        dest_dir,
-        MixedTransferWriteOptions {
-            overwrite: overwrite.unwrap_or(false),
-            prechecked: prechecked.unwrap_or(false),
-        },
-        cancel.inner().clone(),
-        progress_event,
+    map_api_result(
+        execute::execute_mixed_entries(
+            MixedTransferOp::Copy,
+            sources,
+            dest_dir,
+            MixedTransferWriteOptions {
+                overwrite: overwrite.unwrap_or(false),
+                prechecked: prechecked.unwrap_or(false),
+            },
+            cancel.inner().clone(),
+            progress_event,
+        )
+        .await,
     )
-    .await
 }
 
 #[tauri::command]
@@ -70,18 +74,20 @@ pub async fn move_mixed_entries(
     cancel: tauri::State<'_, CancelState>,
     progress_event: Option<String>,
 ) -> ApiResult<Vec<String>> {
-    execute::execute_mixed_entries(
-        MixedTransferOp::Move,
-        sources,
-        dest_dir,
-        MixedTransferWriteOptions {
-            overwrite: overwrite.unwrap_or(false),
-            prechecked: prechecked.unwrap_or(false),
-        },
-        cancel.inner().clone(),
-        progress_event,
+    map_api_result(
+        execute::execute_mixed_entries(
+            MixedTransferOp::Move,
+            sources,
+            dest_dir,
+            MixedTransferWriteOptions {
+                overwrite: overwrite.unwrap_or(false),
+                prechecked: prechecked.unwrap_or(false),
+            },
+            cancel.inner().clone(),
+            progress_event,
+        )
+        .await,
     )
-    .await
 }
 
 #[tauri::command]
@@ -93,18 +99,20 @@ pub async fn copy_mixed_entry_to(
     cancel: tauri::State<'_, CancelState>,
     progress_event: Option<String>,
 ) -> ApiResult<String> {
-    execute::execute_mixed_entry_to(
-        MixedTransferOp::Copy,
-        src,
-        dst,
-        MixedTransferWriteOptions {
-            overwrite: overwrite.unwrap_or(false),
-            prechecked: prechecked.unwrap_or(false),
-        },
-        cancel.inner().clone(),
-        progress_event,
+    map_api_result(
+        execute::execute_mixed_entry_to(
+            MixedTransferOp::Copy,
+            src,
+            dst,
+            MixedTransferWriteOptions {
+                overwrite: overwrite.unwrap_or(false),
+                prechecked: prechecked.unwrap_or(false),
+            },
+            cancel.inner().clone(),
+            progress_event,
+        )
+        .await,
     )
-    .await
 }
 
 #[tauri::command]
@@ -116,16 +124,18 @@ pub async fn move_mixed_entry_to(
     cancel: tauri::State<'_, CancelState>,
     progress_event: Option<String>,
 ) -> ApiResult<String> {
-    execute::execute_mixed_entry_to(
-        MixedTransferOp::Move,
-        src,
-        dst,
-        MixedTransferWriteOptions {
-            overwrite: overwrite.unwrap_or(false),
-            prechecked: prechecked.unwrap_or(false),
-        },
-        cancel.inner().clone(),
-        progress_event,
+    map_api_result(
+        execute::execute_mixed_entry_to(
+            MixedTransferOp::Move,
+            src,
+            dst,
+            MixedTransferWriteOptions {
+                overwrite: overwrite.unwrap_or(false),
+                prechecked: prechecked.unwrap_or(false),
+            },
+            cancel.inner().clone(),
+            progress_event,
+        )
+        .await,
     )
-    .await
 }
