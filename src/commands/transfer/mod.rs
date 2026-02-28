@@ -44,6 +44,7 @@ pub async fn preview_mixed_transfer_conflicts(
 pub async fn copy_mixed_entries(
     sources: Vec<String>,
     dest_dir: String,
+    app: tauri::AppHandle,
     overwrite: Option<bool>,
     prechecked: Option<bool>,
     cancel: tauri::State<'_, CancelState>,
@@ -54,6 +55,7 @@ pub async fn copy_mixed_entries(
             MixedTransferOp::Copy,
             sources,
             dest_dir,
+            app,
             MixedTransferWriteOptions {
                 overwrite: overwrite.unwrap_or(false),
                 prechecked: prechecked.unwrap_or(false),
@@ -69,6 +71,7 @@ pub async fn copy_mixed_entries(
 pub async fn move_mixed_entries(
     sources: Vec<String>,
     dest_dir: String,
+    app: tauri::AppHandle,
     overwrite: Option<bool>,
     prechecked: Option<bool>,
     cancel: tauri::State<'_, CancelState>,
@@ -79,6 +82,7 @@ pub async fn move_mixed_entries(
             MixedTransferOp::Move,
             sources,
             dest_dir,
+            app,
             MixedTransferWriteOptions {
                 overwrite: overwrite.unwrap_or(false),
                 prechecked: prechecked.unwrap_or(false),
@@ -94,6 +98,7 @@ pub async fn move_mixed_entries(
 pub async fn copy_mixed_entry_to(
     src: String,
     dst: String,
+    app: tauri::AppHandle,
     overwrite: Option<bool>,
     prechecked: Option<bool>,
     cancel: tauri::State<'_, CancelState>,
@@ -104,6 +109,7 @@ pub async fn copy_mixed_entry_to(
             MixedTransferOp::Copy,
             src,
             dst,
+            app,
             MixedTransferWriteOptions {
                 overwrite: overwrite.unwrap_or(false),
                 prechecked: prechecked.unwrap_or(false),
@@ -119,6 +125,7 @@ pub async fn copy_mixed_entry_to(
 pub async fn move_mixed_entry_to(
     src: String,
     dst: String,
+    app: tauri::AppHandle,
     overwrite: Option<bool>,
     prechecked: Option<bool>,
     cancel: tauri::State<'_, CancelState>,
@@ -129,6 +136,7 @@ pub async fn move_mixed_entry_to(
             MixedTransferOp::Move,
             src,
             dst,
+            app,
             MixedTransferWriteOptions {
                 overwrite: overwrite.unwrap_or(false),
                 prechecked: prechecked.unwrap_or(false),

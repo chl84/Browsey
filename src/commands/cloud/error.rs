@@ -6,7 +6,7 @@ use std::fmt;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum CloudCommandErrorCode {
+pub(crate) enum CloudCommandErrorCode {
     InvalidPath,
     NotFound,
     Timeout,
@@ -45,20 +45,20 @@ impl ErrorCode for CloudCommandErrorCode {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct CloudCommandError {
+pub(crate) struct CloudCommandError {
     code: CloudCommandErrorCode,
     message: String,
 }
 
 impl CloudCommandError {
-    pub(super) fn new(code: CloudCommandErrorCode, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: CloudCommandErrorCode, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
         }
     }
 
-    pub(super) fn code(&self) -> CloudCommandErrorCode {
+    pub(crate) fn code(&self) -> CloudCommandErrorCode {
         self.code
     }
 }
@@ -81,7 +81,7 @@ impl DomainError for CloudCommandError {
     }
 }
 
-pub(super) type CloudCommandResult<T> = Result<T, CloudCommandError>;
+pub(crate) type CloudCommandResult<T> = Result<T, CloudCommandError>;
 
 pub(super) fn map_api_result<T>(result: CloudCommandResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
