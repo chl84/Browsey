@@ -677,6 +677,78 @@ fn fake_rclone_shim_downloads_cloud_file_to_local_path() {
 
 #[cfg(unix)]
 #[test]
+fn fake_rclone_shim_uploads_local_file_to_cloud_path() {
+    let sandbox = FakeRcloneSandbox::new();
+    let provider = sandbox.provider();
+    let local_root = sandbox.root.join("local-uploads");
+    let local_source = local_root.join("file.txt");
+    fs::create_dir_all(&local_root).expect("create local upload root");
+    fs::write(&local_source, "payload").expect("write local upload source");
+
+    provider
+        .upload_file_with_progress(
+            &local_source,
+            &cloud_path("rclone://work/dst/file.txt"),
+            "upload-progress-1",
+            None,
+            |_bytes, _total| {},
+        )
+        .expect("upload file");
+
+    let uploaded = fs::read_to_string(sandbox.remote_path("work", "dst/file.txt"))
+        .expect("read uploaded remote file");
+    assert_eq!(uploaded, "payload");
+
+    let log = sandbox.read_log();
+    assert!(
+        log.contains(&format!(
+            "copyto {} work:dst/file.txt",
+            local_source.display()
+        )),
+        "expected CLI copyto call for upload, log:\n{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn upload_with_progress_falls_back_to_cli_when_rc_startup_fails() {
+    let sandbox = FakeRcloneSandbox::new();
+    let provider = sandbox.provider_with_forced_rc();
+    let local_root = sandbox.root.join("local-uploads");
+    let local_source = local_root.join("file.txt");
+    fs::create_dir_all(&local_root).expect("create local upload root");
+    fs::write(&local_source, "payload").expect("write local upload source");
+
+    provider
+        .upload_file_with_progress(
+            &local_source,
+            &cloud_path("rclone://work/dst/file.txt"),
+            "upload-progress-rc-fallback",
+            None,
+            |_bytes, _total| {},
+        )
+        .expect("upload file with rc fallback");
+
+    let uploaded = fs::read_to_string(sandbox.remote_path("work", "dst/file.txt"))
+        .expect("read uploaded remote file");
+    assert_eq!(uploaded, "payload");
+
+    let log = sandbox.read_log();
+    assert!(
+        log.contains("rcd --rc-no-auth"),
+        "expected rc daemon startup attempt before fallback, log:\n{log}"
+    );
+    assert!(
+        log.contains(&format!(
+            "copyto {} work:dst/file.txt",
+            local_source.display()
+        )),
+        "expected CLI upload fallback call after rc failure, log:\n{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn fake_rclone_shim_supports_case_only_rename() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "docs/report.txt", "payload");
