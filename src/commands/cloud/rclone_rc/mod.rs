@@ -1,4 +1,13 @@
+mod daemon;
+
 use super::rclone_cli::{RcloneCliError, RcloneSubcommand};
+#[cfg(test)]
+pub(crate) use daemon::reset_state_for_tests;
+pub use daemon::{begin_shutdown_and_kill_daemon, health_snapshot, RcloneRcHealth};
+use daemon::{
+    daemon_is_running, kill_daemon, rc_read_enabled, rc_write_enabled, rclone_rc_state,
+    should_recycle_daemon_after_error, spawn_daemon,
+};
 use regex::Regex;
 use serde_json::{json, Value};
 #[cfg(test)]
@@ -7,17 +16,14 @@ use std::sync::{
     Arc,
 };
 use std::{
-    env,
     ffi::OsString,
-    fs, io,
+    io,
     io::{Read, Write},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
-    sync::{atomic::AtomicBool, Mutex, OnceLock},
+    sync::{atomic::AtomicBool, OnceLock},
     time::{Duration, Instant},
 };
-use tracing::{debug, info, warn};
-use wait_timeout::ChildExt;
+use tracing::{info, warn};
 
 const RCLONE_RC_ENABLE_ENV: &str = "BROWSEY_RCLONE_RC";
 const RCLONE_RC_READ_ENABLE_ENV: &str = "BROWSEY_RCLONE_RC_READ";
@@ -154,30 +160,6 @@ fn allowlisted_method_from_name(method_name: &str) -> Option<RcloneRcMethod> {
         "job/stop" => Some(RcloneRcMethod::JobStop),
         _ => None,
     }
-}
-
-#[derive(Debug)]
-struct RcloneRcDaemon {
-    socket_path: PathBuf,
-    binary: OsString,
-    child: Child,
-}
-
-#[derive(Debug, Default)]
-struct RcloneRcState {
-    daemon: Option<RcloneRcDaemon>,
-    startup_blocked_until: Option<Instant>,
-    startup_blocked_binary: Option<OsString>,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct RcloneRcHealth {
-    pub enabled: bool,
-    pub read_enabled: bool,
-    pub write_enabled: bool,
-    pub daemon_running: bool,
-    pub socket_path: Option<String>,
-    pub socket_exists: bool,
 }
 
 #[cfg(test)]
@@ -765,255 +747,6 @@ fn is_cancelled(cancel_token: Option<&AtomicBool>) -> bool {
         .unwrap_or(false)
 }
 
-fn should_recycle_daemon_after_error(_method: RcloneRcMethod, error: &RcloneCliError) -> bool {
-    match error {
-        RcloneCliError::Timeout { .. } => true,
-        RcloneCliError::Io(io) => matches!(
-            io.kind(),
-            io::ErrorKind::TimedOut
-                | io::ErrorKind::WouldBlock
-                | io::ErrorKind::ConnectionReset
-                | io::ErrorKind::ConnectionAborted
-                | io::ErrorKind::ConnectionRefused
-                | io::ErrorKind::Interrupted
-                | io::ErrorKind::BrokenPipe
-                | io::ErrorKind::NotConnected
-                | io::ErrorKind::NotFound
-        ),
-        _ => false,
-    }
-}
-
-pub fn begin_shutdown_and_kill_daemon() -> io::Result<()> {
-    let mut state = match rclone_rc_state().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    if let Some(mut daemon) = state.daemon.take() {
-        let socket_display = daemon.socket_path.display().to_string();
-        kill_daemon(&mut daemon)?;
-        info!(socket = %socket_display, "stopped rclone rcd daemon");
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-pub(crate) fn reset_state_for_tests() {
-    let mut state = match rclone_rc_state().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    if let Some(mut daemon) = state.daemon.take() {
-        let _ = kill_daemon(&mut daemon);
-    }
-    state.startup_blocked_until = None;
-    state.startup_blocked_binary = None;
-}
-
-pub fn health_snapshot() -> RcloneRcHealth {
-    let read_enabled = rc_read_enabled();
-    let write_enabled = rc_write_enabled();
-    let enabled = read_enabled || write_enabled;
-    let mut daemon_running = false;
-    let mut socket_path = None;
-    let mut socket_exists = false;
-
-    if let Ok(mut state) = rclone_rc_state().lock() {
-        if let Some(daemon) = state.daemon.as_mut() {
-            socket_path = Some(daemon.socket_path.display().to_string());
-            socket_exists = daemon.socket_path.exists();
-            daemon_running = daemon
-                .child
-                .try_wait()
-                .ok()
-                .and_then(|status| status)
-                .is_none();
-        }
-    }
-
-    RcloneRcHealth {
-        enabled,
-        read_enabled,
-        write_enabled,
-        daemon_running,
-        socket_path,
-        socket_exists,
-    }
-}
-
-fn parse_rc_toggle_env(var_name: &str) -> Option<bool> {
-    let value = env::var(var_name).ok()?;
-    parse_rc_toggle_value(&value)
-}
-
-fn parse_rc_toggle_value(value: &str) -> Option<bool> {
-    let normalized = value.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "1" | "true" | "yes" | "on" => Some(true),
-        "0" | "false" | "no" | "off" => Some(false),
-        _ => None,
-    }
-}
-
-fn rc_read_enabled() -> bool {
-    static READ_ENABLED: OnceLock<bool> = OnceLock::new();
-    *READ_ENABLED.get_or_init(|| {
-        if !cfg!(target_os = "linux") {
-            return false;
-        }
-        if let Some(all_enabled) = parse_rc_toggle_env(RCLONE_RC_ENABLE_ENV) {
-            return all_enabled;
-        }
-        parse_rc_toggle_env(RCLONE_RC_READ_ENABLE_ENV).unwrap_or(true)
-    })
-}
-
-fn rc_write_enabled() -> bool {
-    static WRITE_ENABLED: OnceLock<bool> = OnceLock::new();
-    *WRITE_ENABLED.get_or_init(|| {
-        if !cfg!(target_os = "linux") {
-            return false;
-        }
-        if let Some(all_enabled) = parse_rc_toggle_env(RCLONE_RC_ENABLE_ENV) {
-            return all_enabled;
-        }
-        parse_rc_toggle_env(RCLONE_RC_WRITE_ENABLE_ENV).unwrap_or(true)
-    })
-}
-
-fn rclone_rc_state() -> &'static Mutex<RcloneRcState> {
-    static STATE: OnceLock<Mutex<RcloneRcState>> = OnceLock::new();
-    STATE.get_or_init(|| Mutex::new(RcloneRcState::default()))
-}
-
-fn spawn_daemon(binary: &OsString) -> Result<RcloneRcDaemon, RcloneCliError> {
-    let startup_started = Instant::now();
-    let state_dir = rc_state_dir_path()?;
-    prepare_state_dir(&state_dir).map_err(RcloneCliError::Io)?;
-    let socket_path = state_dir.join(format!("rcd-{}.sock", std::process::id()));
-    cleanup_stale_socket(&socket_path).map_err(RcloneCliError::Io)?;
-
-    let mut child = Command::new(binary)
-        .arg("rcd")
-        // We bind to a private unix socket in XDG_RUNTIME_DIR/browsey-rclone-rc (0700),
-        // so we can keep auth disabled without exposing an HTTP listener.
-        .arg("--rc-no-auth")
-        .arg("--rc-addr")
-        .arg(format!("unix://{}", socket_path.display()))
-        .arg("--rc-server-read-timeout")
-        .arg("5m")
-        .arg("--rc-server-write-timeout")
-        .arg("5m")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(RcloneCliError::Io)?;
-
-    let ready_deadline = Instant::now() + RCLONE_RC_STARTUP_TIMEOUT;
-    loop {
-        if let Some(status) = child.try_wait().map_err(RcloneCliError::Io)? {
-            return Err(RcloneCliError::NonZero {
-                status,
-                stdout: String::new(),
-                stderr: "rclone rcd exited during startup".to_string(),
-            });
-        }
-        if socket_path.exists() {
-            match run_rc_command_via_socket(
-                &socket_path,
-                RcloneRcMethod::CoreNoop,
-                json!({}),
-                RCLONE_RC_NOOP_TIMEOUT,
-            ) {
-                Ok(_) => {
-                    info!(
-                        socket = %socket_path.display(),
-                        startup_ms = startup_started.elapsed().as_millis() as u64,
-                        "rclone rcd daemon is ready"
-                    );
-                    break;
-                }
-                Err(error) => {
-                    debug!(error = %error, "rclone rcd startup probe not ready yet");
-                }
-            }
-        }
-        if Instant::now() >= ready_deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(RcloneCliError::Timeout {
-                subcommand: RcloneSubcommand::Rc,
-                timeout: RCLONE_RC_STARTUP_TIMEOUT,
-                stdout: String::new(),
-                stderr: "timed out waiting for rclone rcd startup".to_string(),
-            });
-        }
-        std::thread::sleep(RCLONE_RC_STARTUP_POLL_SLICE);
-    }
-
-    Ok(RcloneRcDaemon {
-        socket_path,
-        binary: binary.clone(),
-        child,
-    })
-}
-
-fn daemon_is_running(daemon: &mut RcloneRcDaemon) -> Result<bool, RcloneCliError> {
-    match daemon.child.try_wait().map_err(RcloneCliError::Io)? {
-        Some(status) => {
-            debug!(status = %status, "rclone rcd daemon has exited");
-            Ok(false)
-        }
-        None => Ok(true),
-    }
-}
-
-fn kill_daemon(daemon: &mut RcloneRcDaemon) -> io::Result<()> {
-    let _ = daemon.child.kill();
-    let _ = daemon.child.wait_timeout(Duration::from_secs(1));
-    let _ = daemon.child.wait();
-    if daemon.socket_path.exists() {
-        let _ = fs::remove_file(&daemon.socket_path);
-    }
-    Ok(())
-}
-
-fn rc_state_dir_path() -> Result<PathBuf, RcloneCliError> {
-    if let Some(xdg_runtime_dir) = env::var_os("XDG_RUNTIME_DIR") {
-        return Ok(PathBuf::from(xdg_runtime_dir).join(RCLONE_RC_STATE_DIR_NAME));
-    }
-    Err(RcloneCliError::Io(io::Error::new(
-        io::ErrorKind::NotFound,
-        "XDG_RUNTIME_DIR is not set; cannot initialize secure rclone rc socket path",
-    )))
-}
-
-fn prepare_state_dir(path: &Path) -> io::Result<()> {
-    fs::create_dir_all(path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    }
-    Ok(())
-}
-
-fn cleanup_stale_socket(path: &Path) -> io::Result<()> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) => {
-            if metadata.file_type().is_dir() {
-                return Err(io::Error::other(
-                    "rc socket path points to a directory; refusing to remove",
-                ));
-            }
-            fs::remove_file(path)
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error),
-    }
-}
-
 fn run_rc_command_via_socket(
     socket_path: &Path,
     method: RcloneRcMethod,
@@ -1243,11 +976,9 @@ fn sensitive_json_regexes() -> &'static Vec<Regex> {
 #[cfg(test)]
 mod tests {
     use super::{
-        allowlisted_method_from_name, cleanup_stale_socket, is_retryable_rc_error, kill_daemon,
-        method_is_retry_safe, method_timeout, parse_http_response_body, parse_rc_toggle_value,
-        prepare_state_dir, run_rc_command_via_socket, scrub_rc_error_text,
-        should_recycle_daemon_after_error, RcloneRcDaemon, RcloneRcMethod, RCLONE_RC_READ_TIMEOUT,
-        RCLONE_RC_WRITE_TIMEOUT,
+        allowlisted_method_from_name, is_retryable_rc_error, method_is_retry_safe, method_timeout,
+        parse_http_response_body, run_rc_command_via_socket, scrub_rc_error_text, RcloneRcMethod,
+        RCLONE_RC_READ_TIMEOUT, RCLONE_RC_WRITE_TIMEOUT,
     };
     use serde_json::{json, Value};
     use std::io;
@@ -1257,10 +988,8 @@ mod tests {
     use std::{
         fs,
         io::{Read, Write},
-        os::unix::fs::symlink,
         os::unix::net::UnixListener,
         path::PathBuf,
-        process::Command,
         sync::atomic::{AtomicU64, Ordering},
         thread,
         time::{SystemTime, UNIX_EPOCH},
@@ -1357,17 +1086,6 @@ mod tests {
     }
 
     #[test]
-    fn parses_rc_toggle_values() {
-        assert_eq!(parse_rc_toggle_value("1"), Some(true));
-        assert_eq!(parse_rc_toggle_value("true"), Some(true));
-        assert_eq!(parse_rc_toggle_value("ON"), Some(true));
-        assert_eq!(parse_rc_toggle_value("0"), Some(false));
-        assert_eq!(parse_rc_toggle_value("false"), Some(false));
-        assert_eq!(parse_rc_toggle_value("Off"), Some(false));
-        assert_eq!(parse_rc_toggle_value("maybe"), None);
-    }
-
-    #[test]
     fn rc_method_timeouts_are_classified_by_endpoint_class() {
         assert_eq!(
             method_timeout(RcloneRcMethod::OperationsList),
@@ -1432,34 +1150,6 @@ mod tests {
                 job_id: 9,
                 reason: "job status unavailable".to_string(),
             }
-        ));
-    }
-
-    #[test]
-    fn daemon_recycle_policy_includes_write_methods_on_transport_errors() {
-        let transport_error =
-            super::RcloneCliError::Io(io::Error::new(io::ErrorKind::ConnectionReset, "reset"));
-        assert!(should_recycle_daemon_after_error(
-            RcloneRcMethod::OperationsList,
-            &transport_error
-        ));
-        assert!(should_recycle_daemon_after_error(
-            RcloneRcMethod::OperationsDeleteFile,
-            &transport_error
-        ));
-        assert!(should_recycle_daemon_after_error(
-            RcloneRcMethod::OperationsCopyFile,
-            &transport_error
-        ));
-        assert!(should_recycle_daemon_after_error(
-            RcloneRcMethod::JobStop,
-            &transport_error
-        ));
-
-        let non_transport_error = super::RcloneCliError::Io(io::Error::other("http 403"));
-        assert!(!should_recycle_daemon_after_error(
-            RcloneRcMethod::OperationsDeleteFile,
-            &non_transport_error
         ));
     }
 
@@ -1633,81 +1323,6 @@ mod tests {
             matches!(err, super::RcloneCliError::Io(_)),
             "unexpected error: {err}"
         );
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn lifecycle_kill_daemon_terminates_process_and_cleans_socket_path() {
-        let root = unique_test_dir("daemon");
-        let socket_path = root.join("daemon.sock");
-        fs::write(&socket_path, "placeholder").expect("create socket placeholder");
-        let child = Command::new("sh")
-            .arg("-c")
-            .arg("sleep 30")
-            .spawn()
-            .expect("spawn sleep child");
-        let mut daemon = RcloneRcDaemon {
-            socket_path,
-            binary: std::ffi::OsString::from("rclone"),
-            child,
-        };
-        kill_daemon(&mut daemon).expect("kill daemon");
-        assert!(
-            daemon
-                .child
-                .try_wait()
-                .expect("query child status")
-                .is_some(),
-            "child process should be terminated"
-        );
-        assert!(
-            !daemon.socket_path.exists(),
-            "socket path should be removed by shutdown"
-        );
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn lifecycle_prepare_state_dir_enforces_user_only_permissions() {
-        let root = unique_test_dir("state-dir-perms");
-        let state_dir = root.join("rc-state");
-        prepare_state_dir(&state_dir).expect("prepare state dir");
-        use std::os::unix::fs::PermissionsExt;
-        let mode = fs::metadata(&state_dir)
-            .expect("state dir metadata")
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(mode, 0o700);
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn stale_socket_cleanup_removes_symlink_without_touching_target() {
-        let root = unique_test_dir("stale-symlink");
-        let target_file = root.join("target.txt");
-        fs::write(&target_file, "keep-me").expect("write target file");
-        let stale_socket = root.join("rcd.sock");
-        symlink(&target_file, &stale_socket).expect("create stale symlink");
-
-        cleanup_stale_socket(&stale_socket).expect("cleanup stale socket");
-        assert!(!stale_socket.exists(), "stale symlink should be removed");
-        let target = fs::read_to_string(&target_file).expect("read target");
-        assert_eq!(target, "keep-me");
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn stale_socket_cleanup_removes_regular_file() {
-        let root = unique_test_dir("stale-file");
-        let stale_socket = root.join("rcd.sock");
-        fs::write(&stale_socket, "stale").expect("write stale socket file");
-        cleanup_stale_socket(&stale_socket).expect("cleanup stale regular file");
-        assert!(!stale_socket.exists());
         let _ = fs::remove_dir_all(root);
     }
 }

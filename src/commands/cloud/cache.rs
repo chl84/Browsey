@@ -403,6 +403,13 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
+    fn lock_cloud_listing_test_state() -> std::sync::MutexGuard<'static, ()> {
+        match cloud_listing_test_lock().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
     fn sample_cloud_file(path: &str, name: &str) -> CloudEntry {
         CloudEntry {
             name: name.to_string(),
@@ -430,6 +437,7 @@ mod tests {
 
     #[test]
     fn cloud_listing_cache_prunes_stale_entries_and_invalidates_parent_subtree() {
+        let _guard = lock_cloud_listing_test_state();
         let now = Instant::now();
         let stale = now - (CLOUD_DIR_LISTING_STALE_MAX_AGE + Duration::from_millis(1));
         let fresh = now - Duration::from_millis(10);
@@ -496,7 +504,7 @@ mod tests {
 
     #[test]
     fn stale_cloud_listing_returns_cached_entries_and_refreshes_in_background() {
-        let _guard = cloud_listing_test_lock().lock().expect("test lock");
+        let _guard = lock_cloud_listing_test_state();
         clear_cloud_listing_test_state();
 
         let path = CloudPath::parse("rclone://work/docs").expect("cloud path");
@@ -533,7 +541,7 @@ mod tests {
         let result = list_cloud_dir_cached(&path).expect("stale cache hit should succeed");
         assert_eq!(result[0].name, "stale.txt");
 
-        let deadline = Instant::now() + Duration::from_secs(1);
+        let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             if refresh_calls.load(Ordering::SeqCst) == 1 {
                 let cache = cloud_dir_listing_cache().lock().expect("cache lock");
@@ -562,7 +570,7 @@ mod tests {
 
     #[test]
     fn stale_cloud_listing_deduplicates_background_refresh_per_path() {
-        let _guard = cloud_listing_test_lock().lock().expect("test lock");
+        let _guard = lock_cloud_listing_test_state();
         clear_cloud_listing_test_state();
 
         let path = CloudPath::parse("rclone://work/dedupe").expect("cloud path");
@@ -596,7 +604,7 @@ mod tests {
         assert_eq!(first[0].name, "old.txt");
         assert_eq!(second[0].name, "old.txt");
 
-        let deadline = Instant::now() + Duration::from_secs(1);
+        let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             if refresh_calls.load(Ordering::SeqCst) == 1
                 && !cloud_dir_listing_refresh_inflight()

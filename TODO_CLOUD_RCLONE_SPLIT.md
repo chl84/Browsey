@@ -62,11 +62,11 @@ Acceptance:
 
 ### 2) Split `src/commands/cloud/rclone_rc.rs`
 
-- [ ] Extract daemon lifecycle/health/recycle logic into `src/commands/cloud/rclone_rc/daemon.rs`
+- [x] Extract daemon lifecycle/health/recycle logic into `src/commands/cloud/rclone_rc/daemon.rs`
 - [ ] Extract generic request/client helpers into `src/commands/cloud/rclone_rc/client.rs`
 - [ ] Extract async job control (`job/status`, `job/stop`, cancel flow) into `src/commands/cloud/rclone_rc/jobs.rs`
 - [ ] Extract typed `operations/*` and `config/*` wrappers into `src/commands/cloud/rclone_rc/methods.rs`
-- [ ] Keep shared rc state and public entry points in `src/commands/cloud/rclone_rc/mod.rs`
+- [x] Keep shared rc state and public entry points in `src/commands/cloud/rclone_rc/mod.rs`
 
 Acceptance:
 - rc daemon, request transport, and async job logic are no longer mixed in one file.
