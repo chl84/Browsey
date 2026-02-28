@@ -43,6 +43,11 @@ struct CloudToLocalBatchProgressPlan {
     file_sizes: Vec<u64>,
 }
 
+struct LocalToCloudBatchProgressPlan {
+    total_bytes: u64,
+    file_sizes: Vec<u64>,
+}
+
 pub(super) async fn execute_mixed_entries(
     op: MixedTransferOp,
     sources: Vec<String>,
@@ -204,7 +209,14 @@ fn execute_mixed_entries_blocking_with_cli(
     let mut moved_cloud_sources = Vec::<CloudPath>::new();
     match route {
         MixedTransferRoute::LocalToCloud { sources, dest_dir } => {
-            for src in sources {
+            let batch_source_count = sources.len();
+            let progress_plan = if batch_source_count > 1 && progress.is_some() {
+                build_local_to_cloud_batch_progress_plan(&sources)?
+            } else {
+                None
+            };
+            let mut completed_bytes = 0_u64;
+            for (index, src) in sources.into_iter().enumerate() {
                 if transfer_cancelled(cancel.as_deref()) {
                     return Err(transfer_err(
                         TransferErrorCode::Cancelled,
@@ -218,23 +230,56 @@ fn execute_mixed_entries_blocking_with_cli(
                         format!("Invalid cloud target path: {e}"),
                     )
                 })?;
-                execute_rclone_transfer(
-                    cli,
-                    op,
-                    LocalOrCloudArg::Local(src.clone()),
-                    LocalOrCloudArg::Cloud(target.clone()),
-                    options,
-                    Some(dest_dir.remote()),
-                    cancel.as_deref(),
-                    progress.as_ref(),
-                )?;
+                if let Some(plan) = progress_plan.as_ref() {
+                    if !options.overwrite
+                        && !options.prechecked
+                        && mixed_target_exists(
+                            cli,
+                            &LocalOrCloudArg::Cloud(target.clone()),
+                            Some(dest_dir.remote()),
+                            cancel.as_deref(),
+                        )?
+                    {
+                        return Err(api_err(
+                            "destination_exists",
+                            "A file or folder with the same name already exists",
+                        ));
+                    }
+                    execute_local_to_cloud_file_transfer_with_aggregate_progress(
+                        cli,
+                        op,
+                        &src,
+                        &target,
+                        cancel.as_deref(),
+                        progress.as_ref().expect("progress context for batch plan"),
+                        completed_bytes,
+                        plan.total_bytes,
+                        plan.file_sizes[index],
+                    )?;
+                    completed_bytes = completed_bytes.saturating_add(plan.file_sizes[index]);
+                } else {
+                    execute_rclone_transfer(
+                        cli,
+                        op,
+                        LocalOrCloudArg::Local(src.clone()),
+                        LocalOrCloudArg::Cloud(target.clone()),
+                        options,
+                        Some(dest_dir.remote()),
+                        cancel.as_deref(),
+                        if batch_source_count == 1 {
+                            progress.as_ref()
+                        } else {
+                            None
+                        },
+                    )?;
+                }
                 cloud_write_targets.push(target.clone());
                 created.push(target.to_string());
             }
         }
         MixedTransferRoute::CloudToLocal { sources, dest_dir } => {
             let batch_source_count = sources.len();
-            let progress_plan = if batch_source_count > 1 {
+            let progress_plan = if batch_source_count > 1 && progress.is_some() {
                 build_cloud_to_local_batch_progress_plan(cli, &sources)?
             } else {
                 None
@@ -255,6 +300,20 @@ fn execute_mixed_entries_blocking_with_cli(
                 })?;
                 let target = dest_dir.join(leaf);
                 if let Some(plan) = progress_plan.as_ref() {
+                    if !options.overwrite
+                        && !options.prechecked
+                        && mixed_target_exists(
+                            cli,
+                            &LocalOrCloudArg::Local(target.clone()),
+                            Some(src.remote()),
+                            cancel.as_deref(),
+                        )?
+                    {
+                        return Err(api_err(
+                            "destination_exists",
+                            "A file or folder with the same name already exists",
+                        ));
+                    }
                     execute_cloud_to_local_file_transfer_with_aggregate_progress(
                         cli,
                         op,
@@ -326,6 +385,12 @@ fn execute_rclone_transfer(
     }
 
     if let Some(result) = try_execute_cloud_to_local_file_transfer_with_progress(
+        cli, op, &src, &dst, cancel, progress,
+    )? {
+        return result;
+    }
+
+    if let Some(result) = try_execute_local_to_cloud_file_transfer_with_progress(
         cli, op, &src, &dst, cancel, progress,
     )? {
         return result;
@@ -410,6 +475,66 @@ fn try_execute_cloud_to_local_file_transfer_with_progress(
     Ok(Some(result))
 }
 
+fn try_execute_local_to_cloud_file_transfer_with_progress(
+    cli: &RcloneCli,
+    op: MixedTransferOp,
+    src: &LocalOrCloudArg,
+    dst: &LocalOrCloudArg,
+    cancel: Option<&AtomicBool>,
+    progress: Option<&TransferProgressContext>,
+) -> TransferResult<Option<TransferResult<()>>> {
+    let Some(progress) = progress else {
+        return Ok(None);
+    };
+    let (Some(src_path), Some(dst_path)) = (src.local_path(), dst.cloud_path()) else {
+        return Ok(None);
+    };
+    let metadata = fs::symlink_metadata(src_path).map_err(|error| {
+        transfer_err(
+            TransferErrorCode::IoError,
+            format!("Failed to read source metadata: {error}"),
+        )
+    })?;
+    if !metadata.is_file() {
+        return Ok(None);
+    }
+
+    let provider = mixed_cloud_provider_for_cli(cli);
+    let total = metadata.len();
+    let result = match op {
+        MixedTransferOp::Copy => provider
+            .upload_file_with_progress(
+                src_path,
+                dst_path,
+                &progress.event_name,
+                cancel,
+                |bytes, total| {
+                    emit_transfer_progress(progress, bytes, total, false);
+                },
+            )
+            .map_err(map_cloud_error_to_transfer),
+        MixedTransferOp::Move => {
+            provider
+                .upload_file_with_progress(
+                    src_path,
+                    dst_path,
+                    &progress.event_name,
+                    cancel,
+                    |bytes, total| {
+                        emit_transfer_progress(progress, bytes, total, false);
+                    },
+                )
+                .map_err(map_cloud_error_to_transfer)?;
+            remove_local_source_after_mixed_file_move(src_path)
+        }
+    }
+    .map(|_| {
+        emit_transfer_progress(progress, total, total, true);
+    });
+
+    Ok(Some(result))
+}
+
 fn build_cloud_to_local_batch_progress_plan(
     cli: &RcloneCli,
     sources: &[CloudPath],
@@ -443,6 +568,34 @@ fn build_cloud_to_local_batch_progress_plan(
     }))
 }
 
+fn build_local_to_cloud_batch_progress_plan(
+    sources: &[std::path::PathBuf],
+) -> TransferResult<Option<LocalToCloudBatchProgressPlan>> {
+    let mut file_sizes = Vec::with_capacity(sources.len());
+    let mut total_bytes = 0_u64;
+    for src in sources {
+        let metadata = fs::symlink_metadata(src).map_err(|error| {
+            transfer_err(
+                TransferErrorCode::IoError,
+                format!("Failed to read source metadata: {error}"),
+            )
+        })?;
+        if !metadata.is_file() {
+            return Ok(None);
+        }
+        let size = metadata.len();
+        file_sizes.push(size);
+        total_bytes = total_bytes.saturating_add(size);
+    }
+    if total_bytes == 0 {
+        return Ok(None);
+    }
+    Ok(Some(LocalToCloudBatchProgressPlan {
+        total_bytes,
+        file_sizes,
+    }))
+}
+
 fn execute_cloud_to_local_file_transfer_with_aggregate_progress(
     cli: &RcloneCli,
     op: MixedTransferOp,
@@ -465,6 +618,36 @@ fn execute_cloud_to_local_file_transfer_with_aggregate_progress(
         provider
             .delete_file(src, cancel)
             .map_err(map_cloud_error_to_transfer)?;
+    }
+    emit_transfer_progress(
+        progress,
+        completed_before.saturating_add(file_size),
+        total_bytes,
+        false,
+    );
+    Ok(())
+}
+
+fn execute_local_to_cloud_file_transfer_with_aggregate_progress(
+    cli: &RcloneCli,
+    op: MixedTransferOp,
+    src: &std::path::Path,
+    dst: &CloudPath,
+    cancel: Option<&AtomicBool>,
+    progress: &TransferProgressContext,
+    completed_before: u64,
+    total_bytes: u64,
+    file_size: u64,
+) -> TransferResult<()> {
+    let provider = mixed_cloud_provider_for_cli(cli);
+    provider
+        .upload_file_with_progress(src, dst, &progress.event_name, cancel, |bytes, _| {
+            let aggregate = completed_before.saturating_add(bytes.min(file_size));
+            emit_transfer_progress(progress, aggregate, total_bytes, false);
+        })
+        .map_err(map_cloud_error_to_transfer)?;
+    if op == MixedTransferOp::Move {
+        remove_local_source_after_mixed_file_move(src)?;
     }
     emit_transfer_progress(
         progress,
@@ -663,6 +846,15 @@ fn map_cloud_error_to_transfer(
     api_err(error.code_str(), error.to_string())
 }
 
+fn remove_local_source_after_mixed_file_move(path: &std::path::Path) -> TransferResult<()> {
+    fs::remove_file(path).map_err(|error| {
+        transfer_err(
+            TransferErrorCode::IoError,
+            format!("Failed to remove moved source file: {error}"),
+        )
+    })
+}
+
 fn mixed_cloud_provider_for_cli(cli: &RcloneCli) -> RcloneCloudProvider {
     #[cfg(test)]
     {
@@ -856,6 +1048,50 @@ mod tests {
         assert_eq!(
             fs::read_to_string(sandbox.remote_path("work", "dest/move.txt")).expect("read remote"),
             "move-payload"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_local_to_cloud_multi_file_copy_without_progress_event_succeeds() {
+        let _guard = fake_rclone_test_lock();
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "dest");
+        let cli = sandbox.cli();
+
+        let src_a = sandbox.write_local_file("src/a.txt", "alpha");
+        let src_b = sandbox.write_local_file("src/b.txt", "beta");
+        let route = MixedTransferRoute::LocalToCloud {
+            sources: vec![src_a.clone(), src_b.clone()],
+            dest_dir: sandbox.cloud_path("rclone://work/dest"),
+        };
+        let out = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            None,
+            None,
+        )
+        .expect("multi-file local->cloud copy");
+
+        assert_eq!(
+            out,
+            vec![
+                "rclone://work/dest/a.txt".to_string(),
+                "rclone://work/dest/b.txt".to_string(),
+            ]
+        );
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "dest/a.txt")).expect("read remote a"),
+            "alpha"
+        );
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "dest/b.txt")).expect("read remote b"),
+            "beta"
         );
     }
 
@@ -1087,6 +1323,54 @@ mod tests {
         assert!(
             !sandbox.remote_path("work", "src/move.txt").exists(),
             "move should remove remote source"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_cloud_to_local_multi_file_copy_without_progress_event_succeeds() {
+        let _guard = fake_rclone_test_lock();
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "src/a.txt", "alpha");
+        sandbox.write_remote_file("work", "src/b.txt", "beta");
+        let cli = sandbox.cli();
+        let local_dest = sandbox.local_path("dest");
+        fs::create_dir_all(&local_dest).expect("mkdir local dest");
+
+        let route = MixedTransferRoute::CloudToLocal {
+            sources: vec![
+                sandbox.cloud_path("rclone://work/src/a.txt"),
+                sandbox.cloud_path("rclone://work/src/b.txt"),
+            ],
+            dest_dir: local_dest.clone(),
+        };
+        let out = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            None,
+            None,
+        )
+        .expect("multi-file cloud->local copy");
+
+        assert_eq!(
+            out,
+            vec![
+                local_dest.join("a.txt").to_string_lossy().to_string(),
+                local_dest.join("b.txt").to_string_lossy().to_string(),
+            ]
+        );
+        assert_eq!(
+            fs::read_to_string(local_dest.join("a.txt")).expect("read local a"),
+            "alpha"
+        );
+        assert_eq!(
+            fs::read_to_string(local_dest.join("b.txt")).expect("read local b"),
+            "beta"
         );
     }
 
