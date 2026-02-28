@@ -1,5 +1,5 @@
 use super::RcloneCliError;
-use tracing::info;
+use tracing::debug;
 
 pub(super) fn log_backend_selected(
     op: &'static str,
@@ -7,7 +7,7 @@ pub(super) fn log_backend_selected(
     fallback: bool,
     reason: Option<&'static str>,
 ) {
-    info!(
+    debug!(
         op,
         backend,
         fallback_from_rc = fallback,

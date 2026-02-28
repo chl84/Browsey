@@ -5,7 +5,7 @@ use super::{
 };
 use crate::tasks::CancelState;
 use std::time::Instant;
-use tracing::{debug, info};
+use tracing::debug;
 
 pub(super) async fn create_cloud_folder_impl(
     path: String,
@@ -38,7 +38,7 @@ pub(super) async fn create_cloud_folder_impl(
     };
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
-        Ok(()) => info!(
+        Ok(()) => debug!(
             op = "cloud_write_mkdir",
             path = %path_for_log,
             elapsed_ms,
@@ -78,7 +78,7 @@ pub(super) async fn delete_cloud_file_impl(
     });
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
-        Ok(()) => info!(
+        Ok(()) => debug!(
             op = "cloud_write_delete_file",
             path = %path_for_log,
             elapsed_ms,
@@ -118,7 +118,7 @@ pub(super) async fn delete_cloud_dir_recursive_impl(
     });
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
-        Ok(()) => info!(
+        Ok(()) => debug!(
             op = "cloud_write_delete_dir_recursive",
             path = %path_for_log,
             elapsed_ms,
@@ -158,7 +158,7 @@ pub(super) async fn delete_cloud_dir_empty_impl(
     });
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
-        Ok(()) => info!(
+        Ok(()) => debug!(
             op = "cloud_write_delete_dir_empty",
             path = %path_for_log,
             elapsed_ms,
@@ -203,7 +203,7 @@ pub(super) async fn move_cloud_entry_impl(
     });
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
-        Ok(()) => info!(
+        Ok(()) => debug!(
             op = "cloud_write_move",
             src = %src_for_log,
             dst = %dst_for_log,
@@ -254,7 +254,7 @@ pub(super) async fn copy_cloud_entry_impl(
     });
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
-        Ok(()) => info!(
+        Ok(()) => debug!(
             op = "cloud_write_copy",
             src = %src_for_log,
             dst = %dst_for_log,

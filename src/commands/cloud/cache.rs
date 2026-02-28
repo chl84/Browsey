@@ -11,7 +11,7 @@ use crate::runtime_lifecycle;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tracing::{debug, info};
+use tracing::debug;
 
 const CLOUD_REMOTE_DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(45);
 const CLOUD_DIR_LISTING_CACHE_TTL: Duration = Duration::from_secs(20);
@@ -91,7 +91,7 @@ pub(crate) fn list_cloud_dir_cached_with_refresh_event(
         if let Some(cached) = lookup_cloud_dir_listing_cache_locked(&guard, &key, now) {
             match cached {
                 CloudDirListingCacheLookup::Fresh(cached) => {
-                    info!(
+                    debug!(
                         op = "cloud_list_entries",
                         phase = "cache_hit",
                         path = %path,
@@ -102,7 +102,7 @@ pub(crate) fn list_cloud_dir_cached_with_refresh_event(
                     return Ok(cached.entries);
                 }
                 CloudDirListingCacheLookup::Stale(cached) => {
-                    info!(
+                    debug!(
                         op = "cloud_list_entries",
                         phase = "stale_cache_hit",
                         path = %path,
@@ -233,7 +233,7 @@ fn schedule_cloud_dir_listing_refresh(
                 if let Some(app) = refresh_event_app.as_ref() {
                     emit_cloud_dir_refreshed(app, &path, entries.len());
                 }
-                info!(
+                debug!(
                     op = "cloud_list_entries",
                     phase = "background_refresh",
                     path = %path,
@@ -282,7 +282,7 @@ fn list_cloud_dir_with_retry(path: &CloudPath) -> CloudCommandResult<Vec<CloudEn
     loop {
         match provider.list_dir(path) {
             Ok(entries) => {
-                info!(
+                debug!(
                     op = "cloud_list_entries",
                     phase = "backend_fetch",
                     path = %path,

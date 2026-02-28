@@ -14,7 +14,7 @@ use std::{
     sync::{Mutex, OnceLock},
     time::{Duration, Instant},
 };
-use tracing::{debug, info};
+use tracing::debug;
 use wait_timeout::ChildExt;
 
 #[derive(Debug)]
@@ -71,7 +71,7 @@ pub fn begin_shutdown_and_kill_daemon() -> io::Result<()> {
     if let Some(mut daemon) = state.daemon.take() {
         let socket_display = daemon.socket_path.display().to_string();
         kill_daemon(&mut daemon)?;
-        info!(socket = %socket_display, "stopped rclone rcd daemon");
+        debug!(socket = %socket_display, "stopped rclone rcd daemon");
     }
     Ok(())
 }
@@ -205,7 +205,7 @@ pub(super) fn spawn_daemon(binary: &OsString) -> Result<RcloneRcDaemon, RcloneCl
                 RCLONE_RC_NOOP_TIMEOUT,
             ) {
                 Ok(_) => {
-                    info!(
+                    debug!(
                         socket = %socket_path.display(),
                         startup_ms = startup_started.elapsed().as_millis() as u64,
                         "rclone rcd daemon is ready"

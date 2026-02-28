@@ -11,7 +11,7 @@ use super::{
 };
 use chrono::{DateTime, Local};
 use serde_json::Value;
-use tracing::info;
+use tracing::debug;
 
 impl RcloneCloudProvider {
     pub(super) fn list_dir_impl(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
@@ -27,7 +27,7 @@ impl RcloneCloudProvider {
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    info!(
+                    debug!(
                         path = %path,
                         error = %error,
                         "rclone rc list failed; falling back to CLI lsjson"
@@ -74,7 +74,7 @@ impl RcloneCloudProvider {
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    info!(
+                    debug!(
                         path = %path,
                         error = %error,
                         "rclone rc stat failed; falling back to CLI lsjson --stat"

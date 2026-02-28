@@ -8,7 +8,7 @@ use super::{
     types::{CloudEntry, CloudEntryKind, CloudRemote, CloudRootSelection},
 };
 use std::time::Instant;
-use tracing::{debug, info};
+use tracing::debug;
 
 pub(super) async fn list_cloud_remotes_impl() -> CloudCommandResult<Vec<CloudRemote>> {
     let task = tauri::async_runtime::spawn_blocking(|| list_cloud_remotes_cached(false));
@@ -84,7 +84,7 @@ pub(super) async fn list_cloud_entries_impl(
     };
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
-        Ok(entries) => info!(
+        Ok(entries) => debug!(
             op = "cloud_list_entries",
             path = %path_for_log,
             entry_count = entries.len(),

@@ -15,7 +15,7 @@ use std::{
     env,
     sync::OnceLock,
 };
-use tracing::info;
+use tracing::debug;
 
 static RCLONE_REMOTE_POLICY: OnceLock<RcloneRemotePolicy> = OnceLock::new();
 
@@ -39,7 +39,7 @@ impl RcloneCloudProvider {
                 Err(error) => {
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    info!(
+                    debug!(
                         error = %error,
                         "rclone rc remote discovery failed; falling back to CLI listremotes"
                     );
