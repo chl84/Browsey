@@ -46,6 +46,7 @@ enum MixedTransferOp {
 pub async fn preview_mixed_transfer_conflicts(
     sources: Vec<String>,
     dest_dir: String,
+    app: tauri::AppHandle,
 ) -> ApiResult<Vec<MixedTransferConflictInfo>> {
     let started = Instant::now();
     let source_count = sources.len();
@@ -68,7 +69,7 @@ pub async fn preview_mixed_transfer_conflicts(
     }
 
     let result = match (source_cloud_count == sources.len(), dest_is_cloud) {
-        (false, true) => preview_local_to_cloud_conflicts(sources, dest_dir).await,
+        (false, true) => preview_local_to_cloud_conflicts(sources, dest_dir, app).await,
         (true, false) => preview_cloud_to_local_conflicts(sources, dest_dir),
         (false, false) => Err(api_err(
             "unsupported",
@@ -991,6 +992,7 @@ fn is_rclone_not_found_text(stderr: &str, stdout: &str) -> bool {
 async fn preview_local_to_cloud_conflicts(
     sources: Vec<String>,
     dest_dir: String,
+    app: tauri::AppHandle,
 ) -> ApiResult<Vec<MixedTransferConflictInfo>> {
     let dest = CloudPath::parse(&dest_dir).map_err(|e| {
         api_err(
@@ -1007,7 +1009,7 @@ async fn preview_local_to_cloud_conflicts(
         .collect::<ApiResult<Vec<PathBuf>>>()?;
 
     let provider = cloud::cloud_provider_kind_for_remote(dest.remote());
-    let dest_entries = cloud::list_cloud_entries(dest.to_string()).await?;
+    let dest_entries = cloud::list_cloud_entries(dest.to_string(), app).await?;
     build_local_to_cloud_conflicts_from_entries(local_sources, &dest, provider, &dest_entries)
 }
 

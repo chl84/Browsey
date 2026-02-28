@@ -6,6 +6,13 @@ import { createExplorerState } from '../state'
 
 const isGvfsPath = (path: string | null | undefined) =>
   !!path && path.includes('/run/user/') && path.includes('/gvfs/')
+const isCloudPath = (path: string | null | undefined) => !!path && path.startsWith('rclone://')
+const CLOUD_DIR_REFRESHED_EVENT = 'cloud-dir-refreshed'
+
+type CloudDirRefreshedEvent = {
+  path: string
+  entryCount?: number
+}
 
 type Options = {
   onEntriesChanged?: () => void
@@ -52,9 +59,11 @@ export const useExplorerData = (options: Options = {}) => {
   let unlistenDirChanged: UnlistenFn | null = null
   let unlistenEntryMeta: UnlistenFn | null = null
   let unlistenEntryMetaBatch: UnlistenFn | null = null
+  let unlistenCloudDirRefreshed: UnlistenFn | null = null
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
   let gvfsRefresh: ReturnType<typeof setInterval> | null = null
   let gvfsInFlightPath: string | null = null
+  let cloudRefreshInFlightPath: string | null = null
   let unsubscribeCurrent: (() => void) | null = null
   let userNavActive = false
   let userNavGen = 0
@@ -98,6 +107,23 @@ export const useExplorerData = (options: Options = {}) => {
       gvfsRefresh = null
       gvfsInFlightPath = null
     }
+  }
+
+  const refreshCloudPath = (path: string | null | undefined) => {
+    if (!path || !isCloudPath(path)) return
+    if (userNavActive) return
+    if (cloudRefreshInFlightPath === path) return
+    if (get(current) !== path) return
+    cloudRefreshInFlightPath = path
+    void (async () => {
+      try {
+        await load(path, { recordHistory: false, silent: true })
+      } finally {
+        if (cloudRefreshInFlightPath === path) {
+          cloudRefreshInFlightPath = null
+        }
+      }
+    })()
   }
 
   const setup = async () => {
@@ -183,6 +209,19 @@ export const useExplorerData = (options: Options = {}) => {
     }
     unlistenDirChanged = unlistenDir
 
+    const unlistenCloudRefresh = await listen<CloudDirRefreshedEvent>(
+      CLOUD_DIR_REFRESHED_EVENT,
+      (event) => {
+        if (disposed) return
+        refreshCloudPath(event.payload?.path)
+      },
+    )
+    if (disposed) {
+      await unlistenCloudRefresh()
+      return
+    }
+    unlistenCloudDirRefreshed = unlistenCloudRefresh
+
     const unlistenMeta = await listen<Entry>('entry-meta', (event) => {
       if (disposed) return
       enqueueMetaUpdate(event.payload)
@@ -224,6 +263,7 @@ export const useExplorerData = (options: Options = {}) => {
       gvfsRefresh = null
     }
     gvfsInFlightPath = null
+    cloudRefreshInFlightPath = null
     if (metaTimer) {
       clearTimeout(metaTimer)
       metaTimer = null
@@ -240,6 +280,10 @@ export const useExplorerData = (options: Options = {}) => {
     if (unlistenEntryMetaBatch) {
       unlistenEntryMetaBatch()
       unlistenEntryMetaBatch = null
+    }
+    if (unlistenCloudDirRefreshed) {
+      unlistenCloudDirRefreshed()
+      unlistenCloudDirRefreshed = null
     }
     if (unsubscribeCurrent) {
       unsubscribeCurrent()
