@@ -46,7 +46,7 @@ export const DEFAULT_SETTINGS: Settings = {
   archiveLevel: 6,
   openDestAfterExtract: false,
   videoThumbs: true,
-  hardwareAcceleration: true,
+  hardwareAcceleration: false,
   ffmpegPath: '',
   thumbCacheMb: 300,
   mountsPollMs: 8000,

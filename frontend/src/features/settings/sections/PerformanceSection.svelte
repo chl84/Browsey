@@ -29,6 +29,7 @@
       />
       <span>Use GPU acceleration for rendering</span>
       <small>Requires restart to take effect</small>
+      <small>Leave this off unless rendering feels slow or unstable on your system.</small>
     </div>
   {/if}
 

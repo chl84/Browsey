@@ -1,4 +1,5 @@
 import { getErrorMessage } from '@/shared/lib/error'
+import { blurTextEntryTargetOnEscape } from '@/shared/lib/escapeBlur'
 import { derived, get, writable } from 'svelte/store'
 import { keyboardEventToAccelerator, type ShortcutBinding, type ShortcutCommandId } from '@/features/shortcuts'
 import {
@@ -199,6 +200,9 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       e.stopPropagation()
       if (!accelerator) return
       void applyShortcutCapture(accelerator)
+      return
+    }
+    if (blurTextEntryTargetOnEscape(e)) {
       return
     }
     if (e.key === 'Escape') {

@@ -89,4 +89,11 @@
     border-color: var(--border-accent-strong);
     background: var(--bg-raised);
   }
+
+  .text-field::-webkit-search-cancel-button,
+  .text-field::-webkit-search-decoration,
+  .text-field::-webkit-search-results-button,
+  .text-field::-webkit-search-results-decoration {
+    cursor: default;
+  }
 </style>

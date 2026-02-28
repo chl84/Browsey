@@ -144,7 +144,7 @@ fn apply_webview_rendering_policy_from_settings() {
                 .ok()
                 .flatten()
         })
-        .unwrap_or(true);
+        .unwrap_or(false);
 
     if !hardware_acceleration {
         // Keep compositing enabled, but disable the DMA-BUF renderer to reduce artifacts.

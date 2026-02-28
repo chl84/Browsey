@@ -2,6 +2,7 @@
   import { onDestroy, tick } from 'svelte'
   import { modalOpenState } from './modalOpenState'
   import { applyContainedWheelScrollAssist } from '../lib/wheelScrollAssist'
+  import { blurTextEntryTargetOnEscape } from '../lib/escapeBlur'
 
   export let open = false
   export let title: string | null = null
@@ -88,6 +89,7 @@
   }
 
   const handleKeydown = (e: KeyboardEvent) => {
+    if (blurTextEntryTargetOnEscape(e)) return
     if (!closeOnEscape) return
     if (e.key === 'Escape') {
       e.preventDefault()

@@ -145,7 +145,7 @@ import type { Partition } from '../../model/types'
   }
 
   .sidebar-filter-wrap {
-    padding: 0 6px;
+    padding: 2px 6px 0;
   }
 
   .sidebar-empty {

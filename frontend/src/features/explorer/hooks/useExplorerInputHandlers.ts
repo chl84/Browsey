@@ -1,6 +1,7 @@
 import { hitTestGridVirtualized } from '../selection/lassoHitTest'
 import { isScrollbarClick } from '../helpers/scrollbar'
 import { applyWheelScrollAssist } from '../helpers/wheelScrollHelper'
+import { blurTextEntryTargetOnEscape } from '@/shared/lib/escapeBlur'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
 import { createGridKeyboardHandler } from './createGridKeyboardHandler'
@@ -401,6 +402,9 @@ export const useExplorerInputHandlers = (deps: Deps) => {
       deps.setCopyModifierActive(true)
     }
     if (event.defaultPrevented) {
+      return
+    }
+    if (blurTextEntryTargetOnEscape(event)) {
       return
     }
 
