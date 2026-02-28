@@ -25,7 +25,8 @@ use crate::fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitiz
 use crate::tasks::{CancelGuard, CancelState};
 use crate::undo::{temp_backup_path, Action, UndoState};
 use error::{
-    is_cancelled_message, map_api_result, DecompressError, DecompressErrorCode, DecompressResult,
+    is_cancelled_error, map_api_result, map_external_result, DecompressError, DecompressErrorCode,
+    DecompressResult,
 };
 
 use rar_format::{
@@ -125,7 +126,7 @@ async fn extract_archive_impl(
     path: String,
     progress_event: Option<String>,
 ) -> DecompressResult<ExtractResult> {
-    let task = tauri::async_runtime::spawn_blocking(move || -> Result<ExtractResult, String> {
+    let task = tauri::async_runtime::spawn_blocking(move || -> DecompressResult<ExtractResult> {
         do_extract(
             app,
             cancel_state,
@@ -138,7 +139,7 @@ async fn extract_archive_impl(
         )
     });
     match task.await {
-        Ok(result) => result.map_err(DecompressError::from_external_message),
+        Ok(result) => result,
         Err(error) => Err(DecompressError::new(
             DecompressErrorCode::TaskFailed,
             format!("Extraction task failed: {error}"),
@@ -191,7 +192,7 @@ async fn extract_archives_impl(
     let batch_token = batch_guard.as_ref().map(|g| g.token());
 
     let task =
-        tauri::async_runtime::spawn_blocking(move || -> Result<Vec<ExtractBatchItem>, String> {
+        tauri::async_runtime::spawn_blocking(move || -> DecompressResult<Vec<ExtractBatchItem>> {
             // Compute batch total hint inside blocking context to avoid nested runtimes.
             let mut batch_total: u64 = 0;
             for path in &paths {
@@ -228,12 +229,12 @@ async fn extract_archives_impl(
                         error: None,
                     }),
                     Err(e) => {
-                        let was_cancel = is_cancelled_message(&e);
+                        let was_cancel = is_cancelled_error(&e);
                         results.push(ExtractBatchItem {
                             path,
                             ok: false,
                             result: None,
-                            error: Some(e),
+                            error: Some(e.to_string()),
                         });
                         if was_cancel {
                             break;
@@ -254,7 +255,7 @@ async fn extract_archives_impl(
             Ok(results)
         });
     match task.await {
-        Ok(result) => result.map_err(DecompressError::from_external_message),
+        Ok(result) => result,
         Err(error) => Err(DecompressError::new(
             DecompressErrorCode::TaskFailed,
             format!("Batch extraction task failed: {error}"),
@@ -272,24 +273,32 @@ fn do_extract(
     shared_cancel: Option<Arc<AtomicBool>>,
     shared_progress: Option<ProgressEmitter>,
     batch_actions: Option<Arc<Mutex<Vec<Action>>>>,
-) -> Result<ExtractResult, String> {
-    let nofollow = sanitize_path_nofollow(&path, true)?;
-    let meta = fs::symlink_metadata(&nofollow)
-        .map_err(|e| format!("Failed to read archive metadata: {e}"))?;
+) -> DecompressResult<ExtractResult> {
+    let nofollow = sanitize_path_nofollow(&path, true)
+        .map_err(|error| DecompressError::from_external_message(error.to_string()))?;
+    let meta = fs::symlink_metadata(&nofollow).map_err(|e| {
+        DecompressError::from_external_message(format!("Failed to read archive metadata: {e}"))
+    })?;
     if meta.file_type().is_symlink() {
-        return Err("Symlink archives are not supported".into());
+        return Err(DecompressError::from_external_message(
+            "Symlink archives are not supported",
+        ));
     }
 
-    let archive_path = sanitize_path_follow(&path, true)?;
-    check_no_symlink_components(&archive_path)?;
+    let archive_path = sanitize_path_follow(&path, true)
+        .map_err(|error| DecompressError::from_external_message(error.to_string()))?;
+    check_no_symlink_components(&archive_path)
+        .map_err(|error| DecompressError::from_external_message(error.to_string()))?;
 
     if !archive_path.is_file() {
-        return Err("Only files can be extracted".into());
+        return Err(DecompressError::from_external_message(
+            "Only files can be extracted",
+        ));
     }
 
-    let parent = archive_path
-        .parent()
-        .ok_or_else(|| "Cannot extract archive at filesystem root".to_string())?;
+    let parent = archive_path.parent().ok_or_else(|| {
+        DecompressError::from_external_message("Cannot extract archive at filesystem root")
+    })?;
 
     let kind = detect_archive(&archive_path)?;
     let mut rar_entries: Option<Vec<RarInnerFile>> = None;
@@ -299,7 +308,7 @@ fn do_extract(
         ArchiveKind::TarGz => gzip_uncompressed_size(&archive_path).unwrap_or(meta.len()),
         ArchiveKind::SevenZ => sevenz_uncompressed_total(&archive_path).unwrap_or(meta.len()),
         ArchiveKind::Rar => {
-            let entries = parse_rar_entries(&archive_path)?;
+            let entries = map_external_result(parse_rar_entries(&archive_path))?;
             let total = rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len());
             rar_entries = Some(entries);
             total
@@ -308,19 +317,19 @@ fn do_extract(
         _ => meta.len(),
     }
     .max(1);
-    let available_bytes = available_disk_bytes(parent)?;
+    let available_bytes = map_external_result(available_disk_bytes(parent))?;
     let effective_bytes_cap = effective_extract_bytes_cap(
         EXTRACT_TOTAL_BYTES_CAP,
         available_bytes,
         EXTRACT_MIN_FREE_DISK_RESERVE,
     );
     if effective_bytes_cap == 0 {
-        return Err(format!(
+        return Err(DecompressError::from_external_message(format!(
             "Insufficient free disk space in {} (available: {} bytes, required reserve: {} bytes)",
             parent.display(),
             available_bytes,
             EXTRACT_MIN_FREE_DISK_RESERVE
-        ));
+        )));
     }
     let budget = ExtractBudget::new(effective_bytes_cap, EXTRACT_TOTAL_ENTRIES_CAP)
         .with_disk_guard(DiskSpaceGuard::new(
@@ -329,12 +338,12 @@ fn do_extract(
             EXTRACT_DISK_CHECK_INTERVAL_BYTES,
         ));
     if total_hint > budget.max_total_bytes() {
-        return Err(format!(
+        return Err(DecompressError::from_external_message(format!(
             "Archive exceeds extraction size cap ({} bytes > {} bytes, available disk: {} bytes)",
             total_hint,
             budget.max_total_bytes(),
             available_bytes
-        ));
+        )));
     }
     let progress_id = progress_event.clone();
     let mut owns_progress = false;
@@ -352,7 +361,12 @@ fn do_extract(
     let cancel_token_arc: Option<Arc<AtomicBool>> = if let Some(shared) = shared_cancel {
         Some(shared)
     } else if let Some(evt) = progress_id.as_ref() {
-        let guard = cancel_state.register(evt.clone())?;
+        let guard = cancel_state.register(evt.clone()).map_err(|error| {
+            DecompressError::new(
+                DecompressErrorCode::TaskFailed,
+                format!("Failed to register cancel: {error}"),
+            )
+        })?;
         let token = guard.token();
         _cancel_guard = Some(guard);
         Some(token)
@@ -366,7 +380,7 @@ fn do_extract(
         ArchiveKind::Zip => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            extract_zip(
+            map_external_result(extract_zip(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -375,13 +389,13 @@ fn do_extract(
                 &mut created,
                 cancel_token,
                 &budget,
-            )?;
+            ))?;
             dest_dir
         }
         ArchiveKind::Tar => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            extract_tar_with_reader(
+            map_external_result(extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -391,13 +405,13 @@ fn do_extract(
                 cancel_token,
                 &budget,
                 |reader| Ok(Box::new(reader) as Box<dyn Read>),
-            )?;
+            ))?;
             dest_dir
         }
         ArchiveKind::TarGz => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            extract_tar_with_reader(
+            map_external_result(extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -407,13 +421,13 @@ fn do_extract(
                 cancel_token,
                 &budget,
                 |reader| Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>),
-            )?;
+            ))?;
             dest_dir
         }
         ArchiveKind::TarBz2 => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            extract_tar_with_reader(
+            map_external_result(extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -423,13 +437,13 @@ fn do_extract(
                 cancel_token,
                 &budget,
                 |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
-            )?;
+            ))?;
             dest_dir
         }
         ArchiveKind::TarXz => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            extract_tar_with_reader(
+            map_external_result(extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -439,13 +453,13 @@ fn do_extract(
                 cancel_token,
                 &budget,
                 |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
-            )?;
+            ))?;
             dest_dir
         }
         ArchiveKind::TarZstd => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            extract_tar_with_reader(
+            map_external_result(extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -459,13 +473,13 @@ fn do_extract(
                         .map(|r| Box::new(r) as Box<dyn Read>)
                         .map_err(|e| format!("Failed to create zstd decoder: {e}"))
                 },
-            )?;
+            ))?;
             dest_dir
         }
         ArchiveKind::SevenZ => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            extract_7z(
+            map_external_result(extract_7z(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -474,17 +488,17 @@ fn do_extract(
                 &mut created,
                 cancel_token,
                 &budget,
-            )?;
+            ))?;
             dest_dir
         }
         ArchiveKind::Rar => {
             let entries = match rar_entries {
                 Some(v) => v,
-                None => parse_rar_entries(&archive_path)?,
+                None => map_external_result(parse_rar_entries(&archive_path))?,
             };
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            extract_rar(
+            map_external_result(extract_rar(
                 entries,
                 &dest_dir,
                 strip.as_deref(),
@@ -493,7 +507,7 @@ fn do_extract(
                 &mut created,
                 cancel_token,
                 &budget,
-            )?;
+            ))?;
             dest_dir
         }
         ArchiveKind::Gz => decompress_single_with_reader(
@@ -579,22 +593,27 @@ fn archive_root_name(path: &Path) -> String {
         .unwrap_or_else(|| "extracted".to_string())
 }
 
-fn create_unique_dir(parent: &Path, base: &str) -> Result<PathBuf, String> {
-    create_unique_dir_nofollow(parent, base)
+fn create_unique_dir(parent: &Path, base: &str) -> DecompressResult<PathBuf> {
+    map_external_result(create_unique_dir_nofollow(parent, base))
 }
 
-fn prepare_output_dir(archive_path: &Path) -> Result<PathBuf, String> {
-    let parent = archive_path
-        .parent()
-        .ok_or_else(|| "Cannot extract archive at filesystem root".to_string())?;
+fn prepare_output_dir(archive_path: &Path) -> DecompressResult<PathBuf> {
+    let parent = archive_path.parent().ok_or_else(|| {
+        DecompressError::from_external_message("Cannot extract archive at filesystem root")
+    })?;
     let base = archive_root_name(archive_path);
     create_unique_dir(parent, &base)
 }
 
-fn detect_archive(path: &Path) -> Result<ArchiveKind, String> {
-    let mut f = File::open(path).map_err(map_io("open archive for detection"))?;
+fn detect_archive(path: &Path) -> DecompressResult<ArchiveKind> {
+    let mut f = File::open(path)
+        .map_err(map_io("open archive for detection"))
+        .map_err(DecompressError::from_external_message)?;
     let mut buf = [0u8; 512];
-    let n = f.read(&mut buf).map_err(map_io("read archive header"))?;
+    let n = f
+        .read(&mut buf)
+        .map_err(map_io("read archive header"))
+        .map_err(DecompressError::from_external_message)?;
     let magic = &buf[..n];
 
     let name = path
@@ -666,7 +685,9 @@ fn detect_archive(path: &Path) -> Result<ArchiveKind, String> {
         }
     }
 
-    Err("Unsupported archive format".to_string())
+    Err(DecompressError::from_external_message(
+        "Unsupported archive format",
+    ))
 }
 
 fn has_suffix(name: &str, suffixes: &[&str]) -> bool {
@@ -676,20 +697,20 @@ fn has_suffix(name: &str, suffixes: &[&str]) -> bool {
 fn choose_destination_dir(
     archive_path: &Path,
     kind: ArchiveKind,
-) -> Result<(PathBuf, Option<PathBuf>), String> {
-    let parent = archive_path
-        .parent()
-        .ok_or_else(|| "Cannot extract archive at filesystem root".to_string())?;
+) -> DecompressResult<(PathBuf, Option<PathBuf>)> {
+    let parent = archive_path.parent().ok_or_else(|| {
+        DecompressError::from_external_message("Cannot extract archive at filesystem root")
+    })?;
 
     let single_root = match kind {
-        ArchiveKind::Zip => single_root_in_zip(archive_path)?,
+        ArchiveKind::Zip => map_external_result(single_root_in_zip(archive_path))?,
         ArchiveKind::Tar
         | ArchiveKind::TarGz
         | ArchiveKind::TarBz2
         | ArchiveKind::TarXz
-        | ArchiveKind::TarZstd => single_root_in_tar(archive_path, kind)?,
-        ArchiveKind::SevenZ => single_root_in_7z(archive_path)?,
-        ArchiveKind::Rar => single_root_in_rar(archive_path)?,
+        | ArchiveKind::TarZstd => map_external_result(single_root_in_tar(archive_path, kind))?,
+        ArchiveKind::SevenZ => map_external_result(single_root_in_7z(archive_path))?,
+        ArchiveKind::Rar => map_external_result(single_root_in_rar(archive_path))?,
         _ => None,
     };
 
@@ -711,12 +732,12 @@ fn decompress_single_with_reader<F>(
     cancel: Option<&AtomicBool>,
     budget: &ExtractBudget,
     wrap: F,
-) -> Result<PathBuf, String>
+) -> DecompressResult<PathBuf>
 where
     F: FnOnce(BufReader<File>) -> Result<Box<dyn Read>, String>,
 {
-    let reader = open_buffered_file(archive_path, "open compressed file")?;
-    let reader = wrap(reader)?;
+    let reader = map_external_result(open_buffered_file(archive_path, "open compressed file"))?;
+    let reader = map_external_result(wrap(reader))?;
     decompress_single(
         reader,
         archive_path,
@@ -736,10 +757,10 @@ fn decompress_single<R: Read>(
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
     budget: &ExtractBudget,
-) -> Result<PathBuf, String> {
-    budget
-        .reserve_entry(1)
-        .map_err(|e| map_copy_err("Extraction entry cap exceeded", e))?;
+) -> DecompressResult<PathBuf> {
+    budget.reserve_entry(1).map_err(|e| {
+        DecompressError::from_external_message(map_copy_err("Extraction entry cap exceeded", e))
+    })?;
     let mut dest_name = archive
         .file_name()
         .and_then(|s| s.to_str())
@@ -750,18 +771,23 @@ fn decompress_single<R: Read>(
     }
     let dest_path = parent.join(dest_name);
     if let Some(parent_dir) = dest_path.parent() {
-        let created_dirs = ensure_dir_nofollow(parent_dir)
-            .map_err(|e| format!("Failed to create output dir {}: {e}", parent_dir.display()))?;
+        let created_dirs = ensure_dir_nofollow(parent_dir).map_err(|e| {
+            DecompressError::from_external_message(format!(
+                "Failed to create output dir {}: {e}",
+                parent_dir.display()
+            ))
+        })?;
         for dir in created_dirs {
             created.record_dir(dir);
         }
     }
-    let (file, dest_path) = open_unique_file(&dest_path)?;
+    let (file, dest_path) = map_external_result(open_unique_file(&dest_path))?;
     created.record_file(dest_path.clone());
     let mut out = BufWriter::with_capacity(CHUNK, file);
     let mut buf = vec![0u8; CHUNK];
-    copy_with_progress(&mut reader, &mut out, progress, cancel, budget, &mut buf)
-        .map_err(|e| map_copy_err("write decompressed file", e))?;
+    copy_with_progress(&mut reader, &mut out, progress, cancel, budget, &mut buf).map_err(|e| {
+        DecompressError::from_external_message(map_copy_err("write decompressed file", e))
+    })?;
     Ok(dest_path)
 }
 
@@ -780,8 +806,10 @@ fn gzip_uncompressed_size(path: &Path) -> Result<u64, String> {
     Ok(size.max(1))
 }
 
-fn estimate_total_hint(path: &Path) -> Result<u64, String> {
-    let meta = fs::metadata(path).map_err(|e| format!("Failed to read archive metadata: {e}"))?;
+fn estimate_total_hint(path: &Path) -> DecompressResult<u64> {
+    let meta = fs::metadata(path).map_err(|e| {
+        DecompressError::from_external_message(format!("Failed to read archive metadata: {e}"))
+    })?;
     let kind = detect_archive(path)?;
     let mut rar_entries: Option<Vec<RarInnerFile>> = None;
     let total = match kind {
@@ -790,7 +818,7 @@ fn estimate_total_hint(path: &Path) -> Result<u64, String> {
         ArchiveKind::TarGz => gzip_uncompressed_size(path).unwrap_or(meta.len()),
         ArchiveKind::SevenZ => sevenz_uncompressed_total(path).unwrap_or(meta.len()),
         ArchiveKind::Rar => {
-            let entries = parse_rar_entries(path)?;
+            let entries = map_external_result(parse_rar_entries(path))?;
             let total = rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len());
             rar_entries = Some(entries);
             total
