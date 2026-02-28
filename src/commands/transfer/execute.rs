@@ -1,7 +1,8 @@
+use super::error::{transfer_err, transfer_err_code as api_err, TransferErrorCode, TransferResult};
 use super::logging::{log_mixed_execute_result, log_mixed_single_execute_result};
 use super::route::{
-    api_err, local_leaf_name, mixed_route_hint, validate_mixed_transfer_pair,
-    validate_mixed_transfer_route, LocalOrCloudArg, MixedTransferPair, MixedTransferRoute,
+    local_leaf_name, mixed_route_hint, validate_mixed_transfer_pair, validate_mixed_transfer_route,
+    LocalOrCloudArg, MixedTransferPair, MixedTransferRoute,
 };
 use super::{MixedTransferOp, MixedTransferWriteOptions};
 use crate::commands::cloud;
@@ -9,7 +10,6 @@ use crate::commands::cloud::rclone_cli::{
     RcloneCli, RcloneCliError, RcloneCommandSpec, RcloneSubcommand,
 };
 use crate::commands::cloud::types::CloudProviderKind;
-use crate::errors::api_error::{ApiError, ApiResult};
 use crate::tasks::{CancelGuard, CancelState};
 use std::fs;
 use std::io::ErrorKind;
@@ -26,7 +26,7 @@ pub(super) async fn execute_mixed_entries(
     options: MixedTransferWriteOptions,
     cancel_state: CancelState,
     progress_event: Option<String>,
-) -> ApiResult<Vec<String>> {
+) -> TransferResult<Vec<String>> {
     let started = Instant::now();
     let source_count = sources.len();
     let route_hint = mixed_route_hint(&sources, &dest_dir);
@@ -61,7 +61,7 @@ pub(super) async fn execute_mixed_entry_to(
     options: MixedTransferWriteOptions,
     cancel_state: CancelState,
     progress_event: Option<String>,
-) -> ApiResult<String> {
+) -> TransferResult<String> {
     let started = Instant::now();
     let route_hint = mixed_route_hint(std::slice::from_ref(&src), &dst);
     let pair = match validate_mixed_transfer_pair(src, dst).await {
@@ -93,7 +93,7 @@ fn execute_mixed_entries_blocking(
     route: MixedTransferRoute,
     options: MixedTransferWriteOptions,
     cancel: Option<Arc<AtomicBool>>,
-) -> ApiResult<Vec<String>> {
+) -> TransferResult<Vec<String>> {
     let cli = RcloneCli::default();
     execute_mixed_entries_blocking_with_cli(&cli, op, route, options, cancel)
 }
@@ -103,7 +103,7 @@ fn execute_mixed_entry_to_blocking(
     pair: MixedTransferPair,
     options: MixedTransferWriteOptions,
     cancel: Option<Arc<AtomicBool>>,
-) -> ApiResult<String> {
+) -> TransferResult<String> {
     let cli = RcloneCli::default();
     execute_mixed_entry_to_blocking_with_cli(&cli, op, pair, options, cancel)
 }
@@ -114,9 +114,12 @@ fn execute_mixed_entry_to_blocking_with_cli(
     pair: MixedTransferPair,
     options: MixedTransferWriteOptions,
     cancel: Option<Arc<AtomicBool>>,
-) -> ApiResult<String> {
+) -> TransferResult<String> {
     if transfer_cancelled(cancel.as_deref()) {
-        return Err(api_err("cancelled", "Transfer cancelled"));
+        return Err(transfer_err(
+            TransferErrorCode::Cancelled,
+            "Transfer cancelled",
+        ));
     }
     let MixedTransferPair {
         src,
@@ -145,17 +148,23 @@ fn execute_mixed_entries_blocking_with_cli(
     route: MixedTransferRoute,
     options: MixedTransferWriteOptions,
     cancel: Option<Arc<AtomicBool>>,
-) -> ApiResult<Vec<String>> {
+) -> TransferResult<Vec<String>> {
     let mut created = Vec::new();
     match route {
         MixedTransferRoute::LocalToCloud { sources, dest_dir } => {
             for src in sources {
                 if transfer_cancelled(cancel.as_deref()) {
-                    return Err(api_err("cancelled", "Transfer cancelled"));
+                    return Err(transfer_err(
+                        TransferErrorCode::Cancelled,
+                        "Transfer cancelled",
+                    ));
                 }
                 let leaf = local_leaf_name(&src)?;
                 let target = dest_dir.child_path(leaf).map_err(|e| {
-                    api_err("invalid_path", format!("Invalid cloud target path: {e}"))
+                    transfer_err(
+                        TransferErrorCode::InvalidPath,
+                        format!("Invalid cloud target path: {e}"),
+                    )
                 })?;
                 execute_rclone_transfer(
                     cli,
@@ -172,10 +181,16 @@ fn execute_mixed_entries_blocking_with_cli(
         MixedTransferRoute::CloudToLocal { sources, dest_dir } => {
             for src in sources {
                 if transfer_cancelled(cancel.as_deref()) {
-                    return Err(api_err("cancelled", "Transfer cancelled"));
+                    return Err(transfer_err(
+                        TransferErrorCode::Cancelled,
+                        "Transfer cancelled",
+                    ));
                 }
                 let leaf = src.leaf_name().map_err(|e| {
-                    api_err("invalid_path", format!("Invalid cloud source path: {e}"))
+                    transfer_err(
+                        TransferErrorCode::InvalidPath,
+                        format!("Invalid cloud source path: {e}"),
+                    )
                 })?;
                 let target = dest_dir.join(leaf);
                 execute_rclone_transfer(
@@ -202,9 +217,12 @@ fn execute_rclone_transfer(
     options: MixedTransferWriteOptions,
     cloud_remote_for_error_mapping: Option<&str>,
     cancel: Option<&AtomicBool>,
-) -> ApiResult<()> {
+) -> TransferResult<()> {
     if transfer_cancelled(cancel) {
-        return Err(api_err("cancelled", "Transfer cancelled"));
+        return Err(transfer_err(
+            TransferErrorCode::Cancelled,
+            "Transfer cancelled",
+        ));
     }
     if !options.overwrite
         && !options.prechecked
@@ -235,9 +253,12 @@ fn mixed_target_exists(
     dst: &LocalOrCloudArg,
     cloud_remote_for_error_mapping: Option<&str>,
     cancel: Option<&AtomicBool>,
-) -> ApiResult<bool> {
+) -> TransferResult<bool> {
     if transfer_cancelled(cancel) {
-        return Err(api_err("cancelled", "Transfer cancelled"));
+        return Err(transfer_err(
+            TransferErrorCode::Cancelled,
+            "Transfer cancelled",
+        ));
     }
     if let Some(path) = dst.local_path() {
         return match fs::symlink_metadata(path) {
@@ -267,17 +288,20 @@ fn mixed_target_exists(
     }
 }
 
-fn map_rclone_cli_error(error: RcloneCliError, cloud_remote: Option<&str>) -> ApiError {
+fn map_rclone_cli_error(
+    error: RcloneCliError,
+    cloud_remote: Option<&str>,
+) -> super::error::TransferError {
     match error {
         RcloneCliError::Io(io) if io.kind() == std::io::ErrorKind::NotFound => {
-            api_err("binary_missing", "rclone not found in PATH")
+            transfer_err(TransferErrorCode::BinaryMissing, "rclone not found in PATH")
         }
-        RcloneCliError::Io(io) => api_err("network_error", format!("Failed to run rclone: {io}")),
+        RcloneCliError::Io(io) => transfer_err(TransferErrorCode::NetworkError, format!("Failed to run rclone: {io}")),
         RcloneCliError::Shutdown { .. } => api_err(
             "task_failed",
             "Application is shutting down; transfer was cancelled",
         ),
-        RcloneCliError::Cancelled { .. } => api_err("cancelled", "Transfer cancelled"),
+        RcloneCliError::Cancelled { .. } => transfer_err(TransferErrorCode::Cancelled, "Transfer cancelled"),
         RcloneCliError::AsyncJobStateUnknown {
             operation,
             job_id,
@@ -344,7 +368,7 @@ fn map_rclone_cli_error(error: RcloneCliError, cloud_remote: Option<&str>) -> Ap
 fn register_mixed_cancel(
     cancel_state: &CancelState,
     progress_event: &Option<String>,
-) -> ApiResult<Option<CancelGuard>> {
+) -> TransferResult<Option<CancelGuard>> {
     progress_event
         .as_ref()
         .map(|event| cancel_state.register(event.clone()))

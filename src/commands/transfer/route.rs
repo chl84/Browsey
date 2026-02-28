@@ -1,7 +1,7 @@
+use super::error::{transfer_err, transfer_err_code as api_err, TransferErrorCode, TransferResult};
 use crate::commands::cloud;
 use crate::commands::cloud::path::CloudPath;
 use crate::commands::cloud::types::CloudEntryKind;
-use crate::errors::api_error::{ApiError, ApiResult};
 use crate::fs_utils::sanitize_path_follow;
 use std::ffi::OsString;
 use std::fs;
@@ -65,10 +65,6 @@ impl LocalOrCloudArg {
     }
 }
 
-pub(super) fn api_err(code: &str, message: impl Into<String>) -> ApiError {
-    ApiError::new(code, message.into())
-}
-
 pub(super) fn is_cloud_path(path: &str) -> bool {
     path.starts_with("rclone://")
 }
@@ -103,9 +99,12 @@ pub(super) fn route_hint_label(hint: MixedRouteHint) -> &'static str {
 pub(super) async fn validate_mixed_transfer_route(
     sources: Vec<String>,
     dest_dir: String,
-) -> ApiResult<MixedTransferRoute> {
+) -> TransferResult<MixedTransferRoute> {
     if sources.is_empty() {
-        return Err(api_err("invalid_input", "No sources provided"));
+        return Err(transfer_err(
+            TransferErrorCode::InvalidInput,
+            "No sources provided",
+        ));
     }
 
     let dest_is_cloud = is_cloud_path(&dest_dir);
@@ -134,15 +133,19 @@ pub(super) async fn validate_mixed_transfer_route(
 pub(super) async fn validate_mixed_transfer_pair(
     src: String,
     dst: String,
-) -> ApiResult<MixedTransferPair> {
+) -> TransferResult<MixedTransferPair> {
     let src_is_cloud = is_cloud_path(&src);
     let dst_is_cloud = is_cloud_path(&dst);
     match (src_is_cloud, dst_is_cloud) {
         (false, true) => {
             let src_path = sanitize_path_follow(&src, true)
-                .map_err(|e| api_err("invalid_path", e.to_string()))?;
-            let src_meta = fs::symlink_metadata(&src_path)
-                .map_err(|e| api_err("io_error", format!("Failed to read source metadata: {e}")))?;
+                .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))?;
+            let src_meta = fs::symlink_metadata(&src_path).map_err(|e| {
+                transfer_err(
+                    TransferErrorCode::IoError,
+                    format!("Failed to read source metadata: {e}"),
+                )
+            })?;
             if src_meta.file_type().is_symlink() {
                 return Err(api_err(
                     "symlink_unsupported",
@@ -192,13 +195,27 @@ pub(super) async fn validate_mixed_transfer_pair(
             })
         }
         (true, false) => {
-            let src_path = CloudPath::parse(&src)
-                .map_err(|e| api_err("invalid_path", format!("Invalid cloud source path: {e}")))?;
+            let src_path = CloudPath::parse(&src).map_err(|e| {
+                transfer_err(
+                    TransferErrorCode::InvalidPath,
+                    format!("Invalid cloud source path: {e}"),
+                )
+            })?;
             match cloud::stat_cloud_entry(src_path.to_string()).await? {
                 Some(entry) if matches!(entry.kind, CloudEntryKind::File | CloudEntryKind::Dir) => {
                 }
-                Some(_) => return Err(api_err("unsupported", "Unsupported cloud entry type")),
-                None => return Err(api_err("not_found", "Cloud source was not found")),
+                Some(_) => {
+                    return Err(transfer_err(
+                        TransferErrorCode::Unsupported,
+                        "Unsupported cloud entry type",
+                    ))
+                }
+                None => {
+                    return Err(transfer_err(
+                        TransferErrorCode::NotFound,
+                        "Cloud source was not found",
+                    ))
+                }
             }
 
             let dst_path = sanitize_local_target_path_allow_missing(&dst)?;
@@ -238,7 +255,7 @@ pub(super) async fn validate_mixed_transfer_pair(
     }
 }
 
-pub(super) fn sanitize_local_target_path_allow_missing(raw: &str) -> ApiResult<PathBuf> {
+pub(super) fn sanitize_local_target_path_allow_missing(raw: &str) -> TransferResult<PathBuf> {
     let pb = PathBuf::from(raw);
     let file_name = pb
         .file_name()
@@ -257,14 +274,14 @@ pub(super) fn sanitize_local_target_path_allow_missing(raw: &str) -> ApiResult<P
         )
     })?;
     let parent = sanitize_path_follow(&parent_raw.to_string_lossy(), false)
-        .map_err(|e| api_err("invalid_path", e.to_string()))?;
+        .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))?;
     Ok(parent.join(file_name))
 }
 
 pub(super) async fn validate_local_to_cloud_route(
     sources: Vec<String>,
     dest_dir: String,
-) -> ApiResult<MixedTransferRoute> {
+) -> TransferResult<MixedTransferRoute> {
     let dest = CloudPath::parse(&dest_dir).map_err(|e| {
         api_err(
             "invalid_path",
@@ -292,10 +309,14 @@ pub(super) async fn validate_local_to_cloud_route(
 
     let mut local_sources = Vec::with_capacity(sources.len());
     for raw in sources {
-        let path =
-            sanitize_path_follow(&raw, true).map_err(|e| api_err("invalid_path", e.to_string()))?;
-        let meta = fs::symlink_metadata(&path)
-            .map_err(|e| api_err("io_error", format!("Failed to read source metadata: {e}")))?;
+        let path = sanitize_path_follow(&raw, true)
+            .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))?;
+        let meta = fs::symlink_metadata(&path).map_err(|e| {
+            transfer_err(
+                TransferErrorCode::IoError,
+                format!("Failed to read source metadata: {e}"),
+            )
+        })?;
         if meta.file_type().is_symlink() {
             return Err(api_err(
                 "symlink_unsupported",
@@ -314,9 +335,9 @@ pub(super) async fn validate_local_to_cloud_route(
 pub(super) async fn validate_cloud_to_local_route(
     sources: Vec<String>,
     dest_dir: String,
-) -> ApiResult<MixedTransferRoute> {
+) -> TransferResult<MixedTransferRoute> {
     let dest = sanitize_path_follow(&dest_dir, false)
-        .map_err(|e| api_err("invalid_path", e.to_string()))?;
+        .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))?;
     let dest_meta = fs::symlink_metadata(&dest).map_err(|e| {
         api_err(
             "io_error",
@@ -332,14 +353,28 @@ pub(super) async fn validate_cloud_to_local_route(
 
     let mut cloud_sources = Vec::with_capacity(sources.len());
     for raw in sources {
-        let path = CloudPath::parse(&raw)
-            .map_err(|e| api_err("invalid_path", format!("Invalid cloud source path: {e}")))?;
+        let path = CloudPath::parse(&raw).map_err(|e| {
+            transfer_err(
+                TransferErrorCode::InvalidPath,
+                format!("Invalid cloud source path: {e}"),
+            )
+        })?;
         match cloud::stat_cloud_entry(path.to_string()).await? {
             Some(entry) if matches!(entry.kind, CloudEntryKind::File | CloudEntryKind::Dir) => {
                 cloud_sources.push(path)
             }
-            None => return Err(api_err("not_found", "Cloud source was not found")),
-            Some(_) => return Err(api_err("unsupported", "Unsupported cloud entry type")),
+            None => {
+                return Err(transfer_err(
+                    TransferErrorCode::NotFound,
+                    "Cloud source was not found",
+                ))
+            }
+            Some(_) => {
+                return Err(transfer_err(
+                    TransferErrorCode::Unsupported,
+                    "Unsupported cloud entry type",
+                ))
+            }
         }
     }
 
@@ -349,7 +384,7 @@ pub(super) async fn validate_cloud_to_local_route(
     })
 }
 
-pub(super) fn local_leaf_name(path: &Path) -> ApiResult<&str> {
+pub(super) fn local_leaf_name(path: &Path) -> TransferResult<&str> {
     path.file_name()
         .and_then(|s| s.to_str())
         .filter(|s| !s.is_empty())
@@ -370,7 +405,7 @@ mod tests {
     #[test]
     fn local_leaf_name_rejects_root_like_path() {
         let err = local_leaf_name(Path::new("/")).expect_err("should fail");
-        assert_eq!(err.code, "invalid_path");
+        assert_eq!(err.code_str(), "invalid_path");
     }
 
     #[test]
