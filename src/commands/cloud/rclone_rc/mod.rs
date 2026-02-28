@@ -11,6 +11,7 @@ pub use daemon::{begin_shutdown_and_kill_daemon, health_snapshot, RcloneRcHealth
 use daemon::{rc_read_enabled, rc_write_enabled, should_recycle_daemon_after_error};
 #[cfg(test)]
 use jobs::ForcedAsyncStatusErrorState;
+pub(crate) use methods::{RcCopyFileFromLocalProgressSpec, RcCopyFileToLocalProgressSpec};
 use serde_json::Value;
 use std::{
     ffi::OsString,

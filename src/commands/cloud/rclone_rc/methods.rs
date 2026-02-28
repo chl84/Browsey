@@ -2,6 +2,24 @@ use super::{RcloneCliError, RcloneRcClient, RcloneRcMethod};
 use serde_json::{json, Value};
 use std::sync::atomic::AtomicBool;
 
+pub(crate) struct RcCopyFileToLocalProgressSpec<'a> {
+    pub src_fs: &'a str,
+    pub src_remote: &'a str,
+    pub dst_dir: &'a str,
+    pub dst_remote: &'a str,
+    pub group: &'a str,
+    pub cancel_token: Option<&'a AtomicBool>,
+}
+
+pub(crate) struct RcCopyFileFromLocalProgressSpec<'a> {
+    pub src_dir: &'a str,
+    pub src_remote: &'a str,
+    pub dst_fs: &'a str,
+    pub dst_remote: &'a str,
+    pub group: &'a str,
+    pub cancel_token: Option<&'a AtomicBool>,
+}
+
 impl RcloneRcClient {
     pub fn core_stats(&self, group: Option<&str>, short: bool) -> Result<Value, RcloneCliError> {
         let mut payload = json!({ "short": short });
@@ -133,17 +151,20 @@ impl RcloneRcClient {
 
     pub fn operations_copyfile_to_local_with_progress<F>(
         &self,
-        src_fs: &str,
-        src_remote: &str,
-        dst_dir: &str,
-        dst_remote: &str,
-        group: &str,
-        cancel_token: Option<&AtomicBool>,
+        spec: RcCopyFileToLocalProgressSpec<'_>,
         on_progress: F,
     ) -> Result<Value, RcloneCliError>
     where
         F: FnMut(Value),
     {
+        let RcCopyFileToLocalProgressSpec {
+            src_fs,
+            src_remote,
+            dst_dir,
+            dst_remote,
+            group,
+            cancel_token,
+        } = spec;
         let payload = json!({
             "srcFs": src_fs,
             "srcRemote": src_remote,
@@ -164,17 +185,20 @@ impl RcloneRcClient {
 
     pub fn operations_copyfile_from_local_with_progress<F>(
         &self,
-        src_dir: &str,
-        src_remote: &str,
-        dst_fs: &str,
-        dst_remote: &str,
-        group: &str,
-        cancel_token: Option<&AtomicBool>,
+        spec: RcCopyFileFromLocalProgressSpec<'_>,
         on_progress: F,
     ) -> Result<Value, RcloneCliError>
     where
         F: FnMut(Value),
     {
+        let RcCopyFileFromLocalProgressSpec {
+            src_dir,
+            src_remote,
+            dst_fs,
+            dst_remote,
+            group,
+            cancel_token,
+        } = spec;
         let payload = json!({
             "srcFs": {
                 "type": "local",

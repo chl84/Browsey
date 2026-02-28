@@ -36,6 +36,15 @@ struct CloudOpenProgressPayload {
     finished: bool,
 }
 
+struct CloudOpenDownloadContext<'a> {
+    cache_path: &'a Path,
+    metadata_path: &'a Path,
+    metadata: &'a CloudOpenCacheMetadata,
+    app: &'a tauri::AppHandle,
+    progress_event: Option<&'a str>,
+    cancel: Option<&'a AtomicBool>,
+}
+
 pub(super) async fn open_cloud_entry_impl(
     path: String,
     app: tauri::AppHandle,
@@ -118,12 +127,14 @@ fn materialize_and_open_cloud_file(
         download_cloud_file_to_cache(
             &provider,
             path,
-            &cache_path,
-            &metadata_path,
-            &expected_meta,
-            app,
-            progress_event,
-            cancel,
+            CloudOpenDownloadContext {
+                cache_path: &cache_path,
+                metadata_path: &metadata_path,
+                metadata: &expected_meta,
+                app,
+                progress_event,
+                cancel,
+            },
         )?;
         emit_cloud_open_progress(
             app,
@@ -159,13 +170,16 @@ fn cache_is_fresh(
 fn download_cloud_file_to_cache(
     provider: &RcloneCloudProvider,
     src: &super::path::CloudPath,
-    cache_path: &Path,
-    metadata_path: &Path,
-    metadata: &CloudOpenCacheMetadata,
-    app: &tauri::AppHandle,
-    progress_event: Option<&str>,
-    cancel: Option<&AtomicBool>,
+    ctx: CloudOpenDownloadContext<'_>,
 ) -> CloudCommandResult<()> {
+    let CloudOpenDownloadContext {
+        cache_path,
+        metadata_path,
+        metadata,
+        app,
+        progress_event,
+        cancel,
+    } = ctx;
     if let Some(parent) = cache_path.parent() {
         fs::create_dir_all(parent).map_err(|error| {
             CloudCommandError::new(
