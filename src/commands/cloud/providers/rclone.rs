@@ -138,12 +138,7 @@ impl RcloneCloudProvider {
                 ))
             })?
             .clone();
-        let list_json = serde_json::to_string(&list).map_err(|error| {
-            RcloneCliError::Io(std::io::Error::other(format!(
-                "Invalid rclone rc operations/list payload: {error}"
-            )))
-        })?;
-        let items = parse_lsjson_items(&list_json).map_err(|message| {
+        let items = parse_lsjson_items_value(list).map_err(|message| {
             RcloneCliError::Io(std::io::Error::other(format!(
                 "Invalid rclone rc operations/list item payload: {message}"
             )))
@@ -180,12 +175,7 @@ impl RcloneCloudProvider {
         if item_value.is_null() {
             return Ok(None);
         }
-        let item_json = serde_json::to_string(&item_value).map_err(|error| {
-            RcloneCliError::Io(std::io::Error::other(format!(
-                "Invalid rclone rc operations/stat payload: {error}"
-            )))
-        })?;
-        let item = parse_lsjson_stat_item(&item_json).map_err(|message| {
+        let item = parse_lsjson_stat_item_value(item_value).map_err(|message| {
             RcloneCliError::Io(std::io::Error::other(format!(
                 "Invalid rclone rc operations/stat item payload: {message}"
             )))
@@ -1294,6 +1284,14 @@ fn parse_lsjson_stat_item(stdout: &str) -> Result<LsJsonItem, String> {
     serde_json::from_str(stdout).map_err(|e| format!("Invalid rclone lsjson --stat output: {e}"))
 }
 
+fn parse_lsjson_items_value(value: Value) -> Result<Vec<LsJsonItem>, String> {
+    serde_json::from_value(value).map_err(|e| format!("Invalid rclone lsjson output: {e}"))
+}
+
+fn parse_lsjson_stat_item_value(value: Value) -> Result<LsJsonItem, String> {
+    serde_json::from_value(value).map_err(|e| format!("Invalid rclone lsjson --stat output: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1301,10 +1299,11 @@ mod tests {
         classify_provider_rclone_message_code, classify_rclone_message_code,
         is_rclone_not_found_text, map_rclone_error, map_rclone_error_for_provider,
         normalize_cloud_modified_time_value, parse_config_dump_summaries, parse_listremotes_plain,
-        parse_lsjson_items, parse_lsjson_stat_item, parse_rclone_version_stdout,
-        parse_rclone_version_triplet, remote_allowed_by_policy_with,
-        reset_runtime_probe_cache_for_tests, should_fallback_to_cli_after_rc_error,
-        RcloneCloudProvider, RcloneRemotePolicy, RCLONE_RUNTIME_PROBE_FAILURE_RETRY_BACKOFF,
+        parse_lsjson_items, parse_lsjson_items_value, parse_lsjson_stat_item,
+        parse_lsjson_stat_item_value, parse_rclone_version_stdout, parse_rclone_version_triplet,
+        remote_allowed_by_policy_with, reset_runtime_probe_cache_for_tests,
+        should_fallback_to_cli_after_rc_error, RcloneCloudProvider, RcloneRemotePolicy,
+        RCLONE_RUNTIME_PROBE_FAILURE_RETRY_BACKOFF,
     };
     use crate::{
         commands::cloud::{
@@ -1425,6 +1424,19 @@ mod tests {
     }
 
     #[test]
+    fn parses_lsjson_items_from_value() {
+        let value = serde_json::json!([
+            {"Name":"Folder","IsDir":true,"Size":0,"ModTime":"2026-02-25T10:00:00Z"},
+            {"Name":"note.txt","IsDir":false,"Size":12,"ModTime":"2026-02-25T10:01:00Z"}
+        ]);
+        let items = parse_lsjson_items_value(value).expect("parse lsjson value");
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].name, "Folder");
+        assert_eq!(items[1].name, "note.txt");
+        assert_eq!(items[1].size, Some(12));
+    }
+
+    #[test]
     fn parses_lsjson_items_with_negative_directory_size() {
         let json = r#"[
           {"Name":"Folder","IsDir":true,"Size":-1,"ModTime":"2026-02-25T10:00:00Z"}
@@ -1441,6 +1453,15 @@ mod tests {
         let json =
             r#"{"Name":"note.txt","IsDir":false,"Size":12,"ModTime":"2026-02-25T10:01:00Z"}"#;
         let item = parse_lsjson_stat_item(json).expect("parse lsjson stat");
+        assert_eq!(item.name, "note.txt");
+        assert!(!item.is_dir);
+        assert_eq!(item.size, Some(12));
+    }
+
+    #[test]
+    fn parses_lsjson_stat_item_from_value() {
+        let value = serde_json::json!({"Name":"note.txt","IsDir":false,"Size":12,"ModTime":"2026-02-25T10:01:00Z"});
+        let item = parse_lsjson_stat_item_value(value).expect("parse lsjson stat value");
         assert_eq!(item.name, "note.txt");
         assert!(!item.is_dir);
         assert_eq!(item.size, Some(12));
