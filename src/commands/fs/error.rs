@@ -315,6 +315,13 @@ pub(super) fn map_api_result<T>(result: FsResult<T>) -> ApiResult<T> {
     result.map_err(|error| error.to_api_error())
 }
 
+pub(super) fn map_external_result<T, E>(result: Result<T, E>) -> FsResult<T>
+where
+    E: std::fmt::Display,
+{
+    result.map_err(|error| FsError::from_external_message(error.to_string()))
+}
+
 const FS_CLASSIFICATION_RULES: &[(FsErrorCode, &[&str])] = &[
     (FsErrorCode::Cancelled, &["cancelled"]),
     (

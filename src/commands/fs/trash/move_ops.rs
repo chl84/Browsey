@@ -1,5 +1,5 @@
 use super::super::{
-    error::{map_api_result, FsError, FsErrorCode, FsResult},
+    error::{map_api_result, map_external_result, FsError, FsErrorCode, FsResult},
     should_abort_fs_op, CancelState, DeleteProgressPayload, UndoState,
 };
 use super::{
@@ -40,13 +40,13 @@ async fn move_to_trash_impl(
 ) -> FsResult<()> {
     let app_handle = app.clone();
     let undo_state = undo.inner().clone();
-    let task = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+    let task = tauri::async_runtime::spawn_blocking(move || -> FsResult<()> {
         let action = move_single_to_trash(&path, &app_handle, true)?;
         let _ = undo_state.record_applied(action);
         Ok(())
     });
     match task.await {
-        Ok(result) => result.map_err(FsError::from_external_message),
+        Ok(result) => result,
         Err(error) => Err(FsError::new(
             FsErrorCode::TaskFailed,
             format!("Move to trash task failed: {error}"),
@@ -94,21 +94,25 @@ fn rollback_prepared_trash(prepared: &[PreparedTrashMove]) {
     let _ = run_actions(&mut rollback, Direction::Backward);
 }
 
-fn prepare_trash_move(raw: &str) -> Result<PreparedTrashMove, String> {
-    let src = sanitize_path_nofollow(raw, true)?;
-    check_no_symlink_components(&src)?;
-    let src_snapshot = snapshot_existing_path(&src)?;
+fn prepare_trash_move(raw: &str) -> FsResult<PreparedTrashMove> {
+    let src = sanitize_path_nofollow(raw, true).map_err(FsError::from_external_message)?;
+    map_external_result(check_no_symlink_components(&src))?;
+    let src_snapshot = map_external_result(snapshot_existing_path(&src))?;
 
     // Backup into the central undo directory in case we cannot locate the trash item path later.
     let backup = temp_backup_path(&src);
     if let Some(parent) = backup.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create backup dir {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            FsError::from_external_message(format!(
+                "Failed to create backup dir {}: {e}",
+                parent.display()
+            ))
+        })?;
     }
-    undo_copy_entry(&src, &backup)?;
-    if let Err(err) = assert_path_snapshot(&src, &src_snapshot) {
+    map_external_result(undo_copy_entry(&src, &backup))?;
+    if let Err(err) = map_external_result(assert_path_snapshot(&src, &src_snapshot)) {
         let _ = undo_delete_path(&backup);
-        return Err(err.to_string());
+        return Err(err);
     }
 
     Ok(PreparedTrashMove {
@@ -127,7 +131,7 @@ pub(super) fn move_to_trash_many_with_backend<B, FShouldAbort, FEmitProgress, FE
     mut should_abort: FShouldAbort,
     mut emit_progress: FEmitProgress,
     mut emit_changed: FEmitChanged,
-) -> Result<(), String>
+) -> FsResult<()>
 where
     B: TrashBackend,
     FShouldAbort: FnMut(Option<&AtomicBool>) -> bool,
@@ -152,7 +156,10 @@ where
         if should_abort(cancel) {
             rollback_prepared_trash(&prepared);
             emit_progress(done, total, true);
-            return Err("Move to trash cancelled".into());
+            return Err(FsError::new(
+                FsErrorCode::Cancelled,
+                "Move to trash cancelled",
+            ));
         }
         match prepare_trash_move(&path) {
             Ok(mut prep) => {
@@ -228,7 +235,7 @@ fn move_to_trash_many_blocking(
     undo: UndoState,
     progress_event: Option<String>,
     cancel: Option<&AtomicBool>,
-) -> Result<(), String> {
+) -> FsResult<()> {
     let backend = SystemTrashBackend;
     let mut last_emit = Instant::now();
     move_to_trash_many_with_backend(
@@ -274,11 +281,17 @@ async fn move_to_trash_many_impl(
     let app_handle = app.clone();
     let undo_state = undo.inner().clone();
     let cancel_state = cancel.inner().clone();
-    let task = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+    let task = tauri::async_runtime::spawn_blocking(move || -> FsResult<()> {
         let cancel_guard = progress_event
             .as_ref()
             .map(|id| cancel_state.register(id.clone()))
-            .transpose()?;
+            .transpose()
+            .map_err(|error| {
+                FsError::new(
+                    FsErrorCode::TaskFailed,
+                    format!("Failed to register cancel: {error}"),
+                )
+            })?;
         let cancel_token = cancel_guard.as_ref().map(|g| g.token());
         move_to_trash_many_blocking(
             paths,
@@ -289,7 +302,7 @@ async fn move_to_trash_many_impl(
         )
     });
     match task.await {
-        Ok(result) => result.map_err(FsError::from_external_message),
+        Ok(result) => result,
         Err(error) => Err(FsError::new(
             FsErrorCode::TaskFailed,
             format!("Move to trash task failed: {error}"),
@@ -300,18 +313,22 @@ async fn move_to_trash_many_impl(
 pub(super) fn move_single_to_trash_with_backend<B: TrashBackend>(
     path: &str,
     backend: &B,
-) -> Result<Action, String> {
-    let src = sanitize_path_nofollow(path, true)?;
-    check_no_symlink_components(&src)?;
-    let src_snapshot = snapshot_existing_path(&src)?;
+) -> FsResult<Action> {
+    let src = sanitize_path_nofollow(path, true).map_err(FsError::from_external_message)?;
+    map_external_result(check_no_symlink_components(&src))?;
+    let src_snapshot = map_external_result(snapshot_existing_path(&src))?;
 
     // Backup into the central undo directory in case the OS trash item can't be found.
     let backup = temp_backup_path(&src);
     if let Some(parent) = backup.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create backup dir {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            FsError::from_external_message(format!(
+                "Failed to create backup dir {}: {e}",
+                parent.display()
+            ))
+        })?;
     }
-    undo_copy_entry(&src, &backup)?;
+    map_external_result(undo_copy_entry(&src, &backup))?;
 
     let before: HashSet<OsString> = backend
         .list_items()?
@@ -353,11 +370,7 @@ pub(super) fn move_single_to_trash_with_backend<B: TrashBackend>(
     }
 }
 
-fn move_single_to_trash(
-    path: &str,
-    app: &tauri::AppHandle,
-    emit_event: bool,
-) -> Result<Action, String> {
+fn move_single_to_trash(path: &str, app: &tauri::AppHandle, emit_event: bool) -> FsResult<Action> {
     let backend = SystemTrashBackend;
     let action = move_single_to_trash_with_backend(path, &backend)?;
     if emit_event {

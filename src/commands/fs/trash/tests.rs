@@ -1,4 +1,5 @@
 use super::{
+    super::error::FsResult,
     backend::TrashBackend,
     listing::apply_original_trash_fields,
     move_ops::{move_single_to_trash_with_backend, move_to_trash_many_with_backend},
@@ -47,7 +48,7 @@ fn write_file(path: &Path, bytes: &[u8]) {
 #[derive(Default)]
 struct FakeTrashBackend {
     items: RefCell<Vec<TrashItem>>,
-    list_script: RefCell<VecDeque<Result<Vec<TrashItem>, String>>>,
+    list_script: RefCell<VecDeque<FsResult<Vec<TrashItem>>>>,
     delete_calls: RefCell<Vec<PathBuf>>,
     rewrite_calls: RefCell<Vec<(PathBuf, PathBuf)>>,
     fail_delete_call: Cell<Option<usize>>,
@@ -62,20 +63,20 @@ impl FakeTrashBackend {
         }
     }
 
-    fn queue_list_response(&self, value: Result<Vec<TrashItem>, String>) {
+    fn queue_list_response(&self, value: FsResult<Vec<TrashItem>>) {
         self.list_script.borrow_mut().push_back(value);
     }
 }
 
 impl TrashBackend for FakeTrashBackend {
-    fn list_items(&self) -> Result<Vec<TrashItem>, String> {
+    fn list_items(&self) -> FsResult<Vec<TrashItem>> {
         if let Some(next) = self.list_script.borrow_mut().pop_front() {
             return next;
         }
         Ok(self.items.borrow().clone())
     }
 
-    fn delete_path(&self, path: &Path) -> Result<(), String> {
+    fn delete_path(&self, path: &Path) -> FsResult<()> {
         let next_call = self.delete_call_count.get().saturating_add(1);
         self.delete_call_count.set(next_call);
         self.delete_calls.borrow_mut().push(path.to_path_buf());
@@ -111,7 +112,7 @@ impl TrashBackend for FakeTrashBackend {
         Ok(())
     }
 
-    fn rewrite_original_path(&self, item: &TrashItem, original_path: &Path) -> Result<(), String> {
+    fn rewrite_original_path(&self, item: &TrashItem, original_path: &Path) -> FsResult<()> {
         self.rewrite_calls
             .borrow_mut()
             .push((PathBuf::from(&item.id), original_path.to_path_buf()));
