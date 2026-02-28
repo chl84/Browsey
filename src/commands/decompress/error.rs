@@ -93,8 +93,12 @@ pub(super) fn map_api_result<T>(result: DecompressResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
 
-pub(super) fn is_cancelled_message(message: &str) -> bool {
-    classify_external_code(message) == DecompressErrorCode::Cancelled
+pub(super) fn map_external_result<T>(result: Result<T, String>) -> DecompressResult<T> {
+    result.map_err(DecompressError::from_external_message)
+}
+
+pub(super) fn is_cancelled_error(error: &DecompressError) -> bool {
+    error.code == DecompressErrorCode::Cancelled
 }
 
 fn classify_external_code(message: &str) -> DecompressErrorCode {
