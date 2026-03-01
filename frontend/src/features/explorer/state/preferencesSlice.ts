@@ -13,6 +13,7 @@ import {
   loadHighContrast,
   loadMountsPollMs,
   loadOpenDestAfterExtract,
+  loadScrollbarWidth,
   loadShowHidden,
   loadSortDirection,
   loadSortField,
@@ -31,6 +32,7 @@ import {
   storeHighContrast,
   storeMountsPollMs,
   storeOpenDestAfterExtract,
+  storeScrollbarWidth,
   storeShowHidden,
   storeSortDirection,
   storeSortField,
@@ -61,6 +63,7 @@ type PreferenceSliceDeps = Pick<
   | 'thumbCacheMb'
   | 'mountsPollMs'
   | 'doubleClickMs'
+  | 'scrollbarWidth'
   | 'density'
 >
 
@@ -93,6 +96,7 @@ export const createPreferenceSlice = (
     thumbCacheMb,
     mountsPollMs,
     doubleClickMs,
+    scrollbarWidth,
     density,
   } = stores
   const { clearFacetCache, refreshForSort } = options
@@ -391,6 +395,12 @@ export const createPreferenceSlice = (
     void storeDoubleClickMs(clamped)
   }
 
+  const setScrollbarWidthPref = (value: number) => {
+    const clamped = Math.min(16, Math.max(6, Math.round(value)))
+    scrollbarWidth.set(clamped)
+    void storeScrollbarWidth(clamped)
+  }
+
   const loadMountsPollPref = async () => {
     try {
       const saved = await loadMountsPollMs()
@@ -412,6 +422,18 @@ export const createPreferenceSlice = (
       }
     } catch (err) {
       console.error('Failed to load doubleClickMs setting', err)
+    }
+  }
+
+  const loadScrollbarWidthPref = async () => {
+    try {
+      const saved = await loadScrollbarWidth()
+      if (typeof saved === 'number') {
+        const clamped = Math.min(16, Math.max(6, Math.round(saved)))
+        scrollbarWidth.set(clamped)
+      }
+    } catch (err) {
+      console.error('Failed to load scrollbarWidth setting', err)
     }
   }
 
@@ -459,8 +481,10 @@ export const createPreferenceSlice = (
     setThumbCachePref,
     setMountsPollPref,
     setDoubleClickMsPref,
+    setScrollbarWidthPref,
     loadMountsPollPref,
     loadDoubleClickMsPref,
+    loadScrollbarWidthPref,
     loadFoldersFirstPref,
   }
 }

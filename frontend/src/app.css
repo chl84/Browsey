@@ -363,6 +363,7 @@ body {
   --tooltip-border: #1a2330;
   --focus-ring-width: 2px;
   --focus-ring-color: rgba(0, 0, 0, 0.72);
+  --scrollbar-size: 10px;
 }
 
 *,
@@ -377,8 +378,8 @@ body {
 }
 
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
   background: var(--bg);
 }
 

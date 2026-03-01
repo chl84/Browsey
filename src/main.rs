@@ -261,6 +261,8 @@ fn main() {
             load_video_thumbs,
             store_hardware_acceleration,
             load_hardware_acceleration,
+            store_scrollbar_width,
+            load_scrollbar_width,
             store_density,
             load_density,
             load_shortcuts,

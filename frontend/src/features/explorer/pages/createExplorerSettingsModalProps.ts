@@ -21,6 +21,7 @@ type Params = {
   thumbCacheMb: SettingsModalProps['thumbCacheMbValue']
   mountsPollMs: SettingsModalProps['mountsPollMsValue']
   doubleClickMs: SettingsModalProps['doubleClickMsValue']
+  scrollbarWidth: SettingsModalProps['scrollbarWidthValue']
   startDir: SettingsModalProps['startDirValue']
   sortField: SettingsModalProps['sortFieldValue']
   sortDirection: SettingsModalProps['sortDirectionValue']
@@ -43,6 +44,7 @@ type Params = {
   onChangeThumbCacheMb: SettingsModalProps['onChangeThumbCacheMb']
   onChangeMountsPollMs: SettingsModalProps['onChangeMountsPollMs']
   onChangeDoubleClickMs: SettingsModalProps['onChangeDoubleClickMs']
+  onChangeScrollbarWidth: SettingsModalProps['onChangeScrollbarWidth']
   onClearThumbCache: SettingsModalProps['onClearThumbCache']
   onClearCloudOpenCache: SettingsModalProps['onClearCloudOpenCache']
   onClearStars: SettingsModalProps['onClearStars']
@@ -73,6 +75,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   thumbCacheMbValue: p.thumbCacheMb,
   mountsPollMsValue: p.mountsPollMs,
   doubleClickMsValue: p.doubleClickMs,
+  scrollbarWidthValue: p.scrollbarWidth,
   startDirValue: p.startDir,
   sortFieldValue: p.sortField,
   sortDirectionValue: p.sortDirection,
@@ -94,6 +97,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   onChangeThumbCacheMb: p.onChangeThumbCacheMb,
   onChangeMountsPollMs: p.onChangeMountsPollMs,
   onChangeDoubleClickMs: p.onChangeDoubleClickMs,
+  onChangeScrollbarWidth: p.onChangeScrollbarWidth,
   onClearThumbCache: p.onClearThumbCache,
   onClearCloudOpenCache: p.onClearCloudOpenCache,
   onClearStars: p.onClearStars,

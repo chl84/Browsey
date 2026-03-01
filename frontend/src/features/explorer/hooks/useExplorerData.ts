@@ -39,6 +39,7 @@ export const useExplorerData = (options: Options = {}) => {
     loadShowHiddenPref,
     loadHiddenFilesLastPref,
     loadHighContrastPref,
+    loadScrollbarWidthPref,
     loadFoldersFirstPref,
     loadStartDirPref,
     loadConfirmDeletePref,
@@ -55,6 +56,7 @@ export const useExplorerData = (options: Options = {}) => {
     entries,
     current,
     highContrast,
+    scrollbarWidth,
     startDirPref,
     invalidateFacetCache,
   } = explorer
@@ -73,6 +75,7 @@ export const useExplorerData = (options: Options = {}) => {
   let userNavGen = 0
   let unsubscribeMountsPoll: (() => void) | null = null
   let unsubscribeHighContrast: (() => void) | null = null
+  let unsubscribeScrollbarWidth: (() => void) | null = null
   let metaQueue = new Map<string, Partial<Entry>>()
   let metaTimer: ReturnType<typeof setTimeout> | null = null
   let disposed = false
@@ -80,6 +83,11 @@ export const useExplorerData = (options: Options = {}) => {
   const applyHighContrastRootState = (enabled: boolean) => {
     if (typeof document === 'undefined') return
     document.documentElement.dataset.highContrast = enabled ? 'true' : 'false'
+  }
+
+  const applyScrollbarWidthRootState = (width: number) => {
+    if (typeof document === 'undefined') return
+    document.documentElement.style.setProperty('--scrollbar-size', `${width}px`)
   }
 
   const refreshGvfsPath = (path: string | null | undefined) => {
@@ -147,6 +155,7 @@ export const useExplorerData = (options: Options = {}) => {
       loadShowHiddenPref(),
       loadHiddenFilesLastPref(),
       loadHighContrastPref(),
+      loadScrollbarWidthPref(),
       loadFoldersFirstPref(),
       loadStartDirPref(),
       loadConfirmDeletePref(),
@@ -195,6 +204,16 @@ export const useExplorerData = (options: Options = {}) => {
     if (disposed) {
       unsubscribeHighContrast()
       unsubscribeHighContrast = null
+      return
+    }
+
+    applyScrollbarWidthRootState(get(scrollbarWidth))
+    unsubscribeScrollbarWidth = scrollbarWidth.subscribe((width) => {
+      applyScrollbarWidthRootState(width)
+    })
+    if (disposed) {
+      unsubscribeScrollbarWidth()
+      unsubscribeScrollbarWidth = null
       return
     }
 
@@ -282,6 +301,10 @@ export const useExplorerData = (options: Options = {}) => {
     if (unsubscribeHighContrast) {
       unsubscribeHighContrast()
       unsubscribeHighContrast = null
+    }
+    if (unsubscribeScrollbarWidth) {
+      unsubscribeScrollbarWidth()
+      unsubscribeScrollbarWidth = null
     }
     if (gvfsRefresh) {
       clearInterval(gvfsRefresh)

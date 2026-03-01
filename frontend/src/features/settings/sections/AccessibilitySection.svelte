@@ -8,6 +8,7 @@
   export let settings: Settings
   export let onPatch: (patch: Partial<Settings>) => void = () => {}
   export let onToggleHighContrast: (value: boolean) => void = () => {}
+  export let onChangeScrollbarWidth: (value: number) => void = () => {}
 </script>
 
 {#if show}
@@ -38,7 +39,11 @@
         max="16"
         step="1"
         value={settings.scrollbarWidth}
-        on:input={(event) => onPatch({ scrollbarWidth: event.detail.value })}
+        on:input={(event) => {
+          const next = event.detail.value
+          onPatch({ scrollbarWidth: next })
+          onChangeScrollbarWidth(next)
+        }}
       />
       <small>{settings.scrollbarWidth} px</small>
     </div>

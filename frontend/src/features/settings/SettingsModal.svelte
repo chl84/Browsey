@@ -39,6 +39,7 @@
   export let thumbCacheMbValue = 300
   export let mountsPollMsValue = 8000
   export let doubleClickMsValue = 300
+  export let scrollbarWidthValue = 10
   export let sortFieldValue: DefaultSortField = 'name'
   export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
@@ -62,6 +63,7 @@
   export let onChangeThumbCacheMb: (value: number) => void = () => {}
   export let onChangeMountsPollMs: (value: number) => void = () => {}
   export let onChangeDoubleClickMs: (value: number) => void = () => {}
+  export let onChangeScrollbarWidth: (value: number) => void = () => {}
   export let onClearThumbCache: () => Promise<void> | void = () => {}
   export let onClearCloudOpenCache: () => Promise<void> | void = () => {}
   export let onClearStars: () => Promise<void> | void = () => {}
@@ -167,6 +169,9 @@
   }
   $: if (settings.doubleClickMs !== doubleClickMsValue) {
     patchSettings({ doubleClickMs: doubleClickMsValue })
+  }
+  $: if (settings.scrollbarWidth !== scrollbarWidthValue) {
+    patchSettings({ scrollbarWidth: scrollbarWidthValue })
   }
 
   $: {
@@ -320,6 +325,7 @@
           {settings}
           onPatch={patchSettings}
           {onToggleHighContrast}
+          {onChangeScrollbarWidth}
         />
 
         <AdvancedSection
