@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::{debug, warn};
 
-use crate::undo::UndoResult;
+use crate::undo::{UndoError, UndoResult};
 
 /// Best-effort cleanup of stale `.browsey-undo` directories. Runs at startup to
 /// avoid leaving orphaned backups after a crash or restart (undo history is
@@ -89,21 +89,24 @@ fn validate_undo_dir(path: &Path) -> UndoResult<()> {
         return Ok(());
     }
     if !path.is_absolute() {
-        return Err("Undo directory must be an absolute path".into());
+        return Err(UndoError::invalid_input(
+            "Undo directory must be an absolute path",
+        ));
     }
     if path.parent().is_none() {
-        return Err("Undo directory cannot be the filesystem root".into());
+        return Err(UndoError::invalid_input(
+            "Undo directory cannot be the filesystem root",
+        ));
     }
     let default_parent = default_undo_dir()
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| PathBuf::from("/"));
     if !path.starts_with(&default_parent) {
-        return Err(format!(
+        return Err(UndoError::invalid_input(format!(
             "Undo directory must reside under {}",
             default_parent.display()
-        )
-        .into());
+        )));
     }
     Ok(())
 }
