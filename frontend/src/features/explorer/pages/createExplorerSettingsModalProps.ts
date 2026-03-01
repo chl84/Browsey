@@ -11,6 +11,7 @@ type Params = {
   foldersFirst: SettingsModalProps['foldersFirstValue']
   confirmDelete: SettingsModalProps['confirmDeleteValue']
   density: SettingsModalProps['densityValue']
+  highContrast: SettingsModalProps['highContrastValue']
   archiveName: SettingsModalProps['archiveNameValue']
   archiveLevel: SettingsModalProps['archiveLevelValue']
   openDestAfterExtract: SettingsModalProps['openDestAfterExtractValue']
@@ -28,6 +29,7 @@ type Params = {
   onChangeDefaultView: SettingsModalProps['onChangeDefaultView']
   onToggleShowHidden: SettingsModalProps['onToggleShowHidden']
   onToggleHiddenFilesLast: SettingsModalProps['onToggleHiddenFilesLast']
+  onToggleHighContrast: SettingsModalProps['onToggleHighContrast']
   onToggleFoldersFirst: SettingsModalProps['onToggleFoldersFirst']
   onToggleConfirmDelete: SettingsModalProps['onToggleConfirmDelete']
   onChangeStartDir: SettingsModalProps['onChangeStartDir']
@@ -61,6 +63,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   foldersFirstValue: p.foldersFirst,
   confirmDeleteValue: p.confirmDelete,
   densityValue: p.density,
+  highContrastValue: p.highContrast,
   archiveNameValue: p.archiveName,
   archiveLevelValue: p.archiveLevel,
   openDestAfterExtractValue: p.openDestAfterExtract,
@@ -77,6 +80,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   onChangeDefaultView: p.onChangeDefaultView,
   onToggleShowHidden: p.onToggleShowHidden,
   onToggleHiddenFilesLast: p.onToggleHiddenFilesLast,
+  onToggleHighContrast: p.onToggleHighContrast,
   onToggleFoldersFirst: p.onToggleFoldersFirst,
   onToggleConfirmDelete: p.onToggleConfirmDelete,
   onChangeStartDir: p.onChangeStartDir,

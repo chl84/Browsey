@@ -229,6 +229,8 @@ fn main() {
             load_show_hidden,
             store_hidden_files_last,
             load_hidden_files_last,
+            store_high_contrast,
+            load_high_contrast,
             store_default_view,
             load_default_view,
             store_start_dir,

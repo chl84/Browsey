@@ -43,6 +43,7 @@ describe('useExplorerData cloud refresh event', () => {
     const current = writable(currentPath)
     const entries = writable([])
     const mountsPollMs = writable(0)
+    const highContrast = writable(false)
     const startDirPref = writable<string | null>(null)
     const loadMock = vi.fn(async (path?: string) => {
       if (path) {
@@ -59,6 +60,7 @@ describe('useExplorerData cloud refresh event', () => {
       loadMountsPollPref: asyncNoop,
       loadShowHiddenPref: asyncNoop,
       loadHiddenFilesLastPref: asyncNoop,
+      loadHighContrastPref: asyncNoop,
       loadFoldersFirstPref: asyncNoop,
       loadStartDirPref: asyncNoop,
       loadConfirmDeletePref: asyncNoop,
@@ -74,11 +76,12 @@ describe('useExplorerData cloud refresh event', () => {
       loadDoubleClickMsPref: asyncNoop,
       entries,
       current,
+      highContrast,
       startDirPref,
       invalidateFacetCache: vi.fn(),
     })
 
-    return { loadMock, current }
+    return { loadMock, current, highContrast }
   }
 
   it('reloads the active cloud directory when background refresh completes', async () => {
@@ -116,5 +119,21 @@ describe('useExplorerData cloud refresh event', () => {
     await Promise.resolve()
 
     expect(loadMock).not.toHaveBeenCalled()
+  })
+
+  it('applies the high-contrast root hook from explorer state', async () => {
+    const { highContrast } = installExplorerStateMock('~')
+
+    delete document.documentElement.dataset.highContrast
+    useExplorerData()
+
+    await vi.waitFor(() => {
+      expect(document.documentElement.dataset.highContrast).toBe('false')
+    })
+
+    highContrast.set(true)
+    await vi.waitFor(() => {
+      expect(document.documentElement.dataset.highContrast).toBe('true')
+    })
   })
 })
