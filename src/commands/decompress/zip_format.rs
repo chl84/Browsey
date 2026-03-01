@@ -7,6 +7,7 @@ use std::{
 
 use zip::ZipArchive;
 
+use super::error::{DecompressError, DecompressResult};
 use super::util::{
     check_cancel, clean_relative_path, copy_with_progress, ensure_dir_nofollow, first_component,
     map_copy_err, map_io, open_unique_file, path_exists_nofollow, CreatedPaths, ExtractBudget,
@@ -14,7 +15,7 @@ use super::util::{
 };
 use crate::fs_utils::debug_log;
 
-pub(super) fn single_root_in_zip(path: &Path) -> Result<Option<PathBuf>, String> {
+pub(super) fn single_root_in_zip(path: &Path) -> DecompressResult<Option<PathBuf>> {
     let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip for root"))?)
         .map_err(|e| format!("Failed to read zip: {e}"))?;
     let mut root: Option<PathBuf> = None;
@@ -28,7 +29,8 @@ pub(super) fn single_root_in_zip(path: &Path) -> Result<Option<PathBuf>, String>
             return Err(format!(
                 "Archive exceeds entry cap ({} entries > {} entries)",
                 entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
-            ));
+            )
+            .into());
         }
         let raw_name = entry.name().to_string();
         let enclosed = entry.enclosed_name().ok_or_else(|| {
@@ -74,7 +76,7 @@ pub(super) fn extract_zip(
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
     budget: &ExtractBudget,
-) -> Result<(), String> {
+) -> DecompressResult<()> {
     let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip"))?)
         .map_err(|e| format!("Failed to read zip: {e}"))?;
     let mut buf = vec![0u8; CHUNK];
@@ -98,7 +100,7 @@ pub(super) fn extract_zip(
         let clean_rel = match clean_relative_path(&enclosed) {
             Ok(p) => p,
             Err(err) => {
-                stats.skip_unsupported(&raw_name, &err);
+                stats.skip_unsupported(&raw_name, &err.to_string());
                 continue;
             }
         };
@@ -140,7 +142,6 @@ pub(super) fn extract_zip(
         match path_exists_nofollow(&dest_path) {
             Ok(true) => {
                 if let Some(p) = progress {
-                    // Approximate progress for skipped existing file using compressed size.
                     let inc = entry.compressed_size().max(1);
                     p.add(inc);
                 }
@@ -171,14 +172,14 @@ pub(super) fn extract_zip(
         if let Err(e) = copy_with_progress(&mut entry, &mut out, progress, cancel, budget, &mut buf)
         {
             let msg = map_copy_err(&format!("Failed to write zip entry {raw_name}"), e);
-            return Err(msg);
+            return Err(DecompressError::from_external_message(msg));
         }
     }
 
     Ok(())
 }
 
-pub(super) fn zip_uncompressed_total(path: &Path) -> Result<u64, String> {
+pub(super) fn zip_uncompressed_total(path: &Path) -> DecompressResult<u64> {
     let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip for total"))?)
         .map_err(|e| format!("Failed to read zip: {e}"))?;
     let mut total = 0u64;
@@ -192,7 +193,8 @@ pub(super) fn zip_uncompressed_total(path: &Path) -> Result<u64, String> {
             return Err(format!(
                 "Archive exceeds entry cap ({} entries > {} entries)",
                 entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
-            ));
+            )
+            .into());
         }
         if entry.is_dir() {
             continue;

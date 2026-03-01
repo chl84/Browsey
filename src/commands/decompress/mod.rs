@@ -317,7 +317,7 @@ fn do_extract(
         _ => meta.len(),
     }
     .max(1);
-    let available_bytes = map_external_result(available_disk_bytes(parent))?;
+    let available_bytes = available_disk_bytes(parent)?;
     let effective_bytes_cap = effective_extract_bytes_cap(
         EXTRACT_TOTAL_BYTES_CAP,
         available_bytes,
@@ -380,7 +380,7 @@ fn do_extract(
         ArchiveKind::Zip => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            map_external_result(extract_zip(
+            extract_zip(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -389,7 +389,7 @@ fn do_extract(
                 &mut created,
                 cancel_token,
                 &budget,
-            ))?;
+            )?;
             dest_dir
         }
         ArchiveKind::Tar => {
@@ -602,7 +602,7 @@ fn archive_root_name(path: &Path) -> String {
 }
 
 fn create_unique_dir(parent: &Path, base: &str) -> DecompressResult<PathBuf> {
-    map_external_result(create_unique_dir_nofollow(parent, base))
+    create_unique_dir_nofollow(parent, base)
 }
 
 fn prepare_output_dir(archive_path: &Path) -> DecompressResult<PathBuf> {
@@ -711,7 +711,7 @@ fn choose_destination_dir(
     })?;
 
     let single_root = match kind {
-        ArchiveKind::Zip => map_external_result(single_root_in_zip(archive_path))?,
+        ArchiveKind::Zip => single_root_in_zip(archive_path)?,
         ArchiveKind::Tar
         | ArchiveKind::TarGz
         | ArchiveKind::TarBz2
@@ -744,8 +744,7 @@ fn decompress_single_with_reader<F>(
 where
     F: FnOnce(BufReader<File>) -> DecompressResult<Box<dyn Read>>,
 {
-    let reader = open_buffered_file(archive_path, "open compressed file")
-        .map_err(DecompressError::from_external_message)?;
+    let reader = open_buffered_file(archive_path, "open compressed file")?;
     let reader = wrap(reader)?;
     decompress_single(
         reader,
@@ -790,8 +789,7 @@ fn decompress_single<R: Read>(
             created.record_dir(dir);
         }
     }
-    let (file, dest_path) =
-        open_unique_file(&dest_path).map_err(DecompressError::from_external_message)?;
+    let (file, dest_path) = open_unique_file(&dest_path)?;
     created.record_file(dest_path.clone());
     let mut out = BufWriter::with_capacity(CHUNK, file);
     let mut buf = vec![0u8; CHUNK];

@@ -99,8 +99,7 @@ pub(super) fn extract_tar_with_reader<F>(
 where
     F: FnOnce(BufReader<File>) -> DecompressResult<Box<dyn Read>>,
 {
-    let reader = open_buffered_file(archive_path, "open tar")
-        .map_err(DecompressError::from_external_message)?;
+    let reader = open_buffered_file(archive_path, "open tar")?;
     let reader = wrap(reader)?;
     extract_tar(
         reader,
@@ -160,7 +159,7 @@ pub(super) fn extract_tar<R: Read>(
         let clean_rel = match clean_relative_path(&raw_path) {
             Ok(p) => p,
             Err(err) => {
-                stats.skip_unsupported(&raw_str, &err);
+                stats.skip_unsupported(&raw_str, &err.to_string());
                 continue;
             }
         };
@@ -223,8 +222,7 @@ pub(super) fn extract_tar<R: Read>(
                 }
             }
         }
-        let (file, actual_path) =
-            open_unique_file(&dest_path).map_err(DecompressError::from_external_message)?;
+        let (file, actual_path) = open_unique_file(&dest_path)?;
         created.record_file(actual_path);
         let mut out = BufWriter::with_capacity(CHUNK, file);
         copy_with_progress(&mut entry, &mut out, progress, cancel, budget, &mut buf).map_err(
