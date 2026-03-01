@@ -97,6 +97,18 @@ pub(super) fn map_external_result<T>(result: Result<T, String>) -> DecompressRes
     result.map_err(DecompressError::from_external_message)
 }
 
+impl From<String> for DecompressError {
+    fn from(message: String) -> Self {
+        Self::from_external_message(message)
+    }
+}
+
+impl From<&str> for DecompressError {
+    fn from(message: &str) -> Self {
+        Self::from_external_message(message)
+    }
+}
+
 pub(super) fn is_cancelled_error(error: &DecompressError) -> bool {
     error.code == DecompressErrorCode::Cancelled
 }

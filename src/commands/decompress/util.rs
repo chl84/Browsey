@@ -26,6 +26,8 @@ use crate::{
     runtime_lifecycle,
 };
 
+use super::error::{DecompressError, DecompressResult};
+
 pub(super) const CHUNK: usize = 4 * 1024 * 1024;
 pub(super) const EXTRACT_TOTAL_BYTES_CAP: u64 = 100_000_000_000; // 100 GB
 pub(super) const EXTRACT_TOTAL_ENTRIES_CAP: u64 = 2_000_000; // 2 million entries
@@ -84,7 +86,7 @@ pub(super) fn effective_extract_bytes_cap(
     hard_cap.min(available_bytes.saturating_sub(reserve_bytes))
 }
 
-pub(super) fn available_disk_bytes(path: &Path) -> Result<u64, String> {
+pub(super) fn available_disk_bytes(path: &Path) -> DecompressResult<u64> {
     let mut probe = path.to_path_buf();
     while !probe.exists() {
         let Some(parent) = probe.parent() else {
@@ -109,10 +111,10 @@ pub(super) fn available_disk_bytes(path: &Path) -> Result<u64, String> {
     }
 
     best.map(|(_, bytes)| bytes).ok_or_else(|| {
-        format!(
+        DecompressError::from_external_message(format!(
             "Failed to determine available disk space for {}",
             path.display()
-        )
+        ))
     })
 }
 
@@ -355,13 +357,17 @@ pub(super) fn map_io(action: &'static str) -> impl FnOnce(io::Error) -> String {
     move |e| format!("Failed to {action}: {e}")
 }
 
-pub(super) fn clean_relative_path(path: &Path) -> Result<PathBuf, String> {
+pub(super) fn clean_relative_path(path: &Path) -> DecompressResult<PathBuf> {
     let mut cleaned = PathBuf::new();
     for comp in path.components() {
         match comp {
             std::path::Component::Normal(p) => cleaned.push(p),
             std::path::Component::CurDir => {}
-            _ => return Err("Refusing path with traversal or absolute components".into()),
+            _ => {
+                return Err(DecompressError::from_external_message(
+                    "Refusing path with traversal or absolute components",
+                ))
+            }
         }
     }
     Ok(cleaned)
@@ -492,16 +498,13 @@ fn open_unique_file_nofollow(path: &Path) -> io::Result<File> {
     }
 }
 
-pub(super) fn ensure_dir_nofollow(path: &Path) -> Result<Vec<PathBuf>, String> {
+pub(super) fn ensure_dir_nofollow(path: &Path) -> DecompressResult<Vec<PathBuf>> {
     #[cfg(all(unix, target_os = "linux"))]
     {
         let abs = absolute_path(path)
             .map_err(|e| format!("Failed to resolve directory {}: {e}", path.display()))?;
         if !abs.is_absolute() {
-            return Err(format!(
-                "Directory path must be absolute: {}",
-                abs.display()
-            ));
+            return Err(format!("Directory path must be absolute: {}", abs.display()).into());
         }
 
         let root = CString::new("/").map_err(|_| "Invalid root path".to_string())?;
@@ -516,7 +519,8 @@ pub(super) fn ensure_dir_nofollow(path: &Path) -> Result<Vec<PathBuf>, String> {
                 "Failed to open root while creating {}: {}",
                 abs.display(),
                 io::Error::last_os_error()
-            ));
+            )
+            .into());
         }
 
         let mut current = unsafe { OwnedFd::from_raw_fd(root_fd) };
@@ -530,7 +534,8 @@ pub(super) fn ensure_dir_nofollow(path: &Path) -> Result<Vec<PathBuf>, String> {
                     return Err(format!(
                         "Parent directory components are not allowed: {}",
                         abs.display()
-                    ));
+                    )
+                    .into());
                 }
                 Component::Normal(seg) => {
                     let c_seg = cstring_from_os_component(seg)
@@ -543,7 +548,8 @@ pub(super) fn ensure_dir_nofollow(path: &Path) -> Result<Vec<PathBuf>, String> {
                             return Err(format!(
                                 "Failed to create directory {}: {err}",
                                 abs.display()
-                            ));
+                            )
+                            .into());
                         }
                     } else {
                         current_path.push(seg);
@@ -563,7 +569,8 @@ pub(super) fn ensure_dir_nofollow(path: &Path) -> Result<Vec<PathBuf>, String> {
                                 "Failed to open directory {}: {}",
                                 current_path.display(),
                                 io::Error::last_os_error()
-                            ));
+                            )
+                            .into());
                         }
                         current = unsafe { OwnedFd::from_raw_fd(next_fd) };
                         continue;
@@ -582,12 +589,13 @@ pub(super) fn ensure_dir_nofollow(path: &Path) -> Result<Vec<PathBuf>, String> {
                             "Failed to open directory {}: {}",
                             current_path.display(),
                             io::Error::last_os_error()
-                        ));
+                        )
+                        .into());
                     }
                     current = unsafe { OwnedFd::from_raw_fd(next_fd) };
                 }
                 Component::Prefix(_) => {
-                    return Err(format!("Unsupported path prefix: {}", abs.display()));
+                    return Err(format!("Unsupported path prefix: {}", abs.display()).into());
                 }
             }
         }
@@ -608,7 +616,7 @@ pub(super) fn ensure_dir_nofollow(path: &Path) -> Result<Vec<PathBuf>, String> {
     }
 }
 
-pub(super) fn path_exists_nofollow(path: &Path) -> Result<bool, String> {
+pub(super) fn path_exists_nofollow(path: &Path) -> DecompressResult<bool> {
     #[cfg(all(unix, target_os = "linux"))]
     {
         let abs = absolute_path(path)
@@ -629,7 +637,8 @@ pub(super) fn path_exists_nofollow(path: &Path) -> Result<bool, String> {
                 return Err(format!(
                     "Failed to open parent directory {}: {err}",
                     parent.display()
-                ))
+                )
+                .into())
             }
         };
         let c_name = cstring_from_os_component(name).map_err(|e| {
@@ -654,7 +663,7 @@ pub(super) fn path_exists_nofollow(path: &Path) -> Result<bool, String> {
             if err.kind() == io::ErrorKind::NotFound {
                 Ok(false)
             } else {
-                Err(format!("Failed to stat path {}: {err}", abs.display()))
+                Err(format!("Failed to stat path {}: {err}", abs.display()).into())
             }
         }
     }
@@ -669,7 +678,7 @@ pub(super) fn path_exists_nofollow(path: &Path) -> Result<bool, String> {
     }
 }
 
-pub(super) fn create_unique_dir_nofollow(parent: &Path, base: &str) -> Result<PathBuf, String> {
+pub(super) fn create_unique_dir_nofollow(parent: &Path, base: &str) -> DecompressResult<PathBuf> {
     #[cfg(all(unix, target_os = "linux"))]
     {
         let abs_parent = absolute_path(parent).map_err(|e| {
@@ -710,7 +719,8 @@ pub(super) fn create_unique_dir_nofollow(parent: &Path, base: &str) -> Result<Pa
             return Err(format!(
                 "Failed to create destination folder {}: {err}",
                 abs_parent.join(name).display()
-            ));
+            )
+            .into());
         }
     }
 
@@ -737,7 +747,7 @@ pub(super) fn create_unique_dir_nofollow(parent: &Path, base: &str) -> Result<Pa
     }
 }
 
-pub(super) fn open_unique_file(dest_path: &Path) -> Result<(File, PathBuf), String> {
+pub(super) fn open_unique_file(dest_path: &Path) -> DecompressResult<(File, PathBuf)> {
     #[cfg(all(unix, target_os = "linux"))]
     let mut candidate = absolute_path(dest_path)
         .map_err(|e| format!("Failed to resolve path {}: {e}", dest_path.display()))?;
@@ -759,10 +769,7 @@ pub(super) fn open_unique_file(dest_path: &Path) -> Result<(File, PathBuf), Stri
                 continue;
             }
             Err(e) => {
-                return Err(format!(
-                    "Failed to create file {}: {e}",
-                    candidate.display()
-                ))
+                return Err(format!("Failed to create file {}: {e}", candidate.display()).into())
             }
         }
     }
@@ -801,7 +808,7 @@ pub(super) fn copy_with_progress<R: Read, W: Write>(
 pub(super) fn open_buffered_file(
     path: &Path,
     action: &'static str,
-) -> Result<BufReader<File>, String> {
+) -> DecompressResult<BufReader<File>> {
     let file = File::open(path).map_err(map_io(action))?;
     Ok(BufReader::with_capacity(CHUNK, file))
 }

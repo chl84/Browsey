@@ -86,7 +86,7 @@ pub(super) fn extract_rar(
         let clean_rel = match clean_relative_path(&raw_path) {
             Ok(p) => p,
             Err(err) => {
-                stats.skip_unsupported(&raw_name, &err);
+                stats.skip_unsupported(&raw_name, &err.to_string());
                 continue;
             }
         };

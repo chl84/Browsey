@@ -87,7 +87,7 @@ pub(super) fn extract_7z(
         let clean_rel = match clean_relative_path(Path::new(&raw_name)) {
             Ok(p) => p,
             Err(err) => {
-                stats.skip_unsupported(&raw_name, &err);
+                stats.skip_unsupported(&raw_name, &err.to_string());
                 return Ok(true);
             }
         };
@@ -141,8 +141,8 @@ pub(super) fn extract_7z(
                     return Ok(true);
                 }
             }
-            let (_file, dest_actual) =
-                open_unique_file(&dest_path).map_err(|e| SevenZError::Other(Cow::Owned(e)))?;
+            let (_file, dest_actual) = open_unique_file(&dest_path)
+                .map_err(|e| SevenZError::Other(Cow::Owned(e.to_string())))?;
             created.record_file(dest_actual);
             return Ok(true);
         }
@@ -161,8 +161,8 @@ pub(super) fn extract_7z(
             }
         }
 
-        let (file, dest_actual) =
-            open_unique_file(&dest_path).map_err(|e| SevenZError::Other(Cow::Owned(e)))?;
+        let (file, dest_actual) = open_unique_file(&dest_path)
+            .map_err(|e| SevenZError::Other(Cow::Owned(e.to_string())))?;
         created.record_file(dest_actual);
         let mut out = BufWriter::with_capacity(CHUNK, file);
         copy_with_progress(reader, &mut out, progress, cancel, budget, &mut buf).map_err(|e| {
