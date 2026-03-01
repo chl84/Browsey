@@ -33,6 +33,7 @@ Status note:
 - [x] `error.rs` now exposes explicit typed constructors and I/O classification helpers
 - [x] `types.rs`, `path_checks.rs`, and `backup.rs` no longer rely on raw string errors for their main internal seams
 - [x] `engine.rs` and `path_ops.rs` now map their main I/O and validation seams through typed `UndoError`
+- [x] `path_ops.rs` no longer uses text parsing to detect destination-exists failures in fallback move callers
 - [x] batch rollback aggregation in `engine.rs` now preserves stable `UndoErrorCode` when wrapping failures
 - [x] fallback move cleanup in `path_ops.rs` now preserves the original delete failure code when adding context
 - [x] `error.rs` no longer relies on generic `From<String>`/`From<&str>` conversions, and `FsUtilsError` now maps to `UndoError` by stable code
