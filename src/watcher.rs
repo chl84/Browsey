@@ -9,15 +9,17 @@ use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WatcherErrorCode {
-    WatcherCreateFailed,
-    WatchPathFailed,
+    Create,
+    WatchPath,
+    StateLock,
 }
 
 impl ErrorCode for WatcherErrorCode {
     fn as_code_str(self) -> &'static str {
         match self {
-            Self::WatcherCreateFailed => "watcher_create_failed",
-            Self::WatchPathFailed => "watch_path_failed",
+            Self::Create => "watcher_create_failed",
+            Self::WatchPath => "watch_path_failed",
+            Self::StateLock => "watch_state_lock_failed",
         }
     }
 }
@@ -69,13 +71,19 @@ pub struct WatchState {
 }
 
 impl WatchState {
-    pub fn replace(&self, watcher: Option<RecommendedWatcher>) {
-        let mut guard = self.inner.lock().expect("watch mutex poisoned");
+    pub fn replace(&self, watcher: Option<RecommendedWatcher>) -> WatcherResult<()> {
+        let mut guard = self.inner.lock().map_err(|_| {
+            WatcherError::new(
+                WatcherErrorCode::StateLock,
+                "Failed to lock watch state",
+            )
+        })?;
         *guard = watcher;
+        Ok(())
     }
 
-    pub fn stop_all(&self) {
-        self.replace(None);
+    pub fn stop_all(&self) -> WatcherResult<()> {
+        self.replace(None)
     }
 }
 
@@ -92,6 +100,8 @@ pub fn start_watch(app: tauri::AppHandle, path: PathBuf, state: &WatchState) -> 
                 | EventKind::Remove(_)
                 | EventKind::Any
                 | EventKind::Other => {
+                    // Best effort: a dropped frontend listener should not kill
+                    // the filesystem watcher callback.
                     let _ = runtime_lifecycle::emit_if_running(
                         &app,
                         "dir-changed",
@@ -104,7 +114,7 @@ pub fn start_watch(app: tauri::AppHandle, path: PathBuf, state: &WatchState) -> 
     })
     .map_err(|error| {
         WatcherError::new(
-            WatcherErrorCode::WatcherCreateFailed,
+            WatcherErrorCode::Create,
             format!("Failed to create watcher: {error}"),
         )
     })?;
@@ -113,11 +123,11 @@ pub fn start_watch(app: tauri::AppHandle, path: PathBuf, state: &WatchState) -> 
         .watch(&path, RecursiveMode::NonRecursive)
         .map_err(|error| {
             WatcherError::new(
-                WatcherErrorCode::WatchPathFailed,
+                WatcherErrorCode::WatchPath,
                 format!("Failed to watch path {}: {error}", path.display()),
             )
         })?;
 
-    state.replace(Some(watcher));
+    state.replace(Some(watcher))?;
     Ok(())
 }

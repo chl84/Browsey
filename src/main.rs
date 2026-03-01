@@ -331,7 +331,7 @@ fn main() {
                 let _ = cancel.cancel_all();
             }
             if let Some(watch) = app_handle.try_state::<WatchState>() {
-                watch.stop_all();
+                let _ = watch.stop_all();
             }
             let _ = commands::cloud::rclone_rc::begin_shutdown_and_kill_daemon();
             let _ = commands::cloud::rclone_cli::begin_shutdown_and_kill_children();

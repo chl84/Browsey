@@ -11,11 +11,41 @@ use crate::{
 
 use self::error::{map_api_result, SettingsError, SettingsResult};
 
-fn map_settings_result<T, E>(result: Result<T, E>) -> SettingsResult<T>
-where
-    E: std::fmt::Display,
-{
-    result.map_err(|error| SettingsError::from_external_message(error.to_string()))
+fn map_db_error(error: crate::db::DbError) -> SettingsError {
+    match error.code() {
+        crate::db::DbErrorCode::PermissionDenied => SettingsError::new(
+            error::SettingsErrorCode::PermissionDenied,
+            error.to_string(),
+        ),
+        crate::db::DbErrorCode::ReadOnlyFilesystem => SettingsError::new(
+            error::SettingsErrorCode::ReadOnlyFilesystem,
+            error.to_string(),
+        ),
+        crate::db::DbErrorCode::OpenFailed | crate::db::DbErrorCode::DataDirUnavailable => {
+            SettingsError::new(error::SettingsErrorCode::DbOpenFailed, error.to_string())
+        }
+        crate::db::DbErrorCode::ReadFailed | crate::db::DbErrorCode::NotFound => {
+            SettingsError::new(error::SettingsErrorCode::DbReadFailed, error.to_string())
+        }
+        crate::db::DbErrorCode::WriteFailed
+        | crate::db::DbErrorCode::TransactionFailed
+        | crate::db::DbErrorCode::SchemaInitFailed => {
+            SettingsError::new(error::SettingsErrorCode::DbWriteFailed, error.to_string())
+        }
+        crate::db::DbErrorCode::SerializeFailed => {
+            SettingsError::new(error::SettingsErrorCode::SerializeFailed, error.to_string())
+        }
+        crate::db::DbErrorCode::ParseFailed => {
+            SettingsError::new(error::SettingsErrorCode::ParseFailed, error.to_string())
+        }
+        crate::db::DbErrorCode::UnknownError => {
+            SettingsError::new(error::SettingsErrorCode::UnknownError, error.to_string())
+        }
+    }
+}
+
+fn map_settings_result<T>(result: crate::db::DbResult<T>) -> SettingsResult<T> {
+    result.map_err(map_db_error)
 }
 
 fn open_connection() -> SettingsResult<rusqlite::Connection> {
