@@ -10,6 +10,7 @@ export type ShortcutCommandId =
   | 'go_back'
   | 'go_forward'
   | 'open_console'
+  | 'refresh'
   | 'properties'
   | 'select_all'
   | 'undo'
@@ -45,13 +46,14 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
   { commandId: 'go_back', label: 'Back', context: 'global', defaultAccelerator: 'Backspace', accelerator: 'Backspace' },
   { commandId: 'go_forward', label: 'Forward', context: 'global', defaultAccelerator: 'Shift+Backspace', accelerator: 'Shift+Backspace' },
   { commandId: 'open_console', label: 'Open console', context: 'global', defaultAccelerator: 'Ctrl+T', accelerator: 'Ctrl+T' },
+  { commandId: 'refresh', label: 'Refresh', context: 'global', defaultAccelerator: 'F5', accelerator: 'F5' },
   { commandId: 'properties', label: 'Properties', context: 'global', defaultAccelerator: 'Ctrl+P', accelerator: 'Ctrl+P' },
   { commandId: 'select_all', label: 'Select all', context: 'global', defaultAccelerator: 'Ctrl+A', accelerator: 'Ctrl+A' },
   { commandId: 'undo', label: 'Undo', context: 'global', defaultAccelerator: 'Ctrl+Z', accelerator: 'Ctrl+Z' },
   { commandId: 'redo', label: 'Redo', context: 'global', defaultAccelerator: 'Ctrl+Y', accelerator: 'Ctrl+Y' },
   { commandId: 'delete_to_wastebasket', label: 'Delete to wastebasket', context: 'global', defaultAccelerator: 'Delete', accelerator: 'Delete' },
   { commandId: 'delete_permanently', label: 'Delete permanently', context: 'global', defaultAccelerator: 'Shift+Delete', accelerator: 'Shift+Delete' },
-  { commandId: 'rename', label: 'Rename', context: 'global', defaultAccelerator: 'F2', accelerator: 'F2' },
+  { commandId: 'rename', label: 'Rename', context: 'global', defaultAccelerator: 'Ctrl+R', accelerator: 'Ctrl+R' },
 ]
 
 const normalizeKeyToken = (token: string): string | null => {
