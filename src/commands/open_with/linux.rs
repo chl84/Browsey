@@ -1,4 +1,4 @@
-use super::{spawn_detached, OpenWithApp};
+use super::{error::OpenWithError, spawn_detached, OpenWithApp, OpenWithResult};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -29,26 +29,29 @@ pub(super) fn list_linux_apps(target: &Path) -> Vec<OpenWithApp> {
     matches_list
 }
 
-pub(super) fn launch_desktop_entry_by_id(target: &Path, app_id: &str) -> Result<(), String> {
-    let app = resolve_linux_app_for_target(target, app_id)
-        .ok_or_else(|| "Selected application is unavailable".to_string())?;
+pub(super) fn launch_desktop_entry_by_id(target: &Path, app_id: &str) -> OpenWithResult<()> {
+    let app = resolve_linux_app_for_target(target, app_id).ok_or_else(|| {
+        OpenWithError::from_external_message("Selected application is unavailable")
+    })?;
     launch_desktop_entry(target, &app.desktop)
 }
 
-fn launch_desktop_entry(target: &Path, entry: &DesktopEntry) -> Result<(), String> {
+fn launch_desktop_entry(target: &Path, entry: &DesktopEntry) -> OpenWithResult<()> {
     let (program, args) = command_from_exec(entry, target)?;
     if !command_exists(&program) {
-        return Err(format!(
+        return Err(OpenWithError::from_external_message(format!(
             "Selected application is unavailable: {}",
             entry.name
-        ));
+        )));
     }
     let mut cmd = Command::new(&program);
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .args(&args);
-    spawn_detached(cmd).map_err(|e| format!("Failed to launch {}: {e}", entry.name))
+    spawn_detached(cmd).map_err(|error| {
+        OpenWithError::from_external_message(format!("Failed to launch {}: {error}", entry.name))
+    })
 }
 
 #[derive(Clone)]
@@ -390,11 +393,11 @@ fn linux_application_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-fn command_from_exec(entry: &DesktopEntry, target: &Path) -> Result<(String, Vec<String>), String> {
-    let mut tokens =
-        shell_words::split(&entry.exec).map_err(|e| format!("Failed to parse Exec: {e}"))?;
+fn command_from_exec(entry: &DesktopEntry, target: &Path) -> OpenWithResult<(String, Vec<String>)> {
+    let mut tokens = shell_words::split(&entry.exec)
+        .map_err(|e| OpenWithError::from_external_message(format!("Failed to parse Exec: {e}")))?;
     if tokens.is_empty() {
-        return Err("Exec is empty".into());
+        return Err(OpenWithError::from_external_message("Exec is empty"));
     }
     let target_str = target.to_string_lossy().to_string();
     let desktop_str = entry.path.to_string_lossy().to_string();
@@ -449,7 +452,7 @@ fn command_from_exec(entry: &DesktopEntry, target: &Path) -> Result<(String, Vec
 
     let mut args: Vec<String> = tokens.into_iter().filter(|s| !s.is_empty()).collect();
     if args.is_empty() {
-        return Err("Exec is empty".into());
+        return Err(OpenWithError::from_external_message("Exec is empty"));
     }
     let program = args.remove(0);
     if !used_placeholder {

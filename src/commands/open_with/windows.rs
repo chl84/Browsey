@@ -1,4 +1,4 @@
-use super::{spawn_detached, OpenWithApp};
+use super::{error::OpenWithError, spawn_detached, OpenWithApp, OpenWithResult};
 use std::ffi::c_void;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -44,46 +44,52 @@ pub(super) fn list_windows_apps(target: &Path) -> Vec<OpenWithApp> {
     apps
 }
 
-pub(super) fn launch_windows_handler(target: &Path, app_id: &str) -> Result<(), String> {
+pub(super) fn launch_windows_handler(target: &Path, app_id: &str) -> OpenWithResult<()> {
     if app_id.starts_with("progid:") || app_id.starts_with("app:") {
         return launch_registry_handler(target, app_id);
     }
 
-    let _com_guard = ComGuard::new().map_err(|e| format!("Failed to initialize COM: {e}"))?;
+    let _com_guard = ComGuard::new().map_err(|e| {
+        OpenWithError::from_external_message(format!("Failed to initialize COM: {e}"))
+    })?;
     let query = windows_query_string(target);
     let handler = unsafe {
-        find_assoc_handler(&query, app_id)
-            .map_err(|e| format!("Failed to enumerate handlers: {e}"))?
+        find_assoc_handler(&query, app_id).map_err(|e| {
+            OpenWithError::from_external_message(format!("Failed to enumerate handlers: {e}"))
+        })?
     }
-    .ok_or_else(|| "Selected application is unavailable".to_string())?;
+    .ok_or_else(|| OpenWithError::from_external_message("Selected application is unavailable"))?;
 
     let data_object = create_data_object_for_path(target)?;
 
     unsafe {
         if let Ok(invoker) = handler.CreateInvoker(&data_object) {
             let _ = invoker.SupportsSelection();
-            invoker
-                .Invoke()
-                .map_err(|e| format!("Failed to invoke handler: {e}"))
+            invoker.Invoke().map_err(|e| {
+                OpenWithError::from_external_message(format!("Failed to invoke handler: {e}"))
+            })
         } else {
-            handler
-                .Invoke(&data_object)
-                .map_err(|e| format!("Failed to invoke handler: {e}"))
+            handler.Invoke(&data_object).map_err(|e| {
+                OpenWithError::from_external_message(format!("Failed to invoke handler: {e}"))
+            })
         }
     }
 }
 
-fn launch_windows_command(template: &str, target: &Path) -> Result<(), String> {
+fn launch_windows_command(template: &str, target: &Path) -> OpenWithResult<()> {
     let target_str = target.to_string_lossy().to_string();
     let replaced = template
         .replace("%1", &target_str)
         .replace("%l", &target_str)
         .replace("%L", &target_str)
         .replace("%*", &target_str);
-    let mut parts = shell_words::split(&replaced)
-        .map_err(|e| format!("Failed to parse command template: {e}"))?;
+    let mut parts = shell_words::split(&replaced).map_err(|e| {
+        OpenWithError::from_external_message(format!("Failed to parse command template: {e}"))
+    })?;
     if parts.is_empty() {
-        return Err("Command cannot be empty".into());
+        return Err(OpenWithError::from_external_message(
+            "Command cannot be empty",
+        ));
     }
     if !replaced.contains(&target_str) {
         parts.push(target_str);
@@ -94,15 +100,16 @@ fn launch_windows_command(template: &str, target: &Path) -> Result<(), String> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .args(parts);
-    spawn_detached(cmd).map_err(|e| format!("Failed to launch {program}: {e}"))
+    spawn_detached(cmd).map_err(|error| {
+        OpenWithError::from_external_message(format!("Failed to launch {program}: {error}"))
+    })
 }
 
-fn launch_registry_handler(target: &Path, app_id: &str) -> Result<(), String> {
+fn launch_registry_handler(target: &Path, app_id: &str) -> OpenWithResult<()> {
     let apps = list_windows_apps_registry(target);
-    let app = apps
-        .into_iter()
-        .find(|a| a.id == app_id)
-        .ok_or_else(|| "Selected application is unavailable".to_string())?;
+    let app = apps.into_iter().find(|a| a.id == app_id).ok_or_else(|| {
+        OpenWithError::from_external_message("Selected application is unavailable")
+    })?;
     launch_windows_command(&app.exec, target)
 }
 
@@ -335,21 +342,24 @@ unsafe fn find_assoc_handler(
     Ok(None)
 }
 
-fn create_data_object_for_path(target: &Path) -> Result<IDataObject, String> {
+fn create_data_object_for_path(target: &Path) -> OpenWithResult<IDataObject> {
     let path = target.to_string_lossy().into_owned();
     unsafe {
         let item: IShellItem = SHCreateItemFromParsingName(&HSTRING::from(path.as_str()), None)
             .map_err(|e| {
-                format!(
+                OpenWithError::from_external_message(format!(
                     "Failed to create shell item for {}: {e}",
                     target.to_string_lossy()
-                )
+                ))
             })?;
-        let array: IShellItemArray = SHCreateShellItemArrayFromShellItem(&item)
-            .map_err(|e| format!("Failed to create shell item array: {e}"))?;
+        let array: IShellItemArray = SHCreateShellItemArrayFromShellItem(&item).map_err(|e| {
+            OpenWithError::from_external_message(format!("Failed to create shell item array: {e}"))
+        })?;
         array
             .BindToHandler::<_, IDataObject>(None, &BHID_DataObject)
-            .map_err(|e| format!("Failed to create data object: {e}"))
+            .map_err(|e| {
+                OpenWithError::from_external_message(format!("Failed to create data object: {e}"))
+            })
     }
 }
 
