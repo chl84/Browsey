@@ -10,15 +10,15 @@ Principles:
 
 ## Priority Order
 
-- [ ] `src/undo/`
+- [x] `src/undo/`
 - [x] `src/binary_resolver/`
-- [ ] `src/db/`
-- [ ] `src/tasks/` + `src/runtime_lifecycle.rs` + `src/watcher.rs`
+- [x] `src/db/`
+- [x] `src/tasks/` + `src/runtime_lifecycle.rs` + `src/watcher.rs`
 
 ## 1. Undo
 
 - [x] Introduce or complete a dedicated typed internal undo error flow rooted in existing `src/undo/error.rs`
-- [ ] Remove remaining stringly typed seams in:
+- [x] Remove remaining stringly typed seams in:
   - `src/undo/engine.rs`
   - `src/undo/path_ops.rs`
   - `src/undo/path_checks.rs`
@@ -26,8 +26,8 @@ Principles:
   - `src/undo/nofollow.rs`
   - `src/undo/backup.rs`
   - `src/undo/types.rs`
-- [ ] Replace `Into<String>`/`From<String>`-driven internal control flow with typed `UndoResult<_>` across module boundaries
-- [ ] Make rollback/batch failure aggregation preserve stable error codes instead of only formatted messages
+- [x] Replace `Into<String>`/`From<String>`-driven internal control flow with typed `UndoResult<_>` across module boundaries
+- [x] Make rollback/batch failure aggregation preserve stable error codes instead of only formatted messages
 
 Status note:
 - [x] `error.rs` now exposes explicit typed constructors and I/O classification helpers
@@ -43,7 +43,7 @@ Status note:
 - [x] `nofollow.rs` rename mapping now preserves target-exists, cross-device, unsupported, and symlink semantics as stable `UndoErrorCode`
 - [x] `nofollow.rs` no longer relies on string comparison to recover embedded symlink semantics from `io::Error`
 - [x] `security.rs` now centralizes typed symlink/metadata validation and uses typed Win32 failure mapping for DACL reads
-- [ ] `security.rs` and `nofollow.rs` still contain the largest remaining platform-specific stringly typed control flow
+- [x] `security.rs` and `nofollow.rs` now keep their remaining platform-specific raw I/O shims internal; typed `UndoResult<_>` boundaries carry the stable semantics outward
 
 ## 2. Binary Resolver
 
@@ -67,13 +67,13 @@ Status note:
 
 ## 3. DB
 
-- [ ] Keep `src/db/error.rs`, but strengthen it
-- [ ] Add lower-level classification for important filesystem/SQLite-adjacent conditions:
+- [x] Keep `src/db/error.rs`, but strengthen it
+- [x] Add lower-level classification for important filesystem/SQLite-adjacent conditions:
   - permission denied
   - read-only filesystem
   - not found/data-dir unavailable
-- [ ] Reduce dependence on message-pattern reclassification in upper layers
-- [ ] Ensure command modules consuming `DbError` can map from stable low-level codes instead of reparsing strings
+- [x] Reduce dependence on message-pattern reclassification in upper layers
+- [x] Ensure command modules consuming `DbError` can map from stable low-level codes instead of reparsing strings
 
 Status note:
 - [x] `src/db/error.rs` now classifies I/O and SQLite failures into stable low-level codes
@@ -85,17 +85,18 @@ Status note:
 - [x] `src/commands/fs/open_ops.rs`, `src/commands/keymap.rs`, and `src/keymap/mod.rs` now avoid reparsing DB error text at their direct DB seams
 - [x] `src/commands/cloud/rclone_path.rs` now avoids reparsing DB error text at its direct settings seam
 - [x] `src/commands/search/worker.rs` now maps search DB failures from `DbError.code()` instead of collapsing them into one generic open failure
-- [ ] other command modules that consume `DbError` still need the same direct code-based mapping where it materially matters
+- [x] `src/main.rs`, `src/commands/thumbnails/mod.rs`, and `src/metadata/providers/media_probe.rs` now treat best-effort DB setting reads explicitly and log stable DB codes instead of silently swallowing failures
+- [x] remaining direct `DbError` consumers are now either code-based mappers or clearly intentional best-effort fallbacks
 
 ## 4. Tasks / Runtime / Watcher
 
-- [ ] Add `src/watcher_error.rs` only if watcher is expanded further; otherwise keep current inline error type but standardize behavior
+- [x] Add `src/watcher_error.rs` only if watcher is expanded further; otherwise keep current inline error type but standardize behavior
 - [x] Define one explicit policy for coordination-layer failures:
   - shutdown-time emit failures
   - poisoned locks
   - cleanup/drop failures
   - watcher replacement failures
-- [ ] Remove `expect(...)` from coordination state where failure should stay recoverable
+- [x] Remove `expect(...)` from coordination state where failure should stay recoverable
 - [x] Decide which failures are intentionally best-effort and document that in code comments where needed
 - [x] Ensure helper APIs do not silently swallow operationally relevant failures unless best-effort is deliberate
 
@@ -106,20 +107,20 @@ Status note:
 - [x] `src/runtime_lifecycle.rs` now logs dropped emit failures at the helper boundary instead of silently returning `false`
 - [x] `src/main.rs` shutdown cleanup now logs recoverable cancel/watcher/rclone teardown failures explicitly
 - [x] `src/commands/network/mounts.rs` now uses the shared runtime emit helper instead of raw `app.emit(...)`
-- [ ] broader coordination policy is improved, but `src/watcher_error.rs` is still intentionally inline and not split out
+- [x] watcher coordination keeps its inline error type intentionally; a separate `src/watcher_error.rs` is not warranted at current scope
 
 ## Quality Gates
 
-- [ ] no new `Result<_, String>` in touched low-level paths
-- [ ] no important infra helper uses bare `Option` when the reason for failure matters
-- [ ] each touched low-level area exposes a typed `...Result<T>`
-- [ ] `cargo fmt --all`
-- [ ] `cargo check -q`
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings`
-- [ ] targeted tests for each touched area
+- [x] no new `Result<_, String>` in touched low-level paths
+- [x] no important infra helper uses bare `Option` when the reason for failure matters
+- [x] each touched low-level area exposes a typed `...Result<T>`
+- [x] `cargo fmt --all`
+- [x] `cargo check -q`
+- [x] `cargo clippy --all-targets --all-features -- -D warnings`
+- [x] targeted tests for each touched area
 
 ## Commit Strategy
 
-- [ ] one focused commit per low-level area
-- [ ] keep `undo` separate from `binary_resolver`
-- [ ] keep `db` separate from coordination-layer cleanup
+- [x] one focused commit per low-level area
+- [x] keep `undo` separate from `binary_resolver`
+- [x] keep `db` separate from coordination-layer cleanup

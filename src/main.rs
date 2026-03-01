@@ -25,6 +25,8 @@ use std::io::Write;
 
 use commands::*;
 use context_menu::context_menu_actions;
+use db::DbErrorCode;
+use errors::domain::ErrorCode;
 use fs_utils::debug_log;
 use once_cell::sync::OnceCell;
 use runtime_lifecycle::RuntimeLifecycle;
@@ -138,14 +140,31 @@ fn init_logging() {
 
 #[cfg(target_os = "linux")]
 fn apply_webview_rendering_policy_from_settings() {
-    let hardware_acceleration = db::open()
-        .ok()
-        .and_then(|conn| {
-            db::get_setting_bool(&conn, "hardwareAcceleration")
-                .ok()
-                .flatten()
-        })
-        .unwrap_or(false);
+    let hardware_acceleration = match db::open() {
+        Ok(conn) => match db::get_setting_bool(&conn, "hardwareAcceleration") {
+            Ok(value) => value.unwrap_or(false),
+            Err(error) => {
+                debug!(
+                    db_error_code = error.code().as_code_str(),
+                    %error,
+                    "falling back to default hardwareAcceleration setting"
+                );
+                false
+            }
+        },
+        Err(error) => {
+            let code = match error.code() {
+                DbErrorCode::OpenFailed | DbErrorCode::DataDirUnavailable => "open_failed",
+                other => other.as_code_str(),
+            };
+            debug!(
+                db_error_code = code,
+                %error,
+                "unable to read hardwareAcceleration setting during startup; using default"
+            );
+            false
+        }
+    };
 
     if !hardware_acceleration {
         // Keep compositing enabled, but disable the DMA-BUF renderer to reduce artifacts.
