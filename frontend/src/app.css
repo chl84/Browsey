@@ -787,6 +787,11 @@ button:focus-visible {
   box-shadow: var(--shadow-drop);
 }
 
+.modal .combo[data-direction='up'] .combo-list-wrap {
+  top: auto;
+  bottom: calc(100% + 2px);
+}
+
 .modal .combo-search-wrap {
   padding: 6px;
   border-bottom: 1px solid var(--border);
@@ -798,7 +803,6 @@ button:focus-visible {
 }
 
 .modal .combo-list {
-  max-height: 240px;
   overflow: auto;
   list-style: none;
   margin: 0;
