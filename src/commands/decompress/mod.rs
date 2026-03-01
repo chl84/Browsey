@@ -551,7 +551,11 @@ fn do_extract(
             |reader| {
                 ZstdDecoder::new(reader)
                     .map(|r| Box::new(r) as Box<dyn Read>)
-                    .map_err(|e| format!("Failed to create zstd decoder: {e}"))
+                    .map_err(|e| {
+                        DecompressError::from_external_message(format!(
+                            "Failed to create zstd decoder: {e}"
+                        ))
+                    })
             },
         )?,
     };
@@ -738,10 +742,11 @@ fn decompress_single_with_reader<F>(
     wrap: F,
 ) -> DecompressResult<PathBuf>
 where
-    F: FnOnce(BufReader<File>) -> Result<Box<dyn Read>, String>,
+    F: FnOnce(BufReader<File>) -> DecompressResult<Box<dyn Read>>,
 {
-    let reader = map_external_result(open_buffered_file(archive_path, "open compressed file"))?;
-    let reader = map_external_result(wrap(reader))?;
+    let reader = open_buffered_file(archive_path, "open compressed file")
+        .map_err(DecompressError::from_external_message)?;
+    let reader = wrap(reader)?;
     decompress_single(
         reader,
         archive_path,
@@ -785,7 +790,8 @@ fn decompress_single<R: Read>(
             created.record_dir(dir);
         }
     }
-    let (file, dest_path) = map_external_result(open_unique_file(&dest_path))?;
+    let (file, dest_path) =
+        open_unique_file(&dest_path).map_err(DecompressError::from_external_message)?;
     created.record_file(dest_path.clone());
     let mut out = BufWriter::with_capacity(CHUNK, file);
     let mut buf = vec![0u8; CHUNK];
@@ -795,17 +801,28 @@ fn decompress_single<R: Read>(
     Ok(dest_path)
 }
 
-fn gzip_uncompressed_size(path: &Path) -> Result<u64, String> {
-    let mut file = File::open(path).map_err(map_io("open gzip for total"))?;
-    let len = file.metadata().map_err(map_io("read gzip metadata"))?.len();
+fn gzip_uncompressed_size(path: &Path) -> DecompressResult<u64> {
+    let mut file = File::open(path).map_err(|e| {
+        DecompressError::from_external_message(format!("Failed to open gzip for total: {e}"))
+    })?;
+    let len = file
+        .metadata()
+        .map_err(|e| {
+            DecompressError::from_external_message(format!("Failed to read gzip metadata: {e}"))
+        })?
+        .len();
     if len < 4 {
-        return Err("gzip too small to contain size footer".into());
+        return Err(DecompressError::from_external_message(
+            "gzip too small to contain size footer",
+        ));
     }
-    file.seek(SeekFrom::End(-4))
-        .map_err(map_io("seek gzip footer"))?;
+    file.seek(SeekFrom::End(-4)).map_err(|e| {
+        DecompressError::from_external_message(format!("Failed to seek gzip footer: {e}"))
+    })?;
     let mut buf = [0u8; 4];
-    file.read_exact(&mut buf)
-        .map_err(map_io("read gzip footer"))?;
+    file.read_exact(&mut buf).map_err(|e| {
+        DecompressError::from_external_message(format!("Failed to read gzip footer: {e}"))
+    })?;
     let size = u32::from_le_bytes(buf) as u64;
     Ok(size.max(1))
 }
