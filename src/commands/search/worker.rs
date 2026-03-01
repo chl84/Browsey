@@ -1,4 +1,7 @@
-use super::SearchProgress;
+use super::{
+    error::{SearchError, SearchErrorCode},
+    SearchProgress,
+};
 use crate::{
     commands::fs::expand_path,
     commands::listing::{ListingFacetBuilder, ListingFacets},
@@ -14,13 +17,21 @@ use tracing::{debug, warn};
 
 const SEARCH_BATCH_SIZE: usize = 256;
 
-fn invalid_query_progress(error: impl ToString) -> SearchProgress {
+fn error_progress(error: SearchError) -> SearchProgress {
     SearchProgress {
         entries: Vec::new(),
         done: true,
-        error: Some(format!("Invalid search query: {}", error.to_string())),
+        error_code: Some(error.code_str_value().to_string()),
+        error: Some(error.to_string()),
         facets: Some(ListingFacets::default()),
     }
+}
+
+fn invalid_query_progress(error: impl ToString) -> SearchProgress {
+    error_progress(SearchError::new(
+        SearchErrorCode::InvalidQuery,
+        format!("Invalid search query: {}", error.to_string()),
+    ))
 }
 
 pub(super) fn run_search_stream(
@@ -32,26 +43,34 @@ pub(super) fn run_search_stream(
 ) {
     let send = |entries: Vec<FsEntry>,
                 done: bool,
+                error_code: Option<String>,
                 error: Option<String>,
                 facets: Option<ListingFacets>| {
         let payload = SearchProgress {
             entries,
             done,
+            error_code,
             error,
             facets,
         };
         let _ = runtime_lifecycle::emit_if_running(&app, &progress_event, payload);
     };
 
+    let send_error = |error: SearchError| {
+        let payload = error_progress(error);
+        send(
+            payload.entries,
+            payload.done,
+            payload.error_code,
+            payload.error,
+            payload.facets,
+        );
+    };
+
     let cancel_guard = match cancel_state.register(progress_event.clone()) {
         Ok(g) => g,
         Err(e) => {
-            send(
-                Vec::new(),
-                true,
-                Some(e.to_string()),
-                Some(ListingFacets::default()),
-            );
+            send_error(SearchError::new(SearchErrorCode::TaskFailed, e.to_string()));
             return;
         }
     };
@@ -59,14 +78,20 @@ pub(super) fn run_search_stream(
 
     let needle = query.trim();
     if needle.is_empty() {
-        send(Vec::new(), true, None, Some(ListingFacets::default()));
+        send(Vec::new(), true, None, None, Some(ListingFacets::default()));
         return;
     }
     let parsed_query = match parse_query(needle) {
         Ok(q) => q,
         Err(e) => {
             let payload = invalid_query_progress(e);
-            send(payload.entries, payload.done, payload.error, payload.facets);
+            send(
+                payload.entries,
+                payload.done,
+                payload.error_code,
+                payload.error,
+                payload.facets,
+            );
             return;
         }
     };
@@ -77,22 +102,15 @@ pub(super) fn run_search_stream(
         Ok(_) => match dirs_next::home_dir() {
             Some(h) => h,
             None => {
-                send(
-                    Vec::new(),
-                    true,
-                    Some("Start directory not found".to_string()),
-                    Some(ListingFacets::default()),
-                );
+                send_error(SearchError::new(
+                    SearchErrorCode::NotFound,
+                    "Start directory not found",
+                ));
                 return;
             }
         },
         Err(e) => {
-            send(
-                Vec::new(),
-                true,
-                Some(e.to_string()),
-                Some(ListingFacets::default()),
-            );
+            send_error(SearchError::from_external_message(e.to_string()));
             return;
         }
     };
@@ -100,12 +118,10 @@ pub(super) fn run_search_stream(
     let star_set = match db::open().and_then(|conn| db::starred_set(&conn)) {
         Ok(set) => set,
         Err(e) => {
-            send(
-                Vec::new(),
-                true,
-                Some(e.to_string()),
-                Some(ListingFacets::default()),
-            );
+            send_error(SearchError::new(
+                SearchErrorCode::DatabaseOpenFailed,
+                format!("Failed to open search database: {e}"),
+            ));
             return;
         }
     };
@@ -172,7 +188,7 @@ pub(super) fn run_search_stream(
                         facets.add(&item);
                         batch.push(item);
                         if batch.len() >= SEARCH_BATCH_SIZE {
-                            send(std::mem::take(&mut batch), false, None, None);
+                            send(std::mem::take(&mut batch), false, None, None, None);
                         }
                     }
                 }
@@ -185,18 +201,18 @@ pub(super) fn run_search_stream(
     }
 
     if !batch.is_empty() {
-        send(batch, false, None, None);
+        send(batch, false, None, None, None);
     }
 
     if cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app) {
         return;
     }
-    send(Vec::new(), true, None, Some(facets.finish()));
+    send(Vec::new(), true, None, None, Some(facets.finish()));
 }
 
 #[cfg(test)]
 mod tests {
-    use super::invalid_query_progress;
+    use super::{invalid_query_progress, SearchError, SearchErrorCode};
 
     #[test]
     fn invalid_query_progress_matches_search_error_payload_shape() {
@@ -204,10 +220,21 @@ mod tests {
         assert!(payload.done);
         assert!(payload.entries.is_empty());
         assert!(payload.facets.is_some());
+        assert_eq!(payload.error_code.as_deref(), Some("invalid_query"));
         assert!(payload
             .error
             .as_deref()
             .unwrap_or_default()
             .contains("Invalid search query"));
+    }
+
+    #[test]
+    fn error_progress_exposes_search_error_code() {
+        let payload = super::error_progress(SearchError::new(
+            SearchErrorCode::DatabaseOpenFailed,
+            "db unavailable",
+        ));
+        assert_eq!(payload.error_code.as_deref(), Some("database_open_failed"));
+        assert_eq!(payload.error.as_deref(), Some("db unavailable"));
     }
 }

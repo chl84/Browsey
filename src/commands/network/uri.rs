@@ -5,7 +5,10 @@ use crate::errors::api_error::ApiResult;
 use serde::Serialize;
 use std::collections::HashMap;
 
-use super::mounts;
+use super::{
+    error::{map_api_result, NetworkResult},
+    mounts,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -237,8 +240,10 @@ pub fn classify_network_uri(uri: String) -> NetworkUriClassification {
 
 #[tauri::command]
 pub fn resolve_mounted_path_for_uri(uri: String) -> ApiResult<Option<String>> {
-    let mounts = mounts::list_mounts_sync();
-    Ok(resolve_mounted_path_for_uri_in_mounts(&uri, &mounts))
+    map_api_result((|| -> NetworkResult<Option<String>> {
+        let mounts = mounts::list_mounts_sync()?;
+        Ok(resolve_mounted_path_for_uri_in_mounts(&uri, &mounts))
+    })())
 }
 
 fn is_uri_like(value: &str) -> bool {
