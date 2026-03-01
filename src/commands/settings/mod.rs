@@ -512,11 +512,7 @@ pub fn store_log_level(value: String) -> ApiResult<()> {
             None => return invalid_input("invalid log level"),
         };
         let conn = open_connection()?;
-        map_settings_result(crate::db::set_setting_string(
-            &conn,
-            "logLevel",
-            normalized,
-        ))?;
+        map_settings_result(crate::db::set_setting_string(&conn, "logLevel", normalized))?;
         crate::apply_runtime_log_level(normalized)
             .map_err(|error| SettingsError::new(error::SettingsErrorCode::UnknownError, error))?;
         Ok(())
