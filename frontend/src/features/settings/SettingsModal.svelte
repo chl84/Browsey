@@ -5,7 +5,7 @@
   import { onMount } from 'svelte'
   import type { DefaultSortField, Density } from '@/features/explorer'
   import type { ShortcutBinding, ShortcutCommandId } from '@/features/shortcuts'
-  import { DEFAULT_SETTINGS, type Settings } from './settingsTypes'
+  import { DEFAULT_SETTINGS, restoreDefaultsCopy, type Settings } from './settingsTypes'
   import { createSettingsModalViewModel } from './hooks/useSettingsModalViewModel'
   import GeneralSection from './sections/GeneralSection.svelte'
   import SortingSection from './sections/SortingSection.svelte'
@@ -68,6 +68,7 @@
   export let onChangeLogLevel: (value: Settings['logLevel']) => void = () => {}
   export let onChangeScrollbarWidth: (value: number) => void = () => {}
   export let onChangeRclonePath: (value: string) => void = () => {}
+  export let onRestoreDefaults: () => Promise<void> | void = () => {}
   export let onClearThumbCache: () => Promise<void> | void = () => {}
   export let onClearCloudOpenCache: () => Promise<void> | void = () => {}
   export let onClearStars: () => Promise<void> | void = () => {}
@@ -96,6 +97,12 @@
     requestClear,
     cancelClear,
     confirmClear,
+    restoreDefaultsOpen,
+    restoreDefaultsBusy,
+    restoreDefaultsDialogMessage,
+    requestRestoreDefaults,
+    cancelRestoreDefaults,
+    confirmRestoreDefaults,
     shortcutCaptureId,
     shortcutCaptureBusy,
     shortcutCaptureError,
@@ -106,6 +113,7 @@
   } = createSettingsModalViewModel({
     onClose: () => onClose(),
     onChangeShortcut: (commandId, accelerator) => onChangeShortcut(commandId, accelerator),
+    onRestoreDefaults: () => onRestoreDefaults(),
     onClearThumbCache: () => onClearThumbCache(),
     onClearCloudOpenCache: () => onClearCloudOpenCache(),
     onClearStars: () => onClearStars(),
@@ -192,7 +200,11 @@
   }
 
   const handleRestoreDefaults = () => {
-    restoreDefaults((next) => {
+    requestRestoreDefaults()
+  }
+
+  const handleConfirmRestoreDefaults = async () => {
+    await confirmRestoreDefaults((next) => {
       settings = next
     })
   }
@@ -361,5 +373,17 @@
     busy={$clearBusy}
     onConfirm={() => void confirmClear()}
     onCancel={cancelClear}
+  />
+
+  <ConfirmActionModal
+    open={$restoreDefaultsOpen}
+    title={restoreDefaultsCopy.title}
+    message={$restoreDefaultsDialogMessage}
+    confirmLabel={restoreDefaultsCopy.confirmLabel}
+    cancelLabel="Cancel"
+    danger={false}
+    busy={$restoreDefaultsBusy}
+    onConfirm={() => void handleConfirmRestoreDefaults()}
+    onCancel={cancelRestoreDefaults}
   />
 {/if}

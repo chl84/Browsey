@@ -151,12 +151,23 @@ export const createPreferenceSlice = (
     clearFacetCache()
   }
 
+  const setShowHiddenPref = (value: boolean) => {
+    showHidden.set(value)
+    void storeShowHidden(value)
+    clearFacetCache()
+  }
+
   const toggleHiddenFilesLast = () => {
     hiddenFilesLast.update((v) => {
       const next = !v
       void storeHiddenFilesLast(next)
       return next
     })
+  }
+
+  const setHiddenFilesLastPref = (value: boolean) => {
+    hiddenFilesLast.set(value)
+    void storeHiddenFilesLast(value)
   }
 
   const toggleHighContrast = () => {
@@ -167,12 +178,22 @@ export const createPreferenceSlice = (
     })
   }
 
+  const setHighContrastPref = (value: boolean) => {
+    highContrast.set(value)
+    void storeHighContrast(value)
+  }
+
   const toggleFoldersFirst = () => {
     foldersFirst.update((v) => {
       const next = !v
       void storeFoldersFirst(next)
       return next
     })
+  }
+
+  const setFoldersFirstPref = (value: boolean) => {
+    foldersFirst.set(value)
+    void storeFoldersFirst(value)
   }
 
   const setStartDirPref = (value: string) => {
@@ -242,6 +263,11 @@ export const createPreferenceSlice = (
       void storeConfirmDelete(next)
       return next
     })
+  }
+
+  const setConfirmDeletePref = (value: boolean) => {
+    confirmDelete.set(value)
+    void storeConfirmDelete(value)
   }
 
   const loadSortPref = async () => {
@@ -366,12 +392,22 @@ export const createPreferenceSlice = (
     })
   }
 
+  const setOpenDestAfterExtractPref = (value: boolean) => {
+    openDestAfterExtract.set(value)
+    void storeOpenDestAfterExtract(value)
+  }
+
   const toggleVideoThumbs = () => {
     videoThumbs.update((v) => {
       const next = !v
       void storeVideoThumbs(next)
       return next
     })
+  }
+
+  const setVideoThumbsPref = (value: boolean) => {
+    videoThumbs.set(value)
+    void storeVideoThumbs(value)
   }
 
   const setHardwareAccelerationPref = (value: boolean) => {
@@ -494,9 +530,13 @@ export const createPreferenceSlice = (
     setArchiveNamePref,
     setArchiveLevelPref,
     toggleShowHidden,
+    setShowHiddenPref,
     toggleHiddenFilesLast,
+    setHiddenFilesLastPref,
     toggleHighContrast,
+    setHighContrastPref,
     toggleFoldersFirst,
+    setFoldersFirstPref,
     setStartDirPref,
     loadShowHiddenPref,
     loadHiddenFilesLastPref,
@@ -504,6 +544,7 @@ export const createPreferenceSlice = (
     loadStartDirPref,
     loadConfirmDeletePref,
     toggleConfirmDelete,
+    setConfirmDeletePref,
     loadSortPref,
     loadArchiveNamePref,
     loadArchiveLevelPref,
@@ -515,7 +556,9 @@ export const createPreferenceSlice = (
     loadDensityPref,
     setDensityPref,
     toggleOpenDestAfterExtract,
+    setOpenDestAfterExtractPref,
     toggleVideoThumbs,
+    setVideoThumbsPref,
     setHardwareAccelerationPref,
     setFfmpegPathPref,
     setThumbCachePref,
