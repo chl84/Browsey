@@ -162,15 +162,17 @@ fn execute_batch(actions: &mut [Action], direction: Direction) -> UndoResult<()>
                 }
             }
             if rollback_errors.is_empty() {
-                return Err(format!("Batch action {} failed: {}", idx + 1, err).into());
+                return Err(err.with_context(format!("Batch action {} failed", idx + 1)));
             } else {
-                return Err(format!(
-                    "Batch action {} failed: {}; additional rollback issues: {}",
-                    idx + 1,
-                    err,
-                    rollback_errors.join("; ")
-                )
-                .into());
+                return Err(UndoError::new(
+                    err.code(),
+                    format!(
+                        "Batch action {} failed: {}; additional rollback issues: {}",
+                        idx + 1,
+                        err,
+                        rollback_errors.join("; ")
+                    ),
+                ));
             }
         }
         completed.push(idx);

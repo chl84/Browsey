@@ -83,6 +83,10 @@ impl UndoError {
         Self::new(UndoErrorCode::InvalidInput, message)
     }
 
+    pub fn code(&self) -> UndoErrorCode {
+        self.code
+    }
+
     pub fn invalid_path(path: &Path, context: &str) -> Self {
         Self::invalid_input(format!("{context}: {}", path.display()))
     }
@@ -154,6 +158,10 @@ impl UndoError {
             UndoErrorCode::IoError,
             format!("{}: Win32 error {}", context.into(), code),
         )
+    }
+
+    pub fn with_context(self, context: impl Into<String>) -> Self {
+        Self::new(self.code, format!("{}: {}", context.into(), self.message))
     }
 }
 
