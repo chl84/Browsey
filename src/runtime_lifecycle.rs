@@ -124,5 +124,8 @@ pub fn emit_if_running<R: tauri::Runtime, S: serde::Serialize + Clone>(
     if is_shutting_down(app) {
         return false;
     }
+    // Best effort by design: during shutdown or transient frontend teardown we
+    // prefer dropping the event over turning coordination helpers into
+    // fallible plumbing everywhere.
     app.emit(event, payload).is_ok()
 }

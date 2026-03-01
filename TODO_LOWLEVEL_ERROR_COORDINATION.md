@@ -64,6 +64,12 @@ Status note:
 - [ ] Reduce dependence on message-pattern reclassification in upper layers
 - [ ] Ensure command modules consuming `DbError` can map from stable low-level codes instead of reparsing strings
 
+Status note:
+- [x] `src/db/error.rs` now classifies I/O and SQLite failures into stable low-level codes
+- [x] `src/db/mod.rs` now maps main open/read/write/transaction seams through typed DB helpers instead of generic message parsing
+- [x] `src/commands/settings/mod.rs` now maps from `DbError.code()` instead of reparsing DB error text
+- [ ] other command modules that consume `DbError` still need the same direct code-based mapping where it materially matters
+
 ## 4. Tasks / Runtime / Watcher
 
 - [ ] Add `src/watcher_error.rs` only if watcher is expanded further; otherwise keep current inline error type but standardize behavior
@@ -75,6 +81,12 @@ Status note:
 - [ ] Remove `expect(...)` from coordination state where failure should stay recoverable
 - [ ] Decide which failures are intentionally best-effort and document that in code comments where needed
 - [ ] Ensure helper APIs do not silently swallow operationally relevant failures unless best-effort is deliberate
+
+Status note:
+- [x] `src/watcher.rs` no longer uses `expect(...)` for watcher-state locking
+- [x] watcher replacement/stop paths now return typed `WatcherResult<_>` and callers map them explicitly where relevant
+- [x] best-effort behavior is now documented in `src/runtime_lifecycle.rs`, `src/tasks/mod.rs`, and watcher callback emits
+- [ ] broader coordination policy is improved but not yet fully unified across every caller and helper
 
 ## Quality Gates
 

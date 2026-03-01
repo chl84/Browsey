@@ -5,6 +5,7 @@ use std::{
         Arc, Mutex,
     },
 };
+use tracing::warn;
 
 mod error;
 
@@ -70,8 +71,15 @@ impl CancelState {
     }
 
     fn remove(&self, id: &str) {
-        if let Ok(mut map) = self.inner.lock() {
-            map.remove(id);
+        match self.inner.lock() {
+            Ok(mut map) => {
+                map.remove(id);
+            }
+            Err(_) => {
+                // Best effort during guard drop: the task is already ending and
+                // callers cannot recover here, but we should leave a signal.
+                warn!(task_id = id, "failed to remove task from cancel registry");
+            }
         }
     }
 }

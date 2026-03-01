@@ -790,7 +790,9 @@ fn watch_dir_impl(
 ) -> ListingResult<()> {
     if let Some(raw_path) = path.as_deref() {
         if is_cloud_path_str(raw_path) {
-            state.replace(None);
+            state
+                .replace(None)
+                .map_err(|error| ListingError::from_external_message(error.to_string()))?;
             return Ok(());
         }
     }

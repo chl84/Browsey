@@ -1,9 +1,14 @@
-use crate::errors::domain::{classify_message_by_patterns, DomainError, ErrorCode};
+use crate::errors::domain::{
+    classify_io_error, classify_message_by_patterns, DomainError, ErrorCode, IoErrorHint,
+};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DbErrorCode {
     DataDirUnavailable,
+    PermissionDenied,
+    ReadOnlyFilesystem,
+    NotFound,
     OpenFailed,
     SchemaInitFailed,
     ReadFailed,
@@ -18,6 +23,9 @@ impl ErrorCode for DbErrorCode {
     fn as_code_str(self) -> &'static str {
         match self {
             Self::DataDirUnavailable => "data_dir_unavailable",
+            Self::PermissionDenied => "permission_denied",
+            Self::ReadOnlyFilesystem => "read_only_filesystem",
+            Self::NotFound => "not_found",
             Self::OpenFailed => "open_failed",
             Self::SchemaInitFailed => "schema_init_failed",
             Self::ReadFailed => "read_failed",
@@ -44,6 +52,10 @@ impl DbError {
         }
     }
 
+    pub fn code(&self) -> DbErrorCode {
+        self.code
+    }
+
     pub fn from_external_message(message: impl Into<String>) -> Self {
         let message = message.into();
         let code = classify_message_by_patterns(
@@ -52,6 +64,38 @@ impl DbError {
             DbErrorCode::UnknownError,
         );
         Self::new(code, message)
+    }
+
+    pub fn from_io_error(
+        fallback: DbErrorCode,
+        context: impl Into<String>,
+        error: std::io::Error,
+    ) -> Self {
+        let code = match classify_io_error(&error) {
+            IoErrorHint::PermissionDenied => DbErrorCode::PermissionDenied,
+            IoErrorHint::ReadOnlyFilesystem => DbErrorCode::ReadOnlyFilesystem,
+            IoErrorHint::NotFound => DbErrorCode::NotFound,
+            _ => fallback,
+        };
+        Self::new(code, format!("{}: {error}", context.into()))
+    }
+
+    pub fn from_sqlite_error(
+        fallback: DbErrorCode,
+        context: impl Into<String>,
+        error: rusqlite::Error,
+    ) -> Self {
+        let code = match &error {
+            rusqlite::Error::SqliteFailure(inner, _) => match inner.code {
+                rusqlite::ffi::ErrorCode::PermissionDenied => DbErrorCode::PermissionDenied,
+                rusqlite::ffi::ErrorCode::ReadOnly => DbErrorCode::ReadOnlyFilesystem,
+                rusqlite::ffi::ErrorCode::NotFound => DbErrorCode::NotFound,
+                rusqlite::ffi::ErrorCode::CannotOpen => DbErrorCode::OpenFailed,
+                _ => fallback,
+            },
+            _ => fallback,
+        };
+        Self::new(code, format!("{}: {error}", context.into()))
     }
 }
 
@@ -82,6 +126,22 @@ const DB_CLASSIFICATION_RULES: &[(DbErrorCode, &[&str])] = &[
             "could not resolve data directory",
             "failed to create data dir",
         ],
+    ),
+    (
+        DbErrorCode::PermissionDenied,
+        &["permission denied", "access is denied"],
+    ),
+    (
+        DbErrorCode::ReadOnlyFilesystem,
+        &[
+            "read-only",
+            "readonly database",
+            "attempt to write a readonly database",
+        ],
+    ),
+    (
+        DbErrorCode::NotFound,
+        &["not found", "no such file or directory"],
     ),
     (DbErrorCode::OpenFailed, &["failed to open db"]),
     (DbErrorCode::SchemaInitFailed, &["failed to init schema"]),
