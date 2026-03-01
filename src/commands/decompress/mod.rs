@@ -25,8 +25,7 @@ use crate::fs_utils::{check_no_symlink_components, sanitize_path_follow, sanitiz
 use crate::tasks::{CancelGuard, CancelState};
 use crate::undo::{temp_backup_path, Action, UndoState};
 use error::{
-    is_cancelled_error, map_api_result, map_external_result, DecompressError, DecompressErrorCode,
-    DecompressResult,
+    is_cancelled_error, map_api_result, DecompressError, DecompressErrorCode, DecompressResult,
 };
 
 use rar_format::{
@@ -308,7 +307,7 @@ fn do_extract(
         ArchiveKind::TarGz => gzip_uncompressed_size(&archive_path).unwrap_or(meta.len()),
         ArchiveKind::SevenZ => sevenz_uncompressed_total(&archive_path).unwrap_or(meta.len()),
         ArchiveKind::Rar => {
-            let entries = map_external_result(parse_rar_entries(&archive_path))?;
+            let entries = parse_rar_entries(&archive_path)?;
             let total = rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len());
             rar_entries = Some(entries);
             total
@@ -483,7 +482,7 @@ fn do_extract(
         ArchiveKind::SevenZ => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            map_external_result(extract_7z(
+            extract_7z(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -492,17 +491,17 @@ fn do_extract(
                 &mut created,
                 cancel_token,
                 &budget,
-            ))?;
+            )?;
             dest_dir
         }
         ArchiveKind::Rar => {
             let entries = match rar_entries {
                 Some(v) => v,
-                None => map_external_result(parse_rar_entries(&archive_path))?,
+                None => parse_rar_entries(&archive_path)?,
             };
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            map_external_result(extract_rar(
+            extract_rar(
                 entries,
                 &dest_dir,
                 strip.as_deref(),
@@ -511,7 +510,7 @@ fn do_extract(
                 &mut created,
                 cancel_token,
                 &budget,
-            ))?;
+            )?;
             dest_dir
         }
         ArchiveKind::Gz => decompress_single_with_reader(
@@ -717,8 +716,8 @@ fn choose_destination_dir(
         | ArchiveKind::TarBz2
         | ArchiveKind::TarXz
         | ArchiveKind::TarZstd => single_root_in_tar(archive_path, kind)?,
-        ArchiveKind::SevenZ => map_external_result(single_root_in_7z(archive_path))?,
-        ArchiveKind::Rar => map_external_result(single_root_in_rar(archive_path))?,
+        ArchiveKind::SevenZ => single_root_in_7z(archive_path)?,
+        ArchiveKind::Rar => single_root_in_rar(archive_path)?,
         _ => None,
     };
 
@@ -837,7 +836,7 @@ fn estimate_total_hint(path: &Path) -> DecompressResult<u64> {
         ArchiveKind::TarGz => gzip_uncompressed_size(path).unwrap_or(meta.len()),
         ArchiveKind::SevenZ => sevenz_uncompressed_total(path).unwrap_or(meta.len()),
         ArchiveKind::Rar => {
-            let entries = map_external_result(parse_rar_entries(path))?;
+            let entries = parse_rar_entries(path)?;
             let total = rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len());
             rar_entries = Some(entries);
             total

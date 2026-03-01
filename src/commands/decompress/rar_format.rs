@@ -10,13 +10,14 @@ use rar_stream::{
 };
 use tauri::async_runtime;
 
+use super::error::{DecompressError, DecompressResult};
 use super::util::{
     check_cancel, clean_relative_path, ensure_dir_nofollow, first_component, map_copy_err,
     open_unique_file, path_exists_nofollow, CreatedPaths, ExtractBudget, ProgressEmitter,
     SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 
-pub(super) fn single_root_in_rar(path: &Path) -> Result<Option<PathBuf>, String> {
+pub(super) fn single_root_in_rar(path: &Path) -> DecompressResult<Option<PathBuf>> {
     let entries = parse_rar_entries(path)?;
     let mut root: Option<PathBuf> = None;
     let mut entries_seen = 0u64;
@@ -26,7 +27,8 @@ pub(super) fn single_root_in_rar(path: &Path) -> Result<Option<PathBuf>, String>
             return Err(format!(
                 "Archive exceeds entry cap ({} entries > {} entries)",
                 entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
-            ));
+            )
+            .into());
         }
         let raw_name = entry.name.replace('\\', "/");
         let raw_path = PathBuf::from(raw_name.clone());
@@ -66,7 +68,7 @@ pub(super) fn extract_rar(
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
     budget: &ExtractBudget,
-) -> Result<(), String> {
+) -> DecompressResult<()> {
     for entry in entries {
         check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
         budget
@@ -78,9 +80,9 @@ pub(super) fn extract_rar(
 
         // rar-stream lacks a complete decoder for compressed entries; abort instead of writing corrupted data.
         if entry.is_compressed() {
-            return Err(format!(
+            return Err(DecompressError::from_external_message(format!(
                 "RAR entry uses unsupported compression method: {raw_name}"
-            ));
+            )));
         }
 
         let clean_rel = match clean_relative_path(&raw_path) {
@@ -146,8 +148,7 @@ pub(super) fn extract_rar(
             }
         }
 
-        let (file, dest_actual) =
-            open_unique_file(&dest_path).map_err(|e| format!("Failed to create file: {e}"))?;
+        let (file, dest_actual) = open_unique_file(&dest_path)?;
         created.record_file(dest_actual);
         let mut out = BufWriter::with_capacity(CHUNK, file);
         write_rar_entry_streaming(&entry, &raw_name, &mut out, progress, cancel, budget)?;
@@ -162,7 +163,7 @@ fn write_rar_entry_streaming(
     progress: Option<&ProgressEmitter>,
     cancel: Option<&AtomicBool>,
     budget: &ExtractBudget,
-) -> Result<(), String> {
+) -> DecompressResult<()> {
     let mut start = 0u64;
     let chunk_len = CHUNK as u64;
 
@@ -172,7 +173,7 @@ fn write_rar_entry_streaming(
         let data = async_runtime::block_on(entry.read_range(RarReadInterval { start, end }))
             .map_err(|e| format!("Failed to read rar entry {raw_name}: {e}"))?;
         if data.is_empty() {
-            return Err(format!("Failed to read rar entry {raw_name}: empty chunk"));
+            return Err(format!("Failed to read rar entry {raw_name}: empty chunk").into());
         }
 
         budget
@@ -187,10 +188,11 @@ fn write_rar_entry_streaming(
     }
 
     out.flush()
-        .map_err(|e| map_copy_err(&format!("Failed to flush {raw_name}"), e))
+        .map_err(|e| map_copy_err(&format!("Failed to flush {raw_name}"), e))?;
+    Ok(())
 }
 
-pub(super) fn parse_rar_entries(path: &Path) -> Result<Vec<RarInnerFile>, String> {
+pub(super) fn parse_rar_entries(path: &Path) -> DecompressResult<Vec<RarInnerFile>> {
     let path_str = path
         .to_str()
         .ok_or_else(|| "Archive path is not valid UTF-8".to_string())?;
@@ -198,15 +200,18 @@ pub(super) fn parse_rar_entries(path: &Path) -> Result<Vec<RarInnerFile>, String
         RarLocalFileMedia::new(path_str).map_err(|e| format!("Failed to open rar archive: {e}"))?,
     );
     let package = RarFilesPackage::new(vec![media]);
-    async_runtime::block_on(async move {
+    let entries = async_runtime::block_on(async move {
         package
             .parse(RarParseOptions::default())
             .await
             .map_err(|e| format!("Failed to read rar: {e}"))
-    })
+    })?;
+    Ok(entries)
 }
 
-pub(super) fn rar_uncompressed_total_from_entries(entries: &[RarInnerFile]) -> Result<u64, String> {
+pub(super) fn rar_uncompressed_total_from_entries(
+    entries: &[RarInnerFile],
+) -> DecompressResult<u64> {
     let mut total = 0u64;
     let mut entries_seen = 0u64;
     for entry in entries {
@@ -215,7 +220,8 @@ pub(super) fn rar_uncompressed_total_from_entries(entries: &[RarInnerFile]) -> R
             return Err(format!(
                 "Archive exceeds entry cap ({} entries > {} entries)",
                 entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
-            ));
+            )
+            .into());
         }
         total = total.saturating_add(entry.length);
     }

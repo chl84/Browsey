@@ -38,8 +38,8 @@ fn open_entry_impl(path: String) -> FsResult<()> {
     open_path_impl(&pb)
 }
 
-pub(crate) fn open_path_without_recent(path: &Path) -> Result<(), String> {
-    open_path_impl(path).map_err(|error| error.to_string())
+pub(crate) fn open_path_without_recent(path: &Path) -> FsResult<()> {
+    open_path_impl(path)
 }
 
 fn open_path_impl(path: &Path) -> FsResult<()> {

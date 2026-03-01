@@ -181,8 +181,8 @@ fn validate_scan_input(
         return Err(DuplicatesError::invalid_input("Target must be a file"));
     }
 
-    let start_expanded =
-        expand_path(Some(start_path)).map_err(DuplicatesError::from_external_message)?;
+    let start_expanded = expand_path(Some(start_path))
+        .map_err(|error| DuplicatesError::from_external_message(error.to_string()))?;
     let start = sanitize_path_follow(&start_expanded.to_string_lossy(), false)
         .map_err(DuplicatesError::from_external_message)?;
     check_no_symlink_components(&start).map_err(DuplicatesError::from_external_message)?;

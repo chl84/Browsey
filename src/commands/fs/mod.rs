@@ -39,13 +39,14 @@ pub use trash::{
     restore_trash_items,
 };
 
-pub fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
+pub fn expand_path(raw: Option<String>) -> error::FsResult<PathBuf> {
     if let Some(p) = raw {
         if p == "~" {
-            dirs_next::home_dir().ok_or_else(|| "Home directory not found".to_string())
+            dirs_next::home_dir()
+                .ok_or_else(|| FsError::new(FsErrorCode::NotFound, "Home directory not found"))
         } else if let Some(stripped) = p.strip_prefix("~/") {
-            let home =
-                dirs_next::home_dir().ok_or_else(|| "Home directory not found".to_string())?;
+            let home = dirs_next::home_dir()
+                .ok_or_else(|| FsError::new(FsErrorCode::NotFound, "Home directory not found"))?;
             Ok(home.join(stripped))
         } else {
             Ok(PathBuf::from(p))
@@ -53,7 +54,12 @@ pub fn expand_path(raw: Option<String>) -> Result<PathBuf, String> {
     } else if let Some(home) = dirs_next::home_dir() {
         Ok(home)
     } else {
-        std::env::current_dir().map_err(|e| format!("Failed to read working directory: {e}"))
+        std::env::current_dir().map_err(|e| {
+            FsError::new(
+                FsErrorCode::TaskFailed,
+                format!("Failed to read working directory: {e}"),
+            )
+        })
     }
 }
 

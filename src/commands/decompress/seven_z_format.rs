@@ -9,13 +9,14 @@ use sevenz_rust2::{
     decompress_file_with_extract_fn, Archive as SevenZArchive, Error as SevenZError,
 };
 
+use super::error::{DecompressError, DecompressResult};
 use super::util::{
     clean_relative_path, copy_with_progress, ensure_dir_nofollow, first_component, is_cancelled,
     open_unique_file, path_exists_nofollow, CreatedPaths, ExtractBudget, ProgressEmitter,
     SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 
-pub(super) fn single_root_in_7z(path: &Path) -> Result<Option<PathBuf>, String> {
+pub(super) fn single_root_in_7z(path: &Path) -> DecompressResult<Option<PathBuf>> {
     let archive = SevenZArchive::open(path).map_err(|e| format!("Failed to read 7z: {e}"))?;
     let mut root: Option<PathBuf> = None;
     let mut entries_seen = 0u64;
@@ -25,7 +26,8 @@ pub(super) fn single_root_in_7z(path: &Path) -> Result<Option<PathBuf>, String> 
             return Err(format!(
                 "Archive exceeds entry cap ({} entries > {} entries)",
                 entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
-            ));
+            )
+            .into());
         }
         if entry.is_anti_item {
             continue;
@@ -65,7 +67,7 @@ pub(super) fn extract_7z(
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
     budget: &ExtractBudget,
-) -> Result<(), String> {
+) -> DecompressResult<()> {
     let mut buf = vec![0u8; CHUNK];
     decompress_file_with_extract_fn(archive_path, dest_dir, |entry, reader, _dest_path| {
         budget
@@ -173,10 +175,10 @@ pub(super) fn extract_7z(
         })?;
         Ok(true)
     })
-    .map_err(|e| format!("Failed to extract 7z: {e}"))
+    .map_err(|e| DecompressError::from_external_message(format!("Failed to extract 7z: {e}")))
 }
 
-pub(super) fn sevenz_uncompressed_total(path: &Path) -> Result<u64, String> {
+pub(super) fn sevenz_uncompressed_total(path: &Path) -> DecompressResult<u64> {
     let archive =
         SevenZArchive::open(path).map_err(|e| format!("Failed to read 7z for total size: {e}"))?;
     let mut total = 0u64;
@@ -187,7 +189,8 @@ pub(super) fn sevenz_uncompressed_total(path: &Path) -> Result<u64, String> {
             return Err(format!(
                 "Archive exceeds entry cap ({} entries > {} entries)",
                 entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
-            ));
+            )
+            .into());
         }
         if entry.is_directory || entry.is_anti_item || !entry.has_stream {
             continue;

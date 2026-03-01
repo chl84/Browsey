@@ -515,8 +515,8 @@ fn list_dir_sync(
     sort: Option<SortSpec>,
     app: tauri::AppHandle,
 ) -> ListingResult<DirListing> {
-    let base_path =
-        crate::commands::fs::expand_path(path).map_err(ListingError::from_external_message)?;
+    let base_path = crate::commands::fs::expand_path(path)
+        .map_err(|error| ListingError::from_external_message(error.to_string()))?;
     let target = sanitize_path_follow(&base_path.to_string_lossy(), false)
         .map_err(ListingError::from_external_message)?;
     debug_log(&format!(
@@ -794,8 +794,8 @@ fn watch_dir_impl(
             return Ok(());
         }
     }
-    let base_path =
-        crate::commands::fs::expand_path(path).map_err(ListingError::from_external_message)?;
+    let base_path = crate::commands::fs::expand_path(path)
+        .map_err(|error| ListingError::from_external_message(error.to_string()))?;
     let target = match sanitize_path_follow(&base_path.to_string_lossy(), true) {
         Ok(p) if p.exists() => p,
         _ => {
