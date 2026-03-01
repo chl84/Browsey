@@ -26,7 +26,7 @@ export type Settings = {
   mountsPollMs: number
   doubleClickMs: number
   logLevel: LogLevel
-  externalTools: string
+  rclonePath: string
   highContrast: boolean
   scrollbarWidth: number
 }
@@ -52,7 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mountsPollMs: 8000,
   doubleClickMs: 300,
   logLevel: 'warn',
-  externalTools: '',
+  rclonePath: '',
   highContrast: false,
   scrollbarWidth: 10,
 }

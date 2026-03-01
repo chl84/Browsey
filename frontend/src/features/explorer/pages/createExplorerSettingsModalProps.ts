@@ -22,6 +22,7 @@ type Params = {
   mountsPollMs: SettingsModalProps['mountsPollMsValue']
   doubleClickMs: SettingsModalProps['doubleClickMsValue']
   scrollbarWidth: SettingsModalProps['scrollbarWidthValue']
+  rclonePath: SettingsModalProps['rclonePathValue']
   startDir: SettingsModalProps['startDirValue']
   sortField: SettingsModalProps['sortFieldValue']
   sortDirection: SettingsModalProps['sortDirectionValue']
@@ -45,6 +46,7 @@ type Params = {
   onChangeMountsPollMs: SettingsModalProps['onChangeMountsPollMs']
   onChangeDoubleClickMs: SettingsModalProps['onChangeDoubleClickMs']
   onChangeScrollbarWidth: SettingsModalProps['onChangeScrollbarWidth']
+  onChangeRclonePath: SettingsModalProps['onChangeRclonePath']
   onClearThumbCache: SettingsModalProps['onClearThumbCache']
   onClearCloudOpenCache: SettingsModalProps['onClearCloudOpenCache']
   onClearStars: SettingsModalProps['onClearStars']
@@ -76,6 +78,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   mountsPollMsValue: p.mountsPollMs,
   doubleClickMsValue: p.doubleClickMs,
   scrollbarWidthValue: p.scrollbarWidth,
+  rclonePathValue: p.rclonePath,
   startDirValue: p.startDir,
   sortFieldValue: p.sortField,
   sortDirectionValue: p.sortDirection,
@@ -98,6 +101,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   onChangeMountsPollMs: p.onChangeMountsPollMs,
   onChangeDoubleClickMs: p.onChangeDoubleClickMs,
   onChangeScrollbarWidth: p.onChangeScrollbarWidth,
+  onChangeRclonePath: p.onChangeRclonePath,
   onClearThumbCache: p.onClearThumbCache,
   onClearCloudOpenCache: p.onClearCloudOpenCache,
   onClearStars: p.onClearStars,

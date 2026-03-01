@@ -114,6 +114,7 @@ export const createExplorerStores = () => {
   const mountsPollMs = writable<number>(8000)
   const doubleClickMs = writable<number>(300)
   const scrollbarWidth = writable<number>(10)
+  const rclonePath = writable<string>('')
   const bookmarks = writable<{ label: string; path: string }[]>([])
   const partitions = writable<Partition[]>([])
   const history = writable<Location[]>([])
@@ -150,6 +151,7 @@ export const createExplorerStores = () => {
     mountsPollMs,
     doubleClickMs,
     scrollbarWidth,
+    rclonePath,
     bookmarks,
     partitions,
     history,

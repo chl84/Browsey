@@ -147,7 +147,8 @@ fn execute_mixed_entries_blocking(
     cancel: Option<Arc<AtomicBool>>,
     progress: Option<TransferProgressContext>,
 ) -> TransferResult<Vec<String>> {
-    let cli = RcloneCli::default();
+    let cli = cloud::configured_rclone_cli()
+        .map_err(|error| transfer_err(TransferErrorCode::InvalidConfig, error))?;
     execute_mixed_entries_blocking_with_cli(&cli, op, route, options, cancel, progress)
 }
 
@@ -158,7 +159,8 @@ fn execute_mixed_entry_to_blocking(
     cancel: Option<Arc<AtomicBool>>,
     progress: Option<TransferProgressContext>,
 ) -> TransferResult<String> {
-    let cli = RcloneCli::default();
+    let cli = cloud::configured_rclone_cli()
+        .map_err(|error| transfer_err(TransferErrorCode::InvalidConfig, error))?;
     execute_mixed_entry_to_blocking_with_cli(&cli, op, pair, options, cancel, progress)
 }
 
@@ -890,15 +892,7 @@ fn remove_local_source_after_mixed_file_move(path: &std::path::Path) -> Transfer
 }
 
 fn mixed_cloud_provider_for_cli(cli: &RcloneCli) -> RcloneCloudProvider {
-    #[cfg(test)]
-    {
-        RcloneCloudProvider::new(cli.clone())
-    }
-    #[cfg(not(test))]
-    {
-        let _ = cli;
-        RcloneCloudProvider::default()
-    }
+    RcloneCloudProvider::from_cli(cli.clone())
 }
 
 fn is_rclone_not_found_text(stderr: &str, stdout: &str) -> bool {
@@ -918,6 +912,7 @@ fn is_rclone_not_found_text(stderr: &str, stdout: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::cloud::set_rclone_path_override_for_tests;
     #[cfg(unix)]
     use std::fs;
     #[cfg(unix)]
@@ -1500,5 +1495,46 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_uses_invalid_config_for_bad_rclone_path() {
+        let _guard = fake_rclone_test_lock();
+        let source_root = std::env::temp_dir().join(format!(
+            "browsey-transfer-invalid-rclone-path-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&source_root);
+        fs::create_dir_all(&source_root).expect("create source root");
+        set_rclone_path_override_for_tests(Some("/usr/bin/rclone-does-not-exist"));
+        let source = source_root.join("copy-source.txt");
+        fs::write(&source, b"payload").expect("write local source");
+
+        let route = MixedTransferRoute::LocalToCloud {
+            sources: vec![source],
+            dest_dir: CloudPath::parse("rclone://work/dest").expect("cloud path"),
+        };
+        let error = execute_mixed_entries_blocking(
+            MixedTransferOp::Copy,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            None,
+            None,
+        )
+        .expect_err("invalid configured rclone path should fail");
+
+        assert_eq!(error.code_str(), "invalid_config");
+        assert!(
+            error
+                .to_string()
+                .contains("Configured Rclone path is invalid or not executable"),
+            "unexpected error: {error}"
+        );
+        set_rclone_path_override_for_tests(None);
+        let _ = fs::remove_dir_all(&source_root);
     }
 }

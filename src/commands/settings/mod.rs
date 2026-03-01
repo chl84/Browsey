@@ -374,6 +374,25 @@ pub fn load_scrollbar_width() -> ApiResult<Option<i64>> {
 }
 
 #[tauri::command]
+pub fn store_rclone_path(value: String) -> ApiResult<()> {
+    let conn = open_connection()?;
+    let normalized = value.trim();
+    map_settings_result(crate::db::set_setting_string(
+        &conn,
+        "rclonePath",
+        normalized,
+    ))?;
+    crate::commands::cloud::invalidate_cloud_caches_for_backend_change();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn load_rclone_path() -> ApiResult<Option<String>> {
+    let conn = open_connection()?;
+    map_settings_result(crate::db::get_setting_string(&conn, "rclonePath"))
+}
+
+#[tauri::command]
 pub fn store_double_click_ms(value: i64) -> ApiResult<()> {
     if !(150..=600).contains(&value) {
         return invalid_input("double click speed must be 150-600 ms");
@@ -397,4 +416,73 @@ pub fn load_double_click_ms() -> ApiResult<Option<i64>> {
         }
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::store_rclone_path;
+    use crate::commands::cloud::{
+        cloud_dir_listing_cache_contains_for_tests,
+        cloud_remote_discovery_cache_is_populated_for_tests,
+        path::CloudPath,
+        store_cloud_dir_listing_cache_entry_for_tests,
+        store_cloud_remote_discovery_cache_entry_for_tests,
+        types::{CloudCapabilities, CloudProviderKind, CloudRemote},
+    };
+    use std::{
+        ffi::OsString,
+        fs,
+        path::PathBuf,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
+    struct TempDataHomeGuard {
+        previous: Option<OsString>,
+        dir: PathBuf,
+    }
+
+    impl Drop for TempDataHomeGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => std::env::set_var("XDG_DATA_HOME", value),
+                None => std::env::remove_var("XDG_DATA_HOME"),
+            }
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn temp_data_home_guard() -> TempDataHomeGuard {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let dir = std::env::temp_dir().join(format!(
+            "browsey-settings-test-data-{}-{}",
+            std::process::id(),
+            NEXT_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&dir).expect("create temp data dir");
+        let previous = std::env::var_os("XDG_DATA_HOME");
+        std::env::set_var("XDG_DATA_HOME", &dir);
+        TempDataHomeGuard { previous, dir }
+    }
+
+    #[test]
+    fn store_rclone_path_invalidates_cloud_caches() {
+        let _data_home = temp_data_home_guard();
+        let path = CloudPath::parse("rclone://work/docs").expect("cloud path");
+        store_cloud_remote_discovery_cache_entry_for_tests(vec![CloudRemote {
+            id: "work".to_string(),
+            label: "Work".to_string(),
+            provider: CloudProviderKind::Onedrive,
+            root_path: "rclone://work".to_string(),
+            capabilities: CloudCapabilities::v1_core_rw(),
+        }]);
+        store_cloud_dir_listing_cache_entry_for_tests(&path, Vec::new());
+
+        assert!(cloud_remote_discovery_cache_is_populated_for_tests());
+        assert!(cloud_dir_listing_cache_contains_for_tests(&path));
+
+        store_rclone_path("/usr/bin/rclone-does-not-exist".to_string()).expect("store rclone path");
+
+        assert!(!cloud_remote_discovery_cache_is_populated_for_tests());
+        assert!(!cloud_dir_listing_cache_contains_for_tests(&path));
+    }
 }

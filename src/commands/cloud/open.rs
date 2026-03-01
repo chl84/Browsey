@@ -1,4 +1,5 @@
 use super::{
+    configured_rclone_provider,
     error::{CloudCommandError, CloudCommandErrorCode, CloudCommandResult},
     limits::with_cloud_remote_permits,
     map_spawn_result, parse_cloud_path_arg,
@@ -128,7 +129,8 @@ fn materialize_and_open_cloud_file(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> CloudCommandResult<()> {
-    let provider = RcloneCloudProvider::default();
+    let provider = configured_rclone_provider()
+        .map_err(|error| CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error))?;
     let entry = provider.stat_path(path)?.ok_or_else(|| {
         CloudCommandError::new(
             CloudCommandErrorCode::NotFound,

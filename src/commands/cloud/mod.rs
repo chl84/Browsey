@@ -11,6 +11,7 @@ pub mod path;
 pub mod provider;
 pub mod providers;
 pub mod rclone_cli;
+mod rclone_path;
 pub mod rclone_rc;
 pub mod types;
 mod write;
@@ -21,6 +22,9 @@ use cache::list_cloud_remotes_cached;
 pub(crate) use error::CloudCommandError;
 use error::{map_api_result, CloudCommandErrorCode, CloudCommandResult};
 use path::CloudPath;
+#[cfg(test)]
+pub(crate) use rclone_path::set_rclone_path_override_for_tests;
+pub(crate) use rclone_path::{configured_rclone_cli, configured_rclone_provider};
 use tracing::warn;
 use types::{CloudConflictInfo, CloudEntry, CloudProviderKind, CloudRemote, CloudRootSelection};
 
@@ -43,6 +47,13 @@ pub(crate) fn invalidate_cloud_write_paths(paths: &[CloudPath]) {
     cache::invalidate_cloud_dir_listing_cache_for_write_paths(paths);
 }
 
+pub(crate) fn invalidate_cloud_caches_for_backend_change() {
+    cache::invalidate_all_cloud_caches();
+    if let Err(error) = rclone_rc::reset_backend_state() {
+        warn!(error = %error, "failed to reset rclone backend state after config change");
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn store_cloud_dir_listing_cache_entry_for_tests(
     path: &CloudPath,
@@ -54,6 +65,16 @@ pub(crate) fn store_cloud_dir_listing_cache_entry_for_tests(
 #[cfg(test)]
 pub(crate) fn cloud_dir_listing_cache_contains_for_tests(path: &CloudPath) -> bool {
     cache::cloud_dir_listing_cache_contains_for_tests(path)
+}
+
+#[cfg(test)]
+pub(crate) fn store_cloud_remote_discovery_cache_entry_for_tests(remotes: Vec<CloudRemote>) {
+    cache::store_cloud_remote_discovery_cache_entry_for_tests(remotes);
+}
+
+#[cfg(test)]
+pub(crate) fn cloud_remote_discovery_cache_is_populated_for_tests() -> bool {
+    cache::cloud_remote_discovery_cache_is_populated_for_tests()
 }
 
 pub(crate) fn list_cloud_remotes_sync_best_effort(force_refresh: bool) -> Vec<CloudRemote> {

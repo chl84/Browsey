@@ -7,7 +7,9 @@ use super::rclone_cli::{RcloneCliError, RcloneSubcommand};
 use client::run_rc_command_via_socket;
 #[cfg(test)]
 pub(crate) use daemon::reset_state_for_tests;
-pub use daemon::{begin_shutdown_and_kill_daemon, health_snapshot, RcloneRcHealth};
+pub use daemon::{
+    begin_shutdown_and_kill_daemon, health_snapshot, reset_backend_state, RcloneRcHealth,
+};
 use daemon::{rc_read_enabled, rc_write_enabled, should_recycle_daemon_after_error};
 #[cfg(test)]
 use jobs::ForcedAsyncStatusErrorState;
@@ -189,8 +191,7 @@ impl Default for RcloneRcClient {
 }
 
 impl RcloneRcClient {
-    #[cfg(test)]
-    pub fn new(binary: impl Into<OsString>) -> Self {
+    pub(crate) fn with_binary(binary: impl Into<OsString>) -> Self {
         Self {
             binary: binary.into(),
             read_enabled_override: None,
@@ -198,6 +199,11 @@ impl RcloneRcClient {
             #[cfg(test)]
             forced_async_status_error: None,
         }
+    }
+
+    #[cfg(test)]
+    pub fn new(binary: impl Into<OsString>) -> Self {
+        Self::with_binary(binary)
     }
 
     pub fn is_enabled(&self) -> bool {

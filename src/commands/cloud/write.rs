@@ -1,7 +1,7 @@
 use super::{
-    cache::invalidate_cloud_dir_listing_cache_for_write_paths, error::CloudCommandResult,
-    limits::with_cloud_remote_permits, map_spawn_result, parse_cloud_path_arg,
-    provider::CloudProvider, providers::rclone::RcloneCloudProvider, register_cloud_cancel,
+    cache::invalidate_cloud_dir_listing_cache_for_write_paths, configured_rclone_provider,
+    error::CloudCommandResult, limits::with_cloud_remote_permits, map_spawn_result,
+    parse_cloud_path_arg, provider::CloudProvider, register_cloud_cancel,
 };
 use crate::tasks::CancelState;
 use std::time::Instant;
@@ -21,7 +21,12 @@ pub(super) async fn create_cloud_folder_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
-            let provider = RcloneCloudProvider::default();
+            let provider = configured_rclone_provider().map_err(|error| {
+                super::error::CloudCommandError::new(
+                    super::error::CloudCommandErrorCode::InvalidConfig,
+                    error,
+                )
+            })?;
             provider.mkdir(&path, cancel_token.as_deref())
         })
     });
@@ -69,7 +74,12 @@ pub(super) async fn delete_cloud_file_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
-            let provider = RcloneCloudProvider::default();
+            let provider = configured_rclone_provider().map_err(|error| {
+                super::error::CloudCommandError::new(
+                    super::error::CloudCommandErrorCode::InvalidConfig,
+                    error,
+                )
+            })?;
             provider.delete_file(&path, cancel_token.as_deref())
         })
     });
@@ -109,7 +119,12 @@ pub(super) async fn delete_cloud_dir_recursive_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
-            let provider = RcloneCloudProvider::default();
+            let provider = configured_rclone_provider().map_err(|error| {
+                super::error::CloudCommandError::new(
+                    super::error::CloudCommandErrorCode::InvalidConfig,
+                    error,
+                )
+            })?;
             provider.delete_dir_recursive(&path, cancel_token.as_deref())
         })
     });
@@ -149,7 +164,12 @@ pub(super) async fn delete_cloud_dir_empty_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
-            let provider = RcloneCloudProvider::default();
+            let provider = configured_rclone_provider().map_err(|error| {
+                super::error::CloudCommandError::new(
+                    super::error::CloudCommandErrorCode::InvalidConfig,
+                    error,
+                )
+            })?;
             provider.delete_dir_empty(&path, cancel_token.as_deref())
         })
     });
@@ -194,7 +214,12 @@ pub(super) async fn move_cloud_entry_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(remotes, || {
-            let provider = RcloneCloudProvider::default();
+            let provider = configured_rclone_provider().map_err(|error| {
+                super::error::CloudCommandError::new(
+                    super::error::CloudCommandErrorCode::InvalidConfig,
+                    error,
+                )
+            })?;
             provider.move_entry(&src, &dst, overwrite, prechecked, cancel_token.as_deref())
         })
     });
@@ -245,7 +270,12 @@ pub(super) async fn copy_cloud_entry_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(remotes, || {
-            let provider = RcloneCloudProvider::default();
+            let provider = configured_rclone_provider().map_err(|error| {
+                super::error::CloudCommandError::new(
+                    super::error::CloudCommandErrorCode::InvalidConfig,
+                    error,
+                )
+            })?;
             provider.copy_entry(&src, &dst, overwrite, prechecked, cancel_token.as_deref())
         })
     });
