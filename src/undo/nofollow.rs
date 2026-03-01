@@ -22,7 +22,10 @@ use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS};
 use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
 
 fn embedded_undo_error(error: &std::io::Error) -> Option<UndoError> {
-    if let Some(undo_error) = error.get_ref().and_then(|inner| inner.downcast_ref::<UndoError>()) {
+    if let Some(undo_error) = error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<UndoError>())
+    {
         return Some(undo_error.clone());
     }
     if let Some(fs_utils_error) = error
@@ -40,7 +43,9 @@ fn map_delete_nofollow_error(path: &Path, error: std::io::Error) -> UndoError {
     }
     match error.kind() {
         ErrorKind::InvalidInput => UndoError::invalid_input(error.to_string()),
-        ErrorKind::NotFound => UndoError::not_found(format!("Failed to delete {}: {error}", path.display())),
+        ErrorKind::NotFound => {
+            UndoError::not_found(format!("Failed to delete {}: {error}", path.display()))
+        }
         ErrorKind::PermissionDenied => {
             UndoError::permission_denied(format!("Failed to delete {}: {error}", path.display()))
         }

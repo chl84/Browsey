@@ -1,9 +1,9 @@
-use std::fs;
 use super::nofollow::delete_entry_nofollow_io;
 use super::path_ops::{copy_entry, delete_entry_path, move_with_fallback};
 use super::{Action, Direction};
 use crate::undo::error::UndoErrorCode;
 use crate::undo::{UndoError, UndoResult};
+use std::fs;
 
 #[cfg(target_os = "windows")]
 use crate::fs_utils::check_no_symlink_components;

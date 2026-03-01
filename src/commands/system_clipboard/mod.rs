@@ -31,9 +31,10 @@ fn resolve_clipboard_bin<'a>(
     failure_code: SystemClipboardErrorCode,
 ) -> SystemClipboardResult<&'a PathBuf> {
     result.as_ref().map_err(|error| match error.code() {
-        BinaryResolverErrorCode::NotFound => {
-            SystemClipboardError::new(SystemClipboardErrorCode::ClipboardToolMissing, missing_message)
-        }
+        BinaryResolverErrorCode::NotFound => SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardToolMissing,
+            missing_message,
+        ),
         _ => SystemClipboardError::new(failure_code, error.to_string()),
     })
 }
