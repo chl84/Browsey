@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+- Settings completion and polish:
+  - `High contrast`, `Scrollbar width`, `Rclone path`, and `Log level` are now fully wired through persistence, runtime state, and app behavior.
+  - `Restore defaults` now resets persisted settings and shortcut bindings back to project defaults, and requires explicit confirmation before applying changes.
+  - `Hardware acceleration` now defaults to `off`, with a mild caution in Settings.
+  - `Clear cloud file cache` was added under Settings > Data for manually removing cached local copies of opened cloud files.
+- Shortcut and navigation updates:
+  - Added topbar back/forward buttons to the left of the address field.
+  - Added `Refresh` as a remappable shortcut with default `F5`.
+  - Changed the default `Rename` shortcut to `Ctrl+R`.
+  - Shortcut defaults and backend keymap metadata are now aligned so Settings reflects the real command set.
+- Sidebar and text field updates:
+  - Bookmark filtering is now scoped to the Bookmarks section only.
+  - The bookmark filter field is hidden by default and toggled from a search button in the Bookmarks header.
+  - Introduced a shared text field component for settings/sidebar inputs.
+  - `Esc` now blurs focused text-entry fields before propagating to broader modal/page escape behavior.
+- Scrolling and dropdown behavior:
+  - Wheel-scrolling behavior is now consistent across explorer list/grid views and modals.
+  - Shared combobox dropdowns now choose upward/downward opening dynamically based on available space, fixing bottom-of-modal clipping issues such as the `Log level` picker.
+
 ## v0.4.5 — 2026-02-26
 - Added rclone-backed cloud file support (Linux-first) with direct `rclone://...` paths and Network-view discovery for supported remotes (OneDrive primary target in v1, plus Google Drive/Nextcloud provider groundwork).
 - Added core cloud file operations via rclone (`list`, `mkdir`, `copy`, `move/rename`, `delete`) with provider-aware conflict preview, overwrite/auto-rename handling, and capability-driven UI restrictions for unsupported cloud actions.
@@ -9,6 +29,7 @@
 - Mixed local-to-cloud writes now invalidate cloud listing cache correctly, so successful uploads appear after refresh without stale cached listings hiding the result.
 - Recent view now prunes dead entries automatically and bounds slow network/GVFS metadata probes, reducing cases where an empty or mostly-stale Recent view opens slowly.
 - Explorer drag/drop now supports dropping entries onto bookmark targets in the sidebar, using the same copy/move routing and conflict behavior as breadcrumb drops.
+- Successful cloud/rclone operations now log at `debug` instead of `info` in release builds, reducing log noise in normal use.
 - Cloud UX/performance improvements: background refresh for cloud write operations, refresh coalescing, reduced conflict-preview metadata calls, cloud remote/listing caches with invalidation, bounded per-remote concurrency, and retry/backoff for transient metadata/listing failures.
 - Cloud routing hardening: `rclone://` paths no longer enter local FS/undo/GVFS paths, cloud sorting avoids remote reloads on column-sort clicks, and breadcrumbs/direct navigation now handle `rclone://` paths correctly.
 - Added cloud-specific UX polish: indeterminate activity indicator for operations without meaningful byte progress, session-only manual-refresh hint for cloud folders, and corrected activity labels (`Copying` vs `Moving`) across paste/drag flows.

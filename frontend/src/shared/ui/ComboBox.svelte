@@ -23,6 +23,9 @@
   let searchQuery = ''
   let filteredOptions: ComboOption[] = []
   let selectedOption: ComboOption | undefined
+  let listWrapEl: HTMLDivElement | null = null
+  let openDirection: 'down' | 'up' = 'down'
+  let listMaxHeight = 240
 
   $: selectedOption = options.find((o) => o.value === value)
   $: {
@@ -54,12 +57,31 @@
     void tick().then(() => searchInputEl?.focus())
   }
 
+  const updateDropdownPlacement = () => {
+    if (!open || !rootEl || !listWrapEl) return
+    const triggerRect = rootEl.getBoundingClientRect()
+    const wrapRect = listWrapEl.getBoundingClientRect()
+    const viewportHeight = window.innerHeight
+    const gap = 2
+    const searchHeight = searchable ? 42 : 0
+    const minListHeight = 80
+    const spaceAbove = Math.max(0, triggerRect.top - gap)
+    const spaceBelow = Math.max(0, viewportHeight - triggerRect.bottom - gap)
+    const preferredDirection =
+      spaceBelow >= wrapRect.height || spaceBelow >= spaceAbove ? 'down' : 'up'
+
+    openDirection = preferredDirection
+    const availableSpace = preferredDirection === 'down' ? spaceBelow : spaceAbove
+    listMaxHeight = Math.max(minListHeight, Math.min(240, availableSpace - searchHeight - 8))
+  }
+
   const openDropdown = () => {
     if (disabled) return
     searchQuery = ''
     open = true
     highlighted = currentIndex()
     focusSearchInput()
+    void tick().then(() => updateDropdownPlacement())
   }
 
   const closeDropdown = () => {
@@ -141,16 +163,21 @@
 
   onMount(() => {
     document.addEventListener('mousedown', onOutside, true)
+    window.addEventListener('resize', updateDropdownPlacement)
+    window.addEventListener('scroll', updateDropdownPlacement, true)
   })
 
   onDestroy(() => {
     document.removeEventListener('mousedown', onOutside, true)
+    window.removeEventListener('resize', updateDropdownPlacement)
+    window.removeEventListener('scroll', updateDropdownPlacement, true)
   })
 </script>
 
 <div
   class="combo"
   data-open={open}
+  data-direction={openDirection}
   class:disabled={disabled}
   bind:this={rootEl}
 >
@@ -174,7 +201,7 @@
   </button>
 
   {#if open}
-    <div class="combo-list-wrap">
+    <div class="combo-list-wrap" bind:this={listWrapEl}>
       {#if searchable}
         <div class="combo-search-wrap">
           <input
@@ -188,7 +215,7 @@
         </div>
       {/if}
 
-      <ul class="combo-list" role="listbox" tabindex="-1">
+      <ul class="combo-list" role="listbox" tabindex="-1" style={`max-height: ${listMaxHeight}px;`}>
         {#if filteredOptions.length === 0}
           <li class="empty">
             {searchable && searchQuery.trim().length > 0 ? noMatchesLabel : emptyLabel}
