@@ -5,6 +5,7 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 use tauri::{Emitter, Manager};
+use tracing::debug;
 
 #[derive(Default)]
 pub struct RuntimeLifecycle {
@@ -122,10 +123,17 @@ pub fn emit_if_running<R: tauri::Runtime, S: serde::Serialize + Clone>(
     payload: S,
 ) -> bool {
     if is_shutting_down(app) {
+        debug!(event, "dropping runtime event during shutdown");
         return false;
     }
     // Best effort by design: during shutdown or transient frontend teardown we
     // prefer dropping the event over turning coordination helpers into
     // fallible plumbing everywhere.
-    app.emit(event, payload).is_ok()
+    match app.emit(event, payload) {
+        Ok(()) => true,
+        Err(error) => {
+            debug!(event, %error, "failed to emit runtime event");
+            false
+        }
+    }
 }

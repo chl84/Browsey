@@ -30,6 +30,7 @@ use once_cell::sync::OnceCell;
 use runtime_lifecycle::RuntimeLifecycle;
 use statusbar::dir_sizes;
 use tauri::Manager;
+use tracing::{debug, warn};
 use undo::{redo_action, undo_action, UndoState};
 use watcher::WatchState;
 
@@ -328,13 +329,25 @@ fn main() {
         if let tauri::RunEvent::Exit = event {
             runtime_lifecycle::begin_shutdown_from_app(app_handle);
             if let Some(cancel) = app_handle.try_state::<CancelState>() {
-                let _ = cancel.cancel_all();
+                if let Err(error) = cancel.cancel_all() {
+                    warn!(%error, "failed to cancel running tasks during shutdown");
+                }
             }
             if let Some(watch) = app_handle.try_state::<WatchState>() {
-                let _ = watch.stop_all();
+                if let Err(error) = watch.stop_all() {
+                    warn!(%error, "failed to stop file watchers during shutdown");
+                }
             }
-            let _ = commands::cloud::rclone_rc::begin_shutdown_and_kill_daemon();
-            let _ = commands::cloud::rclone_cli::begin_shutdown_and_kill_children();
+            if let Err(error) = commands::cloud::rclone_rc::begin_shutdown_and_kill_daemon() {
+                warn!(%error, "failed to stop rclone rc daemon during shutdown");
+            }
+            let killed_children = commands::cloud::rclone_cli::begin_shutdown_and_kill_children();
+            if killed_children > 0 {
+                debug!(
+                    killed_children,
+                    "killed lingering rclone child processes during shutdown"
+                );
+            }
             runtime_lifecycle::wait_for_background_jobs_from_app(
                 app_handle,
                 std::time::Duration::from_millis(250),

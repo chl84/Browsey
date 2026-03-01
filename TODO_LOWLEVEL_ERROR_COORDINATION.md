@@ -90,20 +90,23 @@ Status note:
 ## 4. Tasks / Runtime / Watcher
 
 - [ ] Add `src/watcher_error.rs` only if watcher is expanded further; otherwise keep current inline error type but standardize behavior
-- [ ] Define one explicit policy for coordination-layer failures:
+- [x] Define one explicit policy for coordination-layer failures:
   - shutdown-time emit failures
   - poisoned locks
   - cleanup/drop failures
   - watcher replacement failures
 - [ ] Remove `expect(...)` from coordination state where failure should stay recoverable
-- [ ] Decide which failures are intentionally best-effort and document that in code comments where needed
-- [ ] Ensure helper APIs do not silently swallow operationally relevant failures unless best-effort is deliberate
+- [x] Decide which failures are intentionally best-effort and document that in code comments where needed
+- [x] Ensure helper APIs do not silently swallow operationally relevant failures unless best-effort is deliberate
 
 Status note:
 - [x] `src/watcher.rs` no longer uses `expect(...)` for watcher-state locking
 - [x] watcher replacement/stop paths now return typed `WatcherResult<_>` and callers map them explicitly where relevant
 - [x] best-effort behavior is now documented in `src/runtime_lifecycle.rs`, `src/tasks/mod.rs`, and watcher callback emits
-- [ ] broader coordination policy is improved but not yet fully unified across every caller and helper
+- [x] `src/runtime_lifecycle.rs` now logs dropped emit failures at the helper boundary instead of silently returning `false`
+- [x] `src/main.rs` shutdown cleanup now logs recoverable cancel/watcher/rclone teardown failures explicitly
+- [x] `src/commands/network/mounts.rs` now uses the shared runtime emit helper instead of raw `app.emit(...)`
+- [ ] broader coordination policy is improved, but `src/watcher_error.rs` is still intentionally inline and not split out
 
 ## Quality Gates
 
