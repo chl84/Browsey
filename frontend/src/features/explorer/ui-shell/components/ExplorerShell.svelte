@@ -296,6 +296,8 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     activity: typeof activity
     onFocus: typeof onFocus
     onBlur: typeof onBlur
+    onGoBack: () => void | Promise<void>
+    onGoForward: () => void | Promise<void>
     onSubmitPath: typeof onSubmitPath
     onSearch: typeof onSearch
     onExitSearch: typeof onExitSearch
@@ -504,6 +506,8 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     activity,
     onFocus,
     onBlur,
+    onGoBack,
+    onGoForward,
     onSubmitPath,
     onSearch,
     onExitSearch,
@@ -716,6 +720,8 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
         {activity}
         onFocus={onFocus}
         onBlur={onBlur}
+        onGoBack={onGoBack}
+        onGoForward={onGoForward}
         onSubmitPath={onSubmitPath}
         onSearch={onSearch}
         onExitSearch={onExitSearch}

@@ -1640,6 +1640,8 @@
     activity: $activity,
     handleInputFocus,
     handleInputBlur,
+    goBack,
+    goForward,
     submitPath,
     submitSearch,
     transitionToAddressMode,

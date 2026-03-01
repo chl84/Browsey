@@ -26,6 +26,8 @@ type Params = {
   activity: any
   handleInputFocus: AnyFn
   handleInputBlur: AnyFn
+  goBack: AnyFn
+  goForward: AnyFn
   submitPath: AnyFn
   submitSearch: AnyFn
   transitionToAddressMode: AnyFn
@@ -160,6 +162,8 @@ export const createExplorerShellProps = (p: Params) => ({
     activity: p.activity,
     onFocus: p.handleInputFocus,
     onBlur: p.handleInputBlur,
+    onGoBack: () => void p.goBack(),
+    onGoForward: () => void p.goForward(),
     onSubmitPath: p.submitPath,
     onSearch: p.submitSearch,
     onExitSearch: () => void p.transitionToAddressMode({ path: p.currentPathValue, blur: true }),
