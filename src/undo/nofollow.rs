@@ -21,9 +21,22 @@ use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
 
+fn embedded_undo_error(error: &std::io::Error) -> Option<UndoError> {
+    if let Some(undo_error) = error.get_ref().and_then(|inner| inner.downcast_ref::<UndoError>()) {
+        return Some(undo_error.clone());
+    }
+    if let Some(fs_utils_error) = error
+        .get_ref()
+        .and_then(|inner| inner.downcast_ref::<crate::fs_utils::FsUtilsError>())
+    {
+        return Some(UndoError::from(fs_utils_error.clone()));
+    }
+    None
+}
+
 fn map_delete_nofollow_error(path: &Path, error: std::io::Error) -> UndoError {
-    if error.to_string() == "Symlinks are not allowed" {
-        return UndoError::symlink_unsupported(path);
+    if let Some(undo_error) = embedded_undo_error(&error) {
+        return undo_error;
     }
     match error.kind() {
         ErrorKind::InvalidInput => UndoError::invalid_input(error.to_string()),
@@ -33,6 +46,30 @@ fn map_delete_nofollow_error(path: &Path, error: std::io::Error) -> UndoError {
         }
         ErrorKind::Unsupported => UndoError::unsupported_operation(error.to_string()),
         _ => UndoError::from_io_error(format!("Failed to delete {}", path.display()), error),
+    }
+}
+
+fn map_rename_nofollow_error(src: &Path, dst: &Path, error: std::io::Error) -> UndoError {
+    if let Some(undo_error) = embedded_undo_error(&error) {
+        return undo_error;
+    }
+    match error.kind() {
+        ErrorKind::InvalidInput => UndoError::invalid_input(error.to_string()),
+        ErrorKind::AlreadyExists => {
+            UndoError::target_exists(format!("Destination already exists: {}", dst.display()))
+        }
+        ErrorKind::Unsupported => UndoError::atomic_rename_unsupported(error.to_string()),
+        _ if matches!(error.raw_os_error(), Some(17) | Some(18)) => {
+            UndoError::cross_device_move(format!(
+                "Failed to rename {} -> {}: {error}",
+                src.display(),
+                dst.display()
+            ))
+        }
+        _ => UndoError::from_io_error(
+            format!("Failed to rename {} -> {}", src.display(), dst.display()),
+            error,
+        ),
     }
 }
 
@@ -97,7 +134,7 @@ fn rename_noreplace_unsupported_error(code: Option<i32>) -> std::io::Error {
 }
 
 #[cfg(all(unix, target_os = "linux"))]
-pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
+fn rename_nofollow_raw(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
     if absolute_path(src)? == absolute_path(dst)? {
         return Ok(());
     }
@@ -107,7 +144,7 @@ pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::
 
     let src_stat = fstatat_nofollow(src_parent_fd.as_raw_fd(), &src_name)?;
     if (src_stat.st_mode & libc::S_IFMT) == libc::S_IFLNK {
-        return Err(std::io::Error::other("Symlinks are not allowed"));
+        return Err(std::io::Error::other(UndoError::symlink_unsupported(src)));
     }
 
     let rc = unsafe {
@@ -139,7 +176,7 @@ pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::
 }
 
 #[cfg(target_os = "windows")]
-pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
+fn rename_nofollow_raw(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
     if src == dst {
         return Ok(());
     }
@@ -147,10 +184,7 @@ pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::
     // Validate source without following symlinks/reparse points via metadata.
     let src_meta = fs::symlink_metadata(src)?;
     if src_meta.file_type().is_symlink() {
-        return Err(std::io::Error::new(
-            ErrorKind::Other,
-            "Symlinks are not allowed",
-        ));
+        return Err(std::io::Error::other(UndoError::symlink_unsupported(src)));
     }
 
     let src_wide: Vec<u16> = src
@@ -182,7 +216,7 @@ pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::
 }
 
 #[cfg(all(unix, not(target_os = "linux")))]
-pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
+fn rename_nofollow_raw(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
     let _ = (src, dst);
     Err(std::io::Error::new(
         ErrorKind::Unsupported,
@@ -191,12 +225,16 @@ pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::
 }
 
 #[cfg(not(any(unix, target_os = "windows")))]
-pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
+fn rename_nofollow_raw(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
     let _ = (src, dst);
     Err(std::io::Error::new(
         ErrorKind::Unsupported,
         "RENAME_NOREPLACE is unavailable on this platform",
     ))
+}
+
+pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> UndoResult<()> {
+    rename_nofollow_raw(src, dst).map_err(|error| map_rename_nofollow_error(src, dst, error))
 }
 
 #[cfg(all(unix, target_os = "linux"))]
@@ -285,7 +323,10 @@ fn delete_dir_recursive_at(parent_fd: libc::c_int, name: &CString) -> Result<(),
         };
         let mode = child_stat.st_mode & libc::S_IFMT;
         if mode == libc::S_IFLNK {
-            return Err(std::io::Error::other("Symlinks are not allowed"));
+            return Err(std::io::Error::other(UndoError::new(
+                crate::undo::error::UndoErrorCode::SymlinkUnsupported,
+                "Symlinks are not allowed",
+            )));
         }
         if mode == libc::S_IFDIR {
             delete_dir_recursive_at(child_fd.as_raw_fd(), &child_name)?;
@@ -307,7 +348,7 @@ fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
     let stat = fstatat_nofollow(parent_fd.as_raw_fd(), &name)?;
     let mode = stat.st_mode & libc::S_IFMT;
     if mode == libc::S_IFLNK {
-        return Err(std::io::Error::other("Symlinks are not allowed"));
+        return Err(std::io::Error::other(UndoError::symlink_unsupported(path)));
     }
     if mode == libc::S_IFDIR {
         delete_dir_recursive_at(parent_fd.as_raw_fd(), &name)
@@ -318,13 +359,10 @@ fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
 
 #[cfg(not(all(unix, target_os = "linux")))]
 fn metadata_nofollow_path(path: &Path) -> Result<fs::Metadata, std::io::Error> {
-    check_no_symlink_components(path).map_err(|e| std::io::Error::new(ErrorKind::Other, e))?;
+    check_no_symlink_components(path).map_err(std::io::Error::other)?;
     let meta = fs::symlink_metadata(path)?;
     if meta.file_type().is_symlink() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Symlinks are not allowed",
-        ));
+        return Err(std::io::Error::other(UndoError::symlink_unsupported(path)));
     }
     Ok(meta)
 }
