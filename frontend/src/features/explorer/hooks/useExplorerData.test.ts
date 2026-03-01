@@ -44,6 +44,7 @@ describe('useExplorerData cloud refresh event', () => {
     const entries = writable([])
     const mountsPollMs = writable(0)
     const highContrast = writable(false)
+    const scrollbarWidth = writable(10)
     const startDirPref = writable<string | null>(null)
     const loadMock = vi.fn(async (path?: string) => {
       if (path) {
@@ -61,6 +62,7 @@ describe('useExplorerData cloud refresh event', () => {
       loadShowHiddenPref: asyncNoop,
       loadHiddenFilesLastPref: asyncNoop,
       loadHighContrastPref: asyncNoop,
+      loadScrollbarWidthPref: asyncNoop,
       loadFoldersFirstPref: asyncNoop,
       loadStartDirPref: asyncNoop,
       loadConfirmDeletePref: asyncNoop,
@@ -77,11 +79,12 @@ describe('useExplorerData cloud refresh event', () => {
       entries,
       current,
       highContrast,
+      scrollbarWidth,
       startDirPref,
       invalidateFacetCache: vi.fn(),
     })
 
-    return { loadMock, current, highContrast }
+    return { loadMock, current, highContrast, scrollbarWidth }
   }
 
   it('reloads the active cloud directory when background refresh completes', async () => {
@@ -134,6 +137,22 @@ describe('useExplorerData cloud refresh event', () => {
     highContrast.set(true)
     await vi.waitFor(() => {
       expect(document.documentElement.dataset.highContrast).toBe('true')
+    })
+  })
+
+  it('applies the scrollbar width root hook from explorer state', async () => {
+    const { scrollbarWidth } = installExplorerStateMock('~')
+
+    document.documentElement.style.removeProperty('--scrollbar-size')
+    useExplorerData()
+
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--scrollbar-size')).toBe('10px')
+    })
+
+    scrollbarWidth.set(16)
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--scrollbar-size')).toBe('16px')
     })
   })
 })

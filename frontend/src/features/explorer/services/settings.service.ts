@@ -94,3 +94,8 @@ export const loadDoubleClickMs = () => invoke<number | null>('load_double_click_
 
 export const storeDoubleClickMs = (value: number) =>
   invoke<void>('store_double_click_ms', { value })
+
+export const loadScrollbarWidth = () => invoke<number | null>('load_scrollbar_width')
+
+export const storeScrollbarWidth = (value: number) =>
+  invoke<void>('store_scrollbar_width', { value })

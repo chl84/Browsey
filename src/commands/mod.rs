@@ -68,13 +68,13 @@ pub use settings::{
     load_archive_level, load_archive_name, load_confirm_delete, load_default_view, load_density,
     load_double_click_ms, load_ffmpeg_path, load_folders_first, load_hardware_acceleration,
     load_hidden_files_last, load_high_contrast, load_mounts_poll_ms, load_open_dest_after_extract,
-    load_saved_column_widths, load_show_hidden, load_sort_direction, load_sort_field,
+    load_saved_column_widths, load_scrollbar_width, load_show_hidden, load_sort_direction, load_sort_field,
     load_start_dir, load_thumb_cache_mb, load_video_thumbs, store_archive_level,
     store_archive_name, store_column_widths, store_confirm_delete, store_default_view,
     store_density, store_double_click_ms, store_ffmpeg_path, store_folders_first,
     store_hardware_acceleration, store_hidden_files_last, store_high_contrast,
-    store_mounts_poll_ms, store_open_dest_after_extract, store_show_hidden, store_sort_direction,
-    store_sort_field, store_start_dir, store_thumb_cache_mb, store_video_thumbs,
+    store_mounts_poll_ms, store_open_dest_after_extract, store_scrollbar_width, store_show_hidden,
+    store_sort_direction, store_sort_field, store_start_dir, store_thumb_cache_mb, store_video_thumbs,
 };
 pub use system_clipboard::clear_system_clipboard;
 pub use system_clipboard::copy_paths_to_system_clipboard;

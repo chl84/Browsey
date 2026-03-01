@@ -113,6 +113,7 @@ export const createExplorerStores = () => {
   const thumbCacheMb = writable<number>(300)
   const mountsPollMs = writable<number>(8000)
   const doubleClickMs = writable<number>(300)
+  const scrollbarWidth = writable<number>(10)
   const bookmarks = writable<{ label: string; path: string }[]>([])
   const partitions = writable<Partition[]>([])
   const history = writable<Location[]>([])
@@ -148,6 +149,7 @@ export const createExplorerStores = () => {
     thumbCacheMb,
     mountsPollMs,
     doubleClickMs,
+    scrollbarWidth,
     bookmarks,
     partitions,
     history,

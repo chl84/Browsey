@@ -348,6 +348,32 @@ pub fn load_hardware_acceleration() -> ApiResult<Option<bool>> {
 }
 
 #[tauri::command]
+pub fn store_scrollbar_width(value: i64) -> ApiResult<()> {
+    if !(6..=16).contains(&value) {
+        return invalid_input("scrollbar width must be 6-16 px");
+    }
+    let conn = open_connection()?;
+    map_settings_result(crate::db::set_setting_string(
+        &conn,
+        "scrollbarWidth",
+        &value.to_string(),
+    ))
+}
+
+#[tauri::command]
+pub fn load_scrollbar_width() -> ApiResult<Option<i64>> {
+    let conn = open_connection()?;
+    if let Some(s) = map_settings_result(crate::db::get_setting_string(&conn, "scrollbarWidth"))? {
+        if let Ok(n) = s.parse::<i64>() {
+            if (6..=16).contains(&n) {
+                return Ok(Some(n));
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[tauri::command]
 pub fn store_double_click_ms(value: i64) -> ApiResult<()> {
     if !(150..=600).contains(&value) {
         return invalid_input("double click speed must be 150-600 ms");
