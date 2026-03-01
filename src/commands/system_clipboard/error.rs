@@ -69,6 +69,10 @@ impl SystemClipboardError {
         );
         Self::new(code, message)
     }
+
+    pub(super) fn invalid_input(message: impl Into<String>) -> Self {
+        Self::new(SystemClipboardErrorCode::InvalidInput, message)
+    }
 }
 
 impl fmt::Display for SystemClipboardError {
