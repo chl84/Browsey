@@ -129,8 +129,9 @@ fn materialize_and_open_cloud_file(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> CloudCommandResult<()> {
-    let provider = configured_rclone_provider()
-        .map_err(|error| CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error))?;
+    let provider = configured_rclone_provider().map_err(|error| {
+        CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
+    })?;
     let entry = provider.stat_path(path)?.ok_or_else(|| {
         CloudCommandError::new(
             CloudCommandErrorCode::NotFound,

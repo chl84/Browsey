@@ -65,8 +65,9 @@ pub(crate) fn list_cloud_remotes_cached(
         }
     }
 
-    let provider = configured_rclone_provider()
-        .map_err(|error| CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error))?;
+    let provider = configured_rclone_provider().map_err(|error| {
+        CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
+    })?;
     let remotes = provider.list_remotes()?;
     if let Ok(mut guard) = cloud_remote_discovery_cache().lock() {
         *guard = Some(CachedCloudRemoteDiscovery {
@@ -317,8 +318,9 @@ fn list_cloud_dir_with_retry(path: &CloudPath) -> CloudCommandResult<Vec<CloudEn
     let permit_started = Instant::now();
     let guard = acquire_cloud_remote_permits(vec![path.remote().to_string()]);
     let permit_wait_ms = permit_started.elapsed().as_millis() as u64;
-    let provider = configured_rclone_provider()
-        .map_err(|error| CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error))?;
+    let provider = configured_rclone_provider().map_err(|error| {
+        CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
+    })?;
     let fetch_started = Instant::now();
     let mut attempt = 0usize;
     loop {
