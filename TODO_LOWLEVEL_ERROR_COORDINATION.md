@@ -38,6 +38,7 @@ Status note:
 - [x] fallback move cleanup in `path_ops.rs` now preserves the original delete failure code when adding context
 - [x] `error.rs` no longer relies on generic `From<String>`/`From<&str>` conversions, and `FsUtilsError` now maps to `UndoError` by stable code
 - [x] `nofollow.rs` now exposes typed deletion results at its public low-level seam, and `engine.rs` / `path_ops.rs` consume them by `UndoErrorCode`
+- [x] `nofollow.rs` delete mapping now preserves symlink/invalid-input semantics instead of collapsing them into generic `io_error`
 - [x] `security.rs` now centralizes typed symlink/metadata validation and uses typed Win32 failure mapping for DACL reads
 - [ ] `security.rs` and `nofollow.rs` still contain the largest remaining platform-specific stringly typed control flow
 
