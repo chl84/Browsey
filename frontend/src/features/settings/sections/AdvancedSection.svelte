@@ -9,6 +9,7 @@
   export let settings: Settings
   export let onPatch: (patch: Partial<Settings>) => void = () => {}
   export let onChangeRclonePath: (value: string) => void = () => {}
+  export let onChangeLogLevel: (value: Settings['logLevel']) => void = () => {}
 </script>
 
 {#if show}
@@ -36,7 +37,11 @@
     <div class="form-control">
       <ComboBox
         value={settings.logLevel}
-        on:change={(e) => onPatch({ logLevel: e.detail as Settings['logLevel'] })}
+        on:change={(e) => {
+          const next = e.detail as Settings['logLevel']
+          onPatch({ logLevel: next })
+          onChangeLogLevel(next)
+        }}
         options={[
           { value: 'error', label: 'Error' },
           { value: 'warn', label: 'Warn' },

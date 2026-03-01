@@ -95,6 +95,12 @@ export const loadDoubleClickMs = () => invoke<number | null>('load_double_click_
 export const storeDoubleClickMs = (value: number) =>
   invoke<void>('store_double_click_ms', { value })
 
+export const loadLogLevel = () =>
+  invoke<'error' | 'warn' | 'info' | 'debug' | null>('load_log_level')
+
+export const storeLogLevel = (value: 'error' | 'warn' | 'info' | 'debug') =>
+  invoke<void>('store_log_level', { value })
+
 export const loadScrollbarWidth = () => invoke<number | null>('load_scrollbar_width')
 
 export const storeScrollbarWidth = (value: number) =>

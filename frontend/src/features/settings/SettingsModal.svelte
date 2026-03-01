@@ -39,6 +39,7 @@
   export let thumbCacheMbValue = 300
   export let mountsPollMsValue = 8000
   export let doubleClickMsValue = 300
+  export let logLevelValue: Settings['logLevel'] = 'warn'
   export let scrollbarWidthValue = 10
   export let rclonePathValue = ''
   export let sortFieldValue: DefaultSortField = 'name'
@@ -64,6 +65,7 @@
   export let onChangeThumbCacheMb: (value: number) => void = () => {}
   export let onChangeMountsPollMs: (value: number) => void = () => {}
   export let onChangeDoubleClickMs: (value: number) => void = () => {}
+  export let onChangeLogLevel: (value: Settings['logLevel']) => void = () => {}
   export let onChangeScrollbarWidth: (value: number) => void = () => {}
   export let onChangeRclonePath: (value: string) => void = () => {}
   export let onClearThumbCache: () => Promise<void> | void = () => {}
@@ -171,6 +173,9 @@
   }
   $: if (settings.doubleClickMs !== doubleClickMsValue) {
     patchSettings({ doubleClickMs: doubleClickMsValue })
+  }
+  $: if (settings.logLevel !== logLevelValue) {
+    patchSettings({ logLevel: logLevelValue })
   }
   $: if (settings.scrollbarWidth !== scrollbarWidthValue) {
     patchSettings({ scrollbarWidth: scrollbarWidthValue })
@@ -340,6 +345,7 @@
           {settings}
           onPatch={patchSettings}
           {onChangeRclonePath}
+          {onChangeLogLevel}
         />
       </div>
     </div>

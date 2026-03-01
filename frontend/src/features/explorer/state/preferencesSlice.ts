@@ -6,6 +6,7 @@ import {
   loadConfirmDelete,
   loadDensity,
   loadDoubleClickMs,
+  loadLogLevel,
   loadFfmpegPath,
   loadFoldersFirst,
   loadHardwareAcceleration,
@@ -26,6 +27,7 @@ import {
   storeConfirmDelete,
   storeDensity,
   storeDoubleClickMs,
+  storeLogLevel,
   storeFfmpegPath,
   storeFoldersFirst,
   storeHardwareAcceleration,
@@ -65,6 +67,7 @@ type PreferenceSliceDeps = Pick<
   | 'thumbCacheMb'
   | 'mountsPollMs'
   | 'doubleClickMs'
+  | 'logLevel'
   | 'scrollbarWidth'
   | 'rclonePath'
   | 'density'
@@ -99,6 +102,7 @@ export const createPreferenceSlice = (
     thumbCacheMb,
     mountsPollMs,
     doubleClickMs,
+    logLevel,
     scrollbarWidth,
     rclonePath,
     density,
@@ -399,6 +403,11 @@ export const createPreferenceSlice = (
     void storeDoubleClickMs(clamped)
   }
 
+  const setLogLevelPref = (value: 'error' | 'warn' | 'info' | 'debug') => {
+    logLevel.set(value)
+    void storeLogLevel(value)
+  }
+
   const setScrollbarWidthPref = (value: number) => {
     const clamped = Math.min(16, Math.max(6, Math.round(value)))
     scrollbarWidth.set(clamped)
@@ -431,6 +440,17 @@ export const createPreferenceSlice = (
       }
     } catch (err) {
       console.error('Failed to load doubleClickMs setting', err)
+    }
+  }
+
+  const loadLogLevelPref = async () => {
+    try {
+      const saved = await loadLogLevel()
+      if (saved === 'error' || saved === 'warn' || saved === 'info' || saved === 'debug') {
+        logLevel.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load logLevel setting', err)
     }
   }
 
@@ -501,10 +521,12 @@ export const createPreferenceSlice = (
     setThumbCachePref,
     setMountsPollPref,
     setDoubleClickMsPref,
+    setLogLevelPref,
     setScrollbarWidthPref,
     setRclonePathPref,
     loadMountsPollPref,
     loadDoubleClickMsPref,
+    loadLogLevelPref,
     loadScrollbarWidthPref,
     loadRclonePathPref,
     loadFoldersFirstPref,

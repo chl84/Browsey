@@ -56,6 +56,16 @@ fn invalid_input<T>(message: &'static str) -> SettingsResult<T> {
     Err(SettingsError::invalid_input(message))
 }
 
+fn normalize_log_level(value: &str) -> Option<&'static str> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "error" => Some("error"),
+        "warn" => Some("warn"),
+        "info" => Some("info"),
+        "debug" => Some("debug"),
+        _ => None,
+    }
+}
+
 fn load_bounded_i64_setting(
     conn: &rusqlite::Connection,
     key: &str,
@@ -491,6 +501,37 @@ pub fn load_rclone_path() -> ApiResult<Option<String>> {
     map_api_result((|| -> SettingsResult<Option<String>> {
         let conn = open_connection()?;
         map_settings_result(crate::db::get_setting_string(&conn, "rclonePath"))
+    })())
+}
+
+#[tauri::command]
+pub fn store_log_level(value: String) -> ApiResult<()> {
+    map_api_result((|| -> SettingsResult<()> {
+        let normalized = match normalize_log_level(&value) {
+            Some(level) => level,
+            None => return invalid_input("invalid log level"),
+        };
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_string(
+            &conn,
+            "logLevel",
+            normalized,
+        ))?;
+        crate::apply_runtime_log_level(normalized)
+            .map_err(|error| SettingsError::new(error::SettingsErrorCode::UnknownError, error))?;
+        Ok(())
+    })())
+}
+
+#[tauri::command]
+pub fn load_log_level() -> ApiResult<Option<String>> {
+    map_api_result((|| -> SettingsResult<Option<String>> {
+        let conn = open_connection()?;
+        let value = map_settings_result(crate::db::get_setting_string(&conn, "logLevel"))?;
+        Ok(value
+            .as_deref()
+            .and_then(normalize_log_level)
+            .map(|level| level.to_string()))
     })())
 }
 

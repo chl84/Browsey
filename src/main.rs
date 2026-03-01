@@ -33,10 +33,13 @@ use runtime_lifecycle::RuntimeLifecycle;
 use statusbar::dir_sizes;
 use tauri::Manager;
 use tracing::{debug, warn};
+use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter};
 use undo::{redo_action, undo_action, UndoState};
 use watcher::WatchState;
 
 const MAX_LOG_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
+type LogFilterReloadHandle = reload::Handle<EnvFilter, tracing_subscriber::Registry>;
+static LOG_FILTER_HANDLE: OnceCell<LogFilterReloadHandle> = OnceCell::new();
 
 struct LocalTimestamp;
 
@@ -119,13 +122,19 @@ fn init_logging() {
     let (non_blocking, guard) =
         tracing_appender::non_blocking::NonBlockingBuilder::default().finish(writer);
     let _ = GUARD.set(guard);
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,usvg=error"));
-    let subscriber = tracing_subscriber::fmt()
+    let env_filter = std::env::var("RUST_LOG")
+        .ok()
+        .and_then(|value| EnvFilter::try_new(value).ok())
+        .unwrap_or_else(resolve_log_level_filter_from_settings);
+    let (env_filter_layer, reload_handle) = tracing_subscriber::reload::Layer::new(env_filter);
+    let _ = LOG_FILTER_HANDLE.set(reload_handle);
+    let fmt_layer = tracing_subscriber::fmt::layer()
         .with_timer(LocalTimestamp)
-        .with_env_filter(env_filter)
         .with_ansi(false)
         .with_writer(non_blocking);
+    let subscriber = tracing_subscriber::registry()
+        .with(env_filter_layer)
+        .with(fmt_layer);
     if let Err(e) = subscriber.try_init() {
         eprintln!("Failed to init tracing subscriber: {e}");
     }
@@ -136,6 +145,38 @@ fn init_logging() {
         std::env::temp_dir(),
         std::env::current_dir().ok()
     ));
+}
+
+fn normalize_log_level(value: &str) -> Option<&'static str> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "error" => Some("error"),
+        "warn" => Some("warn"),
+        "info" => Some("info"),
+        "debug" => Some("debug"),
+        _ => None,
+    }
+}
+
+fn build_log_filter(level: &str) -> EnvFilter {
+    EnvFilter::new(format!("{level},usvg=error"))
+}
+
+fn resolve_log_level_filter_from_settings() -> EnvFilter {
+    let configured = db::open()
+        .ok()
+        .and_then(|conn| db::get_setting_string(&conn, "logLevel").ok().flatten())
+        .and_then(|value| normalize_log_level(&value).map(str::to_string));
+    build_log_filter(configured.as_deref().unwrap_or("warn"))
+}
+
+pub(crate) fn apply_runtime_log_level(value: &str) -> Result<(), String> {
+    let level = normalize_log_level(value).ok_or_else(|| "invalid log level".to_string())?;
+    let handle = LOG_FILTER_HANDLE
+        .get()
+        .ok_or_else(|| "logging runtime is not initialized".to_string())?;
+    handle
+        .reload(build_log_filter(level))
+        .map_err(|error| format!("failed to reload log level: {error}"))
 }
 
 #[cfg(target_os = "linux")]
@@ -277,6 +318,8 @@ fn main() {
             load_mounts_poll_ms,
             store_double_click_ms,
             load_double_click_ms,
+            store_log_level,
+            load_log_level,
             store_video_thumbs,
             load_video_thumbs,
             store_hardware_acceleration,
