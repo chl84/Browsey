@@ -17,7 +17,7 @@ use std::{ffi::CString, os::unix::ffi::OsStrExt};
 #[cfg(target_os = "windows")]
 use std::{os::windows::ffi::OsStrExt, ptr};
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::Foundation::{LocalFree, ERROR_SUCCESS};
+use windows_sys::Win32::Foundation::{GetLastError, LocalFree, ERROR_SUCCESS};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Security::Authorization::{
     GetNamedSecurityInfoW, SetNamedSecurityInfoW, SE_FILE_OBJECT,
@@ -27,14 +27,19 @@ use windows_sys::Win32::Security::{
     GetSecurityDescriptorDacl, ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
 };
 
-pub(crate) fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> UndoResult<()> {
+fn read_nonsymlink_metadata(path: &Path) -> UndoResult<fs::Metadata> {
     check_no_symlink_components(path)?;
-    let meta_no_follow = fs::symlink_metadata(path).map_err(|e| {
-        UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), e)
+    let meta = fs::symlink_metadata(path).map_err(|error| {
+        UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), error)
     })?;
-    if meta_no_follow.file_type().is_symlink() {
+    if meta.file_type().is_symlink() {
         return Err(UndoError::symlink_unsupported(path));
     }
+    Ok(meta)
+}
+
+pub(crate) fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> UndoResult<()> {
+    let _ = read_nonsymlink_metadata(path)?;
     let meta = fs::metadata(path).map_err(|e| {
         UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), e)
     })?;
@@ -108,13 +113,7 @@ pub fn permissions_snapshot(path: &Path) -> UndoResult<PermissionsSnapshot> {
 pub fn ownership_snapshot(path: &Path) -> UndoResult<OwnershipSnapshot> {
     #[cfg(unix)]
     {
-        check_no_symlink_components(path)?;
-        let meta = fs::symlink_metadata(path).map_err(|e| {
-            UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), e)
-        })?;
-        if meta.file_type().is_symlink() {
-            return Err(UndoError::symlink_unsupported(path));
-        }
+        let meta = read_nonsymlink_metadata(path)?;
         Ok(OwnershipSnapshot {
             uid: meta.uid(),
             gid: meta.gid(),
@@ -250,13 +249,7 @@ pub(crate) fn set_unix_mode_nofollow(path: &Path, mode: u32) -> UndoResult<()> {
 pub(crate) fn apply_ownership(path: &Path, snap: &OwnershipSnapshot) -> UndoResult<()> {
     #[cfg(unix)]
     {
-        check_no_symlink_components(path)?;
-        let meta = fs::symlink_metadata(path).map_err(|e| {
-            UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), e)
-        })?;
-        if meta.file_type().is_symlink() {
-            return Err(UndoError::symlink_unsupported(path));
-        }
+        let meta = read_nonsymlink_metadata(path)?;
         let current_uid = meta.uid();
         let current_gid = meta.gid();
         let uid = if current_uid != snap.uid {
@@ -313,9 +306,9 @@ fn snapshot_dacl(path: &Path) -> UndoResult<Option<Vec<u8>>> {
         let mut acl_ptr = dacl;
         let ok = GetSecurityDescriptorDacl(sd, &mut present, &mut acl_ptr, &mut defaulted);
         if ok == 0 {
-            Err(UndoError::new(
-                super::error::UndoErrorCode::IoError,
+            Err(UndoError::win32_failure(
                 "GetSecurityDescriptorDacl failed",
+                GetLastError(),
             ))
         } else if present == 0 || acl_ptr.is_null() {
             Ok(None)
