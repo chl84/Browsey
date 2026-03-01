@@ -14,6 +14,10 @@ mod linux;
 #[cfg(target_os = "windows")]
 mod windows;
 
+fn map_db_open_error(error: crate::db::DbError) -> OpenWithError {
+    OpenWithError::new(OpenWithErrorCode::DatabaseOpenFailed, error.to_string())
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenWithApp {
@@ -65,12 +69,7 @@ fn open_with_impl(path: String, choice: OpenWithChoice) -> OpenWithResult<()> {
         sanitize_path_follow(&path, false).map_err(OpenWithError::from_external_message)?;
     let OpenWithChoice { app_id } = choice;
 
-    let conn = db::open().map_err(|error| {
-        OpenWithError::new(
-            OpenWithErrorCode::DatabaseOpenFailed,
-            format!("Failed to open database: {error}"),
-        )
-    })?;
+    let conn = db::open().map_err(map_db_open_error)?;
     if let Err(e) = db::touch_recent(&conn, &target.to_string_lossy()) {
         warn!("Failed to record recent for {:?}: {}", target, e);
     }

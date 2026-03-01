@@ -71,6 +71,7 @@ Status note:
 - [x] `src/commands/settings/mod.rs` now maps from `DbError.code()` instead of reparsing DB error text
 - [x] `src/commands/listing/mod.rs` now maps DB failures from `DbError.code()` at its main direct DB seam
 - [x] `src/commands/library.rs` now maps its direct DB seams without reparsing DB error text
+- [x] `src/commands/open_with/mod.rs` and `src/commands/bookmarks.rs` now avoid reparsing DB error text at their direct DB seams
 - [ ] other command modules that consume `DbError` still need the same direct code-based mapping where it materially matters
 
 ## 4. Tasks / Runtime / Watcher
