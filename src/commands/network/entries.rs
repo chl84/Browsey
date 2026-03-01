@@ -191,16 +191,16 @@ pub(super) fn to_network_entries(mounts: &[MountInfo]) -> Vec<FsEntry> {
     deduped.values().map(to_network_entry).collect()
 }
 
-pub(super) fn list_network_entries_sync(force_refresh: bool) -> Vec<FsEntry> {
-    let mut mounts_list = mounts::list_mounts_sync();
-    mounts_list.extend(discovery::list_network_devices_sync(force_refresh));
+pub(super) fn list_network_entries_sync(force_refresh: bool) -> NetworkResult<Vec<FsEntry>> {
+    let mut mounts_list = mounts::list_mounts_sync()?;
+    mounts_list.extend(discovery::list_network_devices_sync(force_refresh)?);
     let mut entries = to_network_entries(&mounts_list);
     entries.extend(
         cloud::list_cloud_remotes_sync_best_effort(force_refresh)
             .into_iter()
             .map(|remote| to_cloud_network_entry(&remote)),
     );
-    entries
+    Ok(entries)
 }
 
 #[tauri::command]
@@ -213,7 +213,7 @@ async fn list_network_entries_impl(force_refresh: Option<bool>) -> NetworkResult
     let task =
         tauri::async_runtime::spawn_blocking(move || list_network_entries_sync(force_refresh));
     match task.await {
-        Ok(result) => Ok(result),
+        Ok(result) => result,
         Err(error) => Err(NetworkError::new(
             NetworkErrorCode::DiscoveryFailed,
             format!("network listing failed: {error}"),

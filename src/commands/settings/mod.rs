@@ -2,420 +2,489 @@
 
 mod error;
 
+use std::ops::RangeInclusive;
+
 use crate::{
     db::{load_column_widths, save_column_widths},
     errors::api_error::ApiResult,
 };
 
-use self::error::{map_api_result, SettingsError};
+use self::error::{map_api_result, SettingsError, SettingsResult};
 
-fn map_settings_result<T, E>(result: Result<T, E>) -> ApiResult<T>
+fn map_settings_result<T, E>(result: Result<T, E>) -> SettingsResult<T>
 where
     E: std::fmt::Display,
 {
-    map_api_result(result.map_err(|error| SettingsError::from_external_message(error.to_string())))
+    result.map_err(|error| SettingsError::from_external_message(error.to_string()))
 }
 
-fn open_connection() -> ApiResult<rusqlite::Connection> {
+fn open_connection() -> SettingsResult<rusqlite::Connection> {
     map_settings_result(crate::db::open())
 }
 
-fn invalid_input<T>(message: &'static str) -> ApiResult<T> {
-    map_api_result(Err(SettingsError::invalid_input(message)))
+fn invalid_input<T>(message: &'static str) -> SettingsResult<T> {
+    Err(SettingsError::invalid_input(message))
+}
+
+fn load_bounded_i64_setting(
+    conn: &rusqlite::Connection,
+    key: &str,
+    range: RangeInclusive<i64>,
+) -> SettingsResult<Option<i64>> {
+    if let Some(raw) = map_settings_result(crate::db::get_setting_string(conn, key))? {
+        if let Ok(value) = raw.parse::<i64>() {
+            if range.contains(&value) {
+                return Ok(Some(value));
+            }
+        }
+    }
+    Ok(None)
 }
 
 #[tauri::command]
 pub fn store_column_widths(widths: Vec<f64>) -> ApiResult<()> {
-    let conn = open_connection()?;
-    map_settings_result(save_column_widths(&conn, &widths))
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(save_column_widths(&conn, &widths))
+    })())
 }
 
 #[tauri::command]
 pub fn load_saved_column_widths() -> ApiResult<Option<Vec<f64>>> {
-    let conn = open_connection()?;
-    map_settings_result(load_column_widths(&conn))
+    map_api_result((|| -> SettingsResult<Option<Vec<f64>>> {
+        let conn = open_connection()?;
+        map_settings_result(load_column_widths(&conn))
+    })())
 }
 
 #[tauri::command]
 pub fn store_show_hidden(value: bool) -> ApiResult<()> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_bool(&conn, "showHidden", value))
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_bool(&conn, "showHidden", value))
+    })())
 }
 
 #[tauri::command]
 pub fn load_show_hidden() -> ApiResult<Option<bool>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_bool(&conn, "showHidden"))
+    map_api_result((|| -> SettingsResult<Option<bool>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_bool(&conn, "showHidden"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_hidden_files_last(value: bool) -> ApiResult<()> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_bool(&conn, "hiddenFilesLast", value))
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_bool(&conn, "hiddenFilesLast", value))
+    })())
 }
 
 #[tauri::command]
 pub fn load_hidden_files_last() -> ApiResult<Option<bool>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_bool(&conn, "hiddenFilesLast"))
+    map_api_result((|| -> SettingsResult<Option<bool>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_bool(&conn, "hiddenFilesLast"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_high_contrast(value: bool) -> ApiResult<()> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_bool(&conn, "highContrast", value))
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_bool(&conn, "highContrast", value))
+    })())
 }
 
 #[tauri::command]
 pub fn load_high_contrast() -> ApiResult<Option<bool>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_bool(&conn, "highContrast"))
+    map_api_result((|| -> SettingsResult<Option<bool>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_bool(&conn, "highContrast"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_folders_first(value: bool) -> ApiResult<()> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_bool(&conn, "foldersFirst", value))
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_bool(&conn, "foldersFirst", value))
+    })())
 }
 
 #[tauri::command]
 pub fn load_folders_first() -> ApiResult<Option<bool>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_bool(&conn, "foldersFirst"))
+    map_api_result((|| -> SettingsResult<Option<bool>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_bool(&conn, "foldersFirst"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_default_view(value: String) -> ApiResult<()> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_string(&conn, "defaultView", &value))
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_string(&conn, "defaultView", &value))
+    })())
 }
 
 #[tauri::command]
 pub fn load_default_view() -> ApiResult<Option<String>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_string(&conn, "defaultView"))
+    map_api_result((|| -> SettingsResult<Option<String>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_string(&conn, "defaultView"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_start_dir(value: String) -> ApiResult<()> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_string(&conn, "startDir", &value))
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_string(&conn, "startDir", &value))
+    })())
 }
 
 #[tauri::command]
 pub fn load_start_dir() -> ApiResult<Option<String>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_string(&conn, "startDir"))
+    map_api_result((|| -> SettingsResult<Option<String>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_string(&conn, "startDir"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_confirm_delete(value: bool) -> ApiResult<()> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_bool(&conn, "confirmDelete", value))
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_bool(&conn, "confirmDelete", value))
+    })())
 }
 
 #[tauri::command]
 pub fn load_confirm_delete() -> ApiResult<Option<bool>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_bool(&conn, "confirmDelete"))
+    map_api_result((|| -> SettingsResult<Option<bool>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_bool(&conn, "confirmDelete"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_sort_field(value: String) -> ApiResult<()> {
-    match value.as_str() {
-        "name" | "type" | "modified" | "size" => {
-            let conn = open_connection()?;
-            map_settings_result(crate::db::set_setting_string(&conn, "sortField", &value))
+    map_api_result((|| -> SettingsResult<()> {
+        match value.as_str() {
+            "name" | "type" | "modified" | "size" => {
+                let conn = open_connection()?;
+                map_settings_result(crate::db::set_setting_string(&conn, "sortField", &value))
+            }
+            _ => invalid_input("invalid sort field"),
         }
-        _ => invalid_input("invalid sort field"),
-    }
+    })())
 }
 
 #[tauri::command]
 pub fn load_sort_field() -> ApiResult<Option<String>> {
-    let conn = open_connection()?;
-    let value = map_settings_result(crate::db::get_setting_string(&conn, "sortField"))?;
-    Ok(match value.as_deref() {
-        Some("name") | Some("type") | Some("modified") | Some("size") => value,
-        _ => None,
-    })
+    map_api_result((|| -> SettingsResult<Option<String>> {
+        let conn = open_connection()?;
+        let value = map_settings_result(crate::db::get_setting_string(&conn, "sortField"))?;
+        Ok(match value.as_deref() {
+            Some("name") | Some("type") | Some("modified") | Some("size") => value,
+            _ => None,
+        })
+    })())
 }
 
 #[tauri::command]
 pub fn store_sort_direction(value: String) -> ApiResult<()> {
-    match value.as_str() {
-        "asc" | "desc" => {
-            let conn = open_connection()?;
-            map_settings_result(crate::db::set_setting_string(
-                &conn,
-                "sortDirection",
-                &value,
-            ))
+    map_api_result((|| -> SettingsResult<()> {
+        match value.as_str() {
+            "asc" | "desc" => {
+                let conn = open_connection()?;
+                map_settings_result(crate::db::set_setting_string(
+                    &conn,
+                    "sortDirection",
+                    &value,
+                ))
+            }
+            _ => invalid_input("invalid sort direction"),
         }
-        _ => invalid_input("invalid sort direction"),
-    }
+    })())
 }
 
 #[tauri::command]
 pub fn load_sort_direction() -> ApiResult<Option<String>> {
-    let conn = open_connection()?;
-    let value = map_settings_result(crate::db::get_setting_string(&conn, "sortDirection"))?;
-    Ok(match value.as_deref() {
-        Some("asc") | Some("desc") => value,
-        _ => None,
-    })
+    map_api_result((|| -> SettingsResult<Option<String>> {
+        let conn = open_connection()?;
+        let value = map_settings_result(crate::db::get_setting_string(&conn, "sortDirection"))?;
+        Ok(match value.as_deref() {
+            Some("asc") | Some("desc") => value,
+            _ => None,
+        })
+    })())
 }
 
 #[tauri::command]
 pub fn store_archive_name(value: String) -> ApiResult<()> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return invalid_input("archive name cannot be empty");
-    }
-    let normalized = trimmed.strip_suffix(".zip").unwrap_or(trimmed).to_string();
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_string(
-        &conn,
-        "archiveName",
-        &normalized,
-    ))
+    map_api_result((|| -> SettingsResult<()> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return invalid_input("archive name cannot be empty");
+        }
+        let normalized = trimmed.strip_suffix(".zip").unwrap_or(trimmed).to_string();
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_string(
+            &conn,
+            "archiveName",
+            &normalized,
+        ))
+    })())
 }
 
 #[tauri::command]
 pub fn load_archive_name() -> ApiResult<Option<String>> {
-    let conn = open_connection()?;
-    Ok(
-        map_settings_result(crate::db::get_setting_string(&conn, "archiveName"))?
-            .map(|v| v.strip_suffix(".zip").unwrap_or(&v).to_string()),
-    )
+    map_api_result((|| -> SettingsResult<Option<String>> {
+        let conn = open_connection()?;
+        Ok(
+            map_settings_result(crate::db::get_setting_string(&conn, "archiveName"))?
+                .map(|value| value.strip_suffix(".zip").unwrap_or(&value).to_string()),
+        )
+    })())
 }
 
 #[tauri::command]
 pub fn store_density(value: String) -> ApiResult<()> {
-    match value.as_str() {
-        "cozy" | "compact" => {
-            let conn = open_connection()?;
-            map_settings_result(crate::db::set_setting_string(&conn, "density", &value))
+    map_api_result((|| -> SettingsResult<()> {
+        match value.as_str() {
+            "cozy" | "compact" => {
+                let conn = open_connection()?;
+                map_settings_result(crate::db::set_setting_string(&conn, "density", &value))
+            }
+            _ => invalid_input("invalid density"),
         }
-        _ => invalid_input("invalid density"),
-    }
+    })())
 }
 
 #[tauri::command]
 pub fn load_density() -> ApiResult<Option<String>> {
-    let conn = open_connection()?;
-    let value = map_settings_result(crate::db::get_setting_string(&conn, "density"))?;
-    Ok(match value.as_deref() {
-        Some("cozy") | Some("compact") => value,
-        _ => None,
-    })
+    map_api_result((|| -> SettingsResult<Option<String>> {
+        let conn = open_connection()?;
+        let value = map_settings_result(crate::db::get_setting_string(&conn, "density"))?;
+        Ok(match value.as_deref() {
+            Some("cozy") | Some("compact") => value,
+            _ => None,
+        })
+    })())
 }
 
 #[tauri::command]
 pub fn store_archive_level(value: i64) -> ApiResult<()> {
-    if !(0..=9).contains(&value) {
-        return invalid_input("archive level must be 0-9");
-    }
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_string(
-        &conn,
-        "archiveLevel",
-        &value.to_string(),
-    ))
+    map_api_result((|| -> SettingsResult<()> {
+        if !(0..=9).contains(&value) {
+            return invalid_input("archive level must be 0-9");
+        }
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_string(
+            &conn,
+            "archiveLevel",
+            &value.to_string(),
+        ))
+    })())
 }
 
 #[tauri::command]
 pub fn load_archive_level() -> ApiResult<Option<i64>> {
-    let conn = open_connection()?;
-    if let Some(s) = map_settings_result(crate::db::get_setting_string(&conn, "archiveLevel"))? {
-        if let Ok(n) = s.parse::<i64>() {
-            if (0..=9).contains(&n) {
-                return Ok(Some(n));
-            }
-        }
-    }
-    Ok(None)
+    map_api_result((|| -> SettingsResult<Option<i64>> {
+        let conn = open_connection()?;
+        load_bounded_i64_setting(&conn, "archiveLevel", 0..=9)
+    })())
 }
 
 #[tauri::command]
 pub fn store_open_dest_after_extract(value: bool) -> ApiResult<()> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_bool(
-        &conn,
-        "openDestAfterExtract",
-        value,
-    ))
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_bool(
+            &conn,
+            "openDestAfterExtract",
+            value,
+        ))
+    })())
 }
 
 #[tauri::command]
 pub fn load_open_dest_after_extract() -> ApiResult<Option<bool>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_bool(&conn, "openDestAfterExtract"))
+    map_api_result((|| -> SettingsResult<Option<bool>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_bool(&conn, "openDestAfterExtract"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_ffmpeg_path(value: String) -> ApiResult<()> {
-    let trimmed = value.trim();
-    let conn = open_connection()?;
-    // Empty string means auto-detect; still store so the UI can show what the user chose.
-    map_settings_result(crate::db::set_setting_string(&conn, "ffmpegPath", trimmed))
+    map_api_result((|| -> SettingsResult<()> {
+        let trimmed = value.trim();
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_string(&conn, "ffmpegPath", trimmed))
+    })())
 }
 
 #[tauri::command]
 pub fn load_ffmpeg_path() -> ApiResult<Option<String>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_string(&conn, "ffmpegPath"))
+    map_api_result((|| -> SettingsResult<Option<String>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_string(&conn, "ffmpegPath"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_thumb_cache_mb(value: i64) -> ApiResult<()> {
-    if !(50..=1000).contains(&value) {
-        return invalid_input("thumb cache must be 50-1000 MB");
-    }
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_string(
-        &conn,
-        "thumbCacheMb",
-        &value.to_string(),
-    ))
+    map_api_result((|| -> SettingsResult<()> {
+        if !(50..=1000).contains(&value) {
+            return invalid_input("thumb cache must be 50-1000 MB");
+        }
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_string(
+            &conn,
+            "thumbCacheMb",
+            &value.to_string(),
+        ))
+    })())
 }
 
 #[tauri::command]
 pub fn load_thumb_cache_mb() -> ApiResult<Option<i64>> {
-    let conn = open_connection()?;
-    if let Some(s) = map_settings_result(crate::db::get_setting_string(&conn, "thumbCacheMb"))? {
-        if let Ok(n) = s.parse::<i64>() {
-            if (50..=1000).contains(&n) {
-                return Ok(Some(n));
-            }
-        }
-    }
-    Ok(None)
+    map_api_result((|| -> SettingsResult<Option<i64>> {
+        let conn = open_connection()?;
+        load_bounded_i64_setting(&conn, "thumbCacheMb", 50..=1000)
+    })())
 }
 
 #[tauri::command]
 pub fn store_mounts_poll_ms(value: i64) -> ApiResult<()> {
-    if !(500..=10000).contains(&value) {
-        return invalid_input("mounts poll must be 500-10000 ms");
-    }
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_string(
-        &conn,
-        "mountsPollMs",
-        &value.to_string(),
-    ))
+    map_api_result((|| -> SettingsResult<()> {
+        if !(500..=10000).contains(&value) {
+            return invalid_input("mounts poll must be 500-10000 ms");
+        }
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_string(
+            &conn,
+            "mountsPollMs",
+            &value.to_string(),
+        ))
+    })())
 }
 
 #[tauri::command]
 pub fn load_mounts_poll_ms() -> ApiResult<Option<i64>> {
-    let conn = open_connection()?;
-    if let Some(s) = map_settings_result(crate::db::get_setting_string(&conn, "mountsPollMs"))? {
-        if let Ok(n) = s.parse::<i64>() {
-            if (500..=10000).contains(&n) {
-                return Ok(Some(n));
-            }
-        }
-    }
-    Ok(None)
+    map_api_result((|| -> SettingsResult<Option<i64>> {
+        let conn = open_connection()?;
+        load_bounded_i64_setting(&conn, "mountsPollMs", 500..=10000)
+    })())
 }
 
 #[tauri::command]
 pub fn store_video_thumbs(value: bool) -> ApiResult<()> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_bool(&conn, "videoThumbs", value))
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_bool(&conn, "videoThumbs", value))
+    })())
 }
 
 #[tauri::command]
 pub fn load_video_thumbs() -> ApiResult<Option<bool>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_bool(&conn, "videoThumbs"))
+    map_api_result((|| -> SettingsResult<Option<bool>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_bool(&conn, "videoThumbs"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_hardware_acceleration(value: bool) -> ApiResult<()> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_bool(
-        &conn,
-        "hardwareAcceleration",
-        value,
-    ))
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_bool(
+            &conn,
+            "hardwareAcceleration",
+            value,
+        ))
+    })())
 }
 
 #[tauri::command]
 pub fn load_hardware_acceleration() -> ApiResult<Option<bool>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_bool(&conn, "hardwareAcceleration"))
+    map_api_result((|| -> SettingsResult<Option<bool>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_bool(&conn, "hardwareAcceleration"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_scrollbar_width(value: i64) -> ApiResult<()> {
-    if !(6..=16).contains(&value) {
-        return invalid_input("scrollbar width must be 6-16 px");
-    }
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_string(
-        &conn,
-        "scrollbarWidth",
-        &value.to_string(),
-    ))
+    map_api_result((|| -> SettingsResult<()> {
+        if !(6..=16).contains(&value) {
+            return invalid_input("scrollbar width must be 6-16 px");
+        }
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_string(
+            &conn,
+            "scrollbarWidth",
+            &value.to_string(),
+        ))
+    })())
 }
 
 #[tauri::command]
 pub fn load_scrollbar_width() -> ApiResult<Option<i64>> {
-    let conn = open_connection()?;
-    if let Some(s) = map_settings_result(crate::db::get_setting_string(&conn, "scrollbarWidth"))? {
-        if let Ok(n) = s.parse::<i64>() {
-            if (6..=16).contains(&n) {
-                return Ok(Some(n));
-            }
-        }
-    }
-    Ok(None)
+    map_api_result((|| -> SettingsResult<Option<i64>> {
+        let conn = open_connection()?;
+        load_bounded_i64_setting(&conn, "scrollbarWidth", 6..=16)
+    })())
 }
 
 #[tauri::command]
 pub fn store_rclone_path(value: String) -> ApiResult<()> {
-    let conn = open_connection()?;
-    let normalized = value.trim();
-    map_settings_result(crate::db::set_setting_string(
-        &conn,
-        "rclonePath",
-        normalized,
-    ))?;
-    crate::commands::cloud::invalidate_cloud_caches_for_backend_change();
-    Ok(())
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        let normalized = value.trim();
+        map_settings_result(crate::db::set_setting_string(
+            &conn,
+            "rclonePath",
+            normalized,
+        ))?;
+        crate::commands::cloud::invalidate_cloud_caches_for_backend_change();
+        Ok(())
+    })())
 }
 
 #[tauri::command]
 pub fn load_rclone_path() -> ApiResult<Option<String>> {
-    let conn = open_connection()?;
-    map_settings_result(crate::db::get_setting_string(&conn, "rclonePath"))
+    map_api_result((|| -> SettingsResult<Option<String>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_string(&conn, "rclonePath"))
+    })())
 }
 
 #[tauri::command]
 pub fn store_double_click_ms(value: i64) -> ApiResult<()> {
-    if !(150..=600).contains(&value) {
-        return invalid_input("double click speed must be 150-600 ms");
-    }
-    let conn = open_connection()?;
-    map_settings_result(crate::db::set_setting_string(
-        &conn,
-        "doubleClickMs",
-        &value.to_string(),
-    ))
+    map_api_result((|| -> SettingsResult<()> {
+        if !(150..=600).contains(&value) {
+            return invalid_input("double click speed must be 150-600 ms");
+        }
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_string(
+            &conn,
+            "doubleClickMs",
+            &value.to_string(),
+        ))
+    })())
 }
 
 #[tauri::command]
 pub fn load_double_click_ms() -> ApiResult<Option<i64>> {
-    let conn = open_connection()?;
-    if let Some(s) = map_settings_result(crate::db::get_setting_string(&conn, "doubleClickMs"))? {
-        if let Ok(n) = s.parse::<i64>() {
-            if (150..=600).contains(&n) {
-                return Ok(Some(n));
-            }
-        }
-    }
-    Ok(None)
+    map_api_result((|| -> SettingsResult<Option<i64>> {
+        let conn = open_connection()?;
+        load_bounded_i64_setting(&conn, "doubleClickMs", 150..=600)
+    })())
 }
 
 #[cfg(test)]

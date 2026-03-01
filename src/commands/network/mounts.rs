@@ -118,110 +118,135 @@ fn invalidate_network_discovery_cache() {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn linux_mounts() -> Vec<MountInfo> {
+fn linux_mounts() -> NetworkResult<Vec<MountInfo>> {
     let mut mounts = Vec::new();
     let gvfs_root = dirs_next::runtime_dir().map(|p| p.join("gvfs"));
 
     // Surface GVFS-backed MTP endpoints (e.g., Android phones).
     mounts.extend(gio_mounts::list_gvfs_mounts());
 
-    if let Ok(contents) = fs::read_to_string("/proc/self/mounts") {
-        for line in contents.lines() {
-            let mut parts = line.split_whitespace();
-            let src = match parts.next() {
-                Some(s) => s.replace("\\040", " "),
-                None => continue,
-            };
-            let target = match parts.next() {
-                Some(t) => t.replace("\\040", " "),
-                None => continue,
-            };
-            let fs = match parts.next() {
-                Some(f) => f.to_string(),
-                None => continue,
-            };
-            let fs_lc = fs.to_lowercase();
+    match fs::read_to_string("/proc/self/mounts") {
+        Ok(contents) => {
+            for line in contents.lines() {
+                let mut parts = line.split_whitespace();
+                let src = match parts.next() {
+                    Some(s) => s.replace("\\040", " "),
+                    None => continue,
+                };
+                let target = match parts.next() {
+                    Some(t) => t.replace("\\040", " "),
+                    None => continue,
+                };
+                let fs = match parts.next() {
+                    Some(f) => f.to_string(),
+                    None => continue,
+                };
+                let fs_lc = fs.to_lowercase();
 
-            // Skip pseudo/system mounts
-            if matches!(
-                fs_lc.as_str(),
-                "proc"
-                    | "sysfs"
-                    | "devtmpfs"
-                    | "devpts"
-                    | "tmpfs"
-                    | "pstore"
-                    | "configfs"
-                    | "debugfs"
-                    | "tracefs"
-                    | "overlay"
-                    | "squashfs"
-                    | "hugetlbfs"
-                    | "mqueue"
-                    | "cgroup"
-                    | "cgroup2"
-                    | "fuse.rofiles-fuse" // Flatpak Builder readonly rofiles mounts
-            ) {
-                continue;
+                // Skip pseudo/system mounts
+                if matches!(
+                    fs_lc.as_str(),
+                    "proc"
+                        | "sysfs"
+                        | "devtmpfs"
+                        | "devpts"
+                        | "tmpfs"
+                        | "pstore"
+                        | "configfs"
+                        | "debugfs"
+                        | "tracefs"
+                        | "overlay"
+                        | "squashfs"
+                        | "hugetlbfs"
+                        | "mqueue"
+                        | "cgroup"
+                        | "cgroup2"
+                        | "fuse.rofiles-fuse" // Flatpak Builder readonly rofiles mounts
+                ) {
+                    continue;
+                }
+                let in_gvfs = gvfs_root
+                    .as_ref()
+                    .and_then(|p| p.to_str())
+                    .map(|p| mount_path_is_under(&target, p))
+                    .unwrap_or(false);
+                let is_gvfs_root = gvfs_root
+                    .as_ref()
+                    .and_then(|p| p.to_str())
+                    .map(|p| same_mount_path(&target, p))
+                    .unwrap_or(false);
+
+                // Keep GVFS endpoints (for example MTP), but hide the generic gvfs root mount from Partitions.
+                if is_gvfs_root {
+                    continue;
+                }
+
+                if target.starts_with("/proc")
+                    || target.starts_with("/sys")
+                    || target.starts_with("/run/lock")
+                    || (target.starts_with("/run/user") && !in_gvfs)
+                {
+                    continue;
+                }
+
+                let label = std::path::Path::new(&target)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| target.clone());
+
+                let is_user_mount = target.contains("/media/") || target.contains("/run/media/");
+                let is_windows_fs = matches!(
+                    fs_lc.as_str(),
+                    "vfat"
+                        | "exfat"
+                        | "ntfs"
+                        | "fuseblk"
+                        | "fuse.exfat"
+                        | "fuse.ntfs-3g"
+                        | "fuse.ntfs"
+                );
+                let is_boot = target.starts_with("/boot");
+                let removable_hint = (is_user_mount || is_windows_fs) && !is_boot;
+                // device heuristic: only classic removable prefixes
+                let dev_removable = src.starts_with("/dev/sd")
+                    || src.starts_with("/dev/mmc")
+                    || src.starts_with("/dev/sg")
+                    || src.contains("usb");
+
+                mounts.push(MountInfo {
+                    label,
+                    path: target,
+                    fs,
+                    removable: removable_hint || dev_removable,
+                });
             }
-            let in_gvfs = gvfs_root
-                .as_ref()
-                .and_then(|p| p.to_str())
-                .map(|p| mount_path_is_under(&target, p))
-                .unwrap_or(false);
-            let is_gvfs_root = gvfs_root
-                .as_ref()
-                .and_then(|p| p.to_str())
-                .map(|p| same_mount_path(&target, p))
-                .unwrap_or(false);
-
-            // Keep GVFS endpoints (for example MTP), but hide the generic gvfs root mount from Partitions.
-            if is_gvfs_root {
-                continue;
-            }
-
-            if target.starts_with("/proc")
-                || target.starts_with("/sys")
-                || target.starts_with("/run/lock")
-                || (target.starts_with("/run/user") && !in_gvfs)
-            {
-                continue;
-            }
-
-            let label = std::path::Path::new(&target)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .map(|s| s.to_string())
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| target.clone());
-
-            let is_user_mount = target.contains("/media/") || target.contains("/run/media/");
-            let is_windows_fs = matches!(
-                fs_lc.as_str(),
-                "vfat" | "exfat" | "ntfs" | "fuseblk" | "fuse.exfat" | "fuse.ntfs-3g" | "fuse.ntfs"
-            );
-            let is_boot = target.starts_with("/boot");
-            let removable_hint = (is_user_mount || is_windows_fs) && !is_boot;
-            // device heuristic: only classic removable prefixes
-            let dev_removable = src.starts_with("/dev/sd")
-                || src.starts_with("/dev/mmc")
-                || src.starts_with("/dev/sg")
-                || src.contains("usb");
-
-            mounts.push(MountInfo {
-                label,
-                path: target,
-                fs,
-                removable: removable_hint || dev_removable,
-            });
+        }
+        Err(error) if mounts.is_empty() => {
+            return Err(NetworkError::new(
+                NetworkErrorCode::DiscoveryFailed,
+                format!("Failed to read /proc/self/mounts: {error}"),
+            ));
+        }
+        Err(error) => {
+            debug_log(&format!(
+                "mount listing skipped /proc/self/mounts after error: {}",
+                error
+            ));
         }
     }
-    mounts
+    Ok(mounts)
 }
 
 #[cfg(target_os = "windows")]
-pub(super) fn list_mounts_sync() -> Vec<MountInfo> {
-    fs_windows::list_windows_mounts()
+pub(super) fn list_mounts_sync() -> NetworkResult<Vec<MountInfo>> {
+    fs_windows::list_windows_mounts().map_err(|error| {
+        NetworkError::new(
+            NetworkErrorCode::DiscoveryFailed,
+            format!("Failed to list Windows mounts: {error}"),
+        )
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -246,7 +271,7 @@ pub async fn list_mounts() -> ApiResult<Vec<MountInfo>> {
 async fn list_mounts_impl() -> NetworkResult<Vec<MountInfo>> {
     let task = tauri::async_runtime::spawn_blocking(list_mounts_sync);
     match task.await {
-        Ok(result) => Ok(result),
+        Ok(result) => result,
         Err(error) => Err(NetworkError::new(
             NetworkErrorCode::TaskFailed,
             format!("mount scan failed: {error}"),
@@ -255,7 +280,7 @@ async fn list_mounts_impl() -> NetworkResult<Vec<MountInfo>> {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub(super) fn list_mounts_sync() -> Vec<MountInfo> {
+pub(super) fn list_mounts_sync() -> NetworkResult<Vec<MountInfo>> {
     linux_mounts()
 }
 

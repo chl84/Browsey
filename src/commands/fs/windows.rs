@@ -34,16 +34,22 @@ use windows_sys::Win32::System::WindowsProgramming::{
 };
 use windows_sys::Win32::System::IO::DeviceIoControl;
 
-pub fn list_windows_mounts() -> Vec<MountInfo> {
+pub fn list_windows_mounts() -> FsResult<Vec<MountInfo>> {
     // First call to get required buffer length (in WCHARs, including trailing null).
     let len = unsafe { GetLogicalDriveStringsW(0, std::ptr::null_mut()) };
     if len == 0 {
-        return Vec::new();
+        return Err(FsError::new(
+            FsErrorCode::TaskFailed,
+            "GetLogicalDriveStringsW failed to report buffer length",
+        ));
     }
     let mut buf = vec![0u16; (len as usize) + 1];
     let got = unsafe { GetLogicalDriveStringsW(buf.len() as u32, buf.as_mut_ptr()) };
     if got == 0 {
-        return Vec::new();
+        return Err(FsError::new(
+            FsErrorCode::TaskFailed,
+            "GetLogicalDriveStringsW failed to enumerate mounts",
+        ));
     }
 
     let mut mounts = Vec::new();
@@ -121,7 +127,7 @@ pub fn list_windows_mounts() -> Vec<MountInfo> {
         });
     }
 
-    mounts
+    Ok(mounts)
 }
 
 fn utf16_to_string(buf: &[u16]) -> Option<String> {

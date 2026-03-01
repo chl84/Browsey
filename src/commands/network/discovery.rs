@@ -3,6 +3,8 @@ use crate::errors::api_error::ApiResult;
 use once_cell::sync::OnceCell;
 use std::collections::HashSet;
 #[cfg(not(target_os = "windows"))]
+use std::io;
+#[cfg(not(target_os = "windows"))]
 use std::net::UdpSocket;
 #[cfg(not(target_os = "windows"))]
 use std::process::{Command, Stdio};
@@ -99,6 +101,33 @@ fn mount_info(label: String, path: String, fs: &str) -> MountInfo {
 }
 
 #[cfg(not(target_os = "windows"))]
+fn optional_discovery_command_output(
+    program: &str,
+    args: &[&str],
+) -> NetworkResult<Option<std::process::Output>> {
+    match Command::new(program)
+        .args(args)
+        .stderr(Stdio::null())
+        .output()
+    {
+        Ok(output) if output.status.success() => Ok(Some(output)),
+        Ok(output) => Err(NetworkError::new(
+            NetworkErrorCode::DiscoveryFailed,
+            format!(
+                "{program} {} failed with status {}",
+                args.join(" "),
+                output.status
+            ),
+        )),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(NetworkError::new(
+            NetworkErrorCode::DiscoveryFailed,
+            format!("Failed to run {program}: {error}"),
+        )),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
 fn parse_gio_name(line: &str) -> Option<String> {
     let trimmed = line.trim();
     if !(trimmed.starts_with("Volume(") || trimmed.starts_with("Mount(")) {
@@ -114,16 +143,10 @@ fn parse_gio_name(line: &str) -> Option<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn list_from_gio() -> Vec<MountInfo> {
+fn list_from_gio() -> NetworkResult<Vec<MountInfo>> {
     let mut out = Vec::new();
-    let output = match Command::new("gio")
-        .arg("mount")
-        .arg("-li")
-        .stderr(Stdio::null())
-        .output()
-    {
-        Ok(out) if out.status.success() => out,
-        _ => return out,
+    let Some(output) = optional_discovery_command_output("gio", &["mount", "-li"])? else {
+        return Ok(out);
     };
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut current_name: Option<String> = None;
@@ -146,7 +169,7 @@ fn list_from_gio() -> Vec<MountInfo> {
         out.push(mount_info(label, normalized, &scheme));
     }
 
-    out
+    Ok(out)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -209,15 +232,12 @@ fn build_uri(scheme: &str, host: &str, port: Option<u16>) -> Option<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn list_from_avahi() -> Vec<MountInfo> {
+fn list_from_avahi() -> NetworkResult<Vec<MountInfo>> {
     let mut out = Vec::new();
-    let output = match Command::new("avahi-browse")
-        .args(["-a", "-r", "-t", "-p"])
-        .stderr(Stdio::null())
-        .output()
-    {
-        Ok(out) if out.status.success() => out,
-        _ => return out,
+    let Some(output) =
+        optional_discovery_command_output("avahi-browse", &["-a", "-r", "-t", "-p"])?
+    else {
+        return Ok(out);
     };
 
     let text = String::from_utf8_lossy(&output.stdout);
@@ -242,7 +262,7 @@ fn list_from_avahi() -> Vec<MountInfo> {
         out.push(mount_info(label, uri, scheme));
     }
 
-    out
+    Ok(out)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -270,11 +290,16 @@ fn parse_ssdp_headers(response: &str) -> (Option<String>, Option<String>, Option
 }
 
 #[cfg(not(target_os = "windows"))]
-fn list_from_ssdp() -> Vec<MountInfo> {
+fn list_from_ssdp() -> NetworkResult<Vec<MountInfo>> {
     let mut out = Vec::new();
     let socket = match UdpSocket::bind("0.0.0.0:0") {
         Ok(s) => s,
-        Err(_) => return out,
+        Err(error) => {
+            return Err(NetworkError::new(
+                NetworkErrorCode::DiscoveryFailed,
+                format!("Failed to bind SSDP socket: {error}"),
+            ))
+        }
     };
     let _ = socket.set_read_timeout(Some(Duration::from_millis(250)));
     let req = concat!(
@@ -314,7 +339,7 @@ fn list_from_ssdp() -> Vec<MountInfo> {
         }
     }
 
-    out
+    Ok(out)
 }
 
 fn dedupe_and_sort(mut list: Vec<MountInfo>) -> Vec<MountInfo> {
@@ -339,33 +364,56 @@ fn dedupe_and_sort(mut list: Vec<MountInfo>) -> Vec<MountInfo> {
     out
 }
 
+fn combine_discovery_results(
+    results: impl IntoIterator<Item = NetworkResult<Vec<MountInfo>>>,
+) -> NetworkResult<Vec<MountInfo>> {
+    let mut combined = Vec::new();
+    let mut errors = Vec::new();
+    for result in results {
+        match result {
+            Ok(entries) => combined.extend(entries),
+            Err(error) => errors.push(error.to_string()),
+        }
+    }
+    if combined.is_empty() && !errors.is_empty() {
+        return Err(NetworkError::new(
+            NetworkErrorCode::DiscoveryFailed,
+            format!("Network discovery failed: {}", errors.join(" | ")),
+        ));
+    }
+    Ok(dedupe_and_sort(combined))
+}
+
 #[cfg(not(target_os = "windows"))]
-pub(super) fn list_network_devices_sync(force_refresh: bool) -> Vec<MountInfo> {
+pub(super) fn list_network_devices_sync(force_refresh: bool) -> NetworkResult<Vec<MountInfo>> {
     let cache = network_discovery_cache();
 
     if !force_refresh {
         if let Ok(guard) = cache.lock() {
             if guard.0.elapsed() < DISCOVERY_CACHE_TTL {
-                return guard.1.clone();
+                return Ok(guard.1.clone());
             }
         }
     }
 
-    let mut combined = Vec::new();
-    combined.extend(list_from_gio());
-    combined.extend(list_from_avahi());
-    combined.extend(list_from_ssdp());
-    let result = dedupe_and_sort(combined);
+    let results = [list_from_gio(), list_from_avahi(), list_from_ssdp()];
+    let source_errors = results
+        .iter()
+        .map(|result| result.as_ref().err().map(|error| error.to_string()))
+        .collect::<Vec<_>>();
+    let result = combine_discovery_results(results)?;
 
-    if let Ok(mut guard) = cache.lock() {
-        *guard = (Instant::now(), result.clone());
+    if source_errors.iter().all(Option::is_none) {
+        if let Ok(mut guard) = cache.lock() {
+            *guard = (Instant::now(), result.clone());
+        }
     }
-    result
+    Ok(result)
 }
 
 #[cfg(target_os = "windows")]
-pub(super) fn list_network_devices_sync(_force_refresh: bool) -> Vec<MountInfo> {
-    Vec::new()
+pub(super) fn list_network_devices_sync(_force_refresh: bool) -> NetworkResult<Vec<MountInfo>> {
+    Ok(Vec::new())
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -392,7 +440,7 @@ pub fn open_network_uri(uri: String) -> ApiResult<()> {
 async fn list_network_devices_impl() -> NetworkResult<Vec<MountInfo>> {
     let task = tauri::async_runtime::spawn_blocking(|| list_network_devices_sync(false));
     match task.await {
-        Ok(result) => Ok(result),
+        Ok(result) => result,
         Err(error) => Err(NetworkError::new(
             NetworkErrorCode::DiscoveryFailed,
             format!("network discovery failed: {error}"),
@@ -428,6 +476,15 @@ pub(super) fn open_network_uri_impl(uri: String) -> NetworkResult<()> {
 mod tests {
     use super::*;
 
+    fn mount(label: &str, path: &str, fs: &str) -> MountInfo {
+        MountInfo {
+            label: label.to_string(),
+            path: path.to_string(),
+            fs: fs.to_string(),
+            removable: false,
+        }
+    }
+
     #[test]
     fn canonicalize_uri_maps_alias_schemes() {
         let (scheme, uri) = canonicalize_uri("ssh://user@host/").expect("ssh should map");
@@ -457,5 +514,40 @@ mod tests {
         assert_eq!(location.as_deref(), Some("http://192.168.1.10:80/desc.xml"));
         assert_eq!(server.as_deref(), Some("Fibaro/1.0 UPnP/1.1"));
         assert_eq!(st.as_deref(), Some("upnp:rootdevice"));
+    }
+
+    #[test]
+    fn combine_discovery_results_returns_error_when_all_sources_fail() {
+        let result = combine_discovery_results([
+            Err(NetworkError::new(
+                NetworkErrorCode::DiscoveryFailed,
+                "gio failed",
+            )),
+            Err(NetworkError::new(
+                NetworkErrorCode::DiscoveryFailed,
+                "avahi failed",
+            )),
+        ]);
+        match result {
+            Ok(_) => panic!("expected discovery error"),
+            Err(error) => {
+                assert!(error.to_string().contains("gio failed"));
+                assert!(error.to_string().contains("avahi failed"));
+            }
+        }
+    }
+
+    #[test]
+    fn combine_discovery_results_preserves_partial_success() {
+        let result = combine_discovery_results([
+            Ok(vec![mount("NAS", "smb://nas/", "smb")]),
+            Err(NetworkError::new(
+                NetworkErrorCode::DiscoveryFailed,
+                "avahi failed",
+            )),
+        ])
+        .expect("expected partial success");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].label, "NAS");
     }
 }
