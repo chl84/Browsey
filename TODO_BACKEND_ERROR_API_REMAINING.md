@@ -31,11 +31,11 @@ Not in scope:
 - [x] `src/commands/system_clipboard/mod.rs`
   - Completed: clipboard subprocess helpers now use `SystemClipboardResult<_>` instead of `Result<_, String>`.
 
-- [ ] `src/commands/open_with/`
+- [x] `src/commands/open_with/`
   - `mod.rs`
   - `linux.rs`
   - `windows.rs`
-  - Launcher and command-template helpers still use `Result<_, String>`.
+  - Completed: launcher and command-template helpers now use `OpenWithResult<_>`.
 
 - [ ] `src/commands/duplicates/`
   - `mod.rs`
@@ -62,7 +62,7 @@ Not in scope:
 
 - [x] `cloud/providers/rclone`
 - [x] `system_clipboard`
-- [ ] `open_with`
+- [x] `open_with`
 - [ ] `listing`
 - [ ] `duplicates`
 - [ ] `thumbnails`

@@ -85,25 +85,20 @@ fn open_with_impl(path: String, choice: OpenWithChoice) -> OpenWithResult<()> {
         if let Some(app_id) = app_id {
             #[cfg(debug_assertions)]
             info!("Opening {:?} with desktop entry {}", target, app_id);
-            return linux::launch_desktop_entry_by_id(&target, &app_id)
-                .map_err(OpenWithError::from_external_message);
+            return linux::launch_desktop_entry_by_id(&target, &app_id);
         }
     }
     #[cfg(target_os = "windows")]
     {
         if let Some(app_id) = app_id {
-            return windows::launch_windows_handler(&target, &app_id)
-                .map_err(OpenWithError::from_external_message);
+            return windows::launch_windows_handler(&target, &app_id);
         }
     }
 
-    Err(OpenWithError::new(
-        OpenWithErrorCode::InvalidInput,
-        "No application selected",
-    ))
+    Err(OpenWithError::invalid_input("No application selected"))
 }
 
-pub(super) fn spawn_detached(mut cmd: Command) -> Result<(), String> {
+fn spawn_detached(mut cmd: Command) -> OpenWithResult<()> {
     match cmd.spawn() {
         Ok(mut child) => {
             thread::spawn(move || {
@@ -111,6 +106,9 @@ pub(super) fn spawn_detached(mut cmd: Command) -> Result<(), String> {
             });
             Ok(())
         }
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(OpenWithError::new(
+            OpenWithErrorCode::LaunchFailed,
+            format!("Failed to launch process: {e}"),
+        )),
     }
 }
