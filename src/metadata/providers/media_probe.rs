@@ -1,6 +1,9 @@
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tracing::debug;
+
+use crate::errors::domain::ErrorCode;
 
 #[derive(Debug, Clone, Default)]
 pub struct MediaStream {
@@ -211,10 +214,28 @@ fn resolve_ffprobe_bin() -> Option<PathBuf> {
 }
 
 fn configured_ffmpeg_binary() -> Option<PathBuf> {
-    let conn = crate::db::open().ok()?;
-    let raw = crate::db::get_setting_string(&conn, "ffmpegPath")
-        .ok()
-        .flatten()?;
+    let conn = match crate::db::open() {
+        Ok(conn) => conn,
+        Err(error) => {
+            debug!(
+                db_error_code = error.code().as_code_str(),
+                %error,
+                "unable to read ffmpegPath setting for media probe; falling back to auto-detect"
+            );
+            return None;
+        }
+    };
+    let raw = match crate::db::get_setting_string(&conn, "ffmpegPath") {
+        Ok(value) => value?,
+        Err(error) => {
+            debug!(
+                db_error_code = error.code().as_code_str(),
+                %error,
+                "unable to load ffmpegPath setting for media probe; falling back to auto-detect"
+            );
+            return None;
+        }
+    };
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;

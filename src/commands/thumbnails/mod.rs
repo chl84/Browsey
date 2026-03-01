@@ -34,6 +34,7 @@ mod error;
 
 use crate::db;
 use crate::errors::api_error::ApiResult;
+use crate::errors::domain::ErrorCode;
 use crate::fs_utils::debug_log;
 use error::{map_api_result, ThumbnailError, ThumbnailResult};
 
@@ -58,13 +59,30 @@ const MAX_DECODE_BYTES: u64 = (MAX_SOURCE_DIM as u64) * (MAX_SOURCE_DIM as u64) 
 const JPEG_SCALED_DECODE_TARGET_MULTIPLIER: u32 = 4;
 
 fn cache_max_bytes() -> u64 {
-    if let Ok(conn) = db::open() {
-        if let Ok(Some(s)) = db::get_setting_string(&conn, "thumbCacheMb") {
-            if let Ok(n) = s.parse::<u64>() {
-                if (CACHE_MIN_MB..=CACHE_MAX_MB).contains(&n) {
-                    return n * 1024 * 1024;
+    match db::open() {
+        Ok(conn) => match db::get_setting_string(&conn, "thumbCacheMb") {
+            Ok(Some(s)) => {
+                if let Ok(n) = s.parse::<u64>() {
+                    if (CACHE_MIN_MB..=CACHE_MAX_MB).contains(&n) {
+                        return n * 1024 * 1024;
+                    }
                 }
             }
+            Ok(None) => {}
+            Err(error) => {
+                debug_log(&format!(
+                    "thumbnail cache size setting unavailable (code={}): {}",
+                    error.code().as_code_str(),
+                    error
+                ));
+            }
+        },
+        Err(error) => {
+            debug_log(&format!(
+                "thumbnail cache size DB unavailable (code={}): {}",
+                error.code().as_code_str(),
+                error
+            ));
         }
     }
     CACHE_DEFAULT_MB * 1024 * 1024
@@ -192,17 +210,46 @@ async fn get_thumbnail_impl(
     let kind = thumb_kind(&target);
     let mut ffmpeg_override: Option<PathBuf> = None;
     if matches!(kind, ThumbKind::Video) {
-        if let Ok(conn) = db::open() {
-            if let Ok(Some(false)) = db::get_setting_bool(&conn, "videoThumbs") {
-                return Err(ThumbnailError::from_external_message(
-                    "Video thumbnails disabled",
-                ));
-            }
-            if let Ok(Some(path)) = db::get_setting_string(&conn, "ffmpegPath") {
-                let trimmed = path.trim();
-                if !trimmed.is_empty() {
-                    ffmpeg_override = Some(PathBuf::from(trimmed));
+        match db::open() {
+            Ok(conn) => {
+                match db::get_setting_bool(&conn, "videoThumbs") {
+                    Ok(Some(false)) => {
+                        return Err(ThumbnailError::from_external_message(
+                            "Video thumbnails disabled",
+                        ));
+                    }
+                    Ok(Some(true) | None) => {}
+                    Err(error) => {
+                        debug_log(&format!(
+                            "videoThumbs setting unavailable (code={}): {}",
+                            error.code().as_code_str(),
+                            error
+                        ));
+                    }
                 }
+                match db::get_setting_string(&conn, "ffmpegPath") {
+                    Ok(Some(path)) => {
+                        let trimmed = path.trim();
+                        if !trimmed.is_empty() {
+                            ffmpeg_override = Some(PathBuf::from(trimmed));
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        debug_log(&format!(
+                            "ffmpegPath setting unavailable for thumbnails (code={}): {}",
+                            error.code().as_code_str(),
+                            error
+                        ));
+                    }
+                }
+            }
+            Err(error) => {
+                debug_log(&format!(
+                    "thumbnail video settings DB unavailable (code={}): {}",
+                    error.code().as_code_str(),
+                    error
+                ));
             }
         }
     }
