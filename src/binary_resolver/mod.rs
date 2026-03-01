@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-pub use error::{BinaryResolverError, BinaryResolverResult};
+pub use error::{BinaryResolverError, BinaryResolverErrorCode, BinaryResolverResult};
 
 #[cfg(target_os = "linux")]
 const WELL_KNOWN_BIN_DIRS: &[&str] = &[
@@ -23,10 +23,6 @@ const WELL_KNOWN_BIN_DIRS: &[&str] = &["/usr/bin", "/bin", "/usr/local/bin", "/o
 
 #[cfg(target_os = "windows")]
 const WELL_KNOWN_BIN_DIRS: &[&str] = &[];
-
-pub fn resolve_binary(name: &str) -> Option<PathBuf> {
-    resolve_binary_checked(name).ok()
-}
 
 pub fn resolve_binary_with_overrides<I>(name: &str, overrides: I) -> Option<PathBuf>
 where

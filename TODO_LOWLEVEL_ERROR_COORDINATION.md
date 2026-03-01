@@ -54,7 +54,8 @@ Status note:
 Status note:
 - [x] typed checked resolver functions now exist alongside compatibility wrappers in `src/binary_resolver/mod.rs`
 - [x] `src/commands/cloud/rclone_path.rs` now uses typed resolver results instead of plain `Option`
-- [ ] low-stakes callers like `system_clipboard` and media-probe still use `Option` wrappers intentionally for now
+- [x] `src/commands/system_clipboard/mod.rs` now uses typed resolver results instead of plain `Option`
+- [ ] lower-stakes callers like media-probe still use `Option` wrappers intentionally for now
 
 ## 3. DB
 
