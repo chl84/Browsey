@@ -19,6 +19,16 @@ fn is_gvfs_path(path: &std::path::Path) -> bool {
     s.contains("/gvfs/") || s.contains("\\gvfs\\")
 }
 
+fn map_db_open_error(error: crate::db::DbError) -> FsError {
+    let code = match error.code() {
+        crate::db::DbErrorCode::NotFound => FsErrorCode::NotFound,
+        crate::db::DbErrorCode::PermissionDenied => FsErrorCode::PermissionDenied,
+        crate::db::DbErrorCode::ReadOnlyFilesystem => FsErrorCode::ReadOnlyFilesystem,
+        _ => FsErrorCode::OpenFailed,
+    };
+    FsError::new(code, error.to_string())
+}
+
 #[tauri::command]
 pub fn open_entry(path: String) -> ApiResult<()> {
     map_api_result(open_entry_impl(path))
@@ -26,12 +36,7 @@ pub fn open_entry(path: String) -> ApiResult<()> {
 
 fn open_entry_impl(path: String) -> FsResult<()> {
     let pb = sanitize_path_follow(&path, false).map_err(FsError::from_external_message)?;
-    let conn = db::open().map_err(|error| {
-        FsError::new(
-            FsErrorCode::OpenFailed,
-            format!("Failed to open database for recent tracking: {error}"),
-        )
-    })?;
+    let conn = db::open().map_err(map_db_open_error)?;
     if let Err(e) = db::touch_recent(&conn, &pb.to_string_lossy()) {
         warn!("Failed to record recent for {:?}: {}", pb, e);
     }
