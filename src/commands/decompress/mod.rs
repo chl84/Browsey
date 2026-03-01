@@ -395,7 +395,7 @@ fn do_extract(
         ArchiveKind::Tar => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            map_external_result(extract_tar_with_reader(
+            extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -405,13 +405,13 @@ fn do_extract(
                 cancel_token,
                 &budget,
                 |reader| Ok(Box::new(reader) as Box<dyn Read>),
-            ))?;
+            )?;
             dest_dir
         }
         ArchiveKind::TarGz => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            map_external_result(extract_tar_with_reader(
+            extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -421,13 +421,13 @@ fn do_extract(
                 cancel_token,
                 &budget,
                 |reader| Ok(Box::new(GzDecoder::new(reader)) as Box<dyn Read>),
-            ))?;
+            )?;
             dest_dir
         }
         ArchiveKind::TarBz2 => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            map_external_result(extract_tar_with_reader(
+            extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -437,13 +437,13 @@ fn do_extract(
                 cancel_token,
                 &budget,
                 |reader| Ok(Box::new(BzDecoder::new(reader)) as Box<dyn Read>),
-            ))?;
+            )?;
             dest_dir
         }
         ArchiveKind::TarXz => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            map_external_result(extract_tar_with_reader(
+            extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -453,13 +453,13 @@ fn do_extract(
                 cancel_token,
                 &budget,
                 |reader| Ok(Box::new(XzDecoder::new(reader)) as Box<dyn Read>),
-            ))?;
+            )?;
             dest_dir
         }
         ArchiveKind::TarZstd => {
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
-            map_external_result(extract_tar_with_reader(
+            extract_tar_with_reader(
                 &archive_path,
                 &dest_dir,
                 strip.as_deref(),
@@ -471,9 +471,13 @@ fn do_extract(
                 |reader| {
                     ZstdDecoder::new(reader)
                         .map(|r| Box::new(r) as Box<dyn Read>)
-                        .map_err(|e| format!("Failed to create zstd decoder: {e}"))
+                        .map_err(|e| {
+                            DecompressError::from_external_message(format!(
+                                "Failed to create zstd decoder: {e}"
+                            ))
+                        })
                 },
-            ))?;
+            )?;
             dest_dir
         }
         ArchiveKind::SevenZ => {
@@ -708,7 +712,7 @@ fn choose_destination_dir(
         | ArchiveKind::TarGz
         | ArchiveKind::TarBz2
         | ArchiveKind::TarXz
-        | ArchiveKind::TarZstd => map_external_result(single_root_in_tar(archive_path, kind))?,
+        | ArchiveKind::TarZstd => single_root_in_tar(archive_path, kind)?,
         ArchiveKind::SevenZ => map_external_result(single_root_in_7z(archive_path))?,
         ArchiveKind::Rar => map_external_result(single_root_in_rar(archive_path))?,
         _ => None,

@@ -93,10 +93,6 @@ pub(super) fn map_api_result<T>(result: ThumbnailResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
 
-pub(super) fn map_external_result<T>(result: Result<T, String>) -> ThumbnailResult<T> {
-    result.map_err(ThumbnailError::from_external_message)
-}
-
 const THUMBNAIL_CLASSIFICATION_RULES: &[(ThumbnailErrorCode, &[&str])] = &[
     (
         ThumbnailErrorCode::Cancelled,

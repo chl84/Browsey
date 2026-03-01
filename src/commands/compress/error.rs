@@ -104,10 +104,6 @@ pub(super) fn map_api_result<T>(result: CompressResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
 
-pub(super) fn map_external_result<T>(result: Result<T, String>) -> CompressResult<T> {
-    result.map_err(CompressError::from_external_message)
-}
-
 const COMPRESS_CLASSIFICATION_RULES: &[(CompressErrorCode, &[&str])] = &[
     (
         CompressErrorCode::Cancelled,

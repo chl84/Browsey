@@ -15,19 +15,18 @@ Not in scope:
   - `rar_format.rs`
   - `seven_z_format.rs`
   - `tar_format.rs`
-  - Remaining archive/IO helpers still return `Result<_, String>` and are only wrapped later via `map_external_result(...)`.
+  - Progress: `tar_format.rs` now uses `DecompressResult<_>` through its tar reader/extract/total helpers.
+  - Remaining archive/IO helpers still return `Result<_, String>` in `mod.rs`, `util.rs`, `zip_format.rs`, `rar_format.rs`, and `seven_z_format.rs`.
 
-- [ ] `src/commands/compress/mod.rs`
-  - Archive planning/writing still has raw string errors in internal helpers.
-  - Remaining cases include archive writer and copy/finalize paths.
+- [x] `src/commands/compress/mod.rs`
+  - Completed: archive planning/writing now uses `CompressResult<_>` through the remaining writer/copy seams.
 
-- [ ] `src/commands/thumbnails/`
+- [x] `src/commands/thumbnails/`
   - `mod.rs`
   - `thumbnails_pdf.rs`
   - `thumbnails_svg.rs`
   - `thumbnails_video.rs`
-  - Progress: `thumbnails_pdf.rs`, `thumbnails_svg.rs`, and `thumbnails_video.rs` now use `ThumbnailResult<_>`.
-  - Remaining: decode/render helpers in `mod.rs` still return `Result<_, String>`.
+  - Completed: render/decode helpers now use `ThumbnailResult<_>` throughout the module.
 
 - [x] `src/commands/system_clipboard/mod.rs`
   - Completed: clipboard subprocess helpers now use `SystemClipboardResult<_>` instead of `Result<_, String>`.
@@ -66,8 +65,8 @@ Not in scope:
 - [x] `open_with`
 - [x] `listing`
 - [x] `duplicates`
-- [ ] `thumbnails`
-- [ ] `compress`
+- [x] `thumbnails`
+- [x] `compress`
 - [ ] `decompress`
 - [ ] `fs` residual helpers
 
