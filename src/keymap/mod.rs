@@ -2,7 +2,7 @@ mod accelerator;
 mod error;
 mod model;
 
-pub use error::{KeymapCoreError, KeymapCoreResult};
+pub use error::{KeymapCoreError, KeymapCoreErrorCode, KeymapCoreResult};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
@@ -10,6 +10,14 @@ use std::collections::{BTreeMap, HashMap};
 use model::{ShortcutCommandDefinition, SHORTCUT_COMMANDS};
 
 const SHORTCUTS_SETTING_KEY: &str = "shortcutBindingsV1";
+
+fn map_db_read_error(error: crate::db::DbError) -> KeymapCoreError {
+    KeymapCoreError::new(KeymapCoreErrorCode::DbReadFailed, error.to_string())
+}
+
+fn map_db_write_error(error: crate::db::DbError) -> KeymapCoreError {
+    KeymapCoreError::new(KeymapCoreErrorCode::DbWriteFailed, error.to_string())
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,8 +83,7 @@ fn build_bindings(overrides: &HashMap<String, String>) -> KeymapCoreResult<Vec<S
 }
 
 fn load_overrides(conn: &Connection) -> KeymapCoreResult<HashMap<String, String>> {
-    let raw = crate::db::get_setting_string(conn, SHORTCUTS_SETTING_KEY)
-        .map_err(|error| KeymapCoreError::from_external_message(error.to_string()))?;
+    let raw = crate::db::get_setting_string(conn, SHORTCUTS_SETTING_KEY).map_err(map_db_read_error)?;
     let Some(raw) = raw else {
         return Ok(HashMap::new());
     };
@@ -113,7 +120,7 @@ fn save_overrides(conn: &Connection, overrides: &HashMap<String, String>) -> Key
         ))
     })?;
     crate::db::set_setting_string(conn, SHORTCUTS_SETTING_KEY, &payload)
-        .map_err(|error| KeymapCoreError::from_external_message(error.to_string()))
+        .map_err(map_db_write_error)
 }
 
 fn load_overrides_or_default(conn: &Connection) -> HashMap<String, String> {

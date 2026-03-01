@@ -40,6 +40,14 @@ impl std::fmt::Display for RclonePathError {
 
 impl std::error::Error for RclonePathError {}
 
+fn map_db_open_error(error: crate::db::DbError) -> RclonePathError {
+    RclonePathError::new(RclonePathErrorCode::DbOpenFailed, error.to_string())
+}
+
+fn map_db_read_error(error: crate::db::DbError) -> RclonePathError {
+    RclonePathError::new(RclonePathErrorCode::DbReadFailed, error.to_string())
+}
+
 pub(crate) fn configured_rclone_cli() -> Result<RcloneCli, RclonePathError> {
     Ok(RcloneCli::with_binary(configured_rclone_binary()?))
 }
@@ -94,18 +102,8 @@ fn load_rclone_path_setting() -> Result<String, RclonePathError> {
             return Ok(value.clone());
         }
     }
-    let conn = crate::db::open().map_err(|error| {
-        RclonePathError::new(
-            RclonePathErrorCode::DbOpenFailed,
-            format!("Failed to open settings database: {error}"),
-        )
-    })?;
-    let value = crate::db::get_setting_string(&conn, "rclonePath").map_err(|error| {
-        RclonePathError::new(
-            RclonePathErrorCode::DbReadFailed,
-            format!("Failed to read Rclone path setting: {error}"),
-        )
-    })?;
+    let conn = crate::db::open().map_err(map_db_open_error)?;
+    let value = crate::db::get_setting_string(&conn, "rclonePath").map_err(map_db_read_error)?;
     Ok(value.unwrap_or_default())
 }
 
