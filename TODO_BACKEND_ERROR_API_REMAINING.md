@@ -28,8 +28,8 @@ Not in scope:
   - `thumbnails_video.rs`
   - The orchestration now uses `ThumbnailResult`, but several decode/render helpers still return `Result<_, String>`.
 
-- [ ] `src/commands/system_clipboard/mod.rs`
-  - Clipboard subprocess helpers still use `Result<_, String>` for wl-copy/xclip/read/clear paths.
+- [x] `src/commands/system_clipboard/mod.rs`
+  - Completed: clipboard subprocess helpers now use `SystemClipboardResult<_>` instead of `Result<_, String>`.
 
 - [ ] `src/commands/open_with/`
   - `mod.rs`
@@ -61,7 +61,7 @@ Not in scope:
 ## Suggested Order
 
 - [x] `cloud/providers/rclone`
-- [ ] `system_clipboard`
+- [x] `system_clipboard`
 - [ ] `open_with`
 - [ ] `listing`
 - [ ] `duplicates`

@@ -41,17 +41,21 @@ fn should_avoid_wl_clipboard() -> bool {
     is_wayland_session() && is_gnome_desktop()
 }
 
-fn file_uri(path: &str) -> Result<String, String> {
-    let cleaned = sanitize_path_follow(path, true)?;
+fn file_uri(path: &str) -> SystemClipboardResult<String> {
+    let cleaned =
+        sanitize_path_follow(path, true).map_err(SystemClipboardError::from_external_message)?;
     Url::from_file_path(&cleaned)
-        .map_err(|_| "Failed to build file URI".to_string())
+        .map_err(|_| SystemClipboardError::from_external_message("Failed to build file URI"))
         .map(|u| u.to_string())
 }
 
-fn run_wl_copy(mime: &str, payload: &str) -> Result<(), String> {
-    let bin = WL_COPY_BIN
-        .as_ref()
-        .ok_or_else(|| "wl-copy not found".to_string())?;
+fn run_wl_copy(mime: &str, payload: &str) -> SystemClipboardResult<()> {
+    let bin = WL_COPY_BIN.as_ref().ok_or_else(|| {
+        SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardToolMissing,
+            "wl-copy not found",
+        )
+    })?;
     let status = Command::new(bin)
         .arg("--type")
         .arg(mime)
@@ -64,17 +68,28 @@ fn run_wl_copy(mime: &str, payload: &str) -> Result<(), String> {
             }
             child.wait()
         })
-        .map_err(|e| format!("wl-copy failed: {e}"))?;
+        .map_err(|e| {
+            SystemClipboardError::new(
+                SystemClipboardErrorCode::ClipboardWriteFailed,
+                format!("wl-copy failed: {e}"),
+            )
+        })?;
     if !status.success() {
-        return Err(format!("wl-copy exited with status {status}"));
+        return Err(SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardWriteFailed,
+            format!("wl-copy exited with status {status}"),
+        ));
     }
     Ok(())
 }
 
-fn run_xclip(mime: &str, payload: &str) -> Result<(), String> {
-    let bin = XCLIP_BIN
-        .as_ref()
-        .ok_or_else(|| "xclip not found".to_string())?;
+fn run_xclip(mime: &str, payload: &str) -> SystemClipboardResult<()> {
+    let bin = XCLIP_BIN.as_ref().ok_or_else(|| {
+        SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardToolMissing,
+            "xclip not found",
+        )
+    })?;
     let status = Command::new(bin)
         .arg("-selection")
         .arg("clipboard")
@@ -89,9 +104,17 @@ fn run_xclip(mime: &str, payload: &str) -> Result<(), String> {
             }
             child.wait()
         })
-        .map_err(|e| format!("xclip failed: {e}"))?;
+        .map_err(|e| {
+            SystemClipboardError::new(
+                SystemClipboardErrorCode::ClipboardWriteFailed,
+                format!("xclip failed: {e}"),
+            )
+        })?;
     if !status.success() {
-        return Err(format!("xclip exited with status {status}"));
+        return Err(SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardWriteFailed,
+            format!("xclip exited with status {status}"),
+        ));
     }
     Ok(())
 }
@@ -106,14 +129,11 @@ fn copy_paths_to_system_clipboard_impl(
     mode: Option<String>,
 ) -> SystemClipboardResult<()> {
     if paths.is_empty() {
-        return Err(SystemClipboardError::new(
-            SystemClipboardErrorCode::InvalidInput,
-            "No paths provided",
-        ));
+        return Err(SystemClipboardError::invalid_input("No paths provided"));
     }
     let mut uris = Vec::with_capacity(paths.len());
     for p in paths {
-        uris.push(file_uri(&p).map_err(SystemClipboardError::from_external_message)?);
+        uris.push(file_uri(&p)?);
     }
     let action = match mode
         .unwrap_or_else(|| "copy".into())
@@ -172,29 +192,36 @@ fn copy_paths_to_system_clipboard_impl(
     ))
 }
 
-fn read_command_output(cmd: &mut Command) -> Result<Option<String>, String> {
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Clipboard read failed: {e}"))?;
+fn read_command_output(cmd: &mut Command) -> SystemClipboardResult<Option<String>> {
+    let output = cmd.output().map_err(|e| {
+        SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardReadFailed,
+            format!("Clipboard read failed: {e}"),
+        )
+    })?;
     if !output.status.success() {
         return Ok(None);
     }
-    let text = String::from_utf8(output.stdout)
-        .map_err(|e| format!("Clipboard text decode failed: {e}"))?;
+    let text = String::from_utf8(output.stdout).map_err(|e| {
+        SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardReadFailed,
+            format!("Clipboard text decode failed: {e}"),
+        )
+    })?;
     if text.trim().is_empty() {
         return Ok(None);
     }
     Ok(Some(text))
 }
 
-fn read_wl_paste(mime: &str) -> Result<Option<String>, String> {
+fn read_wl_paste(mime: &str) -> SystemClipboardResult<Option<String>> {
     let Some(bin) = WL_PASTE_BIN.as_ref() else {
         return Ok(None);
     };
     read_command_output(Command::new(bin).arg("--type").arg(mime))
 }
 
-fn read_xclip(mime: &str) -> Result<Option<String>, String> {
+fn read_xclip(mime: &str) -> SystemClipboardResult<Option<String>> {
     let Some(bin) = XCLIP_BIN.as_ref() else {
         return Ok(None);
     };
@@ -265,16 +292,12 @@ fn system_clipboard_paths_impl() -> SystemClipboardResult<SystemClipboardContent
     if should_avoid_wl_clipboard() {
         // See should_avoid_wl_clipboard(): avoid wl-paste focus side-effects on
         // GNOME Wayland and prefer X11 clipboard bridge if present.
-        if let Some(text) = read_xclip("x-special/gnome-copied-files")
-            .map_err(SystemClipboardError::from_external_message)?
-        {
+        if let Some(text) = read_xclip("x-special/gnome-copied-files")? {
             if let Some(content) = parse_gnome_payload(&text) {
                 return Ok(content);
             }
         }
-        if let Some(text) =
-            read_xclip("text/uri-list").map_err(SystemClipboardError::from_external_message)?
-        {
+        if let Some(text) = read_xclip("text/uri-list")? {
             let (paths, mode) = parse_uri_list(&text);
             if !paths.is_empty() {
                 return Ok(SystemClipboardContent { mode, paths });
@@ -287,16 +310,12 @@ fn system_clipboard_paths_impl() -> SystemClipboardResult<SystemClipboardContent
     }
 
     // Try Wayland payload first
-    if let Some(text) = read_wl_paste("x-special/gnome-copied-files")
-        .map_err(SystemClipboardError::from_external_message)?
-    {
+    if let Some(text) = read_wl_paste("x-special/gnome-copied-files")? {
         if let Some(content) = parse_gnome_payload(&text) {
             return Ok(content);
         }
     }
-    if let Some(text) =
-        read_wl_paste("text/uri-list").map_err(SystemClipboardError::from_external_message)?
-    {
+    if let Some(text) = read_wl_paste("text/uri-list")? {
         let (paths, mode) = parse_uri_list(&text);
         if !paths.is_empty() {
             return Ok(SystemClipboardContent { mode, paths });
@@ -304,16 +323,12 @@ fn system_clipboard_paths_impl() -> SystemClipboardResult<SystemClipboardContent
     }
 
     // Fallback to X11
-    if let Some(text) = read_xclip("x-special/gnome-copied-files")
-        .map_err(SystemClipboardError::from_external_message)?
-    {
+    if let Some(text) = read_xclip("x-special/gnome-copied-files")? {
         if let Some(content) = parse_gnome_payload(&text) {
             return Ok(content);
         }
     }
-    if let Some(text) =
-        read_xclip("text/uri-list").map_err(SystemClipboardError::from_external_message)?
-    {
+    if let Some(text) = read_xclip("text/uri-list")? {
         let (paths, mode) = parse_uri_list(&text);
         if !paths.is_empty() {
             return Ok(SystemClipboardContent { mode, paths });
@@ -326,24 +341,35 @@ fn system_clipboard_paths_impl() -> SystemClipboardResult<SystemClipboardContent
     ))
 }
 
-fn clear_with_wl_copy() -> Result<(), String> {
-    let bin = WL_COPY_BIN
-        .as_ref()
-        .ok_or_else(|| "wl-copy not found".to_string())?;
-    let status = Command::new(bin)
-        .arg("--clear")
-        .status()
-        .map_err(|e| format!("wl-copy --clear failed: {e}"))?;
+fn clear_with_wl_copy() -> SystemClipboardResult<()> {
+    let bin = WL_COPY_BIN.as_ref().ok_or_else(|| {
+        SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardToolMissing,
+            "wl-copy not found",
+        )
+    })?;
+    let status = Command::new(bin).arg("--clear").status().map_err(|e| {
+        SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardWriteFailed,
+            format!("wl-copy --clear failed: {e}"),
+        )
+    })?;
     if !status.success() {
-        return Err(format!("wl-copy --clear exited with status {status}"));
+        return Err(SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardWriteFailed,
+            format!("wl-copy --clear exited with status {status}"),
+        ));
     }
     Ok(())
 }
 
-fn clear_with_xclip() -> Result<(), String> {
-    let bin = XCLIP_BIN
-        .as_ref()
-        .ok_or_else(|| "xclip not found".to_string())?;
+fn clear_with_xclip() -> SystemClipboardResult<()> {
+    let bin = XCLIP_BIN.as_ref().ok_or_else(|| {
+        SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardToolMissing,
+            "xclip not found",
+        )
+    })?;
     let status = Command::new(bin)
         .arg("-selection")
         .arg("clipboard")
@@ -351,9 +377,17 @@ fn clear_with_xclip() -> Result<(), String> {
         .stdin(std::process::Stdio::piped())
         .spawn()
         .and_then(|mut child| child.wait())
-        .map_err(|e| format!("xclip clear failed: {e}"))?;
+        .map_err(|e| {
+            SystemClipboardError::new(
+                SystemClipboardErrorCode::ClipboardWriteFailed,
+                format!("xclip clear failed: {e}"),
+            )
+        })?;
     if !status.success() {
-        return Err(format!("xclip clear exited with status {status}"));
+        return Err(SystemClipboardError::new(
+            SystemClipboardErrorCode::ClipboardWriteFailed,
+            format!("xclip clear exited with status {status}"),
+        ));
     }
     Ok(())
 }
