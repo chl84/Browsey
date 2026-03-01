@@ -339,8 +339,9 @@ fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
     }
 }
 
-pub(crate) fn delete_entry_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
+pub(crate) fn delete_entry_nofollow_io(path: &Path) -> UndoResult<()> {
     delete_nofollow_io(path)
+        .map_err(|error| UndoError::from_io_error(format!("Failed to delete {}", path.display()), error))
 }
 
 #[cfg(all(unix, target_os = "linux"))]

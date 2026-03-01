@@ -200,13 +200,14 @@ fn resolve_ffprobe_bin() -> Option<PathBuf> {
         .as_deref()
         .and_then(derive_ffprobe_from_ffmpeg);
 
-    crate::binary_resolver::resolve_binary_with_overrides(
+    crate::binary_resolver::resolve_binary_with_overrides_checked(
         "ffprobe",
         [env_probe, configured_probe, env_derived_probe]
             .into_iter()
             .flatten()
             .collect::<Vec<_>>(),
     )
+    .ok()
 }
 
 fn configured_ffmpeg_binary() -> Option<PathBuf> {

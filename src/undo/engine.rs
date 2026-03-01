@@ -1,9 +1,8 @@
 use std::fs;
-use std::io::ErrorKind;
-
 use super::nofollow::delete_entry_nofollow_io;
 use super::path_ops::{copy_entry, delete_entry_path, move_with_fallback};
 use super::{Action, Direction};
+use crate::undo::error::UndoErrorCode;
 use crate::undo::{UndoError, UndoResult};
 
 #[cfg(target_os = "windows")]
@@ -82,11 +81,8 @@ pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoR
             })?),
             Direction::Backward => match delete_entry_nofollow_io(path) {
                 Ok(()) => Ok(()),
-                Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
-                Err(err) => Err(UndoError::from_io_error(
-                    format!("Failed to remove directory {}", path.display()),
-                    err,
-                )),
+                Err(err) if err.code() == UndoErrorCode::NotFound => Ok(()),
+                Err(err) => Err(err),
             },
         },
     }

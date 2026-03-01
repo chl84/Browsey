@@ -111,7 +111,6 @@ pub(crate) fn delete_entry_path(path: &Path) -> UndoResult<()> {
     let snapshot = snapshot_existing_path(path)?;
     assert_path_snapshot(path, &snapshot)?;
     delete_entry_nofollow_io(path)
-        .map_err(|e| UndoError::from_io_error(format!("Failed to delete {}", path.display()), e))
 }
 
 pub fn move_with_fallback(src: &Path, dst: &Path) -> UndoResult<()> {

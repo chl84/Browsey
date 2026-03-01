@@ -24,13 +24,6 @@ const WELL_KNOWN_BIN_DIRS: &[&str] = &["/usr/bin", "/bin", "/usr/local/bin", "/o
 #[cfg(target_os = "windows")]
 const WELL_KNOWN_BIN_DIRS: &[&str] = &[];
 
-pub fn resolve_binary_with_overrides<I>(name: &str, overrides: I) -> Option<PathBuf>
-where
-    I: IntoIterator<Item = PathBuf>,
-{
-    resolve_binary_with_overrides_checked(name, overrides).ok()
-}
-
 pub fn resolve_binary_checked(name: &str) -> BinaryResolverResult<PathBuf> {
     resolve_binary_with_overrides_checked(name, std::iter::empty::<PathBuf>())
 }
