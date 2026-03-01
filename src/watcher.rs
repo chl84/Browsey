@@ -99,11 +99,7 @@ pub fn start_watch(app: tauri::AppHandle, path: PathBuf, state: &WatchState) -> 
                 | EventKind::Other => {
                     // Best effort: a dropped frontend listener should not kill
                     // the filesystem watcher callback.
-                    let _ = runtime_lifecycle::emit_if_running(
-                        &app,
-                        "dir-changed",
-                        watched_path.clone(),
-                    );
+                    runtime_lifecycle::emit_if_running(&app, "dir-changed", watched_path.clone());
                 }
                 _ => {}
             }

@@ -1,11 +1,11 @@
 //! Mount/eject handling for local and GVFS mounts.
 
 use crate::{
-    commands::fs::MountInfo, errors::api_error::ApiResult, fs_utils::debug_log, watcher::WatchState,
+    commands::fs::MountInfo, errors::api_error::ApiResult, fs_utils::debug_log, runtime_lifecycle,
+    watcher::WatchState,
 };
 use serde_json::json;
 use std::time::Instant;
-use tauri::Emitter;
 
 #[cfg(not(target_os = "windows"))]
 use {
@@ -390,7 +390,8 @@ pub(super) async fn mount_partition_impl(path: String, app: tauri::AppHandle) ->
         .split_once("://")
         .map(|(prefix, _)| prefix.to_string());
     let fs_kind = scheme.unwrap_or_else(|| "gvfs".to_string());
-    let _ = app.emit(
+    runtime_lifecycle::emit_if_running(
+        &app,
         "mounting-started",
         json!({ "path": &path, "fs": &fs_kind, "outcome": "connecting" }),
     );
@@ -411,7 +412,8 @@ pub(super) async fn mount_partition_impl(path: String, app: tauri::AppHandle) ->
         let ok = !matches!(status, gio_mounts::MountUriStatus::Failed);
         let outcome = status.as_str();
         let duration_ms = started.elapsed().as_millis() as u64;
-        let _ = app.emit(
+        runtime_lifecycle::emit_if_running(
+            &app,
             "mounting-done",
             json!({
                 "path": &path,
@@ -432,7 +434,8 @@ pub(super) async fn mount_partition_impl(path: String, app: tauri::AppHandle) ->
         }
     } else {
         let duration_ms = started.elapsed().as_millis() as u64;
-        let _ = app.emit(
+        runtime_lifecycle::emit_if_running(
+            &app,
             "mounting-done",
             json!({
                 "path": &path,

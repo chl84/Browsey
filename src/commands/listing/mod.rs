@@ -508,7 +508,7 @@ fn spawn_meta_refresh(app: tauri::AppHandle, jobs: Vec<(PathBuf, Option<fs::File
             store_cached_meta(&path, &meta, is_link);
             batch.push(build_entry(&path, &meta, is_link, starred));
             if batch.len() >= 128 {
-                let _ = crate::runtime_lifecycle::emit_if_running(&app, "entry-meta-batch", &batch);
+                crate::runtime_lifecycle::emit_if_running(&app, "entry-meta-batch", &batch);
                 batch.clear();
             }
             if idx % 512 == 511 {
@@ -516,7 +516,7 @@ fn spawn_meta_refresh(app: tauri::AppHandle, jobs: Vec<(PathBuf, Option<fs::File
             }
         }
         if !batch.is_empty() {
-            let _ = crate::runtime_lifecycle::emit_if_running(&app, "entry-meta-batch", &batch);
+            crate::runtime_lifecycle::emit_if_running(&app, "entry-meta-batch", &batch);
         }
     });
 }
