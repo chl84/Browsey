@@ -61,6 +61,18 @@ pub fn load_hidden_files_last() -> ApiResult<Option<bool>> {
 }
 
 #[tauri::command]
+pub fn store_high_contrast(value: bool) -> ApiResult<()> {
+    let conn = open_connection()?;
+    map_settings_result(crate::db::set_setting_bool(&conn, "highContrast", value))
+}
+
+#[tauri::command]
+pub fn load_high_contrast() -> ApiResult<Option<bool>> {
+    let conn = open_connection()?;
+    map_settings_result(crate::db::get_setting_bool(&conn, "highContrast"))
+}
+
+#[tauri::command]
 pub fn store_folders_first(value: bool) -> ApiResult<()> {
     let conn = open_connection()?;
     map_settings_result(crate::db::set_setting_bool(&conn, "foldersFirst", value))

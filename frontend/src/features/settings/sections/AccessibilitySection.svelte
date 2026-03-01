@@ -7,6 +7,7 @@
   export let showScrollbarWidthRow = false
   export let settings: Settings
   export let onPatch: (patch: Partial<Settings>) => void = () => {}
+  export let onToggleHighContrast: (value: boolean) => void = () => {}
 </script>
 
 {#if show}
@@ -19,7 +20,11 @@
       <input
         type="checkbox"
         checked={settings.highContrast}
-        on:change={(e) => onPatch({ highContrast: (e.currentTarget as HTMLInputElement).checked })}
+        on:change={(e) => {
+          const next = (e.currentTarget as HTMLInputElement).checked
+          onPatch({ highContrast: next })
+          onToggleHighContrast(next)
+        }}
       />
       <span>Boost contrast for UI elements</span>
     </div>

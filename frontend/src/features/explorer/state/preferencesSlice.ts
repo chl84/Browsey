@@ -10,6 +10,7 @@ import {
   loadFoldersFirst,
   loadHardwareAcceleration,
   loadHiddenFilesLast,
+  loadHighContrast,
   loadMountsPollMs,
   loadOpenDestAfterExtract,
   loadShowHidden,
@@ -27,6 +28,7 @@ import {
   storeFoldersFirst,
   storeHardwareAcceleration,
   storeHiddenFilesLast,
+  storeHighContrast,
   storeMountsPollMs,
   storeOpenDestAfterExtract,
   storeShowHidden,
@@ -42,6 +44,7 @@ type PreferenceSliceDeps = Pick<
   ExplorerStores,
   | 'showHidden'
   | 'hiddenFilesLast'
+  | 'highContrast'
   | 'foldersFirst'
   | 'startDirPref'
   | 'confirmDelete'
@@ -73,6 +76,7 @@ export const createPreferenceSlice = (
   const {
     showHidden,
     hiddenFilesLast,
+    highContrast,
     foldersFirst,
     startDirPref,
     confirmDelete,
@@ -143,6 +147,14 @@ export const createPreferenceSlice = (
     })
   }
 
+  const toggleHighContrast = () => {
+    highContrast.update((v) => {
+      const next = !v
+      void storeHighContrast(next)
+      return next
+    })
+  }
+
   const toggleFoldersFirst = () => {
     foldersFirst.update((v) => {
       const next = !v
@@ -176,6 +188,17 @@ export const createPreferenceSlice = (
       }
     } catch (err) {
       console.error('Failed to load hiddenFilesLast setting', err)
+    }
+  }
+
+  const loadHighContrastPref = async () => {
+    try {
+      const saved = await loadHighContrast()
+      if (typeof saved === 'boolean') {
+        highContrast.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load highContrast setting', err)
     }
   }
 
@@ -410,10 +433,12 @@ export const createPreferenceSlice = (
     setArchiveLevelPref,
     toggleShowHidden,
     toggleHiddenFilesLast,
+    toggleHighContrast,
     toggleFoldersFirst,
     setStartDirPref,
     loadShowHiddenPref,
     loadHiddenFilesLastPref,
+    loadHighContrastPref,
     loadStartDirPref,
     loadConfirmDeletePref,
     toggleConfirmDelete,

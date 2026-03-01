@@ -38,6 +38,7 @@ export const useExplorerData = (options: Options = {}) => {
     loadMountsPollPref,
     loadShowHiddenPref,
     loadHiddenFilesLastPref,
+    loadHighContrastPref,
     loadFoldersFirstPref,
     loadStartDirPref,
     loadConfirmDeletePref,
@@ -53,6 +54,7 @@ export const useExplorerData = (options: Options = {}) => {
     loadDoubleClickMsPref,
     entries,
     current,
+    highContrast,
     startDirPref,
     invalidateFacetCache,
   } = explorer
@@ -70,9 +72,15 @@ export const useExplorerData = (options: Options = {}) => {
   let userNavActive = false
   let userNavGen = 0
   let unsubscribeMountsPoll: (() => void) | null = null
+  let unsubscribeHighContrast: (() => void) | null = null
   let metaQueue = new Map<string, Partial<Entry>>()
   let metaTimer: ReturnType<typeof setTimeout> | null = null
   let disposed = false
+
+  const applyHighContrastRootState = (enabled: boolean) => {
+    if (typeof document === 'undefined') return
+    document.documentElement.dataset.highContrast = enabled ? 'true' : 'false'
+  }
 
   const refreshGvfsPath = (path: string | null | undefined) => {
     if (!path || !isGvfsPath(path)) return
@@ -138,6 +146,7 @@ export const useExplorerData = (options: Options = {}) => {
     await Promise.all([
       loadShowHiddenPref(),
       loadHiddenFilesLastPref(),
+      loadHighContrastPref(),
       loadFoldersFirstPref(),
       loadStartDirPref(),
       loadConfirmDeletePref(),
@@ -176,6 +185,16 @@ export const useExplorerData = (options: Options = {}) => {
     if (disposed) {
       unsubscribeMountsPoll()
       unsubscribeMountsPoll = null
+      return
+    }
+
+    applyHighContrastRootState(get(highContrast))
+    unsubscribeHighContrast = highContrast.subscribe((enabled) => {
+      applyHighContrastRootState(enabled)
+    })
+    if (disposed) {
+      unsubscribeHighContrast()
+      unsubscribeHighContrast = null
       return
     }
 
@@ -259,6 +278,10 @@ export const useExplorerData = (options: Options = {}) => {
     if (unsubscribeMountsPoll) {
       unsubscribeMountsPoll()
       unsubscribeMountsPoll = null
+    }
+    if (unsubscribeHighContrast) {
+      unsubscribeHighContrast()
+      unsubscribeHighContrast = null
     }
     if (gvfsRefresh) {
       clearInterval(gvfsRefresh)

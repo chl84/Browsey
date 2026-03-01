@@ -29,6 +29,7 @@
   export let foldersFirstValue = true
   export let confirmDeleteValue = true
   export let densityValue: Density = 'cozy'
+  export let highContrastValue = false
   export let archiveNameValue = 'Archive'
   export let archiveLevelValue = 6
   export let openDestAfterExtractValue = true
@@ -45,6 +46,7 @@
   export let onChangeDefaultView: (value: 'list' | 'grid') => void = () => {}
   export let onToggleShowHidden: (value: boolean) => void = () => {}
   export let onToggleHiddenFilesLast: (value: boolean) => void = () => {}
+  export let onToggleHighContrast: (value: boolean) => void = () => {}
   export let onToggleFoldersFirst: (value: boolean) => void = () => {}
   export let onToggleConfirmDelete: (value: boolean) => void = () => {}
   export let onChangeSortField: (value: typeof sortFieldValue) => void = () => {}
@@ -135,6 +137,9 @@
   }
   $: if (settings.density !== densityValue) {
     patchSettings({ density: densityValue })
+  }
+  $: if (settings.highContrast !== highContrastValue) {
+    patchSettings({ highContrast: highContrastValue })
   }
   $: if (settings.archiveName !== archiveNameValue) {
     patchSettings({ archiveName: archiveNameValue })
@@ -314,6 +319,7 @@
           showScrollbarWidthRow={filterModel.showScrollbarWidthRow}
           {settings}
           onPatch={patchSettings}
+          {onToggleHighContrast}
         />
 
         <AdvancedSection

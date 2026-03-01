@@ -95,6 +95,7 @@ export const createExplorerStores = () => {
   const searchRunning = writable(false)
   const showHidden = writable(true)
   const hiddenFilesLast = writable(false)
+  const highContrast = writable(false)
   const foldersFirst = writable(true)
   const startDirPref = writable<string | null>(null)
   const confirmDelete = writable(true)
@@ -129,6 +130,7 @@ export const createExplorerStores = () => {
     searchRunning,
     showHidden,
     hiddenFilesLast,
+    highContrast,
     foldersFirst,
     startDirPref,
     confirmDelete,
