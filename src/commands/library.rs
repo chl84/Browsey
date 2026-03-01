@@ -26,6 +26,22 @@ mod error;
 const RECENT_META_CACHE_TTL: Duration = Duration::from_secs(30);
 const RECENT_NETWORK_METADATA_TIMEOUT: Duration = Duration::from_millis(150);
 
+fn map_db_open_error(error: crate::db::DbError) -> LibraryError {
+    LibraryError::new(LibraryErrorCode::DatabaseOpenFailed, error.to_string())
+}
+
+fn map_db_list_error(error: crate::db::DbError) -> LibraryError {
+    LibraryError::new(LibraryErrorCode::ListFailed, error.to_string())
+}
+
+fn map_db_delete_error(error: crate::db::DbError) -> LibraryError {
+    LibraryError::new(LibraryErrorCode::DeleteFailed, error.to_string())
+}
+
+fn map_db_toggle_error(error: crate::db::DbError) -> LibraryError {
+    LibraryError::new(LibraryErrorCode::ToggleStarFailed, error.to_string())
+}
+
 enum RecentMetadataProbe {
     Available(fs::Metadata),
     Missing,
@@ -71,18 +87,8 @@ pub fn toggle_star(path: String) -> ApiResult<bool> {
 }
 
 fn toggle_star_impl(path: String) -> LibraryResult<bool> {
-    let conn = db::open().map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::DatabaseOpenFailed,
-            format!("Failed to open library database: {error}"),
-        )
-    })?;
-    let res = db::toggle_star(&conn, &path).map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::ToggleStarFailed,
-            format!("Failed to toggle star: {error}"),
-        )
-    });
+    let conn = db::open().map_err(map_db_open_error)?;
+    let res = db::toggle_star(&conn, &path).map_err(map_db_toggle_error);
     match &res {
         Ok(_st) => {
             #[cfg(debug_assertions)]
@@ -99,18 +105,8 @@ pub fn list_starred(sort: Option<SortSpec>) -> ApiResult<DirListing> {
 }
 
 fn list_starred_impl(sort: Option<SortSpec>) -> LibraryResult<DirListing> {
-    let conn = db::open().map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::DatabaseOpenFailed,
-            format!("Failed to open library database: {error}"),
-        )
-    })?;
-    let entries = db::starred_entries(&conn).map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::ListFailed,
-            format!("Failed to list starred entries: {error}"),
-        )
-    })?;
+    let conn = db::open().map_err(map_db_open_error)?;
+    let entries = db::starred_entries(&conn).map_err(map_db_list_error)?;
     let mut out = Vec::new();
     for (p, _) in &entries {
         let pb = PathBuf::from(p);
@@ -132,24 +128,9 @@ pub fn list_recent(sort: Option<SortSpec>) -> ApiResult<DirListing> {
 }
 
 fn list_recent_impl(sort: Option<SortSpec>) -> LibraryResult<DirListing> {
-    let mut conn = db::open().map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::DatabaseOpenFailed,
-            format!("Failed to open library database: {error}"),
-        )
-    })?;
-    let star_set: HashSet<String> = db::starred_set(&conn).map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::ListFailed,
-            format!("Failed to read starred set: {error}"),
-        )
-    })?;
-    let recent_paths = db::recent_paths(&conn).map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::ListFailed,
-            format!("Failed to list recent paths: {error}"),
-        )
-    })?;
+    let mut conn = db::open().map_err(map_db_open_error)?;
+    let star_set: HashSet<String> = db::starred_set(&conn).map_err(map_db_list_error)?;
+    let recent_paths = db::recent_paths(&conn).map_err(map_db_list_error)?;
     let mut out = Vec::new();
     let mut stale_paths = Vec::new();
     for p in recent_paths {
@@ -207,18 +188,8 @@ fn remove_recent_impl(paths: Vec<String>) -> LibraryResult<()> {
     if paths.is_empty() {
         return Ok(());
     }
-    let mut conn = db::open().map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::DatabaseOpenFailed,
-            format!("Failed to open library database: {error}"),
-        )
-    })?;
-    db::delete_recent_paths(&mut conn, &paths).map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::DeleteFailed,
-            format!("Failed to remove recent entries: {error}"),
-        )
-    })?;
+    let mut conn = db::open().map_err(map_db_open_error)?;
+    db::delete_recent_paths(&mut conn, &paths).map_err(map_db_delete_error)?;
     Ok(())
 }
 
@@ -228,18 +199,8 @@ pub fn clear_stars() -> ApiResult<u64> {
 }
 
 fn clear_stars_impl() -> LibraryResult<u64> {
-    let conn = db::open().map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::DatabaseOpenFailed,
-            format!("Failed to open library database: {error}"),
-        )
-    })?;
-    let removed = db::delete_all_starred(&conn).map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::DeleteFailed,
-            format!("Failed to clear starred entries: {error}"),
-        )
-    })?;
+    let conn = db::open().map_err(map_db_open_error)?;
+    let removed = db::delete_all_starred(&conn).map_err(map_db_delete_error)?;
     Ok(removed as u64)
 }
 
@@ -249,18 +210,8 @@ pub fn clear_recents() -> ApiResult<u64> {
 }
 
 fn clear_recents_impl() -> LibraryResult<u64> {
-    let conn = db::open().map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::DatabaseOpenFailed,
-            format!("Failed to open library database: {error}"),
-        )
-    })?;
-    let removed = db::delete_all_recent(&conn).map_err(|error| {
-        LibraryError::new(
-            LibraryErrorCode::DeleteFailed,
-            format!("Failed to clear recent entries: {error}"),
-        )
-    })?;
+    let conn = db::open().map_err(map_db_open_error)?;
+    let removed = db::delete_all_recent(&conn).map_err(map_db_delete_error)?;
     Ok(removed as u64)
 }
 
