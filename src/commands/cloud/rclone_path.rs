@@ -5,23 +5,60 @@ use std::{ffi::OsString, path::PathBuf};
 #[cfg(test)]
 use std::sync::{Mutex, OnceLock};
 
-pub(crate) fn configured_rclone_cli() -> Result<RcloneCli, String> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RclonePathErrorCode {
+    InvalidConfig,
+    DbOpenFailed,
+    DbReadFailed,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RclonePathError {
+    code: RclonePathErrorCode,
+    message: String,
+}
+
+impl RclonePathError {
+    fn new(code: RclonePathErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn code(&self) -> RclonePathErrorCode {
+        self.code
+    }
+}
+
+impl std::fmt::Display for RclonePathError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for RclonePathError {}
+
+pub(crate) fn configured_rclone_cli() -> Result<RcloneCli, RclonePathError> {
     Ok(RcloneCli::with_binary(configured_rclone_binary()?))
 }
 
-pub(crate) fn configured_rclone_provider() -> Result<RcloneCloudProvider, String> {
+pub(crate) fn configured_rclone_provider() -> Result<RcloneCloudProvider, RclonePathError> {
     Ok(RcloneCloudProvider::from_cli(configured_rclone_cli()?))
 }
 
-fn configured_rclone_binary() -> Result<OsString, String> {
+fn configured_rclone_binary() -> Result<OsString, RclonePathError> {
     let configured = load_rclone_path_setting()?;
     let trimmed = configured.trim();
     if trimmed.is_empty() {
         return resolve_binary("rclone")
             .map(|path| path.into_os_string())
             .ok_or_else(|| {
-                "Unable to auto-detect rclone; install it or set Rclone path in Settings."
-                    .to_string()
+                RclonePathError::new(
+                    RclonePathErrorCode::InvalidConfig,
+                    "Unable to auto-detect rclone; install it or set Rclone path in Settings.",
+                )
             });
     }
 
@@ -29,18 +66,24 @@ fn configured_rclone_binary() -> Result<OsString, String> {
     if trimmed == "rclone" {
         return resolve_binary("rclone")
             .map(|path| path.into_os_string())
-            .ok_or_else(|| "Configured Rclone path could not be resolved; leave it empty to auto-detect or provide a valid executable path.".to_string());
+            .ok_or_else(|| {
+                RclonePathError::new(
+                    RclonePathErrorCode::InvalidConfig,
+                    "Configured Rclone path could not be resolved; leave it empty to auto-detect or provide a valid executable path.",
+                )
+            });
     }
     if let Some(path) = resolve_explicit_binary_path(&explicit) {
         return Ok(path.into_os_string());
     }
 
-    Err(format!(
-        "Configured Rclone path is invalid or not executable: {trimmed}"
+    Err(RclonePathError::new(
+        RclonePathErrorCode::InvalidConfig,
+        format!("Configured Rclone path is invalid or not executable: {trimmed}"),
     ))
 }
 
-fn load_rclone_path_setting() -> Result<String, String> {
+fn load_rclone_path_setting() -> Result<String, RclonePathError> {
     #[cfg(test)]
     {
         let guard = match test_rclone_path_override().lock() {
@@ -51,10 +94,18 @@ fn load_rclone_path_setting() -> Result<String, String> {
             return Ok(value.clone());
         }
     }
-    let conn =
-        crate::db::open().map_err(|error| format!("Failed to open settings database: {error}"))?;
-    let value = crate::db::get_setting_string(&conn, "rclonePath")
-        .map_err(|error| format!("Failed to read Rclone path setting: {error}"))?;
+    let conn = crate::db::open().map_err(|error| {
+        RclonePathError::new(
+            RclonePathErrorCode::DbOpenFailed,
+            format!("Failed to open settings database: {error}"),
+        )
+    })?;
+    let value = crate::db::get_setting_string(&conn, "rclonePath").map_err(|error| {
+        RclonePathError::new(
+            RclonePathErrorCode::DbReadFailed,
+            format!("Failed to read Rclone path setting: {error}"),
+        )
+    })?;
     Ok(value.unwrap_or_default())
 }
 

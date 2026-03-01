@@ -148,7 +148,7 @@ fn execute_mixed_entries_blocking(
     progress: Option<TransferProgressContext>,
 ) -> TransferResult<Vec<String>> {
     let cli = cloud::configured_rclone_cli()
-        .map_err(|error| transfer_err(TransferErrorCode::InvalidConfig, error))?;
+        .map_err(|error| transfer_err(TransferErrorCode::InvalidConfig, error.to_string()))?;
     execute_mixed_entries_blocking_with_cli(&cli, op, route, options, cancel, progress)
 }
 
@@ -160,7 +160,7 @@ fn execute_mixed_entry_to_blocking(
     progress: Option<TransferProgressContext>,
 ) -> TransferResult<String> {
     let cli = cloud::configured_rclone_cli()
-        .map_err(|error| transfer_err(TransferErrorCode::InvalidConfig, error))?;
+        .map_err(|error| transfer_err(TransferErrorCode::InvalidConfig, error.to_string()))?;
     execute_mixed_entry_to_blocking_with_cli(&cli, op, pair, options, cancel, progress)
 }
 
