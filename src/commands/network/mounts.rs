@@ -235,7 +235,7 @@ fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> NetworkR
     // Drop the active directory watcher before ejecting; open handles can block safe removal.
     watcher.replace(None);
     fs_windows::eject_drive(&path)
-        .map_err(|error| NetworkError::new(NetworkErrorCode::EjectFailed, error))
+        .map_err(|error| NetworkError::new(NetworkErrorCode::EjectFailed, error.to_string()))
 }
 
 #[tauri::command]

@@ -50,13 +50,12 @@ Not in scope:
   - `remotes.rs`
   - Completed: provider/parser helpers now use typed internal errors instead of `Result<_, String>`.
 
-- [ ] `src/commands/fs/`
+- [x] `src/commands/fs/`
   - `mod.rs`
   - `open_ops.rs`
   - `windows.rs`
   - `trash/staging.rs`
-  - Progress: `mod.rs` and `open_ops.rs` now expose typed `FsResult<_>` seams for path expansion/open helpers.
-  - Remaining: `windows.rs` and `trash/staging.rs` still use raw string errors in internal helpers.
+  - Completed: residual staging and Windows helpers now use typed `FsResult<_>` seams instead of raw string errors.
 
 ## Suggested Order
 
@@ -68,7 +67,7 @@ Not in scope:
 - [x] `thumbnails`
 - [x] `compress`
 - [x] `decompress`
-- [ ] `fs` residual helpers
+- [x] `fs` residual helpers
 
 ## Quality Gates
 

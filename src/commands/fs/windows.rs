@@ -1,4 +1,7 @@
-use super::MountInfo;
+use super::{
+    error::{FsError, FsErrorCode, FsResult},
+    MountInfo,
+};
 use std::ffi::OsString;
 use std::fs;
 use std::fs::OpenOptions;
@@ -129,14 +132,19 @@ fn utf16_to_string(buf: &[u16]) -> Option<String> {
     Some(String::from_utf16_lossy(&buf[..end]))
 }
 
-fn device_number_for_drive(letter: char) -> Result<u32, String> {
+fn device_number_for_drive(letter: char) -> FsResult<u32> {
     let path = format!(r"\\.\{}:", letter);
     unsafe {
         let file = OpenOptions::new()
             .read(true)
             .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
             .open(Path::new(&path))
-            .map_err(|e| format!("Failed to open {path}: {e}"))?;
+            .map_err(|e| {
+                FsError::new(
+                    FsErrorCode::OpenFailed,
+                    format!("Failed to open {path}: {e}"),
+                )
+            })?;
         let handle = file.as_raw_handle();
 
         let mut dev_num: STORAGE_DEVICE_NUMBER = zeroed();
@@ -153,15 +161,16 @@ fn device_number_for_drive(letter: char) -> Result<u32, String> {
         );
         if ok == 0 {
             let err = GetLastError();
-            return Err(format!(
-                "IOCTL_STORAGE_GET_DEVICE_NUMBER failed for {path}: Win32 error {err}"
+            return Err(FsError::new(
+                FsErrorCode::TaskFailed,
+                format!("IOCTL_STORAGE_GET_DEVICE_NUMBER failed for {path}: Win32 error {err}"),
             ));
         }
         Ok(dev_num.DeviceNumber)
     }
 }
 
-fn lock_and_eject_media(letter: char) -> Result<(), String> {
+fn lock_and_eject_media(letter: char) -> FsResult<()> {
     let path = format!(r"\\.\{}:", letter);
     unsafe {
         let file = OpenOptions::new()
@@ -169,7 +178,12 @@ fn lock_and_eject_media(letter: char) -> Result<(), String> {
             .write(true)
             .share_mode(0)
             .open(Path::new(&path))
-            .map_err(|e| format!("Failed to open {path}: {e}"))?;
+            .map_err(|e| {
+                FsError::new(
+                    FsErrorCode::OpenFailed,
+                    format!("Failed to open {path}: {e}"),
+                )
+            })?;
         let handle = file.as_raw_handle();
 
         let mut bytes = 0u32;
@@ -185,7 +199,10 @@ fn lock_and_eject_media(letter: char) -> Result<(), String> {
         );
         if ok_lock == 0 {
             let err = GetLastError();
-            return Err(format!("FSCTL_LOCK_VOLUME failed: Win32 error {err}"));
+            return Err(FsError::new(
+                FsErrorCode::TaskFailed,
+                format!("FSCTL_LOCK_VOLUME failed: Win32 error {err}"),
+            ));
         }
 
         let ok_dismount = DeviceIoControl(
@@ -200,7 +217,10 @@ fn lock_and_eject_media(letter: char) -> Result<(), String> {
         );
         if ok_dismount == 0 {
             let err = GetLastError();
-            return Err(format!("FSCTL_DISMOUNT_VOLUME failed: Win32 error {err}"));
+            return Err(FsError::new(
+                FsErrorCode::TaskFailed,
+                format!("FSCTL_DISMOUNT_VOLUME failed: Win32 error {err}"),
+            ));
         }
 
         let mut pmr = PREVENT_MEDIA_REMOVAL {
@@ -218,8 +238,9 @@ fn lock_and_eject_media(letter: char) -> Result<(), String> {
         );
         if ok_allow == 0 {
             let err = GetLastError();
-            return Err(format!(
-                "IOCTL_STORAGE_MEDIA_REMOVAL failed: Win32 error {err}"
+            return Err(FsError::new(
+                FsErrorCode::TaskFailed,
+                format!("IOCTL_STORAGE_MEDIA_REMOVAL failed: Win32 error {err}"),
             ));
         }
 
@@ -235,8 +256,9 @@ fn lock_and_eject_media(letter: char) -> Result<(), String> {
         );
         if ok_eject == 0 {
             let err = GetLastError();
-            return Err(format!(
-                "IOCTL_STORAGE_EJECT_MEDIA failed: Win32 error {err}"
+            return Err(FsError::new(
+                FsErrorCode::TaskFailed,
+                format!("IOCTL_STORAGE_EJECT_MEDIA failed: Win32 error {err}"),
             ));
         }
         Ok(())
@@ -252,7 +274,7 @@ impl Drop for DevInfoList {
     }
 }
 
-fn eject_by_device_number(device_number: u32) -> Result<(), String> {
+fn eject_by_device_number(device_number: u32) -> FsResult<()> {
     unsafe {
         let hdev = SetupDiGetClassDevsW(
             &GUID_DEVINTERFACE_DISK,
@@ -261,7 +283,10 @@ fn eject_by_device_number(device_number: u32) -> Result<(), String> {
             DIGCF_PRESENT | DIGCF_DEVICEINTERFACE,
         );
         if hdev == INVALID_HANDLE_VALUE as isize {
-            return Err("SetupDiGetClassDevsW failed".into());
+            return Err(FsError::new(
+                FsErrorCode::TaskFailed,
+                "SetupDiGetClassDevsW failed",
+            ));
         }
         let _guard = DevInfoList(hdev);
         let mut index = 0;
@@ -280,8 +305,9 @@ fn eject_by_device_number(device_number: u32) -> Result<(), String> {
                 if err == ERROR_NO_MORE_ITEMS {
                     break;
                 }
-                return Err(format!(
-                    "SetupDiEnumDeviceInterfaces failed: Win32 error {err}"
+                return Err(FsError::new(
+                    FsErrorCode::TaskFailed,
+                    format!("SetupDiEnumDeviceInterfaces failed: Win32 error {err}"),
                 ));
             }
             index += 1;
@@ -364,24 +390,33 @@ fn eject_by_device_number(device_number: u32) -> Result<(), String> {
                 CR_SUCCESS => Ok(()),
                 CR_REMOVE_VETOED => {
                     let reason = utf16_to_string(&veto_name).unwrap_or_else(|| "unknown".into());
-                    Err(format!("Eject vetoed: {reason}"))
+                    Err(FsError::new(
+                        FsErrorCode::TaskFailed,
+                        format!("Eject vetoed: {reason}"),
+                    ))
                 }
-                other => Err(format!("CM_Request_Device_EjectW failed: code {other}")),
+                other => Err(FsError::new(
+                    FsErrorCode::TaskFailed,
+                    format!("CM_Request_Device_EjectW failed: code {other}"),
+                )),
             };
         }
     }
-    Err("No matching device found to eject".into())
+    Err(FsError::new(
+        FsErrorCode::NotFound,
+        "No matching device found to eject",
+    ))
 }
 
-pub fn eject_drive(path: &str) -> Result<(), String> {
+pub fn eject_drive(path: &str) -> FsResult<()> {
     // Expect something like "D:\"; normalize to "D:".
     let drive = path.trim_end_matches(['\\', '/']);
     let mut chars = drive.chars();
     let letter = chars
         .next()
-        .ok_or_else(|| "Invalid drive path".to_string())?;
+        .ok_or_else(|| FsError::new(FsErrorCode::InvalidPath, "Invalid drive path"))?;
     if !letter.is_ascii_alphabetic() {
-        return Err("Invalid drive path".into());
+        return Err(FsError::new(FsErrorCode::InvalidPath, "Invalid drive path"));
     }
     let target = format!("{}:", letter.to_ascii_uppercase());
 
@@ -417,7 +452,12 @@ pub fn eject_drive(path: &str) -> Result<(), String> {
         .arg("-Command")
         .arg(ps)
         .status()
-        .map_err(|e| format!("Failed to spawn PowerShell: {e}"))?;
+        .map_err(|e| {
+            FsError::new(
+                FsErrorCode::TaskFailed,
+                format!("Failed to spawn PowerShell: {e}"),
+            )
+        })?;
     if status.success() {
         return Ok(());
     }
@@ -427,7 +467,12 @@ pub fn eject_drive(path: &str) -> Result<(), String> {
         .arg(format!("{target}\\"))
         .arg("/p")
         .status()
-        .map_err(|e| format!("Failed to run mountvol: {e}"))?;
+        .map_err(|e| {
+            FsError::new(
+                FsErrorCode::TaskFailed,
+                format!("Failed to run mountvol: {e}"),
+            )
+        })?;
     if mv_status.success() {
         return Ok(());
     }
@@ -441,10 +486,18 @@ pub fn eject_drive(path: &str) -> Result<(), String> {
         .arg("-Command")
         .arg(ps_force)
         .status()
-        .map_err(|e| format!("Failed to spawn PowerShell: {e}"))?;
+        .map_err(|e| {
+            FsError::new(
+                FsErrorCode::TaskFailed,
+                format!("Failed to spawn PowerShell: {e}"),
+            )
+        })?;
     if force_status.success() {
         return Ok(());
     }
 
-    Err(format!("Failed to eject drive {target}"))
+    Err(FsError::new(
+        FsErrorCode::TaskFailed,
+        format!("Failed to eject drive {target}"),
+    ))
 }
