@@ -20,6 +20,8 @@
   export let onExitSearch: () => void = () => {}
   export let onFocus: () => void = () => {}
   export let onBlur: () => void = () => {}
+  export let onGoBack: () => void = () => {}
+  export let onGoForward: () => void = () => {}
   export let onNavigateSegment: (path: string) => void = () => {}
   export let onBreadcrumbDragOver: (path: string, e: DragEvent) => void = () => {}
   export let onBreadcrumbDragLeave: (path: string, e: DragEvent) => void = () => {}
@@ -184,6 +186,18 @@ import PulseTravelIndicator from '@/shared/ui/PulseTravelIndicator.svelte'
 
 <header class="topbar">
   <div class="left">
+    <div class="nav-buttons">
+      <button class="nav-btn" type="button" aria-label="Go back" on:click={onGoBack}>
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M10.5 3.5L6 8l4.5 4.5" />
+        </svg>
+      </button>
+      <button class="nav-btn" type="button" aria-label="Go forward" on:click={onGoForward}>
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M5.5 3.5L10 8l-4.5 4.5" />
+        </svg>
+      </button>
+    </div>
     <div class="path">
       <input
         id="explorer-path-input"
@@ -315,10 +329,52 @@ import PulseTravelIndicator from '@/shared/ui/PulseTravelIndicator.svelte'
 
   .left {
     display: flex;
-    gap: var(--topbar-gap);
     align-items: center;
     flex: 1;
     min-width: 0;
+  }
+
+  .nav-buttons {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+    padding-left: calc(var(--topbar-input-padding-x) + 15px);
+  }
+
+  .nav-btn {
+    width: var(--topbar-control-size);
+    height: var(--topbar-control-size);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg-muted);
+    border-radius: 0;
+    padding: 0;
+    cursor: default;
+  }
+
+  .nav-btn:hover {
+    background: var(--bg-hover);
+    color: var(--fg);
+    border-color: var(--border-strong);
+  }
+
+  .nav-btn:focus,
+  .nav-btn:focus-visible {
+    outline: none;
+  }
+
+  .nav-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    fill: none;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
   }
 
   .path {
