@@ -21,6 +21,7 @@ type ShortcutArgs = {
   onDeletePermanentFast?: () => Promise<boolean> | boolean
   onProperties?: () => Promise<boolean> | boolean
   onOpenConsole?: () => Promise<boolean> | boolean
+  onRefresh?: () => Promise<boolean> | boolean
   onToggleView?: () => Promise<void> | void
   onToggleHidden?: () => Promise<void> | void
   onSelectAll?: () => Promise<boolean> | boolean
@@ -50,6 +51,7 @@ export const createGlobalShortcuts = ({
   onDeletePermanentFast,
   onProperties,
   onOpenConsole,
+  onRefresh,
   onToggleView,
   onToggleHidden,
   onSelectAll,
@@ -181,6 +183,16 @@ export const createGlobalShortcuts = ({
       if (editable) return
       const handled = await onOpenConsole()
       if (handled) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      return
+    }
+
+    if (isShortcut(event, 'refresh') && onRefresh) {
+      if (editable) return
+      const handled = await onRefresh()
+      if (handled !== false) {
         event.preventDefault()
         event.stopPropagation()
       }

@@ -1009,6 +1009,10 @@
         return false
       }
     },
+    onRefresh: async () => {
+      await reloadCurrent()
+      return true
+    },
     onToggleView: async () => toggleViewMode(),
     onSelectAll: async () => {
       const list = get(filteredEntries)
