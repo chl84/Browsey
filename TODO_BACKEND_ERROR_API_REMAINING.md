@@ -26,7 +26,8 @@ Not in scope:
   - `thumbnails_pdf.rs`
   - `thumbnails_svg.rs`
   - `thumbnails_video.rs`
-  - The orchestration now uses `ThumbnailResult`, but several decode/render helpers still return `Result<_, String>`.
+  - Progress: `thumbnails_pdf.rs`, `thumbnails_svg.rs`, and `thumbnails_video.rs` now use `ThumbnailResult<_>`.
+  - Remaining: decode/render helpers in `mod.rs` still return `Result<_, String>`.
 
 - [x] `src/commands/system_clipboard/mod.rs`
   - Completed: clipboard subprocess helpers now use `SystemClipboardResult<_>` instead of `Result<_, String>`.
@@ -37,13 +38,13 @@ Not in scope:
   - `windows.rs`
   - Completed: launcher and command-template helpers now use `OpenWithResult<_>`.
 
-- [ ] `src/commands/duplicates/`
+- [x] `src/commands/duplicates/`
   - `mod.rs`
   - `scan.rs`
-  - Scan planning and synchronous execution still use raw string errors internally.
+  - Completed: scan planning and synchronous execution now use `DuplicatesResult<_>` and typed scan aborts.
 
-- [ ] `src/commands/listing/mod.rs`
-  - Core synchronous listing/facets helpers still expose `Result<_, String>` in internal seams.
+- [x] `src/commands/listing/mod.rs`
+  - Completed: core synchronous listing/facets helpers now use `ListingResult<_>` across their internal seams.
 
 - [x] `src/commands/cloud/providers/rclone/`
   - `parse.rs`
@@ -63,8 +64,8 @@ Not in scope:
 - [x] `cloud/providers/rclone`
 - [x] `system_clipboard`
 - [x] `open_with`
-- [ ] `listing`
-- [ ] `duplicates`
+- [x] `listing`
+- [x] `duplicates`
 - [ ] `thumbnails`
 - [ ] `compress`
 - [ ] `decompress`

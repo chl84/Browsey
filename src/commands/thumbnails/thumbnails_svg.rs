@@ -1,4 +1,7 @@
-use super::thumb_log;
+use super::{
+    error::{ThumbnailError, ThumbnailResult},
+    thumb_log,
+};
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::Tree;
 use std::path::Path;
@@ -24,22 +27,26 @@ pub fn render_svg_thumbnail(
     path: &Path,
     cache_path: &Path,
     max_dim: u32,
-) -> Result<(u32, u32), String> {
-    let data = std::fs::read(path).map_err(|e| format!("Read SVG failed: {e}"))?;
+) -> ThumbnailResult<(u32, u32)> {
+    let data = std::fs::read(path)
+        .map_err(|e| ThumbnailError::from_external_message(format!("Read SVG failed: {e}")))?;
     if has_unsupported_arithmetic_composite_filter(&data) {
         thumb_log(&format!(
             "svg thumbnail skipped (unsupported feComposite arithmetic filter): {}",
             path.display()
         ));
-        return Err("SVG uses unsupported arithmetic composite filter".into());
+        return Err(ThumbnailError::from_external_message(
+            "SVG uses unsupported arithmetic composite filter",
+        ));
     }
 
     let opt = crate::svg_options::usvg_options_for_path(path);
 
-    let tree = Tree::from_data(&data, &opt).map_err(|e| format!("SVG parse failed: {e}"))?;
+    let tree = Tree::from_data(&data, &opt)
+        .map_err(|e| ThumbnailError::from_external_message(format!("SVG parse failed: {e}")))?;
     let size = tree.size();
     if size.width() == 0.0 || size.height() == 0.0 {
-        return Err("SVG has zero size".into());
+        return Err(ThumbnailError::from_external_message("SVG has zero size"));
     }
 
     let max_side = size.width().max(size.height()) as f32;
@@ -47,17 +54,20 @@ pub fn render_svg_thumbnail(
     let target_w = (size.width() as f32 * scale).round() as u32;
     let target_h = (size.height() as f32 * scale).round() as u32;
     if target_w == 0 || target_h == 0 {
-        return Err("SVG scaled size is zero".into());
+        return Err(ThumbnailError::from_external_message(
+            "SVG scaled size is zero",
+        ));
     }
 
-    let mut pixmap = Pixmap::new(target_w, target_h).ok_or("Failed to allocate pixmap")?;
+    let mut pixmap = Pixmap::new(target_w, target_h)
+        .ok_or_else(|| ThumbnailError::from_external_message("Failed to allocate pixmap"))?;
     let transform = Transform::from_scale(scale, scale);
     let mut pixmap_mut = pixmap.as_mut();
     resvg::render(&tree, transform, &mut pixmap_mut);
 
-    pixmap
-        .save_png(cache_path)
-        .map_err(|e| format!("Save SVG thumbnail failed: {e}"))?;
+    pixmap.save_png(cache_path).map_err(|e| {
+        ThumbnailError::from_external_message(format!("Save SVG thumbnail failed: {e}"))
+    })?;
 
     Ok((target_w, target_h))
 }

@@ -48,6 +48,10 @@ impl DuplicatesError {
         }
     }
 
+    pub(super) fn invalid_input(message: impl Into<String>) -> Self {
+        Self::new(DuplicatesErrorCode::InvalidInput, message)
+    }
+
     pub(super) fn from_external_message(message: impl Into<String>) -> Self {
         let message = message.into();
         if let Some(hint) = classify_io_hint_from_message(&message) {

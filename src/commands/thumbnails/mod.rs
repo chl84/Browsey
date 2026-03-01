@@ -393,13 +393,13 @@ fn generate_thumbnail(
     ffmpeg_override: Option<PathBuf>,
 ) -> ThumbnailResult<ThumbnailResponse> {
     if matches!(thumb_kind(path), ThumbKind::Video) {
-        let (w, h) = map_external_result(render_video_thumbnail(
+        let (w, h) = render_video_thumbnail(
             path,
             cache_path,
             max_dim,
             generation,
             ffmpeg_override.as_deref(),
-        ))?;
+        )?;
         return Ok(ThumbnailResponse {
             path: cache_path.to_string_lossy().into_owned(),
             width: w,
@@ -414,12 +414,7 @@ fn generate_thumbnail(
         .map(|s| s.eq_ignore_ascii_case("pdf"))
         .unwrap_or(false)
     {
-        let (w, h) = map_external_result(render_pdf_thumbnail(
-            path,
-            cache_path,
-            max_dim,
-            resource_dir,
-        ))?;
+        let (w, h) = render_pdf_thumbnail(path, cache_path, max_dim, resource_dir)?;
         return Ok(ThumbnailResponse {
             path: cache_path.to_string_lossy().into_owned(),
             width: w,
@@ -434,7 +429,7 @@ fn generate_thumbnail(
         .map(|s| s.eq_ignore_ascii_case("svg"))
         .unwrap_or(false)
     {
-        let (w, h) = map_external_result(render_svg_thumbnail(path, cache_path, max_dim))?;
+        let (w, h) = render_svg_thumbnail(path, cache_path, max_dim)?;
         return Ok(ThumbnailResponse {
             path: cache_path.to_string_lossy().into_owned(),
             width: w,

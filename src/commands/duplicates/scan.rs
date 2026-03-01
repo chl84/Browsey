@@ -1,3 +1,4 @@
+use super::error::{DuplicatesError, DuplicatesResult};
 use std::{
     fs::{self, File},
     io::{BufReader, Read},
@@ -25,10 +26,12 @@ pub(super) fn find_identical_files(
     target: &Path,
     start: &Path,
     target_len: u64,
-) -> Result<Vec<PathBuf>, String> {
+) -> DuplicatesResult<Vec<PathBuf>> {
     match find_identical_files_with_progress(target, start, target_len, None, |_| {}) {
         ScanResult::Completed { matches, .. } => Ok(matches),
-        ScanResult::Cancelled => Err("Duplicate scan cancelled".into()),
+        ScanResult::Cancelled => Err(DuplicatesError::from_external_message(
+            "Duplicate scan cancelled",
+        )),
         ScanResult::Failed(err) => Err(err),
     }
 }
@@ -102,7 +105,7 @@ pub(super) enum ScanResult {
         progress: ScanProgress,
     },
     Cancelled,
-    Failed(String),
+    Failed(DuplicatesError),
 }
 
 pub(super) fn find_identical_files_with_progress(
@@ -188,7 +191,7 @@ pub(super) fn find_identical_files_with_progress(
 
 enum CollectAbort {
     Cancelled,
-    Failed(String),
+    Failed(DuplicatesError),
 }
 
 fn collect_same_size_files(
@@ -290,18 +293,24 @@ fn collect_same_size_files_with_limits(
 
             scanned_files = scanned_files.saturating_add(1);
             if scanned_files > max_scanned_files {
-                return Err(CollectAbort::Failed(format!(
+                let message = format!(
                     "Duplicate scan aborted: scanned file limit exceeded ({} > {})",
                     scanned_files, max_scanned_files
-                )));
+                );
+                return Err(CollectAbort::Failed(
+                    DuplicatesError::from_external_message(message),
+                ));
             }
             if meta.len() == target_len {
                 if (out.len() as u64) >= max_candidate_files {
-                    return Err(CollectAbort::Failed(format!(
+                    let message = format!(
                         "Duplicate scan aborted: candidate file limit exceeded ({} >= {})",
                         out.len(),
                         max_candidate_files
-                    )));
+                    );
+                    return Err(CollectAbort::Failed(
+                        DuplicatesError::from_external_message(message),
+                    ));
                 }
                 out.push(path);
             }
@@ -417,7 +426,7 @@ mod tests {
         match res {
             Err(CollectAbort::Failed(err)) => {
                 assert!(
-                    err.contains("candidate file limit exceeded"),
+                    err.to_string().contains("candidate file limit exceeded"),
                     "unexpected: {err}"
                 )
             }
@@ -442,7 +451,7 @@ mod tests {
         match res {
             Err(CollectAbort::Failed(err)) => {
                 assert!(
-                    err.contains("scanned file limit exceeded"),
+                    err.to_string().contains("scanned file limit exceeded"),
                     "unexpected: {err}"
                 )
             }
