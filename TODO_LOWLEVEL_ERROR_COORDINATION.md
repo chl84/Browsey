@@ -33,8 +33,9 @@ Status note:
 - [x] `error.rs` now exposes explicit typed constructors and I/O classification helpers
 - [x] `types.rs`, `path_checks.rs`, and `backup.rs` no longer rely on raw string errors for their main internal seams
 - [x] `engine.rs` and `path_ops.rs` now map their main I/O and validation seams through typed `UndoError`
-- [ ] `security.rs` and `nofollow.rs` still contain the largest remaining stringly typed control flow
-- [ ] batch rollback aggregation in `engine.rs` still formats composite failures as text and should preserve stable error codes next
+- [x] batch rollback aggregation in `engine.rs` now preserves stable `UndoErrorCode` when wrapping failures
+- [x] fallback move cleanup in `path_ops.rs` now preserves the original delete failure code when adding context
+- [ ] `security.rs` and `nofollow.rs` still contain the largest remaining platform-specific stringly typed control flow
 
 ## 2. Binary Resolver
 

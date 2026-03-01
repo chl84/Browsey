@@ -150,11 +150,14 @@ pub(crate) fn move_by_copy_delete_noreplace(
         delete_entry_path(src).map_err(|del_err| {
             // Best effort: clean up destination if delete failed to avoid duplicates.
             let _ = delete_entry_path(dst);
-            UndoError::from_external_message(format!(
-                "Copied {} -> {} after fallback move, but failed to delete source: {del_err}",
-                src.display(),
-                dst.display()
-            ))
+            UndoError::new(
+                del_err.code(),
+                format!(
+                    "Copied {} -> {} after fallback move, but failed to delete source: {del_err}",
+                    src.display(),
+                    dst.display()
+                ),
+            )
         })
     })
 }
