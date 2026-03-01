@@ -108,7 +108,6 @@
     shortcutCaptureError,
     beginShortcutCapture,
     handleWindowKeydown,
-    restoreDefaults,
     buildFilterModel,
   } = createSettingsModalViewModel({
     onClose: () => onClose(),
