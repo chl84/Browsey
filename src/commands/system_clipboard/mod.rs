@@ -3,6 +3,7 @@ use std::{env, path::PathBuf, process::Command};
 use once_cell::sync::Lazy;
 use url::Url;
 
+use crate::binary_resolver::{BinaryResolverErrorCode, BinaryResolverResult};
 use crate::errors::api_error::ApiResult;
 use crate::fs_utils::sanitize_path_follow;
 use error::{
@@ -17,12 +18,25 @@ pub struct SystemClipboardContent {
     pub paths: Vec<String>,
 }
 
-static WL_COPY_BIN: Lazy<Option<PathBuf>> =
-    Lazy::new(|| crate::binary_resolver::resolve_binary("wl-copy"));
-static WL_PASTE_BIN: Lazy<Option<PathBuf>> =
-    Lazy::new(|| crate::binary_resolver::resolve_binary("wl-paste"));
-static XCLIP_BIN: Lazy<Option<PathBuf>> =
-    Lazy::new(|| crate::binary_resolver::resolve_binary("xclip"));
+static WL_COPY_BIN: Lazy<BinaryResolverResult<PathBuf>> =
+    Lazy::new(|| crate::binary_resolver::resolve_binary_checked("wl-copy"));
+static WL_PASTE_BIN: Lazy<BinaryResolverResult<PathBuf>> =
+    Lazy::new(|| crate::binary_resolver::resolve_binary_checked("wl-paste"));
+static XCLIP_BIN: Lazy<BinaryResolverResult<PathBuf>> =
+    Lazy::new(|| crate::binary_resolver::resolve_binary_checked("xclip"));
+
+fn resolve_clipboard_bin<'a>(
+    result: &'a BinaryResolverResult<PathBuf>,
+    missing_message: &str,
+    failure_code: SystemClipboardErrorCode,
+) -> SystemClipboardResult<&'a PathBuf> {
+    result.as_ref().map_err(|error| match error.code() {
+        BinaryResolverErrorCode::NotFound => {
+            SystemClipboardError::new(SystemClipboardErrorCode::ClipboardToolMissing, missing_message)
+        }
+        _ => SystemClipboardError::new(failure_code, error.to_string()),
+    })
+}
 
 fn is_wayland_session() -> bool {
     env::var("XDG_SESSION_TYPE")
@@ -50,12 +64,11 @@ fn file_uri(path: &str) -> SystemClipboardResult<String> {
 }
 
 fn run_wl_copy(mime: &str, payload: &str) -> SystemClipboardResult<()> {
-    let bin = WL_COPY_BIN.as_ref().ok_or_else(|| {
-        SystemClipboardError::new(
-            SystemClipboardErrorCode::ClipboardToolMissing,
-            "wl-copy not found",
-        )
-    })?;
+    let bin = resolve_clipboard_bin(
+        &WL_COPY_BIN,
+        "wl-copy not found",
+        SystemClipboardErrorCode::ClipboardWriteFailed,
+    )?;
     let status = Command::new(bin)
         .arg("--type")
         .arg(mime)
@@ -84,12 +97,11 @@ fn run_wl_copy(mime: &str, payload: &str) -> SystemClipboardResult<()> {
 }
 
 fn run_xclip(mime: &str, payload: &str) -> SystemClipboardResult<()> {
-    let bin = XCLIP_BIN.as_ref().ok_or_else(|| {
-        SystemClipboardError::new(
-            SystemClipboardErrorCode::ClipboardToolMissing,
-            "xclip not found",
-        )
-    })?;
+    let bin = resolve_clipboard_bin(
+        &XCLIP_BIN,
+        "xclip not found",
+        SystemClipboardErrorCode::ClipboardWriteFailed,
+    )?;
     let status = Command::new(bin)
         .arg("-selection")
         .arg("clipboard")
@@ -215,15 +227,31 @@ fn read_command_output(cmd: &mut Command) -> SystemClipboardResult<Option<String
 }
 
 fn read_wl_paste(mime: &str) -> SystemClipboardResult<Option<String>> {
-    let Some(bin) = WL_PASTE_BIN.as_ref() else {
-        return Ok(None);
+    let bin = match resolve_clipboard_bin(
+        &WL_PASTE_BIN,
+        "wl-paste not found",
+        SystemClipboardErrorCode::ClipboardReadFailed,
+    ) {
+        Ok(bin) => bin,
+        Err(error) if error.code() == SystemClipboardErrorCode::ClipboardToolMissing => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
     };
     read_command_output(Command::new(bin).arg("--type").arg(mime))
 }
 
 fn read_xclip(mime: &str) -> SystemClipboardResult<Option<String>> {
-    let Some(bin) = XCLIP_BIN.as_ref() else {
-        return Ok(None);
+    let bin = match resolve_clipboard_bin(
+        &XCLIP_BIN,
+        "xclip not found",
+        SystemClipboardErrorCode::ClipboardReadFailed,
+    ) {
+        Ok(bin) => bin,
+        Err(error) if error.code() == SystemClipboardErrorCode::ClipboardToolMissing => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
     };
     read_command_output(
         Command::new(bin)
@@ -342,12 +370,11 @@ fn system_clipboard_paths_impl() -> SystemClipboardResult<SystemClipboardContent
 }
 
 fn clear_with_wl_copy() -> SystemClipboardResult<()> {
-    let bin = WL_COPY_BIN.as_ref().ok_or_else(|| {
-        SystemClipboardError::new(
-            SystemClipboardErrorCode::ClipboardToolMissing,
-            "wl-copy not found",
-        )
-    })?;
+    let bin = resolve_clipboard_bin(
+        &WL_COPY_BIN,
+        "wl-copy not found",
+        SystemClipboardErrorCode::ClipboardWriteFailed,
+    )?;
     let status = Command::new(bin).arg("--clear").status().map_err(|e| {
         SystemClipboardError::new(
             SystemClipboardErrorCode::ClipboardWriteFailed,
@@ -364,12 +391,11 @@ fn clear_with_wl_copy() -> SystemClipboardResult<()> {
 }
 
 fn clear_with_xclip() -> SystemClipboardResult<()> {
-    let bin = XCLIP_BIN.as_ref().ok_or_else(|| {
-        SystemClipboardError::new(
-            SystemClipboardErrorCode::ClipboardToolMissing,
-            "xclip not found",
-        )
-    })?;
+    let bin = resolve_clipboard_bin(
+        &XCLIP_BIN,
+        "xclip not found",
+        SystemClipboardErrorCode::ClipboardWriteFailed,
+    )?;
     let status = Command::new(bin)
         .arg("-selection")
         .arg("clipboard")

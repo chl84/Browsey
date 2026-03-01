@@ -83,6 +83,10 @@ impl BinaryResolverError {
             format!("Failed to resolve binary path {}: {error}", path.display()),
         )
     }
+
+    pub fn code(&self) -> BinaryResolverErrorCode {
+        self.code
+    }
 }
 
 impl fmt::Display for BinaryResolverError {
