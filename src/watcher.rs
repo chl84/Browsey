@@ -73,10 +73,7 @@ pub struct WatchState {
 impl WatchState {
     pub fn replace(&self, watcher: Option<RecommendedWatcher>) -> WatcherResult<()> {
         let mut guard = self.inner.lock().map_err(|_| {
-            WatcherError::new(
-                WatcherErrorCode::StateLock,
-                "Failed to lock watch state",
-            )
+            WatcherError::new(WatcherErrorCode::StateLock, "Failed to lock watch state")
         })?;
         *guard = watcher;
         Ok(())

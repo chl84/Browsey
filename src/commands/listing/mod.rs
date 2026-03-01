@@ -31,6 +31,17 @@ mod error;
 
 const META_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
+fn map_db_error(error: crate::db::DbError) -> ListingError {
+    let code = match error.code() {
+        crate::db::DbErrorCode::PermissionDenied => ListingErrorCode::PermissionDenied,
+        crate::db::DbErrorCode::NotFound | crate::db::DbErrorCode::DataDirUnavailable => {
+            ListingErrorCode::NotFound
+        }
+        _ => ListingErrorCode::UnknownError,
+    };
+    ListingError::new(code, error.to_string())
+}
+
 #[derive(Serialize, Clone)]
 pub struct FacetOption {
     pub id: String,
@@ -525,10 +536,8 @@ fn list_dir_sync(
         target.display()
     ));
 
-    let star_conn =
-        db::open().map_err(|error| ListingError::from_external_message(error.to_string()))?;
-    let star_set: HashSet<String> = db::starred_set(&star_conn)
-        .map_err(|error| ListingError::from_external_message(error.to_string()))?;
+    let star_conn = db::open().map_err(map_db_error)?;
+    let star_set: HashSet<String> = db::starred_set(&star_conn).map_err(map_db_error)?;
 
     let mut entries = Vec::new();
     let mut pending_meta = Vec::new();
