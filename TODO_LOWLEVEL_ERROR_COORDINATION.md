@@ -35,6 +35,7 @@ Status note:
 - [x] `engine.rs` and `path_ops.rs` now map their main I/O and validation seams through typed `UndoError`
 - [x] batch rollback aggregation in `engine.rs` now preserves stable `UndoErrorCode` when wrapping failures
 - [x] fallback move cleanup in `path_ops.rs` now preserves the original delete failure code when adding context
+- [x] `error.rs` no longer relies on generic `From<String>`/`From<&str>` conversions, and `FsUtilsError` now maps to `UndoError` by stable code
 - [ ] `security.rs` and `nofollow.rs` still contain the largest remaining platform-specific stringly typed control flow
 
 ## 2. Binary Resolver
