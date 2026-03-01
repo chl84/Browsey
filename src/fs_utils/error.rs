@@ -42,6 +42,10 @@ impl FsUtilsError {
         }
     }
 
+    pub fn code(&self) -> FsUtilsErrorCode {
+        self.code
+    }
+
     pub fn from_io_error(fallback: FsUtilsErrorCode, context: &str, error: std::io::Error) -> Self {
         let code = match classify_io_error(&error) {
             IoErrorHint::NotFound => FsUtilsErrorCode::NotFound,

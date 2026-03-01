@@ -5,6 +5,7 @@ use crate::errors::{
         DomainError, ErrorCode, IoErrorHint,
     },
 };
+use crate::fs_utils::FsUtilsErrorCode;
 use std::fmt;
 use std::path::Path;
 
@@ -183,21 +184,21 @@ impl DomainError for UndoError {
     }
 }
 
-impl From<String> for UndoError {
-    fn from(message: String) -> Self {
-        Self::from_external_message(message)
-    }
-}
-
-impl From<&str> for UndoError {
-    fn from(message: &str) -> Self {
-        Self::from_external_message(message)
-    }
-}
-
 impl From<crate::fs_utils::FsUtilsError> for UndoError {
     fn from(error: crate::fs_utils::FsUtilsError) -> Self {
-        Self::from_external_message(error.to_string())
+        let code = match error.code() {
+            FsUtilsErrorCode::InvalidPath | FsUtilsErrorCode::RootForbidden => {
+                UndoErrorCode::InvalidInput
+            }
+            FsUtilsErrorCode::NotFound => UndoErrorCode::NotFound,
+            FsUtilsErrorCode::PermissionDenied => UndoErrorCode::PermissionDenied,
+            FsUtilsErrorCode::ReadOnlyFilesystem => UndoErrorCode::ReadOnlyFilesystem,
+            FsUtilsErrorCode::SymlinkUnsupported => UndoErrorCode::SymlinkUnsupported,
+            FsUtilsErrorCode::CanonicalizeFailed | FsUtilsErrorCode::MetadataReadFailed => {
+                UndoErrorCode::IoError
+            }
+        };
+        Self::new(code, error.to_string())
     }
 }
 
