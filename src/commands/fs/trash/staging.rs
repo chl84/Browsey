@@ -40,10 +40,13 @@ fn trash_stage_journal_lock() -> &'static Mutex<()> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn stage_for_trash(src: &Path) -> Result<PathBuf, String> {
-    let parent = src
-        .parent()
-        .ok_or_else(|| format!("Invalid source path: {}", src.display()))?;
+fn stage_for_trash(src: &Path) -> FsResult<PathBuf> {
+    let parent = src.parent().ok_or_else(|| {
+        FsError::new(
+            FsErrorCode::InvalidPath,
+            format!("Invalid source path: {}", src.display()),
+        )
+    })?;
     let seed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -55,16 +58,19 @@ fn stage_for_trash(src: &Path) -> Result<PathBuf, String> {
             Ok(_) => return Ok(staged),
             Err(err) if is_destination_exists_error(&err) => continue,
             Err(err) => {
-                return Err(format!(
-                    "Failed to stage {} for trash: {err}",
-                    src.display()
+                return Err(FsError::new(
+                    FsErrorCode::TrashFailed,
+                    format!("Failed to stage {} for trash: {err}", src.display()),
                 ));
             }
         }
     }
-    Err(format!(
-        "Failed to allocate a temporary staged path for {}",
-        src.display()
+    Err(FsError::new(
+        FsErrorCode::TrashFailed,
+        format!(
+            "Failed to allocate a temporary staged path for {}",
+            src.display()
+        ),
     ))
 }
 
@@ -81,7 +87,7 @@ pub(super) fn trash_delete_via_staged_rename<B: TrashBackend>(
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let staged = map_external_result(stage_for_trash(src))?;
+        let staged = stage_for_trash(src)?;
         if let Err(err) = add_trash_stage_journal_entry(&staged, src) {
             let rollback = move_with_fallback(&staged, src)
                 .err()
