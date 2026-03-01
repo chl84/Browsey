@@ -6,12 +6,14 @@ import {
   clearTargetCopy,
   type DataClearTarget,
   DEFAULT_SETTINGS,
+  restoreDefaultsCopy,
   type Settings,
 } from '../settingsTypes'
 
 type ViewModelDeps = {
   onClose: () => void
   onChangeShortcut: (commandId: ShortcutCommandId, accelerator: string) => Promise<void> | void
+  onRestoreDefaults: () => Promise<void> | void
   onClearThumbCache: () => Promise<void> | void
   onClearCloudOpenCache: () => Promise<void> | void
   onClearStars: () => Promise<void> | void
@@ -102,6 +104,16 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       ? `${$clearDialog.message}\n\nLast error: ${$clearError}`
       : $clearDialog?.message ?? '',
   )
+  const restoreDefaultsOpen = writable(false)
+  const restoreDefaultsBusy = writable(false)
+  const restoreDefaultsError = writable('')
+  const restoreDefaultsDialogMessage = derived(
+    restoreDefaultsError,
+    ($restoreDefaultsError) =>
+      $restoreDefaultsError
+        ? `${restoreDefaultsCopy.message}\n\nLast error: ${$restoreDefaultsError}`
+        : restoreDefaultsCopy.message,
+  )
 
   const syncModalState = (open: boolean, initialFilter: string) => {
     if (open && !seededInitialFilter) {
@@ -151,6 +163,18 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     } finally {
       clearBusy.set(false)
     }
+  }
+
+  const requestRestoreDefaults = () => {
+    if (get(restoreDefaultsBusy)) return
+    restoreDefaultsOpen.set(true)
+    restoreDefaultsError.set('')
+  }
+
+  const cancelRestoreDefaults = () => {
+    if (get(restoreDefaultsBusy)) return
+    restoreDefaultsOpen.set(false)
+    restoreDefaultsError.set('')
   }
 
   const beginShortcutCapture = (commandId: ShortcutCommandId) => {
@@ -211,6 +235,10 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
         cancelClear()
         return
       }
+      if (get(restoreDefaultsOpen)) {
+        cancelRestoreDefaults()
+        return
+      }
       deps.onClose()
     }
   }
@@ -222,6 +250,21 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     setSettings({ ...DEFAULT_SETTINGS })
     if (options.clearFilter ?? true) {
       filter.set('')
+    }
+  }
+
+  const confirmRestoreDefaults = async (setSettings: (next: Settings) => void) => {
+    if (!get(restoreDefaultsOpen) || get(restoreDefaultsBusy)) return
+    restoreDefaultsBusy.set(true)
+    restoreDefaultsError.set('')
+    try {
+      restoreDefaults(setSettings)
+      await deps.onRestoreDefaults()
+      restoreDefaultsOpen.set(false)
+    } catch (err) {
+      restoreDefaultsError.set(getErrorMessage(err))
+    } finally {
+      restoreDefaultsBusy.set(false)
     }
   }
 
@@ -387,6 +430,12 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     requestClear,
     cancelClear,
     confirmClear,
+    restoreDefaultsOpen,
+    restoreDefaultsBusy,
+    restoreDefaultsDialogMessage,
+    requestRestoreDefaults,
+    cancelRestoreDefaults,
+    confirmRestoreDefaults,
     shortcutCaptureId,
     shortcutCaptureBusy,
     shortcutCaptureError,

@@ -15,7 +15,6 @@ export type Settings = {
   sortField: SortField
   sortDirection: SortDirection
   density: Density
-  iconSize: number
   archiveName: string
   archiveLevel: number
   openDestAfterExtract: boolean
@@ -35,13 +34,12 @@ export const DEFAULT_SETTINGS: Settings = {
   startDir: '~',
   defaultView: 'list',
   foldersFirst: true,
-  hiddenFilesLast: false,
-  showHidden: true,
+  hiddenFilesLast: true,
+  showHidden: false,
   confirmDelete: true,
   sortField: 'name',
   sortDirection: 'asc',
   density: 'cozy',
-  iconSize: 24,
   archiveName: 'Archive',
   archiveLevel: 6,
   openDestAfterExtract: false,
@@ -84,3 +82,9 @@ export const clearTargetCopy = {
     confirmLabel: 'Clear recents',
   },
 } satisfies Record<DataClearTarget, { title: string; message: string; confirmLabel: string }>
+
+export const restoreDefaultsCopy = {
+  title: 'Restore default settings?',
+  message: 'This resets all settings and keyboard shortcuts back to their default values.',
+  confirmLabel: 'Restore defaults',
+} as const

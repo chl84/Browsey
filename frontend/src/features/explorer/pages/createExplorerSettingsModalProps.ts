@@ -49,6 +49,7 @@ type Params = {
   onChangeLogLevel: SettingsModalProps['onChangeLogLevel']
   onChangeScrollbarWidth: SettingsModalProps['onChangeScrollbarWidth']
   onChangeRclonePath: SettingsModalProps['onChangeRclonePath']
+  onRestoreDefaults: SettingsModalProps['onRestoreDefaults']
   onClearThumbCache: SettingsModalProps['onClearThumbCache']
   onClearCloudOpenCache: SettingsModalProps['onClearCloudOpenCache']
   onClearStars: SettingsModalProps['onClearStars']
@@ -106,6 +107,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   onChangeLogLevel: p.onChangeLogLevel,
   onChangeScrollbarWidth: p.onChangeScrollbarWidth,
   onChangeRclonePath: p.onChangeRclonePath,
+  onRestoreDefaults: p.onRestoreDefaults,
   onClearThumbCache: p.onClearThumbCache,
   onClearCloudOpenCache: p.onClearCloudOpenCache,
   onClearStars: p.onClearStars,

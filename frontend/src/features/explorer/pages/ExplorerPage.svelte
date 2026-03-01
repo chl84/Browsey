@@ -38,12 +38,14 @@
     useExplorerSearchSession,
   } from '@/features/explorer/navigation'
   import { loadDefaultView, storeDefaultView } from '@/features/explorer/services/settings.service'
+  import { DEFAULT_SETTINGS } from '@/features/settings'
   import { createActivity } from '@/features/explorer/hooks/createActivity'
   import {
     DEFAULT_SHORTCUTS,
     loadShortcuts,
     matchesAnyShortcut,
     matchesShortcut,
+    resetAllShortcuts,
     setShortcutBinding,
     type ShortcutBinding,
     type ShortcutCommandId,
@@ -303,7 +305,9 @@
     setArchiveNamePref,
     setArchiveLevelPref,
     toggleOpenDestAfterExtract,
+    setOpenDestAfterExtractPref,
     toggleVideoThumbs,
+    setVideoThumbsPref,
     setHardwareAccelerationPref,
     setFfmpegPathPref,
     setThumbCachePref,
@@ -312,6 +316,11 @@
     setLogLevelPref,
     setScrollbarWidthPref,
     setRclonePathPref,
+    setShowHiddenPref,
+    setHiddenFilesLastPref,
+    setHighContrastPref,
+    setFoldersFirstPref,
+    setConfirmDeletePref,
     bookmarks: bookmarksStore,
     partitions: partitionsStore,
     filteredEntries,
@@ -1609,6 +1618,33 @@
     void storeDefaultView(val)
   }
 
+  const restoreSettingsDefaults = async () => {
+    const defaults = DEFAULT_SETTINGS
+    handleSettingsDefaultViewChange(defaults.defaultView)
+    setShowHiddenPref(defaults.showHidden)
+    setHiddenFilesLastPref(defaults.hiddenFilesLast)
+    setFoldersFirstPref(defaults.foldersFirst)
+    setConfirmDeletePref(defaults.confirmDelete)
+    setStartDirPref(defaults.startDir)
+    await setSortFieldPref(defaults.sortField)
+    await setSortDirectionPref(defaults.sortDirection)
+    setDensityPref(defaults.density)
+    setArchiveNamePref(defaults.archiveName)
+    setArchiveLevelPref(defaults.archiveLevel)
+    setOpenDestAfterExtractPref(defaults.openDestAfterExtract)
+    setVideoThumbsPref(defaults.videoThumbs)
+    setHardwareAccelerationPref(defaults.hardwareAcceleration)
+    setFfmpegPathPref(defaults.ffmpegPath)
+    setThumbCachePref(defaults.thumbCacheMb)
+    setMountsPollPref(defaults.mountsPollMs)
+    setDoubleClickMsPref(defaults.doubleClickMs)
+    setLogLevelPref(defaults.logLevel)
+    setHighContrastPref(defaults.highContrast)
+    setScrollbarWidthPref(defaults.scrollbarWidth)
+    setRclonePathPref(defaults.rclonePath)
+    shortcutBindings = await resetAllShortcuts()
+  }
+
   // --- Extraction seam: ExplorerShell prop assembly (Step 2) --------------
   let explorerShellSidebarProps: any
   let explorerShellTopbarProps: any
@@ -1797,6 +1833,7 @@
     onChangeLogLevel: setLogLevelPref,
     onChangeScrollbarWidth: setScrollbarWidthPref,
     onChangeRclonePath: setRclonePathPref,
+    onRestoreDefaults: restoreSettingsDefaults,
     onClearThumbCache: clearThumbnailCacheFromSettings,
     onClearCloudOpenCache: clearCloudOpenCacheFromSettings,
     onClearStars: clearStarsFromSettings,
