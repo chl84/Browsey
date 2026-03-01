@@ -8,15 +8,14 @@ Not in scope:
 
 ## Remaining Cases
 
-- [ ] `src/commands/decompress/`
+- [x] `src/commands/decompress/`
   - `mod.rs`
   - `util.rs`
   - `zip_format.rs`
   - `rar_format.rs`
   - `seven_z_format.rs`
   - `tar_format.rs`
-  - Progress: `tar_format.rs`, `zip_format.rs`, and the central `util.rs` helpers now use `DecompressResult<_>` through their main extraction/file-path seams, and `mod.rs` no longer uses raw string seams for `decompress_single_with_reader(...)` or `gzip_uncompressed_size(...)`.
-  - Remaining archive/IO helpers still return `Result<_, String>` primarily in `rar_format.rs` and `seven_z_format.rs`.
+  - Completed: archive/IO helpers now use `DecompressResult<_>` through the remaining extraction/file-path seams.
 
 - [x] `src/commands/compress/mod.rs`
   - Completed: archive planning/writing now uses `CompressResult<_>` through the remaining writer/copy seams.
@@ -56,7 +55,8 @@ Not in scope:
   - `open_ops.rs`
   - `windows.rs`
   - `trash/staging.rs`
-  - A few filesystem helpers still return raw string errors instead of `FsError`/`FsResult`.
+  - Progress: `mod.rs` and `open_ops.rs` now expose typed `FsResult<_>` seams for path expansion/open helpers.
+  - Remaining: `windows.rs` and `trash/staging.rs` still use raw string errors in internal helpers.
 
 ## Suggested Order
 
@@ -67,7 +67,7 @@ Not in scope:
 - [x] `duplicates`
 - [x] `thumbnails`
 - [x] `compress`
-- [ ] `decompress`
+- [x] `decompress`
 - [ ] `fs` residual helpers
 
 ## Quality Gates

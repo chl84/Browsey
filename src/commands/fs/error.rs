@@ -243,7 +243,7 @@ impl ErrorCode for FsErrorCode {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct FsError {
+pub(crate) struct FsError {
     code: FsErrorCode,
     message: String,
 }
@@ -309,7 +309,7 @@ impl From<&str> for FsError {
     }
 }
 
-pub(super) type FsResult<T> = Result<T, FsError>;
+pub(crate) type FsResult<T> = Result<T, FsError>;
 
 pub(super) fn map_api_result<T>(result: FsResult<T>) -> ApiResult<T> {
     result.map_err(|error| error.to_api_error())

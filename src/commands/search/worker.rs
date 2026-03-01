@@ -87,7 +87,12 @@ pub(super) fn run_search_stream(
             }
         },
         Err(e) => {
-            send(Vec::new(), true, Some(e), Some(ListingFacets::default()));
+            send(
+                Vec::new(),
+                true,
+                Some(e.to_string()),
+                Some(ListingFacets::default()),
+            );
             return;
         }
     };

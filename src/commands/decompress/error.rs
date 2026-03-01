@@ -93,10 +93,6 @@ pub(super) fn map_api_result<T>(result: DecompressResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
 
-pub(super) fn map_external_result<T>(result: Result<T, String>) -> DecompressResult<T> {
-    result.map_err(DecompressError::from_external_message)
-}
-
 impl From<String> for DecompressError {
     fn from(message: String) -> Self {
         Self::from_external_message(message)
