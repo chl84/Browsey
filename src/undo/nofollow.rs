@@ -21,6 +21,21 @@ use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS};
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
 
+fn map_delete_nofollow_error(path: &Path, error: std::io::Error) -> UndoError {
+    if error.to_string() == "Symlinks are not allowed" {
+        return UndoError::symlink_unsupported(path);
+    }
+    match error.kind() {
+        ErrorKind::InvalidInput => UndoError::invalid_input(error.to_string()),
+        ErrorKind::NotFound => UndoError::not_found(format!("Failed to delete {}: {error}", path.display())),
+        ErrorKind::PermissionDenied => {
+            UndoError::permission_denied(format!("Failed to delete {}: {error}", path.display()))
+        }
+        ErrorKind::Unsupported => UndoError::unsupported_operation(error.to_string()),
+        _ => UndoError::from_io_error(format!("Failed to delete {}", path.display()), error),
+    }
+}
+
 #[cfg(all(unix, target_os = "linux"))]
 fn absolute_path(path: &Path) -> Result<PathBuf, std::io::Error> {
     if path.is_absolute() {
@@ -340,8 +355,7 @@ fn delete_nofollow_io(path: &Path) -> Result<(), std::io::Error> {
 }
 
 pub(crate) fn delete_entry_nofollow_io(path: &Path) -> UndoResult<()> {
-    delete_nofollow_io(path)
-        .map_err(|error| UndoError::from_io_error(format!("Failed to delete {}", path.display()), error))
+    delete_nofollow_io(path).map_err(|error| map_delete_nofollow_error(path, error))
 }
 
 #[cfg(all(unix, target_os = "linux"))]
