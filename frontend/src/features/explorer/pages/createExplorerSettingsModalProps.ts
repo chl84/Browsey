@@ -21,6 +21,7 @@ type Params = {
   thumbCacheMb: SettingsModalProps['thumbCacheMbValue']
   mountsPollMs: SettingsModalProps['mountsPollMsValue']
   doubleClickMs: SettingsModalProps['doubleClickMsValue']
+  logLevel: SettingsModalProps['logLevelValue']
   scrollbarWidth: SettingsModalProps['scrollbarWidthValue']
   rclonePath: SettingsModalProps['rclonePathValue']
   startDir: SettingsModalProps['startDirValue']
@@ -45,6 +46,7 @@ type Params = {
   onChangeThumbCacheMb: SettingsModalProps['onChangeThumbCacheMb']
   onChangeMountsPollMs: SettingsModalProps['onChangeMountsPollMs']
   onChangeDoubleClickMs: SettingsModalProps['onChangeDoubleClickMs']
+  onChangeLogLevel: SettingsModalProps['onChangeLogLevel']
   onChangeScrollbarWidth: SettingsModalProps['onChangeScrollbarWidth']
   onChangeRclonePath: SettingsModalProps['onChangeRclonePath']
   onClearThumbCache: SettingsModalProps['onClearThumbCache']
@@ -77,6 +79,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   thumbCacheMbValue: p.thumbCacheMb,
   mountsPollMsValue: p.mountsPollMs,
   doubleClickMsValue: p.doubleClickMs,
+  logLevelValue: p.logLevel,
   scrollbarWidthValue: p.scrollbarWidth,
   rclonePathValue: p.rclonePath,
   startDirValue: p.startDir,
@@ -100,6 +103,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   onChangeThumbCacheMb: p.onChangeThumbCacheMb,
   onChangeMountsPollMs: p.onChangeMountsPollMs,
   onChangeDoubleClickMs: p.onChangeDoubleClickMs,
+  onChangeLogLevel: p.onChangeLogLevel,
   onChangeScrollbarWidth: p.onChangeScrollbarWidth,
   onChangeRclonePath: p.onChangeRclonePath,
   onClearThumbCache: p.onClearThumbCache,
