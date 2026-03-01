@@ -17,6 +17,17 @@ use tracing::{debug, warn};
 
 const SEARCH_BATCH_SIZE: usize = 256;
 
+fn map_db_error(error: db::DbError) -> SearchError {
+    let code = match error.code() {
+        db::DbErrorCode::OpenFailed
+        | db::DbErrorCode::DataDirUnavailable
+        | db::DbErrorCode::PermissionDenied
+        | db::DbErrorCode::ReadOnlyFilesystem => SearchErrorCode::DatabaseOpenFailed,
+        _ => SearchErrorCode::DatabaseReadFailed,
+    };
+    SearchError::new(code, error.to_string())
+}
+
 fn error_progress(error: SearchError) -> SearchProgress {
     SearchProgress {
         entries: Vec::new(),
@@ -117,11 +128,8 @@ pub(super) fn run_search_stream(
 
     let star_set = match db::open().and_then(|conn| db::starred_set(&conn)) {
         Ok(set) => set,
-        Err(e) => {
-            send_error(SearchError::new(
-                SearchErrorCode::DatabaseOpenFailed,
-                format!("Failed to open search database: {e}"),
-            ));
+        Err(error) => {
+            send_error(map_db_error(error));
             return;
         }
     };

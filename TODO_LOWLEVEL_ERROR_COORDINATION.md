@@ -11,7 +11,7 @@ Principles:
 ## Priority Order
 
 - [ ] `src/undo/`
-- [ ] `src/binary_resolver/`
+- [x] `src/binary_resolver/`
 - [ ] `src/db/`
 - [ ] `src/tasks/` + `src/runtime_lifecycle.rs` + `src/watcher.rs`
 
@@ -38,26 +38,28 @@ Status note:
 - [x] fallback move cleanup in `path_ops.rs` now preserves the original delete failure code when adding context
 - [x] `error.rs` no longer relies on generic `From<String>`/`From<&str>` conversions, and `FsUtilsError` now maps to `UndoError` by stable code
 - [x] `nofollow.rs` now exposes typed deletion results at its public low-level seam, and `engine.rs` / `path_ops.rs` consume them by `UndoErrorCode`
+- [x] `security.rs` now centralizes typed symlink/metadata validation and uses typed Win32 failure mapping for DACL reads
 - [ ] `security.rs` and `nofollow.rs` still contain the largest remaining platform-specific stringly typed control flow
 
 ## 2. Binary Resolver
 
 - [x] Add `src/binary_resolver/error.rs`
 - [x] Introduce `BinaryResolverError`, `BinaryResolverErrorCode`, and `BinaryResolverResult<T>`
-- [ ] Replace `Option<PathBuf>` returns in `src/binary_resolver/mod.rs` with typed results where failure semantics matter
-- [ ] Distinguish at least:
+- [x] Replace `Option<PathBuf>` returns in `src/binary_resolver/mod.rs` with typed results where failure semantics matter
+- [x] Distinguish at least:
   - invalid binary name
   - explicit path invalid
   - not found
   - not executable
   - canonicalize/stat failure
-- [ ] Update callers so they stop reverse-engineering resolver state from `None`
+- [x] Update callers so they stop reverse-engineering resolver state from `None`
 
 Status note:
 - [x] typed checked resolver functions now exist alongside compatibility wrappers in `src/binary_resolver/mod.rs`
 - [x] `src/commands/cloud/rclone_path.rs` now uses typed resolver results instead of plain `Option`
 - [x] `src/commands/system_clipboard/mod.rs` now uses typed resolver results instead of plain `Option`
 - [x] `src/metadata/providers/media_probe.rs` now degrades from typed resolver results explicitly instead of calling plain `Option` wrappers
+- [x] the old plain `Option` resolver wrappers have been removed from `src/binary_resolver/mod.rs`
 
 ## 3. DB
 
@@ -78,6 +80,7 @@ Status note:
 - [x] `src/commands/open_with/mod.rs` and `src/commands/bookmarks.rs` now avoid reparsing DB error text at their direct DB seams
 - [x] `src/commands/fs/open_ops.rs`, `src/commands/keymap.rs`, and `src/keymap/mod.rs` now avoid reparsing DB error text at their direct DB seams
 - [x] `src/commands/cloud/rclone_path.rs` now avoids reparsing DB error text at its direct settings seam
+- [x] `src/commands/search/worker.rs` now maps search DB failures from `DbError.code()` instead of collapsing them into one generic open failure
 - [ ] other command modules that consume `DbError` still need the same direct code-based mapping where it materially matters
 
 ## 4. Tasks / Runtime / Watcher

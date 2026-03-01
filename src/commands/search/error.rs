@@ -14,6 +14,7 @@ pub(super) enum SearchErrorCode {
     InvalidPath,
     NotFound,
     DatabaseOpenFailed,
+    DatabaseReadFailed,
     TaskFailed,
     UnknownError,
 }
@@ -26,6 +27,7 @@ impl ErrorCode for SearchErrorCode {
             Self::InvalidPath => "invalid_path",
             Self::NotFound => "not_found",
             Self::DatabaseOpenFailed => "database_open_failed",
+            Self::DatabaseReadFailed => "database_read_failed",
             Self::TaskFailed => "task_failed",
             Self::UnknownError => "unknown_error",
         }
@@ -119,6 +121,10 @@ const SEARCH_CLASSIFICATION_RULES: &[(SearchErrorCode, &[&str])] = &[
             "failed to open library database",
             "failed to open data dir",
         ],
+    ),
+    (
+        SearchErrorCode::DatabaseReadFailed,
+        &["failed to read", "failed to query", "failed to prepare"],
     ),
     (
         SearchErrorCode::TaskFailed,
