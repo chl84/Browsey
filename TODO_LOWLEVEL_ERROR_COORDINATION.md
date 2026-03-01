@@ -34,11 +34,14 @@ Status note:
 - [x] `types.rs`, `path_checks.rs`, and `backup.rs` no longer rely on raw string errors for their main internal seams
 - [x] `engine.rs` and `path_ops.rs` now map their main I/O and validation seams through typed `UndoError`
 - [x] `path_ops.rs` no longer uses text parsing to detect destination-exists failures in fallback move callers
+- [x] `path_ops.rs` now decides cross-device and no-replace fallback from stable `UndoErrorCode` instead of raw `io::Error`
 - [x] batch rollback aggregation in `engine.rs` now preserves stable `UndoErrorCode` when wrapping failures
 - [x] fallback move cleanup in `path_ops.rs` now preserves the original delete failure code when adding context
 - [x] `error.rs` no longer relies on generic `From<String>`/`From<&str>` conversions, and `FsUtilsError` now maps to `UndoError` by stable code
 - [x] `nofollow.rs` now exposes typed deletion results at its public low-level seam, and `engine.rs` / `path_ops.rs` consume them by `UndoErrorCode`
 - [x] `nofollow.rs` delete mapping now preserves symlink/invalid-input semantics instead of collapsing them into generic `io_error`
+- [x] `nofollow.rs` rename mapping now preserves target-exists, cross-device, unsupported, and symlink semantics as stable `UndoErrorCode`
+- [x] `nofollow.rs` no longer relies on string comparison to recover embedded symlink semantics from `io::Error`
 - [x] `security.rs` now centralizes typed symlink/metadata validation and uses typed Win32 failure mapping for DACL reads
 - [ ] `security.rs` and `nofollow.rs` still contain the largest remaining platform-specific stringly typed control flow
 

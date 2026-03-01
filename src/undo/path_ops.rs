@@ -128,10 +128,7 @@ pub fn move_with_fallback(src: &Path, dst: &Path) -> UndoResult<()> {
         Ok(_) => Ok(()),
         Err(rename_err) => {
             if !is_cross_device(&rename_err) && !is_noreplace_unsupported(&rename_err) {
-                return Err(UndoError::from_io_error(
-                    format!("Failed to rename {} -> {}", src.display(), dst.display()),
-                    rename_err,
-                ));
+                return Err(rename_err);
             }
             move_by_copy_delete_noreplace(src, dst, &src_snapshot)
         }
@@ -162,12 +159,12 @@ pub(crate) fn move_by_copy_delete_noreplace(
     })
 }
 
-fn is_cross_device(err: &std::io::Error) -> bool {
-    matches!(err.raw_os_error(), Some(17) | Some(18))
+fn is_cross_device(err: &UndoError) -> bool {
+    err.code() == UndoErrorCode::CrossDeviceMove
 }
 
-fn is_noreplace_unsupported(err: &std::io::Error) -> bool {
-    err.kind() == ErrorKind::Unsupported
+fn is_noreplace_unsupported(err: &UndoError) -> bool {
+    err.code() == UndoErrorCode::AtomicRenameUnsupported
 }
 
 pub(crate) fn is_destination_exists_error(err: &UndoError) -> bool {

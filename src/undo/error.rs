@@ -17,6 +17,8 @@ pub enum UndoErrorCode {
     ReadOnlyFilesystem,
     TargetExists,
     SymlinkUnsupported,
+    CrossDeviceMove,
+    AtomicRenameUnsupported,
     SnapshotMismatch,
     UndoUnavailable,
     RedoUnavailable,
@@ -34,6 +36,8 @@ impl ErrorCode for UndoErrorCode {
             Self::ReadOnlyFilesystem => "read_only_filesystem",
             Self::TargetExists => "target_exists",
             Self::SymlinkUnsupported => "symlink_unsupported",
+            Self::CrossDeviceMove => "cross_device_move",
+            Self::AtomicRenameUnsupported => "atomic_rename_unsupported",
             Self::SnapshotMismatch => "snapshot_mismatch",
             Self::UndoUnavailable => "undo_unavailable",
             Self::RedoUnavailable => "redo_unavailable",
@@ -106,6 +110,14 @@ impl UndoError {
 
     pub fn target_exists(message: impl Into<String>) -> Self {
         Self::new(UndoErrorCode::TargetExists, message)
+    }
+
+    pub fn cross_device_move(message: impl Into<String>) -> Self {
+        Self::new(UndoErrorCode::CrossDeviceMove, message)
+    }
+
+    pub fn atomic_rename_unsupported(message: impl Into<String>) -> Self {
+        Self::new(UndoErrorCode::AtomicRenameUnsupported, message)
     }
 
     pub fn symlink_unsupported(path: &Path) -> Self {
@@ -256,6 +268,14 @@ const UNDO_CLASSIFICATION_RULES: &[(UndoErrorCode, &[&str])] = &[
     (
         UndoErrorCode::TargetExists,
         &["destination already exists", "already exists"],
+    ),
+    (
+        UndoErrorCode::CrossDeviceMove,
+        &["cross-device link", "invalid cross-device link"],
+    ),
+    (
+        UndoErrorCode::AtomicRenameUnsupported,
+        &["rename_noreplace is unavailable"],
     ),
     (
         UndoErrorCode::IoError,
