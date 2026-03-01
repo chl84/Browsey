@@ -77,6 +77,7 @@ describe('useExplorerData cloud refresh event', () => {
       loadFfmpegPathPref: asyncNoop,
       loadThumbCachePref: asyncNoop,
       loadDoubleClickMsPref: asyncNoop,
+      loadLogLevelPref: asyncNoop,
       entries,
       current,
       highContrast,
