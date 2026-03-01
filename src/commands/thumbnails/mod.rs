@@ -35,7 +35,7 @@ mod error;
 use crate::db;
 use crate::errors::api_error::ApiResult;
 use crate::fs_utils::debug_log;
-use error::{map_api_result, map_external_result, ThumbnailError, ThumbnailResult};
+use error::{map_api_result, ThumbnailError, ThumbnailResult};
 
 const MAX_DIM_DEFAULT: u32 = 96;
 const MAX_DIM_HARD_LIMIT: u32 = 512;
@@ -482,11 +482,11 @@ fn generate_thumbnail(
                     path.display(),
                     err
                 ));
-                map_external_result(decode_with_timeout(reader, fmt, timeout))?
+                decode_with_timeout(reader, fmt, timeout)?
             }
         }
     } else {
-        map_external_result(decode_with_timeout(reader, fmt, timeout))?
+        decode_with_timeout(reader, fmt, timeout)?
     };
 
     let (src_w, src_h) = img.dimensions();
@@ -596,7 +596,7 @@ fn decode_with_timeout<R: BufRead + Seek + Send + 'static>(
     reader: ImageReader<R>,
     format: ImageFormat,
     timeout: Duration,
-) -> Result<(image::DynamicImage, Option<Orientation>), String> {
+) -> ThumbnailResult<(image::DynamicImage, Option<Orientation>)> {
     // Apply codec limits to guard against pathological inputs.
     let mut limits = Limits::default();
     limits.max_image_width = Some(MAX_SOURCE_DIM);
@@ -628,12 +628,16 @@ fn decode_with_timeout<R: BufRead + Seek + Send + 'static>(
 
     match rx.recv_timeout(timeout) {
         Ok(Ok(img)) => Ok(img),
-        Ok(Err(e)) => Err(format!("Decode failed: {e}")),
+        Ok(Err(e)) => Err(ThumbnailError::from_external_message(format!(
+            "Decode failed: {e}"
+        ))),
         Err(mpsc::RecvTimeoutError::Timeout) => {
             cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-            Err("Decode timed out".into())
+            Err(ThumbnailError::from_external_message("Decode timed out"))
         }
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err("Decode worker crashed".into()),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(ThumbnailError::from_external_message(
+            "Decode worker crashed",
+        )),
     }
 }
 
@@ -641,8 +645,9 @@ fn decode_jpeg_scaled_with_timeout(
     path: &Path,
     max_dim: u32,
     timeout: Duration,
-) -> Result<(DynamicImage, Option<Orientation>), String> {
-    let file = fs::File::open(path).map_err(|e| format!("Open failed: {e}"))?;
+) -> ThumbnailResult<(DynamicImage, Option<Orientation>)> {
+    let file = fs::File::open(path)
+        .map_err(|e| ThumbnailError::from_external_message(format!("Open failed: {e}")))?;
     let reader = std::io::BufReader::new(file);
 
     let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -654,37 +659,41 @@ fn decode_jpeg_scaled_with_timeout(
     let (tx, rx) = mpsc::channel();
 
     DECODE_POOL.spawn_fifo(move || {
-        let res = (|| {
+        let res: ThumbnailResult<(DynamicImage, Option<Orientation>)> = (|| {
             let mut decoder = JpegScaleDecoder::new(wrapped);
             decoder.set_max_decoding_buffer_size(MAX_DECODE_BYTES.min(usize::MAX as u64) as usize);
 
-            decoder
-                .read_info()
-                .map_err(|e| format!("JPEG scaled decode failed: {e}"))?;
+            decoder.read_info().map_err(|e| {
+                ThumbnailError::from_external_message(format!("JPEG scaled decode failed: {e}"))
+            })?;
 
-            let src_info = decoder
-                .info()
-                .ok_or_else(|| "JPEG scaled decode missing metadata".to_string())?;
+            let src_info = decoder.info().ok_or_else(|| {
+                ThumbnailError::from_external_message("JPEG scaled decode missing metadata")
+            })?;
             if u32::from(src_info.width) > MAX_SOURCE_DIM
                 || u32::from(src_info.height) > MAX_SOURCE_DIM
             {
-                return Err("Image dimensions too large for thumbnail".into());
+                return Err(ThumbnailError::from_external_message(
+                    "Image dimensions too large for thumbnail",
+                ));
             }
 
             let req_dim = max_dim
                 .saturating_mul(JPEG_SCALED_DECODE_TARGET_MULTIPLIER)
                 .clamp(1, u16::MAX as u32) as u16;
-            let _ = decoder
-                .scale(req_dim, req_dim)
-                .map_err(|e| format!("JPEG scaled decode setup failed: {e}"))?;
+            let _ = decoder.scale(req_dim, req_dim).map_err(|e| {
+                ThumbnailError::from_external_message(format!(
+                    "JPEG scaled decode setup failed: {e}"
+                ))
+            })?;
 
-            let pixels = decoder
-                .decode()
-                .map_err(|e| format!("JPEG scaled decode failed: {e}"))?;
+            let pixels = decoder.decode().map_err(|e| {
+                ThumbnailError::from_external_message(format!("JPEG scaled decode failed: {e}"))
+            })?;
             let orientation = decoder.exif_data().and_then(Orientation::from_exif_chunk);
-            let info = decoder
-                .info()
-                .ok_or_else(|| "JPEG scaled decode missing output metadata".to_string())?;
+            let info = decoder.info().ok_or_else(|| {
+                ThumbnailError::from_external_message("JPEG scaled decode missing output metadata")
+            })?;
             let img = jpeg_pixels_to_dynamic_image(pixels, info)?;
             Ok((img, orientation))
         })();
@@ -696,34 +705,40 @@ fn decode_jpeg_scaled_with_timeout(
         Ok(Err(e)) => Err(e),
         Err(mpsc::RecvTimeoutError::Timeout) => {
             cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-            Err("Decode timed out".into())
+            Err(ThumbnailError::from_external_message("Decode timed out"))
         }
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err("Decode worker crashed".into()),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(ThumbnailError::from_external_message(
+            "Decode worker crashed",
+        )),
     }
 }
 
 fn jpeg_pixels_to_dynamic_image(
     pixels: Vec<u8>,
     info: JpegImageInfo,
-) -> Result<DynamicImage, String> {
+) -> ThumbnailResult<DynamicImage> {
     let w = u32::from(info.width);
     let h = u32::from(info.height);
     match info.pixel_format {
         JpegPixelFormat::RGB24 => {
-            let img = RgbImage::from_raw(w, h, pixels)
-                .ok_or_else(|| "JPEG RGB buffer size mismatch".to_string())?;
+            let img = RgbImage::from_raw(w, h, pixels).ok_or_else(|| {
+                ThumbnailError::from_external_message("JPEG RGB buffer size mismatch")
+            })?;
             Ok(DynamicImage::ImageRgb8(img))
         }
         JpegPixelFormat::L8 => {
-            let img = GrayImage::from_raw(w, h, pixels)
-                .ok_or_else(|| "JPEG L8 buffer size mismatch".to_string())?;
+            let img = GrayImage::from_raw(w, h, pixels).ok_or_else(|| {
+                ThumbnailError::from_external_message("JPEG L8 buffer size mismatch")
+            })?;
             Ok(DynamicImage::ImageLuma8(img))
         }
         // Rare camera/legacy cases; fallback to the existing image crate path for compatibility.
-        JpegPixelFormat::L16 | JpegPixelFormat::CMYK32 => Err(format!(
-            "JPEG scaled decode unsupported pixel format: {:?}",
-            info.pixel_format
-        )),
+        JpegPixelFormat::L16 | JpegPixelFormat::CMYK32 => {
+            Err(ThumbnailError::from_external_message(format!(
+                "JPEG scaled decode unsupported pixel format: {:?}",
+                info.pixel_format
+            )))
+        }
     }
 }
 

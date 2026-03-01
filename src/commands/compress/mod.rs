@@ -22,9 +22,7 @@ use crate::{
     runtime_lifecycle,
     tasks::{CancelGuard, CancelState},
 };
-use error::{
-    map_api_result, map_external_result, CompressError, CompressErrorCode, CompressResult,
-};
+use error::{map_api_result, CompressError, CompressErrorCode, CompressResult};
 
 mod error;
 
@@ -161,8 +159,10 @@ fn add_path_to_zip(
     progress: Option<&ProgressEmitter>,
     cancel: Option<&AtomicBool>,
     buf: &mut [u8],
-) -> Result<(), String> {
-    check_cancel(cancel).map_err(|e| map_copy_err("Compression cancelled", e))?;
+) -> CompressResult<()> {
+    check_cancel(cancel).map_err(|e| {
+        CompressError::from_external_message(map_copy_err("Compression cancelled", e))
+    })?;
     let mut rel_name = entry.rel_path.to_string_lossy().replace('\\', "/");
     match &entry.kind {
         EntryKind::Dir => {
@@ -170,8 +170,9 @@ fn add_path_to_zip(
                 rel_name.push('/');
             }
             let opts = with_entry_metadata(*stored_opts, entry);
-            zip.add_directory(rel_name, opts)
-                .map_err(|e| format!("Failed to add directory to zip: {e}"))?;
+            zip.add_directory(rel_name, opts).map_err(|e| {
+                CompressError::from_external_message(format!("Failed to add directory to zip: {e}"))
+            })?;
         }
         EntryKind::Symlink { target } => {
             if rel_name.ends_with('/') {
@@ -179,8 +180,9 @@ fn add_path_to_zip(
             }
             let target = target.to_string_lossy().replace('\\', "/");
             let opts = with_entry_metadata(*stored_opts, entry);
-            zip.add_symlink(rel_name, target, opts)
-                .map_err(|e| format!("Failed to add symlink to zip: {e}"))?;
+            zip.add_symlink(rel_name, target, opts).map_err(|e| {
+                CompressError::from_external_message(format!("Failed to add symlink to zip: {e}"))
+            })?;
         }
         EntryKind::File { precompressed } => {
             let mut base_opts = if *precompressed {
@@ -192,12 +194,16 @@ fn add_path_to_zip(
                 base_opts = base_opts.large_file(true);
             }
             let opts = with_entry_metadata(base_opts, entry);
-            zip.start_file(rel_name, opts)
-                .map_err(|e| format!("Failed to start zip entry: {e}"))?;
-            let file = File::open(&entry.path).map_err(|e| format!("Failed to open file: {e}"))?;
+            zip.start_file(rel_name, opts).map_err(|e| {
+                CompressError::from_external_message(format!("Failed to start zip entry: {e}"))
+            })?;
+            let file = File::open(&entry.path).map_err(|e| {
+                CompressError::from_external_message(format!("Failed to open file: {e}"))
+            })?;
             let mut reader = BufReader::with_capacity(FILE_READ_BUF, file);
-            copy_with_progress(&mut reader, zip, progress, cancel, buf)
-                .map_err(|e| map_copy_err("Failed to write file to zip", e))?;
+            copy_with_progress(&mut reader, zip, progress, cancel, buf).map_err(|e| {
+                CompressError::from_external_message(map_copy_err("Failed to write file to zip", e))
+            })?;
         }
     }
     Ok(())
@@ -577,7 +583,7 @@ fn do_compress(
             check_cancel(cancel_token.as_deref()).map_err(|e| {
                 CompressError::from_external_message(map_copy_err("Compression cancelled", e))
             })?;
-            map_external_result(add_path_to_zip(
+            add_path_to_zip(
                 &mut writer,
                 entry,
                 &deflated_opts,
@@ -585,7 +591,7 @@ fn do_compress(
                 progress.as_ref(),
                 cancel_token.as_deref(),
                 &mut buf,
-            ))?;
+            )?;
         }
 
         writer.finish().map_err(|e| {
