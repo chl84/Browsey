@@ -3,6 +3,7 @@ use std::io::{self, ErrorKind};
 use std::path::Path;
 
 use crate::undo::{UndoError, UndoResult};
+use crate::undo::error::UndoErrorCode;
 
 use super::nofollow::{delete_entry_nofollow_io, rename_nofollow_io};
 use super::path_checks::{
@@ -170,11 +171,6 @@ fn is_noreplace_unsupported(err: &std::io::Error) -> bool {
     err.kind() == ErrorKind::Unsupported
 }
 
-pub(crate) fn is_destination_exists_error(err: &impl std::fmt::Display) -> bool {
-    let lower = err.to_string().to_lowercase();
-    lower.contains("destination already exists")
-        || lower.contains("already exists")
-        || lower.contains("file exists")
-        || lower.contains("os error 17")
-        || lower.contains("os error 183")
+pub(crate) fn is_destination_exists_error(err: &UndoError) -> bool {
+    err.code() == UndoErrorCode::TargetExists
 }
