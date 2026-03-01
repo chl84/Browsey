@@ -1,11 +1,12 @@
 use crate::errors::{
     api_error::ApiResult,
     domain::{
-        self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint,
+        self, classify_io_error, classify_io_hint_from_message, classify_message_by_patterns,
+        DomainError, ErrorCode, IoErrorHint,
     },
 };
 use std::fmt;
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UndoErrorCode {
@@ -76,6 +77,72 @@ impl UndoError {
             UndoErrorCode::UnknownError,
         );
         Self::new(code, message)
+    }
+
+    pub fn invalid_input(message: impl Into<String>) -> Self {
+        Self::new(UndoErrorCode::InvalidInput, message)
+    }
+
+    pub fn invalid_path(path: &Path, context: &str) -> Self {
+        Self::invalid_input(format!("{context}: {}", path.display()))
+    }
+
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::new(UndoErrorCode::NotFound, message)
+    }
+
+    pub fn permission_denied(message: impl Into<String>) -> Self {
+        Self::new(UndoErrorCode::PermissionDenied, message)
+    }
+
+    pub fn read_only_filesystem(message: impl Into<String>) -> Self {
+        Self::new(UndoErrorCode::ReadOnlyFilesystem, message)
+    }
+
+    pub fn target_exists(message: impl Into<String>) -> Self {
+        Self::new(UndoErrorCode::TargetExists, message)
+    }
+
+    pub fn symlink_unsupported(path: &Path) -> Self {
+        Self::new(
+            UndoErrorCode::SymlinkUnsupported,
+            format!("Refusing path with symlink target: {}", path.display()),
+        )
+    }
+
+    pub fn expected_directory(path: &Path) -> Self {
+        Self::invalid_input(format!("Expected directory path: {}", path.display()))
+    }
+
+    pub fn snapshot_mismatch(path: &Path) -> Self {
+        Self::new(
+            UndoErrorCode::SnapshotMismatch,
+            format!("Path changed during operation: {}", path.display()),
+        )
+    }
+
+    pub fn undo_unavailable() -> Self {
+        Self::new(UndoErrorCode::UndoUnavailable, "Nothing to undo")
+    }
+
+    pub fn redo_unavailable() -> Self {
+        Self::new(UndoErrorCode::RedoUnavailable, "Nothing to redo")
+    }
+
+    pub fn lock_failed(message: impl Into<String>) -> Self {
+        Self::new(UndoErrorCode::LockFailed, message)
+    }
+
+    pub fn from_io_error(context: impl Into<String>, error: std::io::Error) -> Self {
+        let context = context.into();
+        let code = match classify_io_error(&error) {
+            IoErrorHint::NotFound => UndoErrorCode::NotFound,
+            IoErrorHint::PermissionDenied => UndoErrorCode::PermissionDenied,
+            IoErrorHint::ReadOnlyFilesystem => UndoErrorCode::ReadOnlyFilesystem,
+            IoErrorHint::AlreadyExists => UndoErrorCode::TargetExists,
+            _ => UndoErrorCode::IoError,
+        };
+        Self::new(code, format!("{context}: {error}"))
     }
 }
 

@@ -4,7 +4,7 @@ use std::io::ErrorKind;
 use super::nofollow::delete_entry_nofollow_io;
 use super::path_ops::{copy_entry, delete_entry_path, move_with_fallback};
 use super::{Action, Direction};
-use crate::undo::UndoResult;
+use crate::undo::{UndoError, UndoResult};
 
 #[cfg(target_os = "windows")]
 use crate::fs_utils::check_no_symlink_components;
@@ -40,9 +40,12 @@ pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoR
             Direction::Backward => {
                 let parent = backup
                     .parent()
-                    .ok_or_else(|| "Invalid backup path".to_string())?;
+                    .ok_or_else(|| UndoError::invalid_input("Invalid backup path"))?;
                 fs::create_dir_all(parent).map_err(|e| {
-                    format!("Failed to create backup dir {}: {e}", parent.display())
+                    UndoError::from_io_error(
+                        format!("Failed to create backup dir {}", parent.display()),
+                        e,
+                    )
                 })?;
                 move_with_fallback(path, backup)
             }
@@ -51,9 +54,12 @@ pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoR
             Direction::Forward => {
                 let parent = backup
                     .parent()
-                    .ok_or_else(|| "Invalid backup path".to_string())?;
+                    .ok_or_else(|| UndoError::invalid_input("Invalid backup path"))?;
                 fs::create_dir_all(parent).map_err(|e| {
-                    format!("Failed to create backup dir {}: {e}", parent.display())
+                    UndoError::from_io_error(
+                        format!("Failed to create backup dir {}", parent.display()),
+                        e,
+                    )
                 })?;
                 move_with_fallback(path, backup)
             }
@@ -68,14 +74,19 @@ pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoR
             set_windows_hidden_attr(path, next)
         }
         Action::CreateFolder { path } => match direction {
-            Direction::Forward => Ok(fs::create_dir(&*path)
-                .map_err(|e| format!("Failed to create directory {}: {e}", path.display()))?),
+            Direction::Forward => Ok(fs::create_dir(&*path).map_err(|e| {
+                UndoError::from_io_error(
+                    format!("Failed to create directory {}", path.display()),
+                    e,
+                )
+            })?),
             Direction::Backward => match delete_entry_nofollow_io(path) {
                 Ok(()) => Ok(()),
                 Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
-                Err(err) => {
-                    Err(format!("Failed to remove directory {}: {err}", path.display()).into())
-                }
+                Err(err) => Err(UndoError::from_io_error(
+                    format!("Failed to remove directory {}", path.display()),
+                    err,
+                )),
             },
         },
     }
@@ -84,10 +95,14 @@ pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoR
 #[cfg(target_os = "windows")]
 fn set_windows_hidden_attr(path: &Path, hidden: bool) -> UndoResult<()> {
     check_no_symlink_components(path)?;
-    let no_follow = fs::symlink_metadata(path)
-        .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+    let no_follow = fs::symlink_metadata(path).map_err(|e| {
+        UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), e)
+    })?;
     if no_follow.file_type().is_symlink() {
-        return Err(format!("Symlinks are not allowed: {}", path.display()).into());
+        return Err(UndoError::new(
+            super::error::UndoErrorCode::SymlinkUnsupported,
+            format!("Symlinks are not allowed: {}", path.display()),
+        ));
     }
 
     let wide: Vec<u16> = path
@@ -97,7 +112,10 @@ fn set_windows_hidden_attr(path: &Path, hidden: bool) -> UndoResult<()> {
         .collect();
     let attrs = unsafe { GetFileAttributesW(wide.as_ptr()) };
     if attrs == u32::MAX {
-        return Err(format!("GetFileAttributes failed for {}", path.display()).into());
+        return Err(UndoError::new(
+            super::error::UndoErrorCode::IoError,
+            format!("GetFileAttributes failed for {}", path.display()),
+        ));
     }
 
     let is_hidden = attrs & FILE_ATTRIBUTE_HIDDEN != 0;
@@ -113,7 +131,10 @@ fn set_windows_hidden_attr(path: &Path, hidden: bool) -> UndoResult<()> {
     }
     let ok = unsafe { SetFileAttributesW(wide.as_ptr(), next) };
     if ok == 0 {
-        return Err(format!("SetFileAttributes failed for {}", path.display()).into());
+        return Err(UndoError::new(
+            super::error::UndoErrorCode::IoError,
+            format!("SetFileAttributes failed for {}", path.display()),
+        ));
     }
     Ok(())
 }

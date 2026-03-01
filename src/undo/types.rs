@@ -5,7 +5,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use crate::undo::UndoResult;
+use crate::undo::{UndoError, UndoResult};
 
 const MAX_HISTORY: usize = 50;
 
@@ -112,7 +112,7 @@ impl UndoManager {
         let mut action = self
             .undo_stack
             .pop_back()
-            .ok_or_else(|| "Nothing to undo".to_string())?;
+            .ok_or_else(UndoError::undo_unavailable)?;
         match super::engine::execute_action(&mut action, Direction::Backward) {
             Ok(_) => {
                 self.redo_stack.push_back(action);
@@ -129,7 +129,7 @@ impl UndoManager {
         let mut action = self
             .redo_stack
             .pop_back()
-            .ok_or_else(|| "Nothing to redo".to_string())?;
+            .ok_or_else(UndoError::redo_unavailable)?;
         match super::engine::execute_action(&mut action, Direction::Forward) {
             Ok(_) => {
                 self.undo_stack.push_back(action);
@@ -174,24 +174,36 @@ impl UndoState {
 
     #[allow(dead_code)]
     pub fn record(&self, action: Action) -> UndoResult<()> {
-        let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
+        let mut mgr = self
+            .inner
+            .lock()
+            .map_err(|_| UndoError::lock_failed("Undo manager poisoned"))?;
         mgr.apply(action)?;
         Ok(())
     }
 
     pub fn record_applied(&self, action: Action) -> UndoResult<()> {
-        let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
+        let mut mgr = self
+            .inner
+            .lock()
+            .map_err(|_| UndoError::lock_failed("Undo manager poisoned"))?;
         mgr.record_applied(action);
         Ok(())
     }
 
     pub fn undo(&self) -> UndoResult<()> {
-        let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
+        let mut mgr = self
+            .inner
+            .lock()
+            .map_err(|_| UndoError::lock_failed("Undo manager poisoned"))?;
         mgr.undo()
     }
 
     pub fn redo(&self) -> UndoResult<()> {
-        let mut mgr = self.inner.lock().map_err(|_| "Undo manager poisoned")?;
+        let mut mgr = self
+            .inner
+            .lock()
+            .map_err(|_| UndoError::lock_failed("Undo manager poisoned"))?;
         mgr.redo()
     }
 }

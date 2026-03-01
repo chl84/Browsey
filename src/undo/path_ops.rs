@@ -2,7 +2,7 @@ use std::fs;
 use std::io::{self, ErrorKind};
 use std::path::Path;
 
-use crate::undo::UndoResult;
+use crate::undo::{UndoError, UndoResult};
 
 use super::nofollow::{delete_entry_nofollow_io, rename_nofollow_io};
 use super::path_checks::{
@@ -30,27 +30,48 @@ pub(crate) fn copy_entry(src: &Path, dest: &Path) -> UndoResult<()> {
 }
 
 fn copy_file_noreplace(src: &Path, dest: &Path) -> UndoResult<()> {
-    let mut src_file =
-        fs::File::open(src).map_err(|e| format!("Failed to open source file {:?}: {e}", src))?;
+    let mut src_file = fs::File::open(src).map_err(|e| {
+        UndoError::from_io_error(format!("Failed to open source file {}", src.display()), e)
+    })?;
     let mut dst_file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(dest)
         .map_err(|e| {
             if e.kind() == ErrorKind::AlreadyExists {
-                format!("Destination already exists: {}", dest.display())
+                UndoError::target_exists(format!("Destination already exists: {}", dest.display()))
             } else {
-                format!("Failed to create destination file {:?}: {e}", dest)
+                UndoError::from_io_error(
+                    format!("Failed to create destination file {}", dest.display()),
+                    e,
+                )
             }
         })?;
-    io::copy(&mut src_file, &mut dst_file)
-        .map_err(|e| format!("Failed to copy file {:?} -> {:?}: {e}", src, dest))?;
+    io::copy(&mut src_file, &mut dst_file).map_err(|e| {
+        UndoError::from_io_error(
+            format!(
+                "Failed to copy file {} -> {}",
+                src.display(),
+                dest.display()
+            ),
+            e,
+        )
+    })?;
     let perms = src_file
         .metadata()
-        .map_err(|e| format!("Failed to read source permissions {:?}: {e}", src))?
+        .map_err(|e| {
+            UndoError::from_io_error(
+                format!("Failed to read source permissions {}", src.display()),
+                e,
+            )
+        })?
         .permissions();
-    Ok(fs::set_permissions(dest, perms)
-        .map_err(|e| format!("Failed to set permissions on {:?}: {e}", dest))?)
+    fs::set_permissions(dest, perms).map_err(|e| {
+        UndoError::from_io_error(
+            format!("Failed to set permissions on {}", dest.display()),
+            e,
+        )
+    })
 }
 
 fn copy_dir(src: &Path, dest: &Path) -> UndoResult<()> {
@@ -61,13 +82,15 @@ fn copy_dir(src: &Path, dest: &Path) -> UndoResult<()> {
     assert_path_snapshot(src, &src_snapshot)?;
     fs::create_dir(dest).map_err(|e| {
         if e.kind() == ErrorKind::AlreadyExists {
-            format!("Destination already exists: {}", dest.display())
+            UndoError::target_exists(format!("Destination already exists: {}", dest.display()))
         } else {
-            format!("Failed to create dir {:?}: {e}", dest)
+            UndoError::from_io_error(format!("Failed to create dir {}", dest.display()), e)
         }
     })?;
-    for entry in fs::read_dir(src).map_err(|e| format!("Failed to read dir {:?}: {e}", src))? {
-        let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
+    for entry in fs::read_dir(src)
+        .map_err(|e| UndoError::from_io_error(format!("Failed to read dir {}", src.display()), e))?
+    {
+        let entry = entry.map_err(|e| UndoError::from_io_error("Failed to read dir entry", e))?;
         let path = entry.path();
         let meta = ensure_existing_path_nonsymlink(&path)?;
         let child_snapshot = types::path_snapshot_from_meta(&meta);
@@ -86,8 +109,8 @@ fn copy_dir(src: &Path, dest: &Path) -> UndoResult<()> {
 pub(crate) fn delete_entry_path(path: &Path) -> UndoResult<()> {
     let snapshot = snapshot_existing_path(path)?;
     assert_path_snapshot(path, &snapshot)?;
-    Ok(delete_entry_nofollow_io(path)
-        .map_err(|e| format!("Failed to delete {}: {e}", path.display()))?)
+    delete_entry_nofollow_io(path)
+        .map_err(|e| UndoError::from_io_error(format!("Failed to delete {}", path.display()), e))
 }
 
 pub fn move_with_fallback(src: &Path, dst: &Path) -> UndoResult<()> {
@@ -98,19 +121,17 @@ pub fn move_with_fallback(src: &Path, dst: &Path) -> UndoResult<()> {
         let parent_snapshot = snapshot_existing_path(parent)?;
         assert_path_snapshot(parent, &parent_snapshot)?;
     } else {
-        return Err("Invalid destination path".into());
+        return Err(UndoError::invalid_input("Invalid destination path"));
     }
     assert_path_snapshot(src, &src_snapshot)?;
     match rename_nofollow_io(src, dst) {
         Ok(_) => Ok(()),
         Err(rename_err) => {
             if !is_cross_device(&rename_err) && !is_noreplace_unsupported(&rename_err) {
-                return Err(format!(
-                    "Failed to rename {} -> {}: {rename_err}",
-                    src.display(),
-                    dst.display()
-                )
-                .into());
+                return Err(UndoError::from_io_error(
+                    format!("Failed to rename {} -> {}", src.display(), dst.display()),
+                    rename_err,
+                ));
             }
             move_by_copy_delete_noreplace(src, dst, &src_snapshot)
         }
@@ -126,15 +147,15 @@ pub(crate) fn move_by_copy_delete_noreplace(
     // (or across filesystems): copy + delete without destination overwrite.
     copy_entry(src, dst).and_then(|_| {
         assert_path_snapshot(src, src_snapshot)?;
-        Ok(delete_entry_path(src).map_err(|del_err| {
+        delete_entry_path(src).map_err(|del_err| {
             // Best effort: clean up destination if delete failed to avoid duplicates.
             let _ = delete_entry_path(dst);
-            format!(
+            UndoError::from_external_message(format!(
                 "Copied {} -> {} after fallback move, but failed to delete source: {del_err}",
                 src.display(),
                 dst.display()
-            )
-        })?)
+            ))
+        })
     })
 }
 
