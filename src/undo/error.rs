@@ -133,6 +133,10 @@ impl UndoError {
         Self::new(UndoErrorCode::LockFailed, message)
     }
 
+    pub fn unsupported_operation(message: impl Into<String>) -> Self {
+        Self::new(UndoErrorCode::UnknownError, message)
+    }
+
     pub fn from_io_error(context: impl Into<String>, error: std::io::Error) -> Self {
         let context = context.into();
         let code = match classify_io_error(&error) {
@@ -143,6 +147,13 @@ impl UndoError {
             _ => UndoErrorCode::IoError,
         };
         Self::new(code, format!("{context}: {error}"))
+    }
+
+    pub fn win32_failure(context: impl Into<String>, code: u32) -> Self {
+        Self::new(
+            UndoErrorCode::IoError,
+            format!("{}: Win32 error {}", context.into(), code),
+        )
     }
 }
 

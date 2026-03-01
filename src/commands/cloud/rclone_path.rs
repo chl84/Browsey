@@ -1,5 +1,5 @@
 use super::{providers::rclone::RcloneCloudProvider, rclone_cli::RcloneCli};
-use crate::binary_resolver::{resolve_binary, resolve_explicit_binary_path};
+use crate::binary_resolver::{resolve_binary_checked, resolve_explicit_binary_path_checked};
 use std::{ffi::OsString, path::PathBuf};
 
 #[cfg(test)]
@@ -52,9 +52,9 @@ fn configured_rclone_binary() -> Result<OsString, RclonePathError> {
     let configured = load_rclone_path_setting()?;
     let trimmed = configured.trim();
     if trimmed.is_empty() {
-        return resolve_binary("rclone")
+        return resolve_binary_checked("rclone")
             .map(|path| path.into_os_string())
-            .ok_or_else(|| {
+            .map_err(|_| {
                 RclonePathError::new(
                     RclonePathErrorCode::InvalidConfig,
                     "Unable to auto-detect rclone; install it or set Rclone path in Settings.",
@@ -64,23 +64,23 @@ fn configured_rclone_binary() -> Result<OsString, RclonePathError> {
 
     let explicit = PathBuf::from(trimmed);
     if trimmed == "rclone" {
-        return resolve_binary("rclone")
+        return resolve_binary_checked("rclone")
             .map(|path| path.into_os_string())
-            .ok_or_else(|| {
+            .map_err(|_| {
                 RclonePathError::new(
                     RclonePathErrorCode::InvalidConfig,
                     "Configured Rclone path could not be resolved; leave it empty to auto-detect or provide a valid executable path.",
                 )
             });
     }
-    if let Some(path) = resolve_explicit_binary_path(&explicit) {
-        return Ok(path.into_os_string());
-    }
-
-    Err(RclonePathError::new(
-        RclonePathErrorCode::InvalidConfig,
-        format!("Configured Rclone path is invalid or not executable: {trimmed}"),
-    ))
+    resolve_explicit_binary_path_checked(&explicit)
+        .map(|path| path.into_os_string())
+        .map_err(|_| {
+            RclonePathError::new(
+                RclonePathErrorCode::InvalidConfig,
+                format!("Configured Rclone path is invalid or not executable: {trimmed}"),
+            )
+        })
 }
 
 fn load_rclone_path_setting() -> Result<String, RclonePathError> {
