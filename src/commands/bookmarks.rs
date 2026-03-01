@@ -7,6 +7,18 @@ use serde::Serialize;
 
 mod error;
 
+fn map_db_open_error(error: crate::db::DbError) -> BookmarkError {
+    BookmarkError::new(BookmarkErrorCode::DatabaseOpenFailed, error.to_string())
+}
+
+fn map_db_read_error(error: crate::db::DbError) -> BookmarkError {
+    BookmarkError::new(BookmarkErrorCode::BookmarksReadFailed, error.to_string())
+}
+
+fn map_db_write_error(error: crate::db::DbError) -> BookmarkError {
+    BookmarkError::new(BookmarkErrorCode::BookmarksWriteFailed, error.to_string())
+}
+
 #[derive(Serialize, Clone)]
 pub struct Bookmark {
     pub label: String,
@@ -19,18 +31,8 @@ pub fn get_bookmarks() -> ApiResult<Vec<Bookmark>> {
 }
 
 fn get_bookmarks_impl() -> BookmarkResult<Vec<Bookmark>> {
-    let conn = crate::db::open().map_err(|error| {
-        BookmarkError::new(
-            BookmarkErrorCode::DatabaseOpenFailed,
-            format!("Failed to open bookmarks database: {error}"),
-        )
-    })?;
-    let rows = list_bookmarks(&conn).map_err(|error| {
-        BookmarkError::new(
-            BookmarkErrorCode::BookmarksReadFailed,
-            format!("Failed to read bookmarks: {error}"),
-        )
-    })?;
+    let conn = crate::db::open().map_err(map_db_open_error)?;
+    let rows = list_bookmarks(&conn).map_err(map_db_read_error)?;
     Ok(rows
         .into_iter()
         .map(|(label, path)| Bookmark { label, path })
@@ -43,18 +45,8 @@ pub fn add_bookmark(label: String, path: String) -> ApiResult<()> {
 }
 
 fn add_bookmark_impl(label: String, path: String) -> BookmarkResult<()> {
-    let conn = crate::db::open().map_err(|error| {
-        BookmarkError::new(
-            BookmarkErrorCode::DatabaseOpenFailed,
-            format!("Failed to open bookmarks database: {error}"),
-        )
-    })?;
-    upsert_bookmark(&conn, &label, &path).map_err(|error| {
-        BookmarkError::new(
-            BookmarkErrorCode::BookmarksWriteFailed,
-            format!("Failed to store bookmark: {error}"),
-        )
-    })
+    let conn = crate::db::open().map_err(map_db_open_error)?;
+    upsert_bookmark(&conn, &label, &path).map_err(map_db_write_error)
 }
 
 #[tauri::command]
@@ -63,18 +55,8 @@ pub fn remove_bookmark(path: String) -> ApiResult<()> {
 }
 
 fn remove_bookmark_impl(path: String) -> BookmarkResult<()> {
-    let conn = crate::db::open().map_err(|error| {
-        BookmarkError::new(
-            BookmarkErrorCode::DatabaseOpenFailed,
-            format!("Failed to open bookmarks database: {error}"),
-        )
-    })?;
-    delete_bookmark(&conn, &path).map_err(|error| {
-        BookmarkError::new(
-            BookmarkErrorCode::BookmarksWriteFailed,
-            format!("Failed to remove bookmark: {error}"),
-        )
-    })
+    let conn = crate::db::open().map_err(map_db_open_error)?;
+    delete_bookmark(&conn, &path).map_err(map_db_write_error)
 }
 
 #[tauri::command]
@@ -83,17 +65,7 @@ pub fn clear_bookmarks() -> ApiResult<u64> {
 }
 
 fn clear_bookmarks_impl() -> BookmarkResult<u64> {
-    let conn = crate::db::open().map_err(|error| {
-        BookmarkError::new(
-            BookmarkErrorCode::DatabaseOpenFailed,
-            format!("Failed to open bookmarks database: {error}"),
-        )
-    })?;
-    let removed = delete_all_bookmarks(&conn).map_err(|error| {
-        BookmarkError::new(
-            BookmarkErrorCode::BookmarksWriteFailed,
-            format!("Failed to clear bookmarks: {error}"),
-        )
-    })?;
+    let conn = crate::db::open().map_err(map_db_open_error)?;
+    let removed = delete_all_bookmarks(&conn).map_err(map_db_write_error)?;
     Ok(removed as u64)
 }
