@@ -1,7 +1,11 @@
+mod error;
+
 use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+
+pub use error::{BinaryResolverError, BinaryResolverResult};
 
 #[cfg(target_os = "linux")]
 const WELL_KNOWN_BIN_DIRS: &[&str] = &[
@@ -21,17 +25,31 @@ const WELL_KNOWN_BIN_DIRS: &[&str] = &["/usr/bin", "/bin", "/usr/local/bin", "/o
 const WELL_KNOWN_BIN_DIRS: &[&str] = &[];
 
 pub fn resolve_binary(name: &str) -> Option<PathBuf> {
-    resolve_binary_with_overrides(name, std::iter::empty::<PathBuf>())
+    resolve_binary_checked(name).ok()
 }
 
-pub fn resolve_explicit_binary_path(path: &Path) -> Option<PathBuf> {
+pub fn resolve_binary_with_overrides<I>(name: &str, overrides: I) -> Option<PathBuf>
+where
+    I: IntoIterator<Item = PathBuf>,
+{
+    resolve_binary_with_overrides_checked(name, overrides).ok()
+}
+
+pub fn resolve_binary_checked(name: &str) -> BinaryResolverResult<PathBuf> {
+    resolve_binary_with_overrides_checked(name, std::iter::empty::<PathBuf>())
+}
+
+pub fn resolve_explicit_binary_path_checked(path: &Path) -> BinaryResolverResult<PathBuf> {
     if !looks_like_explicit_path(path) {
-        return None;
+        return Err(BinaryResolverError::explicit_path_invalid(path));
     }
     normalize_candidate(path, None)
 }
 
-pub fn resolve_binary_with_overrides<I>(name: &str, overrides: I) -> Option<PathBuf>
+pub fn resolve_binary_with_overrides_checked<I>(
+    name: &str,
+    overrides: I,
+) -> BinaryResolverResult<PathBuf>
 where
     I: IntoIterator<Item = PathBuf>,
 {
@@ -39,37 +57,37 @@ where
 
     // Explicit paths (config/env) are allowed, but bare command names are not.
     for candidate in overrides {
-        if let Some(resolved) = resolve_explicit_binary_path(&candidate) {
-            return Some(resolved);
+        if let Ok(resolved) = resolve_explicit_binary_path_checked(&candidate) {
+            return Ok(resolved);
         }
     }
 
     for dir in WELL_KNOWN_BIN_DIRS {
         let candidate = Path::new(dir).join(normalized_name);
-        if let Some(resolved) = normalize_candidate(&candidate, Some(normalized_name)) {
-            return Some(resolved);
+        if let Ok(resolved) = normalize_candidate(&candidate, Some(normalized_name)) {
+            return Ok(resolved);
         }
     }
 
     if let Ok(found) = which::which(normalized_name) {
-        if let Some(resolved) = normalize_candidate(&found, Some(normalized_name)) {
-            return Some(resolved);
+        if let Ok(resolved) = normalize_candidate(&found, Some(normalized_name)) {
+            return Ok(resolved);
         }
     }
 
-    None
+    Err(BinaryResolverError::not_found(normalized_name))
 }
 
-fn normalize_binary_name(name: &str) -> Option<&str> {
+fn normalize_binary_name(name: &str) -> BinaryResolverResult<&str> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        return None;
+        return Err(BinaryResolverError::invalid_binary_name(name));
     }
     let p = Path::new(trimmed);
     if p.components().count() != 1 {
-        return None;
+        return Err(BinaryResolverError::invalid_binary_name(name));
     }
-    Some(trimmed)
+    Ok(trimmed)
 }
 
 fn looks_like_explicit_path(path: &Path) -> bool {
@@ -79,26 +97,37 @@ fn looks_like_explicit_path(path: &Path) -> bool {
     path.components().count() > 1
 }
 
-fn normalize_candidate(candidate: &Path, expected_name: Option<&str>) -> Option<PathBuf> {
+fn normalize_candidate(
+    candidate: &Path,
+    expected_name: Option<&str>,
+) -> BinaryResolverResult<PathBuf> {
     if let Some(expected_name) = expected_name {
         if !binary_name_matches(candidate, expected_name) {
-            return None;
+            return Err(BinaryResolverError::not_found(expected_name));
         }
     }
-    let canonical = candidate.canonicalize().ok()?;
+    let canonical = candidate
+        .canonicalize()
+        .map_err(|error| BinaryResolverError::canonicalize_failed(candidate, error))?;
     if !canonical.is_file() {
-        return None;
+        return Err(BinaryResolverError::not_found(
+            canonical.to_string_lossy().as_ref(),
+        ));
     }
 
     #[cfg(unix)]
     {
-        let mode = canonical.metadata().ok()?.permissions().mode();
+        let mode = canonical
+            .metadata()
+            .map_err(|error| BinaryResolverError::metadata_read_failed(&canonical, error))?
+            .permissions()
+            .mode();
         if mode & 0o111 == 0 {
-            return None;
+            return Err(BinaryResolverError::not_executable(&canonical));
         }
     }
 
-    Some(canonical)
+    Ok(canonical)
 }
 
 fn binary_name_matches(path: &Path, expected: &str) -> bool {

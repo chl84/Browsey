@@ -38,8 +38,8 @@ Status note:
 
 ## 2. Binary Resolver
 
-- [ ] Add `src/binary_resolver/error.rs`
-- [ ] Introduce `BinaryResolverError`, `BinaryResolverErrorCode`, and `BinaryResolverResult<T>`
+- [x] Add `src/binary_resolver/error.rs`
+- [x] Introduce `BinaryResolverError`, `BinaryResolverErrorCode`, and `BinaryResolverResult<T>`
 - [ ] Replace `Option<PathBuf>` returns in `src/binary_resolver/mod.rs` with typed results where failure semantics matter
 - [ ] Distinguish at least:
   - invalid binary name
@@ -48,6 +48,11 @@ Status note:
   - not executable
   - canonicalize/stat failure
 - [ ] Update callers so they stop reverse-engineering resolver state from `None`
+
+Status note:
+- [x] typed checked resolver functions now exist alongside compatibility wrappers in `src/binary_resolver/mod.rs`
+- [x] `src/commands/cloud/rclone_path.rs` now uses typed resolver results instead of plain `Option`
+- [ ] low-stakes callers like `system_clipboard` and media-probe still use `Option` wrappers intentionally for now
 
 ## 3. DB
 

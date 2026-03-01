@@ -11,7 +11,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
-use crate::undo::UndoResult;
+use crate::undo::{UndoError, UndoResult};
 
 #[cfg(not(all(unix, target_os = "linux")))]
 use crate::fs_utils::check_no_symlink_components;
@@ -348,10 +348,11 @@ pub(super) fn open_nofollow_path_fd(path: &Path) -> UndoResult<OwnedFd> {
     use std::io;
 
     if !path.is_absolute() {
-        return Err(format!("Path must be absolute: {}", path.display()).into());
+        return Err(UndoError::invalid_path(path, "Path must be absolute"));
     }
 
-    let root = CString::new("/").map_err(|_| "Failed to build root path".to_string())?;
+    let root =
+        CString::new("/").map_err(|_| UndoError::invalid_input("Failed to build root path"))?;
     let root_fd = unsafe {
         libc::open(
             root.as_ptr(),
@@ -359,12 +360,10 @@ pub(super) fn open_nofollow_path_fd(path: &Path) -> UndoResult<OwnedFd> {
         )
     };
     if root_fd < 0 {
-        return Err(format!(
-            "Failed to open root while resolving {}: {}",
-            path.display(),
-            io::Error::last_os_error()
-        )
-        .into());
+        return Err(UndoError::from_io_error(
+            format!("Failed to open root while resolving {}", path.display()),
+            io::Error::last_os_error(),
+        ));
     }
 
     let mut current = unsafe { OwnedFd::from_raw_fd(root_fd) };
@@ -373,19 +372,18 @@ pub(super) fn open_nofollow_path_fd(path: &Path) -> UndoResult<OwnedFd> {
         match component {
             Component::RootDir | Component::CurDir => continue,
             Component::ParentDir => {
-                return Err(format!(
+                return Err(UndoError::invalid_input(format!(
                     "Parent directory components are not allowed: {}",
                     path.display()
-                )
-                .into());
+                )));
             }
             Component::Normal(seg) => {
                 let seg_name = seg.to_string_lossy().into_owned();
                 let c_seg = CString::new(seg.as_bytes()).map_err(|_| {
-                    format!(
+                    UndoError::invalid_input(format!(
                         "Invalid path component (NUL byte) while resolving {}",
                         path.display()
-                    )
+                    ))
                 })?;
                 let is_last = components.peek().is_none();
                 let mut flags = libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC;
@@ -394,18 +392,22 @@ pub(super) fn open_nofollow_path_fd(path: &Path) -> UndoResult<OwnedFd> {
                 }
                 let fd = unsafe { libc::openat(current.as_raw_fd(), c_seg.as_ptr(), flags) };
                 if fd < 0 {
-                    return Err(format!(
-                        "Failed to open path component '{}' for {}: {}",
-                        seg_name,
-                        path.display(),
-                        io::Error::last_os_error()
-                    )
-                    .into());
+                    return Err(UndoError::from_io_error(
+                        format!(
+                            "Failed to open path component '{}' for {}",
+                            seg_name,
+                            path.display()
+                        ),
+                        io::Error::last_os_error(),
+                    ));
                 }
                 current = unsafe { OwnedFd::from_raw_fd(fd) };
             }
             Component::Prefix(_) => {
-                return Err(format!("Unsupported path prefix: {}", path.display()).into());
+                return Err(UndoError::invalid_input(format!(
+                    "Unsupported path prefix: {}",
+                    path.display()
+                )));
             }
         }
     }

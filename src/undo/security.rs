@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::fs_utils::check_no_symlink_components;
-use crate::undo::UndoResult;
+use crate::undo::{UndoError, UndoResult};
 
 use super::nofollow;
 use super::{OwnershipSnapshot, PermissionsSnapshot};
@@ -29,13 +29,15 @@ use windows_sys::Win32::Security::{
 
 pub(crate) fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> UndoResult<()> {
     check_no_symlink_components(path)?;
-    let meta_no_follow = fs::symlink_metadata(path)
-        .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+    let meta_no_follow = fs::symlink_metadata(path).map_err(|e| {
+        UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), e)
+    })?;
     if meta_no_follow.file_type().is_symlink() {
-        return Err(format!("Symlinks are not allowed: {}", path.display()).into());
+        return Err(UndoError::symlink_unsupported(path));
     }
-    let meta = fs::metadata(path)
-        .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+    let meta = fs::metadata(path).map_err(|e| {
+        UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), e)
+    })?;
     let mut perms = meta.permissions();
     perms.set_readonly(snap.readonly);
     #[cfg(target_os = "windows")]
@@ -62,12 +64,10 @@ pub(crate) fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> Undo
             )
         };
         if status != ERROR_SUCCESS {
-            return Err(format!(
-                "Failed to update permissions for {}: Win32 error {}",
-                path.display(),
-                status
-            )
-            .into());
+            return Err(UndoError::win32_failure(
+                format!("Failed to update permissions for {}", path.display()),
+                status,
+            ));
         }
     }
     #[cfg(unix)]
@@ -75,14 +75,19 @@ pub(crate) fn apply_permissions(path: &Path, snap: &PermissionsSnapshot) -> Undo
         use std::os::unix::fs::PermissionsExt;
         perms.set_mode(snap.mode);
     }
-    Ok(fs::set_permissions(path, perms)
-        .map_err(|e| format!("Failed to update permissions for {}: {e}", path.display()))?)
+    fs::set_permissions(path, perms).map_err(|e| {
+        UndoError::from_io_error(
+            format!("Failed to update permissions for {}", path.display()),
+            e,
+        )
+    })
 }
 
 #[allow(dead_code)]
 pub fn permissions_snapshot(path: &Path) -> UndoResult<PermissionsSnapshot> {
-    let meta = fs::metadata(path)
-        .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+    let meta = fs::metadata(path).map_err(|e| {
+        UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), e)
+    })?;
     let readonly = meta.permissions().readonly();
     #[cfg(unix)]
     {
@@ -104,10 +109,11 @@ pub fn ownership_snapshot(path: &Path) -> UndoResult<OwnershipSnapshot> {
     #[cfg(unix)]
     {
         check_no_symlink_components(path)?;
-        let meta = fs::symlink_metadata(path)
-            .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+        let meta = fs::symlink_metadata(path).map_err(|e| {
+            UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), e)
+        })?;
         if meta.file_type().is_symlink() {
-            return Err(format!("Symlinks are not allowed: {}", path.display()).into());
+            return Err(UndoError::symlink_unsupported(path));
         }
         Ok(OwnershipSnapshot {
             uid: meta.uid(),
@@ -117,7 +123,9 @@ pub fn ownership_snapshot(path: &Path) -> UndoResult<OwnershipSnapshot> {
     #[cfg(not(unix))]
     {
         let _ = path;
-        Err("Ownership changes are not supported on this platform".into())
+        Err(UndoError::unsupported_operation(
+            "Ownership changes are not supported on this platform",
+        ))
     }
 }
 
@@ -156,13 +164,14 @@ pub(crate) fn set_ownership_nofollow(
             }
             _ => "",
         };
-        Err(format!(
-            "Failed to change owner/group for {}: {}{}",
-            path.display(),
+        Err(UndoError::from_io_error(
+            format!(
+                "Failed to change owner/group for {}{}",
+                path.display(),
+                suffix
+            ),
             err,
-            suffix
-        )
-        .into())
+        ))
     }
     #[cfg(all(unix, not(target_os = "linux")))]
     {
@@ -174,7 +183,7 @@ pub(crate) fn set_ownership_nofollow(
         check_no_symlink_components(path)?;
         let bytes = path.as_os_str().as_bytes();
         let c_path = CString::new(bytes)
-            .map_err(|_| format!("Path contains NUL byte: {}", path.display()))?;
+            .map_err(|_| UndoError::invalid_path(path, "Path contains NUL byte"))?;
         let uid_arg = uid.map(|v| v as libc::uid_t).unwrap_or(!0 as libc::uid_t);
         let gid_arg = gid.map(|v| v as libc::gid_t).unwrap_or(!0 as libc::gid_t);
         let rc = unsafe {
@@ -196,18 +205,21 @@ pub(crate) fn set_ownership_nofollow(
             }
             _ => "",
         };
-        return Err(format!(
-            "Failed to change owner/group for {}: {}{}",
-            path.display(),
+        return Err(UndoError::from_io_error(
+            format!(
+                "Failed to change owner/group for {}{}",
+                path.display(),
+                suffix
+            ),
             err,
-            suffix
-        )
-        .into());
+        ));
     }
     #[cfg(not(unix))]
     {
         let _ = (path, uid, gid);
-        Err("Ownership changes are not supported on this platform".into())
+        Err(UndoError::unsupported_operation(
+            "Ownership changes are not supported on this platform",
+        ))
     }
 }
 
@@ -229,22 +241,21 @@ pub(crate) fn set_unix_mode_nofollow(path: &Path, mode: u32) -> UndoResult<()> {
         return Ok(());
     }
     let err = io::Error::last_os_error();
-    Err(format!(
-        "Failed to update permissions for {}: {}",
-        path.display(),
-        err
-    )
-    .into())
+    Err(UndoError::from_io_error(
+        format!("Failed to update permissions for {}", path.display()),
+        err,
+    ))
 }
 
 pub(crate) fn apply_ownership(path: &Path, snap: &OwnershipSnapshot) -> UndoResult<()> {
     #[cfg(unix)]
     {
         check_no_symlink_components(path)?;
-        let meta = fs::symlink_metadata(path)
-            .map_err(|e| format!("Failed to read metadata for {}: {e}", path.display()))?;
+        let meta = fs::symlink_metadata(path).map_err(|e| {
+            UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), e)
+        })?;
         if meta.file_type().is_symlink() {
-            return Err(format!("Symlinks are not allowed: {}", path.display()).into());
+            return Err(UndoError::symlink_unsupported(path));
         }
         let current_uid = meta.uid();
         let current_gid = meta.gid();
@@ -263,12 +274,14 @@ pub(crate) fn apply_ownership(path: &Path, snap: &OwnershipSnapshot) -> UndoResu
     #[cfg(not(unix))]
     {
         let _ = (path, snap);
-        Err("Ownership changes are not supported on this platform".into())
+        Err(UndoError::unsupported_operation(
+            "Ownership changes are not supported on this platform",
+        ))
     }
 }
 
 #[cfg(target_os = "windows")]
-fn snapshot_dacl(path: &Path) -> Result<Option<Vec<u8>>, String> {
+fn snapshot_dacl(path: &Path) -> UndoResult<Option<Vec<u8>>> {
     let mut sd: PSECURITY_DESCRIPTOR = ptr::null_mut();
     let mut dacl: *mut ACL = ptr::null_mut();
     let mut wide: Vec<u16> = path
@@ -289,10 +302,9 @@ fn snapshot_dacl(path: &Path) -> Result<Option<Vec<u8>>, String> {
         )
     };
     if status != ERROR_SUCCESS {
-        return Err(format!(
-            "GetNamedSecurityInfoW failed for {}: Win32 error {}",
-            path.display(),
-            status
+        return Err(UndoError::win32_failure(
+            format!("GetNamedSecurityInfoW failed for {}", path.display()),
+            status,
         ));
     }
     let result = unsafe {
@@ -301,7 +313,10 @@ fn snapshot_dacl(path: &Path) -> Result<Option<Vec<u8>>, String> {
         let mut acl_ptr = dacl;
         let ok = GetSecurityDescriptorDacl(sd, &mut present, &mut acl_ptr, &mut defaulted);
         if ok == 0 {
-            Err("GetSecurityDescriptorDacl failed".into())
+            Err(UndoError::new(
+                super::error::UndoErrorCode::IoError,
+                "GetSecurityDescriptorDacl failed",
+            ))
         } else if present == 0 || acl_ptr.is_null() {
             Ok(None)
         } else {
