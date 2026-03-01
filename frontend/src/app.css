@@ -291,6 +291,80 @@ body {
   --focus-ring-color: rgba(31, 35, 43, 0.22);
 }
 
+:root[data-high-contrast='true'] {
+  --bg: #060708;
+  --bg-alt: #000000;
+  --bg-raised: #121417;
+  --bg-button: #0a0c0f;
+  --bg-hover: #171b20;
+  --border: #8791a0;
+  --border-strong: #a6b0bf;
+  --border-accent: #d5dde8;
+  --border-accent-strong: #f2f6fb;
+  --overlay-backdrop: rgba(0, 0, 0, 0.62);
+  --selection-border: rgba(255, 255, 255, 0.85);
+  --selection-fill: rgba(255, 255, 255, 0.18);
+  --selection-shadow: 0 0 0 1px rgba(255, 255, 255, 0.32);
+  --drop-allowed-bg: rgba(255, 255, 255, 0.12);
+  --drop-allowed-border: rgba(255, 255, 255, 0.8);
+  --drop-allowed-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+  --drop-blocked-bg: rgba(255, 180, 180, 0.14);
+  --drop-blocked-border: rgba(255, 205, 205, 0.82);
+  --drop-blocked-shadow: inset 0 0 0 1px rgba(255, 220, 220, 0.4);
+  --fg: #eef3f8;
+  --fg-strong: #ffffff;
+  --fg-muted: #d8e0ea;
+  --fg-dim: #bcc7d6;
+  --fg-pill: #f6f9fd;
+  --btn-danger-bg: #231313;
+  --btn-danger-border: #ffb2b2;
+  --btn-danger-fg: #ffe1e1;
+  --pill-error-border: #ff9d9d;
+  --pill-error-fg: #fff1f1;
+  --tooltip-bg: #101318;
+  --tooltip-fg: #f5f8fc;
+  --tooltip-border: #d5dde8;
+  --focus-ring-width: 2px;
+  --focus-ring-color: rgba(255, 255, 255, 0.9);
+}
+
+:root[data-theme='light'][data-high-contrast='true'] {
+  --bg: #ffffff;
+  --bg-alt: #f7f9fc;
+  --bg-raised: #ffffff;
+  --bg-button: #f3f6fa;
+  --bg-hover: #e4e9f0;
+  --border: #4c5767;
+  --border-strong: #2f3845;
+  --border-accent: #1a2330;
+  --border-accent-strong: #000000;
+  --overlay-backdrop: rgba(0, 0, 0, 0.42);
+  --selection-border: rgba(0, 0, 0, 0.82);
+  --selection-fill: rgba(0, 0, 0, 0.1);
+  --selection-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+  --drop-allowed-bg: rgba(0, 0, 0, 0.08);
+  --drop-allowed-border: rgba(0, 0, 0, 0.7);
+  --drop-allowed-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.28);
+  --drop-blocked-bg: rgba(170, 0, 0, 0.08);
+  --drop-blocked-border: rgba(150, 0, 0, 0.52);
+  --drop-blocked-shadow: inset 0 0 0 1px rgba(150, 0, 0, 0.24);
+  --fg: #11151b;
+  --fg-strong: #000000;
+  --fg-muted: #1e2732;
+  --fg-dim: #405064;
+  --fg-pill: #0f1318;
+  --btn-danger-bg: #fff0f0;
+  --btn-danger-border: #9f1f1f;
+  --btn-danger-fg: #7f1010;
+  --pill-error-border: #b30000;
+  --pill-error-fg: #8a0000;
+  --tooltip-bg: #ffffff;
+  --tooltip-fg: #11151b;
+  --tooltip-border: #1a2330;
+  --focus-ring-width: 2px;
+  --focus-ring-color: rgba(0, 0, 0, 0.72);
+}
+
 *,
 *::before,
 *::after {
