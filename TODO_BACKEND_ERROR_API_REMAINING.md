@@ -45,11 +45,11 @@ Not in scope:
 - [ ] `src/commands/listing/mod.rs`
   - Core synchronous listing/facets helpers still expose `Result<_, String>` in internal seams.
 
-- [ ] `src/commands/cloud/providers/rclone/`
+- [x] `src/commands/cloud/providers/rclone/`
   - `parse.rs`
   - `read.rs`
   - `remotes.rs`
-  - Cloud command surfaces now use typed errors, but several provider/parser helpers still return `Result<_, String>` and are mapped later.
+  - Completed: provider/parser helpers now use typed internal errors instead of `Result<_, String>`.
 
 - [ ] `src/commands/fs/`
   - `mod.rs`
@@ -60,7 +60,7 @@ Not in scope:
 
 ## Suggested Order
 
-- [ ] `cloud/providers/rclone`
+- [x] `cloud/providers/rclone`
 - [ ] `system_clipboard`
 - [ ] `open_with`
 - [ ] `listing`
@@ -72,8 +72,8 @@ Not in scope:
 
 ## Quality Gates
 
-- [ ] each touched module exposes a typed internal `...Result<T>`
-- [ ] `ApiError` mapping remains only at command surface
-- [ ] no new `Result<_, String>` is introduced in touched paths
-- [ ] `cargo check -q`
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings`
+- [x] each touched module exposes a typed internal `...Result<T>`
+- [x] `ApiError` mapping remains only at command surface
+- [x] no new `Result<_, String>` is introduced in touched paths
+- [x] `cargo check -q`
+- [x] `cargo clippy --all-targets --all-features -- -D warnings`

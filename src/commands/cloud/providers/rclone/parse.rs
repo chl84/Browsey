@@ -1,8 +1,14 @@
-use super::CloudProviderKind;
+use super::{CloudCommandError, CloudCommandErrorCode, CloudProviderKind};
 use serde_json::Value;
 use std::collections::HashMap;
 
-pub(super) fn parse_listremotes_plain(stdout: &str) -> Result<Vec<String>, String> {
+pub(super) type RcloneParseResult<T> = Result<T, CloudCommandError>;
+
+fn parse_err(code: CloudCommandErrorCode, message: impl Into<String>) -> CloudCommandError {
+    CloudCommandError::new(code, message)
+}
+
+pub(super) fn parse_listremotes_plain(stdout: &str) -> RcloneParseResult<Vec<String>> {
     let mut remotes = Vec::new();
     for raw in stdout.lines() {
         let line = raw.trim();
@@ -10,32 +16,45 @@ pub(super) fn parse_listremotes_plain(stdout: &str) -> Result<Vec<String>, Strin
             continue;
         }
         let Some(name) = line.strip_suffix(':') else {
-            return Err(format!("Unexpected rclone listremotes output line: {line}"));
+            return Err(parse_err(
+                CloudCommandErrorCode::UnknownError,
+                format!("Unexpected rclone listremotes output line: {line}"),
+            ));
         };
         if name.is_empty() {
-            return Err("Empty remote name in rclone listremotes output".to_string());
+            return Err(parse_err(
+                CloudCommandErrorCode::UnknownError,
+                "Empty remote name in rclone listremotes output",
+            ));
         }
         remotes.push(name.to_string());
     }
     Ok(remotes)
 }
 
-pub(super) fn parse_listremotes_rc_json(value: &Value) -> Result<Vec<String>, String> {
+pub(super) fn parse_listremotes_rc_json(value: &Value) -> RcloneParseResult<Vec<String>> {
     let remotes = value
         .get("remotes")
         .and_then(Value::as_array)
         .ok_or_else(|| {
-            "Missing `remotes` array in rclone rc config/listremotes output".to_string()
+            parse_err(
+                CloudCommandErrorCode::UnknownError,
+                "Missing `remotes` array in rclone rc config/listremotes output",
+            )
         })?;
     let mut out = Vec::new();
     for entry in remotes {
         let Some(name) = entry.as_str() else {
-            return Err(
-                "Non-string remote entry in rclone rc config/listremotes output".to_string(),
-            );
+            return Err(parse_err(
+                CloudCommandErrorCode::UnknownError,
+                "Non-string remote entry in rclone rc config/listremotes output",
+            ));
         };
         if name.trim().is_empty() {
-            return Err("Empty remote name in rclone rc config/listremotes output".to_string());
+            return Err(parse_err(
+                CloudCommandErrorCode::UnknownError,
+                "Empty remote name in rclone rc config/listremotes output",
+            ));
         }
         out.push(name.to_string());
     }
@@ -52,18 +71,25 @@ pub(super) struct RcloneRemoteConfigSummary {
 
 pub(super) fn parse_config_dump_summaries(
     stdout: &str,
-) -> Result<HashMap<String, RcloneRemoteConfigSummary>, String> {
-    let value: Value = serde_json::from_str(stdout)
-        .map_err(|e| format!("Invalid rclone config dump JSON: {e}"))?;
+) -> RcloneParseResult<HashMap<String, RcloneRemoteConfigSummary>> {
+    let value: Value = serde_json::from_str(stdout).map_err(|e| {
+        parse_err(
+            CloudCommandErrorCode::InvalidConfig,
+            format!("Invalid rclone config dump JSON: {e}"),
+        )
+    })?;
     parse_config_dump_summaries_value(value)
 }
 
 pub(super) fn parse_config_dump_summaries_value(
     value: Value,
-) -> Result<HashMap<String, RcloneRemoteConfigSummary>, String> {
-    let obj = value
-        .as_object()
-        .ok_or_else(|| "Expected top-level object from rclone config dump".to_string())?;
+) -> RcloneParseResult<HashMap<String, RcloneRemoteConfigSummary>> {
+    let obj = value.as_object().ok_or_else(|| {
+        parse_err(
+            CloudCommandErrorCode::InvalidConfig,
+            "Expected top-level object from rclone config dump",
+        )
+    })?;
     let mut out = HashMap::new();
     for (remote, config) in obj {
         let Some(cfg) = config.as_object() else {
@@ -174,18 +200,38 @@ where
     Ok(raw.and_then(|n| u64::try_from(n).ok()))
 }
 
-pub(super) fn parse_lsjson_items(stdout: &str) -> Result<Vec<LsJsonItem>, String> {
-    serde_json::from_str(stdout).map_err(|e| format!("Invalid rclone lsjson output: {e}"))
+pub(super) fn parse_lsjson_items(stdout: &str) -> RcloneParseResult<Vec<LsJsonItem>> {
+    serde_json::from_str(stdout).map_err(|e| {
+        parse_err(
+            CloudCommandErrorCode::UnknownError,
+            format!("Invalid rclone lsjson output: {e}"),
+        )
+    })
 }
 
-pub(super) fn parse_lsjson_stat_item(stdout: &str) -> Result<LsJsonItem, String> {
-    serde_json::from_str(stdout).map_err(|e| format!("Invalid rclone lsjson --stat output: {e}"))
+pub(super) fn parse_lsjson_stat_item(stdout: &str) -> RcloneParseResult<LsJsonItem> {
+    serde_json::from_str(stdout).map_err(|e| {
+        parse_err(
+            CloudCommandErrorCode::UnknownError,
+            format!("Invalid rclone lsjson --stat output: {e}"),
+        )
+    })
 }
 
-pub(super) fn parse_lsjson_items_value(value: Value) -> Result<Vec<LsJsonItem>, String> {
-    serde_json::from_value(value).map_err(|e| format!("Invalid rclone lsjson output: {e}"))
+pub(super) fn parse_lsjson_items_value(value: Value) -> RcloneParseResult<Vec<LsJsonItem>> {
+    serde_json::from_value(value).map_err(|e| {
+        parse_err(
+            CloudCommandErrorCode::UnknownError,
+            format!("Invalid rclone lsjson output: {e}"),
+        )
+    })
 }
 
-pub(super) fn parse_lsjson_stat_item_value(value: Value) -> Result<LsJsonItem, String> {
-    serde_json::from_value(value).map_err(|e| format!("Invalid rclone lsjson --stat output: {e}"))
+pub(super) fn parse_lsjson_stat_item_value(value: Value) -> RcloneParseResult<LsJsonItem> {
+    serde_json::from_value(value).map_err(|e| {
+        parse_err(
+            CloudCommandErrorCode::UnknownError,
+            format!("Invalid rclone lsjson --stat output: {e}"),
+        )
+    })
 }

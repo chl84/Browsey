@@ -42,13 +42,8 @@ impl RcloneCloudProvider {
             Ok(output) => output,
             Err(error) => return Err(map_rclone_error_for_remote(path.remote(), error)),
         };
-        let items = parse_lsjson_items(&output.stdout).map_err(|message| {
-            CloudCommandError::new(CloudCommandErrorCode::UnknownError, message)
-        })?;
-        let entries =
-            cloud_entries_from_lsjson_items(path, items, "rclone lsjson").map_err(|message| {
-                CloudCommandError::new(CloudCommandErrorCode::InvalidPath, message)
-            })?;
+        let items = parse_lsjson_items(&output.stdout)?;
+        let entries = cloud_entries_from_lsjson_items(path, items, "rclone lsjson")?;
         log_backend_selected(
             "cloud_list_entries",
             "cli",
@@ -87,9 +82,7 @@ impl RcloneCloudProvider {
             .arg(path.to_rclone_remote_spec());
         match self.cli.run_capture_text(spec) {
             Ok(output) => {
-                let item = parse_lsjson_stat_item(&output.stdout).map_err(|message| {
-                    CloudCommandError::new(CloudCommandErrorCode::UnknownError, message)
-                })?;
+                let item = parse_lsjson_stat_item(&output.stdout)?;
                 log_backend_selected(
                     "cloud_stat_entry",
                     "cli",
@@ -127,13 +120,13 @@ impl RcloneCloudProvider {
                 ))
             })?
             .clone();
-        let items = parse_lsjson_items_value(list).map_err(|message| {
+        let items = parse_lsjson_items_value(list).map_err(|error| {
             RcloneCliError::Io(std::io::Error::other(format!(
-                "Invalid rclone rc operations/list item payload: {message}"
+                "Invalid rclone rc operations/list item payload: {error}"
             )))
         })?;
         cloud_entries_from_lsjson_items(path, items, "rclone rc operations/list")
-            .map_err(|message| RcloneCliError::Io(std::io::Error::other(message)))
+            .map_err(|error| RcloneCliError::Io(std::io::Error::other(error.to_string())))
     }
 
     pub(super) fn stat_path_via_rc(
@@ -146,9 +139,9 @@ impl RcloneCloudProvider {
         if item_value.is_null() {
             return Ok(None);
         }
-        let item = parse_lsjson_stat_item_value(item_value).map_err(|message| {
+        let item = parse_lsjson_stat_item_value(item_value).map_err(|error| {
             RcloneCliError::Io(std::io::Error::other(format!(
-                "Invalid rclone rc operations/stat item payload: {message}"
+                "Invalid rclone rc operations/stat item payload: {error}"
             )))
         })?;
         Ok(Some(cloud_entry_from_item(path, item)))
@@ -184,12 +177,15 @@ fn cloud_entries_from_lsjson_items(
     path: &CloudPath,
     items: Vec<LsJsonItem>,
     source: &str,
-) -> Result<Vec<CloudEntry>, String> {
+) -> CloudCommandResult<Vec<CloudEntry>> {
     let mut entries = Vec::with_capacity(items.len());
     for item in items {
-        let child_path = path
-            .child_path(&item.name)
-            .map_err(|error| format!("Invalid entry name from {source}: {error}"))?;
+        let child_path = path.child_path(&item.name).map_err(|error| {
+            CloudCommandError::new(
+                CloudCommandErrorCode::InvalidPath,
+                format!("Invalid entry name from {source}: {error}"),
+            )
+        })?;
         entries.push(cloud_entry_from_item(&child_path, item));
     }
     sort_cloud_entries(&mut entries);
