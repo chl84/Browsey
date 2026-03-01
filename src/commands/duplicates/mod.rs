@@ -60,7 +60,7 @@ async fn check_duplicates_impl(
         check_duplicates_sync(target_path, start_path)
     });
     match task.await {
-        Ok(result) => result.map_err(DuplicatesError::from_external_message),
+        Ok(result) => result,
         Err(error) => Err(DuplicatesError::new(
             DuplicatesErrorCode::TaskFailed,
             format!("duplicate scan task panicked: {error}"),
@@ -92,12 +92,8 @@ fn check_duplicates_stream_impl(
     start_path: String,
     progress_event: Option<String>,
 ) -> DuplicatesResult<()> {
-    let progress_event = progress_event.ok_or_else(|| {
-        DuplicatesError::new(
-            DuplicatesErrorCode::InvalidInput,
-            "progress_event is required",
-        )
-    })?;
+    let progress_event = progress_event
+        .ok_or_else(|| DuplicatesError::invalid_input("progress_event is required"))?;
 
     tauri::async_runtime::spawn_blocking(move || {
         let send = |payload: DuplicateScanProgress| {
@@ -116,7 +112,7 @@ fn check_duplicates_stream_impl(
         let input = match validate_scan_input(target_path, start_path) {
             Ok(input) => input,
             Err(err) => {
-                send(error_payload(err));
+                send(error_payload(err.to_string()));
                 return;
             }
         };
@@ -151,7 +147,7 @@ fn check_duplicates_stream_impl(
             }
             scan::ScanResult::Cancelled => {}
             scan::ScanResult::Failed(err) => {
-                send(error_payload(err));
+                send(error_payload(err.to_string()));
             }
         }
     });
@@ -159,7 +155,7 @@ fn check_duplicates_stream_impl(
     Ok(())
 }
 
-fn check_duplicates_sync(target_path: String, start_path: String) -> Result<Vec<String>, String> {
+fn check_duplicates_sync(target_path: String, start_path: String) -> DuplicatesResult<Vec<String>> {
     let input = validate_scan_input(target_path, start_path)?;
     let matches = scan::find_identical_files(&input.target, &input.start, input.target_len)?;
     Ok(to_string_paths(matches))
@@ -168,30 +164,41 @@ fn check_duplicates_sync(target_path: String, start_path: String) -> Result<Vec<
 fn validate_scan_input(
     target_path: String,
     start_path: String,
-) -> Result<DuplicateScanInput, String> {
-    let target = sanitize_path_follow(&target_path, false)?;
-    check_no_symlink_components(&target)?;
+) -> DuplicatesResult<DuplicateScanInput> {
+    let target = sanitize_path_follow(&target_path, false)
+        .map_err(DuplicatesError::from_external_message)?;
+    check_no_symlink_components(&target).map_err(DuplicatesError::from_external_message)?;
 
-    let target_meta = std::fs::symlink_metadata(&target)
-        .map_err(|e| format!("Failed to read target metadata: {e}"))?;
+    let target_meta = std::fs::symlink_metadata(&target).map_err(|e| {
+        DuplicatesError::from_external_message(format!("Failed to read target metadata: {e}"))
+    })?;
     if target_meta.file_type().is_symlink() {
-        return Err("Target must be a regular file (symlinks are ignored)".into());
+        return Err(DuplicatesError::invalid_input(
+            "Target must be a regular file (symlinks are ignored)",
+        ));
     }
     if !target_meta.is_file() {
-        return Err("Target must be a file".into());
+        return Err(DuplicatesError::invalid_input("Target must be a file"));
     }
 
-    let start_expanded = expand_path(Some(start_path))?;
-    let start = sanitize_path_follow(&start_expanded.to_string_lossy(), false)?;
-    check_no_symlink_components(&start)?;
+    let start_expanded =
+        expand_path(Some(start_path)).map_err(DuplicatesError::from_external_message)?;
+    let start = sanitize_path_follow(&start_expanded.to_string_lossy(), false)
+        .map_err(DuplicatesError::from_external_message)?;
+    check_no_symlink_components(&start).map_err(DuplicatesError::from_external_message)?;
 
-    let start_meta = std::fs::symlink_metadata(&start)
-        .map_err(|e| format!("Failed to read start folder metadata: {e}"))?;
+    let start_meta = std::fs::symlink_metadata(&start).map_err(|e| {
+        DuplicatesError::from_external_message(format!("Failed to read start folder metadata: {e}"))
+    })?;
     if start_meta.file_type().is_symlink() {
-        return Err("Start path must be a directory (symlinks are ignored)".into());
+        return Err(DuplicatesError::invalid_input(
+            "Start path must be a directory (symlinks are ignored)",
+        ));
     }
     if !start_meta.is_dir() {
-        return Err("Start path must be a directory".into());
+        return Err(DuplicatesError::invalid_input(
+            "Start path must be a directory",
+        ));
     }
 
     Ok(DuplicateScanInput {

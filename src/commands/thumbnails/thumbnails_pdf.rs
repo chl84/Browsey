@@ -5,26 +5,28 @@ use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::ImageEncoder;
 use pdfium_render::prelude::*;
 
-use super::thumb_log;
+use super::{
+    error::{ThumbnailError, ThumbnailResult},
+    thumb_log,
+};
 
 pub fn render_pdf_thumbnail(
     path: &Path,
     cache_path: &Path,
     max_dim: u32,
     resource_dir: Option<&Path>,
-) -> Result<(u32, u32), String> {
+) -> ThumbnailResult<(u32, u32)> {
     let bindings = load_pdfium_bindings(resource_dir)?;
     thumb_log(&format!("pdfium: bindings loaded for {}", path.display()));
     let pdfium = Pdfium::new(bindings);
 
     let doc = pdfium
         .load_pdf_from_file(path, None)
-        .map_err(|e| format!("PDF load failed: {e}"))?;
+        .map_err(|e| ThumbnailError::from_external_message(format!("PDF load failed: {e}")))?;
 
-    let page = doc
-        .pages()
-        .get(0)
-        .map_err(|e| format!("PDF first page failed: {e}"))?;
+    let page = doc.pages().get(0).map_err(|e| {
+        ThumbnailError::from_external_message(format!("PDF first page failed: {e}"))
+    })?;
 
     // Scale to fit max_dim while keeping aspect
     let dims = (page.width().value, page.height().value);
@@ -40,12 +42,13 @@ pub fn render_pdf_thumbnail(
                 .set_target_height(target_h)
                 .rotate_if_landscape(PdfPageRenderRotation::None, false),
         )
-        .map_err(|e| format!("PDF render failed: {e}"))?;
+        .map_err(|e| ThumbnailError::from_external_message(format!("PDF render failed: {e}")))?;
 
     let image = render.as_image();
     let rgba = image.to_rgba8();
-    let file =
-        File::create(cache_path).map_err(|e| format!("Save PDF thumbnail failed (open): {e}"))?;
+    let file = File::create(cache_path).map_err(|e| {
+        ThumbnailError::from_external_message(format!("Save PDF thumbnail failed (open): {e}"))
+    })?;
     let encoder = PngEncoder::new_with_quality(file, CompressionType::Fast, FilterType::NoFilter);
     encoder
         .write_image(
@@ -54,7 +57,9 @@ pub fn render_pdf_thumbnail(
             rgba.height(),
             image::ColorType::Rgba8.into(),
         )
-        .map_err(|e| format!("Save PDF thumbnail failed: {e}"))?;
+        .map_err(|e| {
+            ThumbnailError::from_external_message(format!("Save PDF thumbnail failed: {e}"))
+        })?;
 
     thumb_log(&format!(
         "pdf thumbnail generated: source={} cache={} size={}x{}",
@@ -69,7 +74,7 @@ pub fn render_pdf_thumbnail(
 
 fn load_pdfium_bindings(
     resource_dir: Option<&Path>,
-) -> Result<Box<dyn PdfiumLibraryBindings>, String> {
+) -> ThumbnailResult<Box<dyn PdfiumLibraryBindings>> {
     // 1) Explicit override
     if let Ok(path) = std::env::var("PDFIUM_LIB_PATH") {
         if let Ok(b) = Pdfium::bind_to_library(&path) {
@@ -136,7 +141,7 @@ fn load_pdfium_bindings(
 
     // 4) System search
     Pdfium::bind_to_system_library()
-        .map_err(|e| format!("Pdfium load failed: {e}"))
+        .map_err(|e| ThumbnailError::from_external_message(format!("Pdfium load failed: {e}")))
         .inspect(|_b| {
             thumb_log("pdfium: using system library search");
         })

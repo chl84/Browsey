@@ -514,18 +514,21 @@ fn list_dir_sync(
     path: Option<String>,
     sort: Option<SortSpec>,
     app: tauri::AppHandle,
-) -> Result<DirListing, String> {
-    let base_path = crate::commands::fs::expand_path(path)?;
-    let target = sanitize_path_follow(&base_path.to_string_lossy(), false)?;
+) -> ListingResult<DirListing> {
+    let base_path =
+        crate::commands::fs::expand_path(path).map_err(ListingError::from_external_message)?;
+    let target = sanitize_path_follow(&base_path.to_string_lossy(), false)
+        .map_err(ListingError::from_external_message)?;
     debug_log(&format!(
         "list_dir read_dir attempt: path={} normalized={}",
         base_path.display(),
         target.display()
     ));
 
-    let star_conn = db::open().map_err(|error| error.to_string())?;
-    let star_set: HashSet<String> =
-        db::starred_set(&star_conn).map_err(|error| error.to_string())?;
+    let star_conn =
+        db::open().map_err(|error| ListingError::from_external_message(error.to_string()))?;
+    let star_set: HashSet<String> = db::starred_set(&star_conn)
+        .map_err(|error| ListingError::from_external_message(error.to_string()))?;
 
     let mut entries = Vec::new();
     let mut pending_meta = Vec::new();
@@ -537,7 +540,7 @@ fn list_dir_sync(
             target.display(),
             e
         ));
-        format!("{}: {e}", target.display())
+        ListingError::from_external_message(format!("{}: {e}", target.display()))
     })?;
     debug_log(&format!(
         "read_dir success: path={} entries_pending",
@@ -642,7 +645,7 @@ async fn list_dir_impl(
     }
     let task = tauri::async_runtime::spawn_blocking(move || list_dir_sync(path, sort, app));
     match task.await {
-        Ok(result) => result.map_err(ListingError::from_external_message),
+        Ok(result) => result,
         Err(error) => Err(ListingError::new(
             ListingErrorCode::TaskFailed,
             format!("list_dir task panicked: {error}"),
@@ -687,25 +690,30 @@ async fn list_facets_impl(
             "dir" => list_dir_sync(path, None, app.clone())?.entries,
             "recent" => {
                 crate::commands::library::list_recent(None)
-                    .map_err(|error| error.message)?
+                    .map_err(listing_error_from_api)?
                     .entries
             }
             "starred" => {
                 crate::commands::library::list_starred(None)
-                    .map_err(|error| error.message)?
+                    .map_err(listing_error_from_api)?
                     .entries
             }
             "trash" => {
                 crate::commands::fs::list_trash(None)
-                    .map_err(|error| error.message)?
+                    .map_err(listing_error_from_api)?
                     .entries
             }
-            _ => return Err(format!("Unsupported facet scope: {scope}")),
+            _ => {
+                return Err(ListingError::new(
+                    ListingErrorCode::UnsupportedScope,
+                    format!("Unsupported facet scope: {scope}"),
+                ));
+            }
         };
         Ok(build_listing_facets_with_hidden(&entries, include_hidden))
     });
     match task.await {
-        Ok(result) => result.map_err(ListingError::from_external_message),
+        Ok(result) => result,
         Err(error) => Err(ListingError::new(
             ListingErrorCode::TaskFailed,
             format!("list_facets task panicked: {error}"),

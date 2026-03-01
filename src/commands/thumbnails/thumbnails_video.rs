@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
-use super::thumb_log;
+use super::{
+    error::{ThumbnailError, ThumbnailResult},
+    thumb_log,
+};
 
 /// Render a video thumbnail by extracting a single frame using `ffmpeg`.
 /// We rely on an available `ffmpeg` binary in PATH.
@@ -15,7 +18,7 @@ pub fn render_video_thumbnail(
     max_dim: u32,
     generation: Option<&str>,
     ffmpeg_override: Option<&Path>,
-) -> Result<(u32, u32), String> {
+) -> ThumbnailResult<(u32, u32)> {
     let ffmpeg = ffmpeg_override
         .and_then(|p| {
             if p.exists() {
@@ -25,7 +28,7 @@ pub fn render_video_thumbnail(
             }
         })
         .or_else(which_ffmpeg)
-        .ok_or("ffmpeg not found in PATH")?;
+        .ok_or_else(|| ThumbnailError::from_external_message("ffmpeg not found in PATH"))?;
 
     let tmp_path = cache_path.with_extension("tmp.png");
 
@@ -53,23 +56,30 @@ pub fn render_video_thumbnail(
         Duration::from_secs(10),
         generation.unwrap_or("unknown"),
     )
-    .map_err(|e| format!("Failed to run ffmpeg: {e}"))?;
+    .map_err(|e| ThumbnailError::from_external_message(format!("Failed to run ffmpeg: {e}")))?;
 
     if !status.success() {
-        return Err(format!("ffmpeg failed with status {status}"));
+        return Err(ThumbnailError::from_external_message(format!(
+            "ffmpeg failed with status {status}"
+        )));
     }
 
     if tmp_path.exists() {
-        std::fs::rename(&tmp_path, cache_path)
-            .map_err(|e| format!("Move generated thumb failed: {e}"))?;
+        std::fs::rename(&tmp_path, cache_path).map_err(|e| {
+            ThumbnailError::from_external_message(format!("Move generated thumb failed: {e}"))
+        })?;
     }
 
     let dims = ImageReader::open(cache_path)
-        .map_err(|e| format!("Read generated thumb failed: {e}"))?
+        .map_err(|e| {
+            ThumbnailError::from_external_message(format!("Read generated thumb failed: {e}"))
+        })?
         .with_guessed_format()
-        .map_err(|e| format!("Guess format failed: {e}"))?
+        .map_err(|e| ThumbnailError::from_external_message(format!("Guess format failed: {e}")))?
         .into_dimensions()
-        .map_err(|e| format!("Read dimensions failed: {e}"))?;
+        .map_err(|e| {
+            ThumbnailError::from_external_message(format!("Read dimensions failed: {e}"))
+        })?;
 
     thumb_log(&format!(
         "video thumbnail generated: source={} cache={} size={}x{}",
@@ -110,7 +120,7 @@ fn run_with_timeout(
     mut cmd: Command,
     timeout: Duration,
     generation: &str,
-) -> Result<std::process::ExitStatus, String> {
+) -> ThumbnailResult<std::process::ExitStatus> {
     use std::thread;
     use std::time::Instant;
 
@@ -123,7 +133,7 @@ fn run_with_timeout(
 
     let child = cmd
         .spawn()
-        .map_err(|e| format!("Spawn ffmpeg failed: {e}"))?;
+        .map_err(|e| ThumbnailError::from_external_message(format!("Spawn ffmpeg failed: {e}")))?;
     let pid = child.id();
 
     {
@@ -146,11 +156,15 @@ fn run_with_timeout(
                             let _ = child.kill();
                             let _ = child.wait();
                         }
-                        return Err(format!("Wait ffmpeg failed: {e}"));
+                        return Err(ThumbnailError::from_external_message(format!(
+                            "Wait ffmpeg failed: {e}"
+                        )));
                     }
                 }
             } else {
-                return Err("Video process missing".into());
+                return Err(ThumbnailError::from_external_message(
+                    "Video process missing",
+                ));
             }
         }
 
@@ -166,7 +180,7 @@ fn run_with_timeout(
                 let _ = child.kill();
                 let _ = child.wait();
             }
-            return Err("ffmpeg timed out".into());
+            return Err(ThumbnailError::from_external_message("ffmpeg timed out"));
         }
 
         thread::sleep(Duration::from_millis(50));
