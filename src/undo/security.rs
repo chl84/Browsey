@@ -30,7 +30,10 @@ use windows_sys::Win32::Security::{
 fn read_nonsymlink_metadata(path: &Path) -> UndoResult<fs::Metadata> {
     check_no_symlink_components(path)?;
     let meta = fs::symlink_metadata(path).map_err(|error| {
-        UndoError::from_io_error(format!("Failed to read metadata for {}", path.display()), error)
+        UndoError::from_io_error(
+            format!("Failed to read metadata for {}", path.display()),
+            error,
+        )
     })?;
     if meta.file_type().is_symlink() {
         return Err(UndoError::symlink_unsupported(path));

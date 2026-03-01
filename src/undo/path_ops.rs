@@ -2,8 +2,8 @@ use std::fs;
 use std::io::{self, ErrorKind};
 use std::path::Path;
 
-use crate::undo::{UndoError, UndoResult};
 use crate::undo::error::UndoErrorCode;
+use crate::undo::{UndoError, UndoResult};
 
 use super::nofollow::{delete_entry_nofollow_io, rename_nofollow_io};
 use super::path_checks::{

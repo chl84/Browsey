@@ -83,7 +83,8 @@ fn build_bindings(overrides: &HashMap<String, String>) -> KeymapCoreResult<Vec<S
 }
 
 fn load_overrides(conn: &Connection) -> KeymapCoreResult<HashMap<String, String>> {
-    let raw = crate::db::get_setting_string(conn, SHORTCUTS_SETTING_KEY).map_err(map_db_read_error)?;
+    let raw =
+        crate::db::get_setting_string(conn, SHORTCUTS_SETTING_KEY).map_err(map_db_read_error)?;
     let Some(raw) = raw else {
         return Ok(HashMap::new());
     };
@@ -119,8 +120,7 @@ fn save_overrides(conn: &Connection, overrides: &HashMap<String, String>) -> Key
             "failed to serialize shortcut settings: {error}"
         ))
     })?;
-    crate::db::set_setting_string(conn, SHORTCUTS_SETTING_KEY, &payload)
-        .map_err(map_db_write_error)
+    crate::db::set_setting_string(conn, SHORTCUTS_SETTING_KEY, &payload).map_err(map_db_write_error)
 }
 
 fn load_overrides_or_default(conn: &Connection) -> HashMap<String, String> {
