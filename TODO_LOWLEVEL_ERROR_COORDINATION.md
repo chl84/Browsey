@@ -37,6 +37,7 @@ Status note:
 - [x] batch rollback aggregation in `engine.rs` now preserves stable `UndoErrorCode` when wrapping failures
 - [x] fallback move cleanup in `path_ops.rs` now preserves the original delete failure code when adding context
 - [x] `error.rs` no longer relies on generic `From<String>`/`From<&str>` conversions, and `FsUtilsError` now maps to `UndoError` by stable code
+- [x] `nofollow.rs` now exposes typed deletion results at its public low-level seam, and `engine.rs` / `path_ops.rs` consume them by `UndoErrorCode`
 - [ ] `security.rs` and `nofollow.rs` still contain the largest remaining platform-specific stringly typed control flow
 
 ## 2. Binary Resolver
@@ -56,7 +57,7 @@ Status note:
 - [x] typed checked resolver functions now exist alongside compatibility wrappers in `src/binary_resolver/mod.rs`
 - [x] `src/commands/cloud/rclone_path.rs` now uses typed resolver results instead of plain `Option`
 - [x] `src/commands/system_clipboard/mod.rs` now uses typed resolver results instead of plain `Option`
-- [ ] lower-stakes callers like media-probe still use `Option` wrappers intentionally for now
+- [x] `src/metadata/providers/media_probe.rs` now degrades from typed resolver results explicitly instead of calling plain `Option` wrappers
 
 ## 3. DB
 
