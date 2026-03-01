@@ -13,6 +13,7 @@ import {
   loadHighContrast,
   loadMountsPollMs,
   loadOpenDestAfterExtract,
+  loadRclonePath,
   loadScrollbarWidth,
   loadShowHidden,
   loadSortDirection,
@@ -32,6 +33,7 @@ import {
   storeHighContrast,
   storeMountsPollMs,
   storeOpenDestAfterExtract,
+  storeRclonePath,
   storeScrollbarWidth,
   storeShowHidden,
   storeSortDirection,
@@ -64,6 +66,7 @@ type PreferenceSliceDeps = Pick<
   | 'mountsPollMs'
   | 'doubleClickMs'
   | 'scrollbarWidth'
+  | 'rclonePath'
   | 'density'
 >
 
@@ -97,6 +100,7 @@ export const createPreferenceSlice = (
     mountsPollMs,
     doubleClickMs,
     scrollbarWidth,
+    rclonePath,
     density,
   } = stores
   const { clearFacetCache, refreshForSort } = options
@@ -401,6 +405,11 @@ export const createPreferenceSlice = (
     void storeScrollbarWidth(clamped)
   }
 
+  const setRclonePathPref = (value: string) => {
+    rclonePath.set(value)
+    void storeRclonePath(value)
+  }
+
   const loadMountsPollPref = async () => {
     try {
       const saved = await loadMountsPollMs()
@@ -434,6 +443,17 @@ export const createPreferenceSlice = (
       }
     } catch (err) {
       console.error('Failed to load scrollbarWidth setting', err)
+    }
+  }
+
+  const loadRclonePathPref = async () => {
+    try {
+      const saved = await loadRclonePath()
+      if (typeof saved === 'string') {
+        rclonePath.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load rclonePath setting', err)
     }
   }
 
@@ -482,9 +502,11 @@ export const createPreferenceSlice = (
     setMountsPollPref,
     setDoubleClickMsPref,
     setScrollbarWidthPref,
+    setRclonePathPref,
     loadMountsPollPref,
     loadDoubleClickMsPref,
     loadScrollbarWidthPref,
+    loadRclonePathPref,
     loadFoldersFirstPref,
   }
 }

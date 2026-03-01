@@ -52,7 +52,7 @@ type FilterModel = {
   showDoubleClickRow: boolean
   showHighContrastRow: boolean
   showScrollbarWidthRow: boolean
-  showExternalToolsRow: boolean
+  showRclonePathRow: boolean
   showLogLevelRow: boolean
   hiddenFilesLastDisabled: boolean
   thumbsDisabled: boolean
@@ -292,7 +292,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     const clearRecentsTexts = rowTexts('clear recents', 'clear')
     const highContrastTexts = rowTexts('high contrast', 'boost contrast for ui elements')
     const scrollbarWidthTexts = rowTexts('scrollbar width', `${settings.scrollbarWidth} px`, settings.scrollbarWidth)
-    const externalToolsTexts = rowTexts('external tools', settings.externalTools, 'ffmpeg=/usr/bin/ffmpeg')
+    const rclonePathTexts = rowTexts('rclone path', settings.rclonePath || 'auto-detect if empty', 'rclone')
     const logLevelTexts = rowTexts('log level', 'error', 'warn', 'info', 'debug', settings.logLevel)
 
     const showDefaultViewRow = rowMatches(n, defaultViewTexts)
@@ -316,7 +316,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     const showDoubleClickRow = rowMatches(n, doubleClickTexts)
     const showHighContrastRow = rowMatches(n, highContrastTexts)
     const showScrollbarWidthRow = rowMatches(n, scrollbarWidthTexts)
-    const showExternalToolsRow = rowMatches(n, externalToolsTexts)
+    const showRclonePathRow = rowMatches(n, rclonePathTexts)
     const showLogLevelRow = rowMatches(n, logLevelTexts)
 
     return {
@@ -343,7 +343,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       showInteraction: rowMatches(n, [...doubleClickTexts]),
       showData: rowMatches(n, [...clearThumbTexts, ...clearStarsTexts, ...clearBookmarksTexts, ...clearRecentsTexts]),
       showAccessibility: rowMatches(n, [...highContrastTexts, ...scrollbarWidthTexts]),
-      showAdvanced: rowMatches(n, [...externalToolsTexts, ...logLevelTexts]),
+      showAdvanced: rowMatches(n, [...rclonePathTexts, ...logLevelTexts]),
       showDefaultViewRow,
       showFoldersFirstRow,
       showShowHiddenRow,
@@ -365,7 +365,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       showDoubleClickRow,
       showHighContrastRow,
       showScrollbarWidthRow,
-      showExternalToolsRow,
+      showRclonePathRow,
       showLogLevelRow,
       hiddenFilesLastDisabled: !settings.showHidden,
       thumbsDisabled: !settings.videoThumbs,

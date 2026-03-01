@@ -63,6 +63,7 @@ describe('useExplorerData cloud refresh event', () => {
       loadHiddenFilesLastPref: asyncNoop,
       loadHighContrastPref: asyncNoop,
       loadScrollbarWidthPref: asyncNoop,
+      loadRclonePathPref: asyncNoop,
       loadFoldersFirstPref: asyncNoop,
       loadStartDirPref: asyncNoop,
       loadConfirmDeletePref: asyncNoop,

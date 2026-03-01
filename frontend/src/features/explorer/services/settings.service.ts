@@ -99,3 +99,8 @@ export const loadScrollbarWidth = () => invoke<number | null>('load_scrollbar_wi
 
 export const storeScrollbarWidth = (value: number) =>
   invoke<void>('store_scrollbar_width', { value })
+
+export const loadRclonePath = () => invoke<string | null>('load_rclone_path')
+
+export const storeRclonePath = (value: string) =>
+  invoke<void>('store_rclone_path', { value })

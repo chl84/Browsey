@@ -26,10 +26,14 @@ pub(crate) struct RcloneCloudProvider {
 }
 
 impl RcloneCloudProvider {
+    pub(crate) fn from_cli(cli: RcloneCli) -> Self {
+        let rc = RcloneRcClient::with_binary(cli.binary().to_os_string());
+        Self { cli, rc }
+    }
+
     #[cfg(test)]
     pub fn new(cli: RcloneCli) -> Self {
-        let rc = RcloneRcClient::new(cli.binary().to_os_string());
-        Self { cli, rc }
+        Self::from_cli(cli)
     }
 
     pub fn cli(&self) -> &RcloneCli {

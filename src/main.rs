@@ -263,6 +263,8 @@ fn main() {
             load_hardware_acceleration,
             store_scrollbar_width,
             load_scrollbar_width,
+            store_rclone_path,
+            load_rclone_path,
             store_density,
             load_density,
             load_shortcuts,

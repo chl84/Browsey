@@ -76,6 +76,21 @@ pub fn begin_shutdown_and_kill_daemon() -> io::Result<()> {
     Ok(())
 }
 
+pub fn reset_backend_state() -> io::Result<()> {
+    let mut state = match rclone_rc_state().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if let Some(mut daemon) = state.daemon.take() {
+        let socket_display = daemon.socket_path.display().to_string();
+        kill_daemon(&mut daemon)?;
+        debug!(socket = %socket_display, "reset rclone rcd daemon after backend config change");
+    }
+    state.startup_blocked_until = None;
+    state.startup_blocked_binary = None;
+    Ok(())
+}
+
 #[cfg(test)]
 pub(crate) fn reset_state_for_tests() {
     let mut state = match rclone_rc_state().lock() {

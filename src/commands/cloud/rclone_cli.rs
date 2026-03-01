@@ -264,11 +264,15 @@ impl Default for RcloneCli {
 }
 
 impl RcloneCli {
-    #[cfg(test)]
-    pub fn new(binary: impl Into<OsString>) -> Self {
+    pub(crate) fn with_binary(binary: impl Into<OsString>) -> Self {
         Self {
             binary: binary.into(),
         }
+    }
+
+    #[cfg(test)]
+    pub fn new(binary: impl Into<OsString>) -> Self {
+        Self::with_binary(binary)
     }
 
     #[allow(dead_code)]

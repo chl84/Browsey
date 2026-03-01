@@ -24,6 +24,13 @@ pub fn resolve_binary(name: &str) -> Option<PathBuf> {
     resolve_binary_with_overrides(name, std::iter::empty::<PathBuf>())
 }
 
+pub fn resolve_explicit_binary_path(path: &Path) -> Option<PathBuf> {
+    if !looks_like_explicit_path(path) {
+        return None;
+    }
+    normalize_candidate(path, None)
+}
+
 pub fn resolve_binary_with_overrides<I>(name: &str, overrides: I) -> Option<PathBuf>
 where
     I: IntoIterator<Item = PathBuf>,
@@ -32,10 +39,7 @@ where
 
     // Explicit paths (config/env) are allowed, but bare command names are not.
     for candidate in overrides {
-        if !looks_like_explicit_path(&candidate) {
-            continue;
-        }
-        if let Some(resolved) = normalize_candidate(&candidate, None) {
+        if let Some(resolved) = resolve_explicit_binary_path(&candidate) {
             return Some(resolved);
         }
     }

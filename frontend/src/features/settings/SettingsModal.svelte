@@ -40,6 +40,7 @@
   export let mountsPollMsValue = 8000
   export let doubleClickMsValue = 300
   export let scrollbarWidthValue = 10
+  export let rclonePathValue = ''
   export let sortFieldValue: DefaultSortField = 'name'
   export let sortDirectionValue: 'asc' | 'desc' = 'asc'
   export let startDirValue = '~'
@@ -64,6 +65,7 @@
   export let onChangeMountsPollMs: (value: number) => void = () => {}
   export let onChangeDoubleClickMs: (value: number) => void = () => {}
   export let onChangeScrollbarWidth: (value: number) => void = () => {}
+  export let onChangeRclonePath: (value: string) => void = () => {}
   export let onClearThumbCache: () => Promise<void> | void = () => {}
   export let onClearCloudOpenCache: () => Promise<void> | void = () => {}
   export let onClearStars: () => Promise<void> | void = () => {}
@@ -172,6 +174,9 @@
   }
   $: if (settings.scrollbarWidth !== scrollbarWidthValue) {
     patchSettings({ scrollbarWidth: scrollbarWidthValue })
+  }
+  $: if (settings.rclonePath !== rclonePathValue) {
+    patchSettings({ rclonePath: rclonePathValue })
   }
 
   $: {
@@ -330,10 +335,11 @@
 
         <AdvancedSection
           show={filterModel.showAdvanced}
-          showExternalToolsRow={filterModel.showExternalToolsRow}
+          showRclonePathRow={filterModel.showRclonePathRow}
           showLogLevelRow={filterModel.showLogLevelRow}
           {settings}
           onPatch={patchSettings}
+          {onChangeRclonePath}
         />
       </div>
     </div>

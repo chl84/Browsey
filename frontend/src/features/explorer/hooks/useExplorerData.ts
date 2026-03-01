@@ -53,6 +53,7 @@ export const useExplorerData = (options: Options = {}) => {
     loadFfmpegPathPref,
     loadThumbCachePref,
     loadDoubleClickMsPref,
+    loadRclonePathPref,
     entries,
     current,
     highContrast,
@@ -169,6 +170,7 @@ export const useExplorerData = (options: Options = {}) => {
       loadFfmpegPathPref(),
       loadThumbCachePref(),
       loadDoubleClickMsPref(),
+      loadRclonePathPref(),
     ])
     if (disposed) return
 

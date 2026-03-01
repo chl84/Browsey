@@ -1,27 +1,33 @@
 <script lang="ts">
   import ComboBox, { type ComboOption } from '../../../shared/ui/ComboBox.svelte'
+  import TextField from '../../../shared/ui/TextField.svelte'
   import type { Settings } from '../settingsTypes'
 
   export let show = false
-  export let showExternalToolsRow = false
+  export let showRclonePathRow = false
   export let showLogLevelRow = false
   export let settings: Settings
   export let onPatch: (patch: Partial<Settings>) => void = () => {}
+  export let onChangeRclonePath: (value: string) => void = () => {}
 </script>
 
 {#if show}
   <div class="group-divider" aria-hidden="true"></div>
   <div class="group-heading">Advanced</div><div class="group-spacer"></div>
 
-  {#if showExternalToolsRow}
-    <div class="form-label">External tools</div>
+  {#if showRclonePathRow}
+    <div class="form-label">Rclone path</div>
     <div class="form-control column">
-      <textarea
-        rows="2"
-        value={settings.externalTools}
-        placeholder="ffmpeg=/usr/bin/ffmpeg"
-        on:input={(e) => onPatch({ externalTools: (e.currentTarget as HTMLTextAreaElement).value })}
-      ></textarea>
+      <TextField
+        type="text"
+        value={settings.rclonePath}
+        placeholder="auto-detect if empty"
+        on:input={(e) => {
+          const next = (e.currentTarget as HTMLInputElement).value
+          onPatch({ rclonePath: next })
+          onChangeRclonePath(next)
+        }}
+      />
     </div>
   {/if}
 

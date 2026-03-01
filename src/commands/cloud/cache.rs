@@ -1,10 +1,10 @@
 use super::{
+    configured_rclone_provider,
     error::{CloudCommandError, CloudCommandErrorCode, CloudCommandResult},
     events::emit_cloud_dir_refreshed,
     limits::{acquire_cloud_remote_permits, note_remote_rate_limit_cooldown},
     path::CloudPath,
     provider::CloudProvider,
-    providers::rclone::RcloneCloudProvider,
     types::{CloudEntry, CloudRemote},
 };
 use crate::runtime_lifecycle;
@@ -65,7 +65,8 @@ pub(crate) fn list_cloud_remotes_cached(
         }
     }
 
-    let provider = RcloneCloudProvider::default();
+    let provider = configured_rclone_provider()
+        .map_err(|error| CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error))?;
     let remotes = provider.list_remotes()?;
     if let Ok(mut guard) = cloud_remote_discovery_cache().lock() {
         *guard = Some(CachedCloudRemoteDiscovery {
@@ -137,6 +138,18 @@ pub(crate) fn invalidate_cloud_dir_listing_cache_for_write_paths(paths: &[CloudP
     }
 }
 
+pub(crate) fn invalidate_all_cloud_caches() {
+    if let Ok(mut guard) = cloud_remote_discovery_cache().lock() {
+        *guard = None;
+    }
+    if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
+        guard.clear();
+    }
+    if let Ok(mut inflight) = cloud_dir_listing_refresh_inflight().lock() {
+        inflight.clear();
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn store_cloud_dir_listing_cache_entry_for_tests(
     path: &CloudPath,
@@ -150,6 +163,34 @@ pub(crate) fn cloud_dir_listing_cache_contains_for_tests(path: &CloudPath) -> bo
     match cloud_dir_listing_cache().lock() {
         Ok(guard) => guard.contains_key(&path.to_string()),
         Err(poisoned) => poisoned.into_inner().contains_key(&path.to_string()),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn store_cloud_remote_discovery_cache_entry_for_tests(remotes: Vec<CloudRemote>) {
+    let now = Instant::now();
+    match cloud_remote_discovery_cache().lock() {
+        Ok(mut guard) => {
+            *guard = Some(CachedCloudRemoteDiscovery {
+                fetched_at: now,
+                remotes,
+            });
+        }
+        Err(poisoned) => {
+            let mut guard = poisoned.into_inner();
+            *guard = Some(CachedCloudRemoteDiscovery {
+                fetched_at: now,
+                remotes,
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn cloud_remote_discovery_cache_is_populated_for_tests() -> bool {
+    match cloud_remote_discovery_cache().lock() {
+        Ok(guard) => guard.is_some(),
+        Err(poisoned) => poisoned.into_inner().is_some(),
     }
 }
 
@@ -276,7 +317,8 @@ fn list_cloud_dir_with_retry(path: &CloudPath) -> CloudCommandResult<Vec<CloudEn
     let permit_started = Instant::now();
     let guard = acquire_cloud_remote_permits(vec![path.remote().to_string()]);
     let permit_wait_ms = permit_started.elapsed().as_millis() as u64;
-    let provider = RcloneCloudProvider::default();
+    let provider = configured_rclone_provider()
+        .map_err(|error| CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error))?;
     let fetch_started = Instant::now();
     let mut attempt = 0usize;
     loop {
@@ -396,14 +438,19 @@ fn run_cloud_dir_listing_refresh_test_hook(
 mod tests {
     use super::{
         cloud_dir_listing_cache, cloud_dir_listing_refresh_inflight,
+        cloud_remote_discovery_cache_is_populated_for_tests, invalidate_all_cloud_caches,
         invalidate_cloud_dir_listing_cache_for_write_paths, list_cloud_dir_cached,
-        prune_cloud_dir_listing_cache_locked, set_cloud_dir_listing_refresh_test_hook,
-        CachedCloudDirListing, CLOUD_DIR_LISTING_CACHE_TTL, CLOUD_DIR_LISTING_STALE_MAX_AGE,
+        list_cloud_remotes_cached, prune_cloud_dir_listing_cache_locked,
+        set_cloud_dir_listing_refresh_test_hook,
+        store_cloud_remote_discovery_cache_entry_for_tests, CachedCloudDirListing,
+        CLOUD_DIR_LISTING_CACHE_TTL, CLOUD_DIR_LISTING_STALE_MAX_AGE,
     };
     use crate::commands::cloud::{
         path::CloudPath,
-        types::{CloudCapabilities, CloudEntry, CloudEntryKind},
+        set_rclone_path_override_for_tests,
+        types::{CloudCapabilities, CloudEntry, CloudEntryKind, CloudProviderKind, CloudRemote},
     };
+    use crate::errors::domain::DomainError;
     use std::{
         collections::HashMap,
         sync::{
@@ -438,16 +485,7 @@ mod tests {
     }
 
     fn clear_cloud_listing_test_state() {
-        let mut cache = cloud_dir_listing_cache().lock().expect("cache lock");
-        cache.clear();
-        drop(cache);
-
-        let mut inflight = cloud_dir_listing_refresh_inflight()
-            .lock()
-            .expect("inflight lock");
-        inflight.clear();
-        drop(inflight);
-
+        invalidate_all_cloud_caches();
         set_cloud_dir_listing_refresh_test_hook(None);
     }
 
@@ -516,6 +554,50 @@ mod tests {
 
         let mut global = cloud_dir_listing_cache().lock().expect("cache lock");
         global.clear();
+    }
+
+    #[test]
+    fn invalidate_all_cloud_caches_clears_remote_and_listing_caches() {
+        let _guard = lock_cloud_listing_test_state();
+        clear_cloud_listing_test_state();
+
+        let path = CloudPath::parse("rclone://work/docs").expect("cloud path");
+        store_cloud_remote_discovery_cache_entry_for_tests(vec![CloudRemote {
+            id: "work".to_string(),
+            label: "Work".to_string(),
+            provider: CloudProviderKind::Onedrive,
+            root_path: "rclone://work".to_string(),
+            capabilities: CloudCapabilities::v1_core_rw(),
+        }]);
+        super::store_cloud_dir_listing_cache_entry_for_tests(
+            &path,
+            vec![sample_cloud_file("rclone://work/docs/a.txt", "a.txt")],
+        );
+
+        assert!(cloud_remote_discovery_cache_is_populated_for_tests());
+        assert!(super::cloud_dir_listing_cache_contains_for_tests(&path));
+
+        invalidate_all_cloud_caches();
+
+        assert!(!cloud_remote_discovery_cache_is_populated_for_tests());
+        assert!(!super::cloud_dir_listing_cache_contains_for_tests(&path));
+    }
+
+    #[test]
+    fn list_cloud_remotes_errors_for_invalid_explicit_rclone_path() {
+        let _guard = lock_cloud_listing_test_state();
+        clear_cloud_listing_test_state();
+        set_rclone_path_override_for_tests(Some("/usr/bin/rclone-does-not-exist"));
+
+        let error = list_cloud_remotes_cached(false).expect_err("invalid path should fail");
+        assert_eq!(error.code_str(), "invalid_config");
+        assert!(
+            error
+                .to_string()
+                .contains("Configured Rclone path is invalid or not executable"),
+            "unexpected error: {error}"
+        );
+        set_rclone_path_override_for_tests(None);
     }
 
     #[test]
