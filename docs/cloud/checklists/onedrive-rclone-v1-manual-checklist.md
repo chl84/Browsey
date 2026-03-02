@@ -2,7 +2,7 @@
 
 Created: 2026-03-02
 Role: Provider-specific appendix to
-`docs/core-operations-release-checklist.md`
+`docs/operations/core-operations/release-checklist.md`
 
 Use this checklist after matrix-based core scenarios pass, to capture OneDrive
 provider behavior and real-account anomalies without redefining core semantics.
@@ -20,7 +20,7 @@ provider behavior and real-account anomalies without redefining core semantics.
 
 ## Matrix-Linked Cloud Scenarios
 
-Reference behavior: `docs/core-operations-matrix.md`
+Reference behavior: `docs/operations/core-operations/matrix.md`
 
 - [ ] `CO-MTC-001` Local -> cloud copy file
 - [ ] `CO-MTC-002` Cloud -> local copy file

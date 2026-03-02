@@ -4,7 +4,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 set ROOT=%~dp0\..\..
 
 pushd "%ROOT%" || exit /b 1
-npm --prefix "%ROOT%\docs" run preview -- %*
+npm --prefix "%ROOT%\docs-site" run preview -- %*
 set ERR=%ERRORLEVEL%
 popd
 exit /b %ERR%

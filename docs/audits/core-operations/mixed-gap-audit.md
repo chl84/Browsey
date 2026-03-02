@@ -3,7 +3,7 @@
 Created: 2026-03-02
 Scope: Mixed local<->cloud transfer hardening (Step 4 in
 `docs/todo-archive/TODO_CORE_OPERATIONS_HARDENING.md`)
-Matrix reference: `docs/core-operations-matrix.md` (`MTC`)
+Matrix reference: `docs/operations/core-operations/matrix.md` (`MTC`)
 
 ## Evidence Reviewed
 

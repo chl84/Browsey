@@ -178,7 +178,7 @@ Quality gate:
 - [x] Add examples for `name`, `filename`, `folder`, `path`, `hidden`, `readonly`
 
 Quality gate:
-- [x] `npm --prefix docs run check` (if docs content changes there)
+- [x] `npm --prefix docs-site run check` (if docs content changes there)
 
 ## Test Matrix (Must Pass Before Calling It Done)
 

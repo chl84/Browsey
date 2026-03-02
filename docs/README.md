@@ -1,17 +1,23 @@
-# Browsey Docs Workspace
+# Browsey Project Docs
 
-This folder is a standalone Svelte + Vite project for Browsey documentation.
-Browsey itself is developed with AI assistance from OpenAI Codex.
+This directory stores project documents (strategy, operations, audits, quality,
+cloud notes, and TODO tracking).
 
-For GitHub Pages deploys, the build uses `PAGES_BASE_PATH` so repository pages like
-`https://chl84.github.io/Browsey/` resolve assets correctly.
+The docs web app lives in `../docs-site/` and is built/deployed separately.
 
-## Commands
+## Structure
 
-- Install deps: `npm --prefix docs install`
-- Start local dev server: `npm --prefix docs run dev`
-- Build static site: `npm --prefix docs run build`
-- Preview build: `npm --prefix docs run preview`
-- Typecheck: `npm --prefix docs run check`
+- `strategy/`: product and positioning assessments
+- `operations/core-operations/`: core-operations matrix, checklist, and policy
+- `audits/core-operations/`: gap audits tied to core-operations hardening
+- `cloud/checklists/`: provider/runtime-specific cloud checklists
+- `quality/`: quality baselines and engineering quality notes
+- `todo/`: active TODO documents
+- `todo-archive/`: completed or archived TODO documents
 
-The docs build output is `docs/dist/`.
+## Conventions
+
+- Prefer stable, domain-based folders over date-based dump files.
+- Keep active TODOs in `todo/` and move completed tracks to `todo-archive/`.
+- Keep behavior definitions in operations docs; audits/checklists should refer to
+  those definitions, not duplicate them.
