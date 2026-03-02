@@ -438,6 +438,18 @@ export const useExplorerFileOps = (deps: Deps) => {
       } catch (err) {
         deps.activityApi.clearNow()
         await deps.activityApi.cleanup()
+        if (route === 'local_to_cloud') {
+          // Mixed local->cloud may fail after partial writes; trigger a delayed cloud refresh
+          // so the current listing converges even when the operation returns an error.
+          refreshCloudViewAfterWrite('Paste')
+        } else {
+          // Mixed cloud->local may leave partial local writes on error.
+          try {
+            await deps.reloadCurrent()
+          } catch {
+            // Best effort only; keep the original operation error as primary signal.
+          }
+        }
         deps.showToast(`Paste failed: ${getErrorMessage(err)}`)
         return false
       }

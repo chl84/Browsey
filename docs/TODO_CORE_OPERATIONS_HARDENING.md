@@ -320,14 +320,26 @@ Target areas:
 - `frontend/src/features/explorer/`
 - `frontend/e2e/`
 
-- [ ] Add frontend tests for error/progress/cancel state where backend outcomes are mocked.
-- [ ] Cover at minimum:
+- [x] Add frontend tests for error/progress/cancel state where backend outcomes are mocked.
+- [x] Cover at minimum:
   - conflict modal follow-up behavior
   - progress state after cancel/error
   - refresh behavior after successful write flows
   - operation failure surfaces that currently risk stale UI state
 - [ ] Add at least one Playwright scenario beyond the current smoke test if a
   critical flow is not realistically protected by unit tests alone.
+
+Progress notes (2026-03-02):
+
+- Added mixed failure-state refresh integrity regressions in:
+  - `frontend/src/features/explorer/file-ops/useExplorerFileOps.test.ts`
+- Added frontend behavior hardening in:
+  - `frontend/src/features/explorer/file-ops/useExplorerFileOps.ts`
+- New coverage includes:
+  - cloud refresh scheduling after mixed local->cloud partial failure
+  - local refresh attempt after mixed cloud->local partial failure
+  - explicit assertion that operation still fails visibly while refresh
+    reconciliation runs
 
 Acceptance:
 
@@ -367,7 +379,7 @@ Acceptance:
 - [x] Commit 3: local destructive-operation regression additions
 - [x] Commit 4: mixed transfer/conflict regression additions
 - [x] Commit 5: extraction hardening coverage
-- [ ] Commit 6: frontend operation-state regression additions
+- [x] Commit 6: frontend operation-state regression additions
 - [ ] Commit 7: fault-injection helpers and hostile-condition tests
 - [ ] Commit 8: release-blocking policy notes
 

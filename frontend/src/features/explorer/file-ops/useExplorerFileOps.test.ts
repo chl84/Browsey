@@ -497,6 +497,51 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     )
   })
 
+  it('refreshes cloud view after mixed local-to-cloud failure to reconcile partial writes', async () => {
+    vi.useFakeTimers()
+    try {
+      setClipboardPathsState('copy', ['/tmp/src/a.txt', '/tmp/src/b.txt'])
+      previewMixedTransferConflictsMock.mockResolvedValue([])
+      copyMixedEntryToMock
+        .mockResolvedValueOnce('rclone://work/dest/a.txt')
+        .mockRejectedValueOnce(new Error('second source failed'))
+
+      const deps = createDeps()
+      deps.reloadCurrent = vi.fn(async () => {})
+      const fileOps = useExplorerFileOps(deps)
+
+      const ok = await fileOps.handlePasteOrMove('rclone://work/dest')
+
+      expect(ok).toBe(false)
+      expect(deps.reloadCurrent).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(250)
+      await Promise.resolve()
+      expect(deps.reloadCurrent).toHaveBeenCalledTimes(1)
+      expect(deps.showToast).toHaveBeenCalledWith('Paste failed: second source failed')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('attempts local refresh after mixed cloud-to-local failure to reconcile partial writes', async () => {
+    setClipboardPathsState('cut', ['rclone://work/src/a.txt', 'rclone://work/src/b.txt'])
+    previewMixedTransferConflictsMock.mockResolvedValue([])
+    moveMixedEntryToMock
+      .mockResolvedValueOnce('/tmp/dest/a.txt')
+      .mockRejectedValueOnce(new Error('second source failed'))
+
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp/dest'
+    deps.reloadCurrent = vi.fn(async () => {})
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('/tmp/dest')
+
+    expect(ok).toBe(false)
+    expect(deps.reloadCurrent).toHaveBeenCalledTimes(1)
+    expect(deps.showToast).toHaveBeenCalledWith('Paste failed: second source failed')
+  })
+
   it('resolves mixed local-to-cloud rename-on-conflict by retrying explicit target candidates', async () => {
     setClipboardPathsState('copy', ['/tmp/src/report.txt'])
     previewMixedTransferConflictsMock.mockResolvedValue([
