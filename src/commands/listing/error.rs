@@ -2,7 +2,8 @@ use crate::errors::{
     api_error::ApiResult,
     domain::{
         self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint,
+        IoErrorHint, COMMON_INVALID_PATH_PATTERNS, COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
+        COMMON_PERMISSION_DENIED_PATTERNS,
     },
 };
 use std::fmt;
@@ -123,17 +124,9 @@ const LISTING_CLASSIFICATION_RULES: &[(ListingErrorCode, &[&str])] = &[
     ),
     (
         ListingErrorCode::PathNotAbsolute,
-        &["path must be absolute"],
+        COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
     ),
-    (
-        ListingErrorCode::InvalidPath,
-        &[
-            "parent directory components are not allowed",
-            "invalid path component (nul byte)",
-            "path contains nul byte",
-            "unsupported path prefix",
-        ],
-    ),
+    (ListingErrorCode::InvalidPath, COMMON_INVALID_PATH_PATTERNS),
     (
         ListingErrorCode::WatchNotAllowed,
         &["watching this path is not allowed"],
@@ -144,11 +137,7 @@ const LISTING_CLASSIFICATION_RULES: &[(ListingErrorCode, &[&str])] = &[
     ),
     (
         ListingErrorCode::PermissionDenied,
-        &[
-            "permission denied",
-            "operation not permitted",
-            "access is denied",
-        ],
+        COMMON_PERMISSION_DENIED_PATTERNS,
     ),
     (
         ListingErrorCode::NotFound,

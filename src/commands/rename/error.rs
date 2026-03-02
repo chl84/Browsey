@@ -2,7 +2,7 @@ use crate::errors::{
     api_error::ApiResult,
     domain::{
         self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint,
+        IoErrorHint, COMMON_PATH_NOT_ABSOLUTE_PATTERNS, COMMON_PERMISSION_DENIED_PATTERNS,
     },
 };
 use std::fmt;
@@ -176,7 +176,10 @@ pub(super) fn map_api_result<T>(result: RenameResult<T>) -> ApiResult<T> {
 }
 
 const CLASSIFICATION_RULES: &[(RenameErrorCode, &[&str])] = &[
-    (RenameErrorCode::PathNotAbsolute, &["path must be absolute"]),
+    (
+        RenameErrorCode::PathNotAbsolute,
+        COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
+    ),
     (
         RenameErrorCode::InvalidPath,
         &[
@@ -220,11 +223,7 @@ const CLASSIFICATION_RULES: &[(RenameErrorCode, &[&str])] = &[
     ),
     (
         RenameErrorCode::PermissionDenied,
-        &[
-            "permission denied",
-            "operation not permitted",
-            "access is denied",
-        ],
+        COMMON_PERMISSION_DENIED_PATTERNS,
     ),
     (RenameErrorCode::RollbackFailed, &["rollback also failed"]),
     (

@@ -324,14 +324,38 @@ Target modules:
 - `src/undo/error.rs`
 - `src/commands/decompress/error.rs`
 
-- [ ] Identify the smallest shared classification seams worth extracting.
-- [ ] Prefer shared helpers for repeated IO/path semantics, not a shared mega-enum.
-- [ ] Keep domain-only rules local (for example rollback, snapshot, archive-specific rules).
-- [ ] Verify no user-visible code drift is introduced during deduplication.
+- [x] Identify the smallest shared classification seams worth extracting.
+- [x] Prefer shared helpers for repeated IO/path semantics, not a shared mega-enum.
+- [x] Keep domain-only rules local (for example rollback, snapshot, archive-specific rules).
+- [x] Verify no user-visible code drift is introduced during deduplication.
 
 Acceptance:
 
 - Common file-operation semantics are less duplicated while domain-specific semantics remain local.
+
+Progress update (2026-03-02, classification dedup slice):
+
+- extracted shared classification constants in `src/errors/domain.rs`:
+  - `COMMON_PATH_NOT_ABSOLUTE_PATTERNS`
+  - `COMMON_INVALID_PATH_PATTERNS`
+  - `COMMON_PERMISSION_DENIED_PATTERNS`
+- applied shared constants to active command error domains:
+  - `src/commands/listing/error.rs`
+  - `src/commands/duplicates/error.rs`
+  - `src/commands/entry_metadata/error.rs`
+  - `src/commands/decompress/error.rs`
+  - `src/commands/rename/error.rs`
+  - `src/commands/fs/error.rs`
+- kept domain-only patterns local (for example rollback/archive-specific/system-specific rules)
+- verification for this dedup slice:
+  - `cargo fmt --all`
+  - `cargo clippy --all-targets --all-features -- -D warnings`
+  - `cargo test -q commands::fs`
+  - `cargo test -q commands::rename::tests`
+  - `cargo test -q commands::listing::tests`
+  - `cargo test -q commands::duplicates::scan::tests`
+  - `cargo test -q commands::decompress`
+  - `cargo test -q commands::entry_metadata`
 
 ### 5) Review and tighten cloud/transfer error overlap
 
@@ -341,19 +365,42 @@ Target modules:
 - `src/commands/cloud/error.rs`
 - related adapters/callers in `src/commands/cloud/` and `src/commands/transfer/`
 
-- [ ] Audit overlap between `TransferErrorCode` and `CloudCommandErrorCode`.
-- [ ] Decide whether to:
+- [x] Audit overlap between `TransferErrorCode` and `CloudCommandErrorCode`.
+- [x] Decide whether to:
   - keep them separate but explicitly mapped, or
   - extract a narrow shared remote/cloud error core
-- [ ] Implement the smaller option that reduces duplication without flattening domain ownership.
+- [x] Implement the smaller option that reduces duplication without flattening domain ownership.
 
 Acceptance:
 
 - Remote/cloud error overlap is either structurally reduced or explicitly bounded and documented.
 
+Progress update (2026-03-02, cloud/transfer overlap slice):
+
+- decision:
+  - keep `TransferErrorCode` and `CloudCommandErrorCode` separate
+  - make the mapping explicit and typed at the boundary
+- implemented:
+  - added typed conversion `impl From<CloudCommandError> for TransferError` in
+    `src/commands/transfer/error.rs`
+  - replaced string-based boundary mapping in
+    `src/commands/transfer/execute.rs::map_cloud_error_to_transfer(...)`
+    with typed conversion (`error.into()`)
+  - re-exported `CloudCommandErrorCode` from `src/commands/cloud/mod.rs` for
+    explicit cross-module enum mapping
+- rationale:
+  - avoids a shared mega-enum while removing implicit string-based adapter churn
+  - keeps cloud-domain ownership local and transfer-domain ownership local
+  - preserves frontend-facing code strings
+- verification for this slice:
+  - `cargo check -q`
+  - `cargo clippy --all-targets --all-features -- -D warnings`
+  - `cargo test -q commands::transfer::execute::tests`
+  - `cargo test -q commands::cloud::providers::rclone::tests::classifies_common_rclone_error_messages`
+
 ### 6) Add regression tests for conversion and code stability
 
-- [ ] Add tests that assert representative upstream typed errors keep expected API codes.
+- [x] Add tests that assert representative upstream typed errors keep expected API codes.
 - [ ] Add tests that prove message wording changes do not silently remap codes in key flows.
 - [ ] Add at least one regression test per high-value domain:
   - clipboard/local copy-move
@@ -367,26 +414,46 @@ Acceptance:
 
 - The error-code contract is tested directly instead of being only an incidental side effect.
 
+Progress update (2026-03-02, initial code-stability tests):
+
+- added typed boundary regression tests in `src/commands/transfer/error.rs`:
+  - `maps_cloud_error_code_to_transfer_error_code`
+  - `maps_cloud_unknown_to_transfer_unknown`
+- these tests pin the `CloudCommandError -> TransferError` code mapping and
+  verify message passthrough for the adapter boundary
+
 ### 7) Add a lightweight guard against regression
 
-- [ ] Add a small maintenance check, script, or review checklist note that flags:
+- [x] Add a small maintenance check, script, or review checklist note that flags:
   - new `impl From<...> for String` in typed backend modules
   - new `from_external_message(error.to_string())` in typed module-to-module seams
-- [ ] Keep the guard lightweight enough that it will actually stay enabled.
+- [x] Keep the guard lightweight enough that it will actually stay enabled.
 
 Acceptance:
 
 - The codebase becomes less likely to drift back toward string-based semantic loss.
 
+Progress update (2026-03-02, regression guard slice):
+
+- added lightweight guard script:
+  - `scripts/maintenance/check-backend-error-hardening-guard.sh`
+- guard coverage:
+  - fails on new `impl From<...> for String` in hardened typed modules
+  - fails on new `from_external_message(...to_string())` seams in hardened module boundaries
+- enabled in CI:
+  - added `Backend Error Hardening Guard` step to `.github/workflows/rust-quality.yml`
+- verification:
+  - `bash scripts/maintenance/check-backend-error-hardening-guard.sh`
+
 ## Suggested Commit Boundaries
 
-- [ ] Commit 1: inventory + target list
-- [ ] Commit 2: remove `From<...> for String` in core modules
-- [ ] Commit 3: local file-operation typed conversions
-- [ ] Commit 4: shared classification cleanup
-- [ ] Commit 5: cloud/transfer overlap tightening
+- [x] Commit 1: inventory + target list
+- [x] Commit 2: remove `From<...> for String` in core modules
+- [x] Commit 3: local file-operation typed conversions
+- [x] Commit 4: shared classification cleanup
+- [x] Commit 5: cloud/transfer overlap tightening
 - [ ] Commit 6: regression tests for code stability
-- [ ] Commit 7: lightweight regression guard
+- [x] Commit 7: lightweight regression guard
 
 ## Exit Notes
 

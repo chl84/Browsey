@@ -4,7 +4,7 @@ use crate::errors::{
     api_error::{ApiError, ApiResult},
     domain::{
         classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint,
+        IoErrorHint, COMMON_PATH_NOT_ABSOLUTE_PATTERNS, COMMON_PERMISSION_DENIED_PATTERNS,
     },
 };
 use std::fmt;
@@ -166,7 +166,7 @@ pub(super) fn is_expected_set_hidden_error(error: &SetHiddenError) -> bool {
 const SET_HIDDEN_CLASSIFICATION_RULES: &[(SetHiddenErrorCode, &[&str])] = &[
     (
         SetHiddenErrorCode::PathNotAbsolute,
-        &["path must be absolute"],
+        COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
     ),
     (
         SetHiddenErrorCode::InvalidPath,
@@ -199,11 +199,7 @@ const SET_HIDDEN_CLASSIFICATION_RULES: &[(SetHiddenErrorCode, &[&str])] = &[
     ),
     (
         SetHiddenErrorCode::PermissionDenied,
-        &[
-            "permission denied",
-            "operation not permitted",
-            "access is denied",
-        ],
+        COMMON_PERMISSION_DENIED_PATTERNS,
     ),
     (
         SetHiddenErrorCode::HiddenUpdateFailed,
@@ -443,11 +439,7 @@ const FS_CLASSIFICATION_RULES: &[(FsErrorCode, &[&str])] = &[
     ),
     (
         FsErrorCode::PermissionDenied,
-        &[
-            "permission denied",
-            "operation not permitted",
-            "access is denied",
-        ],
+        COMMON_PERMISSION_DENIED_PATTERNS,
     ),
     (
         FsErrorCode::TargetExists,
