@@ -185,12 +185,10 @@ Acceptance:
 
 Inventory snapshot (2026-03-02):
 
-- `impl From<...> for String` still exists in:
-  - `src/fs_utils/error.rs`
-  - `src/path_guard/error.rs`
-  - plus non-phase-2 modules such as `metadata` and `watcher`
+- `impl From<...> for String` still exists only outside this phase-2 target set:
+  - `src/metadata/error.rs`
+  - `src/watcher.rs`
 - clear removable semantic-loss cases include:
-  - `src/commands/fs/error.rs` typed-error fallback through `to_string()`
   - `src/commands/decompress/` typed orchestration paths that still rely on
     `from_external_message(...)`
 - first completed slice:
@@ -202,7 +200,7 @@ Inventory snapshot (2026-03-02):
   - `src/commands/permissions/error.rs` and `src/clipboard/error.rs` now map
     `UndoError` via `UndoErrorCode` instead of `code_str()` string matching
 - removable-but-deferred semantic-loss cases include:
-  - `src/commands/fs/error.rs` typed-error fallback through `to_string()`
+  - `src/commands/decompress/` (remaining string-classified extraction leaf errors)
 - likely acceptable low-level leaf/boundary cases still need review in:
   - external process integrations
   - archive format adapters
@@ -217,10 +215,10 @@ Target modules:
 - `src/tasks/error.rs`
 - `src/undo/error.rs`
 
-- [ ] Audit current call sites for these conversions.
-- [ ] Remove the conversion impls where they are no longer justified.
-- [ ] Replace remaining call sites with typed conversions or explicit boundary mapping.
-- [ ] If one conversion must remain, document why it is still a true boundary.
+- [x] Audit current call sites for these conversions.
+- [x] Remove the conversion impls where they are no longer justified.
+- [x] Replace remaining call sites with typed conversions or explicit boundary mapping.
+- [x] If one conversion must remain, document why it is still a true boundary.
 
 Acceptance:
 
@@ -231,11 +229,19 @@ Progress update (2026-03-02):
 - completed in this slice:
   - removed `impl From<TaskError> for String`
   - removed `impl From<UndoError> for String`
-- intentionally deferred:
-  - `FsUtilsError -> String`
-  - `PathGuardError -> String`
-  - both still have broad caller fan-out and should be removed only alongside a
-    larger `fs`/`decompress` slice
+- completed in later slice (2026-03-02):
+  - audited current call-site pressure by searching `from_external_message` adapters
+    that currently rely on `FsUtilsError`/`PathGuardError -> String` across command modules
+  - removed `impl From<PathGuardError> for String`
+  - removed `impl From<FsUtilsError> for String`
+  - converted additional typed fs-utils adapters in:
+    - `src/commands/listing/`
+    - `src/commands/duplicates/`
+    - `src/commands/console/`
+    - `src/commands/entry_metadata/`
+- note:
+  - for this phase-2 target set, no `From<...> for String` conversion remains in
+    `fs_utils`, `path_guard`, `tasks`, or `undo`
 
 ### 3) Replace string re-classification in local file-operation paths
 
@@ -246,10 +252,10 @@ Target modules:
 - `src/commands/rename/`
 - `src/undo/`
 
-- [ ] Replace generic `Display`-based mapping where typed upstream errors are known.
-- [ ] Add direct `From<...>` conversions where semantic preservation is clear.
-- [ ] Keep fallback string classification only for true external/leaf failures.
-- [ ] Preserve current frontend-facing code strings unless a concrete bug requires change.
+- [x] Replace generic `Display`-based mapping where typed upstream errors are known.
+- [x] Add direct `From<...>` conversions where semantic preservation is clear.
+- [x] Keep fallback string classification only for true external/leaf failures.
+- [x] Preserve current frontend-facing code strings unless a concrete bug requires change.
 
 Acceptance:
 
@@ -266,10 +272,26 @@ Progress update (2026-03-02):
   - `src/clipboard/error.rs`, `src/commands/rename/error.rs`, and
     `src/commands/permissions/error.rs` now use typed `UndoErrorCode` matching
 - deferred to next slice:
-  - `src/commands/fs/`
   - `src/commands/decompress/`
-  - `src/path_guard/` and `src/fs_utils/` caller cleanups needed before their
-    remaining string conversions can be removed
+
+Progress update (2026-03-02, fs + decompress slice):
+
+- completed:
+  - `src/commands/fs/error.rs` now maps typed upstream errors via direct
+    `From<...>` impls (`FsUtilsError`, `PathGuardError`, `UndoError`)
+  - `src/commands/fs/error.rs` `map_external_result(...)` now uses `E: Into<FsError>`
+    instead of generic `Display` + `to_string()`
+  - typed fs call sites now use `map_err(FsError::from)` in:
+    - `src/commands/fs/mod.rs`
+    - `src/commands/fs/open_ops.rs`
+    - `src/commands/fs/delete_ops.rs`
+    - `src/commands/fs/trash/move_ops.rs`
+  - `src/commands/decompress/error.rs` now has typed `From<FsUtilsError>`
+  - typed fs-utils entry checks in `src/commands/decompress/mod.rs` now use
+    `map_err(DecompressError::from)` instead of string round-trip
+- remaining in this area:
+  - `src/commands/decompress/` still has many true leaf/external string-classified
+    errors (archive parser/decoder/process boundaries)
 
 Verification run for this slice:
 
@@ -280,6 +302,17 @@ Verification run for this slice:
 - `cargo test -q clipboard`
 - `cargo test -q commands::permissions::tests`
 - `cargo test --all-targets --all-features`
+- `cargo test -q commands::fs`
+- `cargo test -q commands::decompress`
+- `cargo test -q commands::rename::tests`
+- `cargo test -q commands::listing::tests`
+- `cargo test -q commands::duplicates::scan::tests`
+
+Current test note:
+
+- `cargo test --all-targets --all-features` intermittently fails in
+  `commands::settings::tests::store_rclone_path_invalidates_cloud_caches`
+  (same failure on two full-suite runs), while the isolated test passes.
 
 ### 4) Reduce duplicated file-operation classification logic
 

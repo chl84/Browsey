@@ -90,6 +90,26 @@ impl DomainError for ListingError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for ListingError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath => ListingErrorCode::InvalidPath,
+            crate::fs_utils::FsUtilsErrorCode::NotFound => ListingErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied => {
+                ListingErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem
+            | crate::fs_utils::FsUtilsErrorCode::RootForbidden
+            | crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported
+            | crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                ListingErrorCode::UnknownError
+            }
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type ListingResult<T> = Result<T, ListingError>;
 
 pub(super) fn map_api_result<T>(result: ListingResult<T>) -> ApiResult<T> {

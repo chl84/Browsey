@@ -71,7 +71,7 @@ pub fn open_console(path: String) -> ApiResult<()> {
 }
 
 fn open_console_impl(path: String) -> ConsoleResult<()> {
-    let pb = sanitize_path_follow(&path, true).map_err(ConsoleError::from_external_message)?;
+    let pb = sanitize_path_follow(&path, true).map_err(ConsoleError::from)?;
     if !pb.is_dir() {
         return Err(ConsoleError::new(
             ConsoleErrorCode::NotDirectory,

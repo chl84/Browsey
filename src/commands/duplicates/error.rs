@@ -91,6 +91,26 @@ impl DomainError for DuplicatesError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for DuplicatesError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath => DuplicatesErrorCode::InvalidPath,
+            crate::fs_utils::FsUtilsErrorCode::NotFound => DuplicatesErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied => {
+                DuplicatesErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem
+            | crate::fs_utils::FsUtilsErrorCode::RootForbidden
+            | crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported
+            | crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                DuplicatesErrorCode::UnknownError
+            }
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type DuplicatesResult<T> = Result<T, DuplicatesError>;
 
 pub(super) fn map_api_result<T>(result: DuplicatesResult<T>) -> ApiResult<T> {

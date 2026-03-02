@@ -90,10 +90,4 @@ impl From<crate::fs_utils::FsUtilsError> for PathGuardError {
     }
 }
 
-impl From<PathGuardError> for String {
-    fn from(error: PathGuardError) -> Self {
-        error.to_string()
-    }
-}
-
 pub type PathGuardResult<T> = Result<T, PathGuardError>;

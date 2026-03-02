@@ -29,8 +29,7 @@ pub fn entry_kind_cmd(path: String) -> ApiResult<String> {
 }
 
 fn entry_kind_cmd_impl(path: String) -> EntryMetadataResult<String> {
-    let pb =
-        sanitize_path_follow(&path, false).map_err(EntryMetadataError::from_external_message)?;
+    let pb = sanitize_path_follow(&path, false).map_err(EntryMetadataError::from)?;
     let meta = fs::metadata(&pb).map_err(|error| {
         EntryMetadataError::new(
             EntryMetadataErrorCode::MetadataReadFailed,
@@ -53,7 +52,6 @@ fn entry_extra_metadata_cmd_impl(path: String) -> EntryMetadataResult<ExtraMetad
     if looks_like_uri_path(&path) {
         return Ok(build_network_uri_extra_metadata(&path));
     }
-    let pb =
-        sanitize_path_follow(&path, false).map_err(EntryMetadataError::from_external_message)?;
+    let pb = sanitize_path_follow(&path, false).map_err(EntryMetadataError::from)?;
     collect_extra_metadata(&pb).map_err(EntryMetadataError::from_external_message)
 }

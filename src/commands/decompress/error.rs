@@ -105,6 +105,30 @@ impl From<&str> for DecompressError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for DecompressError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath => DecompressErrorCode::InvalidPath,
+            crate::fs_utils::FsUtilsErrorCode::NotFound => DecompressErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied => {
+                DecompressErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem => {
+                DecompressErrorCode::ReadOnlyFilesystem
+            }
+            crate::fs_utils::FsUtilsErrorCode::RootForbidden => DecompressErrorCode::RootForbidden,
+            crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported => {
+                DecompressErrorCode::SymlinkUnsupported
+            }
+            crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                DecompressErrorCode::ExtractFailed
+            }
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) fn is_cancelled_error(error: &DecompressError) -> bool {
     error.code == DecompressErrorCode::Cancelled
 }

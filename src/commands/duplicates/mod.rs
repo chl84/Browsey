@@ -165,9 +165,8 @@ fn validate_scan_input(
     target_path: String,
     start_path: String,
 ) -> DuplicatesResult<DuplicateScanInput> {
-    let target = sanitize_path_follow(&target_path, false)
-        .map_err(DuplicatesError::from_external_message)?;
-    check_no_symlink_components(&target).map_err(DuplicatesError::from_external_message)?;
+    let target = sanitize_path_follow(&target_path, false).map_err(DuplicatesError::from)?;
+    check_no_symlink_components(&target).map_err(DuplicatesError::from)?;
 
     let target_meta = std::fs::symlink_metadata(&target).map_err(|e| {
         DuplicatesError::from_external_message(format!("Failed to read target metadata: {e}"))
@@ -184,8 +183,8 @@ fn validate_scan_input(
     let start_expanded = expand_path(Some(start_path))
         .map_err(|error| DuplicatesError::from_external_message(error.to_string()))?;
     let start = sanitize_path_follow(&start_expanded.to_string_lossy(), false)
-        .map_err(DuplicatesError::from_external_message)?;
-    check_no_symlink_components(&start).map_err(DuplicatesError::from_external_message)?;
+        .map_err(DuplicatesError::from)?;
+    check_no_symlink_components(&start).map_err(DuplicatesError::from)?;
 
     let start_meta = std::fs::symlink_metadata(&start).map_err(|e| {
         DuplicatesError::from_external_message(format!("Failed to read start folder metadata: {e}"))

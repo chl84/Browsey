@@ -35,7 +35,7 @@ pub fn open_entry(path: String) -> ApiResult<()> {
 }
 
 fn open_entry_impl(path: String) -> FsResult<()> {
-    let pb = sanitize_path_follow(&path, false).map_err(FsError::from_external_message)?;
+    let pb = sanitize_path_follow(&path, false).map_err(FsError::from)?;
     let conn = db::open().map_err(map_db_open_error)?;
     if let Err(e) = db::touch_recent(&conn, &pb.to_string_lossy()) {
         warn!("Failed to record recent for {:?}: {}", pb, e);

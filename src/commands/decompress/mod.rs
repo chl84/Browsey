@@ -273,8 +273,7 @@ fn do_extract(
     shared_progress: Option<ProgressEmitter>,
     batch_actions: Option<Arc<Mutex<Vec<Action>>>>,
 ) -> DecompressResult<ExtractResult> {
-    let nofollow = sanitize_path_nofollow(&path, true)
-        .map_err(|error| DecompressError::from_external_message(error.to_string()))?;
+    let nofollow = sanitize_path_nofollow(&path, true).map_err(DecompressError::from)?;
     let meta = fs::symlink_metadata(&nofollow).map_err(|e| {
         DecompressError::from_external_message(format!("Failed to read archive metadata: {e}"))
     })?;
@@ -284,10 +283,8 @@ fn do_extract(
         ));
     }
 
-    let archive_path = sanitize_path_follow(&path, true)
-        .map_err(|error| DecompressError::from_external_message(error.to_string()))?;
-    check_no_symlink_components(&archive_path)
-        .map_err(|error| DecompressError::from_external_message(error.to_string()))?;
+    let archive_path = sanitize_path_follow(&path, true).map_err(DecompressError::from)?;
+    check_no_symlink_components(&archive_path).map_err(DecompressError::from)?;
 
     if !archive_path.is_file() {
         return Err(DecompressError::from_external_message(

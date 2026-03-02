@@ -83,6 +83,26 @@ impl DomainError for EntryMetadataError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for EntryMetadataError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath => EntryMetadataErrorCode::InvalidPath,
+            crate::fs_utils::FsUtilsErrorCode::NotFound => EntryMetadataErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied => {
+                EntryMetadataErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem
+            | crate::fs_utils::FsUtilsErrorCode::RootForbidden
+            | crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported
+            | crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                EntryMetadataErrorCode::MetadataReadFailed
+            }
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type EntryMetadataResult<T> = Result<T, EntryMetadataError>;
 
 pub(super) fn map_api_result<T>(result: EntryMetadataResult<T>) -> ApiResult<T> {

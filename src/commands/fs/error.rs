@@ -131,7 +131,23 @@ impl From<&str> for SetHiddenError {
 
 impl From<crate::fs_utils::FsUtilsError> for SetHiddenError {
     fn from(error: crate::fs_utils::FsUtilsError) -> Self {
-        Self::from_external_message(error.to_string())
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath => SetHiddenErrorCode::InvalidPath,
+            crate::fs_utils::FsUtilsErrorCode::NotFound => SetHiddenErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied => {
+                SetHiddenErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::RootForbidden => SetHiddenErrorCode::RootForbidden,
+            crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported => {
+                SetHiddenErrorCode::SymlinkUnsupported
+            }
+            crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem
+            | crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                SetHiddenErrorCode::UnknownError
+            }
+        };
+        Self::new(code, error.to_string())
     }
 }
 
@@ -309,6 +325,64 @@ impl From<&str> for FsError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for FsError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath => FsErrorCode::InvalidPath,
+            crate::fs_utils::FsUtilsErrorCode::NotFound => FsErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied => FsErrorCode::PermissionDenied,
+            crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem => {
+                FsErrorCode::ReadOnlyFilesystem
+            }
+            crate::fs_utils::FsUtilsErrorCode::RootForbidden => FsErrorCode::RootForbidden,
+            crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported => {
+                FsErrorCode::SymlinkUnsupported
+            }
+            crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => FsErrorCode::UnknownError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
+impl From<crate::path_guard::PathGuardError> for FsError {
+    fn from(error: crate::path_guard::PathGuardError) -> Self {
+        let code = match error.code() {
+            crate::path_guard::PathGuardErrorCode::NotFound => FsErrorCode::NotFound,
+            crate::path_guard::PathGuardErrorCode::PermissionDenied => {
+                FsErrorCode::PermissionDenied
+            }
+            crate::path_guard::PathGuardErrorCode::NotDirectory => FsErrorCode::InvalidPath,
+            crate::path_guard::PathGuardErrorCode::SymlinkUnsupported => {
+                FsErrorCode::SymlinkUnsupported
+            }
+            crate::path_guard::PathGuardErrorCode::MetadataReadFailed => FsErrorCode::UnknownError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
+impl From<crate::undo::UndoError> for FsError {
+    fn from(error: crate::undo::UndoError) -> Self {
+        let code = match error.code() {
+            crate::undo::UndoErrorCode::InvalidInput => FsErrorCode::InvalidInput,
+            crate::undo::UndoErrorCode::NotFound => FsErrorCode::NotFound,
+            crate::undo::UndoErrorCode::PermissionDenied => FsErrorCode::PermissionDenied,
+            crate::undo::UndoErrorCode::ReadOnlyFilesystem => FsErrorCode::ReadOnlyFilesystem,
+            crate::undo::UndoErrorCode::TargetExists => FsErrorCode::TargetExists,
+            crate::undo::UndoErrorCode::SymlinkUnsupported => FsErrorCode::SymlinkUnsupported,
+            crate::undo::UndoErrorCode::CrossDeviceMove
+            | crate::undo::UndoErrorCode::AtomicRenameUnsupported
+            | crate::undo::UndoErrorCode::SnapshotMismatch
+            | crate::undo::UndoErrorCode::UndoUnavailable
+            | crate::undo::UndoErrorCode::RedoUnavailable
+            | crate::undo::UndoErrorCode::LockFailed
+            | crate::undo::UndoErrorCode::IoError => FsErrorCode::UnknownError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(crate) type FsResult<T> = Result<T, FsError>;
 
 pub(super) fn map_api_result<T>(result: FsResult<T>) -> ApiResult<T> {
@@ -317,9 +391,9 @@ pub(super) fn map_api_result<T>(result: FsResult<T>) -> ApiResult<T> {
 
 pub(super) fn map_external_result<T, E>(result: Result<T, E>) -> FsResult<T>
 where
-    E: std::fmt::Display,
+    E: Into<FsError>,
 {
-    result.map_err(|error| FsError::from_external_message(error.to_string()))
+    result.map_err(Into::into)
 }
 
 const FS_CLASSIFICATION_RULES: &[(FsErrorCode, &[&str])] = &[

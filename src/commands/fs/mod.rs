@@ -312,8 +312,8 @@ fn create_folder_impl(
     name: String,
     state: tauri::State<UndoState>,
 ) -> error::FsResult<String> {
-    let base = sanitize_path_follow(&path, true).map_err(FsError::from_external_message)?;
-    ensure_existing_dir_nonsymlink(&base).map_err(FsError::from_external_message)?;
+    let base = sanitize_path_follow(&path, true).map_err(FsError::from)?;
+    ensure_existing_dir_nonsymlink(&base).map_err(FsError::from)?;
     let trimmed = name.trim();
     if trimmed.is_empty() {
         return Err(FsError::new(
@@ -360,8 +360,8 @@ fn create_file_impl(
     name: String,
     state: tauri::State<UndoState>,
 ) -> error::FsResult<String> {
-    let base = sanitize_path_follow(&path, true).map_err(FsError::from_external_message)?;
-    ensure_existing_dir_nonsymlink(&base).map_err(FsError::from_external_message)?;
+    let base = sanitize_path_follow(&path, true).map_err(FsError::from)?;
+    ensure_existing_dir_nonsymlink(&base).map_err(FsError::from)?;
 
     let trimmed = name.trim();
     if trimmed.is_empty() {

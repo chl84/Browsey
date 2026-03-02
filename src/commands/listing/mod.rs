@@ -528,8 +528,8 @@ fn list_dir_sync(
 ) -> ListingResult<DirListing> {
     let base_path = crate::commands::fs::expand_path(path)
         .map_err(|error| ListingError::from_external_message(error.to_string()))?;
-    let target = sanitize_path_follow(&base_path.to_string_lossy(), false)
-        .map_err(ListingError::from_external_message)?;
+    let target =
+        sanitize_path_follow(&base_path.to_string_lossy(), false).map_err(ListingError::from)?;
     debug_log(&format!(
         "list_dir read_dir attempt: path={} normalized={}",
         base_path.display(),
@@ -813,12 +813,11 @@ fn watch_dir_impl(
             let home = dirs_next::home_dir().ok_or_else(|| {
                 ListingError::new(ListingErrorCode::InvalidInput, "Start directory not found")
             })?;
-            sanitize_path_follow(&home.to_string_lossy(), true)
-                .map_err(ListingError::from_external_message)?
+            sanitize_path_follow(&home.to_string_lossy(), true).map_err(ListingError::from)?
         }
     };
 
-    check_no_symlink_components(&target).map_err(ListingError::from_external_message)?;
+    check_no_symlink_components(&target).map_err(ListingError::from)?;
 
     if !watch_allow_all() {
         let allowed = watch_allowed_roots();
