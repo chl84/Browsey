@@ -2,9 +2,13 @@ use super::*;
 use std::env;
 use std::fs;
 use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
+#[cfg(unix)]
+use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 
 fn uniq_path(label: &str) -> PathBuf {
     let ts = SystemTime::now()
@@ -254,6 +258,69 @@ fn move_entry_keeps_source_when_destination_parent_disappears() {
     assert_eq!(err.code(), ClipboardErrorCode::IoError);
     assert!(src.exists(), "source should remain when move fails");
     assert!(!dest.exists(), "destination should not be created");
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_file_best_effort_fails_when_destination_dir_is_read_only() {
+    let base = uniq_path("copy-read-only-dir");
+    fs::create_dir_all(&base).unwrap();
+    let src = base.join("src.txt");
+    write_file(&src, b"data");
+
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&dest_dir).unwrap();
+    fs::set_permissions(&dest_dir, Permissions::from_mode(0o555)).unwrap();
+    let dest = dest_dir.join("out.txt");
+
+    let err = copy_file_best_effort(&src, &dest, None, None, None, None).unwrap_err();
+    assert_eq!(err.code(), ClipboardErrorCode::IoError);
+    assert!(src.exists(), "source should remain");
+    assert!(!dest.exists(), "destination should not be created");
+
+    fs::set_permissions(&dest_dir, Permissions::from_mode(0o755)).unwrap();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[cfg(unix)]
+#[test]
+fn move_entry_fails_when_destination_dir_is_read_only_and_keeps_source() {
+    let base = uniq_path("move-read-only-dir");
+    fs::create_dir_all(&base).unwrap();
+    let src = base.join("src.txt");
+    write_file(&src, b"data");
+
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&dest_dir).unwrap();
+    fs::set_permissions(&dest_dir, Permissions::from_mode(0o555)).unwrap();
+    let dest = dest_dir.join("out.txt");
+
+    let err = move_entry(&src, &dest, None, None, None).unwrap_err();
+    assert_eq!(err.code(), ClipboardErrorCode::IoError);
+    assert!(src.exists(), "source should remain on permission failure");
+    assert!(!dest.exists(), "destination should not be created");
+
+    fs::set_permissions(&dest_dir, Permissions::from_mode(0o755)).unwrap();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_entry_rejects_symlink_source_no_follow() {
+    let base = uniq_path("copy-symlink-no-follow");
+    fs::create_dir_all(&base).unwrap();
+    let real_src = base.join("real.txt");
+    write_file(&real_src, b"data");
+    let link_src = base.join("link.txt");
+    symlink(&real_src, &link_src).unwrap();
+    let dest = base.join("dest.txt");
+
+    let err = copy_entry(&link_src, &dest, None, None, None).unwrap_err();
+    assert_eq!(err.code(), ClipboardErrorCode::SymlinkUnsupported);
+    assert!(!dest.exists(), "destination should not be created");
+    assert!(real_src.exists(), "real source should remain unchanged");
 
     let _ = fs::remove_dir_all(&base);
 }

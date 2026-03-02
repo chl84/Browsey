@@ -42,10 +42,10 @@ fn delete_with_backup(path: &Path) -> FsResult<Action> {
     if let Some(parent) = backup.parent() {
         map_external_result(ensure_no_symlink_components_existing_prefix(parent))?;
         fs::create_dir_all(parent).map_err(|e| {
-            FsError::from_external_message(format!(
-                "Failed to create backup dir {}: {e}",
-                parent.display()
-            ))
+            FsError::new(
+                FsErrorCode::DeleteFailed,
+                format!("Failed to create backup dir {}: {e}", parent.display()),
+            )
         })?;
         map_external_result(ensure_existing_dir_nonsymlink(parent))?;
     }
@@ -80,67 +80,78 @@ fn emit_delete_progress(
     }
 }
 
-fn delete_entries_blocking(
-    app: tauri::AppHandle,
+fn delete_entries_with_hooks<FShouldAbort, FEmitProgress>(
     paths: Vec<String>,
-    progress_event: Option<String>,
     undo: UndoState,
     cancel: Option<&AtomicBool>,
-) -> FsResult<()> {
+    mut should_abort: FShouldAbort,
+    mut emit_progress: FEmitProgress,
+) -> FsResult<()>
+where
+    FShouldAbort: FnMut(Option<&AtomicBool>) -> bool,
+    FEmitProgress: FnMut(u64, u64, bool),
+{
     if paths.is_empty() {
+        emit_progress(0, 0, true);
         return Ok(());
     }
     let total = paths.len() as u64;
     let mut done = 0u64;
-    let mut last_emit = Instant::now();
     let mut performed: Vec<Action> = Vec::with_capacity(paths.len());
     for raw in paths {
-        if should_abort_fs_op(&app, cancel) {
+        if should_abort(cancel) {
             if !performed.is_empty() {
                 let mut rollback = performed.clone();
                 let _ = run_actions(&mut rollback, Direction::Backward);
             }
-            emit_delete_progress(
-                &app,
-                progress_event.as_ref(),
-                done,
-                total,
-                true,
-                &mut last_emit,
-            );
+            emit_progress(done, total, true);
             return Err(FsError::new(FsErrorCode::Cancelled, "Delete cancelled"));
         }
-        let path = sanitize_path_nofollow(&raw, true).map_err(FsError::from)?;
+        let path = match sanitize_path_nofollow(&raw, true).map_err(FsError::from) {
+            Ok(path) => path,
+            Err(err) => {
+                if !performed.is_empty() {
+                    let mut rollback = performed.clone();
+                    if let Err(rb_err) = run_actions(&mut rollback, Direction::Backward) {
+                        return Err(FsError::new(
+                            FsErrorCode::DeleteFailed,
+                            format!(
+                                "Failed to delete {raw}: {err}; rollback also failed: {rb_err}"
+                            ),
+                        ));
+                    }
+                }
+                return Err(FsError::new(
+                    FsErrorCode::DeleteFailed,
+                    format!("Failed to delete {raw}: {err}"),
+                ));
+            }
+        };
         match delete_with_backup(&path) {
             Ok(action) => {
                 performed.push(action);
                 done = done.saturating_add(1);
-                emit_delete_progress(
-                    &app,
-                    progress_event.as_ref(),
-                    done,
-                    total,
-                    false,
-                    &mut last_emit,
-                );
+                emit_progress(done, total, false);
             }
             Err(err) => {
                 if !performed.is_empty() {
                     let mut rollback = performed.clone();
                     if let Err(rb_err) = run_actions(&mut rollback, Direction::Backward) {
-                        return Err(FsError::from_external_message(format!(
-                            "Failed to delete {}: {}; rollback also failed: {}",
-                            path.display(),
-                            err,
-                            rb_err
-                        )));
+                        return Err(FsError::new(
+                            FsErrorCode::DeleteFailed,
+                            format!(
+                                "Failed to delete {}: {}; rollback also failed: {}",
+                                path.display(),
+                                err,
+                                rb_err
+                            ),
+                        ));
                     }
                 }
-                return Err(FsError::from_external_message(format!(
-                    "Failed to delete {}: {}",
-                    path.display(),
-                    err
-                )));
+                return Err(FsError::new(
+                    FsErrorCode::DeleteFailed,
+                    format!("Failed to delete {}: {}", path.display(), err),
+                ));
             }
         }
     }
@@ -152,15 +163,34 @@ fn delete_entries_blocking(
         };
         let _ = undo.record_applied(recorded);
     }
-    emit_delete_progress(
-        &app,
-        progress_event.as_ref(),
-        done,
-        total,
-        true,
-        &mut last_emit,
-    );
+    emit_progress(done, total, true);
     Ok(())
+}
+
+fn delete_entries_blocking(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+    progress_event: Option<String>,
+    undo: UndoState,
+    cancel: Option<&AtomicBool>,
+) -> FsResult<()> {
+    let mut last_emit = Instant::now();
+    delete_entries_with_hooks(
+        paths,
+        undo,
+        cancel,
+        |cancel_flag| should_abort_fs_op(&app, cancel_flag),
+        |done, total, finished| {
+            emit_delete_progress(
+                &app,
+                progress_event.as_ref(),
+                done,
+                total,
+                finished,
+                &mut last_emit,
+            );
+        },
+    )
 }
 
 #[tauri::command]
@@ -210,9 +240,11 @@ async fn delete_entries_impl(
 mod tests {
     use super::*;
     use crate::undo::{run_actions, Direction};
+    use std::cell::{Cell, RefCell};
     use std::fs::{self, OpenOptions};
     use std::io::Write;
     use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, SystemTime};
 
     fn uniq_path(label: &str) -> PathBuf {
@@ -289,6 +321,129 @@ mod tests {
             src_dir.join("child.txt").exists(),
             "nested file should be restored"
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn delete_entries_with_hooks_rolls_back_when_later_item_fails() {
+        let dir = uniq_path("rollback-later-failure");
+        let _ = fs::create_dir_all(&dir);
+        let first = dir.join("first.txt");
+        let missing = dir.join("missing.txt");
+        write_file(&first, b"first");
+        let progress: RefCell<Vec<(u64, u64, bool)>> = RefCell::new(Vec::new());
+
+        let err = delete_entries_with_hooks(
+            vec![
+                first.to_string_lossy().to_string(),
+                missing.to_string_lossy().to_string(),
+            ],
+            UndoState::default(),
+            None,
+            |_| false,
+            |done, total, finished| progress.borrow_mut().push((done, total, finished)),
+        )
+        .expect_err("second delete should fail");
+
+        let err_msg = err.to_string().to_lowercase();
+        assert!(
+            err_msg.contains("failed to delete") || err_msg.contains("not exist"),
+            "unexpected error: {err}"
+        );
+        assert!(
+            first.exists(),
+            "first item should be restored after rollback on later failure"
+        );
+        assert_eq!(
+            progress.borrow().as_slice(),
+            &[(1, 2, false)],
+            "progress should report completed first item before failure"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn delete_entries_with_hooks_cancellation_rolls_back_completed_items() {
+        let dir = uniq_path("cancel-rollback");
+        let _ = fs::create_dir_all(&dir);
+        let first = dir.join("first.txt");
+        let second = dir.join("second.txt");
+        write_file(&first, b"first");
+        write_file(&second, b"second");
+
+        let cancel = AtomicBool::new(false);
+        let checks = Cell::new(0usize);
+        let progress: RefCell<Vec<(u64, u64, bool)>> = RefCell::new(Vec::new());
+
+        let err = delete_entries_with_hooks(
+            vec![
+                first.to_string_lossy().to_string(),
+                second.to_string_lossy().to_string(),
+            ],
+            UndoState::default(),
+            Some(&cancel),
+            |_| {
+                let next = checks.get().saturating_add(1);
+                checks.set(next);
+                next >= 2
+            },
+            |done, total, finished| progress.borrow_mut().push((done, total, finished)),
+        )
+        .expect_err("second loop iteration should cancel");
+
+        assert!(
+            err.to_string().to_lowercase().contains("cancelled"),
+            "unexpected error: {err}"
+        );
+        assert!(
+            first.exists(),
+            "first item should be restored after cancellation rollback"
+        );
+        assert!(second.exists(), "second item should remain untouched");
+        assert_eq!(
+            progress.borrow().as_slice(),
+            &[(1, 2, false), (1, 2, true)],
+            "progress should report completion snapshot at cancellation"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn delete_entries_with_hooks_records_undo_for_successful_batch() {
+        let dir = uniq_path("successful-batch");
+        let _ = fs::create_dir_all(&dir);
+        let first = dir.join("first.txt");
+        let second = dir.join("second.txt");
+        write_file(&first, b"first");
+        write_file(&second, b"second");
+
+        let undo = UndoState::default();
+        let progress: RefCell<Vec<(u64, u64, bool)>> = RefCell::new(Vec::new());
+        let cancel = AtomicBool::new(false);
+
+        delete_entries_with_hooks(
+            vec![
+                first.to_string_lossy().to_string(),
+                second.to_string_lossy().to_string(),
+            ],
+            undo.clone(),
+            Some(&cancel),
+            |flag| flag.is_some_and(|token| token.load(Ordering::Relaxed)),
+            |done, total, finished| progress.borrow_mut().push((done, total, finished)),
+        )
+        .expect("batch delete should succeed");
+
+        assert!(!first.exists());
+        assert!(!second.exists());
+        assert_eq!(
+            progress.borrow().as_slice(),
+            &[(1, 2, false), (2, 2, false), (2, 2, true)]
+        );
+
+        undo.undo().expect("undo should restore deleted batch");
+        assert!(first.exists(), "first file should be restored");
+        assert!(second.exists(), "second file should be restored");
+
         let _ = fs::remove_dir_all(&dir);
     }
 }

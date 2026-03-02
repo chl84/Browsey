@@ -4,6 +4,24 @@ import { createContextActions, type CurrentView } from './createContextActions'
 import type { Entry } from '../model/types'
 import type { ClipboardApi } from '../file-ops/createClipboard'
 
+const moveToTrashManyMock = vi.fn(async () => {})
+const deleteEntriesMock = vi.fn(async () => {})
+const purgeTrashItemsMock = vi.fn(async () => {})
+const restoreTrashItemsMock = vi.fn(async () => {})
+const removeRecentMock = vi.fn(async () => {})
+
+vi.mock('../services/trash.service', () => ({
+  moveToTrashMany: (...args: unknown[]) => moveToTrashManyMock(...args),
+  deleteEntries: (...args: unknown[]) => deleteEntriesMock(...args),
+  purgeTrashItems: (...args: unknown[]) => purgeTrashItemsMock(...args),
+  restoreTrashItems: (...args: unknown[]) => restoreTrashItemsMock(...args),
+  removeRecent: (...args: unknown[]) => removeRecentMock(...args),
+}))
+
+vi.mock('../services/clipboard.service', () => ({
+  copyPathsToSystemClipboard: vi.fn(async () => {}),
+}))
+
 const fileEntry = (path: string, name: string): Entry => ({
   path,
   name,
@@ -42,6 +60,35 @@ const createDeps = (entries: Entry[], selectedPaths: string[], view: CurrentView
 })
 
 describe('createContextActions', () => {
+  it('routes move-trash to trash service (not permanent delete)', async () => {
+    moveToTrashManyMock.mockClear()
+    deleteEntriesMock.mockClear()
+    const entry = fileEntry('/tmp/a.txt', 'a.txt')
+    const deps = createDeps([entry], [entry.path], 'dir')
+    const handle = createContextActions(deps)
+
+    await handle('move-trash', entry)
+
+    expect(moveToTrashManyMock).toHaveBeenCalledWith([entry.path])
+    expect(deleteEntriesMock).not.toHaveBeenCalled()
+  })
+
+  it('routes delete-permanent to delete service when confirm modal is disabled', async () => {
+    moveToTrashManyMock.mockClear()
+    deleteEntriesMock.mockClear()
+    const entry = fileEntry('/tmp/a.txt', 'a.txt')
+    const deps = {
+      ...createDeps([entry], [entry.path], 'dir'),
+      confirmDeleteEnabled: () => false,
+    }
+    const handle = createContextActions(deps)
+
+    await handle('delete-permanent', entry)
+
+    expect(deleteEntriesMock).toHaveBeenCalledWith([entry.path])
+    expect(moveToTrashManyMock).not.toHaveBeenCalled()
+  })
+
   it('dispatches open-with action to dependency', async () => {
     const entry = fileEntry('/tmp/a.txt', 'a.txt')
     const deps = createDeps([entry], [entry.path])

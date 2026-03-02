@@ -1474,6 +1474,84 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_local_to_cloud_returns_cancelled_when_token_is_set_before_start() {
+        let _guard = fake_rclone_test_lock();
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "dest");
+        let cli = sandbox.cli();
+        let src = sandbox.write_local_file("src/cancel-me.txt", "payload");
+        let route = MixedTransferRoute::LocalToCloud {
+            sources: vec![src.clone()],
+            dest_dir: sandbox.cloud_path("rclone://work/dest"),
+        };
+        let cancel = Arc::new(AtomicBool::new(true));
+
+        let err = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            Some(cancel),
+            None,
+        )
+        .expect_err("transfer should abort before work starts");
+
+        assert_eq!(err.code_str(), "cancelled");
+        assert!(
+            src.exists(),
+            "source should remain unchanged when transfer is cancelled early"
+        );
+        assert!(
+            !sandbox.remote_path("work", "dest/cancel-me.txt").exists(),
+            "destination should not be created"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_local_to_cloud_reports_destination_exists_when_not_prechecked() {
+        let _guard = fake_rclone_test_lock();
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "dest");
+        sandbox.write_remote_file("work", "dest/conflict.txt", "remote-existing");
+        let cli = sandbox.cli();
+        let src = sandbox.write_local_file("src/conflict.txt", "local-payload");
+        let route = MixedTransferRoute::LocalToCloud {
+            sources: vec![src.clone()],
+            dest_dir: sandbox.cloud_path("rclone://work/dest"),
+        };
+
+        let err = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: false,
+            },
+            None,
+            None,
+        )
+        .expect_err("copy should fail when destination exists and prechecked is false");
+
+        assert_eq!(err.code_str(), "destination_exists");
+        assert!(
+            src.exists(),
+            "source should remain unchanged on rejected copy"
+        );
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "dest/conflict.txt"))
+                .expect("read existing destination"),
+            "remote-existing",
+            "existing destination content should remain unchanged"
+        );
+    }
+
     #[test]
     fn provider_specific_error_mapping_handles_onedrive_activity_limit() {
         assert_eq!(
