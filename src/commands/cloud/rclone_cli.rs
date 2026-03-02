@@ -15,6 +15,7 @@ const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] =
     &["--retries", "2", "--low-level-retries", "2", "--stats", "0"];
 const RCLONE_FAILURE_OUTPUT_MAX_CHARS: usize = 16 * 1024;
 const RCLONE_SHUTDOWN_POLL_SLICE_MS: u64 = 100;
+const RCLONE_SPAWN_ETXTBSY_RETRY_BACKOFFS_MS: &[u64] = &[10, 25, 50];
 
 type SharedChild = Arc<Mutex<Option<Child>>>;
 
@@ -317,7 +318,7 @@ impl RcloneCli {
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
         let child = Arc::new(Mutex::new(Some(
-            command.spawn().map_err(RcloneCliError::Io)?,
+            spawn_with_etxtbsy_retry(&mut command, subcommand).map_err(RcloneCliError::Io)?,
         )));
         let _registration = RunningChildRegistration::register(child.clone());
         let output =
@@ -352,6 +353,43 @@ impl RcloneCli {
                 stderr,
             })
         }
+    }
+}
+
+fn spawn_with_etxtbsy_retry(
+    command: &mut Command,
+    subcommand: RcloneSubcommand,
+) -> Result<Child, std::io::Error> {
+    let mut attempt = 0usize;
+    loop {
+        match command.spawn() {
+            Ok(child) => return Ok(child),
+            Err(error) if is_etxtbsy_error(&error) => {
+                let Some(backoff_ms) = RCLONE_SPAWN_ETXTBSY_RETRY_BACKOFFS_MS.get(attempt).copied()
+                else {
+                    return Err(error);
+                };
+                attempt += 1;
+                debug!(
+                    command = subcommand.as_str(),
+                    attempt, backoff_ms, "rclone spawn hit ETXTBSY; retrying"
+                );
+                std::thread::sleep(Duration::from_millis(backoff_ms));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn is_etxtbsy_error(error: &std::io::Error) -> bool {
+    #[cfg(unix)]
+    {
+        error.raw_os_error() == Some(26)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = error;
+        false
     }
 }
 

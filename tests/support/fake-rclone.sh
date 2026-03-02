@@ -4,6 +4,8 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 state_root="$script_dir/state"
 log_file="$script_dir/fake-rclone.log"
+mkdir_destination_exists_once_file="$script_dir/mkdir-destination-exists-once"
+mkdir_destination_exists_always_file="$script_dir/mkdir-destination-exists-always"
 mkdir -p "$state_root"
 
 printf '%s\n' "$*" >> "$log_file"
@@ -143,14 +145,43 @@ case "$subcmd" in
     printf ']\n'
     ;;
   mkdir)
+    while [[ $idx -lt ${#args[@]} ]]; do
+      case "${args[$idx]}" in
+        --onedrive-hard-delete|--drive-use-trash=false)
+          idx=$((idx + 1))
+          ;;
+        *)
+          break
+          ;;
+      esac
+    done
     if [[ $idx -ge ${#args[@]} ]]; then
       echo "missing path for mkdir" >&2
       exit 2
+    fi
+    if [[ -f "$mkdir_destination_exists_always_file" ]]; then
+      echo "destination exists" >&2
+      exit 3
+    fi
+    if [[ -f "$mkdir_destination_exists_once_file" ]]; then
+      rm -f -- "$mkdir_destination_exists_once_file"
+      echo "destination exists" >&2
+      exit 3
     fi
     target="$(map_spec_path "${args[$idx]}")"
     mkdir -p -- "$target"
     ;;
   deletefile)
+    while [[ $idx -lt ${#args[@]} ]]; do
+      case "${args[$idx]}" in
+        --onedrive-hard-delete|--drive-use-trash=false)
+          idx=$((idx + 1))
+          ;;
+        *)
+          break
+          ;;
+      esac
+    done
     if [[ $idx -ge ${#args[@]} ]]; then
       echo "missing path for deletefile" >&2
       exit 2
@@ -163,6 +194,16 @@ case "$subcmd" in
     rm -f -- "$target"
     ;;
   purge)
+    while [[ $idx -lt ${#args[@]} ]]; do
+      case "${args[$idx]}" in
+        --onedrive-hard-delete|--drive-use-trash=false)
+          idx=$((idx + 1))
+          ;;
+        *)
+          break
+          ;;
+      esac
+    done
     if [[ $idx -ge ${#args[@]} ]]; then
       echo "missing path for purge" >&2
       exit 2
@@ -175,6 +216,16 @@ case "$subcmd" in
     rm -rf -- "$target"
     ;;
   rmdir)
+    while [[ $idx -lt ${#args[@]} ]]; do
+      case "${args[$idx]}" in
+        --onedrive-hard-delete|--drive-use-trash=false)
+          idx=$((idx + 1))
+          ;;
+        *)
+          break
+          ;;
+      esac
+    done
     if [[ $idx -ge ${#args[@]} ]]; then
       echo "missing path for rmdir" >&2
       exit 2

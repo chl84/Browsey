@@ -69,6 +69,7 @@ impl RcloneRcClient {
         )
     }
 
+    #[allow(dead_code)]
     pub fn operations_mkdir(
         &self,
         fs_spec: &str,
@@ -83,6 +84,7 @@ impl RcloneRcClient {
         )
     }
 
+    #[allow(dead_code)]
     pub fn operations_deletefile(
         &self,
         fs_spec: &str,
@@ -100,6 +102,7 @@ impl RcloneRcClient {
         )
     }
 
+    #[allow(dead_code)]
     pub fn operations_purge(
         &self,
         fs_spec: &str,
@@ -114,6 +117,7 @@ impl RcloneRcClient {
         )
     }
 
+    #[allow(dead_code)]
     pub fn operations_rmdir(
         &self,
         fs_spec: &str,
