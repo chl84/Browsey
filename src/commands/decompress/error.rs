@@ -2,7 +2,8 @@ use crate::errors::{
     api_error::ApiResult,
     domain::{
         self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint,
+        IoErrorHint, COMMON_INVALID_PATH_PATTERNS, COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
+        COMMON_PERMISSION_DENIED_PATTERNS,
     },
 };
 use std::fmt;
@@ -164,16 +165,11 @@ const DECOMPRESS_CLASSIFICATION_RULES: &[(DecompressErrorCode, &[&str])] = &[
     ),
     (
         DecompressErrorCode::PathNotAbsolute,
-        &["path must be absolute"],
+        COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
     ),
     (
         DecompressErrorCode::InvalidPath,
-        &[
-            "parent directory components are not allowed",
-            "invalid path component (nul byte)",
-            "path contains nul byte",
-            "unsupported path prefix",
-        ],
+        COMMON_INVALID_PATH_PATTERNS,
     ),
     (
         DecompressErrorCode::InvalidInput,
@@ -211,11 +207,7 @@ const DECOMPRESS_CLASSIFICATION_RULES: &[(DecompressErrorCode, &[&str])] = &[
     ),
     (
         DecompressErrorCode::PermissionDenied,
-        &[
-            "permission denied",
-            "operation not permitted",
-            "access is denied",
-        ],
+        COMMON_PERMISSION_DENIED_PATTERNS,
     ),
     (
         DecompressErrorCode::ExtractFailed,

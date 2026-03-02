@@ -13,7 +13,6 @@ use crate::commands::cloud::rclone_cli::{
     RcloneCli, RcloneCliError, RcloneCommandSpec, RcloneSubcommand,
 };
 use crate::commands::cloud::types::{CloudEntryKind, CloudProviderKind};
-use crate::errors::domain::DomainError;
 use crate::runtime_lifecycle;
 use crate::tasks::{CancelGuard, CancelState};
 use serde::Serialize;
@@ -879,7 +878,7 @@ fn emit_transfer_progress(
 fn map_cloud_error_to_transfer(
     error: crate::commands::cloud::CloudCommandError,
 ) -> super::error::TransferError {
-    api_err(error.code_str(), error.to_string())
+    error.into()
 }
 
 fn remove_local_source_after_mixed_file_move(path: &std::path::Path) -> TransferResult<()> {

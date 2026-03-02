@@ -36,6 +36,19 @@ pub fn classify_message_by_patterns<C: Copy>(
     fallback
 }
 
+pub const COMMON_PATH_NOT_ABSOLUTE_PATTERNS: &[&str] = &["path must be absolute"];
+pub const COMMON_INVALID_PATH_PATTERNS: &[&str] = &[
+    "parent directory components are not allowed",
+    "invalid path component (nul byte)",
+    "path contains nul byte",
+    "unsupported path prefix",
+];
+pub const COMMON_PERMISSION_DENIED_PATTERNS: &[&str] = &[
+    "permission denied",
+    "operation not permitted",
+    "access is denied",
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IoErrorHint {
     NotFound,

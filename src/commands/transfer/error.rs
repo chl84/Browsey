@@ -123,6 +123,52 @@ impl From<ApiError> for TransferError {
     }
 }
 
+impl From<crate::commands::cloud::CloudCommandError> for TransferError {
+    fn from(error: crate::commands::cloud::CloudCommandError) -> Self {
+        let code = match error.code() {
+            crate::commands::cloud::CloudCommandErrorCode::InvalidPath => {
+                TransferErrorCode::InvalidPath
+            }
+            crate::commands::cloud::CloudCommandErrorCode::NotFound => TransferErrorCode::NotFound,
+            crate::commands::cloud::CloudCommandErrorCode::Timeout => TransferErrorCode::Timeout,
+            crate::commands::cloud::CloudCommandErrorCode::NetworkError => {
+                TransferErrorCode::NetworkError
+            }
+            crate::commands::cloud::CloudCommandErrorCode::TlsCertificateError => {
+                TransferErrorCode::TlsCertificateError
+            }
+            crate::commands::cloud::CloudCommandErrorCode::RateLimited => {
+                TransferErrorCode::RateLimited
+            }
+            crate::commands::cloud::CloudCommandErrorCode::AuthRequired => {
+                TransferErrorCode::AuthRequired
+            }
+            crate::commands::cloud::CloudCommandErrorCode::PermissionDenied => {
+                TransferErrorCode::PermissionDenied
+            }
+            crate::commands::cloud::CloudCommandErrorCode::DestinationExists => {
+                TransferErrorCode::DestinationExists
+            }
+            crate::commands::cloud::CloudCommandErrorCode::Unsupported => {
+                TransferErrorCode::Unsupported
+            }
+            crate::commands::cloud::CloudCommandErrorCode::BinaryMissing => {
+                TransferErrorCode::BinaryMissing
+            }
+            crate::commands::cloud::CloudCommandErrorCode::InvalidConfig => {
+                TransferErrorCode::InvalidConfig
+            }
+            crate::commands::cloud::CloudCommandErrorCode::TaskFailed => {
+                TransferErrorCode::TaskFailed
+            }
+            crate::commands::cloud::CloudCommandErrorCode::UnknownError => {
+                TransferErrorCode::UnknownError
+            }
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type TransferResult<T> = Result<T, TransferError>;
 
 pub(super) fn map_api_result<T>(result: TransferResult<T>) -> ApiResult<T> {
@@ -135,4 +181,26 @@ pub(super) fn transfer_err(code: TransferErrorCode, message: impl Into<String>) 
 
 pub(super) fn transfer_err_code(code: &str, message: impl Into<String>) -> TransferError {
     TransferError::new(TransferErrorCode::from_code_str(code), message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TransferError;
+    use crate::commands::cloud::{CloudCommandError, CloudCommandErrorCode};
+
+    #[test]
+    fn maps_cloud_error_code_to_transfer_error_code() {
+        let cloud = CloudCommandError::new(CloudCommandErrorCode::RateLimited, "slow down");
+        let transfer: TransferError = cloud.into();
+        assert_eq!(transfer.code_str(), "rate_limited");
+        assert_eq!(transfer.message(), "slow down");
+    }
+
+    #[test]
+    fn maps_cloud_unknown_to_transfer_unknown() {
+        let cloud = CloudCommandError::new(CloudCommandErrorCode::UnknownError, "mystery");
+        let transfer: TransferError = cloud.into();
+        assert_eq!(transfer.code_str(), "unknown_error");
+        assert_eq!(transfer.message(), "mystery");
+    }
 }

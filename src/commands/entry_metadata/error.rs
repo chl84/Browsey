@@ -2,7 +2,8 @@ use crate::errors::{
     api_error::ApiResult,
     domain::{
         self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint,
+        IoErrorHint, COMMON_INVALID_PATH_PATTERNS, COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
+        COMMON_PERMISSION_DENIED_PATTERNS,
     },
 };
 use std::fmt;
@@ -112,16 +113,11 @@ pub(super) fn map_api_result<T>(result: EntryMetadataResult<T>) -> ApiResult<T> 
 const ENTRY_METADATA_CLASSIFICATION_RULES: &[(EntryMetadataErrorCode, &[&str])] = &[
     (
         EntryMetadataErrorCode::PathNotAbsolute,
-        &["path must be absolute"],
+        COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
     ),
     (
         EntryMetadataErrorCode::InvalidPath,
-        &[
-            "parent directory components are not allowed",
-            "invalid path component (nul byte)",
-            "path contains nul byte",
-            "unsupported path prefix",
-        ],
+        COMMON_INVALID_PATH_PATTERNS,
     ),
     (
         EntryMetadataErrorCode::NotFound,
@@ -129,11 +125,7 @@ const ENTRY_METADATA_CLASSIFICATION_RULES: &[(EntryMetadataErrorCode, &[&str])] 
     ),
     (
         EntryMetadataErrorCode::PermissionDenied,
-        &[
-            "permission denied",
-            "operation not permitted",
-            "access is denied",
-        ],
+        COMMON_PERMISSION_DENIED_PATTERNS,
     ),
     (
         EntryMetadataErrorCode::MetadataReadFailed,

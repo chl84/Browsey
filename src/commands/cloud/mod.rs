@@ -19,8 +19,8 @@ mod write;
 use crate::errors::api_error::ApiResult;
 use crate::tasks::{CancelGuard, CancelState};
 use cache::list_cloud_remotes_cached;
-pub(crate) use error::CloudCommandError;
-use error::{map_api_result, CloudCommandErrorCode, CloudCommandResult};
+use error::{map_api_result, CloudCommandResult};
+pub(crate) use error::{CloudCommandError, CloudCommandErrorCode};
 use path::CloudPath;
 #[cfg(test)]
 pub(crate) use rclone_path::set_rclone_path_override_for_tests;

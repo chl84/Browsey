@@ -8,6 +8,7 @@ on:
       - 'Cargo.lock'
       - 'build.rs'
       - '.github/workflows/rust-quality.yml'
+      - 'scripts/maintenance/check-backend-error-hardening-guard.sh'
   push:
     branches:
       - main
@@ -17,6 +18,7 @@ on:
       - 'Cargo.lock'
       - 'build.rs'
       - '.github/workflows/rust-quality.yml'
+      - 'scripts/maintenance/check-backend-error-hardening-guard.sh'
   workflow_dispatch:
 
 jobs:
@@ -51,6 +53,9 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Backend Error Hardening Guard
+        run: bash scripts/maintenance/check-backend-error-hardening-guard.sh
 
       - name: Tests
         run: cargo test --all-targets --all-features
