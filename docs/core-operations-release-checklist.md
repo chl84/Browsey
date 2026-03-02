@@ -34,6 +34,7 @@ redefining behavior in multiple places.
    the same scenario ID.
 3. A `FAIL` on any release-blocking scenario must be linked to an issue before
    signoff.
+   release-blocking definition: `docs/core-operations-release-blocking-policy.md`
 4. If a scenario is not applicable to the touched scope, mark `N/A` and justify
    in notes.
 
@@ -86,6 +87,18 @@ redefining behavior in multiple places.
 | [ ] | `CO-EXT-003` | Linux + Windows* | Cancel extraction while extraction is in progress. |  |  |
 | [ ] | `CO-EXT-004` | Linux + Windows* | Force permission-denied during extraction write path. |  |  |
 | [ ] | `CO-EXT-005` | Linux + Windows* | Run batch extraction with mixed success/failure outcomes. |  |  |
+
+#### Extract Non-Transactional Notes
+
+- Extraction is not globally transactional across an entire archive or archive
+  batch.
+- On cancellation/failure, completed outputs from earlier completed entries (or
+  earlier archives in a batch) may remain.
+- Partial output created by the currently failing entry is best-effort cleaned
+  up by backend-created path tracking, but callers must validate final
+  filesystem state via post-operation refresh/checks.
+- Release validation for `CO-EXT-003` to `CO-EXT-005` must confirm user-facing
+  summary and observed filesystem state agree on partial vs full success.
 
 ## Environment Notes
 
