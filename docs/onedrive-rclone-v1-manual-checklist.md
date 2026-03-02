@@ -1,49 +1,52 @@
-# OneDrive rclone v1 Manual Test Checklist
+# OneDrive rclone v1 Manual Checklist (Appendix)
 
-Use this checklist when validating Browsey's `rclone`-backed OneDrive flow on a real account.
+Created: 2026-03-02
+Role: Provider-specific appendix to
+`docs/core-operations-release-checklist.md`
+
+Use this checklist after matrix-based core scenarios pass, to capture OneDrive
+provider behavior and real-account anomalies without redefining core semantics.
 
 ## Environment
+
 - [ ] Linux machine with Browsey build under test
 - [ ] `rclone` installed and available in `PATH`
 - [ ] `rclone config` contains a working `onedrive` remote
-- [ ] Test account has a disposable test folder (no production-only content)
+- [ ] Disposable OneDrive test folder (no production data)
+- [ ] Test data contains:
+  - small + large files
+  - at least one conflict pair
+  - one directory tree with nested entries
 
-## Basic access and discovery
-- [ ] Browsey opens normally with `rclone` installed
-- [ ] `Network` view shows the configured OneDrive remote
-- [ ] Opening the remote loads a directory listing (`rclone://...`)
-- [ ] Listing refresh works (manual refresh / reload current view)
+## Matrix-Linked Cloud Scenarios
 
-## Core file ops (v1 target scope)
-- [ ] Create folder in remote
-- [ ] Rename file in remote
-- [ ] Rename folder in remote
-- [ ] Copy file within same remote
-- [ ] Move file within same remote
-- [ ] Delete file (permanent delete semantics)
-- [ ] Delete non-empty folder (permanent delete semantics)
+Reference behavior: `docs/core-operations-matrix.md`
 
-## Conflict and overwrite flow
-- [ ] Paste preview detects same-name file conflict in remote folder
-- [ ] Rename-on-conflict creates a suffixed target (for example `-1`)
-- [ ] Overwrite path completes when selected
-- [ ] Self-paste in same folder auto-renames instead of prompting
+- [ ] `CO-MTC-001` Local -> cloud copy file
+- [ ] `CO-MTC-002` Cloud -> local copy file
+- [ ] `CO-MTC-003` Local -> cloud move file
+- [ ] `CO-MTC-004` Cloud -> local move file
+- [ ] `CO-MTC-005` Mixed directory copy/move
+- [ ] `CO-MTC-006` Mixed conflict preview consistency
 
-## Reliability checks
-- [ ] Refresh after rename/mkdir/delete shows expected state
-- [ ] Re-opening the same folder shows consistent state after operations
-- [ ] No GVFS `/run/user/.../gvfs/...` path is involved in cloud operations
-- [ ] Errors (if any) surface user-friendly cloud messages (not raw rclone stderr dumps)
+## OneDrive-Specific Reliability Checks
 
-## Large-file / slower operation sanity checks
-- [ ] Copy a larger file and confirm operation completes within timeout expectations
-- [ ] Confirm timeout error message is understandable if a forced network interruption is tested
+- [ ] Remote appears in `Network` and opens as `rclone://...`
+- [ ] Manual refresh after writes shows consistent state
+- [ ] Reopening same folder does not surface stale/ghost entries
+- [ ] Errors are user-actionable (not raw provider noise dumps)
+- [ ] Large-file transfer remains stable with progress and cancellation
+- [ ] Forced network interruption produces understandable failure state
 
-## Negative / unsupported flows (expected limitations)
-- [ ] Mixed local/cloud paste is rejected with clear message
-- [ ] Cloud trash action is blocked / unavailable
-- [ ] Advanced rename on cloud entry is blocked / unavailable
-- [ ] Open in console for cloud folder is blocked / unavailable
+## Expected Limitations (v1 Scope)
+
+- [ ] Cloud delete uses permanent-delete semantics (no cloud trash integration)
+- [ ] Advanced rename remains unavailable for cloud entries
+- [ ] Cloud archive extract/compress remains unavailable
+- [ ] Open-in-console is blocked for cloud folders
 
 ## Notes
-- Record distro, Browsey commit, `rclone version`, and any provider-specific anomalies.
+
+- Record distro, Browsey commit, `rclone version`, OneDrive account type, and
+  observed provider-specific anomalies.
+- Link any failure to scenario ID(s) and issue(s) from the core checklist run.

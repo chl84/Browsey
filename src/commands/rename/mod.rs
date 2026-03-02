@@ -572,4 +572,53 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn rename_entry_impl_rejects_existing_target_without_overwrite() {
+        let dir = uniq_path("single-target-exists");
+        let _ = fs::create_dir_all(&dir);
+        let from = dir.join("from.txt");
+        let existing = dir.join("existing.txt");
+        write_file(&from, b"from");
+        write_file(&existing, b"existing");
+        let state = UndoState::default();
+
+        let err = rename_entry_impl(from.to_string_lossy().as_ref(), "existing.txt", &state)
+            .expect_err("rename should fail when target exists");
+
+        assert!(
+            err.to_string().contains("already exists"),
+            "unexpected error: {err}"
+        );
+        assert!(
+            from.exists(),
+            "source should remain when rename is rejected"
+        );
+        assert!(existing.exists(), "existing target should remain untouched");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rename_entry_impl_fails_when_source_is_missing() {
+        let dir = uniq_path("single-missing-source");
+        let _ = fs::create_dir_all(&dir);
+        let missing = dir.join("missing.txt");
+        let state = UndoState::default();
+
+        let err = rename_entry_impl(missing.to_string_lossy().as_ref(), "renamed.txt", &state)
+            .expect_err("rename should fail for missing source");
+
+        assert!(
+            err.to_string().to_lowercase().contains("no such file")
+                || err.to_string().to_lowercase().contains("not found"),
+            "unexpected error: {err}"
+        );
+        assert!(
+            !dir.join("renamed.txt").exists(),
+            "destination should not be created on failure"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

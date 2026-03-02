@@ -207,3 +207,53 @@ fn resolve_drop_mode_defaults_to_cut_on_same_filesystem() {
     assert_eq!(mode, ClipboardMode::Cut);
     let _ = fs::remove_dir_all(&base);
 }
+
+#[test]
+fn copy_file_best_effort_fails_when_source_is_missing() {
+    let base = uniq_path("copy-missing-source");
+    fs::create_dir_all(&base).unwrap();
+    let src = base.join("missing.txt");
+    let dest = base.join("dest.txt");
+
+    let err = copy_file_best_effort(&src, &dest, None, None, None, None).unwrap_err();
+    assert_eq!(err.code(), ClipboardErrorCode::IoError);
+    assert!(
+        !dest.exists(),
+        "destination should not be created on failure"
+    );
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn move_entry_fails_when_source_is_missing() {
+    let base = uniq_path("move-missing-source");
+    fs::create_dir_all(&base).unwrap();
+    let src = base.join("missing.txt");
+    let dest = base.join("dest.txt");
+
+    let err = move_entry(&src, &dest, None, None, None).unwrap_err();
+    assert_eq!(err.code(), ClipboardErrorCode::IoError);
+    assert!(
+        !dest.exists(),
+        "destination should not be created on failure"
+    );
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn move_entry_keeps_source_when_destination_parent_disappears() {
+    let base = uniq_path("move-missing-dest-parent");
+    fs::create_dir_all(&base).unwrap();
+    let src = base.join("src.txt");
+    write_file(&src, b"data");
+    let dest = base.join("missing").join("dest.txt");
+
+    let err = move_entry(&src, &dest, None, None, None).unwrap_err();
+    assert_eq!(err.code(), ClipboardErrorCode::IoError);
+    assert!(src.exists(), "source should remain when move fails");
+    assert!(!dest.exists(), "destination should not be created");
+
+    let _ = fs::remove_dir_all(&base);
+}
