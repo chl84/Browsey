@@ -401,8 +401,8 @@ Progress update (2026-03-02, cloud/transfer overlap slice):
 ### 6) Add regression tests for conversion and code stability
 
 - [x] Add tests that assert representative upstream typed errors keep expected API codes.
-- [ ] Add tests that prove message wording changes do not silently remap codes in key flows.
-- [ ] Add at least one regression test per high-value domain:
+- [x] Add tests that prove message wording changes do not silently remap codes in key flows.
+- [x] Add at least one regression test per high-value domain:
   - clipboard/local copy-move
   - fs delete/trash
   - rename
@@ -421,6 +421,32 @@ Progress update (2026-03-02, initial code-stability tests):
   - `maps_cloud_unknown_to_transfer_unknown`
 - these tests pin the `CloudCommandError -> TransferError` code mapping and
   verify message passthrough for the adapter boundary
+
+Progress update (2026-03-02, high-value domain regression tests):
+
+- added message-stability regression tests that use intentionally misleading
+  error messages to prove typed code mapping is preserved:
+  - `src/clipboard/error.rs`
+    - `maps_undo_target_exists_to_destination_exists_even_with_misleading_message`
+  - `src/commands/fs/error.rs`
+    - `maps_undo_target_exists_without_message_reclassification`
+  - `src/commands/rename/error.rs`
+    - `maps_undo_target_exists_without_message_reclassification`
+  - `src/undo/error.rs`
+    - `maps_fs_utils_code_without_message_reclassification`
+  - `src/commands/decompress/error.rs`
+    - `maps_fs_utils_permission_denied_without_message_reclassification`
+  - `src/commands/transfer/error.rs`
+    - `maps_cloud_error_code_to_transfer_error_code`
+    - `maps_cloud_unknown_to_transfer_unknown`
+- verification for this slice:
+  - `cargo test -q clipboard::error::tests`
+  - `cargo test -q commands::fs::error::tests`
+  - `cargo test -q commands::rename::error::tests`
+  - `cargo test -q undo::error::tests`
+  - `cargo test -q commands::decompress::error::tests`
+  - `cargo test -q commands::transfer::error::tests`
+  - `cargo clippy --all-targets --all-features -- -D warnings`
 
 ### 7) Add a lightweight guard against regression
 
@@ -452,7 +478,7 @@ Progress update (2026-03-02, regression guard slice):
 - [x] Commit 3: local file-operation typed conversions
 - [x] Commit 4: shared classification cleanup
 - [x] Commit 5: cloud/transfer overlap tightening
-- [ ] Commit 6: regression tests for code stability
+- [x] Commit 6: regression tests for code stability
 - [x] Commit 7: lightweight regression guard
 
 ## Exit Notes
