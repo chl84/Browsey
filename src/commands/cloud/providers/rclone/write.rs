@@ -1,8 +1,9 @@
 use super::{
-    error::{map_rclone_error_for_paths, map_rclone_error_for_remote},
+    error::{is_rclone_not_found_text, map_rclone_error_for_paths, map_rclone_error_for_remote},
     logging::{classify_rc_fallback_reason, log_backend_selected},
+    parse::{classify_provider_kind_from_config, parse_config_dump_summaries},
     CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudPath, CloudProvider,
-    RcloneCliError, RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
+    CloudProviderKind, RcloneCliError, RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
 };
 use crate::commands::cloud::rclone_rc::{
     RcCopyFileFromLocalProgressSpec, RcCopyFileToLocalProgressSpec,
@@ -10,7 +11,12 @@ use crate::commands::cloud::rclone_rc::{
 use serde_json::Value;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 use tracing::debug;
+
+const MKDIR_DESTINATION_EXISTS_RETRY_BACKOFFS_MS: &[u64] = &[75, 200, 500];
+const ONEDRIVE_DELETE_POLICY_ARGS: &[&str] = &["--onedrive-hard-delete"];
+const GDRIVE_DELETE_POLICY_ARGS: &[&str] = &["--drive-use-trash=false"];
 
 impl RcloneCloudProvider {
     pub(super) fn upload_file_with_progress_impl<F>(
@@ -238,39 +244,47 @@ impl RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
-        let mut fell_back_from_rc = false;
-        let mut fallback_reason: Option<&'static str> = None;
-        if self.rc.is_write_enabled() && cancel.is_none() {
-            let fs_spec = format!("{}:", path.remote());
-            match self.rc.operations_mkdir(&fs_spec, path.rel_path()) {
-                Ok(_) => {
-                    log_backend_selected("cloud_write_mkdir", "rc", false, None);
-                    return Ok(());
-                }
+        let mut attempt = 0usize;
+        loop {
+            let mkdir_result = self.cli.run_capture_text_with_cancel(
+                RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(path.to_rclone_remote_spec()),
+                cancel,
+            );
+            match mkdir_result {
+                Ok(_) => break,
                 Err(error) => {
-                    fell_back_from_rc = true;
-                    fallback_reason = Some(classify_rc_fallback_reason(&error));
+                    let mapped = map_rclone_error_for_remote(path.remote(), error);
+                    if mapped.code() != CloudCommandErrorCode::DestinationExists {
+                        return Err(mapped);
+                    }
+                    let Some(backoff_ms) = MKDIR_DESTINATION_EXISTS_RETRY_BACKOFFS_MS
+                        .get(attempt)
+                        .copied()
+                    else {
+                        return Err(mapped);
+                    };
+                    if self.probe_path_exists_via_cli_stat(path)? {
+                        return Err(mapped);
+                    }
+                    attempt += 1;
+                    if is_cancelled(cancel) {
+                        return Err(cloud_write_cancelled_error());
+                    }
                     debug!(
+                        attempt,
+                        backoff_ms,
                         path = %path,
-                        error = %error,
-                        "rclone rc mkdir failed; falling back to CLI mkdir"
+                        "retrying cloud mkdir after destination_exists with missing stat probe"
                     );
+                    std::thread::sleep(Duration::from_millis(backoff_ms));
                 }
             }
         }
-        self.cli
-            .run_capture_text_with_cancel(
-                RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(path.to_rclone_remote_spec()),
-                cancel,
-            )
-            .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         log_backend_selected(
             "cloud_write_mkdir",
             "cli",
-            fell_back_from_rc,
-            if fell_back_from_rc {
-                fallback_reason
-            } else if cancel.is_some() {
+            false,
+            if cancel.is_some() {
                 Some("cancelable_cli")
             } else {
                 None
@@ -288,47 +302,16 @@ impl RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
-        let mut fell_back_from_rc = false;
-        let mut fallback_reason: Option<&'static str> = None;
-        if self.rc.is_write_enabled() {
-            let fs_spec = format!("{}:", path.remote());
-            match self
-                .rc
-                .operations_deletefile(&fs_spec, path.rel_path(), cancel)
-            {
-                Ok(_) => {
-                    log_backend_selected("cloud_write_delete_file", "rc", false, None);
-                    return Ok(());
-                }
-                Err(RcloneCliError::Cancelled { .. }) => return Err(cloud_write_cancelled_error()),
-                Err(error) if !should_fallback_to_cli_after_rc_error(&error) => {
-                    return Err(map_rclone_error_for_remote(path.remote(), error));
-                }
-                Err(error) => {
-                    fell_back_from_rc = true;
-                    fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    debug!(
-                        path = %path,
-                        error = %error,
-                        "rclone rc deletefile failed; falling back to CLI deletefile"
-                    );
-                }
-            }
-        }
+        let mut command = RcloneCommandSpec::new(RcloneSubcommand::DeleteFile);
+        command = self.apply_cloud_delete_policy_args(command, path.remote());
         self.cli
-            .run_capture_text_with_cancel(
-                RcloneCommandSpec::new(RcloneSubcommand::DeleteFile)
-                    .arg(path.to_rclone_remote_spec()),
-                cancel,
-            )
+            .run_capture_text_with_cancel(command.arg(path.to_rclone_remote_spec()), cancel)
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         log_backend_selected(
             "cloud_write_delete_file",
             "cli",
-            fell_back_from_rc,
-            if fell_back_from_rc {
-                fallback_reason
-            } else if cancel.is_some() {
+            false,
+            if cancel.is_some() {
                 Some("cancelable_cli")
             } else {
                 None
@@ -346,39 +329,16 @@ impl RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
-        let mut fell_back_from_rc = false;
-        let mut fallback_reason: Option<&'static str> = None;
-        if self.rc.is_write_enabled() && cancel.is_none() {
-            let fs_spec = format!("{}:", path.remote());
-            match self.rc.operations_purge(&fs_spec, path.rel_path()) {
-                Ok(_) => {
-                    log_backend_selected("cloud_write_delete_dir_recursive", "rc", false, None);
-                    return Ok(());
-                }
-                Err(error) => {
-                    fell_back_from_rc = true;
-                    fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    debug!(
-                        path = %path,
-                        error = %error,
-                        "rclone rc purge failed; falling back to CLI purge"
-                    );
-                }
-            }
-        }
+        let mut command = RcloneCommandSpec::new(RcloneSubcommand::Purge);
+        command = self.apply_cloud_delete_policy_args(command, path.remote());
         self.cli
-            .run_capture_text_with_cancel(
-                RcloneCommandSpec::new(RcloneSubcommand::Purge).arg(path.to_rclone_remote_spec()),
-                cancel,
-            )
+            .run_capture_text_with_cancel(command.arg(path.to_rclone_remote_spec()), cancel)
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         log_backend_selected(
             "cloud_write_delete_dir_recursive",
             "cli",
-            fell_back_from_rc,
-            if fell_back_from_rc {
-                fallback_reason
-            } else if cancel.is_some() {
+            false,
+            if cancel.is_some() {
                 Some("cancelable_cli")
             } else {
                 None
@@ -396,39 +356,16 @@ impl RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
-        let mut fell_back_from_rc = false;
-        let mut fallback_reason: Option<&'static str> = None;
-        if self.rc.is_write_enabled() && cancel.is_none() {
-            let fs_spec = format!("{}:", path.remote());
-            match self.rc.operations_rmdir(&fs_spec, path.rel_path()) {
-                Ok(_) => {
-                    log_backend_selected("cloud_write_delete_dir_empty", "rc", false, None);
-                    return Ok(());
-                }
-                Err(error) => {
-                    fell_back_from_rc = true;
-                    fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    debug!(
-                        path = %path,
-                        error = %error,
-                        "rclone rc rmdir failed; falling back to CLI rmdir"
-                    );
-                }
-            }
-        }
+        let mut command = RcloneCommandSpec::new(RcloneSubcommand::Rmdir);
+        command = self.apply_cloud_delete_policy_args(command, path.remote());
         self.cli
-            .run_capture_text_with_cancel(
-                RcloneCommandSpec::new(RcloneSubcommand::Rmdir).arg(path.to_rclone_remote_spec()),
-                cancel,
-            )
+            .run_capture_text_with_cancel(command.arg(path.to_rclone_remote_spec()), cancel)
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
         log_backend_selected(
             "cloud_write_delete_dir_empty",
             "cli",
-            fell_back_from_rc,
-            if fell_back_from_rc {
-                fallback_reason
-            } else if cancel.is_some() {
+            false,
+            if cancel.is_some() {
                 Some("cancelable_cli")
             } else {
                 None
@@ -568,6 +505,49 @@ impl RcloneCloudProvider {
             },
         );
         Ok(())
+    }
+
+    fn probe_path_exists_via_cli_stat(&self, path: &CloudPath) -> CloudCommandResult<bool> {
+        let spec = RcloneCommandSpec::new(RcloneSubcommand::LsJson)
+            .arg("--stat")
+            .arg(path.to_rclone_remote_spec());
+        match self.cli.run_capture_text(spec) {
+            Ok(_) => Ok(true),
+            Err(RcloneCliError::NonZero { stderr, stdout, .. })
+                if is_rclone_not_found_text(&stderr, &stdout) =>
+            {
+                Ok(false)
+            }
+            Err(error) => Err(map_rclone_error_for_remote(path.remote(), error)),
+        }
+    }
+
+    fn apply_cloud_delete_policy_args(
+        &self,
+        spec: RcloneCommandSpec,
+        remote_id: &str,
+    ) -> RcloneCommandSpec {
+        self.cloud_delete_policy_args_for_remote(remote_id)
+            .iter()
+            .fold(spec, |command, arg| command.arg(*arg))
+    }
+
+    fn cloud_delete_policy_args_for_remote(&self, remote_id: &str) -> &'static [&'static str] {
+        let provider = self
+            .cli
+            .run_capture_text(RcloneCommandSpec::new(RcloneSubcommand::ConfigDump))
+            .ok()
+            .and_then(|output| parse_config_dump_summaries(&output.stdout).ok())
+            .and_then(|config_map| {
+                config_map
+                    .get(remote_id)
+                    .and_then(classify_provider_kind_from_config)
+            });
+        match provider {
+            Some(CloudProviderKind::Onedrive) => ONEDRIVE_DELETE_POLICY_ARGS,
+            Some(CloudProviderKind::Gdrive) => GDRIVE_DELETE_POLICY_ARGS,
+            _ => &[],
+        }
     }
 }
 

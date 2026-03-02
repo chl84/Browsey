@@ -564,6 +564,16 @@ impl FakeRcloneSandbox {
     fn read_log(&self) -> String {
         fs::read_to_string(&self.log_path).unwrap_or_default()
     }
+
+    fn mark_mkdir_destination_exists_once(&self) {
+        fs::write(self.root.join("mkdir-destination-exists-once"), "1")
+            .expect("mark mkdir destination exists once");
+    }
+
+    fn mark_mkdir_destination_exists_always(&self) {
+        fs::write(self.root.join("mkdir-destination-exists-always"), "1")
+            .expect("mark mkdir destination exists always");
+    }
 }
 
 #[cfg(unix)]
@@ -669,9 +679,9 @@ fn fake_rclone_shim_supports_copy_move_and_delete_operations() {
     assert!(log.contains("mkdir work:dst"));
     assert!(log.contains("copyto work:src/file.txt work:dst/copied.txt"));
     assert!(log.contains("moveto work:dst/copied.txt work:dst/moved.txt"));
-    assert!(log.contains("deletefile work:dst/moved.txt"));
-    assert!(log.contains("rmdir work:dst"));
-    assert!(log.contains("purge work:trash"));
+    assert!(log.contains("deletefile --onedrive-hard-delete work:dst/moved.txt"));
+    assert!(log.contains("rmdir --onedrive-hard-delete work:dst"));
+    assert!(log.contains("purge --onedrive-hard-delete work:trash"));
 }
 
 #[cfg(unix)]
@@ -831,33 +841,81 @@ fn read_path_falls_back_to_cli_when_rc_startup_fails() {
 
 #[cfg(unix)]
 #[test]
-fn mkdir_falls_back_to_cli_when_rc_startup_fails() {
+fn mkdir_uses_cli_path_without_rc_daemon() {
     let sandbox = FakeRcloneSandbox::new();
     let provider = sandbox.provider_with_forced_rc();
 
     provider
         .mkdir(&cloud_path("rclone://work/new-folder"), None)
-        .expect("mkdir with fallback");
+        .expect("mkdir should succeed");
     assert!(sandbox.remote_path("work", "new-folder").is_dir());
 
     let log = sandbox.read_log();
     assert!(
-        log.contains("rcd --rc-no-auth"),
-        "expected rc daemon to start without auth on private unix socket, log:\n{log}"
-    );
-    assert!(
-        log.contains("--rc-addr"),
-        "expected rc daemon startup attempt before fallback, log:\n{log}"
+        !log.contains("rcd --rc-no-auth"),
+        "mkdir should not start rc daemon, log:\n{log}"
     );
     assert!(
         log.contains("mkdir work:new-folder"),
-        "expected CLI mkdir fallback call after rc failure, log:\n{log}"
+        "expected CLI mkdir call, log:\n{log}"
     );
 }
 
 #[cfg(unix)]
 #[test]
-fn delete_ops_fall_back_to_cli_when_rc_startup_fails() {
+fn mkdir_retries_destination_exists_when_probe_shows_missing_target() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mark_mkdir_destination_exists_once();
+    let provider = sandbox.provider();
+
+    provider
+        .mkdir(&cloud_path("rclone://work/new-folder"), None)
+        .expect("mkdir should retry and succeed");
+    assert!(sandbox.remote_path("work", "new-folder").is_dir());
+
+    let log = sandbox.read_log();
+    assert_eq!(
+        log.matches("mkdir work:new-folder").count(),
+        2,
+        "expected mkdir retry after transient destination_exists, log:\n{log}"
+    );
+    assert!(
+        log.contains("lsjson --stat work:new-folder"),
+        "expected CLI stat probe before retry, log:\n{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn mkdir_keeps_destination_exists_when_probe_confirms_existing_target() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "existing-folder");
+    sandbox.mark_mkdir_destination_exists_always();
+    let provider = sandbox.provider();
+
+    let err = provider
+        .mkdir(&cloud_path("rclone://work/existing-folder"), None)
+        .expect_err("mkdir should fail with destination_exists");
+    assert_eq!(
+        err.code_str(),
+        CloudCommandErrorCode::DestinationExists.as_code_str()
+    );
+
+    let log = sandbox.read_log();
+    assert_eq!(
+        log.matches("mkdir work:existing-folder").count(),
+        1,
+        "mkdir must not retry when probe confirms destination exists, log:\n{log}"
+    );
+    assert!(
+        log.contains("lsjson --stat work:existing-folder"),
+        "expected CLI stat probe for destination_exists decision, log:\n{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn delete_ops_use_cli_delete_policy_flags() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "trash/file.txt", "payload");
     sandbox.write_remote_file("work", "trash-deep/sub/old.txt", "payload");
@@ -865,39 +923,35 @@ fn delete_ops_fall_back_to_cli_when_rc_startup_fails() {
 
     provider
         .delete_file(&cloud_path("rclone://work/trash/file.txt"), None)
-        .expect("delete file with fallback");
+        .expect("delete file");
     assert!(!sandbox.remote_path("work", "trash/file.txt").exists());
 
     provider
         .delete_dir_empty(&cloud_path("rclone://work/trash"), None)
-        .expect("delete empty dir with fallback");
+        .expect("delete empty dir");
     assert!(!sandbox.remote_path("work", "trash").exists());
 
     provider
         .delete_dir_recursive(&cloud_path("rclone://work/trash-deep"), None)
-        .expect("delete recursive dir with fallback");
+        .expect("delete recursive dir");
     assert!(!sandbox.remote_path("work", "trash-deep").exists());
 
     let log = sandbox.read_log();
     assert!(
-        log.contains("rcd --rc-no-auth"),
-        "expected rc daemon to start without auth on private unix socket, log:\n{log}"
+        !log.contains("rcd --rc-no-auth"),
+        "delete commands should not start rc daemon, log:\n{log}"
     );
     assert!(
-        log.contains("--rc-addr"),
-        "expected rc daemon startup attempt before fallback, log:\n{log}"
+        log.contains("deletefile --onedrive-hard-delete work:trash/file.txt"),
+        "expected OneDrive hard-delete file policy flag, log:\n{log}"
     );
     assert!(
-        log.contains("deletefile work:trash/file.txt"),
-        "expected CLI deletefile fallback call, log:\n{log}"
+        log.contains("rmdir --onedrive-hard-delete work:trash"),
+        "expected OneDrive hard-delete dir-empty policy flag, log:\n{log}"
     );
     assert!(
-        log.contains("rmdir work:trash"),
-        "expected CLI rmdir fallback call, log:\n{log}"
-    );
-    assert!(
-        log.contains("purge work:trash-deep"),
-        "expected CLI purge fallback call, log:\n{log}"
+        log.contains("purge --onedrive-hard-delete work:trash-deep"),
+        "expected OneDrive hard-delete recursive-delete policy flag, log:\n{log}"
     );
 }
 
@@ -952,32 +1006,23 @@ fn copy_move_ops_fall_back_to_cli_when_rc_startup_fails() {
 
 #[cfg(unix)]
 #[test]
-fn delete_file_does_not_fallback_to_cli_when_rc_async_status_is_unknown() {
+fn delete_file_uses_cli_even_with_forced_rc_async_error_hooks() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "dst/moved.txt", "payload");
     let provider = sandbox.provider_with_forced_rc_async_status_error_for_delete();
-    let cancel = std::sync::atomic::AtomicBool::new(false);
 
-    let err = provider
-        .delete_file(&cloud_path("rclone://work/dst/moved.txt"), Some(&cancel))
-        .expect_err("delete should fail with unknown async rc job state");
-    assert_eq!(
-        err.code_str(),
-        CloudCommandErrorCode::TaskFailed.as_code_str()
-    );
-    let message = err.to_string();
-    assert!(
-        message.contains("status is unknown"),
-        "unexpected message: {message}"
-    );
-    assert!(
-        message.contains("did not retry automatically"),
-        "unexpected message: {message}"
-    );
+    provider
+        .delete_file(&cloud_path("rclone://work/dst/moved.txt"), None)
+        .expect("delete should use CLI path");
+
     let log = sandbox.read_log();
     assert!(
-        !log.contains("deletefile work:dst/moved.txt"),
-        "CLI deletefile must not run after unknown async rc state, log:\n{log}"
+        !log.contains("rcd --rc-no-auth"),
+        "delete should not start rc daemon, log:\n{log}"
+    );
+    assert!(
+        log.contains("deletefile --onedrive-hard-delete work:dst/moved.txt"),
+        "expected OneDrive hard-delete flag on CLI path, log:\n{log}"
     );
 }
 
