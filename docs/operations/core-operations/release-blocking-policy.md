@@ -3,7 +3,7 @@
 Created: 2026-03-02
 Scope: Trust-critical operation regressions for
 `docs/todo-archive/TODO_CORE_OPERATIONS_HARDENING.md` Step 8.
-Source of truth for behavior: `docs/core-operations-matrix.md`.
+Source of truth for behavior: `docs/operations/core-operations/matrix.md`.
 
 ## Purpose
 
@@ -13,7 +13,7 @@ This policy is intentionally strict for destructive/recovery-sensitive flows.
 ## Blocking Rule
 
 A release is blocked if any scenario marked `Release-Blocking` below fails in
-`docs/core-operations-release-checklist.md` without a merged fix.
+`docs/operations/core-operations/release-checklist.md` without a merged fix.
 
 If a blocking scenario is `N/A`, the run notes must include a concrete scope
 reason.

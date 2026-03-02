@@ -1,7 +1,7 @@
 # Core Operations Release Checklist
 
 Created: 2026-03-02
-Derived from: `docs/core-operations-matrix.md`
+Derived from: `docs/operations/core-operations/matrix.md`
 Purpose: Run trust-critical validation for a release candidate without
 redefining behavior in multiple places.
 
@@ -30,11 +30,11 @@ redefining behavior in multiple places.
 ## Execution Rules
 
 1. For each scenario row, run the action and mark `PASS` or `FAIL`.
-2. Expected behavior is defined only in `docs/core-operations-matrix.md` for
+2. Expected behavior is defined only in `docs/operations/core-operations/matrix.md` for
    the same scenario ID.
 3. A `FAIL` on any release-blocking scenario must be linked to an issue before
    signoff.
-   release-blocking definition: `docs/core-operations-release-blocking-policy.md`
+   release-blocking definition: `docs/operations/core-operations/release-blocking-policy.md`
 4. If a scenario is not applicable to the touched scope, mark `N/A` and justify
    in notes.
 
@@ -122,7 +122,7 @@ Provider-specific real-account validation remains separate from this
 matrix-derived core checklist to avoid duplicating product semantics.
 
 - OneDrive real-account appendix:
-  `docs/onedrive-rclone-v1-manual-checklist.md`
+  `docs/cloud/checklists/onedrive-rclone-v1-manual-checklist.md`
 
 Use the appendix for provider anomalies, quota/rate-limit behavior, and
 ecosystem-specific quirks after core `MTC` scenarios pass.

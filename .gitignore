@@ -19,6 +19,10 @@
 /docs/dist/
 /docs/.svelte-kit/
 /docs/.vite/
+/docs-site/node_modules/
+/docs-site/dist/
+/docs-site/.svelte-kit/
+/docs-site/.vite/
 
 # Env / local config
 .env

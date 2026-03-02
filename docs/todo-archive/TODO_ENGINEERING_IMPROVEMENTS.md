@@ -111,7 +111,7 @@ Exit Criteria:
 ## Phase 4: Add Docs Lint Gate
 
 - [x] Introduce docs lint scripts (ESLint for docs TS/Svelte content).
-- [x] Add `npm --prefix docs run lint`.
+- [x] Add `npm --prefix docs-site run lint`.
 - [x] Wire docs lint into docs workflow before `check`/`build`.
 
 Acceptance:
@@ -119,7 +119,7 @@ Acceptance:
 
 Exit Criteria:
 - `.github/workflows/docs-pages.yml` includes docs lint step.
-- `npm --prefix docs run lint` is green in CI and locally.
+- `npm --prefix docs-site run lint` is green in CI and locally.
 
 ## Phase 5: Harden Rust CI Quality Gates
 

@@ -74,7 +74,7 @@ This track should reduce duplicated planning and duplicated validation assets:
 
 Current accuracy note:
 
-- `docs/onedrive-rclone-v1-manual-checklist.md` predates the current mixed
+- `docs/cloud/checklists/onedrive-rclone-v1-manual-checklist.md` predates the current mixed
   local/cloud support described in README/docs, so it must be updated or
   replaced before being treated as an authoritative validation artifact.
 
@@ -178,7 +178,7 @@ Acceptance:
 
 ### 2) Add a critical-operations release checklist
 
-- [x] Add `docs/core-operations-release-checklist.md`.
+- [x] Add `docs/operations/core-operations/release-checklist.md`.
 - [x] Make the checklist executable by a maintainer, not only descriptive.
 - [x] Structure the checklist as matrix-derived validation rows keyed by
       scenario ID, not a rewritten narrative copy of the matrix.
@@ -225,7 +225,7 @@ Target modules:
 
 Progress notes (2026-03-02):
 
-- Added matrix gap audit: `docs/core-operations-local-gap-audit.md`.
+- Added matrix gap audit: `docs/audits/core-operations/local-gap-audit.md`.
 - Added local regression tests for disappearing source/destination and explicit
   no-overwrite rename behavior in:
   - `src/clipboard/tests.rs`
@@ -272,7 +272,7 @@ Progress notes (2026-03-02):
 - Added mixed transfer execution tests on existing fake-`rclone` harness in:
   - `src/commands/transfer/execute.rs`
 - Added mixed-transfer/frontend gap audit document:
-  - `docs/core-operations-mixed-gap-audit.md`
+  - `docs/audits/core-operations/mixed-gap-audit.md`
 - New coverage includes:
   - early-cancel behavior (`cancelled` before write begins)
   - `destination_exists` policy when `prechecked=false` in local->cloud copy
@@ -307,7 +307,7 @@ Target modules:
 Progress notes (2026-03-02):
 
 - Added extraction gap audit:
-  - `docs/core-operations-extract-gap-audit.md`
+  - `docs/audits/core-operations/extract-gap-audit.md`
 - Added extraction seam regression tests in:
   - `src/commands/decompress/util.rs`
   - `src/commands/decompress/mod.rs`
@@ -319,7 +319,7 @@ Progress notes (2026-03-02):
   - batch extraction partial-completion behavior (`continue on non-cancel
     failure`, `stop on cancelled`)
   - explicit non-transactional extract semantics documented in
-    `docs/core-operations-release-checklist.md`
+    `docs/operations/core-operations/release-checklist.md`
 
 Acceptance:
 
@@ -372,7 +372,7 @@ Acceptance:
 Progress notes (2026-03-02):
 
 - Added fault-injection notes:
-  - `docs/core-operations-fault-injection-notes.md`
+  - `docs/operations/core-operations/fault-injection-notes.md`
 - Extended deterministic extraction test seam in:
   - `src/commands/decompress/util.rs`
 - Added explicit hostile-condition tests for:
@@ -397,7 +397,7 @@ Acceptance:
 Progress notes (2026-03-02):
 
 - Added release-blocking policy:
-  - `docs/core-operations-release-blocking-policy.md`
+  - `docs/operations/core-operations/release-blocking-policy.md`
 - Policy now defines:
   - scenario-level release blocking classes keyed to matrix IDs
   - concrete trust-bug vs known-limitation vs follow-up issue criteria

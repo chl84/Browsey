@@ -3,7 +3,7 @@
 Created: 2026-03-02
 Scope: Archive extraction hardening (Step 5 in
 `docs/todo-archive/TODO_CORE_OPERATIONS_HARDENING.md`)
-Matrix reference: `docs/core-operations-matrix.md` (`EXT`)
+Matrix reference: `docs/operations/core-operations/matrix.md` (`EXT`)
 
 ## Evidence Reviewed
 
@@ -40,10 +40,10 @@ Matrix reference: `docs/core-operations-matrix.md` (`EXT`)
   `build_batch_extract_items_stops_after_cancelled_error`.
 - Non-transactional extract semantics are now explicitly documented for release
   validation:
-  `docs/core-operations-release-checklist.md` (`Extract Non-Transactional Notes`).
+  `docs/operations/core-operations/release-checklist.md` (`Extract Non-Transactional Notes`).
 - Deterministic hostile-condition fault injection is documented and covered in
   extraction seams:
-  `docs/core-operations-fault-injection-notes.md`.
+  `docs/operations/core-operations/fault-injection-notes.md`.
 
 ## Priority Gaps to Close Next
 

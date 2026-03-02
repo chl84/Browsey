@@ -667,7 +667,7 @@ export const docsPages: DocPage[] = [
         title: 'Repository Layout',
         bullets: [
           'README stays intentionally high-level; this docs section is the detailed source of truth for structure',
-          'Top-level split: src/ (Rust backend), frontend/ (Svelte app), docs/ (documentation app), scripts/ (helpers), resources/ (assets)',
+          'Top-level split: src/ (Rust backend), frontend/ (Svelte app), docs-site/ (documentation app), docs/ (project documents), scripts/ (helpers), resources/ (assets)',
           'capabilities/default.json defines Tauri permission capabilities used by app event/listen flows',
         ],
         code: `src/
@@ -701,9 +701,9 @@ frontend/src/
     network/{index.ts,uri.ts,services.ts,contextMenu.ts,clipboard.ts}
     shortcuts/{index.ts,keymap.ts,service.ts}
 
-docs/src/content/pages.ts
+docs-site/src/content/pages.ts
 ARCHITECTURE_IMPORTS.md ARCHITECTURE_NAMING.md CHANGELOG.md
-docs/todo-archive/{README.md,TODO_*.md}
+docs/{strategy/*,operations/*,audits/*,cloud/*,todo/*,todo-archive/*}
 scripts/{dev/*,build/*,docs/*,install/*,maintenance/*}
 resources/{icons/,schemas/,pdfium-linux-x64/,pdfium-win-x64/}
 capabilities/default.json`,
@@ -730,7 +730,7 @@ capabilities/default.json`,
       {
         id: 'docs-dev-loop',
         title: 'Docs Development Loop',
-        code: `npm --prefix docs install\n./scripts/docs/docs-dev.sh\n./scripts/docs/docs-check.sh\n./scripts/docs/docs-build.sh`,
+        code: `npm --prefix docs-site install\n./scripts/docs/docs-dev.sh\n./scripts/docs/docs-check.sh\n./scripts/docs/docs-build.sh`,
         note: 'Also available: scripts/docs/docs-install.sh + scripts/docs/docs-preview.sh (and .bat equivalents on Windows).',
       },
       {
@@ -747,7 +747,7 @@ capabilities/default.json`,
         title: 'Contributor Guidance',
         bullets: [
           'Keep README concise and high-level; put deep technical details in docs pages',
-          'Prefer updating docs content in docs/src/content/pages.ts for user-facing docs pages',
+          'Prefer updating docs content in docs-site/src/content/pages.ts for user-facing docs pages',
           'Keep docs statements aligned with README and changelog facts',
           'When behavior changes, update docs and release notes in the same PR',
           'Use English for project documentation and inline technical comments',

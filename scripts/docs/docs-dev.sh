@@ -2,6 +2,6 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DOCS_DIR="${ROOT}/docs"
+DOCS_DIR="${ROOT}/docs-site"
 
 exec npm --prefix "${DOCS_DIR}" run dev -- "$@"
