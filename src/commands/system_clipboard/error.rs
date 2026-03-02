@@ -97,6 +97,28 @@ impl DomainError for SystemClipboardError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for SystemClipboardError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied
+            | crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem => {
+                SystemClipboardErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath
+            | crate::fs_utils::FsUtilsErrorCode::RootForbidden
+            | crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported => {
+                SystemClipboardErrorCode::InvalidPath
+            }
+            crate::fs_utils::FsUtilsErrorCode::NotFound => SystemClipboardErrorCode::InvalidInput,
+            crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                SystemClipboardErrorCode::ClipboardWriteFailed
+            }
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type SystemClipboardResult<T> = Result<T, SystemClipboardError>;
 
 pub(super) fn map_api_result<T>(result: SystemClipboardResult<T>) -> ApiResult<T> {

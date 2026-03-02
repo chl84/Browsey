@@ -122,7 +122,7 @@ pub(super) fn backup_existing_target(
             format!("Failed to create backup parent {}: {e}", parent.display()),
         )
     })?;
-    move_with_fallback(target, &backup).map_err(ClipboardError::from_external_message)?;
+    move_with_fallback(target, &backup).map_err(ClipboardError::from)?;
     actions.push(Action::Delete {
         path: target.to_path_buf(),
         backup,

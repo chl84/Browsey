@@ -57,8 +57,7 @@ fn should_avoid_wl_clipboard() -> bool {
 }
 
 fn file_uri(path: &str) -> SystemClipboardResult<String> {
-    let cleaned =
-        sanitize_path_follow(path, true).map_err(SystemClipboardError::from_external_message)?;
+    let cleaned = sanitize_path_follow(path, true).map_err(SystemClipboardError::from)?;
     Url::from_file_path(&cleaned)
         .map_err(|_| SystemClipboardError::from_external_message("Failed to build file URI"))
         .map(|u| u.to_string())

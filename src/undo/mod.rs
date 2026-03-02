@@ -10,7 +10,7 @@ mod types;
 use crate::errors::api_error::ApiResult;
 
 pub use backup::{cleanup_stale_backups, temp_backup_path};
-pub use error::{UndoError, UndoResult};
+pub use error::{UndoError, UndoErrorCode, UndoResult};
 #[cfg(test)]
 pub(crate) use path_ops::move_by_copy_delete_noreplace;
 pub use path_ops::move_with_fallback;

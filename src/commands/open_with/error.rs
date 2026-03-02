@@ -93,6 +93,28 @@ impl DomainError for OpenWithError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for OpenWithError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::NotFound => OpenWithErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied
+            | crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem => {
+                OpenWithErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath
+            | crate::fs_utils::FsUtilsErrorCode::RootForbidden
+            | crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported => {
+                OpenWithErrorCode::InvalidPath
+            }
+            crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                OpenWithErrorCode::UnknownError
+            }
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type OpenWithResult<T> = Result<T, OpenWithError>;
 
 pub(super) fn map_api_result<T>(result: OpenWithResult<T>) -> ApiResult<T> {
