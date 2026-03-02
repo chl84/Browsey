@@ -73,8 +73,8 @@ pub(crate) fn store_cloud_remote_discovery_cache_entry_for_tests(remotes: Vec<Cl
 }
 
 #[cfg(test)]
-pub(crate) fn cloud_remote_discovery_cache_is_populated_for_tests() -> bool {
-    cache::cloud_remote_discovery_cache_is_populated_for_tests()
+pub(crate) fn cloud_remote_discovery_cache_contains_remote_for_tests(remote_id: &str) -> bool {
+    cache::cloud_remote_discovery_cache_contains_remote_for_tests(remote_id)
 }
 
 pub(crate) fn list_cloud_remotes_sync_best_effort(force_refresh: bool) -> Vec<CloudRemote> {

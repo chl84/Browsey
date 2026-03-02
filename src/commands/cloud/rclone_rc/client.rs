@@ -362,14 +362,16 @@ mod tests {
     #[cfg(unix)]
     fn unique_test_dir(label: &str) -> PathBuf {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let seq = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         let unique = format!(
-            "browsey-rclone-rc-test-{label}-{}-{}",
+            "browsey-rclone-rc-test-{label}-{}-{}-{}",
             std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("time")
-                .as_nanos()
-                + u128::from(NEXT_ID.fetch_add(1, Ordering::Relaxed))
+            nanos,
+            seq
         );
         let root = std::env::temp_dir().join(unique);
         fs::create_dir_all(&root).expect("create temp test dir");
