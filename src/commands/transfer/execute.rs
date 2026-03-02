@@ -1319,6 +1319,65 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn mixed_execute_local_to_cloud_partial_directory_move_invalidates_cache_and_keeps_partial_state(
+    ) {
+        let _guard = fake_rclone_test_lock();
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "dest");
+        let cli = sandbox.cli();
+        let dest_dir = sandbox.cloud_path("rclone://work/dest");
+        crate::commands::cloud::store_cloud_dir_listing_cache_entry_for_tests(
+            &dest_dir,
+            vec![sample_cloud_cache_entry(
+                "rclone://work/dest/stale.txt",
+                "stale.txt",
+            )],
+        );
+        assert!(crate::commands::cloud::cloud_dir_listing_cache_contains_for_tests(&dest_dir));
+
+        sandbox.write_local_file("src/dir-ok/nested/file.txt", "dir-payload");
+        let first_dir = sandbox.local_path("src/dir-ok");
+        let missing_dir = sandbox.local_path("src/dir-missing");
+        let route = MixedTransferRoute::LocalToCloud {
+            sources: vec![first_dir.clone(), missing_dir],
+            dest_dir: dest_dir.clone(),
+        };
+
+        let err = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Move,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            None,
+            None,
+        )
+        .expect_err("later missing directory should fail after first success");
+
+        assert!(
+            err.code_str() == "not_found" || err.code_str() == "unknown_error",
+            "unexpected error code: {} ({err})",
+            err.code_str()
+        );
+        assert!(
+            !first_dir.exists(),
+            "move semantics should remove first directory source after successful transfer"
+        );
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "dest/dir-ok/nested/file.txt"))
+                .expect("read moved dir file"),
+            "dir-payload"
+        );
+        assert!(
+            !crate::commands::cloud::cloud_dir_listing_cache_contains_for_tests(&dest_dir),
+            "partial directory move should still invalidate destination cache"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn mixed_execute_local_to_cloud_directory_copy_and_move_via_fake_rclone() {
         let _guard = fake_rclone_test_lock();
         let sandbox = FakeRcloneSandbox::new();
@@ -1645,6 +1704,39 @@ mod tests {
                 .expect("read existing destination"),
             "remote-existing",
             "existing destination content should remain unchanged"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn register_mixed_cancel_returns_none_without_progress_event() {
+        let cancel_state = CancelState::default();
+        let guard = register_mixed_cancel(&cancel_state, &None).expect("register cancel");
+        assert!(guard.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn register_mixed_cancel_progress_event_sets_token_on_cancel() {
+        let cancel_state = CancelState::default();
+        let progress_event = Some("mixed-transfer-progress-event".to_string());
+        let guard =
+            register_mixed_cancel(&cancel_state, &progress_event).expect("register cancel guard");
+        let token = guard
+            .as_ref()
+            .expect("progress event should register a cancel guard")
+            .token();
+
+        assert!(!token.load(Ordering::Relaxed));
+        assert!(
+            cancel_state
+                .cancel("mixed-transfer-progress-event")
+                .expect("cancel event"),
+            "cancel state should find registered progress event"
+        );
+        assert!(
+            token.load(Ordering::Relaxed),
+            "registered token should flip when cancellation is triggered"
         );
     }
 
