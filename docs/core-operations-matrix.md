@@ -1,7 +1,7 @@
 # Core Operations Trust Matrix
 
 Created: 2026-03-02
-Track: `docs/TODO_CORE_OPERATIONS_HARDENING.md`
+Track: `docs/todo-archive/TODO_CORE_OPERATIONS_HARDENING.md`
 Status: Source-of-truth matrix for trust-critical operation behavior.
 
 This matrix is the canonical behavior definition for hardening work in this

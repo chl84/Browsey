@@ -4,18 +4,20 @@ import { createContextActions, type CurrentView } from './createContextActions'
 import type { Entry } from '../model/types'
 import type { ClipboardApi } from '../file-ops/createClipboard'
 
-const moveToTrashManyMock = vi.fn(async () => {})
-const deleteEntriesMock = vi.fn(async () => {})
-const purgeTrashItemsMock = vi.fn(async () => {})
-const restoreTrashItemsMock = vi.fn(async () => {})
-const removeRecentMock = vi.fn(async () => {})
+const moveToTrashManyMock = vi.fn(async (_paths: string[], _progressEvent?: string) => {})
+const deleteEntriesMock = vi.fn(async (_paths: string[], _progressEvent?: string) => {})
+const purgeTrashItemsMock = vi.fn(async (_ids: string[]) => {})
+const restoreTrashItemsMock = vi.fn(async (_ids: string[]) => {})
+const removeRecentMock = vi.fn(async (_paths: string[]) => {})
 
 vi.mock('../services/trash.service', () => ({
-  moveToTrashMany: (...args: unknown[]) => moveToTrashManyMock(...args),
-  deleteEntries: (...args: unknown[]) => deleteEntriesMock(...args),
-  purgeTrashItems: (...args: unknown[]) => purgeTrashItemsMock(...args),
-  restoreTrashItems: (...args: unknown[]) => restoreTrashItemsMock(...args),
-  removeRecent: (...args: unknown[]) => removeRecentMock(...args),
+  moveToTrashMany: (paths: string[], progressEvent?: string) =>
+    moveToTrashManyMock(paths, progressEvent),
+  deleteEntries: (paths: string[], progressEvent?: string) =>
+    deleteEntriesMock(paths, progressEvent),
+  purgeTrashItems: (ids: string[]) => purgeTrashItemsMock(ids),
+  restoreTrashItems: (ids: string[]) => restoreTrashItemsMock(ids),
+  removeRecent: (paths: string[]) => removeRecentMock(paths),
 }))
 
 vi.mock('../services/clipboard.service', () => ({
@@ -69,7 +71,7 @@ describe('createContextActions', () => {
 
     await handle('move-trash', entry)
 
-    expect(moveToTrashManyMock).toHaveBeenCalledWith([entry.path])
+    expect(moveToTrashManyMock).toHaveBeenCalledWith([entry.path], undefined)
     expect(deleteEntriesMock).not.toHaveBeenCalled()
   })
 
@@ -85,7 +87,7 @@ describe('createContextActions', () => {
 
     await handle('delete-permanent', entry)
 
-    expect(deleteEntriesMock).toHaveBeenCalledWith([entry.path])
+    expect(deleteEntriesMock).toHaveBeenCalledWith([entry.path], undefined)
     expect(moveToTrashManyMock).not.toHaveBeenCalled()
   })
 

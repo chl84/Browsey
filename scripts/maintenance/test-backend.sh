@@ -13,6 +13,9 @@ cargo check --all-targets --all-features
 echo "== Backend: clippy (deny warnings) =="
 cargo clippy --all-targets --all-features -- -D warnings
 
+echo "== Backend: typed-error hardening guard =="
+bash scripts/maintenance/check-backend-error-hardening-guard.sh
+
 echo "== Backend: tests =="
 cargo test --all-targets --all-features
 

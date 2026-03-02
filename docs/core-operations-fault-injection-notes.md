@@ -1,7 +1,7 @@
 # Core Operations Fault-Injection Notes
 
 Created: 2026-03-02
-Track reference: `docs/TODO_CORE_OPERATIONS_HARDENING.md` (Step 7)
+Track reference: `docs/todo-archive/TODO_CORE_OPERATIONS_HARDENING.md` (Step 7)
 
 ## Goal
 

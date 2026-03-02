@@ -2,7 +2,7 @@
 
 Created: 2026-03-02
 Scope: Trust-critical operation regressions for
-`docs/TODO_CORE_OPERATIONS_HARDENING.md` Step 8.
+`docs/todo-archive/TODO_CORE_OPERATIONS_HARDENING.md` Step 8.
 Source of truth for behavior: `docs/core-operations-matrix.md`.
 
 ## Purpose
