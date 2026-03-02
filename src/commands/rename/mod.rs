@@ -373,8 +373,12 @@ mod tests {
     use super::*;
     use std::fs::{self, OpenOptions};
     use std::io::Write;
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
     use std::path::{Path, PathBuf};
     use std::time::{Duration, SystemTime};
+    #[cfg(unix)]
+    use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 
     fn sample_entries() -> Vec<RenamePreviewEntry> {
         vec![
@@ -617,6 +621,62 @@ mod tests {
         assert!(
             !dir.join("renamed.txt").exists(),
             "destination should not be created on failure"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_entry_impl_fails_when_parent_directory_is_read_only() {
+        let dir = uniq_path("single-read-only-parent");
+        let _ = fs::create_dir_all(&dir);
+        let from = dir.join("before.txt");
+        write_file(&from, b"data");
+        let state = UndoState::default();
+
+        fs::set_permissions(&dir, Permissions::from_mode(0o555)).expect("set read-only dir");
+        let err = rename_entry_impl(from.to_string_lossy().as_ref(), "after.txt", &state)
+            .expect_err("rename should fail in read-only directory");
+
+        assert!(
+            err.to_string().to_lowercase().contains("permission")
+                || err.to_string().to_lowercase().contains("denied"),
+            "unexpected error: {err}"
+        );
+        assert!(from.exists(), "source should remain unchanged");
+        assert!(
+            !dir.join("after.txt").exists(),
+            "target should not be created"
+        );
+
+        fs::set_permissions(&dir, Permissions::from_mode(0o755)).expect("restore permissions");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_entry_impl_rejects_symlink_source_no_follow() {
+        let dir = uniq_path("single-symlink-no-follow");
+        let _ = fs::create_dir_all(&dir);
+        let real = dir.join("real.txt");
+        write_file(&real, b"data");
+        let link = dir.join("link.txt");
+        symlink(&real, &link).expect("create symlink");
+        let state = UndoState::default();
+
+        let err = rename_entry_impl(link.to_string_lossy().as_ref(), "renamed.txt", &state)
+            .expect_err("rename should reject symlink source");
+
+        assert!(
+            err.to_string().to_lowercase().contains("symlink"),
+            "unexpected error: {err}"
+        );
+        assert!(link.exists(), "symlink should remain unchanged");
+        assert!(real.exists(), "real file should remain unchanged");
+        assert!(
+            !dir.join("renamed.txt").exists(),
+            "target should not be created"
         );
 
         let _ = fs::remove_dir_all(&dir);

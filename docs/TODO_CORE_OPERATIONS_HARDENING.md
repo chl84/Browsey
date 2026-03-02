@@ -49,6 +49,8 @@ Implications:
 
 - preserve existing command contracts unless a change is explicitly part of a
   behavior fix
+- STRICT: core operation implementations must use typed domain errors end-to-end
+  (`*ErrorCode` + `map_api_result`), not stringly error construction
 - prefer targeted regression coverage and fault injection over broad rewrites
 - keep behavior fixes separate from harness/buildout commits where practical
 - keep test helpers close to the domains they validate
@@ -124,6 +126,8 @@ This track is complete when:
       operation flows are touched
 - [ ] Manual Browsey smoke is green for the touched operation family
 - [ ] Any new assumption or invariant is documented in the checklist or test notes
+- [ ] STRICT typed-error guard is green for touched core operation modules
+      (`scripts/maintenance/check-backend-error-hardening-guard.sh`)
 
 ## Risk Hotspots
 
@@ -199,15 +203,15 @@ Target modules:
 - `src/commands/rename/`
 
 - [x] Audit existing Rust tests for local file operations and mark matrix gaps.
-- [ ] Add missing tests for:
+- [x] Add missing tests for:
   - local clipboard-backed copy/move failure and rollback-sensitive cases
   - rename conflicts and no-overwrite semantics
   - delete vs trash routing
   - restore/purge edge cases
   - disappearing-source and disappearing-destination behavior
   - permission-denied and read-only variants where practical
-- [ ] Prefer fixture/setup helpers that make failure modes readable, not opaque.
-- [ ] Keep security/no-follow expectations explicit in test names where relevant.
+- [x] Prefer fixture/setup helpers that make failure modes readable, not opaque.
+- [x] Keep security/no-follow expectations explicit in test names where relevant.
 
 Progress notes (2026-03-02):
 
@@ -221,6 +225,13 @@ Progress notes (2026-03-02):
 - Added restore/purge core tests via injectable trash ops in:
   - `src/commands/fs/trash/mod.rs`
   - `src/commands/fs/trash/tests.rs`
+- Added no-follow and read-only permission regression tests in:
+  - `src/clipboard/tests.rs`
+  - `src/commands/rename/mod.rs`
+- Added delete batch cancellation/rollback/progress-path tests in:
+  - `src/commands/fs/delete_ops.rs`
+- Added explicit delete-vs-trash routing regression test in:
+  - `frontend/src/features/explorer/context/createContextActions.test.ts`
 
 Acceptance:
 
@@ -235,7 +246,7 @@ Target modules:
 - `src/commands/transfer/route.rs`
 - `tests/support/fake-rclone.sh`
 
-- [ ] Reuse the existing fake-`rclone` execution tests as the baseline and add
+- [x] Reuse the existing fake-`rclone` execution tests as the baseline and add
       only trust-matrix gaps instead of rebuilding parallel coverage from scratch.
 - [ ] Expand mixed local<->cloud tests to cover the highest-risk conflict paths.
 - [ ] Add or tighten cases for:
@@ -245,6 +256,14 @@ Target modules:
   - error mapping consistency when the provider fails mid-operation
   - cancellation behavior where progress-aware paths are active
 - [ ] Keep fake-`rclone` scenarios deterministic and easy to extend.
+
+Progress notes (2026-03-02):
+
+- Added mixed transfer execution tests on existing fake-`rclone` harness in:
+  - `src/commands/transfer/execute.rs`
+- New coverage includes:
+  - early-cancel behavior (`cancelled` before write begins)
+  - `destination_exists` policy when `prechecked=false` in local->cloud copy
 
 Acceptance:
 

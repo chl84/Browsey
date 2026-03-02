@@ -1,5 +1,5 @@
 use super::{
-    super::error::FsResult,
+    super::error::{FsError, FsErrorCode, FsResult},
     backend::TrashBackend,
     listing::apply_original_trash_fields,
     move_ops::{move_single_to_trash_with_backend, move_to_trash_many_with_backend},
@@ -84,14 +84,27 @@ impl TrashBackend for FakeTrashBackend {
         self.delete_calls.borrow_mut().push(path.to_path_buf());
 
         if self.fail_delete_call.get() == Some(next_call) {
-            return Err("simulated trash delete failure".into());
+            return Err(FsError::new(
+                FsErrorCode::TrashFailed,
+                "simulated trash delete failure",
+            ));
         }
 
         if let Ok(meta) = fs::symlink_metadata(path) {
             if meta.is_dir() {
-                fs::remove_dir_all(path).map_err(|e| format!("fake delete dir failed: {e}"))?;
+                fs::remove_dir_all(path).map_err(|e| {
+                    FsError::new(
+                        FsErrorCode::TrashFailed,
+                        format!("fake delete dir failed: {e}"),
+                    )
+                })?;
             } else {
-                fs::remove_file(path).map_err(|e| format!("fake delete file failed: {e}"))?;
+                fs::remove_file(path).map_err(|e| {
+                    FsError::new(
+                        FsErrorCode::TrashFailed,
+                        format!("fake delete file failed: {e}"),
+                    )
+                })?;
             }
         }
 
@@ -138,7 +151,10 @@ impl TrashOps for FakeTrashOps {
 
     fn restore_items(&self, items: Vec<TrashItem>) -> FsResult<()> {
         if self.fail_restore.get() {
-            return Err("simulated restore failure".into());
+            return Err(FsError::new(
+                FsErrorCode::TrashFailed,
+                "simulated restore failure",
+            ));
         }
         self.restored_ids
             .borrow_mut()
@@ -148,7 +164,10 @@ impl TrashOps for FakeTrashOps {
 
     fn purge_items(&self, items: Vec<TrashItem>) -> FsResult<()> {
         if self.fail_purge.get() {
-            return Err("simulated purge failure".into());
+            return Err(FsError::new(
+                FsErrorCode::TrashFailed,
+                "simulated purge failure",
+            ));
         }
         self.purged_ids
             .borrow_mut()
