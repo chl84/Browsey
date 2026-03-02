@@ -287,11 +287,11 @@ Target modules:
 - `src/commands/decompress/`
 
 - [x] Audit existing extraction tests against overwrite, limit, and interruption scenarios.
-- [ ] Add missing tests for:
+- [x] Add missing tests for:
 - [x] extraction into partially existing targets
 - [x] permission-denied during extraction
 - [x] cancellation/interruption cleanup expectations
-- [ ] multi-archive batch behavior where partial completion is possible
+- [x] multi-archive batch behavior where partial completion is possible
 - [ ] Document any intentionally non-transactional behavior clearly in checklist notes.
 
 Progress notes (2026-03-02):
@@ -300,11 +300,14 @@ Progress notes (2026-03-02):
   - `docs/core-operations-extract-gap-audit.md`
 - Added extraction seam regression tests in:
   - `src/commands/decompress/util.rs`
+  - `src/commands/decompress/mod.rs`
 - New extract hardening coverage includes:
   - destination file conflict suffix behavior via `open_unique_file`
   - permission-denied behavior for read-only destination directory creation
   - mid-copy cancellation interruption handling via `copy_with_progress`
   - partial-output rollback cleanup semantics via `CreatedPaths`
+  - batch extraction partial-completion behavior (`continue on non-cancel
+    failure`, `stop on cancelled`)
 
 Acceptance:
 
@@ -363,7 +366,7 @@ Acceptance:
 - [x] Commit 2: release checklist
 - [x] Commit 3: local destructive-operation regression additions
 - [x] Commit 4: mixed transfer/conflict regression additions
-- [ ] Commit 5: extraction hardening coverage
+- [x] Commit 5: extraction hardening coverage
 - [ ] Commit 6: frontend operation-state regression additions
 - [ ] Commit 7: fault-injection helpers and hostile-condition tests
 - [ ] Commit 8: release-blocking policy notes
