@@ -118,16 +118,26 @@ This track is complete when:
 
 ## Quality Gates (Every Step)
 
-- [ ] `cargo fmt --all` is green
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings` is green
-- [ ] Relevant Rust tests are green for the touched domain
-- [ ] `npm --prefix frontend run test` is green when frontend operation flows are touched
-- [ ] `npm --prefix frontend run test:e2e` is green when user-visible critical
+- [x] `cargo fmt --all` is green
+- [x] `cargo clippy --all-targets --all-features -- -D warnings` is green
+- [x] Relevant Rust tests are green for the touched domain
+- [x] `npm --prefix frontend run test` is green when frontend operation flows are touched
+- [x] `npm --prefix frontend run test:e2e` is green when user-visible critical
       operation flows are touched
 - [ ] Manual Browsey smoke is green for the touched operation family
-- [ ] Any new assumption or invariant is documented in the checklist or test notes
-- [ ] STRICT typed-error guard is green for touched core operation modules
+- [x] Any new assumption or invariant is documented in the checklist or test notes
+- [x] STRICT typed-error guard is green for touched core operation modules
       (`scripts/maintenance/check-backend-error-hardening-guard.sh`)
+
+Quality gate verification snapshot (2026-03-02):
+
+- Ran: `cargo fmt --all`
+- Ran: `cargo clippy --all-targets --all-features -- -D warnings`
+- Ran: `cargo test commands::decompress::util::tests -- --nocapture`
+- Ran: `bash scripts/maintenance/check-backend-error-hardening-guard.sh`
+- Ran: `bash scripts/maintenance/test-frontend.sh` (includes lint, typecheck,
+  unit tests, e2e smoke, build)
+- Manual Browsey smoke: pending human-run verification
 
 ## Risk Hotspots
 

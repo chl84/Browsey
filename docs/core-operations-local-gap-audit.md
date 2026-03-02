@@ -2,7 +2,7 @@
 
 Created: 2026-03-02
 Scope: Local destructive-operation hardening (Step 3 in
-`docs/TODO_CORE_OPERATIONS_HARDENING.md`)
+`docs/todo-archive/TODO_CORE_OPERATIONS_HARDENING.md`)
 Matrix reference: `docs/core-operations-matrix.md` (`LCM`, `LRN`, `LTD`)
 
 ## Evidence Reviewed

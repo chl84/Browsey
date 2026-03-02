@@ -80,11 +80,6 @@ const basename = (path: string) => {
   return idx >= 0 ? path.slice(idx + 1) : path
 }
 
-const dirname = (path: string) => {
-  const idx = path.lastIndexOf('/')
-  return idx > 0 ? path.slice(0, idx) : ROOT
-}
-
 const joinPath = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`
 
 const renameCandidate = (baseName: string, attempt: number) => {

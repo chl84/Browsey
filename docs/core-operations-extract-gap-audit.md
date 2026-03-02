@@ -2,7 +2,7 @@
 
 Created: 2026-03-02
 Scope: Archive extraction hardening (Step 5 in
-`docs/TODO_CORE_OPERATIONS_HARDENING.md`)
+`docs/todo-archive/TODO_CORE_OPERATIONS_HARDENING.md`)
 Matrix reference: `docs/core-operations-matrix.md` (`EXT`)
 
 ## Evidence Reviewed

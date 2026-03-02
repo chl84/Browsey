@@ -4,6 +4,12 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
+# Playwright/Node workers may set FORCE_COLOR internally.
+# If NO_COLOR is present, Node emits warning noise about conflicting settings.
+if [[ -n "${NO_COLOR:-}" ]]; then
+  unset NO_COLOR
+fi
+
 echo "== Frontend: lint =="
 npm --prefix frontend run lint
 
@@ -13,8 +19,11 @@ npm --prefix frontend run check
 echo "== Frontend: unit/integration tests =="
 npm --prefix frontend run test
 
-if [[ "${CI:-}" == "true" || "${FORCE_PLAYWRIGHT_INSTALL:-}" == "1" ]]; then
+if [[ "${CI:-}" == "true" ]]; then
   echo "== Frontend: playwright browser setup =="
+  npx --prefix frontend playwright install --with-deps chromium
+elif [[ "${FORCE_PLAYWRIGHT_INSTALL:-}" == "1" ]]; then
+  echo "== Frontend: playwright browser setup (local forced) =="
   npx --prefix frontend playwright install chromium
 else
   echo "== Frontend: skipping playwright install (local mode) =="
