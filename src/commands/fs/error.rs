@@ -476,3 +476,16 @@ const FS_CLASSIFICATION_RULES: &[(FsErrorCode, &[&str])] = &[
         ],
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::{FsError, FsErrorCode};
+    use crate::undo::{UndoError, UndoErrorCode};
+
+    #[test]
+    fn maps_undo_target_exists_without_message_reclassification() {
+        let undo = UndoError::new(UndoErrorCode::TargetExists, "permission denied");
+        let fs_error: FsError = undo.into();
+        assert_eq!(fs_error.code, FsErrorCode::TargetExists);
+    }
+}

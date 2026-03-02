@@ -231,3 +231,16 @@ const CLASSIFICATION_RULES: &[(RenameErrorCode, &[&str])] = &[
         &["failed to rename", "cannot rename root"],
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::{RenameError, RenameErrorCode};
+    use crate::undo::{UndoError, UndoErrorCode};
+
+    #[test]
+    fn maps_undo_target_exists_without_message_reclassification() {
+        let undo = UndoError::new(UndoErrorCode::TargetExists, "permission denied");
+        let rename: RenameError = undo.into();
+        assert_eq!(rename.code, RenameErrorCode::TargetExists);
+    }
+}

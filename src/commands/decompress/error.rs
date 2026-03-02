@@ -219,3 +219,19 @@ const DECOMPRESS_CLASSIFICATION_RULES: &[(DecompressErrorCode, &[&str])] = &[
         ],
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::{DecompressError, DecompressErrorCode};
+    use crate::fs_utils::{FsUtilsError, FsUtilsErrorCode};
+
+    #[test]
+    fn maps_fs_utils_permission_denied_without_message_reclassification() {
+        let fs_error = FsUtilsError::new(
+            FsUtilsErrorCode::PermissionDenied,
+            "unsupported archive format",
+        );
+        let decompress: DecompressError = fs_error.into();
+        assert_eq!(decompress.code, DecompressErrorCode::PermissionDenied);
+    }
+}

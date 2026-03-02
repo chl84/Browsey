@@ -132,3 +132,16 @@ pub(crate) type ClipboardResult<T> = Result<T, ClipboardError>;
 pub(crate) fn map_api_result<T>(result: ClipboardResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ClipboardError, ClipboardErrorCode};
+    use crate::undo::{UndoError, UndoErrorCode};
+
+    #[test]
+    fn maps_undo_target_exists_to_destination_exists_even_with_misleading_message() {
+        let undo = UndoError::new(UndoErrorCode::TargetExists, "permission denied");
+        let clipboard: ClipboardError = undo.into();
+        assert_eq!(clipboard.code(), ClipboardErrorCode::DestinationExists);
+    }
+}

@@ -189,3 +189,16 @@ pub type UndoResult<T> = Result<T, UndoError>;
 pub fn map_api_result<T>(result: UndoResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{UndoError, UndoErrorCode};
+    use crate::fs_utils::{FsUtilsError, FsUtilsErrorCode};
+
+    #[test]
+    fn maps_fs_utils_code_without_message_reclassification() {
+        let fs_error = FsUtilsError::new(FsUtilsErrorCode::NotFound, "permission denied");
+        let undo: UndoError = fs_error.into();
+        assert_eq!(undo.code(), UndoErrorCode::NotFound);
+    }
+}
