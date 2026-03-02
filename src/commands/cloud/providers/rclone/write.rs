@@ -302,8 +302,10 @@ impl RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
-        let mut command = RcloneCommandSpec::new(RcloneSubcommand::DeleteFile);
-        command = self.apply_cloud_delete_policy_args(command, path.remote());
+        let command = self.apply_cloud_delete_policy_args(
+            RcloneCommandSpec::new(RcloneSubcommand::DeleteFile),
+            path.remote(),
+        )?;
         self.cli
             .run_capture_text_with_cancel(command.arg(path.to_rclone_remote_spec()), cancel)
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
@@ -329,8 +331,10 @@ impl RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
-        let mut command = RcloneCommandSpec::new(RcloneSubcommand::Purge);
-        command = self.apply_cloud_delete_policy_args(command, path.remote());
+        let command = self.apply_cloud_delete_policy_args(
+            RcloneCommandSpec::new(RcloneSubcommand::Purge),
+            path.remote(),
+        )?;
         self.cli
             .run_capture_text_with_cancel(command.arg(path.to_rclone_remote_spec()), cancel)
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
@@ -356,8 +360,10 @@ impl RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
-        let mut command = RcloneCommandSpec::new(RcloneSubcommand::Rmdir);
-        command = self.apply_cloud_delete_policy_args(command, path.remote());
+        let command = self.apply_cloud_delete_policy_args(
+            RcloneCommandSpec::new(RcloneSubcommand::Rmdir),
+            path.remote(),
+        )?;
         self.cli
             .run_capture_text_with_cancel(command.arg(path.to_rclone_remote_spec()), cancel)
             .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
@@ -526,27 +532,48 @@ impl RcloneCloudProvider {
         &self,
         spec: RcloneCommandSpec,
         remote_id: &str,
-    ) -> RcloneCommandSpec {
-        self.cloud_delete_policy_args_for_remote(remote_id)
+    ) -> CloudCommandResult<RcloneCommandSpec> {
+        Ok(self
+            .cloud_delete_policy_args_for_remote(remote_id)?
             .iter()
-            .fold(spec, |command, arg| command.arg(*arg))
+            .fold(spec, |command, arg| command.arg(*arg)))
     }
 
-    fn cloud_delete_policy_args_for_remote(&self, remote_id: &str) -> &'static [&'static str] {
-        let provider = self
+    fn cloud_delete_policy_args_for_remote(
+        &self,
+        remote_id: &str,
+    ) -> CloudCommandResult<&'static [&'static str]> {
+        let config_dump = self
             .cli
             .run_capture_text(RcloneCommandSpec::new(RcloneSubcommand::ConfigDump))
-            .ok()
-            .and_then(|output| parse_config_dump_summaries(&output.stdout).ok())
-            .and_then(|config_map| {
-                config_map
-                    .get(remote_id)
-                    .and_then(classify_provider_kind_from_config)
-            });
+            .map_err(|error| {
+                let mapped = map_rclone_error_for_remote(remote_id, error);
+                CloudCommandError::new(
+                    mapped.code(),
+                    format!("Cloud delete policy lookup failed for remote `{remote_id}`: {mapped}"),
+                )
+            })?;
+        let config_map = parse_config_dump_summaries(&config_dump.stdout).map_err(|error| {
+            CloudCommandError::new(
+                error.code(),
+                format!("Cloud delete policy lookup failed for remote `{remote_id}`: {error}"),
+            )
+        })?;
+        let provider = config_map
+            .get(remote_id)
+            .and_then(classify_provider_kind_from_config)
+            .ok_or_else(|| {
+                CloudCommandError::new(
+                    CloudCommandErrorCode::InvalidConfig,
+                    format!(
+                        "Cloud delete policy lookup failed for remote `{remote_id}`: provider is missing or unsupported in rclone config dump"
+                    ),
+                )
+            })?;
         match provider {
-            Some(CloudProviderKind::Onedrive) => ONEDRIVE_DELETE_POLICY_ARGS,
-            Some(CloudProviderKind::Gdrive) => GDRIVE_DELETE_POLICY_ARGS,
-            _ => &[],
+            CloudProviderKind::Onedrive => Ok(ONEDRIVE_DELETE_POLICY_ARGS),
+            CloudProviderKind::Gdrive => Ok(GDRIVE_DELETE_POLICY_ARGS),
+            CloudProviderKind::Nextcloud => Ok(&[]),
         }
     }
 }
