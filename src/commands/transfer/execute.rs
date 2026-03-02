@@ -223,9 +223,7 @@ fn execute_mixed_entries_blocking_with_cli(
     progress: Option<TransferProgressContext>,
 ) -> TransferResult<Vec<String>> {
     let mut created = Vec::new();
-    let mut cloud_write_targets = Vec::<CloudPath>::new();
-    let mut moved_cloud_sources = Vec::<CloudPath>::new();
-    match route {
+    let result = match route {
         MixedTransferRoute::LocalToCloud { sources, dest_dir } => {
             let batch_source_count = sources.len();
             let progress_plan = if batch_source_count > 1 && progress.is_some() {
@@ -295,9 +293,10 @@ fn execute_mixed_entries_blocking_with_cli(
                         options,
                     )?;
                 }
-                cloud_write_targets.push(target.clone());
+                cloud::invalidate_cloud_write_paths(std::slice::from_ref(&target));
                 created.push(target.to_string());
             }
+            Ok(())
         }
         MixedTransferRoute::CloudToLocal { sources, dest_dir } => {
             let batch_source_count = sources.len();
@@ -369,19 +368,14 @@ fn execute_mixed_entries_blocking_with_cli(
                     )?;
                 }
                 if op == MixedTransferOp::Move {
-                    moved_cloud_sources.push(src.clone());
+                    cloud::invalidate_cloud_write_paths(std::slice::from_ref(&src));
                 }
                 created.push(target.to_string_lossy().to_string());
             }
+            Ok(())
         }
-    }
-    if !cloud_write_targets.is_empty() {
-        cloud::invalidate_cloud_write_paths(&cloud_write_targets);
-    }
-    if !moved_cloud_sources.is_empty() {
-        cloud::invalidate_cloud_write_paths(&moved_cloud_sources);
-    }
-    Ok(created)
+    };
+    result.map(|_| created)
 }
 
 fn execute_rclone_transfer(
@@ -915,6 +909,8 @@ mod tests {
     #[cfg(unix)]
     use std::fs;
     #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt;
+    #[cfg(unix)]
     use std::path::{Path, PathBuf};
     #[cfg(unix)]
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -1218,6 +1214,106 @@ mod tests {
         assert!(
             !crate::commands::cloud::cloud_dir_listing_cache_contains_for_tests(&dest_dir),
             "mixed local->cloud single write should invalidate destination dir cache"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_local_to_cloud_partial_copy_keeps_source_and_invalidates_cache() {
+        let _guard = fake_rclone_test_lock();
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "dest");
+        let cli = sandbox.cli();
+        let dest_dir = sandbox.cloud_path("rclone://work/dest");
+        crate::commands::cloud::store_cloud_dir_listing_cache_entry_for_tests(
+            &dest_dir,
+            vec![sample_cloud_cache_entry(
+                "rclone://work/dest/stale.txt",
+                "stale.txt",
+            )],
+        );
+        assert!(crate::commands::cloud::cloud_dir_listing_cache_contains_for_tests(&dest_dir));
+
+        let first_src = sandbox.write_local_file("src/first.txt", "first");
+        let missing_src = sandbox.local_path("src/missing.txt");
+        let route = MixedTransferRoute::LocalToCloud {
+            sources: vec![first_src.clone(), missing_src],
+            dest_dir: dest_dir.clone(),
+        };
+
+        let err = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            None,
+            None,
+        )
+        .expect_err("second source should fail and produce partial completion");
+
+        assert!(
+            err.code_str() == "not_found" || err.code_str() == "unknown_error",
+            "unexpected error code: {} ({err})",
+            err.code_str()
+        );
+        assert!(
+            first_src.exists(),
+            "copy semantics should keep first local source"
+        );
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "dest/first.txt")).expect("read remote"),
+            "first"
+        );
+        assert!(
+            !crate::commands::cloud::cloud_dir_listing_cache_contains_for_tests(&dest_dir),
+            "partial cloud write should still invalidate destination cache"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_execute_local_to_cloud_partial_move_removes_first_source() {
+        let _guard = fake_rclone_test_lock();
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "dest");
+        let cli = sandbox.cli();
+
+        let first_src = sandbox.write_local_file("src/first-move.txt", "first-move");
+        let missing_src = sandbox.local_path("src/missing-move.txt");
+        let route = MixedTransferRoute::LocalToCloud {
+            sources: vec![first_src.clone(), missing_src],
+            dest_dir: sandbox.cloud_path("rclone://work/dest"),
+        };
+
+        let err = execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Move,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            None,
+            None,
+        )
+        .expect_err("second source should fail and keep partial move state");
+
+        assert!(
+            err.code_str() == "not_found" || err.code_str() == "unknown_error",
+            "unexpected error code: {} ({err})",
+            err.code_str()
+        );
+        assert!(
+            !first_src.exists(),
+            "move semantics should remove first local source after successful transfer"
+        );
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "dest/first-move.txt"))
+                .expect("read remote moved file"),
+            "first-move"
         );
     }
 
@@ -1572,6 +1668,30 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn maps_rclone_nonzero_errors_to_consistent_transfer_codes() {
+        let destination_exists = map_rclone_cli_error(
+            RcloneCliError::NonZero {
+                status: std::process::ExitStatus::from_raw(256),
+                stdout: "destination exists".to_string(),
+                stderr: String::new(),
+            },
+            Some("work"),
+        );
+        assert_eq!(destination_exists.code_str(), "destination_exists");
+
+        let permission_denied = map_rclone_cli_error(
+            RcloneCliError::NonZero {
+                status: std::process::ExitStatus::from_raw(256),
+                stdout: String::new(),
+                stderr: "permission denied".to_string(),
+            },
+            Some("work"),
+        );
+        assert_eq!(permission_denied.code_str(), "permission_denied");
     }
 
     #[cfg(unix)]
