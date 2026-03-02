@@ -1,9 +1,6 @@
 use crate::errors::{
     api_error::ApiResult,
-    domain::{
-        self, classify_io_error, classify_io_hint_from_message, classify_message_by_patterns,
-        DomainError, ErrorCode, IoErrorHint,
-    },
+    domain::{self, classify_io_error, DomainError, ErrorCode, IoErrorHint},
 };
 use std::fmt;
 
@@ -52,26 +49,6 @@ impl ConsoleError {
         }
     }
 
-    pub(super) fn from_external_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        if let Some(hint) = classify_io_hint_from_message(&message) {
-            let code = match hint {
-                IoErrorHint::NotFound => Some(ConsoleErrorCode::NotFound),
-                IoErrorHint::PermissionDenied => Some(ConsoleErrorCode::PermissionDenied),
-                _ => None,
-            };
-            if let Some(code) = code {
-                return Self::new(code, message);
-            }
-        }
-        let code = classify_message_by_patterns(
-            &message,
-            CONSOLE_CLASSIFICATION_RULES,
-            ConsoleErrorCode::UnknownError,
-        );
-        Self::new(code, message)
-    }
-
     pub(super) fn from_io_error(
         fallback: ConsoleErrorCode,
         context: &str,
@@ -104,48 +81,34 @@ impl DomainError for ConsoleError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for ConsoleError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath => {
+                if error.to_string().contains("path must be absolute") {
+                    ConsoleErrorCode::PathNotAbsolute
+                } else {
+                    ConsoleErrorCode::InvalidPath
+                }
+            }
+            crate::fs_utils::FsUtilsErrorCode::NotFound => ConsoleErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied => {
+                ConsoleErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::RootForbidden => ConsoleErrorCode::RootForbidden,
+            crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem
+            | crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported
+            | crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                ConsoleErrorCode::UnknownError
+            }
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type ConsoleResult<T> = Result<T, ConsoleError>;
 
 pub(super) fn map_api_result<T>(result: ConsoleResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
-
-const CONSOLE_CLASSIFICATION_RULES: &[(ConsoleErrorCode, &[&str])] = &[
-    (
-        ConsoleErrorCode::PathNotAbsolute,
-        &["path must be absolute"],
-    ),
-    (
-        ConsoleErrorCode::InvalidPath,
-        &[
-            "parent directory components are not allowed",
-            "invalid path component (nul byte)",
-            "path contains nul byte",
-            "unsupported path prefix",
-        ],
-    ),
-    (
-        ConsoleErrorCode::RootForbidden,
-        &["refusing to operate on filesystem root"],
-    ),
-    (
-        ConsoleErrorCode::NotDirectory,
-        &["can only open console in a directory"],
-    ),
-    (
-        ConsoleErrorCode::PermissionDenied,
-        &[
-            "permission denied",
-            "operation not permitted",
-            "access is denied",
-        ],
-    ),
-    (
-        ConsoleErrorCode::TerminalUnavailable,
-        &["could not find a supported terminal emulator"],
-    ),
-    (
-        ConsoleErrorCode::UnsupportedPlatform,
-        &["unsupported platform for opening console"],
-    ),
-];

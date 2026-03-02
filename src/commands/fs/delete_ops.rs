@@ -26,7 +26,7 @@ pub fn delete_entry(path: String, state: tauri::State<UndoState>) -> ApiResult<(
 }
 
 fn delete_entry_impl(path: String, state: tauri::State<UndoState>) -> FsResult<()> {
-    let pb = sanitize_path_nofollow(&path, true).map_err(FsError::from_external_message)?;
+    let pb = sanitize_path_nofollow(&path, true).map_err(FsError::from)?;
     let action = delete_with_backup(&pb)?;
     let _ = state.record_applied(action);
     Ok(())
@@ -110,7 +110,7 @@ fn delete_entries_blocking(
             );
             return Err(FsError::new(FsErrorCode::Cancelled, "Delete cancelled"));
         }
-        let path = sanitize_path_nofollow(&raw, true).map_err(FsError::from_external_message)?;
+        let path = sanitize_path_nofollow(&raw, true).map_err(FsError::from)?;
         match delete_with_backup(&path) {
             Ok(action) => {
                 performed.push(action);

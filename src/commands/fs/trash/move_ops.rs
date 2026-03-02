@@ -95,7 +95,7 @@ fn rollback_prepared_trash(prepared: &[PreparedTrashMove]) {
 }
 
 fn prepare_trash_move(raw: &str) -> FsResult<PreparedTrashMove> {
-    let src = sanitize_path_nofollow(raw, true).map_err(FsError::from_external_message)?;
+    let src = sanitize_path_nofollow(raw, true).map_err(FsError::from)?;
     map_external_result(check_no_symlink_components(&src))?;
     let src_snapshot = map_external_result(snapshot_existing_path(&src))?;
 
@@ -314,7 +314,7 @@ pub(super) fn move_single_to_trash_with_backend<B: TrashBackend>(
     path: &str,
     backend: &B,
 ) -> FsResult<Action> {
-    let src = sanitize_path_nofollow(path, true).map_err(FsError::from_external_message)?;
+    let src = sanitize_path_nofollow(path, true).map_err(FsError::from)?;
     map_external_result(check_no_symlink_components(&src))?;
     let src_snapshot = map_external_result(snapshot_existing_path(&src))?;
 

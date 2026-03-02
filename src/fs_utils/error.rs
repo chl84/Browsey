@@ -76,10 +76,4 @@ impl DomainError for FsUtilsError {
     }
 }
 
-impl From<FsUtilsError> for String {
-    fn from(error: FsUtilsError) -> Self {
-        error.to_string()
-    }
-}
-
 pub type FsUtilsResult<T> = Result<T, FsUtilsError>;
