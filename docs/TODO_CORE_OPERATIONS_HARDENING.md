@@ -292,7 +292,7 @@ Target modules:
 - [x] permission-denied during extraction
 - [x] cancellation/interruption cleanup expectations
 - [x] multi-archive batch behavior where partial completion is possible
-- [ ] Document any intentionally non-transactional behavior clearly in checklist notes.
+- [x] Document any intentionally non-transactional behavior clearly in checklist notes.
 
 Progress notes (2026-03-02):
 
@@ -308,6 +308,8 @@ Progress notes (2026-03-02):
   - partial-output rollback cleanup semantics via `CreatedPaths`
   - batch extraction partial-completion behavior (`continue on non-cancel
     failure`, `stop on cancelled`)
+  - explicit non-transactional extract semantics documented in
+    `docs/core-operations-release-checklist.md`
 
 Acceptance:
 
@@ -326,7 +328,7 @@ Target areas:
   - progress state after cancel/error
   - refresh behavior after successful write flows
   - operation failure surfaces that currently risk stale UI state
-- [ ] Add at least one Playwright scenario beyond the current smoke test if a
+- [x] Add at least one Playwright scenario beyond the current smoke test if a
   critical flow is not realistically protected by unit tests alone.
 
 Progress notes (2026-03-02):
@@ -340,6 +342,8 @@ Progress notes (2026-03-02):
   - local refresh attempt after mixed cloud->local partial failure
   - explicit assertion that operation still fails visibly while refresh
     reconciliation runs
+  - Playwright e2e flow verifying paste failure surface and successful
+    subsequent recovery path
 
 Acceptance:
 
@@ -347,13 +351,25 @@ Acceptance:
 
 ### 7) Add fault-injection passes for hostile conditions
 
-- [ ] Introduce or extend helpers for simulated:
+- [x] Introduce or extend helpers for simulated:
   - permission denied
   - source disappearing during operation
   - destination becoming unavailable
   - backend cancellation while work is in progress
-- [ ] Prefer explicit fault injection over fragile timing-based tests.
-- [ ] Keep platform-specific fault cases separated when semantics differ.
+- [x] Prefer explicit fault injection over fragile timing-based tests.
+- [x] Keep platform-specific fault cases separated when semantics differ.
+
+Progress notes (2026-03-02):
+
+- Added fault-injection notes:
+  - `docs/core-operations-fault-injection-notes.md`
+- Extended deterministic extraction test seam in:
+  - `src/commands/decompress/util.rs`
+- Added explicit hostile-condition tests for:
+  - permission denied
+  - source disappearing during copy
+  - destination unavailable during copy
+  - cancellation while work is in progress
 
 Acceptance:
 
@@ -361,12 +377,21 @@ Acceptance:
 
 ### 8) Define release blocking policy for critical regressions
 
-- [ ] Document which failures in this matrix should block a release.
-- [ ] Define what counts as:
+- [x] Document which failures in this matrix should block a release.
+- [x] Define what counts as:
   - release-blocking trust bug
   - acceptable known limitation
   - follow-up issue
-- [ ] Keep the policy small and operational, not aspirational.
+- [x] Keep the policy small and operational, not aspirational.
+
+Progress notes (2026-03-02):
+
+- Added release-blocking policy:
+  - `docs/core-operations-release-blocking-policy.md`
+- Policy now defines:
+  - scenario-level release blocking classes keyed to matrix IDs
+  - concrete trust-bug vs known-limitation vs follow-up issue criteria
+  - minimal triage workflow for release go/no-go decisions
 
 Acceptance:
 
@@ -380,8 +405,8 @@ Acceptance:
 - [x] Commit 4: mixed transfer/conflict regression additions
 - [x] Commit 5: extraction hardening coverage
 - [x] Commit 6: frontend operation-state regression additions
-- [ ] Commit 7: fault-injection helpers and hostile-condition tests
-- [ ] Commit 8: release-blocking policy notes
+- [x] Commit 7: fault-injection helpers and hostile-condition tests
+- [x] Commit 8: release-blocking policy notes
 
 ## Exit Notes
 

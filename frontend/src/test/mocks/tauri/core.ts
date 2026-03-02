@@ -16,6 +16,18 @@ type Listing = {
   entries: ExplorerEntry[]
 }
 
+type ClipboardMode = 'copy' | 'cut'
+
+type MockClipboardState = {
+  mode: ClipboardMode
+  paths: string[]
+}
+
+type E2eMockControl = {
+  systemClipboard?: MockClipboardState
+  failCommands?: string[]
+}
+
 const ROOT = '/mock'
 
 const FILE_TREE: Record<string, ExplorerEntry[]> = {
@@ -61,6 +73,98 @@ const FILE_TREE: Record<string, ExplorerEntry[]> = {
 
 const cloneEntries = (entries: ExplorerEntry[]) => entries.map((entry) => ({ ...entry }))
 
+let internalClipboard: MockClipboardState = { mode: 'copy', paths: [] }
+
+const basename = (path: string) => {
+  const idx = path.lastIndexOf('/')
+  return idx >= 0 ? path.slice(idx + 1) : path
+}
+
+const dirname = (path: string) => {
+  const idx = path.lastIndexOf('/')
+  return idx > 0 ? path.slice(0, idx) : ROOT
+}
+
+const joinPath = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`
+
+const renameCandidate = (baseName: string, attempt: number) => {
+  if (attempt === 0) return baseName
+  const dot = baseName.lastIndexOf('.')
+  const hasExt = dot > 0
+  const stem = hasExt ? baseName.slice(0, dot) : baseName
+  const ext = hasExt ? baseName.slice(dot) : ''
+  return `${stem}-${attempt}${ext}`
+}
+
+const findEntry = (path: string): ExplorerEntry | null => {
+  for (const entries of Object.values(FILE_TREE)) {
+    const found = entries.find((entry) => entry.path === path)
+    if (found) return found
+  }
+  return null
+}
+
+const removeEntry = (path: string) => {
+  for (const [dir, entries] of Object.entries(FILE_TREE)) {
+    const next = entries.filter((entry) => entry.path !== path)
+    if (next.length !== entries.length) {
+      FILE_TREE[dir] = next
+      return
+    }
+  }
+}
+
+const ensureDirListing = (path: string) => {
+  if (!FILE_TREE[path]) {
+    FILE_TREE[path] = []
+  }
+}
+
+const copyOrMoveFromClipboard = (
+  dest: string,
+  policy: 'rename' | 'overwrite' = 'rename',
+) => {
+  ensureDirListing(dest)
+  const destEntries = FILE_TREE[dest]
+  for (const sourcePath of internalClipboard.paths) {
+    const source = findEntry(sourcePath)
+    if (!source) continue
+    const baseName = basename(source.path)
+    let finalName = baseName
+    if (policy === 'rename') {
+      let attempt = 0
+      while (destEntries.some((entry) => entry.name === finalName)) {
+        attempt += 1
+        finalName = renameCandidate(baseName, attempt)
+      }
+    }
+    const targetPath = joinPath(dest, finalName)
+    if (policy === 'overwrite') {
+      const filtered = destEntries.filter((entry) => entry.name !== finalName)
+      FILE_TREE[dest] = filtered
+    }
+    FILE_TREE[dest].push({
+      ...source,
+      name: finalName,
+      path: targetPath,
+    })
+
+    if (internalClipboard.mode === 'cut') {
+      removeEntry(source.path)
+    }
+  }
+}
+
+const e2eControl = (): E2eMockControl | null => {
+  const fromGlobal = (globalThis as { __BROWSEY_E2E__?: unknown }).__BROWSEY_E2E__
+  if (!fromGlobal || typeof fromGlobal !== 'object') {
+    return null
+  }
+  return fromGlobal as E2eMockControl
+}
+
+const shouldFailCommand = (cmd: string) => e2eControl()?.failCommands?.includes(cmd) === true
+
 const listDirMock = (path?: string | null): Listing => {
   const current = typeof path === 'string' && path.length > 0 ? path : ROOT
   const entries = FILE_TREE[current] ?? []
@@ -78,6 +182,10 @@ const emptyFacets = {
 }
 
 export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+  if (shouldFailCommand(cmd)) {
+    throw new Error(`Simulated ${cmd} failure`)
+  }
+
   switch (cmd) {
     case 'list_dir':
       return listDirMock(args?.path as string | undefined) as T
@@ -142,7 +250,24 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'load_double_click_ms':
       return 300 as T
     case 'system_clipboard_paths':
-      return { mode: 'copy', paths: [] } as T
+      return (e2eControl()?.systemClipboard ?? { mode: 'copy', paths: [] }) as T
+    case 'set_clipboard_cmd':
+      internalClipboard = {
+        mode: (args?.mode as ClipboardMode) ?? 'copy',
+        paths: Array.isArray(args?.paths) ? (args?.paths as string[]) : [],
+      }
+      return undefined as T
+    case 'copy_paths_to_system_clipboard':
+    case 'clear_system_clipboard':
+      return undefined as T
+    case 'paste_clipboard_preview':
+      return [] as T
+    case 'paste_clipboard_cmd':
+      copyOrMoveFromClipboard(
+        (args?.dest as string) ?? ROOT,
+        ((args?.policy as 'rename' | 'overwrite' | undefined) ?? 'rename'),
+      )
+      return undefined as T
     case 'can_extract_paths':
       return false as T
     case 'open_entry':

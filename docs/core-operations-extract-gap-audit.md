@@ -38,6 +38,12 @@ Matrix reference: `docs/core-operations-matrix.md` (`EXT`)
 - Batch partial-completion/cancel branching is now asserted in batch helper:
   `build_batch_extract_items_continues_after_non_cancel_failure` and
   `build_batch_extract_items_stops_after_cancelled_error`.
+- Non-transactional extract semantics are now explicitly documented for release
+  validation:
+  `docs/core-operations-release-checklist.md` (`Extract Non-Transactional Notes`).
+- Deterministic hostile-condition fault injection is documented and covered in
+  extraction seams:
+  `docs/core-operations-fault-injection-notes.md`.
 
 ## Priority Gaps to Close Next
 

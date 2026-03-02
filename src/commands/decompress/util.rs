@@ -891,6 +891,58 @@ mod tests {
         }
     }
 
+    struct DisappearingSourceReader {
+        remaining: usize,
+        chunk_size: usize,
+        reads: usize,
+        fail_after_reads: usize,
+    }
+
+    impl Read for DisappearingSourceReader {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.reads >= self.fail_after_reads {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "source disappeared during extraction",
+                ));
+            }
+            if self.remaining == 0 {
+                return Ok(0);
+            }
+            let n = self.remaining.min(self.chunk_size).min(buf.len());
+            for byte in &mut buf[..n] {
+                *byte = b'b';
+            }
+            self.remaining -= n;
+            self.reads = self.reads.saturating_add(1);
+            Ok(n)
+        }
+    }
+
+    struct DestinationUnavailableWriter {
+        writes: usize,
+        fail_on_write: usize,
+        data: Vec<u8>,
+    }
+
+    impl io::Write for DestinationUnavailableWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if self.writes >= self.fail_on_write {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "destination unavailable during extraction",
+                ));
+            }
+            self.writes = self.writes.saturating_add(1);
+            self.data.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
     #[test]
     fn open_unique_file_uses_suffix_when_destination_already_exists() {
         let root = unique_temp_dir("open-unique-file");
@@ -1007,5 +1059,42 @@ mod tests {
             "disarmed created paths should preserve outputs"
         );
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn copy_with_progress_surfaces_source_disappeared_error() {
+        let mut reader = DisappearingSourceReader {
+            remaining: CHUNK * 2,
+            chunk_size: CHUNK,
+            reads: 0,
+            fail_after_reads: 1,
+        };
+        let mut writer = Vec::<u8>::new();
+        let budget = ExtractBudget::new((CHUNK * 4) as u64, 16);
+        let mut buf = vec![0u8; CHUNK];
+
+        let err = copy_with_progress(&mut reader, &mut writer, None, None, &budget, &mut buf)
+            .expect_err("source disappearance should fail copy loop");
+
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        assert_eq!(writer.len(), CHUNK);
+    }
+
+    #[test]
+    fn copy_with_progress_surfaces_destination_unavailable_error() {
+        let mut reader = io::repeat(b'c').take((CHUNK * 3) as u64);
+        let mut writer = DestinationUnavailableWriter {
+            writes: 0,
+            fail_on_write: 1,
+            data: Vec::new(),
+        };
+        let budget = ExtractBudget::new((CHUNK * 4) as u64, 16);
+        let mut buf = vec![0u8; CHUNK];
+
+        let err = copy_with_progress(&mut reader, &mut writer, None, None, &budget, &mut buf)
+            .expect_err("destination unavailability should fail copy loop");
+
+        assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+        assert_eq!(writer.data.len(), CHUNK);
     }
 }

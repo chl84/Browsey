@@ -65,3 +65,33 @@ test('wheel assist handles short-list edge clamp and non-cancelable burst fallba
   expect(result.burstPrevented).toEqual([true, false, false])
   expect(result.burstDispatch).toEqual([false, true, true])
 })
+
+test('paste failure is surfaced and a following paste can recover', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __BROWSEY_E2E__?: unknown }).__BROWSEY_E2E__ = {
+      systemClipboard: { mode: 'copy', paths: ['/mock/notes.txt'] },
+      failCommands: ['paste_clipboard_cmd'],
+    }
+  })
+
+  await page.goto('/')
+  const grid = page.getByRole('grid', { name: 'File list' })
+  await expect(grid).toBeVisible()
+  await grid.click()
+
+  await page.keyboard.press('Control+V')
+  await expect(page.locator('.toast .text')).toHaveText(
+    'Paste failed: Simulated paste_clipboard_cmd failure',
+  )
+
+  await page.evaluate(() => {
+    const control = (window as unknown as { __BROWSEY_E2E__?: { failCommands?: string[] } })
+      .__BROWSEY_E2E__
+    if (control) {
+      control.failCommands = []
+    }
+  })
+
+  await page.keyboard.press('Control+V')
+  await expect(page.locator('.row .name', { hasText: 'notes-1' })).toBeVisible()
+})
