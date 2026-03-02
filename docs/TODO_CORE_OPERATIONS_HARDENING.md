@@ -248,7 +248,7 @@ Target modules:
 
 - [x] Reuse the existing fake-`rclone` execution tests as the baseline and add
       only trust-matrix gaps instead of rebuilding parallel coverage from scratch.
-- [ ] Expand mixed local<->cloud tests to cover the highest-risk conflict paths.
+- [x] Expand mixed local<->cloud tests to cover the highest-risk conflict paths.
 - [ ] Add or tighten cases for:
   - rename-on-conflict parity
   - copy vs move source cleanup semantics
@@ -261,9 +261,17 @@ Progress notes (2026-03-02):
 
 - Added mixed transfer execution tests on existing fake-`rclone` harness in:
   - `src/commands/transfer/execute.rs`
+- Added mixed-transfer/frontend gap audit document:
+  - `docs/core-operations-mixed-gap-audit.md`
 - New coverage includes:
   - early-cancel behavior (`cancelled` before write begins)
   - `destination_exists` policy when `prechecked=false` in local->cloud copy
+  - partial local->cloud completion cache invalidation on failure
+  - copy-vs-move cleanup semantics under partial local->cloud failure
+  - non-zero `rclone` error mapping consistency (`destination_exists`,
+    `permission_denied`)
+  - mixed cloud->local move rename-on-conflict parity in frontend conflict
+    resolution retries
 
 Acceptance:
 

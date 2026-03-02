@@ -538,6 +538,45 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     )
   })
 
+  it('resolves mixed cloud-to-local rename-on-conflict for move by retrying target candidates', async () => {
+    setClipboardPathsState('cut', ['rclone://work/src/report.txt'])
+    previewMixedTransferConflictsMock.mockResolvedValue([
+      {
+        src: 'rclone://work/src/report.txt',
+        target: '/tmp/dest/report.txt',
+        exists: true,
+        isDir: false,
+      },
+    ])
+    moveMixedEntryToMock
+      .mockRejectedValueOnce({ code: 'destination_exists', message: 'exists' })
+      .mockResolvedValueOnce('/tmp/dest/report-1.txt')
+
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp/dest'
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('/tmp/dest')
+    expect(ok).toBe(false)
+    expect(get(fileOps.conflictModalOpen)).toBe(true)
+
+    await fileOps.resolveConflicts('rename')
+
+    expect(moveMixedEntriesMock).not.toHaveBeenCalled()
+    expect(moveMixedEntryToMock).toHaveBeenNthCalledWith(
+      1,
+      'rclone://work/src/report.txt',
+      '/tmp/dest/report.txt',
+      expect.objectContaining({ overwrite: false, prechecked: true }),
+    )
+    expect(moveMixedEntryToMock).toHaveBeenNthCalledWith(
+      2,
+      'rclone://work/src/report.txt',
+      '/tmp/dest/report-1.txt',
+      expect.objectContaining({ overwrite: false, prechecked: false }),
+    )
+  })
+
   it('shows Moving… activity label for local cut paste', async () => {
     setClipboardPathsState('cut', ['/tmp/src/report.txt'])
     pasteClipboardPreviewMock.mockResolvedValue([])
