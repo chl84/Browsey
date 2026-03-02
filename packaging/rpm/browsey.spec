@@ -1,8 +1,12 @@
+# Optional manual rpmbuild/COPR spec.
+# Default Browsey release packaging uses `cargo tauri build --bundles rpm`.
+# See packaging/rpm/README.md for usage notes.
+
 %global _build_id_links none
 %global _missing_build_ids_terminate_build 0
 
 Name:           browsey
-Version:        0.4.4
+Version:        0.4.5
 Release:        1%{?dist}
 Summary:        Minimalist and fast file explorer built with Tauri
 
@@ -65,5 +69,8 @@ install -m 0644 resources/icons/icon.png %{buildroot}%{_datadir}/icons/hicolor/5
 %{_datadir}/icons/hicolor/512x512/apps/browsey.png
 
 %changelog
+* Mon Mar 02 2026 Browsey Maintainers <maintainers@example.com> - 0.4.5-1
+- Sync spec version with current project release
+
 * Fri Feb 20 2026 Browsey Maintainers <maintainers@example.com> - 0.4.4-1
 - Initial COPR spec for Browsey

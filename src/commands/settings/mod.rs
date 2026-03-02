@@ -559,7 +559,7 @@ mod tests {
     use super::store_rclone_path;
     use crate::commands::cloud::{
         cloud_dir_listing_cache_contains_for_tests,
-        cloud_remote_discovery_cache_is_populated_for_tests,
+        cloud_remote_discovery_cache_contains_remote_for_tests,
         path::CloudPath,
         store_cloud_dir_listing_cache_entry_for_tests,
         store_cloud_remote_discovery_cache_entry_for_tests,
@@ -603,22 +603,32 @@ mod tests {
     #[test]
     fn store_rclone_path_invalidates_cloud_caches() {
         let _data_home = temp_data_home_guard();
-        let path = CloudPath::parse("rclone://work/docs").expect("cloud path");
+        static NEXT_REMOTE_ID: AtomicU64 = AtomicU64::new(1);
+        let remote_id = format!(
+            "work-{}-{}",
+            std::process::id(),
+            NEXT_REMOTE_ID.fetch_add(1, Ordering::Relaxed)
+        );
+        let path = CloudPath::parse(&format!("rclone://{remote_id}/docs")).expect("cloud path");
         store_cloud_remote_discovery_cache_entry_for_tests(vec![CloudRemote {
-            id: "work".to_string(),
+            id: remote_id.clone(),
             label: "Work".to_string(),
             provider: CloudProviderKind::Onedrive,
-            root_path: "rclone://work".to_string(),
+            root_path: format!("rclone://{remote_id}"),
             capabilities: CloudCapabilities::v1_core_rw(),
         }]);
         store_cloud_dir_listing_cache_entry_for_tests(&path, Vec::new());
 
-        assert!(cloud_remote_discovery_cache_is_populated_for_tests());
+        assert!(cloud_remote_discovery_cache_contains_remote_for_tests(
+            &remote_id
+        ));
         assert!(cloud_dir_listing_cache_contains_for_tests(&path));
 
         store_rclone_path("/usr/bin/rclone-does-not-exist".to_string()).expect("store rclone path");
 
-        assert!(!cloud_remote_discovery_cache_is_populated_for_tests());
+        assert!(!cloud_remote_discovery_cache_contains_remote_for_tests(
+            &remote_id
+        ));
         assert!(!cloud_dir_listing_cache_contains_for_tests(&path));
     }
 }

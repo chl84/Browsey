@@ -114,6 +114,8 @@ Tauri bundles:
   cargo tauri build --bundles rpm
   ```
   Helper: `scripts/build/build-release.sh`. Output in `target/release/bundle/rpm/`.
+  For manual `rpmbuild`/COPR packaging (not standard release flow), use:
+  `packaging/rpm/browsey.spec` and `packaging/rpm/README.md`.
 
 ## Keyboard & interaction map (defaults)
 - Default bindings are remappable in Settings.
@@ -134,7 +136,9 @@ Tauri bundles:
 ## Project layout
 - `src/` — Rust backend.
 - `frontend/` — Svelte application UI.
-- `docs/` — standalone documentation app.
+- `docs/` — project documents (strategy, operations, audits, TODO archive).
+- `docs-site/` — standalone documentation app (Svelte/Vite, GitHub Pages).
+- `packaging/` — desktop metadata and optional manual packaging assets (including RPM spec).
 - `scripts/` — helper scripts grouped by area (`build/`, `dev/`, `docs/`, `install/`, `maintenance/`).
 - `resources/` and `capabilities/` — bundled assets and Tauri capability files.
 

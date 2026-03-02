@@ -422,14 +422,16 @@ fn runtime_probe_recovers_after_initial_failure_for_same_binary_path() {
     reset_runtime_probe_cache_for_tests();
 
     static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    let seq = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let unique = format!(
-        "browsey-rclone-runtime-probe-{}-{}",
+        "browsey-rclone-runtime-probe-{}-{}-{}",
         std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("time")
-            .as_nanos()
-            + u128::from(NEXT_ID.fetch_add(1, Ordering::Relaxed))
+        nanos,
+        seq
     );
     let root = std::env::temp_dir().join(unique);
     fs::create_dir_all(&root).expect("create temp root");
@@ -474,14 +476,16 @@ struct FakeRcloneSandbox {
 impl FakeRcloneSandbox {
     fn new() -> Self {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let seq = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         let unique = format!(
-            "browsey-fake-rclone-{}-{}",
+            "browsey-fake-rclone-{}-{}-{}",
             std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("time")
-                .as_nanos()
-                + u128::from(NEXT_ID.fetch_add(1, Ordering::Relaxed))
+            nanos,
+            seq
         );
         let root = std::env::temp_dir().join(unique);
         let state_root = root.join("state");

@@ -931,14 +931,16 @@ mod tests {
     impl FakeRcloneSandbox {
         fn new() -> Self {
             static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos();
+            let seq = NEXT_ID.fetch_add(1, Ordering::Relaxed);
             let unique = format!(
-                "browsey-transfer-fake-rclone-{}-{}",
+                "browsey-transfer-fake-rclone-{}-{}-{}",
                 std::process::id(),
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("time")
-                    .as_nanos()
-                    + u128::from(NEXT_ID.fetch_add(1, Ordering::Relaxed))
+                nanos,
+                seq
             );
             let root = std::env::temp_dir().join(unique);
             let state_root = root.join("state");

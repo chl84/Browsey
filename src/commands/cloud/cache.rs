@@ -195,6 +195,21 @@ pub(crate) fn cloud_remote_discovery_cache_is_populated_for_tests() -> bool {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn cloud_remote_discovery_cache_contains_remote_for_tests(remote_id: &str) -> bool {
+    match cloud_remote_discovery_cache().lock() {
+        Ok(guard) => guard
+            .as_ref()
+            .map(|cached| cached.remotes.iter().any(|remote| remote.id == remote_id))
+            .unwrap_or(false),
+        Err(poisoned) => poisoned
+            .into_inner()
+            .as_ref()
+            .map(|cached| cached.remotes.iter().any(|remote| remote.id == remote_id))
+            .unwrap_or(false),
+    }
+}
+
 fn prune_cloud_dir_listing_cache_locked(
     cache: &mut HashMap<String, CachedCloudDirListing>,
     now: Instant,

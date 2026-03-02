@@ -1,16 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! command -v rg >/dev/null 2>&1; then
-  echo "error: ripgrep (rg) is required for backend error hardening guard" >&2
+if command -v rg >/dev/null 2>&1; then
+  SEARCH_TOOL="rg"
+elif command -v grep >/dev/null 2>&1; then
+  SEARCH_TOOL="grep"
+  echo "warning: ripgrep (rg) not found; falling back to grep" >&2
+else
+  echo "error: neither ripgrep (rg) nor grep is available" >&2
   exit 1
 fi
 
 status=0
 
+search_hits() {
+  local pattern="$1"
+  shift
+  if [[ "${SEARCH_TOOL}" == "rg" ]]; then
+    rg -n "${pattern}" "$@" || true
+  else
+    grep -R -n -E -- "${pattern}" "$@" 2>/dev/null || true
+  fi
+}
+
 echo "Checking for disallowed typed-error -> String conversions in hardened modules..."
 from_to_string_hits="$(
-  rg -n 'impl From<.*> for String' \
+  search_hits 'impl From<.*> for String' \
     src/commands \
     src/undo \
     src/clipboard \
@@ -26,7 +41,7 @@ fi
 
 echo "Checking for disallowed from_external_message(error.to_string()) seams..."
 string_roundtrip_hits="$(
-  rg -n 'from_external_message\([^)]*to_string\(\)\)' \
+  search_hits 'from_external_message\([^)]*to_string\(\)\)' \
     src/commands/fs \
     src/commands/rename \
     src/commands/decompress \
@@ -43,7 +58,7 @@ fi
 
 echo "Checking strict typed-error regime in core operations modules..."
 core_ops_stringly_hits="$(
-  rg -n 'from_external_message\(' \
+  search_hits 'from_external_message\(' \
     src/commands/fs/delete_ops.rs \
     src/commands/fs/trash/mod.rs \
     src/commands/rename/mod.rs \
@@ -57,7 +72,7 @@ if [[ -n "${core_ops_stringly_hits}" ]]; then
 fi
 
 core_ops_literal_err_hits="$(
-  rg -n 'Err\(".*"\.into\(\)\)|Err\(".*"\)' \
+  search_hits 'Err\(".*"\.into\(\)\)|Err\(".*"\)' \
     src/commands/fs/delete_ops.rs \
     src/commands/fs/trash/mod.rs \
     src/commands/rename/mod.rs \
