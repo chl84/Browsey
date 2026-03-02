@@ -9,8 +9,7 @@ mod error;
 pub(crate) use error::{PathGuardError, PathGuardErrorCode, PathGuardResult};
 
 pub(crate) fn ensure_existing_path_nonsymlink(path: &Path) -> PathGuardResult<fs::Metadata> {
-    check_no_symlink_components(path)
-        .map_err(|error| PathGuardError::new(PathGuardErrorCode::SymlinkUnsupported, error))?;
+    check_no_symlink_components(path).map_err(PathGuardError::from)?;
     let meta = fs::symlink_metadata(path).map_err(|error| {
         PathGuardError::from_io_error(
             &format!("Failed to read metadata for {}", path.display()),

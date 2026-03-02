@@ -116,19 +116,56 @@ impl From<&str> for RenameError {
 
 impl From<crate::path_guard::PathGuardError> for RenameError {
     fn from(error: crate::path_guard::PathGuardError) -> Self {
-        Self::from_external_message(error.to_string())
+        let code = match error.code() {
+            crate::path_guard::PathGuardErrorCode::NotFound => RenameErrorCode::NotFound,
+            crate::path_guard::PathGuardErrorCode::PermissionDenied => {
+                RenameErrorCode::PermissionDenied
+            }
+            crate::path_guard::PathGuardErrorCode::NotDirectory => RenameErrorCode::InvalidInput,
+            crate::path_guard::PathGuardErrorCode::SymlinkUnsupported => {
+                RenameErrorCode::SymlinkUnsupported
+            }
+            crate::path_guard::PathGuardErrorCode::MetadataReadFailed => {
+                RenameErrorCode::UnknownError
+            }
+        };
+        Self::new(code, error.to_string())
     }
 }
 
 impl From<crate::fs_utils::FsUtilsError> for RenameError {
     fn from(error: crate::fs_utils::FsUtilsError) -> Self {
-        Self::from_external_message(error.to_string())
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath => RenameErrorCode::InvalidPath,
+            crate::fs_utils::FsUtilsErrorCode::NotFound => RenameErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied => {
+                RenameErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::RootForbidden => RenameErrorCode::RootForbidden,
+            crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported => {
+                RenameErrorCode::SymlinkUnsupported
+            }
+            crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem
+            | crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                RenameErrorCode::UnknownError
+            }
+        };
+        Self::new(code, error.to_string())
     }
 }
 
 impl From<crate::undo::UndoError> for RenameError {
     fn from(error: crate::undo::UndoError) -> Self {
-        Self::from_external_message(error.to_string())
+        let code = match error.code() {
+            crate::undo::UndoErrorCode::InvalidInput => RenameErrorCode::InvalidInput,
+            crate::undo::UndoErrorCode::NotFound => RenameErrorCode::NotFound,
+            crate::undo::UndoErrorCode::PermissionDenied => RenameErrorCode::PermissionDenied,
+            crate::undo::UndoErrorCode::TargetExists => RenameErrorCode::TargetExists,
+            crate::undo::UndoErrorCode::SymlinkUnsupported => RenameErrorCode::SymlinkUnsupported,
+            _ => RenameErrorCode::RollbackFailed,
+        };
+        Self::new(code, error.to_string())
     }
 }
 

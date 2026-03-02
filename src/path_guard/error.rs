@@ -36,6 +36,10 @@ impl PathGuardError {
         }
     }
 
+    pub fn code(&self) -> PathGuardErrorCode {
+        self.code
+    }
+
     pub fn from_io_error(context: &str, error: std::io::Error) -> Self {
         let code = match classify_io_error(&error) {
             IoErrorHint::NotFound => PathGuardErrorCode::NotFound,
@@ -61,6 +65,28 @@ impl DomainError for PathGuardError {
 
     fn message(&self) -> &str {
         &self.message
+    }
+}
+
+impl From<crate::fs_utils::FsUtilsError> for PathGuardError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::NotFound => PathGuardErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied => {
+                PathGuardErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported => {
+                PathGuardErrorCode::SymlinkUnsupported
+            }
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath
+            | crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem
+            | crate::fs_utils::FsUtilsErrorCode::RootForbidden
+            | crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                PathGuardErrorCode::MetadataReadFailed
+            }
+        };
+        Self::new(code, error.to_string())
     }
 }
 

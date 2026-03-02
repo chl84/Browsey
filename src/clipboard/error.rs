@@ -1,9 +1,6 @@
 use crate::errors::{
     api_error::ApiResult,
-    domain::{
-        self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint,
-    },
+    domain::{self, DomainError, ErrorCode},
 };
 use std::fmt;
 
@@ -67,30 +64,6 @@ impl ClipboardError {
     pub(crate) fn code(&self) -> ClipboardErrorCode {
         self.code
     }
-
-    pub(crate) fn from_external_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        if let Some(hint) = classify_io_hint_from_message(&message) {
-            let code = match hint {
-                IoErrorHint::NotFound => Some(ClipboardErrorCode::NotFound),
-                IoErrorHint::AlreadyExists => Some(ClipboardErrorCode::DestinationExists),
-                IoErrorHint::PermissionDenied | IoErrorHint::ReadOnlyFilesystem => {
-                    Some(ClipboardErrorCode::IoError)
-                }
-                _ => None,
-            };
-            if let Some(code) = code {
-                return Self::new(code, message);
-            }
-        }
-
-        let code = classify_message_by_patterns(
-            &message,
-            CLIPBOARD_CLASSIFICATION_RULES,
-            ClipboardErrorCode::UnknownError,
-        );
-        Self::new(code, message)
-    }
 }
 
 impl fmt::Display for ClipboardError {
@@ -111,39 +84,51 @@ impl DomainError for ClipboardError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for ClipboardError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::NotFound => ClipboardErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported => {
+                ClipboardErrorCode::SymlinkUnsupported
+            }
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath
+            | crate::fs_utils::FsUtilsErrorCode::RootForbidden => ClipboardErrorCode::InvalidInput,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied
+            | crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem
+            | crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => ClipboardErrorCode::IoError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
+impl From<crate::tasks::TaskError> for ClipboardError {
+    fn from(error: crate::tasks::TaskError) -> Self {
+        let code = match error.code() {
+            crate::tasks::TaskErrorCode::RegistryLockFailed
+            | crate::tasks::TaskErrorCode::TaskNotFound => ClipboardErrorCode::TaskFailed,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
+impl From<crate::undo::UndoError> for ClipboardError {
+    fn from(error: crate::undo::UndoError) -> Self {
+        let code = match error.code() {
+            crate::undo::UndoErrorCode::InvalidInput => ClipboardErrorCode::InvalidInput,
+            crate::undo::UndoErrorCode::NotFound => ClipboardErrorCode::NotFound,
+            crate::undo::UndoErrorCode::TargetExists => ClipboardErrorCode::DestinationExists,
+            crate::undo::UndoErrorCode::SymlinkUnsupported => {
+                ClipboardErrorCode::SymlinkUnsupported
+            }
+            _ => ClipboardErrorCode::IoError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(crate) type ClipboardResult<T> = Result<T, ClipboardError>;
 
 pub(crate) fn map_api_result<T>(result: ClipboardResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
-
-const CLIPBOARD_CLASSIFICATION_RULES: &[(ClipboardErrorCode, &[&str])] = &[
-    (ClipboardErrorCode::Cancelled, &["copy cancelled"]),
-    (
-        ClipboardErrorCode::ClipboardEmpty,
-        &["clipboard is empty", "clipboard empty"],
-    ),
-    (
-        ClipboardErrorCode::InvalidMode,
-        &["invalid mode", "invalid conflict policy"],
-    ),
-    (ClipboardErrorCode::InvalidInput, &["invalid source path"]),
-    (
-        ClipboardErrorCode::NotDirectory,
-        &["drop destination must be a directory"],
-    ),
-    (
-        ClipboardErrorCode::SymlinkUnsupported,
-        &[
-            "symlinks are not supported",
-            "refusing to copy symlinks",
-            "refusing to overwrite symlinks",
-        ],
-    ),
-    (
-        ClipboardErrorCode::DestinationExists,
-        &["already exists", "file exists", "destination exists"],
-    ),
-    (ClipboardErrorCode::TaskFailed, &["paste task failed"]),
-    (ClipboardErrorCode::RollbackFailed, &["rollback"]),
-];

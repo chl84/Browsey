@@ -85,9 +85,9 @@ fn reject_cloud_clipboard_path(path: &str, op: &str) -> ClipboardResult<()> {
 
 fn map_clipboard_result<T, E>(result: Result<T, E>) -> ClipboardResult<T>
 where
-    E: std::fmt::Display,
+    E: Into<ClipboardError>,
 {
-    result.map_err(|error| ClipboardError::from_external_message(error.to_string()))
+    result.map_err(Into::into)
 }
 
 fn policy_from_str(policy: &str) -> ClipboardResult<ConflictPolicy> {
@@ -274,7 +274,7 @@ fn paste_clipboard_impl(
         .as_ref()
         .map(|id| cancel_state.register(id.clone()))
         .transpose()
-        .map_err(ClipboardError::from_external_message)?;
+        .map_err(ClipboardError::from)?;
     let cancel_flag = cancel_guard.as_ref().map(|g| g.token());
 
     let total_items = state.entries.len() as u64;

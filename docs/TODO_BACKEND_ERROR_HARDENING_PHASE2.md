@@ -153,26 +153,26 @@ This track is complete when:
 
 ## Quality Gates (Every Step)
 
-- [ ] `cargo fmt --all` is green
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings` is green
-- [ ] `cargo test --all-targets --all-features` stays green
-- [ ] touched modules keep API code strings stable unless explicitly noted
-- [ ] new conversions preserve semantics more directly than the code they replace
-- [ ] no new `impl From<...> for String` is introduced in typed backend modules
+- [x] `cargo fmt --all` is green
+- [x] `cargo clippy --all-targets --all-features -- -D warnings` is green
+- [x] `cargo test --all-targets --all-features` stays green
+- [x] touched modules keep API code strings stable unless explicitly noted
+- [x] new conversions preserve semantics more directly than the code they replace
+- [x] no new `impl From<...> for String` is introduced in typed backend modules
 
 ## Work Plan
 
 ### 1) Inventory string round-trips and lock the target list
 
-- [ ] Create a focused inventory of:
+- [x] Create a focused inventory of:
   - `from_external_message(error.to_string())`
   - `map_err(|error| ...error.to_string())`
   - `impl From<...> for String`
-- [ ] Label each case as:
+- [x] Label each case as:
   - necessary boundary
   - acceptable low-level leaf
   - removable semantic loss
-- [ ] Start with the highest-value trust-critical modules:
+- [x] Start with the highest-value trust-critical modules:
   - `src/clipboard/`
   - `src/commands/fs/`
   - `src/commands/rename/`
@@ -182,6 +182,31 @@ This track is complete when:
 Acceptance:
 
 - The phase-2 target set is explicit and does not sprawl into already-completed migration work.
+
+Inventory snapshot (2026-03-02):
+
+- `impl From<...> for String` still exists in:
+  - `src/fs_utils/error.rs`
+  - `src/path_guard/error.rs`
+  - plus non-phase-2 modules such as `metadata` and `watcher`
+- clear removable semantic-loss cases include:
+  - `src/commands/fs/error.rs` typed-error fallback through `to_string()`
+  - `src/commands/decompress/` typed orchestration paths that still rely on
+    `from_external_message(...)`
+- first completed slice:
+  - `src/clipboard/mod.rs` now maps typed upstream errors via `Into<ClipboardError>`
+  - `src/tasks/error.rs` and `src/undo/error.rs` no longer expose
+    `impl From<...> for String`
+  - `src/commands/rename/error.rs` conversions from `PathGuardError`,
+    `FsUtilsError`, and `UndoError` are now direct typed mappings
+  - `src/commands/permissions/error.rs` and `src/clipboard/error.rs` now map
+    `UndoError` via `UndoErrorCode` instead of `code_str()` string matching
+- removable-but-deferred semantic-loss cases include:
+  - `src/commands/fs/error.rs` typed-error fallback through `to_string()`
+- likely acceptable low-level leaf/boundary cases still need review in:
+  - external process integrations
+  - archive format adapters
+  - some cloud/provider adapter edges
 
 ### 2) Remove avoidable `impl From<...> for String` in core modules
 
@@ -201,6 +226,17 @@ Acceptance:
 
 - Core typed errors are no longer trivially collapsible back into raw strings.
 
+Progress update (2026-03-02):
+
+- completed in this slice:
+  - removed `impl From<TaskError> for String`
+  - removed `impl From<UndoError> for String`
+- intentionally deferred:
+  - `FsUtilsError -> String`
+  - `PathGuardError -> String`
+  - both still have broad caller fan-out and should be removed only alongside a
+    larger `fs`/`decompress` slice
+
 ### 3) Replace string re-classification in local file-operation paths
 
 Target modules:
@@ -218,6 +254,32 @@ Target modules:
 Acceptance:
 
 - Local file-operation paths preserve codes through typed conversions instead of re-parsing messages.
+
+Progress update (2026-03-02):
+
+- completed in this slice:
+  - `src/clipboard/mod.rs` now requires `Into<ClipboardError>` instead of
+    generic `Display`
+  - dead string re-classification helpers were removed from
+    `src/clipboard/error.rs`, `src/tasks/error.rs`, and `src/undo/error.rs`
+  - `UndoErrorCode` is re-exported from `crate::undo`
+  - `src/clipboard/error.rs`, `src/commands/rename/error.rs`, and
+    `src/commands/permissions/error.rs` now use typed `UndoErrorCode` matching
+- deferred to next slice:
+  - `src/commands/fs/`
+  - `src/commands/decompress/`
+  - `src/path_guard/` and `src/fs_utils/` caller cleanups needed before their
+    remaining string conversions can be removed
+
+Verification run for this slice:
+
+- `cargo fmt --all`
+- `cargo check -q`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test -q undo::tests`
+- `cargo test -q clipboard`
+- `cargo test -q commands::permissions::tests`
+- `cargo test --all-targets --all-features`
 
 ### 4) Reduce duplicated file-operation classification logic
 

@@ -42,8 +42,7 @@ pub fn list_open_with_apps(path: String) -> ApiResult<Vec<OpenWithApp>> {
 }
 
 fn list_open_with_apps_impl(path: String) -> OpenWithResult<Vec<OpenWithApp>> {
-    let target =
-        sanitize_path_follow(&path, false).map_err(OpenWithError::from_external_message)?;
+    let target = sanitize_path_follow(&path, false).map_err(OpenWithError::from)?;
     #[cfg(target_os = "linux")]
     {
         Ok(linux::list_linux_apps(&target))
@@ -65,8 +64,7 @@ pub fn open_with(path: String, choice: OpenWithChoice) -> ApiResult<()> {
 }
 
 fn open_with_impl(path: String, choice: OpenWithChoice) -> OpenWithResult<()> {
-    let target =
-        sanitize_path_follow(&path, false).map_err(OpenWithError::from_external_message)?;
+    let target = sanitize_path_follow(&path, false).map_err(OpenWithError::from)?;
     let OpenWithChoice { app_id } = choice;
 
     let conn = db::open().map_err(map_db_open_error)?;

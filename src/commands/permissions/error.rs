@@ -160,13 +160,45 @@ impl From<&str> for PermissionsError {
 
 impl From<crate::fs_utils::FsUtilsError> for PermissionsError {
     fn from(error: crate::fs_utils::FsUtilsError) -> Self {
-        Self::from_external_message(error.to_string())
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath => PermissionsErrorCode::InvalidPath,
+            crate::fs_utils::FsUtilsErrorCode::NotFound => PermissionsErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied => {
+                PermissionsErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem => {
+                PermissionsErrorCode::ReadOnlyFilesystem
+            }
+            crate::fs_utils::FsUtilsErrorCode::RootForbidden => PermissionsErrorCode::RootForbidden,
+            crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported => {
+                PermissionsErrorCode::SymlinkUnsupported
+            }
+            crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                PermissionsErrorCode::MetadataReadFailed
+            }
+        };
+        Self::new(code, error.to_string())
     }
 }
 
 impl From<crate::undo::UndoError> for PermissionsError {
     fn from(error: crate::undo::UndoError) -> Self {
-        Self::from_external_message(error.to_string())
+        let code = match error.code() {
+            crate::undo::UndoErrorCode::InvalidInput => PermissionsErrorCode::InvalidInput,
+            crate::undo::UndoErrorCode::NotFound => PermissionsErrorCode::NotFound,
+            crate::undo::UndoErrorCode::PermissionDenied => PermissionsErrorCode::PermissionDenied,
+            crate::undo::UndoErrorCode::ReadOnlyFilesystem => {
+                PermissionsErrorCode::ReadOnlyFilesystem
+            }
+            crate::undo::UndoErrorCode::TargetExists => PermissionsErrorCode::RollbackFailed,
+            crate::undo::UndoErrorCode::SymlinkUnsupported => {
+                PermissionsErrorCode::SymlinkUnsupported
+            }
+            crate::undo::UndoErrorCode::LockFailed => PermissionsErrorCode::RollbackFailed,
+            _ => PermissionsErrorCode::UnknownError,
+        };
+        Self::new(code, error.to_string())
     }
 }
 

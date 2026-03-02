@@ -47,7 +47,7 @@ pub(super) fn resolve_drop_clipboard_mode_impl(
         return Err(ClipboardError::invalid_input("No source paths provided"));
     }
 
-    let dest = sanitize_path_follow(&dest, false).map_err(ClipboardError::from_external_message)?;
+    let dest = sanitize_path_follow(&dest, false).map_err(ClipboardError::from)?;
     let dest_meta = fs::symlink_metadata(&dest).map_err(|e| {
         ClipboardError::new(
             ClipboardErrorCode::IoError,
@@ -63,8 +63,7 @@ pub(super) fn resolve_drop_clipboard_mode_impl(
 
     let mut src_paths = Vec::with_capacity(paths.len());
     for raw in paths {
-        src_paths
-            .push(sanitize_path_follow(&raw, true).map_err(ClipboardError::from_external_message)?);
+        src_paths.push(sanitize_path_follow(&raw, true).map_err(ClipboardError::from)?);
     }
 
     if src_paths.iter().any(|src| should_copy_for_drop(src, &dest)) {

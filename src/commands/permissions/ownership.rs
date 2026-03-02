@@ -488,7 +488,7 @@ fn set_ownership_batch_impl(
                 }
                 return Err(PermissionsError::new(
                     PermissionsErrorCode::OwnershipUpdateFailed,
-                    e,
+                    e.to_string(),
                 ));
             }
 
