@@ -205,3 +205,90 @@ async fn delete_entries_impl(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::undo::{run_actions, Direction};
+    use std::fs::{self, OpenOptions};
+    use std::io::Write;
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, SystemTime};
+
+    fn uniq_path(label: &str) -> PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        std::env::temp_dir().join(format!("browsey-delete-test-{label}-{ts}"))
+    }
+
+    fn write_file(path: &Path, bytes: &[u8]) {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .expect("open file");
+        file.write_all(bytes).expect("write file");
+    }
+
+    #[test]
+    fn delete_with_backup_can_undo_single_file() {
+        let dir = uniq_path("single-file");
+        let _ = fs::create_dir_all(&dir);
+        let src = dir.join("file.txt");
+        write_file(&src, b"payload");
+
+        let action = delete_with_backup(&src).expect("delete should succeed");
+        let backup = match &action {
+            Action::Delete { path, backup } => {
+                assert_eq!(path, &src);
+                backup.clone()
+            }
+            other => panic!("expected delete action, got {other:?}"),
+        };
+
+        assert!(!src.exists(), "source should be removed after delete");
+        assert!(backup.exists(), "backup should be created for undo");
+
+        let mut undo_actions = vec![action];
+        run_actions(&mut undo_actions, Direction::Backward).expect("undo should restore file");
+
+        assert!(src.exists(), "source should be restored by undo");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn delete_with_backup_can_undo_directory_tree() {
+        let dir = uniq_path("directory");
+        let _ = fs::create_dir_all(&dir);
+        let src_dir = dir.join("folder");
+        let child = src_dir.join("child.txt");
+        write_file(&child, b"child");
+
+        let action = delete_with_backup(&src_dir).expect("delete should succeed");
+        let backup = match &action {
+            Action::Delete { path, backup } => {
+                assert_eq!(path, &src_dir);
+                backup.clone()
+            }
+            other => panic!("expected delete action, got {other:?}"),
+        };
+
+        assert!(!src_dir.exists(), "source directory should be removed");
+        assert!(backup.exists(), "backup directory should exist");
+
+        let mut undo_actions = vec![action];
+        run_actions(&mut undo_actions, Direction::Backward).expect("undo should restore directory");
+
+        assert!(
+            src_dir.join("child.txt").exists(),
+            "nested file should be restored"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+}

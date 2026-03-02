@@ -3,11 +3,13 @@ use super::{
     backend::TrashBackend,
     listing::apply_original_trash_fields,
     move_ops::{move_single_to_trash_with_backend, move_to_trash_many_with_backend},
+    purge_trash_items_with_ops, restore_trash_items_with_ops,
     staging::{
         cleanup_stale_trash_staging_at, decode_percent_encoded_unix_path, encode_trash_info_path,
         load_trash_stage_journal_entries_at, store_trash_stage_journal_entries_at,
         TrashStageJournalEntry,
     },
+    TrashOps,
 };
 use crate::{
     entry::build_entry,
@@ -116,6 +118,41 @@ impl TrashBackend for FakeTrashBackend {
         self.rewrite_calls
             .borrow_mut()
             .push((PathBuf::from(&item.id), original_path.to_path_buf()));
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct FakeTrashOps {
+    items: RefCell<Vec<TrashItem>>,
+    restored_ids: RefCell<Vec<OsString>>,
+    purged_ids: RefCell<Vec<OsString>>,
+    fail_restore: Cell<bool>,
+    fail_purge: Cell<bool>,
+}
+
+impl TrashOps for FakeTrashOps {
+    fn list_items(&self) -> FsResult<Vec<TrashItem>> {
+        Ok(self.items.borrow().clone())
+    }
+
+    fn restore_items(&self, items: Vec<TrashItem>) -> FsResult<()> {
+        if self.fail_restore.get() {
+            return Err("simulated restore failure".into());
+        }
+        self.restored_ids
+            .borrow_mut()
+            .extend(items.into_iter().map(|item| item.id));
+        Ok(())
+    }
+
+    fn purge_items(&self, items: Vec<TrashItem>) -> FsResult<()> {
+        if self.fail_purge.get() {
+            return Err("simulated purge failure".into());
+        }
+        self.purged_ids
+            .borrow_mut()
+            .extend(items.into_iter().map(|item| item.id));
         Ok(())
     }
 }
@@ -282,4 +319,93 @@ fn trash_entry_icon_uses_original_path_extension() {
     assert_eq!(entry.icon_id, PDF_FILE);
 
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn restore_with_ops_restores_selected_ids_and_emits_change() {
+    let ops = FakeTrashOps::default();
+    ops.items.borrow_mut().push(TrashItem {
+        id: OsString::from("id-a"),
+        name: OsString::from("a.txt"),
+        original_parent: PathBuf::from("/tmp"),
+        time_deleted: 0,
+    });
+    ops.items.borrow_mut().push(TrashItem {
+        id: OsString::from("id-b"),
+        name: OsString::from("b.txt"),
+        original_parent: PathBuf::from("/tmp"),
+        time_deleted: 0,
+    });
+    let emitted = Cell::new(false);
+
+    restore_trash_items_with_ops(vec!["id-b".into()], &ops, || emitted.set(true))
+        .expect("restore should succeed");
+
+    assert_eq!(ops.restored_ids.borrow().len(), 1);
+    assert_eq!(ops.restored_ids.borrow()[0], OsString::from("id-b"));
+    assert!(emitted.get(), "successful restore should emit change event");
+}
+
+#[test]
+fn restore_with_ops_rejects_empty_selection_after_filtering() {
+    let ops = FakeTrashOps::default();
+    let emitted = Cell::new(false);
+
+    let err = restore_trash_items_with_ops(vec!["missing".into()], &ops, || emitted.set(true))
+        .expect_err("restore should fail when no ids match");
+
+    assert!(err.to_string().contains("Nothing to restore"));
+    assert!(
+        ops.restored_ids.borrow().is_empty(),
+        "no restore should be attempted"
+    );
+    assert!(
+        !emitted.get(),
+        "failed restore should not emit change event"
+    );
+}
+
+#[test]
+fn purge_with_ops_purges_selected_ids_and_emits_change() {
+    let ops = FakeTrashOps::default();
+    ops.items.borrow_mut().push(TrashItem {
+        id: OsString::from("id-x"),
+        name: OsString::from("x.txt"),
+        original_parent: PathBuf::from("/tmp"),
+        time_deleted: 0,
+    });
+    let emitted = Cell::new(false);
+
+    purge_trash_items_with_ops(vec!["id-x".into()], &ops, || emitted.set(true))
+        .expect("purge should succeed");
+
+    assert_eq!(ops.purged_ids.borrow().len(), 1);
+    assert_eq!(ops.purged_ids.borrow()[0], OsString::from("id-x"));
+    assert!(emitted.get(), "successful purge should emit change event");
+}
+
+#[test]
+fn purge_with_ops_failure_does_not_emit_change() {
+    let ops = FakeTrashOps::default();
+    ops.fail_purge.set(true);
+    ops.items.borrow_mut().push(TrashItem {
+        id: OsString::from("id-y"),
+        name: OsString::from("y.txt"),
+        original_parent: PathBuf::from("/tmp"),
+        time_deleted: 0,
+    });
+    let emitted = Cell::new(false);
+
+    let err = purge_trash_items_with_ops(vec!["id-y".into()], &ops, || emitted.set(true))
+        .expect_err("purge should fail when backend fails");
+
+    assert!(
+        err.to_string().contains("simulated purge failure"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        ops.purged_ids.borrow().is_empty(),
+        "no ids should be recorded"
+    );
+    assert!(!emitted.get(), "failed purge should not emit change event");
 }

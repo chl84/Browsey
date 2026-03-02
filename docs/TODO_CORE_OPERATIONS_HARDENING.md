@@ -141,22 +141,22 @@ Highest-risk behaviors in this track:
 
 ### 1) Define the critical operations matrix
 
-- [ ] Create a matrix of trust-critical flows and expected outcomes.
-- [ ] Assign stable scenario IDs so tests and checklist rows can reference the
+- [x] Create a matrix of trust-critical flows and expected outcomes.
+- [x] Assign stable scenario IDs so tests and checklist rows can reference the
       same source entry instead of duplicating behavior descriptions.
-- [ ] Group the matrix by operation family:
+- [x] Group the matrix by operation family:
   - local clipboard-backed copy/move
   - local rename
   - local trash/delete/restore/purge
   - mixed local<->cloud copy/move
   - extract with existing destination/error/cancel cases
-- [ ] For each flow, record:
+- [x] For each flow, record:
   - happy path expectation
   - conflict behavior expectation
   - cancellation expectation
   - partial-failure expectation
   - visible UI expectation after completion/failure
-- [ ] Use exact module ownership notes so follow-up work is easy to route.
+- [x] Use exact module ownership notes so follow-up work is easy to route.
 
 Acceptance:
 
@@ -164,11 +164,11 @@ Acceptance:
 
 ### 2) Add a critical-operations release checklist
 
-- [ ] Add `docs/core-operations-release-checklist.md`.
-- [ ] Make the checklist executable by a maintainer, not only descriptive.
-- [ ] Structure the checklist as matrix-derived validation rows keyed by
+- [x] Add `docs/core-operations-release-checklist.md`.
+- [x] Make the checklist executable by a maintainer, not only descriptive.
+- [x] Structure the checklist as matrix-derived validation rows keyed by
       scenario ID, not a rewritten narrative copy of the matrix.
-- [ ] Cover at minimum:
+- [x] Cover at minimum:
   - copy/move file
   - copy/move directory
   - rename file/folder
@@ -177,11 +177,11 @@ Acceptance:
   - extract archive to new destination
   - extract archive into conflicting destination
   - mixed local<->cloud copy/move with conflict preview
-- [ ] Record environment notes where relevant:
+- [x] Record environment notes where relevant:
   - Linux-first required checks
   - Windows checks if a touched area claims Windows support
   - cloud preconditions for `rclone` flows
-- [ ] Keep provider-specific real-account cloud checks in separate appendix docs
+- [x] Keep provider-specific real-account cloud checks in separate appendix docs
       and update the existing OneDrive checklist instead of forking a second
       cloud manual-validation document.
 
@@ -198,7 +198,7 @@ Target modules:
 - `src/commands/fs/trash/`
 - `src/commands/rename/`
 
-- [ ] Audit existing Rust tests for local file operations and mark matrix gaps.
+- [x] Audit existing Rust tests for local file operations and mark matrix gaps.
 - [ ] Add missing tests for:
   - local clipboard-backed copy/move failure and rollback-sensitive cases
   - rename conflicts and no-overwrite semantics
@@ -208,6 +208,19 @@ Target modules:
   - permission-denied and read-only variants where practical
 - [ ] Prefer fixture/setup helpers that make failure modes readable, not opaque.
 - [ ] Keep security/no-follow expectations explicit in test names where relevant.
+
+Progress notes (2026-03-02):
+
+- Added matrix gap audit: `docs/core-operations-local-gap-audit.md`.
+- Added local regression tests for disappearing source/destination and explicit
+  no-overwrite rename behavior in:
+  - `src/clipboard/tests.rs`
+  - `src/commands/rename/mod.rs`
+- Added permanent-delete undo-path tests in:
+  - `src/commands/fs/delete_ops.rs`
+- Added restore/purge core tests via injectable trash ops in:
+  - `src/commands/fs/trash/mod.rs`
+  - `src/commands/fs/trash/tests.rs`
 
 Acceptance:
 
