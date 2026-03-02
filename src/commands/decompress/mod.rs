@@ -207,40 +207,19 @@ async fn extract_archives_impl(
                 .as_ref()
                 .map(|evt| ProgressEmitter::new(app.clone(), evt.clone(), batch_total));
 
-            let mut results = Vec::new();
             let batch_actions: Arc<Mutex<Vec<Action>>> = Arc::new(Mutex::new(Vec::new()));
-            for path in paths.into_iter() {
-                let res = do_extract(
+            let results = build_batch_extract_items(paths, |path| {
+                do_extract(
                     app.clone(),
                     cancel_state.clone(),
                     undo_state.clone(),
-                    path.clone(),
+                    path,
                     progress_event.clone(), // only used for cancel registration in single mode
                     batch_token.clone(),
                     shared_progress.clone(),
                     Some(batch_actions.clone()),
-                );
-                match res {
-                    Ok(r) => results.push(ExtractBatchItem {
-                        path,
-                        ok: true,
-                        result: Some(r),
-                        error: None,
-                    }),
-                    Err(e) => {
-                        let was_cancel = is_cancelled_error(&e);
-                        results.push(ExtractBatchItem {
-                            path,
-                            ok: false,
-                            result: None,
-                            error: Some(e.to_string()),
-                        });
-                        if was_cancel {
-                            break;
-                        }
-                    }
-                }
-            }
+                )
+            });
             // keep guard alive until loop ends
             drop(batch_guard);
             if let Ok(actions) = batch_actions.lock() {
@@ -260,6 +239,36 @@ async fn extract_archives_impl(
             format!("Batch extraction task failed: {error}"),
         )),
     }
+}
+
+fn build_batch_extract_items<F>(paths: Vec<String>, mut extract_one: F) -> Vec<ExtractBatchItem>
+where
+    F: FnMut(String) -> DecompressResult<ExtractResult>,
+{
+    let mut results = Vec::new();
+    for path in paths {
+        match extract_one(path.clone()) {
+            Ok(result) => results.push(ExtractBatchItem {
+                path,
+                ok: true,
+                result: Some(result),
+                error: None,
+            }),
+            Err(error) => {
+                let was_cancel = is_cancelled_error(&error);
+                results.push(ExtractBatchItem {
+                    path,
+                    ok: false,
+                    result: None,
+                    error: Some(error.to_string()),
+                });
+                if was_cancel {
+                    break;
+                }
+            }
+        }
+    }
+    results
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -844,4 +853,73 @@ fn estimate_total_hint(path: &Path) -> DecompressResult<u64> {
     .max(1);
     let _ = rar_entries; // parsed only for size
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_batch_extract_items, DecompressError, DecompressErrorCode, DecompressResult,
+        ExtractResult,
+    };
+
+    fn ok_result(path: &str) -> ExtractResult {
+        ExtractResult {
+            destination: format!("/tmp/{path}"),
+            skipped_symlinks: 0,
+            skipped_entries: 0,
+        }
+    }
+
+    #[test]
+    fn build_batch_extract_items_continues_after_non_cancel_failure() {
+        let paths = vec![
+            "a.zip".to_string(),
+            "b.zip".to_string(),
+            "c.zip".to_string(),
+        ];
+        let items = build_batch_extract_items(paths, |path| -> DecompressResult<ExtractResult> {
+            if path == "b.zip" {
+                return Err(DecompressError::new(
+                    DecompressErrorCode::ExtractFailed,
+                    "extract failed",
+                ));
+            }
+            Ok(ok_result(&path))
+        });
+
+        assert_eq!(items.len(), 3);
+        assert!(items[0].ok);
+        assert!(!items[1].ok);
+        assert!(items[1].error.is_some());
+        assert!(
+            items[2].ok,
+            "batch should continue after non-cancel failure"
+        );
+    }
+
+    #[test]
+    fn build_batch_extract_items_stops_after_cancelled_error() {
+        let paths = vec![
+            "a.zip".to_string(),
+            "b.zip".to_string(),
+            "c.zip".to_string(),
+        ];
+        let mut seen = Vec::<String>::new();
+        let items = build_batch_extract_items(paths, |path| -> DecompressResult<ExtractResult> {
+            seen.push(path.clone());
+            if path == "b.zip" {
+                return Err(DecompressError::new(
+                    DecompressErrorCode::Cancelled,
+                    "Extraction cancelled",
+                ));
+            }
+            Ok(ok_result(&path))
+        });
+
+        assert_eq!(seen, vec!["a.zip".to_string(), "b.zip".to_string()]);
+        assert_eq!(items.len(), 2);
+        assert!(items[0].ok);
+        assert!(!items[1].ok);
+        assert_eq!(items[1].path, "b.zip");
+    }
 }
