@@ -574,6 +574,16 @@ impl FakeRcloneSandbox {
         fs::write(self.root.join("mkdir-destination-exists-always"), "1")
             .expect("mark mkdir destination exists always");
     }
+
+    fn set_remote_provider_type(&self, remote: &str, backend_type: &str) {
+        let provider_root = self.root.join("provider-types");
+        fs::create_dir_all(&provider_root).expect("create provider type root");
+        fs::write(provider_root.join(remote), backend_type).expect("set remote provider type");
+    }
+
+    fn mark_config_dump_failure(&self) {
+        fs::write(self.root.join("config-dump-fail"), "1").expect("mark config dump failure");
+    }
 }
 
 #[cfg(unix)]
@@ -952,6 +962,73 @@ fn delete_ops_use_cli_delete_policy_flags() {
     assert!(
         log.contains("purge --onedrive-hard-delete work:trash-deep"),
         "expected OneDrive hard-delete recursive-delete policy flag, log:\n{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn delete_ops_use_gdrive_cli_delete_policy_flags() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("drive-work", "trash/file.txt", "payload");
+    sandbox.write_remote_file("drive-work", "trash-deep/sub/old.txt", "payload");
+    sandbox.set_remote_provider_type("drive-work", "drive");
+    let provider = sandbox.provider_with_forced_rc();
+
+    provider
+        .delete_file(&cloud_path("rclone://drive-work/trash/file.txt"), None)
+        .expect("delete file");
+    assert!(!sandbox.remote_path("drive-work", "trash/file.txt").exists());
+
+    provider
+        .delete_dir_empty(&cloud_path("rclone://drive-work/trash"), None)
+        .expect("delete empty dir");
+    assert!(!sandbox.remote_path("drive-work", "trash").exists());
+
+    provider
+        .delete_dir_recursive(&cloud_path("rclone://drive-work/trash-deep"), None)
+        .expect("delete recursive dir");
+    assert!(!sandbox.remote_path("drive-work", "trash-deep").exists());
+
+    let log = sandbox.read_log();
+    assert!(
+        log.contains("deletefile --drive-use-trash=false drive-work:trash/file.txt"),
+        "expected Google Drive delete file policy flag, log:\n{log}"
+    );
+    assert!(
+        log.contains("rmdir --drive-use-trash=false drive-work:trash"),
+        "expected Google Drive delete empty-dir policy flag, log:\n{log}"
+    );
+    assert!(
+        log.contains("purge --drive-use-trash=false drive-work:trash-deep"),
+        "expected Google Drive recursive-delete policy flag, log:\n{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn delete_fails_when_delete_policy_lookup_cannot_be_verified() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "trash/file.txt", "payload");
+    sandbox.mark_config_dump_failure();
+    let provider = sandbox.provider_with_forced_rc();
+
+    let err = provider
+        .delete_file(&cloud_path("rclone://work/trash/file.txt"), None)
+        .expect_err("delete should fail when policy lookup cannot be verified");
+    assert!(
+        err.to_string()
+            .contains("Cloud delete policy lookup failed for remote `work`"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        sandbox.remote_path("work", "trash/file.txt").exists(),
+        "file should remain when policy lookup fails"
+    );
+
+    let log = sandbox.read_log();
+    assert!(
+        !log.contains("deletefile --onedrive-hard-delete work:trash/file.txt"),
+        "deletefile must not run after policy lookup failure, log:\n{log}"
     );
 }
 

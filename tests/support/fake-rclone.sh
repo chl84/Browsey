@@ -3,10 +3,12 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 state_root="$script_dir/state"
+provider_types_root="$script_dir/provider-types"
 log_file="$script_dir/fake-rclone.log"
 mkdir_destination_exists_once_file="$script_dir/mkdir-destination-exists-once"
 mkdir_destination_exists_always_file="$script_dir/mkdir-destination-exists-always"
-mkdir -p "$state_root"
+config_dump_fail_file="$script_dir/config-dump-fail"
+mkdir -p "$state_root" "$provider_types_root"
 
 printf '%s\n' "$*" >> "$log_file"
 
@@ -92,17 +94,29 @@ case "$subcmd" in
       exit 2
     fi
     idx=$((idx + 1))
+    if [[ -f "$config_dump_fail_file" ]]; then
+      echo "forced config dump failure" >&2
+      exit 3
+    fi
     printf '{'
     first=1
     shopt -s nullglob
     for d in "$state_root"/*; do
       [[ -d "$d" ]] || continue
       remote_name="$(basename -- "$d")"
+      remote_type="onedrive"
+      remote_type_file="$provider_types_root/$remote_name"
+      if [[ -f "$remote_type_file" ]]; then
+        remote_type="$(tr -d '\r\n' < "$remote_type_file")"
+        if [[ -z "$remote_type" ]]; then
+          remote_type="onedrive"
+        fi
+      fi
       if [[ $first -eq 0 ]]; then
         printf ','
       fi
       first=0
-      printf '"%s":{"type":"onedrive"}' "$(json_escape "$remote_name")"
+      printf '"%s":{"type":"%s"}' "$(json_escape "$remote_name")" "$(json_escape "$remote_type")"
     done
     printf '}\n'
     ;;
