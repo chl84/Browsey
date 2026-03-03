@@ -205,6 +205,7 @@
   }
 
   export function handleFilterContextMenu(field: SortField, event: MouseEvent) {
+    if (!(filterActive[field] ?? false)) return
     event.preventDefault()
     filterMenuOpen = false
     filterCtxField = field
