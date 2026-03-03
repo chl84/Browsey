@@ -65,9 +65,9 @@ Out of scope (for denne TODO-en):
 
 ## 7) Akseptansekriterier for 5/6
 
-- [ ] Ingen nye typed-error regressjoner i `src/commands/**`
+- [x] Ingen nye typed-error regressjoner i `src/commands/**`
 - [ ] 0 blocking-funn i Semgrep-scope
-- [ ] 0 blocking-funn i guard
+- [x] 0 blocking-funn i guard
 - [ ] API-koder stabile (ingen utilsiktede `code`-endringer)
 
 ## 8) Exit + arkivering
