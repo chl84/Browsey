@@ -64,8 +64,41 @@ impl DomainError for NetworkError {
     }
 }
 
+impl From<crate::watcher::WatcherError> for NetworkError {
+    fn from(error: crate::watcher::WatcherError) -> Self {
+        Self::new(NetworkErrorCode::EjectFailed, error.to_string())
+    }
+}
+
+impl From<crate::commands::fs::FsError> for NetworkError {
+    fn from(error: crate::commands::fs::FsError) -> Self {
+        Self::new(NetworkErrorCode::EjectFailed, error.to_string())
+    }
+}
+
 pub(super) type NetworkResult<T> = Result<T, NetworkError>;
 
 pub(super) fn map_api_result<T>(result: NetworkResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NetworkError;
+    use crate::errors::domain::DomainError;
+    use crate::watcher::{WatcherError, WatcherErrorCode};
+
+    #[test]
+    fn maps_watcher_error_to_eject_failed() {
+        let watcher_error = WatcherError::new(WatcherErrorCode::StateLock, "lock failed");
+        let network_error = NetworkError::from(watcher_error);
+        assert_eq!(network_error.code_str(), "eject_failed");
+    }
+
+    #[test]
+    fn maps_fs_error_to_eject_failed() {
+        let fs_error: crate::commands::fs::FsError = "eject failed".into();
+        let network_error = NetworkError::from(fs_error);
+        assert_eq!(network_error.code_str(), "eject_failed");
+    }
 }

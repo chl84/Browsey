@@ -15,6 +15,7 @@ use super::util::{
     open_unique_file, path_exists_nofollow, CreatedPaths, ExtractBudget, ProgressEmitter,
     SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
+use crate::errors::domain::DomainError;
 
 pub(super) fn single_root_in_7z(path: &Path) -> DecompressResult<Option<PathBuf>> {
     let archive = SevenZArchive::open(path).map_err(|e| format!("Failed to read 7z: {e}"))?;
@@ -144,7 +145,7 @@ pub(super) fn extract_7z(
                 }
             }
             let (_file, dest_actual) = open_unique_file(&dest_path)
-                .map_err(|e| SevenZError::Other(Cow::Owned(e.to_string())))?;
+                .map_err(|e| SevenZError::Other(Cow::Owned(e.message().to_owned())))?;
             created.record_file(dest_actual);
             return Ok(true);
         }
@@ -164,7 +165,7 @@ pub(super) fn extract_7z(
         }
 
         let (file, dest_actual) = open_unique_file(&dest_path)
-            .map_err(|e| SevenZError::Other(Cow::Owned(e.to_string())))?;
+            .map_err(|e| SevenZError::Other(Cow::Owned(e.message().to_owned())))?;
         created.record_file(dest_actual);
         let mut out = BufWriter::with_capacity(CHUNK, file);
         copy_with_progress(reader, &mut out, progress, cancel, budget, &mut buf).map_err(|e| {

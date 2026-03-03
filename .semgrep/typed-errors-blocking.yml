@@ -1,0 +1,47 @@
+rules:
+  - id: browsey.blocking.commands-first.no-from-external-message-to-string
+    message: Blocking scope forbids `from_external_message(...to_string())` seams.
+    severity: ERROR
+    languages:
+      - rust
+    paths:
+      include:
+        - src/commands/**/*.rs
+      exclude:
+        - src/commands/**/tests.rs
+        - src/commands/**/tests/**/*.rs
+        - src/commands/**/*test*.rs
+    pattern: $ERR::from_external_message($X.to_string())
+
+  - id: browsey.blocking.commands-first.no-map-err-to-string-seam
+    message: Blocking scope forbids `map_err(...to_string())` typed-error seams.
+    severity: ERROR
+    languages:
+      - rust
+    paths:
+      include:
+        - src/commands/**/*.rs
+      exclude:
+        - src/commands/**/tests.rs
+        - src/commands/**/tests/**/*.rs
+        - src/commands/**/*test*.rs
+    pattern-either:
+      - pattern: $RES.map_err(|$E| $ERR::from_external_message($E.to_string()))
+      - pattern: $RES.map_err(|$E| $ERR::new($CODE, $E.to_string()))
+
+  - id: browsey.blocking.commands-first.no-from-impl-to-string
+    message: Blocking scope forbids introducing `impl From<...> for String`.
+    severity: ERROR
+    languages:
+      - rust
+    paths:
+      include:
+        - src/commands/**/*.rs
+      exclude:
+        - src/commands/**/tests.rs
+        - src/commands/**/tests/**/*.rs
+        - src/commands/**/*test*.rs
+    pattern: |
+      impl From<$T> for String {
+        ...
+      }
