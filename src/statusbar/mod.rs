@@ -160,7 +160,7 @@ async fn dir_sizes_impl(
             .as_ref()
             .map(|evt| cancel_state.register(evt.clone()))
             .transpose()
-            .map_err(|error| StatusbarError::from_external_message(error.to_string()))?;
+            .map_err(StatusbarError::from)?;
         let cancel_token = cancel_guard.as_ref().map(|g| g.token());
         let mut entries = Vec::new();
         let mut total: u64 = 0;
