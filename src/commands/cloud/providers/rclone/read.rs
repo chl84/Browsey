@@ -126,7 +126,7 @@ impl RcloneCloudProvider {
             )))
         })?;
         cloud_entries_from_lsjson_items(path, items, "rclone rc operations/list")
-            .map_err(|error| RcloneCliError::Io(std::io::Error::other(error.to_string())))
+            .map_err(|error| RcloneCliError::Io(std::io::Error::other(error)))
     }
 
     pub(super) fn stat_path_via_rc(

@@ -50,10 +50,10 @@ Out of scope (for denne TODO-en):
 
 ## 5) Sprint 2 TODO (gradvis blocking)
 
-- [ ] Gjør Semgrep **blocking** for `transfer/cloud/network/permissions`
-- [ ] Flytt flere moduler til blocking når de er ryddet
-- [ ] Fjern resterende funn i commands-first-scope eller dokumenter nødvendige boundaries
-- [ ] Dokumenter unntaks-policy kort i docs (hvorfor/krav/test)
+- [x] Gjør Semgrep **blocking** for `transfer/cloud/network/permissions`
+- [x] Flytt flere moduler til blocking når de er ryddet
+- [x] Fjern resterende funn i commands-first-scope eller dokumenter nødvendige boundaries
+- [x] Dokumenter unntaks-policy kort i docs (hvorfor/krav/test)
 
 ## 6) Kvalitetsporter (må være grønne)
 

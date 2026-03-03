@@ -258,11 +258,8 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> ApiResult
 #[cfg(target_os = "windows")]
 fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> NetworkResult<()> {
     // Drop the active directory watcher before ejecting; open handles can block safe removal.
-    watcher
-        .replace(None)
-        .map_err(|error| NetworkError::new(NetworkErrorCode::EjectFailed, error.to_string()))?;
-    fs_windows::eject_drive(&path)
-        .map_err(|error| NetworkError::new(NetworkErrorCode::EjectFailed, error.to_string()))
+    watcher.replace(None).map_err(NetworkError::from)?;
+    fs_windows::eject_drive(&path).map_err(NetworkError::from)
 }
 
 #[tauri::command]
@@ -295,9 +292,7 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> ApiResult
 #[cfg(not(target_os = "windows"))]
 fn eject_drive_impl(path: String, watcher: tauri::State<WatchState>) -> NetworkResult<()> {
     // Drop watcher to avoid open handles during unmount
-    watcher
-        .replace(None)
-        .map_err(|error| NetworkError::new(NetworkErrorCode::EjectFailed, error.to_string()))?;
+    watcher.replace(None).map_err(NetworkError::from)?;
 
     gio_mounts::ensure_gvfsd_fuse_running();
 

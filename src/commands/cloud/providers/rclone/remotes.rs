@@ -68,7 +68,7 @@ impl RcloneCloudProvider {
     fn list_remotes_via_rc(&self) -> Result<Vec<CloudRemote>, RcloneCliError> {
         let remotes_value = self.rc.list_remotes()?;
         let remote_ids = parse_listremotes_rc_json(&remotes_value)
-            .map_err(|error| RcloneCliError::Io(std::io::Error::other(error.to_string())))?;
+            .map_err(|error| RcloneCliError::Io(std::io::Error::other(error)))?;
         let config_dump_value = self.rc.config_dump()?;
         let config_map = parse_config_dump_summaries_value(config_dump_value).map_err(|error| {
             RcloneCliError::Io(std::io::Error::other(format!(

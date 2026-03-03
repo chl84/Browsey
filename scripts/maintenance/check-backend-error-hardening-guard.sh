@@ -58,11 +58,11 @@ ADVISORY_TO_STRING_DIRS=(
   src/commands/permissions
 )
 
-ADVISORY_TO_STRING_ALLOWLIST_ENTRIES=(
-  'src/commands/cloud/providers/rclone/read\.rs:.*RcloneCliError::Io\(std::io::Error::other\(error\.to_string\(\)\)\)|rclone JSON errors are string-only at this boundary|docs/todo/TODO_BACKEND_HARDENING_5_OF_6.md'
-  'src/commands/cloud/providers/rclone/remotes\.rs:.*RcloneCliError::Io\(std::io::Error::other\(error\.to_string\(\)\)\)|rclone JSON errors are string-only at this boundary|docs/todo/TODO_BACKEND_HARDENING_5_OF_6.md'
-  'src/commands/network/mounts\.rs:.*NetworkError::new\(NetworkErrorCode::EjectFailed, error\.to_string\(\)\)|legacy OS-eject API returns untyped message|docs/todo/TODO_BACKEND_HARDENING_5_OF_6.md'
-)
+# Keep empty by default. Any new entry must use:
+#   'pattern|reason|reference'
+# where reference points to design/TODO context.
+# Policy: docs/ERROR_HARDENING_EXCEPTION_POLICY.md
+ADVISORY_TO_STRING_ALLOWLIST_ENTRIES=()
 
 ADVISORY_TO_STRING_ALLOWED_PATTERNS=()
 

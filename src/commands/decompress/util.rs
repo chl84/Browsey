@@ -507,7 +507,7 @@ pub(super) fn ensure_dir_nofollow(path: &Path) -> DecompressResult<Vec<PathBuf>>
             return Err(format!("Directory path must be absolute: {}", abs.display()).into());
         }
 
-        let root = CString::new("/").map_err(|_| "Invalid root path".to_string())?;
+        let root = CString::new("/").map_err(|_| "Invalid root path")?;
         let root_fd = unsafe {
             libc::open(
                 root.as_ptr(),
