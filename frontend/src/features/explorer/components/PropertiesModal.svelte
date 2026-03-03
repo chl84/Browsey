@@ -1,6 +1,7 @@
 <script lang="ts">
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
   import ComboBox, { type ComboOption } from '../../../shared/ui/ComboBox.svelte'
+  import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import { normalizePath, parentPath } from '../utils'
   import type { Entry } from '../model/types'
   export let open = false
@@ -180,13 +181,13 @@
     </svelte:fragment>
 
     {#if activeTab === 'basic'}
-      <div class="rows">
+      <div class="rows basic-rows" class:multi-basic={count > 1}>
         {#if count === 1 && entry}
           <div class="row"><span class="label">Name</span><span class="value">{entry.name}</span></div>
           <div class="row">
             <span class="label">Parent folder</span>
             <span class="value parent-folder-value">
-              <span class="parent-folder-text">{parentFolderLabel}</span>
+              <span class="parent-folder-text" use:fullNameTooltip={() => parentFolderPath}>{parentFolderLabel}</span>
               <button
                 type="button"
                 class="secondary icon-btn"
@@ -435,6 +436,10 @@
     width: fit-content;
     max-width: 100%;
     margin-inline: auto;
+  }
+
+  .basic-rows.multi-basic {
+    min-width: min(100%, 260px);
   }
 
   .row {

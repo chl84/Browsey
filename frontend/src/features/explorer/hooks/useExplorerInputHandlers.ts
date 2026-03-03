@@ -86,6 +86,8 @@ type Deps = {
   closeDeleteModal: () => void
   isRenameModalOpen: () => boolean
   closeRenameModal: () => void
+  isAdvancedRenameModalOpen: () => boolean
+  closeAdvancedRenameModal: () => void
   isOpenWithModalOpen: () => boolean
   closeOpenWithModal: () => void
   isPropertiesModalOpen: () => boolean
@@ -511,6 +513,12 @@ export const useExplorerInputHandlers = (deps: Deps) => {
         event.preventDefault()
         event.stopPropagation()
         deps.closeRenameModal()
+        return
+      }
+      if (deps.isAdvancedRenameModalOpen()) {
+        event.preventDefault()
+        event.stopPropagation()
+        deps.closeAdvancedRenameModal()
         return
       }
       if (deps.isOpenWithModalOpen()) {

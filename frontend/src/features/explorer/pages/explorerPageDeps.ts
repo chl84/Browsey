@@ -60,6 +60,8 @@ export const createExplorerInputHandlersDeps = (deps: ExplorerInputHandlerDeps):
   closeDeleteModal: deps.closeDeleteModal,
   isRenameModalOpen: deps.isRenameModalOpen,
   closeRenameModal: deps.closeRenameModal,
+  isAdvancedRenameModalOpen: deps.isAdvancedRenameModalOpen,
+  closeAdvancedRenameModal: deps.closeAdvancedRenameModal,
   isOpenWithModalOpen: deps.isOpenWithModalOpen,
   closeOpenWithModal: deps.closeOpenWithModal,
   isPropertiesModalOpen: deps.isPropertiesModalOpen,

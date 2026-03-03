@@ -49,7 +49,7 @@
 </script>
 
 {#if open}
-  <ModalShell open={open} onClose={onClose} modalClass="about-modal" modalWidth="390px">
+  <ModalShell open={open} onClose={onClose} modalClass="about-modal" modalWidth="585px">
     <svelte:fragment slot="header">About Browsey</svelte:fragment>
 
     <div class="tabs">
@@ -97,9 +97,6 @@
       {/if}
     {/if}
 
-    <div slot="actions">
-      <button type="button" on:click={onClose}>Close</button>
-    </div>
   </ModalShell>
 {/if}
 

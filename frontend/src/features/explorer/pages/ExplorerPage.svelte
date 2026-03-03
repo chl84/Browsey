@@ -1509,6 +1509,8 @@
     closeDeleteModal: () => deleteModal.close(),
     isRenameModalOpen: () => get(renameState).open,
     closeRenameModal: () => renameModal.close(),
+    isAdvancedRenameModalOpen: () => get(advancedRenameState).open,
+    closeAdvancedRenameModal: () => advancedRenameModal.close(),
     isOpenWithModalOpen: () => get(openWithState).open,
     closeOpenWithModal: () => openWithModal.close(),
     isPropertiesModalOpen: () => get(propertiesState).open,
