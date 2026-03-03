@@ -20,7 +20,7 @@ Goal: forhindre typed-error-regresjoner med lagdelt kontroll (guard + semantisk 
 - [ ] `from_external_message(...to_string())` i `src/commands/**`: **11** treff
 - [ ] `map_err(...to_string())` i `cloud/transfer/network/permissions`: **5** treff (for tiden allowlistet/akseptert)
 - [ ] `impl From<...> for String` i `src/commands/**`: **0** (utenfor scope finnes `metadata`/`watcher`)
-- [ ] Rust quality workflow: aktiv (`fmt`, `clippy`, guard, tests)
+- [x] Rust quality workflow: aktiv (`fmt`, `clippy`, guard, tests)
 
 ## 3) Scope / Out of scope
 
@@ -36,17 +36,17 @@ Out of scope (for denne TODO-en):
 
 ## 4) Sprint 1 TODO (regelverk + lav-risiko opprydding)
 
-- [ ] Legg til Semgrep-regelsett i `.semgrep/typed-errors.yml`
-- [ ] Legg Semgrep i CI som **advisory** først
-- [ ] Rydd `from_external_message(...to_string())` i:
-- [ ] `src/commands/keymap.rs`
-- [ ] `src/commands/listing/mod.rs`
-- [ ] `src/commands/search/worker.rs`
-- [ ] `src/commands/entry_metadata/mod.rs`
-- [ ] `src/commands/duplicates/mod.rs`
-- [ ] `src/commands/compress/mod.rs`
-- [ ] Legg/oppdater tester som låser `code_str()` for berørte mappinger
-- [ ] Oppdater guard-policy: ingen nye allowlist-unntak uten begrunnelse + ref
+- [x] Legg til Semgrep-regelsett i `.semgrep/typed-errors.yml`
+- [x] Legg Semgrep i CI som **advisory** først
+- [x] Rydd `from_external_message(...to_string())` i:
+- [x] `src/commands/keymap.rs`
+- [x] `src/commands/listing/mod.rs`
+- [x] `src/commands/search/worker.rs`
+- [x] `src/commands/entry_metadata/mod.rs`
+- [x] `src/commands/duplicates/mod.rs`
+- [x] `src/commands/compress/mod.rs`
+- [x] Legg/oppdater tester som låser `code_str()` for berørte mappinger
+- [x] Oppdater guard-policy: ingen nye allowlist-unntak uten begrunnelse + ref
 
 ## 5) Sprint 2 TODO (gradvis blocking)
 
@@ -57,11 +57,11 @@ Out of scope (for denne TODO-en):
 
 ## 6) Kvalitetsporter (må være grønne)
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings`
-- [ ] `bash scripts/maintenance/check-backend-error-hardening-guard.sh`
-- [ ] `cargo test --all-targets --all-features`
-- [ ] `semgrep --config .semgrep/typed-errors.yml src/commands`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --all-features -- -D warnings`
+- [x] `bash scripts/maintenance/check-backend-error-hardening-guard.sh`
+- [x] `cargo test --all-targets --all-features`
+- [ ] `semgrep --config .semgrep/typed-errors.yml src/commands` (lokalt blokkert: `semgrep` ikke tilgjengelig i dette miljøet)
 
 ## 7) Akseptansekriterier for 5/6
 

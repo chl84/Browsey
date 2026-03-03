@@ -1,6 +1,6 @@
 use crate::errors::{
     api_error::ApiResult,
-    domain::{self, classify_message_by_patterns, DomainError, ErrorCode},
+    domain::{self, DomainError, ErrorCode},
 };
 use std::fmt;
 
@@ -10,7 +10,6 @@ pub(super) enum KeymapErrorCode {
     InvalidInput,
     InvalidAccelerator,
     ShortcutUpdateFailed,
-    ShortcutResetFailed,
     ShortcutLoadFailed,
     UnknownError,
 }
@@ -22,7 +21,6 @@ impl ErrorCode for KeymapErrorCode {
             Self::InvalidInput => "invalid_input",
             Self::InvalidAccelerator => "invalid_accelerator",
             Self::ShortcutUpdateFailed => "shortcut_update_failed",
-            Self::ShortcutResetFailed => "shortcut_reset_failed",
             Self::ShortcutLoadFailed => "shortcut_load_failed",
             Self::UnknownError => "unknown_error",
         }
@@ -41,16 +39,6 @@ impl KeymapError {
             code,
             message: message.into(),
         }
-    }
-
-    pub(super) fn from_external_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        let code = classify_message_by_patterns(
-            &message,
-            KEYMAP_CLASSIFICATION_RULES,
-            KeymapErrorCode::UnknownError,
-        );
-        Self::new(code, message)
     }
 }
 
@@ -72,35 +60,64 @@ impl DomainError for KeymapError {
     }
 }
 
+impl From<crate::keymap::KeymapCoreError> for KeymapError {
+    fn from(error: crate::keymap::KeymapCoreError) -> Self {
+        let code = match error.code() {
+            crate::keymap::KeymapCoreErrorCode::InvalidInput => KeymapErrorCode::InvalidInput,
+            crate::keymap::KeymapCoreErrorCode::InvalidAccelerator => {
+                KeymapErrorCode::InvalidAccelerator
+            }
+            crate::keymap::KeymapCoreErrorCode::ShortcutConflict
+            | crate::keymap::KeymapCoreErrorCode::SerializeFailed
+            | crate::keymap::KeymapCoreErrorCode::DbWriteFailed => {
+                KeymapErrorCode::ShortcutUpdateFailed
+            }
+            crate::keymap::KeymapCoreErrorCode::ParseFailed
+            | crate::keymap::KeymapCoreErrorCode::DbReadFailed => {
+                KeymapErrorCode::ShortcutLoadFailed
+            }
+            crate::keymap::KeymapCoreErrorCode::UnknownError => KeymapErrorCode::UnknownError,
+        };
+        KeymapError::new(code, error.to_string())
+    }
+}
+
 pub(super) type KeymapResult<T> = Result<T, KeymapError>;
 
 pub(super) fn map_api_result<T>(result: KeymapResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
 
-const KEYMAP_CLASSIFICATION_RULES: &[(KeymapErrorCode, &[&str])] = &[
-    (
-        KeymapErrorCode::InvalidInput,
-        &[
-            "command id cannot be empty",
-            "accelerator cannot be empty",
-            "invalid command id",
-        ],
-    ),
-    (
-        KeymapErrorCode::InvalidAccelerator,
-        &["invalid accelerator", "unknown key token", "modifier"],
-    ),
-    (
-        KeymapErrorCode::ShortcutLoadFailed,
-        &["failed to load shortcuts", "failed to query shortcuts"],
-    ),
-    (
-        KeymapErrorCode::ShortcutResetFailed,
-        &["failed to reset shortcut", "failed to reset all shortcuts"],
-    ),
-    (
-        KeymapErrorCode::ShortcutUpdateFailed,
-        &["failed to save shortcut", "failed to set shortcut"],
-    ),
-];
+#[cfg(test)]
+mod tests {
+    use super::KeymapError;
+    use crate::errors::domain::DomainError;
+    use crate::keymap::{KeymapCoreError, KeymapCoreErrorCode};
+
+    #[test]
+    fn maps_keymap_core_conflict_to_shortcut_update_failed() {
+        let error = KeymapError::from(KeymapCoreError::new(
+            KeymapCoreErrorCode::ShortcutConflict,
+            "already used by",
+        ));
+        assert_eq!(error.code_str(), "shortcut_update_failed");
+    }
+
+    #[test]
+    fn maps_keymap_core_parse_failed_to_shortcut_load_failed() {
+        let error = KeymapError::from(KeymapCoreError::new(
+            KeymapCoreErrorCode::ParseFailed,
+            "parse failed",
+        ));
+        assert_eq!(error.code_str(), "shortcut_load_failed");
+    }
+
+    #[test]
+    fn maps_keymap_core_invalid_accelerator_to_invalid_accelerator() {
+        let error = KeymapError::from(KeymapCoreError::new(
+            KeymapCoreErrorCode::InvalidAccelerator,
+            "invalid",
+        ));
+        assert_eq!(error.code_str(), "invalid_accelerator");
+    }
+}

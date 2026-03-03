@@ -103,8 +103,7 @@ fn ensure_same_parent(paths: &[PathBuf]) -> CompressResult<PathBuf> {
 }
 
 fn resolve_input_path(raw: &str) -> CompressResult<PathBuf> {
-    let pb = sanitize_path_nofollow(raw, true)
-        .map_err(|error| CompressError::from_external_message(error.to_string()))?;
+    let pb = sanitize_path_nofollow(raw, true).map_err(CompressError::from)?;
     let abs = if pb.is_absolute() {
         pb
     } else {

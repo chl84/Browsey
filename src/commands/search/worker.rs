@@ -121,7 +121,7 @@ pub(super) fn run_search_stream(
             }
         },
         Err(e) => {
-            send_error(SearchError::from_external_message(e.to_string()));
+            send_error(SearchError::from(e));
             return;
         }
     };

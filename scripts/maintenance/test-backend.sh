@@ -13,6 +13,13 @@ cargo check --all-targets --all-features
 echo "== Backend: clippy (deny warnings) =="
 cargo clippy --all-targets --all-features -- -D warnings
 
+echo "== Backend: semgrep typed-error seams (advisory) =="
+if command -v semgrep >/dev/null 2>&1; then
+  semgrep --config .semgrep/typed-errors.yml src/commands || true
+else
+  echo "warning: semgrep not installed; skipping advisory semgrep run" >&2
+fi
+
 echo "== Backend: typed-error hardening guard =="
 bash scripts/maintenance/check-backend-error-hardening-guard.sh
 

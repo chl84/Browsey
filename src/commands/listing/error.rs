@@ -111,6 +111,32 @@ impl From<crate::fs_utils::FsUtilsError> for ListingError {
     }
 }
 
+impl From<crate::commands::fs::FsError> for ListingError {
+    fn from(error: crate::commands::fs::FsError) -> Self {
+        let code = match error.code_str() {
+            "invalid_input" => ListingErrorCode::InvalidInput,
+            "path_not_absolute" => ListingErrorCode::PathNotAbsolute,
+            "invalid_path" => ListingErrorCode::InvalidPath,
+            "not_found" => ListingErrorCode::NotFound,
+            "permission_denied" => ListingErrorCode::PermissionDenied,
+            "task_failed" => ListingErrorCode::TaskFailed,
+            _ => ListingErrorCode::UnknownError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
+impl From<crate::watcher::WatcherError> for ListingError {
+    fn from(error: crate::watcher::WatcherError) -> Self {
+        let code = match error.code() {
+            crate::watcher::WatcherErrorCode::StateLock => ListingErrorCode::TaskFailed,
+            crate::watcher::WatcherErrorCode::Create
+            | crate::watcher::WatcherErrorCode::WatchPath => ListingErrorCode::UnknownError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type ListingResult<T> = Result<T, ListingError>;
 
 pub(super) fn map_api_result<T>(result: ListingResult<T>) -> ApiResult<T> {
@@ -144,3 +170,32 @@ const LISTING_CLASSIFICATION_RULES: &[(ListingErrorCode, &[&str])] = &[
         &["no such file or directory", "start directory not found"],
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::ListingError;
+    use crate::errors::domain::DomainError;
+    use crate::fs_utils::{FsUtilsError, FsUtilsErrorCode};
+    use crate::watcher::{WatcherError, WatcherErrorCode};
+
+    #[test]
+    fn maps_fs_error_invalid_input_to_listing_invalid_input() {
+        let fs_error: crate::commands::fs::FsError = "No paths provided".into();
+        let error = ListingError::from(fs_error);
+        assert_eq!(error.code_str(), "invalid_input");
+    }
+
+    #[test]
+    fn maps_watcher_state_lock_to_listing_task_failed() {
+        let watcher_error = WatcherError::new(WatcherErrorCode::StateLock, "lock failed");
+        let error = ListingError::from(watcher_error);
+        assert_eq!(error.code_str(), "task_failed");
+    }
+
+    #[test]
+    fn maps_fs_utils_permission_denied_to_listing_permission_denied() {
+        let fs_error = FsUtilsError::new(FsUtilsErrorCode::PermissionDenied, "permission denied");
+        let error = ListingError::from(fs_error);
+        assert_eq!(error.code_str(), "permission_denied");
+    }
+}
