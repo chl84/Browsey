@@ -112,6 +112,21 @@ impl From<crate::fs_utils::FsUtilsError> for DuplicatesError {
     }
 }
 
+impl From<crate::commands::fs::FsError> for DuplicatesError {
+    fn from(error: crate::commands::fs::FsError) -> Self {
+        let code = match error.code_str() {
+            "invalid_input" => DuplicatesErrorCode::InvalidInput,
+            "path_not_absolute" => DuplicatesErrorCode::PathNotAbsolute,
+            "invalid_path" => DuplicatesErrorCode::InvalidPath,
+            "not_found" => DuplicatesErrorCode::NotFound,
+            "permission_denied" => DuplicatesErrorCode::PermissionDenied,
+            "task_failed" => DuplicatesErrorCode::TaskFailed,
+            _ => DuplicatesErrorCode::UnknownError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type DuplicatesResult<T> = Result<T, DuplicatesError>;
 
 pub(super) fn map_api_result<T>(result: DuplicatesResult<T>) -> ApiResult<T> {
@@ -152,3 +167,24 @@ const DUPLICATES_CLASSIFICATION_RULES: &[(DuplicatesErrorCode, &[&str])] = &[
         ],
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::DuplicatesError;
+    use crate::errors::domain::DomainError;
+    use crate::fs_utils::{FsUtilsError, FsUtilsErrorCode};
+
+    #[test]
+    fn maps_fs_error_invalid_input_to_duplicates_invalid_input() {
+        let fs_error: crate::commands::fs::FsError = "No paths provided".into();
+        let error = DuplicatesError::from(fs_error);
+        assert_eq!(error.code_str(), "invalid_input");
+    }
+
+    #[test]
+    fn maps_fs_utils_invalid_path_to_duplicates_invalid_path() {
+        let fs_error = FsUtilsError::new(FsUtilsErrorCode::InvalidPath, "invalid path");
+        let error = DuplicatesError::from(fs_error);
+        assert_eq!(error.code_str(), "invalid_path");
+    }
+}

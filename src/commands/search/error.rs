@@ -1,9 +1,6 @@
 use crate::errors::{
     api_error::ApiResult,
-    domain::{
-        self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint,
-    },
+    domain::{self, DomainError, ErrorCode},
 };
 use std::fmt;
 
@@ -48,25 +45,6 @@ impl SearchError {
         }
     }
 
-    pub(super) fn from_external_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        if let Some(hint) = classify_io_hint_from_message(&message) {
-            let code = match hint {
-                IoErrorHint::NotFound => Some(SearchErrorCode::NotFound),
-                _ => None,
-            };
-            if let Some(code) = code {
-                return Self::new(code, message);
-            }
-        }
-        let code = classify_message_by_patterns(
-            &message,
-            SEARCH_CLASSIFICATION_RULES,
-            SearchErrorCode::UnknownError,
-        );
-        Self::new(code, message)
-    }
-
     pub(super) fn code_str_value(&self) -> &'static str {
         self.code.as_code_str()
     }
@@ -90,44 +68,41 @@ impl DomainError for SearchError {
     }
 }
 
+impl From<crate::commands::fs::FsError> for SearchError {
+    fn from(error: crate::commands::fs::FsError) -> Self {
+        let code = match error.code_str() {
+            "invalid_input" => SearchErrorCode::InvalidInput,
+            "invalid_path" | "path_not_absolute" => SearchErrorCode::InvalidPath,
+            "not_found" => SearchErrorCode::NotFound,
+            "task_failed" => SearchErrorCode::TaskFailed,
+            _ => SearchErrorCode::UnknownError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type SearchResult<T> = Result<T, SearchError>;
 
 pub(super) fn map_api_result<T>(result: SearchResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
 
-const SEARCH_CLASSIFICATION_RULES: &[(SearchErrorCode, &[&str])] = &[
-    (
-        SearchErrorCode::InvalidInput,
-        &["progress_event is required"],
-    ),
-    (
-        SearchErrorCode::InvalidQuery,
-        &[
-            "invalid search query",
-            "unclosed quote",
-            "unclosed group",
-            "unexpected token",
-        ],
-    ),
-    (
-        SearchErrorCode::InvalidPath,
-        &["invalid path", "path must be absolute"],
-    ),
-    (
-        SearchErrorCode::DatabaseOpenFailed,
-        &[
-            "failed to open db",
-            "failed to open library database",
-            "failed to open data dir",
-        ],
-    ),
-    (
-        SearchErrorCode::DatabaseReadFailed,
-        &["failed to read", "failed to query", "failed to prepare"],
-    ),
-    (
-        SearchErrorCode::TaskFailed,
-        &["task failed", "channel closed", "start directory not found"],
-    ),
-];
+#[cfg(test)]
+mod tests {
+    use super::SearchError;
+    use crate::errors::domain::DomainError;
+
+    #[test]
+    fn maps_fs_error_invalid_input_to_search_invalid_input() {
+        let fs_error: crate::commands::fs::FsError = "No paths provided".into();
+        let error = SearchError::from(fs_error);
+        assert_eq!(error.code_str(), "invalid_input");
+    }
+
+    #[test]
+    fn maps_fs_error_path_not_absolute_to_search_invalid_path() {
+        let fs_error: crate::commands::fs::FsError = "path must be absolute".into();
+        let error = SearchError::from(fs_error);
+        assert_eq!(error.code_str(), "invalid_path");
+    }
+}

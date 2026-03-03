@@ -84,6 +84,18 @@ impl DomainError for EntryMetadataError {
     }
 }
 
+impl From<crate::entry::EntryError> for EntryMetadataError {
+    fn from(error: crate::entry::EntryError) -> Self {
+        let code = match error.code_str() {
+            "not_found" => EntryMetadataErrorCode::NotFound,
+            "permission_denied" => EntryMetadataErrorCode::PermissionDenied,
+            "metadata_read_failed" => EntryMetadataErrorCode::MetadataReadFailed,
+            _ => EntryMetadataErrorCode::UnknownError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 impl From<crate::fs_utils::FsUtilsError> for EntryMetadataError {
     fn from(error: crate::fs_utils::FsUtilsError) -> Self {
         let code = match error.code() {
@@ -132,3 +144,30 @@ const ENTRY_METADATA_CLASSIFICATION_RULES: &[(EntryMetadataErrorCode, &[&str])] 
         &["failed to read metadata"],
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::EntryMetadataError;
+    use crate::errors::domain::DomainError;
+    use std::io::ErrorKind;
+
+    #[test]
+    fn maps_entry_not_found_to_entry_metadata_not_found() {
+        let entry_error = crate::entry::EntryError::from_io_error(
+            "read metadata",
+            std::io::Error::from(ErrorKind::NotFound),
+        );
+        let error = EntryMetadataError::from(entry_error);
+        assert_eq!(error.code_str(), "not_found");
+    }
+
+    #[test]
+    fn maps_entry_metadata_read_failed_to_entry_metadata_read_failed() {
+        let entry_error = crate::entry::EntryError::from_io_error(
+            "read metadata",
+            std::io::Error::from(ErrorKind::Other),
+        );
+        let error = EntryMetadataError::from(entry_error);
+        assert_eq!(error.code_str(), "metadata_read_failed");
+    }
+}

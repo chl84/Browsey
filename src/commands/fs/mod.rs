@@ -28,9 +28,10 @@ use std::{
 };
 
 pub use delete_ops::{delete_entries, delete_entry};
+pub(crate) use error::FsError;
 use error::{
-    is_expected_set_hidden_error, map_api_result, FsError, FsErrorCode, SetHiddenError,
-    SetHiddenErrorCode, SetHiddenResult,
+    is_expected_set_hidden_error, map_api_result, FsErrorCode, SetHiddenError, SetHiddenErrorCode,
+    SetHiddenResult,
 };
 pub use open_ops::open_entry;
 pub(crate) use open_ops::open_path_without_recent;

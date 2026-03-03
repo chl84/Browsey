@@ -37,6 +37,10 @@ impl WatcherError {
             message: message.into(),
         }
     }
+
+    pub fn code(&self) -> WatcherErrorCode {
+        self.code
+    }
 }
 
 impl fmt::Display for WatcherError {

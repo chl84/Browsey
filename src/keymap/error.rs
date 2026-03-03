@@ -51,6 +51,10 @@ impl KeymapCoreError {
         );
         Self::new(code, message)
     }
+
+    pub fn code(&self) -> KeymapCoreErrorCode {
+        self.code
+    }
 }
 
 impl fmt::Display for KeymapCoreError {

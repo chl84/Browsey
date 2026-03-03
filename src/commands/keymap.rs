@@ -15,8 +15,7 @@ pub fn load_shortcuts() -> ApiResult<Vec<ShortcutBinding>> {
 
 fn load_shortcuts_impl() -> KeymapResult<Vec<ShortcutBinding>> {
     let conn = crate::db::open().map_err(map_db_open_error)?;
-    keymap_core::load_shortcuts(&conn)
-        .map_err(|error| KeymapError::from_external_message(error.to_string()))
+    keymap_core::load_shortcuts(&conn).map_err(KeymapError::from)
 }
 
 #[tauri::command]
@@ -32,8 +31,7 @@ fn set_shortcut_binding_impl(
     accelerator: String,
 ) -> KeymapResult<Vec<ShortcutBinding>> {
     let conn = crate::db::open().map_err(map_db_open_error)?;
-    keymap_core::set_shortcut_binding(&conn, &command_id, &accelerator)
-        .map_err(|error| KeymapError::from_external_message(error.to_string()))
+    keymap_core::set_shortcut_binding(&conn, &command_id, &accelerator).map_err(KeymapError::from)
 }
 
 #[tauri::command]
@@ -43,8 +41,7 @@ pub fn reset_shortcut_binding(command_id: String) -> ApiResult<Vec<ShortcutBindi
 
 fn reset_shortcut_binding_impl(command_id: String) -> KeymapResult<Vec<ShortcutBinding>> {
     let conn = crate::db::open().map_err(map_db_open_error)?;
-    keymap_core::reset_shortcut_binding(&conn, &command_id)
-        .map_err(|error| KeymapError::from_external_message(error.to_string()))
+    keymap_core::reset_shortcut_binding(&conn, &command_id).map_err(KeymapError::from)
 }
 
 #[tauri::command]
@@ -54,6 +51,5 @@ pub fn reset_all_shortcuts() -> ApiResult<Vec<ShortcutBinding>> {
 
 fn reset_all_shortcuts_impl() -> KeymapResult<Vec<ShortcutBinding>> {
     let conn = crate::db::open().map_err(map_db_open_error)?;
-    keymap_core::reset_all_shortcuts(&conn)
-        .map_err(|error| KeymapError::from_external_message(error.to_string()))
+    keymap_core::reset_all_shortcuts(&conn).map_err(KeymapError::from)
 }

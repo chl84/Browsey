@@ -98,6 +98,28 @@ impl DomainError for CompressError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for CompressError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath => CompressErrorCode::InvalidPath,
+            crate::fs_utils::FsUtilsErrorCode::RootForbidden => CompressErrorCode::RootForbidden,
+            crate::fs_utils::FsUtilsErrorCode::NotFound => CompressErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied => {
+                CompressErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem => {
+                CompressErrorCode::ReadOnlyFilesystem
+            }
+            crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported => CompressErrorCode::InvalidPath,
+            crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => {
+                CompressErrorCode::UnknownError
+            }
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type CompressResult<T> = Result<T, CompressError>;
 
 pub(super) fn map_api_result<T>(result: CompressResult<T>) -> ApiResult<T> {
@@ -165,3 +187,24 @@ const COMPRESS_CLASSIFICATION_RULES: &[(CompressErrorCode, &[&str])] = &[
         ],
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::CompressError;
+    use crate::errors::domain::DomainError;
+    use crate::fs_utils::{FsUtilsError, FsUtilsErrorCode};
+
+    #[test]
+    fn maps_fs_utils_read_only_to_compress_read_only_filesystem() {
+        let fs_error = FsUtilsError::new(FsUtilsErrorCode::ReadOnlyFilesystem, "readonly");
+        let error = CompressError::from(fs_error);
+        assert_eq!(error.code_str(), "read_only_filesystem");
+    }
+
+    #[test]
+    fn maps_fs_utils_root_forbidden_to_compress_root_forbidden() {
+        let fs_error = FsUtilsError::new(FsUtilsErrorCode::RootForbidden, "root");
+        let error = CompressError::from(fs_error);
+        assert_eq!(error.code_str(), "root_forbidden");
+    }
+}

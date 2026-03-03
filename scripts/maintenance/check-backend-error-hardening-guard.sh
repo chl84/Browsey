@@ -58,11 +58,13 @@ ADVISORY_TO_STRING_DIRS=(
   src/commands/permissions
 )
 
-ADVISORY_TO_STRING_ALLOWED_PATTERNS=(
-  'src/commands/cloud/providers/rclone/read\.rs:.*RcloneCliError::Io\(std::io::Error::other\(error\.to_string\(\)\)\)'
-  'src/commands/cloud/providers/rclone/remotes\.rs:.*RcloneCliError::Io\(std::io::Error::other\(error\.to_string\(\)\)\)'
-  'src/commands/network/mounts\.rs:.*NetworkError::new\(NetworkErrorCode::EjectFailed, error\.to_string\(\)\)'
+ADVISORY_TO_STRING_ALLOWLIST_ENTRIES=(
+  'src/commands/cloud/providers/rclone/read\.rs:.*RcloneCliError::Io\(std::io::Error::other\(error\.to_string\(\)\)\)|rclone JSON errors are string-only at this boundary|docs/todo/TODO_BACKEND_HARDENING_5_OF_6.md'
+  'src/commands/cloud/providers/rclone/remotes\.rs:.*RcloneCliError::Io\(std::io::Error::other\(error\.to_string\(\)\)\)|rclone JSON errors are string-only at this boundary|docs/todo/TODO_BACKEND_HARDENING_5_OF_6.md'
+  'src/commands/network/mounts\.rs:.*NetworkError::new\(NetworkErrorCode::EjectFailed, error\.to_string\(\)\)|legacy OS-eject API returns untyped message|docs/todo/TODO_BACKEND_HARDENING_5_OF_6.md'
 )
+
+ADVISORY_TO_STRING_ALLOWED_PATTERNS=()
 
 search_hits() {
   local pattern="$1"
@@ -83,6 +85,20 @@ filter_hits_allowlist() {
     filtered="$(printf '%s\n' "${filtered}" | grep -E -v -- "${pattern}" || true)"
   done
   printf '%s' "${filtered}"
+}
+
+build_allowlist_patterns() {
+  local entry pattern reason reference
+  for entry in "${ADVISORY_TO_STRING_ALLOWLIST_ENTRIES[@]}"; do
+    IFS='|' read -r pattern reason reference <<<"${entry}"
+    if [[ -z "${pattern}" || -z "${reason}" || -z "${reference}" ]]; then
+      echo "error: malformed advisory allowlist entry; expected pattern|reason|reference:" >&2
+      echo "  ${entry}" >&2
+      status=1
+      continue
+    fi
+    ADVISORY_TO_STRING_ALLOWED_PATTERNS+=("${pattern}")
+  done
 }
 
 echo "Checking for disallowed typed-error -> String conversions in hardened modules..."
@@ -129,6 +145,7 @@ if [[ -n "${core_ops_literal_err_hits}" ]]; then
 fi
 
 echo "Advisory: checking map_err(...to_string()) in expanded backend seams..."
+build_allowlist_patterns
 raw_advisory_to_string_hits="$(
   search_hits 'map_err\(\|[^)]*\|\s*[^)]*to_string\(\)\)' \
     "${ADVISORY_TO_STRING_DIRS[@]}" || true

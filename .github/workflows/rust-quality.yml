@@ -54,6 +54,13 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      - name: Install Semgrep
+        run: python3 -m pip install --upgrade semgrep
+
+      - name: Semgrep Typed-Error Seams (advisory)
+        continue-on-error: true
+        run: semgrep --config .semgrep/typed-errors.yml src/commands
+
       - name: Backend Error Hardening Guard
         run: bash scripts/maintenance/check-backend-error-hardening-guard.sh
 
