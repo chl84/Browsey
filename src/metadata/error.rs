@@ -45,6 +45,10 @@ impl MetadataError {
         );
         Self::new(code, message)
     }
+
+    pub fn code(&self) -> MetadataErrorCode {
+        self.code
+    }
 }
 
 impl fmt::Display for MetadataError {
@@ -62,12 +66,6 @@ impl DomainError for MetadataError {
 
     fn message(&self) -> &str {
         &self.message
-    }
-}
-
-impl From<MetadataError> for String {
-    fn from(error: MetadataError) -> Self {
-        error.to_string()
     }
 }
 

@@ -1,16 +1,11 @@
 use crate::errors::{
     api_error::ApiResult,
-    domain::{
-        self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint, COMMON_INVALID_PATH_PATTERNS, COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
-        COMMON_PERMISSION_DENIED_PATTERNS,
-    },
+    domain::{self, DomainError, ErrorCode},
 };
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum EntryMetadataErrorCode {
-    PathNotAbsolute,
     InvalidPath,
     NotFound,
     PermissionDenied,
@@ -21,7 +16,6 @@ pub(super) enum EntryMetadataErrorCode {
 impl ErrorCode for EntryMetadataErrorCode {
     fn as_code_str(self) -> &'static str {
         match self {
-            Self::PathNotAbsolute => "path_not_absolute",
             Self::InvalidPath => "invalid_path",
             Self::NotFound => "not_found",
             Self::PermissionDenied => "permission_denied",
@@ -43,26 +37,6 @@ impl EntryMetadataError {
             code,
             message: message.into(),
         }
-    }
-
-    pub(super) fn from_external_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        if let Some(hint) = classify_io_hint_from_message(&message) {
-            let code = match hint {
-                IoErrorHint::NotFound => Some(EntryMetadataErrorCode::NotFound),
-                IoErrorHint::PermissionDenied => Some(EntryMetadataErrorCode::PermissionDenied),
-                _ => None,
-            };
-            if let Some(code) = code {
-                return Self::new(code, message);
-            }
-        }
-        let code = classify_message_by_patterns(
-            &message,
-            ENTRY_METADATA_CLASSIFICATION_RULES,
-            EntryMetadataErrorCode::UnknownError,
-        );
-        Self::new(code, message)
     }
 }
 
@@ -116,39 +90,34 @@ impl From<crate::fs_utils::FsUtilsError> for EntryMetadataError {
     }
 }
 
+impl From<crate::metadata::MetadataError> for EntryMetadataError {
+    fn from(error: crate::metadata::MetadataError) -> Self {
+        let code = match error.code() {
+            crate::metadata::MetadataErrorCode::MetadataReadFailed => {
+                EntryMetadataErrorCode::MetadataReadFailed
+            }
+            crate::metadata::MetadataErrorCode::ArchiveReadFailed
+            | crate::metadata::MetadataErrorCode::PdfiumLoadFailed
+            | crate::metadata::MetadataErrorCode::UnsupportedArchiveVariant
+            | crate::metadata::MetadataErrorCode::UnknownError => {
+                EntryMetadataErrorCode::UnknownError
+            }
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type EntryMetadataResult<T> = Result<T, EntryMetadataError>;
 
 pub(super) fn map_api_result<T>(result: EntryMetadataResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
 
-const ENTRY_METADATA_CLASSIFICATION_RULES: &[(EntryMetadataErrorCode, &[&str])] = &[
-    (
-        EntryMetadataErrorCode::PathNotAbsolute,
-        COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
-    ),
-    (
-        EntryMetadataErrorCode::InvalidPath,
-        COMMON_INVALID_PATH_PATTERNS,
-    ),
-    (
-        EntryMetadataErrorCode::NotFound,
-        &["no such file or directory", "not found"],
-    ),
-    (
-        EntryMetadataErrorCode::PermissionDenied,
-        COMMON_PERMISSION_DENIED_PATTERNS,
-    ),
-    (
-        EntryMetadataErrorCode::MetadataReadFailed,
-        &["failed to read metadata"],
-    ),
-];
-
 #[cfg(test)]
 mod tests {
     use super::EntryMetadataError;
     use crate::errors::domain::DomainError;
+    use crate::metadata::{MetadataError, MetadataErrorCode};
     use std::io::ErrorKind;
 
     #[test]
@@ -169,5 +138,13 @@ mod tests {
         );
         let error = EntryMetadataError::from(entry_error);
         assert_eq!(error.code_str(), "metadata_read_failed");
+    }
+
+    #[test]
+    fn maps_metadata_archive_read_failed_to_unknown() {
+        let metadata_error =
+            MetadataError::new(MetadataErrorCode::ArchiveReadFailed, "archive read failed");
+        let error = EntryMetadataError::from(metadata_error);
+        assert_eq!(error.code_str(), "unknown_error");
     }
 }

@@ -53,5 +53,5 @@ fn entry_extra_metadata_cmd_impl(path: String) -> EntryMetadataResult<ExtraMetad
         return Ok(build_network_uri_extra_metadata(&path));
     }
     let pb = sanitize_path_follow(&path, false).map_err(EntryMetadataError::from)?;
-    collect_extra_metadata(&pb).map_err(EntryMetadataError::from_external_message)
+    collect_extra_metadata(&pb).map_err(EntryMetadataError::from)
 }

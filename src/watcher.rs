@@ -61,12 +61,6 @@ impl DomainError for WatcherError {
     }
 }
 
-impl From<WatcherError> for String {
-    fn from(error: WatcherError) -> Self {
-        error.to_string()
-    }
-}
-
 pub type WatcherResult<T> = Result<T, WatcherError>;
 
 #[derive(Default)]
