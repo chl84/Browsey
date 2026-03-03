@@ -15,7 +15,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 echo "== Backend: semgrep typed-error seams (advisory) =="
 if command -v semgrep >/dev/null 2>&1; then
-  semgrep --config .semgrep/typed-errors.yml src/commands || true
+  semgrep --config .semgrep/typed-errors.yml src || true
 
   echo "== Backend: semgrep typed-error seams (blocking: commands-first) =="
   semgrep --config .semgrep/typed-errors-blocking.yml src/commands

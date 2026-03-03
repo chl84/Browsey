@@ -59,7 +59,7 @@ jobs:
 
       - name: Semgrep Typed-Error Seams (advisory)
         continue-on-error: true
-        run: semgrep --config .semgrep/typed-errors.yml src/commands
+        run: semgrep --config .semgrep/typed-errors.yml src
 
       - name: Semgrep Typed-Error Seams (blocking: commands-first)
         run: semgrep --config .semgrep/typed-errors-blocking.yml src/commands
