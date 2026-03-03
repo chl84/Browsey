@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store'
 import { invoke } from '@/shared/lib/tauri'
 import type { Entry } from '../model/types'
+import { parentPath } from '../utils'
 
 type AccessBit = boolean | 'mixed'
 type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
@@ -108,6 +109,38 @@ const isVirtualUriEntry = (entry: Entry): boolean => isUriPath(entry.path)
 
 const shouldLockMutations = (entries: Entry[]): boolean =>
   entries.length > 0 && entries.every(isTrashEntry)
+
+const fallbackCopyToClipboard = (text: string): boolean => {
+  if (typeof document === 'undefined' || typeof document.execCommand !== 'function') {
+    return false
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', 'true')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  textarea.style.top = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(textarea)
+  return ok
+}
+
+const copyToClipboard = async (text: string): Promise<void> => {
+  let writeError: unknown = null
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch (error) {
+      writeError = error
+    }
+  }
+  if (fallbackCopyToClipboard(text)) return
+  if (writeError) throw writeError
+  throw new Error('System clipboard is not available')
+}
 
 export type PermissionsState = {
   accessSupported: boolean
@@ -729,6 +762,19 @@ export const createPropertiesModal = (deps: Deps) => {
     loadExtraIfNeeded,
     toggleAccess,
     setOwnership,
+    async copyParentFolder() {
+      const current = get(state)
+      if (!current.open || current.count !== 1 || !current.entry) return
+      const parent = parentPath(current.entry.path)
+      if (!parent) return
+      try {
+        await copyToClipboard(parent)
+        showToast('Parent folder copied', 1500)
+      } catch (error) {
+        const message = invokeErrorMessage(error)
+        showToast(`Copy failed: ${message}`)
+      }
+    },
     async toggleHidden(next: boolean) {
       const current = get(state)
       if (current.mutationsLocked) return

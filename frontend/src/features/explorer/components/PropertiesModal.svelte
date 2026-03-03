@@ -1,6 +1,7 @@
 <script lang="ts">
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
   import ComboBox, { type ComboOption } from '../../../shared/ui/ComboBox.svelte'
+  import { normalizePath, parentPath } from '../utils'
   import type { Entry } from '../model/types'
   export let open = false
   export let entry: Entry | null = null
@@ -49,6 +50,7 @@
   export let onToggleHidden: (next: boolean) => void = () => {}
   export let onActivateExtra: () => void = () => {}
   export let onSetOwnership: (owner: string, group: string) => void | Promise<void> = () => {}
+  export let onCopyParentFolder: () => void | Promise<void> = () => {}
 
   const indeterminate = (node: HTMLInputElement, value: boolean | 'mixed' | null | undefined) => {
     node.indeterminate = value === 'mixed'
@@ -102,9 +104,21 @@
   const applyOwnership = () => {
     void onSetOwnership(ownerInput, groupInput)
   }
+  const parentFolderDisplayName = (path: string): string => {
+    const normalized = normalizePath(path)
+    if (!normalized) return '—'
+    if (normalized === '/') return '/'
+    if (/^[A-Za-z]:\/$/.test(normalized)) return normalized
+    const idx = normalized.lastIndexOf('/')
+    if (idx < 0) return normalized
+    const name = normalized.slice(idx + 1)
+    return name || normalized
+  }
 
   $: hiddenBit =
     hidden !== null ? hidden : entry ? (entry.hidden === true || entry.name.startsWith('.')) : false
+  $: parentFolderPath = entry ? parentPath(entry.path) : ''
+  $: parentFolderLabel = parentFolderDisplayName(parentFolderPath)
 
   let activeTab: Tab = 'basic'
   let wasOpen = false
@@ -169,6 +183,24 @@
       <div class="rows">
         {#if count === 1 && entry}
           <div class="row"><span class="label">Name</span><span class="value">{entry.name}</span></div>
+          <div class="row">
+            <span class="label">Parent folder</span>
+            <span class="value parent-folder-value">
+              <span class="parent-folder-text">{parentFolderLabel}</span>
+              <button
+                type="button"
+                class="secondary icon-btn"
+                aria-label="Copy parent folder path"
+                title="Copy path"
+                on:click={() => void onCopyParentFolder()}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </button>
+            </span>
+          </div>
           <div class="row"><span class="label">Type</span><span class="value">{entry.kind}</span></div>
         {/if}
 
@@ -379,9 +411,6 @@
       {/if}
     {/if}
 
-    <div slot="actions">
-      <button type="button" on:click={onClose}>Close</button>
-    </div>
   </ModalShell>
 {/if}
 
@@ -390,6 +419,7 @@
   :global(.modal.properties-modal) {
     overflow: visible;
     container-type: inline-size;
+    padding-bottom: calc(var(--modal-padding) + 8px);
   }
 
   :global(.modal.properties-modal > header) {
@@ -401,6 +431,7 @@
     grid-template-columns: max-content minmax(0, 1fr);
     row-gap: var(--properties-row-gap);
     column-gap: var(--properties-col-gap);
+    align-items: baseline;
     width: fit-content;
     max-width: 100%;
     margin-inline: auto;
@@ -414,10 +445,22 @@
     color: var(--fg-muted);
     font-weight: 600;
     text-align: right;
+    line-height: var(--modal-line-height);
   }
 
   .value {
     overflow-wrap: anywhere;
+    line-height: var(--modal-line-height);
+  }
+
+  .parent-folder-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .parent-folder-text {
+    min-width: 0;
   }
 
   .access {
