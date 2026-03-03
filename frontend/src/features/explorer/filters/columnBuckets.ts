@@ -82,6 +82,7 @@ const modifiedRankFromLabel = (label: string): number => {
 }
 
 export const typeLabel = (entry: Entry): string => {
+  if (entry.kind === 'dir') return 'dir'
   if (entry.ext && entry.ext.length > 0) return entry.ext.toLowerCase()
   if (entry.kind) return entry.kind.toLowerCase()
   return ''

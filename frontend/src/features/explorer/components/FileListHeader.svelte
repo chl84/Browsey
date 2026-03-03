@@ -47,6 +47,7 @@
         <button
           class="header-btn"
           class:align-right={col.align === 'right'}
+          class:size-header={col.key === 'size'}
           type="button"
           role="columnheader"
           tabindex="-1"
@@ -71,11 +72,15 @@
               focusable="false"
               role="button"
               tabindex="-1"
+              on:mousedown|preventDefault
               on:click|stopPropagation={(event) => {
                 const anchor = (event.currentTarget as Element).getBoundingClientRect()
                 onFilterClick(col.sort, anchor)
               }}
-              on:contextmenu|preventDefault|stopPropagation={(event) => onFilterContextMenu(col.sort, event)}
+              on:contextmenu|preventDefault|stopPropagation={(event) => {
+                if (!(filterActive[col.sort] ?? false)) return
+                onFilterContextMenu(col.sort, event)
+              }}
             >
               <path d="M2 3h8L7.2 5.6c-.1.1-.2.3-.2.5V9l-2 .9V6.1c0-.2-.1-.4-.2-.5Z" />
             </svg>
@@ -155,6 +160,10 @@
     padding-right: var(--list-header-align-right-offset);
   }
 
+  .header-btn.align-right.size-header {
+    margin-right: calc(-1 * (var(--list-header-align-right-offset) + 22px));
+  }
+
   .header-btn.inert {
     cursor: default;
     pointer-events: none;
@@ -165,9 +174,7 @@
   }
 
   .header-btn:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus-ring-color);
-    border-radius: 0;
-    outline-offset: var(--focus-ring-offset);
+    outline: none;
   }
 
   .sort-icon {
@@ -198,6 +205,11 @@
     fill: currentColor;
     opacity: 0.35;
     cursor: pointer;
+  }
+
+  .filter-icon:focus,
+  .filter-icon:focus-visible {
+    outline: none;
   }
 
   .filter-icon.active {

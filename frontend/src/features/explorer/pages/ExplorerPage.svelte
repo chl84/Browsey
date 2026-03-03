@@ -357,15 +357,54 @@
 
   const selectionActive = selectionBox.active
   const selectionRect = selectionBox.rect
+  const COLUMN_RESIZE_SAFETY_MARGIN_PX = 0
 
   function getListMaxWidth(): number | null {
-    // Ensure columns cannot become wider than the visible list (including the star column).
-    const el = rowsElRef ?? headerElRef
-    if (!el) return null
-    const style = getComputedStyle(el)
+    // Keep total column widths within the visible list area, including fixed layout overhead.
+    const rowsEl = rowsElRef
+    if (!rowsEl) return null
+    const style = getComputedStyle(rowsEl)
     const paddingLeft = parseFloat(style.paddingLeft) || 0
     const paddingRight = parseFloat(style.paddingRight) || 0
-    return Math.max(0, el.clientWidth - paddingLeft - paddingRight)
+    const visibleContentWidth = Math.max(0, rowsEl.clientWidth - paddingLeft - paddingRight)
+    const currentColumns = get(cols)
+    const columnsWidth = currentColumns.reduce((sum, col) => sum + col.width, 0)
+
+    let layoutOverhead = 0
+    if (headerElRef) {
+      const measuredOverhead = headerElRef.scrollWidth - columnsWidth
+      if (Number.isFinite(measuredOverhead) && measuredOverhead > 0) {
+        layoutOverhead = measuredOverhead
+      }
+    }
+
+    return Math.max(0, visibleContentWidth - layoutOverhead - COLUMN_RESIZE_SAFETY_MARGIN_PX)
+  }
+
+  function clampColumnsToListViewport(): boolean {
+    const maxWidth = getListMaxWidth()
+    if (maxWidth === null) return false
+
+    const list = get(cols)
+    const totalWidth = list.reduce((sum, col) => sum + col.width, 0)
+    let overflow = totalWidth - maxWidth
+    if (overflow <= 0) return false
+
+    let changed = false
+    const next = list.map((col) => ({ ...col }))
+    for (let i = next.length - 1; i >= 0 && overflow > 0; i -= 1) {
+      if (next[i].resizable === false) continue
+      const shrinkable = Math.max(0, next[i].width - next[i].min)
+      if (shrinkable === 0) continue
+      const shrink = Math.min(shrinkable, overflow)
+      next[i].width -= shrink
+      overflow -= shrink
+      changed = true
+    }
+
+    if (!changed) return false
+    cols.set(next)
+    return true
   }
 
   const focusCurrentView = async () => {
@@ -700,6 +739,13 @@
   }
 
   const { startResize } = createColumnResize(cols, persistWidths, getListMaxWidth)
+
+  $: {
+    $cols
+    if (viewMode === 'list' && rowsElRef && headerElRef) {
+      clampColumnsToListViewport()
+    }
+  }
 
   let selectionText = ''
 
