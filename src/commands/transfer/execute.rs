@@ -146,8 +146,15 @@ fn execute_mixed_entries_blocking(
     cancel: Option<Arc<AtomicBool>>,
     progress: Option<TransferProgressContext>,
 ) -> TransferResult<Vec<String>> {
-    let cli = cloud::configured_rclone_cli()
-        .map_err(|error| transfer_err(TransferErrorCode::InvalidConfig, error.to_string()))?;
+    let cli = cloud::configured_rclone_cli().map_err(|error| {
+        let code = match error.code() {
+            cloud::RclonePathErrorCode::InvalidConfig => TransferErrorCode::InvalidConfig,
+            cloud::RclonePathErrorCode::DbOpenFailed | cloud::RclonePathErrorCode::DbReadFailed => {
+                TransferErrorCode::TaskFailed
+            }
+        };
+        transfer_err(code, format!("{error}"))
+    })?;
     execute_mixed_entries_blocking_with_cli(&cli, op, route, options, cancel, progress)
 }
 
@@ -158,8 +165,15 @@ fn execute_mixed_entry_to_blocking(
     cancel: Option<Arc<AtomicBool>>,
     progress: Option<TransferProgressContext>,
 ) -> TransferResult<String> {
-    let cli = cloud::configured_rclone_cli()
-        .map_err(|error| transfer_err(TransferErrorCode::InvalidConfig, error.to_string()))?;
+    let cli = cloud::configured_rclone_cli().map_err(|error| {
+        let code = match error.code() {
+            cloud::RclonePathErrorCode::InvalidConfig => TransferErrorCode::InvalidConfig,
+            cloud::RclonePathErrorCode::DbOpenFailed | cloud::RclonePathErrorCode::DbReadFailed => {
+                TransferErrorCode::TaskFailed
+            }
+        };
+        transfer_err(code, format!("{error}"))
+    })?;
     execute_mixed_entry_to_blocking_with_cli(&cli, op, pair, options, cancel, progress)
 }
 

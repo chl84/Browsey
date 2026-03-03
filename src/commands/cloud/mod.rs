@@ -24,7 +24,9 @@ pub(crate) use error::{CloudCommandError, CloudCommandErrorCode};
 use path::CloudPath;
 #[cfg(test)]
 pub(crate) use rclone_path::set_rclone_path_override_for_tests;
-pub(crate) use rclone_path::{configured_rclone_cli, configured_rclone_provider};
+pub(crate) use rclone_path::{
+    configured_rclone_cli, configured_rclone_provider, RclonePathErrorCode,
+};
 use tracing::warn;
 use types::{CloudConflictInfo, CloudEntry, CloudProviderKind, CloudRemote, CloudRootSelection};
 

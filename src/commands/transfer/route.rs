@@ -1,4 +1,6 @@
-use super::error::{transfer_err, transfer_err_code as api_err, TransferErrorCode, TransferResult};
+use super::error::{
+    transfer_err, transfer_err_code as api_err, TransferError, TransferErrorCode, TransferResult,
+};
 use crate::commands::cloud;
 use crate::commands::cloud::path::CloudPath;
 use crate::commands::cloud::types::CloudEntryKind;
@@ -138,8 +140,7 @@ pub(super) async fn validate_mixed_transfer_pair(
     let dst_is_cloud = is_cloud_path(&dst);
     match (src_is_cloud, dst_is_cloud) {
         (false, true) => {
-            let src_path = sanitize_path_follow(&src, true)
-                .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))?;
+            let src_path = sanitize_path_follow(&src, true).map_err(TransferError::from)?;
             let src_meta = fs::symlink_metadata(&src_path).map_err(|e| {
                 transfer_err(
                     TransferErrorCode::IoError,
@@ -273,8 +274,8 @@ pub(super) fn sanitize_local_target_path_allow_missing(raw: &str) -> TransferRes
             "Local destination path must include a parent directory",
         )
     })?;
-    let parent = sanitize_path_follow(&parent_raw.to_string_lossy(), false)
-        .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))?;
+    let parent =
+        sanitize_path_follow(&parent_raw.to_string_lossy(), false).map_err(TransferError::from)?;
     Ok(parent.join(file_name))
 }
 
@@ -309,8 +310,7 @@ pub(super) async fn validate_local_to_cloud_route(
 
     let mut local_sources = Vec::with_capacity(sources.len());
     for raw in sources {
-        let path = sanitize_path_follow(&raw, true)
-            .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))?;
+        let path = sanitize_path_follow(&raw, true).map_err(TransferError::from)?;
         let meta = fs::symlink_metadata(&path).map_err(|e| {
             transfer_err(
                 TransferErrorCode::IoError,
@@ -336,8 +336,7 @@ pub(super) async fn validate_cloud_to_local_route(
     sources: Vec<String>,
     dest_dir: String,
 ) -> TransferResult<MixedTransferRoute> {
-    let dest = sanitize_path_follow(&dest_dir, false)
-        .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))?;
+    let dest = sanitize_path_follow(&dest_dir, false).map_err(TransferError::from)?;
     let dest_meta = fs::symlink_metadata(&dest).map_err(|e| {
         api_err(
             "io_error",
