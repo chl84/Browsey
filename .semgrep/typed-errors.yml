@@ -6,11 +6,11 @@ rules:
       - rust
     paths:
       include:
-        - src/commands/**/*.rs
+        - /src/commands/**/*.rs
       exclude:
-        - src/commands/**/tests.rs
-        - src/commands/**/tests/**/*.rs
-        - src/commands/**/*test*.rs
+        - /src/commands/**/tests.rs
+        - /src/commands/**/tests/**/*.rs
+        - /src/commands/**/*test*.rs
     pattern: $ERR::from_external_message($X.to_string())
 
   - id: browsey.commands.no-map-err-to-string-seam
@@ -20,11 +20,11 @@ rules:
       - rust
     paths:
       include:
-        - src/commands/**/*.rs
+        - /src/commands/**/*.rs
       exclude:
-        - src/commands/**/tests.rs
-        - src/commands/**/tests/**/*.rs
-        - src/commands/**/*test*.rs
+        - /src/commands/**/tests.rs
+        - /src/commands/**/tests/**/*.rs
+        - /src/commands/**/*test*.rs
     pattern-either:
       - pattern: $RES.map_err(|$E| $ERR::from_external_message($E.to_string()))
       - pattern: $RES.map_err(|$E| $ERR::new($CODE, $E.to_string()))
@@ -36,11 +36,11 @@ rules:
       - rust
     paths:
       include:
-        - src/commands/**/*.rs
+        - /src/commands/**/*.rs
       exclude:
-        - src/commands/**/tests.rs
-        - src/commands/**/tests/**/*.rs
-        - src/commands/**/*test*.rs
+        - /src/commands/**/tests.rs
+        - /src/commands/**/tests/**/*.rs
+        - /src/commands/**/*test*.rs
     pattern: |
       impl From<$T> for String {
         ...
