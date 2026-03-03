@@ -761,6 +761,21 @@ capabilities/default.json`,
     summary: 'Curated highlights from recent versions.',
     sections: [
       {
+        id: 'unreleased',
+        title: 'Unreleased (post-v0.4.5)',
+        bullets: [
+          'Cloud delete fallback now fails closed when deletion cannot be verified: if entry type is unknown and both file-delete and dir-delete report not_found, Browsey surfaces an explicit error instead of silent success',
+          'Cloud delete policy resolution now fails closed when provider policy lookup cannot be resolved, with regression tests for that path',
+          'Provider-specific cloud delete flags are stricter for ghost/trash conflicts: OneDrive uses --onedrive-hard-delete and Google Drive uses --drive-use-trash=false',
+          'Cloud mkdir consistency was hardened with CLI lsjson --stat probing and destination_exists retry/backoff only when the probe confirms the target is absent',
+          'Fake-rclone parallel test stability was improved by handling transient ETXTBSY (Text file busy) during process spawn',
+          'Transfer/statusbar/entry-metadata error flows were further migrated from string-roundtrip handling to typed error mappings',
+          'Remaining advisory seam patterns were reduced by removing legacy impl From<...> for String conversions in metadata/watcher-related paths',
+          'Rust quality checks now run Semgrep typed-error rules in dual mode: advisory for src/** and blocking for commands-first scope (src/commands/**)',
+          'Backend hardening guard coverage was expanded and tuned for fewer false positives, with explicit exception policy documentation',
+        ],
+      },
+      {
         id: 'v045',
         title: 'v0.4.5 (2026-02-26)',
         bullets: [

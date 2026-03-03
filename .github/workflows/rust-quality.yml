@@ -57,11 +57,11 @@ jobs:
       - name: Install Semgrep
         run: python3 -m pip install --upgrade semgrep
 
-      - name: Semgrep Typed-Error Seams (advisory)
+      - name: "Semgrep Typed-Error Seams (advisory)"
         continue-on-error: true
         run: semgrep --config .semgrep/typed-errors.yml src
 
-      - name: Semgrep Typed-Error Seams (blocking: commands-first)
+      - name: "Semgrep Typed-Error Seams (blocking: commands-first)"
         run: semgrep --config .semgrep/typed-errors-blocking.yml src/commands
 
       - name: Backend Error Hardening Guard

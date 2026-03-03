@@ -19,6 +19,18 @@
 - Scrolling and dropdown behavior:
   - Wheel-scrolling behavior is now consistent across explorer list/grid views and modals.
   - Shared combobox dropdowns now choose upward/downward opening dynamically based on available space, fixing bottom-of-modal clipping issues such as the `Log level` picker.
+- Cloud delete/mkdir consistency hardening:
+  - Cloud delete fallback behavior now fails closed when deletion cannot be verified: if type is unknown and both file-delete and dir-delete return `not_found`, the user now gets an explicit error instead of silent success.
+  - Cloud delete policy lookup now fails closed when provider policy cannot be resolved, with regression coverage for the policy-lookup path.
+  - Provider-specific delete policy is now stricter for common ghost/trash conflicts: OneDrive uses `--onedrive-hard-delete`, and Google Drive uses `--drive-use-trash=false`.
+  - Cloud `mkdir` consistency was hardened by using CLI `lsjson --stat` probing and destination-exists retry/backoff only when the probe confirms the target is absent.
+  - Fake-rclone parallel test reliability was improved by handling transient `ETXTBSY` (`Text file busy`) during process spawn.
+- Backend typed-error hardening and CI quality gates:
+  - Transfer/statusbar/entry-metadata error paths were further migrated from string roundtrips to typed error mappings.
+  - Legacy `impl From<...> for String` seams were removed in remaining advisory-hit areas (`metadata`, `watcher`), reducing accidental code-loss in error propagation.
+  - Rust quality workflow now runs Semgrep typed-error checks with dual mode: advisory over `src/**` and blocking for commands-first scope (`src/commands/**`).
+  - Backend hardening guard and backend test scripts were expanded to cover more backend modules and tuned to reduce false positives.
+  - Hardening rollout docs were finalized and archived (`docs/todo-archive/`), with English-normalized checklist content and explicit exception policy docs.
 
 ## v0.4.5 — 2026-02-26
 - Added rclone-backed cloud file support (Linux-first) with direct `rclone://...` paths and Network-view discovery for supported remotes (OneDrive primary target in v1, plus Google Drive/Nextcloud provider groundwork).
