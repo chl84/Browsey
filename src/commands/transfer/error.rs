@@ -169,6 +169,26 @@ impl From<crate::commands::cloud::CloudCommandError> for TransferError {
     }
 }
 
+impl From<crate::fs_utils::FsUtilsError> for TransferError {
+    fn from(error: crate::fs_utils::FsUtilsError) -> Self {
+        let code = match error.code() {
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath
+            | crate::fs_utils::FsUtilsErrorCode::RootForbidden => TransferErrorCode::InvalidPath,
+            crate::fs_utils::FsUtilsErrorCode::NotFound => TransferErrorCode::NotFound,
+            crate::fs_utils::FsUtilsErrorCode::PermissionDenied
+            | crate::fs_utils::FsUtilsErrorCode::ReadOnlyFilesystem => {
+                TransferErrorCode::PermissionDenied
+            }
+            crate::fs_utils::FsUtilsErrorCode::SymlinkUnsupported => {
+                TransferErrorCode::SymlinkUnsupported
+            }
+            crate::fs_utils::FsUtilsErrorCode::CanonicalizeFailed
+            | crate::fs_utils::FsUtilsErrorCode::MetadataReadFailed => TransferErrorCode::IoError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub(super) type TransferResult<T> = Result<T, TransferError>;
 
 pub(super) fn map_api_result<T>(result: TransferResult<T>) -> ApiResult<T> {

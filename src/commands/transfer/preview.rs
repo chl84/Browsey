@@ -1,4 +1,6 @@
-use super::error::{transfer_err, transfer_err_code as api_err, TransferErrorCode, TransferResult};
+use super::error::{
+    transfer_err, transfer_err_code as api_err, TransferError, TransferErrorCode, TransferResult,
+};
 use super::logging::log_mixed_preview_result;
 use super::route::{is_cloud_path, local_leaf_name, mixed_route_hint};
 use super::MixedTransferConflictInfo;
@@ -67,10 +69,7 @@ async fn preview_local_to_cloud_conflicts(
 
     let local_sources = sources
         .into_iter()
-        .map(|raw| {
-            sanitize_path_follow(&raw, true)
-                .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))
-        })
+        .map(|raw| sanitize_path_follow(&raw, true).map_err(TransferError::from))
         .collect::<TransferResult<Vec<PathBuf>>>()?;
 
     let provider = cloud::cloud_provider_kind_for_remote(dest.remote());
@@ -120,8 +119,7 @@ fn preview_cloud_to_local_conflicts(
     sources: Vec<String>,
     dest_dir: String,
 ) -> TransferResult<Vec<MixedTransferConflictInfo>> {
-    let dest = sanitize_path_follow(&dest_dir, false)
-        .map_err(|e| transfer_err(TransferErrorCode::InvalidPath, e.to_string()))?;
+    let dest = sanitize_path_follow(&dest_dir, false).map_err(TransferError::from)?;
     let cloud_sources = sources
         .into_iter()
         .map(|raw| {
