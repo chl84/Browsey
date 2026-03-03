@@ -1,6 +1,6 @@
 use crate::errors::{
     api_error::ApiResult,
-    domain::{self, classify_message_by_patterns, DomainError, ErrorCode},
+    domain::{self, DomainError, ErrorCode},
 };
 use std::fmt;
 
@@ -34,16 +34,6 @@ impl StatusbarError {
             message: message.into(),
         }
     }
-
-    pub fn from_external_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        let code = classify_message_by_patterns(
-            &message,
-            STATUSBAR_CLASSIFICATION_RULES,
-            StatusbarErrorCode::UnknownError,
-        );
-        Self::new(code, message)
-    }
 }
 
 impl fmt::Display for StatusbarError {
@@ -64,19 +54,34 @@ impl DomainError for StatusbarError {
     }
 }
 
+impl From<crate::tasks::TaskError> for StatusbarError {
+    fn from(error: crate::tasks::TaskError) -> Self {
+        let code = match error.code() {
+            crate::tasks::TaskErrorCode::RegistryLockFailed => {
+                StatusbarErrorCode::CancelRegistryFailed
+            }
+            crate::tasks::TaskErrorCode::TaskNotFound => StatusbarErrorCode::UnknownError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
 pub type StatusbarResult<T> = Result<T, StatusbarError>;
 
 pub fn map_api_result<T>(result: StatusbarResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
 
-const STATUSBAR_CLASSIFICATION_RULES: &[(StatusbarErrorCode, &[&str])] = &[
-    (
-        StatusbarErrorCode::CancelRegistryFailed,
-        &["failed to lock cancel registry"],
-    ),
-    (
-        StatusbarErrorCode::TaskFailed,
-        &["failed to compute directory sizes"],
-    ),
-];
+#[cfg(test)]
+mod tests {
+    use super::StatusbarError;
+    use crate::errors::domain::DomainError;
+    use crate::tasks::{TaskError, TaskErrorCode};
+
+    #[test]
+    fn maps_task_registry_lock_failed_to_cancel_registry_failed() {
+        let task_error = TaskError::new(TaskErrorCode::RegistryLockFailed, "lock failed");
+        let error = StatusbarError::from(task_error);
+        assert_eq!(error.code_str(), "cancel_registry_failed");
+    }
+}
