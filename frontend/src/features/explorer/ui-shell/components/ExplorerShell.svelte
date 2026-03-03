@@ -259,6 +259,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     () => {}
   let onSetOwnership: (owner: string, group: string) => void | Promise<void> = () => {}
   let onToggleHidden: (next: boolean) => void = () => {}
+  let onCopyParentFolder: () => void | Promise<void> = () => {}
   let onLoadPropertiesExtraMetadata: () => void = () => {}
   let onCloseProperties: () => void = () => {}
 
@@ -461,6 +462,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     onTogglePermissionsAccess: typeof onTogglePermissionsAccess
     onSetOwnership: typeof onSetOwnership
     onToggleHidden: typeof onToggleHidden
+    onCopyParentFolder: typeof onCopyParentFolder
     onLoadPropertiesExtraMetadata: typeof onLoadPropertiesExtraMetadata
     onCloseProperties: typeof onCloseProperties
     bookmarkModalOpen: typeof bookmarkModalOpen
@@ -671,6 +673,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     onTogglePermissionsAccess,
     onSetOwnership,
     onToggleHidden,
+    onCopyParentFolder,
     onLoadPropertiesExtraMetadata,
     onCloseProperties,
     bookmarkModalOpen,
@@ -965,6 +968,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   onToggleAccess={onTogglePermissionsAccess}
   onSetOwnership={onSetOwnership}
   onToggleHidden={onToggleHidden}
+  onCopyParentFolder={onCopyParentFolder}
   onActivateExtra={onLoadPropertiesExtraMetadata}
   {formatSize}
   onClose={onCloseProperties}

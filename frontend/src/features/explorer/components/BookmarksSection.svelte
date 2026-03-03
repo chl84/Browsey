@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
+  import { slide } from 'svelte/transition'
   import { iconPath } from '../utils'
   import TextField from '../../../shared/ui/TextField.svelte'
 
@@ -54,7 +55,7 @@
   </div>
 
   {#if showFilter}
-    <div class="filter-wrap">
+    <div class="filter-wrap" transition:slide={{ duration: 160 }}>
       <TextField
         type="search"
         variant="sidebar"

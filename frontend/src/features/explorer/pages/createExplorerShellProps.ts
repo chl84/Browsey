@@ -331,6 +331,7 @@ export const createExplorerShellProps = (p: Params) => ({
     ) => p.propertiesModal.toggleAccess(scope, key, next),
     onSetOwnership: (owner: string, group: string) => p.propertiesModal.setOwnership(owner, group),
     onToggleHidden: (next: boolean) => p.propertiesModal.toggleHidden(next),
+    onCopyParentFolder: () => p.propertiesModal.copyParentFolder(),
     onLoadPropertiesExtraMetadata: () => p.propertiesModal.loadExtraIfNeeded(),
     onCloseProperties: p.propertiesModal.close,
     bookmarkModalOpen: p.bookmarkModalOpen,
