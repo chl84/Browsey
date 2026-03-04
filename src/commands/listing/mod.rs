@@ -9,7 +9,10 @@ use crate::{
     },
     errors::api_error::ApiResult,
     fs_utils::{check_no_symlink_components, debug_log, sanitize_path_follow},
-    icons::icon_ids::{FILE, GENERIC_FOLDER, SHORTCUT},
+    icons::{
+        icon_id_for_virtual_entry,
+        icon_ids::{FILE, GENERIC_FOLDER, SHORTCUT},
+    },
     sorting::{sort_entries, SortSpec},
     watcher::{self, WatchState},
 };
@@ -447,7 +450,7 @@ fn fs_entry_from_cloud_entry(entry: BrowseyCloudEntry) -> FsEntry {
         modified: entry.modified,
         original_path: None,
         trash_id: None,
-        icon_id: if is_dir { GENERIC_FOLDER } else { FILE },
+        icon_id: icon_id_for_virtual_entry(&entry.name, is_dir),
         starred: false,
         hidden: entry.name.starts_with('.'),
         network: true,
@@ -844,7 +847,13 @@ fn watch_dir_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::{bucket_modified, bucket_name, bucket_size};
+    use super::{bucket_modified, bucket_name, bucket_size, fs_entry_from_cloud_entry};
+    use crate::{
+        commands::cloud::types::{CloudCapabilities, CloudEntry, CloudEntryKind},
+        icons::icon_ids::{
+            COMPRESSED, FILE, GENERIC_FOLDER, PDF_FILE, PICTURES_FOLDER, PICTURE_FILE,
+        },
+    };
     use chrono::NaiveDateTime;
 
     fn parse_dt(value: &str) -> NaiveDateTime {
@@ -910,5 +919,48 @@ mod tests {
         assert_eq!(bucket_name("zeta").0, "name:s-z");
         assert_eq!(bucket_name("7zip").0, "name:0-9");
         assert_eq!(bucket_name("_tmp").0, "name:other");
+    }
+
+    fn cloud_entry(name: &str, kind: CloudEntryKind) -> CloudEntry {
+        let path = match kind {
+            CloudEntryKind::Dir => format!("rclone://work/docs/{name}"),
+            CloudEntryKind::File => format!("rclone://work/docs/{name}"),
+        };
+        CloudEntry {
+            name: name.to_string(),
+            path,
+            kind,
+            size: Some(123),
+            modified: Some("2026-03-04 10:00".to_string()),
+            capabilities: CloudCapabilities::v1_core_rw(),
+        }
+    }
+
+    #[test]
+    fn cloud_file_icons_follow_standard_mapping() {
+        let pdf = fs_entry_from_cloud_entry(cloud_entry("report.pdf", CloudEntryKind::File));
+        assert_eq!(pdf.icon_id, PDF_FILE);
+
+        let image = fs_entry_from_cloud_entry(cloud_entry("photo.jpg", CloudEntryKind::File));
+        assert_eq!(image.icon_id, PICTURE_FILE);
+
+        let archive =
+            fs_entry_from_cloud_entry(cloud_entry("archive.tar.gz", CloudEntryKind::File));
+        assert_eq!(archive.icon_id, COMPRESSED);
+
+        let unknown = fs_entry_from_cloud_entry(cloud_entry("README", CloudEntryKind::File));
+        assert_eq!(unknown.icon_id, FILE);
+    }
+
+    #[test]
+    fn cloud_directory_icons_follow_named_folder_mapping() {
+        let pictures = fs_entry_from_cloud_entry(cloud_entry("Pictures", CloudEntryKind::Dir));
+        assert_eq!(pictures.icon_id, PICTURES_FOLDER);
+
+        let unknown = fs_entry_from_cloud_entry(cloud_entry("random-folder", CloudEntryKind::Dir));
+        assert_eq!(unknown.icon_id, GENERIC_FOLDER);
+
+        let dotted = fs_entry_from_cloud_entry(cloud_entry("foo.bar", CloudEntryKind::Dir));
+        assert_eq!(dotted.icon_id, GENERIC_FOLDER);
     }
 }

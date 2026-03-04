@@ -251,4 +251,20 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].path, "smb://nas.local/share/");
     }
+
+    #[test]
+    fn network_and_cloud_root_icons_remain_dedicated() {
+        let net_entry = to_network_entry(&mount("NAS", "smb://nas.local/share", "smb"));
+        assert_eq!(net_entry.icon_id, CLOUD_ICON_ID);
+
+        let remote = CloudRemote {
+            id: "work".to_string(),
+            label: "Work".to_string(),
+            provider: cloud::types::CloudProviderKind::Onedrive,
+            root_path: "rclone://work".to_string(),
+            capabilities: cloud::types::CloudCapabilities::v1_core_rw(),
+        };
+        let remote_entry = to_cloud_network_entry(&remote);
+        assert_eq!(remote_entry.icon_id, NETWORK_ICON_ID);
+    }
 }
