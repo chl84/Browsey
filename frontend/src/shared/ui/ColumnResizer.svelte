@@ -2,7 +2,12 @@
   export let onStart: (event: PointerEvent) => void = () => {}
 </script>
 
-<span class="resizer column-resizer" on:pointerdown={onStart}></span>
+<span
+  class="resizer column-resizer"
+  role="separator"
+  aria-orientation="vertical"
+  on:pointerdown={onStart}
+></span>
 
 <style>
   .resizer {

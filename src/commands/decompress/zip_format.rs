@@ -203,3 +203,89 @@ pub(super) fn zip_uncompressed_total(path: &Path) -> DecompressResult<u64> {
     }
     Ok(total)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_zip, single_root_in_zip, zip_uncompressed_total};
+    use crate::commands::decompress::util::{CreatedPaths, ExtractBudget, SkipStats};
+    use std::{
+        fs::{self, File},
+        io::Write,
+        path::{Path, PathBuf},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+    use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        let unique = format!(
+            "browsey-zip-format-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&path).expect("create temp dir");
+        path
+    }
+
+    fn write_zip64_stored_archive(path: &Path, entry_name: &str, bytes: &[u8]) {
+        let file = File::create(path).expect("create zip file");
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default()
+            .compression_method(CompressionMethod::Stored)
+            .large_file(true);
+        zip.start_file(entry_name, options)
+            .expect("start zip64/stored entry");
+        zip.write_all(bytes).expect("write zip entry bytes");
+        zip.finish().expect("finish zip");
+    }
+
+    #[test]
+    fn zip64_stored_archive_is_readable_and_extractable() {
+        let root = unique_temp_dir("zip64-stored");
+        let zip_path = root.join("zip64-stored.zip");
+        let dest_dir = root.join("out");
+        fs::create_dir_all(&dest_dir).expect("create destination");
+
+        let payload = b"zip64-stored-payload";
+        write_zip64_stored_archive(&zip_path, "folder/file.txt", payload);
+
+        let mut archive =
+            ZipArchive::new(File::open(&zip_path).expect("open zip")).expect("read zip");
+        let entry = archive.by_index(0).expect("entry 0");
+        assert_eq!(entry.compression(), CompressionMethod::Stored);
+
+        assert_eq!(
+            single_root_in_zip(&zip_path).expect("single root"),
+            Some(PathBuf::from("folder"))
+        );
+        assert_eq!(
+            zip_uncompressed_total(&zip_path).expect("uncompressed total"),
+            payload.len() as u64
+        );
+
+        let stats = SkipStats::default();
+        let mut created = CreatedPaths::default();
+        let budget = ExtractBudget::new(10_000_000, 1000);
+        extract_zip(
+            &zip_path,
+            &dest_dir,
+            None,
+            &stats,
+            None,
+            &mut created,
+            None,
+            &budget,
+        )
+        .expect("extract zip64/stored archive");
+
+        let extracted =
+            fs::read(dest_dir.join("folder").join("file.txt")).expect("read extracted payload");
+        assert_eq!(extracted, payload);
+
+        created.disarm();
+        let _ = fs::remove_dir_all(root);
+    }
+}
