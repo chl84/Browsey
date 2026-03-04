@@ -59,3 +59,8 @@ opt-level = 3
 
 [profile.dev.package.image-webp]
 opt-level = 3
+
+[profile.dev.package.tao]
+# tao emits noisy debug-only keyboard conversion logs on Linux for media/unknown keys.
+# Disable tao debug assertions in dev profile to keep terminal output usable.
+debug-assertions = false
