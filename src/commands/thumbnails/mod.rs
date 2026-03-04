@@ -19,6 +19,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Seek};
 use std::sync::mpsc;
+use std::sync::RwLock;
 use std::time::Duration;
 use tauri::AppHandle;
 use tauri::Manager;
@@ -32,6 +33,10 @@ mod thumbnails_video;
 use thumbnails_video::render_video_thumbnail;
 mod error;
 
+use crate::commands::cloud::path::CloudPath;
+use crate::commands::cloud::provider::CloudProvider;
+use crate::commands::cloud::types::CloudEntryKind;
+use crate::commands::cloud::{configured_rclone_provider, materialize_cloud_file_for_local_use};
 use crate::db;
 use crate::errors::api_error::ApiResult;
 use crate::errors::domain::ErrorCode;
@@ -58,34 +63,128 @@ const CACHE_MAX_MB: u64 = 1000;
 const MAX_DECODE_BYTES: u64 = (MAX_SOURCE_DIM as u64) * (MAX_SOURCE_DIM as u64) * 4;
 const JPEG_SCALED_DECODE_TARGET_MULTIPLIER: u32 = 4;
 
-fn cache_max_bytes() -> u64 {
+#[derive(Clone, Debug)]
+struct ThumbnailRuntimeSettings {
+    thumb_cache_mb: u64,
+    video_thumbs: bool,
+    ffmpeg_path: Option<PathBuf>,
+    cloud_thumbs: bool,
+}
+
+impl Default for ThumbnailRuntimeSettings {
+    fn default() -> Self {
+        Self {
+            thumb_cache_mb: CACHE_DEFAULT_MB,
+            video_thumbs: true,
+            ffmpeg_path: None,
+            cloud_thumbs: false,
+        }
+    }
+}
+
+impl ThumbnailRuntimeSettings {
+    fn cache_max_bytes(&self) -> u64 {
+        self.thumb_cache_mb * 1024 * 1024
+    }
+}
+
+static RUNTIME_SETTINGS: Lazy<RwLock<Option<ThumbnailRuntimeSettings>>> =
+    Lazy::new(|| RwLock::new(None));
+
+pub(crate) fn invalidate_runtime_settings_cache() {
+    let mut guard = RUNTIME_SETTINGS
+        .write()
+        .expect("thumbnail runtime settings cache poisoned");
+    *guard = None;
+}
+
+fn runtime_settings() -> ThumbnailRuntimeSettings {
+    {
+        let guard = RUNTIME_SETTINGS
+            .read()
+            .expect("thumbnail runtime settings cache poisoned");
+        if let Some(settings) = guard.as_ref() {
+            return settings.clone();
+        }
+    }
+
+    let loaded = load_runtime_settings_from_db();
+    let mut guard = RUNTIME_SETTINGS
+        .write()
+        .expect("thumbnail runtime settings cache poisoned");
+    *guard = Some(loaded.clone());
+    loaded
+}
+
+fn load_runtime_settings_from_db() -> ThumbnailRuntimeSettings {
+    let mut settings = ThumbnailRuntimeSettings::default();
     match db::open() {
-        Ok(conn) => match db::get_setting_string(&conn, "thumbCacheMb") {
-            Ok(Some(s)) => {
-                if let Ok(n) = s.parse::<u64>() {
-                    if (CACHE_MIN_MB..=CACHE_MAX_MB).contains(&n) {
-                        return n * 1024 * 1024;
+        Ok(conn) => {
+            match db::get_setting_string(&conn, "thumbCacheMb") {
+                Ok(Some(value)) => {
+                    if let Ok(parsed) = value.parse::<u64>() {
+                        if (CACHE_MIN_MB..=CACHE_MAX_MB).contains(&parsed) {
+                            settings.thumb_cache_mb = parsed;
+                        }
                     }
                 }
+                Ok(None) => {}
+                Err(error) => {
+                    debug_log(&format!(
+                        "thumbnail cache size setting unavailable (code={}): {}",
+                        error.code().as_code_str(),
+                        error
+                    ));
+                }
             }
-            Ok(None) => {}
-            Err(error) => {
-                debug_log(&format!(
-                    "thumbnail cache size setting unavailable (code={}): {}",
-                    error.code().as_code_str(),
-                    error
-                ));
+            match db::get_setting_bool(&conn, "videoThumbs") {
+                Ok(Some(value)) => settings.video_thumbs = value,
+                Ok(None) => {}
+                Err(error) => {
+                    debug_log(&format!(
+                        "videoThumbs setting unavailable (code={}): {}",
+                        error.code().as_code_str(),
+                        error
+                    ));
+                }
             }
-        },
+            match db::get_setting_string(&conn, "ffmpegPath") {
+                Ok(Some(path)) => {
+                    let trimmed = path.trim();
+                    if !trimmed.is_empty() {
+                        settings.ffmpeg_path = Some(PathBuf::from(trimmed));
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    debug_log(&format!(
+                        "ffmpegPath setting unavailable for thumbnails (code={}): {}",
+                        error.code().as_code_str(),
+                        error
+                    ));
+                }
+            }
+            match db::get_setting_bool(&conn, "cloudThumbs") {
+                Ok(Some(value)) => settings.cloud_thumbs = value,
+                Ok(None) => {}
+                Err(error) => {
+                    debug_log(&format!(
+                        "cloudThumbs setting unavailable for thumbnails (code={}): {}",
+                        error.code().as_code_str(),
+                        error
+                    ));
+                }
+            }
+        }
         Err(error) => {
             debug_log(&format!(
-                "thumbnail cache size DB unavailable (code={}): {}",
+                "thumbnail runtime settings DB unavailable (code={}): {}",
                 error.code().as_code_str(),
                 error
             ));
         }
     }
-    CACHE_DEFAULT_MB * 1024 * 1024
+    settings
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -191,68 +290,14 @@ async fn get_thumbnail_impl(
     let max_dim = max_dim
         .unwrap_or(MAX_DIM_DEFAULT)
         .clamp(MIN_DIM_HARD_LIMIT, MAX_DIM_HARD_LIMIT);
+    let settings = runtime_settings();
 
-    let target = sanitize_input_path(&path)?;
-    // Quick permission check (fail fast on unreadable files)
-    if let Err(e) = fs::File::open(&target) {
-        return Err(ThumbnailError::from_external_message(format!(
-            "Cannot read file: {e}"
-        )));
-    }
-    let meta = fs::metadata(&target).map_err(|e| {
-        ThumbnailError::from_external_message(format!("Failed to read metadata: {e}"))
-    })?;
-    if !meta.is_file() {
-        return Err(ThumbnailError::from_external_message(
-            "Target is not a file",
-        ));
-    }
-    let kind = thumb_kind(&target);
-    let mut ffmpeg_override: Option<PathBuf> = None;
-    if matches!(kind, ThumbKind::Video) {
-        match db::open() {
-            Ok(conn) => {
-                match db::get_setting_bool(&conn, "videoThumbs") {
-                    Ok(Some(false)) => {
-                        return Err(ThumbnailError::from_external_message(
-                            "Video thumbnails disabled",
-                        ));
-                    }
-                    Ok(Some(true) | None) => {}
-                    Err(error) => {
-                        debug_log(&format!(
-                            "videoThumbs setting unavailable (code={}): {}",
-                            error.code().as_code_str(),
-                            error
-                        ));
-                    }
-                }
-                match db::get_setting_string(&conn, "ffmpegPath") {
-                    Ok(Some(path)) => {
-                        let trimmed = path.trim();
-                        if !trimmed.is_empty() {
-                            ffmpeg_override = Some(PathBuf::from(trimmed));
-                        }
-                    }
-                    Ok(None) => {}
-                    Err(error) => {
-                        debug_log(&format!(
-                            "ffmpegPath setting unavailable for thumbnails (code={}): {}",
-                            error.code().as_code_str(),
-                            error
-                        ));
-                    }
-                }
-            }
-            Err(error) => {
-                debug_log(&format!(
-                    "thumbnail video settings DB unavailable (code={}): {}",
-                    error.code().as_code_str(),
-                    error
-                ));
-            }
-        }
-    }
+    let (target, meta, kind, ffmpeg_override) = if path.starts_with("rclone://") {
+        resolve_cloud_thumbnail_source(&app_handle, &path, &settings).await?
+    } else {
+        resolve_local_thumbnail_source(&path, &settings)?
+    };
+
     let size_limit = match kind {
         ThumbKind::Video => MAX_FILE_BYTES_VIDEO,
         _ => MAX_FILE_BYTES,
@@ -337,7 +382,7 @@ async fn get_thumbnail_impl(
             let mut counter = TRIM_COUNTER.lock().expect("trim counter poisoned");
             *counter = counter.wrapping_add(1);
             if (*counter).is_multiple_of(100) {
-                let max_bytes = cache_max_bytes();
+                let max_bytes = settings.cache_max_bytes();
                 trim_cache(&cache_dir, max_bytes, CACHE_MAX_FILES);
             }
             Ok(r)
@@ -349,6 +394,160 @@ async fn get_thumbnail_impl(
     };
 
     res
+}
+
+fn resolve_local_thumbnail_source(
+    path: &str,
+    settings: &ThumbnailRuntimeSettings,
+) -> ThumbnailResult<(PathBuf, fs::Metadata, ThumbKind, Option<PathBuf>)> {
+    let target = sanitize_input_path(path)?;
+    if let Err(error) = fs::File::open(&target) {
+        return Err(ThumbnailError::from_external_message(format!(
+            "Cannot read file: {error}"
+        )));
+    }
+    let meta = fs::metadata(&target).map_err(|error| {
+        ThumbnailError::from_external_message(format!("Failed to read metadata: {error}"))
+    })?;
+    if !meta.is_file() {
+        return Err(ThumbnailError::from_external_message(
+            "Target is not a file",
+        ));
+    }
+    let kind = thumb_kind(&target);
+    let ffmpeg_override = if matches!(kind, ThumbKind::Video) {
+        if !settings.video_thumbs {
+            return Err(ThumbnailError::from_external_message(
+                "Video thumbnails disabled",
+            ));
+        }
+        settings.ffmpeg_path.clone()
+    } else {
+        None
+    };
+    Ok((target, meta, kind, ffmpeg_override))
+}
+
+async fn resolve_cloud_thumbnail_source(
+    app_handle: &AppHandle,
+    raw_path: &str,
+    settings: &ThumbnailRuntimeSettings,
+) -> ThumbnailResult<(PathBuf, fs::Metadata, ThumbKind, Option<PathBuf>)> {
+    let cloud_path = CloudPath::parse(raw_path).map_err(|error| {
+        ThumbnailError::from_external_message(format!("Invalid cloud path: {error}"))
+    })?;
+    let leaf = cloud_path.leaf_name().map_err(|error| {
+        ThumbnailError::from_external_message(format!("Invalid cloud path: {error}"))
+    })?;
+    let ext = Path::new(leaf)
+        .extension()
+        .and_then(|part| part.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    validate_cloud_thumb_extension(settings, &ext)?;
+
+    let provider = configured_rclone_provider().map_err(|error| {
+        ThumbnailError::from_external_message(format!(
+            "Cloud thumbnail provider unavailable: {error}"
+        ))
+    })?;
+    let entry = provider
+        .stat_path(&cloud_path)
+        .map_err(|error| {
+            ThumbnailError::from_external_message(format!("Cloud thumbnail stat failed: {error}"))
+        })?
+        .ok_or_else(|| {
+            ThumbnailError::from_external_message(format!("Cloud file was not found: {cloud_path}"))
+        })?;
+    if !matches!(entry.kind, CloudEntryKind::File) {
+        return Err(ThumbnailError::from_external_message(
+            "Target is not a file",
+        ));
+    }
+    validate_cloud_thumb_size(entry.size)?;
+
+    let cloud_path_for_task = cloud_path.clone();
+    let app_for_task = app_handle.clone();
+    let target = tauri::async_runtime::spawn_blocking(move || {
+        materialize_cloud_file_for_local_use(&cloud_path_for_task, &app_for_task, None, None)
+    })
+    .await
+    .map_err(|error| {
+        ThumbnailError::from_external_message(format!(
+            "Cloud thumbnail materialization task cancelled: {error}"
+        ))
+    })?
+    .map_err(|error| {
+        ThumbnailError::from_external_message(format!(
+            "Cloud thumbnail materialization failed: {error}"
+        ))
+    })?;
+    let meta = fs::metadata(&target).map_err(|error| {
+        ThumbnailError::from_external_message(format!(
+            "Failed to read cloud thumbnail metadata: {error}"
+        ))
+    })?;
+    if !meta.is_file() {
+        return Err(ThumbnailError::from_external_message(
+            "Target is not a file",
+        ));
+    }
+    let kind = thumb_kind(&target);
+    if matches!(kind, ThumbKind::Video) {
+        return Err(ThumbnailError::from_external_message(
+            "Unsupported cloud thumbnail extension: video",
+        ));
+    }
+    Ok((target, meta, kind, None))
+}
+
+fn is_cloud_thumb_extension_allowed(ext: &str) -> bool {
+    matches!(
+        ext,
+        "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "bmp"
+            | "webp"
+            | "tif"
+            | "tiff"
+            | "avif"
+            | "heic"
+            | "heif"
+            | "svg"
+            | "pdf"
+    )
+}
+
+fn validate_cloud_thumb_extension(
+    settings: &ThumbnailRuntimeSettings,
+    ext: &str,
+) -> ThumbnailResult<()> {
+    if !settings.cloud_thumbs {
+        return Err(ThumbnailError::from_external_message(
+            "Cloud thumbnails disabled",
+        ));
+    }
+    if ext.is_empty() || !is_cloud_thumb_extension_allowed(ext) {
+        return Err(ThumbnailError::from_external_message(format!(
+            "Unsupported cloud thumbnail extension: {ext}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_cloud_thumb_size(size: Option<u64>) -> ThumbnailResult<u64> {
+    let size = size.ok_or_else(|| {
+        ThumbnailError::from_external_message("Cloud thumbnail requires known file size")
+    })?;
+    if size > MAX_FILE_BYTES {
+        return Err(ThumbnailError::from_external_message(format!(
+            "Cloud file too large for thumbnail (>{} MB)",
+            MAX_FILE_BYTES / 1024 / 1024
+        )));
+    }
+    Ok(size)
 }
 
 fn cache_dir() -> ThumbnailResult<PathBuf> {
@@ -923,5 +1122,79 @@ fn thumb_kind(path: &Path) -> ThumbKind {
             ThumbKind::Video
         }
         _ => ThumbKind::Image,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        invalidate_runtime_settings_cache, runtime_settings, validate_cloud_thumb_extension,
+        validate_cloud_thumb_size, ThumbnailRuntimeSettings, MAX_FILE_BYTES, RUNTIME_SETTINGS,
+    };
+    use crate::errors::domain::DomainError;
+
+    #[test]
+    fn runtime_settings_cache_invalidation_clears_cached_snapshot() {
+        {
+            let mut guard = RUNTIME_SETTINGS
+                .write()
+                .expect("thumbnail runtime settings cache poisoned");
+            *guard = Some(ThumbnailRuntimeSettings {
+                thumb_cache_mb: 777,
+                video_thumbs: false,
+                ffmpeg_path: Some("/tmp/ffmpeg-test".into()),
+                cloud_thumbs: true,
+            });
+        }
+
+        let cached = runtime_settings();
+        assert_eq!(cached.thumb_cache_mb, 777);
+        assert!(!cached.video_thumbs);
+        assert!(cached.cloud_thumbs);
+
+        invalidate_runtime_settings_cache();
+        let guard = RUNTIME_SETTINGS
+            .read()
+            .expect("thumbnail runtime settings cache poisoned");
+        assert!(
+            guard.is_none(),
+            "cache should be cleared after invalidation"
+        );
+    }
+
+    #[test]
+    fn cloud_thumb_guard_disabled_returns_invalid_input() {
+        let settings = ThumbnailRuntimeSettings {
+            cloud_thumbs: false,
+            ..ThumbnailRuntimeSettings::default()
+        };
+        let err = validate_cloud_thumb_extension(&settings, "png").expect_err("should fail");
+        assert_eq!(err.code_str(), "invalid_input");
+        assert!(err.to_string().to_lowercase().contains("disabled"));
+    }
+
+    #[test]
+    fn cloud_thumb_guard_unsupported_extension_returns_unsupported_format() {
+        let settings = ThumbnailRuntimeSettings {
+            cloud_thumbs: true,
+            ..ThumbnailRuntimeSettings::default()
+        };
+        let err = validate_cloud_thumb_extension(&settings, "txt").expect_err("should fail");
+        assert_eq!(err.code_str(), "unsupported_format");
+        assert!(err.to_string().to_lowercase().contains("unsupported"));
+    }
+
+    #[test]
+    fn cloud_thumb_guard_unknown_size_returns_invalid_input() {
+        let err = validate_cloud_thumb_size(None).expect_err("should fail");
+        assert_eq!(err.code_str(), "invalid_input");
+        assert!(err.to_string().to_lowercase().contains("known file size"));
+    }
+
+    #[test]
+    fn cloud_thumb_guard_over_limit_returns_invalid_input() {
+        let err = validate_cloud_thumb_size(Some(MAX_FILE_BYTES + 1)).expect_err("should fail");
+        assert_eq!(err.code_str(), "invalid_input");
+        assert!(err.to_string().to_lowercase().contains("too large"));
     }
 }
