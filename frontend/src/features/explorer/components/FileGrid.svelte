@@ -10,6 +10,7 @@
 
   export let currentPath = ''
   export let videoThumbs = true
+  export let cloudThumbs = false
   export let thumbnailsEnabled = true
   export let thumbnailRefreshToken = 0
 
@@ -18,6 +19,7 @@
     maxDim: 96,
     initialGeneration: currentPath,
     allowVideos: videoThumbs && thumbnailsEnabled,
+    allowCloudThumbs: cloudThumbs && thumbnailsEnabled,
   })
   let thumbMap = new Map<string, string>()
   const unsubThumbs = thumbLoader.subscribe((m) => {
@@ -37,9 +39,17 @@
     lastVideoThumbs = videoThumbs
   }
 
+  let lastCloudThumbs = cloudThumbs
+  $: if (cloudThumbs !== lastCloudThumbs) {
+    thumbLoader.setAllowCloudThumbs(cloudThumbs && thumbnailsEnabled)
+    thumbLoader.reset(`${currentPath}-cthumbs-${cloudThumbs ? 'on' : 'off'}`)
+    lastCloudThumbs = cloudThumbs
+  }
+
   let lastThumbnailsEnabled = thumbnailsEnabled
   $: if (thumbnailsEnabled !== lastThumbnailsEnabled) {
     thumbLoader.setAllowVideos(videoThumbs && thumbnailsEnabled)
+    thumbLoader.setAllowCloudThumbs(cloudThumbs && thumbnailsEnabled)
     thumbLoader.reset(`${currentPath}-thumbs-${thumbnailsEnabled ? 'on' : 'off'}`)
     lastThumbnailsEnabled = thumbnailsEnabled
   }

@@ -22,6 +22,7 @@ import {
   loadStartDir,
   loadThumbCacheMb,
   loadVideoThumbs,
+  loadCloudThumbs,
   storeArchiveLevel,
   storeArchiveName,
   storeConfirmDelete,
@@ -43,6 +44,7 @@ import {
   storeStartDir,
   storeThumbCacheMb,
   storeVideoThumbs,
+  storeCloudThumbs,
 } from '../services/settings.service'
 import type { ExplorerStores } from './stores'
 
@@ -62,6 +64,7 @@ type PreferenceSliceDeps = Pick<
   | 'archiveLevel'
   | 'openDestAfterExtract'
   | 'videoThumbs'
+  | 'cloudThumbs'
   | 'hardwareAcceleration'
   | 'ffmpegPath'
   | 'thumbCacheMb'
@@ -97,6 +100,7 @@ export const createPreferenceSlice = (
     archiveLevel,
     openDestAfterExtract,
     videoThumbs,
+    cloudThumbs,
     hardwareAcceleration,
     ffmpegPath,
     thumbCacheMb,
@@ -335,6 +339,17 @@ export const createPreferenceSlice = (
     }
   }
 
+  const loadCloudThumbsPref = async () => {
+    try {
+      const saved = await loadCloudThumbs()
+      if (typeof saved === 'boolean') {
+        cloudThumbs.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load cloudThumbs setting', err)
+    }
+  }
+
   const loadHardwareAccelerationPref = async () => {
     try {
       const saved = await loadHardwareAcceleration()
@@ -408,6 +423,19 @@ export const createPreferenceSlice = (
   const setVideoThumbsPref = (value: boolean) => {
     videoThumbs.set(value)
     void storeVideoThumbs(value)
+  }
+
+  const toggleCloudThumbs = () => {
+    cloudThumbs.update((v) => {
+      const next = !v
+      void storeCloudThumbs(next)
+      return next
+    })
+  }
+
+  const setCloudThumbsPref = (value: boolean) => {
+    cloudThumbs.set(value)
+    void storeCloudThumbs(value)
   }
 
   const setHardwareAccelerationPref = (value: boolean) => {
@@ -550,6 +578,7 @@ export const createPreferenceSlice = (
     loadArchiveLevelPref,
     loadOpenDestAfterExtractPref,
     loadVideoThumbsPref,
+    loadCloudThumbsPref,
     loadHardwareAccelerationPref,
     loadFfmpegPathPref,
     loadThumbCachePref,
@@ -559,6 +588,8 @@ export const createPreferenceSlice = (
     setOpenDestAfterExtractPref,
     toggleVideoThumbs,
     setVideoThumbsPref,
+    toggleCloudThumbs,
+    setCloudThumbsPref,
     setHardwareAccelerationPref,
     setFfmpegPathPref,
     setThumbCachePref,

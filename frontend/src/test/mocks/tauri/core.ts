@@ -234,6 +234,8 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return true as T
     case 'load_video_thumbs':
       return true as T
+    case 'load_cloud_thumbs':
+      return false as T
     case 'load_hardware_acceleration':
       return true as T
     case 'load_ffmpeg_path':

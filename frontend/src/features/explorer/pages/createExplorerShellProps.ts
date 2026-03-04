@@ -91,6 +91,7 @@ type Params = {
   selectionActive: boolean
   selectionRect: any
   videoThumbs: boolean
+  cloudThumbs: boolean
   currentView: string
   thumbnailRefreshToken: number
 
@@ -230,6 +231,7 @@ export const createExplorerShellProps = (p: Params) => ({
     selectionActive: p.selectionActive,
     selectionRect: p.selectionRect,
     videoThumbs: p.videoThumbs,
+    cloudThumbs: p.cloudThumbs,
     thumbnailsEnabled: p.currentView !== 'trash',
     thumbnailRefreshToken: p.thumbnailRefreshToken,
   },

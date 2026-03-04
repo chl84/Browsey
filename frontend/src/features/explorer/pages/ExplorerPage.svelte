@@ -286,6 +286,7 @@
     archiveLevel,
     openDestAfterExtract,
     videoThumbs,
+    cloudThumbs,
     hardwareAcceleration,
     ffmpegPath,
     thumbCacheMb,
@@ -308,6 +309,8 @@
     setOpenDestAfterExtractPref,
     toggleVideoThumbs,
     setVideoThumbsPref,
+    toggleCloudThumbs,
+    setCloudThumbsPref,
     setHardwareAccelerationPref,
     setFfmpegPathPref,
     setThumbCachePref,
@@ -1682,6 +1685,7 @@
     setArchiveLevelPref(defaults.archiveLevel)
     setOpenDestAfterExtractPref(defaults.openDestAfterExtract)
     setVideoThumbsPref(defaults.videoThumbs)
+    setCloudThumbsPref(defaults.cloudThumbs)
     setHardwareAccelerationPref(defaults.hardwareAcceleration)
     setFfmpegPathPref(defaults.ffmpegPath)
     setThumbCachePref(defaults.thumbCacheMb)
@@ -1795,6 +1799,7 @@
     selectionActive: $selectionActive,
     selectionRect: $selectionRect,
     videoThumbs: $videoThumbs,
+    cloudThumbs: $cloudThumbs,
     currentView,
     thumbnailRefreshToken,
     contextMenu: $contextMenu,
@@ -1850,6 +1855,7 @@
     archiveLevel: $archiveLevel,
     openDestAfterExtract: $openDestAfterExtract,
     videoThumbs: $videoThumbs,
+    cloudThumbs: $cloudThumbs,
     hardwareAcceleration: $hardwareAcceleration,
     ffmpegPath: $ffmpegPath,
     thumbCacheMb: $thumbCacheMb,
@@ -1874,6 +1880,7 @@
     onChangeArchiveLevel: setArchiveLevelPref,
     onToggleOpenDestAfterExtract: toggleOpenDestAfterExtract,
     onToggleVideoThumbs: toggleVideoThumbs,
+    onToggleCloudThumbs: toggleCloudThumbs,
     onToggleHardwareAcceleration: setHardwareAccelerationPref,
     onChangeFfmpegPath: setFfmpegPathPref,
     onChangeThumbCacheMb: setThumbCachePref,

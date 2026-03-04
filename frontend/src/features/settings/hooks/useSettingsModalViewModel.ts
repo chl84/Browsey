@@ -47,6 +47,7 @@ type FilterModel = {
   showAfterExtractRow: boolean
   showRarNoteRow: boolean
   showVideoThumbsRow: boolean
+  showCloudThumbsRow: boolean
   showFfmpegPathRow: boolean
   showThumbCacheRow: boolean
   showHardwareAccelerationRow: boolean
@@ -318,6 +319,12 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       'requires ffmpeg',
       settings.videoThumbs ? 'on' : 'off',
     )
+    const cloudThumbsTexts = rowTexts(
+      'cloud thumbs',
+      'enable thumbnails for cloud images, pdf and svg',
+      'network usage',
+      settings.cloudThumbs ? 'on' : 'off',
+    )
     const ffmpegPathTexts = rowTexts('ffmpeg path', settings.ffmpegPath || 'auto-detect if empty', 'ffmpeg')
     const thumbCacheTexts = rowTexts('cache size', 'thumbnail cache size', `${settings.thumbCacheMb} mb`)
     const mountsPollTexts = rowTexts('mounts poll', 'watcher poll', `${settings.mountsPollMs} ms`)
@@ -352,6 +359,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     const showAfterExtractRow = rowMatches(n, afterExtractTexts)
     const showRarNoteRow = rowMatches(n, rarNoteTexts)
     const showVideoThumbsRow = rowMatches(n, videoThumbsTexts)
+    const showCloudThumbsRow = rowMatches(n, cloudThumbsTexts)
     const showFfmpegPathRow = rowMatches(n, ffmpegPathTexts)
     const showThumbCacheRow = rowMatches(n, thumbCacheTexts)
     const showHardwareAccelerationRow = rowMatches(n, hardwareAccelerationTexts)
@@ -374,7 +382,10 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       showSorting: rowMatches(n, [...sortFieldTexts, ...sortDirectionTexts]),
       showAppearance: rowMatches(n, [...densityTexts]),
       showArchives: rowMatches(n, [...archiveNameTexts, ...archiveLevelTexts, ...afterExtractTexts, ...rarNoteTexts]),
-      showThumbnails: rowMatches(n, [...videoThumbsTexts, ...ffmpegPathTexts, ...thumbCacheTexts]),
+      showThumbnails: rowMatches(
+        n,
+        [...videoThumbsTexts, ...cloudThumbsTexts, ...ffmpegPathTexts, ...thumbCacheTexts],
+      ),
       showShortcuts: rowMatches(
         n,
         [
@@ -401,6 +412,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       showAfterExtractRow,
       showRarNoteRow,
       showVideoThumbsRow,
+      showCloudThumbsRow,
       showFfmpegPathRow,
       showThumbCacheRow,
       showHardwareAccelerationRow,

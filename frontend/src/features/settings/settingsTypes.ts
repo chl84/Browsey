@@ -19,6 +19,7 @@ export type Settings = {
   archiveLevel: number
   openDestAfterExtract: boolean
   videoThumbs: boolean
+  cloudThumbs: boolean
   hardwareAcceleration: boolean
   ffmpegPath: string
   thumbCacheMb: number
@@ -44,6 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   archiveLevel: 6,
   openDestAfterExtract: false,
   videoThumbs: true,
+  cloudThumbs: false,
   hardwareAcceleration: false,
   ffmpegPath: '',
   thumbCacheMb: 300,

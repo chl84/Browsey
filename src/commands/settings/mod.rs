@@ -439,6 +439,22 @@ pub fn load_video_thumbs() -> ApiResult<Option<bool>> {
 }
 
 #[tauri::command]
+pub fn store_cloud_thumbs(value: bool) -> ApiResult<()> {
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_bool(&conn, "cloudThumbs", value))
+    })())
+}
+
+#[tauri::command]
+pub fn load_cloud_thumbs() -> ApiResult<Option<bool>> {
+    map_api_result((|| -> SettingsResult<Option<bool>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_bool(&conn, "cloudThumbs"))
+    })())
+}
+
+#[tauri::command]
 pub fn store_hardware_acceleration(value: bool) -> ApiResult<()> {
     map_api_result((|| -> SettingsResult<()> {
         let conn = open_connection()?;

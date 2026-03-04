@@ -16,6 +16,7 @@ type Params = {
   archiveLevel: SettingsModalProps['archiveLevelValue']
   openDestAfterExtract: SettingsModalProps['openDestAfterExtractValue']
   videoThumbs: SettingsModalProps['videoThumbsValue']
+  cloudThumbs: SettingsModalProps['cloudThumbsValue']
   hardwareAcceleration: SettingsModalProps['hardwareAccelerationValue']
   ffmpegPath: SettingsModalProps['ffmpegPathValue']
   thumbCacheMb: SettingsModalProps['thumbCacheMbValue']
@@ -41,6 +42,7 @@ type Params = {
   onChangeArchiveLevel: SettingsModalProps['onChangeArchiveLevel']
   onToggleOpenDestAfterExtract: SettingsModalProps['onToggleOpenDestAfterExtract']
   onToggleVideoThumbs: SettingsModalProps['onToggleVideoThumbs']
+  onToggleCloudThumbs: SettingsModalProps['onToggleCloudThumbs']
   onToggleHardwareAcceleration: SettingsModalProps['onToggleHardwareAcceleration']
   onChangeFfmpegPath: SettingsModalProps['onChangeFfmpegPath']
   onChangeThumbCacheMb: SettingsModalProps['onChangeThumbCacheMb']
@@ -75,6 +77,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   archiveLevelValue: p.archiveLevel,
   openDestAfterExtractValue: p.openDestAfterExtract,
   videoThumbsValue: p.videoThumbs,
+  cloudThumbsValue: p.cloudThumbs,
   hardwareAccelerationValue: p.hardwareAcceleration,
   ffmpegPathValue: p.ffmpegPath,
   thumbCacheMbValue: p.thumbCacheMb,
@@ -99,6 +102,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   onChangeArchiveLevel: p.onChangeArchiveLevel,
   onToggleOpenDestAfterExtract: p.onToggleOpenDestAfterExtract,
   onToggleVideoThumbs: p.onToggleVideoThumbs,
+  onToggleCloudThumbs: p.onToggleCloudThumbs,
   onToggleHardwareAcceleration: p.onToggleHardwareAcceleration,
   onChangeFfmpegPath: p.onChangeFfmpegPath,
   onChangeThumbCacheMb: p.onChangeThumbCacheMb,
