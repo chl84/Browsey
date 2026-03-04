@@ -5,10 +5,10 @@ edition = "2021"
 license = "MIT"
 
 [build-dependencies]
-tauri-build = { version = "2.5.5", features = [] }
+tauri-build = { version = "=2.5.5", features = [] }
 
 [dependencies]
-tauri = { version = "2.10.2", features = ["protocol-asset"] }
+tauri = { version = "=2.10.2", features = ["protocol-asset"] }
 serde = { version = "1.0.228", features = ["derive"] }
 chrono = { version = "0.4.43", default-features = false, features = ["clock"] }
 dirs-next = "2.0.0"
@@ -28,7 +28,7 @@ mime_guess = "2.0.5"
 mime = "0.3"
 shell-words = "1.1.1"
 walkdir = "2.5.0"
-zip = { version = "7.4.0", default-features = false, features = ["deflate"] }
+zip = { version = "8.2.0", default-features = false, features = ["deflate"] }
 tar = "0.4.44"
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 bzip2 = "0.6.1"
