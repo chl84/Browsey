@@ -37,7 +37,7 @@
       "resources/pdfium-linux-x64/lib/libpdfium.so"
     ],
     "resources": [
-      "resources/**",
+      "resources",
       "THIRD_PARTY_NOTICES"
     ]
   }
