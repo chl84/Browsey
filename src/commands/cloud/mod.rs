@@ -30,7 +30,18 @@ pub(crate) use rclone_path::{
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use tracing::warn;
-use types::{CloudConflictInfo, CloudEntry, CloudProviderKind, CloudRemote, CloudRootSelection};
+use types::{
+    CloudConflictInfo, CloudEntry, CloudEntryKind, CloudProviderKind, CloudRemote,
+    CloudRootSelection,
+};
+
+#[derive(Debug, Clone)]
+pub(crate) struct CloudMaterializeSnapshot {
+    pub name: String,
+    pub size: Option<u64>,
+    pub modified: Option<String>,
+    pub kind: CloudEntryKind,
+}
 
 pub(crate) fn cloud_provider_kind_for_remote(remote_id: &str) -> Option<CloudProviderKind> {
     list_cloud_remotes_cached(false)
@@ -58,13 +69,20 @@ pub(crate) fn invalidate_cloud_caches_for_backend_change() {
     }
 }
 
-pub(crate) fn materialize_cloud_file_for_local_use(
+pub(crate) fn materialize_cloud_file_for_local_use_with_snapshot(
     path: &CloudPath,
+    snapshot: &CloudMaterializeSnapshot,
     app: &tauri::AppHandle,
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> CloudCommandResult<PathBuf> {
-    open::materialize_cloud_file_for_local_use(path, app, progress_event, cancel)
+    open::materialize_cloud_file_for_local_use_with_snapshot(
+        path,
+        snapshot,
+        app,
+        progress_event,
+        cancel,
+    )
 }
 
 #[cfg(test)]

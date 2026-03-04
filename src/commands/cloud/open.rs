@@ -7,6 +7,7 @@ use super::{
     providers::rclone::RcloneCloudProvider,
     register_cloud_cancel,
     types::CloudEntryKind,
+    CloudMaterializeSnapshot,
 };
 use crate::commands::fs::open_path_without_recent;
 use crate::runtime_lifecycle;
@@ -28,6 +29,10 @@ const CLOUD_OPEN_PART_SUFFIX: &str = ".part";
 const CLOUD_OPEN_CACHE_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 #[cfg(test)]
 const CLOUD_OPEN_CACHE_MAX_AGE: Duration = Duration::from_secs(60);
+#[cfg(not(test))]
+const MATERIALIZE_WAIT_TIMEOUT: Duration = Duration::from_secs(90);
+#[cfg(test)]
+const MATERIALIZE_WAIT_TIMEOUT: Duration = Duration::from_millis(50);
 
 type MaterializeWaiters = Vec<mpsc::Sender<CloudCommandResult<PathBuf>>>;
 static MATERIALIZE_INFLIGHT: once_cell::sync::Lazy<Mutex<HashMap<String, MaterializeWaiters>>> =
@@ -171,29 +176,41 @@ pub(crate) fn materialize_cloud_file_for_local_use(
             format!("Cloud file was not found: {path}"),
         )
     })?;
-    if !matches!(entry.kind, CloudEntryKind::File) {
+    let snapshot = CloudMaterializeSnapshot {
+        name: entry.name,
+        size: entry.size,
+        modified: entry.modified,
+        kind: entry.kind,
+    };
+    materialize_cloud_file_for_local_use_with_snapshot(path, &snapshot, app, progress_event, cancel)
+}
+
+pub(crate) fn materialize_cloud_file_for_local_use_with_snapshot(
+    path: &super::path::CloudPath,
+    snapshot: &CloudMaterializeSnapshot,
+    app: &tauri::AppHandle,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> CloudCommandResult<PathBuf> {
+    if !matches!(snapshot.kind, CloudEntryKind::File) {
         return Err(CloudCommandError::new(
             CloudCommandErrorCode::Unsupported,
             format!("Only cloud files can be opened directly: {path}"),
         ));
     }
-
-    let key = materialize_inflight_key(path, entry.size, entry.modified.as_deref());
+    let provider = configured_rclone_provider().map_err(|error| {
+        CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
+    })?;
+    let key = materialize_inflight_key(path, snapshot.size, snapshot.modified.as_deref());
     if let Some(rx) = register_materialize_waiter(&key) {
-        return rx.recv().map_err(|_| {
-            CloudCommandError::new(
-                CloudCommandErrorCode::TaskFailed,
-                "Cloud file materialization task was cancelled",
-            )
-        })?;
+        return wait_for_materialize_result(path, &key, rx);
     }
-
     let result = materialize_cloud_file_for_local_use_inner(CloudMaterializeContext {
         provider: &provider,
         path,
-        original_name: &entry.name,
-        size: entry.size,
-        modified: entry.modified.as_deref(),
+        original_name: &snapshot.name,
+        size: snapshot.size,
+        modified: snapshot.modified.as_deref(),
         app,
         progress_event,
         cancel,
@@ -410,6 +427,33 @@ fn register_materialize_waiter(key: &str) -> Option<mpsc::Receiver<CloudCommandR
     None
 }
 
+fn wait_for_materialize_result(
+    path: &super::path::CloudPath,
+    key: &str,
+    rx: mpsc::Receiver<CloudCommandResult<PathBuf>>,
+) -> CloudCommandResult<PathBuf> {
+    match rx.recv_timeout(MATERIALIZE_WAIT_TIMEOUT) {
+        Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            debug!(
+                op = "cloud_materialize_wait",
+                key,
+                path = %path,
+                timeout_ms = MATERIALIZE_WAIT_TIMEOUT.as_millis() as u64,
+                "cloud materialization waiter timed out"
+            );
+            Err(CloudCommandError::new(
+                CloudCommandErrorCode::Timeout,
+                "Cloud materialization wait timed out",
+            ))
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            "Cloud file materialization task was cancelled",
+        )),
+    }
+}
+
 fn notify_materialize_waiters(key: &str, result: CloudCommandResult<PathBuf>) {
     let waiters = {
         let mut inflight = MATERIALIZE_INFLIGHT
@@ -486,6 +530,7 @@ fn prune_cloud_open_cache_dir(
                 format!("Failed to inspect cloud-open cache entry: {error}"),
             )
         })?;
+        let entry_path = entry.path();
         let metadata = match entry.metadata() {
             Ok(metadata) => metadata,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
@@ -503,24 +548,54 @@ fn prune_cloud_open_cache_dir(
             Ok(age) => age,
             Err(_) => continue,
         };
-        if age >= max_age {
-            let entry_path = entry.path();
-            let remove_result = if metadata.is_dir() {
-                fs::remove_dir_all(&entry_path)
-            } else {
-                fs::remove_file(&entry_path)
-            };
-            if let Err(error) = remove_result {
-                if error.kind() != std::io::ErrorKind::NotFound {
-                    return Err(CloudCommandError::new(
-                        CloudCommandErrorCode::TaskFailed,
-                        format!("Failed to prune stale cloud-open cache entry: {error}"),
-                    ));
-                }
-            }
+        if age < max_age {
+            continue;
         }
+
+        if metadata.is_dir() {
+            remove_stale_cache_dir(&entry_path)?;
+            continue;
+        }
+
+        let Some(name) = entry_path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if name.ends_with(".json") {
+            remove_stale_cache_file(&entry_path)?;
+            let paired = entry_path.with_file_name(name.trim_end_matches(".json"));
+            remove_stale_cache_file(&paired)?;
+            continue;
+        }
+
+        // Keep managed data files while their metadata is still fresh.
+        if cloud_open_metadata_path(&entry_path).is_file() {
+            continue;
+        }
+        remove_stale_cache_file(&entry_path)?;
     }
     Ok(())
+}
+
+fn remove_stale_cache_file(path: &Path) -> CloudCommandResult<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            format!("Failed to prune stale cloud-open cache entry: {error}"),
+        )),
+    }
+}
+
+fn remove_stale_cache_dir(path: &Path) -> CloudCommandResult<()> {
+    match fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            format!("Failed to prune stale cloud-open cache entry: {error}"),
+        )),
+    }
 }
 
 fn cloud_open_cache_stats(path: &Path) -> CloudCommandResult<(u64, u64)> {
@@ -591,8 +666,10 @@ mod tests {
         cache_is_fresh, clear_cloud_open_cache_impl, cloud_open_cache_root_path,
         cloud_open_cache_stats, cloud_open_metadata_path, notify_materialize_waiters,
         prepare_cloud_open_cache_dir, prune_cloud_open_cache_dir, register_materialize_waiter,
-        CloudOpenCacheMetadata,
+        wait_for_materialize_result, CloudOpenCacheMetadata,
     };
+    use crate::commands::cloud::path::CloudPath;
+    use crate::commands::cloud::CloudCommandErrorCode;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime};
@@ -639,6 +716,59 @@ mod tests {
         prune_cloud_open_cache_dir(&root, Duration::ZERO, SystemTime::now())
             .expect("prune stale cache");
         assert!(!stale_path.exists(), "stale cache file should be removed");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn prune_stale_metadata_removes_paired_data_file() {
+        let root = std::env::temp_dir().join(format!(
+            "browsey-cloud-open-prune-meta-{}",
+            std::process::id()
+        ));
+        let data_path = root.join("entry.bin");
+        let metadata_path = cloud_open_metadata_path(&data_path);
+
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("create temp dir");
+        fs::write(&data_path, b"data").expect("write data");
+        fs::write(&metadata_path, br#"{"source_path":"rclone://work/a.bin"}"#)
+            .expect("write metadata");
+
+        prune_cloud_open_cache_dir(&root, Duration::ZERO, SystemTime::now())
+            .expect("prune stale metadata");
+        assert!(!data_path.exists(), "paired data file should be removed");
+        assert!(!metadata_path.exists(), "metadata file should be removed");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn prune_does_not_remove_managed_data_when_metadata_is_fresh() {
+        let root = std::env::temp_dir().join(format!(
+            "browsey-cloud-open-prune-fresh-{}",
+            std::process::id()
+        ));
+        let data_path = root.join("entry.bin");
+        let metadata_path = cloud_open_metadata_path(&data_path);
+
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("create temp dir");
+        fs::write(&data_path, b"data").expect("write data");
+        std::thread::sleep(Duration::from_millis(1200));
+        fs::write(&metadata_path, br#"{"source_path":"rclone://work/a.bin"}"#)
+            .expect("write metadata");
+
+        let now = fs::metadata(&data_path)
+            .expect("data metadata")
+            .modified()
+            .expect("data modified")
+            .checked_add(Duration::from_millis(900))
+            .expect("synthetic now");
+        prune_cloud_open_cache_dir(&root, Duration::from_millis(800), now)
+            .expect("prune should keep managed file");
+        assert!(data_path.exists(), "managed data file should stay");
+        assert!(metadata_path.exists(), "fresh metadata should stay");
+
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -710,5 +840,24 @@ mod tests {
             .expect("waiter result");
         let received_path = received.expect("waiter should receive success");
         assert_eq!(received_path, expected);
+    }
+
+    #[test]
+    fn materialize_waiter_timeout_returns_typed_timeout_error() {
+        let key = format!("inflight-timeout-{}-{}", std::process::id(), 1);
+        let path = CloudPath::parse("rclone://work/docs/file.txt").expect("cloud path");
+
+        assert!(
+            register_materialize_waiter(&key).is_none(),
+            "first caller should become leader"
+        );
+        let rx = register_materialize_waiter(&key).expect("waiter should subscribe");
+        let err = wait_for_materialize_result(&path, &key, rx).expect_err("waiter should timeout");
+        assert_eq!(err.code(), CloudCommandErrorCode::Timeout);
+        assert!(
+            err.to_string().to_lowercase().contains("timed out"),
+            "unexpected error: {}",
+            err
+        );
     }
 }
