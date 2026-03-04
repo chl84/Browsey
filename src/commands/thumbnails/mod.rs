@@ -38,13 +38,13 @@ use crate::commands::cloud::provider::CloudProvider;
 use crate::commands::cloud::types::CloudEntryKind;
 use crate::commands::cloud::{
     configured_rclone_provider, materialize_cloud_file_for_local_use_with_snapshot,
-    CloudMaterializeSnapshot,
+    CloudCommandError, CloudCommandErrorCode, CloudMaterializeSnapshot,
 };
 use crate::db;
 use crate::errors::api_error::ApiResult;
 use crate::errors::domain::ErrorCode;
 use crate::fs_utils::debug_log;
-use error::{map_api_result, ThumbnailError, ThumbnailResult};
+use error::{map_api_result, ThumbnailError, ThumbnailErrorCode, ThumbnailResult};
 
 const MAX_DIM_DEFAULT: u32 = 96;
 const MAX_DIM_HARD_LIMIT: u32 = 512;
@@ -457,10 +457,16 @@ fn precheck_cloud_thumbnail_source(
     settings: &ThumbnailRuntimeSettings,
 ) -> ThumbnailResult<CloudThumbnailSource> {
     let cloud_path = CloudPath::parse(raw_path).map_err(|error| {
-        ThumbnailError::from_external_message(format!("Invalid cloud path: {error}"))
+        ThumbnailError::new(
+            ThumbnailErrorCode::InvalidInput,
+            format!("Invalid cloud path: {error}"),
+        )
     })?;
     let leaf = cloud_path.leaf_name().map_err(|error| {
-        ThumbnailError::from_external_message(format!("Invalid cloud path: {error}"))
+        ThumbnailError::new(
+            ThumbnailErrorCode::InvalidInput,
+            format!("Invalid cloud path: {error}"),
+        )
     })?;
     let ext = Path::new(leaf)
         .extension()
@@ -470,20 +476,23 @@ fn precheck_cloud_thumbnail_source(
     validate_cloud_thumb_extension(settings, &ext)?;
 
     let provider = configured_rclone_provider().map_err(|error| {
-        ThumbnailError::from_external_message(format!(
-            "Cloud thumbnail provider unavailable: {error}"
-        ))
+        ThumbnailError::new(
+            ThumbnailErrorCode::UnknownError,
+            format!("Cloud thumbnail provider unavailable: {error}"),
+        )
     })?;
     let entry = provider
         .stat_path(&cloud_path)
-        .map_err(|error| {
-            ThumbnailError::from_external_message(format!("Cloud thumbnail stat failed: {error}"))
-        })?
+        .map_err(|error| map_cloud_command_error("Cloud thumbnail stat failed", error))?
         .ok_or_else(|| {
-            ThumbnailError::from_external_message(format!("Cloud file was not found: {cloud_path}"))
+            ThumbnailError::new(
+                ThumbnailErrorCode::NotFound,
+                format!("Cloud file was not found: {cloud_path}"),
+            )
         })?;
     if !matches!(entry.kind, CloudEntryKind::File) {
-        return Err(ThumbnailError::from_external_message(
+        return Err(ThumbnailError::new(
+            ThumbnailErrorCode::InvalidInput,
             "Target is not a file",
         ));
     }
@@ -520,27 +529,53 @@ async fn materialize_cloud_thumbnail_source(
     })
     .await
     .map_err(|error| {
-        ThumbnailError::from_external_message(format!(
-            "Cloud thumbnail materialization task cancelled: {error}"
-        ))
+        ThumbnailError::new(
+            ThumbnailErrorCode::Cancelled,
+            format!("Cloud thumbnail materialization task cancelled: {error}"),
+        )
     })?
-    .map_err(|error| {
-        ThumbnailError::from_external_message(format!(
-            "Cloud thumbnail materialization failed: {error}"
-        ))
-    })?;
+    .map_err(|error| map_cloud_command_error("Cloud thumbnail materialization failed", error))?;
     let meta = fs::metadata(&target).map_err(|error| {
-        ThumbnailError::from_external_message(format!(
-            "Failed to read cloud thumbnail metadata: {error}"
-        ))
+        ThumbnailError::new(
+            ThumbnailErrorCode::DecodeFailed,
+            format!("Failed to read cloud thumbnail metadata: {error}"),
+        )
     })?;
     let kind = thumb_kind(&target);
     if matches!(kind, ThumbKind::Video) {
-        return Err(ThumbnailError::from_external_message(
+        return Err(ThumbnailError::new(
+            ThumbnailErrorCode::UnsupportedFormat,
             "Unsupported cloud thumbnail extension: video",
         ));
     }
     Ok((target, meta, kind, None))
+}
+
+fn map_cloud_command_error(context: &str, error: CloudCommandError) -> ThumbnailError {
+    ThumbnailError::new(
+        map_cloud_command_error_code(error.code()),
+        format!("{context}: {error}"),
+    )
+}
+
+fn map_cloud_command_error_code(code: CloudCommandErrorCode) -> ThumbnailErrorCode {
+    match code {
+        CloudCommandErrorCode::InvalidPath | CloudCommandErrorCode::DestinationExists => {
+            ThumbnailErrorCode::InvalidInput
+        }
+        CloudCommandErrorCode::NotFound => ThumbnailErrorCode::NotFound,
+        CloudCommandErrorCode::PermissionDenied => ThumbnailErrorCode::PermissionDenied,
+        CloudCommandErrorCode::Unsupported => ThumbnailErrorCode::UnsupportedFormat,
+        CloudCommandErrorCode::TaskFailed => ThumbnailErrorCode::CacheFailed,
+        CloudCommandErrorCode::Timeout
+        | CloudCommandErrorCode::NetworkError
+        | CloudCommandErrorCode::TlsCertificateError
+        | CloudCommandErrorCode::RateLimited
+        | CloudCommandErrorCode::AuthRequired
+        | CloudCommandErrorCode::BinaryMissing
+        | CloudCommandErrorCode::InvalidConfig
+        | CloudCommandErrorCode::UnknownError => ThumbnailErrorCode::UnknownError,
+    }
 }
 
 fn cache_key_for_cloud_source(source: &CloudThumbnailSource, max_dim: u32) -> String {
@@ -593,27 +628,35 @@ fn validate_cloud_thumb_extension(
     ext: &str,
 ) -> ThumbnailResult<()> {
     if !settings.cloud_thumbs {
-        return Err(ThumbnailError::from_external_message(
+        return Err(ThumbnailError::new(
+            ThumbnailErrorCode::InvalidInput,
             "Cloud thumbnails disabled",
         ));
     }
     if ext.is_empty() || !is_cloud_thumb_extension_allowed(ext) {
-        return Err(ThumbnailError::from_external_message(format!(
-            "Unsupported cloud thumbnail extension: {ext}"
-        )));
+        return Err(ThumbnailError::new(
+            ThumbnailErrorCode::UnsupportedFormat,
+            format!("Unsupported cloud thumbnail extension: {ext}"),
+        ));
     }
     Ok(())
 }
 
 fn validate_cloud_thumb_size(size: Option<u64>) -> ThumbnailResult<u64> {
     let size = size.ok_or_else(|| {
-        ThumbnailError::from_external_message("Cloud thumbnail requires known file size")
+        ThumbnailError::new(
+            ThumbnailErrorCode::InvalidInput,
+            "Cloud thumbnail requires known file size",
+        )
     })?;
     if size > MAX_FILE_BYTES {
-        return Err(ThumbnailError::from_external_message(format!(
-            "Cloud file too large for thumbnail (>{} MB)",
-            MAX_FILE_BYTES / 1024 / 1024
-        )));
+        return Err(ThumbnailError::new(
+            ThumbnailErrorCode::InvalidInput,
+            format!(
+                "Cloud file too large for thumbnail (>{} MB)",
+                MAX_FILE_BYTES / 1024 / 1024
+            ),
+        ));
     }
     Ok(size)
 }
@@ -1196,9 +1239,11 @@ fn thumb_kind(path: &Path) -> ThumbKind {
 #[cfg(test)]
 mod tests {
     use super::{
-        invalidate_runtime_settings_cache, runtime_settings, validate_cloud_thumb_extension,
-        validate_cloud_thumb_size, ThumbnailRuntimeSettings, MAX_FILE_BYTES, RUNTIME_SETTINGS,
+        invalidate_runtime_settings_cache, map_cloud_command_error_code, runtime_settings,
+        validate_cloud_thumb_extension, validate_cloud_thumb_size, ThumbnailErrorCode,
+        ThumbnailRuntimeSettings, MAX_FILE_BYTES, RUNTIME_SETTINGS,
     };
+    use crate::commands::cloud::CloudCommandErrorCode;
     use crate::errors::domain::DomainError;
 
     #[test]
@@ -1264,5 +1309,21 @@ mod tests {
         let err = validate_cloud_thumb_size(Some(MAX_FILE_BYTES + 1)).expect_err("should fail");
         assert_eq!(err.code_str(), "invalid_input");
         assert!(err.to_string().to_lowercase().contains("too large"));
+    }
+
+    #[test]
+    fn cloud_thumb_mapping_preserves_not_found() {
+        assert_eq!(
+            map_cloud_command_error_code(CloudCommandErrorCode::NotFound),
+            ThumbnailErrorCode::NotFound
+        );
+    }
+
+    #[test]
+    fn cloud_thumb_mapping_preserves_permission_denied() {
+        assert_eq!(
+            map_cloud_command_error_code(CloudCommandErrorCode::PermissionDenied),
+            ThumbnailErrorCode::PermissionDenied
+        );
     }
 }

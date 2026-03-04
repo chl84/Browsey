@@ -73,6 +73,7 @@ describe('useExplorerData cloud refresh event', () => {
       loadArchiveLevelPref: asyncNoop,
       loadOpenDestAfterExtractPref: asyncNoop,
       loadVideoThumbsPref: asyncNoop,
+      loadCloudThumbsPref: asyncNoop,
       loadHardwareAccelerationPref: asyncNoop,
       loadFfmpegPathPref: asyncNoop,
       loadThumbCachePref: asyncNoop,
