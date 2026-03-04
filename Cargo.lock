@@ -1732,7 +1732,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.56.0",
+ "windows-core 0.62.2",
 ]
 
 [[package]]

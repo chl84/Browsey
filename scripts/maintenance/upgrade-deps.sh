@@ -67,8 +67,13 @@ need_tool cargo-upgrade cargo-edit
 
 echo "Checking for outdated crates..."
 if ! cargo outdated --depth 1; then
-  echo "error: 'cargo outdated' failed. Resolve this before continuing." >&2
-  exit 1
+  echo "warning: 'cargo outdated' failed (often due to cargo-outdated resolver conflicts)." >&2
+  echo "         Verifying with Cargo resolver before deciding to fail..." >&2
+  if ! cargo update --dry-run >/dev/null; then
+    echo "error: Cargo resolver check also failed. Resolve dependency graph issues first." >&2
+    exit 1
+  fi
+  echo "warning: Cargo resolver is healthy; continuing despite cargo-outdated failure." >&2
 fi
 
 echo "Upgrading Cargo.toml dependencies..."
