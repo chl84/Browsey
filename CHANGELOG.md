@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- No changes documented yet.
+
+## v0.4.6 — 2026-03-04
 - Settings completion and polish:
   - `High contrast`, `Scrollbar width`, `Rclone path`, and `Log level` are now fully wired through persistence, runtime state, and app behavior.
   - `Restore defaults` now resets persisted settings and shortcut bindings back to project defaults, and requires explicit confirmation before applying changes.
@@ -25,6 +28,13 @@
   - Provider-specific delete policy is now stricter for common ghost/trash conflicts: OneDrive uses `--onedrive-hard-delete`, and Google Drive uses `--drive-use-trash=false`.
   - Cloud `mkdir` consistency was hardened by using CLI `lsjson --stat` probing and destination-exists retry/backoff only when the probe confirms the target is absent.
   - Fake-rclone parallel test reliability was improved by handling transient `ETXTBSY` (`Text file busy`) during process spawn.
+- Cloud thumbnails (Grid) and cache hardening:
+  - Added an opt-in `Cloud thumbs` setting for Grid thumbnails on `rclone://` entries.
+  - Cloud thumbnails in v1 are limited to `image + pdf + svg`; cloud video thumbnails are intentionally blocked.
+  - Added cloud thumbnail prechecks for extension allowlist, known size, and size limit (`<= 50 MB`) before materialization.
+  - Cloud thumbnail generation now checks thumbnail-cache hits before cloud materialization, reducing repeated cloud downloads when navigating between folders.
+  - Cloud-open cache pruning was hardened to avoid evicting managed cloud files prematurely when metadata is still fresh.
+  - Cloud-thumbnail backend failures now use explicit typed-error mapping for key cloud error paths instead of relying on message-pattern fallback.
 - Backend typed-error hardening and CI quality gates:
   - Transfer/statusbar/entry-metadata error paths were further migrated from string roundtrips to typed error mappings.
   - Legacy `impl From<...> for String` seams were removed in remaining advisory-hit areas (`metadata`, `watcher`), reducing accidental code-loss in error propagation.
