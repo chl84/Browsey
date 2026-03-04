@@ -394,6 +394,7 @@
     const next = list.map((col) => ({ ...col }))
     for (let i = next.length - 1; i >= 0 && overflow > 0; i -= 1) {
       if (next[i].resizable === false) continue
+      if (next[i].key === 'modified') continue
       const shrinkable = Math.max(0, next[i].width - next[i].min)
       if (shrinkable === 0) continue
       const shrink = Math.min(shrinkable, overflow)
