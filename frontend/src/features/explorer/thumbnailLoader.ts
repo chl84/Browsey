@@ -8,6 +8,7 @@ type Options = {
   maxDim?: number
   initialGeneration?: string
   allowVideos?: boolean
+  allowCloudThumbs?: boolean
 }
 
 type ThumbMap = Map<string, string>
@@ -25,6 +26,7 @@ export function createThumbnailLoader(opts: Options = {}) {
   const maxDim = opts.maxDim ?? DEFAULT_DIM
   let generation = opts.initialGeneration ?? 'init'
   let allowVideos = opts.allowVideos ?? true
+  let allowCloudThumbs = opts.allowCloudThumbs ?? false
 
   const thumbs = writable<ThumbMap>(new Map())
   const requested = new Set<string>()
@@ -36,9 +38,33 @@ export function createThumbnailLoader(opts: Options = {}) {
   let destroyed = false
   const retries = new Map<string, number>()
   const videoExt = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'])
+  const cloudThumbAllowedExt = new Set([
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'bmp',
+    'webp',
+    'tif',
+    'tiff',
+    'avif',
+    'heic',
+    'heif',
+    'svg',
+    'pdf',
+  ])
+  const isCloudPath = (path: string) => path.startsWith('rclone://')
   const isVideo = (path: string) => {
     const ext = path.split('.').pop()?.toLowerCase()
     return ext ? videoExt.has(ext) : false
+  }
+  const extOf = (path: string) => path.split('.').pop()?.toLowerCase() ?? ''
+  const isCloudThumbEligible = (path: string) => {
+    if (!isCloudPath(path)) return true
+    if (!allowCloudThumbs) return false
+    if (isVideo(path)) return false
+    const ext = extOf(path)
+    return ext.length > 0 && cloudThumbAllowedExt.has(ext)
   }
 
   const observer = new IntersectionObserver(
@@ -63,6 +89,7 @@ export function createThumbnailLoader(opts: Options = {}) {
 
   function enqueue(path: string, priority?: Priority) {
     if (destroyed) return false
+    if (!isCloudThumbEligible(path)) return false
     if (!allowVideos && isVideo(path)) return false
     clearRetryTimer(path)
     if (requested.has(path)) return false
@@ -256,6 +283,25 @@ export function createThumbnailLoader(opts: Options = {}) {
           }
         })
       }
+    },
+    setAllowCloudThumbs: (value: boolean) => {
+      const wasAllowed = allowCloudThumbs
+      allowCloudThumbs = value
+      if (wasAllowed || !allowCloudThumbs) return
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
+      const margin = 200
+      observed.forEach((path, node) => {
+        if (!isCloudPath(path)) return
+        const rect = node.getBoundingClientRect()
+        const inView = rect.bottom >= -margin && rect.top <= viewportHeight + margin
+        if (inView) {
+          const queued = enqueue(path, 'high')
+          if (queued) {
+            observer.unobserve(node)
+            observed.delete(node)
+          }
+        }
+      })
     },
     drop: (path: string) => {
       requested.delete(path)

@@ -4,12 +4,14 @@
 
   export let show = false
   export let showVideoThumbsRow = false
+  export let showCloudThumbsRow = false
   export let showFfmpegPathRow = false
   export let showThumbCacheRow = false
   export let thumbsDisabled = false
   export let settings: Settings
   export let onPatch: (patch: Partial<Settings>) => void = () => {}
   export let onToggleVideoThumbs: (value: boolean) => void = () => {}
+  export let onToggleCloudThumbs: (value: boolean) => void = () => {}
   export let onChangeFfmpegPath: (value: string) => void = () => {}
   export let onChangeThumbCacheMb: (value: number) => void = () => {}
 </script>
@@ -31,6 +33,22 @@
         }}
       />
       <span>Enable video thumbnails (requires ffmpeg)</span>
+    </div>
+  {/if}
+
+  {#if showCloudThumbsRow}
+    <div class="form-label">Cloud thumbs</div>
+    <div class="form-control checkbox">
+      <input
+        type="checkbox"
+        checked={settings.cloudThumbs}
+        on:change={(e) => {
+          const next = (e.currentTarget as HTMLInputElement).checked
+          onPatch({ cloudThumbs: next })
+          onToggleCloudThumbs(next)
+        }}
+      />
+      <span>Enable thumbnails for cloud images, PDF and SVG (network usage)</span>
     </div>
   {/if}
 

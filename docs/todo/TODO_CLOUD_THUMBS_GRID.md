@@ -11,43 +11,43 @@ Add an opt-in `Cloud thumbs` setting for cloud entries (`rclone://`) in Grid vie
 - enforce cloud thumbnail download size guard.
 
 ## Locked decisions
-- [ ] Cloud thumbs scope (phase 1): `image + pdf + svg` (no video)
-- [ ] Cache strategy: reuse existing `cloud-open` cache (no separate cloud-thumb cache)
-- [ ] Default: `Cloud thumbs = off`
-- [ ] Unknown cloud file size: fail fast (strict guard)
-- [ ] Cloud size limit for thumbnail materialization: `50 MB`
+- [x] Cloud thumbs scope (phase 1): `image + pdf + svg` (no video)
+- [x] Cache strategy: reuse existing `cloud-open` cache (no separate cloud-thumb cache)
+- [x] Default: `Cloud thumbs = off`
+- [x] Unknown cloud file size: fail fast (strict guard)
+- [x] Cloud size limit for thumbnail materialization: `50 MB`
 
 ## Public API / interface changes
-- [ ] Add Tauri settings commands:
-  - [ ] `store_cloud_thumbs(value: bool)`
-  - [ ] `load_cloud_thumbs() -> Option<bool>`
-- [ ] Extend frontend settings types/props:
-  - [ ] `Settings.cloudThumbs: boolean`
-  - [ ] `SettingsModal.cloudThumbsValue`
-  - [ ] `SettingsModal.onToggleCloudThumbs`
-- [ ] Keep `get_thumbnail(path, max_dim, generation)` signature unchanged
+- [x] Add Tauri settings commands:
+  - [x] `store_cloud_thumbs(value: bool)`
+  - [x] `load_cloud_thumbs() -> Option<bool>`
+- [x] Extend frontend settings types/props:
+  - [x] `Settings.cloudThumbs: boolean`
+  - [x] `SettingsModal.cloudThumbsValue`
+  - [x] `SettingsModal.onToggleCloudThumbs`
+- [x] Keep `get_thumbnail(path, max_dim, generation)` signature unchanged
 - [ ] Behavioral extension: `get_thumbnail` supports cloud paths when `cloudThumbs` is enabled and extension is allowed
 
 ## Workstream A: Settings persistence and wiring
-- [ ] Rust settings command implementation in `src/commands/settings/mod.rs`
-- [ ] Re-export new settings commands in `src/commands/mod.rs`
-- [ ] Register new commands in `src/main.rs`
-- [ ] Frontend settings service methods in `frontend/src/features/explorer/services/settings.service.ts`
-- [ ] Add `cloudThumbs` to explorer stores in `frontend/src/features/explorer/state/stores.ts`
-- [ ] Add preference load/toggle/set methods in `frontend/src/features/explorer/state/preferencesSlice.ts`
-- [ ] Ensure state API includes new preference in `frontend/src/features/explorer/state.ts`
-- [ ] Wire setting through `ExplorerPage.svelte` and `createExplorerSettingsModalProps.ts`
+- [x] Rust settings command implementation in `src/commands/settings/mod.rs`
+- [x] Re-export new settings commands in `src/commands/mod.rs`
+- [x] Register new commands in `src/main.rs`
+- [x] Frontend settings service methods in `frontend/src/features/explorer/services/settings.service.ts`
+- [x] Add `cloudThumbs` to explorer stores in `frontend/src/features/explorer/state/stores.ts`
+- [x] Add preference load/toggle/set methods in `frontend/src/features/explorer/state/preferencesSlice.ts`
+- [x] Ensure state API includes new preference in `frontend/src/features/explorer/state.ts`
+- [x] Wire setting through `ExplorerPage.svelte` and `createExplorerSettingsModalProps.ts`
 
 ## Workstream B: Settings modal UX
-- [ ] Add `cloudThumbs` to `frontend/src/features/settings/settingsTypes.ts` (default `false`)
-- [ ] Add SettingsModal props in `frontend/src/features/settings/SettingsModal.svelte`
-- [ ] Add row in `frontend/src/features/settings/sections/ThumbnailsSection.svelte`
-  - [ ] Label: `Cloud thumbs`
-  - [ ] Description: `Enable thumbnails for cloud images, PDF and SVG (network usage)`
-- [ ] Add filter model support in `frontend/src/features/settings/hooks/useSettingsModalViewModel.ts`
-  - [ ] `showCloudThumbsRow`
-  - [ ] searchable text for “cloud thumbs”
-- [ ] Ensure restore-defaults path resets `cloudThumbs` to `false`
+- [x] Add `cloudThumbs` to `frontend/src/features/settings/settingsTypes.ts` (default `false`)
+- [x] Add SettingsModal props in `frontend/src/features/settings/SettingsModal.svelte`
+- [x] Add row in `frontend/src/features/settings/sections/ThumbnailsSection.svelte`
+  - [x] Label: `Cloud thumbs`
+  - [x] Description: `Enable thumbnails for cloud images, PDF and SVG (network usage)`
+- [x] Add filter model support in `frontend/src/features/settings/hooks/useSettingsModalViewModel.ts`
+  - [x] `showCloudThumbsRow`
+  - [x] searchable text for “cloud thumbs”
+- [x] Ensure restore-defaults path resets `cloudThumbs` to `false`
 
 ## Workstream C: Grid thumbnail pipeline gating (frontend)
 - [ ] Pass `cloudThumbs` through shell prop chain:
@@ -100,12 +100,12 @@ Add an opt-in `Cloud thumbs` setting for cloud entries (`rclone://`) in Grid vie
 - [ ] Rust tests: cloud materialization dedupe (single materialization under concurrency)
 - [ ] Rust tests: cloud-open existing behavior unchanged after helper extraction
 - [ ] Frontend tests/mocks:
-  - [ ] add `load_cloud_thumbs` mock in `frontend/src/test/mocks/tauri/core.ts`
+  - [x] add `load_cloud_thumbs` mock in `frontend/src/test/mocks/tauri/core.ts`
   - [ ] settings/model tests for Cloud thumbs row and filtering
   - [ ] loader behavior tests (cloud eligible/ineligible paths)
 
 ## Quality gates
-- [ ] `npm --prefix frontend run check`
+- [x] `npm --prefix frontend run check`
 - [ ] `cargo test --all-targets --all-features`
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings`
 

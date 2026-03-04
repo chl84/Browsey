@@ -34,6 +34,7 @@
   export let archiveLevelValue = 6
   export let openDestAfterExtractValue = true
   export let videoThumbsValue = true
+  export let cloudThumbsValue = false
   export let hardwareAccelerationValue = false
   export let ffmpegPathValue = ''
   export let thumbCacheMbValue = 300
@@ -60,6 +61,7 @@
   export let onChangeArchiveLevel: (value: number) => void = () => {}
   export let onToggleOpenDestAfterExtract: (value: boolean) => void = () => {}
   export let onToggleVideoThumbs: (value: boolean) => void = () => {}
+  export let onToggleCloudThumbs: (value: boolean) => void = () => {}
   export let onToggleHardwareAcceleration: (value: boolean) => void = () => {}
   export let onChangeFfmpegPath: (value: string) => void = () => {}
   export let onChangeThumbCacheMb: (value: number) => void = () => {}
@@ -165,6 +167,9 @@
   }
   $: if (settings.videoThumbs !== videoThumbsValue) {
     patchSettings({ videoThumbs: videoThumbsValue })
+  }
+  $: if (settings.cloudThumbs !== cloudThumbsValue) {
+    patchSettings({ cloudThumbs: cloudThumbsValue })
   }
   $: if (settings.hardwareAcceleration !== hardwareAccelerationValue) {
     patchSettings({ hardwareAcceleration: hardwareAccelerationValue })
@@ -295,12 +300,14 @@
         <ThumbnailsSection
           show={filterModel.showThumbnails}
           showVideoThumbsRow={filterModel.showVideoThumbsRow}
+          showCloudThumbsRow={filterModel.showCloudThumbsRow}
           showFfmpegPathRow={filterModel.showFfmpegPathRow}
           showThumbCacheRow={filterModel.showThumbCacheRow}
           thumbsDisabled={filterModel.thumbsDisabled}
           {settings}
           onPatch={patchSettings}
           {onToggleVideoThumbs}
+          {onToggleCloudThumbs}
           {onChangeFfmpegPath}
           {onChangeThumbCacheMb}
         />

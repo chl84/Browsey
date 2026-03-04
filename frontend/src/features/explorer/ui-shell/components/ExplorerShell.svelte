@@ -123,6 +123,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   let dragAllowed = false
   let dragging = false
   let videoThumbs = true
+  let cloudThumbs = false
   let thumbnailsEnabled = true
   let thumbnailRefreshToken = 0
 
@@ -365,6 +366,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     selectionActive: typeof selectionActive
     selectionRect: typeof selectionRect
     videoThumbs: typeof videoThumbs
+    cloudThumbs: typeof cloudThumbs
     thumbnailsEnabled: typeof thumbnailsEnabled
     thumbnailRefreshToken: typeof thumbnailRefreshToken
   }
@@ -576,6 +578,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     selectionActive,
     selectionRect,
     videoThumbs,
+    cloudThumbs,
     thumbnailsEnabled,
     thumbnailRefreshToken,
   } = listingProps)
@@ -816,6 +819,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
         {isHidden}
         {displayName}
         videoThumbs={videoThumbs}
+        cloudThumbs={cloudThumbs}
         {thumbnailRefreshToken}
         {clipboardMode}
           {clipboardPaths}
