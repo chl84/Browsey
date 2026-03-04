@@ -63,6 +63,17 @@ struct CloudOpenDownloadContext<'a> {
     cancel: Option<&'a AtomicBool>,
 }
 
+struct CloudMaterializeContext<'a> {
+    provider: &'a RcloneCloudProvider,
+    path: &'a super::path::CloudPath,
+    original_name: &'a str,
+    size: Option<u64>,
+    modified: Option<&'a str>,
+    app: &'a tauri::AppHandle,
+    progress_event: Option<&'a str>,
+    cancel: Option<&'a AtomicBool>,
+}
+
 pub(super) async fn open_cloud_entry_impl(
     path: String,
     app: tauri::AppHandle,
@@ -177,30 +188,33 @@ pub(crate) fn materialize_cloud_file_for_local_use(
         })?;
     }
 
-    let result = materialize_cloud_file_for_local_use_inner(
-        &provider,
+    let result = materialize_cloud_file_for_local_use_inner(CloudMaterializeContext {
+        provider: &provider,
         path,
-        &entry.name,
-        entry.size,
-        entry.modified.as_deref(),
+        original_name: &entry.name,
+        size: entry.size,
+        modified: entry.modified.as_deref(),
         app,
         progress_event,
         cancel,
-    );
+    });
     notify_materialize_waiters(&key, result.clone());
     result
 }
 
 fn materialize_cloud_file_for_local_use_inner(
-    provider: &RcloneCloudProvider,
-    path: &super::path::CloudPath,
-    original_name: &str,
-    size: Option<u64>,
-    modified: Option<&str>,
-    app: &tauri::AppHandle,
-    progress_event: Option<&str>,
-    cancel: Option<&AtomicBool>,
+    ctx: CloudMaterializeContext<'_>,
 ) -> CloudCommandResult<PathBuf> {
+    let CloudMaterializeContext {
+        provider,
+        path,
+        original_name,
+        size,
+        modified,
+        app,
+        progress_event,
+        cancel,
+    } = ctx;
     let cache_path = cloud_open_cache_path(path, original_name)?;
     let metadata_path = cloud_open_metadata_path(&cache_path);
     let expected_meta = CloudOpenCacheMetadata {

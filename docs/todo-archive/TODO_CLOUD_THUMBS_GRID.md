@@ -99,26 +99,30 @@ Add an opt-in `Cloud thumbs` setting for cloud entries (`rclone://`) in Grid vie
   - [x] over size limit
 - [x] Rust tests: cloud materialization dedupe (single materialization under concurrency)
 - [x] Rust tests: cloud-open existing behavior unchanged after helper extraction
-- [ ] Frontend tests/mocks:
+- [x] Frontend tests/mocks:
   - [x] add `load_cloud_thumbs` mock in `frontend/src/test/mocks/tauri/core.ts`
-  - [ ] settings/model tests for Cloud thumbs row and filtering
-  - [ ] loader behavior tests (cloud eligible/ineligible paths)
+  - [x] settings/model tests for Cloud thumbs row and filtering
+  - [x] loader behavior tests (cloud eligible/ineligible paths)
 
 ## Quality gates
 - [x] `npm --prefix frontend run check`
-- [ ] `cargo test --all-targets --all-features`
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings`
+- [x] `cargo test --all-targets --all-features`
+- [x] `cargo clippy --all-targets --all-features -- -D warnings`
 
 ## Acceptance criteria
-- [ ] `Cloud thumbs` appears in Settings > Thumbnails and persists
-- [ ] Default install behavior does not fetch cloud thumbnails
-- [ ] With setting enabled, cloud image/pdf/svg thumbnails render in Grid
-- [ ] Cloud video thumbnails are not attempted
-- [ ] No DB-read on every thumbnail call for runtime settings
-- [ ] Concurrent requests for same cloud source do not duplicate materialization downloads
-- [ ] Cloud files with unknown size or size > 50 MB are rejected with stable typed errors
-- [ ] Local thumbnail behavior remains unchanged
+- [x] `Cloud thumbs` appears in Settings > Thumbnails and persists
+- [x] Default install behavior does not fetch cloud thumbnails
+- [x] With setting enabled, cloud image/pdf/svg thumbnails render in Grid
+- [x] Cloud video thumbnails are not attempted
+- [x] No DB-read on every thumbnail call for runtime settings
+- [x] Concurrent requests for same cloud source do not duplicate materialization downloads
+- [x] Cloud files with unknown size or size > 50 MB are rejected with stable typed errors
+- [x] Local thumbnail behavior remains unchanged
 
 ## Exit / archive
-- [ ] Move this file to `docs/todo-archive/` when all checkboxes are complete
-- [ ] Add a short completion note (date + result summary) in archived file
+- [x] Move this file to `docs/todo-archive/` when all checkboxes are complete
+- [x] Add a short completion note (date + result summary) in archived file
+
+## Completion note
+Completed: 2026-03-04
+Result: Cloud thumbs is now wired end-to-end (settings, grid gating, backend thumbnail cloud path handling), with runtime setting cache hardening, cloud materialization dedupe, guard/error tests, and green Rust/frontend quality gates.
