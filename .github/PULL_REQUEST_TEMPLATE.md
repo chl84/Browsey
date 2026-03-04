@@ -6,6 +6,7 @@ Describe what changed and why.
 
 - [ ] Docs updated (if behavior, architecture, or workflows changed)
 - [ ] `CHANGELOG.md` updated (if user-visible behavior changed)
+- [ ] Docs consistency check run (`bash scripts/maintenance/check-docs-consistency.sh`) for user-visible changes
 - [ ] Quality gates are green for affected areas:
   - [ ] Frontend: `npm --prefix frontend run lint`
   - [ ] Frontend: `npm --prefix frontend run check`

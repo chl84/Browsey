@@ -9,4 +9,9 @@ echo "== Running backend suite =="
 echo "== Running frontend suite =="
 "${SCRIPT_DIR}/test-frontend.sh"
 
+echo "== Running docs consistency check (advisory) =="
+if ! "${SCRIPT_DIR}/check-docs-consistency.sh"; then
+  echo "Docs consistency check reported a non-zero status in advisory mode; continuing."
+fi
+
 echo "All suites completed."

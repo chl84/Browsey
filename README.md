@@ -18,7 +18,7 @@ Browsey is in active development with current feature work focused on Linux. Cor
 - Settings-driven shortcut remapping with conflict validation.
 - Properties with editable permissions (Unix + Windows) and lazy type-specific Extra metadata.
 - Image thumbnails support common raster formats plus HDR (`.hdr`) and OpenEXR (`.exr`).
-- Data maintenance actions (clear thumbnail cache, stars, bookmarks, recents) with confirmation and feedback.
+- Data maintenance actions (clear thumbnail cache, cloud file cache, stars, bookmarks, recents) with confirmation and feedback.
 - Cross-platform drive/mount handling, removable media eject, and optional video thumbnails via ffmpeg.
 - Persisted user defaults for view/sort/interaction behavior.
 
@@ -63,7 +63,8 @@ Windows:
 Current cloud v1 limitations:
 - no cloud trash/recycle-bin integration (delete is permanent)
 - no undo/redo for cloud operations
-- no advanced rename, archive extract/compress, duplicate scan, thumbnails, or direct open-with for cloud files
+- no advanced rename, archive extract/compress, duplicate scan, or direct open-with for cloud files
+- cloud thumbnails are opt-in (`Cloud thumbs`) and currently limited to Grid view for image/pdf/svg, with provider and file-size guardrails
 - provider-specific edge cases (especially quotas/rate limits) are still being refined
 
 Notes:
@@ -120,7 +121,7 @@ Tauri bundles:
 ## Keyboard & interaction map (defaults)
 - Default bindings are remappable in Settings.
 - Core defaults: `Ctrl+F` search, `Ctrl+G` view toggle, `Ctrl+A` select all, `Ctrl+C/X/V` clipboard.
-- File actions: `F2` rename, `Delete` trash, `Shift+Delete` permanent delete, `Ctrl+P` properties.
+- File actions: `Ctrl+R` rename, `Delete` trash, `Shift+Delete` permanent delete, `Ctrl+P` properties.
 - Navigation/helpers: `Ctrl+H` hidden files, `Ctrl+B` bookmark modal, `Ctrl+T` open terminal.
 - `Esc` exits search/filter contexts.
 
