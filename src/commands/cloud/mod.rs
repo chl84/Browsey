@@ -27,6 +27,8 @@ pub(crate) use rclone_path::set_rclone_path_override_for_tests;
 pub(crate) use rclone_path::{
     configured_rclone_cli, configured_rclone_provider, RclonePathErrorCode,
 };
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use tracing::warn;
 use types::{CloudConflictInfo, CloudEntry, CloudProviderKind, CloudRemote, CloudRootSelection};
 
@@ -54,6 +56,15 @@ pub(crate) fn invalidate_cloud_caches_for_backend_change() {
     if let Err(error) = rclone_rc::reset_backend_state() {
         warn!(error = %error, "failed to reset rclone backend state after config change");
     }
+}
+
+pub(crate) fn materialize_cloud_file_for_local_use(
+    path: &CloudPath,
+    app: &tauri::AppHandle,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> CloudCommandResult<PathBuf> {
+    open::materialize_cloud_file_for_local_use(path, app, progress_event, cancel)
 }
 
 #[cfg(test)]

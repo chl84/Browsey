@@ -13,9 +13,12 @@ use crate::runtime_lifecycle;
 use crate::tasks::CancelState;
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
+use std::sync::mpsc;
+use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime};
 use tracing::debug;
 
@@ -25,6 +28,10 @@ const CLOUD_OPEN_PART_SUFFIX: &str = ".part";
 const CLOUD_OPEN_CACHE_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 #[cfg(test)]
 const CLOUD_OPEN_CACHE_MAX_AGE: Duration = Duration::from_secs(60);
+
+type MaterializeWaiters = Vec<mpsc::Sender<CloudCommandResult<PathBuf>>>;
+static MATERIALIZE_INFLIGHT: once_cell::sync::Lazy<Mutex<HashMap<String, MaterializeWaiters>>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct CloudOpenCacheMetadata {
@@ -129,6 +136,21 @@ fn materialize_and_open_cloud_file(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> CloudCommandResult<()> {
+    let cache_path = materialize_cloud_file_for_local_use(path, app, progress_event, cancel)?;
+    open_path_without_recent(&cache_path).map_err(|error| {
+        CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            format!("Failed to open downloaded cloud file: {error}"),
+        )
+    })
+}
+
+pub(crate) fn materialize_cloud_file_for_local_use(
+    path: &super::path::CloudPath,
+    app: &tauri::AppHandle,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> CloudCommandResult<PathBuf> {
     let provider = configured_rclone_provider().map_err(|error| {
         CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
     })?;
@@ -145,12 +167,46 @@ fn materialize_and_open_cloud_file(
         ));
     }
 
-    let cache_path = cloud_open_cache_path(path, &entry.name)?;
+    let key = materialize_inflight_key(path, entry.size, entry.modified.as_deref());
+    if let Some(rx) = register_materialize_waiter(&key) {
+        return rx.recv().map_err(|_| {
+            CloudCommandError::new(
+                CloudCommandErrorCode::TaskFailed,
+                "Cloud file materialization task was cancelled",
+            )
+        })?;
+    }
+
+    let result = materialize_cloud_file_for_local_use_inner(
+        &provider,
+        path,
+        &entry.name,
+        entry.size,
+        entry.modified.as_deref(),
+        app,
+        progress_event,
+        cancel,
+    );
+    notify_materialize_waiters(&key, result.clone());
+    result
+}
+
+fn materialize_cloud_file_for_local_use_inner(
+    provider: &RcloneCloudProvider,
+    path: &super::path::CloudPath,
+    original_name: &str,
+    size: Option<u64>,
+    modified: Option<&str>,
+    app: &tauri::AppHandle,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> CloudCommandResult<PathBuf> {
+    let cache_path = cloud_open_cache_path(path, original_name)?;
     let metadata_path = cloud_open_metadata_path(&cache_path);
     let expected_meta = CloudOpenCacheMetadata {
         source_path: path.to_string(),
-        size: entry.size,
-        modified: entry.modified.clone(),
+        size,
+        modified: modified.map(str::to_string),
     };
 
     if cache_is_fresh(&cache_path, &metadata_path, &expected_meta) {
@@ -159,13 +215,13 @@ fn materialize_and_open_cloud_file(
         emit_cloud_open_progress(
             app,
             progress_event,
-            entry.size.unwrap_or(1),
-            entry.size.unwrap_or(1),
+            size.unwrap_or(1),
+            size.unwrap_or(1),
             true,
         );
     } else {
         download_cloud_file_to_cache(
-            &provider,
+            provider,
             path,
             CloudOpenDownloadContext {
                 cache_path: &cache_path,
@@ -179,18 +235,13 @@ fn materialize_and_open_cloud_file(
         emit_cloud_open_progress(
             app,
             progress_event,
-            entry.size.unwrap_or(1),
-            entry.size.unwrap_or(1),
+            size.unwrap_or(1),
+            size.unwrap_or(1),
             true,
         );
     }
 
-    open_path_without_recent(&cache_path).map_err(|error| {
-        CloudCommandError::new(
-            CloudCommandErrorCode::TaskFailed,
-            format!("Failed to open downloaded cloud file: {error}"),
-        )
-    })
+    Ok(cache_path)
 }
 
 fn cache_is_fresh(
@@ -302,6 +353,61 @@ fn emit_cloud_open_progress(
             finished,
         },
     );
+}
+
+fn materialize_inflight_key(
+    path: &super::path::CloudPath,
+    size: Option<u64>,
+    modified: Option<&str>,
+) -> String {
+    let mut hasher = Hasher::new();
+    hasher.update(path.to_string().as_bytes());
+    match size {
+        Some(value) => {
+            hasher.update(&[1]);
+            hasher.update(&value.to_le_bytes());
+        }
+        None => {
+            hasher.update(&[0]);
+        }
+    }
+    match modified {
+        Some(value) => {
+            hasher.update(&[1]);
+            hasher.update(value.as_bytes());
+        }
+        None => {
+            hasher.update(&[0]);
+        }
+    }
+    hasher.finalize().to_hex().to_string()
+}
+
+fn register_materialize_waiter(key: &str) -> Option<mpsc::Receiver<CloudCommandResult<PathBuf>>> {
+    let mut inflight = MATERIALIZE_INFLIGHT
+        .lock()
+        .expect("materialize inflight mutex poisoned");
+    if let Some(waiters) = inflight.get_mut(key) {
+        let (tx, rx) = mpsc::channel();
+        waiters.push(tx);
+        return Some(rx);
+    }
+    inflight.insert(key.to_string(), Vec::new());
+    None
+}
+
+fn notify_materialize_waiters(key: &str, result: CloudCommandResult<PathBuf>) {
+    let waiters = {
+        let mut inflight = MATERIALIZE_INFLIGHT
+            .lock()
+            .expect("materialize inflight mutex poisoned");
+        inflight.remove(key)
+    };
+    if let Some(waiters) = waiters {
+        for tx in waiters {
+            let _ = tx.send(result.clone());
+        }
+    }
 }
 
 fn cloud_open_cache_path(
@@ -469,10 +575,12 @@ fn set_owner_only_permissions(path: &Path, is_dir: bool) -> CloudCommandResult<(
 mod tests {
     use super::{
         cache_is_fresh, clear_cloud_open_cache_impl, cloud_open_cache_root_path,
-        cloud_open_cache_stats, cloud_open_metadata_path, prepare_cloud_open_cache_dir,
-        prune_cloud_open_cache_dir, CloudOpenCacheMetadata,
+        cloud_open_cache_stats, cloud_open_metadata_path, notify_materialize_waiters,
+        prepare_cloud_open_cache_dir, prune_cloud_open_cache_dir, register_materialize_waiter,
+        CloudOpenCacheMetadata,
     };
     use std::fs;
+    use std::path::PathBuf;
     use std::time::{Duration, SystemTime};
 
     #[test]
@@ -569,5 +677,24 @@ mod tests {
         assert_eq!(bytes, 5);
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn materialize_inflight_dedupe_delivers_shared_result_to_waiters() {
+        let key = format!("inflight-{}-{}", std::process::id(), 1);
+        assert!(
+            register_materialize_waiter(&key).is_none(),
+            "first caller should become leader"
+        );
+        let rx = register_materialize_waiter(&key).expect("waiter should subscribe");
+
+        let expected = PathBuf::from("/tmp/cloud-open-test.bin");
+        notify_materialize_waiters(&key, Ok(expected.clone()));
+
+        let received = rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("waiter result");
+        let received_path = received.expect("waiter should receive success");
+        assert_eq!(received_path, expected);
     }
 }

@@ -364,7 +364,9 @@ pub fn store_ffmpeg_path(value: String) -> ApiResult<()> {
     map_api_result((|| -> SettingsResult<()> {
         let trimmed = value.trim();
         let conn = open_connection()?;
-        map_settings_result(crate::db::set_setting_string(&conn, "ffmpegPath", trimmed))
+        map_settings_result(crate::db::set_setting_string(&conn, "ffmpegPath", trimmed))?;
+        crate::commands::thumbnails::invalidate_runtime_settings_cache();
+        Ok(())
     })())
 }
 
@@ -387,7 +389,9 @@ pub fn store_thumb_cache_mb(value: i64) -> ApiResult<()> {
             &conn,
             "thumbCacheMb",
             &value.to_string(),
-        ))
+        ))?;
+        crate::commands::thumbnails::invalidate_runtime_settings_cache();
+        Ok(())
     })())
 }
 
@@ -426,7 +430,9 @@ pub fn load_mounts_poll_ms() -> ApiResult<Option<i64>> {
 pub fn store_video_thumbs(value: bool) -> ApiResult<()> {
     map_api_result((|| -> SettingsResult<()> {
         let conn = open_connection()?;
-        map_settings_result(crate::db::set_setting_bool(&conn, "videoThumbs", value))
+        map_settings_result(crate::db::set_setting_bool(&conn, "videoThumbs", value))?;
+        crate::commands::thumbnails::invalidate_runtime_settings_cache();
+        Ok(())
     })())
 }
 
@@ -442,7 +448,9 @@ pub fn load_video_thumbs() -> ApiResult<Option<bool>> {
 pub fn store_cloud_thumbs(value: bool) -> ApiResult<()> {
     map_api_result((|| -> SettingsResult<()> {
         let conn = open_connection()?;
-        map_settings_result(crate::db::set_setting_bool(&conn, "cloudThumbs", value))
+        map_settings_result(crate::db::set_setting_bool(&conn, "cloudThumbs", value))?;
+        crate::commands::thumbnails::invalidate_runtime_settings_cache();
+        Ok(())
     })())
 }
 
@@ -572,7 +580,7 @@ pub fn load_double_click_ms() -> ApiResult<Option<i64>> {
 
 #[cfg(test)]
 mod tests {
-    use super::store_rclone_path;
+    use super::{load_cloud_thumbs, store_cloud_thumbs, store_rclone_path};
     use crate::commands::cloud::{
         cloud_dir_listing_cache_contains_for_tests,
         cloud_remote_discovery_cache_contains_remote_for_tests,
@@ -581,12 +589,16 @@ mod tests {
         store_cloud_remote_discovery_cache_entry_for_tests,
         types::{CloudCapabilities, CloudProviderKind, CloudRemote},
     };
+    use once_cell::sync::Lazy;
     use std::{
         ffi::OsString,
         fs,
         path::PathBuf,
         sync::atomic::{AtomicU64, Ordering},
+        sync::Mutex,
     };
+
+    static TEST_ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
     struct TempDataHomeGuard {
         previous: Option<OsString>,
@@ -618,6 +630,7 @@ mod tests {
 
     #[test]
     fn store_rclone_path_invalidates_cloud_caches() {
+        let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
         let _data_home = temp_data_home_guard();
         static NEXT_REMOTE_ID: AtomicU64 = AtomicU64::new(1);
         let remote_id = format!(
@@ -646,5 +659,28 @@ mod tests {
             &remote_id
         ));
         assert!(!cloud_dir_listing_cache_contains_for_tests(&path));
+    }
+
+    #[test]
+    fn store_cloud_thumbs_roundtrip() {
+        let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+        let _data_home = temp_data_home_guard();
+
+        assert_eq!(
+            load_cloud_thumbs().expect("load default cloud thumbs"),
+            None
+        );
+
+        store_cloud_thumbs(true).expect("store cloud thumbs true");
+        assert_eq!(
+            load_cloud_thumbs().expect("load cloud thumbs true"),
+            Some(true)
+        );
+
+        store_cloud_thumbs(false).expect("store cloud thumbs false");
+        assert_eq!(
+            load_cloud_thumbs().expect("load cloud thumbs false"),
+            Some(false)
+        );
     }
 }

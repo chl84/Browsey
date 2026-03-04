@@ -108,6 +108,9 @@ const THUMBNAIL_CLASSIFICATION_RULES: &[(ThumbnailErrorCode, &[&str])] = &[
             "target is not a file",
             "file too large for thumbnail",
             "video thumbnails disabled",
+            "cloud thumbnails disabled",
+            "cloud thumbnail requires known file size",
+            "cloud file too large for thumbnail",
         ],
     ),
     (
@@ -125,6 +128,10 @@ const THUMBNAIL_CLASSIFICATION_RULES: &[(ThumbnailErrorCode, &[&str])] = &[
     ),
     (
         ThumbnailErrorCode::UnsupportedFormat,
-        &["unsupported image format", "unsupported thumbnail format"],
+        &[
+            "unsupported image format",
+            "unsupported thumbnail format",
+            "unsupported cloud thumbnail extension",
+        ],
     ),
 ];
