@@ -36,7 +36,10 @@ mod error;
 use crate::commands::cloud::path::CloudPath;
 use crate::commands::cloud::provider::CloudProvider;
 use crate::commands::cloud::types::CloudEntryKind;
-use crate::commands::cloud::{configured_rclone_provider, materialize_cloud_file_for_local_use};
+use crate::commands::cloud::{
+    configured_rclone_provider, materialize_cloud_file_for_local_use_with_snapshot,
+    CloudMaterializeSnapshot,
+};
 use crate::db;
 use crate::errors::api_error::ApiResult;
 use crate::errors::domain::ErrorCode;
@@ -69,6 +72,12 @@ struct ThumbnailRuntimeSettings {
     video_thumbs: bool,
     ffmpeg_path: Option<PathBuf>,
     cloud_thumbs: bool,
+}
+
+#[derive(Clone, Debug)]
+struct CloudThumbnailSource {
+    cloud_path: CloudPath,
+    snapshot: CloudMaterializeSnapshot,
 }
 
 impl Default for ThumbnailRuntimeSettings {
@@ -292,10 +301,32 @@ async fn get_thumbnail_impl(
         .clamp(MIN_DIM_HARD_LIMIT, MAX_DIM_HARD_LIMIT);
     let settings = runtime_settings();
 
-    let (target, meta, kind, ffmpeg_override) = if path.starts_with("rclone://") {
-        resolve_cloud_thumbnail_source(&app_handle, &path, &settings).await?
+    let cache_dir = cache_dir()?;
+    fs::create_dir_all(&cache_dir).map_err(|e| {
+        ThumbnailError::from_external_message(format!("Failed to create thumbnail cache dir: {e}"))
+    })?;
+
+    let (target, meta, kind, ffmpeg_override, key) = if path.starts_with("rclone://") {
+        let source = precheck_cloud_thumbnail_source(&path, &settings)?;
+        let key = cache_key_for_cloud_source(&source, max_dim);
+        let cache_path = cache_dir.join(format!("{key}.png"));
+        if let Some((w, h)) = cached_dims(&cache_path) {
+            return Ok(ThumbnailResponse {
+                path: cache_path.to_string_lossy().into_owned(),
+                width: w,
+                height: h,
+                cached: true,
+            });
+        }
+        let (target, meta, kind, ffmpeg_override) =
+            materialize_cloud_thumbnail_source(&app_handle, &source).await?;
+        (target, meta, kind, ffmpeg_override, key)
     } else {
-        resolve_local_thumbnail_source(&path, &settings)?
+        let (target, meta, kind, ffmpeg_override) =
+            resolve_local_thumbnail_source(&path, &settings)?;
+        let mtime = meta.modified().ok();
+        let key = cache_key(&target, mtime, max_dim);
+        (target, meta, kind, ffmpeg_override, key)
     };
 
     let size_limit = match kind {
@@ -308,14 +339,7 @@ async fn get_thumbnail_impl(
             size_limit / 1024 / 1024
         )));
     }
-    let mtime = meta.modified().ok();
 
-    let cache_dir = cache_dir()?;
-    fs::create_dir_all(&cache_dir).map_err(|e| {
-        ThumbnailError::from_external_message(format!("Failed to create thumbnail cache dir: {e}"))
-    })?;
-
-    let key = cache_key(&target, mtime, max_dim);
     let cache_path = cache_dir.join(format!("{key}.png"));
 
     if let Some((w, h)) = cached_dims(&cache_path) {
@@ -428,11 +452,10 @@ fn resolve_local_thumbnail_source(
     Ok((target, meta, kind, ffmpeg_override))
 }
 
-async fn resolve_cloud_thumbnail_source(
-    app_handle: &AppHandle,
+fn precheck_cloud_thumbnail_source(
     raw_path: &str,
     settings: &ThumbnailRuntimeSettings,
-) -> ThumbnailResult<(PathBuf, fs::Metadata, ThumbKind, Option<PathBuf>)> {
+) -> ThumbnailResult<CloudThumbnailSource> {
     let cloud_path = CloudPath::parse(raw_path).map_err(|error| {
         ThumbnailError::from_external_message(format!("Invalid cloud path: {error}"))
     })?;
@@ -464,12 +487,36 @@ async fn resolve_cloud_thumbnail_source(
             "Target is not a file",
         ));
     }
+    // Precheck-only policy: this cloud-size guard is best-effort and not a strict
+    // transaction across provider consistency windows.
     validate_cloud_thumb_size(entry.size)?;
+    let snapshot = CloudMaterializeSnapshot {
+        name: entry.name,
+        size: entry.size,
+        modified: entry.modified,
+        kind: entry.kind,
+    };
+    Ok(CloudThumbnailSource {
+        cloud_path,
+        snapshot,
+    })
+}
 
-    let cloud_path_for_task = cloud_path.clone();
+async fn materialize_cloud_thumbnail_source(
+    app_handle: &AppHandle,
+    source: &CloudThumbnailSource,
+) -> ThumbnailResult<(PathBuf, fs::Metadata, ThumbKind, Option<PathBuf>)> {
+    let cloud_path_for_task = source.cloud_path.clone();
+    let snapshot_for_task = source.snapshot.clone();
     let app_for_task = app_handle.clone();
     let target = tauri::async_runtime::spawn_blocking(move || {
-        materialize_cloud_file_for_local_use(&cloud_path_for_task, &app_for_task, None, None)
+        materialize_cloud_file_for_local_use_with_snapshot(
+            &cloud_path_for_task,
+            &snapshot_for_task,
+            &app_for_task,
+            None,
+            None,
+        )
     })
     .await
     .map_err(|error| {
@@ -487,11 +534,6 @@ async fn resolve_cloud_thumbnail_source(
             "Failed to read cloud thumbnail metadata: {error}"
         ))
     })?;
-    if !meta.is_file() {
-        return Err(ThumbnailError::from_external_message(
-            "Target is not a file",
-        ));
-    }
     let kind = thumb_kind(&target);
     if matches!(kind, ThumbKind::Video) {
         return Err(ThumbnailError::from_external_message(
@@ -499,6 +541,32 @@ async fn resolve_cloud_thumbnail_source(
         ));
     }
     Ok((target, meta, kind, None))
+}
+
+fn cache_key_for_cloud_source(source: &CloudThumbnailSource, max_dim: u32) -> String {
+    let mut hasher = Hasher::new();
+    hasher.update(b"cloud-thumb-v1");
+    hasher.update(source.cloud_path.to_string().as_bytes());
+    match source.snapshot.size {
+        Some(size) => {
+            hasher.update(&[1]);
+            hasher.update(&size.to_le_bytes());
+        }
+        None => {
+            hasher.update(&[0]);
+        }
+    }
+    match source.snapshot.modified.as_deref() {
+        Some(modified) => {
+            hasher.update(&[1]);
+            hasher.update(modified.as_bytes());
+        }
+        None => {
+            hasher.update(&[0]);
+        }
+    }
+    hasher.update(&max_dim.to_le_bytes());
+    hasher.finalize().to_hex().to_string()
 }
 
 fn is_cloud_thumb_extension_allowed(ext: &str) -> bool {
