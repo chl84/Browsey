@@ -20,6 +20,63 @@ Largest current backend candidates (non-test):
 - `src/commands/settings/mod.rs` (~686 LOC)
 - `src/commands/rename/mod.rs` (~684 LOC)
 
+## Phase 0 baseline snapshot (2026-03-05)
+
+### A) Module ownership baseline
+
+- `thumbnails`: `src/commands/thumbnails/mod.rs`
+- `transfer`: `src/commands/transfer/execute.rs`
+- `listing`: `src/commands/listing/mod.rs`
+- `decompress`: `src/commands/decompress/mod.rs` + `src/commands/decompress/util.rs`
+- `cloud-open/cache`: `src/commands/cloud/open.rs` + `src/commands/cloud/cache.rs`
+- `settings`: `src/commands/settings/mod.rs`
+- `rename`: `src/commands/rename/mod.rs`
+- `permissions`: `src/commands/permissions/ownership.rs` + `src/commands/permissions/mod.rs`
+
+### B) Public command signature freeze (split-wave targets)
+
+- `thumbnails`
+  - `clear_thumbnail_cache() -> ApiResult<ThumbnailCacheClearResult>`
+  - `get_thumbnail(app_handle, path, max_dim, generation) -> ApiResult<ThumbnailResponse>`
+- `transfer`
+  - `preview_mixed_transfer_conflicts(...) -> ApiResult<Vec<MixedTransferConflictInfo>>`
+  - `copy_mixed_entries(...) -> ApiResult<Vec<String>>`
+  - `move_mixed_entries(...) -> ApiResult<Vec<String>>`
+  - `copy_mixed_entry_to(...) -> ApiResult<String>`
+  - `move_mixed_entry_to(...) -> ApiResult<String>`
+- `listing`
+  - `list_dir(path, sort, app) -> ApiResult<DirListing>`
+  - `list_facets(scope, path, include_hidden, app) -> ApiResult<ListingFacets>`
+  - `watch_dir(path, state, app) -> ApiResult<()>`
+- `decompress`
+  - `can_extract_paths(paths) -> ApiResult<bool>`
+  - `extract_archive(app, cancel, undo, path, progress_event) -> ApiResult<ExtractResult>`
+  - `extract_archives(app, cancel, undo, paths, progress_event) -> ApiResult<Vec<ExtractBatchItem>>`
+- `cloud` (open/cache surface touched by split wave)
+  - `open_cloud_entry(path, app, cancel, progress_event) -> ApiResult<()>`
+  - `clear_cloud_open_cache() -> ApiResult<CloudOpenCacheClearResult>`
+
+### C) Behavior and typed-error lock baseline
+
+Executed before split work:
+- `cargo test commands::thumbnails:: -- --nocapture` (9 passed)
+- `cargo test commands::transfer::execute::tests -- --nocapture` (18 passed)
+- `cargo test commands::listing:: -- --nocapture` (8 passed)
+- `cargo test commands::decompress:: -- --nocapture` (10 passed)
+- `cargo test commands::cloud:: -- --nocapture` (125 passed)
+
+### D) High-risk timing sample baseline (test-suite proxy)
+
+- `commands::thumbnails::` suite: finished in ~0.00s
+- `commands::transfer::execute::tests` suite: finished in ~0.30s
+- `commands::listing::` suite: finished in ~0.00s
+- `commands::decompress::` suite: finished in ~0.09s
+- `commands::cloud::` suite: finished in ~3.27s
+
+Note:
+- This is a pre-refactor timing proxy from deterministic test suites.
+- Replace with command-level timing samples when we run manual perf pass for each touched phase.
+
 Recent cloud hardening findings (separate track, already implemented in code):
 - [x] Delete policy lookup made cache-first with config-dump fallback
 - [x] Cloud materialize waiter timeout increased (typed timeout retained)
@@ -67,11 +124,11 @@ Recent cloud hardening findings (separate track, already implemented in code):
 
 ### Phase 0 — Guardrails and baseline
 
-- [ ] Capture baseline counts (LOC + key file owners) in PR description.
-- [ ] Freeze public command signatures for targeted modules.
-- [ ] Lock typed-error behavior with targeted tests before moving logic in each phase.
-- [ ] Record baseline command behavior snapshot per domain (happy path + one failure path).
-- [ ] Record baseline command timing sample for high-risk paths (`cloud open`, listing, thumbnail generation) to catch performance regressions.
+- [x] Capture baseline counts (LOC + key file owners) in PR description.
+- [x] Freeze public command signatures for targeted modules.
+- [x] Lock typed-error behavior with targeted tests before moving logic in each phase.
+- [x] Record baseline command behavior snapshot per domain (happy path + one failure path).
+- [x] Record baseline command timing sample for high-risk paths (`cloud open`, listing, thumbnail generation) to catch performance regressions.
 
 Acceptance:
 - Baseline and invariants are explicit before structural changes.
