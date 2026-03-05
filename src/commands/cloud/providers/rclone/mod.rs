@@ -7,6 +7,7 @@ mod runtime;
 #[cfg(test)]
 mod tests;
 mod write;
+mod write_shared;
 
 use super::super::{
     error::{CloudCommandError, CloudCommandErrorCode, CloudCommandResult},

@@ -79,8 +79,8 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [ ] Record any intentional behavioral delta in PR notes with provider impact.
 
 ## Maintainability guardrails
-- [ ] Keep shared logic in dedicated helper modules (engine/policy/error mapping) instead of provider files.
-- [ ] Avoid duplicate retry/error parsing logic across providers after extraction.
+- [x] Keep shared logic in dedicated helper modules (engine/policy/error mapping) instead of provider files.
+- [x] Avoid duplicate retry/error parsing logic across providers after extraction.
 - [x] Add concise doc comments on each policy hook: input, output, and provider responsibility.
 - [x] Prefer pure helper functions for decision logic to maximize unit-test coverage.
 - [ ] Keep migration logs/temporary diagnostics removable and tracked by checklist.

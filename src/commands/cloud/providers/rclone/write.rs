@@ -2,8 +2,9 @@ use super::{
     error::{is_rclone_not_found_text, map_rclone_error_for_paths, map_rclone_error_for_remote},
     logging::{classify_rc_fallback_reason, log_backend_selected},
     parse::{classify_provider_kind_from_config, parse_config_dump_summaries},
-    CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudPath, CloudProvider,
-    RcloneCliError, RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
+    write_shared::{ensure_destination_overwrite_policy, is_cancelled},
+    CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudPath, RcloneCliError,
+    RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
 };
 use crate::commands::cloud::cloud_provider_kind_for_remote;
 use crate::commands::cloud::policy::cloud_delete_policy_args;
@@ -16,6 +17,10 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 use tracing::debug;
+
+pub(super) use super::write_shared::{
+    cloud_write_cancelled_error, should_fallback_to_cli_after_rc_error,
+};
 
 impl RcloneCloudProvider {
     pub(super) fn upload_file_with_progress_impl<F>(
@@ -579,39 +584,4 @@ fn rc_stats_progress(stats: &Value) -> Option<(u64, u64)> {
                 .and_then(Value::as_u64)
         })?;
     Some((bytes.min(total), total))
-}
-
-fn ensure_destination_overwrite_policy(
-    provider: &impl CloudProvider,
-    src: &CloudPath,
-    dst: &CloudPath,
-    overwrite: bool,
-) -> CloudCommandResult<()> {
-    if overwrite || src == dst {
-        return Ok(());
-    }
-    if provider.stat_path(dst)?.is_some() {
-        return Err(CloudCommandError::new(
-            CloudCommandErrorCode::DestinationExists,
-            format!("Destination already exists: {dst}"),
-        ));
-    }
-    Ok(())
-}
-
-pub(super) fn should_fallback_to_cli_after_rc_error(error: &RcloneCliError) -> bool {
-    !matches!(error, RcloneCliError::AsyncJobStateUnknown { .. })
-}
-
-fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {
-    cancel
-        .map(|token| token.load(std::sync::atomic::Ordering::SeqCst))
-        .unwrap_or(false)
-}
-
-pub(super) fn cloud_write_cancelled_error() -> CloudCommandError {
-    CloudCommandError::new(
-        CloudCommandErrorCode::TaskFailed,
-        "Cloud operation cancelled",
-    )
 }
