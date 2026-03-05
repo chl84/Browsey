@@ -24,6 +24,9 @@ use std::sync::{
 };
 use std::time::Instant;
 
+mod flow;
+mod progress;
+
 #[derive(Clone)]
 struct TransferProgressContext {
     app: tauri::AppHandle,
@@ -37,29 +40,11 @@ struct TransferProgressPayload {
     finished: bool,
 }
 
-struct CloudToLocalBatchProgressPlan {
-    total_bytes: u64,
-    file_sizes: Vec<u64>,
-}
-
-struct LocalToCloudBatchProgressPlan {
-    total_bytes: u64,
-    file_sizes: Vec<u64>,
-}
-
 struct RcloneTransferContext<'a> {
     cli: &'a RcloneCli,
     cloud_remote_for_error_mapping: Option<&'a str>,
     cancel: Option<&'a AtomicBool>,
     progress: Option<&'a TransferProgressContext>,
-}
-
-struct AggregateTransferProgress<'a> {
-    cancel: Option<&'a AtomicBool>,
-    progress: &'a TransferProgressContext,
-    completed_before: u64,
-    total_bytes: u64,
-    file_size: u64,
 }
 
 pub(super) async fn execute_mixed_entries(
@@ -185,47 +170,7 @@ fn execute_mixed_entry_to_blocking_with_cli(
     cancel: Option<Arc<AtomicBool>>,
     progress: Option<TransferProgressContext>,
 ) -> TransferResult<String> {
-    if transfer_cancelled(cancel.as_deref()) {
-        return Err(transfer_err(
-            TransferErrorCode::Cancelled,
-            "Transfer cancelled",
-        ));
-    }
-    let MixedTransferPair {
-        src,
-        dst,
-        cloud_remote_for_error_mapping,
-    } = pair;
-    let invalidate_source = match (&src, op) {
-        (LocalOrCloudArg::Cloud(path), MixedTransferOp::Move) => Some(path.clone()),
-        _ => None,
-    };
-    let invalidate_target = match &dst {
-        LocalOrCloudArg::Cloud(path) => Some(path.clone()),
-        LocalOrCloudArg::Local(_) => None,
-    };
-    let out = match &dst {
-        LocalOrCloudArg::Local(path) => path.to_string_lossy().to_string(),
-        LocalOrCloudArg::Cloud(path) => path.to_string(),
-    };
-    execute_rclone_transfer(
-        RcloneTransferContext {
-            cli,
-            cloud_remote_for_error_mapping: cloud_remote_for_error_mapping.as_deref(),
-            cancel: cancel.as_deref(),
-            progress: progress.as_ref(),
-        },
-        op,
-        src,
-        dst,
-        options,
-    )?;
-    if let Some(path) = invalidate_target.as_ref() {
-        cloud::invalidate_cloud_write_paths(std::slice::from_ref(path));
-    } else if let Some(path) = invalidate_source.as_ref() {
-        cloud::invalidate_cloud_write_paths(std::slice::from_ref(path));
-    }
-    Ok(out)
+    flow::execute_mixed_entry_to_blocking_with_cli(cli, op, pair, options, cancel, progress)
 }
 
 fn execute_mixed_entries_blocking_with_cli(
@@ -236,160 +181,7 @@ fn execute_mixed_entries_blocking_with_cli(
     cancel: Option<Arc<AtomicBool>>,
     progress: Option<TransferProgressContext>,
 ) -> TransferResult<Vec<String>> {
-    let mut created = Vec::new();
-    let result = match route {
-        MixedTransferRoute::LocalToCloud { sources, dest_dir } => {
-            let batch_source_count = sources.len();
-            let progress_plan = if batch_source_count > 1 && progress.is_some() {
-                build_local_to_cloud_batch_progress_plan(&sources)?
-            } else {
-                None
-            };
-            let mut completed_bytes = 0_u64;
-            for (index, src) in sources.into_iter().enumerate() {
-                if transfer_cancelled(cancel.as_deref()) {
-                    return Err(transfer_err(
-                        TransferErrorCode::Cancelled,
-                        "Transfer cancelled",
-                    ));
-                }
-                let leaf = local_leaf_name(&src)?;
-                let target = dest_dir.child_path(leaf).map_err(|e| {
-                    transfer_err(
-                        TransferErrorCode::InvalidPath,
-                        format!("Invalid cloud target path: {e}"),
-                    )
-                })?;
-                if let Some(plan) = progress_plan.as_ref() {
-                    if !options.overwrite
-                        && !options.prechecked
-                        && mixed_target_exists(
-                            cli,
-                            &LocalOrCloudArg::Cloud(target.clone()),
-                            Some(dest_dir.remote()),
-                            cancel.as_deref(),
-                        )?
-                    {
-                        return Err(api_err(
-                            "destination_exists",
-                            "A file or folder with the same name already exists",
-                        ));
-                    }
-                    execute_local_to_cloud_file_transfer_with_aggregate_progress(
-                        cli,
-                        op,
-                        &src,
-                        &target,
-                        AggregateTransferProgress {
-                            cancel: cancel.as_deref(),
-                            progress: progress.as_ref().expect("progress context for batch plan"),
-                            completed_before: completed_bytes,
-                            total_bytes: plan.total_bytes,
-                            file_size: plan.file_sizes[index],
-                        },
-                    )?;
-                    completed_bytes = completed_bytes.saturating_add(plan.file_sizes[index]);
-                } else {
-                    execute_rclone_transfer(
-                        RcloneTransferContext {
-                            cli,
-                            cloud_remote_for_error_mapping: Some(dest_dir.remote()),
-                            cancel: cancel.as_deref(),
-                            progress: if batch_source_count == 1 {
-                                progress.as_ref()
-                            } else {
-                                None
-                            },
-                        },
-                        op,
-                        LocalOrCloudArg::Local(src.clone()),
-                        LocalOrCloudArg::Cloud(target.clone()),
-                        options,
-                    )?;
-                }
-                cloud::invalidate_cloud_write_paths(std::slice::from_ref(&target));
-                created.push(target.to_string());
-            }
-            Ok(())
-        }
-        MixedTransferRoute::CloudToLocal { sources, dest_dir } => {
-            let batch_source_count = sources.len();
-            let progress_plan = if batch_source_count > 1 && progress.is_some() {
-                build_cloud_to_local_batch_progress_plan(cli, &sources)?
-            } else {
-                None
-            };
-            let mut completed_bytes = 0_u64;
-            for (index, src) in sources.into_iter().enumerate() {
-                if transfer_cancelled(cancel.as_deref()) {
-                    return Err(transfer_err(
-                        TransferErrorCode::Cancelled,
-                        "Transfer cancelled",
-                    ));
-                }
-                let leaf = src.leaf_name().map_err(|e| {
-                    transfer_err(
-                        TransferErrorCode::InvalidPath,
-                        format!("Invalid cloud source path: {e}"),
-                    )
-                })?;
-                let target = dest_dir.join(leaf);
-                if let Some(plan) = progress_plan.as_ref() {
-                    if !options.overwrite
-                        && !options.prechecked
-                        && mixed_target_exists(
-                            cli,
-                            &LocalOrCloudArg::Local(target.clone()),
-                            Some(src.remote()),
-                            cancel.as_deref(),
-                        )?
-                    {
-                        return Err(api_err(
-                            "destination_exists",
-                            "A file or folder with the same name already exists",
-                        ));
-                    }
-                    execute_cloud_to_local_file_transfer_with_aggregate_progress(
-                        cli,
-                        op,
-                        &src,
-                        &target,
-                        AggregateTransferProgress {
-                            cancel: cancel.as_deref(),
-                            progress: progress.as_ref().expect("progress context for batch plan"),
-                            completed_before: completed_bytes,
-                            total_bytes: plan.total_bytes,
-                            file_size: plan.file_sizes[index],
-                        },
-                    )?;
-                    completed_bytes = completed_bytes.saturating_add(plan.file_sizes[index]);
-                } else {
-                    execute_rclone_transfer(
-                        RcloneTransferContext {
-                            cli,
-                            cloud_remote_for_error_mapping: Some(src.remote()),
-                            cancel: cancel.as_deref(),
-                            progress: if batch_source_count == 1 {
-                                progress.as_ref()
-                            } else {
-                                None
-                            },
-                        },
-                        op,
-                        LocalOrCloudArg::Cloud(src.clone()),
-                        LocalOrCloudArg::Local(target.clone()),
-                        options,
-                    )?;
-                }
-                if op == MixedTransferOp::Move {
-                    cloud::invalidate_cloud_write_paths(std::slice::from_ref(&src));
-                }
-                created.push(target.to_string_lossy().to_string());
-            }
-            Ok(())
-        }
-    };
-    result.map(|_| created)
+    flow::execute_mixed_entries_blocking_with_cli(cli, op, route, options, cancel, progress)
 }
 
 fn execute_rclone_transfer(
@@ -421,13 +213,13 @@ fn execute_rclone_transfer(
         ));
     }
 
-    if let Some(result) = try_execute_cloud_to_local_file_transfer_with_progress(
+    if let Some(result) = progress::try_execute_cloud_to_local_file_transfer_with_progress(
         cli, op, &src, &dst, cancel, progress,
     )? {
         return result;
     }
 
-    if let Some(result) = try_execute_local_to_cloud_file_transfer_with_progress(
+    if let Some(result) = progress::try_execute_local_to_cloud_file_transfer_with_progress(
         cli, op, &src, &dst, cancel, progress,
     )? {
         return result;
@@ -444,260 +236,6 @@ fn execute_rclone_transfer(
 
     cli.run_capture_text_with_cancel(spec, cancel)
         .map_err(|error| map_rclone_cli_error(error, cloud_remote_for_error_mapping))?;
-    Ok(())
-}
-
-fn try_execute_cloud_to_local_file_transfer_with_progress(
-    cli: &RcloneCli,
-    op: MixedTransferOp,
-    src: &LocalOrCloudArg,
-    dst: &LocalOrCloudArg,
-    cancel: Option<&AtomicBool>,
-    progress: Option<&TransferProgressContext>,
-) -> TransferResult<Option<TransferResult<()>>> {
-    let Some(progress) = progress else {
-        return Ok(None);
-    };
-    let (Some(src_path), Some(dst_path)) = (src.cloud_path(), dst.local_path()) else {
-        return Ok(None);
-    };
-    let provider = mixed_cloud_provider_for_cli(cli);
-    let Some(entry) = provider
-        .stat_path(src_path)
-        .map_err(map_cloud_error_to_transfer)?
-    else {
-        return Err(transfer_err(
-            TransferErrorCode::NotFound,
-            "Cloud source was not found",
-        ));
-    };
-    if !matches!(entry.kind, CloudEntryKind::File) {
-        return Ok(None);
-    }
-
-    let total = entry.size.unwrap_or(1);
-    let result = match op {
-        MixedTransferOp::Copy => provider
-            .download_file_with_progress(
-                src_path,
-                dst_path,
-                &progress.event_name,
-                cancel,
-                |bytes, total| {
-                    emit_transfer_progress(progress, bytes, total, false);
-                },
-            )
-            .map_err(map_cloud_error_to_transfer),
-        MixedTransferOp::Move => {
-            provider
-                .download_file_with_progress(
-                    src_path,
-                    dst_path,
-                    &progress.event_name,
-                    cancel,
-                    |bytes, total| {
-                        emit_transfer_progress(progress, bytes, total, false);
-                    },
-                )
-                .map_err(map_cloud_error_to_transfer)?;
-            provider
-                .delete_file(src_path, cancel)
-                .map_err(map_cloud_error_to_transfer)
-        }
-    }
-    .map(|_| {
-        emit_transfer_progress(progress, total, total, true);
-    });
-
-    Ok(Some(result))
-}
-
-fn try_execute_local_to_cloud_file_transfer_with_progress(
-    cli: &RcloneCli,
-    op: MixedTransferOp,
-    src: &LocalOrCloudArg,
-    dst: &LocalOrCloudArg,
-    cancel: Option<&AtomicBool>,
-    progress: Option<&TransferProgressContext>,
-) -> TransferResult<Option<TransferResult<()>>> {
-    let Some(progress) = progress else {
-        return Ok(None);
-    };
-    let (Some(src_path), Some(dst_path)) = (src.local_path(), dst.cloud_path()) else {
-        return Ok(None);
-    };
-    let metadata = fs::symlink_metadata(src_path).map_err(|error| {
-        transfer_err(
-            TransferErrorCode::IoError,
-            format!("Failed to read source metadata: {error}"),
-        )
-    })?;
-    if !metadata.is_file() {
-        return Ok(None);
-    }
-
-    let provider = mixed_cloud_provider_for_cli(cli);
-    let total = metadata.len();
-    let result = match op {
-        MixedTransferOp::Copy => provider
-            .upload_file_with_progress(
-                src_path,
-                dst_path,
-                &progress.event_name,
-                cancel,
-                |bytes, total| {
-                    emit_transfer_progress(progress, bytes, total, false);
-                },
-            )
-            .map_err(map_cloud_error_to_transfer),
-        MixedTransferOp::Move => {
-            provider
-                .upload_file_with_progress(
-                    src_path,
-                    dst_path,
-                    &progress.event_name,
-                    cancel,
-                    |bytes, total| {
-                        emit_transfer_progress(progress, bytes, total, false);
-                    },
-                )
-                .map_err(map_cloud_error_to_transfer)?;
-            remove_local_source_after_mixed_file_move(src_path)
-        }
-    }
-    .map(|_| {
-        emit_transfer_progress(progress, total, total, true);
-    });
-
-    Ok(Some(result))
-}
-
-fn build_cloud_to_local_batch_progress_plan(
-    cli: &RcloneCli,
-    sources: &[CloudPath],
-) -> TransferResult<Option<CloudToLocalBatchProgressPlan>> {
-    let provider = mixed_cloud_provider_for_cli(cli);
-    let mut file_sizes = Vec::with_capacity(sources.len());
-    let mut total_bytes = 0_u64;
-    for src in sources {
-        let Some(entry) = provider
-            .stat_path(src)
-            .map_err(map_cloud_error_to_transfer)?
-        else {
-            return Err(transfer_err(
-                TransferErrorCode::NotFound,
-                "Cloud source was not found",
-            ));
-        };
-        if !matches!(entry.kind, CloudEntryKind::File) {
-            return Ok(None);
-        }
-        let size = entry.size.unwrap_or(1);
-        file_sizes.push(size);
-        total_bytes = total_bytes.saturating_add(size);
-    }
-    if total_bytes == 0 {
-        return Ok(None);
-    }
-    Ok(Some(CloudToLocalBatchProgressPlan {
-        total_bytes,
-        file_sizes,
-    }))
-}
-
-fn build_local_to_cloud_batch_progress_plan(
-    sources: &[std::path::PathBuf],
-) -> TransferResult<Option<LocalToCloudBatchProgressPlan>> {
-    let mut file_sizes = Vec::with_capacity(sources.len());
-    let mut total_bytes = 0_u64;
-    for src in sources {
-        let metadata = fs::symlink_metadata(src).map_err(|error| {
-            transfer_err(
-                TransferErrorCode::IoError,
-                format!("Failed to read source metadata: {error}"),
-            )
-        })?;
-        if !metadata.is_file() {
-            return Ok(None);
-        }
-        let size = metadata.len();
-        file_sizes.push(size);
-        total_bytes = total_bytes.saturating_add(size);
-    }
-    if total_bytes == 0 {
-        return Ok(None);
-    }
-    Ok(Some(LocalToCloudBatchProgressPlan {
-        total_bytes,
-        file_sizes,
-    }))
-}
-
-fn execute_cloud_to_local_file_transfer_with_aggregate_progress(
-    cli: &RcloneCli,
-    op: MixedTransferOp,
-    src: &CloudPath,
-    dst: &std::path::Path,
-    aggregate: AggregateTransferProgress<'_>,
-) -> TransferResult<()> {
-    let AggregateTransferProgress {
-        cancel,
-        progress,
-        completed_before,
-        total_bytes,
-        file_size,
-    } = aggregate;
-    let provider = mixed_cloud_provider_for_cli(cli);
-    provider
-        .download_file_with_progress(src, dst, &progress.event_name, cancel, |bytes, _| {
-            let aggregate = completed_before.saturating_add(bytes.min(file_size));
-            emit_transfer_progress(progress, aggregate, total_bytes, false);
-        })
-        .map_err(map_cloud_error_to_transfer)?;
-    if op == MixedTransferOp::Move {
-        provider
-            .delete_file(src, cancel)
-            .map_err(map_cloud_error_to_transfer)?;
-    }
-    emit_transfer_progress(
-        progress,
-        completed_before.saturating_add(file_size),
-        total_bytes,
-        false,
-    );
-    Ok(())
-}
-
-fn execute_local_to_cloud_file_transfer_with_aggregate_progress(
-    cli: &RcloneCli,
-    op: MixedTransferOp,
-    src: &std::path::Path,
-    dst: &CloudPath,
-    aggregate: AggregateTransferProgress<'_>,
-) -> TransferResult<()> {
-    let AggregateTransferProgress {
-        cancel,
-        progress,
-        completed_before,
-        total_bytes,
-        file_size,
-    } = aggregate;
-    let provider = mixed_cloud_provider_for_cli(cli);
-    provider
-        .upload_file_with_progress(src, dst, &progress.event_name, cancel, |bytes, _| {
-            let aggregate = completed_before.saturating_add(bytes.min(file_size));
-            emit_transfer_progress(progress, aggregate, total_bytes, false);
-        })
-        .map_err(map_cloud_error_to_transfer)?;
-    if op == MixedTransferOp::Move {
-        remove_local_source_after_mixed_file_move(src)?;
-    }
-    emit_transfer_progress(
-        progress,
-        completed_before.saturating_add(file_size),
-        total_bytes,
-        false,
-    );
     Ok(())
 }
 

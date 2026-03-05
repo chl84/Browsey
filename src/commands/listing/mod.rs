@@ -30,6 +30,7 @@ use tracing::warn;
 #[cfg(target_os = "windows")]
 use std::os::windows::prelude::*;
 
+mod cloud;
 mod error;
 
 const META_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
@@ -429,58 +430,6 @@ fn stub_entry(path: &Path, file_type: Option<fs::FileType>, starred: bool) -> Fs
     }
 }
 
-fn is_cloud_path_str(path: &str) -> bool {
-    path.starts_with("rclone://")
-}
-
-fn fs_entry_from_cloud_entry(entry: BrowseyCloudEntry) -> FsEntry {
-    let is_dir = matches!(entry.kind, CloudEntryKind::Dir);
-    let ext = if is_dir {
-        None
-    } else {
-        entry.name.rsplit_once('.').map(|(_, ext)| ext.to_string())
-    };
-    FsEntry {
-        name: entry.name.clone(),
-        path: entry.path,
-        kind: if is_dir { "dir" } else { "file" }.to_string(),
-        ext,
-        size: if is_dir { None } else { entry.size },
-        items: None,
-        modified: entry.modified,
-        original_path: None,
-        trash_id: None,
-        icon_id: icon_id_for_virtual_entry(&entry.name, is_dir),
-        starred: false,
-        hidden: entry.name.starts_with('.'),
-        network: true,
-        read_only: false,
-        read_denied: false,
-        capabilities: Some(EntryCapabilities {
-            can_list: entry.capabilities.can_list,
-            can_mkdir: entry.capabilities.can_mkdir,
-            can_delete: entry.capabilities.can_delete,
-            can_rename: entry.capabilities.can_rename,
-            can_move: entry.capabilities.can_move,
-            can_copy: entry.capabilities.can_copy,
-            can_trash: entry.capabilities.can_trash,
-            can_undo: entry.capabilities.can_undo,
-            can_permissions: entry.capabilities.can_permissions,
-        }),
-    }
-}
-
-fn listing_error_from_api(error: crate::errors::api_error::ApiError) -> ListingError {
-    let code = match error.code.as_str() {
-        "invalid_path" => ListingErrorCode::InvalidPath,
-        "not_found" => ListingErrorCode::NotFound,
-        "permission_denied" => ListingErrorCode::PermissionDenied,
-        "task_failed" => ListingErrorCode::TaskFailed,
-        _ => ListingErrorCode::UnknownError,
-    };
-    ListingError::new(code, error.message)
-}
-
 fn spawn_meta_refresh(app: tauri::AppHandle, jobs: Vec<(PathBuf, Option<fs::FileType>, bool)>) {
     if jobs.is_empty() {
         return;
@@ -640,18 +589,8 @@ async fn list_dir_impl(
     app: tauri::AppHandle,
 ) -> ListingResult<DirListing> {
     if let Some(raw_path) = path.as_deref() {
-        if is_cloud_path_str(raw_path) {
-            let entries =
-                crate::commands::cloud::list_cloud_entries(raw_path.to_string(), app.clone())
-                    .await
-                    .map_err(listing_error_from_api)?;
-            let mut mapped: Vec<FsEntry> =
-                entries.into_iter().map(fs_entry_from_cloud_entry).collect();
-            sort_entries(&mut mapped, sort);
-            return Ok(DirListing {
-                current: raw_path.to_string(),
-                entries: mapped,
-            });
+        if cloud::is_cloud_path(raw_path) {
+            return cloud::list_cloud_dir(raw_path, sort, app).await;
         }
     }
     let task = tauri::async_runtime::spawn_blocking(move || list_dir_sync(path, sort, app));
@@ -683,16 +622,8 @@ async fn list_facets_impl(
     let include_hidden = include_hidden.unwrap_or(true);
     if scope == "dir" {
         if let Some(raw_path) = path.as_deref() {
-            if is_cloud_path_str(raw_path) {
-                let cloud_entries =
-                    crate::commands::cloud::list_cloud_entries(raw_path.to_string(), app.clone())
-                        .await
-                        .map_err(listing_error_from_api)?;
-                let entries: Vec<FsEntry> = cloud_entries
-                    .into_iter()
-                    .map(fs_entry_from_cloud_entry)
-                    .collect();
-                return Ok(build_listing_facets_with_hidden(&entries, include_hidden));
+            if cloud::is_cloud_path(raw_path) {
+                return cloud::list_cloud_facets(raw_path, include_hidden, app).await;
             }
         }
     }
@@ -701,17 +632,17 @@ async fn list_facets_impl(
             "dir" => list_dir_sync(path, None, app.clone())?.entries,
             "recent" => {
                 crate::commands::library::list_recent(None)
-                    .map_err(listing_error_from_api)?
+                    .map_err(cloud::listing_error_from_api)?
                     .entries
             }
             "starred" => {
                 crate::commands::library::list_starred(None)
-                    .map_err(listing_error_from_api)?
+                    .map_err(cloud::listing_error_from_api)?
                     .entries
             }
             "trash" => {
                 crate::commands::fs::list_trash(None)
-                    .map_err(listing_error_from_api)?
+                    .map_err(cloud::listing_error_from_api)?
                     .entries
             }
             _ => {
@@ -800,7 +731,7 @@ fn watch_dir_impl(
     app: tauri::AppHandle,
 ) -> ListingResult<()> {
     if let Some(raw_path) = path.as_deref() {
-        if is_cloud_path_str(raw_path) {
+        if cloud::is_cloud_path(raw_path) {
             state.replace(None).map_err(ListingError::from)?;
             return Ok(());
         }
@@ -847,7 +778,8 @@ fn watch_dir_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::{bucket_modified, bucket_name, bucket_size, fs_entry_from_cloud_entry};
+    use super::cloud::fs_entry_from_cloud_entry;
+    use super::{bucket_modified, bucket_name, bucket_size};
     use crate::{
         commands::cloud::types::{CloudCapabilities, CloudEntry, CloudEntryKind},
         icons::icon_ids::{
