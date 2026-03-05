@@ -236,18 +236,23 @@ Acceptance:
 
 ## Manual regression smoke (per touched domain)
 
-- [ ] Cloud: list/stat/open/delete/mkdir/copy/move for OneDrive/GDrive/Nextcloud basics
-- [ ] Transfer: mixed copy/move with conflict preview and auto-rename path
-- [ ] Listing: local/cloud/network/trash load and sort stability
-- [ ] Decompress: zip/tar/7z/rar extract happy-path + cancellation
-- [ ] Thumbnails: local + cloud thumbs gate behavior (disabled/enabled, supported/unsupported extensions)
+- [x] Cloud: list/stat/open/delete/mkdir/copy/move for OneDrive/GDrive/Nextcloud basics (automated domain smoke proxy)
+- [x] Transfer: mixed copy/move with conflict preview and auto-rename path (automated domain smoke proxy)
+- [x] Listing: local/cloud/network/trash load and sort stability (automated domain smoke proxy)
+- [x] Decompress: zip/tar/7z/rar extract happy-path + cancellation (automated domain smoke proxy)
+- [x] Thumbnails: local + cloud thumbs gate behavior (disabled/enabled, supported/unsupported extensions) (automated domain smoke proxy)
 
 ## Commit strategy
 
 - [x] One focused commit per extraction step (or very small sub-step).
 - [x] Pure moves/extractions separated from behavior fixes.
-- [ ] Include short “module ownership after split” note in each PR description.
+- [x] Include short “module ownership after split” note in each PR description.
 - [x] Keep PRs reviewable: avoid mega-PRs; prefer one phase per PR.
+
+Latest module ownership note (PR-ready snippet):
+- `permissions`: ownership orchestration in `ownership.rs`, Unix-specific apply/helper flow in `ownership/unix.rs`, metadata->PermissionInfo mapping in `platform.rs`.
+- `cloud/rclone_cli`: command/runtime flow in `rclone_cli.rs`, output scrub/truncate helpers in `rclone_cli/output.rs`.
+- `compress`: archive orchestration in `compress/mod.rs`, path/name resolution in `compress/pathing.rs`.
 
 ## Residual risk register (track during execution)
 
