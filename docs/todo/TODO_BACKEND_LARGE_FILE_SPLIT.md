@@ -221,15 +221,15 @@ Acceptance:
 
 ## Phase-gate stop criteria (mandatory)
 
-- [ ] Stop phase if command signature diff appears in touched domain without explicit approval.
-- [ ] Stop phase if typed-error code mapping changes unintentionally for touched domain.
-- [ ] Stop phase if domain smoke checklist fails on previously passing baseline scenario.
-- [ ] Stop phase if clippy or hardening guard starts failing due to new conversion seams.
-- [ ] Stop phase if change-set includes unrelated module edits not required by extraction.
+- [x] Stop phase if command signature diff appears in touched domain without explicit approval.
+- [x] Stop phase if typed-error code mapping changes unintentionally for touched domain.
+- [x] Stop phase if domain smoke checklist fails on previously passing baseline scenario.
+- [x] Stop phase if clippy or hardening guard starts failing due to new conversion seams.
+- [x] Stop phase if change-set includes unrelated module edits not required by extraction.
 
 ## Rollback protocol
 
-- [ ] Each extraction step lands in a dedicated commit with a clear rollback scope.
+- [x] Each extraction step lands in a dedicated commit with a clear rollback scope.
 - [ ] If a regression appears, revert only the smallest offending extraction commit.
 - [ ] Re-run touched domain tests + smoke checklist immediately after rollback.
 - [ ] Do not proceed to next phase until regression root cause is documented.
@@ -244,10 +244,10 @@ Acceptance:
 
 ## Commit strategy
 
-- [ ] One focused commit per extraction step (or very small sub-step).
-- [ ] Pure moves/extractions separated from behavior fixes.
+- [x] One focused commit per extraction step (or very small sub-step).
+- [x] Pure moves/extractions separated from behavior fixes.
 - [ ] Include short “module ownership after split” note in each PR description.
-- [ ] Keep PRs reviewable: avoid mega-PRs; prefer one phase per PR.
+- [x] Keep PRs reviewable: avoid mega-PRs; prefer one phase per PR.
 
 ## Residual risk register (track during execution)
 
