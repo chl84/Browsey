@@ -8,6 +8,7 @@ mod limits;
 mod list;
 mod open;
 pub mod path;
+mod policy;
 pub mod provider;
 pub mod providers;
 pub mod rclone_cli;
@@ -51,11 +52,7 @@ pub(crate) fn cloud_provider_kind_for_remote(remote_id: &str) -> Option<CloudPro
 }
 
 pub(crate) fn cloud_conflict_name_key(provider: Option<CloudProviderKind>, name: &str) -> String {
-    match provider {
-        // OneDrive is effectively case-insensitive for path conflicts.
-        Some(CloudProviderKind::Onedrive) => name.to_ascii_lowercase(),
-        _ => name.to_string(),
-    }
+    policy::cloud_conflict_name_key(provider, name)
 }
 
 pub(crate) fn invalidate_cloud_write_paths(paths: &[CloudPath]) {

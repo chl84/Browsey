@@ -167,4 +167,42 @@ mod tests {
         assert_eq!(conflicts[0].target, "rclone://work/dest/report.txt");
         assert!(!conflicts[0].is_dir);
     }
+
+    #[test]
+    fn conflict_preview_stays_case_sensitive_for_non_onedrive_names() {
+        let src_file = CloudPath::parse("rclone://work/src/report.txt").expect("src file");
+        let dest_dir = CloudPath::parse("rclone://work/dest").expect("dest");
+        let dest_entries = vec![CloudEntry {
+            name: "Report.txt".to_string(),
+            path: "rclone://work/dest/Report.txt".to_string(),
+            kind: CloudEntryKind::File,
+            size: Some(1),
+            modified: None,
+            capabilities: CloudCapabilities::v1_core_rw(),
+        }];
+
+        let gdrive_conflicts = build_conflicts_from_dest_listing(
+            std::slice::from_ref(&src_file),
+            &dest_dir,
+            &dest_entries,
+            Some(CloudProviderKind::Gdrive),
+        )
+        .expect("gdrive conflicts");
+        assert!(
+            gdrive_conflicts.is_empty(),
+            "gdrive should keep case-sensitive conflict matching"
+        );
+
+        let nextcloud_conflicts = build_conflicts_from_dest_listing(
+            std::slice::from_ref(&src_file),
+            &dest_dir,
+            &dest_entries,
+            Some(CloudProviderKind::Nextcloud),
+        )
+        .expect("nextcloud conflicts");
+        assert!(
+            nextcloud_conflicts.is_empty(),
+            "nextcloud should keep case-sensitive conflict matching"
+        );
+    }
 }

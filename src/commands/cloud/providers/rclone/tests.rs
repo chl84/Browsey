@@ -282,6 +282,13 @@ fn provider_specific_rclone_message_mapping_is_isolated() {
         ),
         None
     );
+    assert_eq!(
+        classify_provider_rclone_message_code(
+            CloudProviderKind::Nextcloud,
+            "graph returned ActivityLimitReached"
+        ),
+        None
+    );
 }
 
 #[test]
@@ -596,6 +603,36 @@ impl Drop for FakeRcloneSandbox {
 #[cfg(unix)]
 fn cloud_path(raw: &str) -> CloudPath {
     CloudPath::parse(raw).expect("valid cloud path")
+}
+
+#[cfg(unix)]
+fn assert_create_delete_recreate_same_folder(sandbox: &FakeRcloneSandbox, remote: &str) {
+    let provider = sandbox.provider_with_forced_rc();
+    let path = cloud_path(&format!("rclone://{remote}/roundtrip/folder"));
+
+    provider
+        .mkdir(&path, None)
+        .expect("initial create should succeed");
+    assert!(
+        sandbox.remote_path(remote, "roundtrip/folder").is_dir(),
+        "folder should exist after initial create"
+    );
+
+    provider
+        .delete_dir_empty(&path, None)
+        .expect("delete should succeed");
+    assert!(
+        !sandbox.remote_path(remote, "roundtrip/folder").exists(),
+        "folder should be removed after delete"
+    );
+
+    provider
+        .mkdir(&path, None)
+        .expect("recreate should succeed");
+    assert!(
+        sandbox.remote_path(remote, "roundtrip/folder").is_dir(),
+        "folder should exist after recreate"
+    );
 }
 
 #[cfg(unix)]
@@ -925,6 +962,29 @@ fn mkdir_keeps_destination_exists_when_probe_confirms_existing_target() {
 
 #[cfg(unix)]
 #[test]
+fn create_delete_recreate_same_name_roundtrip_succeeds_for_onedrive() {
+    let sandbox = FakeRcloneSandbox::new();
+    assert_create_delete_recreate_same_folder(&sandbox, "work");
+}
+
+#[cfg(unix)]
+#[test]
+fn create_delete_recreate_same_name_roundtrip_succeeds_for_gdrive() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.set_remote_provider_type("drive-work", "drive");
+    assert_create_delete_recreate_same_folder(&sandbox, "drive-work");
+}
+
+#[cfg(unix)]
+#[test]
+fn create_delete_recreate_same_name_roundtrip_succeeds_for_nextcloud() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.set_remote_provider_type("nc-work", "nextcloud");
+    assert_create_delete_recreate_same_folder(&sandbox, "nc-work");
+}
+
+#[cfg(unix)]
+#[test]
 fn delete_ops_use_cli_delete_policy_flags() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "trash/file.txt", "payload");
@@ -1006,6 +1066,53 @@ fn delete_ops_use_gdrive_cli_delete_policy_flags() {
 
 #[cfg(unix)]
 #[test]
+fn delete_ops_use_nextcloud_default_policy_without_provider_flags() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("nc-work", "trash/file.txt", "payload");
+    sandbox.write_remote_file("nc-work", "trash-deep/sub/old.txt", "payload");
+    sandbox.set_remote_provider_type("nc-work", "nextcloud");
+    let provider = sandbox.provider_with_forced_rc();
+
+    provider
+        .delete_file(&cloud_path("rclone://nc-work/trash/file.txt"), None)
+        .expect("delete file");
+    assert!(!sandbox.remote_path("nc-work", "trash/file.txt").exists());
+
+    provider
+        .delete_dir_empty(&cloud_path("rclone://nc-work/trash"), None)
+        .expect("delete empty dir");
+    assert!(!sandbox.remote_path("nc-work", "trash").exists());
+
+    provider
+        .delete_dir_recursive(&cloud_path("rclone://nc-work/trash-deep"), None)
+        .expect("delete recursive dir");
+    assert!(!sandbox.remote_path("nc-work", "trash-deep").exists());
+
+    let log = sandbox.read_log();
+    assert!(
+        log.contains("deletefile nc-work:trash/file.txt"),
+        "expected Nextcloud delete command without provider delete policy flags, log:\n{log}"
+    );
+    assert!(
+        log.contains("rmdir nc-work:trash"),
+        "expected Nextcloud rmdir command without provider delete policy flags, log:\n{log}"
+    );
+    assert!(
+        log.contains("purge nc-work:trash-deep"),
+        "expected Nextcloud purge command without provider delete policy flags, log:\n{log}"
+    );
+    assert!(
+        !log.contains("--onedrive-hard-delete"),
+        "Nextcloud flow must not inherit OneDrive delete policy flags, log:\n{log}"
+    );
+    assert!(
+        !log.contains("--drive-use-trash=false"),
+        "Nextcloud flow must not inherit Google Drive delete policy flags, log:\n{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn delete_fails_when_delete_policy_lookup_cannot_be_verified() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "trash/file.txt", "payload");
@@ -1029,6 +1136,22 @@ fn delete_fails_when_delete_policy_lookup_cannot_be_verified() {
     assert!(
         !log.contains("deletefile --onedrive-hard-delete work:trash/file.txt"),
         "deletefile must not run after policy lookup failure, log:\n{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn delete_file_missing_path_maps_to_not_found_code() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "");
+    let provider = sandbox.provider_with_forced_rc();
+
+    let err = provider
+        .delete_file(&cloud_path("rclone://work/missing/file.txt"), None)
+        .expect_err("missing file delete should fail");
+    assert_eq!(
+        err.code_str(),
+        CloudCommandErrorCode::NotFound.as_code_str()
     );
 }
 
@@ -1078,6 +1201,26 @@ fn copy_move_ops_fall_back_to_cli_when_rc_startup_fails() {
     assert!(
         log.contains("moveto work:dst/copied.txt work:dst/moved.txt"),
         "expected CLI move fallback call, log:\n{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn download_missing_path_maps_to_not_found_code() {
+    let sandbox = FakeRcloneSandbox::new();
+    let provider = sandbox.provider();
+    let local_target = sandbox.root.join("local-downloads").join("missing.txt");
+
+    let err = provider
+        .download_file(
+            &cloud_path("rclone://work/missing.txt"),
+            &local_target,
+            None,
+        )
+        .expect_err("missing file download should fail");
+    assert_eq!(
+        err.code_str(),
+        CloudCommandErrorCode::NotFound.as_code_str()
     );
 }
 
