@@ -11,9 +11,11 @@ use std::{
 use tracing::{debug, warn};
 use wait_timeout::ChildExt;
 
+mod output;
+use output::{scrub_log_text, truncate_failure_output};
+
 const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] =
     &["--retries", "2", "--low-level-retries", "2", "--stats", "0"];
-const RCLONE_FAILURE_OUTPUT_MAX_CHARS: usize = 16 * 1024;
 const RCLONE_SHUTDOWN_POLL_SLICE_MS: u64 = 100;
 const RCLONE_SPAWN_ETXTBSY_RETRY_BACKOFFS_MS: &[u64] = &[10, 25, 50];
 
@@ -531,47 +533,6 @@ fn child_wait_with_output(child: &SharedChild) -> std::io::Result<Output> {
         .ok_or_else(|| std::io::Error::other("rclone child process already consumed"))?;
     drop(guard);
     child.wait_with_output()
-}
-
-fn scrub_log_text(raw: &str) -> String {
-    const MAX_CHARS: usize = 320;
-    if raw.trim().is_empty() {
-        return String::new();
-    }
-    let mut out = String::new();
-    for (idx, line) in raw.lines().enumerate() {
-        if idx > 0 {
-            out.push_str(" | ");
-        }
-        let lower = line.to_ascii_lowercase();
-        if lower.contains("token")
-            || lower.contains("secret")
-            || lower.contains("password")
-            || lower.contains("authorization")
-        {
-            out.push_str("[redacted]");
-        } else {
-            out.push_str(line.trim());
-        }
-        if out.chars().count() >= MAX_CHARS {
-            let mut truncated = out.chars().take(MAX_CHARS).collect::<String>();
-            truncated.push('…');
-            return truncated;
-        }
-    }
-    out
-}
-
-fn truncate_failure_output(raw: String) -> String {
-    if raw.chars().count() <= RCLONE_FAILURE_OUTPUT_MAX_CHARS {
-        return raw;
-    }
-    let mut truncated = raw
-        .chars()
-        .take(RCLONE_FAILURE_OUTPUT_MAX_CHARS)
-        .collect::<String>();
-    truncated.push_str("… [truncated]");
-    truncated
 }
 
 #[cfg(test)]

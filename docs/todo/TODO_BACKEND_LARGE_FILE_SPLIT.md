@@ -204,20 +204,20 @@ Acceptance:
 - [x] `settings`: moved module-local tests to `settings/tests.rs`.
 - [x] `settings`: split command wrappers into focused submodules.
 - [x] `src/commands/rename/mod.rs`: split batch rename plan/build/apply responsibilities.
-- [ ] `src/commands/permissions/ownership.rs` and `src/commands/permissions/mod.rs`: separate platform-specific handling from shared orchestration.
-- [ ] `src/commands/compress/mod.rs` and `src/commands/cloud/rclone_cli.rs`: split only if Phase 1-3 remain stable.
+- [x] `src/commands/permissions/ownership.rs` and `src/commands/permissions/mod.rs`: separate platform-specific handling from shared orchestration.
+- [x] `src/commands/compress/mod.rs` and `src/commands/cloud/rclone_cli.rs`: split only if Phase 1-3 remain stable.
 
 Acceptance:
 - Remaining top-size modules each have a clear module map and reduced single-file complexity.
 
 ## Quality gates (run per phase)
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings`
-- [ ] `cargo test --all-targets --all-features`
-- [ ] `bash scripts/maintenance/check-backend-error-hardening-guard.sh`
-- [ ] Domain-focused test subset for touched area (for example `cargo test commands::cloud:: -- --nocapture`)
-- [ ] Ensure no new warnings in touched modules (`cargo test` output clean for touched domain tests).
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --all-features -- -D warnings`
+- [x] `cargo test --all-targets --all-features`
+- [x] `bash scripts/maintenance/check-backend-error-hardening-guard.sh`
+- [x] Domain-focused test subset for touched area (for example `cargo test commands::cloud:: -- --nocapture`)
+- [x] Ensure no new warnings in touched modules (`cargo test` output clean for touched domain tests).
 
 ## Phase-gate stop criteria (mandatory)
 
