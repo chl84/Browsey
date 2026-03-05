@@ -1,8 +1,9 @@
-use super::types::CloudProviderKind;
+use super::{error::CloudCommandErrorCode, types::CloudProviderKind};
 
 const ONEDRIVE_DELETE_POLICY_ARGS: &[&str] = &["--onedrive-hard-delete"];
 const GDRIVE_DELETE_POLICY_ARGS: &[&str] = &["--drive-use-trash=false"];
 const NEXTCLOUD_DELETE_POLICY_ARGS: &[&str] = &[];
+const MKDIR_DESTINATION_EXISTS_RETRY_BACKOFFS_MS: &[u64] = &[75, 200, 500];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ProviderPolicy {
@@ -39,6 +40,30 @@ pub(crate) fn cloud_delete_policy_args(kind: CloudProviderKind) -> &'static [&'s
     provider_policy(kind).delete_policy_args
 }
 
+pub(crate) fn mkdir_destination_exists_retry_backoffs_ms(
+    _provider: Option<CloudProviderKind>,
+) -> &'static [u64] {
+    // Hook point for provider tuning. Current baseline keeps identical backoff windows.
+    MKDIR_DESTINATION_EXISTS_RETRY_BACKOFFS_MS
+}
+
+pub(crate) fn classify_provider_rclone_message_code(
+    provider: CloudProviderKind,
+    message: &str,
+) -> Option<CloudCommandErrorCode> {
+    let lower = message.to_ascii_lowercase();
+    match provider {
+        CloudProviderKind::Onedrive => {
+            if lower.contains("activitylimitreached") {
+                return Some(CloudCommandErrorCode::RateLimited);
+            }
+            None
+        }
+        CloudProviderKind::Gdrive => None,
+        CloudProviderKind::Nextcloud => None,
+    }
+}
+
 pub(crate) fn cloud_conflict_name_key(provider: Option<CloudProviderKind>, name: &str) -> String {
     match provider {
         Some(kind) if provider_policy(kind).conflict_case_insensitive => name.to_ascii_lowercase(),
@@ -48,8 +73,11 @@ pub(crate) fn cloud_conflict_name_key(provider: Option<CloudProviderKind>, name:
 
 #[cfg(test)]
 mod tests {
-    use super::{cloud_conflict_name_key, cloud_delete_policy_args};
-    use crate::commands::cloud::types::CloudProviderKind;
+    use super::{
+        classify_provider_rclone_message_code, cloud_conflict_name_key, cloud_delete_policy_args,
+        mkdir_destination_exists_retry_backoffs_ms,
+    };
+    use crate::commands::cloud::{error::CloudCommandErrorCode, types::CloudProviderKind};
 
     #[test]
     fn delete_policy_args_are_provider_specific() {
@@ -81,5 +109,48 @@ mod tests {
             cloud_conflict_name_key(Some(CloudProviderKind::Nextcloud), "Report.TXT"),
             "Report.TXT"
         );
+    }
+
+    #[test]
+    fn provider_specific_error_hints_are_isolated() {
+        assert_eq!(
+            classify_provider_rclone_message_code(
+                CloudProviderKind::Onedrive,
+                "graph returned ActivityLimitReached"
+            ),
+            Some(CloudCommandErrorCode::RateLimited)
+        );
+        assert_eq!(
+            classify_provider_rclone_message_code(
+                CloudProviderKind::Gdrive,
+                "graph returned ActivityLimitReached"
+            ),
+            None
+        );
+        assert_eq!(
+            classify_provider_rclone_message_code(
+                CloudProviderKind::Nextcloud,
+                "graph returned ActivityLimitReached"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn mkdir_destination_exists_backoff_is_exposed_by_policy_hook() {
+        let expected = &[75, 200, 500];
+        assert_eq!(
+            mkdir_destination_exists_retry_backoffs_ms(Some(CloudProviderKind::Onedrive)),
+            expected
+        );
+        assert_eq!(
+            mkdir_destination_exists_retry_backoffs_ms(Some(CloudProviderKind::Gdrive)),
+            expected
+        );
+        assert_eq!(
+            mkdir_destination_exists_retry_backoffs_ms(Some(CloudProviderKind::Nextcloud)),
+            expected
+        );
+        assert_eq!(mkdir_destination_exists_retry_backoffs_ms(None), expected);
     }
 }

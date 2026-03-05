@@ -39,8 +39,8 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [x] Define a `ProviderPolicy` abstraction (trait/struct strategy) for:
 - [x] Delete/trash behavior
 - [x] Conflict/case behavior
-- [ ] Provider-specific error hints/classification hooks
-- [ ] Retry/backoff hints where needed
+- [x] Provider-specific error hints/classification hooks
+- [x] Retry/backoff hints where needed
 - [x] Keep explicit provider defaults in one place (no hidden behavior in call sites)
 - [x] Document shared vs provider-specific boundaries in code comments
 
@@ -53,7 +53,7 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 
 ## Workstream 3: Operation-by-operation migration
 - [ ] Phase A: `mkdir`
-- [ ] Phase B: `delete`
+- [x] Phase B: `delete`
 - [ ] Phase C: `move` + `copy`
 - [ ] Phase D: `open/materialize` shared patterns where safe
 - [ ] Validate each phase completely before moving to the next
