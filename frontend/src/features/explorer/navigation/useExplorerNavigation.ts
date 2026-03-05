@@ -1,7 +1,7 @@
 import { tick } from 'svelte'
 import { get, type Readable, type Writable } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
-import { connectNetworkUri, isMountUri } from '@/features/network'
+import { connectNetworkUri, isMountUri, statCloudEntry } from '@/features/network'
 import { entryKind } from '../services/files.service'
 import { createSelectionMemory } from '../selection/selectionMemory'
 import type { Entry } from '../model/types'
@@ -283,6 +283,22 @@ export const useExplorerNavigation = (deps: Deps) => {
     if (!trimmed) return
 
     if (isCloudPath(trimmed)) {
+      try {
+        const entry = await statCloudEntry(trimmed)
+        if (entry?.kind === 'dir') {
+          if (trimmed !== get(deps.current) && !get(deps.loading)) {
+            await loadDir(trimmed)
+          }
+          return
+        }
+        if (entry?.kind === 'file') {
+          openPathAsFile(trimmed)
+          deps.setPathInput(get(deps.current))
+          return
+        }
+      } catch {
+        // Fall through to directory navigation fallback, matching local-path behavior.
+      }
       if (trimmed !== get(deps.current) && !get(deps.loading)) {
         await loadDir(trimmed)
       }
