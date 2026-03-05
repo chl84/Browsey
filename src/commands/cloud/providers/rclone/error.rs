@@ -2,6 +2,7 @@ use super::{
     write::cloud_write_cancelled_error, CloudCommandError, CloudCommandErrorCode, CloudPath,
     CloudProviderKind, RcloneCliError,
 };
+use crate::commands::cloud::policy;
 
 pub(super) fn map_rclone_error(error: RcloneCliError) -> CloudCommandError {
     map_rclone_error_for_provider(CloudProviderKind::Onedrive, error)
@@ -51,17 +52,7 @@ pub(super) fn classify_provider_rclone_message_code(
     provider: CloudProviderKind,
     message: &str,
 ) -> Option<CloudCommandErrorCode> {
-    let lower = message.to_ascii_lowercase();
-    match provider {
-        CloudProviderKind::Onedrive => {
-            if lower.contains("activitylimitreached") {
-                return Some(CloudCommandErrorCode::RateLimited);
-            }
-            None
-        }
-        CloudProviderKind::Gdrive => None,
-        CloudProviderKind::Nextcloud => None,
-    }
+    policy::classify_provider_rclone_message_code(provider, message)
 }
 
 pub(super) fn is_rclone_not_found_text(stderr: &str, stdout: &str) -> bool {
