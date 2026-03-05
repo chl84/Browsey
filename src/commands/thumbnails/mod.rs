@@ -16,14 +16,13 @@ use once_cell::sync::Lazy;
 use rayon::ThreadPool;
 use rayon::ThreadPoolBuilder;
 use serde::Serialize;
-use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Seek};
 use std::sync::mpsc;
 use std::sync::RwLock;
 use std::time::Duration;
 use tauri::AppHandle;
 use tauri::Manager;
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::Semaphore;
 
 mod thumbnails_svg;
 use thumbnails_svg::render_svg_thumbnail;
@@ -31,15 +30,10 @@ mod thumbnails_pdf;
 use thumbnails_pdf::render_pdf_thumbnail;
 mod thumbnails_video;
 use thumbnails_video::render_video_thumbnail;
+mod cache_flow;
+mod cloud_source;
 mod error;
 
-use crate::commands::cloud::path::CloudPath;
-use crate::commands::cloud::provider::CloudProvider;
-use crate::commands::cloud::types::CloudEntryKind;
-use crate::commands::cloud::{
-    configured_rclone_provider, materialize_cloud_file_for_local_use_with_snapshot,
-    CloudCommandError, CloudCommandErrorCode, CloudMaterializeSnapshot,
-};
 use crate::db;
 use crate::errors::api_error::ApiResult;
 use crate::errors::domain::ErrorCode;
@@ -49,7 +43,7 @@ use error::{map_api_result, ThumbnailError, ThumbnailErrorCode, ThumbnailResult}
 const MAX_DIM_DEFAULT: u32 = 96;
 const MAX_DIM_HARD_LIMIT: u32 = 512;
 const MIN_DIM_HARD_LIMIT: u32 = 32;
-const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
+pub(super) const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
 const MAX_FILE_BYTES_VIDEO: u64 = 1_000 * 1024 * 1024; // 1 GB
 const POOL_MIN_THREADS: usize = 2;
 const POOL_MAX_THREADS: usize = 8;
@@ -67,17 +61,11 @@ const MAX_DECODE_BYTES: u64 = (MAX_SOURCE_DIM as u64) * (MAX_SOURCE_DIM as u64) 
 const JPEG_SCALED_DECODE_TARGET_MULTIPLIER: u32 = 4;
 
 #[derive(Clone, Debug)]
-struct ThumbnailRuntimeSettings {
+pub(super) struct ThumbnailRuntimeSettings {
     thumb_cache_mb: u64,
     video_thumbs: bool,
     ffmpeg_path: Option<PathBuf>,
     cloud_thumbs: bool,
-}
-
-#[derive(Clone, Debug)]
-struct CloudThumbnailSource {
-    cloud_path: CloudPath,
-    snapshot: CloudMaterializeSnapshot,
 }
 
 impl Default for ThumbnailRuntimeSettings {
@@ -197,7 +185,7 @@ fn load_runtime_settings_from_db() -> ThumbnailRuntimeSettings {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum ThumbKind {
+pub(super) enum ThumbKind {
     Image,
     Svg,
     Pdf,
@@ -217,10 +205,6 @@ static DECODE_POOL: Lazy<ThreadPool> = Lazy::new(|| {
         .expect("failed to build decode pool")
 });
 
-type InflightWaiters = Vec<oneshot::Sender<ThumbnailResult<ThumbnailResponse>>>;
-type InflightMap = HashMap<String, InflightWaiters>;
-static INFLIGHT: Lazy<std::sync::Mutex<InflightMap>> =
-    Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
 static LOG_THUMBS: Lazy<bool> =
     Lazy::new(|| std::env::var("BROWSEY_DEBUG_THUMBS").is_ok() || cfg!(debug_assertions));
 static BLOCKING_SEM: Lazy<Semaphore> = Lazy::new(|| {
@@ -307,8 +291,8 @@ async fn get_thumbnail_impl(
     })?;
 
     let (target, meta, kind, ffmpeg_override, key) = if path.starts_with("rclone://") {
-        let source = precheck_cloud_thumbnail_source(&path, &settings)?;
-        let key = cache_key_for_cloud_source(&source, max_dim);
+        let source = cloud_source::precheck_cloud_thumbnail_source(&path, &settings)?;
+        let key = cloud_source::cache_key_for_cloud_source(&source, max_dim);
         let cache_path = cache_dir.join(format!("{key}.png"));
         if let Some((w, h)) = cached_dims(&cache_path) {
             return Ok(ThumbnailResponse {
@@ -319,7 +303,7 @@ async fn get_thumbnail_impl(
             });
         }
         let (target, meta, kind, ffmpeg_override) =
-            materialize_cloud_thumbnail_source(&app_handle, &source).await?;
+            cloud_source::materialize_cloud_thumbnail_source(&app_handle, &source).await?;
         (target, meta, kind, ffmpeg_override, key)
     } else {
         let (target, meta, kind, ffmpeg_override) =
@@ -352,7 +336,7 @@ async fn get_thumbnail_impl(
     }
 
     // In-flight deduplication
-    if let Some(rx) = register_or_wait(&key) {
+    if let Some(rx) = cache_flow::register_or_wait(&key) {
         let res: Result<ThumbnailResult<ThumbnailResponse>, _> = rx.await;
         return res
             .map_err(|_| ThumbnailError::from_external_message("Thumbnail task cancelled"))?
@@ -391,33 +375,27 @@ async fn get_thumbnail_impl(
 
     if let Err(err) = res.as_ref() {
         // Make sure callers waiting on the same key get released even on panics/JoinError.
-        notify_waiters(&key, Err(err.clone()));
+        cache_flow::notify_waiters(&key, Err(err.clone()));
     }
 
     drop(permit_global);
 
     let res = res?;
 
-    static TRIM_COUNTER: Lazy<std::sync::Mutex<u32>> = Lazy::new(|| std::sync::Mutex::new(0));
-
-    let res = match res {
+    match res {
         Ok(r) => {
-            notify_waiters(&key, Ok(r.clone()));
-            let mut counter = TRIM_COUNTER.lock().expect("trim counter poisoned");
-            *counter = counter.wrapping_add(1);
-            if (*counter).is_multiple_of(100) {
+            cache_flow::notify_waiters(&key, Ok(r.clone()));
+            if cache_flow::bump_trim_counter_should_trim() {
                 let max_bytes = settings.cache_max_bytes();
-                trim_cache(&cache_dir, max_bytes, CACHE_MAX_FILES);
+                cache_flow::trim_cache(&cache_dir, max_bytes, CACHE_MAX_FILES);
             }
             Ok(r)
         }
         Err(err) => {
-            notify_waiters(&key, Err(err.clone()));
+            cache_flow::notify_waiters(&key, Err(err.clone()));
             Err(err)
         }
-    };
-
-    res
+    }
 }
 
 fn resolve_local_thumbnail_source(
@@ -450,215 +428,6 @@ fn resolve_local_thumbnail_source(
         None
     };
     Ok((target, meta, kind, ffmpeg_override))
-}
-
-fn precheck_cloud_thumbnail_source(
-    raw_path: &str,
-    settings: &ThumbnailRuntimeSettings,
-) -> ThumbnailResult<CloudThumbnailSource> {
-    let cloud_path = CloudPath::parse(raw_path).map_err(|error| {
-        ThumbnailError::new(
-            ThumbnailErrorCode::InvalidInput,
-            format!("Invalid cloud path: {error}"),
-        )
-    })?;
-    let leaf = cloud_path.leaf_name().map_err(|error| {
-        ThumbnailError::new(
-            ThumbnailErrorCode::InvalidInput,
-            format!("Invalid cloud path: {error}"),
-        )
-    })?;
-    let ext = Path::new(leaf)
-        .extension()
-        .and_then(|part| part.to_str())
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
-    validate_cloud_thumb_extension(settings, &ext)?;
-
-    let provider = configured_rclone_provider().map_err(|error| {
-        ThumbnailError::new(
-            ThumbnailErrorCode::UnknownError,
-            format!("Cloud thumbnail provider unavailable: {error}"),
-        )
-    })?;
-    let entry = provider
-        .stat_path(&cloud_path)
-        .map_err(|error| map_cloud_command_error("Cloud thumbnail stat failed", error))?
-        .ok_or_else(|| {
-            ThumbnailError::new(
-                ThumbnailErrorCode::NotFound,
-                format!("Cloud file was not found: {cloud_path}"),
-            )
-        })?;
-    if !matches!(entry.kind, CloudEntryKind::File) {
-        return Err(ThumbnailError::new(
-            ThumbnailErrorCode::InvalidInput,
-            "Target is not a file",
-        ));
-    }
-    // Precheck-only policy: this cloud-size guard is best-effort and not a strict
-    // transaction across provider consistency windows.
-    validate_cloud_thumb_size(entry.size)?;
-    let snapshot = CloudMaterializeSnapshot {
-        name: entry.name,
-        size: entry.size,
-        modified: entry.modified,
-        kind: entry.kind,
-    };
-    Ok(CloudThumbnailSource {
-        cloud_path,
-        snapshot,
-    })
-}
-
-async fn materialize_cloud_thumbnail_source(
-    app_handle: &AppHandle,
-    source: &CloudThumbnailSource,
-) -> ThumbnailResult<(PathBuf, fs::Metadata, ThumbKind, Option<PathBuf>)> {
-    let cloud_path_for_task = source.cloud_path.clone();
-    let snapshot_for_task = source.snapshot.clone();
-    let app_for_task = app_handle.clone();
-    let target = tauri::async_runtime::spawn_blocking(move || {
-        materialize_cloud_file_for_local_use_with_snapshot(
-            &cloud_path_for_task,
-            &snapshot_for_task,
-            &app_for_task,
-            None,
-            None,
-        )
-    })
-    .await
-    .map_err(|error| {
-        ThumbnailError::new(
-            ThumbnailErrorCode::Cancelled,
-            format!("Cloud thumbnail materialization task cancelled: {error}"),
-        )
-    })?
-    .map_err(|error| map_cloud_command_error("Cloud thumbnail materialization failed", error))?;
-    let meta = fs::metadata(&target).map_err(|error| {
-        ThumbnailError::new(
-            ThumbnailErrorCode::DecodeFailed,
-            format!("Failed to read cloud thumbnail metadata: {error}"),
-        )
-    })?;
-    let kind = thumb_kind(&target);
-    if matches!(kind, ThumbKind::Video) {
-        return Err(ThumbnailError::new(
-            ThumbnailErrorCode::UnsupportedFormat,
-            "Unsupported cloud thumbnail extension: video",
-        ));
-    }
-    Ok((target, meta, kind, None))
-}
-
-fn map_cloud_command_error(context: &str, error: CloudCommandError) -> ThumbnailError {
-    ThumbnailError::new(
-        map_cloud_command_error_code(error.code()),
-        format!("{context}: {error}"),
-    )
-}
-
-fn map_cloud_command_error_code(code: CloudCommandErrorCode) -> ThumbnailErrorCode {
-    match code {
-        CloudCommandErrorCode::InvalidPath | CloudCommandErrorCode::DestinationExists => {
-            ThumbnailErrorCode::InvalidInput
-        }
-        CloudCommandErrorCode::NotFound => ThumbnailErrorCode::NotFound,
-        CloudCommandErrorCode::PermissionDenied => ThumbnailErrorCode::PermissionDenied,
-        CloudCommandErrorCode::Unsupported => ThumbnailErrorCode::UnsupportedFormat,
-        CloudCommandErrorCode::TaskFailed => ThumbnailErrorCode::CacheFailed,
-        CloudCommandErrorCode::Timeout
-        | CloudCommandErrorCode::NetworkError
-        | CloudCommandErrorCode::TlsCertificateError
-        | CloudCommandErrorCode::RateLimited
-        | CloudCommandErrorCode::AuthRequired
-        | CloudCommandErrorCode::BinaryMissing
-        | CloudCommandErrorCode::InvalidConfig
-        | CloudCommandErrorCode::UnknownError => ThumbnailErrorCode::UnknownError,
-    }
-}
-
-fn cache_key_for_cloud_source(source: &CloudThumbnailSource, max_dim: u32) -> String {
-    let mut hasher = Hasher::new();
-    hasher.update(b"cloud-thumb-v1");
-    hasher.update(source.cloud_path.to_string().as_bytes());
-    match source.snapshot.size {
-        Some(size) => {
-            hasher.update(&[1]);
-            hasher.update(&size.to_le_bytes());
-        }
-        None => {
-            hasher.update(&[0]);
-        }
-    }
-    match source.snapshot.modified.as_deref() {
-        Some(modified) => {
-            hasher.update(&[1]);
-            hasher.update(modified.as_bytes());
-        }
-        None => {
-            hasher.update(&[0]);
-        }
-    }
-    hasher.update(&max_dim.to_le_bytes());
-    hasher.finalize().to_hex().to_string()
-}
-
-fn is_cloud_thumb_extension_allowed(ext: &str) -> bool {
-    matches!(
-        ext,
-        "png"
-            | "jpg"
-            | "jpeg"
-            | "gif"
-            | "bmp"
-            | "webp"
-            | "tif"
-            | "tiff"
-            | "avif"
-            | "heic"
-            | "heif"
-            | "svg"
-            | "pdf"
-    )
-}
-
-fn validate_cloud_thumb_extension(
-    settings: &ThumbnailRuntimeSettings,
-    ext: &str,
-) -> ThumbnailResult<()> {
-    if !settings.cloud_thumbs {
-        return Err(ThumbnailError::new(
-            ThumbnailErrorCode::InvalidInput,
-            "Cloud thumbnails disabled",
-        ));
-    }
-    if ext.is_empty() || !is_cloud_thumb_extension_allowed(ext) {
-        return Err(ThumbnailError::new(
-            ThumbnailErrorCode::UnsupportedFormat,
-            format!("Unsupported cloud thumbnail extension: {ext}"),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_cloud_thumb_size(size: Option<u64>) -> ThumbnailResult<u64> {
-    let size = size.ok_or_else(|| {
-        ThumbnailError::new(
-            ThumbnailErrorCode::InvalidInput,
-            "Cloud thumbnail requires known file size",
-        )
-    })?;
-    if size > MAX_FILE_BYTES {
-        return Err(ThumbnailError::new(
-            ThumbnailErrorCode::InvalidInput,
-            format!(
-                "Cloud file too large for thumbnail (>{} MB)",
-                MAX_FILE_BYTES / 1024 / 1024
-            ),
-        ));
-    }
-    Ok(size)
 }
 
 fn cache_dir() -> ThumbnailResult<PathBuf> {
@@ -891,61 +660,6 @@ fn generate_thumbnail(
 pub(super) fn thumb_log(msg: &str) {
     if *LOG_THUMBS {
         debug_log(msg);
-    }
-}
-
-fn register_or_wait(key: &str) -> Option<oneshot::Receiver<ThumbnailResult<ThumbnailResponse>>> {
-    let mut map = INFLIGHT.lock().expect("inflight poisoned");
-    if let Some(waiters) = map.get_mut(key) {
-        let (tx, rx) = oneshot::channel::<ThumbnailResult<ThumbnailResponse>>();
-        waiters.push(tx);
-        return Some(rx);
-    }
-    map.insert(key.to_string(), Vec::new());
-    None
-}
-
-fn notify_waiters(key: &str, result: ThumbnailResult<ThumbnailResponse>) {
-    let waiters = {
-        let mut map = INFLIGHT.lock().expect("inflight poisoned");
-        map.remove(key)
-    };
-    if let Some(waiters) = waiters {
-        for tx in waiters {
-            let _ = tx.send(result.clone());
-        }
-    }
-}
-
-fn trim_cache(dir: &Path, max_bytes: u64, max_files: usize) {
-    let mut entries: Vec<(PathBuf, u64, std::time::SystemTime)> = Vec::new();
-    if let Ok(read_dir) = fs::read_dir(dir) {
-        for entry in read_dir.flatten() {
-            if let Ok(md) = entry.metadata() {
-                let modified = md.modified().unwrap_or(std::time::UNIX_EPOCH);
-                entries.push((entry.path(), md.len(), modified));
-            }
-        }
-    }
-
-    let total_bytes: u64 = entries.iter().map(|e| e.1).sum();
-    let total_files = entries.len();
-    if total_bytes <= max_bytes && total_files <= max_files {
-        return;
-    }
-
-    // sort by oldest first
-    entries.sort_by_key(|e| e.2);
-    let mut bytes = total_bytes;
-    let mut files = total_files;
-    for (path, size, _) in entries {
-        if bytes <= max_bytes && files <= max_files {
-            break;
-        }
-        if fs::remove_file(&path).is_ok() {
-            bytes = bytes.saturating_sub(size);
-            files -= 1;
-        }
     }
 }
 
@@ -1239,12 +953,9 @@ fn thumb_kind(path: &Path) -> ThumbKind {
 #[cfg(test)]
 mod tests {
     use super::{
-        invalidate_runtime_settings_cache, map_cloud_command_error_code, runtime_settings,
-        validate_cloud_thumb_extension, validate_cloud_thumb_size, ThumbnailErrorCode,
-        ThumbnailRuntimeSettings, MAX_FILE_BYTES, RUNTIME_SETTINGS,
+        invalidate_runtime_settings_cache, runtime_settings, ThumbnailRuntimeSettings,
+        RUNTIME_SETTINGS,
     };
-    use crate::commands::cloud::CloudCommandErrorCode;
-    use crate::errors::domain::DomainError;
 
     #[test]
     fn runtime_settings_cache_invalidation_clears_cached_snapshot() {
@@ -1272,58 +983,6 @@ mod tests {
         assert!(
             guard.is_none(),
             "cache should be cleared after invalidation"
-        );
-    }
-
-    #[test]
-    fn cloud_thumb_guard_disabled_returns_invalid_input() {
-        let settings = ThumbnailRuntimeSettings {
-            cloud_thumbs: false,
-            ..ThumbnailRuntimeSettings::default()
-        };
-        let err = validate_cloud_thumb_extension(&settings, "png").expect_err("should fail");
-        assert_eq!(err.code_str(), "invalid_input");
-        assert!(err.to_string().to_lowercase().contains("disabled"));
-    }
-
-    #[test]
-    fn cloud_thumb_guard_unsupported_extension_returns_unsupported_format() {
-        let settings = ThumbnailRuntimeSettings {
-            cloud_thumbs: true,
-            ..ThumbnailRuntimeSettings::default()
-        };
-        let err = validate_cloud_thumb_extension(&settings, "txt").expect_err("should fail");
-        assert_eq!(err.code_str(), "unsupported_format");
-        assert!(err.to_string().to_lowercase().contains("unsupported"));
-    }
-
-    #[test]
-    fn cloud_thumb_guard_unknown_size_returns_invalid_input() {
-        let err = validate_cloud_thumb_size(None).expect_err("should fail");
-        assert_eq!(err.code_str(), "invalid_input");
-        assert!(err.to_string().to_lowercase().contains("known file size"));
-    }
-
-    #[test]
-    fn cloud_thumb_guard_over_limit_returns_invalid_input() {
-        let err = validate_cloud_thumb_size(Some(MAX_FILE_BYTES + 1)).expect_err("should fail");
-        assert_eq!(err.code_str(), "invalid_input");
-        assert!(err.to_string().to_lowercase().contains("too large"));
-    }
-
-    #[test]
-    fn cloud_thumb_mapping_preserves_not_found() {
-        assert_eq!(
-            map_cloud_command_error_code(CloudCommandErrorCode::NotFound),
-            ThumbnailErrorCode::NotFound
-        );
-    }
-
-    #[test]
-    fn cloud_thumb_mapping_preserves_permission_denied() {
-        assert_eq!(
-            map_cloud_command_error_code(CloudCommandErrorCode::PermissionDenied),
-            ThumbnailErrorCode::PermissionDenied
         );
     }
 }

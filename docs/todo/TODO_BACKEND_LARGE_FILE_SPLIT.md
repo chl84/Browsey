@@ -136,19 +136,20 @@ Acceptance:
 ### Phase 1 — Highest impact modules
 
 #### A) `src/commands/thumbnails/mod.rs`
-- [ ] Convert to folder-backed module if needed: `src/commands/thumbnails/`
-- [ ] Extract cloud-thumbnail precheck/materialization gate to dedicated module (for example `cloud_source.rs`).
-- [ ] Extract cache/inflight orchestration to dedicated module (for example `cache_flow.rs`).
-- [ ] Keep `get_thumbnail` command surface in `mod.rs`.
-- [ ] Keep runtime settings cache/invalidation behavior unchanged (no per-call DB regressions).
+- [x] Convert to folder-backed module if needed: `src/commands/thumbnails/`
+- [x] Extract cloud-thumbnail precheck/materialization gate to dedicated module (for example `cloud_source.rs`).
+- [x] Extract cache/inflight orchestration to dedicated module (for example `cache_flow.rs`).
+- [x] Keep `get_thumbnail` command surface in `mod.rs`.
+- [x] Keep runtime settings cache/invalidation behavior unchanged (no per-call DB regressions).
 
 #### B) `src/commands/transfer/execute.rs`
-- [ ] Keep orchestration in `execute.rs` and move operation-specific branches to submodules under `src/commands/transfer/execute/`.
-- [ ] Separate route resolution, conflict naming, and write execution steps into small helpers.
-- [ ] Keep existing `src/commands/transfer/execute/tests.rs` aligned with moved code.
-- [ ] Keep auto-rename and prechecked semantics unchanged across local/cloud/mixed branches.
+- [x] Keep orchestration in `execute.rs` and move operation-specific branches to submodules under `src/commands/transfer/execute/`.
+- [x] Separate route resolution, conflict naming, and write execution steps into small helpers.
+- [x] Keep existing `src/commands/transfer/execute/tests.rs` aligned with moved code.
+- [x] Keep auto-rename and prechecked semantics unchanged across local/cloud/mixed branches.
 
 #### C) `src/commands/listing/mod.rs`
+- [x] First slice: extract cloud listing path/mapping/facet helpers into `src/commands/listing/cloud.rs`.
 - [ ] Extract provider-specific mapping (local/cloud/network/trash) into focused sibling modules.
 - [ ] Keep listing command entry points in `mod.rs`.
 - [ ] Preserve icon/error mapping behavior exactly.
