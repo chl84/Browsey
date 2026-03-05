@@ -244,6 +244,26 @@ impl RcloneCloudProvider {
             return Err(cloud_write_cancelled_error());
         }
         let provider_kind = cloud_provider_kind_for_remote(path.remote());
+        self.mkdir_with_destination_exists_probe_retry(path, provider_kind, cancel)?;
+        log_backend_selected(
+            "cloud_write_mkdir",
+            "cli",
+            false,
+            if cancel.is_some() {
+                Some("cancelable_cli")
+            } else {
+                None
+            },
+        );
+        Ok(())
+    }
+
+    fn mkdir_with_destination_exists_probe_retry(
+        &self,
+        path: &CloudPath,
+        provider_kind: Option<crate::commands::cloud::types::CloudProviderKind>,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()> {
         let retry_backoffs = mkdir_destination_exists_retry_backoffs_ms(provider_kind);
         let mut attempt = 0usize;
         loop {
@@ -252,7 +272,7 @@ impl RcloneCloudProvider {
                 cancel,
             );
             match mkdir_result {
-                Ok(_) => break,
+                Ok(_) => return Ok(()),
                 Err(error) => {
                     let mapped = map_rclone_error_for_remote(path.remote(), error);
                     if mapped.code() != CloudCommandErrorCode::DestinationExists {
@@ -279,17 +299,6 @@ impl RcloneCloudProvider {
                 }
             }
         }
-        log_backend_selected(
-            "cloud_write_mkdir",
-            "cli",
-            false,
-            if cancel.is_some() {
-                Some("cancelable_cli")
-            } else {
-                None
-            },
-        );
-        Ok(())
     }
 
     pub(super) fn delete_file_impl(
