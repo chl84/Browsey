@@ -199,7 +199,10 @@ Acceptance:
 
 ### Phase 4 — Secondary large modules
 
-- [ ] `src/commands/settings/mod.rs`: split persistence I/O, defaults, and command wrappers.
+- [x] `src/commands/settings/mod.rs`: split persistence I/O, defaults, and command wrappers.
+- [x] `settings`: extracted DB/error mapping + validation helpers to `settings/persistence.rs`.
+- [x] `settings`: moved module-local tests to `settings/tests.rs`.
+- [x] `settings`: split command wrappers into focused submodules.
 - [ ] `src/commands/rename/mod.rs`: split batch rename plan/build/apply responsibilities.
 - [ ] `src/commands/permissions/ownership.rs` and `src/commands/permissions/mod.rs`: separate platform-specific handling from shared orchestration.
 - [ ] `src/commands/compress/mod.rs` and `src/commands/cloud/rclone_cli.rs`: split only if Phase 1-3 remain stable.
