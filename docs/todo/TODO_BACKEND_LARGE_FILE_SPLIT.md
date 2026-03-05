@@ -183,7 +183,7 @@ Acceptance:
 
 #### A) `src/commands/cloud/open.rs`
 - [x] First slice: extract inflight dedupe/waiter timeout flow to `src/commands/cloud/open/inflight.rs`.
-- [ ] Separate cache metadata/storage operations from materialization orchestration.
+- [x] Separate cache metadata/storage operations from materialization orchestration.
 - [x] Keep dedupe and timeout policy in a focused module with explicit tests.
 - [x] Keep public cloud open command flow unchanged.
 - [x] Preserve existing cache freshness semantics and permission hardening.
