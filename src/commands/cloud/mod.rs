@@ -28,6 +28,10 @@ pub(crate) use rclone_path::set_rclone_path_override_for_tests;
 pub(crate) use rclone_path::{
     configured_rclone_cli, configured_rclone_provider, RclonePathErrorCode,
 };
+#[cfg(test)]
+use std::cell::RefCell;
+#[cfg(test)]
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use tracing::warn;
@@ -44,11 +48,43 @@ pub(crate) struct CloudMaterializeSnapshot {
     pub kind: CloudEntryKind,
 }
 
+#[cfg(test)]
+thread_local! {
+    static CLOUD_PROVIDER_KIND_OVERRIDES: RefCell<HashMap<String, CloudProviderKind>> =
+        RefCell::new(HashMap::new());
+}
+
 pub(crate) fn cloud_provider_kind_for_remote(remote_id: &str) -> Option<CloudProviderKind> {
+    #[cfg(test)]
+    if let Some(kind) = cloud_provider_kind_override_for_tests(remote_id) {
+        return Some(kind);
+    }
     list_cloud_remotes_cached(false)
         .ok()
         .and_then(|remotes| remotes.into_iter().find(|remote| remote.id == remote_id))
         .map(|remote| remote.provider)
+}
+
+#[cfg(test)]
+fn cloud_provider_kind_override_for_tests(remote_id: &str) -> Option<CloudProviderKind> {
+    CLOUD_PROVIDER_KIND_OVERRIDES.with(|overrides| overrides.borrow().get(remote_id).copied())
+}
+
+#[cfg(test)]
+pub(crate) fn set_cloud_provider_kind_override_for_tests(
+    remote_id: &str,
+    provider: CloudProviderKind,
+) {
+    CLOUD_PROVIDER_KIND_OVERRIDES.with(|overrides| {
+        overrides
+            .borrow_mut()
+            .insert(remote_id.to_string(), provider);
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn clear_cloud_provider_kind_overrides_for_tests() {
+    CLOUD_PROVIDER_KIND_OVERRIDES.with(|overrides| overrides.borrow_mut().clear());
 }
 
 pub(crate) fn cloud_conflict_name_key(provider: Option<CloudProviderKind>, name: &str) -> String {

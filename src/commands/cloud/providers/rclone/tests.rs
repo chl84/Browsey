@@ -17,6 +17,7 @@ use super::{
 };
 use crate::{
     commands::cloud::{
+        clear_cloud_provider_kind_overrides_for_tests,
         error::CloudCommandErrorCode,
         path::CloudPath,
         provider::CloudProvider,
@@ -24,7 +25,8 @@ use crate::{
         rclone_cli::RcloneCliError,
         rclone_cli::RcloneSubcommand,
         rclone_rc::RcloneRcClient,
-        types::{CloudCapabilities, CloudEntryKind, CloudProviderKind, CloudRemote},
+        set_cloud_provider_kind_override_for_tests,
+        types::{CloudEntryKind, CloudProviderKind},
     },
     errors::domain::{DomainError, ErrorCode},
 };
@@ -1196,18 +1198,12 @@ fn delete_fails_when_delete_policy_lookup_cannot_be_verified() {
 #[cfg(unix)]
 #[test]
 fn delete_uses_cached_provider_policy_when_config_dump_fails() {
-    crate::commands::cloud::invalidate_cloud_caches_for_backend_change();
+    clear_cloud_provider_kind_overrides_for_tests();
     let sandbox = FakeRcloneSandbox::new();
     let remote = format!("cache-delete-policy-{}", std::process::id());
     sandbox.write_remote_file(&remote, "trash/file.txt", "payload");
     sandbox.mark_config_dump_failure();
-    crate::commands::cloud::store_cloud_remote_discovery_cache_entry_for_tests(vec![CloudRemote {
-        id: remote.clone(),
-        label: remote.clone(),
-        provider: CloudProviderKind::Onedrive,
-        root_path: format!("rclone://{remote}"),
-        capabilities: CloudCapabilities::v1_for_provider(CloudProviderKind::Onedrive),
-    }]);
+    set_cloud_provider_kind_override_for_tests(&remote, CloudProviderKind::Onedrive);
 
     let provider = sandbox.provider_with_forced_rc();
     provider
@@ -1232,7 +1228,7 @@ fn delete_uses_cached_provider_policy_when_config_dump_fails() {
         !log.contains("config dump"),
         "cache-first delete policy lookup should avoid config dump, log:\n{log}"
     );
-    crate::commands::cloud::invalidate_cloud_caches_for_backend_change();
+    clear_cloud_provider_kind_overrides_for_tests();
 }
 
 #[cfg(unix)]
