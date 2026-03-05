@@ -1,10 +1,12 @@
 <script lang="ts">
   export let checked = false
+  export let indeterminate = false
 </script>
 
 <span
   class="checkbox-indicator"
   class:checked
+  class:indeterminate
   aria-hidden="true"
 >
   <span class="check-mark"></span>
@@ -27,10 +29,16 @@
     height: var(--checkbox-indicator-mark-size, 7px);
     background: var(--fg);
     transform: scale(0);
-    transition: transform 120ms ease;
+    transition: transform 120ms ease, width 120ms ease, height 120ms ease;
   }
 
   .checkbox-indicator.checked .check-mark {
+    transform: scale(1);
+  }
+
+  .checkbox-indicator.indeterminate .check-mark {
+    width: calc(var(--checkbox-indicator-size, 13px) - 6px);
+    height: 2px;
     transform: scale(1);
   }
 

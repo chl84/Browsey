@@ -1,7 +1,7 @@
 use crate::commands::fs::MountInfo;
 use crate::errors::api_error::ApiResult;
 use once_cell::sync::OnceCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 #[cfg(not(target_os = "windows"))]
 use std::io;
 #[cfg(not(target_os = "windows"))]
@@ -266,10 +266,18 @@ fn list_from_avahi() -> NetworkResult<Vec<MountInfo>> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn parse_ssdp_headers(response: &str) -> (Option<String>, Option<String>, Option<String>) {
+fn parse_ssdp_headers(
+    response: &str,
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
     let mut location: Option<String> = None;
     let mut server: Option<String> = None;
     let mut st: Option<String> = None;
+    let mut usn: Option<String> = None;
     for line in response.lines() {
         let Some((key, value)) = line.split_once(':') else {
             continue;
@@ -283,15 +291,109 @@ fn parse_ssdp_headers(response: &str) -> (Option<String>, Option<String>, Option
             "location" => location = Some(value.to_string()),
             "server" => server = Some(value.to_string()),
             "st" => st = Some(value.to_string()),
+            "usn" => usn = Some(value.to_string()),
             _ => {}
         }
     }
-    (location, server, st)
+    (location, server, st, usn)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn ssdp_dedupe_key(location: &str, usn: Option<&str>) -> Option<String> {
+    if let Some(usn) = usn {
+        let root = usn.split("::").next().unwrap_or(usn).trim();
+        if !root.is_empty() {
+            return Some(format!("ssdp-usn:{}", root.to_ascii_lowercase()));
+        }
+    }
+
+    let (scheme, normalized) = canonicalize_uri(location)?;
+    let host = host_from_uri(&normalized)?;
+    Some(format!(
+        "ssdp-host:{}:{}",
+        scheme,
+        host.to_ascii_lowercase()
+    ))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn prefer_discovery_candidate(candidate: &MountInfo, existing: &MountInfo) -> bool {
+    let candidate_len = candidate.path.len();
+    let existing_len = existing.path.len();
+    if candidate_len != existing_len {
+        return candidate_len < existing_len;
+    }
+    if candidate.path != existing.path {
+        return candidate.path < existing.path;
+    }
+    candidate.label < existing.label
+}
+
+fn external_http_host(item: &MountInfo) -> Option<String> {
+    let scheme = item.fs.trim().to_ascii_lowercase();
+    if !matches!(scheme.as_str(), "http" | "https") {
+        return None;
+    }
+    host_from_uri(item.path.trim())
+}
+
+fn external_http_dedupe_key(item: &MountInfo) -> Option<String> {
+    let host = external_http_host(item)?;
+    let label = item.label.trim();
+    if label.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{}|{}",
+        host.to_ascii_lowercase(),
+        label.to_ascii_lowercase()
+    ))
+}
+
+fn disambiguate_external_http_labels(items: &mut [MountInfo]) {
+    let mut label_counts = HashMap::<String, usize>::new();
+    for item in items.iter() {
+        if external_http_host(item).is_none() {
+            continue;
+        }
+        let label = item.label.trim();
+        if label.is_empty() {
+            continue;
+        }
+        let key = format!(
+            "{}|{}",
+            item.fs.to_ascii_lowercase(),
+            label.to_ascii_lowercase()
+        );
+        *label_counts.entry(key).or_default() += 1;
+    }
+
+    for item in items.iter_mut() {
+        let Some(host) = external_http_host(item) else {
+            continue;
+        };
+        let label = item.label.trim();
+        if label.is_empty() {
+            continue;
+        }
+        let key = format!(
+            "{}|{}",
+            item.fs.to_ascii_lowercase(),
+            label.to_ascii_lowercase()
+        );
+        if label_counts.get(&key).copied().unwrap_or(0) <= 1 {
+            continue;
+        }
+        let host_suffix = format!("({host})");
+        if !item.label.contains(&host_suffix) {
+            item.label = format!("{label} ({host})");
+        }
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
 fn list_from_ssdp() -> NetworkResult<Vec<MountInfo>> {
-    let mut out = Vec::new();
+    let mut deduped = HashMap::<String, MountInfo>::new();
     let socket = match UdpSocket::bind("0.0.0.0:0") {
         Ok(s) => s,
         Err(error) => {
@@ -318,14 +420,26 @@ fn list_from_ssdp() -> NetworkResult<Vec<MountInfo>> {
         match socket.recv_from(&mut buf) {
             Ok((n, _)) => {
                 let text = String::from_utf8_lossy(&buf[..n]);
-                let (location, server, st) = parse_ssdp_headers(&text);
+                let (location, server, st, usn) = parse_ssdp_headers(&text);
                 let Some(location) = location else { continue };
                 let Some((scheme, normalized)) = canonicalize_uri(&location) else {
                     continue;
                 };
+                let Some(key) = ssdp_dedupe_key(&normalized, usn.as_deref()) else {
+                    continue;
+                };
                 let source = server.or(st);
                 let label = default_label(source.as_deref(), &scheme, &normalized);
-                out.push(mount_info(label, normalized, &scheme));
+                let candidate = mount_info(label, normalized, &scheme);
+                match deduped.get_mut(&key) {
+                    Some(existing) if prefer_discovery_candidate(&candidate, existing) => {
+                        *existing = candidate;
+                    }
+                    Some(_) => {}
+                    None => {
+                        deduped.insert(key, candidate);
+                    }
+                }
             }
             Err(err)
                 if matches!(
@@ -339,7 +453,7 @@ fn list_from_ssdp() -> NetworkResult<Vec<MountInfo>> {
         }
     }
 
-    Ok(out)
+    Ok(deduped.into_values().collect())
 }
 
 fn dedupe_and_sort(mut list: Vec<MountInfo>) -> Vec<MountInfo> {
@@ -355,13 +469,34 @@ fn dedupe_and_sort(mut list: Vec<MountInfo>) -> Vec<MountInfo> {
             out.push(item);
         }
     }
-    out.sort_by(|a, b| {
+
+    let mut external_seen = HashMap::<String, usize>::new();
+    let mut collapsed = Vec::new();
+    for item in out.drain(..) {
+        let Some(key) = external_http_dedupe_key(&item) else {
+            collapsed.push(item);
+            continue;
+        };
+        match external_seen.get(&key).copied() {
+            Some(index) if prefer_discovery_candidate(&item, &collapsed[index]) => {
+                collapsed[index] = item;
+            }
+            Some(_) => {}
+            None => {
+                external_seen.insert(key, collapsed.len());
+                collapsed.push(item);
+            }
+        }
+    }
+
+    disambiguate_external_http_labels(&mut collapsed);
+    collapsed.sort_by(|a, b| {
         a.label
             .to_ascii_lowercase()
             .cmp(&b.label.to_ascii_lowercase())
             .then(a.path.cmp(&b.path))
     });
-    out
+    collapsed
 }
 
 fn combine_discovery_results(
@@ -372,7 +507,7 @@ fn combine_discovery_results(
     for result in results {
         match result {
             Ok(entries) => combined.extend(entries),
-            Err(error) => errors.push(error.to_string()),
+            Err(error) => errors.push(error.message().to_string()),
         }
     }
     if combined.is_empty() && !errors.is_empty() {
@@ -397,13 +532,10 @@ pub(super) fn list_network_devices_sync(force_refresh: bool) -> NetworkResult<Ve
     }
 
     let results = [list_from_gio(), list_from_avahi(), list_from_ssdp()];
-    let source_errors = results
-        .iter()
-        .map(|result| result.as_ref().err().map(|error| error.to_string()))
-        .collect::<Vec<_>>();
+    let all_sources_succeeded = results.iter().all(Result::is_ok);
     let result = combine_discovery_results(results)?;
 
-    if source_errors.iter().all(Option::is_none) {
+    if all_sources_succeeded {
         if let Ok(mut guard) = cache.lock() {
             *guard = (Instant::now(), result.clone());
         }
@@ -442,7 +574,7 @@ async fn list_network_devices_impl() -> NetworkResult<Vec<MountInfo>> {
     match task.await {
         Ok(result) => result,
         Err(error) => Err(NetworkError::new(
-            NetworkErrorCode::DiscoveryFailed,
+            NetworkErrorCode::TaskFailed,
             format!("network discovery failed: {error}"),
         )),
     }
@@ -508,12 +640,108 @@ mod tests {
             "LOCATION: http://192.168.1.10:80/desc.xml\r\n",
             "SERVER: Fibaro/1.0 UPnP/1.1\r\n",
             "ST: upnp:rootdevice\r\n",
+            "USN: uuid:device-1::upnp:rootdevice\r\n",
             "\r\n"
         );
-        let (location, server, st) = parse_ssdp_headers(payload);
+        let (location, server, st, usn) = parse_ssdp_headers(payload);
         assert_eq!(location.as_deref(), Some("http://192.168.1.10:80/desc.xml"));
         assert_eq!(server.as_deref(), Some("Fibaro/1.0 UPnP/1.1"));
         assert_eq!(st.as_deref(), Some("upnp:rootdevice"));
+        assert_eq!(usn.as_deref(), Some("uuid:device-1::upnp:rootdevice"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn ssdp_dedupe_key_prefers_usn_root_over_service_suffix() {
+        let key_a = ssdp_dedupe_key(
+            "http://192.168.1.10:1400/xml/device.xml",
+            Some("uuid:RINCON_0001::urn:schemas-upnp-org:device:ZonePlayer:1"),
+        )
+        .expect("usn key");
+        let key_b = ssdp_dedupe_key(
+            "http://192.168.1.10:1400/xml/zone.xml",
+            Some("uuid:RINCON_0001::upnp:rootdevice"),
+        )
+        .expect("usn key");
+        assert_eq!(key_a, key_b);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn ssdp_dedupe_key_falls_back_to_scheme_and_host() {
+        let key_a =
+            ssdp_dedupe_key("http://192.168.1.20:1400/xml/device.xml", None).expect("host key");
+        let key_b =
+            ssdp_dedupe_key("http://192.168.1.20:1400/description.xml", None).expect("host key");
+        assert_eq!(key_a, key_b);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn prefer_ssdp_candidate_keeps_shorter_stabler_path() {
+        let existing = mount(
+            "Linux UPnP/1.0 Sonos/93.1-74010 (ZPS13)",
+            "http://192.168.1.20:1400/xml/device_description.xml",
+            "http",
+        );
+        let candidate = mount(
+            "Linux UPnP/1.0 Sonos/93.1-74010 (ZPS13)",
+            "http://192.168.1.20:1400/desc.xml",
+            "http",
+        );
+        assert!(prefer_discovery_candidate(&candidate, &existing));
+        assert!(!prefer_discovery_candidate(&existing, &candidate));
+    }
+
+    #[test]
+    fn dedupe_and_sort_collapses_external_http_entries_with_same_host_and_label() {
+        let entries = dedupe_and_sort(vec![
+            mount(
+                "Samsung-Linux/4.1, UPnP/1.0, Samsung_UPnP_SDK/1.0",
+                "http://192.168.1.77:9119/screen_sharing",
+                "http",
+            ),
+            mount(
+                "Samsung-Linux/4.1, UPnP/1.0, Samsung_UPnP_SDK/1.0",
+                "http://192.168.1.77:7678/nservice/",
+                "http",
+            ),
+            mount(
+                "Linux/4.1.10, UPnP/1.0, Portable SDK for UPnP devices",
+                "http://192.168.1.77:9080",
+                "http",
+            ),
+        ]);
+        assert_eq!(entries.len(), 2);
+        assert!(entries
+            .iter()
+            .any(|entry| entry.label == "Samsung-Linux/4.1, UPnP/1.0, Samsung_UPnP_SDK/1.0"));
+        assert!(entries
+            .iter()
+            .any(|entry| entry.label == "Linux/4.1.10, UPnP/1.0, Portable SDK for UPnP devices"));
+    }
+
+    #[test]
+    fn dedupe_and_sort_disambiguates_same_external_http_label_on_different_hosts() {
+        let entries = dedupe_and_sort(vec![
+            mount(
+                "Linux UPnP/1.0 Sonos/93.1-74010 (ZPS13)",
+                "http://192.168.1.57:1400/xml/device_description.xml",
+                "http",
+            ),
+            mount(
+                "Linux UPnP/1.0 Sonos/93.1-74010 (ZPS13)",
+                "http://192.168.1.91:1400/xml/device_description.xml",
+                "http",
+            ),
+        ]);
+        assert_eq!(entries.len(), 2);
+        assert!(entries
+            .iter()
+            .any(|entry| entry.label == "Linux UPnP/1.0 Sonos/93.1-74010 (ZPS13) (192.168.1.57)"));
+        assert!(entries
+            .iter()
+            .any(|entry| entry.label == "Linux UPnP/1.0 Sonos/93.1-74010 (ZPS13) (192.168.1.91)"));
     }
 
     #[test]

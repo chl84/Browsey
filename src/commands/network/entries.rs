@@ -215,7 +215,7 @@ async fn list_network_entries_impl(force_refresh: Option<bool>) -> NetworkResult
     match task.await {
         Ok(result) => result,
         Err(error) => Err(NetworkError::new(
-            NetworkErrorCode::DiscoveryFailed,
+            NetworkErrorCode::TaskFailed,
             format!("network listing failed: {error}"),
         )),
     }

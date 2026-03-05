@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Checkbox from '../../../shared/ui/Checkbox.svelte'
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
   import ComboBox, { type ComboOption } from '../../../shared/ui/ComboBox.svelte'
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
@@ -52,15 +53,6 @@
   export let onActivateExtra: () => void = () => {}
   export let onSetOwnership: (owner: string, group: string) => void | Promise<void> = () => {}
   export let onCopyParentFolder: () => void | Promise<void> = () => {}
-
-  const indeterminate = (node: HTMLInputElement, value: boolean | 'mixed' | null | undefined) => {
-    node.indeterminate = value === 'mixed'
-    return {
-      update(next: boolean | 'mixed' | null | undefined) {
-        node.indeterminate = next === 'mixed'
-      },
-    }
-  }
 
   const tabLabels = {
     basic: 'Basic',
@@ -226,18 +218,15 @@
         {/if}
         <div class="row">
           <span class="label">Hidden</span>
-          <span class="value">
-            <label class="toggle">
-              <input
-                type="checkbox"
-                use:indeterminate={hiddenBit}
-                use:fullNameTooltip={'Hidden attribute'}
-                checked={hiddenBit === true}
-                aria-label="Hidden attribute"
-                disabled={mutationsLocked}
-                on:change={(e) => onToggleHidden((e.currentTarget as HTMLInputElement).checked)}
-              />
-            </label>
+          <span class="value" use:fullNameTooltip={'Hidden attribute'}>
+            <Checkbox
+              className="properties-toggle"
+              checked={hiddenBit === true}
+              indeterminate={hiddenBit === 'mixed'}
+              ariaLabel="Hidden attribute"
+              disabled={mutationsLocked}
+              on:change={(e) => onToggleHidden((e.target as HTMLInputElement).checked)}
+            />
           </span>
         </div>
       </div>
@@ -364,36 +353,39 @@
               {#each scopes as scope (scope)}
                 {#if permissions[scope]}
                   <div class="cell label">{accessLabels[scope]}</div>
-                  <label class="cell">
-                    <input
-                      type="checkbox"
-                      use:indeterminate={permissions[scope].read}
+                  <div class="cell checkbox-cell">
+                    <Checkbox
+                      className="properties-access-checkbox"
                       checked={permissions[scope].read === true}
+                      indeterminate={permissions[scope].read === 'mixed'}
+                      ariaLabel={`${accessLabels[scope]} read permission`}
                       disabled={mutationsLocked || permissionsApplying}
                       on:change={(e) =>
-                        onToggleAccess(scope, 'read', (e.currentTarget as HTMLInputElement).checked)}
+                        onToggleAccess(scope, 'read', (e.target as HTMLInputElement).checked)}
                     />
-                  </label>
-                  <label class="cell">
-                    <input
-                      type="checkbox"
-                      use:indeterminate={permissions[scope].write}
+                  </div>
+                  <div class="cell checkbox-cell">
+                    <Checkbox
+                      className="properties-access-checkbox"
                       checked={permissions[scope].write === true}
+                      indeterminate={permissions[scope].write === 'mixed'}
+                      ariaLabel={`${accessLabels[scope]} write permission`}
                       disabled={mutationsLocked || permissionsApplying}
                       on:change={(e) =>
-                        onToggleAccess(scope, 'write', (e.currentTarget as HTMLInputElement).checked)}
+                        onToggleAccess(scope, 'write', (e.target as HTMLInputElement).checked)}
                     />
-                  </label>
-                  <label class="cell">
-                    <input
-                      type="checkbox"
-                      use:indeterminate={permissions[scope].exec}
+                  </div>
+                  <div class="cell checkbox-cell">
+                    <Checkbox
+                      className="properties-access-checkbox"
                       checked={permissions[scope].exec === true}
+                      indeterminate={permissions[scope].exec === 'mixed'}
+                      ariaLabel={`${accessLabels[scope]} execute permission`}
                       disabled={mutationsLocked || permissionsApplying}
                       on:change={(e) =>
-                        onToggleAccess(scope, 'exec', (e.currentTarget as HTMLInputElement).checked)}
+                        onToggleAccess(scope, 'exec', (e.target as HTMLInputElement).checked)}
                     />
-                  </label>
+                  </div>
                 {/if}
               {/each}
             </div>
@@ -459,6 +451,10 @@
     line-height: var(--modal-line-height);
   }
 
+  .value :global(.checkbox-field.properties-toggle) {
+    grid-template-columns: auto;
+  }
+
   .parent-folder-value {
     display: inline-flex;
     align-items: center;
@@ -478,6 +474,16 @@
     align-items: center;
     width: max-content;
     margin-inline: auto;
+  }
+
+  .checkbox-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .checkbox-cell :global(.checkbox-field.properties-access-checkbox) {
+    grid-template-columns: auto;
   }
 
   .ownership {

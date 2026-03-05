@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Checkbox from '../../../shared/ui/Checkbox.svelte'
   import type { Settings } from '../settingsTypes'
 
   export let show = false
@@ -57,52 +58,54 @@
   {#if showFoldersFirstRow}
     <div class="form-label">Folders first</div>
     <div class="form-control checkbox">
-      <input
-        type="checkbox"
+      <Checkbox
         checked={settings.foldersFirst}
         on:change={(e) => {
-          const next = (e.currentTarget as HTMLInputElement).checked
+          const next = (e.target as HTMLInputElement).checked
           onPatch({ foldersFirst: next })
           onToggleFoldersFirst(next)
         }}
-      />
-      <span>Show folders before files</span>
+      >
+        Show folders before files
+      </Checkbox>
     </div>
   {/if}
 
   {#if showShowHiddenRow}
     <div class="form-label">Show hidden</div>
     <div class="form-control checkbox">
-      <input
-        type="checkbox"
+      <Checkbox
         checked={settings.showHidden}
         on:change={(e) => {
-          const next = (e.currentTarget as HTMLInputElement).checked
+          const next = (e.target as HTMLInputElement).checked
           onPatch({ showHidden: next })
           onToggleShowHidden(next)
         }}
-      />
-      <span>Show hidden files by default</span>
+      >
+        Show hidden files by default
+      </Checkbox>
     </div>
   {/if}
 
   {#if showHiddenFilesLastRow}
     <div class="form-label">Hidden files last</div>
     <div class="form-control checkbox">
-      <input
-        type="checkbox"
+      <Checkbox
         checked={settings.hiddenFilesLast}
         disabled={hiddenFilesLastDisabled}
         on:change={(e) => {
-          const next = (e.currentTarget as HTMLInputElement).checked
+          const next = (e.target as HTMLInputElement).checked
           onPatch({ hiddenFilesLast: next })
           onToggleHiddenFilesLast(next)
         }}
-      />
-      <span>Place hidden items at the end</span>
-      {#if hiddenFilesLastDisabled}
-        <small>Enable "Show hidden" to change this</small>
-      {/if}
+      >
+        Place hidden items at the end
+        <svelte:fragment slot="description">
+          {#if hiddenFilesLastDisabled}
+            <small>Enable "Show hidden" to change this</small>
+          {/if}
+        </svelte:fragment>
+      </Checkbox>
     </div>
   {/if}
 
@@ -125,16 +128,16 @@
   {#if showConfirmDeleteRow}
     <div class="form-label">Confirm delete</div>
     <div class="form-control checkbox">
-      <input
-        type="checkbox"
+      <Checkbox
         checked={settings.confirmDelete}
         on:change={(e) => {
-          const next = (e.currentTarget as HTMLInputElement).checked
+          const next = (e.target as HTMLInputElement).checked
           onPatch({ confirmDelete: next })
           onToggleConfirmDelete(next)
         }}
-      />
-      <span>Ask before permanent delete</span>
+      >
+        Ask before permanent delete
+      </Checkbox>
     </div>
   {/if}
 {/if}

@@ -289,6 +289,14 @@ impl FsError {
         );
         Self::new(code, message)
     }
+
+    pub(crate) fn code_str_value(&self) -> &'static str {
+        self.code.as_code_str()
+    }
+
+    pub(crate) fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 impl fmt::Display for FsError {
