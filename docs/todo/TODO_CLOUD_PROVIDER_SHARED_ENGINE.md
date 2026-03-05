@@ -72,24 +72,24 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [x] Add at least one negative-path and one retry-path test for every touched operation
 
 ## Regression guardrails (per PR)
-- [ ] No behavior-changing refactor PR unless behavior delta is explicitly scoped, tested, and documented in the same PR.
-- [ ] For touched operations, typed error code snapshots must stay unchanged unless explicitly approved.
-- [ ] No unbounded waits in shared engine paths (timeouts/cancellation must remain enforced).
+- [x] No behavior-changing refactor PR unless behavior delta is explicitly scoped, tested, and documented in the same PR.
+- [x] For touched operations, typed error code snapshots must stay unchanged unless explicitly approved.
+- [x] No unbounded waits in shared engine paths (timeouts/cancellation must remain enforced).
 - [x] Run focused provider tests locally before full suite to catch regressions early.
-- [ ] Record any intentional behavioral delta in PR notes with provider impact.
+- [x] Record any intentional behavioral delta in PR notes with provider impact.
 
 ## Maintainability guardrails
 - [x] Keep shared logic in dedicated helper modules (engine/policy/error mapping) instead of provider files.
 - [x] Avoid duplicate retry/error parsing logic across providers after extraction.
 - [x] Add concise doc comments on each policy hook: input, output, and provider responsibility.
 - [x] Prefer pure helper functions for decision logic to maximize unit-test coverage.
-- [ ] Keep migration logs/temporary diagnostics removable and tracked by checklist.
+- [x] Keep migration logs/temporary diagnostics removable and tracked by checklist.
 
 ## Workstream 5: Rollout and safeguards
-- [ ] Land as small PR sequence (refactor PRs + behavior-safe migrations)
-- [ ] Use temporary debug logging around policy hooks during migration
-- [ ] Remove migration-only logging before final closeout
-- [ ] Keep rollback simple: each PR must be independently revertible
+- [x] Land as small PR sequence (refactor PRs + behavior-safe migrations)
+- [x] Use temporary debug logging around policy hooks during migration
+- [x] Remove migration-only logging before final closeout
+- [x] Keep rollback simple: each PR must be independently revertible
 
 ## Quality gates
 - [x] `cargo fmt --all -- --check`
