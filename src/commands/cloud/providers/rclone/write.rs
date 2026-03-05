@@ -3,8 +3,9 @@ use super::{
     logging::{classify_rc_fallback_reason, log_backend_selected},
     parse::{classify_provider_kind_from_config, parse_config_dump_summaries},
     CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudPath, CloudProvider,
-    CloudProviderKind, RcloneCliError, RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
+    RcloneCliError, RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
 };
+use crate::commands::cloud::policy::cloud_delete_policy_args;
 use crate::commands::cloud::rclone_rc::{
     RcCopyFileFromLocalProgressSpec, RcCopyFileToLocalProgressSpec,
 };
@@ -15,8 +16,6 @@ use std::time::Duration;
 use tracing::debug;
 
 const MKDIR_DESTINATION_EXISTS_RETRY_BACKOFFS_MS: &[u64] = &[75, 200, 500];
-const ONEDRIVE_DELETE_POLICY_ARGS: &[&str] = &["--onedrive-hard-delete"];
-const GDRIVE_DELETE_POLICY_ARGS: &[&str] = &["--drive-use-trash=false"];
 
 impl RcloneCloudProvider {
     pub(super) fn upload_file_with_progress_impl<F>(
@@ -570,11 +569,7 @@ impl RcloneCloudProvider {
                     ),
                 )
             })?;
-        match provider {
-            CloudProviderKind::Onedrive => Ok(ONEDRIVE_DELETE_POLICY_ARGS),
-            CloudProviderKind::Gdrive => Ok(GDRIVE_DELETE_POLICY_ARGS),
-            CloudProviderKind::Nextcloud => Ok(&[]),
-        }
+        Ok(cloud_delete_policy_args(provider))
     }
 }
 
