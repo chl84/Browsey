@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import Checkbox from '../../../shared/ui/Checkbox.svelte'
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
   import { autoSelectOnOpen } from '../../../shared/ui/modalUtils'
   import type { Entry } from '../model/types'
@@ -137,14 +138,8 @@
               />
               <div class="muted">Leave empty to apply replacement/prefix/suffix/sequence to full name.</div>
               <div class="checkbox-row">
-                <label class="checkbox">
-                  <input type="checkbox" bind:checked={caseSensitive} on:change={handleChange} />
-                  <span>Case sensitive</span>
-                </label>
-                <label class="checkbox">
-                  <input type="checkbox" bind:checked={keepExtension} on:change={handleChange} />
-                  <span>Keep extension</span>
-                </label>
+                <Checkbox bind:checked={caseSensitive} on:change={handleChange}>Case sensitive</Checkbox>
+                <Checkbox bind:checked={keepExtension} on:change={handleChange}>Keep extension</Checkbox>
               </div>
             </div>
 
@@ -309,7 +304,6 @@
     margin-top: var(--modal-field-gap);
   }
 
-  .checkbox,
   .radio {
     display: inline-flex;
     align-items: center;

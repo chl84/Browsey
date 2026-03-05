@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Checkbox from '../../../shared/ui/Checkbox.svelte'
   import Slider from '../../../shared/ui/Slider.svelte'
   import type { Settings } from '../settingsTypes'
 
@@ -55,16 +56,16 @@
   {#if showAfterExtractRow}
     <div class="form-label">After extract</div>
     <div class="form-control checkbox">
-      <input
-        type="checkbox"
+      <Checkbox
         checked={settings.openDestAfterExtract}
         on:change={(e) => {
-          const next = (e.currentTarget as HTMLInputElement).checked
+          const next = (e.target as HTMLInputElement).checked
           onPatch({ openDestAfterExtract: next })
           onToggleOpenDestAfterExtract(next)
         }}
-      />
-      <span>Open destination after extract</span>
+      >
+        Open destination after extract
+      </Checkbox>
     </div>
   {/if}
 

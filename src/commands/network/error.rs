@@ -44,6 +44,10 @@ impl NetworkError {
             message: message.into(),
         }
     }
+
+    pub(super) fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 impl fmt::Display for NetworkError {
@@ -66,13 +70,22 @@ impl DomainError for NetworkError {
 
 impl From<crate::watcher::WatcherError> for NetworkError {
     fn from(error: crate::watcher::WatcherError) -> Self {
-        Self::new(NetworkErrorCode::EjectFailed, error.to_string())
+        let code = match error.code() {
+            crate::watcher::WatcherErrorCode::StateLock => NetworkErrorCode::TaskFailed,
+            crate::watcher::WatcherErrorCode::Create
+            | crate::watcher::WatcherErrorCode::WatchPath => NetworkErrorCode::EjectFailed,
+        };
+        Self::new(code, error.message())
     }
 }
 
 impl From<crate::commands::fs::FsError> for NetworkError {
     fn from(error: crate::commands::fs::FsError) -> Self {
-        Self::new(NetworkErrorCode::EjectFailed, error.to_string())
+        let code = match error.code_str_value() {
+            "task_failed" => NetworkErrorCode::TaskFailed,
+            _ => NetworkErrorCode::EjectFailed,
+        };
+        Self::new(code, error.message())
     }
 }
 
@@ -89,10 +102,11 @@ mod tests {
     use crate::watcher::{WatcherError, WatcherErrorCode};
 
     #[test]
-    fn maps_watcher_error_to_eject_failed() {
+    fn maps_watcher_error_to_task_failed() {
         let watcher_error = WatcherError::new(WatcherErrorCode::StateLock, "lock failed");
         let network_error = NetworkError::from(watcher_error);
-        assert_eq!(network_error.code_str(), "eject_failed");
+        assert_eq!(network_error.code_str(), "task_failed");
+        assert_eq!(network_error.message(), "lock failed");
     }
 
     #[test]
@@ -100,5 +114,6 @@ mod tests {
         let fs_error: crate::commands::fs::FsError = "eject failed".into();
         let network_error = NetworkError::from(fs_error);
         assert_eq!(network_error.code_str(), "eject_failed");
+        assert_eq!(network_error.message(), "eject failed");
     }
 }

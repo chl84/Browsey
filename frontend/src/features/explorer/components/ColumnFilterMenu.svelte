@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Checkbox from '../../../shared/ui/Checkbox.svelte'
   import type { FilterOption } from '../model/types'
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
 
@@ -65,17 +66,18 @@
           <div class="empty">No filters available</div>
         {:else}
           {#each options as opt}
-            <label class="option">
-              <input
-                type="checkbox"
-                checked={selected.has(opt.id)}
-                on:change={(e) => onToggle(opt.id, (e.target as HTMLInputElement).checked)}
-              />
+            <Checkbox
+              className="option"
+              checked={selected.has(opt.id)}
+              on:change={(e) => onToggle(opt.id, (e.target as HTMLInputElement).checked)}
+            >
               <span class="text" use:fullNameTooltip={() => opt.label}>{opt.label}</span>
-              {#if opt.description}
-                <span class="muted">{opt.description}</span>
-              {/if}
-            </label>
+              <svelte:fragment slot="description">
+                {#if opt.description}
+                  <span class="muted">{opt.description}</span>
+                {/if}
+              </svelte:fragment>
+            </Checkbox>
           {/each}
         {/if}
       </div>
@@ -111,18 +113,14 @@
     overflow-y: auto;
   }
 
-  .option {
+  :global(.checkbox-field.option) {
     display: grid;
     grid-template-columns: auto 1fr;
     align-items: center;
     gap: 6px;
     font-size: 13px;
     line-height: 1.4;
-  }
-
-  .option input[type='checkbox'] {
-    accent-color: var(--accent, var(--fg));
-    cursor: pointer;
+    width: 100%;
   }
 
   .text {
@@ -133,7 +131,6 @@
   }
 
   .muted {
-    grid-column: 2;
     font-size: 12px;
     color: var(--fg-muted);
   }

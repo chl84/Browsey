@@ -41,6 +41,10 @@ impl WatcherError {
     pub fn code(&self) -> WatcherErrorCode {
         self.code
     }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 impl fmt::Display for WatcherError {

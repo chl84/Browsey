@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Checkbox from '../../../shared/ui/Checkbox.svelte'
   import Slider from '../../../shared/ui/Slider.svelte'
   import type { Settings } from '../settingsTypes'
 
@@ -23,32 +24,32 @@
   {#if showVideoThumbsRow}
     <div class="form-label">Video thumbs</div>
     <div class="form-control checkbox">
-      <input
-        type="checkbox"
+      <Checkbox
         checked={settings.videoThumbs}
         on:change={(e) => {
-          const next = (e.currentTarget as HTMLInputElement).checked
+          const next = (e.target as HTMLInputElement).checked
           onPatch({ videoThumbs: next })
           onToggleVideoThumbs(next)
         }}
-      />
-      <span>Enable video thumbnails (requires ffmpeg)</span>
+      >
+        Enable video thumbnails (requires ffmpeg)
+      </Checkbox>
     </div>
   {/if}
 
   {#if showCloudThumbsRow}
     <div class="form-label">Cloud thumbs</div>
     <div class="form-control checkbox">
-      <input
-        type="checkbox"
+      <Checkbox
         checked={settings.cloudThumbs}
         on:change={(e) => {
-          const next = (e.currentTarget as HTMLInputElement).checked
+          const next = (e.target as HTMLInputElement).checked
           onPatch({ cloudThumbs: next })
           onToggleCloudThumbs(next)
         }}
-      />
-      <span>Enable thumbnails for cloud images, PDF and SVG (network usage)</span>
+      >
+        Enable thumbnails for cloud images, PDF and SVG (network usage)
+      </Checkbox>
     </div>
   {/if}
 

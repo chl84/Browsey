@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Checkbox from '../../../shared/ui/Checkbox.svelte'
   import Slider from '../../../shared/ui/Slider.svelte'
   import type { Settings } from '../settingsTypes'
 
@@ -18,18 +19,20 @@
   {#if showHardwareAccelerationRow}
     <div class="form-label">Hardware acceleration</div>
     <div class="form-control checkbox">
-      <input
-        type="checkbox"
+      <Checkbox
         checked={settings.hardwareAcceleration}
         on:change={(e) => {
-          const next = (e.currentTarget as HTMLInputElement).checked
+          const next = (e.target as HTMLInputElement).checked
           onPatch({ hardwareAcceleration: next })
           onToggleHardwareAcceleration(next)
         }}
-      />
-      <span>Use GPU acceleration for rendering</span>
-      <small>Requires restart to take effect</small>
-      <small>Leave this off unless rendering feels slow or unstable on your system.</small>
+      >
+        Use GPU acceleration for rendering
+        <svelte:fragment slot="description">
+          <small>Requires restart to take effect</small>
+          <small>Leave this off unless rendering feels slow or unstable on your system.</small>
+        </svelte:fragment>
+      </Checkbox>
     </div>
   {/if}
 

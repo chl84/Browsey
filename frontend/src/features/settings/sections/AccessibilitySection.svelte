@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Checkbox from '../../../shared/ui/Checkbox.svelte'
   import Slider from '../../../shared/ui/Slider.svelte'
   import type { Settings } from '../settingsTypes'
 
@@ -18,16 +19,16 @@
   {#if showHighContrastRow}
     <div class="form-label">High contrast</div>
     <div class="form-control checkbox">
-      <input
-        type="checkbox"
+      <Checkbox
         checked={settings.highContrast}
         on:change={(e) => {
-          const next = (e.currentTarget as HTMLInputElement).checked
+          const next = (e.target as HTMLInputElement).checked
           onPatch({ highContrast: next })
           onToggleHighContrast(next)
         }}
-      />
-      <span>Boost contrast for UI elements</span>
+      >
+        Boost contrast for UI elements
+      </Checkbox>
     </div>
   {/if}
 
