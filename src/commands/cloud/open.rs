@@ -14,12 +14,9 @@ use crate::runtime_lifecycle;
 use crate::tasks::CancelState;
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc;
-use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime};
 use tracing::debug;
 
@@ -29,14 +26,8 @@ const CLOUD_OPEN_PART_SUFFIX: &str = ".part";
 const CLOUD_OPEN_CACHE_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 #[cfg(test)]
 const CLOUD_OPEN_CACHE_MAX_AGE: Duration = Duration::from_secs(60);
-#[cfg(not(test))]
-const MATERIALIZE_WAIT_TIMEOUT: Duration = Duration::from_secs(300);
-#[cfg(test)]
-const MATERIALIZE_WAIT_TIMEOUT: Duration = Duration::from_millis(50);
 
-type MaterializeWaiters = Vec<mpsc::Sender<CloudCommandResult<PathBuf>>>;
-static MATERIALIZE_INFLIGHT: once_cell::sync::Lazy<Mutex<HashMap<String, MaterializeWaiters>>> =
-    once_cell::sync::Lazy::new(|| Mutex::new(HashMap::new()));
+mod inflight;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct CloudOpenCacheMetadata {
@@ -215,7 +206,7 @@ fn materialize_cloud_file_for_local_use_with_provider_and_snapshot(
             format!("Only cloud files can be opened directly: {path}"),
         ));
     }
-    materialize_with_inflight_dedupe(path, snapshot, || {
+    inflight::materialize_with_inflight_dedupe(path, snapshot, || {
         materialize_cloud_file_for_local_use_inner(CloudMaterializeContext {
             provider,
             path,
@@ -245,23 +236,6 @@ fn resolve_cloud_materialize_snapshot(
         modified: entry.modified,
         kind: entry.kind,
     })
-}
-
-fn materialize_with_inflight_dedupe<F>(
-    path: &super::path::CloudPath,
-    snapshot: &CloudMaterializeSnapshot,
-    do_materialize: F,
-) -> CloudCommandResult<PathBuf>
-where
-    F: FnOnce() -> CloudCommandResult<PathBuf>,
-{
-    let key = materialize_inflight_key(path, snapshot.size, snapshot.modified.as_deref());
-    if let Some(rx) = register_materialize_waiter(&key) {
-        return wait_for_materialize_result(path, &key, rx);
-    }
-    let result = do_materialize();
-    notify_materialize_waiters(&key, result.clone());
-    result
 }
 
 fn materialize_cloud_file_for_local_use_inner(
@@ -429,88 +403,6 @@ fn emit_cloud_open_progress(
             finished,
         },
     );
-}
-
-fn materialize_inflight_key(
-    path: &super::path::CloudPath,
-    size: Option<u64>,
-    modified: Option<&str>,
-) -> String {
-    let mut hasher = Hasher::new();
-    hasher.update(path.to_string().as_bytes());
-    match size {
-        Some(value) => {
-            hasher.update(&[1]);
-            hasher.update(&value.to_le_bytes());
-        }
-        None => {
-            hasher.update(&[0]);
-        }
-    }
-    match modified {
-        Some(value) => {
-            hasher.update(&[1]);
-            hasher.update(value.as_bytes());
-        }
-        None => {
-            hasher.update(&[0]);
-        }
-    }
-    hasher.finalize().to_hex().to_string()
-}
-
-fn register_materialize_waiter(key: &str) -> Option<mpsc::Receiver<CloudCommandResult<PathBuf>>> {
-    let mut inflight = MATERIALIZE_INFLIGHT
-        .lock()
-        .expect("materialize inflight mutex poisoned");
-    if let Some(waiters) = inflight.get_mut(key) {
-        let (tx, rx) = mpsc::channel();
-        waiters.push(tx);
-        return Some(rx);
-    }
-    inflight.insert(key.to_string(), Vec::new());
-    None
-}
-
-fn wait_for_materialize_result(
-    path: &super::path::CloudPath,
-    key: &str,
-    rx: mpsc::Receiver<CloudCommandResult<PathBuf>>,
-) -> CloudCommandResult<PathBuf> {
-    match rx.recv_timeout(MATERIALIZE_WAIT_TIMEOUT) {
-        Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            debug!(
-                op = "cloud_materialize_wait",
-                key,
-                path = %path,
-                timeout_ms = MATERIALIZE_WAIT_TIMEOUT.as_millis() as u64,
-                "cloud materialization waiter timed out"
-            );
-            Err(CloudCommandError::new(
-                CloudCommandErrorCode::Timeout,
-                "Cloud materialization wait timed out",
-            ))
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(CloudCommandError::new(
-            CloudCommandErrorCode::TaskFailed,
-            "Cloud file materialization task was cancelled",
-        )),
-    }
-}
-
-fn notify_materialize_waiters(key: &str, result: CloudCommandResult<PathBuf>) {
-    let waiters = {
-        let mut inflight = MATERIALIZE_INFLIGHT
-            .lock()
-            .expect("materialize inflight mutex poisoned");
-        inflight.remove(key)
-    };
-    if let Some(waiters) = waiters {
-        for tx in waiters {
-            let _ = tx.send(result.clone());
-        }
-    }
 }
 
 fn cloud_open_cache_path(
@@ -709,9 +601,8 @@ fn set_owner_only_permissions(path: &Path, is_dir: bool) -> CloudCommandResult<(
 mod tests {
     use super::{
         cache_is_fresh, clear_cloud_open_cache_impl, cloud_open_cache_root_path,
-        cloud_open_cache_stats, cloud_open_metadata_path, notify_materialize_waiters,
-        prepare_cloud_open_cache_dir, prune_cloud_open_cache_dir, register_materialize_waiter,
-        wait_for_materialize_result, CloudOpenCacheMetadata,
+        cloud_open_cache_stats, cloud_open_metadata_path, inflight, prepare_cloud_open_cache_dir,
+        prune_cloud_open_cache_dir, CloudOpenCacheMetadata,
     };
     use crate::commands::cloud::path::CloudPath;
     use crate::commands::cloud::CloudCommandErrorCode;
@@ -872,13 +763,13 @@ mod tests {
     fn materialize_inflight_dedupe_delivers_shared_result_to_waiters() {
         let key = format!("inflight-{}-{}", std::process::id(), 1);
         assert!(
-            register_materialize_waiter(&key).is_none(),
+            inflight::register_materialize_waiter(&key).is_none(),
             "first caller should become leader"
         );
-        let rx = register_materialize_waiter(&key).expect("waiter should subscribe");
+        let rx = inflight::register_materialize_waiter(&key).expect("waiter should subscribe");
 
         let expected = PathBuf::from("/tmp/cloud-open-test.bin");
-        notify_materialize_waiters(&key, Ok(expected.clone()));
+        inflight::notify_materialize_waiters(&key, Ok(expected.clone()));
 
         let received = rx
             .recv_timeout(Duration::from_secs(1))
@@ -893,11 +784,12 @@ mod tests {
         let path = CloudPath::parse("rclone://work/docs/file.txt").expect("cloud path");
 
         assert!(
-            register_materialize_waiter(&key).is_none(),
+            inflight::register_materialize_waiter(&key).is_none(),
             "first caller should become leader"
         );
-        let rx = register_materialize_waiter(&key).expect("waiter should subscribe");
-        let err = wait_for_materialize_result(&path, &key, rx).expect_err("waiter should timeout");
+        let rx = inflight::register_materialize_waiter(&key).expect("waiter should subscribe");
+        let err = inflight::wait_for_materialize_result(&path, &key, rx)
+            .expect_err("waiter should timeout");
         assert_eq!(err.code(), CloudCommandErrorCode::Timeout);
         assert!(
             err.to_string().to_lowercase().contains("timed out"),
