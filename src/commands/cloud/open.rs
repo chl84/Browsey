@@ -170,22 +170,39 @@ pub(crate) fn materialize_cloud_file_for_local_use(
     let provider = configured_rclone_provider().map_err(|error| {
         CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
     })?;
-    let entry = provider.stat_path(path)?.ok_or_else(|| {
-        CloudCommandError::new(
-            CloudCommandErrorCode::NotFound,
-            format!("Cloud file was not found: {path}"),
-        )
-    })?;
-    let snapshot = CloudMaterializeSnapshot {
-        name: entry.name,
-        size: entry.size,
-        modified: entry.modified,
-        kind: entry.kind,
-    };
-    materialize_cloud_file_for_local_use_with_snapshot(path, &snapshot, app, progress_event, cancel)
+    let snapshot = resolve_cloud_materialize_snapshot(&provider, path)?;
+    materialize_cloud_file_for_local_use_with_provider_and_snapshot(
+        &provider,
+        path,
+        &snapshot,
+        app,
+        progress_event,
+        cancel,
+    )
 }
 
 pub(crate) fn materialize_cloud_file_for_local_use_with_snapshot(
+    path: &super::path::CloudPath,
+    snapshot: &CloudMaterializeSnapshot,
+    app: &tauri::AppHandle,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> CloudCommandResult<PathBuf> {
+    let provider = configured_rclone_provider().map_err(|error| {
+        CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
+    })?;
+    materialize_cloud_file_for_local_use_with_provider_and_snapshot(
+        &provider,
+        path,
+        snapshot,
+        app,
+        progress_event,
+        cancel,
+    )
+}
+
+fn materialize_cloud_file_for_local_use_with_provider_and_snapshot(
+    provider: &RcloneCloudProvider,
     path: &super::path::CloudPath,
     snapshot: &CloudMaterializeSnapshot,
     app: &tauri::AppHandle,
@@ -198,23 +215,51 @@ pub(crate) fn materialize_cloud_file_for_local_use_with_snapshot(
             format!("Only cloud files can be opened directly: {path}"),
         ));
     }
-    let provider = configured_rclone_provider().map_err(|error| {
-        CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
+    materialize_with_inflight_dedupe(path, snapshot, || {
+        materialize_cloud_file_for_local_use_inner(CloudMaterializeContext {
+            provider,
+            path,
+            original_name: &snapshot.name,
+            size: snapshot.size,
+            modified: snapshot.modified.as_deref(),
+            app,
+            progress_event,
+            cancel,
+        })
+    })
+}
+
+fn resolve_cloud_materialize_snapshot(
+    provider: &RcloneCloudProvider,
+    path: &super::path::CloudPath,
+) -> CloudCommandResult<CloudMaterializeSnapshot> {
+    let entry = provider.stat_path(path)?.ok_or_else(|| {
+        CloudCommandError::new(
+            CloudCommandErrorCode::NotFound,
+            format!("Cloud file was not found: {path}"),
+        )
     })?;
+    Ok(CloudMaterializeSnapshot {
+        name: entry.name,
+        size: entry.size,
+        modified: entry.modified,
+        kind: entry.kind,
+    })
+}
+
+fn materialize_with_inflight_dedupe<F>(
+    path: &super::path::CloudPath,
+    snapshot: &CloudMaterializeSnapshot,
+    do_materialize: F,
+) -> CloudCommandResult<PathBuf>
+where
+    F: FnOnce() -> CloudCommandResult<PathBuf>,
+{
     let key = materialize_inflight_key(path, snapshot.size, snapshot.modified.as_deref());
     if let Some(rx) = register_materialize_waiter(&key) {
         return wait_for_materialize_result(path, &key, rx);
     }
-    let result = materialize_cloud_file_for_local_use_inner(CloudMaterializeContext {
-        provider: &provider,
-        path,
-        original_name: &snapshot.name,
-        size: snapshot.size,
-        modified: snapshot.modified.as_deref(),
-        app,
-        progress_event,
-        cancel,
-    });
+    let result = do_materialize();
     notify_materialize_waiters(&key, result.clone());
     result
 }

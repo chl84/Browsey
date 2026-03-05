@@ -7,10 +7,13 @@ const MKDIR_DESTINATION_EXISTS_RETRY_BACKOFFS_MS: &[u64] = &[75, 200, 500];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ProviderPolicy {
+    /// Extra args appended to destructive delete commands for this provider.
     pub(crate) delete_policy_args: &'static [&'static str],
+    /// Whether conflict-key comparisons should normalize name casing.
     pub(crate) conflict_case_insensitive: bool,
 }
 
+/// Returns the stable provider-policy contract used by shared cloud write/conflict flows.
 pub(crate) fn provider_policy(kind: CloudProviderKind) -> ProviderPolicy {
     // Provider policy baseline is locked by:
     // - rclone tests:
@@ -36,10 +39,14 @@ pub(crate) fn provider_policy(kind: CloudProviderKind) -> ProviderPolicy {
     }
 }
 
+/// Delete-policy command args for the given provider.
 pub(crate) fn cloud_delete_policy_args(kind: CloudProviderKind) -> &'static [&'static str] {
     provider_policy(kind).delete_policy_args
 }
 
+/// Retry backoff windows used when `mkdir` reports transient `destination_exists`.
+///
+/// This remains provider-tunable through the hook signature even when values are shared.
 pub(crate) fn mkdir_destination_exists_retry_backoffs_ms(
     _provider: Option<CloudProviderKind>,
 ) -> &'static [u64] {
@@ -47,6 +54,7 @@ pub(crate) fn mkdir_destination_exists_retry_backoffs_ms(
     MKDIR_DESTINATION_EXISTS_RETRY_BACKOFFS_MS
 }
 
+/// Optional provider-specific error hinting layered on top of common rclone classification.
 pub(crate) fn classify_provider_rclone_message_code(
     provider: CloudProviderKind,
     message: &str,
@@ -64,6 +72,7 @@ pub(crate) fn classify_provider_rclone_message_code(
     }
 }
 
+/// Conflict key used by cross-provider name conflict previews.
 pub(crate) fn cloud_conflict_name_key(provider: Option<CloudProviderKind>, name: &str) -> String {
     match provider {
         Some(kind) if provider_policy(kind).conflict_case_insensitive => name.to_ascii_lowercase(),
