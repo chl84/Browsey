@@ -52,7 +52,7 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [ ] Keep thin wrappers at old entry points during migration (avoid big-bang call-site rewrites)
 
 ## Workstream 3: Operation-by-operation migration
-- [ ] Phase A: `mkdir`
+- [x] Phase A: `mkdir`
 - [x] Phase B: `delete`
 - [ ] Phase C: `move` + `copy`
 - [ ] Phase D: `open/materialize` shared patterns where safe
