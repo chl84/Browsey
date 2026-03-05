@@ -1,6 +1,7 @@
 <script lang="ts">
   import { iconPath as assetIconPath } from '../utils'
   import { iconPath as iconPathById } from '../helpers/icons'
+  import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import type { Entry } from '../model/types'
 
   const readOnlyIcon = assetIconPath('status/eye-svgrepo-com.svg')
@@ -69,10 +70,15 @@
     <span class="name">
       {displayName(entry)}
       {#if entry.readDenied}
-        <img class="ro-icon" src={lockIcon} alt="No read permission" title="No read permission" />
+        <img
+          class="ro-icon"
+          src={lockIcon}
+          alt="No read permission"
+          use:fullNameTooltip={'No read permission'}
+        />
       {/if}
       {#if entry.readOnly}
-        <img class="ro-icon" src={readOnlyIcon} alt="Read-only" title="Read-only" />
+        <img class="ro-icon" src={readOnlyIcon} alt="Read-only" use:fullNameTooltip={'Read-only'} />
       {/if}
     </span>
   </div>

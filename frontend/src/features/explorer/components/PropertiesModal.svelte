@@ -192,7 +192,7 @@
                 type="button"
                 class="secondary icon-btn"
                 aria-label="Copy parent folder path"
-                title="Copy path"
+                use:fullNameTooltip={'Copy path'}
                 on:click={() => void onCopyParentFolder()}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -231,8 +231,9 @@
               <input
                 type="checkbox"
                 use:indeterminate={hiddenBit}
+                use:fullNameTooltip={'Hidden attribute'}
                 checked={hiddenBit === true}
-                title="Hidden attribute"
+                aria-label="Hidden attribute"
                 disabled={mutationsLocked}
                 on:change={(e) => onToggleHidden((e.currentTarget as HTMLInputElement).checked)}
               />
@@ -550,7 +551,7 @@
   }
 
   .ownership-error {
-    color: #c03a2b;
+    color: var(--danger);
     font-size: var(--properties-ownership-meta-font-size);
     display: block;
     max-width: 100%;

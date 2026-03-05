@@ -1,5 +1,6 @@
 <script lang="ts">
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
+  import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import type { Entry } from '../model/types'
 
   export let open = false
@@ -86,7 +87,7 @@
             type="button"
             class="secondary icon-btn"
             aria-label="Copy duplicates list"
-            title="Copy list"
+            use:fullNameTooltip={'Copy list'}
             on:click={() => void onCopyList()}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">

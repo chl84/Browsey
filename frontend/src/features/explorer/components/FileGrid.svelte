@@ -176,10 +176,20 @@
             >
               <div class="badges">
                 {#if entry.readDenied}
-                  <img class="badge-icon" src={lockIcon} alt="No read permission" title="No read permission" />
+                  <img
+                    class="badge-icon"
+                    src={lockIcon}
+                    alt="No read permission"
+                    use:fullNameTooltip={'No read permission'}
+                  />
                 {/if}
                 {#if entry.readOnly}
-                  <img class="badge-icon" src={readOnlyIcon} alt="Read-only" title="Read-only" />
+                  <img
+                    class="badge-icon"
+                    src={readOnlyIcon}
+                    alt="Read-only"
+                    use:fullNameTooltip={'Read-only'}
+                  />
                 {/if}
               </div>
               {#if thumbnailsEnabled && thumbMap.has(entry.path)}

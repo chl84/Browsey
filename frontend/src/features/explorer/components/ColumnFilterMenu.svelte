@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { FilterOption } from '../model/types'
+  import { fullNameTooltip } from '../helpers/fullNameTooltip'
 
   export let open = false
   export let loading = false
@@ -70,7 +71,7 @@
                 checked={selected.has(opt.id)}
                 on:change={(e) => onToggle(opt.id, (e.target as HTMLInputElement).checked)}
               />
-              <span class="text" title={opt.label}>{opt.label}</span>
+              <span class="text" use:fullNameTooltip={() => opt.label}>{opt.label}</span>
               {#if opt.description}
                 <span class="muted">{opt.description}</span>
               {/if}
