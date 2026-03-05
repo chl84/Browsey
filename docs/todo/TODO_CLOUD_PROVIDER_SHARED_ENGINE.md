@@ -18,8 +18,8 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [x] Ensure current provider regression scenarios are green before first extraction PR.
 
 ## Principles (locked)
-- [ ] Shared engine handles common flow only (precheck, retries, normalization, dedupe patterns).
-- [ ] Provider policy handles quirks only (trash/delete flags, case/conflict semantics, provider-specific errors).
+- [x] Shared engine handles common flow only (precheck, retries, normalization, dedupe patterns).
+- [x] Provider policy handles quirks only (trash/delete flags, case/conflict semantics, provider-specific errors).
 - [ ] No frontend contract changes.
 - [ ] No Tauri command signature changes.
 - [ ] No stringly error regressions; preserve typed error mapping.
@@ -60,7 +60,7 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [x] Rule: one operation family per PR unless changes are purely mechanical
 
 ## Workstream 4: Contract and regression tests
-- [ ] Add provider contract test matrix for OneDrive/GDrive/Nextcloud:
+- [x] Add provider contract test matrix for OneDrive/GDrive/Nextcloud:
 - [x] create -> delete -> recreate same name
 - [x] destination exists
 - [x] not found
@@ -82,7 +82,7 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [ ] Keep shared logic in dedicated helper modules (engine/policy/error mapping) instead of provider files.
 - [ ] Avoid duplicate retry/error parsing logic across providers after extraction.
 - [x] Add concise doc comments on each policy hook: input, output, and provider responsibility.
-- [ ] Prefer pure helper functions for decision logic to maximize unit-test coverage.
+- [x] Prefer pure helper functions for decision logic to maximize unit-test coverage.
 - [ ] Keep migration logs/temporary diagnostics removable and tracked by checklist.
 
 ## Workstream 5: Rollout and safeguards
@@ -96,16 +96,16 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [x] `cargo clippy --all-targets --all-features -- -D warnings`
 - [x] `bash scripts/maintenance/check-backend-error-hardening-guard.sh`
 - [x] `cargo test commands::cloud::providers::rclone::tests -- --nocapture`
-- [ ] `cargo test --all-targets --all-features`
+- [x] `cargo test --all-targets --all-features`
 
 ## Acceptance criteria
-- [ ] Shared cloud logic is centralized without hiding provider quirks
-- [ ] OneDrive/GDrive/Nextcloud keep existing expected behavior
-- [ ] No typed-error regressions in affected paths
-- [ ] Shared engine precheck/retry skeleton is used by at least `mkdir/delete/move/copy`.
-- [ ] Provider files no longer duplicate precheck+retry flow for migrated operations.
+- [x] Shared cloud logic is centralized without hiding provider quirks
+- [x] OneDrive/GDrive/Nextcloud keep existing expected behavior
+- [x] No typed-error regressions in affected paths
+- [x] Shared engine precheck/retry skeleton is used by at least `mkdir/delete/move/copy`.
+- [x] Provider files no longer duplicate precheck+retry flow for migrated operations.
 - [ ] Every migrated operation has explicit contract tests across all three providers
-- [ ] All quality gates pass
+- [x] All quality gates pass
 
 ## Residual risk
 - [ ] Risk: over-generalization can break provider edge cases.
