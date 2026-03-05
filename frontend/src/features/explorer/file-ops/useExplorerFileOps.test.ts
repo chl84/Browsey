@@ -460,7 +460,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(moveMixedEntryToMock).toHaveBeenCalledWith(
       'rclone://work/src/report.txt',
       '/tmp/dest/report.txt',
-      expect.objectContaining({ overwrite: false, prechecked: true }),
+      expect.objectContaining({ overwrite: false, prechecked: false }),
     )
     expect(activityApi.start).toHaveBeenCalledWith(
       'Moving…',
@@ -489,7 +489,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(copyMixedEntryToMock).toHaveBeenCalledWith(
       'rclone://work/src/report.txt',
       '/tmp/dest/report.txt',
-      expect.objectContaining({ overwrite: false, prechecked: true }),
+      expect.objectContaining({ overwrite: false, prechecked: false }),
     )
     expect(deps.showToast).toHaveBeenCalledWith(
       'Paste completed, but refresh failed. Press F5 to refresh.',
@@ -612,11 +612,40 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       1,
       'rclone://work/src/report.txt',
       '/tmp/dest/report.txt',
-      expect.objectContaining({ overwrite: false, prechecked: true }),
+      expect.objectContaining({ overwrite: false, prechecked: false }),
     )
     expect(moveMixedEntryToMock).toHaveBeenNthCalledWith(
       2,
       'rclone://work/src/report.txt',
+      '/tmp/dest/report-1.txt',
+      expect.objectContaining({ overwrite: false, prechecked: false }),
+    )
+  })
+
+  it('avoids same-target overwrite when mixed cloud-to-local rename processes duplicate source leaf names', async () => {
+    setClipboardPathsState('copy', [
+      'rclone://work/srcA/report.txt',
+      'rclone://work/srcB/report.txt',
+    ])
+    previewMixedTransferConflictsMock.mockResolvedValue([])
+    copyMixedEntryToMock.mockResolvedValue('/tmp/dest/report.txt')
+
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp/dest'
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('/tmp/dest')
+
+    expect(ok).toBe(true)
+    expect(copyMixedEntryToMock).toHaveBeenNthCalledWith(
+      1,
+      'rclone://work/srcA/report.txt',
+      '/tmp/dest/report.txt',
+      expect.objectContaining({ overwrite: false, prechecked: false }),
+    )
+    expect(copyMixedEntryToMock).toHaveBeenNthCalledWith(
+      2,
+      'rclone://work/srcB/report.txt',
       '/tmp/dest/report-1.txt',
       expect.objectContaining({ overwrite: false, prechecked: false }),
     )
