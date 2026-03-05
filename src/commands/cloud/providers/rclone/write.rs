@@ -377,63 +377,23 @@ impl RcloneCloudProvider {
         prechecked: bool,
         cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()> {
-        self.ensure_runtime_ready()?;
-        if is_cancelled(cancel) {
-            return Err(cloud_write_cancelled_error());
-        }
-        if !prechecked {
-            ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
-        }
-        let mut fell_back_from_rc = false;
-        let mut fallback_reason: Option<&'static str> = None;
-        if self.rc.is_write_enabled() && cancel.is_none() {
-            let src_fs = format!("{}:", src.remote());
-            let dst_fs = format!("{}:", dst.remote());
-            match self
-                .rc
-                .operations_movefile(&src_fs, src.rel_path(), &dst_fs, dst.rel_path())
-            {
-                Ok(_) => {
-                    log_backend_selected("cloud_write_move", "rc", false, None);
-                    return Ok(());
-                }
-                Err(error) => {
-                    fell_back_from_rc = true;
-                    fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    debug!(
-                        src = %src,
-                        dst = %dst,
-                        error = %error,
-                        "rclone rc movefile failed; falling back to CLI moveto"
-                    );
-                }
-            }
-        }
-        self.cli
-            .run_capture_text_with_cancel(
-                RcloneCommandSpec::new(RcloneSubcommand::MoveTo)
-                    .arg(src.to_rclone_remote_spec())
-                    .arg(dst.to_rclone_remote_spec()),
-                cancel,
-            )
-            .map_err(|error| map_rclone_error_for_paths(&[src, dst], error))?;
-        log_backend_selected(
-            "cloud_write_move",
-            "cli",
-            fell_back_from_rc,
-            if fell_back_from_rc {
-                fallback_reason
-            } else if cancel.is_some() {
-                Some("cancelable_cli")
-            } else {
-                None
-            },
-        );
-        Ok(())
+        self.transfer_entry_impl(TransferMode::Move, src, dst, overwrite, prechecked, cancel)
     }
 
     pub(super) fn copy_entry_impl(
         &self,
+        src: &CloudPath,
+        dst: &CloudPath,
+        overwrite: bool,
+        prechecked: bool,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()> {
+        self.transfer_entry_impl(TransferMode::Copy, src, dst, overwrite, prechecked, cancel)
+    }
+
+    fn transfer_entry_impl(
+        &self,
+        mode: TransferMode,
         src: &CloudPath,
         dst: &CloudPath,
         overwrite: bool,
@@ -449,22 +409,34 @@ impl RcloneCloudProvider {
         }
         let mut fell_back_from_rc = false;
         let mut fallback_reason: Option<&'static str> = None;
-        if self.rc.is_write_enabled() {
+        if self.rc.is_write_enabled() && (cancel.is_none() || mode == TransferMode::Copy) {
             let src_fs = format!("{}:", src.remote());
             let dst_fs = format!("{}:", dst.remote());
-            match self.rc.operations_copyfile(
-                &src_fs,
-                src.rel_path(),
-                &dst_fs,
-                dst.rel_path(),
-                cancel,
-            ) {
+            let rc_result = match mode {
+                TransferMode::Move => {
+                    self.rc
+                        .operations_movefile(&src_fs, src.rel_path(), &dst_fs, dst.rel_path())
+                }
+                TransferMode::Copy => self.rc.operations_copyfile(
+                    &src_fs,
+                    src.rel_path(),
+                    &dst_fs,
+                    dst.rel_path(),
+                    cancel,
+                ),
+            };
+            match rc_result {
                 Ok(_) => {
-                    log_backend_selected("cloud_write_copy", "rc", false, None);
+                    log_backend_selected(mode.op_name(), "rc", false, None);
                     return Ok(());
                 }
-                Err(RcloneCliError::Cancelled { .. }) => return Err(cloud_write_cancelled_error()),
-                Err(error) if !should_fallback_to_cli_after_rc_error(&error) => {
+                Err(RcloneCliError::Cancelled { .. }) if mode == TransferMode::Copy => {
+                    return Err(cloud_write_cancelled_error());
+                }
+                Err(error)
+                    if mode == TransferMode::Copy
+                        && !should_fallback_to_cli_after_rc_error(&error) =>
+                {
                     return Err(map_rclone_error_for_paths(&[src, dst], error));
                 }
                 Err(error) => {
@@ -474,21 +446,22 @@ impl RcloneCloudProvider {
                         src = %src,
                         dst = %dst,
                         error = %error,
-                        "rclone rc copyfile failed; falling back to CLI copyto"
+                        mode = %mode.label(),
+                        "rclone rc transfer failed; falling back to CLI"
                     );
                 }
             }
         }
         self.cli
             .run_capture_text_with_cancel(
-                RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
+                RcloneCommandSpec::new(mode.cli_subcommand())
                     .arg(src.to_rclone_remote_spec())
                     .arg(dst.to_rclone_remote_spec()),
                 cancel,
             )
             .map_err(|error| map_rclone_error_for_paths(&[src, dst], error))?;
         log_backend_selected(
-            "cloud_write_copy",
+            mode.op_name(),
             "cli",
             fell_back_from_rc,
             if fell_back_from_rc {
@@ -560,6 +533,35 @@ impl RcloneCloudProvider {
                 )
             })?;
         Ok(cloud_delete_policy_args(provider))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TransferMode {
+    Move,
+    Copy,
+}
+
+impl TransferMode {
+    fn op_name(self) -> &'static str {
+        match self {
+            Self::Move => "cloud_write_move",
+            Self::Copy => "cloud_write_copy",
+        }
+    }
+
+    fn cli_subcommand(self) -> RcloneSubcommand {
+        match self {
+            Self::Move => RcloneSubcommand::MoveTo,
+            Self::Copy => RcloneSubcommand::CopyTo,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Move => "move",
+            Self::Copy => "copy",
+        }
     }
 }
 

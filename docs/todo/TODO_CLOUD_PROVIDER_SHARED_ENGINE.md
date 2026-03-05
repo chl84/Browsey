@@ -45,16 +45,16 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [x] Document shared vs provider-specific boundaries in code comments
 
 ## Workstream 2: Shared engine extraction (no behavior change)
-- [ ] Extract shared precheck/execute/retry skeleton for cloud write operations
-- [ ] Keep existing behavior parity for OneDrive/GDrive/Nextcloud
-- [ ] Route existing provider code through the shared engine incrementally
+- [x] Extract shared precheck/execute/retry skeleton for cloud write operations
+- [x] Keep existing behavior parity for OneDrive/GDrive/Nextcloud
+- [x] Route existing provider code through the shared engine incrementally
 - [ ] Keep total/pure helper boundaries where possible to simplify tests
-- [ ] Keep thin wrappers at old entry points during migration (avoid big-bang call-site rewrites)
+- [x] Keep thin wrappers at old entry points during migration (avoid big-bang call-site rewrites)
 
 ## Workstream 3: Operation-by-operation migration
 - [x] Phase A: `mkdir`
 - [x] Phase B: `delete`
-- [ ] Phase C: `move` + `copy`
+- [x] Phase C: `move` + `copy`
 - [ ] Phase D: `open/materialize` shared patterns where safe
 - [ ] Validate each phase completely before moving to the next
 - [ ] Rule: one operation family per PR unless changes are purely mechanical
