@@ -21,6 +21,53 @@
   let countedAsOpen = false
   let restoreFocusTarget: HTMLElement | null = null
 
+  const focusableSelectors = [
+    'a[href]',
+    'button:not([disabled])',
+    'textarea:not([disabled])',
+    'input:not([disabled]):not([type="hidden"])',
+    'select:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(', ')
+
+  const getFocusableElements = () => {
+    if (!modalEl) return []
+    return Array.from(modalEl.querySelectorAll<HTMLElement>(focusableSelectors)).filter(
+      (element) =>
+        !element.hasAttribute('disabled') &&
+        element.getAttribute('aria-hidden') !== 'true' &&
+        element.getClientRects().length > 0,
+    )
+  }
+
+  const trapTabFocus = (event: KeyboardEvent) => {
+    const focusable = getFocusableElements()
+    if (focusable.length === 0) {
+      event.preventDefault()
+      modalEl?.focus()
+      return
+    }
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    const active =
+      typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+    const activeInside = active ? modalEl?.contains(active) : false
+
+    if (event.shiftKey) {
+      if (!activeInside || active === first) {
+        event.preventDefault()
+        last.focus()
+      }
+      return
+    }
+    if (!activeInside || active === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
   const captureRestoreFocusTarget = () => {
     if (typeof document === 'undefined') return
     const active = document.activeElement
@@ -89,6 +136,10 @@
   }
 
   const handleKeydown = (e: KeyboardEvent) => {
+    if (e.key === 'Tab') {
+      trapTabFocus(e)
+      return
+    }
     if (blurTextEntryTargetOnEscape(e)) return
     if (!closeOnEscape) return
     if (e.key === 'Escape') {

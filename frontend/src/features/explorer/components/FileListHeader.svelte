@@ -44,19 +44,20 @@
           {#if col.label}<span>{col.label}</span>{/if}
         </div>
       {:else}
-        <button
-          class="header-btn"
+        <div
+          class="header-controls"
           class:align-right={col.align === 'right'}
           class:size-header={col.key === 'size'}
-          type="button"
           role="columnheader"
-          tabindex="-1"
           aria-sort={ariaSort(col.sort)}
-          class:active-sort={sortField === col.sort}
-          on:click={() => onChangeSort(col.sort)}
         >
-          <span>{col.label}</span>
-          <span class="sort-group">
+          <button
+            class="header-btn"
+            type="button"
+            class:active-sort={sortField === col.sort}
+            on:click={() => onChangeSort(col.sort)}
+          >
+            <span>{col.label}</span>
             <span
               class="sort-icon"
               class:desc={sortField === col.sort && sortDirection === 'desc'}
@@ -64,28 +65,28 @@
             >
               ▲
             </span>
-            <svg
-              class="filter-icon"
-              class:active={filterActive[col.sort] ?? false}
-              viewBox="0 0 12 12"
-              aria-hidden="true"
-              focusable="false"
-              role="button"
-              tabindex="-1"
-              on:mousedown|preventDefault
-              on:click|stopPropagation={(event) => {
-                const anchor = (event.currentTarget as Element).getBoundingClientRect()
-                onFilterClick(col.sort, anchor)
-              }}
-              on:contextmenu|preventDefault|stopPropagation={(event) => {
-                if (!(filterActive[col.sort] ?? false)) return
-                onFilterContextMenu(col.sort, event)
-              }}
-            >
+          </button>
+          <button
+            class="filter-btn"
+            class:active={filterActive[col.sort] ?? false}
+            type="button"
+            tabindex="-1"
+            aria-label={`Filter ${col.label}`}
+            on:mousedown|preventDefault
+            on:click|stopPropagation={(event) => {
+              const anchor = (event.currentTarget as Element).getBoundingClientRect()
+              onFilterClick(col.sort, anchor)
+            }}
+            on:contextmenu|preventDefault|stopPropagation={(event) => {
+              if (!(filterActive[col.sort] ?? false)) return
+              onFilterContextMenu(col.sort, event)
+            }}
+          >
+            <svg class="filter-icon" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
               <path d="M2 3h8L7.2 5.6c-.1.1-.2.3-.2.5V9l-2 .9V6.1c0-.2-.1-.4-.2-.5Z" />
             </svg>
-          </span>
-        </button>
+          </button>
+        </div>
       {/if}
       {#if col.resizable !== false && idx < cols.length - 1}
         <ColumnResizer onStart={(e) => onStartResize(idx, e)} />
@@ -133,12 +134,20 @@
     flex: 1 1 0;
   }
 
+  .header-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
   .header-btn {
     display: inline-flex;
     align-items: center;
     gap: var(--list-header-cell-gap);
     justify-content: flex-start;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     min-width: 0;
     height: 100%;
     border: none;
@@ -153,15 +162,22 @@
     text-align: left;
   }
 
-  .header-btn.align-right {
-    justify-content: flex-end;
-    text-align: right;
+  .header-controls.align-right {
     margin-right: calc(-1 * var(--list-header-align-right-offset));
     padding-right: var(--list-header-align-right-offset);
+    justify-content: flex-end;
   }
 
-  .header-btn.align-right.size-header {
-    margin-right: calc(-1 * (var(--list-header-align-right-offset) + 22px));
+  .header-controls.align-right .header-btn {
+    justify-content: flex-end;
+    text-align: right;
+  }
+
+  .header-controls.align-right.size-header {
+    /* Controls optical alignment for SIZE header relative to right edge and star column. */
+    margin-right: calc(
+      -1 * (var(--list-header-align-right-offset) + var(--list-header-size-extra-offset))
+    );
   }
 
   .header-btn.inert {
@@ -174,7 +190,8 @@
   }
 
   .header-btn:focus-visible {
-    outline: none;
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
   }
 
   .sort-icon {
@@ -193,10 +210,23 @@
     transform: rotate(180deg);
   }
 
-  .sort-group {
+  .filter-btn {
+    width: calc(var(--list-header-sort-icon-size) + 6px);
+    height: calc(var(--list-header-sort-icon-size) + 6px);
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
     display: inline-flex;
     align-items: center;
-    gap: calc(var(--list-header-cell-gap) / 2);
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+
+  .filter-btn:focus,
+  .filter-btn:focus-visible {
+    outline: none;
   }
 
   .filter-icon {
@@ -204,15 +234,9 @@
     height: calc(var(--list-header-sort-icon-size) + 4px);
     fill: currentColor;
     opacity: 0.35;
-    cursor: pointer;
   }
 
-  .filter-icon:focus,
-  .filter-icon:focus-visible {
-    outline: none;
-  }
-
-  .filter-icon.active {
+  .filter-btn.active .filter-icon {
     color: var(--filter-active, var(--accent-error-text));
     opacity: 1;
   }

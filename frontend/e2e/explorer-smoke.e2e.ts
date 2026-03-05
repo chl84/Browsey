@@ -95,3 +95,61 @@ test('paste failure is surfaced and a following paste can recover', async ({ pag
   await page.keyboard.press('Control+V')
   await expect(page.locator('.row .name', { hasText: 'notes-1' })).toBeVisible()
 })
+
+test('advanced rename modal traps Tab focus and closes on Escape', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.getByRole('grid', { name: 'File list' })).toBeVisible()
+
+  const pickTargets = async () => {
+    const listRows = page.locator('.row')
+    if ((await listRows.count()) >= 2) {
+      return {
+        first: listRows.nth(0),
+        second: listRows.nth(1),
+      }
+    }
+    const gridCards = page.locator('.card')
+    return {
+      first: gridCards.nth(0),
+      second: gridCards.nth(1),
+    }
+  }
+
+  const targets = await pickTargets()
+  await expect(targets.first).toBeVisible()
+  await expect(targets.second).toBeVisible()
+
+  await targets.first.click()
+  await targets.second.click({ modifiers: ['Shift'] })
+  await targets.second.click({ button: 'right' })
+
+  await page.getByRole('menuitem', { name: 'Rename…' }).click()
+
+  const modal = page.locator('.modal.advanced-rename-modal')
+  const regexInput = page.locator('#advanced-rename-regex')
+  await expect(modal).toBeVisible()
+  await expect(regexInput).toBeFocused()
+
+  await page.keyboard.press('Shift+Tab')
+  const reverseWrappedInside = await modal.evaluate((node) => {
+    const active = document.activeElement
+    return !!active && node.contains(active) && (active as HTMLElement).id !== 'advanced-rename-regex'
+  })
+  expect(reverseWrappedInside).toBe(true)
+  await page.keyboard.press('Tab')
+  await expect(regexInput).toBeFocused()
+
+  for (let i = 0; i < 10; i += 1) {
+    await page.keyboard.press('Tab')
+    const focusInside = await modal.evaluate((node) => node.contains(document.activeElement))
+    expect(focusInside).toBe(true)
+  }
+
+  await page.keyboard.press('Shift+Tab')
+  const reverseFocusInside = await modal.evaluate((node) => node.contains(document.activeElement))
+  expect(reverseFocusInside).toBe(true)
+
+  await page.keyboard.press('Escape')
+  await expect(modal).toBeHidden()
+})

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
   import { partitionIcon } from '../utils'
+  import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import type { Partition } from '../model/types'
 
   const dispatch = createEventDispatcher<{ eject: { path: string } }>()
@@ -20,7 +21,13 @@
         <span class="nav-label">{part.label}</span>
       </button>
       {#if part.removable}
-        <button class="eject" type="button" title="Eject" on:click={() => eject(part.path)}>
+        <button
+          class="eject"
+          type="button"
+          aria-label="Eject"
+          use:fullNameTooltip={'Eject'}
+          on:click={() => eject(part.path)}
+        >
           <svg viewBox="0 0 20 20" aria-hidden="true">
             <path
               d="M10 4.5 3.5 12h13L10 4.5Zm-6 10h12v2H4v-2Z"

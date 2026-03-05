@@ -192,6 +192,16 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return { current: 'trash://', entries: [] } as T
     case 'list_facets':
       return emptyFacets as T
+    case 'context_menu_actions': {
+      const count = Number(args?.count ?? 0)
+      if (count > 1) {
+        return [{ id: 'rename-advanced', label: 'Rename…' }] as T
+      }
+      if (count === 1) {
+        return [{ id: 'rename', label: 'Rename…' }] as T
+      }
+      return [] as T
+    }
     case 'list_mounts':
       return [] as T
     case 'watch_dir':

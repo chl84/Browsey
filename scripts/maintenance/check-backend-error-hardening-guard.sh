@@ -40,15 +40,21 @@ CORE_TYPED_ERROR_FILES=(
   src/commands/fs/delete_ops.rs
   src/commands/fs/trash/mod.rs
   src/commands/rename/mod.rs
+  src/commands/rename/ops.rs
+  src/commands/rename/preview.rs
   src/clipboard/mod.rs
   src/clipboard/ops.rs
   src/commands/cloud/write.rs
   src/commands/cloud/providers/rclone/write.rs
   src/commands/transfer/execute.rs
+  src/commands/transfer/execute/flow.rs
+  src/commands/transfer/execute/progress.rs
   src/commands/transfer/route.rs
   src/commands/network/mounts.rs
   src/commands/permissions/set_permissions.rs
   src/commands/permissions/ownership.rs
+  src/commands/permissions/ownership/unix.rs
+  src/commands/permissions/windows_acl.rs
 )
 
 ADVISORY_TO_STRING_DIRS=(
