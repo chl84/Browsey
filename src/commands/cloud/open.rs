@@ -30,7 +30,7 @@ const CLOUD_OPEN_CACHE_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60)
 #[cfg(test)]
 const CLOUD_OPEN_CACHE_MAX_AGE: Duration = Duration::from_secs(60);
 #[cfg(not(test))]
-const MATERIALIZE_WAIT_TIMEOUT: Duration = Duration::from_secs(90);
+const MATERIALIZE_WAIT_TIMEOUT: Duration = Duration::from_secs(300);
 #[cfg(test)]
 const MATERIALIZE_WAIT_TIMEOUT: Duration = Duration::from_millis(50);
 

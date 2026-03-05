@@ -75,7 +75,7 @@ pub(crate) fn classify_provider_rclone_message_code(
 /// Conflict key used by cross-provider name conflict previews.
 pub(crate) fn cloud_conflict_name_key(provider: Option<CloudProviderKind>, name: &str) -> String {
     match provider {
-        Some(kind) if provider_policy(kind).conflict_case_insensitive => name.to_ascii_lowercase(),
+        Some(kind) if provider_policy(kind).conflict_case_insensitive => name.to_lowercase(),
         _ => name.to_string(),
     }
 }
@@ -111,12 +111,24 @@ mod tests {
             "report.txt"
         );
         assert_eq!(
+            cloud_conflict_name_key(Some(CloudProviderKind::Onedrive), "RÄPORT.TXT"),
+            "räport.txt"
+        );
+        assert_eq!(
             cloud_conflict_name_key(Some(CloudProviderKind::Gdrive), "Report.TXT"),
             "Report.TXT"
         );
         assert_eq!(
             cloud_conflict_name_key(Some(CloudProviderKind::Nextcloud), "Report.TXT"),
             "Report.TXT"
+        );
+        assert_eq!(
+            cloud_conflict_name_key(Some(CloudProviderKind::Gdrive), "RÄPORT.TXT"),
+            "RÄPORT.TXT"
+        );
+        assert_eq!(
+            cloud_conflict_name_key(Some(CloudProviderKind::Nextcloud), "RÄPORT.TXT"),
+            "RÄPORT.TXT"
         );
     }
 

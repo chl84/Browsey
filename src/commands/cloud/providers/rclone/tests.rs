@@ -24,7 +24,7 @@ use crate::{
         rclone_cli::RcloneCliError,
         rclone_cli::RcloneSubcommand,
         rclone_rc::RcloneRcClient,
-        types::{CloudEntryKind, CloudProviderKind},
+        types::{CloudCapabilities, CloudEntryKind, CloudProviderKind, CloudRemote},
     },
     errors::domain::{DomainError, ErrorCode},
 };
@@ -1191,6 +1191,48 @@ fn delete_fails_when_delete_policy_lookup_cannot_be_verified() {
         !log.contains("deletefile --onedrive-hard-delete work:trash/file.txt"),
         "deletefile must not run after policy lookup failure, log:\n{log}"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn delete_uses_cached_provider_policy_when_config_dump_fails() {
+    crate::commands::cloud::invalidate_cloud_caches_for_backend_change();
+    let sandbox = FakeRcloneSandbox::new();
+    let remote = format!("cache-delete-policy-{}", std::process::id());
+    sandbox.write_remote_file(&remote, "trash/file.txt", "payload");
+    sandbox.mark_config_dump_failure();
+    crate::commands::cloud::store_cloud_remote_discovery_cache_entry_for_tests(vec![CloudRemote {
+        id: remote.clone(),
+        label: remote.clone(),
+        provider: CloudProviderKind::Onedrive,
+        root_path: format!("rclone://{remote}"),
+        capabilities: CloudCapabilities::v1_for_provider(CloudProviderKind::Onedrive),
+    }]);
+
+    let provider = sandbox.provider_with_forced_rc();
+    provider
+        .delete_file(
+            &cloud_path(&format!("rclone://{remote}/trash/file.txt")),
+            None,
+        )
+        .expect("delete should use cached provider policy");
+    assert!(
+        !sandbox.remote_path(&remote, "trash/file.txt").exists(),
+        "file should be removed"
+    );
+
+    let log = sandbox.read_log();
+    assert!(
+        log.contains(&format!(
+            "deletefile --onedrive-hard-delete {remote}:trash/file.txt"
+        )),
+        "expected cached OneDrive hard-delete policy flag, log:\n{log}"
+    );
+    assert!(
+        !log.contains("config dump"),
+        "cache-first delete policy lookup should avoid config dump, log:\n{log}"
+    );
+    crate::commands::cloud::invalidate_cloud_caches_for_backend_change();
 }
 
 #[cfg(unix)]

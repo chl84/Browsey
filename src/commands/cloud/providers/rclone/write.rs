@@ -510,6 +510,17 @@ impl RcloneCloudProvider {
         &self,
         remote_id: &str,
     ) -> CloudCommandResult<&'static [&'static str]> {
+        let provider = self.resolve_provider_kind_for_delete_policy(remote_id)?;
+        Ok(cloud_delete_policy_args(provider))
+    }
+
+    fn resolve_provider_kind_for_delete_policy(
+        &self,
+        remote_id: &str,
+    ) -> CloudCommandResult<crate::commands::cloud::types::CloudProviderKind> {
+        if let Some(provider) = cloud_provider_kind_for_remote(remote_id) {
+            return Ok(provider);
+        }
         let config_dump = self
             .cli
             .run_capture_text(RcloneCommandSpec::new(RcloneSubcommand::ConfigDump))
@@ -537,7 +548,7 @@ impl RcloneCloudProvider {
                     ),
                 )
             })?;
-        Ok(cloud_delete_policy_args(provider))
+        Ok(provider)
     }
 }
 
