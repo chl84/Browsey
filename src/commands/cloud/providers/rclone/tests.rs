@@ -636,6 +636,34 @@ fn assert_create_delete_recreate_same_folder(sandbox: &FakeRcloneSandbox, remote
 }
 
 #[cfg(unix)]
+fn assert_copy_move_roundtrip_for_remote(sandbox: &FakeRcloneSandbox, remote: &str) {
+    let provider = sandbox.provider_with_forced_rc();
+    let src = cloud_path(&format!("rclone://{remote}/src/file.txt"));
+    let copied = cloud_path(&format!("rclone://{remote}/dst/copied.txt"));
+    let moved = cloud_path(&format!("rclone://{remote}/dst/moved.txt"));
+
+    provider
+        .copy_entry(&src, &copied, false, false, None)
+        .expect("copy should succeed");
+    assert!(
+        sandbox.remote_path(remote, "dst/copied.txt").is_file(),
+        "copied file should exist"
+    );
+
+    provider
+        .move_entry(&copied, &moved, false, false, None)
+        .expect("move should succeed");
+    assert!(
+        !sandbox.remote_path(remote, "dst/copied.txt").exists(),
+        "copied source should be removed after move"
+    );
+    assert!(
+        sandbox.remote_path(remote, "dst/moved.txt").is_file(),
+        "moved file should exist"
+    );
+}
+
+#[cfg(unix)]
 #[test]
 fn fake_rclone_shim_lists_remotes_and_directory_entries() {
     let sandbox = FakeRcloneSandbox::new();
@@ -981,6 +1009,32 @@ fn create_delete_recreate_same_name_roundtrip_succeeds_for_nextcloud() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.set_remote_provider_type("nc-work", "nextcloud");
     assert_create_delete_recreate_same_folder(&sandbox, "nc-work");
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_move_roundtrip_succeeds_for_onedrive() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "src/file.txt", "payload");
+    assert_copy_move_roundtrip_for_remote(&sandbox, "work");
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_move_roundtrip_succeeds_for_gdrive() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.set_remote_provider_type("drive-work", "drive");
+    sandbox.write_remote_file("drive-work", "src/file.txt", "payload");
+    assert_copy_move_roundtrip_for_remote(&sandbox, "drive-work");
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_move_roundtrip_succeeds_for_nextcloud() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.set_remote_provider_type("nc-work", "nextcloud");
+    sandbox.write_remote_file("nc-work", "src/file.txt", "payload");
+    assert_copy_move_roundtrip_for_remote(&sandbox, "nc-work");
 }
 
 #[cfg(unix)]

@@ -20,9 +20,9 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 ## Principles (locked)
 - [x] Shared engine handles common flow only (precheck, retries, normalization, dedupe patterns).
 - [x] Provider policy handles quirks only (trash/delete flags, case/conflict semantics, provider-specific errors).
-- [ ] No frontend contract changes.
-- [ ] No Tauri command signature changes.
-- [ ] No stringly error regressions; preserve typed error mapping.
+- [x] No frontend contract changes.
+- [x] No Tauri command signature changes.
+- [x] No stringly error regressions; preserve typed error mapping.
 
 ## In scope
 - [ ] `src/commands/cloud/providers/rclone/**`
@@ -104,7 +104,7 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [x] No typed-error regressions in affected paths
 - [x] Shared engine precheck/retry skeleton is used by at least `mkdir/delete/move/copy`.
 - [x] Provider files no longer duplicate precheck+retry flow for migrated operations.
-- [ ] Every migrated operation has explicit contract tests across all three providers
+- [x] Every migrated operation has explicit contract tests across all three providers
 - [x] All quality gates pass
 
 ## Residual risk
