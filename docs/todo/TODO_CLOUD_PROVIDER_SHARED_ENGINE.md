@@ -48,16 +48,16 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [x] Extract shared precheck/execute/retry skeleton for cloud write operations
 - [x] Keep existing behavior parity for OneDrive/GDrive/Nextcloud
 - [x] Route existing provider code through the shared engine incrementally
-- [ ] Keep total/pure helper boundaries where possible to simplify tests
+- [x] Keep total/pure helper boundaries where possible to simplify tests
 - [x] Keep thin wrappers at old entry points during migration (avoid big-bang call-site rewrites)
 
 ## Workstream 3: Operation-by-operation migration
 - [x] Phase A: `mkdir`
 - [x] Phase B: `delete`
 - [x] Phase C: `move` + `copy`
-- [ ] Phase D: `open/materialize` shared patterns where safe
-- [ ] Validate each phase completely before moving to the next
-- [ ] Rule: one operation family per PR unless changes are purely mechanical
+- [x] Phase D: `open/materialize` shared patterns where safe
+- [x] Validate each phase completely before moving to the next
+- [x] Rule: one operation family per PR unless changes are purely mechanical
 
 ## Workstream 4: Contract and regression tests
 - [ ] Add provider contract test matrix for OneDrive/GDrive/Nextcloud:
@@ -81,7 +81,7 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 ## Maintainability guardrails
 - [ ] Keep shared logic in dedicated helper modules (engine/policy/error mapping) instead of provider files.
 - [ ] Avoid duplicate retry/error parsing logic across providers after extraction.
-- [ ] Add concise doc comments on each policy hook: input, output, and provider responsibility.
+- [x] Add concise doc comments on each policy hook: input, output, and provider responsibility.
 - [ ] Prefer pure helper functions for decision logic to maximize unit-test coverage.
 - [ ] Keep migration logs/temporary diagnostics removable and tracked by checklist.
 
@@ -93,8 +93,8 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 
 ## Quality gates
 - [x] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings`
-- [ ] `bash scripts/maintenance/check-backend-error-hardening-guard.sh`
+- [x] `cargo clippy --all-targets --all-features -- -D warnings`
+- [x] `bash scripts/maintenance/check-backend-error-hardening-guard.sh`
 - [x] `cargo test commands::cloud::providers::rclone::tests -- --nocapture`
 - [ ] `cargo test --all-targets --all-features`
 
