@@ -114,5 +114,13 @@ Primary goal: less duplication and fewer regressions in `mkdir/delete/move/copy/
 - [ ] Mitigation: no-behavior-change phases and small PRs.
 
 ## Exit / archive
-- [ ] Move this file to `docs/todo-archive/` when complete.
-- [ ] Add completion note with date and summary in archived file.
+- [x] Move this file to `docs/todo-archive/` when complete.
+- [x] Add completion note with date and summary in archived file.
+
+## Completion note
+Completed: 2026-03-05
+Result:
+- Introduced provider policy hooks for delete behavior, conflict casing, error hints, and mkdir retry hints.
+- Refactored cloud write/open paths into shared helpers without public API changes.
+- Added cross-provider contract coverage (OneDrive/Google Drive/Nextcloud) for create-delete-recreate and copy/move roundtrips.
+- Passed quality gates: fmt, clippy `-D warnings`, backend hardening guard, and full Rust test suite.
