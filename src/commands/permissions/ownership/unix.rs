@@ -1,0 +1,548 @@
+use once_cell::sync::Lazy;
+use std::fs;
+use std::os::unix::fs::MetadataExt;
+use std::process::{Command, Stdio};
+use std::sync::Mutex;
+use tracing::{debug, warn};
+
+use crate::{
+    fs_utils::{check_no_symlink_components, sanitize_path_nofollow},
+    undo::{apply_ownership, ownership_snapshot, set_ownership_nofollow},
+};
+
+use super::super::{
+    ensure_absolute_path,
+    error::{PermissionsError, PermissionsErrorCode, PermissionsResult},
+    permission_info_fallback, refresh_permissions_after_apply, PermissionInfo,
+    OWNERSHIP_HELPER_FLAG,
+};
+use super::{filter_principal_names, normalize_principal_spec, OwnershipPrincipalKind};
+
+#[derive(Clone)]
+struct OwnershipRollback {
+    path: std::path::PathBuf,
+    before: crate::undo::OwnershipSnapshot,
+}
+
+fn rollback_ownership_actions(actions: &[OwnershipRollback]) -> PermissionsResult<()> {
+    if actions.is_empty() {
+        return Ok(());
+    }
+    let mut errors: Vec<String> = Vec::new();
+    for action in actions.iter().rev() {
+        if let Err(err) = apply_ownership(&action.path, &action.before) {
+            errors.push(format!("{}: {err}", action.path.display()));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        let joined = errors.join("; ");
+        warn!(error = %joined, "ownership rollback failed");
+        Err(PermissionsError::new(
+            PermissionsErrorCode::RollbackFailed,
+            joined,
+        ))
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct OwnershipHelperRequest {
+    paths: Vec<String>,
+    owner: Option<String>,
+    group: Option<String>,
+}
+
+static PRINCIPAL_ENUM_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+fn enumerate_user_names() -> Vec<String> {
+    use std::ffi::CStr;
+
+    let _guard = PRINCIPAL_ENUM_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut names: Vec<String> = Vec::new();
+    unsafe {
+        libc::setpwent();
+        loop {
+            let pwd = libc::getpwent();
+            if pwd.is_null() {
+                break;
+            }
+            let name_ptr = (*pwd).pw_name;
+            if name_ptr.is_null() {
+                continue;
+            }
+            let name = CStr::from_ptr(name_ptr).to_string_lossy().into_owned();
+            if !name.is_empty() {
+                names.push(name);
+            }
+        }
+        libc::endpwent();
+    }
+    names
+}
+
+fn enumerate_group_names() -> Vec<String> {
+    use std::ffi::CStr;
+
+    let _guard = PRINCIPAL_ENUM_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut names: Vec<String> = Vec::new();
+    unsafe {
+        libc::setgrent();
+        loop {
+            let grp = libc::getgrent();
+            if grp.is_null() {
+                break;
+            }
+            let name_ptr = (*grp).gr_name;
+            if name_ptr.is_null() {
+                continue;
+            }
+            let name = CStr::from_ptr(name_ptr).to_string_lossy().into_owned();
+            if !name.is_empty() {
+                names.push(name);
+            }
+        }
+        libc::endgrent();
+    }
+    names
+}
+
+pub(super) fn list_ownership_principals(
+    kind: OwnershipPrincipalKind,
+    query: Option<String>,
+    limit: Option<usize>,
+) -> PermissionsResult<Vec<String>> {
+    let names = match kind {
+        OwnershipPrincipalKind::User => enumerate_user_names(),
+        OwnershipPrincipalKind::Group => enumerate_group_names(),
+    };
+    Ok(filter_principal_names(names, query, limit))
+}
+
+fn lookup_user_id(name: &str) -> Option<u32> {
+    use std::ffi::CString;
+    use std::mem::MaybeUninit;
+    use std::ptr;
+
+    let c_name = CString::new(name).ok()?;
+    let mut buf_len = 1024usize;
+    for _ in 0..4 {
+        let mut pwd = MaybeUninit::<libc::passwd>::zeroed();
+        let mut result: *mut libc::passwd = ptr::null_mut();
+        let mut buf = vec![0u8; buf_len];
+        let rc = unsafe {
+            libc::getpwnam_r(
+                c_name.as_ptr(),
+                pwd.as_mut_ptr(),
+                buf.as_mut_ptr() as *mut libc::c_char,
+                buf.len(),
+                &mut result,
+            )
+        };
+        if rc == 0 {
+            if result.is_null() {
+                return None;
+            }
+            let pwd = unsafe { pwd.assume_init() };
+            return Some(pwd.pw_uid);
+        }
+        if rc == libc::ERANGE {
+            buf_len *= 2;
+            continue;
+        }
+        return None;
+    }
+    None
+}
+
+fn lookup_group_id(name: &str) -> Option<u32> {
+    use std::ffi::CString;
+    use std::mem::MaybeUninit;
+    use std::ptr;
+
+    let c_name = CString::new(name).ok()?;
+    let mut buf_len = 1024usize;
+    for _ in 0..4 {
+        let mut grp = MaybeUninit::<libc::group>::zeroed();
+        let mut result: *mut libc::group = ptr::null_mut();
+        let mut buf = vec![0u8; buf_len];
+        let rc = unsafe {
+            libc::getgrnam_r(
+                c_name.as_ptr(),
+                grp.as_mut_ptr(),
+                buf.as_mut_ptr() as *mut libc::c_char,
+                buf.len(),
+                &mut result,
+            )
+        };
+        if rc == 0 {
+            if result.is_null() {
+                return None;
+            }
+            let grp = unsafe { grp.assume_init() };
+            return Some(grp.gr_gid);
+        }
+        if rc == libc::ERANGE {
+            buf_len *= 2;
+            continue;
+        }
+        return None;
+    }
+    None
+}
+
+fn resolve_uid_spec(spec: &str) -> PermissionsResult<u32> {
+    if let Ok(uid) = spec.parse::<u32>() {
+        return Ok(uid);
+    }
+    lookup_user_id(spec).ok_or_else(|| {
+        PermissionsError::new(
+            PermissionsErrorCode::PrincipalNotFound,
+            format!("User not found: {spec}"),
+        )
+    })
+}
+
+fn resolve_gid_spec(spec: &str) -> PermissionsResult<u32> {
+    if let Ok(gid) = spec.parse::<u32>() {
+        return Ok(gid);
+    }
+    lookup_group_id(spec).ok_or_else(|| {
+        PermissionsError::new(
+            PermissionsErrorCode::PrincipalNotFound,
+            format!("Group not found: {spec}"),
+        )
+    })
+}
+
+fn is_elevated_privileges_error(msg: &impl std::fmt::Display) -> bool {
+    msg.to_string().contains("requires elevated privileges")
+}
+
+fn run_ownership_with_pkexec(
+    paths: Vec<String>,
+    owner: Option<String>,
+    group: Option<String>,
+) -> PermissionsResult<()> {
+    let exe = std::env::current_exe().map_err(|e| {
+        PermissionsError::new(
+            PermissionsErrorCode::HelperExecutableNotFound,
+            format!("Failed to locate Browsey executable: {e}"),
+        )
+    })?;
+    let request = OwnershipHelperRequest {
+        paths,
+        owner,
+        group,
+    };
+    let payload = serde_json::to_vec(&request).map_err(|e| {
+        PermissionsError::new(
+            PermissionsErrorCode::HelperProtocolError,
+            format!("Failed to serialize helper request: {e}"),
+        )
+    })?;
+
+    let mut child = Command::new("pkexec")
+        .arg(&exe)
+        .arg(OWNERSHIP_HELPER_FLAG)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                PermissionsError::new(
+                    PermissionsErrorCode::ElevatedRequired,
+                    "pkexec is not installed; cannot request elevated ownership change",
+                )
+            } else {
+                PermissionsError::new(
+                    PermissionsErrorCode::HelperStartFailed,
+                    format!("Failed to start pkexec: {e}"),
+                )
+            }
+        })?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        if let Err(e) = stdin.write_all(&payload) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(PermissionsError::from_io_error(
+                PermissionsErrorCode::HelperIoError,
+                "Failed to send helper request",
+                e,
+            ));
+        }
+    }
+
+    let output = child.wait_with_output().map_err(|e| {
+        PermissionsError::from_io_error(
+            PermissionsErrorCode::HelperWaitFailed,
+            "Failed waiting for pkexec helper",
+            e,
+        )
+    })?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !stderr.is_empty() {
+        return Err(PermissionsError::from(stderr));
+    }
+    if !stdout.is_empty() {
+        return Err(PermissionsError::from(stdout));
+    }
+    Err(PermissionsError::new(
+        PermissionsErrorCode::AuthenticationCancelled,
+        "Authentication was cancelled or denied",
+    ))
+}
+
+#[derive(Clone)]
+struct OwnershipTarget {
+    target: std::path::PathBuf,
+    before: crate::undo::OwnershipSnapshot,
+    uid_update: Option<u32>,
+    gid_update: Option<u32>,
+}
+
+fn set_ownership_batch_impl(
+    paths: Vec<String>,
+    owner: Option<String>,
+    group: Option<String>,
+    allow_pkexec_retry: bool,
+) -> PermissionsResult<PermissionInfo> {
+    let owner_spec = normalize_principal_spec(owner);
+    let group_spec = normalize_principal_spec(group);
+    if owner_spec.is_none() && group_spec.is_none() {
+        return Err(PermissionsError::invalid_input(
+            "No ownership changes were provided",
+        ));
+    }
+    let desired_uid = owner_spec.as_deref().map(resolve_uid_spec).transpose()?;
+    let desired_gid = group_spec.as_deref().map(resolve_gid_spec).transpose()?;
+
+    let first_path = paths.first().cloned();
+    let mut targets: Vec<OwnershipTarget> = Vec::with_capacity(paths.len());
+    for path in paths {
+        ensure_absolute_path(&path)?;
+        debug!(
+            path = %path,
+            owner = ?owner_spec,
+            group = ?group_spec,
+            "set_ownership start"
+        );
+        let target = sanitize_path_nofollow(&path, true).map_err(PermissionsError::from)?;
+        check_no_symlink_components(&target).map_err(PermissionsError::from)?;
+        let meta = fs::symlink_metadata(&target).map_err(|e| {
+            PermissionsError::from_io_error(
+                PermissionsErrorCode::MetadataReadFailed,
+                "Failed to read metadata",
+                e,
+            )
+        })?;
+        if meta.file_type().is_symlink() {
+            return Err(PermissionsError::new(
+                PermissionsErrorCode::SymlinkUnsupported,
+                "Ownership changes are not supported on symlinks",
+            ));
+        }
+        let current_uid = meta.uid();
+        let current_gid = meta.gid();
+        let uid_update = desired_uid.filter(|uid| *uid != current_uid);
+        let gid_update = desired_gid.filter(|gid| *gid != current_gid);
+        let before = ownership_snapshot(&target)?;
+        targets.push(OwnershipTarget {
+            target,
+            before,
+            uid_update,
+            gid_update,
+        });
+    }
+
+    let mut rollbacks: Vec<OwnershipRollback> = Vec::with_capacity(targets.len());
+    let mut escalated = false;
+
+    for target in &targets {
+        if target.uid_update.is_none() && target.gid_update.is_none() {
+            continue;
+        }
+        let apply_result: PermissionsResult<()> = (|| {
+            if let Err(e) =
+                set_ownership_nofollow(&target.target, target.uid_update, target.gid_update)
+            {
+                if allow_pkexec_retry && is_elevated_privileges_error(&e) {
+                    let helper_paths: Vec<String> = targets
+                        .iter()
+                        .map(|t| t.target.to_string_lossy().into_owned())
+                        .collect();
+                    run_ownership_with_pkexec(
+                        helper_paths,
+                        owner_spec.clone(),
+                        group_spec.clone(),
+                    )?;
+                    escalated = true;
+                    return Ok(());
+                }
+                return Err(PermissionsError::new(
+                    PermissionsErrorCode::OwnershipUpdateFailed,
+                    e.to_string(),
+                ));
+            }
+
+            let after = match ownership_snapshot(&target.target) {
+                Ok(after) => after,
+                Err(snapshot_err) => match apply_ownership(&target.target, &target.before) {
+                    Ok(()) => {
+                        return Err(PermissionsError::new(
+                            PermissionsErrorCode::PostChangeSnapshotFailed,
+                            format!(
+                                "Failed to capture post-change ownership for {}: {}; current target rolled back",
+                                target.target.display(),
+                                snapshot_err
+                            ),
+                        ));
+                    }
+                    Err(rollback_err) => {
+                        return Err(PermissionsError::new(
+                            PermissionsErrorCode::PostChangeSnapshotFailed,
+                            format!(
+                                "Failed to capture post-change ownership for {}: {}; rollback failed ({rollback_err}). System may be partially changed",
+                                target.target.display(),
+                                snapshot_err
+                            ),
+                        ));
+                    }
+                },
+            };
+            if after.uid != target.before.uid || after.gid != target.before.gid {
+                rollbacks.push(OwnershipRollback {
+                    path: target.target.clone(),
+                    before: target.before.clone(),
+                });
+            }
+            Ok(())
+        })();
+
+        if let Err(err) = apply_result {
+            if let Err(rollback_err) = rollback_ownership_actions(&rollbacks) {
+                return Err(PermissionsError::new(
+                    PermissionsErrorCode::RollbackFailed,
+                    format!(
+                        "{err}; rollback failed ({rollback_err}). System may be partially changed"
+                    ),
+                ));
+            }
+            return Err(err);
+        }
+        if escalated {
+            break;
+        }
+    }
+
+    let changed_any = if escalated {
+        let mut changed = false;
+        for target in &targets {
+            if target.uid_update.is_none() && target.gid_update.is_none() {
+                continue;
+            }
+            let after = ownership_snapshot(&target.target)?;
+            if after.uid != target.before.uid || after.gid != target.before.gid {
+                changed = true;
+            }
+        }
+        changed
+    } else {
+        !rollbacks.is_empty()
+    };
+
+    if let Some(path) = first_path {
+        return refresh_permissions_after_apply(path, changed_any);
+    }
+
+    Ok(permission_info_fallback())
+}
+
+pub(super) fn set_ownership_batch(
+    paths: Vec<String>,
+    owner: Option<String>,
+    group: Option<String>,
+) -> PermissionsResult<PermissionInfo> {
+    set_ownership_batch_impl(paths, owner, group, true)
+}
+
+pub(super) fn run_ownership_helper_from_stdin() -> PermissionsResult<()> {
+    use std::io::Read;
+
+    let mut input = Vec::new();
+    std::io::stdin().read_to_end(&mut input).map_err(|e| {
+        PermissionsError::from_io_error(
+            PermissionsErrorCode::HelperIoError,
+            "Failed reading helper input",
+            e,
+        )
+    })?;
+    let request: OwnershipHelperRequest = serde_json::from_slice(&input).map_err(|e| {
+        PermissionsError::new(
+            PermissionsErrorCode::HelperProtocolError,
+            format!("Invalid helper input: {e}"),
+        )
+    })?;
+    set_ownership_batch_impl(request.paths, request.owner, request.group, false).map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn temp_path(prefix: &str) -> PathBuf {
+        let unique = format!(
+            "{}-{}-{}",
+            prefix,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("unix epoch")
+                .as_nanos()
+        );
+        std::env::temp_dir().join(unique)
+    }
+
+    #[test]
+    fn rollback_ownership_actions_reports_partial_failure() {
+        let path = temp_path("owner-rollback-partial-ok");
+        let missing = temp_path("owner-rollback-partial-missing");
+        fs::write(&path, b"test").expect("write test file");
+        let before = ownership_snapshot(&path).expect("snapshot before");
+        let expected_uid = before.uid;
+        let expected_gid = before.gid;
+
+        let actions = vec![
+            OwnershipRollback {
+                path: path.clone(),
+                before: before.clone(),
+            },
+            OwnershipRollback {
+                path: missing.clone(),
+                before,
+            },
+        ];
+
+        let err = rollback_ownership_actions(&actions).expect_err("rollback should fail");
+        assert!(err.to_string().contains(missing.to_string_lossy().as_ref()));
+
+        let after = fs::symlink_metadata(&path).expect("metadata after");
+        assert_eq!(after.uid(), expected_uid);
+        assert_eq!(after.gid(), expected_gid);
+
+        let _ = fs::remove_file(&path);
+    }
+}
