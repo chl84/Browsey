@@ -1,4 +1,5 @@
-use super::{DecompressResult, ExtractBudget, CHUNK};
+use super::{ExtractBudget, CHUNK};
+use crate::commands::decompress::error::DecompressResult;
 use crate::runtime_lifecycle;
 use serde::Serialize;
 use std::{

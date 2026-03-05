@@ -165,13 +165,15 @@ Acceptance:
 
 #### A) `src/commands/decompress/mod.rs` + `src/commands/decompress/util.rs`
 - [x] First slice: extract progress/copy plumbing (`ProgressEmitter`, cancel checks, copy loop, buffered open, io mappers) to `src/commands/decompress/util/stream_io.rs`.
-- [ ] Split `util.rs` into responsibility-owned helpers:
-  - [ ] path/sanitization + output-path strategy
-  - [ ] budget/disk guards
+- [x] Second slice: extract path/sanitization + output-path strategy to `src/commands/decompress/util/path_ops.rs`.
+- [x] Third slice: extract budget/disk guards to `src/commands/decompress/util/budget.rs`.
+- [x] Split `util.rs` into responsibility-owned helpers:
+  - [x] path/sanitization + output-path strategy
+  - [x] budget/disk guards
   - [x] progress/copy plumbing
-- [ ] Keep archive format handlers (`zip/tar/7z/rar`) as format-specific modules.
-- [ ] Keep command entry points and high-level flow in `decompress/mod.rs`.
-- [ ] Preserve cancellation and disk-guard behavior exactly (no relaxed safety checks).
+- [x] Keep archive format handlers (`zip/tar/7z/rar`) as format-specific modules.
+- [x] Keep command entry points and high-level flow in `decompress/mod.rs`.
+- [x] Preserve cancellation and disk-guard behavior exactly (no relaxed safety checks).
 
 Acceptance:
 - `decompress/mod.rs` remains readable orchestration, utilities become focused and testable.
@@ -180,10 +182,11 @@ Acceptance:
 ### Phase 3 — Cloud and shared command infrastructure
 
 #### A) `src/commands/cloud/open.rs`
+- [x] First slice: extract inflight dedupe/waiter timeout flow to `src/commands/cloud/open/inflight.rs`.
 - [ ] Separate cache metadata/storage operations from materialization orchestration.
-- [ ] Keep dedupe and timeout policy in a focused module with explicit tests.
-- [ ] Keep public cloud open command flow unchanged.
-- [ ] Preserve existing cache freshness semantics and permission hardening.
+- [x] Keep dedupe and timeout policy in a focused module with explicit tests.
+- [x] Keep public cloud open command flow unchanged.
+- [x] Preserve existing cache freshness semantics and permission hardening.
 
 #### B) `src/commands/cloud/cache.rs`
 - [ ] Separate listing cache store/lookup from background refresh scheduling and retry policy.
