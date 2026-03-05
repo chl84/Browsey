@@ -150,10 +150,12 @@ Acceptance:
 
 #### C) `src/commands/listing/mod.rs`
 - [x] First slice: extract cloud listing path/mapping/facet helpers into `src/commands/listing/cloud.rs`.
-- [ ] Extract provider-specific mapping (local/cloud/network/trash) into focused sibling modules.
-- [ ] Keep listing command entry points in `mod.rs`.
-- [ ] Preserve icon/error mapping behavior exactly.
-- [ ] Keep sorting and path normalization order stable for all listing sources.
+- [x] Second slice: extract local listing/read-dir flow into `src/commands/listing/local.rs` and watch flow into `src/commands/listing/watch.rs`.
+- [x] Third slice: extract scope entry resolution (`dir/recent/starred/trash`) into `src/commands/listing/scope.rs`.
+- [x] Extract provider-specific mapping (local/cloud/network/trash) into focused sibling modules.
+- [x] Keep listing command entry points in `mod.rs`.
+- [x] Preserve icon/error mapping behavior exactly.
+- [x] Keep sorting and path normalization order stable for all listing sources.
 
 Acceptance:
 - Each target file reduced materially and becomes orchestration-only.
@@ -162,10 +164,11 @@ Acceptance:
 ### Phase 2 — Archive/decompress cleanup
 
 #### A) `src/commands/decompress/mod.rs` + `src/commands/decompress/util.rs`
+- [x] First slice: extract progress/copy plumbing (`ProgressEmitter`, cancel checks, copy loop, buffered open, io mappers) to `src/commands/decompress/util/stream_io.rs`.
 - [ ] Split `util.rs` into responsibility-owned helpers:
-  - path/sanitization + output-path strategy,
-  - budget/disk guards,
-  - progress/copy plumbing.
+  - [ ] path/sanitization + output-path strategy
+  - [ ] budget/disk guards
+  - [x] progress/copy plumbing
 - [ ] Keep archive format handlers (`zip/tar/7z/rar`) as format-specific modules.
 - [ ] Keep command entry points and high-level flow in `decompress/mod.rs`.
 - [ ] Preserve cancellation and disk-guard behavior exactly (no relaxed safety checks).
