@@ -1,55 +1,27 @@
 use super::{
     configured_rclone_provider,
     error::{CloudCommandError, CloudCommandErrorCode, CloudCommandResult},
-    events::emit_cloud_dir_refreshed,
-    limits::{acquire_cloud_remote_permits, note_remote_rate_limit_cooldown},
     path::CloudPath,
     provider::CloudProvider,
     types::{CloudEntry, CloudRemote},
 };
-use crate::runtime_lifecycle;
-use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tracing::debug;
 
-const CLOUD_REMOTE_DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(45);
-const CLOUD_DIR_LISTING_CACHE_TTL: Duration = Duration::from_secs(20);
-const CLOUD_DIR_LISTING_STALE_MAX_AGE: Duration = Duration::from_secs(60);
-const CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS: &[u64] = &[150, 400];
+mod refresh;
+mod store;
 
-#[derive(Debug, Clone)]
-struct CachedCloudRemoteDiscovery {
-    fetched_at: Instant,
-    remotes: Vec<CloudRemote>,
-}
-
-#[derive(Debug, Clone)]
-struct CachedCloudDirListing {
-    fetched_at: Instant,
-    entries: Vec<CloudEntry>,
-}
-
-#[derive(Debug, Clone)]
-enum CloudDirListingCacheLookup {
-    Fresh(CachedCloudDirListing),
-    Stale(CachedCloudDirListing),
-}
-
-fn cloud_remote_discovery_cache() -> &'static Mutex<Option<CachedCloudRemoteDiscovery>> {
-    static CACHE: OnceLock<Mutex<Option<CachedCloudRemoteDiscovery>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(None))
-}
-
-fn cloud_dir_listing_cache() -> &'static Mutex<HashMap<String, CachedCloudDirListing>> {
-    static CACHE: OnceLock<Mutex<HashMap<String, CachedCloudDirListing>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn cloud_dir_listing_refresh_inflight() -> &'static Mutex<HashSet<String>> {
-    static INFLIGHT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    INFLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
-}
+#[cfg(test)]
+use refresh::set_cloud_dir_listing_refresh_test_hook;
+use refresh::{list_cloud_dir_with_retry, schedule_cloud_dir_listing_refresh};
+use store::{
+    cloud_dir_listing_cache, cloud_dir_listing_refresh_inflight, cloud_remote_discovery_cache,
+    invalidate_cloud_dir_listing_cache_path_locked, lookup_cloud_dir_listing_cache_locked,
+    prune_cloud_dir_listing_cache_locked, store_cloud_dir_listing_cache_entry,
+    CachedCloudRemoteDiscovery, CloudDirListingCacheLookup, CLOUD_REMOTE_DISCOVERY_CACHE_TTL,
+};
+#[cfg(test)]
+use store::{CachedCloudDirListing, CLOUD_DIR_LISTING_CACHE_TTL, CLOUD_DIR_LISTING_STALE_MAX_AGE};
 
 pub(crate) fn list_cloud_remotes_cached(
     force_refresh: bool,
@@ -207,247 +179,6 @@ pub(crate) fn cloud_remote_discovery_cache_contains_remote_for_tests(remote_id: 
             .as_ref()
             .map(|cached| cached.remotes.iter().any(|remote| remote.id == remote_id))
             .unwrap_or(false),
-    }
-}
-
-fn prune_cloud_dir_listing_cache_locked(
-    cache: &mut HashMap<String, CachedCloudDirListing>,
-    now: Instant,
-) {
-    cache.retain(|_, cached| {
-        now.duration_since(cached.fetched_at) <= CLOUD_DIR_LISTING_STALE_MAX_AGE
-    });
-}
-
-fn lookup_cloud_dir_listing_cache_locked(
-    cache: &HashMap<String, CachedCloudDirListing>,
-    key: &str,
-    now: Instant,
-) -> Option<CloudDirListingCacheLookup> {
-    let cached = cache.get(key)?.clone();
-    let age = now.duration_since(cached.fetched_at);
-    if age <= CLOUD_DIR_LISTING_CACHE_TTL {
-        Some(CloudDirListingCacheLookup::Fresh(cached))
-    } else if age <= CLOUD_DIR_LISTING_STALE_MAX_AGE {
-        Some(CloudDirListingCacheLookup::Stale(cached))
-    } else {
-        None
-    }
-}
-
-fn store_cloud_dir_listing_cache_entry(key: String, fetched_at: Instant, entries: Vec<CloudEntry>) {
-    if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
-        guard.insert(
-            key,
-            CachedCloudDirListing {
-                fetched_at,
-                entries,
-            },
-        );
-    }
-}
-
-fn schedule_cloud_dir_listing_refresh(
-    path: CloudPath,
-    key: String,
-    refresh_event_app: Option<tauri::AppHandle>,
-) {
-    {
-        let mut inflight = match cloud_dir_listing_refresh_inflight().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        if !inflight.insert(key.clone()) {
-            return;
-        }
-    }
-
-    std::thread::spawn(move || {
-        let _background_guard = if let Some(app) = refresh_event_app.as_ref() {
-            if let Some(handle) = runtime_lifecycle::handle_from_app(app) {
-                match handle.try_enter_background_job() {
-                    Some(guard) => Some(guard),
-                    None => {
-                        let mut inflight = match cloud_dir_listing_refresh_inflight().lock() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
-                        inflight.remove(&key);
-                        return;
-                    }
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        let started = Instant::now();
-        let refresh_result = run_cloud_dir_listing_refresh(&path);
-        match refresh_result {
-            Ok(entries) => {
-                store_cloud_dir_listing_cache_entry(key.clone(), Instant::now(), entries.clone());
-                if let Some(app) = refresh_event_app.as_ref() {
-                    emit_cloud_dir_refreshed(app, &path, entries.len());
-                }
-                debug!(
-                    op = "cloud_list_entries",
-                    phase = "background_refresh",
-                    path = %path,
-                    elapsed_ms = started.elapsed().as_millis() as u64,
-                    entry_count = entries.len(),
-                    "cloud command phase timing"
-                );
-            }
-            Err(error) => {
-                debug!(
-                    op = "cloud_list_entries",
-                    phase = "background_refresh",
-                    path = %path,
-                    elapsed_ms = started.elapsed().as_millis() as u64,
-                    error = %error,
-                    "cloud background refresh failed"
-                );
-            }
-        }
-
-        let mut inflight = match cloud_dir_listing_refresh_inflight().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        inflight.remove(&key);
-    });
-}
-
-fn run_cloud_dir_listing_refresh(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
-    #[cfg(test)]
-    {
-        if let Some(entries) = run_cloud_dir_listing_refresh_test_hook(path)? {
-            return Ok(entries);
-        }
-    }
-    list_cloud_dir_with_retry(path)
-}
-
-fn list_cloud_dir_with_retry(path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
-    let permit_started = Instant::now();
-    let guard = acquire_cloud_remote_permits(vec![path.remote().to_string()]);
-    let permit_wait_ms = permit_started.elapsed().as_millis() as u64;
-    let provider = configured_rclone_provider().map_err(|error| {
-        CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
-    })?;
-    let fetch_started = Instant::now();
-    let mut attempt = 0usize;
-    loop {
-        match provider.list_dir(path) {
-            Ok(entries) => {
-                debug!(
-                    op = "cloud_list_entries",
-                    phase = "backend_fetch",
-                    path = %path,
-                    permit_wait_ms,
-                    fetch_ms = fetch_started.elapsed().as_millis() as u64,
-                    attempts = attempt + 1,
-                    entry_count = entries.len(),
-                    "cloud command phase timing"
-                );
-                return Ok(entries);
-            }
-            Err(error) if should_retry_cloud_dir_error(&error) => {
-                let Some(backoff_ms) = CLOUD_DIR_LISTING_RETRY_BACKOFFS_MS.get(attempt).copied()
-                else {
-                    if error.code() == CloudCommandErrorCode::RateLimited {
-                        note_remote_rate_limit_cooldown(&guard.remotes);
-                    }
-                    debug!(
-                        op = "cloud_list_entries",
-                        phase = "backend_fetch",
-                        path = %path,
-                        permit_wait_ms,
-                        fetch_ms = fetch_started.elapsed().as_millis() as u64,
-                        attempts = attempt + 1,
-                        error = %error,
-                        "cloud command failed after retries"
-                    );
-                    return Err(error);
-                };
-                attempt += 1;
-                debug!(
-                    attempt,
-                    backoff_ms,
-                    path = %path,
-                    error = %error,
-                    "retrying cloud directory listing after transient error"
-                );
-                std::thread::sleep(Duration::from_millis(backoff_ms));
-            }
-            Err(error) => {
-                if error.code() == CloudCommandErrorCode::RateLimited {
-                    note_remote_rate_limit_cooldown(&guard.remotes);
-                }
-                debug!(
-                    op = "cloud_list_entries",
-                    phase = "backend_fetch",
-                    path = %path,
-                    permit_wait_ms,
-                    fetch_ms = fetch_started.elapsed().as_millis() as u64,
-                    attempts = attempt + 1,
-                    error = %error,
-                    "cloud command failed"
-                );
-                return Err(error);
-            }
-        }
-    }
-}
-
-fn should_retry_cloud_dir_error(error: &CloudCommandError) -> bool {
-    matches!(
-        error.code(),
-        CloudCommandErrorCode::Timeout
-            | CloudCommandErrorCode::NetworkError
-            | CloudCommandErrorCode::RateLimited
-    )
-}
-
-fn invalidate_cloud_dir_listing_cache_path_locked(
-    cache: &mut HashMap<String, CachedCloudDirListing>,
-    path: &CloudPath,
-) {
-    let key = path.to_string();
-    let subtree_prefix = format!("{key}/");
-    cache.retain(|cached_path, _| cached_path != &key && !cached_path.starts_with(&subtree_prefix));
-}
-
-#[cfg(test)]
-type CloudDirRefreshHook =
-    std::sync::Arc<dyn Fn(&CloudPath) -> CloudCommandResult<Vec<CloudEntry>> + Send + Sync>;
-
-#[cfg(test)]
-fn cloud_dir_listing_refresh_test_hook() -> &'static Mutex<Option<CloudDirRefreshHook>> {
-    static HOOK: OnceLock<Mutex<Option<CloudDirRefreshHook>>> = OnceLock::new();
-    HOOK.get_or_init(|| Mutex::new(None))
-}
-
-#[cfg(test)]
-fn set_cloud_dir_listing_refresh_test_hook(hook: Option<CloudDirRefreshHook>) {
-    let mut guard = cloud_dir_listing_refresh_test_hook()
-        .lock()
-        .expect("refresh hook lock");
-    *guard = hook;
-}
-
-#[cfg(test)]
-fn run_cloud_dir_listing_refresh_test_hook(
-    path: &CloudPath,
-) -> CloudCommandResult<Option<Vec<CloudEntry>>> {
-    let hook = cloud_dir_listing_refresh_test_hook()
-        .lock()
-        .expect("refresh hook lock")
-        .clone();
-    match hook {
-        Some(hook) => hook(path).map(Some),
-        None => Ok(None),
     }
 }
 

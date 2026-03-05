@@ -189,9 +189,9 @@ Acceptance:
 - [x] Preserve existing cache freshness semantics and permission hardening.
 
 #### B) `src/commands/cloud/cache.rs`
-- [ ] Separate listing cache store/lookup from background refresh scheduling and retry policy.
-- [ ] Keep invalidation semantics unchanged.
-- [ ] Preserve stale-while-refresh behavior and inflight refresh dedupe guarantees.
+- [x] Separate listing cache store/lookup from background refresh scheduling and retry policy.
+- [x] Keep invalidation semantics unchanged.
+- [x] Preserve stale-while-refresh behavior and inflight refresh dedupe guarantees.
 
 Acceptance:
 - Cloud open/cache modules have clear ownership and lower coupling.
