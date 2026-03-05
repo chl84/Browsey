@@ -356,6 +356,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         if (policy === 'rename') {
           let cloudDestProvider: CloudProviderKind | null = null
           let reservedCloudDestNames: Set<string> | null = null
+          let reservedLocalDestPaths: Set<string> | null = null
           if (route === 'local_to_cloud') {
             const [destEntries, destProvider] = await Promise.all([
               listCloudEntries(target),
@@ -365,6 +366,8 @@ export const useExplorerFileOps = (deps: Deps) => {
             reservedCloudDestNames = new Set(
               destEntries.map((entry) => cloudConflictNameKey(cloudDestProvider, entry.name)),
             )
+          } else if (route === 'cloud_to_local') {
+            reservedLocalDestPaths = new Set()
           }
 
           for (const src of sources) {
@@ -388,8 +391,21 @@ export const useExplorerFileOps = (deps: Deps) => {
                 }
                 reservedCloudDestNames.add(candidateKey)
               }
+              if (reservedLocalDestPaths && route === 'cloud_to_local') {
+                const candidateKey = normalizePath(finalTarget)
+                if (reservedLocalDestPaths.has(candidateKey)) {
+                  idx += 1
+                  continue
+                }
+                reservedLocalDestPaths.add(candidateKey)
+              }
               try {
-                const opts = { overwrite: false, prechecked: idx === 0, progressEvent }
+                const opts = {
+                  overwrite: false,
+                  // For cloud->local, keep destination precheck enabled to avoid accidental local overwrite.
+                  prechecked: route === 'local_to_cloud' && idx === 0,
+                  progressEvent,
+                }
                 if (state.mode === 'cut') {
                   await moveMixedEntryTo(src, finalTarget, opts)
                 } else {
@@ -399,8 +415,14 @@ export const useExplorerFileOps = (deps: Deps) => {
               } catch (err) {
                 const normalized = normalizeError(err)
                 if (normalized.code === 'destination_exists') {
+                  if (reservedLocalDestPaths && route === 'cloud_to_local') {
+                    reservedLocalDestPaths.delete(normalizePath(finalTarget))
+                  }
                   idx += 1
                   continue
+                }
+                if (reservedLocalDestPaths && route === 'cloud_to_local') {
+                  reservedLocalDestPaths.delete(normalizePath(finalTarget))
                 }
                 throw normalized
               }
