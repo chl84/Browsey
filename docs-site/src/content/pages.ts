@@ -767,7 +767,9 @@ capabilities/default.json`,
       {
         id: 'unreleased',
         title: 'Unreleased',
-        bullets: ['No changes documented yet.'],
+        bullets: [
+          'Bundled PDFium was updated to 147.0.7713.0 for both Linux and Windows resources (binaries, headers, and license set refreshed)',
+        ],
       },
       {
         id: 'v046',

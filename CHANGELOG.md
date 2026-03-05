@@ -1,7 +1,8 @@
 # Changelog
 
 ## Unreleased
-- No changes documented yet.
+- Bundled dependencies and resources:
+  - Bundled PDFium was updated to `147.0.7713.0` for both Linux (`resources/pdfium-linux-x64`) and Windows (`resources/pdfium-win-x64`), including refreshed binaries, headers, and license files.
 
 ## v0.4.6 — 2026-03-04
 - Settings completion and polish:
