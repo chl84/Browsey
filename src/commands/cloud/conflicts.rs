@@ -169,6 +169,33 @@ mod tests {
     }
 
     #[test]
+    fn conflict_preview_is_unicode_case_insensitive_for_onedrive_names() {
+        let src_file = CloudPath::parse("rclone://work/src/RÄPORT.TXT").expect("src file");
+        let dest_dir = CloudPath::parse("rclone://work/dest").expect("dest");
+        let dest_entries = vec![CloudEntry {
+            name: "räport.txt".to_string(),
+            path: "rclone://work/dest/räport.txt".to_string(),
+            kind: CloudEntryKind::File,
+            size: Some(1),
+            modified: None,
+            capabilities: CloudCapabilities::v1_core_rw(),
+        }];
+
+        let conflicts = build_conflicts_from_dest_listing(
+            std::slice::from_ref(&src_file),
+            &dest_dir,
+            &dest_entries,
+            Some(CloudProviderKind::Onedrive),
+        )
+        .expect("conflicts");
+
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].src, src_file.to_string());
+        assert_eq!(conflicts[0].target, "rclone://work/dest/RÄPORT.TXT");
+        assert!(!conflicts[0].is_dir);
+    }
+
+    #[test]
     fn conflict_preview_stays_case_sensitive_for_non_onedrive_names() {
         let src_file = CloudPath::parse("rclone://work/src/report.txt").expect("src file");
         let dest_dir = CloudPath::parse("rclone://work/dest").expect("dest");
@@ -203,6 +230,40 @@ mod tests {
         assert!(
             nextcloud_conflicts.is_empty(),
             "nextcloud should keep case-sensitive conflict matching"
+        );
+
+        let unicode_src =
+            CloudPath::parse("rclone://work/src/RÄPORT.TXT").expect("unicode src file");
+        let unicode_entries = vec![CloudEntry {
+            name: "räport.txt".to_string(),
+            path: "rclone://work/dest/räport.txt".to_string(),
+            kind: CloudEntryKind::File,
+            size: Some(1),
+            modified: None,
+            capabilities: CloudCapabilities::v1_core_rw(),
+        }];
+        let gdrive_unicode_conflicts = build_conflicts_from_dest_listing(
+            std::slice::from_ref(&unicode_src),
+            &dest_dir,
+            &unicode_entries,
+            Some(CloudProviderKind::Gdrive),
+        )
+        .expect("gdrive unicode conflicts");
+        assert!(
+            gdrive_unicode_conflicts.is_empty(),
+            "gdrive should keep unicode case-sensitive conflict matching"
+        );
+
+        let nextcloud_unicode_conflicts = build_conflicts_from_dest_listing(
+            std::slice::from_ref(&unicode_src),
+            &dest_dir,
+            &unicode_entries,
+            Some(CloudProviderKind::Nextcloud),
+        )
+        .expect("nextcloud unicode conflicts");
+        assert!(
+            nextcloud_unicode_conflicts.is_empty(),
+            "nextcloud should keep unicode case-sensitive conflict matching"
         );
     }
 }
