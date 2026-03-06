@@ -153,3 +153,28 @@ test('advanced rename modal traps Tab focus and closes on Escape', async ({ page
   await page.keyboard.press('Escape')
   await expect(modal).toBeHidden()
 })
+
+test('settings can change a representative preference and restore defaults', async ({ page }) => {
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'Main menu' }).click()
+  await page.getByRole('menuitem', { name: 'Settings…' }).click()
+
+  const settingsModal = page.locator('.settings-modal')
+  await expect(settingsModal).toBeVisible()
+
+  const filterInput = settingsModal.getByPlaceholder('Filter settings')
+  await filterInput.fill('confirm delete')
+
+  const confirmDeleteCheckbox = settingsModal.getByLabel('Ask before permanent delete')
+  await expect(confirmDeleteCheckbox).toBeChecked()
+
+  await confirmDeleteCheckbox.focus()
+  await page.keyboard.press('Space')
+  await expect(confirmDeleteCheckbox).not.toBeChecked()
+
+  await settingsModal.getByRole('button', { name: 'Restore defaults' }).click()
+  await page.getByRole('button', { name: 'Restore defaults' }).last().click()
+
+  await expect(confirmDeleteCheckbox).toBeChecked()
+})
