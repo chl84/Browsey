@@ -9,7 +9,7 @@ use std::process::Command;
 use std::{
     fs,
     io::{ErrorKind, Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
     sync::atomic::AtomicBool,
 };
 
@@ -56,6 +56,29 @@ fn copy_dir(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<()> {
+    struct CreatedDirCleanup {
+        path: PathBuf,
+        active: bool,
+    }
+
+    impl CreatedDirCleanup {
+        fn new(path: PathBuf) -> Self {
+            Self { path, active: true }
+        }
+
+        fn disarm(&mut self) {
+            self.active = false;
+        }
+    }
+
+    impl Drop for CreatedDirCleanup {
+        fn drop(&mut self) {
+            if self.active {
+                let _ = fs::remove_dir_all(&self.path);
+            }
+        }
+    }
+
     fs::create_dir(dest).map_err(|e| {
         if e.kind() == ErrorKind::AlreadyExists {
             ClipboardError::new(
@@ -69,6 +92,7 @@ fn copy_dir(
             )
         }
     })?;
+    let mut cleanup = CreatedDirCleanup::new(dest.to_path_buf());
     for entry in fs::read_dir(src).map_err(|e| {
         ClipboardError::new(
             ClipboardErrorCode::IoError,
@@ -105,6 +129,7 @@ fn copy_dir(
             copy_file_best_effort(&path, &target, app, progress_event, cancel, None)?;
         }
     }
+    cleanup.disarm();
     Ok(())
 }
 

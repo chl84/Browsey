@@ -6,6 +6,7 @@ use std::io::Write;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 #[cfg(unix)]
 use std::{fs::Permissions, os::unix::fs::PermissionsExt};
@@ -426,5 +427,46 @@ fn paste_clipboard_preview_filters_non_conflicting_entries() {
     );
 
     clear_clipboard();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn copy_file_best_effort_cancelled_before_transfer_removes_destination() {
+    let base = uniq_path("copy-cancelled-file");
+    fs::create_dir_all(&base).unwrap();
+    let src = base.join("src.bin");
+    let dest = base.join("dest.bin");
+    write_file(&src, &[7u8; 32 * 1024]);
+    let cancel = AtomicBool::new(true);
+
+    let err = copy_file_best_effort(&src, &dest, None, None, Some(&cancel), Some(32 * 1024))
+        .unwrap_err();
+
+    assert_eq!(err.code(), ClipboardErrorCode::Cancelled);
+    assert!(src.exists(), "source should remain on cancel");
+    assert!(!dest.exists(), "destination should be cleaned up on cancel");
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn copy_entry_directory_cancelled_cleans_up_created_destination_dir() {
+    let base = uniq_path("copy-cancelled-dir");
+    let src = base.join("src");
+    let dest = base.join("dest");
+    fs::create_dir_all(&src).unwrap();
+    write_file(&src.join("a.txt"), b"a");
+    let cancel = AtomicBool::new(true);
+
+    let err = copy_entry(&src, &dest, None, None, Some(&cancel)).unwrap_err();
+
+    assert_eq!(err.code(), ClipboardErrorCode::Cancelled);
+    assert!(src.exists(), "source directory should remain on cancel");
+    assert!(
+        !dest.exists(),
+        "destination directory should be cleaned up on cancel"
+    );
+
+    cancel.store(false, Ordering::Relaxed);
     let _ = fs::remove_dir_all(&base);
 }
