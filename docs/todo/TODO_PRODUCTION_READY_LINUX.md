@@ -80,17 +80,17 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
   - [x] keep advisory checks separate from release-blocking checks
 
 ## 8. Add release gating
-- [ ] Define a mandatory pre-release checklist
-- [ ] Require the following before Linux release:
-  - [ ] `./scripts/maintenance/test-backend.sh`
-  - [ ] `./scripts/maintenance/test-frontend.sh`
-  - [ ] docs consistency checks
-  - [ ] manual Linux smoke run based on `docs/operations/core-operations/release-checklist.md`
-- [ ] Require explicit review of packaging artifacts before release
-- [ ] Add a release-candidate phase before final release
-- [ ] Define release-candidate merge policy:
-  - [ ] bugfixes only after RC1
-  - [ ] no feature merges without explicit re-approval
+- [x] Define a mandatory pre-release checklist
+- [x] Require the following before Linux release:
+  - [x] `./scripts/maintenance/test-backend.sh`
+  - [x] `./scripts/maintenance/test-frontend.sh`
+  - [x] docs consistency checks
+  - [x] manual Linux smoke run based on `docs/operations/core-operations/release-checklist.md`
+- [x] Require explicit review of packaging artifacts before release
+- [x] Add a release-candidate phase before final release
+- [x] Define release-candidate merge policy:
+  - [x] bugfixes only after RC1
+  - [x] no feature merges without explicit re-approval
 
 ## 9. Harden packaging and installation
 - [ ] Test RPM install, upgrade, and reinstall on clean Fedora
