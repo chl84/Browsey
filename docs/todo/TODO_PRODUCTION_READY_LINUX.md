@@ -104,7 +104,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [ ] Confirm the installed app starts without dev-only prerequisites
 - [ ] Verify icons, desktop entry, file associations, and permissions in installed builds
 - [ ] Test app data/log/cache behavior across version upgrades
-- [ ] Document the exact install and upgrade path for Linux users
+- [x] Document the exact install and upgrade path for Linux users
 
 ## 10. Improve observability and supportability
 - [ ] Require all new or modified error-handling code to use the Browsey error API rather than ad-hoc/local error formats

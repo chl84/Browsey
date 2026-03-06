@@ -183,9 +183,21 @@ export const docsPages: DocPage[] = [
         title: 'Installable Artifacts',
         bullets: [
           'Linux RPM: Browsey-<version>-1.x86_64.rpm from Releases',
+          'Linux DEB: browsey_<version>_amd64.deb from Releases',
           'Windows NSIS installer from Releases',
           'Binaries and bundles are emitted under target/release/',
         ],
+      },
+      {
+        id: 'linux-install-upgrade-path',
+        title: 'Linux Install and Upgrade Path',
+        bullets: [
+          'Fedora Workstation: install or replace an existing release with `sudo rpm -Uvh --replacepkgs Browsey-<version>-1.x86_64.rpm`.',
+          'Ubuntu/Debian-family: install or upgrade with `sudo apt install ./browsey_<version>_amd64.deb`.',
+          'The supported Linux 1.0 package path is native package install + in-place upgrade, not ad-hoc unpacking.',
+          'Package downgrade is outside the supported Linux 1.0 release path.',
+        ],
+        note: 'This documents the supported path; clean-system validation and uninstall behavior remain separate Linux 1.0 checklist items.',
       },
     ],
   },
