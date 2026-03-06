@@ -20,6 +20,7 @@ and what still needs explicit Linux validation.
 ## Evidence Reviewed
 
 - `src/commands/console.rs`
+- `src/commands/console.rs` tests
 - `src/commands/permissions/tests.rs`
 - `src/commands/permissions/set_permissions.rs`
 - `src/commands/permissions/ownership/unix.rs`
@@ -44,6 +45,9 @@ Current evidence is solid at the implementation level:
 - The command path is not environment-controlled or free-form.
 - Failures map to typed console error codes, including a specific
   `terminal_unavailable` path when no supported terminal is found.
+- Backend tests now verify that the allowlist stays constrained to the approved
+  terminal binaries and that non-directory launch attempts return the typed
+  `not_directory` path instead of falling through to a generic failure.
 
 What is still missing for Linux 1.0:
 
@@ -51,6 +55,8 @@ What is still missing for Linux 1.0:
   Wayland
 - confirmation that the allowlisted terminals behave acceptably in installed
   builds, not just in dev/runtime assumptions
+- explicit bugbash coverage for successful launch and `terminal_unavailable`
+  behavior in the installed app
 
 ## Permissions and Ownership Editing
 

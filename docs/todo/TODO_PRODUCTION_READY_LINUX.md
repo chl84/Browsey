@@ -68,12 +68,12 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [ ] Add regression tests for every stabilization bug that gets fixed
 - [ ] Increase coverage around hooks/state seams that break under small changes
 - [ ] Add more Linux-focused e2e smoke coverage for core workflows
-- [ ] Reuse the existing core-operations release checklist as the base Linux manual smoke gate, and extend it only where Linux 1.0 coverage still has gaps
-- [ ] Define any additional Linux 1.0 smoke rows outside core operations, for example:
-  - [ ] app start
-  - [ ] browse/open directory
-  - [ ] search
-  - [ ] settings open/apply/restore defaults
+- [x] Reuse the existing core-operations release checklist as the base Linux manual smoke gate, and extend it only where Linux 1.0 coverage still has gaps
+- [x] Define any additional Linux 1.0 smoke rows outside core operations, for example:
+  - [x] app start
+  - [x] browse/open directory
+  - [x] search
+  - [x] settings open/apply/restore defaults
 - [ ] Turn important production risks into explicit blocking checks in maintenance scripts:
   - [ ] fail on unhandled test errors/rejections
   - [ ] fail when required release-checklist coverage is missing
