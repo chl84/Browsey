@@ -5,7 +5,7 @@ use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 #[cfg(unix)]
 use std::{fs::Permissions, os::unix::fs::PermissionsExt};
@@ -27,6 +27,15 @@ fn ensure_undo_dir() -> PathBuf {
         dir
     })
     .clone()
+}
+
+fn clear_clipboard() {
+    set_clipboard_impl(Vec::new(), "copy".to_string()).expect("clear clipboard");
+}
+
+fn clipboard_test_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 fn write_file(path: &Path, content: &[u8]) {
@@ -322,5 +331,100 @@ fn copy_entry_rejects_symlink_source_no_follow() {
     assert!(!dest.exists(), "destination should not be created");
     assert!(real_src.exists(), "real source should remain unchanged");
 
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn paste_clipboard_preview_reports_existing_file_conflict() {
+    let _guard = clipboard_test_lock().lock().unwrap();
+    clear_clipboard();
+    let base = uniq_path("preview-file-conflict");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let src = src_dir.join("report.txt");
+    let dest = dest_dir.join("report.txt");
+    write_file(&src, b"new");
+    write_file(&dest, b"old");
+
+    set_clipboard_impl(vec![src.to_string_lossy().to_string()], "copy".to_string()).unwrap();
+    let preview = paste_clipboard_preview_impl(dest_dir.to_string_lossy().to_string()).unwrap();
+
+    assert_eq!(preview.len(), 1);
+    assert_eq!(preview[0].src, src.to_string_lossy());
+    assert_eq!(preview[0].target, dest.to_string_lossy());
+    assert!(preview[0].exists);
+    assert!(!preview[0].is_dir);
+
+    clear_clipboard();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn paste_clipboard_preview_reports_existing_directory_conflict() {
+    let _guard = clipboard_test_lock().lock().unwrap();
+    clear_clipboard();
+    let base = uniq_path("preview-dir-conflict");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let src = src_dir.join("photos");
+    let dest = dest_dir.join("photos");
+    fs::create_dir_all(&src).unwrap();
+    fs::create_dir_all(&dest).unwrap();
+    write_file(&src.join("a.jpg"), b"a");
+    write_file(&dest.join("existing.jpg"), b"old");
+
+    set_clipboard_impl(vec![src.to_string_lossy().to_string()], "copy".to_string()).unwrap();
+    let preview = paste_clipboard_preview_impl(dest_dir.to_string_lossy().to_string()).unwrap();
+
+    assert_eq!(preview.len(), 1);
+    assert_eq!(preview[0].src, src.to_string_lossy());
+    assert_eq!(preview[0].target, dest.to_string_lossy());
+    assert!(preview[0].exists);
+    assert!(preview[0].is_dir);
+
+    clear_clipboard();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn paste_clipboard_preview_filters_non_conflicting_entries() {
+    let _guard = clipboard_test_lock().lock().unwrap();
+    clear_clipboard();
+    let base = uniq_path("preview-filters-non-conflicts");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let conflict = src_dir.join("report.txt");
+    let unique = src_dir.join("notes.txt");
+    write_file(&conflict, b"new");
+    write_file(&unique, b"unique");
+    write_file(&dest_dir.join("report.txt"), b"old");
+
+    set_clipboard_impl(
+        vec![
+            conflict.to_string_lossy().to_string(),
+            unique.to_string_lossy().to_string(),
+        ],
+        "copy".to_string(),
+    )
+    .unwrap();
+    let preview = paste_clipboard_preview_impl(dest_dir.to_string_lossy().to_string()).unwrap();
+
+    assert_eq!(preview.len(), 1);
+    assert_eq!(preview[0].src, conflict.to_string_lossy());
+    assert_eq!(
+        preview[0].target,
+        dest_dir.join("report.txt").to_string_lossy()
+    );
+
+    clear_clipboard();
     let _ = fs::remove_dir_all(&base);
 }
