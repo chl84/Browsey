@@ -108,7 +108,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 
 ## 10. Improve observability and supportability
 - [x] Require all new or modified error-handling code to use the Browsey error API rather than ad-hoc/local error formats
-- [ ] Remove remaining stringly or one-off error seams from Linux-critical flows
+- [x] Remove remaining stringly or one-off error seams from Linux-critical flows
 - [ ] Ensure logs are useful for real support/debug cases
 - [ ] Remove or reduce noisy low-value logging
 - [ ] Ensure error surfaces show user-facing language rather than internal phrasing

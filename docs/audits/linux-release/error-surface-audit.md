@@ -81,22 +81,18 @@ pretending the whole Step 10 track is done after isolated seam fixes.
 
 ## Remaining Step 10 Gaps
 
-- Linux-critical flows still contain some runtime string-based classification
-  seams, but the obvious `console`, local clipboard destination-exists, typed
-  `FsError` fan-out, ownership/pkexec retry, and `open_with`
-  path/app-launch classification examples are now removed.
-- Several backend domains still use one-off error mapping or raw message
-  forwarding even when they already have typed error containers; the remaining
-  Linux-relevant seam is now mostly concentrated in the centralized
-  `PermissionsError::from_external_message(...)` path for truly external text
-  coming back from privileged/helper boundaries, while Windows-only
-  `open_with` classification remains outside the Linux 1.0 claim.
-- Step 10 also includes supportability/logging quality, which is broader than
+- The remaining obvious `from_external_message(...)` classification in this
+  area is now Windows-only `open_with`, which is outside the Linux 1.0 claim.
+- Generic error container helpers such as `FsError` / `SetHiddenError`
+  string-conversion fallbacks still exist, but they are no longer active
+  Linux-critical runtime seams in the audited flows above.
+- Step 10 still includes supportability/logging quality, which is broader than
   typed-error cleanup alone.
 
 ## Conclusion
 
-This audit supports treating Step 10 as `in progress`, not complete.
+This audit supports treating the Linux-specific typed-error cleanup item as
+complete, while Step 10 overall remains `in progress`.
 
 It justifies saying that Linux-critical error handling is moving in the right
 direction.
@@ -105,8 +101,11 @@ It also justifies checking off the policy/process item:
 
 - `Require all new or modified error-handling code to use the Browsey error API`
 
-It does not yet justify checking off:
+It now justifies checking off:
 
 - `Remove remaining stringly or one-off error seams from Linux-critical flows`
+
+It does not yet justify checking off:
+
 - `Ensure logs are useful for real support/debug cases`
 - `Ensure error surfaces show user-facing language rather than internal phrasing`
