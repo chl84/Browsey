@@ -194,6 +194,7 @@ export const docsPages: DocPage[] = [
         bullets: [
           'Fedora Workstation: install or replace an existing release with `sudo rpm -Uvh --replacepkgs Browsey-<version>-1.x86_64.rpm`.',
           'Ubuntu/Debian-family: install or upgrade with `sudo apt install ./browsey_<version>_amd64.deb`.',
+          'Ubuntu/Debian-family uninstall path is package-manager based: `sudo apt remove browsey` (or `sudo apt purge browsey` if config cleanup is explicitly desired).',
           'The supported Linux 1.0 package path is native package install + in-place upgrade, not ad-hoc unpacking.',
           'Package downgrade is outside the supported Linux 1.0 release path.',
         ],

@@ -39,6 +39,18 @@ sudo apt install ./browsey_<version>_amd64.deb
 
 Expected source: GitHub Releases DEB artifact.
 
+Expected uninstall path:
+
+```bash
+sudo apt remove browsey
+```
+
+If package-managed config cleanup is explicitly desired:
+
+```bash
+sudo apt purge browsey
+```
+
 ## Upgrade Policy
 
 - Supported Linux release path includes install and in-place upgrade.
@@ -50,7 +62,8 @@ Expected source: GitHub Releases DEB artifact.
 ## Notes
 
 - This document intentionally does not define uninstall semantics yet; that is
-  still a separate Step 9 item.
+  limited to the expected package-manager path above and is not yet claimed as
+  clean-system validated behavior.
 - This document also does not claim that installed-app launch, desktop entry
   behavior, file associations, or upgrade-state migration have already been
   validated.
