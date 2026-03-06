@@ -2,6 +2,7 @@ use crate::errors::api_error::ApiResult;
 use crate::{db, fs_utils::sanitize_path_follow};
 use error::{map_api_result, OpenWithError, OpenWithErrorCode, OpenWithResult};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::process::Command;
 use std::thread;
 #[cfg(debug_assertions)]
@@ -42,6 +43,12 @@ pub fn list_open_with_apps(path: String) -> ApiResult<Vec<OpenWithApp>> {
 }
 
 fn list_open_with_apps_impl(path: String) -> OpenWithResult<Vec<OpenWithApp>> {
+    if !Path::new(&path).is_absolute() {
+        return Err(OpenWithError::new(
+            OpenWithErrorCode::PathNotAbsolute,
+            format!("Path must be absolute: {path}"),
+        ));
+    }
     let target = sanitize_path_follow(&path, false).map_err(OpenWithError::from)?;
     #[cfg(target_os = "linux")]
     {
@@ -64,6 +71,12 @@ pub fn open_with(path: String, choice: OpenWithChoice) -> ApiResult<()> {
 }
 
 fn open_with_impl(path: String, choice: OpenWithChoice) -> OpenWithResult<()> {
+    if !Path::new(&path).is_absolute() {
+        return Err(OpenWithError::new(
+            OpenWithErrorCode::PathNotAbsolute,
+            format!("Path must be absolute: {path}"),
+        ));
+    }
     let target = sanitize_path_follow(&path, false).map_err(OpenWithError::from)?;
     let OpenWithChoice { app_id } = choice;
 
@@ -107,5 +120,30 @@ fn spawn_detached(mut cmd: Command) -> OpenWithResult<()> {
             OpenWithErrorCode::LaunchFailed,
             format!("Failed to launch process: {e}"),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::errors::domain::DomainError;
+
+    #[test]
+    fn list_open_with_apps_rejects_relative_paths_before_fs_sanitization() {
+        let error = list_open_with_apps_impl("relative/path.txt".to_string())
+            .expect_err("relative path should fail");
+        assert_eq!(error.code_str(), "path_not_absolute");
+        assert_eq!(error.message(), "Path must be absolute: relative/path.txt");
+    }
+
+    #[test]
+    fn open_with_rejects_relative_paths_before_fs_sanitization() {
+        let error = open_with_impl(
+            "relative/path.txt".to_string(),
+            OpenWithChoice { app_id: None },
+        )
+        .expect_err("relative path should fail");
+        assert_eq!(error.code_str(), "path_not_absolute");
+        assert_eq!(error.message(), "Path must be absolute: relative/path.txt");
     }
 }

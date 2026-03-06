@@ -33,6 +33,11 @@ The following gates are mandatory before Linux release signoff:
 - [ ] `./scripts/maintenance/test-frontend.sh` passes
 - [ ] docs consistency passes in blocking mode:
       `./scripts/maintenance/test-both.sh --strict-docs`
+- [ ] no new or modified Linux-critical error-handling path bypasses the
+      Browsey error API; validate through:
+      - `scripts/maintenance/check-backend-error-hardening-guard.sh`
+      - `.semgrep/typed-errors-blocking.yml`
+      - `docs/ERROR_HARDENING_EXCEPTION_POLICY.md`
 - [ ] manual Linux smoke run is completed using
       `docs/operations/core-operations/release-checklist.md`
 - [ ] Linux-specific smoke additions from

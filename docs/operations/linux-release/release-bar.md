@@ -33,6 +33,13 @@ following are true:
 5. Known limitations are documented clearly enough that users can distinguish
    supported behavior from preview/beta behavior.
 
+Linux 1.0 enforces this through existing engineering controls rather than
+case-by-case release memory:
+
+- `scripts/maintenance/check-backend-error-hardening-guard.sh`
+- `.semgrep/typed-errors-blocking.yml`
+- `docs/ERROR_HARDENING_EXCEPTION_POLICY.md`
+
 `Production-ready for Linux` does not mean every optional integration or every
 desktop environment is equally supported. It means the validated Linux target
 surface and the feature set below are stable enough for normal end-user use

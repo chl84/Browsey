@@ -18,17 +18,24 @@ pretending the whole Step 10 track is done after isolated seam fixes.
 - `src/commands/permissions/ownership/unix.rs` no longer decides pkexec retry
   by parsing `"requires elevated privileges"` from the error message; it now
   uses typed `UndoErrorCode::PermissionDenied`.
+- `src/commands/open_with/mod.rs` now rejects relative paths explicitly before
+  filesystem sanitization in both `list_open_with_apps` and `open_with`.
+- `src/commands/open_with/error.rs` no longer needs message-pattern
+  reclassification for `path_not_absolute`.
 - Existing backend hardening controls already provide a meaningful baseline:
   - `.semgrep/typed-errors-blocking.yml`
   - `.semgrep/typed-errors.yml`
   - `scripts/maintenance/check-backend-error-hardening-guard.sh`
   - `docs/ERROR_HARDENING_EXCEPTION_POLICY.md`
+- Linux 1.0 release gating now references those controls explicitly in:
+  - `docs/operations/linux-release/pre-release-checklist.md`
+  - `docs/operations/linux-release/release-bar.md`
 
 ## Remaining Step 10 Gaps
 
 - Linux-critical flows still contain some runtime string-based classification
-  seams, but the obvious `console` and ownership/pkexec retry examples are now
-  removed.
+  seams, but the obvious `console`, ownership/pkexec retry, and `open_with`
+  path-classification examples are now removed.
 - Several backend domains still use one-off error mapping or raw message
   forwarding even when they already have typed error containers.
 - Step 10 also includes supportability/logging quality, which is broader than
@@ -39,9 +46,14 @@ pretending the whole Step 10 track is done after isolated seam fixes.
 This audit supports treating Step 10 as `in progress`, not complete.
 
 It justifies saying that Linux-critical error handling is moving in the right
-direction, but not yet checking off:
+direction.
+
+It also justifies checking off the policy/process item:
 
 - `Require all new or modified error-handling code to use the Browsey error API`
+
+It does not yet justify checking off:
+
 - `Remove remaining stringly or one-off error seams from Linux-critical flows`
 - `Ensure logs are useful for real support/debug cases`
 - `Ensure error surfaces show user-facing language rather than internal phrasing`
