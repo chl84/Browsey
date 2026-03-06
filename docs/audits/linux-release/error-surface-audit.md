@@ -22,6 +22,9 @@ pretending the whole Step 10 track is done after isolated seam fixes.
   filesystem sanitization in both `list_open_with_apps` and `open_with`.
 - `src/commands/open_with/error.rs` no longer needs message-pattern
   reclassification for `path_not_absolute`.
+- `src/commands/open_with/mod.rs` now maps `fs::open_entry` failures through
+  typed `ApiError.code` values instead of reclassifying via
+  `from_external_message(error.message)`.
 - Existing backend hardening controls already provide a meaningful baseline:
   - `.semgrep/typed-errors-blocking.yml`
   - `.semgrep/typed-errors.yml`
