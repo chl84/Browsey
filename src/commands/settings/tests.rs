@@ -1,6 +1,7 @@
 use super::{
-    load_cloud_enabled, load_cloud_thumbs, store_cloud_enabled, store_cloud_thumbs,
-    store_rclone_path,
+    load_cloud_enabled, load_cloud_thumbs, load_double_click_ms, load_mounts_poll_ms,
+    load_rclone_path, load_scrollbar_width, store_cloud_enabled, store_cloud_thumbs,
+    store_double_click_ms, store_mounts_poll_ms, store_rclone_path, store_scrollbar_width,
 };
 use crate::commands::cloud::{
     cloud_dir_listing_cache_contains_for_tests,
@@ -149,5 +150,111 @@ fn store_cloud_enabled_roundtrip_and_invalidates_cloud_caches() {
     assert_eq!(
         load_cloud_enabled().expect("load cloudEnabled true"),
         Some(true)
+    );
+}
+
+#[test]
+fn bounded_linux_ui_settings_roundtrip() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+
+    assert_eq!(
+        load_mounts_poll_ms().expect("load default mountsPollMs"),
+        None
+    );
+    assert_eq!(
+        load_double_click_ms().expect("load default doubleClickMs"),
+        None
+    );
+    assert_eq!(
+        load_scrollbar_width().expect("load default scrollbarWidth"),
+        None
+    );
+
+    store_mounts_poll_ms(500).expect("store min mountsPollMs");
+    store_double_click_ms(600).expect("store max doubleClickMs");
+    store_scrollbar_width(16).expect("store max scrollbarWidth");
+
+    assert_eq!(
+        load_mounts_poll_ms().expect("load stored mountsPollMs"),
+        Some(500)
+    );
+    assert_eq!(
+        load_double_click_ms().expect("load stored doubleClickMs"),
+        Some(600)
+    );
+    assert_eq!(
+        load_scrollbar_width().expect("load stored scrollbarWidth"),
+        Some(16)
+    );
+}
+
+#[test]
+fn bounded_linux_ui_settings_reject_invalid_store_values() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+
+    let err = store_mounts_poll_ms(499).expect_err("mountsPollMs below range should fail");
+    assert!(
+        err.message.contains("mounts poll must be 500-10000 ms"),
+        "unexpected mounts poll error: {:?}",
+        err
+    );
+    assert_eq!(err.code, "invalid_input");
+
+    let err = store_double_click_ms(149).expect_err("doubleClickMs below range should fail");
+    assert!(
+        err.message
+            .contains("double click speed must be 150-600 ms"),
+        "unexpected double click error: {:?}",
+        err
+    );
+    assert_eq!(err.code, "invalid_input");
+
+    let err = store_scrollbar_width(17).expect_err("scrollbarWidth above range should fail");
+    assert!(
+        err.message.contains("scrollbar width must be 6-16 px"),
+        "unexpected scrollbar width error: {:?}",
+        err
+    );
+    assert_eq!(err.code, "invalid_input");
+}
+
+#[test]
+fn bounded_linux_ui_settings_ignore_legacy_or_malformed_db_values() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+    let conn = crate::db::open().expect("open settings db");
+
+    crate::db::set_setting_string(&conn, "mountsPollMs", "12000").expect("seed mountsPollMs");
+    crate::db::set_setting_string(&conn, "doubleClickMs", "fast").expect("seed doubleClickMs");
+    crate::db::set_setting_string(&conn, "scrollbarWidth", "5").expect("seed scrollbarWidth");
+
+    assert_eq!(
+        load_mounts_poll_ms().expect("load invalid mountsPollMs"),
+        None
+    );
+    assert_eq!(
+        load_double_click_ms().expect("load invalid doubleClickMs"),
+        None
+    );
+    assert_eq!(
+        load_scrollbar_width().expect("load invalid scrollbarWidth"),
+        None
+    );
+}
+
+#[test]
+fn store_rclone_path_trims_and_roundtrips() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+
+    assert_eq!(load_rclone_path().expect("load default rclonePath"), None);
+
+    store_rclone_path("  /usr/local/bin/rclone  ".to_string()).expect("store trimmed rclonePath");
+
+    assert_eq!(
+        load_rclone_path().expect("load trimmed rclonePath"),
+        Some("/usr/local/bin/rclone".to_string())
     );
 }
