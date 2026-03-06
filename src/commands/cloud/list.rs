@@ -26,9 +26,7 @@ pub(super) async fn validate_cloud_root_impl(
 ) -> CloudCommandResult<CloudRootSelection> {
     let path = parse_cloud_path_arg(path)?;
     let task = tauri::async_runtime::spawn_blocking(move || {
-        let provider = configured_rclone_provider().map_err(|error| {
-            CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
-        })?;
+        let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
         let remotes = provider.list_remotes()?;
         let remote = remotes
             .into_iter()
@@ -109,9 +107,7 @@ pub(super) async fn stat_cloud_entry_impl(path: String) -> CloudCommandResult<Op
     let remote = path.remote().to_string();
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
-            let provider = configured_rclone_provider().map_err(|error| {
-                CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
-            })?;
+            let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
             provider.stat_path(&path)
         })
     });

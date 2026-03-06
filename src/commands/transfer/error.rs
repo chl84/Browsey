@@ -165,7 +165,7 @@ impl From<crate::commands::cloud::CloudCommandError> for TransferError {
                 TransferErrorCode::UnknownError
             }
         };
-        Self::new(code, error.to_string())
+        Self::new(code, error.message())
     }
 }
 

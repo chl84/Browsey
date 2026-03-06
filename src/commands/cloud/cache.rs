@@ -37,9 +37,7 @@ pub(crate) fn list_cloud_remotes_cached(
         }
     }
 
-    let provider = configured_rclone_provider().map_err(|error| {
-        CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
-    })?;
+    let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
     let remotes = provider.list_remotes()?;
     if let Ok(mut guard) = cloud_remote_discovery_cache().lock() {
         *guard = Some(CachedCloudRemoteDiscovery {

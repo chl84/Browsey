@@ -135,9 +135,7 @@ pub(crate) fn materialize_cloud_file_for_local_use(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> CloudCommandResult<PathBuf> {
-    let provider = configured_rclone_provider().map_err(|error| {
-        CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
-    })?;
+    let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
     let snapshot = resolve_cloud_materialize_snapshot(&provider, path)?;
     materialize_cloud_file_for_local_use_with_provider_and_snapshot(
         &provider,
@@ -156,9 +154,7 @@ pub(crate) fn materialize_cloud_file_for_local_use_with_snapshot(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> CloudCommandResult<PathBuf> {
-    let provider = configured_rclone_provider().map_err(|error| {
-        CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
-    })?;
+    let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
     materialize_cloud_file_for_local_use_with_provider_and_snapshot(
         &provider,
         path,

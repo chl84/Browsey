@@ -9,6 +9,8 @@ const {
   listTrashMock,
   watchDirMock,
   listMountsMock,
+  listNetworkEntriesMock,
+  loadCloudSetupStatusMock,
 } = vi.hoisted(() => ({
   listDirMock: vi.fn(),
   listRecentMock: vi.fn(),
@@ -16,6 +18,8 @@ const {
   listTrashMock: vi.fn(),
   watchDirMock: vi.fn(),
   listMountsMock: vi.fn(),
+  listNetworkEntriesMock: vi.fn(),
+  loadCloudSetupStatusMock: vi.fn(),
 }))
 
 vi.mock('./services/listing.service', () => ({
@@ -28,7 +32,8 @@ vi.mock('./services/listing.service', () => ({
 }))
 
 vi.mock('../network', () => ({
-  listNetworkEntries: vi.fn().mockResolvedValue([]),
+  listNetworkEntries: (...args: unknown[]) => listNetworkEntriesMock(...args),
+  loadCloudSetupStatus: (...args: unknown[]) => loadCloudSetupStatusMock(...args),
 }))
 
 import { createExplorerState } from './state'
@@ -48,6 +53,16 @@ describe('createExplorerState sort refresh behavior', () => {
     listTrashMock.mockReset().mockResolvedValue({ current: 'Trash', entries: [] })
     watchDirMock.mockReset().mockResolvedValue(undefined)
     listMountsMock.mockReset().mockResolvedValue([])
+    listNetworkEntriesMock.mockReset().mockResolvedValue([])
+    loadCloudSetupStatusMock.mockReset().mockResolvedValue({
+      state: 'ready',
+      configuredPath: null,
+      resolvedBinaryPath: '/usr/bin/rclone',
+      detectedRemoteCount: 0,
+      supportedRemoteCount: 0,
+      unsupportedRemoteCount: 0,
+      supportedRemotes: [],
+    })
   })
 
   it('does not reload cloud directory from backend on sort toggle', async () => {
@@ -87,5 +102,54 @@ describe('createExplorerState sort refresh behavior', () => {
     await state.changeSort('name')
 
     expect(listDirMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows a network onboarding hint when cloud setup is not ready and no cloud entries exist', async () => {
+    loadCloudSetupStatusMock.mockResolvedValue({
+      state: 'binary_missing',
+      configuredPath: null,
+      resolvedBinaryPath: null,
+      detectedRemoteCount: 0,
+      supportedRemoteCount: 0,
+      unsupportedRemoteCount: 0,
+      supportedRemotes: [],
+    })
+
+    const state = createExplorerState()
+    await state.loadNetwork()
+
+    expect(loadCloudSetupStatusMock).toHaveBeenCalledTimes(1)
+    expect(get(state.networkNotice)).toContain('Install rclone')
+  })
+
+  it('does not show a network onboarding hint for transient discovery failures', async () => {
+    loadCloudSetupStatusMock.mockResolvedValue({
+      state: 'discovery_failed',
+      configuredPath: null,
+      resolvedBinaryPath: '/usr/bin/rclone',
+      detectedRemoteCount: 0,
+      supportedRemoteCount: 0,
+      unsupportedRemoteCount: 0,
+      supportedRemotes: [],
+    })
+
+    const state = createExplorerState()
+    await state.loadNetwork()
+
+    expect(loadCloudSetupStatusMock).toHaveBeenCalledTimes(1)
+    expect(get(state.networkNotice)).toBe('')
+  })
+
+  it('does not probe cloud setup when network already shows cloud entries', async () => {
+    listNetworkEntriesMock.mockResolvedValue([
+      makeEntry('browsey-gdrive (Google Drive)', 'rclone://browsey-gdrive', 'dir'),
+    ])
+
+    const state = createExplorerState()
+    await state.loadNetwork()
+
+    expect(loadCloudSetupStatusMock).not.toHaveBeenCalled()
+    expect(get(state.entries)).toHaveLength(1)
+    expect(get(state.networkNotice)).toBe('')
   })
 })

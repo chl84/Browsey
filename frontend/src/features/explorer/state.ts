@@ -15,7 +15,7 @@ import { cancelTask } from './services/activity.service'
 import { storeColumnWidths, loadSavedColumnWidths } from './services/layout.service'
 import { toggleStar as toggleStarService } from './services/star.service'
 import { getBookmarks } from './services/bookmarks.service'
-import { listNetworkEntries } from '../network'
+import { listNetworkEntries, loadCloudSetupStatus, type CloudSetupStatus } from '../network'
 import { emptyListingFacets, mapNameLower, sameLocation } from './state/helpers'
 import type { ExplorerCallbacks } from './state/helpers'
 import { createSearchSession } from './state/createSearchSession'
@@ -35,6 +35,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     entries,
     loading,
     error,
+    networkNotice,
     filter,
     searchMode,
     searchRunning,
@@ -112,6 +113,37 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const isCloudDirectoryPath = (where: string) => where.startsWith('rclone://')
 
+  const networkNoticeForCloudSetup = (status: CloudSetupStatus) => {
+    switch (status.state) {
+      case 'binary_missing':
+        return 'Cloud folders are unavailable. Install rclone or set Rclone path in Settings > Advanced.'
+      case 'invalid_binary_path':
+        return 'Cloud folders are unavailable. Fix the Rclone path in Settings > Advanced.'
+      case 'config_read_failed':
+        return 'Cloud folders are unavailable because Browsey could not read the saved rclone setting. Check Settings > Advanced.'
+      case 'runtime_unusable':
+        return 'Cloud folders are unavailable. Update rclone, then check Settings > Advanced.'
+      case 'no_supported_remotes':
+        return 'Cloud folders are not configured yet. Run `rclone config`, then check Settings > Advanced.'
+      default:
+        return ''
+    }
+  }
+
+  const refreshNetworkNotice = async (networkEntries: Entry[]) => {
+    networkNotice.set('')
+    const hasCloudEntries = networkEntries.some((entry) => isCloudDirectoryPath(entry.path))
+    if (hasCloudEntries) {
+      return
+    }
+    try {
+      const status = await loadCloudSetupStatus()
+      networkNotice.set(networkNoticeForCloudSetup(status))
+    } catch {
+      networkNotice.set('')
+    }
+  }
+
   // Navigation/history and listing load flows.
   const pushHistory = (loc: Location) => {
     const list = get(history)
@@ -130,6 +162,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
     clearFacetCache()
     error.set('')
+    networkNotice.set('')
     invalidateSearchRun()
     searchRunning.set(false)
     try {
@@ -155,6 +188,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loading.set(true)
     clearFacetCache()
     error.set('')
+    networkNotice.set('')
     invalidateSearchRun()
     searchRunning.set(false)
     try {
@@ -178,6 +212,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loading.set(true)
     clearFacetCache()
     error.set('')
+    networkNotice.set('')
     invalidateSearchRun()
     searchRunning.set(false)
     try {
@@ -203,6 +238,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loading.set(true)
     clearFacetCache()
     error.set('')
+    networkNotice.set('')
     invalidateSearchRun()
     searchRunning.set(false)
     try {
@@ -211,6 +247,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       const networkEntries = await listNetworkEntries(options.forceRefresh === true)
       current.set('Network')
       entries.set(sortExplorerEntriesInMemory(networkEntries, sortPayload()))
+      await refreshNetworkNotice(networkEntries)
       callbacks.onEntriesChanged?.()
       callbacks.onCurrentChange?.('Network')
       if (recordHistory) {
@@ -227,6 +264,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loading.set(true)
     clearFacetCache()
     error.set('')
+    networkNotice.set('')
     invalidateSearchRun()
     searchRunning.set(false)
     try {
@@ -459,6 +497,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         try {
           const networkEntries = await listNetworkEntries(forceNetworkRefresh)
           entries.set(sortExplorerEntriesInMemory(networkEntries, sortPayload()))
+          await refreshNetworkNotice(networkEntries)
           callbacks.onEntriesChanged?.()
         } catch (err) {
           console.error('Failed to list network entries', err)
@@ -605,6 +644,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     entries,
     loading,
     error,
+    networkNotice,
     filter,
     searchMode,
     searchRunning,

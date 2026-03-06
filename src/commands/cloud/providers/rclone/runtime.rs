@@ -45,7 +45,7 @@ pub(super) fn reset_runtime_probe_cache_for_tests() {
 }
 
 impl RcloneCloudProvider {
-    pub(super) fn ensure_runtime_ready(&self) -> CloudCommandResult<()> {
+    pub(crate) fn ensure_runtime_ready(&self) -> CloudCommandResult<()> {
         let binary = self.cli().binary().to_os_string();
         let now = Instant::now();
         {

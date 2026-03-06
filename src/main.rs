@@ -248,6 +248,7 @@ fn main() {
             list_mounts,
             list_cloud_remotes,
             cloud_rc_health,
+            cloud_setup_status,
             validate_cloud_root,
             list_cloud_entries,
             stat_cloud_entry,

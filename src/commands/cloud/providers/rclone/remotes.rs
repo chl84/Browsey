@@ -25,16 +25,29 @@ pub(super) struct RcloneRemotePolicy {
     pub(super) prefix: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct RcloneRemoteInventory {
+    pub(crate) detected_remote_count: usize,
+    pub(crate) unsupported_remote_count: usize,
+    pub(crate) supported_remotes: Vec<CloudRemote>,
+}
+
 impl RcloneCloudProvider {
     pub(super) fn list_remotes_impl(&self) -> CloudCommandResult<Vec<CloudRemote>> {
+        Ok(self.inspect_remote_inventory_impl()?.supported_remotes)
+    }
+
+    pub(crate) fn inspect_remote_inventory_impl(
+        &self,
+    ) -> CloudCommandResult<RcloneRemoteInventory> {
         self.ensure_runtime_ready()?;
         let mut fell_back_from_rc = false;
         let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_read_enabled() {
-            match self.list_remotes_via_rc() {
-                Ok(remotes) => {
+            match self.list_remote_inventory_via_rc() {
+                Ok(inventory) => {
                     log_backend_selected("cloud_list_remotes", "rc", false, None);
-                    return Ok(remotes);
+                    return Ok(inventory);
                 }
                 Err(error) => {
                     fell_back_from_rc = true;
@@ -62,10 +75,10 @@ impl RcloneCloudProvider {
             fell_back_from_rc,
             fallback_reason,
         );
-        Ok(build_cloud_remotes(remote_ids, config_map))
+        Ok(build_remote_inventory(remote_ids, config_map))
     }
 
-    fn list_remotes_via_rc(&self) -> Result<Vec<CloudRemote>, RcloneCliError> {
+    fn list_remote_inventory_via_rc(&self) -> Result<RcloneRemoteInventory, RcloneCliError> {
         let remotes_value = self.rc.list_remotes()?;
         let remote_ids = parse_listremotes_rc_json(&remotes_value)
             .map_err(|error| RcloneCliError::Io(std::io::Error::other(error)))?;
@@ -75,7 +88,7 @@ impl RcloneCloudProvider {
                 "Invalid rclone rc config dump payload: {error}"
             )))
         })?;
-        Ok(build_cloud_remotes(remote_ids, config_map))
+        Ok(build_remote_inventory(remote_ids, config_map))
     }
 }
 
@@ -130,12 +143,14 @@ fn format_remote_label(remote_id: &str, provider: CloudProviderKind) -> String {
     format!("{remote_id} ({provider_label})")
 }
 
-fn build_cloud_remotes(
+fn build_remote_inventory(
     remote_ids: Vec<String>,
     config_map: HashMap<String, RcloneRemoteConfigSummary>,
-) -> Vec<CloudRemote> {
-    let mut remotes = Vec::new();
+) -> RcloneRemoteInventory {
+    let mut supported_remotes = Vec::new();
     let mut seen = HashSet::new();
+    let mut detected_remote_count = 0usize;
+    let mut unsupported_remote_count = 0usize;
     for remote_id in remote_ids {
         if !seen.insert(remote_id.clone()) {
             continue;
@@ -143,13 +158,15 @@ fn build_cloud_remotes(
         if !remote_allowed_by_policy(&remote_id) {
             continue;
         }
+        detected_remote_count += 1;
         let Some(provider) = config_map
             .get(&remote_id)
             .and_then(classify_provider_kind_from_config)
         else {
+            unsupported_remote_count += 1;
             continue;
         };
-        remotes.push(CloudRemote {
+        supported_remotes.push(CloudRemote {
             id: remote_id.clone(),
             label: format_remote_label(&remote_id, provider),
             provider,
@@ -157,8 +174,12 @@ fn build_cloud_remotes(
             capabilities: CloudCapabilities::v1_for_provider(provider),
         });
     }
-    remotes.sort_by(|a, b| a.label.cmp(&b.label));
-    remotes
+    supported_remotes.sort_by(|a, b| a.label.cmp(&b.label));
+    RcloneRemoteInventory {
+        detected_remote_count,
+        unsupported_remote_count,
+        supported_remotes,
+    }
 }
 
 fn parse_config_dump_summaries_bytes(

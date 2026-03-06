@@ -66,6 +66,30 @@ pub struct CloudRootSelection {
     pub is_remote_root: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloudSetupState {
+    Ready,
+    BinaryMissing,
+    InvalidBinaryPath,
+    ConfigReadFailed,
+    RuntimeUnusable,
+    NoSupportedRemotes,
+    DiscoveryFailed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudSetupStatus {
+    pub state: CloudSetupState,
+    pub configured_path: Option<String>,
+    pub resolved_binary_path: Option<String>,
+    pub detected_remote_count: usize,
+    pub supported_remote_count: usize,
+    pub unsupported_remote_count: usize,
+    pub supported_remotes: Vec<CloudRemote>,
+}
+
 impl CloudCapabilities {
     pub fn v1_for_provider(provider: CloudProviderKind) -> Self {
         match provider {
