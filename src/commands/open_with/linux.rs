@@ -30,16 +30,15 @@ pub(super) fn list_linux_apps(target: &Path) -> Vec<OpenWithApp> {
 }
 
 pub(super) fn launch_desktop_entry_by_id(target: &Path, app_id: &str) -> OpenWithResult<()> {
-    let app = resolve_linux_app_for_target(target, app_id).ok_or_else(|| {
-        OpenWithError::from_external_message("Selected application is unavailable")
-    })?;
+    let app = resolve_linux_app_for_target(target, app_id)
+        .ok_or_else(|| OpenWithError::app_not_found("Selected application is unavailable"))?;
     launch_desktop_entry(target, &app.desktop)
 }
 
 fn launch_desktop_entry(target: &Path, entry: &DesktopEntry) -> OpenWithResult<()> {
     let (program, args) = command_from_exec(entry, target)?;
     if !command_exists(&program) {
-        return Err(OpenWithError::from_external_message(format!(
+        return Err(OpenWithError::app_not_found(format!(
             "Selected application is unavailable: {}",
             entry.name
         )));
@@ -49,9 +48,8 @@ fn launch_desktop_entry(target: &Path, entry: &DesktopEntry) -> OpenWithResult<(
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .args(&args);
-    spawn_detached(cmd).map_err(|error| {
-        OpenWithError::from_external_message(format!("Failed to launch {}: {error}", entry.name))
-    })
+    spawn_detached(cmd)
+        .map_err(|error| OpenWithError::launch_failed(format!("Failed to launch {}: {error}", entry.name)))
 }
 
 #[derive(Clone)]
@@ -397,7 +395,7 @@ fn command_from_exec(entry: &DesktopEntry, target: &Path) -> OpenWithResult<(Str
     let mut tokens = shell_words::split(&entry.exec)
         .map_err(|e| OpenWithError::from_external_message(format!("Failed to parse Exec: {e}")))?;
     if tokens.is_empty() {
-        return Err(OpenWithError::from_external_message("Exec is empty"));
+        return Err(OpenWithError::invalid_input("Exec is empty"));
     }
     let target_str = target.to_string_lossy().to_string();
     let desktop_str = entry.path.to_string_lossy().to_string();
@@ -452,7 +450,7 @@ fn command_from_exec(entry: &DesktopEntry, target: &Path) -> OpenWithResult<(Str
 
     let mut args: Vec<String> = tokens.into_iter().filter(|s| !s.is_empty()).collect();
     if args.is_empty() {
-        return Err(OpenWithError::from_external_message("Exec is empty"));
+        return Err(OpenWithError::invalid_input("Exec is empty"));
     }
     let program = args.remove(0);
     if !used_placeholder {
@@ -464,6 +462,7 @@ fn command_from_exec(entry: &DesktopEntry, target: &Path) -> OpenWithResult<(Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::errors::domain::DomainError;
     use std::os::unix::fs::symlink;
     use std::time::{Duration, SystemTime};
 
@@ -581,5 +580,38 @@ mod tests {
         assert_eq!(listed[0].desktop.name, "Flatpak App");
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn linux_open_with_reports_missing_app_with_typed_code() {
+        let root = uniq_dir("missing-app");
+        fs::create_dir_all(&root).expect("failed to create root");
+        let target = root.join("sample.txt");
+        fs::write(&target, b"data").expect("failed to write target");
+
+        let error = launch_desktop_entry_by_id(&target, "desktop:missing")
+            .expect_err("missing desktop id should fail");
+        assert_eq!(error.code_str(), "app_not_found");
+        assert_eq!(error.message(), "Selected application is unavailable");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn command_from_exec_reports_empty_exec_as_invalid_input() {
+        let target = PathBuf::from("/tmp/example.txt");
+        let entry = DesktopEntry {
+            name: "Viewer".to_string(),
+            comment: None,
+            exec: "   ".to_string(),
+            mime_types: vec!["text/plain".to_string()],
+            icon: None,
+            terminal: false,
+            path: PathBuf::from("/tmp/viewer.desktop"),
+        };
+
+        let error = command_from_exec(&entry, &target).expect_err("empty exec should fail");
+        assert_eq!(error.code_str(), "invalid_input");
+        assert_eq!(error.message(), "Exec is empty");
     }
 }
