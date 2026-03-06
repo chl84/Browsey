@@ -211,7 +211,7 @@ const SET_HIDDEN_CLASSIFICATION_RULES: &[(SetHiddenErrorCode, &[&str])] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum FsErrorCode {
+pub(crate) enum FsErrorCode {
     InvalidInput,
     PathNotAbsolute,
     InvalidPath,
@@ -304,8 +304,8 @@ impl FsError {
         Self::new(code, format!("{context}: {error}"))
     }
 
-    pub(crate) fn code_str_value(&self) -> &'static str {
-        self.code.as_code_str()
+    pub(crate) fn code(&self) -> FsErrorCode {
+        self.code
     }
 
     pub(crate) fn message(&self) -> &str {
@@ -521,10 +521,8 @@ mod tests {
             error,
         );
         assert_eq!(fs_error.code, FsErrorCode::PermissionDenied);
-        assert!(
-            fs_error
-                .message()
-                .contains("Failed to create backup dir /tmp/example")
-        );
+        assert!(fs_error
+            .message()
+            .contains("Failed to create backup dir /tmp/example"));
     }
 }

@@ -29,8 +29,9 @@ use std::{
 
 pub use delete_ops::{delete_entries, delete_entry};
 pub(crate) use error::FsError;
+pub(crate) use error::FsErrorCode;
 use error::{
-    is_expected_set_hidden_error, map_api_result, FsErrorCode, SetHiddenError, SetHiddenErrorCode,
+    is_expected_set_hidden_error, map_api_result, SetHiddenError, SetHiddenErrorCode,
     SetHiddenResult,
 };
 pub use open_ops::open_entry;

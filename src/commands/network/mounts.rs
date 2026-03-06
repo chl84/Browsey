@@ -189,13 +189,7 @@ fn parse_linux_mounts(contents: &str, gvfs_root: Option<&str>) -> Vec<MountInfo>
         let is_user_mount = target.contains("/media/") || target.contains("/run/media/");
         let is_windows_fs = matches!(
             fs_lc.as_str(),
-            "vfat"
-                | "exfat"
-                | "ntfs"
-                | "fuseblk"
-                | "fuse.exfat"
-                | "fuse.ntfs-3g"
-                | "fuse.ntfs"
+            "vfat" | "exfat" | "ntfs" | "fuseblk" | "fuse.exfat" | "fuse.ntfs-3g" | "fuse.ntfs"
         );
         let is_boot = target.starts_with("/boot");
         let removable_hint = (is_user_mount || is_windows_fs) && !is_boot;
@@ -474,7 +468,11 @@ gvfsd-fuse /run/user/1000/gvfs/smb-share:server=nas.local,share=docs fuse.gvfsd-
             Some("/run/user/1000/gvfs"),
         );
 
-        assert_eq!(mounts.len(), 2, "expected only root and concrete gvfs mount");
+        assert_eq!(
+            mounts.len(),
+            2,
+            "expected only root and concrete gvfs mount"
+        );
         assert!(mounts.iter().any(|mount| mount.path == "/"));
         assert!(mounts.iter().any(|mount| {
             mount.path == "/run/user/1000/gvfs/smb-share:server=nas.local,share=docs"
@@ -502,19 +500,28 @@ server:/export /mnt/nfs nfs4 rw 0 0\n",
             .find(|mount| mount.path == "/run/media/chris/USB_DISK")
             .expect("usb mount should be kept");
         assert_eq!(usb_mount.label, "USB_DISK");
-        assert!(usb_mount.removable, "user-visible removable media should be marked removable");
+        assert!(
+            usb_mount.removable,
+            "user-visible removable media should be marked removable"
+        );
 
         let home_mount = mounts
             .iter()
             .find(|mount| mount.path == "/home")
             .expect("home mount should be kept");
-        assert!(!home_mount.removable, "plain ext4 root mounts should not be marked removable");
+        assert!(
+            !home_mount.removable,
+            "plain ext4 root mounts should not be marked removable"
+        );
 
         let nfs_mount = mounts
             .iter()
             .find(|mount| mount.path == "/mnt/nfs")
             .expect("nfs mount should be kept");
         assert_eq!(nfs_mount.fs, "nfs4");
-        assert!(!nfs_mount.removable, "network mounts should not inherit removable heuristics");
+        assert!(
+            !nfs_mount.removable,
+            "network mounts should not inherit removable heuristics"
+        );
     }
 }

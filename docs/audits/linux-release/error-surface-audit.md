@@ -50,6 +50,15 @@ pretending the whole Step 10 track is done after isolated seam fixes.
   `remove_file(...)`, `write(...)`, and `rename(...)` failures through typed
   `FsError::from_io_error(...)` instead of one-off string-only `trash_failed`
   construction.
+- `src/clipboard/error.rs`, `src/clipboard/ops.rs`, and `src/clipboard/mod.rs`
+  now classify local clipboard I/O failures through typed
+  `ClipboardError::from_io_error(...)` and preserve typed error codes when
+  contextualizing paste failures, instead of relying on one-off message checks
+  for `destination exists`.
+- `src/commands/search/error.rs`, `src/commands/listing/error.rs`,
+  `src/commands/network/error.rs`, and `src/commands/duplicates/error.rs` now
+  map `FsError` through the typed `FsErrorCode` accessor instead of matching on
+  `code_str()` strings.
 - Existing backend hardening controls already provide a meaningful baseline:
   - `.semgrep/typed-errors-blocking.yml`
   - `.semgrep/typed-errors.yml`
@@ -62,12 +71,13 @@ pretending the whole Step 10 track is done after isolated seam fixes.
 ## Remaining Step 10 Gaps
 
 - Linux-critical flows still contain some runtime string-based classification
-  seams, but the obvious `console`, ownership/pkexec retry, and `open_with`
+  seams, but the obvious `console`, local clipboard destination-exists, typed
+  `FsError` fan-out, ownership/pkexec retry, and `open_with`
   path/app-launch classification examples are now removed.
 - Several backend domains still use one-off error mapping or raw message
-  forwarding even when they already have typed error containers; the local
-  delete/trash backup-dir seams are reduced, but Step 10 still has broader
-  cleanup left.
+  forwarding even when they already have typed error containers; Linux
+  permissions helper stderr/stdout handling is still a notable remaining seam,
+  and Step 10 still has broader cleanup left.
 - Step 10 also includes supportability/logging quality, which is broader than
   typed-error cleanup alone.
 

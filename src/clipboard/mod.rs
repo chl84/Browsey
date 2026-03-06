@@ -18,7 +18,6 @@ use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::{
     fs,
-    io::ErrorKind,
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -155,9 +154,10 @@ fn set_clipboard_impl(paths: Vec<String>, mode: String) -> ClipboardResult<()> {
     for p in paths {
         reject_cloud_clipboard_path(&p, "set")?;
         let meta = fs::symlink_metadata(&p).map_err(|e| {
-            ClipboardError::new(
-                ClipboardErrorCode::NotFound,
-                format!("Path does not exist: {e}"),
+            ClipboardError::from_io_error(
+                ClipboardErrorCode::IoError,
+                &format!("Path is unavailable: {p}"),
+                e,
             )
         })?;
         if meta.file_type().is_symlink() {
@@ -302,16 +302,11 @@ fn paste_clipboard_impl(
         }
         let src_meta = match fs::symlink_metadata(src) {
             Ok(meta) => meta,
-            Err(e) if e.kind() == ErrorKind::NotFound => {
-                return Err(ClipboardError::new(
-                    ClipboardErrorCode::NotFound,
-                    format!("Source does not exist: {:?}", src),
-                ));
-            }
             Err(e) => {
-                return Err(ClipboardError::new(
+                return Err(ClipboardError::from_io_error(
                     ClipboardErrorCode::IoError,
-                    format!("Failed to read metadata: {e}"),
+                    &format!("Failed to read metadata for {}", src.display()),
+                    e,
                 ))
             }
         };
@@ -421,10 +416,7 @@ fn paste_clipboard_impl(
                             ));
                         }
                     }
-                    return Err(ClipboardError::new(
-                        ClipboardErrorCode::IoError,
-                        format!("Paste failed for {:?}: {}", src, err),
-                    ));
+                    return Err(err.with_context(format!("Paste failed for {}", src.display())));
                 }
             }
         }

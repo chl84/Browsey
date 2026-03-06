@@ -5,8 +5,8 @@ use std::io::Write;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 #[cfg(unix)]
 use std::{fs::Permissions, os::unix::fs::PermissionsExt};
@@ -439,8 +439,8 @@ fn copy_file_best_effort_cancelled_before_transfer_removes_destination() {
     write_file(&src, &[7u8; 32 * 1024]);
     let cancel = AtomicBool::new(true);
 
-    let err = copy_file_best_effort(&src, &dest, None, None, Some(&cancel), Some(32 * 1024))
-        .unwrap_err();
+    let err =
+        copy_file_best_effort(&src, &dest, None, None, Some(&cancel), Some(32 * 1024)).unwrap_err();
 
     assert_eq!(err.code(), ClipboardErrorCode::Cancelled);
     assert!(src.exists(), "source should remain on cancel");
