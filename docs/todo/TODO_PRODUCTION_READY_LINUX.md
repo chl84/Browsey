@@ -120,7 +120,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
   - [x] repro steps
 
 ## 11. Bring docs to 1.0 level
-- [ ] Update README to reflect the actual Linux stability level
+- [x] Update README to reflect the actual Linux stability level
 - [x] Add a `Known limitations on Linux` page
 - [x] Add a recovery/troubleshooting page
 - [x] Document optional dependencies and degraded behavior without them
