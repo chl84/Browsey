@@ -74,6 +74,7 @@ describe('useExplorerData cloud refresh event', () => {
       loadOpenDestAfterExtractPref: asyncNoop,
       loadVideoThumbsPref: asyncNoop,
       loadCloudThumbsPref: asyncNoop,
+      loadCloudEnabledPref: asyncNoop,
       loadHardwareAccelerationPref: asyncNoop,
       loadFfmpegPathPref: asyncNoop,
       loadThumbCachePref: asyncNoop,
