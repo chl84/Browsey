@@ -156,3 +156,66 @@ fn launch_terminal(dir: &Path) -> ConsoleResult<()> {
         "Unsupported platform for opening console",
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::errors::domain::DomainError;
+    use std::fs;
+    use std::time::{Duration, SystemTime};
+
+    fn temp_path(label: &str) -> std::path::PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        std::env::temp_dir().join(format!("browsey-console-test-{label}-{ts}"))
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_terminal_candidates_use_strict_allowlist_and_dir_args() {
+        let dir = "/tmp/browsey-console-test";
+        let candidates = linux_terminal_candidates(dir);
+        assert!(
+            !candidates.is_empty(),
+            "linux terminal candidate list should not be empty"
+        );
+
+        for (bin, args) in &candidates {
+            assert!(
+                matches!(
+                    *bin,
+                    "ptyxis"
+                        | "gnome-terminal"
+                        | "konsole"
+                        | "xfce4-terminal"
+                        | "tilix"
+                        | "alacritty"
+                        | "kitty"
+                        | "wezterm"
+                        | "foot"
+                        | "kgx"
+                ),
+                "unexpected terminal candidate: {bin}"
+            );
+            assert!(
+                args.iter().any(|arg| arg == dir || arg.ends_with(&format!("={dir}"))),
+                "candidate {bin:?} did not propagate working directory: {args:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn open_console_rejects_non_directory_paths() {
+        let path = temp_path("not-directory");
+        fs::write(&path, b"not a directory").expect("create temp file");
+
+        let error = open_console_impl(path.to_string_lossy().to_string())
+            .expect_err("opening a console for a file should fail");
+        assert_eq!(error.code_str(), "not_directory");
+        assert_eq!(error.message(), "Can only open console in a directory");
+
+        let _ = fs::remove_file(path);
+    }
+}
