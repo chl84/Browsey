@@ -26,8 +26,8 @@ Step 6 items can be closed against something concrete instead of a vague
 
 | Area | Current Linux 1.0 status | Basis |
 |---|---|---|
-| Persisted roundtrip for recently added Linux-facing settings | Partial but meaningful | Backend tests now cover roundtrip, invalid-input rejection, and legacy malformed-value fallback for `mountsPollMs`, `doubleClickMs`, `scrollbarWidth`, and trimmed `rclonePath`. |
-| Restore defaults | Partial | `ExplorerPage` reset flow explicitly writes all current defaults, and view-model tests cover the restore-defaults seam, but there is not yet a broad integration test proving representative settings all reset end-to-end. |
+| Persisted roundtrip for recently added Linux-facing settings | Partial but meaningful | Backend tests now cover roundtrip, invalid-input rejection, and legacy malformed-value fallback for `mountsPollMs`, `doubleClickMs`, `scrollbarWidth`, trimmed `rclonePath`, `hardwareAcceleration`, and normalized `logLevel` loads. |
+| Restore defaults | Partial but meaningful | `ExplorerPage` reset flow explicitly writes all current defaults, and view-model tests now cover representative Linux-facing settings (`cloudEnabled`, `mountsPollMs`, `doubleClickMs`, `logLevel`, `rclonePath`, `scrollbarWidth`) plus filter-preservation behavior, but there is not yet a broader end-to-end reset proof across the full settings surface. |
 | Runtime application without restart | Partial | Most settings update Svelte stores immediately through `preferencesSlice`, `useExplorerData` now has direct live-application tests for mount refresh interval plus existing root-hook coverage for high contrast and scrollbar width, and `hardwareAcceleration` is the only current setting explicitly documented as requiring restart in the UI. This is meaningful evidence, but not yet broad enough to close the whole item. |
 | Settings clarity | Meaningfully improved | The most internal-feeling Linux-facing rows now explain themselves in the UI (`Mount refresh interval`, `Log level` guidance), but a full pass on every settings row is not separately audited yet. |
 | Settings migration across versions | Open | Bounded loaders safely ignore malformed/out-of-range persisted values for some settings, but there is no explicit migration/versioned-settings plan or upgrade-path validation yet. |
@@ -41,8 +41,13 @@ Step 6 items can be closed against something concrete instead of a vague
   state.
 - `rclonePath` persistence trims whitespace before storing and roundtrips
   cleanly.
+- `hardwareAcceleration` roundtrips through persisted settings, and persisted
+  `logLevel` values normalize cleanly at load time while invalid values degrade
+  to `None`.
 - Restore defaults in `ExplorerPage` still routes through a single
   `DEFAULT_SETTINGS` source of truth instead of duplicating ad-hoc constants.
+- Restore-defaults helper tests now cover representative Linux-facing settings,
+  rather than only a single `cloudThumbs` reset seam.
 - `Mount refresh interval` now has explicit live-application coverage through
   the `useExplorerData` timer subscription, rather than only code inspection.
 - The settings UI now explains the practical effect of:
