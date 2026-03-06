@@ -1,10 +1,6 @@
 use crate::errors::{
     api_error::ApiResult,
-    domain::{
-        self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint, COMMON_INVALID_PATH_PATTERNS, COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
-        COMMON_PERMISSION_DENIED_PATTERNS,
-    },
+    domain::{self, classify_io_error, DomainError, ErrorCode, IoErrorHint},
 };
 use std::fmt;
 
@@ -53,24 +49,25 @@ impl DuplicatesError {
         Self::new(DuplicatesErrorCode::InvalidInput, message)
     }
 
-    pub(super) fn from_external_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        if let Some(hint) = classify_io_hint_from_message(&message) {
-            let code = match hint {
-                IoErrorHint::NotFound => Some(DuplicatesErrorCode::NotFound),
-                IoErrorHint::PermissionDenied => Some(DuplicatesErrorCode::PermissionDenied),
-                _ => None,
-            };
-            if let Some(code) = code {
-                return Self::new(code, message);
-            }
-        }
-        let code = classify_message_by_patterns(
-            &message,
-            DUPLICATES_CLASSIFICATION_RULES,
-            DuplicatesErrorCode::UnknownError,
-        );
-        Self::new(code, message)
+    pub(super) fn cancelled() -> Self {
+        Self::new(DuplicatesErrorCode::TaskFailed, "Duplicate scan cancelled")
+    }
+
+    pub(super) fn scan_limit_exceeded(message: impl Into<String>) -> Self {
+        Self::new(DuplicatesErrorCode::ScanLimitExceeded, message)
+    }
+
+    pub(super) fn from_io_error(
+        fallback: DuplicatesErrorCode,
+        context: &str,
+        error: std::io::Error,
+    ) -> Self {
+        let code = match classify_io_error(&error) {
+            IoErrorHint::NotFound => DuplicatesErrorCode::NotFound,
+            IoErrorHint::PermissionDenied => DuplicatesErrorCode::PermissionDenied,
+            _ => fallback,
+        };
+        Self::new(code, format!("{context}: {error}"))
     }
 }
 
@@ -137,41 +134,6 @@ pub(super) fn map_api_result<T>(result: DuplicatesResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
 
-const DUPLICATES_CLASSIFICATION_RULES: &[(DuplicatesErrorCode, &[&str])] = &[
-    (
-        DuplicatesErrorCode::TaskFailed,
-        &["duplicate scan task panicked"],
-    ),
-    (
-        DuplicatesErrorCode::PathNotAbsolute,
-        COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
-    ),
-    (
-        DuplicatesErrorCode::InvalidPath,
-        COMMON_INVALID_PATH_PATTERNS,
-    ),
-    (
-        DuplicatesErrorCode::InvalidInput,
-        &[
-            "progress_event is required",
-            "target must be a file",
-            "target must be a regular file",
-            "start path must be a directory",
-        ],
-    ),
-    (
-        DuplicatesErrorCode::PermissionDenied,
-        COMMON_PERMISSION_DENIED_PATTERNS,
-    ),
-    (
-        DuplicatesErrorCode::ScanLimitExceeded,
-        &[
-            "candidate file limit exceeded",
-            "scanned file limit exceeded",
-        ],
-    ),
-];
-
 #[cfg(test)]
 mod tests {
     use super::DuplicatesError;
@@ -190,5 +152,12 @@ mod tests {
         let fs_error = FsUtilsError::new(FsUtilsErrorCode::InvalidPath, "invalid path");
         let error = DuplicatesError::from(fs_error);
         assert_eq!(error.code_str(), "invalid_path");
+    }
+
+    #[test]
+    fn cancelled_duplicate_scan_uses_typed_task_failed_code() {
+        let error = DuplicatesError::cancelled();
+        assert_eq!(error.code_str(), "task_failed");
+        assert_eq!(error.message(), "Duplicate scan cancelled");
     }
 }

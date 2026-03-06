@@ -1,9 +1,10 @@
+#[cfg(target_os = "windows")]
+use crate::errors::domain::{
+    classify_io_hint_from_message, classify_message_by_patterns, IoErrorHint,
+};
 use crate::errors::{
     api_error::ApiResult,
-    domain::{
-        self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint,
-    },
+    domain::{self, DomainError, ErrorCode},
 };
 use std::fmt;
 
@@ -62,6 +63,7 @@ impl OpenWithError {
         Self::new(OpenWithErrorCode::LaunchFailed, message)
     }
 
+    #[cfg(target_os = "windows")]
     pub(super) fn from_external_message(message: impl Into<String>) -> Self {
         let message = message.into();
         if let Some(hint) = classify_io_hint_from_message(&message) {
@@ -129,6 +131,7 @@ pub(super) fn map_api_result<T>(result: OpenWithResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
 
+#[cfg(target_os = "windows")]
 const OPEN_WITH_CLASSIFICATION_RULES: &[(OpenWithErrorCode, &[&str])] = &[
     (
         OpenWithErrorCode::InvalidPath,

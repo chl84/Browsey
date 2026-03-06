@@ -394,7 +394,7 @@ fn linux_application_dirs() -> Vec<PathBuf> {
 
 fn command_from_exec(entry: &DesktopEntry, target: &Path) -> OpenWithResult<(String, Vec<String>)> {
     let mut tokens = shell_words::split(&entry.exec)
-        .map_err(|e| OpenWithError::from_external_message(format!("Failed to parse Exec: {e}")))?;
+        .map_err(|e| OpenWithError::invalid_input(format!("Failed to parse Exec: {e}")))?;
     if tokens.is_empty() {
         return Err(OpenWithError::invalid_input("Exec is empty"));
     }
