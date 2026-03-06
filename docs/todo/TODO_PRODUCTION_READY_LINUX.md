@@ -40,10 +40,10 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [ ] Test SMB/NFS/GVFS scenarios on GNOME Wayland
 - [ ] Verify clipboard integration on GNOME Wayland with and without `xclip`
 - [ ] Test terminal launch, permissions editing, and trash behavior on common Linux environments
-- [ ] Confirm Browsey behaves correctly when optional dependencies are missing:
-  - [ ] `ffmpeg`
-  - [ ] `rclone`
-  - [ ] `xclip`
+- [x] Confirm Browsey behaves correctly when optional dependencies are missing:
+  - [x] `ffmpeg`
+  - [x] `rclone`
+  - [x] `xclip`
 
 ## 5. Keep cloud opt-in but safe
 - [ ] Ensure cloud never interferes with local file browsing when disabled

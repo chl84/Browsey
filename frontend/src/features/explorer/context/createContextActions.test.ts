@@ -9,6 +9,7 @@ const deleteEntriesMock = vi.fn(async (_paths: string[], _progressEvent?: string
 const purgeTrashItemsMock = vi.fn(async (_ids: string[]) => {})
 const restoreTrashItemsMock = vi.fn(async (_ids: string[]) => {})
 const removeRecentMock = vi.fn(async (_paths: string[]) => {})
+const copyPathsToSystemClipboardMock = vi.fn(async () => {})
 
 vi.mock('../services/trash.service', () => ({
   moveToTrashMany: (paths: string[], progressEvent?: string) =>
@@ -21,7 +22,7 @@ vi.mock('../services/trash.service', () => ({
 }))
 
 vi.mock('../services/clipboard.service', () => ({
-  copyPathsToSystemClipboard: vi.fn(async () => {}),
+  copyPathsToSystemClipboard: (...args: unknown[]) => copyPathsToSystemClipboardMock(...args),
 }))
 
 const fileEntry = (path: string, name: string): Entry => ({
@@ -120,5 +121,37 @@ describe('createContextActions', () => {
     await handle('rename-advanced', a)
 
     expect(deps.startAdvancedRename).toHaveBeenCalledWith([a, b])
+  })
+
+  it('keeps local copy usable when system clipboard sync fails', async () => {
+    copyPathsToSystemClipboardMock.mockRejectedValueOnce(new Error('xclip not found'))
+    const entry = fileEntry('/tmp/a.txt', 'a.txt')
+    const deps = createDeps([entry], [entry.path])
+    const handle = createContextActions(deps)
+
+    await handle('copy', entry)
+
+    expect(deps.clipboard.copyPaths).toHaveBeenCalledWith([entry.path])
+    expect(copyPathsToSystemClipboardMock).toHaveBeenCalledWith([entry.path])
+    expect(deps.showToast).toHaveBeenCalledWith(
+      'Copied (system clipboard unavailable: xclip not found)',
+      2500,
+    )
+  })
+
+  it('keeps local cut usable when system clipboard sync fails', async () => {
+    copyPathsToSystemClipboardMock.mockRejectedValueOnce(new Error('xclip not found'))
+    const entry = fileEntry('/tmp/a.txt', 'a.txt')
+    const deps = createDeps([entry], [entry.path])
+    const handle = createContextActions(deps)
+
+    await handle('cut', entry)
+
+    expect(deps.clipboard.cutPaths).toHaveBeenCalledWith([entry.path])
+    expect(copyPathsToSystemClipboardMock).toHaveBeenCalledWith([entry.path], 'cut')
+    expect(deps.showToast).toHaveBeenCalledWith(
+      'Cut (system clipboard unavailable: xclip not found)',
+      2500,
+    )
   })
 })
