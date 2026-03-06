@@ -54,6 +54,14 @@ impl OpenWithError {
         Self::new(OpenWithErrorCode::InvalidInput, message)
     }
 
+    pub(super) fn app_not_found(message: impl Into<String>) -> Self {
+        Self::new(OpenWithErrorCode::AppNotFound, message)
+    }
+
+    pub(super) fn launch_failed(message: impl Into<String>) -> Self {
+        Self::new(OpenWithErrorCode::LaunchFailed, message)
+    }
+
     pub(super) fn from_external_message(message: impl Into<String>) -> Self {
         let message = message.into();
         if let Some(hint) = classify_io_hint_from_message(&message) {

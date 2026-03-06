@@ -25,6 +25,9 @@ pretending the whole Step 10 track is done after isolated seam fixes.
 - `src/commands/open_with/mod.rs` now maps `fs::open_entry` failures through
   typed `ApiError.code` values instead of reclassifying via
   `from_external_message(error.message)`.
+- `src/commands/open_with/linux.rs` now uses explicit typed constructors for
+  Linux desktop-entry failures instead of text-driven reclassification for
+  `app_not_found`, `launch_failed`, and empty `Exec` input.
 - `src/commands/listing/local.rs` now maps `read_dir` failures through typed
   `ListingError::from_io_error(...)` instead of
   `ListingError::from_external_message(format!(...))`.
@@ -60,7 +63,7 @@ pretending the whole Step 10 track is done after isolated seam fixes.
 
 - Linux-critical flows still contain some runtime string-based classification
   seams, but the obvious `console`, ownership/pkexec retry, and `open_with`
-  path-classification examples are now removed.
+  path/app-launch classification examples are now removed.
 - Several backend domains still use one-off error mapping or raw message
   forwarding even when they already have typed error containers; the local
   delete/trash backup-dir seams are reduced, but Step 10 still has broader
