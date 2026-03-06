@@ -47,7 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   openDestAfterExtract: false,
   videoThumbs: true,
   cloudThumbs: false,
-  cloudEnabled: true,
+  cloudEnabled: false,
   hardwareAcceleration: false,
   ffmpegPath: '',
   thumbCacheMb: 300,
