@@ -10,19 +10,76 @@ describe('cloud setup helpers', () => {
     vi.useRealTimers()
   })
 
-  it('describes the ready setup state for Settings Advanced', () => {
+  it.each([
+    [
+      'ready',
+      {
+        headline: 'Rclone is ready',
+        nextStepPart: 'Network',
+      },
+    ],
+    [
+      'binary_missing',
+      {
+        headline: 'Rclone was not found',
+        nextStepPart: 'Install rclone',
+      },
+    ],
+    [
+      'invalid_binary_path',
+      {
+        headline: 'Rclone path is invalid',
+        nextStepPart: 'valid executable path',
+      },
+    ],
+    [
+      'config_read_failed',
+      {
+        headline: 'Cloud setup could not be read',
+        nextStepPart: 'saved rclone setting',
+      },
+    ],
+    [
+      'runtime_unusable',
+      {
+        headline: 'Rclone is installed but unusable',
+        nextStepPart: 'supported version',
+      },
+    ],
+    [
+      'no_supported_remotes',
+      {
+        headline: 'No supported cloud remotes found',
+        nextStepPart: 'rclone config',
+      },
+    ],
+    [
+      'discovery_failed',
+      {
+        headline: 'Cloud remotes could not be inspected',
+        nextStepPart: 'try again later',
+      },
+    ],
+  ] as const)('describes the %s setup state for Settings Cloud', (state, expected) => {
     const copy = describeCloudSetupStatus({
-      state: 'ready',
+      state,
       configuredPath: null,
-      resolvedBinaryPath: '/usr/bin/rclone',
+      resolvedBinaryPath: state === 'binary_missing' ? null : '/usr/bin/rclone',
       detectedRemoteCount: 1,
-      supportedRemoteCount: 1,
+      supportedRemoteCount: state === 'ready' ? 1 : 0,
       unsupportedRemoteCount: 0,
       supportedRemotes: [],
     })
 
-    expect(copy.headline).toBe('Rclone is ready')
-    expect(copy.nextStep).toContain('Network')
+    expect(copy.headline).toBe(expected.headline)
+    expect(copy.nextStep).toContain(expected.nextStepPart)
+  })
+
+  it('describes the pending/null setup state for Settings Cloud', () => {
+    const copy = describeCloudSetupStatus(null)
+
+    expect(copy.headline).toBe('Checking cloud setup…')
+    expect(copy.nextStep).toContain('inspecting')
   })
 
   it('does not run the debounced blur action on every keystroke', async () => {

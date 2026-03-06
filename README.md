@@ -55,9 +55,10 @@ Windows:
 
 ## Cloud (rclone) v1 (Linux-first)
 - Browsey cloud support is `rclone`-backed. OneDrive is the primary v1 target, with groundwork for Google Drive and Nextcloud (`webdav`) remotes.
-- Browsey auto-detects `rclone` from the system, and also lets you set an explicit `Rclone path` in Settings > Advanced.
+- Cloud integration is opt-in and off by default in Settings > Cloud, so local browsing is not coupled to `rclone`.
+- Browsey auto-detects `rclone` from the system, and also lets you set an explicit `Rclone path` in Settings > Cloud.
 - Configure remotes externally with `rclone config` (no in-app cloud login/setup UI yet).
-- Settings > Advanced now shows in-app cloud setup status and next-step diagnostics for `rclone`.
+- Settings > Cloud shows in-app cloud setup status and next-step diagnostics for `rclone`.
 - Supported `rclone` remotes appear in `Network`, and you can also navigate directly to `rclone://<remote>/<path>`.
 - Browsey validates `rclone` on first cloud use and requires a minimum supported version.
 - Cloud operations currently use manual/explicit refresh in some flows because filesystem watching is not available for `rclone://` paths.
