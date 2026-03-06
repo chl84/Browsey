@@ -79,10 +79,6 @@ export const createNewFolderModal = (deps: Deps) => {
     } catch (err) {
       const msg = getErrorMessage(err)
       state.update((s) => ({ ...s, error: msg }))
-      if (activityApi) {
-        activityApi.clearNow()
-        await activityApi.cleanup()
-      }
       return null
     } finally {
       if (activityApi) {
