@@ -225,8 +225,44 @@ test('settings can change a representative preference and restore defaults', asy
   await page.keyboard.press('Space')
   await expect(confirmDeleteCheckbox).not.toBeChecked()
 
+  await filterInput.fill('high contrast')
+  const highContrastCheckbox = settingsModal.getByLabel('Boost contrast for UI elements')
+  await expect(highContrastCheckbox).not.toBeChecked()
+  await highContrastCheckbox.click()
+  await expect(highContrastCheckbox).toBeChecked()
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.highContrast))
+    .toBe('true')
+
+  await filterInput.fill('density')
+  await settingsModal.getByRole('button', { name: 'Cozy' }).click()
+  await page.getByRole('option', { name: 'Compact' }).click()
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        cozy: document.body.classList.contains('density-cozy'),
+        compact: document.body.classList.contains('density-compact'),
+      })),
+    )
+    .toEqual({ cozy: false, compact: true })
+
   await settingsModal.getByRole('button', { name: 'Restore defaults' }).click()
   await page.getByRole('button', { name: 'Restore defaults' }).last().click()
 
+  await filterInput.fill('confirm delete')
   await expect(confirmDeleteCheckbox).toBeChecked()
+  await filterInput.fill('high contrast')
+  await expect(highContrastCheckbox).not.toBeChecked()
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.highContrast))
+    .toBe('false')
+  await filterInput.fill('density')
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        cozy: document.body.classList.contains('density-cozy'),
+        compact: document.body.classList.contains('density-compact'),
+      })),
+    )
+    .toEqual({ cozy: true, compact: false })
 })
