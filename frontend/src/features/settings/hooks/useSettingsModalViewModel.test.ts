@@ -67,6 +67,42 @@ describe('createSettingsModalViewModel filtering', () => {
     expect(next.scrollbarWidth).toBe(DEFAULT_SETTINGS.scrollbarWidth)
   })
 
+  it('restoreDefaults resets the full settings object back to DEFAULT_SETTINGS', () => {
+    const vm = createSettingsModalViewModel(buildDeps())
+    let next: Settings = {
+      startDir: '/tmp/browsey',
+      defaultView: 'grid',
+      foldersFirst: false,
+      hiddenFilesLast: false,
+      showHidden: true,
+      confirmDelete: false,
+      sortField: 'size',
+      sortDirection: 'desc',
+      density: 'compact',
+      archiveName: 'Release',
+      archiveLevel: 9,
+      openDestAfterExtract: true,
+      videoThumbs: false,
+      cloudThumbs: true,
+      cloudEnabled: true,
+      hardwareAcceleration: true,
+      ffmpegPath: '/usr/local/bin/ffmpeg',
+      thumbCacheMb: 512,
+      mountsPollMs: 2400,
+      doubleClickMs: 450,
+      logLevel: 'info',
+      rclonePath: '/usr/local/bin/rclone',
+      highContrast: true,
+      scrollbarWidth: 14,
+    }
+
+    vm.restoreDefaults((value) => {
+      next = value
+    })
+
+    expect(next).toEqual(DEFAULT_SETTINGS)
+  })
+
   it('restoreDefaults can preserve the current filter when requested', () => {
     const vm = createSettingsModalViewModel(buildDeps())
     let next = { ...DEFAULT_SETTINGS, cloudEnabled: true }

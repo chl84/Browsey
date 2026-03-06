@@ -1,10 +1,16 @@
 use super::{
-    load_archive_name, load_cloud_enabled, load_cloud_thumbs, load_default_view, load_density,
-    load_double_click_ms, load_ffmpeg_path, load_hardware_acceleration, load_log_level,
-    load_mounts_poll_ms, load_rclone_path, load_scrollbar_width, load_sort_direction,
-    load_sort_field, store_cloud_enabled, store_cloud_thumbs, store_double_click_ms,
-    store_hardware_acceleration, store_log_level, store_mounts_poll_ms, store_rclone_path,
-    store_scrollbar_width,
+    load_archive_level, load_archive_name, load_cloud_enabled, load_cloud_thumbs,
+    load_confirm_delete, load_default_view, load_density, load_double_click_ms, load_ffmpeg_path,
+    load_folders_first, load_hardware_acceleration, load_hidden_files_last, load_high_contrast,
+    load_log_level, load_mounts_poll_ms, load_open_dest_after_extract, load_rclone_path,
+    load_scrollbar_width, load_show_hidden, load_sort_direction, load_sort_field, load_start_dir,
+    load_thumb_cache_mb, load_video_thumbs, store_archive_level, store_archive_name,
+    store_cloud_enabled, store_cloud_thumbs, store_confirm_delete, store_default_view,
+    store_density, store_double_click_ms, store_ffmpeg_path, store_folders_first,
+    store_hardware_acceleration, store_hidden_files_last, store_high_contrast, store_log_level,
+    store_mounts_poll_ms, store_open_dest_after_extract, store_rclone_path, store_scrollbar_width,
+    store_show_hidden, store_sort_direction, store_sort_field, store_start_dir,
+    store_thumb_cache_mb, store_video_thumbs,
 };
 use crate::commands::cloud::{
     cloud_dir_listing_cache_contains_for_tests,
@@ -360,5 +366,92 @@ fn trimmed_string_settings_normalize_when_loaded() {
     assert_eq!(
         load_ffmpeg_path().expect("load ffmpegPath"),
         Some("/usr/bin/ffmpeg".to_string())
+    );
+}
+
+#[test]
+fn linux_settings_surface_roundtrips_through_backend_commands() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+
+    store_show_hidden(true).expect("store showHidden");
+    store_hidden_files_last(true).expect("store hiddenFilesLast");
+    store_high_contrast(true).expect("store highContrast");
+    store_folders_first(false).expect("store foldersFirst");
+    store_default_view("grid".to_string()).expect("store defaultView");
+    store_start_dir("/tmp/browsey".to_string()).expect("store startDir");
+    store_confirm_delete(false).expect("store confirmDelete");
+    store_sort_field("size".to_string()).expect("store sortField");
+    store_sort_direction("desc".to_string()).expect("store sortDirection");
+    store_archive_name("Release.zip".to_string()).expect("store archiveName");
+    store_density("compact".to_string()).expect("store density");
+    store_archive_level(9).expect("store archiveLevel");
+    store_open_dest_after_extract(true).expect("store openDestAfterExtract");
+    store_video_thumbs(false).expect("store videoThumbs");
+    store_cloud_thumbs(true).expect("store cloudThumbs");
+    store_cloud_enabled(true).expect("store cloudEnabled");
+    store_hardware_acceleration(true).expect("store hardwareAcceleration");
+    store_ffmpeg_path("  /usr/local/bin/ffmpeg  ".to_string()).expect("store ffmpegPath");
+    store_thumb_cache_mb(512).expect("store thumbCacheMb");
+    store_mounts_poll_ms(2400).expect("store mountsPollMs");
+    store_double_click_ms(450).expect("store doubleClickMs");
+    store_scrollbar_width(14).expect("store scrollbarWidth");
+    store_rclone_path("  /usr/local/bin/rclone  ".to_string()).expect("store rclonePath");
+
+    assert_eq!(load_show_hidden().expect("load showHidden"), Some(true));
+    assert_eq!(
+        load_hidden_files_last().expect("load hiddenFilesLast"),
+        Some(true)
+    );
+    assert_eq!(load_high_contrast().expect("load highContrast"), Some(true));
+    assert_eq!(load_folders_first().expect("load foldersFirst"), Some(false));
+    assert_eq!(
+        load_default_view().expect("load defaultView"),
+        Some("grid".to_string())
+    );
+    assert_eq!(
+        load_start_dir().expect("load startDir"),
+        Some("/tmp/browsey".to_string())
+    );
+    assert_eq!(
+        load_confirm_delete().expect("load confirmDelete"),
+        Some(false)
+    );
+    assert_eq!(
+        load_sort_field().expect("load sortField"),
+        Some("size".to_string())
+    );
+    assert_eq!(
+        load_sort_direction().expect("load sortDirection"),
+        Some("desc".to_string())
+    );
+    assert_eq!(
+        load_archive_name().expect("load archiveName"),
+        Some("Release".to_string())
+    );
+    assert_eq!(load_density().expect("load density"), Some("compact".to_string()));
+    assert_eq!(load_archive_level().expect("load archiveLevel"), Some(9));
+    assert_eq!(
+        load_open_dest_after_extract().expect("load openDestAfterExtract"),
+        Some(true)
+    );
+    assert_eq!(load_video_thumbs().expect("load videoThumbs"), Some(false));
+    assert_eq!(load_cloud_thumbs().expect("load cloudThumbs"), Some(true));
+    assert_eq!(load_cloud_enabled().expect("load cloudEnabled"), Some(true));
+    assert_eq!(
+        load_hardware_acceleration().expect("load hardwareAcceleration"),
+        Some(true)
+    );
+    assert_eq!(
+        load_ffmpeg_path().expect("load ffmpegPath"),
+        Some("/usr/local/bin/ffmpeg".to_string())
+    );
+    assert_eq!(load_thumb_cache_mb().expect("load thumbCacheMb"), Some(512));
+    assert_eq!(load_mounts_poll_ms().expect("load mountsPollMs"), Some(2400));
+    assert_eq!(load_double_click_ms().expect("load doubleClickMs"), Some(450));
+    assert_eq!(load_scrollbar_width().expect("load scrollbarWidth"), Some(14));
+    assert_eq!(
+        load_rclone_path().expect("load rclonePath"),
+        Some("/usr/local/bin/rclone".to_string())
     );
 }

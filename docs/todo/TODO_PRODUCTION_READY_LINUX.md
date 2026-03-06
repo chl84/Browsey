@@ -59,7 +59,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
   - [ ] or cloud enters the Linux 1.0 support matrix with provider-specific acceptance coverage
 
 ## 6. Stabilize settings and persistence
-- [ ] Test all settings for roundtrip and restore-defaults behavior
+- [x] Test all settings for roundtrip and restore-defaults behavior
 - [x] Confirm settings changes do not require restart unless explicitly documented
 - [x] Remove or clarify settings that still feel internal or under-explained
 - [ ] Verify persisted settings migration across app versions
