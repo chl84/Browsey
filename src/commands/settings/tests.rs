@@ -339,15 +339,20 @@ fn enum_settings_ignore_legacy_invalid_values() {
     let _data_home = temp_data_home_guard();
     let conn = crate::db::open().expect("open settings db");
 
-    crate::db::set_setting_string(&conn, "defaultView", "columns").expect("seed invalid defaultView");
+    crate::db::set_setting_string(&conn, "defaultView", "columns")
+        .expect("seed invalid defaultView");
     crate::db::set_setting_string(&conn, "density", "roomy").expect("seed invalid density");
     crate::db::set_setting_string(&conn, "sortField", "ctime").expect("seed invalid sortField");
-    crate::db::set_setting_string(&conn, "sortDirection", "up").expect("seed invalid sortDirection");
+    crate::db::set_setting_string(&conn, "sortDirection", "up")
+        .expect("seed invalid sortDirection");
 
     assert_eq!(load_default_view().expect("load invalid defaultView"), None);
     assert_eq!(load_density().expect("load invalid density"), None);
     assert_eq!(load_sort_field().expect("load invalid sortField"), None);
-    assert_eq!(load_sort_direction().expect("load invalid sortDirection"), None);
+    assert_eq!(
+        load_sort_direction().expect("load invalid sortDirection"),
+        None
+    );
 }
 
 #[test]
@@ -404,7 +409,10 @@ fn linux_settings_surface_roundtrips_through_backend_commands() {
         Some(true)
     );
     assert_eq!(load_high_contrast().expect("load highContrast"), Some(true));
-    assert_eq!(load_folders_first().expect("load foldersFirst"), Some(false));
+    assert_eq!(
+        load_folders_first().expect("load foldersFirst"),
+        Some(false)
+    );
     assert_eq!(
         load_default_view().expect("load defaultView"),
         Some("grid".to_string())
@@ -429,7 +437,10 @@ fn linux_settings_surface_roundtrips_through_backend_commands() {
         load_archive_name().expect("load archiveName"),
         Some("Release".to_string())
     );
-    assert_eq!(load_density().expect("load density"), Some("compact".to_string()));
+    assert_eq!(
+        load_density().expect("load density"),
+        Some("compact".to_string())
+    );
     assert_eq!(load_archive_level().expect("load archiveLevel"), Some(9));
     assert_eq!(
         load_open_dest_after_extract().expect("load openDestAfterExtract"),
@@ -447,9 +458,18 @@ fn linux_settings_surface_roundtrips_through_backend_commands() {
         Some("/usr/local/bin/ffmpeg".to_string())
     );
     assert_eq!(load_thumb_cache_mb().expect("load thumbCacheMb"), Some(512));
-    assert_eq!(load_mounts_poll_ms().expect("load mountsPollMs"), Some(2400));
-    assert_eq!(load_double_click_ms().expect("load doubleClickMs"), Some(450));
-    assert_eq!(load_scrollbar_width().expect("load scrollbarWidth"), Some(14));
+    assert_eq!(
+        load_mounts_poll_ms().expect("load mountsPollMs"),
+        Some(2400)
+    );
+    assert_eq!(
+        load_double_click_ms().expect("load doubleClickMs"),
+        Some(450)
+    );
+    assert_eq!(
+        load_scrollbar_width().expect("load scrollbarWidth"),
+        Some(14)
+    );
     assert_eq!(
         load_rclone_path().expect("load rclonePath"),
         Some("/usr/local/bin/rclone".to_string())
@@ -470,8 +490,7 @@ fn settings_migration_normalizes_and_prunes_legacy_values() {
         .expect("seed ffmpegPath");
     crate::db::set_setting_string(&conn, "rclonePath", "  /usr/bin/rclone  ")
         .expect("seed rclonePath");
-    crate::db::set_setting_string(&conn, "logLevel", " INFO ")
-        .expect("seed logLevel");
+    crate::db::set_setting_string(&conn, "logLevel", " INFO ").expect("seed logLevel");
     crate::db::set_setting_string(&conn, "density", "roomy").expect("seed invalid density");
     crate::db::set_setting_string(&conn, "showHidden", "yes").expect("seed invalid bool");
     crate::db::set_setting_string(&conn, "thumbCacheMb", " 512 ").expect("seed thumbCacheMb");

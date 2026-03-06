@@ -114,13 +114,17 @@ impl From<crate::fs_utils::FsUtilsError> for DuplicatesError {
 
 impl From<crate::commands::fs::FsError> for DuplicatesError {
     fn from(error: crate::commands::fs::FsError) -> Self {
-        let code = match error.code_str() {
-            "invalid_input" => DuplicatesErrorCode::InvalidInput,
-            "path_not_absolute" => DuplicatesErrorCode::PathNotAbsolute,
-            "invalid_path" => DuplicatesErrorCode::InvalidPath,
-            "not_found" => DuplicatesErrorCode::NotFound,
-            "permission_denied" => DuplicatesErrorCode::PermissionDenied,
-            "task_failed" => DuplicatesErrorCode::TaskFailed,
+        let code = match error.code() {
+            crate::commands::fs::FsErrorCode::InvalidInput => DuplicatesErrorCode::InvalidInput,
+            crate::commands::fs::FsErrorCode::PathNotAbsolute => {
+                DuplicatesErrorCode::PathNotAbsolute
+            }
+            crate::commands::fs::FsErrorCode::InvalidPath => DuplicatesErrorCode::InvalidPath,
+            crate::commands::fs::FsErrorCode::NotFound => DuplicatesErrorCode::NotFound,
+            crate::commands::fs::FsErrorCode::PermissionDenied => {
+                DuplicatesErrorCode::PermissionDenied
+            }
+            crate::commands::fs::FsErrorCode::TaskFailed => DuplicatesErrorCode::TaskFailed,
             _ => DuplicatesErrorCode::UnknownError,
         };
         Self::new(code, error.to_string())

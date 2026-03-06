@@ -1,6 +1,6 @@
 use crate::errors::{
     api_error::ApiResult,
-    domain::{self, DomainError, ErrorCode},
+    domain::{self, classify_io_error, DomainError, ErrorCode, IoErrorHint},
 };
 use std::fmt;
 
@@ -57,12 +57,30 @@ impl ClipboardError {
         Self::new(ClipboardErrorCode::InvalidInput, message)
     }
 
+    pub(crate) fn from_io_error(
+        fallback: ClipboardErrorCode,
+        context: &str,
+        error: std::io::Error,
+    ) -> Self {
+        let code = match classify_io_error(&error) {
+            IoErrorHint::NotFound => ClipboardErrorCode::NotFound,
+            IoErrorHint::AlreadyExists => ClipboardErrorCode::DestinationExists,
+            IoErrorHint::InvalidInput => ClipboardErrorCode::InvalidInput,
+            _ => fallback,
+        };
+        Self::new(code, format!("{context}: {error}"))
+    }
+
     pub(crate) fn cancelled() -> Self {
         Self::new(ClipboardErrorCode::Cancelled, "Copy cancelled")
     }
 
     pub(crate) fn code(&self) -> ClipboardErrorCode {
         self.code
+    }
+
+    pub(crate) fn with_context(self, context: impl AsRef<str>) -> Self {
+        Self::new(self.code, format!("{}: {}", context.as_ref(), self.message))
     }
 }
 
@@ -142,6 +160,14 @@ mod tests {
     fn maps_undo_target_exists_to_destination_exists_even_with_misleading_message() {
         let undo = UndoError::new(UndoErrorCode::TargetExists, "permission denied");
         let clipboard: ClipboardError = undo.into();
+        assert_eq!(clipboard.code(), ClipboardErrorCode::DestinationExists);
+    }
+
+    #[test]
+    fn maps_io_already_exists_to_destination_exists() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::AlreadyExists, "exists");
+        let clipboard =
+            ClipboardError::from_io_error(ClipboardErrorCode::IoError, "copy failed", io_error);
         assert_eq!(clipboard.code(), ClipboardErrorCode::DestinationExists);
     }
 }

@@ -206,7 +206,8 @@ mod tests {
                 "unexpected terminal candidate: {bin}"
             );
             assert!(
-                args.iter().any(|arg| arg == dir || arg.ends_with(&format!("={dir}"))),
+                args.iter()
+                    .any(|arg| arg == dir || arg.ends_with(&format!("={dir}"))),
                 "candidate {bin:?} did not propagate working directory: {args:?}"
             );
         }

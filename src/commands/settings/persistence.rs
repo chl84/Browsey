@@ -77,7 +77,10 @@ pub(super) fn load_bounded_i64_setting(
 }
 
 fn run_settings_migrations(conn: &mut rusqlite::Connection) -> SettingsResult<()> {
-    let version = map_settings_result(crate::db::get_setting_string(conn, SETTINGS_SCHEMA_VERSION_KEY))?;
+    let version = map_settings_result(crate::db::get_setting_string(
+        conn,
+        SETTINGS_SCHEMA_VERSION_KEY,
+    ))?;
     if version.as_deref() == Some(CURRENT_SETTINGS_SCHEMA_VERSION) {
         return Ok(());
     }
@@ -87,12 +90,10 @@ fn run_settings_migrations(conn: &mut rusqlite::Connection) -> SettingsResult<()
         return Ok(());
     }
 
-    let tx = conn
-        .transaction()
-        .map_err(map_db_error_from_sqlite(
-            error::SettingsErrorCode::DbWriteFailed,
-            "Failed to start settings migration transaction",
-        ))?;
+    let tx = conn.transaction().map_err(map_db_error_from_sqlite(
+        error::SettingsErrorCode::DbWriteFailed,
+        "Failed to start settings migration transaction",
+    ))?;
 
     for op in ops {
         match op {
@@ -107,11 +108,14 @@ fn run_settings_migrations(conn: &mut rusqlite::Connection) -> SettingsResult<()
                 ))?;
             }
             SettingsMigrationOp::Delete { key } => {
-                tx.execute("DELETE FROM settings WHERE key = ?1", rusqlite::params![key])
-                    .map_err(map_db_error_from_sqlite(
-                        error::SettingsErrorCode::DbWriteFailed,
-                        format!("Failed to prune legacy setting {key}"),
-                    ))?;
+                tx.execute(
+                    "DELETE FROM settings WHERE key = ?1",
+                    rusqlite::params![key],
+                )
+                .map_err(map_db_error_from_sqlite(
+                    error::SettingsErrorCode::DbWriteFailed,
+                    format!("Failed to prune legacy setting {key}"),
+                ))?;
             }
         }
     }
@@ -142,21 +146,51 @@ fn collect_settings_v1_migration_ops(
 ) -> SettingsResult<Vec<SettingsMigrationOp>> {
     let mut ops = Vec::new();
 
-    migrate_with_normalizer(conn, &mut ops, "startDir", normalize_trimmed_preserving_nonempty)?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "startDir",
+        normalize_trimmed_preserving_nonempty,
+    )?;
     migrate_with_normalizer(conn, &mut ops, "archiveName", normalize_archive_name)?;
-    migrate_with_normalizer(conn, &mut ops, "ffmpegPath", normalize_trimmed_preserving_nonempty)?;
-    migrate_with_normalizer(conn, &mut ops, "rclonePath", normalize_trimmed_preserving_nonempty)?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "ffmpegPath",
+        normalize_trimmed_preserving_nonempty,
+    )?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "rclonePath",
+        normalize_trimmed_preserving_nonempty,
+    )?;
     migrate_with_normalizer(conn, &mut ops, "logLevel", normalize_log_level_owned)?;
 
-    migrate_with_normalizer(conn, &mut ops, "defaultView", enum_normalizer(&["list", "grid"]))?;
-    migrate_with_normalizer(conn, &mut ops, "density", enum_normalizer(&["cozy", "compact"]))?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "defaultView",
+        enum_normalizer(&["list", "grid"]),
+    )?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "density",
+        enum_normalizer(&["cozy", "compact"]),
+    )?;
     migrate_with_normalizer(
         conn,
         &mut ops,
         "sortField",
         enum_normalizer(&["name", "type", "modified", "size"]),
     )?;
-    migrate_with_normalizer(conn, &mut ops, "sortDirection", enum_normalizer(&["asc", "desc"]))?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "sortDirection",
+        enum_normalizer(&["asc", "desc"]),
+    )?;
 
     for key in [
         "showHidden",
@@ -173,11 +207,36 @@ fn collect_settings_v1_migration_ops(
         migrate_with_normalizer(conn, &mut ops, key, normalize_bool_string)?;
     }
 
-    migrate_with_normalizer(conn, &mut ops, "archiveLevel", bounded_i64_normalizer(0..=9))?;
-    migrate_with_normalizer(conn, &mut ops, "thumbCacheMb", bounded_i64_normalizer(50..=1000))?;
-    migrate_with_normalizer(conn, &mut ops, "mountsPollMs", bounded_i64_normalizer(500..=10000))?;
-    migrate_with_normalizer(conn, &mut ops, "doubleClickMs", bounded_i64_normalizer(150..=600))?;
-    migrate_with_normalizer(conn, &mut ops, "scrollbarWidth", bounded_i64_normalizer(6..=16))?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "archiveLevel",
+        bounded_i64_normalizer(0..=9),
+    )?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "thumbCacheMb",
+        bounded_i64_normalizer(50..=1000),
+    )?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "mountsPollMs",
+        bounded_i64_normalizer(500..=10000),
+    )?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "doubleClickMs",
+        bounded_i64_normalizer(150..=600),
+    )?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "scrollbarWidth",
+        bounded_i64_normalizer(6..=16),
+    )?;
 
     Ok(ops)
 }
@@ -230,9 +289,7 @@ fn normalize_bool_string(raw: &str) -> Option<String> {
     }
 }
 
-fn bounded_i64_normalizer(
-    range: RangeInclusive<i64>,
-) -> impl Fn(&str) -> Option<String> {
+fn bounded_i64_normalizer(range: RangeInclusive<i64>) -> impl Fn(&str) -> Option<String> {
     move |raw: &str| {
         let value = raw.trim().parse::<i64>().ok()?;
         if range.contains(&value) {
@@ -243,9 +300,7 @@ fn bounded_i64_normalizer(
     }
 }
 
-fn enum_normalizer<'a>(
-    allowed: &'a [&'a str],
-) -> impl Fn(&str) -> Option<String> + 'a {
+fn enum_normalizer<'a>(allowed: &'a [&'a str]) -> impl Fn(&str) -> Option<String> + 'a {
     move |raw: &str| {
         let trimmed = raw.trim();
         if allowed.contains(&trimmed) {
@@ -267,9 +322,7 @@ fn map_db_error_from_sqlite(
                 rusqlite::ffi::ErrorCode::PermissionDenied => {
                     error::SettingsErrorCode::PermissionDenied
                 }
-                rusqlite::ffi::ErrorCode::ReadOnly => {
-                    error::SettingsErrorCode::ReadOnlyFilesystem
-                }
+                rusqlite::ffi::ErrorCode::ReadOnly => error::SettingsErrorCode::ReadOnlyFilesystem,
                 rusqlite::ffi::ErrorCode::CannotOpen => error::SettingsErrorCode::DbOpenFailed,
                 _ => fallback,
             },

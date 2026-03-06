@@ -70,11 +70,12 @@ impl DomainError for SearchError {
 
 impl From<crate::commands::fs::FsError> for SearchError {
     fn from(error: crate::commands::fs::FsError) -> Self {
-        let code = match error.code_str() {
-            "invalid_input" => SearchErrorCode::InvalidInput,
-            "invalid_path" | "path_not_absolute" => SearchErrorCode::InvalidPath,
-            "not_found" => SearchErrorCode::NotFound,
-            "task_failed" => SearchErrorCode::TaskFailed,
+        let code = match error.code() {
+            crate::commands::fs::FsErrorCode::InvalidInput => SearchErrorCode::InvalidInput,
+            crate::commands::fs::FsErrorCode::InvalidPath
+            | crate::commands::fs::FsErrorCode::PathNotAbsolute => SearchErrorCode::InvalidPath,
+            crate::commands::fs::FsErrorCode::NotFound => SearchErrorCode::NotFound,
+            crate::commands::fs::FsErrorCode::TaskFailed => SearchErrorCode::TaskFailed,
             _ => SearchErrorCode::UnknownError,
         };
         Self::new(code, error.to_string())

@@ -48,8 +48,9 @@ fn launch_desktop_entry(target: &Path, entry: &DesktopEntry) -> OpenWithResult<(
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .args(&args);
-    spawn_detached(cmd)
-        .map_err(|error| OpenWithError::launch_failed(format!("Failed to launch {}: {error}", entry.name)))
+    spawn_detached(cmd).map_err(|error| {
+        OpenWithError::launch_failed(format!("Failed to launch {}: {error}", entry.name))
+    })
 }
 
 #[derive(Clone)]

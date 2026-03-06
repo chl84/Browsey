@@ -101,13 +101,15 @@ impl From<crate::fs_utils::FsUtilsError> for ListingError {
 
 impl From<crate::commands::fs::FsError> for ListingError {
     fn from(error: crate::commands::fs::FsError) -> Self {
-        let code = match error.code_str() {
-            "invalid_input" => ListingErrorCode::InvalidInput,
-            "path_not_absolute" => ListingErrorCode::PathNotAbsolute,
-            "invalid_path" => ListingErrorCode::InvalidPath,
-            "not_found" => ListingErrorCode::NotFound,
-            "permission_denied" => ListingErrorCode::PermissionDenied,
-            "task_failed" => ListingErrorCode::TaskFailed,
+        let code = match error.code() {
+            crate::commands::fs::FsErrorCode::InvalidInput => ListingErrorCode::InvalidInput,
+            crate::commands::fs::FsErrorCode::PathNotAbsolute => ListingErrorCode::PathNotAbsolute,
+            crate::commands::fs::FsErrorCode::InvalidPath => ListingErrorCode::InvalidPath,
+            crate::commands::fs::FsErrorCode::NotFound => ListingErrorCode::NotFound,
+            crate::commands::fs::FsErrorCode::PermissionDenied => {
+                ListingErrorCode::PermissionDenied
+            }
+            crate::commands::fs::FsErrorCode::TaskFailed => ListingErrorCode::TaskFailed,
             _ => ListingErrorCode::UnknownError,
         };
         Self::new(code, error.to_string())
@@ -162,8 +164,11 @@ mod tests {
     #[test]
     fn maps_io_error_to_listing_permission_denied_without_message_reclassification() {
         let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
-        let error =
-            ListingError::from_io_error(super::ListingErrorCode::UnknownError, "read_dir failed", io_error);
+        let error = ListingError::from_io_error(
+            super::ListingErrorCode::UnknownError,
+            "read_dir failed",
+            io_error,
+        );
         assert_eq!(error.code_str(), "permission_denied");
         assert_eq!(error.message(), "read_dir failed: denied");
     }

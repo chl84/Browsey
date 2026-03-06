@@ -7,9 +7,7 @@ use tracing::{debug, warn};
 
 use crate::{
     fs_utils::{check_no_symlink_components, sanitize_path_nofollow},
-    undo::{
-        apply_ownership, ownership_snapshot, set_ownership_nofollow, UndoError, UndoErrorCode,
-    },
+    undo::{apply_ownership, ownership_snapshot, set_ownership_nofollow, UndoError, UndoErrorCode},
 };
 
 use super::super::{

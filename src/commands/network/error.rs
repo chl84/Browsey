@@ -81,8 +81,8 @@ impl From<crate::watcher::WatcherError> for NetworkError {
 
 impl From<crate::commands::fs::FsError> for NetworkError {
     fn from(error: crate::commands::fs::FsError) -> Self {
-        let code = match error.code_str_value() {
-            "task_failed" => NetworkErrorCode::TaskFailed,
+        let code = match error.code() {
+            crate::commands::fs::FsErrorCode::TaskFailed => NetworkErrorCode::TaskFailed,
             _ => NetworkErrorCode::EjectFailed,
         };
         Self::new(code, error.message())
