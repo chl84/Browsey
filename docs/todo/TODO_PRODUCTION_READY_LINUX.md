@@ -112,12 +112,12 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [ ] Ensure logs are useful for real support/debug cases
 - [ ] Remove or reduce noisy low-value logging
 - [ ] Ensure error surfaces show user-facing language rather than internal phrasing
-- [ ] Define a minimal Linux bug-report template:
-  - [ ] distro
-  - [ ] desktop/session
-  - [ ] Browsey version
-  - [ ] logs
-  - [ ] repro steps
+- [x] Define a minimal Linux bug-report template:
+  - [x] distro
+  - [x] desktop/session
+  - [x] Browsey version
+  - [x] logs
+  - [x] repro steps
 
 ## 11. Bring docs to 1.0 level
 - [ ] Update README to reflect the actual Linux stability level

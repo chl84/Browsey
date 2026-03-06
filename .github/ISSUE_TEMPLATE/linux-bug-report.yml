@@ -1,0 +1,73 @@
+name: Linux Bug Report
+description: Report a Linux issue on the supported Browsey Linux target surface.
+title: "[Linux Bug] "
+labels:
+  - bug
+  - linux
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for Browsey Linux issues.
+
+        Supported Linux 1.0 target surface currently centers on Fedora Workstation and Ubuntu LTS on GNOME Wayland. If you are reporting outside that surface, still file the issue, but call it out clearly below.
+
+  - type: input
+    id: distro
+    attributes:
+      label: Distro
+      description: For example Fedora 43 or Ubuntu 24.04 LTS.
+      placeholder: Fedora 43
+    validations:
+      required: true
+
+  - type: input
+    id: desktop_session
+    attributes:
+      label: Desktop / session
+      description: For example GNOME Wayland, GNOME X11, KDE Plasma Wayland.
+      placeholder: GNOME Wayland
+    validations:
+      required: true
+
+  - type: input
+    id: browsey_version
+    attributes:
+      label: Browsey version
+      description: Include the release version or commit SHA if testing a dev build.
+      placeholder: v0.1.0 or 1234abcd
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste relevant logs, console output, or links to attached logs/screenshots.
+      placeholder: Paste logs here
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro_steps
+    attributes:
+      label: Repro steps
+      description: List the shortest reliable steps to reproduce the issue.
+      placeholder: |
+        1. Open Browsey
+        2. Navigate to ...
+        3. Click ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected vs actual behavior
+      description: Describe what you expected and what happened instead.
+      placeholder: |
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
