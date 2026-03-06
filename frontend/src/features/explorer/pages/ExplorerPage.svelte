@@ -288,6 +288,7 @@
     openDestAfterExtract,
     videoThumbs,
     cloudThumbs,
+    cloudEnabled,
     hardwareAcceleration,
     ffmpegPath,
     thumbCacheMb,
@@ -312,6 +313,7 @@
     setVideoThumbsPref,
     toggleCloudThumbs,
     setCloudThumbsPref,
+    setCloudEnabledPref,
     setHardwareAccelerationPref,
     setFfmpegPathPref,
     setThumbCachePref,
@@ -1687,6 +1689,7 @@
     setOpenDestAfterExtractPref(defaults.openDestAfterExtract)
     setVideoThumbsPref(defaults.videoThumbs)
     setCloudThumbsPref(defaults.cloudThumbs)
+    await setCloudEnabledPref(defaults.cloudEnabled)
     setHardwareAccelerationPref(defaults.hardwareAcceleration)
     setFfmpegPathPref(defaults.ffmpegPath)
     setThumbCachePref(defaults.thumbCacheMb)
@@ -1857,6 +1860,7 @@
     openDestAfterExtract: $openDestAfterExtract,
     videoThumbs: $videoThumbs,
     cloudThumbs: $cloudThumbs,
+    cloudEnabled: $cloudEnabled,
     hardwareAcceleration: $hardwareAcceleration,
     ffmpegPath: $ffmpegPath,
     thumbCacheMb: $thumbCacheMb,
@@ -1882,6 +1886,7 @@
     onToggleOpenDestAfterExtract: toggleOpenDestAfterExtract,
     onToggleVideoThumbs: toggleVideoThumbs,
     onToggleCloudThumbs: toggleCloudThumbs,
+    onToggleCloudEnabled: setCloudEnabledPref,
     onToggleHardwareAcceleration: setHardwareAccelerationPref,
     onChangeFfmpegPath: setFfmpegPathPref,
     onChangeThumbCacheMb: setThumbCachePref,

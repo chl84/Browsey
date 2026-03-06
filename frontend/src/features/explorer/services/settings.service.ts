@@ -79,6 +79,11 @@ export const loadCloudThumbs = () => invoke<boolean | null>('load_cloud_thumbs')
 export const storeCloudThumbs = (value: boolean) =>
   invoke<void>('store_cloud_thumbs', { value })
 
+export const loadCloudEnabled = () => invoke<boolean | null>('load_cloud_enabled')
+
+export const storeCloudEnabled = (value: boolean) =>
+  invoke<void>('store_cloud_enabled', { value })
+
 export const loadHardwareAcceleration = () =>
   invoke<boolean | null>('load_hardware_acceleration')
 

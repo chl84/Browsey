@@ -55,6 +55,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     openDestAfterExtract,
     videoThumbs,
     cloudThumbs,
+    cloudEnabled,
     hardwareAcceleration,
     ffmpegPath,
     thumbCacheMb,
@@ -116,15 +117,15 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   const networkNoticeForCloudSetup = (status: CloudSetupStatus) => {
     switch (status.state) {
       case 'binary_missing':
-        return 'Cloud folders are unavailable. Install rclone or set Rclone path in Settings > Advanced.'
+        return 'Cloud folders are unavailable. Install rclone or set Rclone path in Settings > Cloud.'
       case 'invalid_binary_path':
-        return 'Cloud folders are unavailable. Fix the Rclone path in Settings > Advanced.'
+        return 'Cloud folders are unavailable. Fix the Rclone path in Settings > Cloud.'
       case 'config_read_failed':
-        return 'Cloud folders are unavailable because Browsey could not read the saved rclone setting. Check Settings > Advanced.'
+        return 'Cloud folders are unavailable because Browsey could not read the saved rclone setting. Check Settings > Cloud.'
       case 'runtime_unusable':
-        return 'Cloud folders are unavailable. Update rclone, then check Settings > Advanced.'
+        return 'Cloud folders are unavailable. Update rclone, then check Settings > Cloud.'
       case 'no_supported_remotes':
-        return 'Cloud folders are not configured yet. Run `rclone config`, then check Settings > Advanced.'
+        return 'Cloud folders are not configured yet. Run `rclone config`, then check Settings > Cloud.'
       default:
         return ''
     }
@@ -132,6 +133,9 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
 
   const refreshNetworkNotice = async (networkEntries: Entry[]) => {
     networkNotice.set('')
+    if (!get(cloudEnabled)) {
+      return
+    }
     const hasCloudEntries = networkEntries.some((entry) => isCloudDirectoryPath(entry.path))
     if (hasCloudEntries) {
       return
@@ -244,7 +248,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     try {
       const mounts = await listMounts()
       partitions.set(mounts)
-      const networkEntries = await listNetworkEntries(options.forceRefresh === true)
+      const listedNetworkEntries = await listNetworkEntries(options.forceRefresh === true)
+      const networkEntries = get(cloudEnabled)
+        ? listedNetworkEntries
+        : listedNetworkEntries.filter((entry) => !isCloudDirectoryPath(entry.path))
       current.set('Network')
       entries.set(sortExplorerEntriesInMemory(networkEntries, sortPayload()))
       await refreshNetworkNotice(networkEntries)
@@ -579,6 +586,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadOpenDestAfterExtractPref,
     loadVideoThumbsPref,
     loadCloudThumbsPref,
+    loadCloudEnabledPref,
     loadHardwareAccelerationPref,
     loadFfmpegPathPref,
     loadThumbCachePref,
@@ -590,6 +598,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     setVideoThumbsPref,
     toggleCloudThumbs,
     setCloudThumbsPref,
+    setCloudEnabledPref,
     setHardwareAccelerationPref,
     setFfmpegPathPref,
     setThumbCachePref,
@@ -621,6 +630,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       openDestAfterExtract,
       videoThumbs,
       cloudThumbs,
+      cloudEnabled,
       hardwareAcceleration,
       ffmpegPath,
       thumbCacheMb,
@@ -661,6 +671,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     openDestAfterExtract,
     videoThumbs,
     cloudThumbs,
+    cloudEnabled,
     highContrast,
     hardwareAcceleration,
     ffmpegPath,
@@ -722,6 +733,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadOpenDestAfterExtractPref,
     loadVideoThumbsPref,
     loadCloudThumbsPref,
+    loadCloudEnabledPref,
     loadHardwareAccelerationPref,
     loadFfmpegPathPref,
     loadThumbCachePref,
@@ -740,6 +752,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     setVideoThumbsPref,
     toggleCloudThumbs,
     setCloudThumbsPref,
+    setCloudEnabledPref,
     setHardwareAccelerationPref,
     setFfmpegPathPref,
     setThumbCachePref,

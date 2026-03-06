@@ -3,6 +3,7 @@ import type { DefaultSortField, Density, SortDirection } from '../model/types'
 import {
   loadArchiveLevel,
   loadArchiveName,
+  loadCloudEnabled,
   loadConfirmDelete,
   loadDensity,
   loadDoubleClickMs,
@@ -25,6 +26,7 @@ import {
   loadCloudThumbs,
   storeArchiveLevel,
   storeArchiveName,
+  storeCloudEnabled,
   storeConfirmDelete,
   storeDensity,
   storeDoubleClickMs,
@@ -65,6 +67,7 @@ type PreferenceSliceDeps = Pick<
   | 'openDestAfterExtract'
   | 'videoThumbs'
   | 'cloudThumbs'
+  | 'cloudEnabled'
   | 'hardwareAcceleration'
   | 'ffmpegPath'
   | 'thumbCacheMb'
@@ -101,6 +104,7 @@ export const createPreferenceSlice = (
     openDestAfterExtract,
     videoThumbs,
     cloudThumbs,
+    cloudEnabled,
     hardwareAcceleration,
     ffmpegPath,
     thumbCacheMb,
@@ -350,6 +354,17 @@ export const createPreferenceSlice = (
     }
   }
 
+  const loadCloudEnabledPref = async () => {
+    try {
+      const saved = await loadCloudEnabled()
+      if (typeof saved === 'boolean') {
+        cloudEnabled.set(saved)
+      }
+    } catch (err) {
+      console.error('Failed to load cloudEnabled setting', err)
+    }
+  }
+
   const loadHardwareAccelerationPref = async () => {
     try {
       const saved = await loadHardwareAcceleration()
@@ -436,6 +451,11 @@ export const createPreferenceSlice = (
   const setCloudThumbsPref = (value: boolean) => {
     cloudThumbs.set(value)
     void storeCloudThumbs(value)
+  }
+
+  const setCloudEnabledPref = async (value: boolean) => {
+    cloudEnabled.set(value)
+    await storeCloudEnabled(value)
   }
 
   const setHardwareAccelerationPref = (value: boolean) => {
@@ -579,6 +599,7 @@ export const createPreferenceSlice = (
     loadOpenDestAfterExtractPref,
     loadVideoThumbsPref,
     loadCloudThumbsPref,
+    loadCloudEnabledPref,
     loadHardwareAccelerationPref,
     loadFfmpegPathPref,
     loadThumbCachePref,
@@ -590,6 +611,7 @@ export const createPreferenceSlice = (
     setVideoThumbsPref,
     toggleCloudThumbs,
     setCloudThumbsPref,
+    setCloudEnabledPref,
     setHardwareAccelerationPref,
     setFfmpegPathPref,
     setThumbCachePref,
