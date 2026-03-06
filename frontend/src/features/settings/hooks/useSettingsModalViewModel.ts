@@ -32,7 +32,9 @@ type FilterModel = {
   showInteraction: boolean
   showData: boolean
   showAccessibility: boolean
+  showCloud: boolean
   showAdvanced: boolean
+  showCloudEnabledRow: boolean
   showDefaultViewRow: boolean
   showFoldersFirstRow: boolean
   showShowHiddenRow: boolean
@@ -342,7 +344,20 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     const clearRecentsTexts = rowTexts('clear recents', 'clear')
     const highContrastTexts = rowTexts('high contrast', 'boost contrast for ui elements')
     const scrollbarWidthTexts = rowTexts('scrollbar width', `${settings.scrollbarWidth} px`, settings.scrollbarWidth)
-    const rclonePathTexts = rowTexts('rclone path', settings.rclonePath || 'auto-detect if empty', 'rclone')
+    const cloudEnabledTexts = rowTexts(
+      'cloud',
+      'enable cloud',
+      'cloud folders',
+      'rclone',
+      settings.cloudEnabled ? 'on' : 'off',
+    )
+    const rclonePathTexts = rowTexts(
+      'cloud',
+      'cloud setup',
+      'rclone path',
+      settings.rclonePath || 'auto-detect if empty',
+      'rclone',
+    )
     const logLevelTexts = rowTexts('log level', 'error', 'warn', 'info', 'debug', settings.logLevel)
 
     const showDefaultViewRow = rowMatches(n, defaultViewTexts)
@@ -367,6 +382,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     const showDoubleClickRow = rowMatches(n, doubleClickTexts)
     const showHighContrastRow = rowMatches(n, highContrastTexts)
     const showScrollbarWidthRow = rowMatches(n, scrollbarWidthTexts)
+    const showCloudEnabledRow = rowMatches(n, cloudEnabledTexts)
     const showRclonePathRow = rowMatches(n, rclonePathTexts)
     const showLogLevelRow = rowMatches(n, logLevelTexts)
 
@@ -397,7 +413,9 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       showInteraction: rowMatches(n, [...doubleClickTexts]),
       showData: rowMatches(n, [...clearThumbTexts, ...clearStarsTexts, ...clearBookmarksTexts, ...clearRecentsTexts]),
       showAccessibility: rowMatches(n, [...highContrastTexts, ...scrollbarWidthTexts]),
-      showAdvanced: rowMatches(n, [...rclonePathTexts, ...logLevelTexts]),
+      showCloud: rowMatches(n, [...cloudEnabledTexts, ...rclonePathTexts]),
+      showAdvanced: rowMatches(n, [...logLevelTexts]),
+      showCloudEnabledRow,
       showDefaultViewRow,
       showFoldersFirstRow,
       showShowHiddenRow,

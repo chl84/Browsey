@@ -110,6 +110,7 @@ export const createExplorerStores = () => {
   const openDestAfterExtract = writable<boolean>(false)
   const videoThumbs = writable<boolean>(true)
   const cloudThumbs = writable<boolean>(false)
+  const cloudEnabled = writable<boolean>(true)
   const hardwareAcceleration = writable<boolean>(false)
   const ffmpegPath = writable<string>('')
   const thumbCacheMb = writable<number>(300)
@@ -150,6 +151,7 @@ export const createExplorerStores = () => {
     openDestAfterExtract,
     videoThumbs,
     cloudThumbs,
+    cloudEnabled,
     hardwareAcceleration,
     ffmpegPath,
     thumbCacheMb,

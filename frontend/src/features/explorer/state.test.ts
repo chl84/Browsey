@@ -140,6 +140,21 @@ describe('createExplorerState sort refresh behavior', () => {
     expect(get(state.networkNotice)).toBe('')
   })
 
+  it('does not show cloud entries or probe cloud setup when cloud is disabled', async () => {
+    listNetworkEntriesMock.mockResolvedValue([
+      makeEntry('browsey-gdrive (Google Drive)', 'rclone://browsey-gdrive', 'dir'),
+      makeEntry('NAS', 'smb://nas', 'dir'),
+    ])
+
+    const state = createExplorerState()
+    state.cloudEnabled.set(false)
+    await state.loadNetwork()
+
+    expect(loadCloudSetupStatusMock).not.toHaveBeenCalled()
+    expect(get(state.entries).map((entry) => entry.path)).toEqual(['smb://nas'])
+    expect(get(state.networkNotice)).toBe('')
+  })
+
   it('does not probe cloud setup when network already shows cloud entries', async () => {
     listNetworkEntriesMock.mockResolvedValue([
       makeEntry('browsey-gdrive (Google Drive)', 'rclone://browsey-gdrive', 'dir'),

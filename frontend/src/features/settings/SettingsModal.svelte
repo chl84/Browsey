@@ -20,6 +20,7 @@
   import InteractionSection from './sections/InteractionSection.svelte'
   import DataSection from './sections/DataSection.svelte'
   import AccessibilitySection from './sections/AccessibilitySection.svelte'
+  import CloudSection from './sections/CloudSection.svelte'
   import AdvancedSection from './sections/AdvancedSection.svelte'
   import './SettingsModal.css'
 
@@ -38,6 +39,7 @@
   export let openDestAfterExtractValue = true
   export let videoThumbsValue = true
   export let cloudThumbsValue = false
+  export let cloudEnabledValue = true
   export let hardwareAccelerationValue = false
   export let ffmpegPathValue = ''
   export let thumbCacheMbValue = 300
@@ -65,6 +67,7 @@
   export let onToggleOpenDestAfterExtract: (value: boolean) => void = () => {}
   export let onToggleVideoThumbs: (value: boolean) => void = () => {}
   export let onToggleCloudThumbs: (value: boolean) => void = () => {}
+  export let onToggleCloudEnabled: (value: boolean) => Promise<void> | void = () => {}
   export let onToggleHardwareAcceleration: (value: boolean) => void = () => {}
   export let onChangeFfmpegPath: (value: string) => void = () => {}
   export let onChangeThumbCacheMb: (value: number) => void = () => {}
@@ -89,7 +92,8 @@
   let cloudSetupStatusBusy = false
   let cloudSetupStatusError = ''
   let lastCloudSetupRequestId = 0
-  let lastAppliedRclonePathValue = rclonePathValue
+  let lastAppliedCloudEnabledValue = DEFAULT_SETTINGS.cloudEnabled
+  let lastAppliedRclonePathValue = DEFAULT_SETTINGS.rclonePath
   let wasOpen = false
 
   const patchSettings = (patch: Partial<Settings>) => {
@@ -97,6 +101,11 @@
   }
 
   const refreshCloudSetupStatus = async () => {
+    if (!settings.cloudEnabled) {
+      cloudSetupStatusBusy = false
+      cloudSetupStatusError = ''
+      return
+    }
     const requestId = ++lastCloudSetupRequestId
     cloudSetupStatusBusy = true
     try {
@@ -116,11 +125,24 @@
 
   const rclonePathBlurRefresh = createDebouncedAsyncRunner(async (value: string) => {
     await onChangeRclonePath(value)
+    lastAppliedRclonePathValue = value
     await refreshCloudSetupStatus()
   })
 
   const handleRclonePathBlur = (value: string) => {
     rclonePathBlurRefresh.schedule(value)
+  }
+
+  const handleCloudEnabledChange = async (value: boolean) => {
+    await onToggleCloudEnabled(value)
+    lastAppliedCloudEnabledValue = value
+    if (!value) {
+      rclonePathBlurRefresh.cancel()
+      cloudSetupStatusBusy = false
+      cloudSetupStatusError = ''
+      return
+    }
+    await refreshCloudSetupStatus()
   }
 
   const {
@@ -206,6 +228,10 @@
   }
   $: if (settings.cloudThumbs !== cloudThumbsValue) {
     patchSettings({ cloudThumbs: cloudThumbsValue })
+  }
+  $: if (settings.cloudEnabled !== cloudEnabledValue && cloudEnabledValue !== lastAppliedCloudEnabledValue) {
+    patchSettings({ cloudEnabled: cloudEnabledValue })
+    lastAppliedCloudEnabledValue = cloudEnabledValue
   }
   $: if (settings.hardwareAcceleration !== hardwareAccelerationValue) {
     patchSettings({ hardwareAcceleration: hardwareAccelerationValue })
@@ -402,16 +428,24 @@
           {onChangeScrollbarWidth}
         />
 
-        <AdvancedSection
-          show={filterModel.showAdvanced}
+        <CloudSection
+          show={filterModel.showCloud}
+          showCloudEnabledRow={filterModel.showCloudEnabledRow}
           showRclonePathRow={filterModel.showRclonePathRow}
-          showLogLevelRow={filterModel.showLogLevelRow}
           {settings}
           {cloudSetupStatus}
           {cloudSetupStatusBusy}
           {cloudSetupStatusError}
           onPatch={patchSettings}
+          onToggleCloudEnabled={handleCloudEnabledChange}
           onChangeRclonePath={handleRclonePathBlur}
+        />
+
+        <AdvancedSection
+          show={filterModel.showAdvanced}
+          showLogLevelRow={filterModel.showLogLevelRow}
+          {settings}
+          onPatch={patchSettings}
           {onChangeLogLevel}
         />
       </div>

@@ -391,6 +391,24 @@ pub fn load_cloud_thumbs() -> ApiResult<Option<bool>> {
 }
 
 #[tauri::command]
+pub fn store_cloud_enabled(value: bool) -> ApiResult<()> {
+    map_api_result((|| -> SettingsResult<()> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::set_setting_bool(&conn, "cloudEnabled", value))?;
+        crate::commands::cloud::invalidate_cloud_caches_for_backend_change();
+        Ok(())
+    })())
+}
+
+#[tauri::command]
+pub fn load_cloud_enabled() -> ApiResult<Option<bool>> {
+    map_api_result((|| -> SettingsResult<Option<bool>> {
+        let conn = open_connection()?;
+        map_settings_result(crate::db::get_setting_bool(&conn, "cloudEnabled"))
+    })())
+}
+
+#[tauri::command]
 pub fn store_hardware_acceleration(value: bool) -> ApiResult<()> {
     map_api_result((|| -> SettingsResult<()> {
         let conn = open_connection()?;

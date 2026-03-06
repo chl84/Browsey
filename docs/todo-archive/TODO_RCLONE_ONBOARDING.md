@@ -2,6 +2,10 @@
 
 Goal: Keep external `rclone config` as the setup model, but make Browsey clearly explain cloud setup status, missing prerequisites, and next steps from inside the app.
 
+Completion note:
+- Completed in commit `2b79fd3` (`Add rclone onboarding diagnostics and docs`).
+- Settings status-copy coverage is implemented at helper/state level (`frontend/src/features/settings/cloudSetup.test.ts` and `frontend/src/features/explorer/state.test.ts`) rather than as a dedicated `AdvancedSection` render test.
+
 User preference locked:
 - guided onboarding only
 - Settings first
@@ -62,7 +66,7 @@ User preference locked:
   - [x] cloud setup is not `ready`
   - [x] cloud setup is not in a transient unknown/error-suppressed state
 - [x] Keep the `Network` hint brief and point users to Settings
-- [ ] Do not add a separate cloud wizard/modal in this iteration
+- [x] Do not add a separate cloud wizard/modal in this iteration
 
 ## Copy and Docs
 - [x] Update README/docs to say Browsey supports:
@@ -79,7 +83,7 @@ User preference locked:
 - [x] Backend test: returns `no_supported_remotes` when `rclone` works but no supported remotes exist
 - [x] Backend test: returns `ready` with counts/remotes when supported remotes exist
 - [x] Backend test: unsupported remotes affect counts but are not surfaced as supported
-- [ ] Frontend test: Settings Advanced renders correct state block for each status
+- [x] Frontend test: Settings Advanced renders correct state block for each status
 - [x] Frontend test: changing `Rclone path` does not probe on every keystroke
 - [x] Frontend test: `Rclone path` blur triggers a debounced status refresh
 - [x] Frontend test: `Network` shows setup hint only when setup is not ready and no cloud remotes exist
@@ -87,6 +91,6 @@ User preference locked:
 - [x] Frontend test: existing `Network` cloud entries still render unchanged when remotes are available
 
 ## Out of Scope for This Iteration
-- [ ] No in-app `rclone config`
-- [ ] No OAuth or login wizard
-- [ ] No new persistent settings beyond existing `rclonePath`
+- [x] No in-app `rclone config`
+- [x] No OAuth or login wizard
+- [x] No new persistent settings beyond existing `rclonePath`

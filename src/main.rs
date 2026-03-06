@@ -325,6 +325,8 @@ fn main() {
             load_video_thumbs,
             store_cloud_thumbs,
             load_cloud_thumbs,
+            store_cloud_enabled,
+            load_cloud_enabled,
             store_hardware_acceleration,
             load_hardware_acceleration,
             store_scrollbar_width,
