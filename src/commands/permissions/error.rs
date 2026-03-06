@@ -39,6 +39,36 @@ impl PermissionsErrorCode {
     pub(super) fn as_str(self) -> &'static str {
         self.as_code_str()
     }
+
+    pub(super) fn from_code_str(code: &str) -> Option<Self> {
+        Some(match code {
+            "path_not_absolute" => Self::PathNotAbsolute,
+            "invalid_path" => Self::InvalidPath,
+            "invalid_input" => Self::InvalidInput,
+            "root_forbidden" => Self::RootForbidden,
+            "symlink_unsupported" => Self::SymlinkUnsupported,
+            "principal_not_found" => Self::PrincipalNotFound,
+            "group_unavailable" => Self::GroupUnavailable,
+            "authentication_cancelled" => Self::AuthenticationCancelled,
+            "elevated_required" => Self::ElevatedRequired,
+            "helper_executable_not_found" => Self::HelperExecutableNotFound,
+            "helper_protocol_error" => Self::HelperProtocolError,
+            "helper_start_failed" => Self::HelperStartFailed,
+            "helper_io_error" => Self::HelperIoError,
+            "helper_wait_failed" => Self::HelperWaitFailed,
+            "permission_denied" => Self::PermissionDenied,
+            "read_only_filesystem" => Self::ReadOnlyFilesystem,
+            "unsupported_platform" => Self::UnsupportedPlatform,
+            "not_found" => Self::NotFound,
+            "metadata_read_failed" => Self::MetadataReadFailed,
+            "ownership_update_failed" => Self::OwnershipUpdateFailed,
+            "permissions_update_failed" => Self::PermissionsUpdateFailed,
+            "post_change_snapshot_failed" => Self::PostChangeSnapshotFailed,
+            "rollback_failed" => Self::RollbackFailed,
+            "unknown_error" => Self::UnknownError,
+            _ => return None,
+        })
+    }
 }
 
 impl ErrorCode for PermissionsErrorCode {
@@ -100,6 +130,13 @@ impl PermissionsError {
     pub(super) fn from_external_message(message: impl Into<String>) -> Self {
         let message = message.into();
         Self::new(classify_external_message(&message), message)
+    }
+
+    pub(super) fn from_code_and_message(code: &str, message: impl Into<String>) -> Self {
+        let message = message.into();
+        let code =
+            PermissionsErrorCode::from_code_str(code).unwrap_or(PermissionsErrorCode::UnknownError);
+        Self::new(code, message)
     }
 
     pub(super) fn from_io_error(
@@ -379,3 +416,18 @@ const EXTERNAL_CLASSIFICATION_RULES: &[(PermissionsErrorCode, &[&str])] = &[
     ),
     (PermissionsErrorCode::RollbackFailed, &["rollback failed"]),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::PermissionsError;
+
+    #[test]
+    fn maps_typed_code_and_message_without_reclassification() {
+        let error = PermissionsError::from_code_and_message(
+            "helper_protocol_error",
+            "Invalid helper response payload",
+        );
+        assert_eq!(error.code(), "helper_protocol_error");
+        assert_eq!(error.message(), "Invalid helper response payload");
+    }
+}
