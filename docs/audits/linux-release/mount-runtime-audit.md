@@ -20,6 +20,7 @@ integration bucket.
 ## Evidence Reviewed
 
 - `src/commands/network/mounts.rs`
+- `src/commands/network/mounts.rs` tests
 - `src/commands/network/gio_mounts.rs`
 - `src/commands/network/uri.rs`
 - `src/commands/listing/watch.rs`
@@ -31,7 +32,7 @@ integration bucket.
 
 | Area | Current Linux 1.0 status | Basis |
 |---|---|---|
-| Local/removable mount listing | Partial | Linux mount listing is implemented from `/proc/self/mounts` with removable heuristics and GVFS root filtering, but has no dedicated backend tests in `mounts.rs` and no Linux 1.0 manual validation evidence yet. |
+| Local/removable mount listing | Partial | Linux mount listing is implemented from `/proc/self/mounts` with removable heuristics and GVFS root filtering, and now has focused parser/filter tests, but still lacks Linux 1.0 manual validation evidence on real devices. |
 | Eject/unmount behavior | Partial | The Linux eject flow has a clear strategy (`gio mount -u` -> `umount` -> `udisksctl` -> optional lazy unmount) and typed `eject_failed` handling, but there is no isolated automated coverage or installed-build bugbash evidence yet. |
 | GVFS/network-backed endpoints | Partial | Browsey already treats GVFS paths specially in listing/watch/open/clipboard-adjacent code, but GNOME Wayland/GVFS scenarios still lack explicit Linux 1.0 validation against real mounts. |
 
@@ -45,10 +46,12 @@ Current evidence:
   partitions.
 - Removable hints are derived from mount roots, filesystem types, and block
   device naming heuristics.
+- Backend tests now verify the core parser/filter behavior for pseudo mounts,
+  GVFS-root hiding, and removable heuristics for representative local mount
+  lines.
 
 What is still missing:
 
-- dedicated tests for Linux mount filtering and removable heuristics
 - validation against real removable media and user-visible mount roots on the
   supported Linux target surface
 
