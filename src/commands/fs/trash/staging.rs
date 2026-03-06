@@ -298,13 +298,14 @@ pub(super) fn store_trash_stage_journal_entries_at(
     entries: &[TrashStageJournalEntry],
 ) -> FsResult<()> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            FsError::new(
+        std::fs::create_dir_all(parent).map_err(|error| {
+            FsError::from_io_error(
                 FsErrorCode::TrashFailed,
-                format!(
-                    "Failed to create trash stage journal directory {}: {e}",
+                &format!(
+                    "Failed to create trash stage journal directory {}",
                     parent.display()
                 ),
+                error,
             )
         })?;
     }
@@ -312,12 +313,10 @@ pub(super) fn store_trash_stage_journal_entries_at(
     if entries.is_empty() {
         if let Err(err) = std::fs::remove_file(path) {
             if err.kind() != std::io::ErrorKind::NotFound {
-                return Err(FsError::new(
+                return Err(FsError::from_io_error(
                     FsErrorCode::TrashFailed,
-                    format!(
-                        "Failed to remove trash stage journal {}: {err}",
-                        path.display()
-                    ),
+                    &format!("Failed to remove trash stage journal {}", path.display()),
+                    err,
                 ));
             }
         }
@@ -333,22 +332,21 @@ pub(super) fn store_trash_stage_journal_entries_at(
     }
 
     let tmp_path = path.with_extension("tsv.tmp");
-    std::fs::write(&tmp_path, content).map_err(|e| {
-        FsError::new(
+    std::fs::write(&tmp_path, content).map_err(|error| {
+        FsError::from_io_error(
             FsErrorCode::TrashFailed,
-            format!(
-                "Failed to write temporary trash stage journal {}: {e}",
+            &format!(
+                "Failed to write temporary trash stage journal {}",
                 tmp_path.display()
             ),
+            error,
         )
     })?;
-    std::fs::rename(&tmp_path, path).map_err(|e| {
-        FsError::new(
+    std::fs::rename(&tmp_path, path).map_err(|error| {
+        FsError::from_io_error(
             FsErrorCode::TrashFailed,
-            format!(
-                "Failed to finalize trash stage journal {}: {e}",
-                path.display()
-            ),
+            &format!("Failed to finalize trash stage journal {}", path.display()),
+            error,
         )
     })
 }

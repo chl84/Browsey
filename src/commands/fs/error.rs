@@ -1,4 +1,3 @@
-#[cfg(target_os = "windows")]
 use crate::errors::domain::classify_io_error;
 use crate::errors::{
     api_error::{ApiError, ApiResult},
@@ -290,6 +289,21 @@ impl FsError {
         Self::new(code, message)
     }
 
+    pub(super) fn from_io_error(
+        fallback: FsErrorCode,
+        context: &str,
+        error: std::io::Error,
+    ) -> Self {
+        let code = match classify_io_error(&error) {
+            IoErrorHint::NotFound => FsErrorCode::NotFound,
+            IoErrorHint::PermissionDenied => FsErrorCode::PermissionDenied,
+            IoErrorHint::ReadOnlyFilesystem => FsErrorCode::ReadOnlyFilesystem,
+            IoErrorHint::AlreadyExists => FsErrorCode::TargetExists,
+            _ => fallback,
+        };
+        Self::new(code, format!("{context}: {error}"))
+    }
+
     pub(crate) fn code_str_value(&self) -> &'static str {
         self.code.as_code_str()
     }
@@ -489,11 +503,28 @@ const FS_CLASSIFICATION_RULES: &[(FsErrorCode, &[&str])] = &[
 mod tests {
     use super::{FsError, FsErrorCode};
     use crate::undo::{UndoError, UndoErrorCode};
+    use std::io;
 
     #[test]
     fn maps_undo_target_exists_without_message_reclassification() {
         let undo = UndoError::new(UndoErrorCode::TargetExists, "permission denied");
         let fs_error: FsError = undo.into();
         assert_eq!(fs_error.code, FsErrorCode::TargetExists);
+    }
+
+    #[test]
+    fn maps_io_error_to_fs_permission_denied_without_message_reclassification() {
+        let error = io::Error::new(io::ErrorKind::PermissionDenied, "no access");
+        let fs_error = FsError::from_io_error(
+            FsErrorCode::CreateFailed,
+            "Failed to create backup dir /tmp/example",
+            error,
+        );
+        assert_eq!(fs_error.code, FsErrorCode::PermissionDenied);
+        assert!(
+            fs_error
+                .message()
+                .contains("Failed to create backup dir /tmp/example")
+        );
     }
 }
