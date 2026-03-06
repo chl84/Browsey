@@ -59,6 +59,10 @@ pretending the whole Step 10 track is done after isolated seam fixes.
   `src/commands/network/error.rs`, and `src/commands/duplicates/error.rs` now
   map `FsError` through the typed `FsErrorCode` accessor instead of matching on
   `code_str()` strings.
+- `src/commands/permissions/ownership/unix.rs` now exchanges structured helper
+  responses for `pkexec`-elevated ownership changes and parses typed helper
+  error codes from JSON on stdout, instead of classifying helper failures from
+  raw stdout/stderr text when the helper itself ran.
 - Existing backend hardening controls already provide a meaningful baseline:
   - `.semgrep/typed-errors-blocking.yml`
   - `.semgrep/typed-errors.yml`
@@ -76,8 +80,9 @@ pretending the whole Step 10 track is done after isolated seam fixes.
   path/app-launch classification examples are now removed.
 - Several backend domains still use one-off error mapping or raw message
   forwarding even when they already have typed error containers; Linux
-  permissions helper stderr/stdout handling is still a notable remaining seam,
-  and Step 10 still has broader cleanup left.
+  `duplicates` scan/error fan-out and at least one `open_with/linux` parse
+  seam still rely on external-message classification, and Step 10 still has
+  broader cleanup left.
 - Step 10 also includes supportability/logging quality, which is broader than
   typed-error cleanup alone.
 

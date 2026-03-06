@@ -126,13 +126,7 @@ pub fn maybe_run_ownership_helper_from_args() -> Option<i32> {
 
     #[cfg(unix)]
     {
-        match unix::run_ownership_helper_from_stdin() {
-            Ok(()) => Some(0),
-            Err(err) => {
-                eprintln!("{err}");
-                Some(1)
-            }
-        }
+        Some(unix::run_ownership_helper_entrypoint())
     }
 
     #[cfg(not(unix))]

@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::process::{Command, Stdio};
@@ -46,11 +47,18 @@ fn rollback_ownership_actions(actions: &[OwnershipRollback]) -> PermissionsResul
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct OwnershipHelperRequest {
     paths: Vec<String>,
     owner: Option<String>,
     group: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum OwnershipHelperResponse {
+    Ok,
+    Error { code: String, message: String },
 }
 
 static PRINCIPAL_ENUM_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
@@ -223,6 +231,57 @@ fn should_retry_with_pkexec(error: &UndoError) -> bool {
     matches!(error.code(), UndoErrorCode::PermissionDenied)
 }
 
+fn parse_ownership_helper_response(stdout: &[u8]) -> PermissionsResult<Option<PermissionsError>> {
+    if stdout.iter().all(|byte| byte.is_ascii_whitespace()) {
+        return Ok(None);
+    }
+    let response: OwnershipHelperResponse = serde_json::from_slice(stdout).map_err(|error| {
+        PermissionsError::new(
+            PermissionsErrorCode::HelperProtocolError,
+            format!("Invalid helper response: {error}"),
+        )
+    })?;
+    match response {
+        OwnershipHelperResponse::Ok => Ok(None),
+        OwnershipHelperResponse::Error { code, message } => Ok(Some(
+            PermissionsError::from_code_and_message(&code, message),
+        )),
+    }
+}
+
+fn write_ownership_helper_response(response: &OwnershipHelperResponse) -> PermissionsResult<()> {
+    use std::io::Write;
+
+    let payload = serde_json::to_vec(response).map_err(|error| {
+        PermissionsError::new(
+            PermissionsErrorCode::HelperProtocolError,
+            format!("Failed to serialize helper response: {error}"),
+        )
+    })?;
+    let mut stdout = std::io::stdout();
+    stdout.write_all(&payload).map_err(|error| {
+        PermissionsError::from_io_error(
+            PermissionsErrorCode::HelperIoError,
+            "Failed to write helper response",
+            error,
+        )
+    })?;
+    stdout.write_all(b"\n").map_err(|error| {
+        PermissionsError::from_io_error(
+            PermissionsErrorCode::HelperIoError,
+            "Failed to finalize helper response",
+            error,
+        )
+    })?;
+    stdout.flush().map_err(|error| {
+        PermissionsError::from_io_error(
+            PermissionsErrorCode::HelperIoError,
+            "Failed to flush helper response",
+            error,
+        )
+    })
+}
+
 fn run_ownership_with_pkexec(
     paths: Vec<String>,
     owner: Option<String>,
@@ -287,16 +346,19 @@ fn run_ownership_with_pkexec(
             e,
         )
     })?;
+    let parsed_stdout = parse_ownership_helper_response(&output.stdout)?;
     if output.status.success() {
+        if let Some(error) = parsed_stdout {
+            return Err(error);
+        }
         return Ok(());
     }
+    if let Some(error) = parsed_stdout {
+        return Err(error);
+    }
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if !stderr.is_empty() {
         return Err(PermissionsError::from(stderr));
-    }
-    if !stdout.is_empty() {
-        return Err(PermissionsError::from(stdout));
     }
     Err(PermissionsError::new(
         PermissionsErrorCode::AuthenticationCancelled,
@@ -497,6 +559,28 @@ pub(super) fn run_ownership_helper_from_stdin() -> PermissionsResult<()> {
     set_ownership_batch_impl(request.paths, request.owner, request.group, false).map(|_| ())
 }
 
+pub(super) fn run_ownership_helper_entrypoint() -> i32 {
+    match run_ownership_helper_from_stdin() {
+        Ok(()) => match write_ownership_helper_response(&OwnershipHelperResponse::Ok) {
+            Ok(()) => 0,
+            Err(err) => {
+                eprintln!("{err}");
+                1
+            }
+        },
+        Err(err) => {
+            let response = OwnershipHelperResponse::Error {
+                code: err.code().to_string(),
+                message: err.message().to_string(),
+            };
+            if write_ownership_helper_response(&response).is_err() {
+                eprintln!("{err}");
+            }
+            1
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,5 +643,22 @@ mod tests {
 
         assert!(should_retry_with_pkexec(&permission_denied));
         assert!(!should_retry_with_pkexec(&io_error));
+    }
+
+    #[test]
+    fn parses_typed_helper_error_response_without_message_reclassification() {
+        let payload = br#"{"status":"error","code":"helper_protocol_error","message":"Invalid helper response payload"}"#;
+        let parsed = parse_ownership_helper_response(payload)
+            .expect("parse helper payload")
+            .expect("helper should return error");
+        assert_eq!(parsed.code(), "helper_protocol_error");
+        assert_eq!(parsed.message(), "Invalid helper response payload");
+    }
+
+    #[test]
+    fn parses_helper_ok_response() {
+        let payload = br#"{"status":"ok"}"#;
+        let parsed = parse_ownership_helper_response(payload).expect("parse helper payload");
+        assert!(parsed.is_none());
     }
 }
