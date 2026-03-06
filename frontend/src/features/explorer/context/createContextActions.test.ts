@@ -9,7 +9,7 @@ const deleteEntriesMock = vi.fn(async (_paths: string[], _progressEvent?: string
 const purgeTrashItemsMock = vi.fn(async (_ids: string[]) => {})
 const restoreTrashItemsMock = vi.fn(async (_ids: string[]) => {})
 const removeRecentMock = vi.fn(async (_paths: string[]) => {})
-const copyPathsToSystemClipboardMock = vi.fn(async () => {})
+const copyPathsToSystemClipboardMock = vi.fn(async (_paths: string[], _mode?: string) => {})
 
 vi.mock('../services/trash.service', () => ({
   moveToTrashMany: (paths: string[], progressEvent?: string) =>
@@ -22,7 +22,8 @@ vi.mock('../services/trash.service', () => ({
 }))
 
 vi.mock('../services/clipboard.service', () => ({
-  copyPathsToSystemClipboard: (...args: unknown[]) => copyPathsToSystemClipboardMock(...args),
+  copyPathsToSystemClipboard: (paths: string[], mode?: string) =>
+    copyPathsToSystemClipboardMock(paths, mode),
 }))
 
 const fileEntry = (path: string, name: string): Entry => ({

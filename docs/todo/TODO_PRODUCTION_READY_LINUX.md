@@ -61,7 +61,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 ## 6. Stabilize settings and persistence
 - [ ] Test all settings for roundtrip and restore-defaults behavior
 - [ ] Confirm settings changes do not require restart unless explicitly documented
-- [ ] Remove or clarify settings that still feel internal or under-explained
+- [x] Remove or clarify settings that still feel internal or under-explained
 - [ ] Verify persisted settings migration across app versions
 
 ## 7. Increase test coverage where it matters
