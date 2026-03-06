@@ -31,6 +31,22 @@ pretending the whole Step 10 track is done after isolated seam fixes.
 - `src/commands/listing/error.rs` no longer carries an unused
   message-classification path for listing I/O failures after that seam was
   removed.
+- `src/commands/fs/error.rs` now exposes typed `FsError::from_io_error(...)`
+  for direct `std::io::Error` classification instead of forcing Linux-critical
+  fs/trash flows back through message parsing.
+- `src/commands/fs/trash/move_ops.rs` now maps backup-directory
+  `create_dir_all(...)` failures through typed `FsError::from_io_error(...)`
+  instead of `FsError::from_external_message(format!(...))`.
+- `src/commands/fs/delete_ops.rs` now maps backup-directory
+  `create_dir_all(...)` failures through typed `FsError::from_io_error(...)`
+  instead of constructing string-only `delete_failed` errors.
+- `src/commands/fs/trash/staging.rs` now maps trash stage journal directory
+  creation failures through typed `FsError::from_io_error(...)` instead of
+  relying on string-only `trash_failed` construction.
+- `src/commands/fs/trash/staging.rs` now also maps trash stage journal
+  `remove_file(...)`, `write(...)`, and `rename(...)` failures through typed
+  `FsError::from_io_error(...)` instead of one-off string-only `trash_failed`
+  construction.
 - Existing backend hardening controls already provide a meaningful baseline:
   - `.semgrep/typed-errors-blocking.yml`
   - `.semgrep/typed-errors.yml`
@@ -46,7 +62,9 @@ pretending the whole Step 10 track is done after isolated seam fixes.
   seams, but the obvious `console`, ownership/pkexec retry, and `open_with`
   path-classification examples are now removed.
 - Several backend domains still use one-off error mapping or raw message
-  forwarding even when they already have typed error containers.
+  forwarding even when they already have typed error containers; the local
+  delete/trash backup-dir seams are reduced, but Step 10 still has broader
+  cleanup left.
 - Step 10 also includes supportability/logging quality, which is broader than
   typed-error cleanup alone.
 

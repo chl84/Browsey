@@ -41,10 +41,11 @@ fn delete_with_backup(path: &Path) -> FsResult<Action> {
     }
     if let Some(parent) = backup.parent() {
         map_external_result(ensure_no_symlink_components_existing_prefix(parent))?;
-        fs::create_dir_all(parent).map_err(|e| {
-            FsError::new(
+        fs::create_dir_all(parent).map_err(|error| {
+            FsError::from_io_error(
                 FsErrorCode::DeleteFailed,
-                format!("Failed to create backup dir {}: {e}", parent.display()),
+                &format!("Failed to create backup dir {}", parent.display()),
+                error,
             )
         })?;
         map_external_result(ensure_existing_dir_nonsymlink(parent))?;
