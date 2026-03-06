@@ -127,10 +127,10 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [x] Document cloud as a separate limited feature set
 
 ## 12. Finish with a real stabilization phase
-- [ ] Declare a bounded stabilization window with explicit start/end criteria
+- [x] Declare a bounded stabilization window with explicit start/end criteria
 - [ ] Run multiple release candidates with bugfixes only
 - [ ] Collect findings from real Linux use, not just local development testing
-- [ ] After RC1, allow only bugfix-only merges unless explicitly re-approved
+- [x] After RC1, allow only bugfix-only merges unless explicitly re-approved
 - [ ] Do not label Browsey `production-ready for Linux` before this phase completes cleanly
 
 ## Exit Criteria
