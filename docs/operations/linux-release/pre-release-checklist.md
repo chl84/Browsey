@@ -31,6 +31,8 @@ The following gates are mandatory before Linux release signoff:
 
 - [ ] `./scripts/maintenance/test-backend.sh` passes
 - [ ] `./scripts/maintenance/test-frontend.sh` passes
+      - includes explicit blocking on unhandled runtime
+        `error`/`unhandledrejection` events in Vitest and Playwright smoke
 - [ ] docs consistency passes in blocking mode:
       `./scripts/maintenance/test-both.sh --strict-docs`
 - [ ] no new or modified Linux-critical error-handling path bypasses the

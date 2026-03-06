@@ -133,7 +133,7 @@ describe('createContextActions', () => {
     await handle('copy', entry)
 
     expect(deps.clipboard.copyPaths).toHaveBeenCalledWith([entry.path])
-    expect(copyPathsToSystemClipboardMock).toHaveBeenCalledWith([entry.path])
+    expect(copyPathsToSystemClipboardMock).toHaveBeenCalledWith([entry.path], undefined)
     expect(deps.showToast).toHaveBeenCalledWith(
       'Copied (system clipboard unavailable: xclip not found)',
       2500,

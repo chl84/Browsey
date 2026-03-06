@@ -75,7 +75,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
   - [x] search
   - [x] settings open/apply/restore defaults
 - [ ] Turn important production risks into explicit blocking checks in maintenance scripts:
-  - [ ] fail on unhandled test errors/rejections
+  - [x] fail on unhandled test errors/rejections
   - [ ] fail when required release-checklist coverage is missing
   - [x] keep advisory checks separate from release-blocking checks
 
