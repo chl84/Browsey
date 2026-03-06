@@ -1,5 +1,37 @@
 import { expect, test } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    const runtime = window as typeof window & {
+      __BROWSEY_E2E_UNHANDLED__?: Array<{ type: 'error' | 'rejection'; message: string }>
+    }
+    runtime.__BROWSEY_E2E_UNHANDLED__ = []
+    window.addEventListener('error', (event) => {
+      const error = event.error
+      const message =
+        error instanceof Error
+          ? error.stack ?? error.message
+          : event.message || 'Unknown window error'
+      runtime.__BROWSEY_E2E_UNHANDLED__?.push({ type: 'error', message })
+    })
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event.reason
+      const message = reason instanceof Error ? reason.stack ?? reason.message : String(reason)
+      runtime.__BROWSEY_E2E_UNHANDLED__?.push({ type: 'rejection', message })
+    })
+  })
+})
+
+test.afterEach(async ({ page }) => {
+  const unhandled = await page.evaluate(() => {
+    const runtime = window as typeof window & {
+      __BROWSEY_E2E_UNHANDLED__?: Array<{ type: 'error' | 'rejection'; message: string }>
+    }
+    return runtime.__BROWSEY_E2E_UNHANDLED__ ?? []
+  })
+  expect(unhandled).toEqual([])
+})
+
 test('opens a directory from list view with keyboard open', async ({ page }) => {
   await page.goto('/')
 
