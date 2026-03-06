@@ -71,6 +71,12 @@ pub fn open_console(path: String) -> ApiResult<()> {
 }
 
 fn open_console_impl(path: String) -> ConsoleResult<()> {
+    if !Path::new(&path).is_absolute() {
+        return Err(ConsoleError::new(
+            ConsoleErrorCode::PathNotAbsolute,
+            "Path must be absolute",
+        ));
+    }
     let pb = sanitize_path_follow(&path, true).map_err(ConsoleError::from)?;
     if !pb.is_dir() {
         return Err(ConsoleError::new(
@@ -217,5 +223,13 @@ mod tests {
         assert_eq!(error.message(), "Can only open console in a directory");
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn open_console_rejects_relative_paths_before_fs_sanitization() {
+        let error =
+            open_console_impl("relative/path".to_string()).expect_err("relative paths should fail");
+        assert_eq!(error.code_str(), "path_not_absolute");
+        assert_eq!(error.message(), "Path must be absolute");
     }
 }
