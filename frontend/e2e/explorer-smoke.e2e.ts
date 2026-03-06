@@ -17,6 +17,26 @@ test('opens a directory from list view with keyboard open', async ({ page }) => 
   await expect(page.getByLabel('Path breadcrumbs').getByRole('button', { name: 'Documents' })).toBeVisible()
 })
 
+test('search finds entries in the current folder scope', async ({ page }) => {
+  await page.goto('/')
+
+  const documentsRow = page.locator('.row', {
+    has: page.locator('.name', { hasText: 'Documents' }),
+  })
+  await expect(documentsRow).toBeVisible()
+  await documentsRow.click()
+  await documentsRow.press('Enter')
+
+  await page.keyboard.press('Control+F')
+  const searchInput = page.getByLabel('Search')
+  await expect(searchInput).toBeFocused()
+  await searchInput.fill('report')
+  await page.keyboard.press('Enter')
+
+  await expect(page.locator('.row .name', { hasText: 'report' })).toBeVisible()
+  await expect(page.locator('.row .name', { hasText: 'archive' })).toHaveCount(0)
+})
+
 test('wheel assist handles short-list edge clamp and non-cancelable burst fallback', async ({ page }) => {
   await page.goto('/')
   const rows = page.getByRole('grid', { name: 'File list' })

@@ -67,7 +67,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 ## 7. Increase test coverage where it matters
 - [ ] Add regression tests for every stabilization bug that gets fixed
 - [ ] Increase coverage around hooks/state seams that break under small changes
-- [ ] Add more Linux-focused e2e smoke coverage for core workflows
+- [x] Add more Linux-focused e2e smoke coverage for core workflows
 - [x] Reuse the existing core-operations release checklist as the base Linux manual smoke gate, and extend it only where Linux 1.0 coverage still has gaps
 - [x] Define any additional Linux 1.0 smoke rows outside core operations, for example:
   - [x] app start
