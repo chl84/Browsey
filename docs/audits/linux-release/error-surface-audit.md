@@ -25,6 +25,12 @@ pretending the whole Step 10 track is done after isolated seam fixes.
 - `src/commands/open_with/mod.rs` now maps `fs::open_entry` failures through
   typed `ApiError.code` values instead of reclassifying via
   `from_external_message(error.message)`.
+- `src/commands/listing/local.rs` now maps `read_dir` failures through typed
+  `ListingError::from_io_error(...)` instead of
+  `ListingError::from_external_message(format!(...))`.
+- `src/commands/listing/error.rs` no longer carries an unused
+  message-classification path for listing I/O failures after that seam was
+  removed.
 - Existing backend hardening controls already provide a meaningful baseline:
   - `.semgrep/typed-errors-blocking.yml`
   - `.semgrep/typed-errors.yml`
