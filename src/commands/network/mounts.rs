@@ -118,6 +118,105 @@ fn invalidate_network_discovery_cache() {
 }
 
 #[cfg(not(target_os = "windows"))]
+fn parse_linux_mounts(contents: &str, gvfs_root: Option<&str>) -> Vec<MountInfo> {
+    let mut mounts = Vec::new();
+
+    for line in contents.lines() {
+        let mut parts = line.split_whitespace();
+        let src = match parts.next() {
+            Some(s) => s.replace("\\040", " "),
+            None => continue,
+        };
+        let target = match parts.next() {
+            Some(t) => t.replace("\\040", " "),
+            None => continue,
+        };
+        let fs = match parts.next() {
+            Some(f) => f.to_string(),
+            None => continue,
+        };
+        let fs_lc = fs.to_lowercase();
+
+        // Skip pseudo/system mounts
+        if matches!(
+            fs_lc.as_str(),
+            "proc"
+                | "sysfs"
+                | "devtmpfs"
+                | "devpts"
+                | "tmpfs"
+                | "pstore"
+                | "configfs"
+                | "debugfs"
+                | "tracefs"
+                | "overlay"
+                | "squashfs"
+                | "hugetlbfs"
+                | "mqueue"
+                | "cgroup"
+                | "cgroup2"
+                | "fuse.rofiles-fuse" // Flatpak Builder readonly rofiles mounts
+        ) {
+            continue;
+        }
+        let in_gvfs = gvfs_root
+            .map(|root| mount_path_is_under(&target, root))
+            .unwrap_or(false);
+        let is_gvfs_root = gvfs_root
+            .map(|root| same_mount_path(&target, root))
+            .unwrap_or(false);
+
+        // Keep GVFS endpoints (for example MTP), but hide the generic gvfs root mount from Partitions.
+        if is_gvfs_root {
+            continue;
+        }
+
+        if target.starts_with("/proc")
+            || target.starts_with("/sys")
+            || target.starts_with("/run/lock")
+            || (target.starts_with("/run/user") && !in_gvfs)
+        {
+            continue;
+        }
+
+        let label = std::path::Path::new(&target)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| target.clone());
+
+        let is_user_mount = target.contains("/media/") || target.contains("/run/media/");
+        let is_windows_fs = matches!(
+            fs_lc.as_str(),
+            "vfat"
+                | "exfat"
+                | "ntfs"
+                | "fuseblk"
+                | "fuse.exfat"
+                | "fuse.ntfs-3g"
+                | "fuse.ntfs"
+        );
+        let is_boot = target.starts_with("/boot");
+        let removable_hint = (is_user_mount || is_windows_fs) && !is_boot;
+        // device heuristic: only classic removable prefixes
+        let dev_removable = src.starts_with("/dev/sd")
+            || src.starts_with("/dev/mmc")
+            || src.starts_with("/dev/sg")
+            || src.contains("usb");
+
+        mounts.push(MountInfo {
+            label,
+            path: target,
+            fs,
+            removable: removable_hint || dev_removable,
+        });
+    }
+
+    mounts
+}
+
+#[cfg(not(target_os = "windows"))]
 fn linux_mounts() -> NetworkResult<Vec<MountInfo>> {
     let mut mounts = Vec::new();
     let gvfs_root = dirs_next::runtime_dir().map(|p| p.join("gvfs"));
@@ -127,101 +226,10 @@ fn linux_mounts() -> NetworkResult<Vec<MountInfo>> {
 
     match fs::read_to_string("/proc/self/mounts") {
         Ok(contents) => {
-            for line in contents.lines() {
-                let mut parts = line.split_whitespace();
-                let src = match parts.next() {
-                    Some(s) => s.replace("\\040", " "),
-                    None => continue,
-                };
-                let target = match parts.next() {
-                    Some(t) => t.replace("\\040", " "),
-                    None => continue,
-                };
-                let fs = match parts.next() {
-                    Some(f) => f.to_string(),
-                    None => continue,
-                };
-                let fs_lc = fs.to_lowercase();
-
-                // Skip pseudo/system mounts
-                if matches!(
-                    fs_lc.as_str(),
-                    "proc"
-                        | "sysfs"
-                        | "devtmpfs"
-                        | "devpts"
-                        | "tmpfs"
-                        | "pstore"
-                        | "configfs"
-                        | "debugfs"
-                        | "tracefs"
-                        | "overlay"
-                        | "squashfs"
-                        | "hugetlbfs"
-                        | "mqueue"
-                        | "cgroup"
-                        | "cgroup2"
-                        | "fuse.rofiles-fuse" // Flatpak Builder readonly rofiles mounts
-                ) {
-                    continue;
-                }
-                let in_gvfs = gvfs_root
-                    .as_ref()
-                    .and_then(|p| p.to_str())
-                    .map(|p| mount_path_is_under(&target, p))
-                    .unwrap_or(false);
-                let is_gvfs_root = gvfs_root
-                    .as_ref()
-                    .and_then(|p| p.to_str())
-                    .map(|p| same_mount_path(&target, p))
-                    .unwrap_or(false);
-
-                // Keep GVFS endpoints (for example MTP), but hide the generic gvfs root mount from Partitions.
-                if is_gvfs_root {
-                    continue;
-                }
-
-                if target.starts_with("/proc")
-                    || target.starts_with("/sys")
-                    || target.starts_with("/run/lock")
-                    || (target.starts_with("/run/user") && !in_gvfs)
-                {
-                    continue;
-                }
-
-                let label = std::path::Path::new(&target)
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .map(|s| s.to_string())
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| target.clone());
-
-                let is_user_mount = target.contains("/media/") || target.contains("/run/media/");
-                let is_windows_fs = matches!(
-                    fs_lc.as_str(),
-                    "vfat"
-                        | "exfat"
-                        | "ntfs"
-                        | "fuseblk"
-                        | "fuse.exfat"
-                        | "fuse.ntfs-3g"
-                        | "fuse.ntfs"
-                );
-                let is_boot = target.starts_with("/boot");
-                let removable_hint = (is_user_mount || is_windows_fs) && !is_boot;
-                // device heuristic: only classic removable prefixes
-                let dev_removable = src.starts_with("/dev/sd")
-                    || src.starts_with("/dev/mmc")
-                    || src.starts_with("/dev/sg")
-                    || src.contains("usb");
-
-                mounts.push(MountInfo {
-                    label,
-                    path: target,
-                    fs,
-                    removable: removable_hint || dev_removable,
-                });
-            }
+            mounts.extend(parse_linux_mounts(
+                &contents,
+                gvfs_root.as_ref().and_then(|p| p.to_str()),
+            ));
         }
         Err(error) if mounts.is_empty() => {
             return Err(NetworkError::new(
@@ -448,4 +456,65 @@ pub(super) async fn mount_partition_impl(path: String, app: tauri::AppHandle) ->
 #[tauri::command]
 pub async fn mount_partition(_path: String) -> ApiResult<()> {
     map_api_result(Ok(()))
+}
+
+#[cfg(all(test, not(target_os = "windows")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_linux_mounts_filters_pseudo_mounts_and_generic_gvfs_root() {
+        let mounts = parse_linux_mounts(
+            "\
+proc /proc proc rw 0 0\n\
+tmpfs /run/user/1000 tmpfs rw 0 0\n\
+gvfsd-fuse /run/user/1000/gvfs fuse.gvfsd-fuse rw 0 0\n\
+/dev/sda2 / ext4 rw 0 0\n\
+gvfsd-fuse /run/user/1000/gvfs/smb-share:server=nas.local,share=docs fuse.gvfsd-fuse rw 0 0\n",
+            Some("/run/user/1000/gvfs"),
+        );
+
+        assert_eq!(mounts.len(), 2, "expected only root and concrete gvfs mount");
+        assert!(mounts.iter().any(|mount| mount.path == "/"));
+        assert!(mounts.iter().any(|mount| {
+            mount.path == "/run/user/1000/gvfs/smb-share:server=nas.local,share=docs"
+        }));
+        assert!(
+            mounts
+                .iter()
+                .all(|mount| mount.path != "/run/user/1000/gvfs"),
+            "generic gvfs root should stay hidden"
+        );
+    }
+
+    #[test]
+    fn parse_linux_mounts_marks_removable_user_and_windows_style_mounts() {
+        let mounts = parse_linux_mounts(
+            "\
+/dev/sdb1 /run/media/chris/USB_DISK vfat rw 0 0\n\
+/dev/nvme0n1p2 /home ext4 rw 0 0\n\
+server:/export /mnt/nfs nfs4 rw 0 0\n",
+            Some("/run/user/1000/gvfs"),
+        );
+
+        let usb_mount = mounts
+            .iter()
+            .find(|mount| mount.path == "/run/media/chris/USB_DISK")
+            .expect("usb mount should be kept");
+        assert_eq!(usb_mount.label, "USB_DISK");
+        assert!(usb_mount.removable, "user-visible removable media should be marked removable");
+
+        let home_mount = mounts
+            .iter()
+            .find(|mount| mount.path == "/home")
+            .expect("home mount should be kept");
+        assert!(!home_mount.removable, "plain ext4 root mounts should not be marked removable");
+
+        let nfs_mount = mounts
+            .iter()
+            .find(|mount| mount.path == "/mnt/nfs")
+            .expect("nfs mount should be kept");
+        assert_eq!(nfs_mount.fs, "nfs4");
+        assert!(!nfs_mount.removable, "network mounts should not inherit removable heuristics");
+    }
 }
