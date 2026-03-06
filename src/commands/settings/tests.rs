@@ -455,3 +455,66 @@ fn linux_settings_surface_roundtrips_through_backend_commands() {
         Some("/usr/local/bin/rclone".to_string())
     );
 }
+
+#[test]
+fn settings_migration_normalizes_and_prunes_legacy_values() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+    let conn = crate::db::open().expect("open settings db");
+
+    crate::db::set_setting_string(&conn, "settingsSchemaVersion", "0")
+        .expect("seed old settings schema version");
+    crate::db::set_setting_string(&conn, "archiveName", "  Legacy.zip  ")
+        .expect("seed archiveName");
+    crate::db::set_setting_string(&conn, "ffmpegPath", "  /usr/bin/ffmpeg  ")
+        .expect("seed ffmpegPath");
+    crate::db::set_setting_string(&conn, "rclonePath", "  /usr/bin/rclone  ")
+        .expect("seed rclonePath");
+    crate::db::set_setting_string(&conn, "logLevel", " INFO ")
+        .expect("seed logLevel");
+    crate::db::set_setting_string(&conn, "density", "roomy").expect("seed invalid density");
+    crate::db::set_setting_string(&conn, "showHidden", "yes").expect("seed invalid bool");
+    crate::db::set_setting_string(&conn, "thumbCacheMb", " 512 ").expect("seed thumbCacheMb");
+    crate::db::set_setting_string(&conn, "mountsPollMs", "12000")
+        .expect("seed invalid mountsPollMs");
+
+    let migrated = super::persistence::open_connection().expect("run settings migrations");
+
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "settingsSchemaVersion")
+            .expect("load schema version"),
+        Some("1".to_string())
+    );
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "archiveName").expect("load archiveName"),
+        Some("Legacy".to_string())
+    );
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "ffmpegPath").expect("load ffmpegPath"),
+        Some("/usr/bin/ffmpeg".to_string())
+    );
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "rclonePath").expect("load rclonePath"),
+        Some("/usr/bin/rclone".to_string())
+    );
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "logLevel").expect("load logLevel"),
+        Some("info".to_string())
+    );
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "thumbCacheMb").expect("load thumbCacheMb"),
+        Some("512".to_string())
+    );
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "density").expect("load density"),
+        None
+    );
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "showHidden").expect("load showHidden"),
+        None
+    );
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "mountsPollMs").expect("load mountsPollMs"),
+        None
+    );
+}
