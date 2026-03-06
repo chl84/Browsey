@@ -123,10 +123,6 @@ pub(super) fn map_api_result<T>(result: OpenWithResult<T>) -> ApiResult<T> {
 
 const OPEN_WITH_CLASSIFICATION_RULES: &[(OpenWithErrorCode, &[&str])] = &[
     (
-        OpenWithErrorCode::PathNotAbsolute,
-        &["path must be absolute"],
-    ),
-    (
         OpenWithErrorCode::InvalidPath,
         &[
             "parent directory components are not allowed",
