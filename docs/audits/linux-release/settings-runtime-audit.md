@@ -19,6 +19,7 @@ Step 6 items can be closed against something concrete instead of a vague
 - `frontend/src/features/explorer/state/preferencesSlice.ts`
 - `frontend/src/features/explorer/pages/ExplorerPage.svelte`
 - `frontend/src/features/settings/hooks/useSettingsModalViewModel.test.ts`
+- `frontend/e2e/explorer-smoke.e2e.ts`
 - `frontend/src/features/settings/sections/PerformanceSection.svelte`
 - `frontend/src/features/settings/sections/AdvancedSection.svelte`
 
@@ -28,7 +29,7 @@ Step 6 items can be closed against something concrete instead of a vague
 |---|---|---|
 | Persisted roundtrip for recently added Linux-facing settings | Partial but meaningful | Backend tests now cover roundtrip, invalid-input rejection, and legacy malformed-value fallback for `mountsPollMs`, `doubleClickMs`, `scrollbarWidth`, trimmed `rclonePath`, `hardwareAcceleration`, and normalized `logLevel` loads. |
 | Restore defaults | Partial but meaningful | `ExplorerPage` reset flow explicitly writes all current defaults, and view-model tests now cover representative Linux-facing settings (`cloudEnabled`, `mountsPollMs`, `doubleClickMs`, `logLevel`, `rclonePath`, `scrollbarWidth`) plus filter-preservation behavior, but there is not yet a broader end-to-end reset proof across the full settings surface. |
-| Runtime application without restart | Partial | Most settings update Svelte stores immediately through `preferencesSlice`, `useExplorerData` now has direct live-application tests for mount refresh interval plus existing root-hook coverage for high contrast and scrollbar width, and `hardwareAcceleration` is the only current setting explicitly documented as requiring restart in the UI. This is meaningful evidence, but not yet broad enough to close the whole item. |
+| Runtime application without restart | Strong enough to close | Most settings update Svelte stores immediately through `preferencesSlice`; `useExplorerData` has direct live-application tests for mount refresh interval plus root-hook coverage for high contrast and scrollbar width; and the Linux e2e smoke now proves that representative settings changes for `confirmDelete`, `highContrast`, and `density` all apply live and restore cleanly without restart. `hardwareAcceleration` remains the only current setting explicitly documented as requiring restart in the UI. |
 | Settings clarity | Meaningfully improved | The most internal-feeling Linux-facing rows now explain themselves in the UI (`Mount refresh interval`, `Log level` guidance), but a full pass on every settings row is not separately audited yet. |
 | Settings migration across versions | Partial | Bounded loaders safely ignore malformed/out-of-range persisted values, enum loaders now also reject unsupported legacy values such as invalid `defaultView`, `density`, `sortField`, and `sortDirection`, but there is still no explicit migration/versioned-settings plan or upgrade-path validation yet. |
 
@@ -52,6 +53,13 @@ Step 6 items can be closed against something concrete instead of a vague
   rather than only a single `cloudThumbs` reset seam.
 - `Mount refresh interval` now has explicit live-application coverage through
   the `useExplorerData` timer subscription, rather than only code inspection.
+- Linux e2e smoke now proves that representative settings changes apply live
+  without restart for:
+  - `confirmDelete`
+  - `highContrast`
+  - `density`
+- The same Linux e2e smoke also proves that those representative settings
+  restore cleanly back to default live state.
 - The settings UI now explains the practical effect of:
   - mount refresh interval
   - log level
@@ -60,14 +68,16 @@ Step 6 items can be closed against something concrete instead of a vague
 
 - add broader restore-defaults verification for representative settings beyond
   narrow view-model seams
-- add runtime-focused checks that representative settings actually apply live in
-  the Linux UI without restart where that is the intended contract
 - document or implement a more explicit settings migration story for version
   upgrades beyond the current loader-level fallback behavior
 
 ## Conclusion
 
 This audit does not justify checking off all of Step 6 yet.
+
+It does justify checking off:
+
+- `Confirm settings changes do not require restart unless explicitly documented`
 
 It does justify treating Step 6 as:
 
