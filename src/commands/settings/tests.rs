@@ -1,7 +1,8 @@
 use super::{
-    load_cloud_enabled, load_cloud_thumbs, load_double_click_ms, load_hardware_acceleration,
-    load_log_level, load_mounts_poll_ms, load_rclone_path, load_scrollbar_width,
-    store_cloud_enabled, store_cloud_thumbs, store_double_click_ms,
+    load_archive_name, load_cloud_enabled, load_cloud_thumbs, load_default_view, load_density,
+    load_double_click_ms, load_ffmpeg_path, load_hardware_acceleration, load_log_level,
+    load_mounts_poll_ms, load_rclone_path, load_scrollbar_width, load_sort_direction,
+    load_sort_field, store_cloud_enabled, store_cloud_thumbs, store_double_click_ms,
     store_hardware_acceleration, store_log_level, store_mounts_poll_ms, store_rclone_path,
     store_scrollbar_width,
 };
@@ -323,5 +324,41 @@ fn log_level_rejects_invalid_values_and_ignores_legacy_db_value() {
     assert_eq!(
         load_log_level().expect("load legacy invalid logLevel"),
         None
+    );
+}
+
+#[test]
+fn enum_settings_ignore_legacy_invalid_values() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+    let conn = crate::db::open().expect("open settings db");
+
+    crate::db::set_setting_string(&conn, "defaultView", "columns").expect("seed invalid defaultView");
+    crate::db::set_setting_string(&conn, "density", "roomy").expect("seed invalid density");
+    crate::db::set_setting_string(&conn, "sortField", "ctime").expect("seed invalid sortField");
+    crate::db::set_setting_string(&conn, "sortDirection", "up").expect("seed invalid sortDirection");
+
+    assert_eq!(load_default_view().expect("load invalid defaultView"), None);
+    assert_eq!(load_density().expect("load invalid density"), None);
+    assert_eq!(load_sort_field().expect("load invalid sortField"), None);
+    assert_eq!(load_sort_direction().expect("load invalid sortDirection"), None);
+}
+
+#[test]
+fn trimmed_string_settings_normalize_when_loaded() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+    let conn = crate::db::open().expect("open settings db");
+
+    crate::db::set_setting_string(&conn, "archiveName", "Backup.zip").expect("seed archiveName");
+    crate::db::set_setting_string(&conn, "ffmpegPath", "/usr/bin/ffmpeg").expect("seed ffmpegPath");
+
+    assert_eq!(
+        load_archive_name().expect("load normalized archiveName"),
+        Some("Backup".to_string())
+    );
+    assert_eq!(
+        load_ffmpeg_path().expect("load ffmpegPath"),
+        Some("/usr/bin/ffmpeg".to_string())
     );
 }
