@@ -109,6 +109,7 @@ export const docsPages: DocPage[] = [
         title: 'Cloud Setup (rclone-backed, v1)',
         bullets: [
           'Browsey cloud support is rclone-backed and Linux-first in v1 (OneDrive is the primary target)',
+          'Cloud integration is opt-in and off by default; enable it in `Settings > Cloud` when you actually want Browsey to surface supported remotes',
           'Install rclone separately and ensure it is discoverable in PATH (Browsey does not bundle it)',
           'Configure remotes outside Browsey with `rclone config` (for example an `onedrive` remote)',
           'Browsey discovers supported rclone remotes in Network view and opens them as `rclone://...` paths',
@@ -125,10 +126,10 @@ export const docsPages: DocPage[] = [
           '3. Run `rclone config` outside Browsey and create a supported remote.',
           '4. Supported remote types for Browsey v1 are `onedrive`, `drive` (Google Drive), and `nextcloud`; `webdav` only works when it is clearly a Nextcloud setup.',
           '5. The remote name is up to you. Names such as `work-onedrive`, `browsey-gdrive`, or `nc-home` are all fine.',
-          '6. Start Browsey and open `Settings > Advanced` if you want to verify the cloud setup state.',
+          '6. Start Browsey, enable cloud in `Settings > Cloud`, and use the status block there if you want to verify the current setup state.',
           '7. Leave `Rclone path` empty if Browsey can auto-detect `rclone`; set it only if auto-detect fails or you want Browsey to use a specific binary.',
           '8. If setup is valid, the supported remote should appear in `Network`, and you can also navigate directly to `rclone://<remote>/<subpath>`.',
-          '9. If no remote appears, first check the status block in `Settings > Advanced`, then re-run `rclone listremotes` in the same shell/session used to launch Browsey.',
+          '9. If no remote appears, first check the status block in `Settings > Cloud`, then re-run `rclone listremotes` in the same shell/session used to launch Browsey.',
         ],
         note: 'Browsey does not need special remote names, extra rclone flags, or a Browsey-specific config layout. It uses your normal rclone installation and normal rclone config.',
       },
@@ -342,6 +343,7 @@ export const docsPages: DocPage[] = [
         bullets: [
           'No cloud trash/recycle-bin integration (delete is permanent)',
           'No undo/redo for cloud file operations',
+          'Cloud is outside the main Linux 1.0 production claim and remains a bounded, opt-in feature set in v1',
           'Mixed local/cloud clipboard and in-app drag/drop copy/move are supported, but manual validation and provider-specific edge cases (especially quotas/rate limits) are still being refined',
           'No advanced rename, archive extract/compress, or duplicate scan for cloud entries',
           'Cloud thumbnails are opt-in (`Cloud thumbs`) and currently limited to Grid view for image/pdf/svg, with provider and file-size guardrails',

@@ -47,13 +47,13 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 
 ## 5. Keep cloud opt-in but safe
 - [ ] Ensure cloud never interferes with local file browsing when disabled
-- [ ] Harden all empty/error/unsupported states in cloud onboarding
+- [x] Harden all empty/error/unsupported states in cloud onboarding
 - [ ] Validate supported cloud providers against controlled QA remotes or equivalent reproducible test setups:
   - [ ] OneDrive
   - [ ] Google Drive
   - [ ] Nextcloud
-- [ ] Ensure cloud limitations are explicit in both UI and docs
-- [ ] Ensure failed `rclone` setup never feels like a general Browsey failure
+- [x] Ensure cloud limitations are explicit in both UI and docs
+- [x] Ensure failed `rclone` setup never feels like a general Browsey failure
 - [ ] Make an explicit 1.0 decision for cloud scope:
   - [ ] cloud remains clearly marked as limited/beta and out of the main production claim
   - [ ] or cloud enters the Linux 1.0 support matrix with provider-specific acceptance coverage
