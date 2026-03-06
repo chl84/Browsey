@@ -19,6 +19,18 @@ fn map_db_open_error(error: crate::db::DbError) -> OpenWithError {
     OpenWithError::new(OpenWithErrorCode::DatabaseOpenFailed, error.to_string())
 }
 
+fn map_open_entry_api_error(error: crate::errors::api_error::ApiError) -> OpenWithError {
+    let code = match error.code.as_str() {
+        "path_not_absolute" => OpenWithErrorCode::PathNotAbsolute,
+        "invalid_path" | "root_forbidden" | "symlink_unsupported" => OpenWithErrorCode::InvalidPath,
+        "not_found" => OpenWithErrorCode::NotFound,
+        "permission_denied" | "read_only_filesystem" => OpenWithErrorCode::PermissionDenied,
+        "open_failed" => OpenWithErrorCode::LaunchFailed,
+        _ => OpenWithErrorCode::UnknownError,
+    };
+    OpenWithError::new(code, error.message)
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenWithApp {
@@ -87,7 +99,7 @@ fn open_with_impl(path: String, choice: OpenWithChoice) -> OpenWithResult<()> {
 
     if matches!(app_id.as_deref(), Some("__default__")) || app_id.is_none() {
         return crate::commands::fs::open_entry(target.to_string_lossy().to_string())
-            .map_err(|error| OpenWithError::from_external_message(error.message));
+            .map_err(map_open_entry_api_error);
     }
 
     #[cfg(target_os = "linux")]
@@ -145,5 +157,15 @@ mod tests {
         .expect_err("relative path should fail");
         assert_eq!(error.code_str(), "path_not_absolute");
         assert_eq!(error.message(), "Path must be absolute: relative/path.txt");
+    }
+
+    #[test]
+    fn maps_open_entry_api_error_by_typed_code() {
+        let error = map_open_entry_api_error(crate::errors::api_error::ApiError::new(
+            "open_failed",
+            "Failed to open: launcher missing",
+        ));
+        assert_eq!(error.code_str(), "launch_failed");
+        assert_eq!(error.message(), "Failed to open: launcher missing");
     }
 }
