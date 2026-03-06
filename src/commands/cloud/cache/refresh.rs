@@ -101,9 +101,8 @@ pub(super) fn list_cloud_dir_with_retry(path: &CloudPath) -> CloudCommandResult<
     let permit_started = Instant::now();
     let guard = acquire_cloud_remote_permits(vec![path.remote().to_string()]);
     let permit_wait_ms = permit_started.elapsed().as_millis() as u64;
-    let provider = crate::commands::cloud::configured_rclone_provider().map_err(|error| {
-        CloudCommandError::new(CloudCommandErrorCode::InvalidConfig, error.to_string())
-    })?;
+    let provider =
+        crate::commands::cloud::configured_rclone_provider().map_err(CloudCommandError::from)?;
     let fetch_started = Instant::now();
     let mut attempt = 0usize;
     loop {

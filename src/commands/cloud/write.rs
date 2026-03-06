@@ -21,12 +21,8 @@ pub(super) async fn create_cloud_folder_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
-            let provider = configured_rclone_provider().map_err(|error| {
-                super::error::CloudCommandError::new(
-                    super::error::CloudCommandErrorCode::InvalidConfig,
-                    error.to_string(),
-                )
-            })?;
+            let provider =
+                configured_rclone_provider().map_err(super::error::CloudCommandError::from)?;
             provider.mkdir(&path, cancel_token.as_deref())
         })
     });
@@ -74,12 +70,8 @@ pub(super) async fn delete_cloud_file_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
-            let provider = configured_rclone_provider().map_err(|error| {
-                super::error::CloudCommandError::new(
-                    super::error::CloudCommandErrorCode::InvalidConfig,
-                    error.to_string(),
-                )
-            })?;
+            let provider =
+                configured_rclone_provider().map_err(super::error::CloudCommandError::from)?;
             provider.delete_file(&path, cancel_token.as_deref())
         })
     });
@@ -119,12 +111,8 @@ pub(super) async fn delete_cloud_dir_recursive_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
-            let provider = configured_rclone_provider().map_err(|error| {
-                super::error::CloudCommandError::new(
-                    super::error::CloudCommandErrorCode::InvalidConfig,
-                    error.to_string(),
-                )
-            })?;
+            let provider =
+                configured_rclone_provider().map_err(super::error::CloudCommandError::from)?;
             provider.delete_dir_recursive(&path, cancel_token.as_deref())
         })
     });
@@ -164,12 +152,8 @@ pub(super) async fn delete_cloud_dir_empty_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(vec![remote], || {
-            let provider = configured_rclone_provider().map_err(|error| {
-                super::error::CloudCommandError::new(
-                    super::error::CloudCommandErrorCode::InvalidConfig,
-                    error.to_string(),
-                )
-            })?;
+            let provider =
+                configured_rclone_provider().map_err(super::error::CloudCommandError::from)?;
             provider.delete_dir_empty(&path, cancel_token.as_deref())
         })
     });
@@ -214,12 +198,8 @@ pub(super) async fn move_cloud_entry_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(remotes, || {
-            let provider = configured_rclone_provider().map_err(|error| {
-                super::error::CloudCommandError::new(
-                    super::error::CloudCommandErrorCode::InvalidConfig,
-                    error.to_string(),
-                )
-            })?;
+            let provider =
+                configured_rclone_provider().map_err(super::error::CloudCommandError::from)?;
             provider.move_entry(&src, &dst, overwrite, prechecked, cancel_token.as_deref())
         })
     });
@@ -270,12 +250,8 @@ pub(super) async fn copy_cloud_entry_impl(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
         with_cloud_remote_permits(remotes, || {
-            let provider = configured_rclone_provider().map_err(|error| {
-                super::error::CloudCommandError::new(
-                    super::error::CloudCommandErrorCode::InvalidConfig,
-                    error.to_string(),
-                )
-            })?;
+            let provider =
+                configured_rclone_provider().map_err(super::error::CloudCommandError::from)?;
             provider.copy_entry(&src, &dst, overwrite, prechecked, cancel_token.as_deref())
         })
     });

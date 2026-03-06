@@ -117,6 +117,22 @@ export const docsPages: DocPage[] = [
         note: 'Browsey validates rclone on first cloud use and requires a minimum supported rclone version.',
       },
       {
+        id: 'cloud-rclone-setup-recipe',
+        title: 'Rclone Setup Recipe for Browsey',
+        bullets: [
+          '1. Install `rclone` normally on the system. Browsey does not bundle it.',
+          '2. Run `rclone version` and confirm the binary works. Browsey currently requires at least `rclone v1.67.0`.',
+          '3. Run `rclone config` outside Browsey and create a supported remote.',
+          '4. Supported remote types for Browsey v1 are `onedrive`, `drive` (Google Drive), and `nextcloud`; `webdav` only works when it is clearly a Nextcloud setup.',
+          '5. The remote name is up to you. Names such as `work-onedrive`, `browsey-gdrive`, or `nc-home` are all fine.',
+          '6. Start Browsey and open `Settings > Advanced` if you want to verify the cloud setup state.',
+          '7. Leave `Rclone path` empty if Browsey can auto-detect `rclone`; set it only if auto-detect fails or you want Browsey to use a specific binary.',
+          '8. If setup is valid, the supported remote should appear in `Network`, and you can also navigate directly to `rclone://<remote>/<subpath>`.',
+          '9. If no remote appears, first check the status block in `Settings > Advanced`, then re-run `rclone listremotes` in the same shell/session used to launch Browsey.',
+        ],
+        note: 'Browsey does not need special remote names, extra rclone flags, or a Browsey-specific config layout. It uses your normal rclone installation and normal rclone config.',
+      },
+      {
         id: 'cloud-rclone-ops-model',
         title: 'Cloud Runtime Model (rclone rc + fallback)',
         bullets: [

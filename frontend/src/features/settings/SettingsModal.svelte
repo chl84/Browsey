@@ -2,9 +2,12 @@
   import ModalShell from '../../shared/ui/ModalShell.svelte'
   import ConfirmActionModal from '../../shared/ui/ConfirmActionModal.svelte'
   import TextField from '../../shared/ui/TextField.svelte'
+  import { getErrorMessage } from '@/shared/lib/error'
   import { onMount } from 'svelte'
+  import { loadCloudSetupStatus, type CloudSetupStatus } from '@/features/network'
   import type { DefaultSortField, Density } from '@/features/explorer'
   import type { ShortcutBinding, ShortcutCommandId } from '@/features/shortcuts'
+  import { createDebouncedAsyncRunner } from './cloudSetup'
   import { DEFAULT_SETTINGS, restoreDefaultsCopy, type Settings } from './settingsTypes'
   import { createSettingsModalViewModel } from './hooks/useSettingsModalViewModel'
   import GeneralSection from './sections/GeneralSection.svelte'
@@ -69,7 +72,7 @@
   export let onChangeDoubleClickMs: (value: number) => void = () => {}
   export let onChangeLogLevel: (value: Settings['logLevel']) => void = () => {}
   export let onChangeScrollbarWidth: (value: number) => void = () => {}
-  export let onChangeRclonePath: (value: string) => void = () => {}
+  export let onChangeRclonePath: (value: string) => Promise<void> | void = () => {}
   export let onRestoreDefaults: () => Promise<void> | void = () => {}
   export let onClearThumbCache: () => Promise<void> | void = () => {}
   export let onClearCloudOpenCache: () => Promise<void> | void = () => {}
@@ -82,9 +85,42 @@
   ) => Promise<void> | void = () => {}
 
   let settings: Settings = { ...DEFAULT_SETTINGS }
+  let cloudSetupStatus: CloudSetupStatus | null = null
+  let cloudSetupStatusBusy = false
+  let cloudSetupStatusError = ''
+  let lastCloudSetupRequestId = 0
+  let lastAppliedRclonePathValue = rclonePathValue
+  let wasOpen = false
 
   const patchSettings = (patch: Partial<Settings>) => {
     settings = { ...settings, ...patch }
+  }
+
+  const refreshCloudSetupStatus = async () => {
+    const requestId = ++lastCloudSetupRequestId
+    cloudSetupStatusBusy = true
+    try {
+      const next = await loadCloudSetupStatus()
+      if (requestId !== lastCloudSetupRequestId) return
+      cloudSetupStatus = next
+      cloudSetupStatusError = ''
+    } catch (err) {
+      if (requestId !== lastCloudSetupRequestId) return
+      cloudSetupStatusError = getErrorMessage(err)
+    } finally {
+      if (requestId === lastCloudSetupRequestId) {
+        cloudSetupStatusBusy = false
+      }
+    }
+  }
+
+  const rclonePathBlurRefresh = createDebouncedAsyncRunner(async (value: string) => {
+    await onChangeRclonePath(value)
+    await refreshCloudSetupStatus()
+  })
+
+  const handleRclonePathBlur = (value: string) => {
+    rclonePathBlurRefresh.schedule(value)
   }
 
   const {
@@ -192,8 +228,17 @@
   $: if (settings.scrollbarWidth !== scrollbarWidthValue) {
     patchSettings({ scrollbarWidth: scrollbarWidthValue })
   }
-  $: if (settings.rclonePath !== rclonePathValue) {
+  $: if (rclonePathValue !== lastAppliedRclonePathValue) {
     patchSettings({ rclonePath: rclonePathValue })
+    lastAppliedRclonePathValue = rclonePathValue
+  }
+  $: {
+    if (open && !wasOpen) {
+      void refreshCloudSetupStatus()
+    } else if (!open && wasOpen) {
+      rclonePathBlurRefresh.cancel()
+    }
+    wasOpen = open
   }
 
   $: {
@@ -217,6 +262,7 @@
     const listener = (e: KeyboardEvent) => handleWindowKeydown(e, open)
     window.addEventListener('keydown', listener, { capture: true })
     return () => {
+      rclonePathBlurRefresh.cancel()
       window.removeEventListener('keydown', listener, { capture: true } as any)
     }
   })
@@ -361,8 +407,11 @@
           showRclonePathRow={filterModel.showRclonePathRow}
           showLogLevelRow={filterModel.showLogLevelRow}
           {settings}
+          {cloudSetupStatus}
+          {cloudSetupStatusBusy}
+          {cloudSetupStatusError}
           onPatch={patchSettings}
-          {onChangeRclonePath}
+          onChangeRclonePath={handleRclonePathBlur}
           {onChangeLogLevel}
         />
       </div>

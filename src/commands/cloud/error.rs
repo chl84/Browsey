@@ -1,3 +1,4 @@
+use super::rclone_path::{RclonePathError, RclonePathErrorCode};
 use crate::errors::{
     api_error::ApiResult,
     domain::{self, DomainError, ErrorCode},
@@ -61,6 +62,10 @@ impl CloudCommandError {
     pub(crate) fn code(&self) -> CloudCommandErrorCode {
         self.code
     }
+
+    pub(crate) fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 impl fmt::Display for CloudCommandError {
@@ -85,4 +90,17 @@ pub(crate) type CloudCommandResult<T> = Result<T, CloudCommandError>;
 
 pub(super) fn map_api_result<T>(result: CloudCommandResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
+}
+
+impl From<RclonePathError> for CloudCommandError {
+    fn from(error: RclonePathError) -> Self {
+        let code = match error.code() {
+            RclonePathErrorCode::BinaryMissing => CloudCommandErrorCode::BinaryMissing,
+            RclonePathErrorCode::InvalidBinaryPath => CloudCommandErrorCode::InvalidConfig,
+            RclonePathErrorCode::DbOpenFailed | RclonePathErrorCode::DbReadFailed => {
+                CloudCommandErrorCode::TaskFailed
+            }
+        };
+        Self::new(code, error.message())
+    }
 }

@@ -90,6 +90,7 @@ export const createExplorerStores = () => {
   const entries = writable<Entry[]>([])
   const loading = createDelayedLoadingStore()
   const error = writable('')
+  const networkNotice = writable('')
   const filter = writable('')
   const searchMode = writable(false)
   const searchRunning = writable(false)
@@ -129,6 +130,7 @@ export const createExplorerStores = () => {
     entries,
     loading,
     error,
+    networkNotice,
     filter,
     searchMode,
     searchRunning,

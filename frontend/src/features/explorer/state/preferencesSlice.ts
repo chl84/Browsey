@@ -478,9 +478,9 @@ export const createPreferenceSlice = (
     void storeScrollbarWidth(clamped)
   }
 
-  const setRclonePathPref = (value: string) => {
+  const setRclonePathPref = async (value: string) => {
     rclonePath.set(value)
-    void storeRclonePath(value)
+    await storeRclonePath(value)
   }
 
   const loadMountsPollPref = async () => {

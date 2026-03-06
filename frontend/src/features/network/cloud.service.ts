@@ -46,6 +46,25 @@ export type CloudConflictInfo = {
   isDir: boolean
 }
 
+export type CloudSetupState =
+  | 'ready'
+  | 'binary_missing'
+  | 'invalid_binary_path'
+  | 'config_read_failed'
+  | 'runtime_unusable'
+  | 'no_supported_remotes'
+  | 'discovery_failed'
+
+export type CloudSetupStatus = {
+  state: CloudSetupState
+  configuredPath: string | null
+  resolvedBinaryPath: string | null
+  detectedRemoteCount: number
+  supportedRemoteCount: number
+  unsupportedRemoteCount: number
+  supportedRemotes: CloudRemote[]
+}
+
 export type CloudWriteOptions = {
   overwrite?: boolean
   prechecked?: boolean
@@ -100,6 +119,9 @@ const invokeCloud = async <T>(command: string, args?: Record<string, unknown>) =
 
 export const listCloudRemotes = () =>
   invokeCloud<CloudRemote[]>('list_cloud_remotes')
+
+export const loadCloudSetupStatus = () =>
+  invoke<CloudSetupStatus>('cloud_setup_status')
 
 export const validateCloudRoot = (path: string) =>
   invokeCloud<CloudRootSelection>('validate_cloud_root', { path })
