@@ -143,4 +143,34 @@ describe('cloud modal background refresh', () => {
     expect(toastCalls.some((msg) => msg.startsWith('Delete failed:'))).toBe(false)
     expect(get(modal.state)).toEqual({ open: false, targets: [], mode: 'default' })
   })
+
+  it('delete modal closes cleanly and shows a recovery toast on delete failure', async () => {
+    deleteEntriesMock.mockRejectedValueOnce(new Error('Permission denied'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const reloadCurrent = vi.fn(async () => {})
+    const showToast = vi.fn()
+    const activityApi = {
+      start: vi.fn(async () => {}),
+      cleanup: vi.fn(async () => {}),
+      clearNow: vi.fn(),
+      hasHideTimer: vi.fn(() => false),
+    }
+    const modal = createDeleteConfirmModal({
+      activityApi,
+      reloadCurrent,
+      getCurrentPath: () => '/tmp',
+      showToast,
+    })
+
+    modal.open([makeEntry('/tmp/sample.txt')])
+    await modal.confirm()
+
+    expect(deleteEntriesMock).toHaveBeenCalledTimes(1)
+    expect(reloadCurrent).not.toHaveBeenCalled()
+    expect(showToast).toHaveBeenCalledWith('Delete failed: Permission denied')
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.clearNow).toHaveBeenCalledTimes(1)
+    expect(get(modal.state)).toEqual({ open: false, targets: [], mode: 'default' })
+    consoleError.mockRestore()
+  })
 })

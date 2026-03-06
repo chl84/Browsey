@@ -103,13 +103,14 @@ This item remains open.
 There is real existing evidence:
 
 - local delete batch cancellation rolls back completed items
+- local copy cancellation now has direct backend coverage for both file cleanup
+  and directory-destination cleanup
 - extract release docs explicitly define non-transactional boundaries
 - mixed transfer docs/tests already track partial completion and refresh
   reconciliation
 
 But the Linux 1.0 closeout is not finished because:
 
-- local copy cancellation remains a named gap in the local audit
 - mixed execute-phase cancellation during active work remains a named gap in the
   mixed audit
 - extract cancel/failure filesystem-state validation still belongs to active
@@ -124,6 +125,8 @@ Current evidence is useful but incomplete:
 - cloud rename/new-folder/delete modals already soft-fail refresh and tell the
   user to press `F5` when background reconciliation times out
 - delete modal closes cleanly after success/failure handling
+- delete modal failure now has explicit frontend coverage for toast + cleanup +
+  closed-state recovery
 
 What is still missing for Linux 1.0:
 

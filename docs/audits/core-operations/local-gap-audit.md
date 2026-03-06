@@ -17,7 +17,7 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`LCM`, `LRN`, `LT
 
 | Scenario ID | Current automated coverage | Evidence | Gap summary |
 |---|---|---|---|
-| `CO-LCM-001` | Partial | `copy_file_best_effort_does_not_overwrite_existing_target`, `copy_file_best_effort_fails_when_source_is_missing`, `copy_file_best_effort_fails_when_destination_dir_is_read_only` | Missing cancel-path and multi-item partial-failure assertions. |
+| `CO-LCM-001` | Partial | `copy_file_best_effort_does_not_overwrite_existing_target`, `copy_file_best_effort_fails_when_source_is_missing`, `copy_file_best_effort_fails_when_destination_dir_is_read_only`, `copy_file_best_effort_cancelled_before_transfer_removes_destination` | Missing multi-item partial-failure assertions. |
 | `CO-LCM-002` | Partial | `merge_copy_can_undo_without_touching_existing`, `copy_entry_rejects_symlink_source_no_follow` | Missing recursive multi-item partial-failure summary assertions. |
 | `CO-LCM-003` | Partial | `move_entry_does_not_overwrite_existing_target`, `move_entry_fails_when_source_is_missing`, `move_entry_keeps_source_when_destination_parent_disappears`, `move_entry_fails_when_destination_dir_is_read_only_and_keeps_source` | Missing cancellation coverage and explicit per-item partial summary assertions. |
 | `CO-LCM-004` | Partial | `merge_cut_undo_restores_source_and_target` | Missing partial directory move failure assertions and progress/cancel behavior. |
@@ -35,7 +35,7 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`LCM`, `LRN`, `LT
 1. Add restore conflict-path coverage (destination already exists on restore).
 2. Add permission-denied variant coverage for permanent-delete batch path.
 3. Add at least one multi-item copy/move partial summary assertion path.
-4. Add one explicit cancel-path assertion for local copy (not only move/delete).
+4. Add one multi-item local copy cancellation/summary assertion path.
 
 ## Notes
 
