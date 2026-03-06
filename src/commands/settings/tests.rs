@@ -1,7 +1,9 @@
 use super::{
-    load_cloud_enabled, load_cloud_thumbs, load_double_click_ms, load_mounts_poll_ms,
-    load_rclone_path, load_scrollbar_width, store_cloud_enabled, store_cloud_thumbs,
-    store_double_click_ms, store_mounts_poll_ms, store_rclone_path, store_scrollbar_width,
+    load_cloud_enabled, load_cloud_thumbs, load_double_click_ms, load_hardware_acceleration,
+    load_log_level, load_mounts_poll_ms, load_rclone_path, load_scrollbar_width,
+    store_cloud_enabled, store_cloud_thumbs, store_double_click_ms,
+    store_hardware_acceleration, store_log_level, store_mounts_poll_ms, store_rclone_path,
+    store_scrollbar_width,
 };
 use crate::commands::cloud::{
     cloud_dir_listing_cache_contains_for_tests,
@@ -256,5 +258,70 @@ fn store_rclone_path_trims_and_roundtrips() {
     assert_eq!(
         load_rclone_path().expect("load trimmed rclonePath"),
         Some("/usr/local/bin/rclone".to_string())
+    );
+}
+
+#[test]
+fn hardware_acceleration_roundtrips() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+
+    assert_eq!(
+        load_hardware_acceleration().expect("load default hardwareAcceleration"),
+        None
+    );
+
+    store_hardware_acceleration(true).expect("store hardwareAcceleration true");
+    assert_eq!(
+        load_hardware_acceleration().expect("load hardwareAcceleration true"),
+        Some(true)
+    );
+
+    store_hardware_acceleration(false).expect("store hardwareAcceleration false");
+    assert_eq!(
+        load_hardware_acceleration().expect("load hardwareAcceleration false"),
+        Some(false)
+    );
+}
+
+#[test]
+fn load_log_level_normalizes_persisted_values() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+    let conn = crate::db::open().expect("open settings db");
+
+    assert_eq!(load_log_level().expect("load default logLevel"), None);
+
+    crate::db::set_setting_string(&conn, "logLevel", "DEBUG").expect("seed uppercase logLevel");
+    assert_eq!(
+        load_log_level().expect("load normalized logLevel"),
+        Some("debug".to_string())
+    );
+
+    crate::db::set_setting_string(&conn, "logLevel", " warn ").expect("seed trimmed logLevel");
+    assert_eq!(
+        load_log_level().expect("load trimmed logLevel"),
+        Some("warn".to_string())
+    );
+}
+
+#[test]
+fn log_level_rejects_invalid_values_and_ignores_legacy_db_value() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+
+    let err = store_log_level("verbose".to_string()).expect_err("invalid logLevel should fail");
+    assert_eq!(err.code, "invalid_input");
+    assert!(
+        err.message.contains("invalid log level"),
+        "unexpected log level error: {:?}",
+        err
+    );
+
+    let conn = crate::db::open().expect("open settings db");
+    crate::db::set_setting_string(&conn, "logLevel", "trace").expect("seed invalid logLevel");
+    assert_eq!(
+        load_log_level().expect("load legacy invalid logLevel"),
+        None
     );
 }

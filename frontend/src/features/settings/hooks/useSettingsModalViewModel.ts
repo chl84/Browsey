@@ -329,7 +329,14 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     )
     const ffmpegPathTexts = rowTexts('ffmpeg path', settings.ffmpegPath || 'auto-detect if empty', 'ffmpeg')
     const thumbCacheTexts = rowTexts('cache size', 'thumbnail cache size', `${settings.thumbCacheMb} mb`)
-    const mountsPollTexts = rowTexts('mounts poll', 'watcher poll', `${settings.mountsPollMs} ms`)
+    const mountsPollTexts = rowTexts(
+      'mount refresh interval',
+      'mounts poll',
+      'watcher poll',
+      'partitions',
+      'removable media',
+      `${settings.mountsPollMs} ms`,
+    )
     const hardwareAccelerationTexts = rowTexts(
       'hardware acceleration',
       'gpu',
@@ -358,7 +365,16 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       settings.rclonePath || 'auto-detect if empty',
       'rclone',
     )
-    const logLevelTexts = rowTexts('log level', 'error', 'warn', 'info', 'debug', settings.logLevel)
+    const logLevelTexts = rowTexts(
+      'log level',
+      'error',
+      'warn',
+      'info',
+      'debug',
+      'diagnosing',
+      'debug logs',
+      settings.logLevel,
+    )
 
     const showDefaultViewRow = rowMatches(n, defaultViewTexts)
     const showFoldersFirstRow = rowMatches(n, foldersFirstTexts)
