@@ -217,7 +217,11 @@ pub(super) fn list_dir_sync(
             target.display(),
             e
         ));
-        ListingError::from_external_message(format!("{}: {e}", target.display()))
+        ListingError::from_io_error(
+            ListingErrorCode::UnknownError,
+            &target.display().to_string(),
+            e,
+        )
     })?;
     debug_log(&format!(
         "read_dir success: path={} entries_pending",
