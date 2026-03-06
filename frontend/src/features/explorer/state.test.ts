@@ -116,6 +116,7 @@ describe('createExplorerState sort refresh behavior', () => {
     })
 
     const state = createExplorerState()
+    state.cloudEnabled.set(true)
     await state.loadNetwork()
 
     expect(loadCloudSetupStatusMock).toHaveBeenCalledTimes(1)
@@ -134,6 +135,7 @@ describe('createExplorerState sort refresh behavior', () => {
     })
 
     const state = createExplorerState()
+    state.cloudEnabled.set(true)
     await state.loadNetwork()
 
     expect(loadCloudSetupStatusMock).toHaveBeenCalledTimes(1)
@@ -161,6 +163,7 @@ describe('createExplorerState sort refresh behavior', () => {
     ])
 
     const state = createExplorerState()
+    state.cloudEnabled.set(true)
     await state.loadNetwork()
 
     expect(loadCloudSetupStatusMock).not.toHaveBeenCalled()

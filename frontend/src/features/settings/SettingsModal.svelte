@@ -39,7 +39,7 @@
   export let openDestAfterExtractValue = true
   export let videoThumbsValue = true
   export let cloudThumbsValue = false
-  export let cloudEnabledValue = true
+  export let cloudEnabledValue = false
   export let hardwareAccelerationValue = false
   export let ffmpegPathValue = ''
   export let thumbCacheMbValue = 300
