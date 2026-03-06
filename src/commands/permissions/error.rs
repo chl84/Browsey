@@ -1,9 +1,6 @@
 use crate::errors::{
     api_error::{ApiError, ApiResult},
-    domain::{
-        self, classify_io_error, classify_io_hint_from_message, classify_message_by_patterns,
-        DomainError, ErrorCode, IoErrorHint,
-    },
+    domain::{self, classify_io_error, DomainError, ErrorCode, IoErrorHint},
 };
 use std::fmt;
 
@@ -127,11 +124,6 @@ impl PermissionsError {
         )
     }
 
-    pub(super) fn from_external_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        Self::new(classify_external_message(&message), message)
-    }
-
     pub(super) fn from_code_and_message(code: &str, message: impl Into<String>) -> Self {
         let message = message.into();
         let code =
@@ -180,18 +172,6 @@ impl DomainError for PermissionsError {
 
     fn message(&self) -> &str {
         &self.message
-    }
-}
-
-impl From<String> for PermissionsError {
-    fn from(message: String) -> Self {
-        Self::from_external_message(message)
-    }
-}
-
-impl From<&str> for PermissionsError {
-    fn from(message: &str) -> Self {
-        Self::from_external_message(message)
     }
 }
 
@@ -255,25 +235,6 @@ pub(super) fn map_api_result<T>(result: PermissionsResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
 
-fn classify_external_message(message: &str) -> PermissionsErrorCode {
-    if let Some(hint) = classify_io_hint_from_message(message) {
-        let io_code = match hint {
-            IoErrorHint::NotFound => Some(PermissionsErrorCode::NotFound),
-            IoErrorHint::PermissionDenied => Some(PermissionsErrorCode::PermissionDenied),
-            IoErrorHint::ReadOnlyFilesystem => Some(PermissionsErrorCode::ReadOnlyFilesystem),
-            _ => None,
-        };
-        if let Some(code) = io_code {
-            return code;
-        }
-    }
-    classify_message_by_patterns(
-        message,
-        EXTERNAL_CLASSIFICATION_RULES,
-        PermissionsErrorCode::UnknownError,
-    )
-}
-
 fn classify_io_error_code(
     error: &std::io::Error,
     fallback: PermissionsErrorCode,
@@ -286,140 +247,9 @@ fn classify_io_error_code(
     }
 }
 
-const EXTERNAL_CLASSIFICATION_RULES: &[(PermissionsErrorCode, &[&str])] = &[
-    (
-        PermissionsErrorCode::PathNotAbsolute,
-        &["path must be absolute"],
-    ),
-    (
-        PermissionsErrorCode::InvalidPath,
-        &[
-            "parent directory components are not allowed",
-            "invalid path component (nul byte)",
-            "path contains nul byte",
-            "unsupported path prefix",
-        ],
-    ),
-    (
-        PermissionsErrorCode::InvalidInput,
-        &[
-            "no paths provided",
-            "no permission changes were provided",
-            "no ownership changes were provided",
-        ],
-    ),
-    (
-        PermissionsErrorCode::RootForbidden,
-        &["refusing to operate on filesystem root"],
-    ),
-    (
-        PermissionsErrorCode::SymlinkUnsupported,
-        &[
-            "symlinks are not allowed in path",
-            "symlinks are not allowed:",
-            "permissions are not supported on symlinks",
-            "ownership changes are not supported on symlinks",
-        ],
-    ),
-    (
-        PermissionsErrorCode::PrincipalNotFound,
-        &["user not found", "group not found"],
-    ),
-    (
-        PermissionsErrorCode::GroupUnavailable,
-        &["group information is unavailable"],
-    ),
-    (
-        PermissionsErrorCode::AuthenticationCancelled,
-        &[
-            "authentication was cancelled or denied",
-            "request dismissed",
-            "cancelled",
-        ],
-    ),
-    (
-        PermissionsErrorCode::ElevatedRequired,
-        &["requires elevated privileges", "pkexec is not installed"],
-    ),
-    (
-        PermissionsErrorCode::HelperExecutableNotFound,
-        &["failed to locate browsey executable"],
-    ),
-    (
-        PermissionsErrorCode::HelperProtocolError,
-        &["failed to serialize helper request", "invalid helper input"],
-    ),
-    (
-        PermissionsErrorCode::HelperStartFailed,
-        &["failed to start pkexec"],
-    ),
-    (
-        PermissionsErrorCode::HelperIoError,
-        &[
-            "failed to send helper request",
-            "failed reading helper input",
-        ],
-    ),
-    (
-        PermissionsErrorCode::HelperWaitFailed,
-        &["failed waiting for pkexec helper"],
-    ),
-    (
-        PermissionsErrorCode::PermissionDenied,
-        &[
-            "permission denied",
-            "operation not permitted",
-            "access is denied",
-            "not authorized",
-        ],
-    ),
-    (
-        PermissionsErrorCode::ReadOnlyFilesystem,
-        &["read-only file system"],
-    ),
-    (
-        PermissionsErrorCode::UnsupportedPlatform,
-        &["not supported on this platform"],
-    ),
-    (
-        PermissionsErrorCode::NotFound,
-        &["path does not exist", "no such file or directory"],
-    ),
-    (
-        PermissionsErrorCode::MetadataReadFailed,
-        &[
-            "failed to read metadata",
-            "getnamedsecurityinfow failed",
-            "getsecuritydescriptordacl failed",
-            "getace failed",
-            "createwellknownsid failed",
-        ],
-    ),
-    (
-        PermissionsErrorCode::OwnershipUpdateFailed,
-        &["failed to change owner/group"],
-    ),
-    (
-        PermissionsErrorCode::PermissionsUpdateFailed,
-        &[
-            "failed to update permissions",
-            "setentriesinaclw failed",
-            "setnamedsecurityinfow failed",
-        ],
-    ),
-    (
-        PermissionsErrorCode::PostChangeSnapshotFailed,
-        &[
-            "failed to capture post-change permissions",
-            "failed to capture post-change ownership",
-        ],
-    ),
-    (PermissionsErrorCode::RollbackFailed, &["rollback failed"]),
-];
-
 #[cfg(test)]
 mod tests {
-    use super::PermissionsError;
+    use super::{PermissionsError, PermissionsErrorCode};
 
     #[test]
     fn maps_typed_code_and_message_without_reclassification() {
@@ -429,5 +259,12 @@ mod tests {
         );
         assert_eq!(error.code(), "helper_protocol_error");
         assert_eq!(error.message(), "Invalid helper response payload");
+    }
+
+    #[test]
+    fn unknown_typed_code_falls_back_to_unknown_error() {
+        let error = PermissionsError::from_code_and_message("not_real", "opaque");
+        assert_eq!(error.code(), PermissionsErrorCode::UnknownError.as_str());
+        assert_eq!(error.message(), "opaque");
     }
 }

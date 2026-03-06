@@ -231,6 +231,70 @@ fn should_retry_with_pkexec(error: &UndoError) -> bool {
     matches!(error.code(), UndoErrorCode::PermissionDenied)
 }
 
+fn pkexec_exit_error(status_code: Option<i32>, stderr: &str) -> PermissionsError {
+    let trimmed = stderr.trim();
+    match status_code {
+        Some(126) => {
+            if trimmed.is_empty() {
+                PermissionsError::new(
+                    PermissionsErrorCode::AuthenticationCancelled,
+                    "Authentication was cancelled or denied",
+                )
+            } else {
+                PermissionsError::new(
+                    PermissionsErrorCode::AuthenticationCancelled,
+                    format!("Authentication was cancelled or denied: {trimmed}"),
+                )
+            }
+        }
+        Some(127) => {
+            if trimmed.is_empty() {
+                PermissionsError::new(
+                    PermissionsErrorCode::PermissionDenied,
+                    "pkexec could not obtain authorization or reported an error",
+                )
+            } else {
+                PermissionsError::new(
+                    PermissionsErrorCode::PermissionDenied,
+                    format!(
+                        "pkexec could not obtain authorization or reported an error: {trimmed}"
+                    ),
+                )
+            }
+        }
+        Some(code) => {
+            if trimmed.is_empty() {
+                PermissionsError::new(
+                    PermissionsErrorCode::HelperProtocolError,
+                    format!(
+                        "Ownership helper exited with status {code} without structured response"
+                    ),
+                )
+            } else {
+                PermissionsError::new(
+                    PermissionsErrorCode::HelperProtocolError,
+                    format!(
+                        "Ownership helper exited with status {code} without structured response: {trimmed}"
+                    ),
+                )
+            }
+        }
+        None => {
+            if trimmed.is_empty() {
+                PermissionsError::new(
+                    PermissionsErrorCode::HelperProtocolError,
+                    "Ownership helper terminated without structured response",
+                )
+            } else {
+                PermissionsError::new(
+                    PermissionsErrorCode::HelperProtocolError,
+                    format!("Ownership helper terminated without structured response: {trimmed}"),
+                )
+            }
+        }
+    }
+}
+
 fn parse_ownership_helper_response(stdout: &[u8]) -> PermissionsResult<Option<PermissionsError>> {
     if stdout.iter().all(|byte| byte.is_ascii_whitespace()) {
         return Ok(None);
@@ -357,13 +421,7 @@ fn run_ownership_with_pkexec(
         return Err(error);
     }
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if !stderr.is_empty() {
-        return Err(PermissionsError::from(stderr));
-    }
-    Err(PermissionsError::new(
-        PermissionsErrorCode::AuthenticationCancelled,
-        "Authentication was cancelled or denied",
-    ))
+    Err(pkexec_exit_error(output.status.code(), &stderr))
 }
 
 #[derive(Clone)]
@@ -660,5 +718,24 @@ mod tests {
         let payload = br#"{"status":"ok"}"#;
         let parsed = parse_ownership_helper_response(payload).expect("parse helper payload");
         assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn pkexec_exit_126_maps_to_authentication_cancelled() {
+        let error = pkexec_exit_error(Some(126), "");
+        assert_eq!(error.code(), "authentication_cancelled");
+    }
+
+    #[test]
+    fn pkexec_exit_127_maps_to_permission_denied() {
+        let error = pkexec_exit_error(Some(127), "Not authorized");
+        assert_eq!(error.code(), "permission_denied");
+        assert!(error.message().contains("Not authorized"));
+    }
+
+    #[test]
+    fn pkexec_unstructured_nonstandard_exit_maps_to_helper_protocol_error() {
+        let error = pkexec_exit_error(Some(5), "opaque failure");
+        assert_eq!(error.code(), "helper_protocol_error");
     }
 }
