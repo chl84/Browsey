@@ -30,7 +30,7 @@ Step 6 items can be closed against something concrete instead of a vague
 | Restore defaults | Partial but meaningful | `ExplorerPage` reset flow explicitly writes all current defaults, and view-model tests now cover representative Linux-facing settings (`cloudEnabled`, `mountsPollMs`, `doubleClickMs`, `logLevel`, `rclonePath`, `scrollbarWidth`) plus filter-preservation behavior, but there is not yet a broader end-to-end reset proof across the full settings surface. |
 | Runtime application without restart | Partial | Most settings update Svelte stores immediately through `preferencesSlice`, `useExplorerData` now has direct live-application tests for mount refresh interval plus existing root-hook coverage for high contrast and scrollbar width, and `hardwareAcceleration` is the only current setting explicitly documented as requiring restart in the UI. This is meaningful evidence, but not yet broad enough to close the whole item. |
 | Settings clarity | Meaningfully improved | The most internal-feeling Linux-facing rows now explain themselves in the UI (`Mount refresh interval`, `Log level` guidance), but a full pass on every settings row is not separately audited yet. |
-| Settings migration across versions | Open | Bounded loaders safely ignore malformed/out-of-range persisted values for some settings, but there is no explicit migration/versioned-settings plan or upgrade-path validation yet. |
+| Settings migration across versions | Partial | Bounded loaders safely ignore malformed/out-of-range persisted values, enum loaders now also reject unsupported legacy values such as invalid `defaultView`, `density`, `sortField`, and `sortDirection`, but there is still no explicit migration/versioned-settings plan or upgrade-path validation yet. |
 
 ## What Is Now Clearly Verified
 
@@ -39,6 +39,8 @@ Step 6 items can be closed against something concrete instead of a vague
 - Legacy malformed or out-of-range stored values for the covered bounded
   settings degrade to `None`/default behavior rather than forcing bad runtime
   state.
+- Enum-backed loaders now reject unsupported persisted values instead of
+  passing them through blindly, including `defaultView`.
 - `rclonePath` persistence trims whitespace before storing and roundtrips
   cleanly.
 - `hardwareAcceleration` roundtrips through persisted settings, and persisted
@@ -61,7 +63,7 @@ Step 6 items can be closed against something concrete instead of a vague
 - add runtime-focused checks that representative settings actually apply live in
   the Linux UI without restart where that is the intended contract
 - document or implement a more explicit settings migration story for version
-  upgrades
+  upgrades beyond the current loader-level fallback behavior
 
 ## Conclusion
 
