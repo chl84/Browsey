@@ -29,9 +29,7 @@ pub(super) fn find_identical_files(
 ) -> DuplicatesResult<Vec<PathBuf>> {
     match find_identical_files_with_progress(target, start, target_len, None, |_| {}) {
         ScanResult::Completed { matches, .. } => Ok(matches),
-        ScanResult::Cancelled => Err(DuplicatesError::from_external_message(
-            "Duplicate scan cancelled",
-        )),
+        ScanResult::Cancelled => Err(DuplicatesError::cancelled()),
         ScanResult::Failed(err) => Err(err),
     }
 }
@@ -297,9 +295,9 @@ fn collect_same_size_files_with_limits(
                     "Duplicate scan aborted: scanned file limit exceeded ({} > {})",
                     scanned_files, max_scanned_files
                 );
-                return Err(CollectAbort::Failed(
-                    DuplicatesError::from_external_message(message),
-                ));
+                return Err(CollectAbort::Failed(DuplicatesError::scan_limit_exceeded(
+                    message,
+                )));
             }
             if meta.len() == target_len {
                 if (out.len() as u64) >= max_candidate_files {
@@ -308,9 +306,9 @@ fn collect_same_size_files_with_limits(
                         out.len(),
                         max_candidate_files
                     );
-                    return Err(CollectAbort::Failed(
-                        DuplicatesError::from_external_message(message),
-                    ));
+                    return Err(CollectAbort::Failed(DuplicatesError::scan_limit_exceeded(
+                        message,
+                    )));
                 }
                 out.push(path);
             }
@@ -393,6 +391,7 @@ fn compare_percent(compared_files: u64, candidate_files: u64) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::errors::domain::DomainError;
     use std::{fs, io::Write, time::Duration};
 
     fn uniq_path(label: &str) -> PathBuf {
@@ -425,10 +424,7 @@ mod tests {
             collect_same_size_files_with_limits(&target, &base, 9, None, &mut progress, 100, 1);
         match res {
             Err(CollectAbort::Failed(err)) => {
-                assert!(
-                    err.to_string().contains("candidate file limit exceeded"),
-                    "unexpected: {err}"
-                )
+                assert_eq!(err.code_str(), "scan_limit_exceeded", "unexpected: {err}");
             }
             _ => panic!("expected candidate limit error"),
         }
@@ -450,10 +446,7 @@ mod tests {
             collect_same_size_files_with_limits(&target, &base, 1, None, &mut progress, 1, 100);
         match res {
             Err(CollectAbort::Failed(err)) => {
-                assert!(
-                    err.to_string().contains("scanned file limit exceeded"),
-                    "unexpected: {err}"
-                )
+                assert_eq!(err.code_str(), "scan_limit_exceeded", "unexpected: {err}");
             }
             _ => panic!("expected scanned file limit error"),
         }

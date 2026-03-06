@@ -63,6 +63,13 @@ pretending the whole Step 10 track is done after isolated seam fixes.
   responses for `pkexec`-elevated ownership changes and parses typed helper
   error codes from JSON on stdout, instead of classifying helper failures from
   raw stdout/stderr text when the helper itself ran.
+- `src/commands/duplicates/mod.rs`, `src/commands/duplicates/scan.rs`, and
+  `src/commands/duplicates/error.rs` now classify duplicate-scan cancellation,
+  scan-limit failures, and metadata-read errors through typed constructors /
+  typed I/O mapping instead of `from_external_message(...)`.
+- `src/commands/open_with/linux.rs` now reports malformed desktop-entry `Exec`
+  templates as typed `invalid_input` instead of routing them through
+  external-message classification.
 - Existing backend hardening controls already provide a meaningful baseline:
   - `.semgrep/typed-errors-blocking.yml`
   - `.semgrep/typed-errors.yml`
@@ -79,10 +86,11 @@ pretending the whole Step 10 track is done after isolated seam fixes.
   `FsError` fan-out, ownership/pkexec retry, and `open_with`
   path/app-launch classification examples are now removed.
 - Several backend domains still use one-off error mapping or raw message
-  forwarding even when they already have typed error containers; Linux
-  `duplicates` scan/error fan-out and at least one `open_with/linux` parse
-  seam still rely on external-message classification, and Step 10 still has
-  broader cleanup left.
+  forwarding even when they already have typed error containers; the remaining
+  Linux-relevant seam is now mostly concentrated in the centralized
+  `PermissionsError::from_external_message(...)` path for truly external text
+  coming back from privileged/helper boundaries, while Windows-only
+  `open_with` classification remains outside the Linux 1.0 claim.
 - Step 10 also includes supportability/logging quality, which is broader than
   typed-error cleanup alone.
 
