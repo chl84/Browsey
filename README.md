@@ -58,6 +58,7 @@ Windows:
 Linux upgrade path:
 - Fedora/RPM: use the next release RPM with `sudo rpm -Uvh --replacepkgs Browsey-<new-version>-1.x86_64.rpm`.
 - Ubuntu/Debian (`.deb`): use the next release DEB with `sudo apt install ./browsey_<new-version>_amd64.deb`.
+- Ubuntu/Debian uninstall path: `sudo apt remove browsey` (or `sudo apt purge browsey` if config cleanup is explicitly desired).
 
 ## Cloud (rclone) v1 (Linux-first)
 - Browsey cloud support is `rclone`-backed. OneDrive is the primary v1 target, with groundwork for Google Drive and Nextcloud (`webdav`) remotes.

@@ -97,7 +97,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [ ] Define and validate the install path for the Debian/Ubuntu target surface:
   - [x] decide package/distribution format
   - [ ] test install and upgrade on a clean Debian/Ubuntu-based environment
-  - [ ] document uninstall behavior on that environment
+  - [x] document uninstall behavior on that environment
 - [x] Decide whether downgrade is supported:
   - [ ] if yes, test downgrade explicitly
   - [x] if no, document downgrade as unsupported
