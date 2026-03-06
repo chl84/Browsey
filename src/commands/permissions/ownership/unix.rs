@@ -7,7 +7,9 @@ use tracing::{debug, warn};
 
 use crate::{
     fs_utils::{check_no_symlink_components, sanitize_path_nofollow},
-    undo::{apply_ownership, ownership_snapshot, set_ownership_nofollow},
+    undo::{
+        apply_ownership, ownership_snapshot, set_ownership_nofollow, UndoError, UndoErrorCode,
+    },
 };
 
 use super::super::{
@@ -219,8 +221,8 @@ fn resolve_gid_spec(spec: &str) -> PermissionsResult<u32> {
     })
 }
 
-fn is_elevated_privileges_error(msg: &impl std::fmt::Display) -> bool {
-    msg.to_string().contains("requires elevated privileges")
+fn should_retry_with_pkexec(error: &UndoError) -> bool {
+    matches!(error.code(), UndoErrorCode::PermissionDenied)
 }
 
 fn run_ownership_with_pkexec(
@@ -377,7 +379,7 @@ fn set_ownership_batch_impl(
             if let Err(e) =
                 set_ownership_nofollow(&target.target, target.uid_update, target.gid_update)
             {
-                if allow_pkexec_retry && is_elevated_privileges_error(&e) {
+                if allow_pkexec_retry && should_retry_with_pkexec(&e) {
                     let helper_paths: Vec<String> = targets
                         .iter()
                         .map(|t| t.target.to_string_lossy().into_owned())
@@ -544,5 +546,20 @@ mod tests {
         assert_eq!(after.gid(), expected_gid);
 
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn pkexec_retry_gate_uses_typed_undo_error_code() {
+        let permission_denied = UndoError::new(
+            UndoErrorCode::PermissionDenied,
+            "Failed to change owner/group for /tmp/example (requires elevated privileges: root or CAP_CHOWN)",
+        );
+        let io_error = UndoError::new(
+            UndoErrorCode::IoError,
+            "Failed to change owner/group for /tmp/example (requires elevated privileges: root or CAP_CHOWN)",
+        );
+
+        assert!(should_retry_with_pkexec(&permission_denied));
+        assert!(!should_retry_with_pkexec(&io_error));
     }
 }
