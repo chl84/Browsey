@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build release RPM with ccache configured to use a writable temp directory.
+# Build Linux release bundles with ccache configured to use a writable temp
+# directory.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CCACHE_DIR="${CCACHE_DIR:-$ROOT/tmp/ccache}"
@@ -20,5 +21,5 @@ if command -v ccache >/dev/null 2>&1; then
 fi
 
 cd "$ROOT"
-echo "[build-release] Building RPM bundle from $ROOT"
-cargo tauri build --bundles rpm "$@"
+echo "[build-release] Building RPM + DEB bundles from $ROOT"
+cargo tauri build --bundles rpm,deb "$@"

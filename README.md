@@ -49,6 +49,8 @@ Windows:
 
 ## Install
 - Fedora/RPM: download the latest `Browsey-<version>-1.x86_64.rpm` from Releases and install with `sudo rpm -Uvh --replacepkgs Browsey-<version>-1.x86_64.rpm`.
+- Ubuntu/Debian (`.deb`): download the latest `browsey_<version>_amd64.deb` from Releases and install with `sudo apt install ./browsey_<version>_amd64.deb`.
+- Supported Linux release path is install + upgrade. Package downgrade is not part of the Linux 1.0 supported path.
 - Windows: grab the NSIS installer from Releases and run it (bundled by `cargo tauri build --bundles nsis`).
 - From source: clone, run `npm --prefix frontend install`, then `cargo tauri dev --no-dev-server` (or `cargo tauri build` for a release bundle).
 - Cloud features require a separately installed `rclone` binary discoverable in `PATH` (Browsey does not bundle `rclone`).
@@ -113,11 +115,11 @@ Tauri bundles:
   cargo tauri build --bundles nsis
   ```
   or use `scripts/build/build-release.bat` (cleans old bundles, builds frontend, then bundles). Output lands in `target/release/bundle/nsis/`.
-- Linux RPM (smallest on Fedora-like distros):
+- Linux RPM + DEB:
   ```bash
-  cargo tauri build --bundles rpm
+  cargo tauri build --bundles rpm,deb
   ```
-  Helper: `scripts/build/build-release.sh`. Output in `target/release/bundle/rpm/`.
+  Helper: `scripts/build/build-release.sh`. Output in `target/release/bundle/rpm/` and `target/release/bundle/deb/`.
   For manual `rpmbuild`/COPR packaging (not standard release flow), use:
   `packaging/rpm/browsey.spec` and `packaging/rpm/README.md`.
 

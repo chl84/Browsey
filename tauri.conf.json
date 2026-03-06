@@ -31,7 +31,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["rpm"],
+    "targets": ["rpm", "deb"],
     "icon": ["resources/icons/icon.png", "resources/icons/icon.ico"],
     "externalBin": [
       "resources/pdfium-linux-x64/lib/libpdfium.so"

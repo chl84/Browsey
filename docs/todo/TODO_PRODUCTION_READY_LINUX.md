@@ -95,12 +95,12 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 ## 9. Harden packaging and installation
 - [ ] Test RPM install, upgrade, and reinstall on clean Fedora
 - [ ] Define and validate the install path for the Debian/Ubuntu target surface:
-  - [ ] decide package/distribution format
+  - [x] decide package/distribution format
   - [ ] test install and upgrade on a clean Debian/Ubuntu-based environment
   - [ ] document uninstall behavior on that environment
-- [ ] Decide whether downgrade is supported:
+- [x] Decide whether downgrade is supported:
   - [ ] if yes, test downgrade explicitly
-  - [ ] if no, document downgrade as unsupported
+  - [x] if no, document downgrade as unsupported
 - [ ] Confirm the installed app starts without dev-only prerequisites
 - [ ] Verify icons, desktop entry, file associations, and permissions in installed builds
 - [ ] Test app data/log/cache behavior across version upgrades
