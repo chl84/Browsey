@@ -121,10 +121,10 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 
 ## 11. Bring docs to 1.0 level
 - [ ] Update README to reflect the actual Linux stability level
-- [ ] Add a `Known limitations on Linux` page
-- [ ] Add a recovery/troubleshooting page
-- [ ] Document optional dependencies and degraded behavior without them
-- [ ] Document cloud as a separate limited feature set
+- [x] Add a `Known limitations on Linux` page
+- [x] Add a recovery/troubleshooting page
+- [x] Document optional dependencies and degraded behavior without them
+- [x] Document cloud as a separate limited feature set
 
 ## 12. Finish with a real stabilization phase
 - [ ] Declare a bounded stabilization window with explicit start/end criteria

@@ -975,6 +975,106 @@ capabilities/default.json`,
     ],
   },
   {
+    id: 'linux-known-limitations',
+    title: 'Known Limitations on Linux',
+    summary: 'Linux 1.0 scope boundaries and Linux-specific caveats that remain important for users.',
+    sections: [
+      {
+        id: 'linux-target-surface',
+        title: 'Validated Linux Target Surface',
+        bullets: [
+          'The main Linux 1.0 production claim is scoped to Fedora Workstation and Ubuntu LTS on GNOME Wayland',
+          'Other distros and desktop environments may work, but they are outside the main Linux 1.0 validation surface',
+          'Cloud features remain outside the main Linux 1.0 production claim even though they are available as an opt-in feature',
+        ],
+      },
+      {
+        id: 'linux-settings-and-runtime',
+        title: 'Settings and Runtime Caveats',
+        bullets: [
+          'Hardware acceleration changes require restart because renderer policy is applied at startup',
+          'Cloud is off by default and must be enabled explicitly in Settings > Cloud',
+          'If `rclone`, `ffmpeg`, or `xclip` are missing, Browsey degrades by feature area rather than failing as a whole',
+        ],
+      },
+      {
+        id: 'linux-optional-dependencies',
+        title: 'Optional Dependency Limits',
+        bullets: [
+          'Without `xclip`, Linux file clipboard interoperability between Browsey instances is reduced on GNOME Wayland',
+          'Without `ffmpeg`, video thumbnails fall back to file-type icons',
+          'Without `rclone`, cloud folders remain unavailable and Settings > Cloud shows setup guidance instead of surfacing remotes',
+        ],
+      },
+      {
+        id: 'linux-terminal-and-mounts',
+        title: 'Terminal and Mount Behavior',
+        bullets: [
+          'Open Console relies on a fixed allowlist of supported terminal emulators rather than arbitrary user commands',
+          'Mount and eject behavior depends on the Linux environment exposing mounts cleanly through gio/umount/udisksctl',
+          'Network-visible and removable devices can still vary across distros, desktop environments, and underlying services',
+        ],
+      },
+      {
+        id: 'linux-packaging-scope',
+        title: 'Packaging Scope',
+        bullets: [
+          'The supported Linux release path is native package install and upgrade via `.rpm` on Fedora and `.deb` on Ubuntu/Debian-family targets',
+          'Package downgrade is outside the supported Linux 1.0 release path',
+        ],
+      },
+    ],
+  },
+  {
+    id: 'linux-troubleshooting',
+    title: 'Linux Recovery and Troubleshooting',
+    summary: 'Linux-specific fixes and recovery guidance for the validated Linux target surface.',
+    sections: [
+      {
+        id: 'linux-build-and-launch',
+        title: 'Build or Launch Problems',
+        bullets: [
+          'If Browsey does not build on Linux, first verify distro equivalents of WebKitGTK, JavaScriptCoreGTK, libsoup3, and GTK3 development packages',
+          'If an installed build fails to start, confirm you are testing the packaged app rather than relying on dev-only tools or shell wrappers',
+        ],
+      },
+      {
+        id: 'linux-clipboard-recovery',
+        title: 'Clipboard Recovery on GNOME Wayland',
+        bullets: [
+          'Install `xclip` and restart Browsey if file copy/paste between Browsey instances behaves inconsistently',
+          'Browsey intentionally avoids wl-clipboard for Linux file clipboard operations on GNOME Wayland because it can trigger shell focus/dock side-effects',
+        ],
+      },
+      {
+        id: 'linux-thumbnail-recovery',
+        title: 'Thumbnail Recovery',
+        bullets: [
+          'Install `ffmpeg` or set `FFMPEG_BIN` if video thumbnails are missing',
+          'If thumbnails remain missing after that, verify the file still opens normally; icon fallback means the feature degraded safely rather than treating the file as broken',
+        ],
+      },
+      {
+        id: 'linux-cloud-recovery',
+        title: 'Cloud Setup Recovery',
+        bullets: [
+          'If you do not need cloud folders, leave cloud disabled in Settings > Cloud so local browsing remains isolated from `rclone`',
+          'If you do need cloud, run `rclone version` and `rclone listremotes`, then check Settings > Cloud for guided setup status',
+          'Use `Rclone path` only when autodetect fails or you need Browsey to use a specific binary',
+        ],
+      },
+      {
+        id: 'linux-console-and-logs',
+        title: 'Console Launch and Logs',
+        bullets: [
+          'If `Open Console Here` fails, ensure one of the supported terminal emulators is installed and the selected path is a real directory',
+          'When reporting Linux issues, include distro, desktop/session, Browsey version, logs, and deterministic repro steps',
+          'Browsey logs live under the user data directory in `browsey/logs/`',
+        ],
+      },
+    ],
+  },
+  {
     id: 'known-limitations',
     title: 'Known Limitations',
     summary: 'Current constraints and caveats verified against the codebase.',
