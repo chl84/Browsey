@@ -16,6 +16,12 @@ type Listing = {
   entries: ExplorerEntry[]
 }
 
+type SearchProgressPayload = {
+  entries: ExplorerEntry[]
+  done: boolean
+  error?: string
+}
+
 type ClipboardMode = 'copy' | 'cut'
 
 type MockClipboardState = {
@@ -27,6 +33,8 @@ type E2eMockControl = {
   systemClipboard?: MockClipboardState
   failCommands?: string[]
 }
+
+import { emitMockEvent } from './event'
 
 const ROOT = '/mock'
 
@@ -169,6 +177,24 @@ const listDirMock = (path?: string | null): Listing => {
   }
 }
 
+const flattenTreeUnder = (root: string): ExplorerEntry[] => {
+  const prefix = `${root.replace(/\/+$/, '')}/`
+  return Object.entries(FILE_TREE).flatMap(([dir, entries]) => {
+    if (dir !== root && !dir.startsWith(prefix)) {
+      return []
+    }
+    return entries
+  })
+}
+
+const searchEntriesMock = (path: string, query: string): ExplorerEntry[] => {
+  const needle = query.trim().toLowerCase()
+  if (needle.length === 0) return []
+  return flattenTreeUnder(path)
+    .filter((entry) => entry.name.toLowerCase().includes(needle))
+    .map((entry) => ({ ...entry }))
+}
+
 const emptyFacets = {
   name: [],
   type: [],
@@ -206,6 +232,20 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return [] as T
     case 'watch_dir':
       return undefined as T
+    case 'search_stream': {
+      const path = typeof args?.path === 'string' ? args.path : ROOT
+      const query = typeof args?.query === 'string' ? args.query : ''
+      const progressEvent =
+        typeof args?.progressEvent === 'string' ? args.progressEvent : 'search-progress-mock'
+      const entries = searchEntriesMock(path, query)
+      queueMicrotask(() => {
+        emitMockEvent<SearchProgressPayload>(progressEvent, {
+          entries,
+          done: true,
+        })
+      })
+      return undefined as T
+    }
     case 'get_bookmarks':
       return [] as T
     case 'load_saved_column_widths':
