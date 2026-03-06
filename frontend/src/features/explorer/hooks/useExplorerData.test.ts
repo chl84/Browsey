@@ -29,6 +29,7 @@ const asyncNoop = vi.fn(async () => {})
 
 describe('useExplorerData cloud refresh event', () => {
   beforeEach(() => {
+    vi.useRealTimers()
     vi.clearAllMocks()
     eventHandlers.clear()
     listenMock.mockImplementation(async (eventName: string, handler: (event: { payload: unknown }) => void) => {
@@ -51,13 +52,14 @@ describe('useExplorerData cloud refresh event', () => {
         current.set(path)
       }
     })
+    const loadPartitionsMock = vi.fn(async () => {})
 
     createExplorerStateMock.mockReturnValue({
       load: loadMock,
       mountsPollMs,
       loadSavedWidths: asyncNoop,
       loadBookmarks: asyncNoop,
-      loadPartitions: asyncNoop,
+      loadPartitions: loadPartitionsMock,
       loadMountsPollPref: asyncNoop,
       loadShowHiddenPref: asyncNoop,
       loadHiddenFilesLastPref: asyncNoop,
@@ -88,7 +90,7 @@ describe('useExplorerData cloud refresh event', () => {
       invalidateFacetCache: vi.fn(),
     })
 
-    return { loadMock, current, highContrast, scrollbarWidth }
+    return { loadMock, current, mountsPollMs, highContrast, scrollbarWidth, loadPartitionsMock }
   }
 
   it('reloads the active cloud directory when background refresh completes', async () => {
@@ -158,5 +160,27 @@ describe('useExplorerData cloud refresh event', () => {
     await vi.waitFor(() => {
       expect(document.documentElement.style.getPropertyValue('--scrollbar-size')).toBe('16px')
     })
+  })
+
+  it('applies mount refresh interval changes without restart', async () => {
+    vi.useFakeTimers()
+    const { mountsPollMs, loadPartitionsMock } = installExplorerStateMock('~')
+    mountsPollMs.set(40)
+
+    useExplorerData()
+    await vi.waitFor(() => {
+      expect(loadPartitionsMock).toHaveBeenCalledTimes(1)
+    })
+
+    await vi.advanceTimersByTimeAsync(40)
+    expect(loadPartitionsMock).toHaveBeenCalledTimes(2)
+
+    mountsPollMs.set(120)
+    await Promise.resolve()
+    await vi.advanceTimersByTimeAsync(80)
+    expect(loadPartitionsMock).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(40)
+    expect(loadPartitionsMock).toHaveBeenCalledTimes(3)
   })
 })
