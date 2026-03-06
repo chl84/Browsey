@@ -46,6 +46,10 @@ core-operations checklist.
 | [ ] | `LX-BRW-001` | Launch Browsey and open a normal local directory from the main view. |  |  |
 | [ ] | `LX-BRW-002` | Navigate up/down between local directories and confirm selection/focus remains usable. |  |  |
 | [ ] | `LX-BRW-003` | Open `Network` and verify non-cloud entries remain usable when cloud is disabled. |  |  |
+| [ ] | `LX-CLP-001` | On GNOME Wayland with `xclip` installed, copy/cut/paste local files between two Browsey windows and confirm no shell focus/dock side-effects occur. |  |  |
+| [ ] | `LX-CLP-002` | On GNOME Wayland without `xclip`, copy/cut/paste local files within Browsey and confirm internal clipboard flows still work even if cross-window system clipboard interoperability is unavailable. |  |  |
+| [ ] | `LX-DEP-001` | Start Browsey without `ffmpeg` available and confirm video thumbnails degrade to file-type icons instead of breaking the view. |  |  |
+| [ ] | `LX-DEP-002` | Start Browsey without `rclone` available and confirm normal local browsing remains usable while cloud surfaces show limited/disabled behavior rather than generic app failure. |  |  |
 | [ ] | `LX-SRC-001` | Run a normal recursive search and open one result. |  |  |
 | [ ] | `LX-SRC-002` | Trigger a search error/invalid query path and confirm user-facing error presentation is understandable. |  |  |
 | [ ] | `LX-SRC-003` | Cancel an active search and verify the UI returns to a sane state. |  |  |

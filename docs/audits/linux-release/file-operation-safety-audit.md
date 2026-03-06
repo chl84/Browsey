@@ -127,6 +127,10 @@ Current evidence is useful but incomplete:
 - delete modal closes cleanly after success/failure handling
 - delete modal failure now has explicit frontend coverage for toast + cleanup +
   closed-state recovery
+- rename modal failure now has explicit frontend coverage for kept-open state,
+  surfaced error text, and single-pass activity cleanup
+- new-folder modal failure now has explicit frontend coverage for kept-open
+  state, surfaced error text, and single-pass activity cleanup
 
 What is still missing for Linux 1.0:
 
