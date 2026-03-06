@@ -16,9 +16,9 @@ const MAX_CANDIDATE_FILES: u64 = 100_000;
 
 fn log_walk_error(context: &str, path: &Path, err: &std::io::Error) {
     if err.kind() == std::io::ErrorKind::PermissionDenied {
-        debug!("{context}: path={} err={}", path.display(), err);
+        debug!(path = %path.display(), error = %err, "{context}");
     } else {
-        warn!("{context}: path={} err={}", path.display(), err);
+        warn!(path = %path.display(), error = %err, "{context}");
     }
 }
 
@@ -155,11 +155,11 @@ pub(super) fn find_identical_files_with_progress(
             Ok(true) => identical.push(candidate),
             Ok(false) => {}
             Err(err) => {
-                warn!(
-                    "duplicate compare failed: left={} right={} err={}",
-                    target.display(),
-                    candidate.display(),
-                    err
+                debug!(
+                    left = %target.display(),
+                    right = %candidate.display(),
+                    error = %err,
+                    "duplicate compare failed"
                 );
             }
         }

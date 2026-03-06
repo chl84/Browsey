@@ -7,7 +7,7 @@ use std::process::Command;
 use std::thread;
 #[cfg(debug_assertions)]
 use tracing::info;
-use tracing::warn;
+use tracing::debug;
 
 mod error;
 #[cfg(target_os = "linux")]
@@ -94,7 +94,7 @@ fn open_with_impl(path: String, choice: OpenWithChoice) -> OpenWithResult<()> {
 
     let conn = db::open().map_err(map_db_open_error)?;
     if let Err(e) = db::touch_recent(&conn, &target.to_string_lossy()) {
-        warn!("Failed to record recent for {:?}: {}", target, e);
+        debug!(path = %target.display(), error = %e, "failed to record recent entry");
     }
 
     if matches!(app_id.as_deref(), Some("__default__")) || app_id.is_none() {
