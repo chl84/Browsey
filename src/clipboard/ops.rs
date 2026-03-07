@@ -21,21 +21,24 @@ use super::{
 };
 
 #[cfg(test)]
+type AfterMergeItemTestHook = Box<dyn FnMut(&Path)>;
+
+#[cfg(test)]
 thread_local! {
-    static AFTER_MERGE_ITEM_TEST_HOOK: RefCell<Option<Box<dyn FnMut()>>> = RefCell::new(None);
+    static AFTER_MERGE_ITEM_TEST_HOOK: RefCell<Option<AfterMergeItemTestHook>> = RefCell::new(None);
 }
 
 #[cfg(test)]
-fn run_after_merge_item_test_hook() {
+fn run_after_merge_item_test_hook(path: &Path) {
     AFTER_MERGE_ITEM_TEST_HOOK.with(|hook| {
         if let Some(callback) = hook.borrow_mut().as_mut() {
-            callback();
+            callback(path);
         }
     });
 }
 
 #[cfg(test)]
-pub(super) fn set_after_merge_item_test_hook(callback: Option<Box<dyn FnMut()>>) {
+pub(super) fn set_after_merge_item_test_hook(callback: Option<AfterMergeItemTestHook>) {
     AFTER_MERGE_ITEM_TEST_HOOK.with(|hook| {
         *hook.borrow_mut() = callback;
     });
@@ -299,7 +302,7 @@ pub(super) fn merge_dir(
             }
         }
         #[cfg(test)]
-        run_after_merge_item_test_hook();
+        run_after_merge_item_test_hook(&path);
     }
 
     if let ClipboardMode::Cut = mode {
