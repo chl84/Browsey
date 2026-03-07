@@ -115,6 +115,9 @@ There is real existing evidence:
 - local multi-item clipboard cut now also has direct mid-batch cancellation
   coverage that restores already moved sources and removes created targets
   before returning `cancelled`
+- mixed local<->cloud copy and move now have direct execute-phase cancellation
+  coverage while the second transfer command is actively running, in both
+  directions
 - local copy cancellation now has direct backend coverage for both file cleanup
   and directory-destination cleanup
 - extract release docs explicitly define non-transactional boundaries
@@ -125,8 +128,8 @@ But the Linux 1.0 closeout is not finished because:
 
 - local multi-item cancellation/summary coverage is stronger, but still
   narrower than the full trust-sensitive matrix
-- mixed execute-phase cancellation during active work remains a named gap in the
-  mixed audit
+- mixed execute-phase cancellation coverage is stronger, but the mixed audit
+  still keeps progress-aware loop variants open
 - extract cancel/failure filesystem-state validation still belongs to active
   release-checklist work
 

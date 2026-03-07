@@ -10,6 +10,39 @@ mkdir_destination_exists_always_file="$script_dir/mkdir-destination-exists-alway
 config_dump_fail_file="$script_dir/config-dump-fail"
 mkdir -p "$state_root" "$provider_types_root"
 
+maybe_delay_subcommand() {
+  local subcmd="$1"
+  local counter_file="$script_dir/${subcmd}-count"
+  local delay_ms_file="$script_dir/${subcmd}-delay-ms"
+  local delay_invocation_file="$script_dir/${subcmd}-delay-invocation"
+  local notify_file="$script_dir/${subcmd}-delay-notify"
+  local invocation=1
+  if [[ -f "$counter_file" ]]; then
+    invocation="$(( $(cat "$counter_file") + 1 ))"
+  fi
+  printf '%s\n' "$invocation" > "$counter_file"
+  if [[ ! -f "$delay_ms_file" || ! -f "$delay_invocation_file" ]]; then
+    return
+  fi
+  local target_invocation
+  target_invocation="$(tr -d '[:space:]' < "$delay_invocation_file")"
+  if [[ "$invocation" != "$target_invocation" ]]; then
+    return
+  fi
+  local delay_ms
+  delay_ms="$(tr -d '[:space:]' < "$delay_ms_file")"
+  if [[ -f "$notify_file" ]]; then
+    rm -f -- "$notify_file"
+  fi
+  : > "$notify_file"
+  python3 - "$delay_ms" <<'PY'
+import sys
+import time
+
+time.sleep(int(sys.argv[1]) / 1000.0)
+PY
+}
+
 printf '%s\n' "$*" >> "$log_file"
 
 args=("$@")
@@ -252,6 +285,7 @@ case "$subcmd" in
       echo "missing src/dst for $subcmd" >&2
       exit 2
     fi
+    maybe_delay_subcommand "$subcmd"
     src="$(map_spec_path "${args[$idx]}")"
     dst="$(map_spec_path "${args[$idx + 1]}")"
     if [[ ! -e "$src" ]]; then

@@ -17,10 +17,10 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`MTC`)
 
 | Scenario ID | Current automated coverage | Evidence | Gap summary |
 |---|---|---|---|
-| `CO-MTC-001` | Partial | `mixed_execute_local_to_cloud_file_copy_and_move_via_fake_rclone`, `executes local-to-cloud copy via explicit mixed target command`, `register_mixed_cancel_progress_event_sets_token_on_cancel` | Execute-phase progress cancellation still needs direct coverage for active transfer loops. |
-| `CO-MTC-002` | Partial | `mixed_execute_cloud_to_local_file_copy_and_move_via_fake_rclone`, `register_mixed_cancel_progress_event_sets_token_on_cancel` | Execute-phase progress cancellation still needs direct coverage for active transfer loops. |
-| `CO-MTC-003` | Partial | `mixed_execute_local_to_cloud_file_copy_and_move_via_fake_rclone`, `mixed_execute_local_to_cloud_partial_move_removes_first_source`, `refreshes cloud view after mixed local-to-cloud failure to reconcile partial writes` | Execute-phase progress cancellation still needs direct coverage for active transfer loops. |
-| `CO-MTC-004` | Partial | `mixed_execute_cloud_to_local_file_copy_and_move_via_fake_rclone`, `executes cloud-to-local move via explicit mixed target command and clears cut clipboard state`, `register_mixed_cancel_progress_event_sets_token_on_cancel` | Execute-phase progress cancellation still needs direct coverage for active transfer loops. |
+| `CO-MTC-001` | Partial | `mixed_execute_local_to_cloud_file_copy_and_move_via_fake_rclone`, `executes local-to-cloud copy via explicit mixed target command`, `register_mixed_cancel_progress_event_sets_token_on_cancel`, `mixed_execute_local_to_cloud_copy_cancels_during_second_active_transfer` | Active mid-batch cancellation is now covered for copy; progress-aware loop variants still need direct execute coverage. |
+| `CO-MTC-002` | Partial | `mixed_execute_cloud_to_local_file_copy_and_move_via_fake_rclone`, `register_mixed_cancel_progress_event_sets_token_on_cancel`, `mixed_execute_cloud_to_local_copy_cancels_during_second_active_transfer` | Active mid-batch cancellation is now covered for copy; progress-aware loop variants still need direct execute coverage. |
+| `CO-MTC-003` | Partial | `mixed_execute_local_to_cloud_file_copy_and_move_via_fake_rclone`, `mixed_execute_local_to_cloud_partial_move_removes_first_source`, `mixed_execute_local_to_cloud_move_cancels_during_second_active_transfer`, `refreshes cloud view after mixed local-to-cloud failure to reconcile partial writes` | Active mid-batch cancellation is now covered for move; progress-aware loop variants still need direct execute coverage. |
+| `CO-MTC-004` | Partial | `mixed_execute_cloud_to_local_file_copy_and_move_via_fake_rclone`, `executes cloud-to-local move via explicit mixed target command and clears cut clipboard state`, `register_mixed_cancel_progress_event_sets_token_on_cancel`, `mixed_execute_cloud_to_local_move_cancels_during_second_active_transfer` | Active mid-batch cancellation is now covered for move; progress-aware loop variants still need direct execute coverage. |
 | `CO-MTC-005` | Partial | `mixed_execute_local_to_cloud_directory_copy_and_move_via_fake_rclone`, `mixed_execute_cloud_to_local_directory_copy_and_move_via_fake_rclone`, `mixed_execute_local_to_cloud_partial_directory_move_invalidates_cache_and_keeps_partial_state`, `attempts local refresh after mixed cloud-to-local failure to reconcile partial writes` | Execute-phase progress cancellation still needs direct coverage for active transfer loops. |
 | `CO-MTC-006` | Partial | `mixed_preview_local_to_cloud_matches_onedrive_case_insensitive_and_preserves_kind`, `mixed_preview_cloud_to_local_reports_file_and_dir_conflicts`, `resolves mixed local-to-cloud rename-on-conflict by retrying explicit target candidates`, `resolves mixed cloud-to-local rename-on-conflict for move by retrying target candidates`, `refreshes cloud view after mixed local-to-cloud failure to reconcile partial writes`, `attempts local refresh after mixed cloud-to-local failure to reconcile partial writes` | Execute-phase progress cancellation still needs direct coverage for active transfer loops. |
 
@@ -38,6 +38,14 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`MTC`)
 - Progress-event cancellation registration behavior is covered in mixed transfer:
   `register_mixed_cancel_returns_none_without_progress_event` and
   `register_mixed_cancel_progress_event_sets_token_on_cancel`.
+- Active mid-batch cancellation is now covered for mixed copy loops in both
+  directions:
+  `mixed_execute_local_to_cloud_copy_cancels_during_second_active_transfer`
+  and `mixed_execute_cloud_to_local_copy_cancels_during_second_active_transfer`.
+- Active mid-batch cancellation is now also covered for mixed move loops in
+  both directions:
+  `mixed_execute_local_to_cloud_move_cancels_during_second_active_transfer`
+  and `mixed_execute_cloud_to_local_move_cancels_during_second_active_transfer`.
 - Frontend operation-state integrity now asserts refresh reconciliation after
   mixed partial failures:
   `refreshes cloud view after mixed local-to-cloud failure to reconcile partial writes`
@@ -45,5 +53,6 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`MTC`)
 
 ## Priority Gaps to Close Next
 
-1. Add execute-phase mixed-transfer cancellation coverage while work is actively
-   running in progress-aware paths (beyond cancel-token registration tests).
+1. Add execute-phase mixed-transfer cancellation coverage for progress-aware
+   paths while work is actively running, beyond the current CLI-loop copy/move
+   cancellation tests.
