@@ -29,6 +29,31 @@ const copyMixedEntriesMock = vi.fn()
 const moveMixedEntriesMock = vi.fn()
 const copyMixedEntryToMock = vi.fn()
 const moveMixedEntryToMock = vi.fn()
+const canExtractPathsMock = vi.fn<(_: string[]) => Promise<boolean>>(async (_paths: string[]) => false)
+const extractArchiveMock = vi.fn<
+  (_path: string, _progressEvent?: string) => Promise<
+    | {
+        destination: string
+        skipped_symlinks: number
+        skipped_entries: number
+      }
+    | undefined
+  >
+>(async (_path: string, _progressEvent?: string) => undefined)
+const extractArchivesMock = vi.fn<
+  (_paths: string[], _progressEvent?: string) => Promise<
+    Array<{
+      path?: string
+      ok?: boolean
+      result?: {
+        destination: string
+        skipped_symlinks: number
+        skipped_entries: number
+      } | null
+      error?: string | null
+    }>
+  >
+>(async (_paths: string[], _progressEvent?: string) => [])
 
 vi.mock('../services/clipboard.service', () => ({
   setClipboardCmd: (...args: unknown[]) => setClipboardCmdMock(...args),
@@ -49,9 +74,11 @@ vi.mock('../services/transfer.service', () => ({
 vi.mock('../services/files.service', () => ({
   entryKind: vi.fn(),
   dirSizes: vi.fn(),
-  canExtractPaths: vi.fn(async () => false),
-  extractArchive: vi.fn(),
-  extractArchives: vi.fn(),
+  canExtractPaths: (paths: string[]) => canExtractPathsMock(paths),
+  extractArchive: (path: string, progressEvent?: string) =>
+    extractArchiveMock(path, progressEvent),
+  extractArchives: (paths: string[], progressEvent?: string) =>
+    extractArchivesMock(paths, progressEvent),
 }))
 
 vi.mock('../services/duplicates.service', () => ({
@@ -98,6 +125,66 @@ const createDeps = () => ({
   duplicateModalClose: vi.fn(),
   showToast: vi.fn(),
   activityApi,
+})
+
+describe('useExplorerFileOps extract recovery', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    clearClipboardState()
+    canExtractPathsMock.mockResolvedValue(true)
+    extractArchiveMock.mockResolvedValue({
+      destination: '/tmp/out',
+      skipped_symlinks: 0,
+      skipped_entries: 0,
+    })
+    extractArchivesMock.mockResolvedValue([])
+  })
+
+  it('surfaces extraction cancellation cleanly and clears activity state', async () => {
+    extractArchiveMock.mockRejectedValueOnce(new Error('cancelled by user'))
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp'
+    const fileOps = useExplorerFileOps(deps)
+
+    await fileOps.extractEntries([
+      {
+        name: 'archive.zip',
+        path: '/tmp/archive.zip',
+        kind: 'file',
+        iconId: 0,
+      },
+    ])
+
+    expect(canExtractPathsMock).toHaveBeenCalledWith(['/tmp/archive.zip'])
+    expect(extractArchiveMock).toHaveBeenCalledTimes(1)
+    expect(deps.reloadCurrent).not.toHaveBeenCalled()
+    expect(deps.showToast).toHaveBeenCalledWith('Extraction cancelled')
+    expect(activityApi.clearNow).toHaveBeenCalledTimes(1)
+    expect(activityApi.cleanup).toHaveBeenCalledTimes(1)
+  })
+
+  it('surfaces extraction failure cleanly and clears activity state', async () => {
+    extractArchiveMock.mockRejectedValueOnce(new Error('Permission denied'))
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp'
+    const fileOps = useExplorerFileOps(deps)
+
+    await fileOps.extractEntries([
+      {
+        name: 'archive.zip',
+        path: '/tmp/archive.zip',
+        kind: 'file',
+        iconId: 0,
+      },
+    ])
+
+    expect(canExtractPathsMock).toHaveBeenCalledWith(['/tmp/archive.zip'])
+    expect(extractArchiveMock).toHaveBeenCalledTimes(1)
+    expect(deps.reloadCurrent).not.toHaveBeenCalled()
+    expect(deps.showToast).toHaveBeenCalledWith('Failed to extract: Permission denied')
+    expect(activityApi.clearNow).toHaveBeenCalledTimes(1)
+    expect(activityApi.cleanup).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('useExplorerFileOps cloud conflict preview', () => {
