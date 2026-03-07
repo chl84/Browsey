@@ -1,6 +1,6 @@
 use super::{
     cache::{list_cloud_dir_cached_with_refresh_event, list_cloud_remotes_cached},
-    configured_rclone_provider,
+    configured_rclone_provider, ensure_cloud_enabled,
     error::{CloudCommandError, CloudCommandErrorCode, CloudCommandResult},
     limits::with_cloud_remote_permits,
     map_spawn_result, parse_cloud_path_arg,
@@ -11,6 +11,7 @@ use std::time::Instant;
 use tracing::debug;
 
 pub(super) async fn list_cloud_remotes_impl() -> CloudCommandResult<Vec<CloudRemote>> {
+    ensure_cloud_enabled()?;
     let task = tauri::async_runtime::spawn_blocking(|| list_cloud_remotes_cached(false));
     match task.await {
         Ok(result) => result,
@@ -24,6 +25,7 @@ pub(super) async fn list_cloud_remotes_impl() -> CloudCommandResult<Vec<CloudRem
 pub(super) async fn validate_cloud_root_impl(
     path: String,
 ) -> CloudCommandResult<CloudRootSelection> {
+    ensure_cloud_enabled()?;
     let path = parse_cloud_path_arg(path)?;
     let task = tauri::async_runtime::spawn_blocking(move || {
         let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
@@ -69,6 +71,7 @@ pub(super) async fn list_cloud_entries_impl(
     path: String,
     app: tauri::AppHandle,
 ) -> CloudCommandResult<Vec<CloudEntry>> {
+    ensure_cloud_enabled()?;
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_log = path.clone();
@@ -103,6 +106,7 @@ pub(super) async fn list_cloud_entries_impl(
 }
 
 pub(super) async fn stat_cloud_entry_impl(path: String) -> CloudCommandResult<Option<CloudEntry>> {
+    ensure_cloud_enabled()?;
     let path = parse_cloud_path_arg(path)?;
     let remote = path.remote().to_string();
     let task = tauri::async_runtime::spawn_blocking(move || {

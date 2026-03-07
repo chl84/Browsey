@@ -128,6 +128,7 @@ fn map_cloud_command_error(context: &str, error: CloudCommandError) -> Thumbnail
 
 pub(super) fn map_cloud_command_error_code(code: CloudCommandErrorCode) -> ThumbnailErrorCode {
     match code {
+        CloudCommandErrorCode::CloudDisabled => ThumbnailErrorCode::InvalidInput,
         CloudCommandErrorCode::InvalidPath | CloudCommandErrorCode::DestinationExists => {
             ThumbnailErrorCode::InvalidInput
         }

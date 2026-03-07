@@ -1,7 +1,7 @@
 use super::{
     cache::invalidate_cloud_dir_listing_cache_for_write_paths, configured_rclone_provider,
-    error::CloudCommandResult, limits::with_cloud_remote_permits, map_spawn_result,
-    parse_cloud_path_arg, provider::CloudProvider, register_cloud_cancel,
+    ensure_cloud_enabled, error::CloudCommandResult, limits::with_cloud_remote_permits,
+    map_spawn_result, parse_cloud_path_arg, provider::CloudProvider, register_cloud_cancel,
 };
 use crate::tasks::CancelState;
 use std::time::Instant;
@@ -12,6 +12,7 @@ pub(super) async fn create_cloud_folder_impl(
     cancel_state: CancelState,
     progress_event: Option<String>,
 ) -> CloudCommandResult<()> {
+    ensure_cloud_enabled()?;
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
@@ -61,6 +62,7 @@ pub(super) async fn delete_cloud_file_impl(
     cancel_state: CancelState,
     progress_event: Option<String>,
 ) -> CloudCommandResult<()> {
+    ensure_cloud_enabled()?;
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
@@ -102,6 +104,7 @@ pub(super) async fn delete_cloud_dir_recursive_impl(
     cancel_state: CancelState,
     progress_event: Option<String>,
 ) -> CloudCommandResult<()> {
+    ensure_cloud_enabled()?;
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
@@ -143,6 +146,7 @@ pub(super) async fn delete_cloud_dir_empty_impl(
     cancel_state: CancelState,
     progress_event: Option<String>,
 ) -> CloudCommandResult<()> {
+    ensure_cloud_enabled()?;
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_invalidate = path.clone();
@@ -187,6 +191,7 @@ pub(super) async fn move_cloud_entry_impl(
     cancel_state: CancelState,
     progress_event: Option<String>,
 ) -> CloudCommandResult<()> {
+    ensure_cloud_enabled()?;
     let started = Instant::now();
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
@@ -239,6 +244,7 @@ pub(super) async fn copy_cloud_entry_impl(
     cancel_state: CancelState,
     progress_event: Option<String>,
 ) -> CloudCommandResult<()> {
+    ensure_cloud_enabled()?;
     let started = Instant::now();
     let src = parse_cloud_path_arg(src)?;
     let dst = parse_cloud_path_arg(dst)?;
