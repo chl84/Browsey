@@ -26,15 +26,15 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`LCM`, `LRN`, `LT
 | `CO-LRN-003` | Partial | `rename_entries_impl_rolls_back_when_later_item_fails`, `rename_entry_impl_rejects_existing_target_without_overwrite`, `rename_entry_impl_fails_when_source_is_missing` | Missing cancel-from-UI proxy cases and permission-denied/read-only variants. |
 | `CO-LTD-001` | Partial | `move_single_to_trash_uses_backend_and_rewrites_original_path` | Missing cancellation and permission-denied paths. |
 | `CO-LTD-002` | Partial | `move_to_trash_many_rolls_back_previous_on_later_failure` | Missing recursive directory trash failure matrix (disappearing source/destination). |
-| `CO-LTD-003` | Partial | `restore_with_ops_restores_selected_ids_and_emits_change`, `restore_with_ops_rejects_empty_selection_after_filtering`, `restore_with_ops_conflict_failure_does_not_emit_change` | Missing integration coverage of system-backend failure modes beyond restore-conflict path. |
-| `CO-LTD-004` | Partial | `purge_with_ops_purges_selected_ids_and_emits_change`, `purge_with_ops_failure_does_not_emit_change` | Missing integration coverage of system-backend listing/purge errors via real trash backend. |
+| `CO-LTD-003` | Partial | `restore_with_ops_restores_selected_ids_and_emits_change`, `restore_with_ops_rejects_empty_selection_after_filtering`, `restore_with_ops_conflict_failure_does_not_emit_change`, `restore_with_ops_list_failure_does_not_emit_change` | Missing broader system-backend hostile-condition coverage beyond the added conflict/list-failure paths. |
+| `CO-LTD-004` | Partial | `purge_with_ops_purges_selected_ids_and_emits_change`, `purge_with_ops_failure_does_not_emit_change`, `purge_with_ops_list_failure_does_not_emit_change` | Missing broader system-backend purge hostile-condition coverage beyond the added list-failure path. |
 | `CO-LTD-005` | Partial | `delete_with_backup_can_undo_single_file`, `delete_with_backup_can_undo_directory_tree`, `delete_entries_with_hooks_rolls_back_when_later_item_fails`, `delete_entries_with_hooks_cancellation_rolls_back_completed_items`, `delete_entries_with_hooks_records_undo_for_successful_batch`, `delete_entries_with_hooks_permission_denied_keeps_sources_and_reports_error` | Still missing broader hostile-condition coverage beyond the added permission-denied variant. |
 
 ## Priority Gaps to Close Next
 
 1. Add one multi-item local copy cancellation/summary assertion path.
-2. Add broader restore/purge backend-hostile-condition coverage beyond the restore-conflict path.
-3. Expand multi-item local copy/move hostile-condition coverage beyond the added later-source-failure rollback path.
+2. Expand multi-item local copy/move hostile-condition coverage beyond the added later-source-failure rollback path.
+3. Add real system-backend restore/purge hostile-condition coverage beyond the current fake-ops list/conflict/failure paths.
 
 ## Notes
 
