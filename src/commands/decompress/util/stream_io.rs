@@ -2,6 +2,8 @@ use super::{ExtractBudget, CHUNK};
 use crate::commands::decompress::error::DecompressResult;
 use crate::runtime_lifecycle;
 use serde::Serialize;
+#[cfg(test)]
+use std::cell::RefCell;
 use std::{
     fs::File,
     io::{self, BufReader, Read, Write},
@@ -14,6 +16,11 @@ use std::{
 };
 
 const EXTRACT_CANCEL_CHECK_INTERVAL_BYTES: u64 = 16 * 1024 * 1024; // 16 MiB
+
+#[cfg(test)]
+thread_local! {
+    static COPY_CANCEL_AFTER_WRITES_FOR_TESTS: RefCell<Option<(usize, usize)>> = const { RefCell::new(None) };
+}
 
 #[derive(Serialize, Clone, Copy)]
 struct ExtractProgressPayload {
@@ -139,6 +146,8 @@ pub(crate) fn copy_with_progress<R: Read, W: Write>(
         }
         budget.reserve_bytes(n as u64)?;
         writer.write_all(&buf[..n])?;
+        #[cfg(test)]
+        maybe_trigger_test_cancel(cancel);
         since_cancel_check = since_cancel_check.saturating_add(n as u64);
         written = written.saturating_add(n as u64);
         if let Some(p) = progress {
@@ -161,4 +170,27 @@ pub(crate) fn current_millis() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+pub(crate) fn set_copy_cancel_after_writes_for_tests(limit: Option<usize>) {
+    COPY_CANCEL_AFTER_WRITES_FOR_TESTS.with(|state| {
+        *state.borrow_mut() = limit.map(|threshold| (threshold, 0));
+    });
+}
+
+#[cfg(test)]
+fn maybe_trigger_test_cancel(cancel: Option<&AtomicBool>) {
+    let Some(cancel) = cancel else {
+        return;
+    };
+    COPY_CANCEL_AFTER_WRITES_FOR_TESTS.with(|state| {
+        let mut state = state.borrow_mut();
+        if let Some((threshold, writes)) = state.as_mut() {
+            *writes = writes.saturating_add(1);
+            if *writes >= *threshold {
+                cancel.store(true, Ordering::Relaxed);
+            }
+        }
+    });
 }

@@ -120,6 +120,8 @@ There is real existing evidence:
   directions
 - local copy cancellation now has direct backend coverage for both file cleanup
   and directory-destination cleanup
+- zip extraction now has direct archive-level cancellation + rollback coverage
+  for a partially written entry
 - extract release docs explicitly define non-transactional boundaries
 - mixed transfer docs/tests already track partial completion and refresh
   reconciliation
@@ -130,8 +132,8 @@ But the Linux 1.0 closeout is not finished because:
   narrower than the full trust-sensitive matrix
 - mixed execute-phase cancellation coverage is stronger, but the mixed audit
   still keeps progress-aware loop variants open
-- extract cancel/failure filesystem-state validation still belongs to active
-  release-checklist work
+- extract cancel/failure filesystem-state validation is stronger, but `do_extract`
+  and batch entrypoint coverage still belong to active release-checklist work
 
 ## Still Open: UI Recovery After Errors
 
