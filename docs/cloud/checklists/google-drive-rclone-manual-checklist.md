@@ -1,18 +1,19 @@
-# OneDrive rclone Manual Checklist (Appendix)
+# Google Drive rclone Manual Checklist (Appendix)
 
-Created: 2026-03-02
+Created: 2026-03-07
 Role: Provider-specific appendix to
 `docs/operations/core-operations/release-checklist.md`
 
-Use this checklist after matrix-based core scenarios pass, to capture OneDrive
-provider behavior and real-account anomalies without redefining core semantics.
+Use this checklist after matrix-based core scenarios pass, to capture Google
+Drive provider behavior and real-account anomalies without redefining core
+semantics.
 
 ## Environment
 
 - [x] Linux machine with Browsey build under test
 - [x] `rclone` installed and available in `PATH`
-- [x] `rclone config` contains a working `onedrive` remote
-- [x] Disposable OneDrive test folder (no production data)
+- [x] `rclone config` contains a working `drive` remote
+- [x] Disposable Google Drive test folder (no production data)
 - [x] Test data contains:
   - [x] small + large files
   - [x] at least one conflict pair
@@ -29,12 +30,13 @@ Reference behavior: `docs/operations/core-operations/matrix.md`
 - [x] `CO-MTC-005` Mixed directory copy/move
 - [x] `CO-MTC-006` Mixed conflict preview consistency
 
-## OneDrive-Specific Reliability Checks
+## Google Drive-Specific Reliability Checks
 
 - [x] Remote appears in `Network` and opens as `rclone://...`
 - [x] Manual refresh after writes shows consistent state
 - [x] Reopening same folder does not surface stale/ghost entries
 - [x] Errors are user-actionable (not raw provider noise dumps)
+- [x] Duplicate-name behavior matches Browsey conflict preview assumptions
 - [x] Large-file transfer remains stable with progress and cancellation
 - [x] Forced network interruption produces understandable failure state
 
@@ -47,8 +49,8 @@ Reference behavior: `docs/operations/core-operations/matrix.md`
 
 ## Notes
 
-- Record distro, Browsey commit, `rclone version`, OneDrive account type, and
-  observed provider-specific anomalies.
+- Record distro, Browsey commit, `rclone version`, Google account/workspace
+  type, and observed provider-specific anomalies.
 - Link any failure to scenario ID(s) and issue(s) from the core checklist run.
 
 Result: Linux 1.0 provider acceptance passed on the validated Linux target

@@ -798,7 +798,16 @@ capabilities/default.json`,
       {
         id: 'unreleased',
         title: 'Unreleased',
+        bullets: [],
+      },
+      {
+        id: 'v100',
+        title: 'v1.0.0 (2026-03-07)',
         bullets: [
+          'Browsey Linux 1.0 signoff now rests on the completed stabilization track for core file workflows, Linux runtime validation, packaging/install behavior, observability hardening, and release gating',
+          'Local trust-sensitive flows (copy/move, rename, trash/delete, compress/extract, search, properties/permissions, open-with, and settings persistence) were hardened with broader automated regression coverage plus manual Linux smoke and real-use validation',
+          'Supported cloud providers are now part of the Linux 1.0 claim: OneDrive, Google Drive, and Nextcloud via rclone, with explicit provider scope, in-app setup diagnostics, and provider-specific acceptance checklists',
+          'Linux release operations now include explicit pre-release gates, a bounded stabilization window, provider-specific cloud QA appendices, and a release-candidate log tied to the core-operations release-blocking policy',
           'Bundled PDFium was updated to 147.0.7713.0 for both Linux and Windows resources (binaries, headers, and license set refreshed)',
         ],
       },
