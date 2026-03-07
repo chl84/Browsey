@@ -141,7 +141,7 @@ impl Drop for FakeRcloneSandbox {
 #[cfg(unix)]
 fn fake_rclone_test_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: Mutex<()> = Mutex::new(());
-    LOCK.lock().expect("lock fake rclone test")
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[cfg(unix)]
@@ -913,7 +913,7 @@ fn mixed_execute_local_to_cloud_move_cancels_during_second_active_transfer() {
     let _guard = fake_rclone_test_lock();
     let sandbox = FakeRcloneSandbox::new();
     sandbox.mkdir_remote("work", "dest");
-    sandbox.set_subcommand_delay("copyto", 2, 1500);
+    sandbox.set_subcommand_delay("moveto", 2, 1500);
     let cli = sandbox.cli();
     let src_a = sandbox.write_local_file("src/a.txt", "alpha");
     let src_b = sandbox.write_local_file("src/b.txt", "beta");
@@ -938,7 +938,7 @@ fn mixed_execute_local_to_cloud_move_cancels_during_second_active_transfer() {
         )
     });
 
-    sandbox.wait_for_subcommand_delay("copyto", Duration::from_secs(3));
+    sandbox.wait_for_subcommand_delay("moveto", Duration::from_secs(3));
     cancel.store(true, Ordering::SeqCst);
     let err = worker
         .join()
@@ -971,7 +971,7 @@ fn mixed_execute_cloud_to_local_move_cancels_during_second_active_transfer() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "src/a.txt", "alpha");
     sandbox.write_remote_file("work", "src/b.txt", "beta");
-    sandbox.set_subcommand_delay("copyto", 2, 1500);
+    sandbox.set_subcommand_delay("moveto", 2, 1500);
     let cli = sandbox.cli();
     let local_dest = sandbox.local_path("dest");
     fs::create_dir_all(&local_dest).expect("mkdir local dest");
@@ -999,7 +999,7 @@ fn mixed_execute_cloud_to_local_move_cancels_during_second_active_transfer() {
         )
     });
 
-    sandbox.wait_for_subcommand_delay("copyto", Duration::from_secs(3));
+    sandbox.wait_for_subcommand_delay("moveto", Duration::from_secs(3));
     cancel.store(true, Ordering::SeqCst);
     let err = worker
         .join()
