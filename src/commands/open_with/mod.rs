@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
 use std::thread;
+use tracing::debug;
 #[cfg(debug_assertions)]
 use tracing::info;
-use tracing::debug;
 
 mod error;
 #[cfg(target_os = "linux")]

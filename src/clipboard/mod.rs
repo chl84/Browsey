@@ -16,6 +16,8 @@ use clipboard_size::estimate_total_size;
 use error::{map_api_result, ClipboardError, ClipboardErrorCode, ClipboardResult};
 use once_cell::sync::Lazy;
 use serde::Serialize;
+#[cfg(test)]
+use std::cell::RefCell;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -82,6 +84,27 @@ pub struct ConflictInfo {
 }
 
 static CLIPBOARD: Lazy<Mutex<Option<ClipboardState>>> = Lazy::new(|| Mutex::new(None));
+
+#[cfg(test)]
+thread_local! {
+    static AFTER_PASTE_ITEM_TEST_HOOK: RefCell<Option<Box<dyn FnMut()>>> = RefCell::new(None);
+}
+
+#[cfg(test)]
+fn run_after_paste_item_test_hook() {
+    AFTER_PASTE_ITEM_TEST_HOOK.with(|hook| {
+        if let Some(callback) = hook.borrow_mut().as_mut() {
+            callback();
+        }
+    });
+}
+
+#[cfg(test)]
+fn set_after_paste_item_test_hook(callback: Option<Box<dyn FnMut()>>) {
+    AFTER_PASTE_ITEM_TEST_HOOK.with(|hook| {
+        *hook.borrow_mut() = callback;
+    });
+}
 
 fn is_cloud_path_str(path: &str) -> bool {
     path.starts_with("rclone://")
@@ -359,14 +382,12 @@ fn paste_clipboard_core(
             ));
         }
 
-        let name = src
-            .file_name()
-            .ok_or_else(|| {
-                rollback_performed_actions(
-                    &performed,
-                    ClipboardError::invalid_input("Invalid source path"),
-                )
-            })?;
+        let name = src.file_name().ok_or_else(|| {
+            rollback_performed_actions(
+                &performed,
+                ClipboardError::invalid_input("Invalid source path"),
+            )
+        })?;
         let target_base = dest.join(name);
         let mut rename_attempt = 0usize;
         let mut target = match policy {
@@ -481,6 +502,8 @@ fn paste_clipboard_core(
         };
         performed.push(action);
         created.push(target.to_string_lossy().to_string());
+        #[cfg(test)]
+        run_after_paste_item_test_hook();
     }
 
     if let (Some(app), Some(evt)) = (app, progress_event.as_ref()) {
