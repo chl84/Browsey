@@ -124,6 +124,9 @@ There is real existing evidence:
 - mixed local<->cloud progress-aware copy loops now also have direct
   execute-phase cancellation coverage while the second transfer command is
   actively running, in both directions
+- mixed local<->cloud progress-aware move loops now also have direct
+  execute-phase cancellation coverage while the second transfer command is
+  actively running, in both directions
 - local copy cancellation now has direct backend coverage for both file cleanup
   and directory-destination cleanup
 - zip extraction now has direct archive-level cancellation + rollback coverage
@@ -144,7 +147,7 @@ But the Linux 1.0 closeout is not finished because:
 - local multi-item cancellation/summary coverage is stronger, but still
   narrower than the full trust-sensitive matrix
 - mixed execute-phase cancellation coverage is stronger, but the mixed audit
-  still keeps broader hostile-condition breadth open
+  still keeps broader directory/partial-summary hostile-condition breadth open
 - extract cancel/failure filesystem-state validation is stronger, but broader
   conflict-path and format-confidence decisions still belong to active
   release-checklist work
