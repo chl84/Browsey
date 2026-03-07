@@ -103,6 +103,9 @@ This item remains open.
 There is real existing evidence:
 
 - local delete batch cancellation rolls back completed items
+- local delete batch now has direct permission-denied coverage that keeps the
+  source in place and reports a recoverable failure before any progress is
+  emitted
 - local copy cancellation now has direct backend coverage for both file cleanup
   and directory-destination cleanup
 - extract release docs explicitly define non-transactional boundaries
@@ -124,6 +127,8 @@ Current evidence is useful but incomplete:
 
 - cloud rename/new-folder/delete modals already soft-fail refresh and tell the
   user to press `F5` when background reconciliation times out
+- trash restore now has explicit conflict-path coverage that confirms
+  destination-collision failures do not emit a false `trash-changed` signal
 - delete modal closes cleanly after success/failure handling
 - delete modal failure now has explicit frontend coverage for toast + cleanup +
   closed-state recovery

@@ -244,6 +244,8 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::fs::{self, OpenOptions};
     use std::io::Write;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, SystemTime};
@@ -444,6 +446,53 @@ mod tests {
         undo.undo().expect("undo should restore deleted batch");
         assert!(first.exists(), "first file should be restored");
         assert!(second.exists(), "second file should be restored");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_entries_with_hooks_permission_denied_keeps_sources_and_reports_error() {
+        let dir = uniq_path("permission-denied");
+        let _ = fs::create_dir_all(&dir);
+        let locked_dir = dir.join("locked");
+        let _ = fs::create_dir_all(&locked_dir);
+        let src = locked_dir.join("file.txt");
+        write_file(&src, b"payload");
+
+        let original_mode = fs::metadata(&locked_dir)
+            .expect("stat locked dir")
+            .permissions()
+            .mode();
+        fs::set_permissions(&locked_dir, PermissionsExt::from_mode(0o555))
+            .expect("make directory read-only");
+
+        let progress: RefCell<Vec<(u64, u64, bool)>> = RefCell::new(Vec::new());
+        let result = delete_entries_with_hooks(
+            vec![src.to_string_lossy().to_string()],
+            UndoState::default(),
+            None,
+            |_| false,
+            |done, total, finished| progress.borrow_mut().push((done, total, finished)),
+        );
+
+        fs::set_permissions(&locked_dir, PermissionsExt::from_mode(original_mode))
+            .expect("restore directory permissions");
+
+        let err = result.expect_err("delete should fail for read-only parent directory");
+        let message = err.to_string().to_lowercase();
+        assert!(
+            message.contains("permission denied") || message.contains("read-only"),
+            "unexpected error: {err}"
+        );
+        assert!(
+            src.exists(),
+            "source should remain in place after permission-denied delete failure"
+        );
+        assert!(
+            progress.borrow().is_empty(),
+            "no progress should be emitted when the first item fails before delete completes"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }
