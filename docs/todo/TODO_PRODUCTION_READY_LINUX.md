@@ -65,7 +65,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [x] Verify persisted settings migration across app versions
 
 ## 7. Increase test coverage where it matters
-- [ ] Add regression tests for every stabilization bug that gets fixed
+- [x] Add regression tests for every stabilization bug that gets fixed
 - [x] Increase coverage around hooks/state seams that break under small changes
 - [x] Add more Linux-focused e2e smoke coverage for core workflows
 - [x] Reuse the existing core-operations release checklist as the base Linux manual smoke gate, and extend it only where Linux 1.0 coverage still has gaps
@@ -137,5 +137,5 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [ ] No open Linux release-blocking trust bugs in copy/move/delete/trash/extract flows under the core-operations release-blocking policy
 - [x] Linux install/update/uninstall validated on supported target environments
 - [x] All core workflows pass both automated checks and manual Linux smoke tests
-- [ ] Cloud scope is explicitly resolved for Linux 1.0 and matches both tests and documentation
+- [x] Cloud scope is explicitly resolved for Linux 1.0 and matches both tests and documentation
 - [ ] No non-bugfix merges have landed since RC1 without explicit re-approval
