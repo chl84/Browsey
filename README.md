@@ -7,7 +7,7 @@ Documentation: https://chl84.github.io/Browsey/
 For technical deep-dives (module maps, behavior details, and release notes), use the docs site.
 
 ## Status
-Browsey is in Linux-first stabilization toward a production-ready Linux release rather than broad feature expansion. On the validated Linux target surface, core flows (browse, search, clipboard, trash, compress, duplicate checks, open with, properties, and supported cloud remotes) are intended to be strong daily-driver quality while release hardening continues. Windows builds remain available, but the Windows version is currently in maintenance mode (critical fixes and compatibility updates) rather than active feature development. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
+Browsey `1.0.0` is production-ready for Linux on the validated Linux target surface. Core flows (browse, search, clipboard, trash, compress, duplicate checks, open with, properties, settings persistence, and supported cloud remotes) are intended to be daily-driver quality on that surface. Windows builds remain available, but the Windows version is currently in maintenance mode (critical fixes and compatibility updates) rather than active feature development. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
 
 ## Highlights
 - Virtualized list and grid views tuned for large folders.

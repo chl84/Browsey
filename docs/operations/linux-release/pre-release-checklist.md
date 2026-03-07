@@ -18,60 +18,63 @@ than replacing them:
 
 ## Run Metadata
 
-- [ ] Candidate version/build:
-- [ ] Commit SHA:
-- [ ] Release branch/tag:
-- [ ] Tester / reviewer:
-- [ ] Target environments covered:
-- [ ] Notes link (logs, screenshots, issues):
+- [x] Candidate version/build: `1.0.0`
+- [x] Commit SHA: release-tagged `v1.0.0` commit
+- [x] Release branch/tag: `linux-production-ready` -> `v1.0.0`
+- [x] Tester / reviewer: maintainer signoff
+- [x] Target environments covered: Fedora Workstation (GNOME Wayland), Ubuntu LTS (GNOME Wayland)
+- [x] Notes link (logs, screenshots, issues): `docs/operations/linux-release/release-candidate-log.md`
 
 ## Blocking Gates
 
 The following gates are mandatory before Linux release signoff:
 
-- [ ] `./scripts/maintenance/test-backend.sh` passes
-- [ ] `./scripts/maintenance/test-frontend.sh` passes
+- [x] `./scripts/maintenance/test-backend.sh` passes
+- [x] `./scripts/maintenance/test-frontend.sh` passes
       - includes explicit blocking on unhandled runtime
         `error`/`unhandledrejection` events in Vitest and Playwright smoke
-- [ ] docs consistency passes in blocking mode:
+- [x] docs consistency passes in blocking mode:
       `./scripts/maintenance/test-both.sh --strict-docs`
-- [ ] no new or modified Linux-critical error-handling path bypasses the
+- [x] no new or modified Linux-critical error-handling path bypasses the
       Browsey error API; validate through:
       - `scripts/maintenance/check-backend-error-hardening-guard.sh`
       - `.semgrep/typed-errors-blocking.yml`
       - `docs/ERROR_HARDENING_EXCEPTION_POLICY.md`
-- [ ] manual Linux smoke run is completed using
+- [x] manual Linux smoke run is completed using
       `docs/operations/core-operations/release-checklist.md`
-- [ ] Linux-specific smoke additions from
+- [x] Linux-specific smoke additions from
       `docs/operations/linux-release/bugbash-checklist.md`
       are completed for the touched scope
-- [ ] no open `Release-Blocking Trust Bug` remains for the touched scope
+- [x] no open `Release-Blocking Trust Bug` remains for the touched scope
 
 ## Packaging Artifact Review
 
 Before release signoff, explicitly review the packaged Linux artifacts:
 
-- [ ] package/install artifact exists for the supported Fedora target
-- [ ] package/install artifact exists for the supported Debian/Ubuntu target
-- [ ] artifact review confirms app launch without dev-only prerequisites
-- [ ] artifact review confirms desktop entry/icon behavior matches the release
+- [x] package/install artifact exists for the supported Fedora target
+- [x] package/install artifact exists for the supported Debian/Ubuntu target
+- [x] artifact review confirms app launch without dev-only prerequisites
+- [x] artifact review confirms desktop entry/icon behavior matches the release
       intent
-- [ ] artifact review notes are linked in run metadata
+- [x] artifact review notes are linked in run metadata
 
 ## Release-Candidate Discipline
 
 Linux 1.0 releases require at least one explicit release-candidate phase before
 final signoff.
 
-- [ ] RC1 is cut before final release signoff
-- [ ] after RC1, merges are bugfix-only by default
-- [ ] any non-bugfix merge after RC1 is explicitly re-approved and documented
-- [ ] blocking/follow-up findings from RC runs are linked in run notes
+- [x] RC1 is cut before final release signoff
+- [x] after RC1, merges are bugfix-only by default
+- [x] any non-bugfix merge after RC1 is explicitly re-approved and documented
+- [x] blocking/follow-up findings from RC runs are linked in run notes
 
 ## Notes
 
 - If cloud is exercised, use the Linux 1.0 cloud scope from
-  `docs/operations/linux-release/release-bar.md` and the controlled QA/setup
-  guidance already documented for cloud.
+  `docs/operations/linux-release/release-bar.md` and the provider appendices in
+  `docs/cloud/checklists/`:
+  - `onedrive-rclone-v1-manual-checklist.md`
+  - `google-drive-rclone-manual-checklist.md`
+  - `nextcloud-rclone-manual-checklist.md`
 - This checklist defines release gates. It does not replace scenario semantics
   already defined in the core operations matrix/checklist.

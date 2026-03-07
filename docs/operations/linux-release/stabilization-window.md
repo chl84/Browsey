@@ -13,6 +13,7 @@ This document complements:
 
 - `docs/operations/linux-release/release-bar.md`
 - `docs/operations/linux-release/pre-release-checklist.md`
+- `docs/operations/linux-release/release-candidate-log.md`
 - `docs/operations/core-operations/release-checklist.md`
 
 ## Start Criteria

@@ -54,6 +54,7 @@ Test coverage exists for this exact behavior in
 This audit does not by itself prove:
 
 - every supported provider has passed controlled QA remote validation
+- provider-specific appendices have all been executed and linked in an RC log
 - every optional cloud feature belongs inside the Linux 1.0 release-blocking
   matrix
 

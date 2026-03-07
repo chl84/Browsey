@@ -1,6 +1,6 @@
 # TODO: Make Browsey Production-Ready for Linux
 
-Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux release by hardening core workflows, tightening release gates, and validating real install/use/update behavior on supported Linux targets.
+Goal: Completed for `v1.0.0`: move Browsey from a strong Linux-first beta into a production-ready Linux release by hardening core workflows, tightening release gates, and validating real install/use/update behavior on supported Linux targets.
 
 ## 1. Define the release bar
 - [x] Define what `production-ready for Linux` means for Browsey
@@ -48,15 +48,16 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 ## 5. Keep cloud opt-in but safe
 - [x] Ensure cloud never interferes with local file browsing when disabled
 - [x] Harden all empty/error/unsupported states in cloud onboarding
-- [ ] Validate supported cloud providers against controlled QA remotes or equivalent reproducible test setups:
-  - [ ] OneDrive
-  - [ ] Google Drive
-  - [ ] Nextcloud
+- [x] Validate supported cloud providers against controlled QA remotes or equivalent reproducible test setups:
+  - [x] OneDrive
+  - [x] Google Drive
+  - [x] Nextcloud
+  - Evidence should be linked from `docs/operations/linux-release/release-candidate-log.md`
 - [x] Ensure cloud limitations are explicit in both UI and docs
 - [x] Ensure failed `rclone` setup never feels like a general Browsey failure
 - [x] Make an explicit 1.0 decision for cloud scope:
   - [x] cloud enters the Linux 1.0 support matrix for supported providers
-  - [ ] provider-specific acceptance coverage is completed for the supported providers above
+  - [x] provider-specific acceptance coverage is completed for the supported providers above
 
 ## 6. Stabilize settings and persistence
 - [x] Test all settings for roundtrip and restore-defaults behavior
@@ -128,14 +129,15 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 
 ## 12. Finish with a real stabilization phase
 - [x] Declare a bounded stabilization window with explicit start/end criteria
-- [ ] Run multiple release candidates with bugfixes only
+- [x] Run multiple release candidates with bugfixes only
+  - Record each run in `docs/operations/linux-release/release-candidate-log.md`
 - [x] Collect findings from real Linux use, not just local development testing
 - [x] After RC1, allow only bugfix-only merges unless explicitly re-approved
-- [ ] Do not label Browsey `production-ready for Linux` before this phase completes cleanly
+- [x] Do not label Browsey `production-ready for Linux` before this phase completes cleanly
 
 ## Exit Criteria
 - [x] No open Linux release-blocking trust bugs in copy/move/delete/trash/extract flows under the core-operations release-blocking policy
 - [x] Linux install/update/uninstall validated on supported target environments
 - [x] All core workflows pass both automated checks and manual Linux smoke tests
 - [x] Cloud scope is explicitly resolved for Linux 1.0 and matches both tests and documentation
-- [ ] No non-bugfix merges have landed since RC1 without explicit re-approval
+- [x] No non-bugfix merges have landed since RC1 without explicit re-approval
