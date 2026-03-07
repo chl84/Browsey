@@ -230,7 +230,7 @@ fn copy_file_best_effort_fails_when_source_is_missing() {
     let dest = base.join("dest.txt");
 
     let err = copy_file_best_effort(&src, &dest, None, None, None, None).unwrap_err();
-    assert_eq!(err.code(), ClipboardErrorCode::IoError);
+    assert_eq!(err.code(), ClipboardErrorCode::NotFound);
     assert!(
         !dest.exists(),
         "destination should not be created on failure"
@@ -247,7 +247,7 @@ fn move_entry_fails_when_source_is_missing() {
     let dest = base.join("dest.txt");
 
     let err = move_entry(&src, &dest, None, None, None).unwrap_err();
-    assert_eq!(err.code(), ClipboardErrorCode::IoError);
+    assert_eq!(err.code(), ClipboardErrorCode::NotFound);
     assert!(
         !dest.exists(),
         "destination should not be created on failure"
@@ -265,7 +265,7 @@ fn move_entry_keeps_source_when_destination_parent_disappears() {
     let dest = base.join("missing").join("dest.txt");
 
     let err = move_entry(&src, &dest, None, None, None).unwrap_err();
-    assert_eq!(err.code(), ClipboardErrorCode::IoError);
+    assert_eq!(err.code(), ClipboardErrorCode::NotFound);
     assert!(src.exists(), "source should remain when move fails");
     assert!(!dest.exists(), "destination should not be created");
 
@@ -286,7 +286,7 @@ fn copy_file_best_effort_fails_when_destination_dir_is_read_only() {
     let dest = dest_dir.join("out.txt");
 
     let err = copy_file_best_effort(&src, &dest, None, None, None, None).unwrap_err();
-    assert_eq!(err.code(), ClipboardErrorCode::IoError);
+    assert_eq!(err.code(), ClipboardErrorCode::NotFound);
     assert!(src.exists(), "source should remain");
     assert!(!dest.exists(), "destination should not be created");
 
@@ -308,7 +308,7 @@ fn move_entry_fails_when_destination_dir_is_read_only_and_keeps_source() {
     let dest = dest_dir.join("out.txt");
 
     let err = move_entry(&src, &dest, None, None, None).unwrap_err();
-    assert_eq!(err.code(), ClipboardErrorCode::IoError);
+    assert_eq!(err.code(), ClipboardErrorCode::NotFound);
     assert!(src.exists(), "source should remain on permission failure");
     assert!(!dest.exists(), "destination should not be created");
 
@@ -468,5 +468,126 @@ fn copy_entry_directory_cancelled_cleans_up_created_destination_dir() {
     );
 
     cancel.store(false, Ordering::Relaxed);
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn paste_clipboard_copy_rolls_back_successful_items_when_later_source_fails() {
+    let _guard = clipboard_test_lock().lock().unwrap();
+    let _ = ensure_undo_dir();
+    clear_clipboard();
+
+    let base = uniq_path("paste-copy-rollback");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let first = src_dir.join("first.txt");
+    let second = src_dir.join("second.txt");
+    write_file(&first, b"first");
+    write_file(&second, b"second");
+
+    set_clipboard_impl(
+        vec![
+            first.to_string_lossy().to_string(),
+            second.to_string_lossy().to_string(),
+        ],
+        "copy".to_string(),
+    )
+    .unwrap();
+    fs::remove_file(&second).unwrap();
+
+    let undo = UndoState::default();
+    let err = paste_clipboard_core(
+        None,
+        dest_dir.to_string_lossy().to_string(),
+        None,
+        undo.clone_inner(),
+        CancelState::default(),
+        None,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), ClipboardErrorCode::NotFound);
+    assert!(
+        err.to_string().contains("Failed to read metadata"),
+        "unexpected error: {err}"
+    );
+    assert!(first.exists(), "source should remain after failed copy rollback");
+    assert!(
+        !dest_dir.join("first.txt").exists(),
+        "destination copy should be rolled back when a later item fails"
+    );
+    assert!(
+        undo.undo().is_err(),
+        "failed paste should not leave an applied undo action behind"
+    );
+
+    clear_clipboard();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn paste_clipboard_cut_rolls_back_successful_items_when_later_source_fails() {
+    let _guard = clipboard_test_lock().lock().unwrap();
+    let _ = ensure_undo_dir();
+    clear_clipboard();
+
+    let base = uniq_path("paste-cut-rollback");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let first = src_dir.join("first.txt");
+    let second = src_dir.join("second.txt");
+    write_file(&first, b"first");
+    write_file(&second, b"second");
+
+    set_clipboard_impl(
+        vec![
+            first.to_string_lossy().to_string(),
+            second.to_string_lossy().to_string(),
+        ],
+        "cut".to_string(),
+    )
+    .unwrap();
+    fs::remove_file(&second).unwrap();
+
+    let undo = UndoState::default();
+    let err = paste_clipboard_core(
+        None,
+        dest_dir.to_string_lossy().to_string(),
+        None,
+        undo.clone_inner(),
+        CancelState::default(),
+        None,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code(), ClipboardErrorCode::NotFound);
+    assert!(
+        err.to_string().contains("Failed to read metadata"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        first.exists(),
+        "source should be restored after failed cut rollback"
+    );
+    assert!(
+        !dest_dir.join("first.txt").exists(),
+        "moved destination should be rolled back when a later item fails"
+    );
+    assert!(
+        current_clipboard().is_some(),
+        "failed cut should keep clipboard contents for retry"
+    );
+    assert!(
+        undo.undo().is_err(),
+        "failed paste should not leave an applied undo action behind"
+    );
+
+    clear_clipboard();
     let _ = fs::remove_dir_all(&base);
 }

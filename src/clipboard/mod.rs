@@ -58,6 +58,21 @@ pub(crate) struct CopyProgressPayload {
     finished: bool,
 }
 
+fn rollback_performed_actions(performed: &[Action], error: ClipboardError) -> ClipboardError {
+    if performed.is_empty() {
+        return error;
+    }
+
+    let mut rollback = performed.to_vec();
+    match run_actions(&mut rollback, Direction::Backward) {
+        Ok(_) => error,
+        Err(rollback_error) => ClipboardError::new(
+            ClipboardErrorCode::RollbackFailed,
+            format!("{error}; rollback also failed: {rollback_error}"),
+        ),
+    }
+}
+
 #[derive(serde::Serialize)]
 pub struct ConflictInfo {
     pub src: String,
@@ -257,7 +272,25 @@ fn paste_clipboard_impl(
     cancel_state: CancelState,
     progress_event: Option<String>,
 ) -> ClipboardResult<Vec<String>> {
-    if runtime_lifecycle::is_shutting_down(&app) {
+    paste_clipboard_core(
+        Some(&app),
+        dest,
+        policy,
+        undo_inner,
+        cancel_state,
+        progress_event,
+    )
+}
+
+fn paste_clipboard_core(
+    app: Option<&tauri::AppHandle>,
+    dest: String,
+    policy: Option<String>,
+    undo_inner: std::sync::Arc<std::sync::Mutex<crate::undo::UndoManager>>,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
+) -> ClipboardResult<Vec<String>> {
+    if app.is_some_and(runtime_lifecycle::is_shutting_down) {
         return Err(ClipboardError::cancelled());
     }
     reject_cloud_clipboard_path(&dest, "paste")?;
@@ -280,11 +313,11 @@ fn paste_clipboard_impl(
     let total_items = state.entries.len() as u64;
     let total_bytes = progress_event
         .as_ref()
-        .map(|evt| estimate_total_size(&state.entries, evt, &app));
+        .and_then(|evt| app.map(|app| estimate_total_size(&state.entries, evt, app)));
     let mut done_items: u64 = 0;
-    if let (Some(evt), Some(total)) = (progress_event.as_ref(), total_bytes) {
+    if let (Some(app), Some(evt), Some(total)) = (app, progress_event.as_ref(), total_bytes) {
         let _ = runtime_lifecycle::emit_if_running(
-            &app,
+            app,
             evt,
             CopyProgressPayload {
                 bytes: done_items,
@@ -297,29 +330,43 @@ fn paste_clipboard_impl(
     let mut created = Vec::new();
     let mut performed: Vec<Action> = Vec::with_capacity(state.entries.len() * 4);
     for src in state.entries.iter() {
-        if transfer_cancelled(cancel_flag.as_deref(), Some(&app)) {
-            return Err(ClipboardError::cancelled());
+        if transfer_cancelled(cancel_flag.as_deref(), app) {
+            return Err(rollback_performed_actions(
+                &performed,
+                ClipboardError::cancelled(),
+            ));
         }
         let src_meta = match fs::symlink_metadata(src) {
             Ok(meta) => meta,
             Err(e) => {
-                return Err(ClipboardError::from_io_error(
-                    ClipboardErrorCode::IoError,
-                    &format!("Failed to read metadata for {}", src.display()),
-                    e,
+                return Err(rollback_performed_actions(
+                    &performed,
+                    ClipboardError::from_io_error(
+                        ClipboardErrorCode::IoError,
+                        &format!("Failed to read metadata for {}", src.display()),
+                        e,
+                    ),
                 ))
             }
         };
         if src_meta.file_type().is_symlink() {
-            return Err(ClipboardError::new(
-                ClipboardErrorCode::SymlinkUnsupported,
-                "Symlinks are not supported in clipboard",
+            return Err(rollback_performed_actions(
+                &performed,
+                ClipboardError::new(
+                    ClipboardErrorCode::SymlinkUnsupported,
+                    "Symlinks are not supported in clipboard",
+                ),
             ));
         }
 
         let name = src
             .file_name()
-            .ok_or_else(|| ClipboardError::invalid_input("Invalid source path"))?;
+            .ok_or_else(|| {
+                rollback_performed_actions(
+                    &performed,
+                    ClipboardError::invalid_input("Invalid source path"),
+                )
+            })?;
         let target_base = dest.join(name);
         let mut rename_attempt = 0usize;
         let mut target = match policy {
@@ -330,32 +377,42 @@ fn paste_clipboard_impl(
         if matches!(policy, ConflictPolicy::Overwrite) {
             if let Some(target_meta) = metadata_if_exists_nofollow(&target)? {
                 if target_meta.file_type().is_symlink() {
-                    return Err(ClipboardError::new(
-                        ClipboardErrorCode::SymlinkUnsupported,
-                        "Refusing to overwrite symlinks",
+                    return Err(rollback_performed_actions(
+                        &performed,
+                        ClipboardError::new(
+                            ClipboardErrorCode::SymlinkUnsupported,
+                            "Refusing to overwrite symlinks",
+                        ),
                     ));
                 }
                 // If both are dirs, merge instead of deleting target (Windows Explorer behavior).
                 if src_meta.is_dir() && target_meta.is_dir() {
-                    merge_dir(
+                    if let Err(err) = merge_dir(
                         src,
                         &target,
                         state.mode,
                         &mut performed,
-                        Some(&app),
+                        app,
                         progress_event.as_deref(),
                         cancel_flag.as_deref(),
-                    )?;
+                    ) {
+                        return Err(rollback_performed_actions(&performed, err));
+                    }
                     created.push(target.to_string_lossy().to_string());
                     continue;
                 }
                 // Prevent deleting parent/ancestor of the source.
                 if src.starts_with(&target) {
-                    return Err(ClipboardError::invalid_input(
-                        "Cannot overwrite a parent directory of the source item",
+                    return Err(rollback_performed_actions(
+                        &performed,
+                        ClipboardError::invalid_input(
+                            "Cannot overwrite a parent directory of the source item",
+                        ),
                     ));
                 }
-                backup_existing_target(&target, &mut performed)?;
+                if let Err(err) = backup_existing_target(&target, &mut performed) {
+                    return Err(rollback_performed_actions(&performed, err));
+                }
             }
         }
 
@@ -364,14 +421,14 @@ fn paste_clipboard_impl(
                 ClipboardMode::Copy => copy_entry(
                     src,
                     &target,
-                    Some(&app),
+                    app,
                     progress_event.as_deref(),
                     cancel_flag.as_deref(),
                 ),
                 ClipboardMode::Cut => move_entry(
                     src,
                     &target,
-                    Some(&app),
+                    app,
                     progress_event.as_deref(),
                     cancel_flag.as_deref(),
                 ),
@@ -381,9 +438,9 @@ fn paste_clipboard_impl(
                 Ok(_) => {
                     done_items = done_items.saturating_add(1);
                     if total_bytes.is_none() {
-                        if let Some(evt) = progress_event.as_ref() {
+                        if let (Some(app), Some(evt)) = (app, progress_event.as_ref()) {
                             let _ = runtime_lifecycle::emit_if_running(
-                                &app,
+                                app,
                                 evt,
                                 CopyProgressPayload {
                                     bytes: done_items,
@@ -404,19 +461,10 @@ fn paste_clipboard_impl(
                         target = rename_candidate(&target_base, rename_attempt);
                         continue;
                     }
-                    if !performed.is_empty() {
-                        let mut rollback = performed.clone();
-                        if let Err(rb_err) = run_actions(&mut rollback, Direction::Backward) {
-                            return Err(ClipboardError::new(
-                                ClipboardErrorCode::RollbackFailed,
-                                format!(
-                                    "Paste failed for {:?}: {}; rollback also failed: {}",
-                                    src, err, rb_err
-                                ),
-                            ));
-                        }
-                    }
-                    return Err(err.with_context(format!("Paste failed for {}", src.display())));
+                    return Err(rollback_performed_actions(
+                        &performed,
+                        err.with_context(format!("Paste failed for {}", src.display())),
+                    ));
                 }
             }
         }
@@ -435,9 +483,9 @@ fn paste_clipboard_impl(
         created.push(target.to_string_lossy().to_string());
     }
 
-    if let Some(evt) = progress_event.as_ref() {
+    if let (Some(app), Some(evt)) = (app, progress_event.as_ref()) {
         let _ = runtime_lifecycle::emit_if_running(
-            &app,
+            app,
             evt,
             CopyProgressPayload {
                 bytes: total_bytes.unwrap_or(done_items),
