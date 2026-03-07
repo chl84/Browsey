@@ -106,9 +106,9 @@ export const docsPages: DocPage[] = [
       },
       {
         id: 'cloud-rclone-setup',
-        title: 'Cloud Setup (rclone-backed, v1)',
+        title: 'Cloud Setup (rclone-backed)',
         bullets: [
-          'Browsey cloud support is rclone-backed and Linux-first in v1 (OneDrive is the primary target)',
+          'Browsey cloud support is rclone-backed and Linux-first, with supported providers for OneDrive, Google Drive, and Nextcloud',
           'Cloud integration is opt-in and off by default; enable it in `Settings > Cloud` when you actually want Browsey to surface supported remotes',
           'Install rclone separately and ensure it is discoverable in PATH (Browsey does not bundle it)',
           'Configure remotes outside Browsey with `rclone config` (for example an `onedrive` remote)',
@@ -352,12 +352,12 @@ export const docsPages: DocPage[] = [
       },
       {
         id: 'cloud-v1-limitations',
-        title: 'Cloud v1 Limitations (rclone paths)',
+        title: 'Cloud Limitations (rclone paths)',
         bullets: [
           'No cloud trash/recycle-bin integration (delete is permanent)',
           'No undo/redo for cloud file operations',
-          'Cloud is outside the main Linux 1.0 production claim and remains a bounded, opt-in feature set in v1',
-          'Mixed local/cloud clipboard and in-app drag/drop copy/move are supported, but manual validation and provider-specific edge cases (especially quotas/rate limits) are still being refined',
+          'Cloud is part of the Linux 1.0 production claim for supported providers, but it remains opt-in and provider-scoped',
+          'Mixed local/cloud clipboard and in-app drag/drop copy/move are supported, but provider-specific edge cases (especially quotas/rate limits) still need normal provider-aware validation',
           'No advanced rename, archive extract/compress, or duplicate scan for cloud entries',
           'Cloud thumbnails are opt-in (`Cloud thumbs`) and currently limited to Grid view for image/pdf/svg, with provider and file-size guardrails',
           'Direct open is supported by materializing cloud files into a managed local cache, but dedicated Open With flows for cloud files are not implemented yet',
@@ -825,7 +825,7 @@ capabilities/default.json`,
         id: 'v045',
         title: 'v0.4.5 (2026-02-26)',
         bullets: [
-          'Added rclone-backed cloud file support (Linux-first) with direct `rclone://...` paths and Network-view discovery for supported remotes (OneDrive primary target in v1, plus Google Drive/Nextcloud groundwork)',
+          'Added rclone-backed cloud file support (Linux-first) with direct `rclone://...` paths and Network-view discovery for supported OneDrive, Google Drive, and Nextcloud remotes',
           'Added core cloud file operations via rclone (`list`, `mkdir`, `copy`, `move/rename`, `delete`) with provider-aware conflict preview, overwrite/auto-rename handling, and capability-driven UI restrictions for unsupported cloud actions',
           'Added mixed local-disk <-> cloud copy/move support (files and folders) for clipboard and in-app drag/drop flows, including conflict preview integration, rename-on-conflict retries, provider-aware error mapping, and refresh soft-fail behavior',
           'Cloud files now open directly through a managed local cache, and file transfers/open flows show real byte progress when rclone rc progress data is available',
@@ -998,7 +998,7 @@ capabilities/default.json`,
         bullets: [
           'The main Linux 1.0 production claim is scoped to Fedora Workstation and Ubuntu LTS on GNOME Wayland',
           'Other distros and desktop environments may work, but they are outside the main Linux 1.0 validation surface',
-          'Cloud features remain outside the main Linux 1.0 production claim even though they are available as an opt-in feature',
+          'Supported cloud providers are part of the Linux 1.0 production claim, but cloud remains opt-in and setup-dependent through `rclone`',
         ],
       },
       {

@@ -2,13 +2,13 @@
 
 Created: 2026-03-06
 Track: `docs/todo/TODO_PRODUCTION_READY_LINUX.md`
-Scope: Step 5 cloud scope and opt-in safety for the Linux 1.0 claim.
+Scope: Step 5 cloud scope, provider support, and opt-in safety for the Linux 1.0 claim.
 
 ## Purpose
 
-Capture the concrete evidence that cloud is outside the main Linux 1.0
-production claim and that disabling cloud keeps local/network browsing isolated
-from `rclone` setup concerns.
+Capture the concrete evidence that supported cloud providers are inside the main
+Linux 1.0 production claim while disabled cloud still keeps local/network
+browsing isolated from `rclone` setup concerns.
 
 ## Evidence Reviewed
 
@@ -25,10 +25,11 @@ from `rclone` setup concerns.
 
 The Linux 1.0 release bar already makes the product decision explicit:
 
-- cloud is outside the main Linux 1.0 production claim
+- supported cloud providers are inside the main Linux 1.0 production claim
 - cloud remains opt-in
-- cloud remains limited in feature scope
-- cloud is documented separately from the local/core Linux 1.0 guarantee
+- cloud remains provider-scoped and feature-scoped
+- cloud setup requirements and boundaries are documented separately from the
+  local/core guarantee
 
 This decision is also reflected in user-facing docs:
 
@@ -50,11 +51,11 @@ Test coverage exists for this exact behavior in
 
 ## What This Audit Does Not Claim
 
-This audit does not prove:
+This audit does not by itself prove:
 
-- provider-specific cloud behavior is Linux 1.0 ready
-- supported providers have passed controlled QA remote validation
-- cloud belongs inside the Linux 1.0 release-blocking matrix
+- every supported provider has passed controlled QA remote validation
+- every optional cloud feature belongs inside the Linux 1.0 release-blocking
+  matrix
 
 Those remain separate Step 5 decisions/items.
 
@@ -64,5 +65,5 @@ This audit supports checking off:
 
 - `Ensure cloud never interferes with local file browsing when disabled`
 - `Make an explicit 1.0 decision for cloud scope`
-  - specifically the branch where cloud remains outside the main Linux 1.0
-    production claim
+  - specifically the branch where supported cloud providers are part of the
+    main Linux 1.0 production claim

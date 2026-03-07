@@ -31,7 +31,7 @@ following are true:
 4. User-facing error handling for Linux-critical flows uses the Browsey error
    API rather than ad-hoc/local error formats.
 5. Known limitations are documented clearly enough that users can distinguish
-   supported behavior from preview/beta behavior.
+   supported behavior from unsupported or out-of-scope behavior.
 
 Linux 1.0 enforces this through existing engineering controls rather than
 case-by-case release memory:
@@ -69,29 +69,32 @@ The Linux 1.0 production claim requires stability for these features:
 - search
 - properties and permissions editing on supported Linux paths
 - settings persistence, restore defaults, and shortcut persistence
+- supported cloud browsing and file operations for OneDrive, Google Drive, and
+  Nextcloud remotes through `rclone`
 - packaging/install/upgrade/uninstall behavior on the supported Linux target
   surface
 
 These areas may remain available but are not part of the main Linux 1.0
 production claim:
 
-- cloud features (`rclone`-backed remotes)
-- provider-specific cloud behavior beyond documented limited support
 - desktop environments outside the validated target surface
+- provider-specific cloud behavior beyond the documented Linux 1.0 support
+  matrix
 
 ## Cloud Scope Decision for Linux 1.0
 
-For the Linux 1.0 production claim, cloud is outside the main claim.
+For the Linux 1.0 production claim, supported cloud remotes are inside the main
+claim.
 
 Cloud remains:
 
 - opt-in
-- limited in feature scope
-- documented separately from the local/core Linux 1.0 guarantee
+- provider-scoped
+- documented with explicit feature boundaries and setup requirements
 
-Cloud regressions still matter, but they do not by themselves invalidate the
-main Linux 1.0 production claim unless they break local browsing, settings, or
-other non-cloud Browsey behavior.
+Cloud regressions on supported providers therefore matter to the Linux 1.0
+production claim, while unsupported providers and out-of-scope cloud features
+remain outside that bar.
 
 ## Release-Blocking Decision Flow
 

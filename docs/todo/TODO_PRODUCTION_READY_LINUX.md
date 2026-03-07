@@ -26,7 +26,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
   - [x] properties and permissions
   - [x] open with / open file
 - [x] Create a bugbash checklist for each core workflow
-- [ ] Fix every data-loss or wrong-destination bug before further polish
+- [x] Fix every data-loss or wrong-destination bug before further polish
 
 ## 3. Tighten file operation safety
 - [x] Verify destructive operations always have correct guardrails
@@ -55,8 +55,8 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [x] Ensure cloud limitations are explicit in both UI and docs
 - [x] Ensure failed `rclone` setup never feels like a general Browsey failure
 - [x] Make an explicit 1.0 decision for cloud scope:
-  - [x] cloud remains clearly marked as limited/beta and out of the main production claim
-  - [ ] or cloud enters the Linux 1.0 support matrix with provider-specific acceptance coverage
+  - [x] cloud enters the Linux 1.0 support matrix for supported providers
+  - [ ] provider-specific acceptance coverage is completed for the supported providers above
 
 ## 6. Stabilize settings and persistence
 - [x] Test all settings for roundtrip and restore-defaults behavior
@@ -124,7 +124,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [x] Add a `Known limitations on Linux` page
 - [x] Add a recovery/troubleshooting page
 - [x] Document optional dependencies and degraded behavior without them
-- [x] Document cloud as a separate limited feature set
+- [x] Document cloud support boundaries and current provider/feature scope
 
 ## 12. Finish with a real stabilization phase
 - [x] Declare a bounded stabilization window with explicit start/end criteria
@@ -134,7 +134,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [ ] Do not label Browsey `production-ready for Linux` before this phase completes cleanly
 
 ## Exit Criteria
-- [ ] No open Linux release-blocking trust bugs in copy/move/delete/trash/extract flows under the core-operations release-blocking policy
+- [x] No open Linux release-blocking trust bugs in copy/move/delete/trash/extract flows under the core-operations release-blocking policy
 - [x] Linux install/update/uninstall validated on supported target environments
 - [x] All core workflows pass both automated checks and manual Linux smoke tests
 - [x] Cloud scope is explicitly resolved for Linux 1.0 and matches both tests and documentation
