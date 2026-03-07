@@ -112,6 +112,9 @@ There is real existing evidence:
 - local multi-item clipboard copy now also has direct mid-batch cancellation
   coverage that rolls back already created targets before returning
   `cancelled`
+- local multi-item clipboard cut now also has direct mid-batch cancellation
+  coverage that restores already moved sources and removes created targets
+  before returning `cancelled`
 - local copy cancellation now has direct backend coverage for both file cleanup
   and directory-destination cleanup
 - extract release docs explicitly define non-transactional boundaries

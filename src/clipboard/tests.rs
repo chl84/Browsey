@@ -7,8 +7,7 @@ use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::thread;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 #[cfg(unix)]
 use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 
@@ -38,6 +37,12 @@ fn clear_clipboard() {
 fn clipboard_test_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn lock_clipboard_test() -> std::sync::MutexGuard<'static, ()> {
+    clipboard_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn write_file(path: &Path, content: &[u8]) {
@@ -287,7 +292,7 @@ fn copy_file_best_effort_fails_when_destination_dir_is_read_only() {
     let dest = dest_dir.join("out.txt");
 
     let err = copy_file_best_effort(&src, &dest, None, None, None, None).unwrap_err();
-    assert_eq!(err.code(), ClipboardErrorCode::NotFound);
+    assert_eq!(err.code(), ClipboardErrorCode::IoError);
     assert!(src.exists(), "source should remain");
     assert!(!dest.exists(), "destination should not be created");
 
@@ -309,7 +314,7 @@ fn move_entry_fails_when_destination_dir_is_read_only_and_keeps_source() {
     let dest = dest_dir.join("out.txt");
 
     let err = move_entry(&src, &dest, None, None, None).unwrap_err();
-    assert_eq!(err.code(), ClipboardErrorCode::NotFound);
+    assert_eq!(err.code(), ClipboardErrorCode::IoError);
     assert!(src.exists(), "source should remain on permission failure");
     assert!(!dest.exists(), "destination should not be created");
 
@@ -338,7 +343,7 @@ fn copy_entry_rejects_symlink_source_no_follow() {
 
 #[test]
 fn paste_clipboard_preview_reports_existing_file_conflict() {
-    let _guard = clipboard_test_lock().lock().unwrap();
+    let _guard = lock_clipboard_test();
     clear_clipboard();
     let base = uniq_path("preview-file-conflict");
     let src_dir = base.join("src");
@@ -366,7 +371,7 @@ fn paste_clipboard_preview_reports_existing_file_conflict() {
 
 #[test]
 fn paste_clipboard_preview_reports_existing_directory_conflict() {
-    let _guard = clipboard_test_lock().lock().unwrap();
+    let _guard = lock_clipboard_test();
     clear_clipboard();
     let base = uniq_path("preview-dir-conflict");
     let src_dir = base.join("src");
@@ -396,7 +401,7 @@ fn paste_clipboard_preview_reports_existing_directory_conflict() {
 
 #[test]
 fn paste_clipboard_preview_filters_non_conflicting_entries() {
-    let _guard = clipboard_test_lock().lock().unwrap();
+    let _guard = lock_clipboard_test();
     clear_clipboard();
     let base = uniq_path("preview-filters-non-conflicts");
     let src_dir = base.join("src");
@@ -474,7 +479,7 @@ fn copy_entry_directory_cancelled_cleans_up_created_destination_dir() {
 
 #[test]
 fn paste_clipboard_copy_rolls_back_successful_items_when_later_source_fails() {
-    let _guard = clipboard_test_lock().lock().unwrap();
+    let _guard = lock_clipboard_test();
     let _ = ensure_undo_dir();
     clear_clipboard();
 
@@ -515,7 +520,10 @@ fn paste_clipboard_copy_rolls_back_successful_items_when_later_source_fails() {
         err.to_string().contains("Failed to read metadata"),
         "unexpected error: {err}"
     );
-    assert!(first.exists(), "source should remain after failed copy rollback");
+    assert!(
+        first.exists(),
+        "source should remain after failed copy rollback"
+    );
     assert!(
         !dest_dir.join("first.txt").exists(),
         "destination copy should be rolled back when a later item fails"
@@ -531,7 +539,7 @@ fn paste_clipboard_copy_rolls_back_successful_items_when_later_source_fails() {
 
 #[test]
 fn paste_clipboard_cut_rolls_back_successful_items_when_later_source_fails() {
-    let _guard = clipboard_test_lock().lock().unwrap();
+    let _guard = lock_clipboard_test();
     let _ = ensure_undo_dir();
     clear_clipboard();
 
@@ -595,7 +603,7 @@ fn paste_clipboard_cut_rolls_back_successful_items_when_later_source_fails() {
 
 #[test]
 fn paste_clipboard_copy_cancelled_after_first_item_rolls_back_created_targets() {
-    let _guard = clipboard_test_lock().lock().unwrap();
+    let _guard = lock_clipboard_test();
     let _ = ensure_undo_dir();
     clear_clipboard();
 
@@ -621,19 +629,13 @@ fn paste_clipboard_copy_cancelled_after_first_item_rolls_back_created_targets() 
 
     let cancel_state = CancelState::default();
     let cancel_state_bg = cancel_state.clone();
-    let dest_first = dest_dir.join("first.txt");
-    let cancel_thread = thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while Instant::now() < deadline {
-            if dest_first.exists() {
-                let _ = cancel_state_bg.cancel("paste-copy-cancel");
-                return;
-            }
-            thread::sleep(Duration::from_millis(10));
+    let mut copied_once = false;
+    set_after_paste_item_test_hook(Some(Box::new(move || {
+        if !copied_once {
+            copied_once = true;
+            let _ = cancel_state_bg.cancel("paste-copy-cancel");
         }
-        panic!("timed out waiting for first copied target before cancellation");
-    });
-
+    })));
     let undo = UndoState::default();
     let err = paste_clipboard_core(
         None,
@@ -644,8 +646,7 @@ fn paste_clipboard_copy_cancelled_after_first_item_rolls_back_created_targets() 
         Some("paste-copy-cancel".to_string()),
     )
     .unwrap_err();
-
-    cancel_thread.join().expect("cancel thread should finish");
+    set_after_paste_item_test_hook(None);
 
     assert_eq!(err.code(), ClipboardErrorCode::Cancelled);
     assert!(first.exists(), "source should remain after cancelled copy");
@@ -657,6 +658,80 @@ fn paste_clipboard_copy_cancelled_after_first_item_rolls_back_created_targets() 
     assert!(
         !dest_dir.join("second.txt").exists(),
         "later targets should not be created after cancellation"
+    );
+    assert!(
+        undo.undo().is_err(),
+        "cancelled paste should not leave an applied undo action behind"
+    );
+
+    clear_clipboard();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn paste_clipboard_cut_cancelled_after_first_item_restores_moved_source() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    clear_clipboard();
+
+    let base = uniq_path("paste-cut-cancel-mid-batch");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let first = src_dir.join("first.txt");
+    let second = src_dir.join("second.txt");
+    write_file(&first, &[1u8; 16 * 1024]);
+    write_file(&second, &[2u8; 16 * 1024]);
+
+    set_clipboard_impl(
+        vec![
+            first.to_string_lossy().to_string(),
+            second.to_string_lossy().to_string(),
+        ],
+        "cut".to_string(),
+    )
+    .unwrap();
+
+    let cancel_state = CancelState::default();
+    let cancel_state_bg = cancel_state.clone();
+    let mut moved_once = false;
+    set_after_paste_item_test_hook(Some(Box::new(move || {
+        if !moved_once {
+            moved_once = true;
+            let _ = cancel_state_bg.cancel("paste-cut-cancel");
+        }
+    })));
+    let undo = UndoState::default();
+    let err = paste_clipboard_core(
+        None,
+        dest_dir.to_string_lossy().to_string(),
+        None,
+        undo.clone_inner(),
+        cancel_state,
+        Some("paste-cut-cancel".to_string()),
+    )
+    .unwrap_err();
+    set_after_paste_item_test_hook(None);
+
+    assert_eq!(err.code(), ClipboardErrorCode::Cancelled);
+    assert!(
+        first.exists(),
+        "first source should be restored after cancelled cut"
+    );
+    assert!(second.exists(), "second source should remain untouched");
+    assert!(
+        !dest_dir.join("first.txt").exists(),
+        "first moved target should be rolled back after mid-batch cancellation"
+    );
+    assert!(
+        !dest_dir.join("second.txt").exists(),
+        "later targets should not be created after cancellation"
+    );
+    assert!(
+        current_clipboard().is_some(),
+        "cancelled cut should keep clipboard contents for retry"
     );
     assert!(
         undo.undo().is_err(),
