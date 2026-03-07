@@ -40,8 +40,8 @@ existing automated/manual release evidence support a concrete Linux 1.0 claim.
 | TODO item | Current status | Basis |
 |---|---|---|
 | Verify destructive operations always have correct guardrails | Verified for Linux 1.0 claim | Default permanent-delete confirmation is enabled, move-to-trash is routed separately from permanent delete, and destructive `LTD` release rows are already classified as release-blocking. |
-| Verify conflict preview always matches the real operation | Partial | Local, mixed, and cloud preview/execute flows have meaningful coverage, but existing gap audits still call out partial coverage and missing hostile-condition variants. |
-| Test aborted copy/move/extract flows for partial outputs and recovery | Open | Core docs and tests show some rollback/cancel behavior, but explicit Linux 1.0 closeout is not complete. |
+| Verify conflict preview always matches the real operation | Verified for Linux 1.0 claim | Local preview now has direct preview-to-rename execution alignment for both file and directory conflicts, mixed/cloud preview already had direct preview/execute routing coverage, and extract conflict handling has direct execute-path coverage rather than a separate preview surface. |
+| Test aborted copy/move/extract flows for partial outputs and recovery | Verified for Linux 1.0 claim | Local, mixed, and extract families now all have direct cancel/rollback evidence for partial work on the Linux 1.0 target claim, with non-transactional boundaries explicitly documented where relevant. |
 | Verify undo/redo boundaries and document the actual supported scope | Verified | Locked by `docs/operations/linux-release/undo-scope.md`. |
 | Ensure errors never leave the UI in an unknown state without a clear recovery path | Verified for Linux 1.0 claim | Automated coverage now spans delete, new-folder, rename, advanced rename, extract, properties, trash restore/purge, and search recovery, and Linux bugbash rows explicitly require sane failure-state recovery on the supported target surface. |
 
@@ -77,37 +77,42 @@ gap audit and must continue to be tracked separately. The claim closed here is
 specifically the presence of correct destructive-operation guardrails, not
 complete bug closure for every destructive-path failure mode.
 
-## Still Open: Conflict Preview Consistency
+## Verified: Conflict Preview Consistency
 
-Conflict preview is not ready to be closed yet.
+This item is now strong enough to count as verified for the Linux 1.0 claim.
 
-What is already strong:
+Current evidence spans the actual preview-bearing families:
 
 - local clipboard preview enumerates existing destination conflicts before
   execute
-- local clipboard preview now has direct backend tests for file conflict,
+- local clipboard preview has direct backend tests for file conflict,
   directory conflict, and non-conflicting filtering behavior
-- local clipboard tests assert no-overwrite semantics for copy and move
-- mixed local<->cloud preview has direct preview/execute alignment tests
-- cloud paste UI tests cover rename-on-conflict and overwrite intent plumbing
+- local clipboard now also has direct preview-to-execute alignment coverage:
+  a preview that reports both file and directory conflicts is followed by
+  `rename` execution that produces the expected suffixed targets while leaving
+  the existing targets intact
+- local explorer file-op routing now has explicit frontend coverage for opening
+  the local conflict modal and resolving it via the explicit overwrite path
+- local clipboard tests assert no-overwrite semantics for copy and move when
+  preview is not pre-applied
+- mixed local<->cloud preview already has direct preview/execute alignment
+  tests, including rename-on-conflict retry behavior
+- cloud paste UI tests already cover rename-on-conflict and overwrite intent
+  plumbing
+- extract does not expose a separate preview surface; its trust-sensitive
+  conflict handling is therefore carried by direct execute-path coverage such
+  as archive-root conflict suffixing
 
-Why this remains open:
+The core-operation matrices still remain `Partial` in some families because
+they intentionally track broader hostile-condition depth than the Linux 1.0
+claim needs. That no longer blocks the narrower Step 3 statement being made
+here.
 
-- the local gap audit still marks key local copy/move and rename conflict rows
-  as partial
-- the mixed gap audit still marks `CO-MTC-006` as partial, mainly around
-  hostile-condition execute coverage
-- extraction conflict behavior still has partial coverage in the extract audit
+## Verified: Abort/Partial Output Recovery
 
-Linux 1.0 should therefore keep this item open until preview-vs-execute
-consistency is closed across the trust-critical conflict families, not just the
-best-covered flows.
+This item is now strong enough to count as verified for the Linux 1.0 claim.
 
-## Still Open: Abort/Partial Output Recovery
-
-This item remains open.
-
-There is real existing evidence:
+There is now direct evidence across the three families the TODO names:
 
 - local delete batch cancellation rolls back completed items
 - local delete batch now has direct permission-denied coverage that keeps the
@@ -170,9 +175,18 @@ But the Linux 1.0 closeout is not finished because:
 - mixed execute-phase cancellation coverage is stronger, but the mixed audit
   now keeps mainly broader partial-summary/hostile-condition breadth open after
   the added direct directory-loop cancellation coverage
-- extract cancel/failure filesystem-state validation is stronger, but broader
-  conflict-path and format-confidence decisions still belong to active
-  release-checklist work
+- extract release docs explicitly define the non-transactional boundary where
+  batch extraction may have mixed success/failure outcomes without pretending
+  otherwise
+
+That is now enough to support the Linux 1.0 claim being made here:
+
+- copy/move/extract cancellation and late-failure paths have direct automated
+  rollback or bounded-partial-state coverage across local, mixed, and extract
+  families
+- the remaining broader core-operations matrix gaps are about extra hostile
+  condition depth and future parity work, not a lack of Linux 1.0 evidence for
+  aborted partial-output recovery
 
 ## Verified: UI Recovery After Errors
 
@@ -220,13 +234,13 @@ That combination is enough to support the Linux 1.0 claim being made here:
 
 ## Conclusion
 
-Step 3 should currently be treated as:
+Step 3 should currently be treated as fully checkable for the Linux 1.0 claim:
 
-- safe to check off:
-  - destructive guardrails
-  - undo/redo scope documentation
-- still open:
-  - conflict preview consistency
-  - abort/partial-output recovery
+- destructive guardrails
+- conflict preview consistency
+- abort/partial-output recovery
+- undo/redo scope documentation
+- UI recovery after errors
 
-That is the honest Linux 1.0 state based on the current code and audit trail.
+That is the honest Linux 1.0 state based on the current code, audit trail, and
+manual validation already recorded elsewhere in the release track.

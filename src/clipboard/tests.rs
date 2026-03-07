@@ -437,6 +437,90 @@ fn paste_clipboard_preview_filters_non_conflicting_entries() {
 }
 
 #[test]
+fn paste_clipboard_preview_matches_rename_execution_for_file_and_directory_conflicts() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    clear_clipboard();
+
+    let base = uniq_path("preview-execute-rename-align");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let src_file = src_dir.join("report.txt");
+    let src_folder = src_dir.join("photos");
+    let dest_file = dest_dir.join("report.txt");
+    let dest_folder = dest_dir.join("photos");
+    write_file(&src_file, b"new-report");
+    fs::create_dir_all(&src_folder).unwrap();
+    write_file(&src_folder.join("a.jpg"), b"new-photo");
+    write_file(&dest_file, b"old-report");
+    fs::create_dir_all(&dest_folder).unwrap();
+    write_file(&dest_folder.join("existing.jpg"), b"old-photo");
+
+    set_clipboard_impl(
+        vec![
+            src_file.to_string_lossy().to_string(),
+            src_folder.to_string_lossy().to_string(),
+        ],
+        "copy".to_string(),
+    )
+    .unwrap();
+
+    let preview = paste_clipboard_preview_impl(dest_dir.to_string_lossy().to_string()).unwrap();
+    assert_eq!(preview.len(), 2);
+    assert!(preview.iter().any(|item| {
+        item.src == src_file.to_string_lossy()
+            && item.target == dest_file.to_string_lossy()
+            && item.exists
+            && !item.is_dir
+    }));
+    assert!(preview.iter().any(|item| {
+        item.src == src_folder.to_string_lossy()
+            && item.target == dest_folder.to_string_lossy()
+            && item.exists
+            && item.is_dir
+    }));
+
+    let undo = UndoState::default();
+    let created = paste_clipboard_core(
+        None,
+        dest_dir.to_string_lossy().to_string(),
+        Some("rename".to_string()),
+        undo.clone_inner(),
+        CancelState::default(),
+        None,
+    )
+    .unwrap();
+
+    let renamed_file = dest_dir.join("report-1.txt");
+    let renamed_folder = dest_dir.join("photos-1");
+    assert_eq!(
+        created,
+        vec![
+            renamed_file.to_string_lossy().to_string(),
+            renamed_folder.to_string_lossy().to_string(),
+        ]
+    );
+    assert_eq!(fs::read(&dest_file).unwrap(), b"old-report");
+    assert_eq!(fs::read(&renamed_file).unwrap(), b"new-report");
+    assert!(dest_folder.join("existing.jpg").exists());
+    assert_eq!(
+        fs::read(renamed_folder.join("a.jpg")).unwrap(),
+        b"new-photo"
+    );
+    assert!(src_file.exists(), "copy rename should keep the file source");
+    assert!(
+        src_folder.exists(),
+        "copy rename should keep the dir source"
+    );
+
+    clear_clipboard();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
 fn copy_file_best_effort_cancelled_before_transfer_removes_destination() {
     let base = uniq_path("copy-cancelled-file");
     fs::create_dir_all(&base).unwrap();
@@ -792,8 +876,14 @@ fn paste_clipboard_directory_copy_cancelled_after_first_item_rolls_back_created_
     set_after_paste_item_test_hook(None);
 
     assert_eq!(err.code(), ClipboardErrorCode::Cancelled);
-    assert!(first.exists(), "first source directory should remain after cancelled copy");
-    assert!(second.exists(), "second source directory should remain untouched");
+    assert!(
+        first.exists(),
+        "first source directory should remain after cancelled copy"
+    );
+    assert!(
+        second.exists(),
+        "second source directory should remain untouched"
+    );
     assert!(
         !dest_dir.join("first").exists(),
         "first copied directory should be rolled back after mid-batch cancellation"
@@ -865,7 +955,10 @@ fn paste_clipboard_directory_cut_cancelled_after_first_item_restores_moved_sourc
         first.exists(),
         "first source directory should be restored after cancelled cut"
     );
-    assert!(second.exists(), "second source directory should remain untouched");
+    assert!(
+        second.exists(),
+        "second source directory should remain untouched"
+    );
     assert!(
         !dest_dir.join("first").exists(),
         "first moved directory should be rolled back after mid-batch cancellation"
@@ -936,8 +1029,14 @@ fn paste_clipboard_directory_copy_rolls_back_successful_items_when_later_source_
     set_after_paste_item_test_hook(None);
 
     assert_eq!(err.code(), ClipboardErrorCode::NotFound);
-    assert!(first.exists(), "first source directory should remain after failed copy rollback");
-    assert!(!second.exists(), "injected missing source directory should remain missing");
+    assert!(
+        first.exists(),
+        "first source directory should remain after failed copy rollback"
+    );
+    assert!(
+        !second.exists(),
+        "injected missing source directory should remain missing"
+    );
     assert!(
         !dest_dir.join("first").exists(),
         "first copied directory should be rolled back when a later source fails"
@@ -1008,7 +1107,10 @@ fn paste_clipboard_directory_cut_rolls_back_successful_items_when_later_source_f
         first.exists(),
         "first source directory should be restored after failed cut rollback"
     );
-    assert!(!second.exists(), "injected missing source directory should remain missing");
+    assert!(
+        !second.exists(),
+        "injected missing source directory should remain missing"
+    );
     assert!(
         !dest_dir.join("first").exists(),
         "first moved directory should be rolled back when a later source fails"

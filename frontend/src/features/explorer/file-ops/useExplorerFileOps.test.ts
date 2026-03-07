@@ -187,6 +187,78 @@ describe('useExplorerFileOps extract recovery', () => {
   })
 })
 
+describe('useExplorerFileOps local conflict preview', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    clearClipboardState()
+    setClipboardCmdMock.mockResolvedValue(undefined)
+    clearSystemClipboardMock.mockResolvedValue(undefined)
+    pasteClipboardCmdMock.mockResolvedValue(undefined)
+    pasteClipboardPreviewMock.mockResolvedValue([])
+  })
+
+  it('opens the local conflict modal when clipboard preview reports conflicts', async () => {
+    setClipboardPathsState('copy', ['/tmp/src/report.txt'])
+    pasteClipboardPreviewMock.mockResolvedValue([
+      {
+        src: '/tmp/src/report.txt',
+        target: '/tmp/dest/report.txt',
+        exists: true,
+        is_dir: false,
+      },
+    ])
+
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp/dest'
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('/tmp/dest')
+
+    expect(ok).toBe(false)
+    expect(pasteClipboardPreviewMock).toHaveBeenCalledWith('/tmp/dest')
+    expect(pasteClipboardCmdMock).not.toHaveBeenCalled()
+    expect(get(fileOps.conflictModalOpen)).toBe(true)
+    expect(get(fileOps.conflictList)).toEqual([
+      {
+        src: '/tmp/src/report.txt',
+        target: '/tmp/dest/report.txt',
+        exists: true,
+        is_dir: false,
+      },
+    ])
+  })
+
+  it('resolves local conflict modal through the explicit overwrite policy', async () => {
+    setClipboardPathsState('copy', ['/tmp/src/report.txt'])
+    pasteClipboardPreviewMock.mockResolvedValue([
+      {
+        src: '/tmp/src/report.txt',
+        target: '/tmp/dest/report.txt',
+        exists: true,
+        is_dir: false,
+      },
+    ])
+
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp/dest'
+    const fileOps = useExplorerFileOps(deps)
+
+    const ok = await fileOps.handlePasteOrMove('/tmp/dest')
+    expect(ok).toBe(false)
+    expect(get(fileOps.conflictModalOpen)).toBe(true)
+
+    await fileOps.resolveConflicts('overwrite')
+
+    expect(pasteClipboardCmdMock).toHaveBeenCalledWith(
+      '/tmp/dest',
+      'overwrite',
+      expect.stringMatching(/^copy-progress-/),
+    )
+    expect(get(fileOps.conflictModalOpen)).toBe(false)
+    expect(get(fileOps.conflictList)).toEqual([])
+  })
+})
+
 describe('useExplorerFileOps cloud conflict preview', () => {
   beforeEach(() => {
     vi.clearAllMocks()

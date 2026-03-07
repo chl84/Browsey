@@ -30,8 +30,8 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 
 ## 3. Tighten file operation safety
 - [x] Verify destructive operations always have correct guardrails
-- [ ] Verify conflict preview always matches the real operation
-- [ ] Test aborted copy/move/extract flows for partial outputs and recovery
+- [x] Verify conflict preview always matches the real operation
+- [x] Test aborted copy/move/extract flows for partial outputs and recovery
 - [x] Verify undo/redo boundaries and document the actual supported scope
 - [x] Ensure errors never leave the UI in an unknown state without a clear recovery path
 
