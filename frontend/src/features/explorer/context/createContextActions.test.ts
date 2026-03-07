@@ -155,4 +155,30 @@ describe('createContextActions', () => {
       2500,
     )
   })
+
+  it('shows a recovery toast and skips reload when restore fails in trash view', async () => {
+    restoreTrashItemsMock.mockRejectedValueOnce(new Error('restore blocked'))
+    const entry = { ...fileEntry('/tmp/a.txt', 'a.txt'), trash_id: 'trash-a' }
+    const deps = createDeps([entry], [entry.path], 'trash')
+    const handle = createContextActions(deps)
+
+    await handle('restore', entry)
+
+    expect(restoreTrashItemsMock).toHaveBeenCalledWith(['trash-a'])
+    expect(deps.reloadCurrent).not.toHaveBeenCalled()
+    expect(deps.showToast).toHaveBeenCalledWith('Restore failed: restore blocked')
+  })
+
+  it('shows a recovery toast and skips reload when purge fails in trash view', async () => {
+    purgeTrashItemsMock.mockRejectedValueOnce(new Error('purge blocked'))
+    const entry = { ...fileEntry('/tmp/a.txt', 'a.txt'), trash_id: 'trash-a' }
+    const deps = createDeps([entry], [entry.path], 'trash')
+    const handle = createContextActions(deps)
+
+    await handle('move-trash', entry)
+
+    expect(purgeTrashItemsMock).toHaveBeenCalledWith(['trash-a'])
+    expect(deps.reloadCurrent).not.toHaveBeenCalled()
+    expect(deps.showToast).toHaveBeenCalledWith('Delete failed: purge blocked')
+  })
 })
