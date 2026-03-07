@@ -173,6 +173,25 @@ async fn extract_archives_impl(
     paths: Vec<String>,
     progress_event: Option<String>,
 ) -> DecompressResult<Vec<ExtractBatchItem>> {
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        extract_archives_blocking(Some(app), cancel_state, undo_state, paths, progress_event)
+    });
+    match task.await {
+        Ok(result) => result,
+        Err(error) => Err(DecompressError::new(
+            DecompressErrorCode::TaskFailed,
+            format!("Batch extraction task failed: {error}"),
+        )),
+    }
+}
+
+fn extract_archives_blocking(
+    app: Option<tauri::AppHandle>,
+    cancel_state: CancelState,
+    undo_state: UndoState,
+    paths: Vec<String>,
+    progress_event: Option<String>,
+) -> DecompressResult<Vec<ExtractBatchItem>> {
     if paths.is_empty() {
         return Ok(Vec::new());
     }
@@ -190,55 +209,44 @@ async fn extract_archives_impl(
     };
     let batch_token = batch_guard.as_ref().map(|g| g.token());
 
-    let task =
-        tauri::async_runtime::spawn_blocking(move || -> DecompressResult<Vec<ExtractBatchItem>> {
-            // Compute batch total hint inside blocking context to avoid nested runtimes.
-            let mut batch_total: u64 = 0;
-            for path in &paths {
-                let path_buf = PathBuf::from(path);
-                batch_total =
-                    batch_total.saturating_add(estimate_total_hint(&path_buf).unwrap_or(1));
-            }
-            if batch_total == 0 {
-                batch_total = 1;
-            }
-
-            let shared_progress = progress_event
-                .as_ref()
-                .map(|evt| ProgressEmitter::new(app.clone(), evt.clone(), batch_total));
-
-            let batch_actions: Arc<Mutex<Vec<Action>>> = Arc::new(Mutex::new(Vec::new()));
-            let results = build_batch_extract_items(paths, |path| {
-                do_extract(
-                    app.clone(),
-                    cancel_state.clone(),
-                    undo_state.clone(),
-                    path,
-                    progress_event.clone(), // only used for cancel registration in single mode
-                    batch_token.clone(),
-                    shared_progress.clone(),
-                    Some(batch_actions.clone()),
-                )
-            });
-            // keep guard alive until loop ends
-            drop(batch_guard);
-            if let Ok(actions) = batch_actions.lock() {
-                if !actions.is_empty() {
-                    let _ = undo_state.record_applied(Action::Batch(actions.clone()));
-                }
-            }
-            if let Some(p) = shared_progress {
-                p.finish();
-            }
-            Ok(results)
-        });
-    match task.await {
-        Ok(result) => result,
-        Err(error) => Err(DecompressError::new(
-            DecompressErrorCode::TaskFailed,
-            format!("Batch extraction task failed: {error}"),
-        )),
+    // Compute batch total hint inside blocking context to avoid nested runtimes.
+    let mut batch_total: u64 = 0;
+    for path in &paths {
+        let path_buf = PathBuf::from(path);
+        batch_total = batch_total.saturating_add(estimate_total_hint(&path_buf).unwrap_or(1));
     }
+    if batch_total == 0 {
+        batch_total = 1;
+    }
+
+    let shared_progress = progress_event.as_ref().and_then(|evt| {
+        app.as_ref()
+            .map(|app| ProgressEmitter::new(app.clone(), evt.clone(), batch_total))
+    });
+
+    let batch_actions: Arc<Mutex<Vec<Action>>> = Arc::new(Mutex::new(Vec::new()));
+    let results = build_batch_extract_items(paths, |path| {
+        do_extract_impl(
+            app.as_ref(),
+            cancel_state.clone(),
+            undo_state.clone(),
+            path,
+            progress_event.clone(), // only used for cancel registration in single mode
+            batch_token.clone(),
+            shared_progress.clone(),
+            Some(batch_actions.clone()),
+        )
+    });
+    drop(batch_guard);
+    if let Ok(actions) = batch_actions.lock() {
+        if !actions.is_empty() {
+            let _ = undo_state.record_applied(Action::Batch(actions.clone()));
+        }
+    }
+    if let Some(p) = shared_progress {
+        p.finish();
+    }
+    Ok(results)
 }
 
 fn build_batch_extract_items<F>(paths: Vec<String>, mut extract_one: F) -> Vec<ExtractBatchItem>
@@ -274,6 +282,29 @@ where
 #[allow(clippy::too_many_arguments)]
 fn do_extract(
     app: tauri::AppHandle,
+    cancel_state: CancelState,
+    undo: UndoState,
+    path: String,
+    progress_event: Option<String>,
+    shared_cancel: Option<Arc<AtomicBool>>,
+    shared_progress: Option<ProgressEmitter>,
+    batch_actions: Option<Arc<Mutex<Vec<Action>>>>,
+) -> DecompressResult<ExtractResult> {
+    do_extract_impl(
+        Some(&app),
+        cancel_state,
+        undo,
+        path,
+        progress_event,
+        shared_cancel,
+        shared_progress,
+        batch_actions,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn do_extract_impl(
+    app: Option<&tauri::AppHandle>,
     cancel_state: CancelState,
     undo: UndoState,
     path: String,
@@ -354,7 +385,7 @@ fn do_extract(
     let mut owns_progress = false;
     let progress = if let Some(p) = shared_progress {
         Some(p)
-    } else if let Some(evt) = progress_id.as_ref() {
+    } else if let (Some(evt), Some(app)) = (progress_id.as_ref(), app) {
         owns_progress = true;
         Some(ProgressEmitter::new(app.clone(), evt.clone(), total_hint))
     } else {
@@ -858,9 +889,23 @@ fn estimate_total_hint(path: &Path) -> DecompressResult<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_batch_extract_items, DecompressError, DecompressErrorCode, DecompressResult,
-        ExtractResult,
+        build_batch_extract_items, do_extract_impl, extract_archives_blocking, DecompressError,
+        DecompressErrorCode, DecompressResult, ExtractResult,
     };
+    use crate::commands::decompress::{
+        error::is_cancelled_error,
+        util::{set_copy_cancel_after_writes_for_tests, CHUNK},
+    };
+    use crate::tasks::CancelState;
+    use crate::undo::UndoState;
+    use std::{
+        fs::{self, File},
+        io::Write,
+        path::PathBuf,
+        sync::{atomic::AtomicBool, Arc},
+        time::{Duration, SystemTime, UNIX_EPOCH},
+    };
+    use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
     fn ok_result(path: &str) -> ExtractResult {
         ExtractResult {
@@ -868,6 +913,32 @@ mod tests {
             skipped_symlinks: 0,
             skipped_entries: 0,
         }
+    }
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        let unique = format!(
+            "browsey-decompress-mod-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&path).expect("create temp dir");
+        path
+    }
+
+    fn write_zip64_stored_archive(path: &std::path::Path, entry_name: &str, bytes: &[u8]) {
+        let file = File::create(path).expect("create zip file");
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default()
+            .compression_method(CompressionMethod::Stored)
+            .large_file(true);
+        zip.start_file(entry_name, options)
+            .expect("start zip64/stored entry");
+        zip.write_all(bytes).expect("write zip entry bytes");
+        zip.finish().expect("finish zip");
     }
 
     #[test]
@@ -921,5 +992,256 @@ mod tests {
         assert!(items[0].ok);
         assert!(!items[1].ok);
         assert_eq!(items[1].path, "b.zip");
+    }
+
+    #[test]
+    fn do_extract_rolls_back_partial_outputs_when_cancelled_mid_entry() {
+        let root = unique_temp_dir("do-extract-cancel");
+        let zip_path = root.join("cancel.zip");
+        let payload = vec![b'd'; CHUNK * 5];
+        write_zip64_stored_archive(&zip_path, "folder/large.bin", &payload);
+
+        let cancel = Arc::new(AtomicBool::new(false));
+
+        set_copy_cancel_after_writes_for_tests(Some(1));
+        let result = do_extract_impl(
+            None,
+            CancelState::default(),
+            UndoState::default(),
+            zip_path.to_string_lossy().into_owned(),
+            None,
+            Some(cancel.clone()),
+            None,
+            None,
+        );
+        set_copy_cancel_after_writes_for_tests(None);
+
+        let err = match result {
+            Ok(result) => panic!(
+                "extract should stop once cancellation is observed: {}",
+                result.destination
+            ),
+            Err(err) => err,
+        };
+        assert!(is_cancelled_error(&err), "unexpected error: {err}");
+        assert!(
+            !root.join("cancel").exists(),
+            "destination directory should be rolled back after cancellation"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn build_batch_extract_items_continues_after_real_archive_failure() {
+        let root = unique_temp_dir("batch-real-failure");
+        let first_zip = root.join("first.zip");
+        let second_zip = root.join("second-missing.zip");
+        let third_zip = root.join("third.zip");
+        write_zip64_stored_archive(&first_zip, "folder/a.txt", b"alpha");
+        write_zip64_stored_archive(&third_zip, "folder/c.txt", b"charlie");
+
+        let items = build_batch_extract_items(
+            vec![
+                first_zip.to_string_lossy().into_owned(),
+                second_zip.to_string_lossy().into_owned(),
+                third_zip.to_string_lossy().into_owned(),
+            ],
+            |path| {
+                do_extract_impl(
+                    None,
+                    CancelState::default(),
+                    UndoState::default(),
+                    path,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            },
+        );
+
+        assert_eq!(items.len(), 3);
+        assert!(items[0].ok);
+        assert!(!items[1].ok);
+        assert!(items[1].error.is_some());
+        assert!(items[2].ok);
+        let first_dest = PathBuf::from(
+            items[0]
+                .result
+                .as_ref()
+                .expect("first extraction result")
+                .destination
+                .clone(),
+        );
+        let third_dest = PathBuf::from(
+            items[2]
+                .result
+                .as_ref()
+                .expect("third extraction result")
+                .destination
+                .clone(),
+        );
+        assert!(first_dest.join("a.txt").exists());
+        assert!(third_dest.join("c.txt").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn build_batch_extract_items_stops_after_real_archive_cancel() {
+        let root = unique_temp_dir("batch-real-cancel");
+        let first_zip = root.join("first.zip");
+        let second_zip = root.join("second.zip");
+        write_zip64_stored_archive(&first_zip, "folder/a.bin", &vec![b'a'; CHUNK * 5]);
+        write_zip64_stored_archive(&second_zip, "folder/b.txt", b"bravo");
+
+        let shared_cancel = Arc::new(AtomicBool::new(false));
+        set_copy_cancel_after_writes_for_tests(Some(1));
+        let items = build_batch_extract_items(
+            vec![
+                first_zip.to_string_lossy().into_owned(),
+                second_zip.to_string_lossy().into_owned(),
+            ],
+            |path| {
+                do_extract_impl(
+                    None,
+                    CancelState::default(),
+                    UndoState::default(),
+                    path,
+                    None,
+                    Some(shared_cancel.clone()),
+                    None,
+                    None,
+                )
+            },
+        );
+        set_copy_cancel_after_writes_for_tests(None);
+
+        assert_eq!(
+            items.len(),
+            1,
+            "batch should stop after cancelled extraction"
+        );
+        assert!(!items[0].ok);
+        assert!(items[0]
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .to_lowercase()
+            .contains("cancelled"));
+        assert!(
+            !root.join("folder").exists(),
+            "cancelled archive should roll back partial outputs"
+        );
+        assert!(
+            !root.join("folder-1").exists(),
+            "later archives should not start after batch cancellation"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn extract_archives_blocking_continues_after_real_archive_failure() {
+        let root = unique_temp_dir("batch-entry-failure");
+        let first_zip = root.join("first.zip");
+        let second_zip = root.join("second-missing.zip");
+        let third_zip = root.join("third.zip");
+        write_zip64_stored_archive(&first_zip, "folder/a.txt", b"alpha");
+        write_zip64_stored_archive(&third_zip, "folder/c.txt", b"charlie");
+
+        let items = extract_archives_blocking(
+            None,
+            CancelState::default(),
+            UndoState::default(),
+            vec![
+                first_zip.to_string_lossy().into_owned(),
+                second_zip.to_string_lossy().into_owned(),
+                third_zip.to_string_lossy().into_owned(),
+            ],
+            None,
+        )
+        .expect("batch extraction should return itemized results");
+
+        assert_eq!(items.len(), 3);
+        assert!(items[0].ok);
+        assert!(!items[1].ok);
+        assert!(items[2].ok);
+        let first_dest = PathBuf::from(
+            items[0]
+                .result
+                .as_ref()
+                .expect("first extraction result")
+                .destination
+                .clone(),
+        );
+        let third_dest = PathBuf::from(
+            items[2]
+                .result
+                .as_ref()
+                .expect("third extraction result")
+                .destination
+                .clone(),
+        );
+        assert!(first_dest.join("a.txt").exists());
+        assert!(third_dest.join("c.txt").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn extract_archives_blocking_stops_after_real_archive_cancel() {
+        let root = unique_temp_dir("batch-entry-cancel");
+        let first_zip = root.join("first.zip");
+        let second_zip = root.join("second.zip");
+        write_zip64_stored_archive(&first_zip, "folder/a.bin", &vec![b'a'; CHUNK * 5]);
+        write_zip64_stored_archive(&second_zip, "folder/b.txt", b"bravo");
+
+        let cancel_state = CancelState::default();
+        let cancel_id = "batch-cancel".to_string();
+        let cancel_state_for_thread = cancel_state.clone();
+        let cancel_id_for_thread = cancel_id.clone();
+        let canceller = std::thread::spawn(move || {
+            while !cancel_state_for_thread
+                .cancel(&cancel_id_for_thread)
+                .expect("cancel batch event")
+            {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+
+        set_copy_cancel_after_writes_for_tests(Some(1));
+        let items = extract_archives_blocking(
+            None,
+            cancel_state,
+            UndoState::default(),
+            vec![
+                first_zip.to_string_lossy().into_owned(),
+                second_zip.to_string_lossy().into_owned(),
+            ],
+            Some(cancel_id),
+        )
+        .expect("batch extraction should return itemized cancel result");
+        set_copy_cancel_after_writes_for_tests(None);
+        canceller.join().expect("batch canceller thread");
+
+        assert_eq!(
+            items.len(),
+            1,
+            "batch should stop after cancelled extraction"
+        );
+        assert!(!items[0].ok);
+        assert!(items[0]
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .to_lowercase()
+            .contains("cancelled"));
+        assert!(
+            !root.join("folder").exists(),
+            "cancelled archive should roll back partial outputs"
+        );
+        assert!(
+            !root.join("folder-1").exists(),
+            "later archives should not start after batch cancellation"
+        );
+        let _ = fs::remove_dir_all(root);
     }
 }

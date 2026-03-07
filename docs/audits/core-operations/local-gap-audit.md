@@ -7,6 +7,7 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`LCM`, `LRN`, `LT
 
 ## Evidence Reviewed
 
+- `src/clipboard/mod.rs`
 - `src/clipboard/tests.rs`
 - `src/commands/rename/mod.rs` (`#[cfg(test)] mod tests`)
 - `src/commands/fs/trash/tests.rs`
@@ -32,7 +33,7 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`LCM`, `LRN`, `LT
 
 ## Priority Gaps to Close Next
 
-1. Expand multi-item local copy/move hostile-condition coverage beyond the added later-source-failure and mid-batch-cancel paths.
+1. Expand multi-item local copy/move hostile-condition coverage beyond the added later-source-failure and mid-batch-cancel paths, especially recursive and per-item partial-summary assertions.
 2. Add real system-backend restore/purge hostile-condition coverage beyond the current fake-ops list/conflict/failure paths.
 3. Add broader local rename cancel/proxy coverage.
 

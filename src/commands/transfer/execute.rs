@@ -29,7 +29,7 @@ mod progress;
 
 #[derive(Clone)]
 struct TransferProgressContext {
-    app: tauri::AppHandle,
+    app: Option<tauri::AppHandle>,
     event_name: String,
 }
 
@@ -71,7 +71,10 @@ pub(super) async fn execute_mixed_entries(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let progress = progress_event
         .clone()
-        .map(|event_name| TransferProgressContext { app, event_name });
+        .map(|event_name| TransferProgressContext {
+            app: Some(app),
+            event_name,
+        });
     let task = tauri::async_runtime::spawn_blocking(move || {
         execute_mixed_entries_blocking(op, route, options, cancel_token, progress)
     });
@@ -109,7 +112,10 @@ pub(super) async fn execute_mixed_entry_to(
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let progress = progress_event
         .clone()
-        .map(|event_name| TransferProgressContext { app, event_name });
+        .map(|event_name| TransferProgressContext {
+            app: Some(app),
+            event_name,
+        });
     let task = tauri::async_runtime::spawn_blocking(move || {
         execute_mixed_entry_to_blocking(op, pair, options, cancel_token, progress)
     });
@@ -412,8 +418,11 @@ fn emit_transfer_progress(
     if total == 0 {
         return;
     }
+    let Some(app) = progress.app.as_ref() else {
+        return;
+    };
     let _ = runtime_lifecycle::emit_if_running(
-        &progress.app,
+        app,
         &progress.event_name,
         TransferProgressPayload {
             bytes,
