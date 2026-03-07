@@ -743,6 +743,151 @@ fn paste_clipboard_cut_cancelled_after_first_item_restores_moved_source() {
 }
 
 #[test]
+fn paste_clipboard_directory_copy_cancelled_after_first_item_rolls_back_created_targets() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    clear_clipboard();
+
+    let base = uniq_path("paste-dir-copy-cancel-mid-batch");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let first = src_dir.join("first");
+    let second = src_dir.join("second");
+    fs::create_dir_all(first.join("nested")).unwrap();
+    fs::create_dir_all(second.join("nested")).unwrap();
+    write_file(&first.join("nested/a.txt"), b"alpha");
+    write_file(&second.join("nested/b.txt"), b"beta");
+
+    set_clipboard_impl(
+        vec![
+            first.to_string_lossy().to_string(),
+            second.to_string_lossy().to_string(),
+        ],
+        "copy".to_string(),
+    )
+    .unwrap();
+
+    let cancel_state = CancelState::default();
+    let cancel_state_bg = cancel_state.clone();
+    let mut copied_once = false;
+    set_after_paste_item_test_hook(Some(Box::new(move || {
+        if !copied_once {
+            copied_once = true;
+            let _ = cancel_state_bg.cancel("paste-dir-copy-cancel");
+        }
+    })));
+    let undo = UndoState::default();
+    let err = paste_clipboard_core(
+        None,
+        dest_dir.to_string_lossy().to_string(),
+        None,
+        undo.clone_inner(),
+        cancel_state,
+        Some("paste-dir-copy-cancel".to_string()),
+    )
+    .unwrap_err();
+    set_after_paste_item_test_hook(None);
+
+    assert_eq!(err.code(), ClipboardErrorCode::Cancelled);
+    assert!(first.exists(), "first source directory should remain after cancelled copy");
+    assert!(second.exists(), "second source directory should remain untouched");
+    assert!(
+        !dest_dir.join("first").exists(),
+        "first copied directory should be rolled back after mid-batch cancellation"
+    );
+    assert!(
+        !dest_dir.join("second").exists(),
+        "later directory targets should not be created after cancellation"
+    );
+    assert!(
+        undo.undo().is_err(),
+        "cancelled directory paste should not leave an applied undo action behind"
+    );
+
+    clear_clipboard();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn paste_clipboard_directory_cut_cancelled_after_first_item_restores_moved_source() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    clear_clipboard();
+
+    let base = uniq_path("paste-dir-cut-cancel-mid-batch");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let first = src_dir.join("first");
+    let second = src_dir.join("second");
+    fs::create_dir_all(first.join("nested")).unwrap();
+    fs::create_dir_all(second.join("nested")).unwrap();
+    write_file(&first.join("nested/a.txt"), b"alpha");
+    write_file(&second.join("nested/b.txt"), b"beta");
+
+    set_clipboard_impl(
+        vec![
+            first.to_string_lossy().to_string(),
+            second.to_string_lossy().to_string(),
+        ],
+        "cut".to_string(),
+    )
+    .unwrap();
+
+    let cancel_state = CancelState::default();
+    let cancel_state_bg = cancel_state.clone();
+    let mut moved_once = false;
+    set_after_paste_item_test_hook(Some(Box::new(move || {
+        if !moved_once {
+            moved_once = true;
+            let _ = cancel_state_bg.cancel("paste-dir-cut-cancel");
+        }
+    })));
+    let undo = UndoState::default();
+    let err = paste_clipboard_core(
+        None,
+        dest_dir.to_string_lossy().to_string(),
+        None,
+        undo.clone_inner(),
+        cancel_state,
+        Some("paste-dir-cut-cancel".to_string()),
+    )
+    .unwrap_err();
+    set_after_paste_item_test_hook(None);
+
+    assert_eq!(err.code(), ClipboardErrorCode::Cancelled);
+    assert!(
+        first.exists(),
+        "first source directory should be restored after cancelled cut"
+    );
+    assert!(second.exists(), "second source directory should remain untouched");
+    assert!(
+        !dest_dir.join("first").exists(),
+        "first moved directory should be rolled back after mid-batch cancellation"
+    );
+    assert!(
+        !dest_dir.join("second").exists(),
+        "later directory targets should not be created after cancellation"
+    );
+    assert!(
+        current_clipboard().is_some(),
+        "cancelled directory cut should keep clipboard contents for retry"
+    );
+    assert!(
+        undo.undo().is_err(),
+        "cancelled directory cut should not leave an applied undo action behind"
+    );
+
+    clear_clipboard();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
 fn paste_clipboard_overwrite_directory_copy_cancelled_after_first_merged_item_rolls_back() {
     let _guard = lock_clipboard_test();
     let _ = ensure_undo_dir();
