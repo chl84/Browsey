@@ -137,6 +137,8 @@ There is real existing evidence:
   for a partially written entry
 - tar extraction now also has direct archive-level cancellation + rollback
   coverage for a partially written entry
+- `do_extract` now also has direct real-archive success-path and archive-root
+  conflict-path coverage
 - `do_extract` now has direct cancellation + rollback coverage with a real
   archive, and batch extract helper behavior is covered with real archive
   success/failure/cancel inputs

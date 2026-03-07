@@ -1032,6 +1032,69 @@ mod tests {
     }
 
     #[test]
+    fn do_extract_extracts_real_archive_to_directory() {
+        let root = unique_temp_dir("do-extract-success");
+        let zip_path = root.join("photos.zip");
+        write_zip64_stored_archive(&zip_path, "album/a.txt", b"alpha");
+
+        let result = do_extract_impl(
+            None,
+            CancelState::default(),
+            UndoState::default(),
+            zip_path.to_string_lossy().into_owned(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("extract should succeed");
+
+        let destination = PathBuf::from(result.destination);
+        assert_eq!(destination, root.join("album"));
+        assert_eq!(
+            fs::read_to_string(destination.join("a.txt")).expect("read extracted file"),
+            "alpha"
+        );
+        assert_eq!(result.skipped_symlinks, 0);
+        assert_eq!(result.skipped_entries, 0);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn do_extract_uses_unique_destination_when_archive_root_conflicts() {
+        let root = unique_temp_dir("do-extract-conflict");
+        let zip_path = root.join("photos.zip");
+        write_zip64_stored_archive(&zip_path, "album/a.txt", b"alpha");
+        fs::create_dir_all(root.join("album")).expect("seed conflicting destination root");
+        fs::write(root.join("album").join("existing.txt"), b"keep").expect("seed existing file");
+
+        let result = do_extract_impl(
+            None,
+            CancelState::default(),
+            UndoState::default(),
+            zip_path.to_string_lossy().into_owned(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("extract should succeed with suffixed destination");
+
+        let destination = PathBuf::from(result.destination);
+        assert_eq!(destination, root.join("album-1"));
+        assert_eq!(
+            fs::read_to_string(root.join("album").join("existing.txt")).expect("read original"),
+            "keep",
+            "pre-existing destination tree must remain untouched"
+        );
+        assert_eq!(
+            fs::read_to_string(destination.join("a.txt")).expect("read extracted file"),
+            "alpha"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn build_batch_extract_items_continues_after_real_archive_failure() {
         let root = unique_temp_dir("batch-real-failure");
         let first_zip = root.join("first.zip");
