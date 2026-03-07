@@ -17,9 +17,9 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`LCM`, `LRN`, `LT
 
 | Scenario ID | Current automated coverage | Evidence | Gap summary |
 |---|---|---|---|
-| `CO-LCM-001` | Partial | `copy_file_best_effort_does_not_overwrite_existing_target`, `copy_file_best_effort_fails_when_source_is_missing`, `copy_file_best_effort_fails_when_destination_dir_is_read_only`, `copy_file_best_effort_cancelled_before_transfer_removes_destination` | Missing multi-item partial-failure assertions. |
+| `CO-LCM-001` | Partial | `copy_file_best_effort_does_not_overwrite_existing_target`, `copy_file_best_effort_fails_when_source_is_missing`, `copy_file_best_effort_fails_when_destination_dir_is_read_only`, `copy_file_best_effort_cancelled_before_transfer_removes_destination`, `paste_clipboard_copy_rolls_back_successful_items_when_later_source_fails` | Missing broader multi-item hostile-condition coverage beyond the added rollback-on-later-failure path. |
 | `CO-LCM-002` | Partial | `merge_copy_can_undo_without_touching_existing`, `copy_entry_rejects_symlink_source_no_follow` | Missing recursive multi-item partial-failure summary assertions. |
-| `CO-LCM-003` | Partial | `move_entry_does_not_overwrite_existing_target`, `move_entry_fails_when_source_is_missing`, `move_entry_keeps_source_when_destination_parent_disappears`, `move_entry_fails_when_destination_dir_is_read_only_and_keeps_source` | Missing cancellation coverage and explicit per-item partial summary assertions. |
+| `CO-LCM-003` | Partial | `move_entry_does_not_overwrite_existing_target`, `move_entry_fails_when_source_is_missing`, `move_entry_keeps_source_when_destination_parent_disappears`, `move_entry_fails_when_destination_dir_is_read_only_and_keeps_source`, `paste_clipboard_cut_rolls_back_successful_items_when_later_source_fails` | Missing explicit cancellation coverage and broader per-item partial-summary coverage beyond the added later-failure rollback path. |
 | `CO-LCM-004` | Partial | `merge_cut_undo_restores_source_and_target` | Missing partial directory move failure assertions and progress/cancel behavior. |
 | `CO-LRN-001` | Partial | `rename_entry_impl_supports_undo_redo`, `rename_entry_impl_fails_when_parent_directory_is_read_only`, `rename_entry_impl_rejects_symlink_source_no_follow` | Missing cancel-from-UI proxy coverage. |
 | `CO-LRN-002` | Partial | `rename_entry_impl_supports_undo_redo` | Missing folder-specific failure/permission variants. |
@@ -32,9 +32,9 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`LCM`, `LRN`, `LT
 
 ## Priority Gaps to Close Next
 
-1. Add at least one multi-item copy/move partial summary assertion path.
-2. Add one multi-item local copy cancellation/summary assertion path.
-3. Add broader restore/purge backend-hostile-condition coverage beyond the restore-conflict path.
+1. Add one multi-item local copy cancellation/summary assertion path.
+2. Add broader restore/purge backend-hostile-condition coverage beyond the restore-conflict path.
+3. Expand multi-item local copy/move hostile-condition coverage beyond the added later-source-failure rollback path.
 
 ## Notes
 
