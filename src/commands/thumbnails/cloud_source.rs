@@ -135,6 +135,7 @@ pub(super) fn map_cloud_command_error_code(code: CloudCommandErrorCode) -> Thumb
         CloudCommandErrorCode::NotFound => ThumbnailErrorCode::NotFound,
         CloudCommandErrorCode::PermissionDenied => ThumbnailErrorCode::PermissionDenied,
         CloudCommandErrorCode::Unsupported => ThumbnailErrorCode::UnsupportedFormat,
+        CloudCommandErrorCode::Cancelled => ThumbnailErrorCode::Cancelled,
         CloudCommandErrorCode::TaskFailed => ThumbnailErrorCode::CacheFailed,
         CloudCommandErrorCode::Timeout
         | CloudCommandErrorCode::NetworkError

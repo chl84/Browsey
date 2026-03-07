@@ -21,6 +21,7 @@ pub(crate) enum CloudCommandErrorCode {
     Unsupported,
     BinaryMissing,
     InvalidConfig,
+    Cancelled,
     TaskFailed,
     UnknownError,
 }
@@ -41,6 +42,7 @@ impl ErrorCode for CloudCommandErrorCode {
             Self::Unsupported => "unsupported",
             Self::BinaryMissing => "binary_missing",
             Self::InvalidConfig => "invalid_config",
+            Self::Cancelled => "cancelled",
             Self::TaskFailed => "task_failed",
             Self::UnknownError => "unknown_error",
         }

@@ -79,6 +79,8 @@ const userCloudErrorMessage = (code: string | undefined, message: string) => {
       return 'The configured cloud remote is missing or invalid in rclone'
     case 'cloud_disabled':
       return 'Cloud folders via rclone are disabled in Settings'
+    case 'cancelled':
+      return 'Cloud operation cancelled'
     case 'auth_required':
       return 'Cloud authentication is required or has expired. Reconnect the rclone remote and try again'
     case 'rate_limited':

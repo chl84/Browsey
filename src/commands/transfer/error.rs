@@ -161,6 +161,9 @@ impl From<crate::commands::cloud::CloudCommandError> for TransferError {
             crate::commands::cloud::CloudCommandErrorCode::InvalidConfig => {
                 TransferErrorCode::InvalidConfig
             }
+            crate::commands::cloud::CloudCommandErrorCode::Cancelled => {
+                TransferErrorCode::Cancelled
+            }
             crate::commands::cloud::CloudCommandErrorCode::TaskFailed => {
                 TransferErrorCode::TaskFailed
             }
