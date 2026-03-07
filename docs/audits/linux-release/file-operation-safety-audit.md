@@ -109,6 +109,9 @@ There is real existing evidence:
 - local multi-item clipboard paste now has direct rollback coverage when a
   later source disappears after clipboard capture, for both copy and cut
   paths
+- local multi-item clipboard copy now also has direct mid-batch cancellation
+  coverage that rolls back already created targets before returning
+  `cancelled`
 - local copy cancellation now has direct backend coverage for both file cleanup
   and directory-destination cleanup
 - extract release docs explicitly define non-transactional boundaries
@@ -117,8 +120,8 @@ There is real existing evidence:
 
 But the Linux 1.0 closeout is not finished because:
 
-- local multi-item cancellation/summary coverage is still narrower than the
-  full trust-sensitive matrix
+- local multi-item cancellation/summary coverage is stronger, but still
+  narrower than the full trust-sensitive matrix
 - mixed execute-phase cancellation during active work remains a named gap in the
   mixed audit
 - extract cancel/failure filesystem-state validation still belongs to active

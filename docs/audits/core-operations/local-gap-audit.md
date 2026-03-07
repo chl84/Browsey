@@ -17,7 +17,7 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`LCM`, `LRN`, `LT
 
 | Scenario ID | Current automated coverage | Evidence | Gap summary |
 |---|---|---|---|
-| `CO-LCM-001` | Partial | `copy_file_best_effort_does_not_overwrite_existing_target`, `copy_file_best_effort_fails_when_source_is_missing`, `copy_file_best_effort_fails_when_destination_dir_is_read_only`, `copy_file_best_effort_cancelled_before_transfer_removes_destination`, `paste_clipboard_copy_rolls_back_successful_items_when_later_source_fails` | Missing broader multi-item hostile-condition coverage beyond the added rollback-on-later-failure path. |
+| `CO-LCM-001` | Partial | `copy_file_best_effort_does_not_overwrite_existing_target`, `copy_file_best_effort_fails_when_source_is_missing`, `copy_file_best_effort_fails_when_destination_dir_is_read_only`, `copy_file_best_effort_cancelled_before_transfer_removes_destination`, `paste_clipboard_copy_rolls_back_successful_items_when_later_source_fails`, `paste_clipboard_copy_cancelled_after_first_item_rolls_back_created_targets` | Missing broader multi-item hostile-condition coverage beyond the added rollback-on-later-failure and mid-batch-cancel paths. |
 | `CO-LCM-002` | Partial | `merge_copy_can_undo_without_touching_existing`, `copy_entry_rejects_symlink_source_no_follow` | Missing recursive multi-item partial-failure summary assertions. |
 | `CO-LCM-003` | Partial | `move_entry_does_not_overwrite_existing_target`, `move_entry_fails_when_source_is_missing`, `move_entry_keeps_source_when_destination_parent_disappears`, `move_entry_fails_when_destination_dir_is_read_only_and_keeps_source`, `paste_clipboard_cut_rolls_back_successful_items_when_later_source_fails` | Missing explicit cancellation coverage and broader per-item partial-summary coverage beyond the added later-failure rollback path. |
 | `CO-LCM-004` | Partial | `merge_cut_undo_restores_source_and_target` | Missing partial directory move failure assertions and progress/cancel behavior. |
@@ -32,9 +32,9 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`LCM`, `LRN`, `LT
 
 ## Priority Gaps to Close Next
 
-1. Add one multi-item local copy cancellation/summary assertion path.
-2. Expand multi-item local copy/move hostile-condition coverage beyond the added later-source-failure rollback path.
-3. Add real system-backend restore/purge hostile-condition coverage beyond the current fake-ops list/conflict/failure paths.
+1. Expand multi-item local copy/move hostile-condition coverage beyond the added later-source-failure and mid-batch-cancel paths.
+2. Add real system-backend restore/purge hostile-condition coverage beyond the current fake-ops list/conflict/failure paths.
+3. Add broader local rename cancel/proxy coverage.
 
 ## Notes
 
