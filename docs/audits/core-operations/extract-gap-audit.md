@@ -65,8 +65,26 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`EXT`)
 
 ## Priority Gaps to Close Next
 
-1. Decide whether the current zip+tar evidence is sufficient for Linux 1.0, or
-   whether 7z/rar need equivalent command-level hostile-condition tests.
-2. Decide whether the current `do_extract` success/conflict coverage is
-   sufficient for Linux 1.0, or whether additional format-specific end-to-end
-   assertions are needed beyond the current zip/tar evidence.
+1. If the core-operations `EXT` family is later promoted beyond the current
+   Linux 1.0 release claim, decide whether 7z/rar need equivalent
+   command-level hostile-condition tests.
+2. If future release work wants per-format parity rather than shared-stack
+   confidence, decide whether additional format-specific end-to-end assertions
+   are needed beyond the current zip/tar + shared `do_extract` evidence.
+
+## Linux 1.0 Note
+
+For the Linux 1.0 release claim, the current extract evidence is considered
+strong enough even though the broader `EXT` matrix remains `Partial`:
+
+- zip, tar, 7z, and rar all flow through the same destination-creation and
+  rollback-sensitive primitives (`open_unique_file`, `CreatedPaths`, and
+  shared cancel-aware write helpers)
+- zip and tar already have direct archive-level cancellation + rollback
+  assertions
+- `do_extract` already has direct real-archive success, conflict, and cancel
+  coverage
+
+That means extra hostile-condition duplication for every archive format remains
+useful future hardening work, but it is no longer treated as a Linux 1.0
+release blocker for Step 3.

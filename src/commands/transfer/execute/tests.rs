@@ -1268,7 +1268,9 @@ fn mixed_execute_local_to_cloud_directory_copy_cancels_during_second_active_tran
         .expect_err("second transfer should be cancelled");
 
     assert_eq!(err.code_str(), "cancelled");
-    assert!(sandbox.remote_path("work", "dest/dir-a/nested/file.txt").exists());
+    assert!(sandbox
+        .remote_path("work", "dest/dir-a/nested/file.txt")
+        .exists());
     assert!(!sandbox.remote_path("work", "dest/dir-b").exists());
     assert!(src_a.exists());
     assert!(src_b.exists());
@@ -1366,7 +1368,9 @@ fn mixed_execute_local_to_cloud_directory_move_cancels_during_second_active_tran
         .expect_err("second transfer should be cancelled");
 
     assert_eq!(err.code_str(), "cancelled");
-    assert!(sandbox.remote_path("work", "dest/dir-a/nested/file.txt").exists());
+    assert!(sandbox
+        .remote_path("work", "dest/dir-a/nested/file.txt")
+        .exists());
     assert!(!sandbox.remote_path("work", "dest/dir-b").exists());
     assert!(!src_a.exists());
     assert!(src_b.exists());
