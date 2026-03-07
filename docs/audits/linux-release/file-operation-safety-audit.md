@@ -118,6 +118,8 @@ There is real existing evidence:
 - local multi-item clipboard cut now also has direct mid-batch cancellation
   coverage that restores already moved sources and removes created targets
   before returning `cancelled`
+- local overwrite-merge directory copy and cut now also have direct recursive
+  cancellation rollback coverage after the first merged item
 - mixed local<->cloud copy and move now have direct execute-phase cancellation
   coverage while the second transfer command is actively running, in both
   directions
@@ -144,8 +146,9 @@ There is real existing evidence:
 
 But the Linux 1.0 closeout is not finished because:
 
-- local multi-item cancellation/summary coverage is stronger, but still
-  narrower than the full trust-sensitive matrix
+- local multi-item cancellation/summary coverage is stronger, including
+  recursive merge-cancel rollback, but it is still narrower than the full
+  trust-sensitive matrix
 - mixed execute-phase cancellation coverage is stronger, but the mixed audit
   still keeps broader directory/partial-summary hostile-condition breadth open
 - extract cancel/failure filesystem-state validation is stronger, but broader

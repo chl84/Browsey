@@ -2,6 +2,8 @@ use crate::{
     runtime_lifecycle,
     undo::{move_with_fallback, temp_backup_path, Action},
 };
+#[cfg(test)]
+use std::cell::RefCell;
 #[cfg(not(target_os = "windows"))]
 use std::io::BufRead;
 #[cfg(not(target_os = "windows"))]
@@ -17,6 +19,27 @@ use super::{
     error::{ClipboardError, ClipboardErrorCode, ClipboardResult},
     ClipboardMode, CopyProgressPayload,
 };
+
+#[cfg(test)]
+thread_local! {
+    static AFTER_MERGE_ITEM_TEST_HOOK: RefCell<Option<Box<dyn FnMut()>>> = RefCell::new(None);
+}
+
+#[cfg(test)]
+fn run_after_merge_item_test_hook() {
+    AFTER_MERGE_ITEM_TEST_HOOK.with(|hook| {
+        if let Some(callback) = hook.borrow_mut().as_mut() {
+            callback();
+        }
+    });
+}
+
+#[cfg(test)]
+pub(super) fn set_after_merge_item_test_hook(callback: Option<Box<dyn FnMut()>>) {
+    AFTER_MERGE_ITEM_TEST_HOOK.with(|hook| {
+        *hook.borrow_mut() = callback;
+    });
+}
 
 fn ensure_not_child(src: &Path, dest: &Path) -> ClipboardResult<()> {
     if dest.starts_with(src) {
@@ -275,6 +298,8 @@ pub(super) fn merge_dir(
                 }
             }
         }
+        #[cfg(test)]
+        run_after_merge_item_test_hook();
     }
 
     if let ClipboardMode::Cut = mode {
