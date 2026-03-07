@@ -125,6 +125,9 @@ There is real existing evidence:
 - local multi-item clipboard directory copy and cut now also have direct
   mid-batch cancellation coverage that rolls back/restores the first completed
   directory target before returning `cancelled`
+- local multi-item clipboard directory copy and cut now also have direct
+  later-source-failure rollback coverage that removes/restores the first
+  completed directory target before returning an error
 - local overwrite-merge directory copy and cut now also have direct recursive
   cancellation rollback coverage after the first merged item
 - local overwrite-merge directory copy and cut now also have direct recursive
@@ -161,8 +164,8 @@ There is real existing evidence:
 But the Linux 1.0 closeout is not finished because:
 
 - local multi-item cancellation/summary coverage is stronger, including
-  directory mid-batch cancellation, recursive merge-cancel rollback, and
-  recursive later-source-failure rollback,
+  directory mid-batch cancellation, directory later-source-failure rollback,
+  recursive merge-cancel rollback, and recursive later-source-failure rollback,
   but it is still narrower than the full trust-sensitive matrix
 - mixed execute-phase cancellation coverage is stronger, but the mixed audit
   now keeps mainly broader partial-summary/hostile-condition breadth open after
