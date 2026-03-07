@@ -142,11 +142,15 @@ struct FakeTrashOps {
     purged_ids: RefCell<Vec<OsString>>,
     fail_restore: Cell<bool>,
     fail_purge: Cell<bool>,
+    list_error: RefCell<Option<FsError>>,
     restore_error: RefCell<Option<FsError>>,
 }
 
 impl TrashOps for FakeTrashOps {
     fn list_items(&self) -> FsResult<Vec<TrashItem>> {
+        if let Some(error) = self.list_error.borrow_mut().take() {
+            return Err(error);
+        }
         Ok(self.items.borrow().clone())
     }
 
@@ -464,4 +468,52 @@ fn purge_with_ops_failure_does_not_emit_change() {
         "no ids should be recorded"
     );
     assert!(!emitted.get(), "failed purge should not emit change event");
+}
+
+#[test]
+fn restore_with_ops_list_failure_does_not_emit_change() {
+    let ops = FakeTrashOps::default();
+    ops.list_error.borrow_mut().replace(FsError::new(
+        FsErrorCode::TrashFailed,
+        "simulated trash listing failure",
+    ));
+    let emitted = Cell::new(false);
+
+    let err = restore_trash_items_with_ops(vec!["id-z".into()], &ops, || emitted.set(true))
+        .expect_err("restore should fail when trash listing fails");
+
+    assert_eq!(err.code(), FsErrorCode::TrashFailed);
+    assert!(
+        err.to_string().contains("simulated trash listing failure"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        ops.restored_ids.borrow().is_empty(),
+        "restore should not be attempted when list fails"
+    );
+    assert!(!emitted.get(), "list failure should not emit change event");
+}
+
+#[test]
+fn purge_with_ops_list_failure_does_not_emit_change() {
+    let ops = FakeTrashOps::default();
+    ops.list_error.borrow_mut().replace(FsError::new(
+        FsErrorCode::TrashFailed,
+        "simulated trash listing failure",
+    ));
+    let emitted = Cell::new(false);
+
+    let err = purge_trash_items_with_ops(vec!["id-z".into()], &ops, || emitted.set(true))
+        .expect_err("purge should fail when trash listing fails");
+
+    assert_eq!(err.code(), FsErrorCode::TrashFailed);
+    assert!(
+        err.to_string().contains("simulated trash listing failure"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        ops.purged_ids.borrow().is_empty(),
+        "purge should not be attempted when list fails"
+    );
+    assert!(!emitted.get(), "list failure should not emit change event");
 }

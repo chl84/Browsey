@@ -134,6 +134,9 @@ Current evidence is useful but incomplete:
   user to press `F5` when background reconciliation times out
 - trash restore now has explicit conflict-path coverage that confirms
   destination-collision failures do not emit a false `trash-changed` signal
+- trash restore/purge now also have explicit list-failure coverage that
+  confirms backend enumeration failure does not emit a false `trash-changed`
+  signal or pretend that work was attempted
 - delete modal closes cleanly after success/failure handling
 - delete modal failure now has explicit frontend coverage for toast + cleanup +
   closed-state recovery
