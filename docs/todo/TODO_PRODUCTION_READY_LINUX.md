@@ -33,7 +33,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [ ] Verify conflict preview always matches the real operation
 - [ ] Test aborted copy/move/extract flows for partial outputs and recovery
 - [x] Verify undo/redo boundaries and document the actual supported scope
-- [ ] Ensure errors never leave the UI in an unknown state without a clear recovery path
+- [x] Ensure errors never leave the UI in an unknown state without a clear recovery path
 
 ## 4. Harden Linux-specific behavior
 - [x] Test mounts, eject, and removable media against real Linux setups

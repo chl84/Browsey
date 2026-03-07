@@ -21,6 +21,8 @@ existing automated/manual release evidence support a concrete Linux 1.0 claim.
 - `frontend/src/features/explorer/modals/advancedRenameModal.ts`
 - `frontend/src/features/explorer/modals/cloudBackgroundRefresh.test.ts`
 - `frontend/src/features/explorer/file-ops/useExplorerFileOps.test.ts`
+- `frontend/src/features/explorer/context/createContextActions.test.ts`
+- `frontend/src/features/explorer/state/createSearchSession.test.ts`
 - `src/clipboard/mod.rs`
 - `src/clipboard/tests.rs`
 - `src/commands/decompress/mod.rs`
@@ -41,7 +43,7 @@ existing automated/manual release evidence support a concrete Linux 1.0 claim.
 | Verify conflict preview always matches the real operation | Partial | Local, mixed, and cloud preview/execute flows have meaningful coverage, but existing gap audits still call out partial coverage and missing hostile-condition variants. |
 | Test aborted copy/move/extract flows for partial outputs and recovery | Open | Core docs and tests show some rollback/cancel behavior, but explicit Linux 1.0 closeout is not complete. |
 | Verify undo/redo boundaries and document the actual supported scope | Verified | Locked by `docs/operations/linux-release/undo-scope.md`. |
-| Ensure errors never leave the UI in an unknown state without a clear recovery path | Partial | Some cloud refresh soft-fail flows are covered, but this is not yet broad enough to claim across Linux-critical operations. |
+| Ensure errors never leave the UI in an unknown state without a clear recovery path | Verified for Linux 1.0 claim | Automated coverage now spans delete, new-folder, rename, advanced rename, extract, properties, trash restore/purge, and search recovery, and Linux bugbash rows explicitly require sane failure-state recovery on the supported target surface. |
 
 ## Verified: Destructive Operation Guardrails
 
@@ -161,11 +163,11 @@ But the Linux 1.0 closeout is not finished because:
   conflict-path and format-confidence decisions still belong to active
   release-checklist work
 
-## Still Open: UI Recovery After Errors
+## Verified: UI Recovery After Errors
 
-This item remains open.
+This item is now strong enough to count as verified for the Linux 1.0 claim.
 
-Current evidence is useful but incomplete:
+Current evidence covers the major trust-sensitive UI families:
 
 - cloud rename/new-folder/delete modals already soft-fail refresh and tell the
   user to press `F5` when background reconciliation times out
@@ -186,14 +188,24 @@ Current evidence is useful but incomplete:
   activity cleanup + non-ambiguous recovery state
 - new-folder modal failure now has explicit frontend coverage for kept-open
   state, surfaced error text, and single-pass activity cleanup
+- trash restore/purge actions now have explicit frontend coverage for surfaced
+  recovery toast + skipped reload when the backend restore/purge call fails
+- search session setup/runtime failures now have explicit frontend coverage for
+  surfaced error text + cleared loading/running state + cleared active cancel
+  handles
 
-What is still missing for Linux 1.0:
+This automated evidence is also backed by explicit Linux manual recovery rows
+already present in the release bugbash:
 
-- broader verification across local destructive flows, search, extract, and
-  other trust-sensitive operations
-- an explicit Linux 1.0 rule that failure/partial states are always surfaced in
-  a recoverable and non-ambiguous way
-- broader release-checklist coverage for UI-state recovery after backend error
+- `LX-SRC-002` and `LX-SRC-003` for search error/cancel recovery
+- `LX-TRH-002` for restore/purge conflict and failure recovery
+
+That combination is enough to support the Linux 1.0 claim being made here:
+
+- failure/cancel states in the major trust-sensitive UI flows are surfaced in a
+  recoverable, non-ambiguous way
+- the release process already requires Linux-target manual validation for the
+  remaining user-facing recovery seams on supported desktops/sessions
 
 ## Conclusion
 
@@ -205,6 +217,5 @@ Step 3 should currently be treated as:
 - still open:
   - conflict preview consistency
   - abort/partial-output recovery
-  - UI recovery after errors
 
 That is the honest Linux 1.0 state based on the current code and audit trail.
