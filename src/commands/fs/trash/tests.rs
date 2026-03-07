@@ -142,6 +142,7 @@ struct FakeTrashOps {
     purged_ids: RefCell<Vec<OsString>>,
     fail_restore: Cell<bool>,
     fail_purge: Cell<bool>,
+    restore_error: RefCell<Option<FsError>>,
 }
 
 impl TrashOps for FakeTrashOps {
@@ -150,6 +151,9 @@ impl TrashOps for FakeTrashOps {
     }
 
     fn restore_items(&self, items: Vec<TrashItem>) -> FsResult<()> {
+        if let Some(error) = self.restore_error.borrow_mut().take() {
+            return Err(error);
+        }
         if self.fail_restore.get() {
             return Err(FsError::new(
                 FsErrorCode::TrashFailed,
@@ -381,6 +385,39 @@ fn restore_with_ops_rejects_empty_selection_after_filtering() {
     assert!(
         !emitted.get(),
         "failed restore should not emit change event"
+    );
+}
+
+#[test]
+fn restore_with_ops_conflict_failure_does_not_emit_change() {
+    let ops = FakeTrashOps::default();
+    ops.items.borrow_mut().push(TrashItem {
+        id: OsString::from("id-conflict"),
+        name: OsString::from("conflict.txt"),
+        original_parent: PathBuf::from("/tmp"),
+        time_deleted: 0,
+    });
+    ops.restore_error.borrow_mut().replace(FsError::new(
+        FsErrorCode::TargetExists,
+        "Destination already exists: /tmp/conflict.txt",
+    ));
+    let emitted = Cell::new(false);
+
+    let err = restore_trash_items_with_ops(vec!["id-conflict".into()], &ops, || emitted.set(true))
+        .expect_err("restore should fail when destination already exists");
+
+    assert_eq!(err.code(), FsErrorCode::TargetExists);
+    assert!(
+        err.to_string().contains("Destination already exists"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        ops.restored_ids.borrow().is_empty(),
+        "restore backend should not report successful ids"
+    );
+    assert!(
+        !emitted.get(),
+        "restore conflict should not emit change event"
     );
 }
 

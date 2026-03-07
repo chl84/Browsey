@@ -36,10 +36,10 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 - [ ] Ensure errors never leave the UI in an unknown state without a clear recovery path
 
 ## 4. Harden Linux-specific behavior
-- [ ] Test mounts, eject, and removable media against real Linux setups
-- [ ] Test SMB/NFS/GVFS scenarios on GNOME Wayland
-- [ ] Verify clipboard integration on GNOME Wayland with and without `xclip`
-- [ ] Test terminal launch, permissions editing, and trash behavior on common Linux environments
+- [x] Test mounts, eject, and removable media against real Linux setups
+- [x] Test SMB/NFS/GVFS scenarios on GNOME Wayland
+- [x] Verify clipboard integration on GNOME Wayland with and without `xclip`
+- [x] Test terminal launch, permissions editing, and trash behavior on common Linux environments
 - [x] Confirm Browsey behaves correctly when optional dependencies are missing:
   - [x] `ffmpeg`
   - [x] `rclone`
@@ -93,17 +93,17 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
   - [x] no feature merges without explicit re-approval
 
 ## 9. Harden packaging and installation
-- [ ] Test RPM install, upgrade, and reinstall on clean Fedora
-- [ ] Define and validate the install path for the Debian/Ubuntu target surface:
+- [x] Test RPM install, upgrade, and reinstall on clean Fedora
+- [x] Define and validate the install path for the Debian/Ubuntu target surface:
   - [x] decide package/distribution format
-  - [ ] test install and upgrade on a clean Debian/Ubuntu-based environment
+  - [x] test install and upgrade on a clean Debian/Ubuntu-based environment
   - [x] document uninstall behavior on that environment
 - [x] Decide whether downgrade is supported:
   - [ ] if yes, test downgrade explicitly
   - [x] if no, document downgrade as unsupported
-- [ ] Confirm the installed app starts without dev-only prerequisites
-- [ ] Verify icons, desktop entry, file associations, and permissions in installed builds
-- [ ] Test app data/log/cache behavior across version upgrades
+- [x] Confirm the installed app starts without dev-only prerequisites
+- [x] Verify icons, desktop entry, file associations, and permissions in installed builds
+- [x] Test app data/log/cache behavior across version upgrades
 - [x] Document the exact install and upgrade path for Linux users
 
 ## 10. Improve observability and supportability
@@ -135,7 +135,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 
 ## Exit Criteria
 - [ ] No open Linux release-blocking trust bugs in copy/move/delete/trash/extract flows under the core-operations release-blocking policy
-- [ ] Linux install/update/uninstall validated on supported target environments
-- [ ] All core workflows pass both automated checks and manual Linux smoke tests
+- [x] Linux install/update/uninstall validated on supported target environments
+- [x] All core workflows pass both automated checks and manual Linux smoke tests
 - [ ] Cloud scope is explicitly resolved for Linux 1.0 and matches both tests and documentation
 - [ ] No non-bugfix merges have landed since RC1 without explicit re-approval
