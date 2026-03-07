@@ -55,6 +55,11 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
+#[cfg(test)]
+thread_local! {
+    static CLOUD_ENABLED_OVERRIDE: RefCell<Option<bool>> = const { RefCell::new(None) };
+}
+
 pub(crate) fn cloud_provider_kind_for_remote(remote_id: &str) -> Option<CloudProviderKind> {
     #[cfg(test)]
     if let Some(kind) = cloud_provider_kind_override_for_tests(remote_id) {
@@ -64,6 +69,58 @@ pub(crate) fn cloud_provider_kind_for_remote(remote_id: &str) -> Option<CloudPro
         .ok()
         .and_then(|remotes| remotes.into_iter().find(|remote| remote.id == remote_id))
         .map(|remote| remote.provider)
+}
+
+fn load_cloud_enabled_setting() -> CloudCommandResult<bool> {
+    #[cfg(test)]
+    if let Some(enabled) = cloud_enabled_override_for_tests() {
+        return Ok(enabled);
+    }
+    let conn = crate::db::open().map_err(|error| {
+        CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            format!("Failed to open settings db for cloud toggle: {error}"),
+        )
+    })?;
+    let enabled = crate::db::get_setting_bool(&conn, "cloudEnabled").map_err(|error| {
+        CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            format!("Failed to read cloud toggle setting: {error}"),
+        )
+    })?;
+    Ok(enabled.unwrap_or(false))
+}
+
+pub(crate) fn ensure_cloud_enabled() -> CloudCommandResult<()> {
+    if load_cloud_enabled_setting()? {
+        return Ok(());
+    }
+    Err(CloudCommandError::new(
+        CloudCommandErrorCode::CloudDisabled,
+        "Cloud folders via rclone are disabled in Settings",
+    ))
+}
+
+fn cloud_enabled_best_effort() -> bool {
+    match load_cloud_enabled_setting() {
+        Ok(enabled) => enabled,
+        Err(error) => {
+            warn!(error = %error, "failed to read cloud toggle; disabling cloud surface");
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+fn cloud_enabled_override_for_tests() -> Option<bool> {
+    CLOUD_ENABLED_OVERRIDE.with(|value| *value.borrow())
+}
+
+#[cfg(test)]
+pub(crate) fn set_cloud_enabled_override_for_tests(value: Option<bool>) {
+    CLOUD_ENABLED_OVERRIDE.with(|current| {
+        *current.borrow_mut() = value;
+    });
 }
 
 #[cfg(test)]
@@ -143,6 +200,9 @@ pub(crate) fn cloud_remote_discovery_cache_contains_remote_for_tests(remote_id: 
 }
 
 pub(crate) fn list_cloud_remotes_sync_best_effort(force_refresh: bool) -> Vec<CloudRemote> {
+    if !cloud_enabled_best_effort() {
+        return Vec::new();
+    }
     match list_cloud_remotes_cached(force_refresh) {
         Ok(remotes) => remotes,
         Err(error) => {
@@ -457,7 +517,31 @@ fn register_cloud_cancel(
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_cloud_path, normalize_cloud_path_impl};
+    use super::{
+        list_cloud_remotes_impl, list_cloud_remotes_sync_best_effort, normalize_cloud_path,
+        normalize_cloud_path_impl, validate_cloud_root_impl, CloudCommandErrorCode,
+    };
+    use crate::commands::cloud::{
+        set_cloud_enabled_override_for_tests, store_cloud_remote_discovery_cache_entry_for_tests,
+        types::{CloudCapabilities, CloudProviderKind, CloudRemote},
+    };
+    use once_cell::sync::Lazy;
+    use std::sync::Mutex;
+
+    static TEST_ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+    struct CloudEnabledOverrideGuard;
+
+    impl Drop for CloudEnabledOverrideGuard {
+        fn drop(&mut self) {
+            set_cloud_enabled_override_for_tests(None);
+        }
+    }
+
+    fn cloud_enabled_override_guard(value: bool) -> CloudEnabledOverrideGuard {
+        set_cloud_enabled_override_for_tests(Some(value));
+        CloudEnabledOverrideGuard
+    }
 
     #[test]
     fn normalize_cloud_path_command_returns_normalized_path() {
@@ -486,5 +570,48 @@ mod tests {
             err.to_string(),
             "Invalid cloud path: Path must start with rclone://"
         );
+    }
+
+    #[test]
+    fn list_cloud_remotes_sync_best_effort_omits_remotes_when_cloud_is_disabled() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _cloud_disabled = cloud_enabled_override_guard(false);
+
+        store_cloud_remote_discovery_cache_entry_for_tests(vec![CloudRemote {
+            id: "work".to_string(),
+            label: "Work".to_string(),
+            provider: CloudProviderKind::Onedrive,
+            root_path: "rclone://work".to_string(),
+            capabilities: CloudCapabilities::v1_core_rw(),
+        }]);
+
+        assert!(list_cloud_remotes_sync_best_effort(false).is_empty());
+    }
+
+    #[test]
+    fn list_cloud_remotes_impl_returns_cloud_disabled_when_toggle_is_off() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _cloud_disabled = cloud_enabled_override_guard(false);
+
+        let error = tauri::async_runtime::block_on(list_cloud_remotes_impl())
+            .expect_err("cloud remotes should be disabled");
+        assert_eq!(error.code(), CloudCommandErrorCode::CloudDisabled);
+    }
+
+    #[test]
+    fn validate_cloud_root_impl_returns_cloud_disabled_when_toggle_is_off() {
+        let _lock = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _cloud_disabled = cloud_enabled_override_guard(false);
+
+        let error =
+            tauri::async_runtime::block_on(validate_cloud_root_impl("rclone://work".to_string()))
+                .expect_err("cloud root validation should be disabled");
+        assert_eq!(error.code(), CloudCommandErrorCode::CloudDisabled);
     }
 }

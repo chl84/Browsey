@@ -8,6 +8,7 @@ use std::fmt;
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CloudCommandErrorCode {
+    CloudDisabled,
     InvalidPath,
     NotFound,
     Timeout,
@@ -27,6 +28,7 @@ pub(crate) enum CloudCommandErrorCode {
 impl ErrorCode for CloudCommandErrorCode {
     fn as_code_str(self) -> &'static str {
         match self {
+            Self::CloudDisabled => "cloud_disabled",
             Self::InvalidPath => "invalid_path",
             Self::NotFound => "not_found",
             Self::Timeout => "timeout",

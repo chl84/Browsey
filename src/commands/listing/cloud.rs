@@ -52,6 +52,7 @@ pub(super) fn fs_entry_from_cloud_entry(entry: BrowseyCloudEntry) -> FsEntry {
 
 pub(super) fn listing_error_from_api(error: crate::errors::api_error::ApiError) -> ListingError {
     let code = match error.code.as_str() {
+        "cloud_disabled" => ListingErrorCode::UnsupportedScope,
         "invalid_path" => ListingErrorCode::InvalidPath,
         "not_found" => ListingErrorCode::NotFound,
         "permission_denied" => ListingErrorCode::PermissionDenied,
