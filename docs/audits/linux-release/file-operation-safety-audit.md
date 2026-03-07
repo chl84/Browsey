@@ -18,6 +18,7 @@ existing automated/manual release evidence support a concrete Linux 1.0 claim.
 - `frontend/src/features/explorer/context/createContextActions.ts`
 - `frontend/src/features/explorer/context/createContextActions.test.ts`
 - `frontend/src/features/explorer/modals/deleteConfirmModal.ts`
+- `frontend/src/features/explorer/modals/advancedRenameModal.ts`
 - `frontend/src/features/explorer/modals/cloudBackgroundRefresh.test.ts`
 - `src/clipboard/mod.rs`
 - `src/clipboard/tests.rs`
@@ -173,6 +174,9 @@ Current evidence is useful but incomplete:
   closed-state recovery
 - rename modal failure now has explicit frontend coverage for kept-open state,
   surfaced error text, and single-pass activity cleanup
+- advanced rename modal failure now has explicit frontend coverage for both
+  preview-failure and confirm-failure paths, with kept-open state and surfaced
+  error text
 - new-folder modal failure now has explicit frontend coverage for kept-open
   state, surfaced error text, and single-pass activity cleanup
 
