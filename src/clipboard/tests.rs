@@ -7,7 +7,8 @@ use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, SystemTime};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime};
 #[cfg(unix)]
 use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 
@@ -586,6 +587,80 @@ fn paste_clipboard_cut_rolls_back_successful_items_when_later_source_fails() {
     assert!(
         undo.undo().is_err(),
         "failed paste should not leave an applied undo action behind"
+    );
+
+    clear_clipboard();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn paste_clipboard_copy_cancelled_after_first_item_rolls_back_created_targets() {
+    let _guard = clipboard_test_lock().lock().unwrap();
+    let _ = ensure_undo_dir();
+    clear_clipboard();
+
+    let base = uniq_path("paste-copy-cancel-mid-batch");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::create_dir_all(&dest_dir).unwrap();
+
+    let first = src_dir.join("first.txt");
+    let second = src_dir.join("second.txt");
+    write_file(&first, &[1u8; 16 * 1024]);
+    write_file(&second, &[2u8; 16 * 1024]);
+
+    set_clipboard_impl(
+        vec![
+            first.to_string_lossy().to_string(),
+            second.to_string_lossy().to_string(),
+        ],
+        "copy".to_string(),
+    )
+    .unwrap();
+
+    let cancel_state = CancelState::default();
+    let cancel_state_bg = cancel_state.clone();
+    let dest_first = dest_dir.join("first.txt");
+    let cancel_thread = thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            if dest_first.exists() {
+                let _ = cancel_state_bg.cancel("paste-copy-cancel");
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("timed out waiting for first copied target before cancellation");
+    });
+
+    let undo = UndoState::default();
+    let err = paste_clipboard_core(
+        None,
+        dest_dir.to_string_lossy().to_string(),
+        None,
+        undo.clone_inner(),
+        cancel_state,
+        Some("paste-copy-cancel".to_string()),
+    )
+    .unwrap_err();
+
+    cancel_thread.join().expect("cancel thread should finish");
+
+    assert_eq!(err.code(), ClipboardErrorCode::Cancelled);
+    assert!(first.exists(), "source should remain after cancelled copy");
+    assert!(second.exists(), "second source should remain untouched");
+    assert!(
+        !dest_dir.join("first.txt").exists(),
+        "first copied target should be rolled back after mid-batch cancellation"
+    );
+    assert!(
+        !dest_dir.join("second.txt").exists(),
+        "later targets should not be created after cancellation"
+    );
+    assert!(
+        undo.undo().is_err(),
+        "cancelled paste should not leave an applied undo action behind"
     );
 
     clear_clipboard();
