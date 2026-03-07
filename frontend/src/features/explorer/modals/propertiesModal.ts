@@ -279,6 +279,36 @@ const isExpectedPermissionUpdateError = (code: string | null): boolean => {
   )
 }
 
+const userPermissionsErrorMessage = (code: string | null, message: string): string => {
+  switch (code) {
+    case 'authentication_cancelled':
+      return 'Authentication was cancelled.'
+    case 'helper_executable_not_found':
+    case 'helper_start_failed':
+    case 'helper_wait_failed':
+    case 'helper_io_error':
+    case 'helper_protocol_error':
+      return 'Browsey could not complete the privileged permissions step.'
+    case 'metadata_read_failed':
+      return 'Browsey could not read the current permissions.'
+    case 'post_change_snapshot_failed':
+      return 'Permissions were changed, but Browsey could not verify the final state. Refresh and review the item before continuing.'
+    case 'rollback_failed':
+      return 'Some permission changes could not be rolled back cleanly. Refresh and review the item before continuing.'
+    case 'read_only_filesystem':
+      return 'This location is read-only.'
+    default:
+      return message
+  }
+}
+
+const userOwnershipErrorMessage = (code: string | null, message: string): string => {
+  if (code === 'permission_denied' || code === 'elevated_required') {
+    return 'Permission denied. Changing owner or group requires elevated privileges.'
+  }
+  return userPermissionsErrorMessage(code, message)
+}
+
 type Deps = {
   computeDirStats: (
     paths: string[],
@@ -435,14 +465,16 @@ export const createPropertiesModal = (deps: Deps) => {
       }))
     } catch (err) {
       if (currToken !== token) return
+      const code = invokeErrorCode(err)
       const message = invokeErrorMessage(err)
+      const userMessage = userPermissionsErrorMessage(code, message)
       console.warn('Failed to load ownership principals', message)
       state.update((s) => ({
         ...s,
         ownershipUsers: [],
         ownershipGroups: [],
         ownershipOptionsLoading: false,
-        ownershipOptionsError: message,
+        ownershipOptionsError: userMessage,
       }))
     } finally {
       if (currToken === token) {
@@ -650,7 +682,8 @@ export const createPropertiesModal = (deps: Deps) => {
     } catch (err) {
       if (activeToken !== token) return
       const code = invokeErrorCode(err)
-      const message = invokeErrorMessage(err)
+      const rawMessage = invokeErrorMessage(err)
+      const message = userPermissionsErrorMessage(code, rawMessage)
       const signature = `${targets.join('\n')}|${JSON.stringify(opts)}|${code ?? ''}|${message}`
       const now = Date.now()
       const duplicate =
@@ -661,8 +694,10 @@ export const createPropertiesModal = (deps: Deps) => {
         lastPermissionsErrorAt = now
 
         if (!isExpectedPermissionUpdateError(code)) {
-          console.error('Failed to update permissions', { targets, opts, message, err })
+          console.error('Failed to update permissions', { targets, opts, message: rawMessage, err })
         }
+
+        showToast(`Permissions update failed: ${message}`)
       }
 
       if (prevState) {
@@ -739,11 +774,7 @@ export const createPropertiesModal = (deps: Deps) => {
       if (activeToken !== token) return
       const code = invokeErrorCode(err)
       const rawMessage = invokeErrorMessage(err)
-      const message =
-        code === 'permission_denied' ||
-        code === 'elevated_required'
-        ? 'Permission denied. Changing owner/group requires elevated privileges.'
-        : rawMessage
+      const message = userOwnershipErrorMessage(code, rawMessage)
       if (!isExpectedOwnershipError(code)) {
         console.warn('Ownership update failed:', message)
       }

@@ -32,7 +32,7 @@ use once_cell::sync::OnceCell;
 use runtime_lifecycle::RuntimeLifecycle;
 use statusbar::dir_sizes;
 use tauri::Manager;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter};
 use undo::{redo_action, undo_action, UndoState};
 use watcher::WatchState;
@@ -139,6 +139,18 @@ fn init_logging() {
         eprintln!("Failed to init tracing subscriber: {e}");
     }
 
+    let log_file = log_dir.join("browsey.log");
+    let build_profile = std::env::var("PROFILE").unwrap_or_else(|_| "unknown".to_string());
+    info!(
+        version = env!("CARGO_PKG_VERSION"),
+        profile = %build_profile,
+        target_os = std::env::consts::OS,
+        target_arch = std::env::consts::ARCH,
+        log_dir = %log_dir.display(),
+        log_file = %log_file.display(),
+        "browsey logging initialized"
+    );
+
     debug_log(&format!(
         "logging initialized: log_dir={:?} temp_dir={:?} cwd={:?}",
         log_dir,
@@ -176,7 +188,9 @@ pub(crate) fn apply_runtime_log_level(value: &str) -> Result<(), String> {
         .ok_or_else(|| "logging runtime is not initialized".to_string())?;
     handle
         .reload(build_log_filter(level))
-        .map_err(|error| format!("failed to reload log level: {error}"))
+        .map_err(|error| format!("failed to reload log level: {error}"))?;
+    info!(level, "runtime log level updated");
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]

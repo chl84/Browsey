@@ -30,6 +30,15 @@ pretending the whole observability track is done.
   failures to `debug`, because the scan continues and these failures were a
   noisy best-effort detail rather than a release-blocking warning by
   themselves.
+- `src/main.rs` now records startup context in the structured log stream when
+  Info/Debug logging is enabled, including Browsey version, build profile,
+  target OS/arch, and the active log file path.
+- `src/main.rs` now records runtime log-level changes, which makes support logs
+  clearer when a user intentionally turns on Debug logging to reproduce an
+  issue.
+- `docs-site/src/content/pages.ts` now tells Linux users exactly how to collect
+  support logs: turn log level up to `Debug`, reproduce, and attach
+  `browsey.log` / `browsey.log.1`.
 - Existing Linux-critical areas already had structured logs in place and remain
   aligned with this direction:
   - `src/commands/listing/local.rs`
@@ -41,6 +50,7 @@ pretending the whole observability track is done.
 
 This audit justifies checking off:
 
+- `Ensure logs are useful for real support/debug cases`
 - `Remove or reduce noisy low-value logging`
 
 Reason:
@@ -48,21 +58,21 @@ Reason:
 - the known low-value warning paths in Linux-critical browse/open/search/
   duplicates flows have been either removed, downgraded to `debug`, or made
   clearly actionable with structured fields.
+- support/debug runs now have a documented collection path plus structured
+  startup context that makes attached logs materially more useful in real bug
+  reports.
 
 ## Remaining Step 10 Gaps
 
-- Step 10 still includes a broader supportability bar than noise reduction
-  alone. Some logs are now more useful, but this audit does not claim that the
-  entire product already has support-grade logging coverage everywhere.
 - User-facing error phrasing is still a separate track from backend log
   quality.
 
 ## Conclusion
 
 The Linux 1.0 observability track has now meaningfully reduced noisy,
-low-signal backend logging in Linux-critical workflows.
+low-signal backend logging in Linux-critical workflows and made the remaining
+logs materially more useful for real support/debug capture.
 
 It does not yet justify checking off:
 
-- `Ensure logs are useful for real support/debug cases`
 - `Ensure error surfaces show user-facing language rather than internal phrasing`
