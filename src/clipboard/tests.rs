@@ -771,7 +771,7 @@ fn paste_clipboard_overwrite_directory_copy_cancelled_after_first_merged_item_ro
     let cancel_state = CancelState::default();
     let cancel_state_bg = cancel_state.clone();
     let mut merged_once = false;
-    set_after_merge_item_test_hook(Some(Box::new(move || {
+    set_after_merge_item_test_hook(Some(Box::new(move |_| {
         if !merged_once {
             merged_once = true;
             let _ = cancel_state_bg.cancel("paste-dir-copy-cancel");
@@ -849,7 +849,7 @@ fn paste_clipboard_overwrite_directory_cut_cancelled_after_first_merged_item_rol
     let cancel_state = CancelState::default();
     let cancel_state_bg = cancel_state.clone();
     let mut merged_once = false;
-    set_after_merge_item_test_hook(Some(Box::new(move || {
+    set_after_merge_item_test_hook(Some(Box::new(move |_| {
         if !merged_once {
             merged_once = true;
             let _ = cancel_state_bg.cancel("paste-dir-cut-cancel");
@@ -893,6 +893,194 @@ fn paste_clipboard_overwrite_directory_cut_cancelled_after_first_merged_item_rol
     assert!(
         undo.undo().is_err(),
         "cancelled merge-cut should not leave an applied undo action behind"
+    );
+
+    clear_clipboard();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn paste_clipboard_overwrite_directory_copy_rolls_back_when_later_merged_source_fails() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    clear_clipboard();
+
+    let base = uniq_path("paste-dir-copy-later-source-fails");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    let src_tree = src_dir.join("photos");
+    let dest_tree = dest_dir.join("photos");
+    fs::create_dir_all(&src_tree).unwrap();
+    fs::create_dir_all(&dest_tree).unwrap();
+
+    let first = src_tree.join("a.txt");
+    let second = src_tree.join("b.txt");
+    write_file(&first, b"a");
+    write_file(&second, b"b");
+    write_file(&dest_tree.join("existing.txt"), b"keep");
+
+    set_clipboard_impl(
+        vec![src_tree.to_string_lossy().to_string()],
+        "copy".to_string(),
+    )
+    .unwrap();
+
+    let first_for_hook = first.clone();
+    let second_for_hook = second.clone();
+    let removed_path = std::sync::Arc::new(std::sync::Mutex::new(None::<PathBuf>));
+    let removed_path_for_hook = removed_path.clone();
+    let mut removed_once = false;
+    set_after_merge_item_test_hook(Some(Box::new(move |processed| {
+        if !removed_once {
+            removed_once = true;
+            let to_remove = if processed.file_name() == first_for_hook.file_name() {
+                second_for_hook.clone()
+            } else {
+                first_for_hook.clone()
+            };
+            *removed_path_for_hook.lock().unwrap() = Some(to_remove.clone());
+            let _ = fs::remove_file(&to_remove);
+        }
+    })));
+    let undo = UndoState::default();
+    let err = paste_clipboard_core(
+        None,
+        dest_dir.to_string_lossy().to_string(),
+        Some("overwrite".to_string()),
+        undo.clone_inner(),
+        CancelState::default(),
+        None,
+    )
+    .unwrap_err();
+    set_after_merge_item_test_hook(None);
+
+    assert_eq!(err.code(), ClipboardErrorCode::NotFound);
+    let removed = removed_path.lock().unwrap().clone().expect("removed path");
+    let surviving = if removed == first {
+        second.clone()
+    } else {
+        first.clone()
+    };
+    assert!(
+        !removed.exists(),
+        "injected missing source should remain missing"
+    );
+    assert!(
+        surviving.exists(),
+        "surviving source should remain after failed merge-copy rollback"
+    );
+    assert!(
+        !dest_tree.join("a.txt").exists(),
+        "created merged target should be rolled back when a later source fails"
+    );
+    assert!(
+        !dest_tree.join("b.txt").exists(),
+        "later merged target should not remain after rollback"
+    );
+    assert_eq!(
+        fs::read(dest_tree.join("existing.txt")).unwrap(),
+        b"keep",
+        "pre-existing destination content should remain unchanged"
+    );
+    assert!(
+        undo.undo().is_err(),
+        "failed merge-copy should not leave an applied undo action behind"
+    );
+
+    clear_clipboard();
+    let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn paste_clipboard_overwrite_directory_cut_rolls_back_when_later_merged_source_fails() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    clear_clipboard();
+
+    let base = uniq_path("paste-dir-cut-later-source-fails");
+    let src_dir = base.join("src");
+    let dest_dir = base.join("dest");
+    let src_tree = src_dir.join("photos");
+    let dest_tree = dest_dir.join("photos");
+    fs::create_dir_all(&src_tree).unwrap();
+    fs::create_dir_all(&dest_tree).unwrap();
+
+    let first = src_tree.join("a.txt");
+    let second = src_tree.join("b.txt");
+    write_file(&first, b"a");
+    write_file(&second, b"b");
+    write_file(&dest_tree.join("existing.txt"), b"keep");
+
+    set_clipboard_impl(
+        vec![src_tree.to_string_lossy().to_string()],
+        "cut".to_string(),
+    )
+    .unwrap();
+
+    let first_for_hook = first.clone();
+    let second_for_hook = second.clone();
+    let removed_path = std::sync::Arc::new(std::sync::Mutex::new(None::<PathBuf>));
+    let removed_path_for_hook = removed_path.clone();
+    let mut removed_once = false;
+    set_after_merge_item_test_hook(Some(Box::new(move |processed| {
+        if !removed_once {
+            removed_once = true;
+            let to_remove = if processed.file_name() == first_for_hook.file_name() {
+                second_for_hook.clone()
+            } else {
+                first_for_hook.clone()
+            };
+            *removed_path_for_hook.lock().unwrap() = Some(to_remove.clone());
+            let _ = fs::remove_file(&to_remove);
+        }
+    })));
+    let undo = UndoState::default();
+    let err = paste_clipboard_core(
+        None,
+        dest_dir.to_string_lossy().to_string(),
+        Some("overwrite".to_string()),
+        undo.clone_inner(),
+        CancelState::default(),
+        None,
+    )
+    .unwrap_err();
+    set_after_merge_item_test_hook(None);
+
+    assert_eq!(err.code(), ClipboardErrorCode::NotFound);
+    let removed = removed_path.lock().unwrap().clone().expect("removed path");
+    let surviving = if removed == first {
+        second.clone()
+    } else {
+        first.clone()
+    };
+    assert!(
+        !removed.exists(),
+        "injected missing source should remain missing"
+    );
+    assert!(
+        surviving.exists(),
+        "surviving source should be restored after failed merge-cut rollback"
+    );
+    assert!(
+        !dest_tree.join("a.txt").exists(),
+        "created merged target should be rolled back when a later source fails"
+    );
+    assert!(
+        !dest_tree.join("b.txt").exists(),
+        "later merged target should not remain after rollback"
+    );
+    assert_eq!(
+        fs::read(dest_tree.join("existing.txt")).unwrap(),
+        b"keep",
+        "pre-existing destination content should remain unchanged"
+    );
+    assert!(
+        current_clipboard().is_some(),
+        "failed merge-cut should keep clipboard contents for retry"
+    );
+    assert!(
+        undo.undo().is_err(),
+        "failed merge-cut should not leave an applied undo action behind"
     );
 
     clear_clipboard();

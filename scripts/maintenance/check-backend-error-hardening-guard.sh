@@ -82,6 +82,26 @@ search_hits() {
   fi
 }
 
+search_hits_excluding_test_only() {
+  local pattern="$1"
+  shift
+  if [[ "${SEARCH_TOOL}" == "rg" ]]; then
+    rg -n "${pattern}" -g '!**/tests.rs' "$@" || true
+  else
+    grep -R -n -E -- "${pattern}" "$@" 2>/dev/null | grep -E -v '/tests\.rs:' || true
+  fi
+}
+
+search_hits_test_only() {
+  local pattern="$1"
+  shift
+  if [[ "${SEARCH_TOOL}" == "rg" ]]; then
+    rg -n "${pattern}" -g '**/tests.rs' "$@" || true
+  else
+    grep -R -n -E -- "${pattern}" "$@" 2>/dev/null | grep -E '/tests\.rs:' || true
+  fi
+}
+
 filter_hits_allowlist() {
   local hits="$1"
   shift
@@ -109,7 +129,7 @@ build_allowlist_patterns() {
 
 echo "Checking for disallowed typed-error -> String conversions in hardened modules..."
 from_to_string_hits="$(
-  search_hits 'impl From<.*> for String' \
+  search_hits_excluding_test_only 'impl From<.*> for String' \
     "${TYPED_ERROR_HARDENED_DIRS[@]}" || true
 )"
 if [[ -n "${from_to_string_hits}" ]]; then
@@ -120,7 +140,7 @@ fi
 
 echo "Checking for disallowed from_external_message(error.to_string()) seams..."
 string_roundtrip_hits="$(
-  search_hits 'from_external_message\([^)]*to_string\(\)\)' \
+  search_hits_excluding_test_only 'from_external_message\([^)]*to_string\(\)\)' \
     "${STRING_ROUNDTRIP_HARDENED_DIRS[@]}" || true
 )"
 if [[ -n "${string_roundtrip_hits}" ]]; then
@@ -150,10 +170,21 @@ if [[ -n "${core_ops_literal_err_hits}" ]]; then
   status=1
 fi
 
+echo "Advisory: checking test-only typed-error seams..."
+test_only_stringly_hits="$(
+  search_hits_test_only \
+    'impl From<.*> for String|from_external_message\(|map_err\(\|[^)]*\|\s*[^)]*to_string\(\)\)' \
+    "${TYPED_ERROR_HARDENED_DIRS[@]}" || true
+)"
+if [[ -n "${test_only_stringly_hits}" ]]; then
+  echo "warning: found test-only typed-error/string seams (advisory; non-blocking):" >&2
+  echo "${test_only_stringly_hits}" >&2
+fi
+
 echo "Advisory: checking map_err(...to_string()) in expanded backend seams..."
 build_allowlist_patterns
 raw_advisory_to_string_hits="$(
-  search_hits 'map_err\(\|[^)]*\|\s*[^)]*to_string\(\)\)' \
+  search_hits_excluding_test_only 'map_err\(\|[^)]*\|\s*[^)]*to_string\(\)\)' \
     "${ADVISORY_TO_STRING_DIRS[@]}" || true
 )"
 advisory_to_string_hits="$(
