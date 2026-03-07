@@ -19,9 +19,9 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`LCM`, `LRN`, `LT
 | Scenario ID | Current automated coverage | Evidence | Gap summary |
 |---|---|---|---|
 | `CO-LCM-001` | Partial | `copy_file_best_effort_does_not_overwrite_existing_target`, `copy_file_best_effort_fails_when_source_is_missing`, `copy_file_best_effort_fails_when_destination_dir_is_read_only`, `copy_file_best_effort_cancelled_before_transfer_removes_destination`, `paste_clipboard_copy_rolls_back_successful_items_when_later_source_fails`, `paste_clipboard_copy_cancelled_after_first_item_rolls_back_created_targets` | Missing broader multi-item hostile-condition coverage beyond the added rollback-on-later-failure and mid-batch-cancel paths. |
-| `CO-LCM-002` | Partial | `merge_copy_can_undo_without_touching_existing`, `copy_entry_rejects_symlink_source_no_follow` | Missing recursive multi-item partial-failure summary assertions. |
+| `CO-LCM-002` | Partial | `merge_copy_can_undo_without_touching_existing`, `copy_entry_rejects_symlink_source_no_follow`, `paste_clipboard_overwrite_directory_copy_cancelled_after_first_merged_item_rolls_back` | Recursive merge-copy cancellation rollback is now covered; broader recursive partial-failure summary assertions still remain open. |
 | `CO-LCM-003` | Partial | `move_entry_does_not_overwrite_existing_target`, `move_entry_fails_when_source_is_missing`, `move_entry_keeps_source_when_destination_parent_disappears`, `move_entry_fails_when_destination_dir_is_read_only_and_keeps_source`, `paste_clipboard_cut_rolls_back_successful_items_when_later_source_fails`, `paste_clipboard_cut_cancelled_after_first_item_restores_moved_source` | Missing broader per-item partial-summary coverage beyond the added later-failure and mid-batch-cancel rollback paths. |
-| `CO-LCM-004` | Partial | `merge_cut_undo_restores_source_and_target` | Missing partial directory move failure assertions and progress/cancel behavior. |
+| `CO-LCM-004` | Partial | `merge_cut_undo_restores_source_and_target`, `paste_clipboard_overwrite_directory_cut_cancelled_after_first_merged_item_rolls_back` | Directory merge-cut cancellation rollback is now covered; broader partial directory move failure assertions and progress/summary behavior still remain open. |
 | `CO-LRN-001` | Partial | `rename_entry_impl_supports_undo_redo`, `rename_entry_impl_fails_when_parent_directory_is_read_only`, `rename_entry_impl_rejects_symlink_source_no_follow` | Missing cancel-from-UI proxy coverage. |
 | `CO-LRN-002` | Partial | `rename_entry_impl_supports_undo_redo` | Missing folder-specific failure/permission variants. |
 | `CO-LRN-003` | Partial | `rename_entries_impl_rolls_back_when_later_item_fails`, `rename_entry_impl_rejects_existing_target_without_overwrite`, `rename_entry_impl_fails_when_source_is_missing` | Missing cancel-from-UI proxy cases and permission-denied/read-only variants. |
@@ -33,7 +33,7 @@ Matrix reference: `docs/operations/core-operations/matrix.md` (`LCM`, `LRN`, `LT
 
 ## Priority Gaps to Close Next
 
-1. Expand multi-item local copy/move hostile-condition coverage beyond the added later-source-failure and mid-batch-cancel paths, especially recursive and per-item partial-summary assertions.
+1. Expand multi-item local copy/move hostile-condition coverage beyond the added later-source-failure, mid-batch-cancel, and recursive merge-cancel paths, especially per-item partial-summary assertions.
 2. Add real system-backend restore/purge hostile-condition coverage beyond the current fake-ops list/conflict/failure paths.
 3. Add broader local rename cancel/proxy coverage.
 

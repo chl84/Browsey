@@ -28,6 +28,8 @@ use std::{
 use drop_mode::resolve_drop_clipboard_mode_impl;
 #[cfg(test)]
 use ops::copy_file_best_effort;
+#[cfg(test)]
+use ops::set_after_merge_item_test_hook;
 use ops::{
     backup_existing_target, copy_entry, is_destination_exists_error, merge_dir,
     metadata_if_exists_nofollow, move_entry, transfer_cancelled,
