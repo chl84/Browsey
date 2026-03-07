@@ -913,7 +913,7 @@ fn mixed_execute_local_to_cloud_move_cancels_during_second_active_transfer() {
     let _guard = fake_rclone_test_lock();
     let sandbox = FakeRcloneSandbox::new();
     sandbox.mkdir_remote("work", "dest");
-    sandbox.set_subcommand_delay("moveto", 2, 1500);
+    sandbox.set_subcommand_delay("copyto", 2, 1500);
     let cli = sandbox.cli();
     let src_a = sandbox.write_local_file("src/a.txt", "alpha");
     let src_b = sandbox.write_local_file("src/b.txt", "beta");
@@ -938,7 +938,7 @@ fn mixed_execute_local_to_cloud_move_cancels_during_second_active_transfer() {
         )
     });
 
-    sandbox.wait_for_subcommand_delay("moveto", Duration::from_secs(3));
+    sandbox.wait_for_subcommand_delay("copyto", Duration::from_secs(3));
     cancel.store(true, Ordering::SeqCst);
     let err = worker
         .join()
@@ -971,7 +971,7 @@ fn mixed_execute_cloud_to_local_move_cancels_during_second_active_transfer() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "src/a.txt", "alpha");
     sandbox.write_remote_file("work", "src/b.txt", "beta");
-    sandbox.set_subcommand_delay("moveto", 2, 1500);
+    sandbox.set_subcommand_delay("copyto", 2, 1500);
     let cli = sandbox.cli();
     let local_dest = sandbox.local_path("dest");
     fs::create_dir_all(&local_dest).expect("mkdir local dest");
@@ -999,7 +999,7 @@ fn mixed_execute_cloud_to_local_move_cancels_during_second_active_transfer() {
         )
     });
 
-    sandbox.wait_for_subcommand_delay("moveto", Duration::from_secs(3));
+    sandbox.wait_for_subcommand_delay("copyto", Duration::from_secs(3));
     cancel.store(true, Ordering::SeqCst);
     let err = worker
         .join()
@@ -1223,6 +1223,202 @@ fn mixed_execute_cloud_to_local_progress_batch_move_cancels_during_second_active
     assert!(!local_dest.join("b.bin").exists());
     assert!(!sandbox.remote_path("work", "src/a.bin").exists());
     assert!(sandbox.remote_path("work", "src/b.bin").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn mixed_execute_local_to_cloud_directory_copy_cancels_during_second_active_transfer() {
+    let _guard = fake_rclone_test_lock();
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "dest");
+    sandbox.set_subcommand_delay("copyto", 2, 1500);
+    let cli = sandbox.cli();
+    fs::create_dir_all(sandbox.local_path("src/dir-a/nested")).expect("mkdir dir a");
+    fs::create_dir_all(sandbox.local_path("src/dir-b/nested")).expect("mkdir dir b");
+    fs::write(sandbox.local_path("src/dir-a/nested/file.txt"), b"alpha").expect("write dir a file");
+    fs::write(sandbox.local_path("src/dir-b/nested/file.txt"), b"beta").expect("write dir b file");
+    let src_a = sandbox.local_path("src/dir-a");
+    let src_b = sandbox.local_path("src/dir-b");
+    let route = MixedTransferRoute::LocalToCloud {
+        sources: vec![src_a.clone(), src_b.clone()],
+        dest_dir: sandbox.cloud_path("rclone://work/dest"),
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_for_task = cancel.clone();
+
+    let worker = thread::spawn(move || {
+        execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            Some(cancel_for_task),
+            None,
+        )
+    });
+
+    sandbox.wait_for_subcommand_delay("copyto", Duration::from_secs(3));
+    cancel.store(true, Ordering::SeqCst);
+    let err = worker
+        .join()
+        .expect("mixed local->cloud dir copy progress worker thread")
+        .expect_err("second transfer should be cancelled");
+
+    assert_eq!(err.code_str(), "cancelled");
+    assert!(sandbox.remote_path("work", "dest/dir-a/nested/file.txt").exists());
+    assert!(!sandbox.remote_path("work", "dest/dir-b").exists());
+    assert!(src_a.exists());
+    assert!(src_b.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn mixed_execute_cloud_to_local_directory_copy_cancels_during_second_active_transfer() {
+    let _guard = fake_rclone_test_lock();
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "src/dir-a/nested/file.txt", "alpha");
+    sandbox.write_remote_file("work", "src/dir-b/nested/file.txt", "beta");
+    sandbox.set_subcommand_delay("copyto", 2, 1500);
+    let cli = sandbox.cli();
+    let local_dest = sandbox.local_path("dest");
+    fs::create_dir_all(&local_dest).expect("mkdir local dest");
+    let route = MixedTransferRoute::CloudToLocal {
+        sources: vec![
+            sandbox.cloud_path("rclone://work/src/dir-a"),
+            sandbox.cloud_path("rclone://work/src/dir-b"),
+        ],
+        dest_dir: local_dest.clone(),
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_for_task = cancel.clone();
+
+    let worker = thread::spawn(move || {
+        execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            Some(cancel_for_task),
+            None,
+        )
+    });
+
+    sandbox.wait_for_subcommand_delay("copyto", Duration::from_secs(3));
+    cancel.store(true, Ordering::SeqCst);
+    let err = worker
+        .join()
+        .expect("mixed cloud->local dir copy progress worker thread")
+        .expect_err("second transfer should be cancelled");
+
+    assert_eq!(err.code_str(), "cancelled");
+    assert!(local_dest.join("dir-a/nested/file.txt").exists());
+    assert!(!local_dest.join("dir-b").exists());
+    assert!(sandbox.remote_path("work", "src/dir-a").exists());
+    assert!(sandbox.remote_path("work", "src/dir-b").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn mixed_execute_local_to_cloud_directory_move_cancels_during_second_active_transfer() {
+    let _guard = fake_rclone_test_lock();
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "dest");
+    sandbox.set_subcommand_delay("moveto", 2, 1500);
+    let cli = sandbox.cli();
+    fs::create_dir_all(sandbox.local_path("src/dir-a/nested")).expect("mkdir dir a");
+    fs::create_dir_all(sandbox.local_path("src/dir-b/nested")).expect("mkdir dir b");
+    fs::write(sandbox.local_path("src/dir-a/nested/file.txt"), b"alpha").expect("write dir a file");
+    fs::write(sandbox.local_path("src/dir-b/nested/file.txt"), b"beta").expect("write dir b file");
+    let src_a = sandbox.local_path("src/dir-a");
+    let src_b = sandbox.local_path("src/dir-b");
+    let route = MixedTransferRoute::LocalToCloud {
+        sources: vec![src_a.clone(), src_b.clone()],
+        dest_dir: sandbox.cloud_path("rclone://work/dest"),
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_for_task = cancel.clone();
+
+    let worker = thread::spawn(move || {
+        execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Move,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            Some(cancel_for_task),
+            None,
+        )
+    });
+
+    sandbox.wait_for_subcommand_delay("moveto", Duration::from_secs(3));
+    cancel.store(true, Ordering::SeqCst);
+    let err = worker
+        .join()
+        .expect("mixed local->cloud dir move progress worker thread")
+        .expect_err("second transfer should be cancelled");
+
+    assert_eq!(err.code_str(), "cancelled");
+    assert!(sandbox.remote_path("work", "dest/dir-a/nested/file.txt").exists());
+    assert!(!sandbox.remote_path("work", "dest/dir-b").exists());
+    assert!(!src_a.exists());
+    assert!(src_b.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn mixed_execute_cloud_to_local_directory_move_cancels_during_second_active_transfer() {
+    let _guard = fake_rclone_test_lock();
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "src/dir-a/nested/file.txt", "alpha");
+    sandbox.write_remote_file("work", "src/dir-b/nested/file.txt", "beta");
+    sandbox.set_subcommand_delay("moveto", 2, 1500);
+    let cli = sandbox.cli();
+    let local_dest = sandbox.local_path("dest");
+    fs::create_dir_all(&local_dest).expect("mkdir local dest");
+    let route = MixedTransferRoute::CloudToLocal {
+        sources: vec![
+            sandbox.cloud_path("rclone://work/src/dir-a"),
+            sandbox.cloud_path("rclone://work/src/dir-b"),
+        ],
+        dest_dir: local_dest.clone(),
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_for_task = cancel.clone();
+
+    let worker = thread::spawn(move || {
+        execute_mixed_entries_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Move,
+            route,
+            MixedTransferWriteOptions {
+                overwrite: false,
+                prechecked: true,
+            },
+            Some(cancel_for_task),
+            None,
+        )
+    });
+
+    sandbox.wait_for_subcommand_delay("moveto", Duration::from_secs(3));
+    cancel.store(true, Ordering::SeqCst);
+    let err = worker
+        .join()
+        .expect("mixed cloud->local dir move progress worker thread")
+        .expect_err("second transfer should be cancelled");
+
+    assert_eq!(err.code_str(), "cancelled");
+    assert!(local_dest.join("dir-a/nested/file.txt").exists());
+    assert!(!local_dest.join("dir-b").exists());
+    assert!(!sandbox.remote_path("work", "src/dir-a").exists());
+    assert!(sandbox.remote_path("work", "src/dir-b").exists());
 }
 
 #[cfg(unix)]
