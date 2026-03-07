@@ -7,7 +7,7 @@ Documentation: https://chl84.github.io/Browsey/
 For technical deep-dives (module maps, behavior details, and release notes), use the docs site.
 
 ## Status
-Browsey is in Linux-first stabilization toward a production-ready Linux release rather than broad feature expansion. On the validated Linux target surface, core flows (browse, search, clipboard, trash, compress, duplicate checks, open with, properties) are intended to be strong daily-driver/beta quality while release hardening continues. Windows builds remain available, but the Windows version is currently in maintenance mode (critical fixes and compatibility updates) rather than active feature development. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
+Browsey is in Linux-first stabilization toward a production-ready Linux release rather than broad feature expansion. On the validated Linux target surface, core flows (browse, search, clipboard, trash, compress, duplicate checks, open with, properties, and supported cloud remotes) are intended to be strong daily-driver quality while release hardening continues. Windows builds remain available, but the Windows version is currently in maintenance mode (critical fixes and compatibility updates) rather than active feature development. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
 
 ## Highlights
 - Virtualized list and grid views tuned for large folders.
@@ -60,8 +60,8 @@ Linux upgrade path:
 - Ubuntu/Debian (`.deb`): use the next release DEB with `sudo apt install ./browsey_<new-version>_amd64.deb`.
 - Ubuntu/Debian uninstall path: `sudo apt remove browsey` (or `sudo apt purge browsey` if config cleanup is explicitly desired).
 
-## Cloud (rclone) v1 (Linux-first)
-- Browsey cloud support is `rclone`-backed. OneDrive is the primary v1 target, with groundwork for Google Drive and Nextcloud (`webdav`) remotes.
+## Cloud (rclone) (Linux-first)
+- Browsey cloud support is `rclone`-backed. Supported Linux providers are OneDrive, Google Drive, and Nextcloud (`webdav` when recognized as Nextcloud).
 - Cloud integration is opt-in and off by default in Settings > Cloud, so local browsing is not coupled to `rclone`.
 - Browsey auto-detects `rclone` from the system, and also lets you set an explicit `Rclone path` in Settings > Cloud.
 - Configure remotes externally with `rclone config` (no in-app cloud login/setup UI yet).
@@ -70,12 +70,12 @@ Linux upgrade path:
 - Browsey validates `rclone` on first cloud use and requires a minimum supported version.
 - Cloud operations currently use manual/explicit refresh in some flows because filesystem watching is not available for `rclone://` paths.
 
-Current cloud v1 limitations:
+Current cloud limitations:
 - no cloud trash/recycle-bin integration (delete is permanent)
 - no undo/redo for cloud operations
 - no advanced rename, archive extract/compress, duplicate scan, or direct open-with for cloud files
 - cloud thumbnails are opt-in (`Cloud thumbs`) and currently limited to Grid view for image/pdf/svg, with provider and file-size guardrails
-- provider-specific edge cases (especially quotas/rate limits) are still being refined
+- provider-specific edge cases (especially quotas/rate limits) still require normal provider-aware validation
 
 Notes:
 - Mixed local/cloud clipboard and in-app drag/drop copy/move are supported in v1.
