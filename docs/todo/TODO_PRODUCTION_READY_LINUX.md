@@ -129,7 +129,7 @@ Goal: Move Browsey from a strong Linux-first beta into a production-ready Linux 
 ## 12. Finish with a real stabilization phase
 - [x] Declare a bounded stabilization window with explicit start/end criteria
 - [ ] Run multiple release candidates with bugfixes only
-- [ ] Collect findings from real Linux use, not just local development testing
+- [x] Collect findings from real Linux use, not just local development testing
 - [x] After RC1, allow only bugfix-only merges unless explicitly re-approved
 - [ ] Do not label Browsey `production-ready for Linux` before this phase completes cleanly
 
