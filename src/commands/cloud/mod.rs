@@ -9,6 +9,7 @@ mod list;
 mod open;
 pub mod path;
 mod policy;
+mod probe;
 pub mod provider;
 pub mod providers;
 pub mod rclone_cli;
@@ -38,7 +39,7 @@ use std::sync::atomic::AtomicBool;
 use tracing::warn;
 use types::{
     CloudConflictInfo, CloudEntry, CloudEntryKind, CloudProviderKind, CloudRemote,
-    CloudRootSelection, CloudSetupStatus,
+    CloudRemoteProbeStatus, CloudRootSelection, CloudSetupStatus,
 };
 
 #[derive(Debug, Clone)]
@@ -225,6 +226,23 @@ pub fn cloud_rc_health() -> ApiResult<rclone_rc::RcloneRcHealth> {
 #[tauri::command]
 pub async fn cloud_setup_status() -> ApiResult<CloudSetupStatus> {
     setup_status::cloud_setup_status().await
+}
+
+#[tauri::command]
+pub async fn probe_cloud_remote(
+    remote_id: String,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
+) -> ApiResult<CloudRemoteProbeStatus> {
+    map_api_result(probe_cloud_remote_impl(remote_id, cancel.inner().clone(), progress_event).await)
+}
+
+async fn probe_cloud_remote_impl(
+    remote_id: String,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
+) -> CloudCommandResult<CloudRemoteProbeStatus> {
+    probe::probe_cloud_remote_impl(remote_id, cancel_state, progress_event).await
 }
 
 async fn list_cloud_remotes_impl() -> CloudCommandResult<Vec<CloudRemote>> {

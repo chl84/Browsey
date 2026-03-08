@@ -62,6 +62,7 @@ pub(super) async fn validate_cloud_root_impl(
                         cli_timeout: Some(std::time::Duration::from_secs(
                             CLOUD_INTERACTIVE_CLI_STAT_TIMEOUT_SECS,
                         )),
+                        ..RcloneReadOptions::default()
                     },
                 )?
                 .ok_or_else(|| {
@@ -160,6 +161,7 @@ pub(super) async fn stat_cloud_entry_impl(path: String) -> CloudCommandResult<Op
                     cli_timeout: Some(std::time::Duration::from_secs(
                         CLOUD_INTERACTIVE_CLI_STAT_TIMEOUT_SECS,
                     )),
+                    ..RcloneReadOptions::default()
                 },
             )
         })

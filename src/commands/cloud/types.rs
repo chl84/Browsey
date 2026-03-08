@@ -90,6 +90,48 @@ pub struct CloudSetupStatus {
     pub supported_remotes: Vec<CloudRemote>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloudProbeState {
+    Ok,
+    BinaryMissing,
+    InvalidConfig,
+    AuthRequired,
+    Timeout,
+    NetworkError,
+    RateLimited,
+    PermissionDenied,
+    Cancelled,
+    TaskFailed,
+    UnknownError,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloudProbeRecommendation {
+    HealthyRc,
+    HealthyCliOnly,
+    ProbeFailed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudProbePathStatus {
+    pub ok: bool,
+    pub state: CloudProbeState,
+    pub message: String,
+    pub elapsed_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudRemoteProbeStatus {
+    pub remote: CloudRemote,
+    pub rc: CloudProbePathStatus,
+    pub cli: CloudProbePathStatus,
+    pub recommendation: CloudProbeRecommendation,
+}
+
 impl CloudCapabilities {
     pub fn v1_for_provider(provider: CloudProviderKind) -> Self {
         match provider {

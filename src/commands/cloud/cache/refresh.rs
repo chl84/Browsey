@@ -240,6 +240,7 @@ fn read_policy_for_request(
                 cancel: request.cancel,
                 rc_timeout: Some(CLOUD_INTERACTIVE_RC_READ_TIMEOUT),
                 cli_timeout: Some(CLOUD_INTERACTIVE_CLI_READ_TIMEOUT),
+                ..RcloneReadOptions::default()
             },
         ),
         CloudDirReadMode::BackgroundRefresh => (
@@ -248,6 +249,7 @@ fn read_policy_for_request(
                 cancel: request.cancel,
                 rc_timeout: None,
                 cli_timeout: None,
+                ..RcloneReadOptions::default()
             },
         ),
     }

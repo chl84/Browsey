@@ -65,6 +65,35 @@ export type CloudSetupStatus = {
   supportedRemotes: CloudRemote[]
 }
 
+export type CloudProbeState =
+  | 'ok'
+  | 'binary_missing'
+  | 'invalid_config'
+  | 'auth_required'
+  | 'timeout'
+  | 'network_error'
+  | 'rate_limited'
+  | 'permission_denied'
+  | 'cancelled'
+  | 'task_failed'
+  | 'unknown_error'
+
+export type CloudProbeRecommendation = 'healthy_rc' | 'healthy_cli_only' | 'probe_failed'
+
+export type CloudProbePathStatus = {
+  ok: boolean
+  state: CloudProbeState
+  message: string
+  elapsedMs: number
+}
+
+export type CloudRemoteProbeStatus = {
+  remote: CloudRemote
+  rc: CloudProbePathStatus
+  cli: CloudProbePathStatus
+  recommendation: CloudProbeRecommendation
+}
+
 export type CloudWriteOptions = {
   overwrite?: boolean
   prechecked?: boolean
@@ -124,6 +153,9 @@ export const listCloudRemotes = () =>
 
 export const loadCloudSetupStatus = () =>
   invoke<CloudSetupStatus>('cloud_setup_status')
+
+export const probeCloudRemote = (remoteId: string, progressEvent?: string) =>
+  invokeCloud<CloudRemoteProbeStatus>('probe_cloud_remote', { remoteId, progressEvent })
 
 export const validateCloudRoot = (path: string) =>
   invokeCloud<CloudRootSelection>('validate_cloud_root', { path })

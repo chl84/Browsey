@@ -160,21 +160,22 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   }
 
   const userCloudDirectoryErrorMessage = (code: string | undefined, message: string) => {
+    const recovery = ' Check Settings > Cloud and run Test connection.'
     switch (code) {
       case 'cancelled':
         return ''
       case 'timeout':
-        return 'Cloud folder loading timed out. Check the connection and try again.'
+        return `Cloud folder loading timed out. Check the connection and try again.${recovery}`
       case 'network_error':
-        return 'Cloud folder loading failed because the network or rclone backend is unavailable.'
+        return `Cloud folder loading failed because the network or rclone backend is unavailable.${recovery}`
       case 'binary_missing':
-        return 'Cloud folder loading requires rclone to be installed and available in PATH.'
+        return `Cloud folder loading requires rclone to be installed and available in PATH.${recovery}`
       case 'invalid_config':
-        return 'Cloud folder loading failed because the configured rclone remote is missing or invalid.'
+        return `Cloud folder loading failed because the configured rclone remote is missing or invalid.${recovery}`
       case 'cloud_disabled':
         return 'Cloud folders via rclone are disabled in Settings.'
       default:
-        return message
+        return `${message}${recovery}`
     }
   }
 
