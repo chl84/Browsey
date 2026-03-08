@@ -3,6 +3,7 @@ import { get } from 'svelte/store'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { Entry } from '../model/types'
 import { createExplorerState } from '../state'
+import type { createActivity } from './createActivity'
 
 const isGvfsPath = (path: string | null | undefined) =>
   !!path && path.includes('/run/user/') && path.includes('/gvfs/')
@@ -20,6 +21,7 @@ type Options = {
   onOpenEntry?: (entry: Entry) => void | Promise<void>
   initialPath?: string
   partitionsPollMs?: number
+  activityApi?: ReturnType<typeof createActivity>
 }
 
 export const useExplorerData = (options: Options = {}) => {
@@ -31,6 +33,7 @@ export const useExplorerData = (options: Options = {}) => {
 
   const {
     load,
+    loadDetailed,
     mountsPollMs,
     loadSavedWidths,
     loadBookmarks,
@@ -64,6 +67,36 @@ export const useExplorerData = (options: Options = {}) => {
     startDirPref,
     invalidateFacetCache,
   } = explorer
+
+  const cloudLoadProgressEventName = () =>
+    `cloud-list-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+  const runCloudInteractiveLoad = async (
+    path: string,
+    opts?: Parameters<typeof load>[1],
+  ) => {
+    const progressEvent = cloudLoadProgressEventName()
+    await options.activityApi?.start(
+      'Loading cloud folder…',
+      progressEvent,
+      () => options.activityApi?.requestCancel(progressEvent),
+    )
+    const result = await loadDetailed(path, {
+      ...(opts ?? {}),
+      progressEvent,
+      showLoadingIndicator: false,
+    })
+    if (result?.ok) {
+      options.activityApi?.hideSoon()
+    } else if (result?.code === 'cancelled') {
+      options.activityApi?.clearNow()
+      await options.activityApi?.cleanup()
+    } else {
+      options.activityApi?.clearNow()
+      await options.activityApi?.cleanup()
+    }
+    return result
+  }
 
   let partitionsPoll: ReturnType<typeof setInterval> | null = null
   let unlistenDirChanged: UnlistenFn | null = null
@@ -384,7 +417,11 @@ export const useExplorerData = (options: Options = {}) => {
     userNavActive = true
     const gen = ++userNavGen
     try {
-      return await load(path, opts)
+      if (!opts?.silent && typeof path === 'string' && isCloudPath(path) && options.activityApi) {
+        await runCloudInteractiveLoad(path, opts)
+        return
+      }
+      await load(path, opts)
     } finally {
       if (userNavGen === gen) {
         userNavActive = false

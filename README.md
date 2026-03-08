@@ -68,6 +68,8 @@ Linux upgrade path:
 - Settings > Cloud shows in-app cloud setup status and next-step diagnostics for `rclone`.
 - Supported `rclone` remotes appear in `Network`, and you can also navigate directly to `rclone://<remote>/<path>`.
 - Browsey validates `rclone` on first cloud use and requires a minimum supported version.
+- Interactive cloud folder loads use a short `rclone rc` read budget, then fall back quickly to CLI instead of waiting for multi-minute hangs.
+- Interactive cloud folder loads are cancellable from the activity pill while a remote folder is opening.
 - Cloud operations currently use manual/explicit refresh in some flows because filesystem watching is not available for `rclone://` paths.
 
 Current cloud limitations:
@@ -81,6 +83,7 @@ Notes:
 - Mixed local/cloud clipboard and in-app drag/drop copy/move are supported in v1.
 - Browsey no longer relies on GVFS/GOA OneDrive mounts for OneDrive file operations; use an `onedrive` remote in `rclone` instead.
 - Browsey runs `rclone` via argument lists (no shell strings), does not accept arbitrary user-provided `rclone` flags, and uses the user-owned default `rclone` config.
+- If a cloud folder stalls or falls back repeatedly, set log level to `Debug`, inspect `browsey/logs/browsey.log`, and retry with `BROWSEY_RCLONE_RC=0` to isolate `rcd` vs CLI behavior.
 
 For setup details, migration notes, and cloud limitations, see the docs site.
 

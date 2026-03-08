@@ -281,19 +281,23 @@ fn bucket_name(value: &str) -> (&'static str, i64) {
 pub async fn list_dir(
     path: Option<String>,
     sort: Option<SortSpec>,
+    progress_event: Option<String>,
+    cancel: tauri::State<'_, crate::tasks::CancelState>,
     app: tauri::AppHandle,
 ) -> ApiResult<DirListing> {
-    map_api_result(list_dir_impl(path, sort, app).await)
+    map_api_result(list_dir_impl(path, sort, progress_event, cancel.inner().clone(), app).await)
 }
 
 async fn list_dir_impl(
     path: Option<String>,
     sort: Option<SortSpec>,
+    progress_event: Option<String>,
+    cancel_state: crate::tasks::CancelState,
     app: tauri::AppHandle,
 ) -> ListingResult<DirListing> {
     if let Some(raw_path) = path.as_deref() {
         if cloud::is_cloud_path(raw_path) {
-            return cloud::list_cloud_dir(raw_path, sort, app).await;
+            return cloud::list_cloud_dir(raw_path, sort, progress_event, cancel_state, app).await;
         }
     }
     let task = tauri::async_runtime::spawn_blocking(move || local::list_dir_sync(path, sort, app));

@@ -5,8 +5,10 @@ use super::{
 use crate::{
     commands::cloud::types::{CloudEntry as BrowseyCloudEntry, CloudEntryKind},
     entry::{EntryCapabilities, FsEntry},
+    errors::domain::ErrorCode,
     icons::icon_id_for_virtual_entry,
     sorting::{sort_entries, SortSpec},
+    tasks::CancelState,
 };
 
 pub(super) fn is_cloud_path(path: &str) -> bool {
@@ -55,6 +57,7 @@ pub(super) fn listing_error_from_api(error: crate::errors::api_error::ApiError) 
         "cloud_disabled" => ListingErrorCode::UnsupportedScope,
         "invalid_path" => ListingErrorCode::InvalidPath,
         "not_found" => ListingErrorCode::NotFound,
+        "cancelled" => ListingErrorCode::Cancelled,
         "permission_denied" => ListingErrorCode::PermissionDenied,
         "task_failed" => ListingErrorCode::TaskFailed,
         _ => ListingErrorCode::UnknownError,
@@ -65,11 +68,22 @@ pub(super) fn listing_error_from_api(error: crate::errors::api_error::ApiError) 
 pub(super) async fn list_cloud_dir(
     raw_path: &str,
     sort: Option<SortSpec>,
+    progress_event: Option<String>,
+    cancel_state: crate::tasks::CancelState,
     app: tauri::AppHandle,
 ) -> ListingResult<DirListing> {
-    let entries = crate::commands::cloud::list_cloud_entries(raw_path.to_string(), app.clone())
-        .await
-        .map_err(listing_error_from_api)?;
+    let entries = crate::commands::cloud::list_cloud_entries_impl(
+        raw_path.to_string(),
+        app.clone(),
+        cancel_state,
+        progress_event,
+    )
+    .await
+    .map_err(|error| {
+        let api_error =
+            crate::errors::api_error::ApiError::new(error.code().as_code_str(), error.message());
+        listing_error_from_api(api_error)
+    })?;
     let mut mapped: Vec<FsEntry> = entries.into_iter().map(fs_entry_from_cloud_entry).collect();
     sort_entries(&mut mapped, sort);
     Ok(DirListing {
@@ -83,9 +97,18 @@ pub(super) async fn list_cloud_facets(
     include_hidden: bool,
     app: tauri::AppHandle,
 ) -> ListingResult<ListingFacets> {
-    let cloud_entries = crate::commands::cloud::list_cloud_entries(raw_path.to_string(), app)
-        .await
-        .map_err(listing_error_from_api)?;
+    let cloud_entries = crate::commands::cloud::list_cloud_entries_impl(
+        raw_path.to_string(),
+        app,
+        CancelState::default(),
+        None,
+    )
+    .await
+    .map_err(|error| {
+        let api_error =
+            crate::errors::api_error::ApiError::new(error.code().as_code_str(), error.message());
+        listing_error_from_api(api_error)
+    })?;
     let entries: Vec<FsEntry> = cloud_entries
         .into_iter()
         .map(fs_entry_from_cloud_entry)
