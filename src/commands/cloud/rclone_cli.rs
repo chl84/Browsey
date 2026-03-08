@@ -299,7 +299,7 @@ impl RcloneCli {
         &self,
         spec: RcloneCommandSpec,
     ) -> Result<RcloneTextOutput, RcloneCliError> {
-        self.run_capture_text_with_cancel(spec, None)
+        self.run_capture_text_with_cancel_and_timeout(spec, None, None)
     }
 
     pub fn run_capture_text_with_cancel(
@@ -307,13 +307,22 @@ impl RcloneCli {
         spec: RcloneCommandSpec,
         cancel_token: Option<&AtomicBool>,
     ) -> Result<RcloneTextOutput, RcloneCliError> {
+        self.run_capture_text_with_cancel_and_timeout(spec, cancel_token, None)
+    }
+
+    pub fn run_capture_text_with_cancel_and_timeout(
+        &self,
+        spec: RcloneCommandSpec,
+        cancel_token: Option<&AtomicBool>,
+        timeout_override: Option<Duration>,
+    ) -> Result<RcloneTextOutput, RcloneCliError> {
         let subcommand = spec.subcommand;
         let lsjson_stat = subcommand == RcloneSubcommand::LsJson
             && spec.args.iter().any(|arg| arg == &OsString::from("--stat"));
         if RCLONE_SHUTTING_DOWN.load(Ordering::SeqCst) {
             return Err(RcloneCliError::Shutdown { subcommand });
         }
-        let timeout = subcommand.default_timeout();
+        let timeout = timeout_override.unwrap_or_else(|| subcommand.default_timeout());
         let started = Instant::now();
         debug!(command = subcommand.as_str(), "running rclone command");
         let mut command = self.command(spec);

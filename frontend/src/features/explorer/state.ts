@@ -1,4 +1,4 @@
-import { getErrorMessage } from '@/shared/lib/error'
+import { getErrorMessage, normalizeError } from '@/shared/lib/error'
 import { get } from 'svelte/store'
 import type { Entry, Location, SortField } from './model/types'
 import { isUnderMount, normalizePath, parentPath } from './utils'
@@ -159,9 +159,41 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     historyIndex.set(next.length - 1)
   }
 
-  const load = async (path?: string, opts: { recordHistory?: boolean; silent?: boolean } = {}) => {
-    const { recordHistory = true, silent = false } = opts
-    if (!silent) {
+  const userCloudDirectoryErrorMessage = (code: string | undefined, message: string) => {
+    switch (code) {
+      case 'cancelled':
+        return ''
+      case 'timeout':
+        return 'Cloud folder loading timed out. Check the connection and try again.'
+      case 'network_error':
+        return 'Cloud folder loading failed because the network or rclone backend is unavailable.'
+      case 'binary_missing':
+        return 'Cloud folder loading requires rclone to be installed and available in PATH.'
+      case 'invalid_config':
+        return 'Cloud folder loading failed because the configured rclone remote is missing or invalid.'
+      case 'cloud_disabled':
+        return 'Cloud folders via rclone are disabled in Settings.'
+      default:
+        return message
+    }
+  }
+
+  const loadDetailed = async (
+    path?: string,
+    opts: {
+      recordHistory?: boolean
+      silent?: boolean
+      progressEvent?: string
+      showLoadingIndicator?: boolean
+    } = {},
+  ) => {
+    const {
+      recordHistory = true,
+      silent = false,
+      progressEvent,
+      showLoadingIndicator = !silent,
+    } = opts
+    if (showLoadingIndicator) {
       loading.set(true)
     }
     clearFacetCache()
@@ -170,7 +202,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     invalidateSearchRun()
     searchRunning.set(false)
     try {
-      const result = await listDir(path, sortPayload())
+      const result = await listDir(path, sortPayload(), progressEvent)
       current.set(result.current)
       entries.set(mapNameLower(result.entries))
       callbacks.onEntriesChanged?.()
@@ -179,13 +211,35 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
         pushHistory({ type: 'dir', path: result.current })
       }
       await watchDir(result.current)
+      return { ok: true as const }
     } catch (err) {
-      error.set(getErrorMessage(err))
+      const normalized = normalizeError(err)
+      if (isCloudDirectoryPath(path ?? '') && normalized.code === 'cancelled') {
+        error.set('')
+        return { ok: false as const, code: normalized.code, message: normalized.message }
+      }
+      const message = isCloudDirectoryPath(path ?? '')
+        ? userCloudDirectoryErrorMessage(normalized.code, normalized.message)
+        : getErrorMessage(err)
+      error.set(message)
+      return { ok: false as const, code: normalized.code, message }
     } finally {
-      if (!silent) {
+      if (showLoadingIndicator) {
         loading.set(false)
       }
     }
+  }
+
+  const load = async (
+    path?: string,
+    opts: {
+      recordHistory?: boolean
+      silent?: boolean
+      progressEvent?: string
+      showLoadingIndicator?: boolean
+    } = {},
+  ) => {
+    await loadDetailed(path, opts)
   }
 
   const loadRecent = async (recordHistory = true, applySort = false) => {
@@ -691,6 +745,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     filteredEntries,
     density,
     load,
+    loadDetailed,
     mountsPollMs,
     loadRecent,
     loadStarred,

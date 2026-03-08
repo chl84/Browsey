@@ -241,15 +241,22 @@ async fn validate_cloud_root_impl(path: String) -> CloudCommandResult<CloudRootS
 }
 
 #[tauri::command]
-pub async fn list_cloud_entries(path: String, app: tauri::AppHandle) -> ApiResult<Vec<CloudEntry>> {
-    map_api_result(list_cloud_entries_impl(path, app).await)
-}
-
-async fn list_cloud_entries_impl(
+pub async fn list_cloud_entries(
     path: String,
     app: tauri::AppHandle,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
+) -> ApiResult<Vec<CloudEntry>> {
+    map_api_result(list_cloud_entries_impl(path, app, cancel.inner().clone(), progress_event).await)
+}
+
+pub(crate) async fn list_cloud_entries_impl(
+    path: String,
+    app: tauri::AppHandle,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
 ) -> CloudCommandResult<Vec<CloudEntry>> {
-    list::list_cloud_entries_impl(path, app).await
+    list::list_cloud_entries_impl(path, app, cancel_state, progress_event).await
 }
 
 #[tauri::command]

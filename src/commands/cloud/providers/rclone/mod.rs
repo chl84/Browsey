@@ -19,6 +19,14 @@ use super::super::{
 };
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
+use std::time::Duration;
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct RcloneReadOptions<'a> {
+    pub cancel: Option<&'a AtomicBool>,
+    pub rc_timeout: Option<Duration>,
+    pub cli_timeout: Option<Duration>,
+}
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RcloneCloudProvider {
@@ -39,6 +47,22 @@ impl RcloneCloudProvider {
 
     pub fn cli(&self) -> &RcloneCli {
         &self.cli
+    }
+
+    pub(crate) fn list_dir_with_read_options(
+        &self,
+        path: &CloudPath,
+        options: RcloneReadOptions<'_>,
+    ) -> CloudCommandResult<Vec<CloudEntry>> {
+        self.list_dir_impl(path, options)
+    }
+
+    pub(crate) fn stat_path_with_read_options(
+        &self,
+        path: &CloudPath,
+        options: RcloneReadOptions<'_>,
+    ) -> CloudCommandResult<Option<CloudEntry>> {
+        self.stat_path_impl(path, options)
     }
 
     pub(crate) fn download_file_with_progress<F>(
@@ -76,11 +100,11 @@ impl CloudProvider for RcloneCloudProvider {
     }
 
     fn stat_path(&self, path: &CloudPath) -> CloudCommandResult<Option<CloudEntry>> {
-        self.stat_path_impl(path)
+        self.stat_path_impl(path, RcloneReadOptions::default())
     }
 
     fn list_dir(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
-        self.list_dir_impl(path)
+        self.list_dir_impl(path, RcloneReadOptions::default())
     }
 
     fn mkdir(&self, path: &CloudPath, cancel: Option<&AtomicBool>) -> CloudCommandResult<()> {

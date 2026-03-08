@@ -154,6 +154,7 @@ case "$subcmd" in
     printf '}\n'
     ;;
   lsjson)
+    maybe_delay_subcommand "$subcmd"
     want_stat=0
     if [[ $idx -lt ${#args[@]} && "${args[$idx]}" == "--stat" ]]; then
       want_stat=1

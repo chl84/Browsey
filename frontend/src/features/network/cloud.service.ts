@@ -101,11 +101,9 @@ const userCloudErrorMessage = (code: string | undefined, message: string) => {
       return 'This cloud operation is not supported yet'
     case 'invalid_path':
       return 'Invalid cloud path'
+    case 'task_failed':
+      return 'Cloud operation failed. Check the Browsey logs and try again.'
     default: {
-      const lower = message.toLowerCase()
-      if (lower.includes('token') && (lower.includes('expired') || lower.includes('invalid'))) {
-        return 'Cloud authentication may have expired. Reconnect the rclone remote and try again'
-      }
       return message
     }
   }
@@ -130,8 +128,8 @@ export const loadCloudSetupStatus = () =>
 export const validateCloudRoot = (path: string) =>
   invokeCloud<CloudRootSelection>('validate_cloud_root', { path })
 
-export const listCloudEntries = (path: string) =>
-  invokeCloud<CloudEntry[]>('list_cloud_entries', { path })
+export const listCloudEntries = (path: string, progressEvent?: string) =>
+  invokeCloud<CloudEntry[]>('list_cloud_entries', { path, progressEvent })
 
 export const statCloudEntry = (path: string) =>
   invokeCloud<CloudEntry | null>('stat_cloud_entry', { path })

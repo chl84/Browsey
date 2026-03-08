@@ -13,7 +13,7 @@ use super::{
     remotes::{remote_allowed_by_policy_with, RcloneRemotePolicy},
     runtime::{reset_runtime_probe_cache_for_tests, RCLONE_RUNTIME_PROBE_FAILURE_RETRY_BACKOFF},
     write::should_fallback_to_cli_after_rc_error,
-    RcloneCloudProvider,
+    RcloneCloudProvider, RcloneReadOptions,
 };
 use crate::{
     commands::cloud::{
@@ -30,7 +30,10 @@ use crate::{
     },
     errors::domain::{DomainError, ErrorCode},
 };
-use std::{process::ExitStatus, time::Duration};
+use std::{
+    process::ExitStatus,
+    time::{Duration, Instant},
+};
 
 #[cfg(unix)]
 use std::{
@@ -590,6 +593,23 @@ impl FakeRcloneSandbox {
         fs::write(provider_root.join(remote), backend_type).expect("set remote provider type");
     }
 
+    fn configure_subcommand_delay(&self, subcommand: &str, delay_ms: u64, invocation: u64) {
+        fs::write(
+            self.root.join(format!("{subcommand}-delay-ms")),
+            delay_ms.to_string(),
+        )
+        .expect("write delay ms");
+        fs::write(
+            self.root.join(format!("{subcommand}-delay-invocation")),
+            invocation.to_string(),
+        )
+        .expect("write delay invocation");
+    }
+
+    fn subcommand_delay_notify_path(&self, subcommand: &str) -> PathBuf {
+        self.root.join(format!("{subcommand}-delay-notify"))
+    }
+
     fn mark_config_dump_failure(&self) {
         fs::write(self.root.join("config-dump-fail"), "1").expect("mark config dump failure");
     }
@@ -694,6 +714,108 @@ fn fake_rclone_shim_lists_remotes_and_directory_entries() {
     assert!(log.contains("listremotes"));
     assert!(log.contains("config dump"));
     assert!(log.contains("lsjson work:"));
+}
+
+#[cfg(unix)]
+#[test]
+fn interactive_list_dir_falls_back_from_rc_to_cli() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "Docs");
+    sandbox.write_remote_file("work", "note.txt", "hello cloud");
+    let provider = sandbox.provider_with_forced_rc();
+
+    let entries = provider
+        .list_dir_with_read_options(
+            &cloud_path("rclone://work"),
+            RcloneReadOptions {
+                cancel: None,
+                rc_timeout: Some(Duration::from_millis(40)),
+                cli_timeout: Some(Duration::from_secs(1)),
+            },
+        )
+        .expect("interactive list should fall back to cli");
+
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].name, "Docs");
+    assert_eq!(entries[1].name, "note.txt");
+    let log = sandbox.read_log();
+    assert!(
+        log.contains("lsjson work:"),
+        "expected cli lsjson fallback, log:\n{log}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn interactive_list_dir_returns_cancelled_when_cli_fallback_is_cancelled() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "Docs");
+    sandbox.configure_subcommand_delay("lsjson", 250, 1);
+    let provider = sandbox.provider_with_forced_rc();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_for_thread = cancel.clone();
+    let notify_path = sandbox.subcommand_delay_notify_path("lsjson");
+    let worker = thread::spawn(move || {
+        let started = Instant::now();
+        while !notify_path.exists() {
+            assert!(
+                started.elapsed() < Duration::from_secs(1),
+                "timed out waiting for fake-rclone lsjson delay"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        cancel_for_thread.store(true, Ordering::SeqCst);
+    });
+
+    let err = provider
+        .list_dir_with_read_options(
+            &cloud_path("rclone://work"),
+            RcloneReadOptions {
+                cancel: Some(cancel.as_ref()),
+                rc_timeout: Some(Duration::from_millis(40)),
+                cli_timeout: Some(Duration::from_secs(2)),
+            },
+        )
+        .expect_err("interactive list should cancel");
+    worker.join().expect("join cancel worker");
+
+    assert_eq!(
+        err.code_str(),
+        CloudCommandErrorCode::Cancelled.as_code_str()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn interactive_list_dir_timeout_is_bounded_to_custom_cli_budget() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "Docs");
+    sandbox.configure_subcommand_delay("lsjson", 220, 1);
+    let provider = sandbox.provider_with_forced_rc();
+    let started = std::time::Instant::now();
+
+    let err = provider
+        .list_dir_with_read_options(
+            &cloud_path("rclone://work"),
+            RcloneReadOptions {
+                cancel: None,
+                rc_timeout: Some(Duration::from_millis(40)),
+                cli_timeout: Some(Duration::from_millis(60)),
+            },
+        )
+        .expect_err("interactive list should respect short timeout");
+
+    assert_eq!(err.code_str(), CloudCommandErrorCode::Timeout.as_code_str());
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "interactive cloud list should fail fast, elapsed={:?}",
+        started.elapsed()
+    );
 }
 
 #[cfg(unix)]

@@ -1,6 +1,7 @@
 use super::{RcloneCliError, RcloneRcClient, RcloneRcMethod};
 use serde_json::{json, Value};
 use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
 pub(crate) struct RcCopyFileToLocalProgressSpec<'a> {
     pub src_fs: &'a str,
@@ -41,31 +42,39 @@ impl RcloneRcClient {
         self.run_method(RcloneRcMethod::ConfigDump, json!({}))
     }
 
-    pub fn operations_list(
+    pub fn operations_list_with_options(
         &self,
         fs_spec: &str,
         remote_path: &str,
+        timeout_override: Option<Duration>,
+        cancel_token: Option<&AtomicBool>,
     ) -> Result<Value, RcloneCliError> {
-        self.run_method(
+        self.run_method_with_options(
             RcloneRcMethod::OperationsList,
             json!({
                 "fs": fs_spec,
                 "remote": remote_path,
             }),
+            timeout_override,
+            cancel_token,
         )
     }
 
-    pub fn operations_stat(
+    pub fn operations_stat_with_options(
         &self,
         fs_spec: &str,
         remote_path: &str,
+        timeout_override: Option<Duration>,
+        cancel_token: Option<&AtomicBool>,
     ) -> Result<Value, RcloneCliError> {
-        self.run_method(
+        self.run_method_with_options(
             RcloneRcMethod::OperationsStat,
             json!({
                 "fs": fs_spec,
                 "remote": remote_path,
             }),
+            timeout_override,
+            cancel_token,
         )
     }
 
