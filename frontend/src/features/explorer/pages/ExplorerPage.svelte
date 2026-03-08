@@ -1874,6 +1874,7 @@
     sortField: $sortFieldPref,
     sortDirection: $sortDirectionPref,
     shortcuts: shortcutBindings,
+    activityApi,
     onChangeDefaultView: handleSettingsDefaultViewChange,
     onToggleShowHidden: toggleShowHidden,
     onToggleHiddenFilesLast: toggleHiddenFilesLast,

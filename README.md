@@ -66,6 +66,7 @@ Linux upgrade path:
 - Browsey auto-detects `rclone` from the system, and also lets you set an explicit `Rclone path` in Settings > Cloud.
 - Configure remotes externally with `rclone config` (no in-app cloud login/setup UI yet).
 - Settings > Cloud shows in-app cloud setup status and next-step diagnostics for `rclone`.
+- Settings > Cloud also lets you run `Test connection` against a supported remote to compare Browsey's `rc` and CLI read paths.
 - Supported `rclone` remotes appear in `Network`, and you can also navigate directly to `rclone://<remote>/<path>`.
 - Browsey validates `rclone` on first cloud use and requires a minimum supported version.
 - Interactive cloud folder loads use a short `rclone rc` read budget, then fall back quickly to CLI instead of waiting for multi-minute hangs.

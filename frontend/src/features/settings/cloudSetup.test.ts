@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createDebouncedAsyncRunner,
+  describeCloudProbeRecommendation,
+  describeCloudProbeState,
   describeCloudSetupStatus,
   RCLONE_PATH_REFRESH_DEBOUNCE_MS,
 } from './cloudSetup'
@@ -80,6 +82,40 @@ describe('cloud setup helpers', () => {
 
     expect(copy.headline).toBe('Checking cloud setup…')
     expect(copy.nextStep).toContain('inspecting')
+  })
+
+  it('describes the probe recommendation copy', () => {
+    const healthyCliOnly = describeCloudProbeRecommendation({
+      remote: {
+        id: 'browsey-gdrive',
+        label: 'browsey-gdrive (Google Drive)',
+        provider: 'gdrive',
+        rootPath: 'rclone://browsey-gdrive',
+        capabilities: {
+          canList: true,
+          canMkdir: true,
+          canDelete: true,
+          canRename: true,
+          canMove: true,
+          canCopy: true,
+          canTrash: false,
+          canUndo: false,
+          canPermissions: false,
+        },
+      },
+      rc: { ok: false, state: 'timeout', message: 'Timed out', elapsedMs: 1000 },
+      cli: { ok: true, state: 'ok', message: 'Listed', elapsedMs: 1200 },
+      recommendation: 'healthy_cli_only',
+    })
+
+    expect(healthyCliOnly.headline).toBe('Remote works via CLI only')
+    expect(healthyCliOnly.nextStep).toContain('BROWSEY_RCLONE_RC=0')
+  })
+
+  it('describes compact probe state labels', () => {
+    expect(describeCloudProbeState(true, 'ok')).toBe('OK')
+    expect(describeCloudProbeState(false, 'auth_required')).toBe('Auth required')
+    expect(describeCloudProbeState(false, 'task_failed')).toBe('Unavailable')
   })
 
   it('does not run the debounced blur action on every keystroke', async () => {

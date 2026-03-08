@@ -18,6 +18,7 @@ export {
 export {
   listCloudRemotes,
   loadCloudSetupStatus,
+  probeCloudRemote,
   validateCloudRoot,
   listCloudEntries,
   statCloudEntry,
@@ -42,4 +43,8 @@ export type {
   CloudConflictInfo,
   CloudSetupState,
   CloudSetupStatus,
+  CloudProbeState,
+  CloudProbeRecommendation,
+  CloudProbePathStatus,
+  CloudRemoteProbeStatus,
 } from './cloud.service'

@@ -731,6 +731,7 @@ fn interactive_list_dir_falls_back_from_rc_to_cli() {
                 cancel: None,
                 rc_timeout: Some(Duration::from_millis(40)),
                 cli_timeout: Some(Duration::from_secs(1)),
+                ..RcloneReadOptions::default()
             },
         )
         .expect("interactive list should fall back to cli");
@@ -779,6 +780,7 @@ fn interactive_list_dir_returns_cancelled_when_cli_fallback_is_cancelled() {
                 cancel: Some(cancel.as_ref()),
                 rc_timeout: Some(Duration::from_millis(40)),
                 cli_timeout: Some(Duration::from_secs(2)),
+                ..RcloneReadOptions::default()
             },
         )
         .expect_err("interactive list should cancel");
@@ -806,6 +808,7 @@ fn interactive_list_dir_timeout_is_bounded_to_custom_cli_budget() {
                 cancel: None,
                 rc_timeout: Some(Duration::from_millis(40)),
                 cli_timeout: Some(Duration::from_millis(60)),
+                ..RcloneReadOptions::default()
             },
         )
         .expect_err("interactive list should respect short timeout");

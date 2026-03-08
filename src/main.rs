@@ -263,6 +263,7 @@ fn main() {
             list_cloud_remotes,
             cloud_rc_health,
             cloud_setup_status,
+            probe_cloud_remote,
             validate_cloud_root,
             list_cloud_entries,
             stat_cloud_entry,

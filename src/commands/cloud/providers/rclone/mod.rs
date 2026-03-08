@@ -21,11 +21,20 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum RcloneReadBackend {
+    #[default]
+    Auto,
+    RcOnly,
+    CliOnly,
+}
+
 #[derive(Clone, Copy, Default)]
 pub(crate) struct RcloneReadOptions<'a> {
     pub cancel: Option<&'a AtomicBool>,
     pub rc_timeout: Option<Duration>,
     pub cli_timeout: Option<Duration>,
+    pub backend: RcloneReadBackend,
 }
 
 #[derive(Debug, Clone, Default)]
