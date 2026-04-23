@@ -155,6 +155,76 @@ check_contains_fixed \
   "README includes cloud file cache in maintenance actions" \
   "README is missing cloud file cache in maintenance actions"
 
+check_contains_fixed \
+  "linux-pre-release-core-checklist-ref" \
+  "docs/operations/linux-release/pre-release-checklist.md" \
+  "docs/operations/core-operations/release-checklist.md" \
+  "Linux pre-release checklist references the core operations release checklist" \
+  "Linux pre-release checklist is missing the core operations release checklist reference"
+
+check_contains_fixed \
+  "linux-pre-release-bugbash-ref" \
+  "docs/operations/linux-release/pre-release-checklist.md" \
+  "docs/operations/linux-release/bugbash-checklist.md" \
+  "Linux pre-release checklist references the Linux bugbash checklist" \
+  "Linux pre-release checklist is missing the Linux bugbash checklist reference"
+
+check_contains_fixed \
+  "linux-pre-release-manual-smoke-gate" \
+  "docs/operations/linux-release/pre-release-checklist.md" \
+  "manual Linux smoke run is completed using" \
+  "Linux pre-release checklist keeps the manual smoke gate explicit" \
+  "Linux pre-release checklist is missing the manual Linux smoke gate wording"
+
+check_contains_fixed \
+  "linux-pre-release-bugbash-gate" \
+  "docs/operations/linux-release/pre-release-checklist.md" \
+  "Linux-specific smoke additions from" \
+  "Linux pre-release checklist keeps the Linux bugbash gate explicit" \
+  "Linux pre-release checklist is missing the Linux bugbash gate wording"
+
+check_contains_fixed \
+  "linux-bugbash-core-base-ref" \
+  "docs/operations/linux-release/bugbash-checklist.md" \
+  "docs/operations/core-operations/release-checklist.md" \
+  "Linux bugbash checklist references the core operations release checklist" \
+  "Linux bugbash checklist is missing the core operations release checklist reference"
+
+check_contains_fixed \
+  "linux-bugbash-row-app-start" \
+  "docs/operations/linux-release/bugbash-checklist.md" \
+  '`LX-BRW-001`' \
+  "Linux bugbash checklist includes app-start coverage row" \
+  "Linux bugbash checklist is missing the required app-start coverage row (LX-BRW-001)"
+
+check_contains_fixed \
+  "linux-bugbash-row-browse-directory" \
+  "docs/operations/linux-release/bugbash-checklist.md" \
+  '`LX-BRW-002`' \
+  "Linux bugbash checklist includes browse-directory coverage row" \
+  "Linux bugbash checklist is missing the required browse-directory coverage row (LX-BRW-002)"
+
+check_contains_fixed \
+  "linux-bugbash-row-search" \
+  "docs/operations/linux-release/bugbash-checklist.md" \
+  '`LX-SRC-001`' \
+  "Linux bugbash checklist includes search coverage row" \
+  "Linux bugbash checklist is missing the required search coverage row (LX-SRC-001)"
+
+check_contains_fixed \
+  "linux-bugbash-row-settings-apply" \
+  "docs/operations/linux-release/bugbash-checklist.md" \
+  '`LX-SET-001`' \
+  "Linux bugbash checklist includes settings-apply coverage row" \
+  "Linux bugbash checklist is missing the required settings-apply coverage row (LX-SET-001)"
+
+check_contains_fixed \
+  "linux-bugbash-row-settings-defaults" \
+  "docs/operations/linux-release/bugbash-checklist.md" \
+  '`LX-SET-002`' \
+  "Linux bugbash checklist includes restore-defaults coverage row" \
+  "Linux bugbash checklist is missing the required restore-defaults coverage row (LX-SET-002)"
+
 mode_label="advisory"
 if [[ "${STRICT}" -eq 1 ]]; then
   mode_label="strict"

@@ -123,4 +123,29 @@ describe('createThumbnailLoader cloud eligibility', () => {
     })
     loader.destroy()
   })
+
+  it('falls back cleanly when a local video thumbnail request fails', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('ffmpeg not found in PATH'))
+    const { createThumbnailLoader } = await import('./thumbnailLoader')
+    const loader = createThumbnailLoader({ allowCloudThumbs: false, allowVideos: true, maxConcurrent: 1 })
+    const node = createNode()
+
+    loader.observe(node, '/home/chris/video.mp4')
+    observers[0]?.trigger(node, true)
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      'get_thumbnail',
+      expect.objectContaining({ path: '/home/chris/video.mp4' }),
+    )
+    let seenThumb: string | null = null
+    const unsubscribe = loader.subscribe((thumbs) => {
+      seenThumb = thumbs.get('/home/chris/video.mp4') ?? null
+    })
+    expect(seenThumb).toBeNull()
+    unsubscribe()
+    loader.destroy()
+  })
 })

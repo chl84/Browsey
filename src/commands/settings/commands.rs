@@ -101,7 +101,11 @@ pub fn store_default_view(value: String) -> ApiResult<()> {
 pub fn load_default_view() -> ApiResult<Option<String>> {
     map_api_result((|| -> SettingsResult<Option<String>> {
         let conn = open_connection()?;
-        map_settings_result(crate::db::get_setting_string(&conn, "defaultView"))
+        let value = map_settings_result(crate::db::get_setting_string(&conn, "defaultView"))?;
+        Ok(match value.as_deref() {
+            Some("list") | Some("grid") => value,
+            _ => None,
+        })
     })())
 }
 

@@ -9,7 +9,9 @@ The docs web app lives in `../docs-site/` and is built/deployed separately.
 
 - `strategy/`: product and positioning assessments
 - `operations/core-operations/`: core-operations matrix, checklist, and policy
+- `operations/linux-release/`: Linux release bar and Linux-specific release rules
 - `audits/core-operations/`: gap audits tied to core-operations hardening
+- `audits/linux-release/`: Linux 1.0 workflow reviews and release-gap audits
 - `cloud/checklists/`: provider/runtime-specific cloud checklists
 - `quality/`: quality baselines and engineering quality notes
 - `todo/`: active TODO documents

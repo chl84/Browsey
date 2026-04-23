@@ -9,10 +9,13 @@ use std::{
     io,
     io::{Read, Write},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
     sync::OnceLock,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tracing::{debug, warn};
+
+const RC_SOCKET_IO_POLL_SLICE: Duration = Duration::from_millis(150);
 
 impl RcloneRcClient {
     pub(super) fn recycle_daemon_after_error(
@@ -120,6 +123,7 @@ pub(super) fn run_rc_command_via_socket(
     method: RcloneRcMethod,
     payload: Value,
     timeout: std::time::Duration,
+    cancel_token: Option<&AtomicBool>,
 ) -> Result<Value, RcloneCliError> {
     if !cfg!(unix) {
         return Err(RcloneCliError::Io(io::Error::new(
@@ -133,8 +137,13 @@ pub(super) fn run_rc_command_via_socket(
         )))
     })?;
 
-    let response_text =
-        send_rc_http_request_over_unix_socket(socket_path, method, &payload_text, timeout)?;
+    let response_text = send_rc_http_request_over_unix_socket(
+        socket_path,
+        method,
+        &payload_text,
+        timeout,
+        cancel_token,
+    )?;
     let body = parse_http_response_body(&response_text, method)?;
     if body.trim().is_empty() {
         return Ok(json!({}));
@@ -153,16 +162,24 @@ fn send_rc_http_request_over_unix_socket(
     method: RcloneRcMethod,
     payload_text: &str,
     timeout: std::time::Duration,
+    cancel_token: Option<&AtomicBool>,
 ) -> Result<String, RcloneCliError> {
     use std::os::unix::net::UnixStream;
 
+    if is_cancelled(cancel_token) {
+        return Err(RcloneCliError::Cancelled {
+            subcommand: RcloneSubcommand::Rc,
+        });
+    }
+
     let mut stream = UnixStream::connect(socket_path)
         .map_err(|error| map_rc_io_error(error, timeout, "connect"))?;
+    let poll_slice = timeout.min(RC_SOCKET_IO_POLL_SLICE);
     stream
-        .set_read_timeout(Some(timeout))
+        .set_read_timeout(Some(poll_slice))
         .map_err(RcloneCliError::Io)?;
     stream
-        .set_write_timeout(Some(timeout))
+        .set_write_timeout(Some(poll_slice))
         .map_err(RcloneCliError::Io)?;
 
     let request = format!(
@@ -177,9 +194,38 @@ fn send_rc_http_request_over_unix_socket(
         .map_err(|error| map_rc_io_error(error, timeout, "write"))?;
 
     let mut response_bytes = Vec::new();
-    stream
-        .read_to_end(&mut response_bytes)
-        .map_err(|error| map_rc_io_error(error, timeout, "read"))?;
+    let started = Instant::now();
+    let mut buffer = [0u8; 8192];
+    loop {
+        if is_cancelled(cancel_token) {
+            return Err(RcloneCliError::Cancelled {
+                subcommand: RcloneSubcommand::Rc,
+            });
+        }
+        if started.elapsed() >= timeout {
+            return Err(RcloneCliError::Timeout {
+                subcommand: RcloneSubcommand::Rc,
+                timeout,
+                stdout: String::new(),
+                stderr: "rclone rc socket read timed out".to_string(),
+            });
+        }
+        match stream.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(bytes_read) => response_bytes.extend_from_slice(&buffer[..bytes_read]),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::TimedOut
+                        | io::ErrorKind::WouldBlock
+                        | io::ErrorKind::Interrupted
+                ) =>
+            {
+                continue;
+            }
+            Err(error) => return Err(map_rc_io_error(error, timeout, "read")),
+        }
+    }
     Ok(String::from_utf8_lossy(&response_bytes).to_string())
 }
 
@@ -189,11 +235,18 @@ fn send_rc_http_request_over_unix_socket(
     _method: RcloneRcMethod,
     _payload_text: &str,
     _timeout: std::time::Duration,
+    _cancel_token: Option<&AtomicBool>,
 ) -> Result<String, RcloneCliError> {
     Err(RcloneCliError::Io(io::Error::new(
         io::ErrorKind::Unsupported,
         "rclone rc unix socket transport is only supported on unix targets",
     )))
+}
+
+fn is_cancelled(cancel_token: Option<&AtomicBool>) -> bool {
+    cancel_token
+        .map(|token| token.load(Ordering::SeqCst))
+        .unwrap_or(false)
 }
 
 fn map_rc_io_error(error: io::Error, timeout: std::time::Duration, phase: &str) -> RcloneCliError {
@@ -463,6 +516,7 @@ mod tests {
             RcloneRcMethod::CoreNoop,
             json!({"ping":"pong"}),
             Duration::from_secs(1),
+            None,
         )
         .expect("rc success response");
         assert_eq!(value.get("ok"), Some(&Value::Bool(true)));
@@ -482,6 +536,7 @@ mod tests {
             RcloneRcMethod::CoreNoop,
             json!({}),
             Duration::from_millis(40),
+            None,
         )
         .expect_err("expected timeout");
         assert!(
@@ -506,6 +561,7 @@ mod tests {
             RcloneRcMethod::CoreNoop,
             json!({}),
             Duration::from_secs(1),
+            None,
         )
         .expect_err("expected malformed payload failure");
         assert!(
@@ -526,6 +582,7 @@ mod tests {
             RcloneRcMethod::CoreNoop,
             json!({}),
             Duration::from_millis(60),
+            None,
         )
         .expect_err("expected unavailable socket error");
         assert!(

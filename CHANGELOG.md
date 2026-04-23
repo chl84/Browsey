@@ -1,6 +1,13 @@
 # Changelog
 
 ## Unreleased
+
+## v1.0.0 — 2026-03-07
+- Browsey Linux 1.0:
+  - Linux 1.0 release signoff is now based on a completed stabilization track across core file workflows, Linux-specific runtime behavior, packaging/install validation, observability hardening, and release gating.
+  - Core local trust-sensitive flows (copy/move, rename, trash/delete, compress/extract, search, properties/permissions, open-with, and settings persistence) were hardened and validated with expanded automated coverage, Linux smoke runs, and real-use verification.
+  - Supported cloud providers are now part of the Linux 1.0 claim: OneDrive, Google Drive, and Nextcloud via `rclone`, with explicit provider scope, setup diagnostics, and controlled provider acceptance checklists.
+  - Linux release operations now include explicit pre-release gates, a bounded stabilization window, provider-specific cloud QA appendices, and a release-candidate log tied to the existing core-operations release-blocking policy.
 - Bundled dependencies and resources:
   - Bundled PDFium was updated to `147.0.7713.0` for both Linux (`resources/pdfium-linux-x64`) and Windows (`resources/pdfium-win-x64`), including refreshed binaries, headers, and license files.
 

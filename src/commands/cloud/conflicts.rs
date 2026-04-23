@@ -1,6 +1,6 @@
 use super::{
     cache::list_cloud_dir_cached,
-    cloud_conflict_name_key, cloud_provider_kind_for_remote,
+    cloud_conflict_name_key, cloud_provider_kind_for_remote, ensure_cloud_enabled,
     error::{CloudCommandError, CloudCommandErrorCode, CloudCommandResult},
     map_spawn_result, parse_cloud_path_arg,
     path::CloudPath,
@@ -14,6 +14,7 @@ pub(super) async fn preview_cloud_conflicts_impl(
     sources: Vec<String>,
     dest_dir: String,
 ) -> CloudCommandResult<Vec<CloudConflictInfo>> {
+    ensure_cloud_enabled()?;
     let started = Instant::now();
     let dest_dir = parse_cloud_path_arg(dest_dir)?;
     let sources = sources

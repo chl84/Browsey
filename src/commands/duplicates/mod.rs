@@ -169,7 +169,11 @@ fn validate_scan_input(
     check_no_symlink_components(&target).map_err(DuplicatesError::from)?;
 
     let target_meta = std::fs::symlink_metadata(&target).map_err(|e| {
-        DuplicatesError::from_external_message(format!("Failed to read target metadata: {e}"))
+        DuplicatesError::from_io_error(
+            DuplicatesErrorCode::UnknownError,
+            &format!("Failed to read target metadata for {}", target.display()),
+            e,
+        )
     })?;
     if target_meta.file_type().is_symlink() {
         return Err(DuplicatesError::invalid_input(
@@ -186,7 +190,14 @@ fn validate_scan_input(
     check_no_symlink_components(&start).map_err(DuplicatesError::from)?;
 
     let start_meta = std::fs::symlink_metadata(&start).map_err(|e| {
-        DuplicatesError::from_external_message(format!("Failed to read start folder metadata: {e}"))
+        DuplicatesError::from_io_error(
+            DuplicatesErrorCode::UnknownError,
+            &format!(
+                "Failed to read start folder metadata for {}",
+                start.display()
+            ),
+            e,
+        )
     })?;
     if start_meta.file_type().is_symlink() {
         return Err(DuplicatesError::invalid_input(

@@ -37,7 +37,7 @@
   {/if}
 
   {#if showMountsPollRow}
-    <div class="form-label">Mounts poll (ms)</div>
+    <div class="form-label">Mount refresh interval</div>
     <div class="form-control">
       <Slider
         min="500"
@@ -51,6 +51,7 @@
         }}
       />
       <small>{settings.mountsPollMs} ms</small>
+      <small>Controls how often Browsey rescans partitions and removable media when live events are unavailable.</small>
     </div>
   {/if}
 {/if}

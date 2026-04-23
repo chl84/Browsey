@@ -230,6 +230,7 @@
 
   // --- Data + preferences --------------------------------------------------
   const explorer = useExplorerData({
+    activityApi,
     onCurrentChange: (path) => {
       const typingFilterOrSearch = mode === 'filter' || isSearchSessionEnabled
       if (typingFilterOrSearch) {
@@ -1873,6 +1874,7 @@
     sortField: $sortFieldPref,
     sortDirection: $sortDirectionPref,
     shortcuts: shortcutBindings,
+    activityApi,
     onChangeDefaultView: handleSettingsDefaultViewChange,
     onToggleShowHidden: toggleShowHidden,
     onToggleHiddenFilesLast: toggleHiddenFilesLast,

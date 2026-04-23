@@ -7,7 +7,7 @@ Documentation: https://chl84.github.io/Browsey/
 For technical deep-dives (module maps, behavior details, and release notes), use the docs site.
 
 ## Status
-Browsey is in active development with current feature work focused on Linux. Core flows (browse, search, clipboard, trash, compress, duplicate checks, open with, properties) are in place and stable for daily use, while rapid iteration continues. Windows builds remain available, but the Windows version is currently in maintenance mode (critical fixes and compatibility updates) rather than active feature development. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
+Browsey `1.0.0` is production-ready for Linux on the validated Linux target surface. Core flows (browse, search, clipboard, trash, compress, duplicate checks, open with, properties, settings persistence, and supported cloud remotes) are intended to be daily-driver quality on that surface. Windows builds remain available, but the Windows version is currently in maintenance mode (critical fixes and compatibility updates) rather than active feature development. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
 
 ## Highlights
 - Virtualized list and grid views tuned for large folders.
@@ -27,7 +27,7 @@ Browsey is in active development with current feature work focused on Linux. Cor
 ![Browsey in grid view with thumbnails](resources/02_screenshot_browsey_fedora.png)
 
 ## Requirements
-Supported platforms: Linux and Windows (macOS is not supported yet). Active development is currently Linux-first.
+Supported platforms: Linux and Windows (macOS is not supported yet). The main release-hardening target surface is currently Linux-first: Fedora Workstation and Ubuntu LTS, with GNOME Wayland as the primary desktop/session target.
 Tested environment: Fedora 43 (primary Linux validation target).
 
 Common:
@@ -49,30 +49,42 @@ Windows:
 
 ## Install
 - Fedora/RPM: download the latest `Browsey-<version>-1.x86_64.rpm` from Releases and install with `sudo rpm -Uvh --replacepkgs Browsey-<version>-1.x86_64.rpm`.
+- Ubuntu/Debian (`.deb`): download the latest `browsey_<version>_amd64.deb` from Releases and install with `sudo apt install ./browsey_<version>_amd64.deb`.
+- Supported Linux release path is install + upgrade. Package downgrade is not part of the Linux 1.0 supported path.
 - Windows: grab the NSIS installer from Releases and run it (bundled by `cargo tauri build --bundles nsis`).
 - From source: clone, run `npm --prefix frontend install`, then `cargo tauri dev --no-dev-server` (or `cargo tauri build` for a release bundle).
 - Cloud features require a separately installed `rclone` binary discoverable in `PATH` (Browsey does not bundle `rclone`).
 
-## Cloud (rclone) v1 (Linux-first)
-- Browsey cloud support is `rclone`-backed. OneDrive is the primary v1 target, with groundwork for Google Drive and Nextcloud (`webdav`) remotes.
-- Browsey auto-detects `rclone` from the system, and also lets you set an explicit `Rclone path` in Settings > Advanced.
+Linux upgrade path:
+- Fedora/RPM: use the next release RPM with `sudo rpm -Uvh --replacepkgs Browsey-<new-version>-1.x86_64.rpm`.
+- Ubuntu/Debian (`.deb`): use the next release DEB with `sudo apt install ./browsey_<new-version>_amd64.deb`.
+- Ubuntu/Debian uninstall path: `sudo apt remove browsey` (or `sudo apt purge browsey` if config cleanup is explicitly desired).
+
+## Cloud (rclone) (Linux-first)
+- Browsey cloud support is `rclone`-backed. Supported Linux providers are OneDrive, Google Drive, and Nextcloud (`webdav` when recognized as Nextcloud).
+- Cloud integration is opt-in and off by default in Settings > Cloud, so local browsing is not coupled to `rclone`.
+- Browsey auto-detects `rclone` from the system, and also lets you set an explicit `Rclone path` in Settings > Cloud.
 - Configure remotes externally with `rclone config` (no in-app cloud login/setup UI yet).
-- Settings > Advanced now shows in-app cloud setup status and next-step diagnostics for `rclone`.
+- Settings > Cloud shows in-app cloud setup status and next-step diagnostics for `rclone`.
+- Settings > Cloud also lets you run `Test connection` against a supported remote to compare Browsey's `rc` and CLI read paths.
 - Supported `rclone` remotes appear in `Network`, and you can also navigate directly to `rclone://<remote>/<path>`.
 - Browsey validates `rclone` on first cloud use and requires a minimum supported version.
+- Interactive cloud folder loads use a short `rclone rc` read budget, then fall back quickly to CLI instead of waiting for multi-minute hangs.
+- Interactive cloud folder loads are cancellable from the activity pill while a remote folder is opening.
 - Cloud operations currently use manual/explicit refresh in some flows because filesystem watching is not available for `rclone://` paths.
 
-Current cloud v1 limitations:
+Current cloud limitations:
 - no cloud trash/recycle-bin integration (delete is permanent)
 - no undo/redo for cloud operations
 - no advanced rename, archive extract/compress, duplicate scan, or direct open-with for cloud files
 - cloud thumbnails are opt-in (`Cloud thumbs`) and currently limited to Grid view for image/pdf/svg, with provider and file-size guardrails
-- provider-specific edge cases (especially quotas/rate limits) are still being refined
+- provider-specific edge cases (especially quotas/rate limits) still require normal provider-aware validation
 
 Notes:
 - Mixed local/cloud clipboard and in-app drag/drop copy/move are supported in v1.
 - Browsey no longer relies on GVFS/GOA OneDrive mounts for OneDrive file operations; use an `onedrive` remote in `rclone` instead.
 - Browsey runs `rclone` via argument lists (no shell strings), does not accept arbitrary user-provided `rclone` flags, and uses the user-owned default `rclone` config.
+- If a cloud folder stalls or falls back repeatedly, set log level to `Debug`, inspect `browsey/logs/browsey.log`, and retry with `BROWSEY_RCLONE_RC=0` to isolate `rcd` vs CLI behavior.
 
 For setup details, migration notes, and cloud limitations, see the docs site.
 
@@ -112,11 +124,11 @@ Tauri bundles:
   cargo tauri build --bundles nsis
   ```
   or use `scripts/build/build-release.bat` (cleans old bundles, builds frontend, then bundles). Output lands in `target/release/bundle/nsis/`.
-- Linux RPM (smallest on Fedora-like distros):
+- Linux RPM + DEB:
   ```bash
-  cargo tauri build --bundles rpm
+  cargo tauri build --bundles rpm,deb
   ```
-  Helper: `scripts/build/build-release.sh`. Output in `target/release/bundle/rpm/`.
+  Helper: `scripts/build/build-release.sh`. Output in `target/release/bundle/rpm/` and `target/release/bundle/deb/`.
   For manual `rpmbuild`/COPR packaging (not standard release flow), use:
   `packaging/rpm/browsey.spec` and `packaging/rpm/README.md`.
 

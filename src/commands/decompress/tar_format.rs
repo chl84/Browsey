@@ -267,3 +267,99 @@ pub(super) fn tar_uncompressed_total(path: &Path) -> DecompressResult<u64> {
     }
     Ok(total)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_tar_with_reader, single_root_in_tar, tar_uncompressed_total};
+    use crate::commands::decompress::{
+        error::is_cancelled_error,
+        util::{
+            set_copy_cancel_after_writes_for_tests, CreatedPaths, ExtractBudget, SkipStats, CHUNK,
+        },
+        ArchiveKind,
+    };
+    use std::{
+        fs::{self, File},
+        path::{Path, PathBuf},
+        sync::{atomic::AtomicBool, Arc},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+    use tar::Builder;
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        let unique = format!(
+            "browsey-tar-format-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&path).expect("create temp dir");
+        path
+    }
+
+    fn write_tar_archive(path: &Path, entry_name: &str, bytes: &[u8]) {
+        let file = File::create(path).expect("create tar file");
+        let mut builder = Builder::new(file);
+        let mut header = tar::Header::new_gnu();
+        header.set_path(entry_name).expect("set tar path");
+        header.set_size(bytes.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append(&header, bytes)
+            .expect("append tar entry bytes");
+        builder.finish().expect("finish tar");
+    }
+
+    #[test]
+    fn tar_archive_is_readable_and_rolls_back_when_cancelled_mid_entry() {
+        let root = unique_temp_dir("cancel");
+        let tar_path = root.join("cancel.tar");
+        let dest_dir = root.join("out");
+        fs::create_dir_all(&dest_dir).expect("create destination");
+
+        let payload = vec![b't'; CHUNK * 5];
+        write_tar_archive(&tar_path, "folder/large.bin", &payload);
+
+        assert_eq!(
+            single_root_in_tar(&tar_path, ArchiveKind::Tar).expect("single root"),
+            Some(PathBuf::from("folder"))
+        );
+        assert_eq!(
+            tar_uncompressed_total(&tar_path).expect("uncompressed total"),
+            payload.len() as u64
+        );
+
+        let stats = SkipStats::default();
+        let mut created = CreatedPaths::default();
+        let budget = ExtractBudget::new((CHUNK * 10) as u64, 1000);
+        let cancel = Arc::new(AtomicBool::new(false));
+
+        set_copy_cancel_after_writes_for_tests(Some(1));
+        let err = extract_tar_with_reader(
+            &tar_path,
+            &dest_dir,
+            None,
+            &stats,
+            None,
+            &mut created,
+            Some(cancel.as_ref()),
+            &budget,
+            |reader| Ok(Box::new(reader) as Box<dyn std::io::Read>),
+        )
+        .expect_err("extract should stop once cancellation is observed");
+        drop(created);
+        set_copy_cancel_after_writes_for_tests(None);
+
+        assert!(is_cancelled_error(&err), "unexpected error: {err}");
+        assert!(
+            !dest_dir.join("folder").exists(),
+            "partial destination tree should be rolled back after cancellation"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+}

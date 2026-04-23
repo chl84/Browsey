@@ -123,6 +123,45 @@ describe('createExplorerState sort refresh behavior', () => {
     expect(get(state.networkNotice)).toContain('Install rclone')
   })
 
+  it.each([
+    [
+      'invalid_binary_path',
+      'Fix the Rclone path in Settings > Cloud.',
+    ],
+    [
+      'config_read_failed',
+      'could not read the saved rclone setting',
+    ],
+    [
+      'runtime_unusable',
+      'Update rclone',
+    ],
+    [
+      'no_supported_remotes',
+      'Run `rclone config`',
+    ],
+  ] as const)(
+    'shows the correct network onboarding hint for %s',
+    async (setupState, expectedNoticePart) => {
+      loadCloudSetupStatusMock.mockResolvedValue({
+        state: setupState,
+        configuredPath: null,
+        resolvedBinaryPath: '/usr/bin/rclone',
+        detectedRemoteCount: 0,
+        supportedRemoteCount: 0,
+        unsupportedRemoteCount: 0,
+        supportedRemotes: [],
+      })
+
+      const state = createExplorerState()
+      state.cloudEnabled.set(true)
+      await state.loadNetwork()
+
+      expect(loadCloudSetupStatusMock).toHaveBeenCalledTimes(1)
+      expect(get(state.networkNotice)).toContain(expectedNoticePart)
+    },
+  )
+
   it('does not show a network onboarding hint for transient discovery failures', async () => {
     loadCloudSetupStatusMock.mockResolvedValue({
       state: 'discovery_failed',
@@ -139,6 +178,59 @@ describe('createExplorerState sort refresh behavior', () => {
     await state.loadNetwork()
 
     expect(loadCloudSetupStatusMock).toHaveBeenCalledTimes(1)
+    expect(get(state.networkNotice)).toBe('')
+  })
+
+  it('does not show a network onboarding hint when cloud setup is ready but no cloud entries are listed yet', async () => {
+    loadCloudSetupStatusMock.mockResolvedValue({
+      state: 'ready',
+      configuredPath: null,
+      resolvedBinaryPath: '/usr/bin/rclone',
+      detectedRemoteCount: 1,
+      supportedRemoteCount: 1,
+      unsupportedRemoteCount: 0,
+      supportedRemotes: [],
+    })
+
+    const state = createExplorerState()
+    state.cloudEnabled.set(true)
+    await state.loadNetwork()
+
+    expect(loadCloudSetupStatusMock).toHaveBeenCalledTimes(1)
+    expect(get(state.networkNotice)).toBe('')
+  })
+
+  it('keeps non-cloud network entries usable when cloud setup reports a guided failure state', async () => {
+    listNetworkEntriesMock.mockResolvedValue([makeEntry('NAS', 'smb://nas', 'dir')])
+    loadCloudSetupStatusMock.mockResolvedValue({
+      state: 'runtime_unusable',
+      configuredPath: null,
+      resolvedBinaryPath: '/usr/bin/rclone',
+      detectedRemoteCount: 0,
+      supportedRemoteCount: 0,
+      unsupportedRemoteCount: 0,
+      supportedRemotes: [],
+    })
+
+    const state = createExplorerState()
+    state.cloudEnabled.set(true)
+    await state.loadNetwork()
+
+    expect(get(state.entries).map((entry) => entry.path)).toEqual(['smb://nas'])
+    expect(get(state.error)).toBe('')
+    expect(get(state.networkNotice)).toContain('Update rclone')
+  })
+
+  it('keeps non-cloud network entries usable when cloud setup probing throws', async () => {
+    listNetworkEntriesMock.mockResolvedValue([makeEntry('NAS', 'smb://nas', 'dir')])
+    loadCloudSetupStatusMock.mockRejectedValue(new Error('rclone rc unavailable'))
+
+    const state = createExplorerState()
+    state.cloudEnabled.set(true)
+    await state.loadNetwork()
+
+    expect(get(state.entries).map((entry) => entry.path)).toEqual(['smb://nas'])
+    expect(get(state.error)).toBe('')
     expect(get(state.networkNotice)).toBe('')
   })
 

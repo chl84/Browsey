@@ -1,5 +1,5 @@
 use super::{
-    configured_rclone_provider,
+    configured_rclone_provider, ensure_cloud_enabled,
     error::{CloudCommandError, CloudCommandErrorCode, CloudCommandResult},
     limits::with_cloud_remote_permits,
     map_spawn_result, parse_cloud_path_arg,
@@ -53,6 +53,7 @@ pub(super) async fn open_cloud_entry_impl(
     cancel_state: CancelState,
     progress_event: Option<String>,
 ) -> CloudCommandResult<()> {
+    ensure_cloud_enabled()?;
     let started = Instant::now();
     let path = parse_cloud_path_arg(path)?;
     let path_for_log = path.clone();

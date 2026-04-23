@@ -30,6 +30,7 @@
           { value: 'debug', label: 'Debug' },
         ] satisfies ComboOption[]}
       />
+      <small>Leave this on `Warn` unless you are diagnosing a problem or collecting debug logs.</small>
     </div>
   {/if}
 {/if}

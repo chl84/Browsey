@@ -149,12 +149,12 @@ pub(super) fn run_search_stream(
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::PermissionDenied {
                     debug!(
-                        "search read_dir permission denied: dir={} err={}",
-                        dir.display(),
-                        err
+                        path = %dir.display(),
+                        error = %err,
+                        "search read_dir permission denied"
                     );
                 } else {
-                    warn!("search read_dir failed: dir={} err={}", dir.display(), err);
+                    warn!(path = %dir.display(), error = %err, "search read_dir failed");
                 }
                 continue;
             }

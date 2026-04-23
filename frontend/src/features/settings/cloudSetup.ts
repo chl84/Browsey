@@ -1,4 +1,4 @@
-import type { CloudSetupStatus } from '@/features/network'
+import type { CloudRemoteProbeStatus, CloudSetupStatus } from '@/features/network'
 
 export const RCLONE_PATH_REFRESH_DEBOUNCE_MS = 180
 
@@ -44,6 +44,60 @@ export const describeCloudSetupStatus = (status: CloudSetupStatus | null) => {
         headline: 'Checking cloud setup…',
         nextStep: 'Browsey is inspecting the current rclone setup.',
       }
+  }
+}
+
+export const describeCloudProbeRecommendation = (status: CloudRemoteProbeStatus | null) => {
+  switch (status?.recommendation) {
+    case 'healthy_rc':
+      return {
+        headline: 'Remote works normally',
+        nextStep: 'Browsey can list this remote via rc and CLI.',
+      }
+    case 'healthy_cli_only':
+      return {
+        headline: 'Remote works via CLI only',
+        nextStep:
+          'CLI listing is healthy, but rc failed. Check Browsey logs or compare with BROWSEY_RCLONE_RC=0.',
+      }
+    case 'probe_failed':
+      return {
+        headline: 'Remote probe failed',
+        nextStep: 'Check the per-backend results below, then reconnect or reconfigure the remote.',
+      }
+    default:
+      return {
+        headline: 'No cloud probe run yet',
+        nextStep: 'Choose a remote and run Test connection to validate rc and CLI access.',
+      }
+  }
+}
+
+export const describeCloudProbeState = (ok: boolean, state: CloudRemoteProbeStatus['rc']['state']) => {
+  if (ok && state === 'ok') {
+    return 'OK'
+  }
+  switch (state) {
+    case 'binary_missing':
+      return 'Rclone missing'
+    case 'invalid_config':
+      return 'Invalid config'
+    case 'auth_required':
+      return 'Auth required'
+    case 'timeout':
+      return 'Timed out'
+    case 'network_error':
+      return 'Network/backend error'
+    case 'rate_limited':
+      return 'Rate limited'
+    case 'permission_denied':
+      return 'Permission denied'
+    case 'cancelled':
+      return 'Cancelled'
+    case 'task_failed':
+      return 'Unavailable'
+    default:
+      return 'Failed'
   }
 }
 

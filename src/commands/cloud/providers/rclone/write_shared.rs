@@ -34,7 +34,7 @@ pub(super) fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {
 
 pub(super) fn cloud_write_cancelled_error() -> CloudCommandError {
     CloudCommandError::new(
-        CloudCommandErrorCode::TaskFailed,
+        CloudCommandErrorCode::Cancelled,
         "Cloud operation cancelled",
     )
 }

@@ -232,6 +232,16 @@ impl RcloneRcClient {
     }
 
     fn run_method(&self, method: RcloneRcMethod, payload: Value) -> Result<Value, RcloneCliError> {
+        self.run_method_with_options(method, payload, None, None)
+    }
+
+    fn run_method_with_options(
+        &self,
+        method: RcloneRcMethod,
+        payload: Value,
+        timeout_override: Option<Duration>,
+        cancel_token: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<Value, RcloneCliError> {
         #[cfg(test)]
         if let Some(forced) = self.run_method_forced_async_status_error_for_tests(method, &payload)
         {
@@ -267,13 +277,19 @@ impl RcloneRcClient {
             )));
         }
         let socket_path = self.ensure_daemon_ready()?;
-        let timeout = method_timeout(method);
+        let timeout = timeout_override.unwrap_or_else(|| method_timeout(method));
         let retry_safe = method_is_retry_safe(method);
         let mut attempt = 0usize;
         loop {
             attempt += 1;
             let started = Instant::now();
-            let result = run_rc_command_via_socket(&socket_path, method, payload.clone(), timeout);
+            let result = run_rc_command_via_socket(
+                &socket_path,
+                method,
+                payload.clone(),
+                timeout,
+                cancel_token,
+            );
             if let Err(error) = &result {
                 if should_recycle_daemon_after_error(method, error) {
                     self.recycle_daemon_after_error(method, error);

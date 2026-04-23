@@ -30,6 +30,7 @@ type Params = {
   sortField: SettingsModalProps['sortFieldValue']
   sortDirection: SettingsModalProps['sortDirectionValue']
   shortcuts: SettingsModalProps['shortcuts']
+  activityApi: SettingsModalProps['activityApi']
 
   onChangeDefaultView: SettingsModalProps['onChangeDefaultView']
   onToggleShowHidden: SettingsModalProps['onToggleShowHidden']
@@ -93,6 +94,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   sortFieldValue: p.sortField,
   sortDirectionValue: p.sortDirection,
   shortcuts: p.shortcuts,
+  activityApi: p.activityApi,
   onChangeDefaultView: p.onChangeDefaultView,
   onToggleShowHidden: p.onToggleShowHidden,
   onToggleHiddenFilesLast: p.onToggleHiddenFilesLast,

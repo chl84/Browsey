@@ -442,3 +442,79 @@ fn clear_system_clipboard_impl() -> SystemClipboardResult<()> {
         "No compatible clipboard tool found (need wl-copy or xclip)",
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::should_avoid_wl_clipboard;
+    use std::env;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn with_clipboard_env(
+        session: Option<&str>,
+        current_desktop: Option<&str>,
+        desktop_session: Option<&str>,
+        f: impl FnOnce(),
+    ) {
+        let _guard = env_lock().lock().unwrap();
+        let prev_session = env::var_os("XDG_SESSION_TYPE");
+        let prev_current_desktop = env::var_os("XDG_CURRENT_DESKTOP");
+        let prev_desktop_session = env::var_os("DESKTOP_SESSION");
+
+        match session {
+            Some(value) => env::set_var("XDG_SESSION_TYPE", value),
+            None => env::remove_var("XDG_SESSION_TYPE"),
+        }
+        match current_desktop {
+            Some(value) => env::set_var("XDG_CURRENT_DESKTOP", value),
+            None => env::remove_var("XDG_CURRENT_DESKTOP"),
+        }
+        match desktop_session {
+            Some(value) => env::set_var("DESKTOP_SESSION", value),
+            None => env::remove_var("DESKTOP_SESSION"),
+        }
+
+        f();
+
+        match prev_session {
+            Some(value) => env::set_var("XDG_SESSION_TYPE", value),
+            None => env::remove_var("XDG_SESSION_TYPE"),
+        }
+        match prev_current_desktop {
+            Some(value) => env::set_var("XDG_CURRENT_DESKTOP", value),
+            None => env::remove_var("XDG_CURRENT_DESKTOP"),
+        }
+        match prev_desktop_session {
+            Some(value) => env::set_var("DESKTOP_SESSION", value),
+            None => env::remove_var("DESKTOP_SESSION"),
+        }
+    }
+
+    #[test]
+    fn avoids_wl_clipboard_on_gnome_wayland_via_current_desktop() {
+        with_clipboard_env(Some("wayland"), Some("GNOME"), None, || {
+            assert!(should_avoid_wl_clipboard());
+        });
+    }
+
+    #[test]
+    fn avoids_wl_clipboard_on_gnome_wayland_via_desktop_session() {
+        with_clipboard_env(Some("wayland"), None, Some("gnome-classic"), || {
+            assert!(should_avoid_wl_clipboard());
+        });
+    }
+
+    #[test]
+    fn does_not_avoid_wl_clipboard_outside_gnome_wayland() {
+        with_clipboard_env(Some("x11"), Some("GNOME"), None, || {
+            assert!(!should_avoid_wl_clipboard());
+        });
+        with_clipboard_env(Some("wayland"), Some("KDE"), Some("plasma"), || {
+            assert!(!should_avoid_wl_clipboard());
+        });
+    }
+}

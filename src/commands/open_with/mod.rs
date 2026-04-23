@@ -2,11 +2,12 @@ use crate::errors::api_error::ApiResult;
 use crate::{db, fs_utils::sanitize_path_follow};
 use error::{map_api_result, OpenWithError, OpenWithErrorCode, OpenWithResult};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::process::Command;
 use std::thread;
+use tracing::debug;
 #[cfg(debug_assertions)]
 use tracing::info;
-use tracing::warn;
 
 mod error;
 #[cfg(target_os = "linux")]
@@ -16,6 +17,18 @@ mod windows;
 
 fn map_db_open_error(error: crate::db::DbError) -> OpenWithError {
     OpenWithError::new(OpenWithErrorCode::DatabaseOpenFailed, error.to_string())
+}
+
+fn map_open_entry_api_error(error: crate::errors::api_error::ApiError) -> OpenWithError {
+    let code = match error.code.as_str() {
+        "path_not_absolute" => OpenWithErrorCode::PathNotAbsolute,
+        "invalid_path" | "root_forbidden" | "symlink_unsupported" => OpenWithErrorCode::InvalidPath,
+        "not_found" => OpenWithErrorCode::NotFound,
+        "permission_denied" | "read_only_filesystem" => OpenWithErrorCode::PermissionDenied,
+        "open_failed" => OpenWithErrorCode::LaunchFailed,
+        _ => OpenWithErrorCode::UnknownError,
+    };
+    OpenWithError::new(code, error.message)
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -42,6 +55,12 @@ pub fn list_open_with_apps(path: String) -> ApiResult<Vec<OpenWithApp>> {
 }
 
 fn list_open_with_apps_impl(path: String) -> OpenWithResult<Vec<OpenWithApp>> {
+    if !Path::new(&path).is_absolute() {
+        return Err(OpenWithError::new(
+            OpenWithErrorCode::PathNotAbsolute,
+            format!("Path must be absolute: {path}"),
+        ));
+    }
     let target = sanitize_path_follow(&path, false).map_err(OpenWithError::from)?;
     #[cfg(target_os = "linux")]
     {
@@ -64,17 +83,23 @@ pub fn open_with(path: String, choice: OpenWithChoice) -> ApiResult<()> {
 }
 
 fn open_with_impl(path: String, choice: OpenWithChoice) -> OpenWithResult<()> {
+    if !Path::new(&path).is_absolute() {
+        return Err(OpenWithError::new(
+            OpenWithErrorCode::PathNotAbsolute,
+            format!("Path must be absolute: {path}"),
+        ));
+    }
     let target = sanitize_path_follow(&path, false).map_err(OpenWithError::from)?;
     let OpenWithChoice { app_id } = choice;
 
     let conn = db::open().map_err(map_db_open_error)?;
     if let Err(e) = db::touch_recent(&conn, &target.to_string_lossy()) {
-        warn!("Failed to record recent for {:?}: {}", target, e);
+        debug!(path = %target.display(), error = %e, "failed to record recent entry");
     }
 
     if matches!(app_id.as_deref(), Some("__default__")) || app_id.is_none() {
         return crate::commands::fs::open_entry(target.to_string_lossy().to_string())
-            .map_err(|error| OpenWithError::from_external_message(error.message));
+            .map_err(map_open_entry_api_error);
     }
 
     #[cfg(target_os = "linux")]
@@ -107,5 +132,40 @@ fn spawn_detached(mut cmd: Command) -> OpenWithResult<()> {
             OpenWithErrorCode::LaunchFailed,
             format!("Failed to launch process: {e}"),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::errors::domain::DomainError;
+
+    #[test]
+    fn list_open_with_apps_rejects_relative_paths_before_fs_sanitization() {
+        let error = list_open_with_apps_impl("relative/path.txt".to_string())
+            .expect_err("relative path should fail");
+        assert_eq!(error.code_str(), "path_not_absolute");
+        assert_eq!(error.message(), "Path must be absolute: relative/path.txt");
+    }
+
+    #[test]
+    fn open_with_rejects_relative_paths_before_fs_sanitization() {
+        let error = open_with_impl(
+            "relative/path.txt".to_string(),
+            OpenWithChoice { app_id: None },
+        )
+        .expect_err("relative path should fail");
+        assert_eq!(error.code_str(), "path_not_absolute");
+        assert_eq!(error.message(), "Path must be absolute: relative/path.txt");
+    }
+
+    #[test]
+    fn maps_open_entry_api_error_by_typed_code() {
+        let error = map_open_entry_api_error(crate::errors::api_error::ApiError::new(
+            "open_failed",
+            "Failed to open: launcher missing",
+        ));
+        assert_eq!(error.code_str(), "launch_failed");
+        assert_eq!(error.message(), "Failed to open: launcher missing");
     }
 }

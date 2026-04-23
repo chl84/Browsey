@@ -102,11 +102,12 @@ fn prepare_trash_move(raw: &str) -> FsResult<PreparedTrashMove> {
     // Backup into the central undo directory in case we cannot locate the trash item path later.
     let backup = temp_backup_path(&src);
     if let Some(parent) = backup.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            FsError::from_external_message(format!(
-                "Failed to create backup dir {}: {e}",
-                parent.display()
-            ))
+        std::fs::create_dir_all(parent).map_err(|error| {
+            FsError::from_io_error(
+                FsErrorCode::CreateFailed,
+                &format!("Failed to create backup dir {}", parent.display()),
+                error,
+            )
         })?;
     }
     map_external_result(undo_copy_entry(&src, &backup))?;
@@ -321,11 +322,12 @@ pub(super) fn move_single_to_trash_with_backend<B: TrashBackend>(
     // Backup into the central undo directory in case the OS trash item can't be found.
     let backup = temp_backup_path(&src);
     if let Some(parent) = backup.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            FsError::from_external_message(format!(
-                "Failed to create backup dir {}: {e}",
-                parent.display()
-            ))
+        std::fs::create_dir_all(parent).map_err(|error| {
+            FsError::from_io_error(
+                FsErrorCode::CreateFailed,
+                &format!("Failed to create backup dir {}", parent.display()),
+                error,
+            )
         })?;
     }
     map_external_result(undo_copy_entry(&src, &backup))?;

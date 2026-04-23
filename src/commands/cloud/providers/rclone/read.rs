@@ -7,43 +7,55 @@ use super::{
     },
     CloudCapabilities, CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudEntry,
     CloudEntryKind, CloudPath, RcloneCliError, RcloneCloudProvider, RcloneCommandSpec,
-    RcloneSubcommand,
+    RcloneReadBackend, RcloneReadOptions, RcloneSubcommand,
 };
 use chrono::{DateTime, Local};
 use serde_json::Value;
-use tracing::debug;
+use tracing::warn;
 
 impl RcloneCloudProvider {
-    pub(super) fn list_dir_impl(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>> {
+    pub(super) fn list_dir_impl(
+        &self,
+        path: &CloudPath,
+        options: RcloneReadOptions<'_>,
+    ) -> CloudCommandResult<Vec<CloudEntry>> {
         self.ensure_runtime_ready()?;
+        if matches!(options.backend, RcloneReadBackend::CliOnly) {
+            let entries = self.list_dir_via_cli(path, options, false, None)?;
+            log_backend_selected("cloud_list_entries", "cli", false, None);
+            return Ok(entries);
+        }
         let mut fell_back_from_rc = false;
         let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_read_enabled() {
-            match self.list_dir_via_rc(path) {
+            match self.list_dir_via_rc(path, options) {
                 Ok(entries) => {
                     log_backend_selected("cloud_list_entries", "rc", false, None);
                     return Ok(entries);
                 }
                 Err(error) => {
+                    if matches!(options.backend, RcloneReadBackend::RcOnly) {
+                        return Err(map_rclone_error_for_remote(path.remote(), error));
+                    }
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    debug!(
+                    warn!(
                         path = %path,
                         error = %error,
                         "rclone rc list failed; falling back to CLI lsjson"
                     );
                 }
             }
+        } else if matches!(options.backend, RcloneReadBackend::RcOnly) {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::TaskFailed,
+                "rclone rc reads are disabled in this Browsey session",
+            ));
         }
-        let output = self.cli.run_capture_text(
-            RcloneCommandSpec::new(RcloneSubcommand::LsJson).arg(path.to_rclone_remote_spec()),
-        );
-        let output = match output {
-            Ok(output) => output,
-            Err(error) => return Err(map_rclone_error_for_remote(path.remote(), error)),
-        };
-        let items = parse_lsjson_items(&output.stdout)?;
-        let entries = cloud_entries_from_lsjson_items(path, items, "rclone lsjson")?;
+        if cloud_read_cancelled(options.cancel) {
+            return Err(cloud_read_cancelled_error());
+        }
+        let entries = self.list_dir_via_cli(path, options, fell_back_from_rc, fallback_reason)?;
         log_backend_selected(
             "cloud_list_entries",
             "cli",
@@ -56,62 +68,66 @@ impl RcloneCloudProvider {
     pub(super) fn stat_path_impl(
         &self,
         path: &CloudPath,
+        options: RcloneReadOptions<'_>,
     ) -> CloudCommandResult<Option<CloudEntry>> {
         self.ensure_runtime_ready()?;
+        if matches!(options.backend, RcloneReadBackend::CliOnly) {
+            let entry = self.stat_path_via_cli(path, options, false, None)?;
+            log_backend_selected("cloud_stat_entry", "cli", false, None);
+            return Ok(entry);
+        }
         let mut fell_back_from_rc = false;
         let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_read_enabled() {
-            match self.stat_path_via_rc(path) {
+            match self.stat_path_via_rc(path, options) {
                 Ok(entry) => {
                     log_backend_selected("cloud_stat_entry", "rc", false, None);
                     return Ok(entry);
                 }
                 Err(error) => {
+                    if matches!(options.backend, RcloneReadBackend::RcOnly) {
+                        return Err(map_rclone_error_for_remote(path.remote(), error));
+                    }
                     fell_back_from_rc = true;
                     fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    debug!(
+                    warn!(
                         path = %path,
                         error = %error,
                         "rclone rc stat failed; falling back to CLI lsjson --stat"
                     );
                 }
             }
+        } else if matches!(options.backend, RcloneReadBackend::RcOnly) {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::TaskFailed,
+                "rclone rc reads are disabled in this Browsey session",
+            ));
         }
-        let spec = RcloneCommandSpec::new(RcloneSubcommand::LsJson)
-            .arg("--stat")
-            .arg(path.to_rclone_remote_spec());
-        match self.cli.run_capture_text(spec) {
-            Ok(output) => {
-                let item = parse_lsjson_stat_item(&output.stdout)?;
-                log_backend_selected(
-                    "cloud_stat_entry",
-                    "cli",
-                    fell_back_from_rc,
-                    fallback_reason,
-                );
-                Ok(Some(cloud_entry_from_item(path, item)))
-            }
-            Err(RcloneCliError::NonZero { stderr, stdout, .. })
-                if is_rclone_not_found_text(&stderr, &stdout) =>
-            {
-                log_backend_selected(
-                    "cloud_stat_entry",
-                    "cli",
-                    fell_back_from_rc,
-                    fallback_reason,
-                );
-                Ok(None)
-            }
-            Err(error) => Err(map_rclone_error_for_remote(path.remote(), error)),
+        if cloud_read_cancelled(options.cancel) {
+            return Err(cloud_read_cancelled_error());
         }
+        let entry = self.stat_path_via_cli(path, options, fell_back_from_rc, fallback_reason)?;
+        log_backend_selected(
+            "cloud_stat_entry",
+            "cli",
+            fell_back_from_rc,
+            fallback_reason,
+        );
+        Ok(entry)
     }
 
     pub(super) fn list_dir_via_rc(
         &self,
         path: &CloudPath,
+        options: RcloneReadOptions<'_>,
     ) -> Result<Vec<CloudEntry>, RcloneCliError> {
         let fs_spec = format!("{}:", path.remote());
-        let response = self.rc.operations_list(&fs_spec, path.rel_path())?;
+        let response = self.rc.operations_list_with_options(
+            &fs_spec,
+            path.rel_path(),
+            options.rc_timeout,
+            options.cancel,
+        )?;
         let list = response
             .get("list")
             .ok_or_else(|| {
@@ -132,9 +148,15 @@ impl RcloneCloudProvider {
     pub(super) fn stat_path_via_rc(
         &self,
         path: &CloudPath,
+        options: RcloneReadOptions<'_>,
     ) -> Result<Option<CloudEntry>, RcloneCliError> {
         let fs_spec = format!("{}:", path.remote());
-        let response = self.rc.operations_stat(&fs_spec, path.rel_path())?;
+        let response = self.rc.operations_stat_with_options(
+            &fs_spec,
+            path.rel_path(),
+            options.rc_timeout,
+            options.cancel,
+        )?;
         let item_value = response.get("item").cloned().unwrap_or(Value::Null);
         if item_value.is_null() {
             return Ok(None);
@@ -145,6 +167,73 @@ impl RcloneCloudProvider {
             )))
         })?;
         Ok(Some(cloud_entry_from_item(path, item)))
+    }
+
+    fn list_dir_via_cli(
+        &self,
+        path: &CloudPath,
+        options: RcloneReadOptions<'_>,
+        fell_back_from_rc: bool,
+        _fallback_reason: Option<&'static str>,
+    ) -> CloudCommandResult<Vec<CloudEntry>> {
+        let output = self.cli.run_capture_text_with_cancel_and_timeout(
+            RcloneCommandSpec::new(RcloneSubcommand::LsJson).arg(path.to_rclone_remote_spec()),
+            options.cancel,
+            options.cli_timeout,
+        );
+        let output = match output {
+            Ok(output) => output,
+            Err(error) => {
+                if fell_back_from_rc {
+                    warn!(
+                        path = %path,
+                        error = %error,
+                        "rclone CLI fallback failed after rc list degradation"
+                    );
+                }
+                return Err(map_rclone_error_for_remote(path.remote(), error));
+            }
+        };
+        let items = parse_lsjson_items(&output.stdout)?;
+        cloud_entries_from_lsjson_items(path, items, "rclone lsjson")
+    }
+
+    fn stat_path_via_cli(
+        &self,
+        path: &CloudPath,
+        options: RcloneReadOptions<'_>,
+        fell_back_from_rc: bool,
+        fallback_reason: Option<&'static str>,
+    ) -> CloudCommandResult<Option<CloudEntry>> {
+        let spec = RcloneCommandSpec::new(RcloneSubcommand::LsJson)
+            .arg("--stat")
+            .arg(path.to_rclone_remote_spec());
+        match self.cli.run_capture_text_with_cancel_and_timeout(
+            spec,
+            options.cancel,
+            options.cli_timeout,
+        ) {
+            Ok(output) => {
+                let item = parse_lsjson_stat_item(&output.stdout)?;
+                Ok(Some(cloud_entry_from_item(path, item)))
+            }
+            Err(RcloneCliError::NonZero { stderr, stdout, .. })
+                if is_rclone_not_found_text(&stderr, &stdout) =>
+            {
+                Ok(None)
+            }
+            Err(error) => {
+                if fell_back_from_rc {
+                    warn!(
+                        path = %path,
+                        error = %error,
+                        "rclone CLI fallback failed after rc stat degradation"
+                    );
+                }
+                let _ = fallback_reason;
+                Err(map_rclone_error_for_remote(path.remote(), error))
+            }
+        }
     }
 }
 
@@ -210,4 +299,17 @@ fn sort_cloud_entries(entries: &mut [CloudEntry]) {
         };
         rank_a.cmp(&rank_b).then_with(|| a.name.cmp(&b.name))
     });
+}
+
+fn cloud_read_cancelled(cancel: Option<&std::sync::atomic::AtomicBool>) -> bool {
+    cancel
+        .map(|token| token.load(std::sync::atomic::Ordering::SeqCst))
+        .unwrap_or(false)
+}
+
+fn cloud_read_cancelled_error() -> CloudCommandError {
+    CloudCommandError::new(
+        CloudCommandErrorCode::Cancelled,
+        "Cloud folder loading cancelled",
+    )
 }

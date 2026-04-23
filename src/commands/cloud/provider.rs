@@ -11,6 +11,7 @@ pub(crate) trait CloudProvider: Send + Sync {
 
     fn stat_path(&self, path: &CloudPath) -> CloudCommandResult<Option<CloudEntry>>;
 
+    #[allow(dead_code)]
     fn list_dir(&self, path: &CloudPath) -> CloudCommandResult<Vec<CloudEntry>>;
 
     fn mkdir(&self, path: &CloudPath, cancel: Option<&AtomicBool>) -> CloudCommandResult<()>;

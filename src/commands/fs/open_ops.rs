@@ -8,7 +8,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 #[cfg(debug_assertions)]
 use tracing::info;
-use tracing::{error, warn};
+use tracing::{debug, warn};
 
 #[cfg(not(target_os = "windows"))]
 const OPEN_TIMEOUT_GVFS: Duration = Duration::from_secs(8);
@@ -38,7 +38,7 @@ fn open_entry_impl(path: String) -> FsResult<()> {
     let pb = sanitize_path_follow(&path, false).map_err(FsError::from)?;
     let conn = db::open().map_err(map_db_open_error)?;
     if let Err(e) = db::touch_recent(&conn, &pb.to_string_lossy()) {
-        warn!("Failed to record recent for {:?}: {}", pb, e);
+        debug!(path = %pb.display(), error = %e, "failed to record recent entry");
     }
     open_path_impl(&pb)
 }
@@ -62,18 +62,22 @@ fn open_path_impl(path: &Path) -> FsResult<()> {
             });
             let res = match rx.recv_timeout(OPEN_TIMEOUT_GVFS) {
                 Ok(res) => res.map_err(|error_message| {
-                    error!("Failed to open {:?}: {}", path, error_message);
+                    warn!(path = %path.display(), error = %error_message, "failed to open gvfs path");
                     FsError::new(FsErrorCode::OpenFailed, error_message)
                 }),
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    error!("Open timed out for {:?}", path);
+                    warn!(
+                        path = %path.display(),
+                        timeout_secs = OPEN_TIMEOUT_GVFS.as_secs(),
+                        "open timed out for gvfs path"
+                    );
                     Err(FsError::new(
                         FsErrorCode::OpenFailed,
                         "Open timed out on remote device",
                     ))
                 }
                 Err(_) => {
-                    error!("Open channel closed for {:?}", path);
+                    warn!(path = %path.display(), "gvfs open channel closed unexpectedly");
                     Err(FsError::new(FsErrorCode::OpenFailed, "Failed to open"))
                 }
             };
@@ -81,7 +85,7 @@ fn open_path_impl(path: &Path) -> FsResult<()> {
         }
     }
     open::that_detached(path).map_err(|error| {
-        error!("Failed to open {:?}: {}", path, error);
+        warn!(path = %path.display(), error = %error, "failed to open path");
         FsError::new(FsErrorCode::OpenFailed, format!("Failed to open: {error}"))
     })
 }

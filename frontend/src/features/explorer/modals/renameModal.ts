@@ -103,10 +103,6 @@ export const createRenameModal = (deps: Deps) => {
     } catch (err) {
       const msg = invokeErrorMessage(err)
       state.update((s) => ({ ...s, error: msg }))
-      if (activityApi) {
-        activityApi.clearNow()
-        await activityApi.cleanup()
-      }
       return false
     } finally {
       if (activityApi) {

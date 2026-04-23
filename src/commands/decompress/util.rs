@@ -26,6 +26,8 @@ pub(super) use path_ops::{
     clean_relative_path, create_unique_dir_nofollow, ensure_dir_nofollow, first_component,
     open_unique_file, path_exists_nofollow, strip_known_suffixes,
 };
+#[cfg(test)]
+pub(super) use stream_io::set_copy_cancel_after_writes_for_tests;
 pub(super) use stream_io::{
     check_cancel, copy_with_progress, is_cancelled, map_copy_err, map_io, open_buffered_file,
     ProgressEmitter,

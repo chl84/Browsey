@@ -33,3 +33,14 @@ PRs that introduce new allowlist entries must include:
 2. reason,
 3. reference,
 4. explicit follow-up plan.
+
+## Test-only policy
+
+`tests.rs` files are checked as advisory-only in the backend hardening guard.
+They should still prefer typed error codes when asserting runtime behavior, but
+they do not block the suite at the same severity as production/runtime seams.
+
+Runtime files remain strict even when they contain inline `#[cfg(test)]` blocks.
+If a test-only seam would otherwise trip a blocking runtime guard, prefer moving
+that helper/assertion into a dedicated `tests.rs` file instead of weakening the
+runtime rule.
