@@ -207,11 +207,17 @@ pub(super) fn zip_uncompressed_total(path: &Path) -> DecompressResult<u64> {
 #[cfg(test)]
 mod tests {
     use super::{extract_zip, single_root_in_zip, zip_uncompressed_total};
-    use crate::commands::decompress::util::{CreatedPaths, ExtractBudget, SkipStats};
+    use crate::commands::decompress::{
+        error::is_cancelled_error,
+        util::{
+            set_copy_cancel_after_writes_for_tests, CreatedPaths, ExtractBudget, SkipStats, CHUNK,
+        },
+    };
     use std::{
         fs::{self, File},
         io::Write,
         path::{Path, PathBuf},
+        sync::{atomic::AtomicBool, Arc},
         time::{SystemTime, UNIX_EPOCH},
     };
     use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
@@ -286,6 +292,47 @@ mod tests {
         assert_eq!(extracted, payload);
 
         created.disarm();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn extract_zip_rolls_back_partial_outputs_when_cancelled_mid_entry() {
+        let root = unique_temp_dir("zip-cancel");
+        let zip_path = root.join("cancel.zip");
+        let dest_dir = root.join("out");
+        fs::create_dir_all(&dest_dir).expect("create destination");
+
+        let payload = vec![b'z'; CHUNK * 5];
+        write_zip64_stored_archive(&zip_path, "folder/large.bin", &payload);
+
+        let stats = SkipStats::default();
+        let budget = ExtractBudget::new((CHUNK * 10) as u64, 1000);
+        let cancel = Arc::new(AtomicBool::new(false));
+
+        set_copy_cancel_after_writes_for_tests(Some(1));
+        let err = {
+            let mut created = CreatedPaths::default();
+            let result = extract_zip(
+                &zip_path,
+                &dest_dir,
+                None,
+                &stats,
+                None,
+                &mut created,
+                Some(cancel.as_ref()),
+                &budget,
+            );
+            let err = result.expect_err("extract should stop once cancellation is observed");
+            drop(created);
+            err
+        };
+        set_copy_cancel_after_writes_for_tests(None);
+
+        assert!(is_cancelled_error(&err), "unexpected error: {err}");
+        assert!(
+            !dest_dir.join("folder").exists(),
+            "partial destination tree should be rolled back after cancellation"
+        );
         let _ = fs::remove_dir_all(root);
     }
 }

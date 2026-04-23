@@ -5,6 +5,7 @@ use super::{
     provider::CloudProvider,
     types::{CloudEntry, CloudRemote},
 };
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 use tracing::debug;
 
@@ -13,7 +14,9 @@ mod store;
 
 #[cfg(test)]
 use refresh::set_cloud_dir_listing_refresh_test_hook;
-use refresh::{list_cloud_dir_with_retry, schedule_cloud_dir_listing_refresh};
+use refresh::{
+    list_cloud_dir_interactive, list_cloud_dir_with_retry, schedule_cloud_dir_listing_refresh,
+};
 use store::{
     cloud_dir_listing_cache, cloud_dir_listing_refresh_inflight, cloud_remote_discovery_cache,
     invalidate_cloud_dir_listing_cache_path_locked, lookup_cloud_dir_listing_cache_locked,
@@ -56,6 +59,22 @@ pub(crate) fn list_cloud_dir_cached_with_refresh_event(
     path: &CloudPath,
     refresh_event_app: Option<tauri::AppHandle>,
 ) -> CloudCommandResult<Vec<CloudEntry>> {
+    list_cloud_dir_cached_with_request(path, refresh_event_app, None)
+}
+
+pub(crate) fn list_cloud_dir_cached_interactive_with_refresh_event(
+    path: &CloudPath,
+    refresh_event_app: Option<tauri::AppHandle>,
+    cancel: Option<&AtomicBool>,
+) -> CloudCommandResult<Vec<CloudEntry>> {
+    list_cloud_dir_cached_with_request(path, refresh_event_app, cancel)
+}
+
+fn list_cloud_dir_cached_with_request(
+    path: &CloudPath,
+    refresh_event_app: Option<tauri::AppHandle>,
+    cancel: Option<&AtomicBool>,
+) -> CloudCommandResult<Vec<CloudEntry>> {
     let now = Instant::now();
     let key = path.to_string();
     if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
@@ -93,7 +112,10 @@ pub(crate) fn list_cloud_dir_cached_with_refresh_event(
         }
     }
 
-    let entries = list_cloud_dir_with_retry(path)?;
+    let entries = match cancel {
+        Some(cancel) => list_cloud_dir_interactive(path, Some(cancel))?,
+        None => list_cloud_dir_with_retry(path)?,
+    };
     store_cloud_dir_listing_cache_entry(key, now, entries.clone());
     Ok(entries)
 }

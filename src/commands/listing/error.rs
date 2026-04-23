@@ -1,10 +1,6 @@
 use crate::errors::{
     api_error::ApiResult,
-    domain::{
-        self, classify_io_hint_from_message, classify_message_by_patterns, DomainError, ErrorCode,
-        IoErrorHint, COMMON_INVALID_PATH_PATTERNS, COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
-        COMMON_PERMISSION_DENIED_PATTERNS,
-    },
+    domain::{self, classify_io_error, DomainError, ErrorCode, IoErrorHint},
 };
 use std::fmt;
 
@@ -14,6 +10,7 @@ pub(super) enum ListingErrorCode {
     PathNotAbsolute,
     InvalidPath,
     NotFound,
+    Cancelled,
     PermissionDenied,
     WatchNotAllowed,
     UnsupportedScope,
@@ -28,6 +25,7 @@ impl ErrorCode for ListingErrorCode {
             Self::PathNotAbsolute => "path_not_absolute",
             Self::InvalidPath => "invalid_path",
             Self::NotFound => "not_found",
+            Self::Cancelled => "cancelled",
             Self::PermissionDenied => "permission_denied",
             Self::WatchNotAllowed => "watch_not_allowed",
             Self::UnsupportedScope => "unsupported_scope",
@@ -51,25 +49,17 @@ impl ListingError {
         }
     }
 
-    pub(super) fn from_external_message(message: impl Into<String>) -> Self {
-        let message = message.into();
-        if let Some(hint) = classify_io_hint_from_message(&message) {
-            let code = match hint {
-                IoErrorHint::NotFound => Some(ListingErrorCode::NotFound),
-                IoErrorHint::PermissionDenied => Some(ListingErrorCode::PermissionDenied),
-                _ => None,
-            };
-            if let Some(code) = code {
-                return Self::new(code, message);
-            }
-        }
-
-        let code = classify_message_by_patterns(
-            &message,
-            LISTING_CLASSIFICATION_RULES,
-            ListingErrorCode::UnknownError,
-        );
-        Self::new(code, message)
+    pub(super) fn from_io_error(
+        fallback: ListingErrorCode,
+        context: &str,
+        error: std::io::Error,
+    ) -> Self {
+        let code = match classify_io_error(&error) {
+            IoErrorHint::NotFound => ListingErrorCode::NotFound,
+            IoErrorHint::PermissionDenied => ListingErrorCode::PermissionDenied,
+            _ => fallback,
+        };
+        Self::new(code, format!("{context}: {error}"))
     }
 }
 
@@ -113,13 +103,15 @@ impl From<crate::fs_utils::FsUtilsError> for ListingError {
 
 impl From<crate::commands::fs::FsError> for ListingError {
     fn from(error: crate::commands::fs::FsError) -> Self {
-        let code = match error.code_str() {
-            "invalid_input" => ListingErrorCode::InvalidInput,
-            "path_not_absolute" => ListingErrorCode::PathNotAbsolute,
-            "invalid_path" => ListingErrorCode::InvalidPath,
-            "not_found" => ListingErrorCode::NotFound,
-            "permission_denied" => ListingErrorCode::PermissionDenied,
-            "task_failed" => ListingErrorCode::TaskFailed,
+        let code = match error.code() {
+            crate::commands::fs::FsErrorCode::InvalidInput => ListingErrorCode::InvalidInput,
+            crate::commands::fs::FsErrorCode::PathNotAbsolute => ListingErrorCode::PathNotAbsolute,
+            crate::commands::fs::FsErrorCode::InvalidPath => ListingErrorCode::InvalidPath,
+            crate::commands::fs::FsErrorCode::NotFound => ListingErrorCode::NotFound,
+            crate::commands::fs::FsErrorCode::PermissionDenied => {
+                ListingErrorCode::PermissionDenied
+            }
+            crate::commands::fs::FsErrorCode::TaskFailed => ListingErrorCode::TaskFailed,
             _ => ListingErrorCode::UnknownError,
         };
         Self::new(code, error.to_string())
@@ -142,34 +134,6 @@ pub(super) type ListingResult<T> = Result<T, ListingError>;
 pub(super) fn map_api_result<T>(result: ListingResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
 }
-
-const LISTING_CLASSIFICATION_RULES: &[(ListingErrorCode, &[&str])] = &[
-    (
-        ListingErrorCode::TaskFailed,
-        &["list_dir task panicked", "list_facets task panicked"],
-    ),
-    (
-        ListingErrorCode::PathNotAbsolute,
-        COMMON_PATH_NOT_ABSOLUTE_PATTERNS,
-    ),
-    (ListingErrorCode::InvalidPath, COMMON_INVALID_PATH_PATTERNS),
-    (
-        ListingErrorCode::WatchNotAllowed,
-        &["watching this path is not allowed"],
-    ),
-    (
-        ListingErrorCode::UnsupportedScope,
-        &["unsupported facet scope"],
-    ),
-    (
-        ListingErrorCode::PermissionDenied,
-        COMMON_PERMISSION_DENIED_PATTERNS,
-    ),
-    (
-        ListingErrorCode::NotFound,
-        &["no such file or directory", "start directory not found"],
-    ),
-];
 
 #[cfg(test)]
 mod tests {
@@ -197,5 +161,17 @@ mod tests {
         let fs_error = FsUtilsError::new(FsUtilsErrorCode::PermissionDenied, "permission denied");
         let error = ListingError::from(fs_error);
         assert_eq!(error.code_str(), "permission_denied");
+    }
+
+    #[test]
+    fn maps_io_error_to_listing_permission_denied_without_message_reclassification() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let error = ListingError::from_io_error(
+            super::ListingErrorCode::UnknownError,
+            "read_dir failed",
+            io_error,
+        );
+        assert_eq!(error.code_str(), "permission_denied");
+        assert_eq!(error.message(), "read_dir failed: denied");
     }
 }

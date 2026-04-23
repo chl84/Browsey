@@ -2,6 +2,8 @@ use crate::{
     runtime_lifecycle,
     undo::{move_with_fallback, temp_backup_path, Action},
 };
+#[cfg(test)]
+use std::cell::RefCell;
 #[cfg(not(target_os = "windows"))]
 use std::io::BufRead;
 #[cfg(not(target_os = "windows"))]
@@ -9,7 +11,7 @@ use std::process::Command;
 use std::{
     fs,
     io::{ErrorKind, Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
     sync::atomic::AtomicBool,
 };
 
@@ -17,6 +19,30 @@ use super::{
     error::{ClipboardError, ClipboardErrorCode, ClipboardResult},
     ClipboardMode, CopyProgressPayload,
 };
+
+#[cfg(test)]
+type AfterMergeItemTestHook = Box<dyn FnMut(&Path)>;
+
+#[cfg(test)]
+thread_local! {
+    static AFTER_MERGE_ITEM_TEST_HOOK: RefCell<Option<AfterMergeItemTestHook>> = RefCell::new(None);
+}
+
+#[cfg(test)]
+fn run_after_merge_item_test_hook(path: &Path) {
+    AFTER_MERGE_ITEM_TEST_HOOK.with(|hook| {
+        if let Some(callback) = hook.borrow_mut().as_mut() {
+            callback(path);
+        }
+    });
+}
+
+#[cfg(test)]
+pub(super) fn set_after_merge_item_test_hook(callback: Option<AfterMergeItemTestHook>) {
+    AFTER_MERGE_ITEM_TEST_HOOK.with(|hook| {
+        *hook.borrow_mut() = callback;
+    });
+}
 
 fn ensure_not_child(src: &Path, dest: &Path) -> ClipboardResult<()> {
     if dest.starts_with(src) {
@@ -56,36 +82,57 @@ fn copy_dir(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<()> {
-    fs::create_dir(dest).map_err(|e| {
-        if e.kind() == ErrorKind::AlreadyExists {
-            ClipboardError::new(
-                ClipboardErrorCode::DestinationExists,
-                format!("Destination already exists: {}", dest.display()),
-            )
-        } else {
-            ClipboardError::new(
-                ClipboardErrorCode::IoError,
-                format!("Failed to create dir {:?}: {e}", dest),
-            )
+    struct CreatedDirCleanup {
+        path: PathBuf,
+        active: bool,
+    }
+
+    impl CreatedDirCleanup {
+        fn new(path: PathBuf) -> Self {
+            Self { path, active: true }
         }
-    })?;
-    for entry in fs::read_dir(src).map_err(|e| {
-        ClipboardError::new(
+
+        fn disarm(&mut self) {
+            self.active = false;
+        }
+    }
+
+    impl Drop for CreatedDirCleanup {
+        fn drop(&mut self) {
+            if self.active {
+                let _ = fs::remove_dir_all(&self.path);
+            }
+        }
+    }
+
+    fs::create_dir(dest).map_err(|e| {
+        ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
-            format!("Failed to read dir {:?}: {e}", src),
+            &format!("Failed to create dir {}", dest.display()),
+            e,
+        )
+    })?;
+    let mut cleanup = CreatedDirCleanup::new(dest.to_path_buf());
+    for entry in fs::read_dir(src).map_err(|e| {
+        ClipboardError::from_io_error(
+            ClipboardErrorCode::IoError,
+            &format!("Failed to read dir {}", src.display()),
+            e,
         )
     })? {
         let entry = entry.map_err(|e| {
-            ClipboardError::new(
+            ClipboardError::from_io_error(
                 ClipboardErrorCode::IoError,
-                format!("Failed to read dir entry: {e}"),
+                "Failed to read dir entry",
+                e,
             )
         })?;
         let path = entry.path();
         let meta = fs::symlink_metadata(&path).map_err(|e| {
-            ClipboardError::new(
+            ClipboardError::from_io_error(
                 ClipboardErrorCode::IoError,
-                format!("Failed to read metadata: {e}"),
+                &format!("Failed to read metadata for {}", path.display()),
+                e,
             )
         })?;
         if transfer_cancelled(cancel, app) {
@@ -105,6 +152,7 @@ fn copy_dir(
             copy_file_best_effort(&path, &target, app, progress_event, cancel, None)?;
         }
     }
+    cleanup.disarm();
     Ok(())
 }
 
@@ -117,9 +165,10 @@ pub(super) fn backup_existing_target(
         .parent()
         .ok_or_else(|| ClipboardError::invalid_input("Invalid backup path"))?;
     fs::create_dir_all(parent).map_err(|e| {
-        ClipboardError::new(
+        ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
-            format!("Failed to create backup parent {}: {e}", parent.display()),
+            &format!("Failed to create backup parent {}", parent.display()),
+            e,
         )
     })?;
     move_with_fallback(target, &backup).map_err(ClipboardError::from)?;
@@ -141,15 +190,17 @@ pub(super) fn merge_dir(
 ) -> ClipboardResult<()> {
     // Ensure both exist and are directories.
     let src_meta = fs::symlink_metadata(src).map_err(|e| {
-        ClipboardError::new(
+        ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
-            format!("Failed to read source metadata: {e}"),
+            &format!("Failed to read source metadata for {}", src.display()),
+            e,
         )
     })?;
     let dest_meta = fs::symlink_metadata(dest).map_err(|e| {
-        ClipboardError::new(
+        ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
-            format!("Failed to read target metadata: {e}"),
+            &format!("Failed to read target metadata for {}", dest.display()),
+            e,
         )
     })?;
     if !src_meta.is_dir() || !dest_meta.is_dir() {
@@ -160,22 +211,25 @@ pub(super) fn merge_dir(
     }
 
     for entry in fs::read_dir(src).map_err(|e| {
-        ClipboardError::new(
+        ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
-            format!("Failed to read dir {:?}: {e}", src),
+            &format!("Failed to read dir {}", src.display()),
+            e,
         )
     })? {
         let entry = entry.map_err(|e| {
-            ClipboardError::new(
+            ClipboardError::from_io_error(
                 ClipboardErrorCode::IoError,
-                format!("Failed to read dir entry: {e}"),
+                "Failed to read dir entry",
+                e,
             )
         })?;
         let path = entry.path();
         let meta = fs::symlink_metadata(&path).map_err(|e| {
-            ClipboardError::new(
+            ClipboardError::from_io_error(
                 ClipboardErrorCode::IoError,
-                format!("Failed to read metadata: {e}"),
+                &format!("Failed to read metadata for {}", path.display()),
+                e,
             )
         })?;
         if meta.file_type().is_symlink() {
@@ -247,6 +301,8 @@ pub(super) fn merge_dir(
                 }
             }
         }
+        #[cfg(test)]
+        run_after_merge_item_test_hook(&path);
     }
 
     if let ClipboardMode::Cut = mode {
@@ -255,22 +311,25 @@ pub(super) fn merge_dir(
         let backup = temp_backup_path(src);
         if let Some(parent) = backup.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                ClipboardError::new(
+                ClipboardError::from_io_error(
                     ClipboardErrorCode::IoError,
-                    format!("Failed to create backup parent {}: {e}", parent.display()),
+                    &format!("Failed to create backup parent {}", parent.display()),
+                    e,
                 )
             })?;
         }
         fs::create_dir_all(&backup).map_err(|e| {
-            ClipboardError::new(
+            ClipboardError::from_io_error(
                 ClipboardErrorCode::IoError,
-                format!("Failed to create backup dir {}: {e}", backup.display()),
+                &format!("Failed to create backup dir {}", backup.display()),
+                e,
             )
         })?;
         fs::remove_dir_all(src).map_err(|e| {
-            ClipboardError::new(
+            ClipboardError::from_io_error(
                 ClipboardErrorCode::IoError,
-                format!("Failed to remove source dir: {e}"),
+                &format!("Failed to remove source dir {}", src.display()),
+                e,
             )
         })?;
         actions.push(Action::Delete {
@@ -289,9 +348,10 @@ pub(super) fn copy_entry(
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<()> {
     let meta = fs::symlink_metadata(src).map_err(|e| {
-        ClipboardError::new(
+        ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
-            format!("Failed to read metadata: {e}"),
+            &format!("Failed to read metadata for {}", src.display()),
+            e,
         )
     })?;
     if meta.file_type().is_symlink() {
@@ -336,9 +396,10 @@ pub(super) fn copy_file_best_effort(
 
     // Fallback: manual chunked copy with progress
     let mut reader = fs::File::open(src).map_err(|e| {
-        ClipboardError::new(
+        ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
-            format!("Failed to open source for copy: {e}"),
+            &format!("Failed to open source for copy {}", src.display()),
+            e,
         )
     })?;
     let mut writer = fs::OpenOptions::new()
@@ -346,17 +407,11 @@ pub(super) fn copy_file_best_effort(
         .create_new(true)
         .open(dest)
         .map_err(|e| {
-            if e.kind() == ErrorKind::AlreadyExists {
-                ClipboardError::new(
-                    ClipboardErrorCode::DestinationExists,
-                    format!("Destination already exists: {}", dest.display()),
-                )
-            } else {
-                ClipboardError::new(
-                    ClipboardErrorCode::IoError,
-                    format!("Failed to open target for copy: {e}"),
-                )
-            }
+            ClipboardError::from_io_error(
+                ClipboardErrorCode::IoError,
+                &format!("Failed to open target for copy {}", dest.display()),
+                e,
+            )
         })?;
 
     let mut buf = vec![0u8; 512 * 1024];
@@ -380,13 +435,13 @@ pub(super) fn copy_file_best_effort(
             return Err(ClipboardError::cancelled());
         }
         let n = reader.read(&mut buf).map_err(|e| {
-            ClipboardError::new(ClipboardErrorCode::IoError, format!("Read failed: {e}"))
+            ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Read failed", e)
         })?;
         if n == 0 {
             break;
         }
         writer.write_all(&buf[..n]).map_err(|e| {
-            ClipboardError::new(ClipboardErrorCode::IoError, format!("Write failed: {e}"))
+            ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Write failed", e)
         })?;
         done = done.saturating_add(n as u64);
         if progress_event.is_some() {
@@ -477,10 +532,7 @@ fn try_gio_copy_progress(
     }
 
     let status = child.wait().map_err(|e| {
-        ClipboardError::new(
-            ClipboardErrorCode::IoError,
-            format!("gio copy wait failed: {e}"),
-        )
+        ClipboardError::from_io_error(ClipboardErrorCode::IoError, "gio copy wait failed", e)
     })?;
     if status.success() {
         if let Some(evt) = progress_event {
@@ -507,23 +559,26 @@ fn is_gvfs_path(path: &Path) -> bool {
 
 fn delete_entry_path(path: &Path) -> ClipboardResult<()> {
     let meta = fs::symlink_metadata(path).map_err(|e| {
-        ClipboardError::new(
+        ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
-            format!("Failed to read metadata: {e}"),
+            &format!("Failed to read metadata for {}", path.display()),
+            e,
         )
     })?;
     if meta.is_dir() {
         fs::remove_dir_all(path).map_err(|e| {
-            ClipboardError::new(
+            ClipboardError::from_io_error(
                 ClipboardErrorCode::IoError,
-                format!("Failed to delete directory: {e}"),
+                &format!("Failed to delete directory {}", path.display()),
+                e,
             )
         })
     } else {
         fs::remove_file(path).map_err(|e| {
-            ClipboardError::new(
+            ClipboardError::from_io_error(
                 ClipboardErrorCode::IoError,
-                format!("Failed to delete file: {e}"),
+                &format!("Failed to delete file {}", path.display()),
+                e,
             )
         })
     }
@@ -556,21 +611,14 @@ pub(super) fn metadata_if_exists_nofollow(path: &Path) -> ClipboardResult<Option
     match fs::symlink_metadata(path) {
         Ok(meta) => Ok(Some(meta)),
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
-        Err(err) => Err(ClipboardError::new(
+        Err(err) => Err(ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
-            format!("Failed to read metadata for {}: {err}", path.display()),
+            &format!("Failed to read metadata for {}", path.display()),
+            err,
         )),
     }
 }
 
 pub(super) fn is_destination_exists_error(err: &ClipboardError) -> bool {
-    if err.code() == ClipboardErrorCode::DestinationExists {
-        return true;
-    }
-    let lower = err.to_string().to_lowercase();
-    lower.contains("already exists")
-        || lower.contains("file exists")
-        || lower.contains("destination exists")
-        || lower.contains("os error 17")
-        || lower.contains("os error 183")
+    err.code() == ClipboardErrorCode::DestinationExists
 }

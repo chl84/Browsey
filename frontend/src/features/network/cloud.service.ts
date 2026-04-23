@@ -65,6 +65,35 @@ export type CloudSetupStatus = {
   supportedRemotes: CloudRemote[]
 }
 
+export type CloudProbeState =
+  | 'ok'
+  | 'binary_missing'
+  | 'invalid_config'
+  | 'auth_required'
+  | 'timeout'
+  | 'network_error'
+  | 'rate_limited'
+  | 'permission_denied'
+  | 'cancelled'
+  | 'task_failed'
+  | 'unknown_error'
+
+export type CloudProbeRecommendation = 'healthy_rc' | 'healthy_cli_only' | 'probe_failed'
+
+export type CloudProbePathStatus = {
+  ok: boolean
+  state: CloudProbeState
+  message: string
+  elapsedMs: number
+}
+
+export type CloudRemoteProbeStatus = {
+  remote: CloudRemote
+  rc: CloudProbePathStatus
+  cli: CloudProbePathStatus
+  recommendation: CloudProbeRecommendation
+}
+
 export type CloudWriteOptions = {
   overwrite?: boolean
   prechecked?: boolean
@@ -77,6 +106,10 @@ const userCloudErrorMessage = (code: string | undefined, message: string) => {
       return 'Cloud support requires rclone to be installed and available in PATH'
     case 'invalid_config':
       return 'The configured cloud remote is missing or invalid in rclone'
+    case 'cloud_disabled':
+      return 'Cloud folders via rclone are disabled in Settings'
+    case 'cancelled':
+      return 'Cloud operation cancelled'
     case 'auth_required':
       return 'Cloud authentication is required or has expired. Reconnect the rclone remote and try again'
     case 'rate_limited':
@@ -97,11 +130,9 @@ const userCloudErrorMessage = (code: string | undefined, message: string) => {
       return 'This cloud operation is not supported yet'
     case 'invalid_path':
       return 'Invalid cloud path'
+    case 'task_failed':
+      return 'Cloud operation failed. Check the Browsey logs and try again.'
     default: {
-      const lower = message.toLowerCase()
-      if (lower.includes('token') && (lower.includes('expired') || lower.includes('invalid'))) {
-        return 'Cloud authentication may have expired. Reconnect the rclone remote and try again'
-      }
       return message
     }
   }
@@ -123,11 +154,14 @@ export const listCloudRemotes = () =>
 export const loadCloudSetupStatus = () =>
   invoke<CloudSetupStatus>('cloud_setup_status')
 
+export const probeCloudRemote = (remoteId: string, progressEvent?: string) =>
+  invokeCloud<CloudRemoteProbeStatus>('probe_cloud_remote', { remoteId, progressEvent })
+
 export const validateCloudRoot = (path: string) =>
   invokeCloud<CloudRootSelection>('validate_cloud_root', { path })
 
-export const listCloudEntries = (path: string) =>
-  invokeCloud<CloudEntry[]>('list_cloud_entries', { path })
+export const listCloudEntries = (path: string, progressEvent?: string) =>
+  invokeCloud<CloudEntry[]>('list_cloud_entries', { path, progressEvent })
 
 export const statCloudEntry = (path: string) =>
   invokeCloud<CloudEntry | null>('stat_cloud_entry', { path })

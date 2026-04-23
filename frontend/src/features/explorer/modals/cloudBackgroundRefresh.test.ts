@@ -108,6 +108,59 @@ describe('cloud modal background refresh', () => {
     expect(get(modal.state)).toEqual({ open: false, error: '' })
   })
 
+  it('rename modal keeps the modal open with an error and cleans activity once on failure', async () => {
+    renameEntryMock.mockRejectedValueOnce(new Error('Permission denied'))
+    const loadPath = vi.fn(async () => {})
+    const showToast = vi.fn()
+    const activityApi = createActivityApi()
+    const modal = createRenameModal({
+      loadPath,
+      parentPath: () => '/tmp',
+      getCurrentPath: () => '/tmp',
+      showToast,
+      activityApi,
+    })
+
+    modal.open(makeEntry('/tmp/report.txt'))
+    const ok = await modal.confirm('report-renamed.txt')
+
+    expect(ok).toBe(false)
+    expect(loadPath).not.toHaveBeenCalled()
+    expect(showToast).not.toHaveBeenCalled()
+    expect(activityApi.cleanup).toHaveBeenCalledTimes(1)
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.clearNow).toHaveBeenCalledTimes(1)
+    expect(get(modal.state)).toEqual({
+      open: true,
+      target: makeEntry('/tmp/report.txt'),
+      error: 'Permission denied',
+    })
+  })
+
+  it('new folder modal keeps the modal open with an error and cleans activity once on failure', async () => {
+    createFolderMock.mockRejectedValueOnce(new Error('Permission denied'))
+    const loadPath = vi.fn(async () => {})
+    const showToast = vi.fn()
+    const activityApi = createActivityApi()
+    const modal = createNewFolderModal({
+      getCurrentPath: () => '/tmp',
+      loadPath,
+      showToast,
+      activityApi,
+    })
+
+    modal.open()
+    const created = await modal.confirm('New folder')
+
+    expect(created).toBeNull()
+    expect(loadPath).not.toHaveBeenCalled()
+    expect(showToast).not.toHaveBeenCalled()
+    expect(activityApi.cleanup).toHaveBeenCalledTimes(1)
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.clearNow).toHaveBeenCalledTimes(1)
+    expect(get(modal.state)).toEqual({ open: true, error: 'Permission denied' })
+  })
+
   it('delete modal succeeds and soft-fails cloud refresh in background', async () => {
     const reloadCurrent = vi.fn(async () => {
       throw new Error('Cloud operation timed out')
@@ -142,5 +195,35 @@ describe('cloud modal background refresh', () => {
     const toastCalls = showToast.mock.calls.map((args) => String(args[0] ?? ''))
     expect(toastCalls.some((msg) => msg.startsWith('Delete failed:'))).toBe(false)
     expect(get(modal.state)).toEqual({ open: false, targets: [], mode: 'default' })
+  })
+
+  it('delete modal closes cleanly and shows a recovery toast on delete failure', async () => {
+    deleteEntriesMock.mockRejectedValueOnce(new Error('Permission denied'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const reloadCurrent = vi.fn(async () => {})
+    const showToast = vi.fn()
+    const activityApi = {
+      start: vi.fn(async () => {}),
+      cleanup: vi.fn(async () => {}),
+      clearNow: vi.fn(),
+      hasHideTimer: vi.fn(() => false),
+    }
+    const modal = createDeleteConfirmModal({
+      activityApi,
+      reloadCurrent,
+      getCurrentPath: () => '/tmp',
+      showToast,
+    })
+
+    modal.open([makeEntry('/tmp/sample.txt')])
+    await modal.confirm()
+
+    expect(deleteEntriesMock).toHaveBeenCalledTimes(1)
+    expect(reloadCurrent).not.toHaveBeenCalled()
+    expect(showToast).toHaveBeenCalledWith('Delete failed: Permission denied')
+    expect(activityApi.cleanup).toHaveBeenCalledWith(true)
+    expect(activityApi.clearNow).toHaveBeenCalledTimes(1)
+    expect(get(modal.state)).toEqual({ open: false, targets: [], mode: 'default' })
+    consoleError.mockRestore()
   })
 })

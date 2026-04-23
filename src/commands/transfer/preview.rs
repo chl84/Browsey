@@ -73,7 +73,13 @@ async fn preview_local_to_cloud_conflicts(
         .collect::<TransferResult<Vec<PathBuf>>>()?;
 
     let provider = cloud::cloud_provider_kind_for_remote(dest.remote());
-    let dest_entries = cloud::list_cloud_entries(dest.to_string(), app).await?;
+    let dest_entries = cloud::list_cloud_entries_impl(
+        dest.to_string(),
+        app,
+        crate::tasks::CancelState::default(),
+        None,
+    )
+    .await?;
     build_local_to_cloud_conflicts_from_entries(local_sources, &dest, provider, &dest_entries)
 }
 

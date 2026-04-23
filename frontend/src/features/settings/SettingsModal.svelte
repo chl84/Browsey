@@ -4,10 +4,17 @@
   import TextField from '../../shared/ui/TextField.svelte'
   import { getErrorMessage } from '@/shared/lib/error'
   import { onMount } from 'svelte'
-  import { loadCloudSetupStatus, type CloudSetupStatus } from '@/features/network'
+  import {
+    loadCloudSetupStatus,
+    probeCloudRemote,
+    type CloudRemoteProbeStatus,
+    type CloudSetupStatus,
+  } from '@/features/network'
   import type { DefaultSortField, Density } from '@/features/explorer'
   import type { ShortcutBinding, ShortcutCommandId } from '@/features/shortcuts'
-  import { createDebouncedAsyncRunner } from './cloudSetup'
+  import {
+    createDebouncedAsyncRunner,
+  } from './cloudSetup'
   import { DEFAULT_SETTINGS, restoreDefaultsCopy, type Settings } from './settingsTypes'
   import { createSettingsModalViewModel } from './hooks/useSettingsModalViewModel'
   import GeneralSection from './sections/GeneralSection.svelte'
@@ -23,6 +30,15 @@
   import CloudSection from './sections/CloudSection.svelte'
   import AdvancedSection from './sections/AdvancedSection.svelte'
   import './SettingsModal.css'
+
+  type ActivityApi = {
+    start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
+    requestCancel: (eventName: string) => Promise<void>
+    cleanup: (preserveTimer?: boolean) => Promise<void>
+    clearNow: () => void
+    hideSoon: () => void
+    hasHideTimer: () => boolean
+  }
 
   export let open = false
   export let onClose: () => void
@@ -86,11 +102,16 @@
     commandId: ShortcutCommandId,
     accelerator: string,
   ) => Promise<void> | void = () => {}
+  export let activityApi: ActivityApi | null = null
 
   let settings: Settings = { ...DEFAULT_SETTINGS }
   let cloudSetupStatus: CloudSetupStatus | null = null
   let cloudSetupStatusBusy = false
   let cloudSetupStatusError = ''
+  let selectedProbeRemoteId = ''
+  let cloudProbeStatus: CloudRemoteProbeStatus | null = null
+  let cloudProbeBusy = false
+  let cloudProbeError = ''
   let lastCloudSetupRequestId = 0
   let lastAppliedCloudEnabledValue = DEFAULT_SETTINGS.cloudEnabled
   let lastAppliedRclonePathValue = DEFAULT_SETTINGS.rclonePath
@@ -104,6 +125,9 @@
     if (!settings.cloudEnabled) {
       cloudSetupStatusBusy = false
       cloudSetupStatusError = ''
+      cloudProbeStatus = null
+      cloudProbeError = ''
+      selectedProbeRemoteId = ''
       return
     }
     const requestId = ++lastCloudSetupRequestId
@@ -140,9 +164,48 @@
       rclonePathBlurRefresh.cancel()
       cloudSetupStatusBusy = false
       cloudSetupStatusError = ''
+      cloudProbeBusy = false
+      cloudProbeStatus = null
+      cloudProbeError = ''
+      selectedProbeRemoteId = ''
       return
     }
     await refreshCloudSetupStatus()
+  }
+
+  const cloudProbeProgressEventName = () =>
+    `cloud-probe-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+  const handleRunCloudProbe = async () => {
+    if (!settings.cloudEnabled || !selectedProbeRemoteId || cloudProbeBusy) {
+      return
+    }
+    const progressEvent = cloudProbeProgressEventName()
+    cloudProbeBusy = true
+    cloudProbeError = ''
+    await activityApi?.start(
+      'Testing cloud connection…',
+      progressEvent,
+      () => activityApi?.requestCancel(progressEvent),
+    )
+    try {
+      const next = await probeCloudRemote(selectedProbeRemoteId, progressEvent)
+      cloudProbeStatus = next
+      const cancelled =
+        next.rc.state === 'cancelled' || next.cli.state === 'cancelled'
+      if (cancelled) {
+        activityApi?.clearNow()
+        await activityApi?.cleanup()
+      } else {
+        activityApi?.hideSoon()
+      }
+    } catch (err) {
+      cloudProbeError = getErrorMessage(err)
+      activityApi?.clearNow()
+      await activityApi?.cleanup()
+    } finally {
+      cloudProbeBusy = false
+    }
   }
 
   const {
@@ -257,6 +320,26 @@
   $: if (rclonePathValue !== lastAppliedRclonePathValue) {
     patchSettings({ rclonePath: rclonePathValue })
     lastAppliedRclonePathValue = rclonePathValue
+  }
+  $: {
+    const remotes = cloudSetupStatus?.supportedRemotes ?? []
+    if (remotes.length === 0) {
+      selectedProbeRemoteId = ''
+      cloudProbeStatus = null
+      cloudProbeError = ''
+    } else if (!remotes.some((remote) => remote.id === selectedProbeRemoteId)) {
+      selectedProbeRemoteId = remotes[0]?.id ?? ''
+      cloudProbeStatus = null
+      cloudProbeError = ''
+    }
+  }
+  $: if (cloudProbeStatus && cloudProbeStatus.remote.id !== selectedProbeRemoteId) {
+    cloudProbeStatus = null
+    cloudProbeError = ''
+  }
+  $: if (cloudSetupStatus?.state !== 'ready') {
+    cloudProbeStatus = null
+    cloudProbeError = ''
   }
   $: {
     if (open && !wasOpen) {
@@ -436,9 +519,17 @@
           {cloudSetupStatus}
           {cloudSetupStatusBusy}
           {cloudSetupStatusError}
+          {selectedProbeRemoteId}
+          {cloudProbeStatus}
+          {cloudProbeBusy}
+          {cloudProbeError}
           onPatch={patchSettings}
           onToggleCloudEnabled={handleCloudEnabledChange}
           onChangeRclonePath={handleRclonePathBlur}
+          onSelectProbeRemote={(value) => {
+            selectedProbeRemoteId = value
+          }}
+          onRunCloudProbe={handleRunCloudProbe}
         />
 
         <AdvancedSection

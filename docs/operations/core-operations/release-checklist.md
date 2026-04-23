@@ -113,7 +113,7 @@ redefining behavior in multiple places.
   - If skipped, log justification in run notes.
 - Cloud preconditions:
   - `rclone` installed and in `PATH`.
-  - At least one configured remote (OneDrive primary v1 target).
+  - At least one configured remote for a supported provider (OneDrive, Google Drive, or Nextcloud).
   - Disposable test directory and representative test files.
 
 ## Provider-Specific Appendices

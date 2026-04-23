@@ -218,6 +218,7 @@ pub(super) fn spawn_daemon(binary: &OsString) -> Result<RcloneRcDaemon, RcloneCl
                 RcloneRcMethod::CoreNoop,
                 json!({}),
                 RCLONE_RC_NOOP_TIMEOUT,
+                None,
             ) {
                 Ok(_) => {
                     debug!(

@@ -189,3 +189,49 @@ fn run_with_timeout(
 
 static VIDEO_PROCS: Lazy<std::sync::Mutex<HashMap<u32, (String, Child)>>> =
     Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
+
+#[cfg(test)]
+mod tests {
+    use super::render_video_thumbnail;
+    use std::env;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, SystemTime};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn uniq_path(label: &str) -> std::path::PathBuf {
+        let ts = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        std::env::temp_dir().join(format!("browsey-thumb-video-test-{label}-{ts}"))
+    }
+
+    #[test]
+    fn render_video_thumbnail_reports_missing_ffmpeg_cleanly() {
+        let _guard = env_lock().lock().expect("env lock");
+        let prev_ffmpeg_bin = env::var_os("FFMPEG_BIN");
+        let prev_path = env::var_os("PATH");
+        env::remove_var("FFMPEG_BIN");
+        env::set_var("PATH", "");
+
+        let source = uniq_path("source.mp4");
+        let cache = uniq_path("cache.png");
+        let err = render_video_thumbnail(&source, &cache, 96, Some("test"), None)
+            .expect_err("missing ffmpeg should fail");
+
+        assert!(err.to_string().contains("ffmpeg not found in PATH"));
+
+        match prev_ffmpeg_bin {
+            Some(value) => env::set_var("FFMPEG_BIN", value),
+            None => env::remove_var("FFMPEG_BIN"),
+        }
+        match prev_path {
+            Some(value) => env::set_var("PATH", value),
+            None => env::remove_var("PATH"),
+        }
+    }
+}

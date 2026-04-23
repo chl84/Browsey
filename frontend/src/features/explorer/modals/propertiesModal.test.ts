@@ -1,6 +1,15 @@
+import { get } from 'svelte/store'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Entry } from '../model/types'
 import { createPropertiesModal, type PropertiesState } from './propertiesModal'
+
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+}))
+
+vi.mock('@/shared/lib/tauri', () => ({
+  invoke: invokeMock,
+}))
 
 const computeDirStatsMock = vi.fn(async () => ({ total: 0, items: 0 }))
 const showToastMock = vi.fn()
@@ -39,6 +48,7 @@ const makeOpenState = (entry: Entry, count = 1): PropertiesState => ({
 describe('properties modal copyParentFolder', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    invokeMock.mockReset()
   })
 
   it('copies full local parent path', async () => {
@@ -184,5 +194,56 @@ describe('properties modal copyParentFolder', () => {
 
     expect(writeText).not.toHaveBeenCalled()
     expect(showToastMock).not.toHaveBeenCalled()
+  })
+
+  it('shows a user-facing ownership error for helper failures', async () => {
+    invokeMock.mockRejectedValueOnce({
+      code: 'helper_protocol_error',
+      message: 'unexpected helper response payload',
+    })
+
+    const modal = createPropertiesModal({
+      computeDirStats: computeDirStatsMock,
+      showToast: showToastMock,
+    })
+    modal.state.set(makeOpenState(makeEntry('/home/chris/docs/report.txt')))
+
+    await modal.setOwnership('root', '')
+
+    expect(get(modal.state).ownershipError).toBe(
+      'Browsey could not complete the privileged permissions step.',
+    )
+  })
+
+  it('shows a user-facing toast when permission updates fail', async () => {
+    invokeMock.mockRejectedValueOnce({
+      code: 'helper_protocol_error',
+      message: 'unexpected helper response payload',
+    })
+
+    const modal = createPropertiesModal({
+      computeDirStats: computeDirStatsMock,
+      showToast: showToastMock,
+    })
+    modal.state.set({
+      ...makeOpenState(makeEntry('/home/chris/docs/report.txt')),
+      permissions: {
+        accessSupported: true,
+        ownershipSupported: true,
+        ownerName: 'chris',
+        groupName: 'chris',
+        owner: { read: false, write: true, exec: false },
+        group: { read: false, write: false, exec: false },
+        other: { read: false, write: false, exec: false },
+      },
+    })
+
+    modal.toggleAccess('owner', 'read', true)
+
+    await vi.waitFor(() => {
+      expect(showToastMock).toHaveBeenCalledWith(
+        'Permissions update failed: Browsey could not complete the privileged permissions step.',
+      )
+    })
   })
 })

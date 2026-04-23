@@ -84,13 +84,7 @@ impl DomainError for ConsoleError {
 impl From<crate::fs_utils::FsUtilsError> for ConsoleError {
     fn from(error: crate::fs_utils::FsUtilsError) -> Self {
         let code = match error.code() {
-            crate::fs_utils::FsUtilsErrorCode::InvalidPath => {
-                if error.to_string().contains("path must be absolute") {
-                    ConsoleErrorCode::PathNotAbsolute
-                } else {
-                    ConsoleErrorCode::InvalidPath
-                }
-            }
+            crate::fs_utils::FsUtilsErrorCode::InvalidPath => ConsoleErrorCode::InvalidPath,
             crate::fs_utils::FsUtilsErrorCode::NotFound => ConsoleErrorCode::NotFound,
             crate::fs_utils::FsUtilsErrorCode::PermissionDenied => {
                 ConsoleErrorCode::PermissionDenied

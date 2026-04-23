@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::process::{Command, Stdio};
@@ -7,7 +8,7 @@ use tracing::{debug, warn};
 
 use crate::{
     fs_utils::{check_no_symlink_components, sanitize_path_nofollow},
-    undo::{apply_ownership, ownership_snapshot, set_ownership_nofollow},
+    undo::{apply_ownership, ownership_snapshot, set_ownership_nofollow, UndoError, UndoErrorCode},
 };
 
 use super::super::{
@@ -46,11 +47,18 @@ fn rollback_ownership_actions(actions: &[OwnershipRollback]) -> PermissionsResul
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct OwnershipHelperRequest {
     paths: Vec<String>,
     owner: Option<String>,
     group: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum OwnershipHelperResponse {
+    Ok,
+    Error { code: String, message: String },
 }
 
 static PRINCIPAL_ENUM_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
@@ -219,8 +227,123 @@ fn resolve_gid_spec(spec: &str) -> PermissionsResult<u32> {
     })
 }
 
-fn is_elevated_privileges_error(msg: &impl std::fmt::Display) -> bool {
-    msg.to_string().contains("requires elevated privileges")
+fn should_retry_with_pkexec(error: &UndoError) -> bool {
+    matches!(error.code(), UndoErrorCode::PermissionDenied)
+}
+
+fn pkexec_exit_error(status_code: Option<i32>, stderr: &str) -> PermissionsError {
+    let trimmed = stderr.trim();
+    match status_code {
+        Some(126) => {
+            if trimmed.is_empty() {
+                PermissionsError::new(
+                    PermissionsErrorCode::AuthenticationCancelled,
+                    "Authentication was cancelled or denied",
+                )
+            } else {
+                PermissionsError::new(
+                    PermissionsErrorCode::AuthenticationCancelled,
+                    format!("Authentication was cancelled or denied: {trimmed}"),
+                )
+            }
+        }
+        Some(127) => {
+            if trimmed.is_empty() {
+                PermissionsError::new(
+                    PermissionsErrorCode::PermissionDenied,
+                    "pkexec could not obtain authorization or reported an error",
+                )
+            } else {
+                PermissionsError::new(
+                    PermissionsErrorCode::PermissionDenied,
+                    format!(
+                        "pkexec could not obtain authorization or reported an error: {trimmed}"
+                    ),
+                )
+            }
+        }
+        Some(code) => {
+            if trimmed.is_empty() {
+                PermissionsError::new(
+                    PermissionsErrorCode::HelperProtocolError,
+                    format!(
+                        "Ownership helper exited with status {code} without structured response"
+                    ),
+                )
+            } else {
+                PermissionsError::new(
+                    PermissionsErrorCode::HelperProtocolError,
+                    format!(
+                        "Ownership helper exited with status {code} without structured response: {trimmed}"
+                    ),
+                )
+            }
+        }
+        None => {
+            if trimmed.is_empty() {
+                PermissionsError::new(
+                    PermissionsErrorCode::HelperProtocolError,
+                    "Ownership helper terminated without structured response",
+                )
+            } else {
+                PermissionsError::new(
+                    PermissionsErrorCode::HelperProtocolError,
+                    format!("Ownership helper terminated without structured response: {trimmed}"),
+                )
+            }
+        }
+    }
+}
+
+fn parse_ownership_helper_response(stdout: &[u8]) -> PermissionsResult<Option<PermissionsError>> {
+    if stdout.iter().all(|byte| byte.is_ascii_whitespace()) {
+        return Ok(None);
+    }
+    let response: OwnershipHelperResponse = serde_json::from_slice(stdout).map_err(|error| {
+        PermissionsError::new(
+            PermissionsErrorCode::HelperProtocolError,
+            format!("Invalid helper response: {error}"),
+        )
+    })?;
+    match response {
+        OwnershipHelperResponse::Ok => Ok(None),
+        OwnershipHelperResponse::Error { code, message } => Ok(Some(
+            PermissionsError::from_code_and_message(&code, message),
+        )),
+    }
+}
+
+fn write_ownership_helper_response(response: &OwnershipHelperResponse) -> PermissionsResult<()> {
+    use std::io::Write;
+
+    let payload = serde_json::to_vec(response).map_err(|error| {
+        PermissionsError::new(
+            PermissionsErrorCode::HelperProtocolError,
+            format!("Failed to serialize helper response: {error}"),
+        )
+    })?;
+    let mut stdout = std::io::stdout();
+    stdout.write_all(&payload).map_err(|error| {
+        PermissionsError::from_io_error(
+            PermissionsErrorCode::HelperIoError,
+            "Failed to write helper response",
+            error,
+        )
+    })?;
+    stdout.write_all(b"\n").map_err(|error| {
+        PermissionsError::from_io_error(
+            PermissionsErrorCode::HelperIoError,
+            "Failed to finalize helper response",
+            error,
+        )
+    })?;
+    stdout.flush().map_err(|error| {
+        PermissionsError::from_io_error(
+            PermissionsErrorCode::HelperIoError,
+            "Failed to flush helper response",
+            error,
+        )
+    })
 }
 
 fn run_ownership_with_pkexec(
@@ -287,21 +410,18 @@ fn run_ownership_with_pkexec(
             e,
         )
     })?;
+    let parsed_stdout = parse_ownership_helper_response(&output.stdout)?;
     if output.status.success() {
+        if let Some(error) = parsed_stdout {
+            return Err(error);
+        }
         return Ok(());
     }
+    if let Some(error) = parsed_stdout {
+        return Err(error);
+    }
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if !stderr.is_empty() {
-        return Err(PermissionsError::from(stderr));
-    }
-    if !stdout.is_empty() {
-        return Err(PermissionsError::from(stdout));
-    }
-    Err(PermissionsError::new(
-        PermissionsErrorCode::AuthenticationCancelled,
-        "Authentication was cancelled or denied",
-    ))
+    Err(pkexec_exit_error(output.status.code(), &stderr))
 }
 
 #[derive(Clone)]
@@ -377,7 +497,7 @@ fn set_ownership_batch_impl(
             if let Err(e) =
                 set_ownership_nofollow(&target.target, target.uid_update, target.gid_update)
             {
-                if allow_pkexec_retry && is_elevated_privileges_error(&e) {
+                if allow_pkexec_retry && should_retry_with_pkexec(&e) {
                     let helper_paths: Vec<String> = targets
                         .iter()
                         .map(|t| t.target.to_string_lossy().into_owned())
@@ -497,6 +617,28 @@ pub(super) fn run_ownership_helper_from_stdin() -> PermissionsResult<()> {
     set_ownership_batch_impl(request.paths, request.owner, request.group, false).map(|_| ())
 }
 
+pub(super) fn run_ownership_helper_entrypoint() -> i32 {
+    match run_ownership_helper_from_stdin() {
+        Ok(()) => match write_ownership_helper_response(&OwnershipHelperResponse::Ok) {
+            Ok(()) => 0,
+            Err(err) => {
+                eprintln!("{err}");
+                1
+            }
+        },
+        Err(err) => {
+            let response = OwnershipHelperResponse::Error {
+                code: err.code().to_string(),
+                message: err.message().to_string(),
+            };
+            if write_ownership_helper_response(&response).is_err() {
+                eprintln!("{err}");
+            }
+            1
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -544,5 +686,56 @@ mod tests {
         assert_eq!(after.gid(), expected_gid);
 
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn pkexec_retry_gate_uses_typed_undo_error_code() {
+        let permission_denied = UndoError::new(
+            UndoErrorCode::PermissionDenied,
+            "Failed to change owner/group for /tmp/example (requires elevated privileges: root or CAP_CHOWN)",
+        );
+        let io_error = UndoError::new(
+            UndoErrorCode::IoError,
+            "Failed to change owner/group for /tmp/example (requires elevated privileges: root or CAP_CHOWN)",
+        );
+
+        assert!(should_retry_with_pkexec(&permission_denied));
+        assert!(!should_retry_with_pkexec(&io_error));
+    }
+
+    #[test]
+    fn parses_typed_helper_error_response_without_message_reclassification() {
+        let payload = br#"{"status":"error","code":"helper_protocol_error","message":"Invalid helper response payload"}"#;
+        let parsed = parse_ownership_helper_response(payload)
+            .expect("parse helper payload")
+            .expect("helper should return error");
+        assert_eq!(parsed.code(), "helper_protocol_error");
+        assert_eq!(parsed.message(), "Invalid helper response payload");
+    }
+
+    #[test]
+    fn parses_helper_ok_response() {
+        let payload = br#"{"status":"ok"}"#;
+        let parsed = parse_ownership_helper_response(payload).expect("parse helper payload");
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn pkexec_exit_126_maps_to_authentication_cancelled() {
+        let error = pkexec_exit_error(Some(126), "");
+        assert_eq!(error.code(), "authentication_cancelled");
+    }
+
+    #[test]
+    fn pkexec_exit_127_maps_to_permission_denied() {
+        let error = pkexec_exit_error(Some(127), "Not authorized");
+        assert_eq!(error.code(), "permission_denied");
+        assert!(error.message().contains("Not authorized"));
+    }
+
+    #[test]
+    fn pkexec_unstructured_nonstandard_exit_maps_to_helper_protocol_error() {
+        let error = pkexec_exit_error(Some(5), "opaque failure");
+        assert_eq!(error.code(), "helper_protocol_error");
     }
 }

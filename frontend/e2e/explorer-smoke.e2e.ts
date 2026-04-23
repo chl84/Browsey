@@ -1,5 +1,37 @@
 import { expect, test } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    const runtime = window as typeof window & {
+      __BROWSEY_E2E_UNHANDLED__?: Array<{ type: 'error' | 'rejection'; message: string }>
+    }
+    runtime.__BROWSEY_E2E_UNHANDLED__ = []
+    window.addEventListener('error', (event) => {
+      const error = event.error
+      const message =
+        error instanceof Error
+          ? error.stack ?? error.message
+          : event.message || 'Unknown window error'
+      runtime.__BROWSEY_E2E_UNHANDLED__?.push({ type: 'error', message })
+    })
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event.reason
+      const message = reason instanceof Error ? reason.stack ?? reason.message : String(reason)
+      runtime.__BROWSEY_E2E_UNHANDLED__?.push({ type: 'rejection', message })
+    })
+  })
+})
+
+test.afterEach(async ({ page }) => {
+  const unhandled = await page.evaluate(() => {
+    const runtime = window as typeof window & {
+      __BROWSEY_E2E_UNHANDLED__?: Array<{ type: 'error' | 'rejection'; message: string }>
+    }
+    return runtime.__BROWSEY_E2E_UNHANDLED__ ?? []
+  })
+  expect(unhandled).toEqual([])
+})
+
 test('opens a directory from list view with keyboard open', async ({ page }) => {
   await page.goto('/')
 
@@ -15,6 +47,26 @@ test('opens a directory from list view with keyboard open', async ({ page }) => 
 
   await expect(page.locator('.row .name', { hasText: 'report' })).toBeVisible()
   await expect(page.getByLabel('Path breadcrumbs').getByRole('button', { name: 'Documents' })).toBeVisible()
+})
+
+test('search finds entries in the current folder scope', async ({ page }) => {
+  await page.goto('/')
+
+  const documentsRow = page.locator('.row', {
+    has: page.locator('.name', { hasText: 'Documents' }),
+  })
+  await expect(documentsRow).toBeVisible()
+  await documentsRow.click()
+  await documentsRow.press('Enter')
+
+  await page.keyboard.press('Control+F')
+  const searchInput = page.getByLabel('Search')
+  await expect(searchInput).toBeFocused()
+  await searchInput.fill('report')
+  await page.keyboard.press('Enter')
+
+  await expect(page.locator('.row .name', { hasText: 'report' })).toBeVisible()
+  await expect(page.locator('.row .name', { hasText: 'archive' })).toHaveCount(0)
 })
 
 test('wheel assist handles short-list edge clamp and non-cancelable burst fallback', async ({ page }) => {
@@ -152,4 +204,65 @@ test('advanced rename modal traps Tab focus and closes on Escape', async ({ page
 
   await page.keyboard.press('Escape')
   await expect(modal).toBeHidden()
+})
+
+test('settings can change a representative preference and restore defaults', async ({ page }) => {
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'Main menu' }).click()
+  await page.getByRole('menuitem', { name: 'Settings…' }).click()
+
+  const settingsModal = page.locator('.settings-modal')
+  await expect(settingsModal).toBeVisible()
+
+  const filterInput = settingsModal.getByPlaceholder('Filter settings')
+  await filterInput.fill('confirm delete')
+
+  const confirmDeleteCheckbox = settingsModal.getByLabel('Ask before permanent delete')
+  await expect(confirmDeleteCheckbox).toBeChecked()
+
+  await confirmDeleteCheckbox.focus()
+  await page.keyboard.press('Space')
+  await expect(confirmDeleteCheckbox).not.toBeChecked()
+
+  await filterInput.fill('high contrast')
+  const highContrastCheckbox = settingsModal.getByLabel('Boost contrast for UI elements')
+  await expect(highContrastCheckbox).not.toBeChecked()
+  await highContrastCheckbox.click()
+  await expect(highContrastCheckbox).toBeChecked()
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.highContrast))
+    .toBe('true')
+
+  await filterInput.fill('density')
+  await settingsModal.getByRole('button', { name: 'Cozy' }).click()
+  await page.getByRole('option', { name: 'Compact' }).click()
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        cozy: document.body.classList.contains('density-cozy'),
+        compact: document.body.classList.contains('density-compact'),
+      })),
+    )
+    .toEqual({ cozy: false, compact: true })
+
+  await settingsModal.getByRole('button', { name: 'Restore defaults' }).click()
+  await page.getByRole('button', { name: 'Restore defaults' }).last().click()
+
+  await filterInput.fill('confirm delete')
+  await expect(confirmDeleteCheckbox).toBeChecked()
+  await filterInput.fill('high contrast')
+  await expect(highContrastCheckbox).not.toBeChecked()
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.highContrast))
+    .toBe('false')
+  await filterInput.fill('density')
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        cozy: document.body.classList.contains('density-cozy'),
+        compact: document.body.classList.contains('density-compact'),
+      })),
+    )
+    .toEqual({ cozy: true, compact: false })
 })
