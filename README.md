@@ -114,9 +114,12 @@ npm --prefix frontend run build
 
 Rust release binary:
 ```bash
-cargo build --release
+frontend/node_modules/.bin/tauri build --no-bundle
 ```
-Produces `target/release/browsey`.
+Produces `target/release/browsey` with the frontend bundled into Tauri. Do not
+use `cargo build --release` for a distributable desktop binary: it does not set
+Tauri's production build environment and may try to load the Vite development
+server.
 
 Tauri bundles:
 - Windows NSIS:
