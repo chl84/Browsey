@@ -16,7 +16,7 @@
   import { useModalsController } from '@/features/explorer/hooks/useModalsController'
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
   import { ejectDrive, formatRemovablePartition } from '@/features/explorer/services/drives.service'
-  import ConfirmActionModal from '@/shared/ui/ConfirmActionModal.svelte'
+  import FormatUsbModal, { type UsbFilesystem } from '@/features/explorer/components/FormatUsbModal.svelte'
   import { openConsole } from '@/features/explorer/services/console.service'
   import { copyPathsToSystemClipboard } from '@/features/explorer/services/clipboard.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
@@ -147,6 +147,7 @@
   let shortcutBindings: ShortcutBinding[] = DEFAULT_SHORTCUTS
   let formatTarget: Partition | null = null
   let formatting = false
+  let formatFilesystem: UsbFilesystem = 'exfat'
 
   // Drag & clipboard
   const { store: bookmarkStore } = bookmarkModal
@@ -1687,8 +1688,8 @@
     if (!formatTarget || formatting) return
     formatting = true
     try {
-      await formatRemovablePartition(formatTarget.path)
-      showToast(`Formatted ${formatTarget.label} as exFAT`)
+      await formatRemovablePartition(formatTarget.path, formatFilesystem)
+      showToast(`Formatted ${formatTarget.label} as ${formatFilesystem.toUpperCase()}`)
       formatTarget = null
       await loadPartitions({ forceNetworkRefresh: true })
     } catch (err) {
@@ -2040,12 +2041,10 @@
 {#if settingsOpen}
   <SettingsModal {...settingsModalProps} />
 {/if}
-<ConfirmActionModal
+<FormatUsbModal
   open={formatTarget !== null}
-  title="Format USB volume?"
-  message={formatTarget ? `This permanently erases all data on “${formatTarget.label}” and formats it as exFAT.` : ''}
-  confirmLabel="Format and erase"
-  danger={true}
+  volumeLabel={formatTarget?.label ?? ''}
+  bind:filesystem={formatFilesystem}
   busy={formatting}
   onConfirm={confirmFormatPartition}
   onCancel={() => {
