@@ -78,6 +78,14 @@
   import { useExplorerPageLifecycle } from './useExplorerPageLifecycle'
   import { useExplorerPageUiState } from './useExplorerPageUiState'
   import { useExplorerViewportLayout } from './useExplorerViewportLayout'
+  import {
+    activeSystemTheme,
+    destroyThemeController,
+    initializeThemeController,
+    setThemeHighContrast,
+    setThemeMode,
+    themeMode,
+  } from '../theme/themeController'
   import '@/features/explorer/ExplorerLayout.css'
 
   // --- Types --------------------------------------------------------------
@@ -1685,6 +1693,7 @@
     await setSortFieldPref(defaults.sortField)
     await setSortDirectionPref(defaults.sortDirection)
     setDensityPref(defaults.density)
+    await setThemeMode(defaults.themeMode)
     setArchiveNamePref(defaults.archiveName)
     setArchiveLevelPref(defaults.archiveLevel)
     setOpenDestAfterExtractPref(defaults.openDestAfterExtract)
@@ -1855,6 +1864,8 @@
     foldersFirst: $foldersFirst,
     confirmDelete: $confirmDelete,
     density: $density,
+    themeMode: $themeMode,
+    systemThemeName: $activeSystemTheme?.name ?? null,
     highContrast: $highContrast,
     archiveName: $archiveName,
     archiveLevel: $archiveLevel,
@@ -1883,6 +1894,7 @@
     onToggleConfirmDelete: toggleConfirmDelete,
     onChangeStartDir: setStartDirPref,
     onChangeDensity: setDensityPref,
+    onChangeThemeMode: setThemeMode,
     onChangeArchiveName: setArchiveNamePref,
     onChangeArchiveLevel: setArchiveLevelPref,
     onToggleOpenDestAfterExtract: toggleOpenDestAfterExtract,
@@ -1934,8 +1946,16 @@
     stopDuplicateScan,
   })
 
-  onDestroy(pageLifecycle.handlePageDestroy)
-  onMount(pageLifecycle.initLifecycle)
+  $: setThemeHighContrast($highContrast)
+
+  onDestroy(() => {
+    destroyThemeController()
+    pageLifecycle.handlePageDestroy()
+  })
+  onMount(() => {
+    void initializeThemeController()
+    return pageLifecycle.initLifecycle()
+  })
 </script>
 
 <!-- Render root: keep composition at page level; push glue/helpers out over time. -->

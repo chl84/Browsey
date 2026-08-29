@@ -49,6 +49,8 @@
   export let foldersFirstValue = true
   export let confirmDeleteValue = true
   export let densityValue: Density = 'cozy'
+  export let themeModeValue: Settings['themeMode'] = 'dark'
+  export let systemThemeNameValue: string | null = null
   export let highContrastValue = false
   export let archiveNameValue = 'Archive'
   export let archiveLevelValue = 6
@@ -78,6 +80,7 @@
   export let onChangeSortDirection: (value: typeof sortDirectionValue) => void = () => {}
   export let onChangeStartDir: (value: string) => void = () => {}
   export let onChangeDensity: (value: Density) => void = () => {}
+  export let onChangeThemeMode: (value: Settings['themeMode']) => void = () => {}
   export let onChangeArchiveName: (value: string) => void = () => {}
   export let onChangeArchiveLevel: (value: number) => void = () => {}
   export let onToggleOpenDestAfterExtract: (value: boolean) => void = () => {}
@@ -274,6 +277,9 @@
   $: if (settings.density !== densityValue) {
     patchSettings({ density: densityValue })
   }
+  $: if (settings.themeMode !== themeModeValue) {
+    patchSettings({ themeMode: themeModeValue })
+  }
   $: if (settings.highContrast !== highContrastValue) {
     patchSettings({ highContrast: highContrastValue })
   }
@@ -434,9 +440,12 @@
         <AppearanceSection
           show={filterModel.showAppearance}
           showDensityRow={filterModel.showDensityRow}
+          showThemeModeRow={filterModel.showThemeModeRow}
           {settings}
+          systemThemeName={systemThemeNameValue}
           onPatch={patchSettings}
           {onChangeDensity}
+          {onChangeThemeMode}
         />
 
         <ArchivesSection

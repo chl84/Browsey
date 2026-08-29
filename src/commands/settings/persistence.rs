@@ -2,7 +2,7 @@ use super::error::{self, SettingsError, SettingsResult};
 use std::ops::RangeInclusive;
 
 const SETTINGS_SCHEMA_VERSION_KEY: &str = "settingsSchemaVersion";
-const CURRENT_SETTINGS_SCHEMA_VERSION: &str = "1";
+const CURRENT_SETTINGS_SCHEMA_VERSION: &str = "2";
 
 pub(super) fn map_db_error(error: crate::db::DbError) -> SettingsError {
     match error.code() {
@@ -85,10 +85,7 @@ fn run_settings_migrations(conn: &mut rusqlite::Connection) -> SettingsResult<()
         return Ok(());
     }
 
-    let ops = collect_settings_v1_migration_ops(conn)?;
-    if ops.is_empty() && version.is_some() {
-        return Ok(());
-    }
+    let ops = collect_settings_migration_ops(conn)?;
 
     let tx = conn.transaction().map_err(map_db_error_from_sqlite(
         error::SettingsErrorCode::DbWriteFailed,
@@ -141,7 +138,7 @@ enum SettingsMigrationOp {
     Delete { key: &'static str },
 }
 
-fn collect_settings_v1_migration_ops(
+fn collect_settings_migration_ops(
     conn: &rusqlite::Connection,
 ) -> SettingsResult<Vec<SettingsMigrationOp>> {
     let mut ops = Vec::new();
@@ -178,6 +175,12 @@ fn collect_settings_v1_migration_ops(
         &mut ops,
         "density",
         enum_normalizer(&["cozy", "compact"]),
+    )?;
+    migrate_with_normalizer(
+        conn,
+        &mut ops,
+        "themeMode",
+        enum_normalizer(&["system", "light", "dark"]),
     )?;
     migrate_with_normalizer(
         conn,

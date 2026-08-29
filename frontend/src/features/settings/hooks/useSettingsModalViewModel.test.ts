@@ -79,6 +79,7 @@ describe('createSettingsModalViewModel filtering', () => {
       sortField: 'size',
       sortDirection: 'desc',
       density: 'compact',
+      themeMode: 'system',
       archiveName: 'Release',
       archiveLevel: 9,
       openDestAfterExtract: true,

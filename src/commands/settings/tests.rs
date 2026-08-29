@@ -4,13 +4,13 @@ use super::{
     load_folders_first, load_hardware_acceleration, load_hidden_files_last, load_high_contrast,
     load_log_level, load_mounts_poll_ms, load_open_dest_after_extract, load_rclone_path,
     load_scrollbar_width, load_show_hidden, load_sort_direction, load_sort_field, load_start_dir,
-    load_thumb_cache_mb, load_video_thumbs, store_archive_level, store_archive_name,
-    store_cloud_enabled, store_cloud_thumbs, store_confirm_delete, store_default_view,
-    store_density, store_double_click_ms, store_ffmpeg_path, store_folders_first,
-    store_hardware_acceleration, store_hidden_files_last, store_high_contrast, store_log_level,
-    store_mounts_poll_ms, store_open_dest_after_extract, store_rclone_path, store_scrollbar_width,
-    store_show_hidden, store_sort_direction, store_sort_field, store_start_dir,
-    store_thumb_cache_mb, store_video_thumbs,
+    load_theme_mode, load_thumb_cache_mb, load_video_thumbs, store_archive_level,
+    store_archive_name, store_cloud_enabled, store_cloud_thumbs, store_confirm_delete,
+    store_default_view, store_density, store_double_click_ms, store_ffmpeg_path,
+    store_folders_first, store_hardware_acceleration, store_hidden_files_last, store_high_contrast,
+    store_log_level, store_mounts_poll_ms, store_open_dest_after_extract, store_rclone_path,
+    store_scrollbar_width, store_show_hidden, store_sort_direction, store_sort_field,
+    store_start_dir, store_theme_mode, store_thumb_cache_mb, store_video_thumbs,
 };
 use crate::commands::cloud::{
     cloud_dir_listing_cache_contains_for_tests,
@@ -345,6 +345,7 @@ fn enum_settings_ignore_legacy_invalid_values() {
     crate::db::set_setting_string(&conn, "sortField", "ctime").expect("seed invalid sortField");
     crate::db::set_setting_string(&conn, "sortDirection", "up")
         .expect("seed invalid sortDirection");
+    crate::db::set_setting_string(&conn, "themeMode", "automatic").expect("seed invalid themeMode");
 
     assert_eq!(load_default_view().expect("load invalid defaultView"), None);
     assert_eq!(load_density().expect("load invalid density"), None);
@@ -353,6 +354,7 @@ fn enum_settings_ignore_legacy_invalid_values() {
         load_sort_direction().expect("load invalid sortDirection"),
         None
     );
+    assert_eq!(load_theme_mode().expect("load invalid themeMode"), None);
 }
 
 #[test]
@@ -390,6 +392,7 @@ fn linux_settings_surface_roundtrips_through_backend_commands() {
     store_sort_direction("desc".to_string()).expect("store sortDirection");
     store_archive_name("Release.zip".to_string()).expect("store archiveName");
     store_density("compact".to_string()).expect("store density");
+    store_theme_mode("system".to_string()).expect("store themeMode");
     store_archive_level(9).expect("store archiveLevel");
     store_open_dest_after_extract(true).expect("store openDestAfterExtract");
     store_video_thumbs(false).expect("store videoThumbs");
@@ -440,6 +443,10 @@ fn linux_settings_surface_roundtrips_through_backend_commands() {
     assert_eq!(
         load_density().expect("load density"),
         Some("compact".to_string())
+    );
+    assert_eq!(
+        load_theme_mode().expect("load themeMode"),
+        Some("system".to_string())
     );
     assert_eq!(load_archive_level().expect("load archiveLevel"), Some(9));
     assert_eq!(
@@ -492,6 +499,7 @@ fn settings_migration_normalizes_and_prunes_legacy_values() {
         .expect("seed rclonePath");
     crate::db::set_setting_string(&conn, "logLevel", " INFO ").expect("seed logLevel");
     crate::db::set_setting_string(&conn, "density", "roomy").expect("seed invalid density");
+    crate::db::set_setting_string(&conn, "themeMode", " system ").expect("seed legacy themeMode");
     crate::db::set_setting_string(&conn, "showHidden", "yes").expect("seed invalid bool");
     crate::db::set_setting_string(&conn, "thumbCacheMb", " 512 ").expect("seed thumbCacheMb");
     crate::db::set_setting_string(&conn, "mountsPollMs", "12000")
@@ -502,7 +510,7 @@ fn settings_migration_normalizes_and_prunes_legacy_values() {
     assert_eq!(
         crate::db::get_setting_string(&migrated, "settingsSchemaVersion")
             .expect("load schema version"),
-        Some("1".to_string())
+        Some("2".to_string())
     );
     assert_eq!(
         crate::db::get_setting_string(&migrated, "archiveName").expect("load archiveName"),
@@ -511,6 +519,10 @@ fn settings_migration_normalizes_and_prunes_legacy_values() {
     assert_eq!(
         crate::db::get_setting_string(&migrated, "ffmpegPath").expect("load ffmpegPath"),
         Some("/usr/bin/ffmpeg".to_string())
+    );
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "themeMode").expect("load themeMode"),
+        Some("system".to_string())
     );
     assert_eq!(
         crate::db::get_setting_string(&migrated, "rclonePath").expect("load rclonePath"),

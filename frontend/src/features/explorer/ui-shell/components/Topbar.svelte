@@ -33,7 +33,6 @@
   export let onToggleViewMode: (mode: 'list' | 'grid') => void = () => {}
 
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import ThemeToggle from '../../components/ThemeToggle.svelte'
 import TopbarActionMenu from './TopbarActionMenu.svelte'
 import PulseTravelIndicator from '@/shared/ui/PulseTravelIndicator.svelte'
 
@@ -144,7 +143,6 @@ import PulseTravelIndicator from '@/shared/ui/PulseTravelIndicator.svelte'
 
 <div class="drag-spacer" data-tauri-drag-region>
   <div class="window-controls" aria-label="Window controls">
-    <ThemeToggle />
     <button
       bind:this={menuButtonEl}
       class="win-btn menu-btn"

@@ -276,6 +276,32 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return 'asc' as T
     case 'load_density':
       return 'cozy' as T
+    case 'load_theme_mode':
+      return 'dark' as T
+    case 'load_system_theme':
+      return {
+        name: 'Nord',
+        mode: 'dark',
+        accent: '#81a1c1',
+        selection: '#434c5e',
+        muted: '#4c566a',
+        background: '#2e3440',
+        darkBackground: '#222730',
+        darkerBackground: '#191c23',
+        lighterBackground: '#3b4252',
+        foreground: '#d8dee9',
+        darkForeground: '#667080',
+        lightForeground: '#adb5c4',
+        brightForeground: '#d8dee9',
+        red: '#bf616a',
+        yellow: '#ebcb8b',
+        orange: '#d5967a',
+        green: '#a3be8c',
+        cyan: '#88c0d0',
+        blue: '#81a1c1',
+        magenta: '#b48ead',
+      } as T
+    case 'store_theme_mode':
     case 'load_archive_name':
       return 'Archive' as T
     case 'load_archive_level':
