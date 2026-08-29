@@ -400,6 +400,17 @@ fn format_removable_partition_impl(path: &str) -> NetworkResult<()> {
             format!("Could not format the USB volume: {}", error.message),
         )
     })?;
+    // Formatting necessarily unmounts the old filesystem. Re-mount the newly created
+    // filesystem so it is immediately visible again in the Partitions section.
+    command_output("udisksctl", &["mount", "-b", &device]).map_err(|error| {
+        NetworkError::new(
+            NetworkErrorCode::FormatFailed,
+            format!(
+                "The USB volume was formatted, but could not be mounted again: {}",
+                error.message
+            ),
+        )
+    })?;
     invalidate_network_discovery_cache();
     Ok(())
 }
