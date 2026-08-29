@@ -15,7 +15,6 @@ use std::{
 
 use bzip2::read::BzDecoder;
 use flate2::read::{GzDecoder, MultiGzDecoder};
-use rar_stream::InnerFile as RarInnerFile;
 use serde::Serialize;
 use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder as ZstdDecoder;
@@ -337,7 +336,6 @@ fn do_extract_impl(
     })?;
 
     let kind = detect_archive(&archive_path)?;
-    let mut rar_entries: Option<Vec<RarInnerFile>> = None;
     let total_hint = match kind {
         ArchiveKind::Zip => zip_uncompressed_total(&archive_path).unwrap_or(meta.len()),
         ArchiveKind::Tar => tar_uncompressed_total(&archive_path).unwrap_or(meta.len()),
@@ -345,9 +343,7 @@ fn do_extract_impl(
         ArchiveKind::SevenZ => sevenz_uncompressed_total(&archive_path).unwrap_or(meta.len()),
         ArchiveKind::Rar => {
             let entries = parse_rar_entries(&archive_path)?;
-            let total = rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len());
-            rar_entries = Some(entries);
-            total
+            rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len())
         }
         ArchiveKind::Gz => gzip_uncompressed_size(&archive_path).unwrap_or(meta.len()),
         _ => meta.len(),
@@ -532,14 +528,10 @@ fn do_extract_impl(
             dest_dir
         }
         ArchiveKind::Rar => {
-            let entries = match rar_entries {
-                Some(v) => v,
-                None => parse_rar_entries(&archive_path)?,
-            };
             let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
             created.record_dir(dest_dir.clone());
             extract_rar(
-                entries,
+                &archive_path,
                 &dest_dir,
                 strip.as_deref(),
                 &stats,
@@ -866,7 +858,6 @@ fn estimate_total_hint(path: &Path) -> DecompressResult<u64> {
         DecompressError::from_external_message(format!("Failed to read archive metadata: {e}"))
     })?;
     let kind = detect_archive(path)?;
-    let mut rar_entries: Option<Vec<RarInnerFile>> = None;
     let total = match kind {
         ArchiveKind::Zip => zip_uncompressed_total(path).unwrap_or(meta.len()),
         ArchiveKind::Tar => tar_uncompressed_total(path).unwrap_or(meta.len()),
@@ -874,15 +865,12 @@ fn estimate_total_hint(path: &Path) -> DecompressResult<u64> {
         ArchiveKind::SevenZ => sevenz_uncompressed_total(path).unwrap_or(meta.len()),
         ArchiveKind::Rar => {
             let entries = parse_rar_entries(path)?;
-            let total = rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len());
-            rar_entries = Some(entries);
-            total
+            rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len())
         }
         ArchiveKind::Gz => gzip_uncompressed_size(path).unwrap_or(meta.len()),
         _ => meta.len(),
     }
     .max(1);
-    let _ = rar_entries; // parsed only for size
     Ok(total)
 }
 
