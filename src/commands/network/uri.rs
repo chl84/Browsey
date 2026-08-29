@@ -275,14 +275,13 @@ fn normalize_authority_for_compare(authority: &str) -> Option<String> {
         let host_lc = host.to_ascii_lowercase();
         if rest.is_empty() {
             format!("[{host_lc}]")
-        } else if let Some(port) = rest.strip_prefix(':') {
+        } else {
+            let port = rest.strip_prefix(':')?;
             let port = port.trim();
             if port.is_empty() {
                 return None;
             }
             format!("[{host_lc}]:{port}")
-        } else {
-            return None;
         }
     } else if host_port.matches(':').count() > 1 {
         let host = host_port.trim();

@@ -23,8 +23,8 @@ pub(super) fn list_linux_apps(target: &Path) -> Vec<OpenWithApp> {
             fallback.push(open_app);
         }
     }
-    matches_list.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    fallback.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    matches_list.sort_by_key(|app| app.name.to_lowercase());
+    fallback.sort_by_key(|app| app.name.to_lowercase());
     matches_list.extend(fallback);
     matches_list
 }
@@ -274,11 +274,7 @@ fn parse_desktop_entry(path: &Path) -> Option<DesktopEntry> {
                 "Terminal" => terminal = val.eq_ignore_ascii_case("true"),
                 "Hidden" => hidden = val.eq_ignore_ascii_case("true"),
                 "NoDisplay" => no_display = val.eq_ignore_ascii_case("true"),
-                "TryExec" => {
-                    if !val.is_empty() {
-                        try_exec = Some(val.to_string());
-                    }
-                }
+                "TryExec" if !val.is_empty() => try_exec = Some(val.to_string()),
                 _ => {}
             }
         }
