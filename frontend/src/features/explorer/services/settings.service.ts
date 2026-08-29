@@ -1,5 +1,6 @@
 import { invoke } from '@/shared/lib/tauri'
 import type { DefaultSortField, Density } from '../model/types'
+import type { SystemTheme, ThemeMode } from '../theme/types'
 
 export const loadShowHidden = () => invoke<boolean | null>('load_show_hidden')
 
@@ -49,6 +50,12 @@ export const storeSortDirection = (value: 'asc' | 'desc') =>
 export const loadDensity = () => invoke<Density | null>('load_density')
 
 export const storeDensity = (value: Density) => invoke<void>('store_density', { value })
+
+export const loadThemeMode = () => invoke<ThemeMode | null>('load_theme_mode')
+
+export const storeThemeMode = (value: ThemeMode) => invoke<void>('store_theme_mode', { value })
+
+export const loadSystemTheme = () => invoke<SystemTheme | null>('load_system_theme')
 
 export const loadArchiveName = () => invoke<string | null>('load_archive_name')
 

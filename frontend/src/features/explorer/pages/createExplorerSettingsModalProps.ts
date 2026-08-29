@@ -11,6 +11,8 @@ type Params = {
   foldersFirst: SettingsModalProps['foldersFirstValue']
   confirmDelete: SettingsModalProps['confirmDeleteValue']
   density: SettingsModalProps['densityValue']
+  themeMode: SettingsModalProps['themeModeValue']
+  systemThemeName: SettingsModalProps['systemThemeNameValue']
   highContrast: SettingsModalProps['highContrastValue']
   archiveName: SettingsModalProps['archiveNameValue']
   archiveLevel: SettingsModalProps['archiveLevelValue']
@@ -40,6 +42,7 @@ type Params = {
   onToggleConfirmDelete: SettingsModalProps['onToggleConfirmDelete']
   onChangeStartDir: SettingsModalProps['onChangeStartDir']
   onChangeDensity: SettingsModalProps['onChangeDensity']
+  onChangeThemeMode: SettingsModalProps['onChangeThemeMode']
   onChangeArchiveName: SettingsModalProps['onChangeArchiveName']
   onChangeArchiveLevel: SettingsModalProps['onChangeArchiveLevel']
   onToggleOpenDestAfterExtract: SettingsModalProps['onToggleOpenDestAfterExtract']
@@ -75,6 +78,8 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   foldersFirstValue: p.foldersFirst,
   confirmDeleteValue: p.confirmDelete,
   densityValue: p.density,
+  themeModeValue: p.themeMode,
+  systemThemeNameValue: p.systemThemeName,
   highContrastValue: p.highContrast,
   archiveNameValue: p.archiveName,
   archiveLevelValue: p.archiveLevel,
@@ -103,6 +108,7 @@ export const createExplorerSettingsModalProps = (p: Params): SettingsModalProps 
   onToggleConfirmDelete: p.onToggleConfirmDelete,
   onChangeStartDir: p.onChangeStartDir,
   onChangeDensity: p.onChangeDensity,
+  onChangeThemeMode: p.onChangeThemeMode,
   onChangeArchiveName: p.onChangeArchiveName,
   onChangeArchiveLevel: p.onChangeArchiveLevel,
   onToggleOpenDestAfterExtract: p.onToggleOpenDestAfterExtract,

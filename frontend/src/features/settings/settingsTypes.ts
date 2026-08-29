@@ -1,4 +1,5 @@
 import type { DefaultSortField, Density } from '@/features/explorer'
+import type { ThemeMode } from '@/features/explorer/theme/types'
 
 export type SortField = DefaultSortField
 export type SortDirection = 'asc' | 'desc'
@@ -15,6 +16,7 @@ export type Settings = {
   sortField: SortField
   sortDirection: SortDirection
   density: Density
+  themeMode: ThemeMode
   archiveName: string
   archiveLevel: number
   openDestAfterExtract: boolean
@@ -42,6 +44,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sortField: 'name',
   sortDirection: 'asc',
   density: 'cozy',
+  themeMode: 'dark',
   archiveName: 'Archive',
   archiveLevel: 6,
   openDestAfterExtract: false,

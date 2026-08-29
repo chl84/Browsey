@@ -249,6 +249,31 @@ pub fn load_density() -> ApiResult<Option<String>> {
 }
 
 #[tauri::command]
+pub fn store_theme_mode(value: String) -> ApiResult<()> {
+    map_api_result((|| -> SettingsResult<()> {
+        match value.as_str() {
+            "system" | "light" | "dark" => {
+                let conn = open_connection()?;
+                map_settings_result(crate::db::set_setting_string(&conn, "themeMode", &value))
+            }
+            _ => invalid_input("invalid theme mode"),
+        }
+    })())
+}
+
+#[tauri::command]
+pub fn load_theme_mode() -> ApiResult<Option<String>> {
+    map_api_result((|| -> SettingsResult<Option<String>> {
+        let conn = open_connection()?;
+        let value = map_settings_result(crate::db::get_setting_string(&conn, "themeMode"))?;
+        Ok(match value.as_deref() {
+            Some("system") | Some("light") | Some("dark") => value,
+            _ => None,
+        })
+    })())
+}
+
+#[tauri::command]
 pub fn store_archive_level(value: i64) -> ApiResult<()> {
     map_api_result((|| -> SettingsResult<()> {
         if !(0..=9).contains(&value) {

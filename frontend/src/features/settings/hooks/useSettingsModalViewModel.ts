@@ -44,6 +44,7 @@ type FilterModel = {
   showSortFieldRow: boolean
   showSortDirectionRow: boolean
   showDensityRow: boolean
+  showThemeModeRow: boolean
   showArchiveNameRow: boolean
   showArchiveLevelRow: boolean
   showAfterExtractRow: boolean
@@ -303,6 +304,15 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     )
     const sortDirectionTexts = rowTexts('sort direction', 'ascending', 'descending', settings.sortDirection)
     const densityTexts = rowTexts('density', 'cozy', 'compact', settings.density)
+    const themeModeTexts = rowTexts(
+      'style',
+      'theme',
+      'use system style',
+      'omarchy',
+      'light',
+      'dark',
+      settings.themeMode,
+    )
     const archiveNameTexts = rowTexts('default archive name', `${settings.archiveName}.zip`)
     const archiveLevelTexts = rowTexts('zip level', `level ${settings.archiveLevel}`, settings.archiveLevel)
     const afterExtractTexts = rowTexts(
@@ -385,6 +395,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     const showSortFieldRow = rowMatches(n, sortFieldTexts)
     const showSortDirectionRow = rowMatches(n, sortDirectionTexts)
     const showDensityRow = rowMatches(n, densityTexts)
+    const showThemeModeRow = rowMatches(n, themeModeTexts)
     const showArchiveNameRow = rowMatches(n, archiveNameTexts)
     const showArchiveLevelRow = rowMatches(n, archiveLevelTexts)
     const showAfterExtractRow = rowMatches(n, afterExtractTexts)
@@ -412,7 +423,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
         ...confirmDeleteTexts,
       ]),
       showSorting: rowMatches(n, [...sortFieldTexts, ...sortDirectionTexts]),
-      showAppearance: rowMatches(n, [...densityTexts]),
+      showAppearance: rowMatches(n, [...themeModeTexts, ...densityTexts]),
       showArchives: rowMatches(n, [...archiveNameTexts, ...archiveLevelTexts, ...afterExtractTexts, ...rarNoteTexts]),
       showThumbnails: rowMatches(
         n,
@@ -441,6 +452,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       showSortFieldRow,
       showSortDirectionRow,
       showDensityRow,
+      showThemeModeRow,
       showArchiveNameRow,
       showArchiveLevelRow,
       showAfterExtractRow,
