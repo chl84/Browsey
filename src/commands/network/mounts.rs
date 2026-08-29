@@ -9,6 +9,9 @@ use serde_json::json;
 use std::time::Instant;
 
 #[cfg(not(target_os = "windows"))]
+use std::fmt;
+
+#[cfg(not(target_os = "windows"))]
 use {
     super::{discovery, gio_mounts},
     dirs_next,
@@ -29,6 +32,11 @@ struct CmdError {
 
 #[cfg(not(target_os = "windows"))]
 fn command_output(cmd: &str, args: &[&str]) -> Result<(), CmdError> {
+    command_output_text(cmd, args).map(|_| ())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn command_output_text(cmd: &str, args: &[&str]) -> Result<String, CmdError> {
     let output = Command::new(cmd)
         .args(args)
         .output()
@@ -37,7 +45,7 @@ fn command_output(cmd: &str, args: &[&str]) -> Result<(), CmdError> {
             busy: false,
         })?;
     if output.status.success() {
-        return Ok(());
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
     }
     let mut parts = Vec::new();
     if !output.stdout.is_empty() {
@@ -88,12 +96,65 @@ struct LsblkDevice {
     rm: bool,
     tran: Option<String>,
     pkname: Option<String>,
+    #[serde(default)]
+    mountpoints: Vec<Option<String>>,
 }
 
 #[cfg(not(target_os = "windows"))]
-fn is_removable_partition(device: &str) -> NetworkResult<bool> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UsbFilesystem {
+    Exfat,
+    Fat32,
+    Ext4,
+    Btrfs,
+}
+
+#[cfg(not(target_os = "windows"))]
+impl UsbFilesystem {
+    fn parse(value: &str) -> NetworkResult<Self> {
+        match value {
+            "exfat" => Ok(Self::Exfat),
+            "fat32" => Ok(Self::Fat32),
+            "ext4" => Ok(Self::Ext4),
+            "btrfs" => Ok(Self::Btrfs),
+            _ => Err(NetworkError::new(
+                NetworkErrorCode::FormatNotAllowed,
+                "Unsupported USB filesystem.",
+            )),
+        }
+    }
+
+    fn udisks_type(self) -> &'static str {
+        match self {
+            Self::Exfat => "exfat",
+            Self::Fat32 => "vfat",
+            Self::Ext4 => "ext4",
+            Self::Btrfs => "btrfs",
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+impl fmt::Display for UsbFilesystem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Exfat => "exFAT",
+            Self::Fat32 => "FAT32",
+            Self::Ext4 => "ext4",
+            Self::Btrfs => "Btrfs",
+        })
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn lsblk_listing() -> NetworkResult<LsblkOutput> {
     let output = Command::new("lsblk")
-        .args(["--json", "--paths", "--output", "PATH,TYPE,RM,TRAN,PKNAME"])
+        .args([
+            "--json",
+            "--paths",
+            "--output",
+            "PATH,TYPE,RM,TRAN,PKNAME,MOUNTPOINTS",
+        ])
         .output()
         .map_err(|error| NetworkError::new(NetworkErrorCode::FormatFailed, error.to_string()))?;
     if !output.status.success() {
@@ -102,31 +163,178 @@ fn is_removable_partition(device: &str) -> NetworkResult<bool> {
             "Could not inspect the selected device.",
         ));
     }
-    let listing: LsblkOutput = serde_json::from_slice(&output.stdout).map_err(|error| {
+    serde_json::from_slice(&output.stdout).map_err(|error| {
         NetworkError::new(
             NetworkErrorCode::FormatFailed,
             format!("Could not read device information: {error}"),
         )
-    })?;
-    let Some(target) = listing
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn removable_usb_disk_for_partition(listing: &LsblkOutput, device: &str) -> Option<String> {
+    let target = listing
         .blockdevices
         .iter()
-        .find(|entry| entry.path == device)
-    else {
-        return Ok(false);
-    };
+        .find(|entry| entry.path == device)?;
     if target.kind != "part" {
-        return Ok(false);
+        return None;
     }
-    let parent = target.pkname.as_deref().and_then(|parent| {
-        listing
-            .blockdevices
-            .iter()
-            .find(|entry| entry.path == parent)
-    });
-    Ok(target.rm
-        || target.tran.as_deref() == Some("usb")
-        || parent.is_some_and(|entry| entry.rm || entry.tran.as_deref() == Some("usb")))
+    let parent_path = target.pkname.as_deref()?;
+    let parent = listing
+        .blockdevices
+        .iter()
+        .find(|entry| entry.path == parent_path)?;
+    if parent.kind != "disk" || !parent.path.starts_with("/dev/") {
+        return None;
+    }
+    let is_usb = |entry: &LsblkDevice| {
+        entry.rm
+            || entry
+                .tran
+                .as_deref()
+                .is_some_and(|transport| transport == "usb")
+    };
+    if !is_usb(target) && !is_usb(parent) {
+        return None;
+    }
+    Some(parent.path.clone())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn unmount_mounted_partitions(listing: &LsblkOutput, disk: &str) -> NetworkResult<()> {
+    for partition in listing.blockdevices.iter().filter(|entry| {
+        entry.kind == "part"
+            && entry.pkname.as_deref() == Some(disk)
+            && entry
+                .mountpoints
+                .iter()
+                .flatten()
+                .any(|mountpoint| !mountpoint.is_empty())
+    }) {
+        command_output("udisksctl", &["unmount", "-b", &partition.path]).map_err(|error| {
+            NetworkError::new(
+                NetworkErrorCode::FormatFailed,
+                format!("Could not unmount the USB volume: {}", error.message),
+            )
+        })?;
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn device_from_udisks_object_path(object_path: &str) -> NetworkResult<String> {
+    let name = object_path
+        .rsplit('/')
+        .next()
+        .filter(|name| {
+            !name.is_empty()
+                && name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        })
+        .ok_or_else(|| {
+            NetworkError::new(
+                NetworkErrorCode::FormatFailed,
+                "Could not identify the newly created USB partition.",
+            )
+        })?;
+    Ok(format!("/dev/{name}"))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn create_partition_and_format(
+    disk_object_path: &str,
+    filesystem: UsbFilesystem,
+) -> NetworkResult<String> {
+    let output = command_output_text(
+        "gdbus",
+        &[
+            "call",
+            "--system",
+            "--dest",
+            "org.freedesktop.UDisks2",
+            "--object-path",
+            disk_object_path,
+            "--method",
+            "org.freedesktop.UDisks2.PartitionTable.CreatePartitionAndFormat",
+            "0",
+            "0",
+            "",
+            "",
+            "{}",
+            filesystem.udisks_type(),
+            "{}",
+        ],
+    )
+    .map_err(|error| {
+        NetworkError::new(
+            NetworkErrorCode::FormatFailed,
+            format!("Could not create the USB partition: {}", error.message),
+        )
+    })?;
+    let object_path = output
+        .split('\'')
+        .find(|value| value.starts_with("/org/freedesktop/UDisks2/block_devices/"))
+        .ok_or_else(|| {
+            NetworkError::new(
+                NetworkErrorCode::FormatFailed,
+                "UDisks did not return the new USB partition.",
+            )
+        })?;
+    device_from_udisks_object_path(object_path)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn format_removable_usb_disk(disk: &str, filesystem: UsbFilesystem) -> NetworkResult<String> {
+    let disk_object_path = udisks_object_path(disk)?;
+    command_output(
+        "gdbus",
+        &[
+            "call",
+            "--system",
+            "--dest",
+            "org.freedesktop.UDisks2",
+            "--object-path",
+            &disk_object_path,
+            "--method",
+            "org.freedesktop.UDisks2.Block.Format",
+            "gpt",
+            "{}",
+        ],
+    )
+    .map_err(|error| {
+        NetworkError::new(
+            NetworkErrorCode::FormatFailed,
+            format!(
+                "Could not create a new USB partition table: {}",
+                error.message
+            ),
+        )
+    })?;
+    create_partition_and_format(&disk_object_path, filesystem)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn mount_new_partition(device: &str, filesystem: UsbFilesystem) -> NetworkResult<()> {
+    match command_output("udisksctl", &["mount", "-b", device]) {
+        Ok(()) => Ok(()),
+        Err(error)
+            if error
+                .message
+                .to_ascii_lowercase()
+                .contains("already mounted") =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(NetworkError::new(
+            NetworkErrorCode::FormatFailed,
+            format!(
+                "The USB volume was formatted as {filesystem}, but could not be mounted again: {}",
+                error.message
+            ),
+        )),
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -336,81 +544,56 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> ApiResult
 #[tauri::command]
 pub async fn format_removable_partition(
     path: String,
+    filesystem: String,
     watcher: tauri::State<'_, WatchState>,
 ) -> ApiResult<()> {
     if let Err(error) = watcher.replace(None) {
         return map_api_result(Err(NetworkError::from(error)));
     }
-    let result =
-        tauri::async_runtime::spawn_blocking(move || format_removable_partition_impl(&path))
-            .await
-            .map_err(|error| {
-                NetworkError::new(
-                    NetworkErrorCode::TaskFailed,
-                    format!("format task failed: {error}"),
-                )
-            })
-            .and_then(|result| result);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        format_removable_partition_impl(&path, &filesystem)
+    })
+    .await
+    .map_err(|error| {
+        NetworkError::new(
+            NetworkErrorCode::TaskFailed,
+            format!("format task failed: {error}"),
+        )
+    })
+    .and_then(|result| result);
     map_api_result(result)
 }
 
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub async fn format_removable_partition(_path: String, _filesystem: String) -> ApiResult<()> {
+    map_api_result(Err(NetworkError::new(
+        NetworkErrorCode::FormatNotAllowed,
+        "Formatting removable volumes is not available on Windows yet.",
+    )))
+}
+
 #[cfg(not(target_os = "windows"))]
-fn format_removable_partition_impl(path: &str) -> NetworkResult<()> {
-    let device = block_device_for_mount(path).ok_or_else(|| {
+fn format_removable_partition_impl(path: &str, filesystem: &str) -> NetworkResult<()> {
+    let partition = block_device_for_mount(path).ok_or_else(|| {
         NetworkError::new(
             NetworkErrorCode::FormatNotAllowed,
             "Selected volume is no longer mounted.",
         )
     })?;
-    if !device.starts_with("/dev/") || !is_removable_partition(&device)? {
-        return Err(NetworkError::new(
+    let filesystem = UsbFilesystem::parse(filesystem)?;
+    let listing = lsblk_listing()?;
+    let disk = removable_usb_disk_for_partition(&listing, &partition).ok_or_else(|| {
+        NetworkError::new(
             NetworkErrorCode::FormatNotAllowed,
             "Only removable USB partitions can be formatted.",
-        ));
-    }
-    let object_path = udisks_object_path(&device)?;
-    match command_output("udisksctl", &["unmount", "-b", &device]) {
-        Ok(()) => {}
-        Err(error) if error.message.to_ascii_lowercase().contains("not mounted") => {}
-        Err(error) => {
-            return Err(NetworkError::new(
-                NetworkErrorCode::FormatFailed,
-                format!("Could not unmount the USB volume: {}", error.message),
-            ));
-        }
-    }
-    command_output(
-        "gdbus",
-        &[
-            "call",
-            "--system",
-            "--dest",
-            "org.freedesktop.UDisks2",
-            "--object-path",
-            &object_path,
-            "--method",
-            "org.freedesktop.UDisks2.Block.Format",
-            "exfat",
-            "{}",
-        ],
-    )
-    .map_err(|error| {
-        NetworkError::new(
-            NetworkErrorCode::FormatFailed,
-            format!("Could not format the USB volume: {}", error.message),
         )
     })?;
-    // Formatting necessarily unmounts the old filesystem. Re-mount the newly created
-    // filesystem so it is immediately visible again in the Partitions section.
-    command_output("udisksctl", &["mount", "-b", &device]).map_err(|error| {
-        NetworkError::new(
-            NetworkErrorCode::FormatFailed,
-            format!(
-                "The USB volume was formatted, but could not be mounted again: {}",
-                error.message
-            ),
-        )
-    })?;
+    unmount_mounted_partitions(&listing, &disk)?;
+    let new_partition = format_removable_usb_disk(&disk, filesystem)?;
+    // Formatting replaces the partition table and necessarily unmounts the old filesystem.
+    // Mount the newly created filesystem so it is immediately visible in Partitions.
+    mount_new_partition(&new_partition, filesystem)?;
     invalidate_network_discovery_cache();
     Ok(())
 }
@@ -613,6 +796,54 @@ pub async fn mount_partition(_path: String) -> ApiResult<()> {
 #[cfg(all(test, not(target_os = "windows")))]
 mod tests {
     use super::*;
+
+    fn lsblk_device(
+        path: &str,
+        kind: &str,
+        removable: bool,
+        transport: Option<&str>,
+        parent: Option<&str>,
+    ) -> LsblkDevice {
+        LsblkDevice {
+            path: path.into(),
+            kind: kind.into(),
+            rm: removable,
+            tran: transport.map(str::to_owned),
+            pkname: parent.map(str::to_owned),
+            mountpoints: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn accepts_only_supported_usb_filesystems() {
+        assert_eq!(UsbFilesystem::parse("exfat").unwrap(), UsbFilesystem::Exfat);
+        assert_eq!(UsbFilesystem::parse("fat32").unwrap(), UsbFilesystem::Fat32);
+        assert_eq!(UsbFilesystem::parse("ext4").unwrap(), UsbFilesystem::Ext4);
+        assert_eq!(UsbFilesystem::parse("btrfs").unwrap(), UsbFilesystem::Btrfs);
+        assert!(UsbFilesystem::parse("ntfs").is_err());
+    }
+
+    #[test]
+    fn identifies_only_removable_usb_parent_disks() {
+        let listing = LsblkOutput {
+            blockdevices: vec![
+                lsblk_device("/dev/sda", "disk", true, Some("usb"), None),
+                lsblk_device("/dev/sda1", "part", true, None, Some("/dev/sda")),
+                lsblk_device("/dev/nvme0n1", "disk", false, Some("nvme"), None),
+                lsblk_device("/dev/nvme0n1p1", "part", false, None, Some("/dev/nvme0n1")),
+            ],
+        };
+
+        assert_eq!(
+            removable_usb_disk_for_partition(&listing, "/dev/sda1"),
+            Some("/dev/sda".into())
+        );
+        assert_eq!(
+            removable_usb_disk_for_partition(&listing, "/dev/nvme0n1p1"),
+            None
+        );
+        assert_eq!(removable_usb_disk_for_partition(&listing, "/dev/sda"), None);
+    }
 
     #[test]
     fn parse_linux_mounts_filters_pseudo_mounts_and_generic_gvfs_root() {
