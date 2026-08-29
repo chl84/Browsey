@@ -13,6 +13,8 @@ pub(super) enum NetworkErrorCode {
     DiscoveryFailed,
     MountFailed,
     EjectFailed,
+    FormatNotAllowed,
+    FormatFailed,
     TaskFailed,
 }
 
@@ -26,6 +28,8 @@ impl ErrorCode for NetworkErrorCode {
             Self::DiscoveryFailed => "discovery_failed",
             Self::MountFailed => "mount_failed",
             Self::EjectFailed => "eject_failed",
+            Self::FormatNotAllowed => "format_not_allowed",
+            Self::FormatFailed => "format_failed",
             Self::TaskFailed => "task_failed",
         }
     }

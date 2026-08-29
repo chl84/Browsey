@@ -3,20 +3,27 @@
   import { partitionIcon } from '../utils'
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import type { Partition } from '../model/types'
+  import ContextMenu from './ContextMenu.svelte'
 
-  const dispatch = createEventDispatcher<{ eject: { path: string } }>()
+  const dispatch = createEventDispatcher<{ eject: { path: string }; format: { part: Partition } }>()
 
   export let partitions: Partition[] = []
   export let onSelect: (path: string) => void = () => {}
 
   const eject = (path: string) => dispatch('eject', { path })
+  let menu = { open: false, x: 0, y: 0, part: null as Partition | null }
+  const openMenu = (event: MouseEvent, part: Partition) => {
+    if (!part.removable) return
+    event.preventDefault()
+    menu = { open: true, x: event.clientX, y: event.clientY, part }
+  }
 </script>
 
 <div class="section">
   <div class="section-title">Partitions</div>
   {#each partitions as part}
     <div class="row">
-      <button class="nav" type="button" on:click={() => onSelect(part.path)}>
+      <button class="nav" type="button" on:click={() => onSelect(part.path)} on:contextmenu={(e) => openMenu(e, part)}>
         <img class="nav-icon" src={partitionIcon(part)} alt="" />
         <span class="nav-label">{part.label}</span>
       </button>
@@ -40,6 +47,18 @@
     </div>
   {/each}
 </div>
+
+<ContextMenu
+  open={menu.open}
+  x={menu.x}
+  y={menu.y}
+  actions={[{ id: 'format', label: 'Format…', dangerous: true }]}
+  onClose={() => (menu = { ...menu, open: false })}
+  onSelect={(id) => {
+    if (id === 'format' && menu.part) dispatch('format', { part: menu.part })
+    menu = { ...menu, open: false }
+  }}
+/>
 
 <style>
   .section {
