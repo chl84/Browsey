@@ -56,7 +56,7 @@ pub use listing::{list_dir, list_facets, watch_dir};
 pub use network::connect::connect_network_uri;
 pub use network::discovery::{list_network_devices, open_network_uri};
 pub use network::entries::list_network_entries;
-pub use network::mounts::{eject_drive, list_mounts, mount_partition};
+pub use network::mounts::{eject_drive, format_removable_partition, list_mounts, mount_partition};
 pub use network::uri::{classify_network_uri, resolve_mounted_path_for_uri};
 pub use open_with::{list_open_with_apps, open_with};
 pub use permissions::{

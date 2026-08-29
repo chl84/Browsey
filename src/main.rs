@@ -359,6 +359,7 @@ fn main() {
             reset_all_shortcuts,
             dir_sizes,
             eject_drive,
+            format_removable_partition,
             mount_partition,
             open_network_uri,
             classify_network_uri,

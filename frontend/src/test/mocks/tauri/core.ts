@@ -343,6 +343,8 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return undefined as T
     case 'can_extract_paths':
       return false as T
+    case 'format_removable_partition':
+      return undefined as T
     case 'open_entry':
     case 'open_cloud_entry':
       return undefined as T

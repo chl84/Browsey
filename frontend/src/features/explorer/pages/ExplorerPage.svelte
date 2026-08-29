@@ -15,7 +15,8 @@
   import { useExplorerInputHandlers } from '@/features/explorer/hooks/useExplorerInputHandlers'
   import { useModalsController } from '@/features/explorer/hooks/useModalsController'
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
-  import { ejectDrive } from '@/features/explorer/services/drives.service'
+  import { ejectDrive, formatRemovablePartition } from '@/features/explorer/services/drives.service'
+  import ConfirmActionModal from '@/shared/ui/ConfirmActionModal.svelte'
   import { openConsole } from '@/features/explorer/services/console.service'
   import { copyPathsToSystemClipboard } from '@/features/explorer/services/clipboard.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
@@ -144,6 +145,8 @@
   let settingsInitialFilter = ''
   let thumbnailRefreshToken = 0
   let shortcutBindings: ShortcutBinding[] = DEFAULT_SHORTCUTS
+  let formatTarget: Partition | null = null
+  let formatting = false
 
   // Drag & clipboard
   const { store: bookmarkStore } = bookmarkModal
@@ -1676,6 +1679,25 @@
     }
   }
 
+  const handleSidebarPartitionFormat = (part: Partition) => {
+    if (part.removable) formatTarget = part
+  }
+
+  const confirmFormatPartition = async () => {
+    if (!formatTarget || formatting) return
+    formatting = true
+    try {
+      await formatRemovablePartition(formatTarget.path)
+      showToast(`Formatted ${formatTarget.label} as exFAT`)
+      formatTarget = null
+      await loadPartitions({ forceNetworkRefresh: true })
+    } catch (err) {
+      showToast(`Format failed: ${getErrorMessage(err)}`)
+    } finally {
+      formatting = false
+    }
+  }
+
   const handleSettingsDefaultViewChange = (val: 'list' | 'grid') => {
     viewMode = val
     defaultViewPref = val
@@ -1741,6 +1763,7 @@
     handleBookmarkDrop,
     handleSidebarPartitionSelect,
     handleSidebarPartitionEject,
+    handleSidebarPartitionFormat,
     mode,
     isSearchSessionEnabled,
     loading: $loading,
@@ -2017,3 +2040,15 @@
 {#if settingsOpen}
   <SettingsModal {...settingsModalProps} />
 {/if}
+<ConfirmActionModal
+  open={formatTarget !== null}
+  title="Format USB volume?"
+  message={formatTarget ? `This permanently erases all data on “${formatTarget.label}” and formats it as exFAT.` : ''}
+  confirmLabel="Format and erase"
+  danger={true}
+  busy={formatting}
+  onConfirm={confirmFormatPartition}
+  onCancel={() => {
+    if (!formatting) formatTarget = null
+  }}
+/>

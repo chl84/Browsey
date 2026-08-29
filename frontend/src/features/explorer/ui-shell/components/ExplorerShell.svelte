@@ -33,6 +33,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   let onBookmarkDrop: (path: string, e: DragEvent) => void = () => {}
   let onPartitionSelect: (path: string) => void = () => {}
   let onPartitionEject: (path: string) => void = () => {}
+  let onPartitionFormat: (part: Partition) => void = () => {}
   export let pathInput = ''
   export let pathInputEl: HTMLInputElement | null = null
   let mode: 'address' | 'filter' = 'address'
@@ -287,6 +288,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     onBookmarkDrop: typeof onBookmarkDrop
     onPartitionSelect: typeof onPartitionSelect
     onPartitionEject: typeof onPartitionEject
+    onPartitionFormat: typeof onPartitionFormat
   }
 
   type ExplorerShellTopbarProps = {
@@ -499,6 +501,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     onBookmarkDrop,
     onPartitionSelect,
     onPartitionEject,
+    onPartitionFormat,
   } = sidebarProps)
 
   $: ({
@@ -712,6 +715,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
       onBookmarkDrop={onBookmarkDrop}
       onPartitionSelect={onPartitionSelect}
       onPartitionEject={onPartitionEject}
+      onPartitionFormat={onPartitionFormat}
     />
 
     <section class="content">

@@ -17,6 +17,7 @@ import type { Partition } from '../../model/types'
   export let onBookmarkDrop: (path: string, e: DragEvent) => void = () => {}
   export let onPartitionSelect: (path: string) => void = () => {}
   export let onPartitionEject: (path: string) => void = () => {}
+  export let onPartitionFormat: (part: Partition) => void = () => {}
 
 </script>
 
@@ -44,6 +45,7 @@ import type { Partition } from '../../model/types'
         {partitions}
         onSelect={onPartitionSelect}
         on:eject={(e) => onPartitionEject(e.detail.path)}
+        on:format={(e) => onPartitionFormat(e.detail.part)}
       />
     {/if}
   </div>

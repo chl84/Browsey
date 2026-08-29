@@ -17,6 +17,7 @@ type Params = {
   handleBookmarkDrop: AnyFn
   handleSidebarPartitionSelect: AnyFn
   handleSidebarPartitionEject: AnyFn
+  handleSidebarPartitionFormat: AnyFn
 
   mode: 'address' | 'filter'
   isSearchSessionEnabled: boolean
@@ -152,6 +153,7 @@ export const createExplorerShellProps = (p: Params) => ({
     onBookmarkDrop: p.handleBookmarkDrop,
     onPartitionSelect: p.handleSidebarPartitionSelect,
     onPartitionEject: p.handleSidebarPartitionEject,
+    onPartitionFormat: p.handleSidebarPartitionFormat,
   },
 
   topbarProps: {
