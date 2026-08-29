@@ -4,7 +4,7 @@ use crate::{
     commands::fs::MountInfo, errors::api_error::ApiResult, fs_utils::debug_log, runtime_lifecycle,
     watcher::WatchState,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Instant;
 
@@ -91,6 +91,10 @@ struct LsblkOutput {
 #[derive(Deserialize)]
 struct LsblkDevice {
     path: String,
+    #[serde(default)]
+    size: u64,
+    #[serde(default)]
+    model: Option<String>,
     #[serde(rename = "type")]
     kind: String,
     rm: bool,
@@ -132,6 +136,37 @@ impl UsbFilesystem {
             Self::Btrfs => "btrfs",
         }
     }
+
+    fn id(self) -> &'static str {
+        match self {
+            Self::Exfat => "exfat",
+            Self::Fat32 => "fat32",
+            Self::Ext4 => "ext4",
+            Self::Btrfs => "btrfs",
+        }
+    }
+
+    fn description(self) -> &'static str {
+        match self {
+            Self::Exfat => "Compatible with Linux, macOS, and Windows",
+            Self::Fat32 => "Widest compatibility; files are limited to 4 GB",
+            Self::Ext4 => "Linux filesystem",
+            Self::Btrfs => "Linux filesystem with checksums and snapshots",
+        }
+    }
+
+    fn mkfs_program(self) -> &'static str {
+        match self {
+            Self::Exfat => "mkfs.exfat",
+            Self::Fat32 => "mkfs.fat",
+            Self::Ext4 => "mkfs.ext4",
+            Self::Btrfs => "mkfs.btrfs",
+        }
+    }
+
+    fn is_available(self) -> bool {
+        which::which(self.mkfs_program()).is_ok()
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -146,14 +181,61 @@ impl fmt::Display for UsbFilesystem {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbFilesystemOption {
+    id: String,
+    label: String,
+    description: String,
+    available: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbFormatInfo {
+    device: String,
+    model: String,
+    size_bytes: u64,
+    filesystems: Vec<UsbFilesystemOption>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsbFormatResult {
+    device: String,
+    mount_path: Option<String>,
+    size_bytes: u64,
+    filesystem: String,
+    label: Option<String>,
+}
+
+#[cfg(not(target_os = "windows"))]
+fn supported_usb_filesystems() -> Vec<UsbFilesystemOption> {
+    [
+        UsbFilesystem::Exfat,
+        UsbFilesystem::Fat32,
+        UsbFilesystem::Ext4,
+        UsbFilesystem::Btrfs,
+    ]
+    .into_iter()
+    .map(|filesystem| UsbFilesystemOption {
+        id: filesystem.id().to_string(),
+        label: filesystem.to_string(),
+        description: filesystem.description().to_string(),
+        available: filesystem.is_available(),
+    })
+    .collect()
+}
+
 #[cfg(not(target_os = "windows"))]
 fn lsblk_listing() -> NetworkResult<LsblkOutput> {
     let output = Command::new("lsblk")
         .args([
             "--json",
+            "--bytes",
             "--paths",
             "--output",
-            "PATH,TYPE,RM,TRAN,PKNAME,MOUNTPOINTS",
+            "PATH,SIZE,MODEL,TYPE,RM,TRAN,PKNAME,MOUNTPOINTS",
         ])
         .output()
         .map_err(|error| NetworkError::new(NetworkErrorCode::FormatFailed, error.to_string()))?;
@@ -202,6 +284,43 @@ fn removable_usb_disk_for_partition(listing: &LsblkOutput, device: &str) -> Opti
 }
 
 #[cfg(not(target_os = "windows"))]
+fn removable_usb_disk_for_mount(path: &str) -> NetworkResult<(LsblkOutput, String)> {
+    let partition = block_device_for_mount(path).ok_or_else(|| {
+        NetworkError::new(
+            NetworkErrorCode::FormatNotAllowed,
+            "Selected volume is no longer mounted.",
+        )
+    })?;
+    let listing = lsblk_listing()?;
+    let disk = removable_usb_disk_for_partition(&listing, &partition).ok_or_else(|| {
+        NetworkError::new(
+            NetworkErrorCode::FormatNotAllowed,
+            "Only removable USB partitions can be formatted.",
+        )
+    })?;
+    Ok((listing, disk))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn volume_label(label: &str) -> NetworkResult<Option<String>> {
+    let label = label.trim();
+    if label.is_empty() {
+        return Ok(None);
+    }
+    if label.len() > 11
+        || !label.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || byte == b' ' || byte == b'_' || byte == b'-'
+        })
+    {
+        return Err(NetworkError::new(
+            NetworkErrorCode::FormatNotAllowed,
+            "Volume names may contain up to 11 letters, numbers, spaces, hyphens, or underscores.",
+        ));
+    }
+    Ok(Some(label.to_string()))
+}
+
+#[cfg(not(target_os = "windows"))]
 fn unmount_mounted_partitions(listing: &LsblkOutput, disk: &str) -> NetworkResult<()> {
     for partition in listing.blockdevices.iter().filter(|entry| {
         entry.kind == "part"
@@ -246,7 +365,11 @@ fn device_from_udisks_object_path(object_path: &str) -> NetworkResult<String> {
 fn create_partition_and_format(
     disk_object_path: &str,
     filesystem: UsbFilesystem,
+    label: Option<&str>,
 ) -> NetworkResult<String> {
+    let format_options = label
+        .map(|label| format!("{{'label': <'{label}'>}}"))
+        .unwrap_or_else(|| "{}".to_string());
     let output = command_output_text(
         "gdbus",
         &[
@@ -264,7 +387,7 @@ fn create_partition_and_format(
             "",
             "{}",
             filesystem.udisks_type(),
-            "{}",
+            &format_options,
         ],
     )
     .map_err(|error| {
@@ -286,7 +409,11 @@ fn create_partition_and_format(
 }
 
 #[cfg(not(target_os = "windows"))]
-fn format_removable_usb_disk(disk: &str, filesystem: UsbFilesystem) -> NetworkResult<String> {
+fn format_removable_usb_disk(
+    disk: &str,
+    filesystem: UsbFilesystem,
+    label: Option<&str>,
+) -> NetworkResult<String> {
     let disk_object_path = udisks_object_path(disk)?;
     command_output(
         "gdbus",
@@ -312,7 +439,7 @@ fn format_removable_usb_disk(disk: &str, filesystem: UsbFilesystem) -> NetworkRe
             ),
         )
     })?;
-    create_partition_and_format(&disk_object_path, filesystem)
+    create_partition_and_format(&disk_object_path, filesystem, label)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -335,6 +462,21 @@ fn mount_new_partition(device: &str, filesystem: UsbFilesystem) -> NetworkResult
             ),
         )),
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn mount_path_for_device(device: &str) -> Option<String> {
+    let output = Command::new("findmnt")
+        .args(["-n", "-o", "TARGET", "--source", device])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .split_whitespace()
+        .next()
+        .map(str::to_owned)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -545,13 +687,14 @@ pub fn eject_drive(path: String, watcher: tauri::State<WatchState>) -> ApiResult
 pub async fn format_removable_partition(
     path: String,
     filesystem: String,
+    label: String,
     watcher: tauri::State<'_, WatchState>,
-) -> ApiResult<()> {
+) -> ApiResult<UsbFormatResult> {
     if let Err(error) = watcher.replace(None) {
         return map_api_result(Err(NetworkError::from(error)));
     }
     let result = tauri::async_runtime::spawn_blocking(move || {
-        format_removable_partition_impl(&path, &filesystem)
+        format_removable_partition_impl(&path, &filesystem, &label)
     })
     .await
     .map_err(|error| {
@@ -566,7 +709,20 @@ pub async fn format_removable_partition(
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-pub async fn format_removable_partition(_path: String, _filesystem: String) -> ApiResult<()> {
+pub async fn format_removable_partition(
+    _path: String,
+    _filesystem: String,
+    _label: String,
+) -> ApiResult<UsbFormatResult> {
+    map_api_result(Err(NetworkError::new(
+        NetworkErrorCode::FormatNotAllowed,
+        "Formatting removable volumes is not available on Windows yet.",
+    )))
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub async fn get_removable_usb_format_info(_path: String) -> ApiResult<UsbFormatInfo> {
     map_api_result(Err(NetworkError::new(
         NetworkErrorCode::FormatNotAllowed,
         "Formatting removable volumes is not available on Windows yet.",
@@ -574,28 +730,75 @@ pub async fn format_removable_partition(_path: String, _filesystem: String) -> A
 }
 
 #[cfg(not(target_os = "windows"))]
-fn format_removable_partition_impl(path: &str, filesystem: &str) -> NetworkResult<()> {
-    let partition = block_device_for_mount(path).ok_or_else(|| {
-        NetworkError::new(
-            NetworkErrorCode::FormatNotAllowed,
-            "Selected volume is no longer mounted.",
-        )
-    })?;
+fn format_removable_partition_impl(
+    path: &str,
+    filesystem: &str,
+    label: &str,
+) -> NetworkResult<UsbFormatResult> {
     let filesystem = UsbFilesystem::parse(filesystem)?;
-    let listing = lsblk_listing()?;
-    let disk = removable_usb_disk_for_partition(&listing, &partition).ok_or_else(|| {
-        NetworkError::new(
+    if !filesystem.is_available() {
+        return Err(NetworkError::new(
             NetworkErrorCode::FormatNotAllowed,
-            "Only removable USB partitions can be formatted.",
-        )
-    })?;
+            format!("{} formatting support is not installed.", filesystem),
+        ));
+    }
+    let label = volume_label(label)?;
+    let (listing, disk) = removable_usb_disk_for_mount(path)?;
+    let size_bytes = listing
+        .blockdevices
+        .iter()
+        .find(|entry| entry.path == disk)
+        .map(|entry| entry.size)
+        .unwrap_or_default();
     unmount_mounted_partitions(&listing, &disk)?;
-    let new_partition = format_removable_usb_disk(&disk, filesystem)?;
+    let new_partition = format_removable_usb_disk(&disk, filesystem, label.as_deref())?;
     // Formatting replaces the partition table and necessarily unmounts the old filesystem.
     // Mount the newly created filesystem so it is immediately visible in Partitions.
     mount_new_partition(&new_partition, filesystem)?;
     invalidate_network_discovery_cache();
-    Ok(())
+    Ok(UsbFormatResult {
+        device: disk,
+        mount_path: mount_path_for_device(&new_partition),
+        size_bytes,
+        filesystem: filesystem.to_string(),
+        label,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub async fn get_removable_usb_format_info(path: String) -> ApiResult<UsbFormatInfo> {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let (listing, disk) = removable_usb_disk_for_mount(&path)?;
+        let device = listing
+            .blockdevices
+            .iter()
+            .find(|entry| entry.path == disk)
+            .ok_or_else(|| {
+                NetworkError::new(NetworkErrorCode::FormatFailed, "USB drive disappeared.")
+            })?;
+        Ok(UsbFormatInfo {
+            device: disk,
+            model: device
+                .model
+                .as_deref()
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+                .unwrap_or("USB drive")
+                .to_string(),
+            size_bytes: device.size,
+            filesystems: supported_usb_filesystems(),
+        })
+    })
+    .await
+    .map_err(|error| {
+        NetworkError::new(
+            NetworkErrorCode::TaskFailed,
+            format!("USB inspection task failed: {error}"),
+        )
+    })
+    .and_then(|result: NetworkResult<UsbFormatInfo>| result);
+    map_api_result(result)
 }
 
 #[cfg(target_os = "windows")]
@@ -806,6 +1009,8 @@ mod tests {
     ) -> LsblkDevice {
         LsblkDevice {
             path: path.into(),
+            size: 0,
+            model: None,
             kind: kind.into(),
             rm: removable,
             tran: transport.map(str::to_owned),
@@ -821,6 +1026,14 @@ mod tests {
         assert_eq!(UsbFilesystem::parse("ext4").unwrap(), UsbFilesystem::Ext4);
         assert_eq!(UsbFilesystem::parse("btrfs").unwrap(), UsbFilesystem::Btrfs);
         assert!(UsbFilesystem::parse("ntfs").is_err());
+    }
+
+    #[test]
+    fn validates_cross_platform_volume_labels() {
+        assert_eq!(volume_label(" SHARE_01 ").unwrap(), Some("SHARE_01".into()));
+        assert_eq!(volume_label(" ").unwrap(), None);
+        assert!(volume_label("label-with-too-many-characters").is_err());
+        assert!(volume_label("not/allowed").is_err());
     }
 
     #[test]

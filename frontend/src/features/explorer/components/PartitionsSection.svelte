@@ -17,17 +17,42 @@
     event.preventDefault()
     menu = { open: true, x: event.clientX, y: event.clientY, part }
   }
+  const openMenuFromButton = (button: HTMLElement, part: Partition) => {
+    if (!part.removable) return
+    const rect = button.getBoundingClientRect()
+    menu = { open: true, x: rect.right, y: rect.bottom, part }
+  }
 </script>
 
 <div class="section">
   <div class="section-title">Partitions</div>
   {#each partitions as part}
     <div class="row">
-      <button class="nav" type="button" on:click={() => onSelect(part.path)} on:contextmenu={(e) => openMenu(e, part)}>
+      <button
+        class="nav"
+        type="button"
+        on:click={() => onSelect(part.path)}
+        on:contextmenu={(e) => openMenu(e, part)}
+        on:keydown={(event) => {
+          if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+            event.preventDefault()
+            openMenuFromButton(event.currentTarget, part)
+          }
+        }}
+      >
         <img class="nav-icon" src={partitionIcon(part)} alt="" />
         <span class="nav-label">{part.label}</span>
       </button>
       {#if part.removable}
+        <button
+          class="more"
+          type="button"
+          aria-label="USB actions"
+          use:fullNameTooltip={'USB actions'}
+          on:click={(event) => openMenuFromButton(event.currentTarget, part)}
+        >
+          <span aria-hidden="true">⋮</span>
+        </button>
         <button
           class="eject"
           type="button"
@@ -84,7 +109,7 @@
   .nav {
     border: none;
     border-radius: 0;
-    padding: 5px 40px 5px 22px; /* extra right padding so hover bg reaches behind eject */
+    padding: 5px 66px 5px 22px; /* extra right padding so hover bg reaches behind controls */
     background: transparent;
     color: var(--fg);
     font-size: var(--font-size-base);
@@ -138,6 +163,26 @@
     transition: color 120ms ease;
     font-size: var(--font-size-base);
     font-weight: var(--font-weight-base);
+  }
+
+  .more {
+    position: absolute;
+    top: 50%;
+    right: 28px;
+    transform: translateY(-50%);
+    border: none;
+    background: transparent;
+    color: var(--fg-muted);
+    padding: 2px 6px;
+    min-width: 22px;
+    line-height: 1;
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  .more:hover,
+  .more:focus-visible {
+    color: var(--fg);
   }
 
   .eject:hover {

@@ -15,7 +15,13 @@
   import { useExplorerInputHandlers } from '@/features/explorer/hooks/useExplorerInputHandlers'
   import { useModalsController } from '@/features/explorer/hooks/useModalsController'
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
-  import { ejectDrive, formatRemovablePartition } from '@/features/explorer/services/drives.service'
+  import {
+    ejectDrive,
+    formatRemovablePartition,
+    getRemovableUsbFormatInfo,
+    type UsbFormatInfo,
+    type UsbFormatResult,
+  } from '@/features/explorer/services/drives.service'
   import FormatUsbModal, { type UsbFilesystem } from '@/features/explorer/components/FormatUsbModal.svelte'
   import { openConsole } from '@/features/explorer/services/console.service'
   import { copyPathsToSystemClipboard } from '@/features/explorer/services/clipboard.service'
@@ -148,6 +154,9 @@
   let formatTarget: Partition | null = null
   let formatting = false
   let formatFilesystem: UsbFilesystem = 'exfat'
+  let formatLabel = ''
+  let formatInfo: UsbFormatInfo | null = null
+  let formatResult: UsbFormatResult | null = null
 
   // Drag & clipboard
   const { store: bookmarkStore } = bookmarkModal
@@ -1680,17 +1689,28 @@
     }
   }
 
-  const handleSidebarPartitionFormat = (part: Partition) => {
-    if (part.removable) formatTarget = part
+  const handleSidebarPartitionFormat = async (part: Partition) => {
+    if (!part.removable) return
+    formatTarget = part
+    formatInfo = null
+    formatResult = null
+    formatLabel = ''
+    try {
+      formatInfo = await getRemovableUsbFormatInfo(part.path)
+      const firstAvailable = formatInfo.filesystems.find((item) => item.available)
+      if (firstAvailable) formatFilesystem = firstAvailable.id
+    } catch (err) {
+      formatTarget = null
+      showToast(`USB inspection failed: ${getErrorMessage(err)}`)
+    }
   }
 
   const confirmFormatPartition = async () => {
     if (!formatTarget || formatting) return
     formatting = true
     try {
-      await formatRemovablePartition(formatTarget.path, formatFilesystem)
-      showToast(`Formatted ${formatTarget.label} as ${formatFilesystem.toUpperCase()}`)
-      formatTarget = null
+      formatResult = await formatRemovablePartition(formatTarget.path, formatFilesystem, formatLabel)
+      showToast(`Formatted ${formatTarget.label} as ${formatResult.filesystem}`)
       await loadPartitions({ forceNetworkRefresh: true })
     } catch (err) {
       showToast(`Format failed: ${getErrorMessage(err)}`)
@@ -2044,10 +2064,21 @@
 <FormatUsbModal
   open={formatTarget !== null}
   volumeLabel={formatTarget?.label ?? ''}
+  info={formatInfo}
   bind:filesystem={formatFilesystem}
+  bind:label={formatLabel}
+  result={formatResult}
   busy={formatting}
   onConfirm={confirmFormatPartition}
+  onOpen={() => {
+    if (formatResult?.mountPath) handleSidebarPartitionSelect(formatResult.mountPath)
+    formatTarget = null
+    formatResult = null
+  }}
   onCancel={() => {
-    if (!formatting) formatTarget = null
+    if (!formatting) {
+      formatTarget = null
+      formatResult = null
+    }
   }}
 />
