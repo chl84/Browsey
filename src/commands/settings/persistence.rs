@@ -2,7 +2,7 @@ use super::error::{self, SettingsError, SettingsResult};
 use std::ops::RangeInclusive;
 
 const SETTINGS_SCHEMA_VERSION_KEY: &str = "settingsSchemaVersion";
-const CURRENT_SETTINGS_SCHEMA_VERSION: &str = "2";
+const CURRENT_SETTINGS_SCHEMA_VERSION: u32 = 2;
 
 pub(super) fn map_db_error(error: crate::db::DbError) -> SettingsError {
     match error.code() {
@@ -81,7 +81,12 @@ fn run_settings_migrations(conn: &mut rusqlite::Connection) -> SettingsResult<()
         conn,
         SETTINGS_SCHEMA_VERSION_KEY,
     ))?;
-    if version.as_deref() == Some(CURRENT_SETTINGS_SCHEMA_VERSION) {
+    let parsed_version = version
+        .as_deref()
+        .and_then(|value| value.parse::<u32>().ok());
+    if parsed_version == Some(CURRENT_SETTINGS_SCHEMA_VERSION)
+        || parsed_version.is_some_and(|value| value > CURRENT_SETTINGS_SCHEMA_VERSION)
+    {
         return Ok(());
     }
 
@@ -119,7 +124,10 @@ fn run_settings_migrations(conn: &mut rusqlite::Connection) -> SettingsResult<()
 
     tx.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
-        rusqlite::params![SETTINGS_SCHEMA_VERSION_KEY, CURRENT_SETTINGS_SCHEMA_VERSION],
+        rusqlite::params![
+            SETTINGS_SCHEMA_VERSION_KEY,
+            CURRENT_SETTINGS_SCHEMA_VERSION.to_string()
+        ],
     )
     .map_err(map_db_error_from_sqlite(
         error::SettingsErrorCode::DbWriteFailed,

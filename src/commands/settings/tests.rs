@@ -549,3 +549,26 @@ fn settings_migration_normalizes_and_prunes_legacy_values() {
         None
     );
 }
+
+#[test]
+fn settings_migration_preserves_a_newer_schema() {
+    let _lock = TEST_ENV_LOCK.lock().expect("settings test env lock");
+    let _data_home = temp_data_home_guard();
+    let conn = crate::db::open().expect("open settings db");
+
+    crate::db::set_setting_string(&conn, "settingsSchemaVersion", "3")
+        .expect("seed newer settings schema version");
+    crate::db::set_setting_string(&conn, "density", "roomy").expect("seed future setting value");
+
+    let migrated = super::persistence::open_connection().expect("skip newer settings schema");
+
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "settingsSchemaVersion")
+            .expect("load schema version"),
+        Some("3".to_string())
+    );
+    assert_eq!(
+        crate::db::get_setting_string(&migrated, "density").expect("load future setting value"),
+        Some("roomy".to_string())
+    );
+}
