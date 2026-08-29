@@ -1,56 +1,208 @@
 use std::{
+    ffi::CString,
+    fs::File,
     io::{BufWriter, Write},
     path::{Path, PathBuf},
-    sync::{atomic::AtomicBool, Arc},
+    sync::atomic::AtomicBool,
 };
 
-use rar_stream::{
-    InnerFile as RarInnerFile, LocalFileMedia as RarLocalFileMedia,
-    ParseOptions as RarParseOptions, RarFilesPackage, ReadInterval as RarReadInterval,
-};
-use tauri::async_runtime;
+#[cfg(not(windows))]
+use std::os::unix::ffi::OsStrExt;
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
+
+use unrar_sys as unrar;
 
 use super::error::{DecompressError, DecompressResult};
 use super::util::{
-    check_cancel, clean_relative_path, ensure_dir_nofollow, first_component, map_copy_err,
-    open_unique_file, path_exists_nofollow, CreatedPaths, ExtractBudget, ProgressEmitter,
-    SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
+    check_cancel, clean_relative_path, ensure_dir_nofollow, first_component, open_unique_file,
+    path_exists_nofollow, CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
+    EXTRACT_TOTAL_ENTRIES_CAP,
 };
+
+#[derive(Clone, Debug)]
+pub(super) struct RarEntry {
+    name: PathBuf,
+    length: u64,
+    is_dir: bool,
+}
+
+struct RarArchive(*const unrar::Handle);
+
+impl Drop for RarArchive {
+    fn drop(&mut self) {
+        unsafe { unrar::RARCloseArchive(self.0) };
+    }
+}
+
+impl RarArchive {
+    #[allow(clippy::unnecessary_mut_passed)] // unrar_sys declares C output buffers as `*const`.
+    fn open(path: &Path) -> DecompressResult<Self> {
+        #[cfg(windows)]
+        let (handle, result) = {
+            let wide: Vec<u16> = path
+                .as_os_str()
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect();
+            let mut data = unrar::OpenArchiveDataEx::new(wide.as_ptr(), unrar::RAR_OM_EXTRACT);
+            (
+                unsafe { unrar::RAROpenArchiveEx(&mut data) },
+                data.open_result as i32,
+            )
+        };
+        #[cfg(not(windows))]
+        let (handle, result) = {
+            let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| {
+                DecompressError::from_external_message(
+                    "RAR archive path contains an embedded NUL byte",
+                )
+            })?;
+            let mut data = unrar::OpenArchiveDataEx::new(path.as_ptr(), unrar::RAR_OM_EXTRACT);
+            (
+                unsafe { unrar::RAROpenArchiveEx(&mut data) },
+                data.open_result as i32,
+            )
+        };
+        if handle.is_null() || result != unrar::ERAR_SUCCESS {
+            return Err(unrar_error("open RAR archive", result));
+        }
+        Ok(Self(handle))
+    }
+
+    #[allow(clippy::unnecessary_mut_passed)] // unrar_sys declares C output buffers as `*const`.
+    fn read_header(&self) -> DecompressResult<Option<RarEntry>> {
+        let mut header = unrar::HeaderDataEx::default();
+        match unsafe { unrar::RARReadHeaderEx(self.0, &mut header) } {
+            unrar::ERAR_SUCCESS => Ok(Some(RarEntry {
+                name: header_path(&header),
+                length: unpack_size(header.unp_size, header.unp_size_high),
+                is_dir: header.flags & unrar::RHDF_DIRECTORY != 0,
+            })),
+            unrar::ERAR_END_ARCHIVE => Ok(None),
+            code => Err(unrar_error("read RAR header", code)),
+        }
+    }
+
+    fn skip_entry(&self) -> DecompressResult<()> {
+        let result = unsafe {
+            unrar::RARProcessFile(self.0, unrar::RAR_SKIP, std::ptr::null(), std::ptr::null())
+        };
+        (result == unrar::ERAR_SUCCESS)
+            .then_some(())
+            .ok_or_else(|| unrar_error("skip RAR entry", result))
+    }
+
+    fn stream_entry(&self, state: &mut StreamState<'_>) -> DecompressResult<()> {
+        unsafe {
+            unrar::RARSetCallback(
+                self.0,
+                Some(stream_callback),
+                state as *mut _ as unrar::LPARAM,
+            );
+        }
+        let result = unsafe {
+            unrar::RARProcessFile(self.0, unrar::RAR_TEST, std::ptr::null(), std::ptr::null())
+        };
+        unsafe { unrar::RARSetCallback(self.0, None, 0) };
+        if let Some(error) = state.failure.take() {
+            return Err(error);
+        }
+        if result != unrar::ERAR_SUCCESS {
+            return Err(unrar_error("extract RAR entry", result));
+        }
+        state.writer.flush().map_err(|error| {
+            DecompressError::from_external_message(format!(
+                "Failed to flush extracted RAR entry {}: {error}",
+                state.raw_name
+            ))
+        })
+    }
+}
+
+struct StreamState<'a> {
+    writer: &'a mut BufWriter<File>,
+    raw_name: &'a str,
+    progress: Option<&'a ProgressEmitter>,
+    cancel: Option<&'a AtomicBool>,
+    budget: &'a ExtractBudget,
+    failure: Option<DecompressError>,
+}
+
+extern "C" fn stream_callback(
+    message: unrar::UINT,
+    user_data: unrar::LPARAM,
+    p1: unrar::LPARAM,
+    p2: unrar::LPARAM,
+) -> i32 {
+    if user_data == 0 || message != unrar::UCM_PROCESSDATA {
+        return 0;
+    }
+    let state = unsafe { &mut *(user_data as *mut StreamState<'_>) };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if p2 < 0 || (p1 == 0 && p2 != 0) {
+            return Err(DecompressError::from_external_message(
+                "RAR decoder returned an invalid data block",
+            ));
+        }
+        let bytes = unsafe { std::slice::from_raw_parts(p1 as *const u8, p2 as usize) };
+        check_cancel(state.cancel).map_err(|error| {
+            DecompressError::from_external_message(format!("Extraction cancelled: {error}"))
+        })?;
+        state
+            .budget
+            .reserve_bytes(bytes.len() as u64)
+            .map_err(|error| {
+                DecompressError::from_external_message(format!(
+                    "Extraction size cap exceeded while writing {}: {error}",
+                    state.raw_name
+                ))
+            })?;
+        state.writer.write_all(bytes).map_err(|error| {
+            DecompressError::from_external_message(format!(
+                "Failed to write RAR entry {}: {error}",
+                state.raw_name
+            ))
+        })?;
+        if let Some(progress) = state.progress {
+            progress.add(bytes.len() as u64);
+        }
+        Ok(())
+    }));
+    match result {
+        Ok(Ok(())) => 0,
+        Ok(Err(error)) => {
+            state.failure = Some(error);
+            -1
+        }
+        Err(_) => {
+            state.failure = Some(DecompressError::from_external_message(
+                "RAR extraction callback panicked",
+            ));
+            -1
+        }
+    }
+}
 
 pub(super) fn single_root_in_rar(path: &Path) -> DecompressResult<Option<PathBuf>> {
     let entries = parse_rar_entries(path)?;
-    let mut root: Option<PathBuf> = None;
-    let mut entries_seen = 0u64;
+    let mut root = None;
     for entry in entries {
-        entries_seen = entries_seen.saturating_add(1);
-        if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
-            return Err(format!(
-                "Archive exceeds entry cap ({} entries > {} entries)",
-                entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
-            )
-            .into());
-        }
-        let raw_name = entry.name.replace('\\', "/");
-        let raw_path = PathBuf::from(raw_name.clone());
-        let clean_rel = match clean_relative_path(&raw_path) {
-            Ok(p) => p,
+        let clean = match clean_relative_path(&entry.name) {
+            Ok(path) => path,
             Err(_) => continue,
         };
-        if clean_rel.as_os_str().is_empty() {
+        if clean.as_os_str().is_empty() {
             continue;
         }
-        let Some(first) = first_component(&clean_rel) else {
+        let Some(first) = first_component(&clean) else {
             continue;
         };
-        let rest_is_empty = clean_rel.components().count() == 1;
-        let is_dir = raw_name.ends_with('/')
-            || raw_name.ends_with('\\')
-            || (entry.length == 0 && rest_is_empty);
-        if !is_dir && rest_is_empty {
+        if !entry.is_dir && clean.components().count() == 1 {
             return Ok(None);
         }
         match &root {
-            Some(r) if r != &first => return Ok(None),
+            Some(current) if current != &first => return Ok(None),
             None => root = Some(first),
             _ => {}
         }
@@ -60,7 +212,7 @@ pub(super) fn single_root_in_rar(path: &Path) -> DecompressResult<Option<PathBuf
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn extract_rar(
-    entries: Vec<RarInnerFile>,
+    archive_path: &Path,
     dest_dir: &Path,
     strip_prefix: Option<&Path>,
     stats: &SkipStats,
@@ -69,161 +221,261 @@ pub(super) fn extract_rar(
     cancel: Option<&AtomicBool>,
     budget: &ExtractBudget,
 ) -> DecompressResult<()> {
-    for entry in entries {
-        check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
-        budget
-            .reserve_entry(1)
-            .map_err(|e| map_copy_err("Extraction entry cap exceeded", e))?;
-        let raw_name = entry.name.clone();
-        let normalized = raw_name.replace('\\', "/");
-        let raw_path = Path::new(&normalized).to_path_buf();
-
-        // rar-stream lacks a complete decoder for compressed entries; abort instead of writing corrupted data.
-        if entry.is_compressed() {
-            return Err(DecompressError::from_external_message(format!(
-                "RAR entry uses unsupported compression method: {raw_name}"
-            )));
-        }
-
-        let clean_rel = match clean_relative_path(&raw_path) {
-            Ok(p) => p,
-            Err(err) => {
-                stats.skip_unsupported(&raw_name, &err.to_string());
+    let archive = RarArchive::open(archive_path)?;
+    while let Some(entry) = archive.read_header()? {
+        check_cancel(cancel).map_err(|error| {
+            DecompressError::from_external_message(format!("Extraction cancelled: {error}"))
+        })?;
+        budget.reserve_entry(1).map_err(|error| {
+            DecompressError::from_external_message(format!(
+                "Extraction entry cap exceeded: {error}"
+            ))
+        })?;
+        let raw_name = entry.name.to_string_lossy().into_owned();
+        let clean = match clean_relative_path(&entry.name) {
+            Ok(path) => path,
+            Err(error) => {
+                stats.skip_unsupported(&raw_name, &error.to_string());
+                archive.skip_entry()?;
                 continue;
             }
         };
-        let clean_rel = if let Some(prefix) = strip_prefix {
-            match clean_rel.strip_prefix(prefix) {
-                Ok(stripped) => stripped.to_path_buf(),
-                Err(_) => clean_rel,
-            }
-        } else {
-            clean_rel
-        };
-        if clean_rel.as_os_str().is_empty() {
+        let clean = strip_prefix
+            .and_then(|prefix| clean.strip_prefix(prefix).ok().map(Path::to_path_buf))
+            .unwrap_or(clean);
+        if clean.as_os_str().is_empty() {
+            archive.skip_entry()?;
             continue;
         }
-        let dest_path = dest_dir.join(clean_rel);
-        let is_dir = normalized.ends_with('/') || normalized.ends_with('\\');
-
-        if is_dir {
+        let dest_path = dest_dir.join(clean);
+        if entry.is_dir {
             match ensure_dir_nofollow(&dest_path) {
-                Ok(created_dirs) => {
-                    for dir in created_dirs {
-                        created.record_dir(dir);
-                    }
-                }
-                Err(e) => {
-                    stats.skip_unsupported(&raw_name, &format!("create dir failed: {e}"));
+                Ok(dirs) => dirs.into_iter().for_each(|dir| created.record_dir(dir)),
+                Err(error) => {
+                    stats.skip_unsupported(&raw_name, &format!("create dir failed: {error}"))
                 }
             }
+            archive.skip_entry()?;
             continue;
         }
-
         match path_exists_nofollow(&dest_path) {
             Ok(true) => {
-                if let Some(p) = progress {
-                    p.add(entry.length.max(1));
+                if let Some(progress) = progress {
+                    progress.add(entry.length.max(1));
                 }
+                archive.skip_entry()?;
                 continue;
             }
             Ok(false) => {}
-            Err(e) => {
-                stats.skip_unsupported(&raw_name, &format!("stat destination failed: {e}"));
+            Err(error) => {
+                stats.skip_unsupported(&raw_name, &format!("stat destination failed: {error}"));
+                archive.skip_entry()?;
                 continue;
             }
         }
-
         if let Some(parent) = dest_path.parent() {
             match ensure_dir_nofollow(parent) {
-                Ok(created_dirs) => {
-                    for dir in created_dirs {
-                        created.record_dir(dir);
-                    }
-                }
-                Err(e) => {
-                    stats.skip_unsupported(&raw_name, &format!("create parent failed: {e}"));
+                Ok(dirs) => dirs.into_iter().for_each(|dir| created.record_dir(dir)),
+                Err(error) => {
+                    stats.skip_unsupported(&raw_name, &format!("create parent failed: {error}"));
+                    archive.skip_entry()?;
                     continue;
                 }
             }
         }
-
-        let (file, dest_actual) = open_unique_file(&dest_path)?;
-        created.record_file(dest_actual);
-        let mut out = BufWriter::with_capacity(CHUNK, file);
-        write_rar_entry_streaming(&entry, &raw_name, &mut out, progress, cancel, budget)?;
+        let (file, actual_path) = open_unique_file(&dest_path)?;
+        created.record_file(actual_path);
+        let mut writer = BufWriter::with_capacity(CHUNK, file);
+        archive.stream_entry(&mut StreamState {
+            writer: &mut writer,
+            raw_name: &raw_name,
+            progress,
+            cancel,
+            budget,
+            failure: None,
+        })?;
     }
     Ok(())
 }
 
-fn write_rar_entry_streaming(
-    entry: &RarInnerFile,
-    raw_name: &str,
-    out: &mut BufWriter<std::fs::File>,
-    progress: Option<&ProgressEmitter>,
-    cancel: Option<&AtomicBool>,
-    budget: &ExtractBudget,
-) -> DecompressResult<()> {
-    let mut start = 0u64;
-    let chunk_len = CHUNK as u64;
-
-    while start < entry.length {
-        check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
-        let end = (start.saturating_add(chunk_len).saturating_sub(1)).min(entry.length - 1);
-        let data = async_runtime::block_on(entry.read_range(RarReadInterval { start, end }))
-            .map_err(|e| format!("Failed to read rar entry {raw_name}: {e}"))?;
-        if data.is_empty() {
-            return Err(format!("Failed to read rar entry {raw_name}: empty chunk").into());
+pub(super) fn parse_rar_entries(path: &Path) -> DecompressResult<Vec<RarEntry>> {
+    let archive = RarArchive::open(path)?;
+    let mut entries = Vec::new();
+    while let Some(entry) = archive.read_header()? {
+        if entries.len() as u64 >= EXTRACT_TOTAL_ENTRIES_CAP {
+            return Err(DecompressError::from_external_message(format!(
+                "Archive exceeds entry cap (more than {} entries)",
+                EXTRACT_TOTAL_ENTRIES_CAP
+            )));
         }
-
-        budget
-            .reserve_bytes(data.len() as u64)
-            .map_err(|e| map_copy_err("Extraction size cap exceeded", e))?;
-        out.write_all(&data)
-            .map_err(|e| map_copy_err(&format!("Failed to write {raw_name}"), e))?;
-        if let Some(p) = progress {
-            p.add(data.len() as u64);
-        }
-        start = start.saturating_add(data.len() as u64);
+        entries.push(entry);
+        archive.skip_entry()?;
     }
-
-    out.flush()
-        .map_err(|e| map_copy_err(&format!("Failed to flush {raw_name}"), e))?;
-    Ok(())
-}
-
-pub(super) fn parse_rar_entries(path: &Path) -> DecompressResult<Vec<RarInnerFile>> {
-    let path_str = path
-        .to_str()
-        .ok_or_else(|| "Archive path is not valid UTF-8".to_string())?;
-    let media = Arc::new(
-        RarLocalFileMedia::new(path_str).map_err(|e| format!("Failed to open rar archive: {e}"))?,
-    );
-    let package = RarFilesPackage::new(vec![media]);
-    let entries = async_runtime::block_on(async move {
-        package
-            .parse(RarParseOptions::default())
-            .await
-            .map_err(|e| format!("Failed to read rar: {e}"))
-    })?;
     Ok(entries)
 }
 
-pub(super) fn rar_uncompressed_total_from_entries(
-    entries: &[RarInnerFile],
-) -> DecompressResult<u64> {
-    let mut total = 0u64;
-    let mut entries_seen = 0u64;
-    for entry in entries {
-        entries_seen = entries_seen.saturating_add(1);
-        if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
-            return Err(format!(
-                "Archive exceeds entry cap ({} entries > {} entries)",
-                entries_seen, EXTRACT_TOTAL_ENTRIES_CAP
-            )
-            .into());
-        }
-        total = total.saturating_add(entry.length);
+pub(super) fn rar_uncompressed_total_from_entries(entries: &[RarEntry]) -> DecompressResult<u64> {
+    Ok(entries
+        .iter()
+        .fold(0u64, |total, entry| total.saturating_add(entry.length)))
+}
+
+fn unpack_size(low: u32, high: u32) -> u64 {
+    ((high as u64) << 32) | low as u64
+}
+
+#[cfg(windows)]
+fn header_path(header: &unrar::HeaderDataEx) -> PathBuf {
+    let end = header
+        .filename_w
+        .iter()
+        .position(|&c| c == 0)
+        .unwrap_or(header.filename_w.len());
+    PathBuf::from(std::ffi::OsString::from_wide(&header.filename_w[..end]))
+}
+
+#[cfg(not(windows))]
+fn header_path(header: &unrar::HeaderDataEx) -> PathBuf {
+    let end = header
+        .filename_w
+        .iter()
+        .position(|&c| c == 0)
+        .unwrap_or(header.filename_w.len());
+    PathBuf::from(
+        header.filename_w[..end]
+            .iter()
+            .map(|&c| char::from_u32(c as u32).unwrap_or(char::REPLACEMENT_CHARACTER))
+            .collect::<String>(),
+    )
+}
+
+fn unrar_error(context: &str, code: i32) -> DecompressError {
+    let detail = match code {
+        unrar::ERAR_MISSING_PASSWORD => "archive requires a password",
+        unrar::ERAR_BAD_PASSWORD => "incorrect archive password",
+        unrar::ERAR_BAD_ARCHIVE => "invalid RAR archive",
+        unrar::ERAR_BAD_DATA => "corrupt RAR entry data",
+        unrar::ERAR_UNKNOWN_FORMAT => "unsupported RAR format",
+        unrar::ERAR_EOPEN => "failed to open archive or a required volume",
+        unrar::ERAR_EREAD => "failed to read archive data",
+        unrar::ERAR_EWRITE => "decoder failed while writing entry data",
+        _ => "UnRAR decoder failed",
+    };
+    DecompressError::from_external_message(format!("Failed to {context}: {detail} (code {code})"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_rar, parse_rar_entries, single_root_in_rar};
+    use crate::commands::decompress::util::{CreatedPaths, ExtractBudget, SkipStats};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn fixture(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/rar")
+            .join(name)
     }
-    Ok(total)
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        let unique = format!(
+            "browsey-rar-format-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&path).expect("create temp dir");
+        path
+    }
+
+    #[test]
+    fn extracts_decoded_rar_entry_through_browsey_file_guard() {
+        let archive = fixture("version.rar");
+        let entries = parse_rar_entries(&archive).expect("list RAR entries");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, PathBuf::from("VERSION"));
+        assert_eq!(entries[0].length, 11);
+        assert_eq!(single_root_in_rar(&archive).expect("single root"), None);
+
+        let root = unique_temp_dir("extract");
+        let output = root.join("out");
+        fs::create_dir_all(&output).expect("create output");
+        let mut created = CreatedPaths::default();
+        extract_rar(
+            &archive,
+            &output,
+            None,
+            &SkipStats::default(),
+            None,
+            &mut created,
+            None,
+            &ExtractBudget::new(1_000_000, 100),
+        )
+        .expect("extract RAR");
+        assert_eq!(
+            fs::read_to_string(output.join("VERSION")).expect("read extracted file"),
+            "unrar-0.4.0"
+        );
+        created.disarm();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn preserves_unicode_entry_names() {
+        let archive = fixture("unicode-entry.rar");
+        let entries = parse_rar_entries(&archive).expect("list RAR entries");
+        assert_eq!(entries[0].name, PathBuf::from("unicodefilename❤️.txt"));
+
+        let root = unique_temp_dir("unicode");
+        let output = root.join("out");
+        fs::create_dir_all(&output).expect("create output");
+        let mut created = CreatedPaths::default();
+        extract_rar(
+            &archive,
+            &output,
+            None,
+            &SkipStats::default(),
+            None,
+            &mut created,
+            None,
+            &ExtractBudget::new(1_000_000, 100),
+        )
+        .expect("extract RAR");
+        assert_eq!(
+            fs::read_to_string(output.join("unicodefilename❤️.txt")).expect("read unicode file"),
+            "foobar\n"
+        );
+        created.disarm();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reports_password_requirement_without_writing_output() {
+        let archive = fixture("crypted.rar");
+        let root = unique_temp_dir("password");
+        let output = root.join("out");
+        fs::create_dir_all(&output).expect("create output");
+        let mut created = CreatedPaths::default();
+        let error = extract_rar(
+            &archive,
+            &output,
+            None,
+            &SkipStats::default(),
+            None,
+            &mut created,
+            None,
+            &ExtractBudget::new(1_000_000, 100),
+        )
+        .expect_err("encrypted archive must fail without a password");
+        assert!(error.to_string().contains("requires a password"));
+        drop(created);
+        assert!(fs::read_dir(&output).expect("read output").next().is_none());
+        let _ = fs::remove_dir_all(root);
+    }
 }

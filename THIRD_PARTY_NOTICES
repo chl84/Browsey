@@ -11,3 +11,20 @@ Additional third-party licenses for PDFium dependencies are provided in `resourc
 
 Download source for bundled PDFium binaries:
 - https://github.com/bblanchon/pdfium-binaries/releases/latest
+
+UnRAR decoder source (UnRAR license)
+------------------------------------
+Browsey statically links the UnRAR decoder through `unrar_sys` for read-only
+RAR extraction. The Rust bindings are MIT OR Apache-2.0; the decoder source is
+distributed under the UnRAR license:
+
+UnRAR source code may be used in any software to handle RAR archives without
+limitations free of charge, but cannot be used to develop RAR (WinRAR)
+compatible archiver and to re-create RAR compression algorithm, which is
+proprietary. Distribution of modified UnRAR source code in separate form or as
+a part of other software is permitted, provided that full text of this
+paragraph, starting from "UnRAR source code" words, is included in license, or
+in documentation if license is not available, and in source code comments of
+resulting package.
+
+Source: https://www.rarlab.com/rar/unrarsrc-7.2.1.tar.gz
