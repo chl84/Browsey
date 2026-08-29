@@ -69,6 +69,31 @@ test('search finds entries in the current folder scope', async ({ page }) => {
   await expect(page.locator('.row .name', { hasText: 'archive' })).toHaveCount(0)
 })
 
+test('formats a removable USB through the accessible format dialog', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __BROWSEY_E2E__?: unknown }).__BROWSEY_E2E__ = {
+      partitions: [{ label: 'USB', path: '/mock/USB', fs: 'exfat', removable: true }],
+    }
+  })
+  await page.goto('/')
+
+  const usb = page.getByRole('button', { name: 'USB' })
+  await usb.focus()
+  await page.keyboard.press('Shift+F10')
+  await page.getByRole('button', { name: 'Format…' }).click()
+
+  await expect(page.getByText('Format USB drive?')).toBeVisible()
+  await expect(page.getByLabel('Volume name (optional)')).toBeVisible()
+  const filesystem = page.getByLabel('Filesystem')
+  await filesystem.selectOption('fat32')
+  await page.getByLabel('Volume name (optional)').fill('SHARE')
+  await page.getByRole('button', { name: 'Format and erase' }).click()
+
+  await expect(page.getByText('USB drive ready')).toBeVisible()
+  await expect(page.getByText(/formatted as fat32/i)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Open USB' })).toBeVisible()
+})
+
 test('wheel assist handles short-list edge clamp and non-cancelable burst fallback', async ({ page }) => {
   await page.goto('/')
   const rows = page.getByRole('grid', { name: 'File list' })

@@ -32,6 +32,7 @@ type MockClipboardState = {
 type E2eMockControl = {
   systemClipboard?: MockClipboardState
   failCommands?: string[]
+  partitions?: Array<{ label: string; path: string; fs?: string; removable?: boolean }>
 }
 
 import { emitMockEvent } from './event'
@@ -229,7 +230,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return [] as T
     }
     case 'list_mounts':
-      return [] as T
+      return (e2eControl()?.partitions ?? []) as T
     case 'watch_dir':
       return undefined as T
     case 'search_stream': {
@@ -343,8 +344,26 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return undefined as T
     case 'can_extract_paths':
       return false as T
+    case 'get_removable_usb_format_info':
+      return {
+        device: '/dev/sdz',
+        model: 'Mock USB drive',
+        sizeBytes: 32000000000,
+        filesystems: [
+          { id: 'exfat', label: 'exFAT', description: 'Compatible everywhere', available: true },
+          { id: 'fat32', label: 'FAT32', description: '4 GB file limit', available: true },
+          { id: 'ext4', label: 'ext4', description: 'Linux filesystem', available: true },
+          { id: 'btrfs', label: 'Btrfs', description: 'Linux filesystem', available: true },
+        ],
+      } as T
     case 'format_removable_partition':
-      return undefined as T
+      return {
+        device: '/dev/sdz',
+        mountPath: '/mock/USB',
+        sizeBytes: 32000000000,
+        filesystem: args?.filesystem ?? 'exFAT',
+        label: args?.label || null,
+      } as T
     case 'open_entry':
     case 'open_cloud_entry':
       return undefined as T

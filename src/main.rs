@@ -360,6 +360,7 @@ fn main() {
             dir_sizes,
             eject_drive,
             format_removable_partition,
+            get_removable_usb_format_info,
             mount_partition,
             open_network_uri,
             classify_network_uri,
