@@ -6,7 +6,7 @@ use std::{
     sync::atomic::AtomicBool,
 };
 
-#[cfg(not(windows))]
+#[cfg(any(target_os = "linux", target_os = "netbsd"))]
 use std::os::unix::ffi::OsStrExt;
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
@@ -37,28 +37,46 @@ impl Drop for RarArchive {
 
 impl RarArchive {
     #[allow(clippy::unnecessary_mut_passed)] // unrar_sys declares C output buffers as `*const`.
-    fn open(path: &Path) -> DecompressResult<Self> {
+    fn open(path: &Path, mode: unrar::UINT) -> DecompressResult<Self> {
         #[cfg(windows)]
         let (handle, result) = {
-            let wide: Vec<u16> = path
+            let wide: Vec<unrar::WCHAR> = path
                 .as_os_str()
                 .encode_wide()
                 .chain(std::iter::once(0))
                 .collect();
-            let mut data = unrar::OpenArchiveDataEx::new(wide.as_ptr(), unrar::RAR_OM_EXTRACT);
+            let mut data = unrar::OpenArchiveDataEx::new(wide.as_ptr(), mode);
             (
                 unsafe { unrar::RAROpenArchiveEx(&mut data) },
                 data.open_result as i32,
             )
         };
-        #[cfg(not(windows))]
+        #[cfg(any(target_os = "linux", target_os = "netbsd"))]
         let (handle, result) = {
             let path = CString::new(path.as_os_str().as_bytes()).map_err(|_| {
                 DecompressError::from_external_message(
                     "RAR archive path contains an embedded NUL byte",
                 )
             })?;
-            let mut data = unrar::OpenArchiveDataEx::new(path.as_ptr(), unrar::RAR_OM_EXTRACT);
+            let mut data = unrar::OpenArchiveDataEx::new(path.as_ptr(), mode);
+            (
+                unsafe { unrar::RAROpenArchiveEx(&mut data) },
+                data.open_result as i32,
+            )
+        };
+        #[cfg(all(not(windows), not(any(target_os = "linux", target_os = "netbsd"))))]
+        let (handle, result) = {
+            let path = path.to_str().ok_or_else(|| {
+                DecompressError::from_external_message(
+                    "RAR archive path is not valid Unicode on this platform",
+                )
+            })?;
+            let wide: Vec<unrar::WCHAR> = path
+                .chars()
+                .map(|character| character as unrar::WCHAR)
+                .chain(std::iter::once(0))
+                .collect();
+            let mut data = unrar::OpenArchiveDataEx::new(wide.as_ptr(), mode);
             (
                 unsafe { unrar::RAROpenArchiveEx(&mut data) },
                 data.open_result as i32,
@@ -135,6 +153,9 @@ extern "C" fn stream_callback(
     p1: unrar::LPARAM,
     p2: unrar::LPARAM,
 ) -> i32 {
+    if message == unrar::UCM_CHANGEVOLUME || message == unrar::UCM_CHANGEVOLUMEW {
+        return if p2 == unrar::RAR_VOL_NOTIFY { 1 } else { -1 };
+    }
     if user_data == 0 || message != unrar::UCM_PROCESSDATA {
         return 0;
     }
@@ -221,7 +242,7 @@ pub(super) fn extract_rar(
     cancel: Option<&AtomicBool>,
     budget: &ExtractBudget,
 ) -> DecompressResult<()> {
-    let archive = RarArchive::open(archive_path)?;
+    let archive = RarArchive::open(archive_path, unrar::RAR_OM_EXTRACT)?;
     while let Some(entry) = archive.read_header()? {
         check_cancel(cancel).map_err(|error| {
             DecompressError::from_external_message(format!("Extraction cancelled: {error}"))
@@ -299,7 +320,9 @@ pub(super) fn extract_rar(
 }
 
 pub(super) fn parse_rar_entries(path: &Path) -> DecompressResult<Vec<RarEntry>> {
-    let archive = RarArchive::open(path)?;
+    // Listing mode excludes continuation headers of split entries, so a
+    // multi-volume archive contributes one logical entry per file.
+    let archive = RarArchive::open(path, unrar::RAR_OM_LIST)?;
     let mut entries = Vec::new();
     while let Some(entry) = archive.read_header()? {
         if entries.len() as u64 >= EXTRACT_TOTAL_ENTRIES_CAP {
@@ -474,6 +497,116 @@ mod tests {
         )
         .expect_err("encrypted archive must fail without a password");
         assert!(error.to_string().contains("requires a password"));
+        drop(created);
+        assert!(fs::read_dir(&output).expect("read output").next().is_none());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn extracts_compressed_rar5_entry() {
+        let archive = fixture("rar5-compressed.rar");
+        let entries = parse_rar_entries(&archive).expect("list RAR5 entries");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, PathBuf::from("test.bin"));
+        assert_eq!(entries[0].length, 1_200);
+
+        let root = unique_temp_dir("rar5");
+        let output = root.join("out");
+        fs::create_dir_all(&output).expect("create output");
+        let mut created = CreatedPaths::default();
+        extract_rar(
+            &archive,
+            &output,
+            None,
+            &SkipStats::default(),
+            None,
+            &mut created,
+            None,
+            &ExtractBudget::new(1_000_000, 100),
+        )
+        .expect("extract RAR5");
+        let bytes = fs::read(output.join("test.bin")).expect("read extracted RAR5 file");
+        assert_eq!(bytes.len(), 1_200);
+        let (words, remainder) = bytes.as_chunks::<4>();
+        assert!(remainder.is_empty());
+        for (index, word) in words.iter().enumerate() {
+            let number = (index + 1) as i32;
+            let expected = (number * number - 3 * number + 1).max(0) as u32;
+            assert_eq!(u32::from_le_bytes(*word), expected);
+        }
+        created.disarm();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn extracts_rar5_multi_volume_archive() {
+        let archive = fixture("test_read_format_rar5_multiarchive.part01.rar");
+        let entries = parse_rar_entries(&archive).expect("list multi-volume RAR5 entries");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries[0].name,
+            PathBuf::from("home/antek/temp/build/unrar5/libarchive/bin/bsdcat_test")
+        );
+        assert_eq!(
+            entries[1].name,
+            PathBuf::from("home/antek/temp/build/unrar5/libarchive/bin/bsdtar_test")
+        );
+
+        let root = unique_temp_dir("rar5-multi");
+        let output = root.join("out");
+        fs::create_dir_all(&output).expect("create output");
+        let mut created = CreatedPaths::default();
+        extract_rar(
+            &archive,
+            &output,
+            None,
+            &SkipStats::default(),
+            None,
+            &mut created,
+            None,
+            &ExtractBudget::new(1_000_000, 100),
+        )
+        .expect("extract multi-volume RAR5");
+        assert_eq!(
+            fs::read(output.join("home/antek/temp/build/unrar5/libarchive/bin/bsdcat_test"))
+                .expect("read first multi-volume file")
+                .len(),
+            144_608
+        );
+        assert_eq!(
+            fs::read(output.join("home/antek/temp/build/unrar5/libarchive/bin/bsdtar_test"))
+                .expect("read second multi-volume file")
+                .len(),
+            365_672
+        );
+        created.disarm();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_incomplete_multi_volume_archive_without_output() {
+        let root = unique_temp_dir("rar5-missing-volume");
+        let archive = root.join("incomplete.part01.rar");
+        fs::copy(
+            fixture("test_read_format_rar5_multiarchive.part01.rar"),
+            &archive,
+        )
+        .expect("copy first volume");
+        let output = root.join("out");
+        fs::create_dir_all(&output).expect("create output");
+        let mut created = CreatedPaths::default();
+        let error = extract_rar(
+            &archive,
+            &output,
+            None,
+            &SkipStats::default(),
+            None,
+            &mut created,
+            None,
+            &ExtractBudget::new(1_000_000, 100),
+        )
+        .expect_err("incomplete multi-volume archive must fail");
+        assert!(error.to_string().contains("required volume"));
         drop(created);
         assert!(fs::read_dir(&output).expect("read output").next().is_none());
         let _ = fs::remove_dir_all(root);
