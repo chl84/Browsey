@@ -71,6 +71,10 @@ fn parse_omarchy_theme(name: &str, colors: &str) -> Option<SystemTheme> {
     }
 
     let color = |key: &str| values.get(key).filter(|value| is_hex_color(value)).cloned();
+    // `orange` is not part of every Omarchy palette (for example, White).
+    // It is only a semantic accent in Browsey, so fall back to the required
+    // yellow value instead of rejecting an otherwise valid system palette.
+    let orange = color("orange").or_else(|| color("yellow"));
     Some(SystemTheme {
         name: name.to_string(),
         mode: mode.to_string(),
@@ -87,7 +91,7 @@ fn parse_omarchy_theme(name: &str, colors: &str) -> Option<SystemTheme> {
         bright_foreground: color("bright_foreground")?,
         red: color("red")?,
         yellow: color("yellow")?,
-        orange: color("orange")?,
+        orange: orange?,
         green: color("green")?,
         cyan: color("cyan")?,
         blue: color("blue")?,
@@ -140,5 +144,12 @@ mod tests {
     fn rejects_incomplete_or_unsafe_palettes() {
         assert!(parse_omarchy_theme("Broken", "mode = \"dark\"").is_none());
         assert!(parse_omarchy_theme("Broken", &NORD.replace("#81a1c1", "not-a-color")).is_none());
+    }
+
+    #[test]
+    fn accepts_palettes_without_orange() {
+        let theme = parse_omarchy_theme("White", &NORD.replace("orange = \"#d5967a\"\n", ""))
+            .expect("valid palette without orange");
+        assert_eq!(theme.orange, "#ebcb8b");
     }
 }
