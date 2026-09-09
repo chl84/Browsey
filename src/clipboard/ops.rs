@@ -111,6 +111,7 @@ fn copy_dir(
         })?
         .permissions();
     let mut builder = fs::DirBuilder::new();
+    builder.recursive(false);
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;

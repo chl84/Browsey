@@ -92,6 +92,7 @@ fn copy_dir(src: &Path, dest: &Path) -> UndoResult<()> {
         .map_err(|e| UndoError::from_io_error("Failed to read directory permissions", e))?
         .permissions();
     let mut builder = fs::DirBuilder::new();
+    builder.recursive(false);
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
