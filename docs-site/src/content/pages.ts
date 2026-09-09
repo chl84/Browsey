@@ -805,6 +805,18 @@ capabilities/default.json`,
         bullets: [],
       },
       {
+        id: 'v101',
+        title: 'v1.0.1 (2026-09-10)',
+        bullets: [
+          'Merge moves preserve files saved into the source while the operation is running',
+          'Local-to-cloud transfers reject symbolic links before resolving their targets',
+          'Locked undo sessions prevent a second Browsey instance from deleting active backups',
+          'Failed file copies clean up partial destinations so overwrite rollback can restore originals',
+          'Local copies preserve private and executable permissions, including directory permissions',
+          'Regression coverage now includes real write failures and cleanup from another process',
+        ],
+      },
+      {
         id: 'v100',
         title: 'v1.0.0 (2026-03-07)',
         bullets: [

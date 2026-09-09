@@ -6,7 +6,7 @@
 %global _missing_build_ids_terminate_build 0
 
 Name:           browsey
-Version:        0.4.6
+Version:        1.0.1
 Release:        1%{?dist}
 Summary:        Minimalist and fast file explorer built with Tauri
 

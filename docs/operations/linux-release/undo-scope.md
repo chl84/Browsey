@@ -59,7 +59,10 @@ history on Linux:
 The Linux 1.0 undo/redo claim is subject to these hard boundaries:
 
 - undo/redo history is not persisted across app restart
-- startup cleanup may remove stale undo backups from previous runs
+- startup cleanup removes abandoned, unlocked undo sessions from previous runs;
+  backups belonging to running instances are protected by OS file locks
+- version 1.0.1 stores sessions under `browsey/undo-sessions/`; legacy `browsey/undo/`
+  backups are left intact because older processes do not provide ownership locks
 - only actions that successfully completed and were recorded are undoable
 - multi-item operations may be recorded as one `Batch(...)` history item rather
   than many separate undo steps

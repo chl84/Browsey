@@ -72,7 +72,7 @@ fn delete_and_restore() {
     let _ = fs::create_dir_all(&dir);
     let path = dir.join("file.txt");
     write_file(&path, b"bye");
-    let backup = temp_backup_path(&path);
+    let backup = temp_backup_path(&path).unwrap();
 
     let mut mgr = UndoManager::new();
     mgr.apply(Action::Delete {
@@ -111,7 +111,7 @@ fn create_file_action_undo_redo() {
     write_file(&path, b"hello");
     assert!(path.exists());
 
-    let backup = temp_backup_path(&path);
+    let backup = temp_backup_path(&path).unwrap();
     let mut mgr = UndoManager::new();
     mgr.record_applied(Action::Create {
         path: path.clone(),
@@ -133,7 +133,7 @@ fn create_file_action_undo_redo() {
 fn create_dir_action_undo_redo() {
     let dir = uniq_path("create-dir");
     fs::create_dir_all(&dir).unwrap();
-    let backup = temp_backup_path(&dir);
+    let backup = temp_backup_path(&dir).unwrap();
 
     let mut mgr = UndoManager::new();
     mgr.record_applied(Action::Create {
@@ -312,7 +312,7 @@ fn undo_failure_restores_stack() {
     let _ = fs::create_dir_all(&dir);
     let path = dir.join("file.txt");
     write_file(&path, b"bye");
-    let backup = temp_backup_path(&path);
+    let backup = temp_backup_path(&path).unwrap();
 
     let mut mgr = UndoManager::new();
     mgr.apply(Action::Delete {
@@ -337,20 +337,6 @@ fn undo_failure_restores_stack() {
 
     let _ = fs::remove_dir_all(&dir);
     let _ = fs::remove_dir_all(backup.parent().unwrap_or_else(|| Path::new(".")));
-}
-
-#[test]
-fn cleanup_prunes_stale_backup_dirs() {
-    let base = test_undo_dir();
-    let target = base.join("dummy");
-    fs::create_dir_all(&target).unwrap();
-
-    cleanup_stale_backups(Some(Duration::from_secs(0)));
-
-    assert!(
-        !target.exists(),
-        "backup base contents should be removed during cleanup"
-    );
 }
 
 #[test]

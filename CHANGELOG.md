@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## v1.0.1 — 2026-09-10
+- Preserve files created in a source directory during merge-move operations; abort and roll back instead of recursively deleting the remaining source contents.
+- Reject symbolic links before resolving local-to-cloud source paths, including dangling links and single-entry transfers.
+- Keep undo backups in locked, per-process sessions. Startup cleanup removes only abandoned sessions, leaving live sessions and legacy backups intact.
+- Remove partial file copies after read, write, permission, or flush failures so overwrite rollback can restore the original destination.
+- Preserve private and executable file permissions and directory permissions during local copies and cross-filesystem undo copies.
+- Add regression coverage for concurrent writes, interrupted overwrites, cloud symlinks, permissions, and cleanup across processes.
+- Repair the frontend theme import boundary and the ambiguous USB smoke-test selector.
+
 ## v1.0.0 — 2026-03-07
 - Browsey Linux 1.0:
   - Linux 1.0 release signoff is now based on a completed stabilization track across core file workflows, Linux-specific runtime behavior, packaging/install validation, observability hardening, and release gating.

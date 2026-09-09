@@ -100,7 +100,7 @@ fn prepare_trash_move(raw: &str) -> FsResult<PreparedTrashMove> {
     let src_snapshot = map_external_result(snapshot_existing_path(&src))?;
 
     // Backup into the central undo directory in case we cannot locate the trash item path later.
-    let backup = temp_backup_path(&src);
+    let backup = temp_backup_path(&src).map_err(FsError::from)?;
     if let Some(parent) = backup.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
             FsError::from_io_error(
@@ -320,7 +320,7 @@ pub(super) fn move_single_to_trash_with_backend<B: TrashBackend>(
     let src_snapshot = map_external_result(snapshot_existing_path(&src))?;
 
     // Backup into the central undo directory in case the OS trash item can't be found.
-    let backup = temp_backup_path(&src);
+    let backup = temp_backup_path(&src).map_err(FsError::from)?;
     if let Some(parent) = backup.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
             FsError::from_io_error(

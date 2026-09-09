@@ -595,7 +595,12 @@ fn do_extract_impl(
     }
     created.disarm();
 
-    let backup = temp_backup_path(&destination);
+    let backup = temp_backup_path(&destination).map_err(|e| {
+        DecompressError::new(
+            DecompressErrorCode::TaskFailed,
+            format!("Cannot allocate undo backup: {e}"),
+        )
+    })?;
     let action = Action::Create {
         path: destination.clone(),
         backup,
