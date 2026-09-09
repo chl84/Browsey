@@ -140,19 +140,7 @@ pub(super) async fn validate_mixed_transfer_pair(
     let dst_is_cloud = is_cloud_path(&dst);
     match (src_is_cloud, dst_is_cloud) {
         (false, true) => {
-            let src_path = sanitize_path_follow(&src, true).map_err(TransferError::from)?;
-            let src_meta = fs::symlink_metadata(&src_path).map_err(|e| {
-                transfer_err(
-                    TransferErrorCode::IoError,
-                    format!("Failed to read source metadata: {e}"),
-                )
-            })?;
-            if src_meta.file_type().is_symlink() {
-                return Err(api_err(
-                    "symlink_unsupported",
-                    "Symlinks are not supported for mixed local/cloud transfers yet",
-                ));
-            }
+            let src_path = validate_local_source(&src)?;
 
             let dst_path = CloudPath::parse(&dst).map_err(|e| {
                 api_err(
@@ -279,6 +267,23 @@ pub(super) fn sanitize_local_target_path_allow_missing(raw: &str) -> TransferRes
     Ok(parent.join(file_name))
 }
 
+fn validate_local_source(raw: &str) -> TransferResult<PathBuf> {
+    // Inspect the user's selected entry before canonicalization follows its link.
+    let meta = fs::symlink_metadata(raw).map_err(|e| {
+        transfer_err(
+            TransferErrorCode::IoError,
+            format!("Failed to read source metadata: {e}"),
+        )
+    })?;
+    if meta.file_type().is_symlink() {
+        return Err(api_err(
+            "symlink_unsupported",
+            "Symlinks are not supported for mixed local/cloud transfers yet",
+        ));
+    }
+    sanitize_path_follow(raw, true).map_err(TransferError::from)
+}
+
 pub(super) async fn validate_local_to_cloud_route(
     sources: Vec<String>,
     dest_dir: String,
@@ -310,19 +315,7 @@ pub(super) async fn validate_local_to_cloud_route(
 
     let mut local_sources = Vec::with_capacity(sources.len());
     for raw in sources {
-        let path = sanitize_path_follow(&raw, true).map_err(TransferError::from)?;
-        let meta = fs::symlink_metadata(&path).map_err(|e| {
-            transfer_err(
-                TransferErrorCode::IoError,
-                format!("Failed to read source metadata: {e}"),
-            )
-        })?;
-        if meta.file_type().is_symlink() {
-            return Err(api_err(
-                "symlink_unsupported",
-                "Symlinks are not supported for mixed local/cloud transfers yet",
-            ));
-        }
+        let path = validate_local_source(&raw)?;
         local_sources.push(path);
     }
 
@@ -451,5 +444,48 @@ mod tests {
             _ => panic!("expected local->cloud route"),
         }
         fs::remove_dir_all(&base).ok();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod symlink_tests {
+    use super::*;
+
+    #[test]
+    fn local_cloud_routes_reject_live_and_dangling_symlinks() {
+        let base = std::env::temp_dir().join(format!(
+            "browsey-route-links-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&base).unwrap();
+        let target = base.join("original");
+        let link = base.join("link");
+        fs::write(&target, b"original").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        for dangling in [false, true] {
+            if dangling {
+                fs::remove_file(&target).unwrap();
+            }
+            let raw = link.to_string_lossy().to_string();
+            let route = tauri::async_runtime::block_on(validate_mixed_transfer_route(
+                vec![raw.clone()],
+                "rclone://work".into(),
+            ));
+            assert_eq!(route.unwrap_err().code_str(), "symlink_unsupported");
+            let pair = tauri::async_runtime::block_on(validate_mixed_transfer_pair(
+                raw,
+                "rclone://work/copied".into(),
+            ));
+            assert_eq!(pair.unwrap_err().code_str(), "symlink_unsupported");
+            assert_eq!(fs::read_link(&link).unwrap(), target);
+            if !dangling {
+                assert_eq!(fs::read(&target).unwrap(), b"original");
+            }
+        }
+        fs::remove_dir_all(base).unwrap();
     }
 }

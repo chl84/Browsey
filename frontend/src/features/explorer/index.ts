@@ -12,3 +12,4 @@ export type {
   Density,
 } from './model/types'
 export type { ContextAction } from './context/createContextMenus'
+export type { ThemeMode } from './theme/types'

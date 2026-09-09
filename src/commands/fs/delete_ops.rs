@@ -35,7 +35,7 @@ fn delete_entry_impl(path: String, state: tauri::State<UndoState>) -> FsResult<(
 fn delete_with_backup(path: &Path) -> FsResult<Action> {
     map_external_result(ensure_existing_path_nonsymlink(path))?;
     let src_snapshot = map_external_result(snapshot_existing_path(path))?;
-    let backup = temp_backup_path(path);
+    let backup = temp_backup_path(path).map_err(FsError::from)?;
     if let Some(parent) = path.parent() {
         map_external_result(ensure_existing_dir_nonsymlink(parent))?;
     }

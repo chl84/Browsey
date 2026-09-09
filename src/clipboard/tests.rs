@@ -1476,3 +1476,160 @@ fn paste_clipboard_overwrite_directory_cut_rolls_back_when_later_merged_source_f
     clear_clipboard();
     let _ = fs::remove_dir_all(&base);
 }
+
+#[test]
+#[cfg(unix)]
+fn copy_preserves_private_and_executable_permissions() {
+    let base = uniq_path("copy-permissions");
+    for mode in [0o600, 0o755] {
+        let src = base.join(format!("src-{mode}"));
+        let dst = base.join(format!("dst-{mode}"));
+        write_file(&src, b"payload");
+        fs::set_permissions(&src, Permissions::from_mode(mode)).unwrap();
+        copy_entry(&src, &dst, None, None, None).unwrap();
+        assert_eq!(
+            fs::metadata(&dst).unwrap().permissions().mode() & 0o777,
+            mode
+        );
+    }
+    let src = base.join("private-dir");
+    let dst = base.join("copied-dir");
+    write_file(&src.join("secret"), b"secret");
+    fs::set_permissions(&src, Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(src.join("secret"), Permissions::from_mode(0o600)).unwrap();
+    copy_entry(&src, &dst, None, None, None).unwrap();
+    assert_eq!(
+        fs::metadata(&dst).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    assert_eq!(
+        fs::metadata(dst.join("secret"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn merge_move_rolls_back_without_deleting_a_new_source_file() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    let base = uniq_path("merge-new-source-file");
+    let src = base.join("src/folder");
+    let dst = base.join("dst/folder");
+    write_file(&src.join("initial.txt"), b"initial");
+    write_file(&dst.join("existing.txt"), b"existing");
+    let late = src.join("late.txt");
+    let hook_late = late.clone();
+    set_after_merge_item_test_hook(Some(Box::new(move |_| {
+        fs::write(&hook_late, b"newly saved document").unwrap();
+    })));
+    set_clipboard_impl(vec![src.to_string_lossy().to_string()], "cut".into()).unwrap();
+    let result = paste_clipboard_core(
+        None,
+        dst.parent().unwrap().to_string_lossy().to_string(),
+        Some("overwrite".into()),
+        UndoState::default().clone_inner(),
+        CancelState::default(),
+        None,
+    );
+    set_after_merge_item_test_hook(None);
+    clear_clipboard();
+    assert!(result.is_err(), "a nonempty source must abort the move");
+    assert_eq!(fs::read(late).unwrap(), b"newly saved document");
+    assert_eq!(fs::read(src.join("initial.txt")).unwrap(), b"initial");
+    assert_eq!(fs::read(dst.join("existing.txt")).unwrap(), b"existing");
+    assert!(!dst.join("initial.txt").exists());
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn failed_overwrite_restores_original_after_write_error() {
+    // File-size limits and signal dispositions affect the entire process. Keep
+    // fault injection in its own test subprocess so parallel tests stay isolated.
+    if std::env::var_os("BROWSEY_TEST_WRITE_ERROR_CHILD").is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "clipboard::tests::failed_overwrite_restores_original_after_write_error",
+                "--nocapture",
+            ])
+            .env("BROWSEY_TEST_WRITE_ERROR_CHILD", "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+    let _ = ensure_undo_dir();
+    let base = uniq_path("overwrite-write-error");
+    let src = base.join("src/file.txt");
+    let dst = base.join("dst/file.txt");
+    write_file(&src, b"replacement content");
+    write_file(&dst, b"original content");
+    set_clipboard_impl(vec![src.to_string_lossy().to_string()], "copy".into()).unwrap();
+    let mut original_limit: libc::rlimit = unsafe { std::mem::zeroed() };
+    assert_eq!(
+        unsafe { libc::getrlimit(libc::RLIMIT_FSIZE, &mut original_limit) },
+        0
+    );
+    let limit = libc::rlimit {
+        rlim_cur: 4,
+        rlim_max: original_limit.rlim_max,
+    };
+    let old_signal = unsafe { libc::signal(libc::SIGXFSZ, libc::SIG_IGN) };
+    assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &limit) }, 0);
+    let result = paste_clipboard_core(
+        None,
+        dst.parent().unwrap().to_string_lossy().to_string(),
+        Some("overwrite".into()),
+        UndoState::default().clone_inner(),
+        CancelState::default(),
+        None,
+    );
+    unsafe {
+        libc::setrlimit(libc::RLIMIT_FSIZE, &original_limit);
+        libc::signal(libc::SIGXFSZ, old_signal);
+    }
+    let error = result.expect_err("write limit must fail the copy");
+    assert_ne!(error.code(), ClipboardErrorCode::RollbackFailed, "{error}");
+    assert_eq!(fs::read(&dst).unwrap(), b"original content");
+    assert_eq!(fs::read(&src).unwrap(), b"replacement content");
+    clear_clipboard();
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn startup_cleanup_preserves_existing_undo() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    let base = uniq_path("startup-undo");
+    let src = base.join("src/file.txt");
+    let dst = base.join("dst/file.txt");
+    write_file(&src, b"replacement content");
+    write_file(&dst, b"original content");
+    set_clipboard_impl(vec![src.to_string_lossy().to_string()], "copy".into()).unwrap();
+    let undo = UndoState::default();
+    paste_clipboard_core(
+        None,
+        dst.parent().unwrap().to_string_lossy().to_string(),
+        Some("overwrite".into()),
+        undo.clone_inner(),
+        CancelState::default(),
+        None,
+    )
+    .unwrap();
+    crate::undo::cleanup_stale_backups(None);
+    undo.undo().unwrap();
+    assert_eq!(fs::read(dst).unwrap(), b"original content");
+    clear_clipboard();
+    fs::remove_dir_all(base).unwrap();
+}

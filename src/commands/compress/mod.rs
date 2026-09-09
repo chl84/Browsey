@@ -535,7 +535,12 @@ fn do_compress(
     match result {
         Ok(_) => {
             cleanup.disarm();
-            let backup = temp_backup_path(&dest);
+            let backup = temp_backup_path(&dest).map_err(|e| {
+                CompressError::new(
+                    CompressErrorCode::TaskFailed,
+                    format!("Cannot allocate undo backup: {e}"),
+                )
+            })?;
             let _ = undo.record_applied(Action::Create {
                 path: dest.clone(),
                 backup,

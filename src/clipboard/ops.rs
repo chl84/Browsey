@@ -105,7 +105,18 @@ fn copy_dir(
         }
     }
 
-    fs::create_dir(dest).map_err(|e| {
+    let source_permissions = fs::metadata(src)
+        .map_err(|e| {
+            ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Read source permissions", e)
+        })?
+        .permissions();
+    let mut builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(dest).map_err(|e| {
         ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
             &format!("Failed to create dir {}", dest.display()),
@@ -152,6 +163,9 @@ fn copy_dir(
             copy_file_best_effort(&path, &target, app, progress_event, cancel, None)?;
         }
     }
+    fs::set_permissions(dest, source_permissions).map_err(|e| {
+        ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Set directory permissions", e)
+    })?;
     cleanup.disarm();
     Ok(())
 }
@@ -160,7 +174,7 @@ pub(super) fn backup_existing_target(
     target: &Path,
     actions: &mut Vec<Action>,
 ) -> ClipboardResult<()> {
-    let backup = temp_backup_path(target);
+    let backup = temp_backup_path(target).map_err(ClipboardError::from)?;
     let parent = backup
         .parent()
         .ok_or_else(|| ClipboardError::invalid_input("Invalid backup path"))?;
@@ -188,6 +202,7 @@ pub(super) fn merge_dir(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<()> {
+    ensure_not_child(src, dest)?;
     // Ensure both exist and are directories.
     let src_meta = fs::symlink_metadata(src).map_err(|e| {
         ClipboardError::from_io_error(
@@ -308,7 +323,7 @@ pub(super) fn merge_dir(
     if let ClipboardMode::Cut = mode {
         // Remove source directory but keep an empty backup so undo can recreate it
         // before moving items back.
-        let backup = temp_backup_path(src);
+        let backup = temp_backup_path(src).map_err(ClipboardError::from)?;
         if let Some(parent) = backup.parent() {
             fs::create_dir_all(parent).map_err(|e| {
                 ClipboardError::from_io_error(
@@ -325,7 +340,15 @@ pub(super) fn merge_dir(
                 e,
             )
         })?;
-        fs::remove_dir_all(src).map_err(|e| {
+        fs::set_permissions(&backup, src_meta.permissions()).map_err(|e| {
+            ClipboardError::from_io_error(
+                ClipboardErrorCode::IoError,
+                "Set backup directory permissions",
+                e,
+            )
+        })?;
+        // Never delete entries that another process created during the merge.
+        fs::remove_dir(src).map_err(|e| {
             ClipboardError::from_io_error(
                 ClipboardErrorCode::IoError,
                 &format!("Failed to remove source dir {}", src.display()),
@@ -402,77 +425,107 @@ pub(super) fn copy_file_best_effort(
             e,
         )
     })?;
-    let mut writer = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(dest)
+    let permissions = reader
+        .metadata()
         .map_err(|e| {
-            ClipboardError::from_io_error(
-                ClipboardErrorCode::IoError,
-                &format!("Failed to open target for copy {}", dest.display()),
-                e,
-            )
-        })?;
-
-    let mut buf = vec![0u8; 512 * 1024];
-    let mut done: u64 = 0;
-    let total =
-        total_hint.or_else(|| progress_event.and_then(|_| fs::metadata(src).ok().map(|m| m.len())));
-    let mut last_emit = 0u64;
-    let mut last_time = std::time::Instant::now();
-    loop {
-        if transfer_cancelled(cancel, app) {
-            let _ = fs::remove_file(dest);
-            emit_copy_progress(
-                app,
-                progress_event,
-                CopyProgressPayload {
-                    bytes: done,
-                    total: total.unwrap_or(done),
-                    finished: true,
-                },
-            );
-            return Err(ClipboardError::cancelled());
-        }
-        let n = reader.read(&mut buf).map_err(|e| {
-            ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Read failed", e)
-        })?;
-        if n == 0 {
-            break;
-        }
-        writer.write_all(&buf[..n]).map_err(|e| {
-            ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Write failed", e)
-        })?;
-        done = done.saturating_add(n as u64);
-        if progress_event.is_some() {
-            let elapsed = last_time.elapsed();
-            if done.saturating_sub(last_emit) >= 64 * 1024
-                || elapsed >= std::time::Duration::from_millis(200)
-            {
+            ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Read source permissions", e)
+        })?
+        .permissions();
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        options.mode(permissions.mode() & 0o777);
+    }
+    let writer = options.open(dest).map_err(|e| {
+        ClipboardError::from_io_error(
+            ClipboardErrorCode::IoError,
+            &format!("Failed to open target for copy {}", dest.display()),
+            e,
+        )
+    })?;
+    let result: ClipboardResult<u64> = (move || {
+        let mut writer = writer;
+        let mut buf = vec![0u8; 512 * 1024];
+        let mut done: u64 = 0;
+        let total = total_hint
+            .or_else(|| progress_event.and_then(|_| fs::metadata(src).ok().map(|m| m.len())));
+        let mut last_emit = 0u64;
+        let mut last_time = std::time::Instant::now();
+        loop {
+            if transfer_cancelled(cancel, app) {
                 emit_copy_progress(
                     app,
                     progress_event,
                     CopyProgressPayload {
                         bytes: done,
-                        total: total.unwrap_or(0),
-                        finished: false,
+                        total: total.unwrap_or(done),
+                        finished: true,
                     },
                 );
-                last_emit = done;
-                last_time = std::time::Instant::now();
+                return Err(ClipboardError::cancelled());
+            }
+            let n = reader.read(&mut buf).map_err(|e| {
+                ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Read failed", e)
+            })?;
+            if n == 0 {
+                break;
+            }
+            writer.write_all(&buf[..n]).map_err(|e| {
+                ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Write failed", e)
+            })?;
+            done = done.saturating_add(n as u64);
+            if progress_event.is_some() {
+                let elapsed = last_time.elapsed();
+                if done.saturating_sub(last_emit) >= 64 * 1024
+                    || elapsed >= std::time::Duration::from_millis(200)
+                {
+                    emit_copy_progress(
+                        app,
+                        progress_event,
+                        CopyProgressPayload {
+                            bytes: done,
+                            total: total.unwrap_or(0),
+                            finished: false,
+                        },
+                    );
+                    last_emit = done;
+                    last_time = std::time::Instant::now();
+                }
             }
         }
+        writer.set_permissions(permissions).map_err(|e| {
+            ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Set file permissions", e)
+        })?;
+        writer.sync_all().map_err(|e| {
+            ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Flush copied file", e)
+        })?;
+        emit_copy_progress(
+            app,
+            progress_event,
+            CopyProgressPayload {
+                bytes: done,
+                total: total.unwrap_or(done),
+                finished: true,
+            },
+        );
+        Ok(done)
+    })();
+    if let Err(error) = result {
+        // The target was created exclusively by this copy. Remove partial data
+        // before the caller restores an overwritten target from its backup.
+        if let Err(cleanup_error) = fs::remove_file(dest) {
+            if cleanup_error.kind() != ErrorKind::NotFound {
+                return Err(error.with_context(format!(
+                    "Could not remove partial copy {}: {cleanup_error}",
+                    dest.display()
+                )));
+            }
+        }
+        return Err(error);
     }
-    emit_copy_progress(
-        app,
-        progress_event,
-        CopyProgressPayload {
-            bytes: done,
-            total: total.unwrap_or(done),
-            finished: true,
-        },
-    );
-    Ok(done)
+    result
 }
 
 #[cfg(not(target_os = "windows"))]

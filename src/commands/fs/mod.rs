@@ -398,7 +398,7 @@ fn create_file_impl(
             )
         })?;
 
-    let backup = temp_backup_path(&target);
+    let backup = temp_backup_path(&target).map_err(FsError::from)?;
     let _ = state.record_applied(Action::Create {
         path: target.clone(),
         backup,

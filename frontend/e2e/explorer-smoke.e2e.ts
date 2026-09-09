@@ -77,10 +77,10 @@ test('formats a removable USB through the accessible format dialog', async ({ pa
   })
   await page.goto('/')
 
-  const usb = page.getByRole('button', { name: 'USB' })
+  const usb = page.getByRole('button', { name: 'USB', exact: true })
   await usb.focus()
   await page.keyboard.press('Shift+F10')
-  await page.getByRole('button', { name: 'Format…' }).click()
+  await page.getByRole('menuitem', { name: 'Format…' }).click()
 
   await expect(page.getByText('Format USB drive?')).toBeVisible()
   await expect(page.getByLabel('Volume name (optional)')).toBeVisible()

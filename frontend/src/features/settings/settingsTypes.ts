@@ -1,5 +1,4 @@
-import type { DefaultSortField, Density } from '@/features/explorer'
-import type { ThemeMode } from '@/features/explorer/theme/types'
+import type { DefaultSortField, Density, ThemeMode } from '@/features/explorer'
 
 export type SortField = DefaultSortField
 export type SortDirection = 'asc' | 'desc'

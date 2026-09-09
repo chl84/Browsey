@@ -34,20 +34,27 @@ fn copy_file_noreplace(src: &Path, dest: &Path) -> UndoResult<()> {
     let mut src_file = fs::File::open(src).map_err(|e| {
         UndoError::from_io_error(format!("Failed to open source file {}", src.display()), e)
     })?;
-    let mut dst_file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(dest)
-        .map_err(|e| {
-            if e.kind() == ErrorKind::AlreadyExists {
-                UndoError::target_exists(format!("Destination already exists: {}", dest.display()))
-            } else {
-                UndoError::from_io_error(
-                    format!("Failed to create destination file {}", dest.display()),
-                    e,
-                )
-            }
-        })?;
+    let permissions = src_file
+        .metadata()
+        .map_err(|e| UndoError::from_io_error("Failed to read source permissions", e))?
+        .permissions();
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        options.mode(permissions.mode() & 0o777);
+    }
+    let mut dst_file = options.open(dest).map_err(|e| {
+        if e.kind() == ErrorKind::AlreadyExists {
+            UndoError::target_exists(format!("Destination already exists: {}", dest.display()))
+        } else {
+            UndoError::from_io_error(
+                format!("Failed to create destination file {}", dest.display()),
+                e,
+            )
+        }
+    })?;
     io::copy(&mut src_file, &mut dst_file).map_err(|e| {
         UndoError::from_io_error(
             format!(
@@ -81,7 +88,16 @@ fn copy_dir(src: &Path, dest: &Path) -> UndoResult<()> {
         ensure_existing_dir_nonsymlink(parent)?;
     }
     assert_path_snapshot(src, &src_snapshot)?;
-    fs::create_dir(dest).map_err(|e| {
+    let permissions = fs::metadata(src)
+        .map_err(|e| UndoError::from_io_error("Failed to read directory permissions", e))?
+        .permissions();
+    let mut builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(dest).map_err(|e| {
         if e.kind() == ErrorKind::AlreadyExists {
             UndoError::target_exists(format!("Destination already exists: {}", dest.display()))
         } else {
@@ -104,7 +120,8 @@ fn copy_dir(src: &Path, dest: &Path) -> UndoResult<()> {
             copy_file_noreplace(&path, &target)?;
         }
     }
-    Ok(())
+    fs::set_permissions(dest, permissions)
+        .map_err(|e| UndoError::from_io_error("Failed to set directory permissions", e))
 }
 
 pub(crate) fn delete_entry_path(path: &Path) -> UndoResult<()> {
