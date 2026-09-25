@@ -54,6 +54,10 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Stora
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Memory", "Win32_UI_Shell", "Win32_UI_Shell_Common"] }
 winreg = "0.55.0"
 
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+# Already used by Tauri/GTK; direct access avoids short-lived CLI D-Bus calls.
+gio = "=0.18.4"
+
 [profile.dev.package.image]
 opt-level = 3
 
