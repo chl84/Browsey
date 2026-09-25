@@ -56,7 +56,7 @@ Windows:
 
 ## Install
 - Fedora/RPM: download the latest `Browsey-<version>-1.x86_64.rpm` from Releases and install with `sudo rpm -Uvh --replacepkgs Browsey-<version>-1.x86_64.rpm`.
-- Ubuntu/Debian (`.deb`): download the latest `browsey_<version>_amd64.deb` from Releases and install with `sudo apt install ./browsey_<version>_amd64.deb`.
+- Ubuntu/Debian (`.deb`): download the latest `Browsey_<version>_amd64.deb` from Releases and install with `sudo apt install ./Browsey_<version>_amd64.deb`.
 - Supported Linux release path is install + upgrade. Package downgrade is not part of the Linux 1.0 supported path.
 - Windows: build an NSIS installer with `cargo tauri build --bundles nsis`; no new Windows installer is included in 1.0.2.
 - From source: clone, run `npm --prefix frontend install`, then `cargo tauri dev --no-dev-server` (or `cargo tauri build` for a release bundle).
@@ -64,7 +64,7 @@ Windows:
 
 Linux upgrade path:
 - Fedora/RPM: use the next release RPM with `sudo rpm -Uvh --replacepkgs Browsey-<new-version>-1.x86_64.rpm`.
-- Ubuntu/Debian (`.deb`): use the next release DEB with `sudo apt install ./browsey_<new-version>_amd64.deb`.
+- Ubuntu/Debian (`.deb`): use the next release DEB with `sudo apt install ./Browsey_<new-version>_amd64.deb`.
 - Ubuntu/Debian uninstall path: `sudo apt remove browsey` (or `sudo apt purge browsey` if config cleanup is explicitly desired).
 
 ## Cloud (rclone) (Linux-first)
