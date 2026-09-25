@@ -54,6 +54,120 @@ fn write_file(path: &Path, content: &[u8]) {
 }
 
 #[test]
+fn explicit_paste_ignores_clipboard_changes_between_preview_and_execution() {
+    let _lock = lock_clipboard_test();
+    ensure_undo_dir();
+    for mode in ["copy", "cut"] {
+        let root = uniq_path("explicit-paste");
+        let source = root.join("src/report.txt");
+        let unrelated = root.join("other/unrelated.txt");
+        let dest = root.join("dest");
+        write_file(&source, b"original-source");
+        write_file(&unrelated, b"unrelated-source");
+        write_file(&dest.join("report.txt"), b"old-destination");
+        let input = || {
+            Some(ClipboardInput {
+                paths: vec![source.to_string_lossy().into_owned()],
+                mode: mode.into(),
+            })
+        };
+        set_clipboard_impl(vec![unrelated.to_string_lossy().into_owned()], "cut".into()).unwrap();
+        let preview = preview_entries(dest.to_string_lossy().into_owned(), input()).unwrap();
+        assert_eq!(preview.len(), 1);
+        assert_eq!(preview[0].src, source.to_string_lossy());
+        // A different operation replaces the shared clipboard after conflict inspection.
+        set_clipboard_impl(
+            vec![unrelated.to_string_lossy().into_owned()],
+            "copy".into(),
+        )
+        .unwrap();
+        let before = current_clipboard().unwrap();
+        let undo = UndoState::default();
+        paste_entries_core(
+            None,
+            dest.to_string_lossy().into_owned(),
+            Some("overwrite".into()),
+            undo.clone_inner(),
+            CancelState::default(),
+            None,
+            input(),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read(dest.join("report.txt")).unwrap(),
+            b"original-source"
+        );
+        assert_eq!(source.exists(), mode == "copy");
+        assert_eq!(fs::read(&unrelated).unwrap(), b"unrelated-source");
+        assert!(!dest.join("unrelated.txt").exists());
+        assert!(current_clipboard().as_ref() == Some(&before));
+        clear_clipboard();
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn explicit_paste_revalidates_sources_and_never_falls_back_to_shared_clipboard() {
+    let _lock = lock_clipboard_test();
+    ensure_undo_dir();
+    let root = uniq_path("explicit-invalid");
+    let source = root.join("source.txt");
+    let dest = root.join("dest");
+    write_file(&source, b"keep");
+    fs::create_dir_all(&dest).unwrap();
+    set_clipboard_impl(vec![source.to_string_lossy().into_owned()], "cut".into()).unwrap();
+    let before = current_clipboard().unwrap();
+    for input in [
+        ClipboardInput {
+            paths: vec![],
+            mode: "copy".into(),
+        },
+        ClipboardInput {
+            paths: vec![source.to_string_lossy().into_owned()],
+            mode: "invalid".into(),
+        },
+        ClipboardInput {
+            paths: vec![root.join("missing").to_string_lossy().into_owned()],
+            mode: "copy".into(),
+        },
+        ClipboardInput {
+            paths: vec!["rclone://remote/file".into()],
+            mode: "copy".into(),
+        },
+    ] {
+        let undo = UndoState::default();
+        assert!(paste_entries_core(
+            None,
+            dest.to_string_lossy().into_owned(),
+            None,
+            undo.clone_inner(),
+            CancelState::default(),
+            None,
+            Some(input)
+        )
+        .is_err());
+        assert_eq!(fs::read(&source).unwrap(), b"keep");
+        assert_eq!(fs::read_dir(&dest).unwrap().count(), 0);
+        assert!(current_clipboard().as_ref() == Some(&before));
+    }
+    #[cfg(unix)]
+    {
+        let link = root.join("link");
+        symlink(&source, &link).unwrap();
+        assert!(preview_entries(
+            dest.to_string_lossy().into_owned(),
+            Some(ClipboardInput {
+                paths: vec![link.to_string_lossy().into_owned()],
+                mode: "copy".into(),
+            })
+        )
+        .is_err());
+    }
+    clear_clipboard();
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn merge_copy_can_undo_without_touching_existing() {
     let _ = ensure_undo_dir();
     let base = uniq_path("merge-copy");

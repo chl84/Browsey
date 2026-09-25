@@ -5,6 +5,7 @@ const setClipboardPathsStateMock = vi.fn()
 const setClipboardCmdMock = vi.fn()
 const resolveDropClipboardModeMock = vi.fn()
 const startNativeFileDragMock = vi.fn()
+let onNativeDrop: (paths: string[]) => Promise<void>
 
 vi.mock('svelte', async () => {
   const actual = await vi.importActual<typeof import('svelte')>('svelte')
@@ -15,12 +16,15 @@ vi.mock('svelte', async () => {
 })
 
 vi.mock('./createNativeFileDrop', () => ({
-  createNativeFileDrop: vi.fn(() => ({
+  createNativeFileDrop: vi.fn((options: { onDrop: typeof onNativeDrop }) => {
+    onNativeDrop = options.onDrop
+    return {
     hovering: writable(false),
     position: writable(null),
     start: vi.fn(async () => {}),
     stop: vi.fn(async () => {}),
-  })),
+    }
+  }),
 }))
 
 vi.mock('./clipboard.store', () => ({
@@ -94,10 +98,25 @@ describe('useExplorerDragDrop bookmark drop handlers', () => {
       '/tmp/bookmark-target',
       false,
     )
-    expect(setClipboardPathsStateMock).toHaveBeenCalledWith('copy', ['/tmp/source.txt'])
-    expect(setClipboardCmdMock).toHaveBeenCalledWith(['/tmp/source.txt'], 'copy')
-    expect(handlePasteOrMove).toHaveBeenCalledWith('/tmp/bookmark-target')
+    expect(setClipboardPathsStateMock).not.toHaveBeenCalled()
+    expect(setClipboardCmdMock).not.toHaveBeenCalled()
+    expect(handlePasteOrMove).toHaveBeenCalledWith('/tmp/bookmark-target', {
+      paths: ['/tmp/source.txt'], mode: 'copy',
+    })
     expect(get(dragDrop.dragState).dragging).toBe(false)
     expect(get(dragDrop.dragState).target).toBeNull()
+  })
+
+  it.each(['/tmp/dest', 'rclone://work/dest'])('passes native drops explicitly without replacing the clipboard (%s)', async (dest) => {
+    const handlePasteOrMove = vi.fn(async () => true)
+    useExplorerDragDrop({
+      currentView: () => 'dir', currentPath: () => dest,
+      getSelectedSet: () => new Set(), loadDir: vi.fn(),
+      focusEntryInCurrentList: vi.fn(), showToast: vi.fn(), handlePasteOrMove,
+    })
+    await onNativeDrop(['/tmp/dropped.jpg'])
+    expect(handlePasteOrMove).toHaveBeenCalledWith(dest, { paths: ['/tmp/dropped.jpg'], mode: 'copy' })
+    expect(setClipboardPathsStateMock).not.toHaveBeenCalled()
+    expect(setClipboardCmdMock).not.toHaveBeenCalled()
   })
 })

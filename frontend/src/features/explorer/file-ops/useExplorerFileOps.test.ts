@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { get } from 'svelte/store'
 
 vi.mock('@tauri-apps/api/event', () => ({
@@ -187,6 +187,125 @@ describe('useExplorerFileOps extract recovery', () => {
   })
 })
 
+describe('immutable paste and drop operations', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.clearAllMocks()
+    clearClipboardState()
+    pasteClipboardPreviewMock.mockResolvedValue([])
+    previewCloudConflictsMock.mockResolvedValue([])
+    previewMixedTransferConflictsMock.mockResolvedValue([])
+    pasteClipboardCmdMock.mockResolvedValue(undefined)
+    copyCloudEntryMock.mockResolvedValue(undefined)
+    copyMixedEntriesMock.mockResolvedValue(undefined)
+    clearSystemClipboardMock.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  it('copies an explicit local drop, never the previously cut cloud file', async () => {
+    setClipboardPathsState('cut', ['rclone://work/old.jpg'])
+    const previous = get(clipboardState)
+    const ops = useExplorerFileOps(createDeps())
+    await ops.handlePasteOrMove('/tmp/dest', { paths: ['/tmp/new.jpg'], mode: 'copy' })
+    expect(pasteClipboardPreviewMock).toHaveBeenCalledWith('/tmp/dest', { paths: ['/tmp/new.jpg'], mode: 'copy' })
+    expect(pasteClipboardCmdMock).toHaveBeenCalledWith('/tmp/dest', 'rename', expect.any(String), { paths: ['/tmp/new.jpg'], mode: 'copy' })
+    expect(previewMixedTransferConflictsMock).not.toHaveBeenCalled()
+    expect(moveMixedEntryToMock).not.toHaveBeenCalled()
+    expect(get(clipboardState)).toBe(previous)
+    expect(setClipboardCmdMock).not.toHaveBeenCalled()
+    expect(clearSystemClipboardMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['local', '/tmp/src/a.txt', '/tmp/dest'],
+    ['cloud', 'rclone://work/src/a.txt', 'rclone://work/dest'],
+    ['local_to_cloud', '/tmp/src/a.txt', 'rclone://work/dest'],
+    ['cloud_to_local', 'rclone://work/src/a.txt', '/tmp/dest'],
+  ])('retains %s sources, destination and mode across a conflict dialog', async (route, src, dest) => {
+    const conflicts = [{ src, target: `${dest}/a.txt`, is_dir: false, isDir: false }]
+    pasteClipboardPreviewMock.mockResolvedValue(conflicts)
+    previewCloudConflictsMock.mockResolvedValue(conflicts)
+    previewMixedTransferConflictsMock.mockResolvedValue(conflicts)
+    setClipboardPathsState('copy', [src])
+    const deps = createDeps()
+    const ops = useExplorerFileOps(deps)
+    await ops.handlePasteOrMove(dest)
+    expect(get(ops.conflictModalOpen)).toBe(true)
+    setClipboardPathsState('cut', ['rclone://other/unrelated.txt'])
+    const newer = get(clipboardState)
+    deps.getCurrentPath = () => '/other/folder'
+    await ops.resolveConflicts('overwrite')
+    if (route === 'local') {
+      expect(pasteClipboardCmdMock).toHaveBeenCalledWith(dest, 'overwrite', expect.any(String), { paths: [src], mode: 'copy' })
+    } else if (route === 'cloud') {
+      expect(copyCloudEntryMock).toHaveBeenCalledWith(src, `${dest}/a.txt`, expect.objectContaining({ overwrite: true }))
+    } else {
+      expect(copyMixedEntriesMock).toHaveBeenCalledWith([src], dest, expect.objectContaining({ overwrite: true }))
+    }
+    expect(moveCloudEntryMock).not.toHaveBeenCalled()
+    expect(moveMixedEntriesMock).not.toHaveBeenCalled()
+    expect(get(clipboardState)).toBe(newer)
+    expect(clearSystemClipboardMock).not.toHaveBeenCalled()
+    ops.cancelConflicts()
+  })
+
+  it('copies input before asynchronous preview and rejects an overlapping drop', async () => {
+    let finish!: (items: unknown[]) => void
+    pasteClipboardPreviewMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const ops = useExplorerFileOps(createDeps())
+    const input: { paths: string[]; mode: 'copy' | 'cut' } = { paths: ['/tmp/original'], mode: 'copy' }
+    const first = ops.handlePasteOrMove('/dest', input)
+    input.paths[0] = '/tmp/changed'
+    input.mode = 'cut'
+    expect(await ops.handlePasteOrMove('/other', { paths: ['/tmp/other'], mode: 'cut' })).toBe(false)
+    finish([])
+    await first
+    expect(pasteClipboardCmdMock).toHaveBeenCalledExactlyOnceWith('/dest', 'rename', expect.any(String), { paths: ['/tmp/original'], mode: 'copy' })
+  })
+
+  it('keeps the pending operation when a second drop arrives and retires it on cancel', async () => {
+    pasteClipboardPreviewMock.mockResolvedValue([{ src: '/src/a', target: '/dest/a', is_dir: false }])
+    const ops = useExplorerFileOps(createDeps())
+    await ops.handlePasteOrMove('/dest', { paths: ['/src/a'], mode: 'copy' })
+    expect(await ops.handlePasteOrMove('/other', { paths: ['/src/b'], mode: 'cut' })).toBe(false)
+    expect(pasteClipboardPreviewMock).toHaveBeenCalledTimes(1)
+    ops.cancelConflicts()
+    await ops.resolveConflicts('overwrite')
+    expect(pasteClipboardCmdMock).not.toHaveBeenCalled()
+  })
+
+  it('executes a conflict confirmation only once and preserves a newer clipboard', async () => {
+    pasteClipboardPreviewMock.mockResolvedValue([{ src: '/src/a', target: '/dest/a', is_dir: false }])
+    let finish!: () => void
+    pasteClipboardCmdMock.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve }))
+    setClipboardPathsState('cut', ['/src/a'])
+    const ops = useExplorerFileOps(createDeps())
+    await ops.handlePasteOrMove('/dest')
+    const first = ops.resolveConflicts('overwrite')
+    await vi.waitFor(() => expect(pasteClipboardCmdMock).toHaveBeenCalledTimes(1))
+    await ops.resolveConflicts('overwrite')
+    setClipboardPathsState('cut', ['/src/a']) // Even the same paths can be a new clipboard operation.
+    const newer = get(clipboardState)
+    finish()
+    await first
+    expect(pasteClipboardCmdMock).toHaveBeenCalledExactlyOnceWith('/dest', 'overwrite', expect.any(String), { paths: ['/src/a'], mode: 'cut' })
+    expect(get(clipboardState)).toBe(newer)
+    expect(clearSystemClipboardMock).not.toHaveBeenCalled()
+  })
+
+  it('never falls back to an old clipboard for an empty explicit drop', async () => {
+    setClipboardPathsState('cut', ['/tmp/old'])
+    const ops = useExplorerFileOps(createDeps())
+    expect(await ops.handlePasteOrMove('/dest', { paths: [], mode: 'copy' })).toBe(false)
+    expect(pasteClipboardPreviewMock).not.toHaveBeenCalled()
+    expect(pasteClipboardCmdMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('useExplorerFileOps local conflict preview', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -215,7 +334,9 @@ describe('useExplorerFileOps local conflict preview', () => {
     const ok = await fileOps.handlePasteOrMove('/tmp/dest')
 
     expect(ok).toBe(false)
-    expect(pasteClipboardPreviewMock).toHaveBeenCalledWith('/tmp/dest')
+    expect(pasteClipboardPreviewMock).toHaveBeenCalledWith('/tmp/dest', {
+      paths: ['/tmp/src/report.txt'], mode: 'copy',
+    })
     expect(pasteClipboardCmdMock).not.toHaveBeenCalled()
     expect(get(fileOps.conflictModalOpen)).toBe(true)
     expect(get(fileOps.conflictList)).toEqual([
@@ -253,6 +374,7 @@ describe('useExplorerFileOps local conflict preview', () => {
       '/tmp/dest',
       'overwrite',
       expect.stringMatching(/^copy-progress-/),
+      { paths: ['/tmp/src/report.txt'], mode: 'copy' },
     )
     expect(get(fileOps.conflictModalOpen)).toBe(false)
     expect(get(fileOps.conflictList)).toEqual([])
@@ -824,6 +946,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       '/tmp/dest',
       'rename',
       expect.stringMatching(/^cut-progress-/),
+      { paths: ['/tmp/src/report.txt'], mode: 'cut' },
     )
     expect(activityApi.start).toHaveBeenCalledWith(
       'Moving…',
@@ -844,7 +967,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     expect(ok).toBe(true)
     expect(get(clipboardState).mode).toBe('copy')
     expect(Array.from(get(clipboardState).paths)).toEqual([])
-    expect(setClipboardCmdMock).toHaveBeenCalledWith([], 'copy')
+    expect(setClipboardCmdMock).not.toHaveBeenCalled()
     expect(clearSystemClipboardMock).toHaveBeenCalled()
   })
 
@@ -868,6 +991,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       '/tmp/dest',
       'rename',
       expect.stringMatching(/^cut-progress-/),
+      { paths: ['/tmp/src/report.txt'], mode: 'cut' },
     )
     expect(activityApi.start).toHaveBeenCalledWith(
       'Moving…',
@@ -896,6 +1020,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       '/tmp/dest',
       'rename',
       expect.stringMatching(/^copy-progress-/),
+      { paths: ['/tmp/src/report.txt'], mode: 'copy' },
     )
     expect(activityApi.start).toHaveBeenCalledWith(
       'Copying…',

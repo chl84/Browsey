@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Isolate drag-and-drop sources from the clipboard so native drops cannot copy or move a previously selected cloud file.
+- Keep source paths, destination, and copy/move mode fixed through conflict preview and confirmation for local, cloud, and mixed transfers. Reject overlapping requests and repeated confirmation, and preserve newer clipboard selections when an older move finishes.
+
 ## v1.0.2 — 2026-09-25
 
 - Discover connected MTP phones through GIO without first opening another file manager; mount on demand and show phone-specific properties and unlock guidance.

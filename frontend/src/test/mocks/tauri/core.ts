@@ -137,10 +137,11 @@ const ensureDirListing = (path: string) => {
 const copyOrMoveFromClipboard = (
   dest: string,
   policy: 'rename' | 'overwrite' = 'rename',
+  input: MockClipboardState = internalClipboard,
 ) => {
   ensureDirListing(dest)
   const destEntries = FILE_TREE[dest]
-  for (const sourcePath of internalClipboard.paths) {
+  for (const sourcePath of input.paths) {
     const source = findEntry(sourcePath)
     if (!source) continue
     const baseName = basename(source.path)
@@ -163,7 +164,7 @@ const copyOrMoveFromClipboard = (
       path: targetPath,
     })
 
-    if (internalClipboard.mode === 'cut') {
+    if (input.mode === 'cut') {
       removeEntry(source.path)
     }
   }
@@ -373,12 +374,20 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'copy_paths_to_system_clipboard':
     case 'clear_system_clipboard':
       return undefined as T
-    case 'paste_clipboard_preview':
-      return [] as T
+    case 'paste_clipboard_preview': {
+      const input = (args?.input as MockClipboardState | undefined) ?? internalClipboard
+      const dest = (args?.dest as string) ?? ROOT
+      return input.paths.flatMap(src => {
+        const target = joinPath(dest, basename(src))
+        const existing = findEntry(target)
+        return existing ? [{ src, target, exists: true, is_dir: existing.kind === 'dir' }] : []
+      }) as T
+    }
     case 'paste_clipboard_cmd':
       copyOrMoveFromClipboard(
         (args?.dest as string) ?? ROOT,
         ((args?.policy as 'rename' | 'overwrite' | undefined) ?? 'rename'),
+        args?.input as MockClipboardState | undefined,
       )
       return undefined as T
     case 'can_extract_paths':
