@@ -14,6 +14,8 @@ mod keymap;
 mod metadata;
 #[cfg(target_os = "linux")]
 mod mtp;
+#[cfg(target_os = "linux")]
+mod native_drag;
 mod path_guard;
 mod runtime_lifecycle;
 mod sorting;
@@ -261,14 +263,19 @@ fn main() {
                 if window.create {
                     continue;
                 }
-                tauri::WebviewWindowBuilder::from_config(app, window)?
-                    .enable_clipboard_access()
-                    .build()?;
+                let builder = tauri::WebviewWindowBuilder::from_config(app, window)?
+                    .enable_clipboard_access();
+                #[cfg(target_os = "linux")]
+                let builder = builder.initialization_script(native_drag::INIT_SCRIPT);
+                let webview = builder.build()?;
+                #[cfg(target_os = "linux")]
+                native_drag::install(&webview)?;
+                #[cfg(not(target_os = "linux"))]
+                let _ = webview;
             }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            start_native_file_drag,
             about_info,
             list_dir,
             list_facets,

@@ -12,7 +12,7 @@
 {#if show}
   <div class="group-divider" aria-hidden="true"></div>
   <div class="group-heading">Shortcuts</div><div class="group-spacer"></div>
-  <p>Drag &amp; drop: Ctrl copies, Shift moves. Hold Alt when starting a drag to copy local files to another app. Incoming external drops and cloud transfers default to copy.</p>
+  <p>Drag &amp; drop: drag local files directly to another app; no Alt key is needed. Hold Ctrl before starting to lock the drag to copy, or Shift to lock it to move. Without these keys the receiving app chooses its default. Incoming drops and internal cloud transfers default to copy. Download cloud files before dragging them to another app.</p>
   <div class="form-control shortcuts-control shortcuts-row">
     <div class="shortcuts-columns">
       {#each shortcutColumns as column, columnIndex (columnIndex)}

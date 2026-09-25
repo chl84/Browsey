@@ -7,7 +7,7 @@ import { createDragNavigation } from './createDragNavigation'
 import { findDropTarget, isDropDirectoryPath } from './dropTargets'
 import { normalizePath } from '../utils'
 import { resolveDropClipboardMode, type PasteSources } from '../services/clipboard.service'
-import { startNativeFileDrag } from '../services/nativeDrag.service'
+import { fileDragStartMode } from './fileDragPayload'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
 
@@ -40,6 +40,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
   let session = 0
   let previewToken = 0
   let modifiers = noModifiers
+  let sourceMode: Mode | null = null
   let lastPoint: DropPosition | null = null
   let hoverOpenedAt: DropPosition | null = null
   let highlighted: HTMLElement | null = null
@@ -80,6 +81,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     dragPaths = []
     external = false
     modifiers = noModifiers
+    sourceMode = null
     lastPoint = null
     hoverOpenedAt = null
     navigation.stop()
@@ -93,9 +95,12 @@ export const useExplorerDragDrop = (deps: Deps) => {
     && !mixedSelection(paths) && dragDrop.canDropOn(paths, dest)
 
   // External native events carry no modifier keys: always copy incoming files.
-  // Within Browsey, the event itself is authoritative (no stale keydown state).
+  // An explicit local start action matches the native offer. Otherwise use the
+  // current internal drop event, never stale keyboard state.
   const resolveMode = (paths: string[], dest: string, keys: Modifiers, native = external): Promise<Mode> => {
-    if (native || keys.ctrlKey || keys.metaKey) return Promise.resolve('copy')
+    if (native) return Promise.resolve('copy')
+    if (sourceMode) return Promise.resolve(sourceMode)
+    if (keys.ctrlKey || keys.metaKey) return Promise.resolve('copy')
     if (keys.shiftKey) return Promise.resolve('cut')
     if (paths.some(isCloudPath) || isCloudPath(dest)) return Promise.resolve('copy')
     const key = JSON.stringify([paths, dest])
@@ -113,10 +118,10 @@ export const useExplorerDragDrop = (deps: Deps) => {
   const preview = (dest: string, event?: DragEvent) => {
     const token = ++previewToken
     dragDrop.setTarget(dest)
-    const known = external || modifiers.ctrlKey || modifiers.metaKey ? 'copy'
+    const known = external ? 'copy' : sourceMode ?? (modifiers.ctrlKey || modifiers.metaKey ? 'copy'
       : modifiers.shiftKey ? 'cut'
       : dragPaths.some(isCloudPath) || isCloudPath(dest) ? 'copy'
-      : resolvedModes.get(JSON.stringify([dragPaths, dest]))
+      : resolvedModes.get(JSON.stringify([dragPaths, dest])))
     const action = known === 'copy' ? 'copy' : known === 'cut' ? 'move' : null
     dragAction.set(action)
     // The browser only reads dropEffect synchronously during dragover.
@@ -175,16 +180,29 @@ export const useExplorerDragDrop = (deps: Deps) => {
 
   const nativeDrop = createNativeFileDrop({
     onHover: (paths, point) => {
-      if (dragPaths.length && !external) return
+      if (dragPaths.length && !external) {
+        if (paths.length === dragPaths.length && paths.every((path, i) => path === dragPaths[i])) updateAt(point)
+        return
+      }
       external = true
       dragPaths = [...paths]
       dragState.set({ dragging: paths.length > 0, paths: [...paths], target: null, position: point })
       updateAt(point)
     },
-    onLeave: () => { if (external && !transferring) handleRowDragEnd() },
+    onLeave: () => {
+      if (external && !transferring) handleRowDragEnd()
+      else { navigation.stop(); clearTarget() }
+    },
     onDrop: async (paths, point) => {
-      if (dragPaths.length && !external) return // HTML drag owns this operation.
       const dest = blocked() ? null : targetAt(point)?.path ?? null
+      if (dragPaths.length && !external) {
+        // URI exports can re-enter this same webview through Tauri's native drop
+        // interceptor. Preserve internal modifiers and route exactly once.
+        if (paths.length === dragPaths.length && paths.every((path, i) => path === dragPaths[i])) {
+          await performDrop(dest, [...dragPaths], modifiers, false)
+        }
+        return
+      }
       await performDrop(dest, [...paths], noModifiers, true)
     },
     onError: error => deps.showToast(`Drop failed: ${getErrorMessage(error)}`),
@@ -203,20 +221,8 @@ export const useExplorerDragDrop = (deps: Deps) => {
       return
     }
     handleRowDragEnd()
-    if (event.altKey) {
-      event.preventDefault()
-      event.stopPropagation()
-      if (paths.some(isCloudPath)) {
-        deps.showToast('Download cloud files to a local folder before dragging them to another app')
-        return
-      }
-      // Export is copy-only: the receiving app controls completion; never delete source files here.
-      void startNativeFileDrag(paths).then(ok => {
-        if (!ok) deps.showToast('Native drag failed')
-      }).catch(error => deps.showToast(`Native drag failed: ${getErrorMessage(error)}`))
-      return
-    }
     dragPaths = paths
+    sourceMode = paths.some(isCloudPath) ? null : fileDragStartMode(event)
     modifiers = event
     dragDrop.start(paths, event)
   }
@@ -244,6 +250,14 @@ export const useExplorerDragDrop = (deps: Deps) => {
     lastPoint = null
   }
   const handleBlur = () => {
+    if (dragPaths.length && !external && !transferring) {
+      // Crossing into another app must not discard the source session. Native
+      // dragend/Escape completes it; re-entering Browsey still has its snapshot.
+      navigation.stop()
+      clearTarget()
+      lastPoint = null
+      return
+    }
     if (!transferring) {
       handleRowDragEnd()
       return

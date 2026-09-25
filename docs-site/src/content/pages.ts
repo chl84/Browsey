@@ -339,10 +339,10 @@ export const docsPages: DocPage[] = [
         bullets: [
           'These changes apply to development builds, not the published v1.0.2 release assets',
           'Drop onto folders, breadcrumbs, bookmarks, mounted drives, or empty list/grid space in a normal directory view. Files, unmounted drives, and search/virtual-view backgrounds reject drops; dialogs block transfers',
-          'Internal drops use Ctrl/Meta to copy and Shift to move; Ctrl/Meta takes precedence. Local defaults remain filesystem-aware (move on the same filesystem, copy across filesystems). Cloud transfers default to copy',
+          'For local files, Ctrl/Meta held at drag start locks the gesture to copy; Shift locks it to move. Otherwise internal drops use live modifiers and filesystem-aware defaults (move on the same filesystem, copy across filesystems). Cloud transfers default to copy',
           'Incoming external drops always copy and resolve the destination under the pointer, with display scaling accounted for',
           'Hover over a destination for 850 ms to open it; drag near list/grid/sidebar edges to scroll. Escape cancels internal dragging',
-          'Alt-drag copies local files to another app. Download cloud files to a local folder first: automatic cloud materialization for external drag is not implemented. A single selection cannot mix local and cloud source paths',
+          'Drag local files directly to another app without Alt. Hold Ctrl/Meta or Shift before starting to offer only copy or move; otherwise the receiving app chooses its default. Browsey never deletes sources merely because a drag completed. Download cloud files to a local folder first. A single selection cannot mix local and cloud source paths',
         ],
       },
       {
