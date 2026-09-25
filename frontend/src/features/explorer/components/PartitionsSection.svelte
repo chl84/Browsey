@@ -6,7 +6,7 @@
   import ContextMenu from './ContextMenu.svelte'
   import { isUnmountedUsb } from '../services/drives.service'
 
-  const dispatch = createEventDispatcher<{ eject: { path: string }; format: { part: Partition } }>()
+  const dispatch = createEventDispatcher<{ eject: { path: string }; format: { part: Partition }; properties: { part: Partition } }>()
 
   export let partitions: Partition[] = []
   export let onSelect: (path: string) => void = () => {}
@@ -82,10 +82,12 @@
   actions={[
     ...(menu.part && isUnmountedUsb(menu.part.path) ? [{ id: 'mount', label: 'Mount and open' }] : []),
     { id: 'format', label: 'Format…', dangerous: true },
+    { id: 'properties', label: 'Properties' },
   ]}
   onClose={() => (menu = { ...menu, open: false })}
   onSelect={(id) => {
     if (id === 'format' && menu.part) dispatch('format', { part: menu.part })
+    if (id === 'properties' && menu.part) dispatch('properties', { part: menu.part })
     if (id === 'mount' && menu.part) onSelect(menu.part.path)
     menu = { ...menu, open: false }
   }}

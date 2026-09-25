@@ -23,6 +23,7 @@ const makeEntry = (path: string, kind: Entry['kind'] = 'file'): Entry => ({
 
 const makeOpenState = (entry: Entry, count = 1): PropertiesState => ({
   open: true,
+  partition: null,
   entry,
   targets: [entry],
   mutationsLocked: false,
@@ -245,5 +246,82 @@ describe('properties modal copyParentFolder', () => {
         'Permissions update failed: Browsey could not complete the privileged permissions step.',
       )
     })
+  })
+})
+
+describe('USB properties', () => {
+  const partition = { label: 'USB', path: '/media/chris/USB', fs: 'btrfs', removable: true }
+  const permissions = {
+    access_supported: true, ownership_supported: true, owner_name: 'chris', group_name: 'users',
+    owner: { read: true, write: true, exec: true },
+    group: { read: true, write: false, exec: true },
+    other: { read: true, write: false, exec: true },
+  }
+  const createModal = () => createPropertiesModal({ computeDirStats: computeDirStatsMock, showToast: showToastMock })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    invokeMock.mockReset()
+    invokeMock.mockImplementation(async (cmd: string) => cmd === 'get_permissions' ? permissions : [])
+  })
+
+  it('reads mount-root permissions without scanning contents or changing anything', async () => {
+    const modal = createModal()
+    await modal.openPartition(partition)
+    await vi.waitFor(() => expect(get(modal.state).permissions?.ownerName).toBe('chris'))
+    expect(get(modal.state)).toMatchObject({ partition, size: null, itemCount: null, mutationsLocked: false })
+    expect(invokeMock).toHaveBeenCalledWith('get_permissions', { path: partition.path })
+    expect(computeDirStatsMock).not.toHaveBeenCalled()
+    await modal.toggleHidden(true)
+    modal.loadExtraIfNeeded()
+    expect(invokeMock.mock.calls.every(([cmd]) => ['get_permissions', 'list_ownership_principals'].includes(cmd))).toBe(true)
+  })
+
+  it('does not mount, inspect, or mutate an unmounted device', async () => {
+    const modal = createModal()
+    await modal.openPartition({ ...partition, path: 'usb-volume:///dev/sdz1' })
+    expect(get(modal.state).mutationsLocked).toBe(true)
+    await modal.toggleHidden(true)
+    await modal.setOwnership('chris', 'users')
+    modal.toggleAccess('owner', 'write', true)
+    modal.loadExtraIfNeeded()
+    expect(invokeMock).not.toHaveBeenCalled()
+    expect(computeDirStatsMock).not.toHaveBeenCalled()
+  })
+
+  it('permission edits target only the mount root', async () => {
+    const modal = createModal()
+    await modal.openPartition(partition)
+    modal.toggleAccess('other', 'write', true)
+    expect(invokeMock).toHaveBeenCalledWith('set_permissions', {
+      paths: [partition.path], other: { write: true },
+    })
+  })
+
+  it.each(['/media/chris/USB', 'usb-volume:///dev/sdz1'])('copies the drive path, not its parent (%s)', async (path) => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const modal = createModal()
+    await modal.openPartition({ ...partition, path })
+    await modal.copyParentFolder()
+    expect(writeText).toHaveBeenCalledWith(path.replace('usb-volume://', ''))
+  })
+
+  it('clears drive context when opening a normal file', async () => {
+    const modal = createModal()
+    await modal.openPartition(partition)
+    await modal.open([makeEntry('/home/chris/file.txt')])
+    expect(get(modal.state).partition).toBeNull()
+  })
+
+  it('ignores a pending permissions reply after the dialog closes', async () => {
+    let resolve!: (value: typeof permissions) => void
+    invokeMock.mockReturnValueOnce(new Promise((done) => { resolve = done }))
+    const modal = createModal()
+    await modal.openPartition(partition)
+    modal.close()
+    resolve(permissions)
+    await Promise.resolve()
+    expect(get(modal.state)).toMatchObject({ open: false, partition: null, permissions: null })
   })
 })

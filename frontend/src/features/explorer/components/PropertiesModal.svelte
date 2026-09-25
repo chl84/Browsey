@@ -4,9 +4,11 @@
   import ComboBox, { type ComboOption } from '../../../shared/ui/ComboBox.svelte'
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import { normalizePath, parentPath } from '../utils'
-  import type { Entry } from '../model/types'
+  import type { Entry, Partition } from '../model/types'
+  import { isUnmountedUsb } from '../services/drives.service'
   export let open = false
   export let entry: Entry | null = null
+  export let partition: Partition | null = null
   export let count = 1
   export let size: number | null = null
   export let deepCount: number | null = null
@@ -31,6 +33,9 @@
   type Scope = (typeof scopes)[number]
   const tabs = ['basic', 'extra', 'ownership', 'permissions'] as const
   type Tab = (typeof tabs)[number]
+  $: visibleTabs = partition ? tabs.filter((tab) => tab !== 'extra') : tabs
+  $: unmounted = partition !== null && isUnmountedUsb(partition.path)
+  $: drivePath = partition ? (unmounted ? partition.path.slice('usb-volume://'.length) : partition.path) : ''
   export let permissions:
     | {
         accessSupported: boolean
@@ -159,7 +164,7 @@
       <div class="properties-header-block">
         <div class="properties-header-title">Properties</div>
         <div class="tabs">
-          {#each tabs as tab}
+          {#each visibleTabs as tab}
             <button
               type="button"
               class:selected={activeTab === tab}
@@ -176,6 +181,18 @@
       <div class="rows basic-rows" class:multi-basic={count > 1}>
         {#if count === 1 && entry}
           <div class="row"><span class="label">Name</span><span class="value">{entry.name}</span></div>
+          {#if partition}
+            <div class="row"><span class="label">Type</span><span class="value">Removable drive</span></div>
+            <div class="row"><span class="label">Filesystem</span><span class="value">{partition.fs || 'Unknown'}</span></div>
+            <div class="row"><span class="label">Status</span><span class="value">{unmounted ? 'Not mounted' : 'Mounted'}</span></div>
+            <div class="row">
+              <span class="label">{unmounted ? 'Device' : 'Mount point'}</span>
+              <span class="value">
+                <span>{drivePath}</span>
+                <button type="button" class="secondary" on:click={() => void onCopyParentFolder()}>Copy drive path</button>
+              </span>
+            </div>
+          {:else}
           <div class="row">
             <span class="label">Parent folder</span>
             <span class="value parent-folder-value">
@@ -195,8 +212,10 @@
             </span>
           </div>
           <div class="row"><span class="label">Type</span><span class="value">{entry.kind}</span></div>
+          {/if}
         {/if}
 
+        {#if !partition}
         <div class="row">
           <span class="label">Size</span>
           <span class="value">
@@ -229,6 +248,7 @@
             />
           </span>
         </div>
+        {/if}
       </div>
     {:else if activeTab === 'extra'}
       {#if count !== 1}
@@ -262,7 +282,9 @@
         </div>
       {/if}
     {:else if activeTab === 'ownership'}
-      {#if permissionsLoading}
+      {#if unmounted}
+        <p>Mount the drive to view ownership.</p>
+      {:else if permissionsLoading}
         <div class="rows status-rows">
           <div class="row"><span class="label">Ownership</span><span class="value">Loading…</span></div>
         </div>
@@ -338,7 +360,9 @@
         </div>
       {/if}
     {:else if activeTab === 'permissions'}
-      {#if permissionsLoading}
+      {#if unmounted}
+        <p>Mount the drive to view permissions.</p>
+      {:else if permissionsLoading}
         <div class="rows status-rows">
           <div class="row"><span class="label">Permissions</span><span class="value">Loading…</span></div>
         </div>
@@ -405,6 +429,9 @@
       {/if}
     {/if}
 
+    {#if partition && !unmounted && (activeTab === 'ownership' || activeTab === 'permissions')}
+      <p>Changes apply only to the drive’s root folder, not its contents.</p>
+    {/if}
   </ModalShell>
 {/if}
 

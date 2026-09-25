@@ -247,10 +247,7 @@ impl Client {
             "Creating partition table",
             report,
         )?;
-        let mut options = Properties::new();
-        if let Some(label) = label {
-            options.insert("label".into(), label.to_variant());
-        }
+        let options = filesystem_format_options(label);
         let result = self.call(
             "org.freedesktop.UDisks2.PartitionTable",
             "CreatePartitionAndFormat",
@@ -294,6 +291,17 @@ impl Client {
     }
 }
 
+fn filesystem_format_options(label: Option<&str>) -> Properties {
+    // UDisks assigns the new filesystem root to the D-Bus caller for
+    // filesystems with Unix ownership (notably ext4 and btrfs).
+    // FAT/exFAT use mount-time ownership instead and ignore this option.
+    let mut options = Properties::from([("take-ownership".into(), true.to_variant())]);
+    if let Some(label) = label {
+        options.insert("label".into(), label.to_variant());
+    }
+    options
+}
+
 #[cfg(test)]
 #[path = "usb_format_test_bus.rs"]
 mod test_bus;
@@ -305,6 +313,21 @@ mod tests {
 
     fn path(value: &str) -> ObjectPath {
         ObjectPath::try_from(value).unwrap()
+    }
+
+    #[test]
+    fn requests_caller_ownership_with_or_without_a_label() {
+        for label in [None, Some("TEST")] {
+            let options = filesystem_format_options(label);
+            assert_eq!(options["take-ownership"].get::<bool>(), Some(true));
+            assert_eq!(
+                options
+                    .get("label")
+                    .and_then(|value| value.get::<String>())
+                    .as_deref(),
+                label
+            );
+        }
     }
 
     #[test]

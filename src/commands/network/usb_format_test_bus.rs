@@ -57,7 +57,13 @@ fn waits_beyond_old_timeout_and_reports_real_job_progress() {
                         }
                         "CreatePartitionAndFormat" => {
                             let (_, _, _, _, _, fs, options) = params.get::<(u64, u64, String, String, Properties, String, Properties)>().unwrap();
-                            assert_eq!(fs, "ext4");
+                            assert!(["ext4", "btrfs", "exfat", "vfat"].contains(&fs.as_str()));
+                            assert_eq!(options["take-ownership"].get::<bool>(), Some(true));
+                            if fs != "ext4" {
+                                assert!(!options.contains_key("label"));
+                                invocation.return_value(Some(&(ObjectPath::try_from(partition).unwrap(),).to_variant()));
+                                return;
+                            }
                             if options["label"].get::<String>().as_deref() == Some("FAIL") {
                                 invocation.return_dbus_error("org.freedesktop.UDisks2.Error.Failed", "Simulated mkfs failure");
                                 return;
@@ -96,6 +102,10 @@ fn waits_beyond_old_timeout_and_reports_real_job_progress() {
         }
     });
     let failed = client.format_disk("ext4", Some("FAIL"), &|_| {});
+    let other_filesystems: Vec<_> = ["btrfs", "exfat", "vfat"]
+        .iter()
+        .map(|filesystem| client.format_disk(filesystem, None, &|_| {}))
+        .collect();
     loop_.quit();
     server.join().unwrap();
     assert_eq!(result.unwrap(), "/dev/browsey-test-only");
@@ -103,4 +113,7 @@ fn waits_beyond_old_timeout_and_reports_real_job_progress() {
     assert!(observed.load(Ordering::SeqCst));
     assert!(busy_rejected.load(Ordering::SeqCst));
     assert_eq!(failed.unwrap_err().code_str(), "format_failed");
+    for result in other_filesystems {
+        assert_eq!(result.unwrap(), "/dev/browsey-test-only");
+    }
 }

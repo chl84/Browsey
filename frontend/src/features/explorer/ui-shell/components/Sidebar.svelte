@@ -18,6 +18,7 @@ import type { Partition } from '../../model/types'
   export let onPartitionSelect: (path: string) => void = () => {}
   export let onPartitionEject: (path: string) => void = () => {}
   export let onPartitionFormat: (part: Partition) => void = () => {}
+  export let onPartitionProperties: (part: Partition) => void = () => {}
 
 </script>
 
@@ -46,6 +47,7 @@ import type { Partition } from '../../model/types'
         onSelect={onPartitionSelect}
         on:eject={(e) => onPartitionEject(e.detail.path)}
         on:format={(e) => onPartitionFormat(e.detail.part)}
+        on:properties={(e) => onPartitionProperties(e.detail.part)}
       />
     {/if}
   </div>

@@ -154,6 +154,7 @@ export const createExplorerShellProps = (p: Params) => ({
     onPartitionSelect: p.handleSidebarPartitionSelect,
     onPartitionEject: p.handleSidebarPartitionEject,
     onPartitionFormat: p.handleSidebarPartitionFormat,
+    onPartitionProperties: p.propertiesModal.openPartition,
   },
 
   topbarProps: {
@@ -311,6 +312,7 @@ export const createExplorerShellProps = (p: Params) => ({
     onCloseOpenWith: p.openWithModal.close,
     propertiesOpen: p.propertiesState.open,
     propertiesEntry: p.propertiesState.entry,
+    propertiesPartition: p.propertiesState.partition,
     propertiesMutationsLocked: p.propertiesState.mutationsLocked,
     propertiesCount: p.propertiesState.count,
     propertiesSize: p.propertiesState.size,
