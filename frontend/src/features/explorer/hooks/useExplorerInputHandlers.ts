@@ -53,7 +53,6 @@ type Deps = {
   setCaretIndex: (next: number | null) => void
   getRowHeight: () => number
   getDoubleClickMs: () => number
-  setCopyModifierActive: (active: boolean) => void
   isEditableTarget: (target: EventTarget | null) => boolean
   hasAppShortcut: (event: KeyboardEvent) => boolean
   handleGlobalKeydown: (event: KeyboardEvent) => void | Promise<void>
@@ -400,9 +399,6 @@ export const useExplorerInputHandlers = (deps: Deps) => {
   }
 
   const handleDocumentKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'Control' || event.key === 'Meta') {
-      deps.setCopyModifierActive(true)
-    }
     if (event.defaultPrevented) {
       return
     }
@@ -617,15 +613,8 @@ export const useExplorerInputHandlers = (deps: Deps) => {
     void deps.handleGlobalKeydown(event)
   }
 
-  const handleDocumentKeyup = (event: KeyboardEvent) => {
-    if (event.key === 'Control' || event.key === 'Meta') {
-      deps.setCopyModifierActive(false)
-    }
-  }
-
   return {
     handleDocumentKeydown,
-    handleDocumentKeyup,
     handleOpenEntry,
     handleRowClickWithOpen,
     handleRowsMouseDown,

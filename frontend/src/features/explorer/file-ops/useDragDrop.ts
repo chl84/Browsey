@@ -1,6 +1,5 @@
 import { writable } from 'svelte/store'
 import { onDestroy } from 'svelte'
-import { setClipboardCmd, pasteClipboardCmd } from '../services/clipboard.service'
 
 export type DragState = {
   dragging: boolean
@@ -92,15 +91,9 @@ export const useDragDrop = (options: DragDropOptions = {}) => {
     state.update((s) => ({ ...s, position: { x, y } }))
   }
 
-  const move = async (paths: string[], dest: string) => {
-    if (paths.length === 0) return
-    await setClipboardCmd(paths, 'cut')
-    await pasteClipboardCmd(dest)
-  }
-
   onDestroy(() => {
     end()
   })
 
-  return { state, start, end, canDropOn, move, setTarget, setPosition }
+  return { state, start, end, canDropOn, setTarget, setPosition }
 }

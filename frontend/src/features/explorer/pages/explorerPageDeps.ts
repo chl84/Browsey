@@ -32,7 +32,6 @@ export const createExplorerInputHandlersDeps = (deps: ExplorerInputHandlerDeps):
   setCaretIndex: deps.setCaretIndex,
   getRowHeight: deps.getRowHeight,
   getDoubleClickMs: deps.getDoubleClickMs,
-  setCopyModifierActive: deps.setCopyModifierActive,
   isEditableTarget: deps.isEditableTarget,
   hasAppShortcut: deps.hasAppShortcut,
   handleGlobalKeydown: deps.handleGlobalKeydown,
@@ -88,7 +87,8 @@ export const createExplorerDragDropDeps = (deps: ExplorerDragDropDeps): Explorer
   currentPath: deps.currentPath,
   getSelectedSet: deps.getSelectedSet,
   loadDir: deps.loadDir,
-  focusEntryInCurrentList: deps.focusEntryInCurrentList,
+  isBlocked: deps.isBlocked,
+  isSearchActive: deps.isSearchActive,
   handlePasteOrMove: deps.handlePasteOrMove,
   showToast: deps.showToast,
 })

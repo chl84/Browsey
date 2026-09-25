@@ -14,6 +14,7 @@ const resolveIcon = async (fallbackPath: string) => {
 
 export const startNativeFileDrag = async (paths: string[], mode: 'copy' | 'move' = 'copy') => {
   if (!paths || paths.length === 0) return false
+  if (paths.some(path => path.startsWith('rclone://'))) return false
   const iconPath = await resolveIcon(paths[0])
   try {
     await startDrag({
