@@ -1,6 +1,9 @@
 import { invoke } from '@/shared/lib/tauri'
 import { createCloudFolder, openCloudEntry, renameCloudEntry } from '@/features/network'
 import type { Entry } from '../model/types'
+import { homeDir } from '@tauri-apps/api/path'
+
+export const getHomeDirectory = () => homeDir()
 
 const isCloudPath = (path: string) => path.startsWith('rclone://')
 

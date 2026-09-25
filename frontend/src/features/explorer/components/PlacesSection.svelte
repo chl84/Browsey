@@ -1,15 +1,25 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
+  import { getHomeDirectory } from '../services/files.service'
   import { navIcon } from '../utils'
 
   export let places: { label: string; path: string }[] = []
   export let onSelect: (label: string, path: string) => void = () => {}
+  let homeDropPath = ''
+  onMount(() => {
+    let active = true
+    void getHomeDirectory().then(path => { if (active) homeDropPath = path }).catch(() => {
+      // Leave Home unavailable as a drop target if its absolute path cannot be resolved.
+    })
+    return () => { active = false }
+  })
 </script>
 
 <div class="section-wrapper">
   <div class="section">
     <div class="section-title">Places</div>
     {#each places as place}
-      <button class="nav" type="button" on:click={() => onSelect(place.label, place.path)}>
+      <button class="nav" data-drop-path={place.path === '~' ? homeDropPath : place.path} type="button" on:click={() => onSelect(place.label, place.path)}>
         <img class="nav-icon" src={navIcon(place.label)} alt="" />
         <span class="nav-label">{place.label}</span>
       </button>

@@ -247,6 +247,7 @@ import ProgressBar from '@/shared/ui/ProgressBar.svelte'
           {#each breadcrumbs as crumb, i}
             <button
               class="crumb"
+              data-drop-path={crumb.path}
               class:drop-target={dragTargetPath === crumb.path}
               type="button"
               on:click={() => onNavigateSegment(crumb.path)}

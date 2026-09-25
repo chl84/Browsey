@@ -1,3 +1,10 @@
+/* Shared highlight for native and HTML drops, including sidebar and blank space. */
+[data-drop-active='true'] {
+  outline: 2px solid var(--drop-allowed-border) !important;
+  outline-offset: -2px;
+  background-color: var(--drop-allowed-bg) !important;
+}
+
 .shell {
   width: 100%;
   max-width: none;

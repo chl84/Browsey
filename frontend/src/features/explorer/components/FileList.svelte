@@ -108,6 +108,8 @@
   </div>
   <div
     class="rows"
+    data-drop-background
+    data-drop-scroll
     bind:this={rowsEl}
     on:scroll={onRowsScroll}
     on:wheel|nonpassive={onWheel}

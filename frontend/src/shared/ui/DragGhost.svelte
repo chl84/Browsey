@@ -8,24 +8,27 @@
 </script>
 
 {#if visible}
-  {#if allowed}
     <div
       class="ghost"
+      class:blocked={!allowed}
       style={`left:${x + 12}px; top:${y + 12}px;`}
     >
       <div class="dot"></div>
       <div class="text">
         <div class="line">
-          {#if action === 'copy'}
+          {#if !allowed}
+            Cannot drop here
+          {:else if action === 'copy'}
             Copy
-          {:else}
+          {:else if action === 'move'}
             Move
+          {:else}
+            Checking destination…
           {/if}
-          {count} item{count === 1 ? '' : 's'}
+          {#if allowed}{count} item{count === 1 ? '' : 's'}{/if}
         </div>
       </div>
     </div>
-  {/if}
 {/if}
 
 <style>
@@ -48,6 +51,11 @@
 
   .ghost {
     background: var(--drag-ghost-bg);
+  }
+
+  .ghost.blocked {
+    background: var(--drop-blocked-bg);
+    border-color: var(--drop-blocked-border);
   }
 
   .dot {

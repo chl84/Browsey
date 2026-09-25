@@ -24,7 +24,7 @@ import type { Partition } from '../../model/types'
 
 <aside class="sidebar" class:collapsed={collapsed}>
   <div class="drag-top" data-tauri-drag-region></div>
-  <div class="sidebar-scroll">
+  <div class="sidebar-scroll" data-drop-scroll>
     {#if places.length > 0}
       <PlacesSection {places} onSelect={onPlaceSelect} />
     {/if}

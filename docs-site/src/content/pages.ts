@@ -334,6 +334,18 @@ export const docsPages: DocPage[] = [
         ],
       },
       {
+        id: 'drag-drop-development',
+        title: 'Drag and Drop (Development / Unreleased)',
+        bullets: [
+          'These changes apply to development builds, not the published v1.0.2 release assets',
+          'Drop onto folders, breadcrumbs, bookmarks, mounted drives, or empty list/grid space in a normal directory view. Files, unmounted drives, and search/virtual-view backgrounds reject drops; dialogs block transfers',
+          'Internal drops use Ctrl/Meta to copy and Shift to move; Ctrl/Meta takes precedence. Local defaults remain filesystem-aware (move on the same filesystem, copy across filesystems). Cloud transfers default to copy',
+          'Incoming external drops always copy and resolve the destination under the pointer, with display scaling accounted for',
+          'Hover over a destination for 850 ms to open it; drag near list/grid/sidebar edges to scroll. Escape cancels internal dragging',
+          'Alt-drag copies local files to another app. Download cloud files to a local folder first: automatic cloud materialization for external drag is not implemented. A single selection cannot mix local and cloud source paths',
+        ],
+      },
+      {
         id: 'network-flow',
         title: 'Network View and Server Addresses',
         bullets: [

@@ -95,6 +95,15 @@ Notes:
 
 For setup details, migration notes, and cloud limitations, see the docs site.
 
+## Drag and drop (development / unreleased)
+
+- Drop onto a folder, breadcrumb, bookmark, mounted drive, or empty space in a normal directory view. Files, unmounted drives, and backgrounds in search/virtual views are not destinations. Open dialogs block drops.
+- Within Browsey, Ctrl/Meta forces copy and Shift forces move (Ctrl/Meta wins if both are held). With no modifier, local transfers move on the same filesystem and copy across filesystems; cloud transfers default to copy.
+- Incoming drops from another app always copy. They use the folder under the pointer, not necessarily the current directory.
+- Hover over a destination for 850 ms to open it; hold near a list/grid/sidebar edge to scroll. Escape cancels the internal drag.
+- Hold Alt when starting a drag to copy local files to another app. Cloud files must first be copied/downloaded to a local folder; automatic cloud materialization for external drag is not implemented. Local and cloud sources cannot be combined in one selection.
+- These changes are not included in the published v1.0.2 release assets.
+
 ## Development
 1) Install system deps (above).
 2) Install frontend deps:

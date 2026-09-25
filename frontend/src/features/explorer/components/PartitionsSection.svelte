@@ -32,6 +32,7 @@
     <div class="row">
       <button
         class="nav"
+        data-drop-path={isUnmountedPartition(part.path) ? '' : part.path}
         type="button"
         on:click={() => onSelect(part.path)}
         on:contextmenu={(e) => openMenu(e, part)}

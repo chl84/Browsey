@@ -145,6 +145,8 @@
 <section class="grid-container" style={`--grid-thumb-size:${gridThumbSize}px;--grid-card-width:${gridCardWidth}px;--grid-row-height:${gridRowHeight}px`}>
   <div
     class="grid"
+    data-drop-background
+    data-drop-scroll
     role="grid"
     tabindex="0"
     bind:this={rowsEl}
@@ -174,6 +176,7 @@
               type="button"
               data-index={start + i}
               data-path={entry.path}
+              data-drop-path={entry.kind === 'dir' ? entry.path : ''}
               draggable="true"
               on:click={(event) => onRowClick(entry, start + i, event)}
               on:contextmenu={(event) => {

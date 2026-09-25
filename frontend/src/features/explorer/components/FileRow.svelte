@@ -35,6 +35,7 @@
   class="row"
   class:dragging={dragging}
   data-index={index}
+  data-drop-path={entry.kind === 'dir' ? entry.path : ''}
   style={`grid-template-columns:${gridTemplate};`}
   class:hidden={hidden}
   class:selected={selected}

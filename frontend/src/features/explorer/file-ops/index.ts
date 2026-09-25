@@ -5,7 +5,7 @@ export type { ClipboardApi } from './createClipboard'
 export { useDragDrop } from './useDragDrop'
 export type { DragState } from './useDragDrop'
 export { createNativeFileDrop } from './createNativeFileDrop'
-export type { NativeDropState } from './createNativeFileDrop'
+export type { DropPosition } from './createNativeFileDrop'
 export {
   clipboardState,
   setClipboardPathsState,

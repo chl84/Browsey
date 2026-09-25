@@ -3,7 +3,7 @@
   import { onMount, onDestroy, tick } from 'svelte'
   import { getErrorMessage, normalizeError } from '@/shared/lib/error'
   import { get } from 'svelte/store'
-  import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from '@/features/explorer/utils'
+  import { formatItems, formatSelectionLine, formatSize, parentPath } from '@/features/explorer/utils'
   import { openEntry as openExplorerEntry } from '@/features/explorer/services/files.service'
   import { createListState } from '@/features/explorer/state/list.store'
   import { ExplorerShell, useGridVirtualizer, createViewObservers } from '@/features/explorer/ui-shell'
@@ -1535,15 +1535,8 @@
     currentPath: () => get(current),
     getSelectedSet: () => get(selected),
     loadDir: (path: string) => loadDir(path),
-    focusEntryInCurrentList: (path: string) => {
-      const list = get(entries)
-      const match = list.find((e) => normalizePath(e.path) === normalizePath(path))
-      if (!match) return
-      const idx = list.findIndex((e) => e.path === match.path)
-      selected.set(new Set([match.path]))
-      anchorIndex.set(idx)
-      caretIndex.set(idx)
-    },
+    isBlocked: () => get(anyModalOpenStore) || get(loading),
+    isSearchActive: () => isSearchSessionEnabled,
     handlePasteOrMove,
     showToast,
   })
@@ -1553,7 +1546,6 @@
     dragAction,
     startNativeDrop,
     stopNativeDrop,
-    setCopyModifierActive,
     handleRowDragStart,
     handleRowDragEnd,
     handleRowDragEnter,
@@ -1595,7 +1587,6 @@
     },
     getRowHeight: () => get(rowHeight),
     getDoubleClickMs: () => get(doubleClickMs),
-    setCopyModifierActive,
     isEditableTarget,
     hasAppShortcut: (event) => matchesAnyShortcut(event, shortcutBindings),
     handleGlobalKeydown,
@@ -1648,7 +1639,6 @@
   const inputHandlers = useExplorerInputHandlers(inputHandlerDeps)
   const {
     handleDocumentKeydown,
-    handleDocumentKeyup,
     handleOpenEntry,
     handleRowClickWithOpen,
     handleRowsMouseDown,
@@ -2065,7 +2055,6 @@
 <!-- Render root: keep composition at page level; push glue/helpers out over time. -->
 <svelte:document
   on:keydown|capture={handleDocumentKeydown}
-  on:keyup|capture={handleDocumentKeyup}
   on:contextmenu|capture={handleDocumentContextMenu}
   on:cut|capture={(e) => {
     const target = e.target as HTMLElement | null

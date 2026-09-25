@@ -75,6 +75,7 @@
   {#each filteredBookmarks as mark}
     <div
       class="nav bookmark"
+      data-drop-path={mark.path}
       class:drop-target={dragTargetPath === mark.path}
       role="button"
       tabindex="0"
@@ -94,6 +95,7 @@
       <span class="nav-label">{mark.label}</span>
       <span
         class="remove-bookmark"
+        data-drop-blocked
         role="button"
         tabindex="0"
         aria-label="Remove bookmark"
