@@ -7,6 +7,7 @@ The docs web app lives in `../docs-site/` and is built/deployed separately.
 
 ## Structure
 
+- `releases/`: version-specific release notes, artifact scope, and validation evidence
 - `strategy/`: product and positioning assessments
 - `operations/core-operations/`: core-operations matrix, checklist, and policy
 - `operations/linux-release/`: Linux release bar and Linux-specific release rules

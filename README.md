@@ -6,11 +6,15 @@ The project is developed with AI assistance from OpenAI Codex.
 Documentation: https://chl84.github.io/Browsey/
 For technical deep-dives (module maps, behavior details, and release notes), use the docs site.
 
+Downloads: [Browsey 1.0.2](https://github.com/chl84/Browsey/releases/tag/v1.0.2).
+
 ## Status
-Browsey `1.0.1` is production-ready for Linux on the validated Linux target surface. Core flows (browse, search, clipboard, trash, compress, duplicate checks, open with, properties, settings persistence, and supported cloud remotes) are intended to be daily-driver quality on that surface. Windows builds remain available, but the Windows version is currently in maintenance mode (critical fixes and compatibility updates) rather than active feature development. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
+Browsey `1.0.2` continues the Linux-first 1.0 line, with USB/MTP improvements, more responsive thumbnail scheduling, grid zoom, and theme polish. Core flows include browse, search, clipboard, trash, compress, duplicate checks, open with, properties, settings persistence, and supported cloud remotes. See the [changelog](CHANGELOG.md) and [1.0.2 release notes](docs/releases/1.0.2.md) for changes and validation scope. Windows support remains in maintenance mode (critical fixes and compatibility updates); the 1.0.2 release packages target Linux x86_64. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
 
 ## Highlights
 - Virtualized list and grid views tuned for large folders.
+- Ctrl + wheel zoom: list → grid at 64 / 96 / 128 / 160 / 192 px, with visible-first thumbnail loading and cache reuse.
+- System/Omarchy theme colors in Settings, with light/dark fallback and a translucent lasso.
 - Live refresh from filesystem watcher events.
 - Native clipboard flow with conflict preview/resolve and background transfer progress.
 - Recursive search, duplicate scanning, archive extract/compress, and open-with workflows.
@@ -20,6 +24,7 @@ Browsey `1.0.1` is production-ready for Linux on the validated Linux target surf
 - Image thumbnails support common raster formats plus HDR (`.hdr`) and OpenEXR (`.exr`).
 - Data maintenance actions (clear thumbnail cache, cloud file cache, stars, bookmarks, recents) with confirmation and feedback.
 - Cross-platform drive/mount handling, removable media eject, and optional video thumbnails via ffmpeg.
+- Linux USB formatting (exFAT, FAT32, ext4, btrfs), drive properties, and on-demand MTP phone mounting without opening another file manager.
 - Persisted user defaults for view/sort/interaction behavior.
 
 ## Screenshots
@@ -28,7 +33,7 @@ Browsey `1.0.1` is production-ready for Linux on the validated Linux target surf
 
 ## Requirements
 Supported platforms: Linux and Windows (macOS is not supported yet). The main release-hardening target surface is currently Linux-first: Fedora Workstation and Ubuntu LTS, with GNOME Wayland as the primary desktop/session target.
-Tested environment: Fedora 43 (primary Linux validation target).
+Historical baseline: Fedora 43. Recent desktop checks were run on Arch/Omarchy; see release notes for the per-release validation scope.
 
 Common:
 - Rust (stable) via `rustup`
@@ -37,6 +42,8 @@ Common:
 - Optional for cloud remotes (OneDrive/Google Drive/Nextcloud via `rclone`): `rclone` in `PATH` (Linux v1 strategy).
 - Optional for video thumbnails: `ffmpeg` in PATH (or `FFMPEG_BIN`), otherwise video files fall back to icons.
 - Linux (GNOME Wayland): install `xclip` for file clipboard interoperability between Browsey instances without GNOME shell focus/dock side-effects on `Ctrl+C` / `Ctrl+V`.
+- Linux phones: install your distribution's GVFS MTP backend (for example `gvfs-mtp` on Arch/Fedora or `gvfs-backends` on Ubuntu), unlock the phone, and enable USB file transfer.
+- Linux USB formatting: UDisks2, a working PolicyKit authentication agent, and the matching tools from `exfatprogs`, `dosfstools`, `e2fsprogs`, or `btrfs-progs`. Only installed filesystem tools are offered.
 
 Linux build deps (Fedora names; adapt to your distro):
 - `webkit2gtk4.1-devel` `javascriptcoregtk4.1-devel` `libsoup3-devel` `gtk3-devel`
@@ -51,7 +58,7 @@ Windows:
 - Fedora/RPM: download the latest `Browsey-<version>-1.x86_64.rpm` from Releases and install with `sudo rpm -Uvh --replacepkgs Browsey-<version>-1.x86_64.rpm`.
 - Ubuntu/Debian (`.deb`): download the latest `browsey_<version>_amd64.deb` from Releases and install with `sudo apt install ./browsey_<version>_amd64.deb`.
 - Supported Linux release path is install + upgrade. Package downgrade is not part of the Linux 1.0 supported path.
-- Windows: grab the NSIS installer from Releases and run it (bundled by `cargo tauri build --bundles nsis`).
+- Windows: build an NSIS installer with `cargo tauri build --bundles nsis`; no new Windows installer is included in 1.0.2.
 - From source: clone, run `npm --prefix frontend install`, then `cargo tauri dev --no-dev-server` (or `cargo tauri build` for a release bundle).
 - Cloud features require a separately installed `rclone` binary discoverable in `PATH` (Browsey does not bundle `rclone`).
 
@@ -141,6 +148,15 @@ Tauri bundles:
 - File actions: `Ctrl+R` rename, `Delete` trash, `Shift+Delete` permanent delete, `Ctrl+P` properties.
 - Navigation/helpers: `Ctrl+H` hidden files, `Ctrl+B` bookmark modal, `Ctrl+T` open terminal.
 - `Esc` exits search/filter contexts.
+- `Ctrl` + mouse wheel zooms the file view through list and five grid sizes. Zoom is per window and resets on restart; grid gaps are 8 px (Cozy) or 6 px (Compact).
+
+## USB drives and phones
+
+- Right-click a removable USB drive for Mount and open, Properties, or Format. Formatting erases the selected device; verify its identity and keep backups.
+- New ext4/btrfs filesystems are made writable by the user performing the format. Existing volumes are not automatically repaired or re-owned.
+- Formatting shows real UDisks percentages when available, otherwise indeterminate progress. If completion is uncertain, inspect the device before retrying; Browsey never automatically repeats an erase.
+- MTP phones are discovered through GIO and mounted when opened. Phone Properties are informational; formatting and POSIX permission editing are not offered.
+- If a phone folder reports a temporary I/O error, keep the phone unlocked, check the USB connection and file-transfer mode, and retry. MTP responsiveness depends on the phone and GVFS backend.
 
 ## Architecture snapshot
 - `src/`: Rust/Tauri backend command layer, metadata providers, filesystem watcher, keymap, and persistence.

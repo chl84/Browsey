@@ -1,0 +1,88 @@
+name: Linux Release Bundles
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (for example v1.0.2)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  bundles:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Verify tag and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
+          test "$RELEASE_TAG" = "v$version"
+          test "$(git describe --tags --exact-match)" = "$RELEASE_TAG"
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux-release-ubuntu-22
+      - name: Install build and smoke-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev patchelf rpm \
+            dbus-x11 xvfb desktop-file-utils
+      - name: Build production RPM and DEB
+        run: |
+          npm --prefix frontend ci
+          frontend/node_modules/.bin/tauri build --ci --bundles rpm,deb -- --locked
+      - name: Inspect packages and smoke-test packaged binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          deb="target/release/bundle/deb/Browsey_${APP_VERSION}_amd64.deb"
+          # Tauri versions differ in product-name casing for DEBs.
+          if [[ ! -f "$deb" ]]; then deb="target/release/bundle/deb/browsey_${APP_VERSION}_amd64.deb"; fi
+          rpm_file="target/release/bundle/rpm/Browsey-${APP_VERSION}-1.x86_64.rpm"
+          test "$(dpkg-deb -f "$deb" Version)" = "$APP_VERSION"
+          test "$(rpm -qp --queryformat '%{VERSION}' "$rpm_file")" = "$APP_VERSION"
+          dpkg-deb --info "$deb"
+          rpm -qp --requires "$rpm_file"
+          package_root=$(mktemp -d)
+          dpkg-deb -x "$deb" "$package_root"
+          test -x "$package_root/usr/bin/browsey"
+          test -f "$package_root/usr/bin/libpdfium.so"
+          find "$package_root/usr/share/applications" -name '*.desktop' -exec desktop-file-validate '{}' +
+          ldd "$package_root/usr/bin/browsey"
+          if ldd "$package_root/usr/bin/browsey" | grep -q 'not found'; then exit 1; fi
+          smoke_root=$(mktemp -d)
+          export XDG_CONFIG_HOME="$smoke_root/config" XDG_DATA_HOME="$smoke_root/data"
+          export XDG_CACHE_HOME="$smoke_root/cache" XDG_STATE_HOME="$smoke_root/state"
+          set +e
+          RUST_LOG=browsey=info dbus-run-session -- xvfb-run -a timeout --signal=TERM --kill-after=3s 12s "$package_root/usr/bin/browsey"
+          result=$?
+          set -e
+          test "$result" -eq 124
+          mkdir -p release-assets
+          cp "$deb" "$rpm_file" release-assets/
+          cd release-assets
+          sha256sum *.deb *.rpm > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: browsey-linux-${{ inputs.tag }}
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 14
