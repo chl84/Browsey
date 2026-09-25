@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Keep compression failures visible and allow retry; prevent duplicate submissions from closing the dialog.
+- Keep Open With selection inside the filtered app list and correct its empty-state text.
+- Preserve directory monitoring on rejected USB formatting requests and reattach watches after formatting.
+- List unmounted removable USB partitions with a Mount and open action; refresh on UDisks events with polling as a fallback.
+- Keep formatting errors in the dialog with copyable details and require fresh inspection before retrying.
+- Add context-menu keyboard focus, arrow/Home/End navigation, focus restoration, accessible dialog titles, and longer-lived status messages.
+- Add regression tests for compression, filtered application selection, USB discovery and failures, keyboard menus, and hotplug refresh.
+
 ## v1.0.1 — 2026-09-10
 - Preserve files created in a source directory during merge-move operations; abort and roll back instead of recursively deleting the remaining source contents.
 - Reject symbolic links before resolving local-to-cloud source paths, including dangling links and single-entry transfers.

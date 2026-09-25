@@ -3,7 +3,7 @@
 </script>
 
 {#if message}
-  <div class="toast">
+  <div class="toast" role="status" aria-live="polite">
     <span class="text">{message}</span>
   </div>
 {/if}

@@ -28,3 +28,5 @@ export const emitMockEvent = <T>(eventName: string, payload: T) => {
     handler({ payload })
   }
 }
+
+window.addEventListener('browsey-e2e-volumes-changed', () => emitMockEvent('volumes-changed', null))

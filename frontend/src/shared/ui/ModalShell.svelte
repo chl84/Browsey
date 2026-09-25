@@ -1,3 +1,7 @@
+<script context="module" lang="ts">
+  let nextDialogId = 0
+</script>
+
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import { modalOpenState } from './modalOpenState'
@@ -17,9 +21,11 @@
   export let selectTextOnFocus = true
 
   let overlayPointerDown = false
+  const titleId = `browsey-dialog-title-${++nextDialogId}`
   let modalEl: HTMLDivElement | null = null
   let countedAsOpen = false
   let restoreFocusTarget: HTMLElement | null = null
+  let destroyed = false
 
   const focusableSelectors = [
     'a[href]',
@@ -79,7 +85,7 @@
     restoreFocusTarget = null
     if (!target) return
     void tick().then(() => {
-      if (open || !target.isConnected) return
+      if ((!destroyed && open) || !target.isConnected) return
       const active = typeof document !== 'undefined' ? document.activeElement : null
       if (active instanceof HTMLElement && active.isConnected && active !== document.body) {
         return
@@ -101,9 +107,11 @@
   }
 
   onDestroy(() => {
+    destroyed = true
     if (!countedAsOpen) return
     modalOpenState.leave()
     countedAsOpen = false
+    restoreFocusAfterClose()
   })
 
   $: if (open) {
@@ -137,6 +145,7 @@
 
   const handleKeydown = (e: KeyboardEvent) => {
     if (e.key === 'Tab') {
+      e.stopPropagation()
       trapTabFocus(e)
       return
     }
@@ -168,6 +177,8 @@
       class={`modal ${modalClass}`.trim()}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={title || $$slots.header ? titleId : undefined}
+      aria-label={title || $$slots.header ? undefined : 'Dialog'}
       tabindex="0"
       style={modalWidth ? `--modal-width: ${modalWidth};` : undefined}
       on:click|stopPropagation
@@ -176,7 +187,7 @@
       bind:this={modalEl}
     >
       {#if title || $$slots.header}
-        <header>
+        <header id={titleId}>
           {#if $$slots.header}
             <slot name="header" />
           {:else}
