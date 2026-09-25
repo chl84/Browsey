@@ -243,7 +243,6 @@ fn main() {
     undo::cleanup_stale_backups(None);
     commands::fs::cleanup_stale_trash_staging();
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_drag::init())
         .manage(WatchState::default())
         .manage(CancelState::default())
         .manage(UndoState::default())
@@ -269,6 +268,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            start_native_file_drag,
             about_info,
             list_dir,
             list_facets,

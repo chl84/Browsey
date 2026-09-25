@@ -321,7 +321,7 @@ describe('drop policy and destination safety', () => {
     startNativeFileDragMock.mockRejectedValueOnce(new Error('unavailable'))
     hook.handleRowDragStart(source, createDragEvent({ altKey: true, shiftKey: true }))
     await vi.advanceTimersByTimeAsync(0)
-    expect(startNativeFileDragMock).toHaveBeenCalledWith(['/tmp/source.txt'], 'copy')
+    expect(startNativeFileDragMock).toHaveBeenCalledWith(['/tmp/source.txt'])
     expect(deps.showToast).toHaveBeenCalledWith('Native drag failed: unavailable')
   })
 })

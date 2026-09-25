@@ -14,8 +14,6 @@
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-internal-toggle-maximize",
-    "core:window:allow-start-resize-dragging",
-    "drag:default",
-    "drag:allow-start-drag"
+    "core:window:allow-start-resize-dragging"
   ]
 }

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix a Linux crash when closing Browsey after native file drag: use a copy-only Rust adapter without a JavaScript completion channel retained by GTK signal handlers. Validate export paths and embed the drag icon; add native window-teardown regression coverage.
 - Resolve native drops from the actual pointer position (including display scaling), with shared highlighting for folders, breadcrumbs, bookmarks, mounted drives, and list/grid background. Reject ambiguous backgrounds and drops while dialogs or navigation are active.
 - Use live Ctrl/Meta (copy) and Shift (move) modifiers for internal drops, copy cloud transfers and incoming external files by default, and keep local filesystem-aware defaults. Retire stale previews and pending listeners when a drag ends.
 - Add edge autoscroll and delayed folder opening during drag, plus copy-only Alt-drag export for local files with explicit download-first guidance for cloud files. Document these gestures in Settings > Shortcuts.
