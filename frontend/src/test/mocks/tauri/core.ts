@@ -35,6 +35,8 @@ type E2eMockControl = {
   formatHold?: boolean
   formatProgress?: { phase: string; percent: number | null }
   formatError?: { code: string; message: string }
+  mtpHold?: boolean
+  mtpError?: string
   calls?: Array<{ cmd: string; args?: Record<string, unknown> }>
   partitions?: Array<{ label: string; path: string; fs?: string; removable?: boolean }>
 }
@@ -385,6 +387,18 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       }
       emitMockEvent('volumes-changed', null)
       return '/mock/USB' as T
+    }
+    case 'connect_network_uri': {
+      const control = e2eControl()
+      while (control?.mtpHold) await new Promise((resolve) => setTimeout(resolve, 50))
+      if (control?.mtpError) throw { code: 'mount_failed', message: control.mtpError }
+      if (!control?.partitions?.some((part) => part.path === args?.uri)) {
+        throw { code: 'mount_failed', message: 'Phone disconnected or unavailable.' }
+      }
+      const mountedPath = '/mock/Phone'
+      control.partitions = control.partitions.map((part) => part.path === args?.uri ? { ...part, path: mountedPath } : part)
+      emitMockEvent('volumes-changed', null)
+      return { kind: 'mountable', normalizedUri: args?.uri, mountedPath } as T
     }
     case 'compress_entries':
       return `/mock/${args?.name}` as T

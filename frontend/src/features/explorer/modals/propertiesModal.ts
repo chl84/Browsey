@@ -1,7 +1,7 @@
 import { writable, get } from 'svelte/store'
 import { invoke } from '@/shared/lib/tauri'
 import type { Entry, Partition } from '../model/types'
-import { isUnmountedUsb } from '../services/drives.service'
+import { isMtpPartition, isUnmountedUsb } from '../services/drives.service'
 import { parentPath } from '../utils'
 
 type AccessBit = boolean | 'mixed'
@@ -386,6 +386,8 @@ export const createPropertiesModal = (deps: Deps) => {
     const dirs = entries.filter((e) => e.kind === 'dir')
     const localDirs = dirs.filter((e) => !isVirtualUriEntry(e))
     const singleVirtualUri = entries.length === 1 && isVirtualUriEntry(entries[0])
+    const phone = partition !== null && isMtpPartition(partition)
+    const skipPermissions = singleVirtualUri || phone
     const fileBytes = files.reduce((sum, f) => sum + (f.size ?? 0), 0)
     const fileCount = files.length
 
@@ -394,7 +396,7 @@ export const createPropertiesModal = (deps: Deps) => {
       partition,
       entry: entries.length === 1 ? entries[0] : null,
       targets: entries,
-      mutationsLocked: shouldLockMutations(entries) || (partition !== null && singleVirtualUri),
+      mutationsLocked: shouldLockMutations(entries) || phone || (partition !== null && singleVirtualUri),
       count: entries.length,
       size: partition ? null : fileBytes,
       itemCount: dirs.length === 0 ? fileCount : null,
@@ -403,9 +405,9 @@ export const createPropertiesModal = (deps: Deps) => {
       extraMetadataError: null,
       extraMetadata: null,
       extraMetadataPath: null,
-      permissionsLoading: !singleVirtualUri,
+      permissionsLoading: !skipPermissions,
       permissionsApplying: false,
-      permissions: singleVirtualUri ? unsupportedPermissionsState() : null,
+      permissions: skipPermissions ? unsupportedPermissionsState() : null,
       ownershipUsers: [],
       ownershipGroups: [],
       ownershipOptionsLoading: false,
@@ -416,7 +418,7 @@ export const createPropertiesModal = (deps: Deps) => {
 
     if (entries.length === 1) {
       const entry = entries[0]
-      if (!singleVirtualUri) {
+      if (!skipPermissions) {
         void loadPermissions(entry, nextToken)
         if (!partition) void loadEntryTimes(entry, nextToken)
       }

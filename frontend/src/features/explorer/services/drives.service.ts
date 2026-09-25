@@ -1,5 +1,6 @@
 import { invoke } from '@/shared/lib/tauri'
 import { Channel } from '@tauri-apps/api/core'
+import type { Partition } from '../model/types'
 
 export type UsbFormatProgress = { phase: string; percent: number | null }
 
@@ -28,6 +29,13 @@ export type UsbFormatResult = {
 export const ejectDrive = (path: string) => invoke<void>('eject_drive', { path })
 
 export const isUnmountedUsb = (path: string) => path.startsWith('usb-volume://')
+export const isMtpUri = (path: string) => /^mtp:\/\//i.test(path)
+export const isMtpPartition = (part: Partition) =>
+  part.fs?.toLowerCase() === 'mtp' || isMtpUri(part.path) || part.path.includes('/gvfs/mtp:')
+export const isUnmountedPartition = (path: string) => isUnmountedUsb(path) || isMtpUri(path)
+export const canFormatPartition = (part: Partition) =>
+  part.removable === true && !isMtpPartition(part) && !part.path.includes('/gvfs/') &&
+  (!part.path.includes('://') || isUnmountedUsb(part.path))
 export const mountUsbVolume = (path: string) => invoke<string>('mount_usb_volume', { path })
 
 export const formatRemovablePartition = async (

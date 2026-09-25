@@ -17,6 +17,7 @@
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
   import {
     ejectDrive,
+    canFormatPartition,
     formatRemovablePartition,
     getRemovableUsbFormatInfo,
     type UsbFormatInfo,
@@ -1694,7 +1695,7 @@
   }
 
   const handleSidebarPartitionFormat = async (part: Partition) => {
-    if (!part.removable || formatting) return
+    if (!canFormatPartition(part) || formatting) return
     const request = ++formatRequest
     formatTarget = part
     formatError = ''

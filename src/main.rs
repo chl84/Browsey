@@ -12,6 +12,8 @@ mod fs_utils;
 mod icons;
 mod keymap;
 mod metadata;
+#[cfg(target_os = "linux")]
+mod mtp;
 mod path_guard;
 mod runtime_lifecycle;
 mod sorting;
@@ -249,6 +251,7 @@ fn main() {
         .setup(|app| {
             #[cfg(target_os = "linux")]
             {
+                mtp::start(app.handle().clone());
                 let monitor = volume_monitor::VolumeMonitor::default();
                 if let Err(error) = monitor.start(app.handle().clone()) {
                     warn!(%error, "volume notifications unavailable; using polling");
@@ -426,6 +429,8 @@ fn main() {
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Exit = event {
             runtime_lifecycle::begin_shutdown_from_app(app_handle);
+            #[cfg(target_os = "linux")]
+            mtp::stop();
             #[cfg(target_os = "linux")]
             if let Some(monitor) = app_handle.try_state::<volume_monitor::VolumeMonitor>() {
                 monitor.stop();

@@ -314,6 +314,16 @@ describe('USB properties', () => {
     expect(get(modal.state).partition).toBeNull()
   })
 
+  it.each(['mtp://Phone_A/', '/run/user/1000/gvfs/mtp:host=Phone_A'])('does not expose Unix permission edits for phones (%s)', async (path) => {
+    const modal = createModal()
+    await modal.openPartition({ label: 'Phone', path, fs: 'mtp', removable: true })
+    expect(get(modal.state).mutationsLocked).toBe(true)
+    await modal.setOwnership('root', 'root')
+    modal.toggleAccess('other', 'write', true)
+    await modal.toggleHidden(true)
+    expect(invokeMock).not.toHaveBeenCalled()
+  })
+
   it('ignores a pending permissions reply after the dialog closes', async () => {
     let resolve!: (value: typeof permissions) => void
     invokeMock.mockReturnValueOnce(new Promise((done) => { resolve = done }))

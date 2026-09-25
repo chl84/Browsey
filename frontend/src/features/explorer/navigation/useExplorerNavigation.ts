@@ -3,7 +3,7 @@ import { get, type Readable, type Writable } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import { connectNetworkUri, isMountUri, statCloudEntry } from '@/features/network'
 import { entryKind } from '../services/files.service'
-import { isUnmountedUsb, mountUsbVolume } from '../services/drives.service'
+import { isMtpUri, isUnmountedUsb, mountUsbVolume } from '../services/drives.service'
 import { createSelectionMemory } from '../selection/selectionMemory'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
@@ -249,7 +249,18 @@ export const useExplorerNavigation = (deps: Deps) => {
     await loadDir(path, opts)
   }
 
+  const connectingPartitions = new Set<string>()
   const openPartition = async (path: string) => {
+    if (connectingPartitions.has(path)) return
+    connectingPartitions.add(path)
+    try {
+      await openPartitionOnce(path)
+    } finally {
+      connectingPartitions.delete(path)
+    }
+  }
+
+  const openPartitionOnce = async (path: string) => {
     if (isUnmountedUsb(path)) {
       try {
         const mountedPath = await mountUsbVolume(path)
@@ -265,7 +276,7 @@ export const useExplorerNavigation = (deps: Deps) => {
       return
     }
 
-    if (await isMountUri(path)) {
+    if (isMtpUri(path) || await isMountUri(path)) {
       try {
         const result = await connectNetworkUri(path)
         if (result.kind === 'unsupported') {
@@ -281,7 +292,7 @@ export const useExplorerNavigation = (deps: Deps) => {
           }
         }
       } catch (err) {
-        deps.showToast(`Connect failed: ${getErrorMessage(err)}`)
+        deps.showToast(`${isMtpUri(path) ? 'Phone connection failed' : 'Connect failed'}: ${getErrorMessage(err)}`)
       }
       return
     }
