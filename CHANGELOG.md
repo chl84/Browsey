@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v1.0.2 — 2026-09-25
+
+- Discover connected MTP phones through GIO without first opening another file manager; mount on demand and show phone-specific properties and unlock guidance.
+- Grant the formatting user ownership of new ext4/btrfs USB filesystems, and expose Properties for removable drives. Formatting does not change ownership of existing volumes or phone storage.
+- Support USB formatting to exFAT, FAT32, ext4, and btrfs when the matching system tools are installed; inspect the target and require destructive-action confirmation.
+- Prioritize visible thumbnails, cancel stale work on scrolling/navigation, reuse cached results, and avoid opening original contents on disk-cache hits after path/metadata validation.
+- Bound thumbnail workers, improve JPEG decoding and cancellation, and evict disk-cache entries by byte budget and recent use rather than a fixed 2,000-entry cap.
+- Add Ctrl + mouse-wheel zoom from list into five grid sizes (64, 96, 128, 160, and 192 CSS pixels), with sharper thumbnails and a retained view anchor. Zoom is window-local.
+- Increase grid gaps to 8 px in Cozy and 6 px in Compact, and reduce system-theme lasso opacity to 16% without changing selected-file highlights.
+- Offer system/Omarchy colors in Settings with light/dark fallback.
+- Show delete/trash progress in items instead of incorrectly labelling item counts as bytes.
+- Replace the previous RAR reader with a streaming UnRAR adapter, covering compressed RAR4/RAR5 and complete multi-volume archives while retaining extraction limits, cancellation, and path-safety checks. Password-protected archives report an explicit error.
 - Wait for the actual UDisks formatting reply instead of the CLI's default timeout; treat lost replies as unknown status and never automatically repeat an erase.
 - Check device-scoped UDisks jobs before formatting or retrying, and reject overlapping Browsey formatting requests.
 - Reuse a shared progress bar in the topbar and USB format dialog, showing real per-job percentages only when available and indeterminate progress otherwise.

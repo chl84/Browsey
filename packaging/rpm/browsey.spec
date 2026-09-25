@@ -6,7 +6,7 @@
 %global _missing_build_ids_terminate_build 0
 
 Name:           browsey
-Version:        1.0.1
+Version:        1.0.2
 Release:        1%{?dist}
 Summary:        Minimalist and fast file explorer built with Tauri
 
@@ -38,8 +38,7 @@ tar -xf %{SOURCE0} --strip-components=1
 
 %build
 npm --prefix frontend ci
-npm --prefix frontend run build
-cargo build --release --locked
+frontend/node_modules/.bin/tauri build --no-bundle -- --locked
 
 %install
 install -d %{buildroot}%{_bindir}
@@ -69,6 +68,9 @@ install -m 0644 resources/icons/icon.png %{buildroot}%{_datadir}/icons/hicolor/5
 %{_datadir}/icons/hicolor/512x512/apps/browsey.png
 
 %changelog
+* Fri Sep 25 2026 Browsey Maintainers <maintainers@example.com> - 1.0.2-1
+- USB formatting, MTP discovery, thumbnail scheduling, zoom, and theme polish
+
 * Wed Mar 04 2026 Browsey Maintainers <maintainers@example.com> - 0.4.6-1
 - Sync spec version with current project release
 
