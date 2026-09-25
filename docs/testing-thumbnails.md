@@ -5,6 +5,7 @@
 ```sh
 npm --prefix frontend test -- src/features/explorer/thumbnailLoader.test.ts
 npm --prefix frontend run test:e2e -- thumbnails.e2e.ts
+npm --prefix frontend run test:e2e -- zoom.e2e.ts
 cargo test commands::thumbnails:: -- --nocapture
 ```
 
@@ -59,6 +60,16 @@ Repeat several times and report median and slow-tail latency, not a single sampl
    must not consume all local worker capacity. Reconnect and revisit the folder.
 
 ## Limits and guarantees
+
+Ctrl + wheel over the file listing uses five grid sizes: 64, 96, 128, 160 and
+192 CSS pixels. Zooming in from list enters the smallest grid; zooming out below
+64 returns to list. Ordinary view switching opens the current grid size (96 by
+default). Zoom is window-local and survives directory changes, not app restarts.
+Small trackpad deltas accumulate, with burst throttling. The browser's page zoom
+is prevented in the file view. Density changes retain zoom and selection.
+The centre entry anchors layout changes; thumbnail requests use the display size
+times device pixel ratio, capped at 512. Existing previews remain visible while
+larger replacements load, and zooming out reuses higher-resolution previews.
 
 The cache is byte-budgeted (at least 4 KiB charged per entry), not capped at 2,000
 files. Cache-file mtime tracks use, coalesced to once per minute. Trimming runs in

@@ -9,6 +9,7 @@ type DensityMetrics = {
 
 type Params = {
   getViewMode: () => ViewMode
+  getGridThumbSize?: () => number
   setSidebarCollapsed: (collapsed: boolean) => void
   listResize: () => void
   recomputeGrid: () => void
@@ -44,8 +45,10 @@ export const useExplorerViewportLayout = (params: Params) => {
   const applyDensityMetrics = () => {
     const nextRowHeight = readCssNumber('--row-height', 32)
     const nextGridGap = readCssNumber('--grid-gap', 6)
-    const nextGridCardWidth = readCssNumber('--grid-card-width', 120)
-    const nextGridRowHeight = readCssNumber('--grid-row-height', 126)
+    const baseThumb = readCssNumber('--grid-thumb-size', 90)
+    const zoomDelta = (params.getGridThumbSize?.() ?? baseThumb) - baseThumb
+    const nextGridCardWidth = readCssNumber('--grid-card-width', 120) + zoomDelta
+    const nextGridRowHeight = readCssNumber('--grid-row-height', 126) + zoomDelta
 
     params.setDensityMetrics({
       rowHeight: nextRowHeight,

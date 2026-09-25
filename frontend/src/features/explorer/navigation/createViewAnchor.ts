@@ -79,5 +79,10 @@ export const createViewSwitchAnchor = ({ filteredEntries, rowHeight, gridRowHeig
     gridEl?.scrollTo({ top: Math.max(0, target), behavior: 'auto' })
   }
 
-  return { capture, scroll }
+  const setMetrics = (metrics: Pick<Options, 'rowHeight' | 'gridRowHeight' | 'gridGap'>) => {
+    rowHeight = metrics.rowHeight
+    gridRowHeight = metrics.gridRowHeight
+    gridGap = metrics.gridGap
+  }
+  return { capture, scroll, setMetrics }
 }

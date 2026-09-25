@@ -110,7 +110,7 @@
     class="rows"
     bind:this={rowsEl}
     on:scroll={onRowsScroll}
-    on:wheel={onWheel}
+    on:wheel|nonpassive={onWheel}
     on:keydown={onRowsKeydown}
     on:mousedown={onRowsMousedown}
     on:click={onRowsClick}

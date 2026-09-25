@@ -117,6 +117,27 @@ describe('createThumbnailLoader cloud eligibility', () => {
     loader.destroy()
   })
 
+  it('keeps previews visible while upgrading resolution and reuses them on zoom out', async () => {
+    const { createThumbnailLoader } = await import('./thumbnailLoader')
+    const loader = createThumbnailLoader({ maxDim: 64 })
+    const node = createNode()
+    loader.observe(node, '/mock/photo.jpg')
+    observers[0].trigger(node)
+    await vi.waitFor(() => expect(get(loader).size).toBe(1))
+    let finish!: (value: unknown) => void
+    invokeMock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    loader.setMaxDim(192)
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(2))
+    expect(get(loader).get('/mock/photo.jpg')).toBe('/tmp/thumb.png')
+    expect(invokeMock).toHaveBeenLastCalledWith('get_thumbnail', expect.objectContaining({ maxDim: 192 }))
+    finish({ path: '/tmp/large-thumb.png' })
+    await vi.waitFor(() => expect(get(loader).get('/mock/photo.jpg')).toBe('/tmp/large-thumb.png'))
+    loader.setMaxDim(64)
+    await Promise.resolve()
+    expect(invokeMock).toHaveBeenCalledTimes(2)
+    loader.destroy()
+  })
+
   it('invalidates cached cards if a file changes while scrolled out of view', async () => {
     const { createThumbnailLoader } = await import('./thumbnailLoader')
     const loader = createThumbnailLoader()

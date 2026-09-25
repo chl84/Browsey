@@ -95,6 +95,9 @@ type Params = {
   cloudThumbs: boolean
   currentView: string
   thumbnailRefreshToken: number
+  gridThumbSize: number
+  gridCardWidth: number
+  gridRowHeight: number
 
   contextMenu: any
   blankMenu: any
@@ -237,6 +240,9 @@ export const createExplorerShellProps = (p: Params) => ({
     cloudThumbs: p.cloudThumbs,
     thumbnailsEnabled: p.currentView !== 'trash',
     thumbnailRefreshToken: p.thumbnailRefreshToken,
+    gridThumbSize: p.gridThumbSize,
+    gridCardWidth: p.gridCardWidth,
+    gridRowHeight: p.gridRowHeight,
   },
 
   menuProps: {

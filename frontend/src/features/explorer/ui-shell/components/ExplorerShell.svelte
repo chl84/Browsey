@@ -128,6 +128,9 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   let cloudThumbs = false
   let thumbnailsEnabled = true
   let thumbnailRefreshToken = 0
+  let gridThumbSize = 96
+  let gridCardWidth = 126
+  let gridRowHeight = 132
 
   let contextMenu: { open: boolean; x: number; y: number; actions: ContextAction[] } = {
     open: false,
@@ -374,6 +377,9 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     cloudThumbs: typeof cloudThumbs
     thumbnailsEnabled: typeof thumbnailsEnabled
     thumbnailRefreshToken: typeof thumbnailRefreshToken
+    gridThumbSize: number
+    gridCardWidth: number
+    gridRowHeight: number
   }
 
   type ExplorerShellMenuProps = {
@@ -589,6 +595,9 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     cloudThumbs,
     thumbnailsEnabled,
     thumbnailRefreshToken,
+    gridThumbSize,
+    gridCardWidth,
+    gridRowHeight,
   } = listingProps)
 
   $: ({
@@ -832,6 +841,9 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
         videoThumbs={videoThumbs}
         cloudThumbs={cloudThumbs}
         {thumbnailRefreshToken}
+        {gridThumbSize}
+        {gridCardWidth}
+        {gridRowHeight}
         {clipboardMode}
           {clipboardPaths}
           onWheel={onWheel}
