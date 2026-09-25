@@ -41,6 +41,8 @@ pub struct OpenWithApp {
     pub icon: Option<String>,
     pub matches: bool,
     pub terminal: bool,
+    #[cfg(target_os = "linux")]
+    pub default_content_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,8 +52,44 @@ pub struct OpenWithChoice {
 }
 
 #[tauri::command]
-pub fn list_open_with_apps(path: String) -> ApiResult<Vec<OpenWithApp>> {
-    map_api_result(list_open_with_apps_impl(path))
+pub async fn list_open_with_apps(path: String) -> ApiResult<Vec<OpenWithApp>> {
+    let result = tauri::async_runtime::spawn_blocking(move || list_open_with_apps_impl(path))
+        .await
+        .map_err(|error| {
+            crate::errors::api_error::ApiError::new("unknown_error", error.to_string())
+        })?;
+    map_api_result(result)
+}
+
+#[tauri::command]
+pub async fn set_default_app(path: String, app_id: String, content_type: String) -> ApiResult<()> {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        set_default_app_impl(&path, &app_id, &content_type)
+    })
+    .await
+    .map_err(|error| crate::errors::api_error::ApiError::new("unknown_error", error.to_string()))?;
+    map_api_result(result)
+}
+
+fn set_default_app_impl(path: &str, app_id: &str, content_type: &str) -> OpenWithResult<()> {
+    if !Path::new(path).is_absolute() {
+        return Err(OpenWithError::new(
+            OpenWithErrorCode::PathNotAbsolute,
+            format!("Path must be absolute: {path}"),
+        ));
+    }
+    let target = sanitize_path_follow(path, false).map_err(OpenWithError::from)?;
+    #[cfg(target_os = "linux")]
+    {
+        linux::set_default_app(&target, app_id, content_type)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (target, app_id, content_type);
+        Err(OpenWithError::invalid_input(
+            "Setting a default application is currently supported only on Linux",
+        ))
+    }
 }
 
 fn list_open_with_apps_impl(path: String) -> OpenWithResult<Vec<OpenWithApp>> {
@@ -167,5 +205,11 @@ mod tests {
         ));
         assert_eq!(error.code_str(), "launch_failed");
         assert_eq!(error.message(), "Failed to open: launcher missing");
+    }
+
+    #[test]
+    fn set_default_rejects_relative_paths() {
+        let error = set_default_app_impl("file.txt", "desktop:fake", "text/plain").unwrap_err();
+        assert_eq!(error.code_str(), "path_not_absolute");
     }
 }

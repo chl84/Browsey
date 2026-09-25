@@ -440,10 +440,11 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return `/mock/${args?.name}` as T
     case 'list_open_with_apps':
       return [
-        { id: 'alpha', name: 'Alpha editor', exec: 'alpha', matches: true, terminal: false },
-        { id: 'beta', name: 'Beta editor', exec: 'beta', matches: false, terminal: false },
+        { id: 'alpha', name: 'Alpha editor', exec: 'alpha', matches: true, terminal: false, defaultContentType: 'text/plain' },
+        { id: 'beta', name: 'Beta editor', exec: 'beta', matches: false, terminal: false, defaultContentType: 'text/plain' },
       ] as T
     case 'open_with':
+    case 'set_default_app':
       return undefined as T
     case 'format_removable_partition': {
       const control = e2eControl()

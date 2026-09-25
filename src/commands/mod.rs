@@ -61,7 +61,7 @@ pub use network::mounts::{
     mount_partition, mount_usb_volume,
 };
 pub use network::uri::{classify_network_uri, resolve_mounted_path_for_uri};
-pub use open_with::{list_open_with_apps, open_with};
+pub use open_with::{list_open_with_apps, open_with, set_default_app};
 pub use permissions::{
     get_permissions, get_permissions_batch, list_ownership_principals,
     maybe_run_ownership_helper_from_args, set_ownership, set_permissions,

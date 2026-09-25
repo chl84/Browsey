@@ -9,10 +9,12 @@ export type OpenWithApp = {
   icon?: string
   matches: boolean
   terminal: boolean
+  defaultContentType?: string | null
 }
 
 export type OpenWithChoice = {
   appId?: string | null
+  setDefault?: boolean
 }
 
 const userOpenWithErrorMessage = (code: string | undefined, message: string) => {
@@ -48,6 +50,9 @@ export const fetchOpenWithApps = (path: string) =>
 
 export const openWithSelection = (path: string, choice: OpenWithChoice) =>
   invokeOpenWith<void>('open_with', { path, choice })
+
+export const setDefaultApplication = (path: string, appId: string, contentType: string) =>
+  invokeOpenWith<void>('set_default_app', { path, appId, contentType })
 
 export const defaultOpenWithApp: OpenWithApp = {
   id: '__default__',
