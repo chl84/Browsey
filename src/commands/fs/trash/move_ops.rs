@@ -66,7 +66,7 @@ fn emit_trash_progress(
         let now = Instant::now();
         if finished || now.duration_since(*last_emit) >= Duration::from_millis(100) {
             let payload = DeleteProgressPayload {
-                bytes: done,
+                items: done,
                 total,
                 finished,
             };
