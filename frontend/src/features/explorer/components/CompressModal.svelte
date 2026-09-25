@@ -7,14 +7,20 @@
   export let value = ''
   export let level: number = 6
   export let error = ''
-  export let onConfirm: (name: string, level: number) => void = () => {}
+  export let onConfirm: (name: string, level: number) => void | Promise<void> = () => {}
   export let onCancel: () => void = () => {}
 
   let inputEl: HTMLInputElement | null = null
   let selectedThisOpen = false
-  const confirmAndClose = () => {
-    onConfirm(value, Number(level))
-    onCancel()
+  let busy = false
+  const confirm = async () => {
+    if (busy) return
+    busy = true
+    try {
+      await onConfirm(value, Number(level))
+    } finally {
+      busy = false
+    }
   }
 
   $: autoSelectOnOpen({
@@ -29,14 +35,16 @@
 {#if open}
   <ModalShell
     open={open}
-    onClose={onCancel}
+    onClose={() => { if (!busy) onCancel() }}
+    closeOnEscape={!busy}
+    closeOnOverlay={!busy}
     initialFocusSelector="input[type='text']"
     guardOverlayPointer={true}
   >
     <svelte:fragment slot="header">Compress</svelte:fragment>
 
     {#if error}
-      <div class="pill error">{error}</div>
+      <div class="pill error" role="alert">{error}</div>
     {/if}
     <label class="field">
       <span>Archive name</span>
@@ -47,10 +55,11 @@
           autocomplete="off"
           bind:this={inputEl}
           bind:value={value}
+          disabled={busy}
           on:keydown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
-              confirmAndClose()
+              void confirm()
             }
           }}
         />
@@ -67,14 +76,15 @@
           max="9"
           step="1"
           bind:value={level}
+          disabled={busy}
         />
         <span class="level-value" aria-live="polite">{level}</span>
       </div>
       <div class="muted">0 = store only, 9 = maximum compression</div>
     </label>
     <div slot="actions">
-      <button type="button" class="secondary" on:click={onCancel}>Cancel</button>
-      <button type="button" on:click={confirmAndClose}>Create</button>
+      <button type="button" class="secondary" on:click={onCancel}>{busy ? 'Cancel compression' : 'Cancel'}</button>
+      <button type="button" on:click={confirm} disabled={busy}>{busy ? 'Compressing…' : 'Create'}</button>
     </div>
   </ModalShell>
 {/if}
