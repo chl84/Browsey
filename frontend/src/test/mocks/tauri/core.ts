@@ -32,6 +32,7 @@ type MockClipboardState = {
 type E2eMockControl = {
   systemClipboard?: MockClipboardState
   failCommands?: string[]
+  calls?: Array<{ cmd: string; args?: Record<string, unknown> }>
   partitions?: Array<{ label: string; path: string; fs?: string; removable?: boolean }>
 }
 
@@ -204,6 +205,7 @@ const emptyFacets = {
 }
 
 export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+  e2eControl()?.calls?.push({ cmd, args })
   if (shouldFailCommand(cmd)) {
     throw new Error(`Simulated ${cmd} failure`)
   }
@@ -225,7 +227,11 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
         return [{ id: 'rename-advanced', label: 'Rename…' }] as T
       }
       if (count === 1) {
-        return [{ id: 'rename', label: 'Rename…' }] as T
+        return [
+          { id: 'rename', label: 'Rename…' },
+          { id: 'open-with', label: 'Open with…' },
+          { id: 'compress', label: 'Compress…' },
+        ] as T
       }
       return [] as T
     }
@@ -356,6 +362,23 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
           { id: 'btrfs', label: 'Btrfs', description: 'Linux filesystem', available: true },
         ],
       } as T
+    case 'mount_usb_volume': {
+      const control = e2eControl()
+      if (control?.partitions) {
+        control.partitions = control.partitions.map((part) => part.path === args?.path ? { ...part, path: '/mock/USB' } : part)
+      }
+      emitMockEvent('volumes-changed', null)
+      return '/mock/USB' as T
+    }
+    case 'compress_entries':
+      return `/mock/${args?.name}` as T
+    case 'list_open_with_apps':
+      return [
+        { id: 'alpha', name: 'Alpha editor', exec: 'alpha', matches: true, terminal: false },
+        { id: 'beta', name: 'Beta editor', exec: 'beta', matches: false, terminal: false },
+      ] as T
+    case 'open_with':
+      return undefined as T
     case 'format_removable_partition':
       return {
         device: '/dev/sdz',

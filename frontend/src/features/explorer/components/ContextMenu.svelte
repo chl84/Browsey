@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import { onDestroy, tick } from 'svelte'
   import type { ContextAction } from '../context/createContextMenus'
 
   export let open = false
@@ -19,6 +19,61 @@
   let submenuParentId: string | null = null
   let submenuActions: ContextAction[] = []
   let submenuCloseTimer: ReturnType<typeof setTimeout> | null = null
+  let submenuTrigger: HTMLButtonElement | null = null
+  let wasOpen = false
+  let restoreTarget: HTMLElement | null = null
+
+  const menuItems = (menu: HTMLElement | null) =>
+    Array.from(menu?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? [])
+
+  const restoreFocus = () => {
+    const target = restoreTarget
+    restoreTarget = null
+    void tick().then(() => {
+      if (target?.isConnected && (!document.activeElement || document.activeElement === document.body)) target.focus()
+    })
+  }
+
+  const selectAction = (id: string) => {
+    // A newly opened dialog should capture the original trigger, not a menu
+    // item that is about to disappear.
+    if (restoreTarget?.isConnected) restoreTarget.focus()
+    onSelect(id)
+  }
+
+  $: if (open && !wasOpen) {
+    wasOpen = true
+    restoreTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    void tick().then(() => { if (open) (menuItems(menuEl)[0] ?? menuEl)?.focus() })
+  } else if (!open && wasOpen) {
+    wasOpen = false
+    restoreFocus()
+  }
+
+  const handleMenuKey = (event: KeyboardEvent, submenu = false) => {
+    const items = menuItems(submenu ? submenuEl : menuEl)
+    const index = items.indexOf(document.activeElement as HTMLButtonElement)
+    let next: number | null = null
+    if (event.key === 'ArrowDown') next = (index + 1) % items.length
+    if (event.key === 'ArrowUp') next = (index - 1 + items.length) % items.length
+    if (event.key === 'Home') next = 0
+    if (event.key === 'End') next = items.length - 1
+    if (next !== null) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!submenu) closeSubmenu()
+      items[next]?.focus()
+    } else if (event.key === 'ArrowLeft' && submenu) {
+      event.preventDefault()
+      event.stopPropagation()
+      closeSubmenu()
+      submenuTrigger?.focus()
+    } else if (event.key === 'Escape' || event.key === 'Tab') {
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
+    }
+  }
 
   const hasChildren = (action: ContextAction) =>
     Array.isArray(action.children) && action.children.length > 0
@@ -59,18 +114,22 @@
     submenuY = Math.max(margin, nextY)
   }
 
-  const openSubmenu = (action: ContextAction, trigger: HTMLButtonElement) => {
+  const openSubmenu = (action: ContextAction, trigger: HTMLButtonElement, focus = false) => {
     if (!hasChildren(action)) {
       closeSubmenu()
       return
     }
     clearSubmenuCloseTimer()
     submenuParentId = action.id
+    submenuTrigger = trigger
     submenuActions = action.children ?? []
     submenuAnchor = trigger.getBoundingClientRect()
     submenuX = submenuAnchor.right + 4
     submenuY = submenuAnchor.top
-    void tick().then(positionSubmenu)
+    void tick().then(() => {
+      positionSubmenu()
+      if (focus && open) menuItems(submenuEl)[0]?.focus()
+    })
   }
 
   $: {
@@ -93,6 +152,10 @@
   $: if (!open) {
     closeSubmenu()
   }
+  onDestroy(() => {
+    clearSubmenuCloseTimer()
+    restoreFocus()
+  })
 </script>
 
 {#if open}
@@ -115,12 +178,7 @@
       bind:this={menuEl}
       style={`top:${posY}px;left:${posX}px;`}
       tabindex="-1"
-      on:keydown={(e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          onClose()
-        }
-      }}
+      on:keydown={(e) => handleMenuKey(e)}
       on:click|stopPropagation
       on:contextmenu|preventDefault
       on:mouseleave={scheduleSubmenuClose}
@@ -145,7 +203,7 @@
               on:keydown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight') {
                   e.preventDefault()
-                  openSubmenu(action, e.currentTarget as HTMLButtonElement)
+                  openSubmenu(action, e.currentTarget as HTMLButtonElement, true)
                 } else if (e.key === 'ArrowLeft') {
                   e.preventDefault()
                   closeSubmenu()
@@ -161,11 +219,11 @@
               role="menuitem"
               class:dangerous={action.dangerous}
               on:mouseenter={closeSubmenu}
-              on:click={() => onSelect(action.id)}
+              on:click={() => selectAction(action.id)}
               on:keydown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
-                  onSelect(action.id)
+                  selectAction(action.id)
                 }
               }}
               type="button"
@@ -190,12 +248,7 @@
         on:mouseenter={clearSubmenuCloseTimer}
         on:mouseleave={scheduleSubmenuClose}
         on:click|stopPropagation
-        on:keydown={(e) => {
-          if (e.key === 'Escape') {
-            e.preventDefault()
-            onClose()
-          }
-        }}
+        on:keydown={(e) => handleMenuKey(e, true)}
         on:contextmenu|preventDefault
       >
         {#each submenuActions as action}
@@ -205,14 +258,11 @@
             <button
               role="menuitem"
               class:dangerous={action.dangerous}
-              on:click={() => onSelect(action.id)}
+              on:click={() => selectAction(action.id)}
               on:keydown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
-                  onSelect(action.id)
-                } else if (e.key === 'ArrowLeft') {
-                  e.preventDefault()
-                  closeSubmenu()
+                  selectAction(action.id)
                 }
               }}
               type="button"

@@ -406,6 +406,9 @@ export const useExplorerInputHandlers = (deps: Deps) => {
     if (event.defaultPrevented) {
       return
     }
+    // Menus own their keyboard navigation and activation. This handler runs
+    // in capture phase, before their local key handlers.
+    if (event.target instanceof Element && event.target.closest('[role="menu"]')) return
     if (blurTextEntryTargetOnEscape(event)) {
       return
     }
