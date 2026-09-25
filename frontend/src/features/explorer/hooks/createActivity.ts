@@ -11,7 +11,10 @@ export type ActivityState = {
   cancelling?: boolean
 }
 
-export type ProgressPayload = { bytes: number; total: number; finished?: boolean }
+export type ProgressPayload = { total: number; finished?: boolean } & (
+  | { unit?: 'bytes'; bytes: number }
+  | { unit: 'items'; items: number }
+)
 
 type Options = {
   onError?: (message: string) => void
@@ -80,15 +83,20 @@ export const createActivity = (opts: Options = {}) => {
     activity.set({ label, detail: null, percent: null, cancel: onCancel ?? null, cancelling: false })
     activityUnlisten = await listen<ProgressPayload>(eventName, (event) => {
       const payload = event.payload
+      const completed = payload.unit === 'items' ? payload.items : payload.bytes
       let pct =
-        payload.total > 0 ? Math.min(100, Math.round((payload.bytes / payload.total) * 100)) : null
-      if (pct === 0 && payload.bytes > 0) {
+        payload.total > 0 ? Math.min(100, Math.round((completed / payload.total) * 100)) : null
+      if (pct === 0 && completed > 0) {
         pct = 1
       }
       const existing = get(activity)
       const cancelling = existing?.cancelling ?? false
       const displayLabel = cancelling ? 'Cancelling…' : label
-      const detail = payload.total > 0 ? formatByteProgress(payload.bytes, payload.total) : null
+      const detail = payload.total > 0
+        ? payload.unit === 'items'
+          ? `${completed} / ${payload.total} ${payload.total === 1 ? 'item' : 'items'}`
+          : formatByteProgress(completed, payload.total)
+        : null
       if (payload.finished) {
         activity.set({
           label: cancelling ? 'Cancelling…' : 'Finalizing…',

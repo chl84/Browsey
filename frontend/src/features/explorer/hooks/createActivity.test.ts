@@ -63,4 +63,72 @@ describe('createActivity', () => {
       cancelling: true,
     })
   })
+
+  it.each(['delete', 'trash'])('formats %s progress as items, not bytes', async (operation) => {
+    const activityApi = createActivity()
+    const eventName = `${operation}-progress-1`
+    await activityApi.start('Deleting…', eventName)
+    const handler = eventHandlers.get(eventName)
+
+    handler?.({ payload: { unit: 'items', items: 1, total: 3, finished: false } })
+    expect(get(activityApi.activity)).toMatchObject({
+      label: 'Deleting…',
+      detail: '1 / 3 items',
+      percent: 33,
+    })
+    await activityApi.cleanup()
+  })
+
+  it('keeps item units when finalizing deletion of a single photo', async () => {
+    const activityApi = createActivity()
+    await activityApi.start('Deleting…', 'delete-progress-1')
+    eventHandlers.get('delete-progress-1')?.({
+      payload: { unit: 'items', items: 1, total: 1, finished: true },
+    })
+
+    expect(get(activityApi.activity)).toMatchObject({
+      label: 'Finalizing…',
+      detail: '1 / 1 item',
+      percent: 100,
+      cancel: null,
+    })
+    expect(activityApi.hasHideTimer()).toBe(true)
+    await activityApi.cleanup()
+  })
+
+  it('does not format large item counts as kilobytes', async () => {
+    const activityApi = createActivity()
+    await activityApi.start('Deleting…', 'delete-progress-1')
+    eventHandlers.get('delete-progress-1')?.({
+      payload: { unit: 'items', items: 1024, total: 2048 },
+    })
+
+    expect(get(activityApi.activity)).toMatchObject({ detail: '1024 / 2048 items', percent: 50 })
+    await activityApi.cleanup()
+  })
+
+  it('keeps empty deletion progress indeterminate without a size label', async () => {
+    const activityApi = createActivity()
+    await activityApi.start('Deleting…', 'delete-progress-1')
+    eventHandlers.get('delete-progress-1')?.({
+      payload: { unit: 'items', items: 0, total: 0, finished: true },
+    })
+
+    expect(get(activityApi.activity)).toMatchObject({ detail: null, percent: null })
+    await activityApi.cleanup()
+  })
+
+  it('preserves cancellation handling for item progress', async () => {
+    const activityApi = createActivity()
+    await activityApi.start('Deleting…', 'delete-progress-1', () => {})
+    await activityApi.requestCancel('delete-progress-1')
+    eventHandlers.get('delete-progress-1')?.({
+      payload: { unit: 'items', items: 1, total: 2, finished: false },
+    })
+
+    expect(get(activityApi.activity)).toMatchObject({
+      label: 'Cancelling…', detail: null, percent: 50, cancel: null, cancelling: true,
+    })
+    await activityApi.cleanup()
+  })
 })

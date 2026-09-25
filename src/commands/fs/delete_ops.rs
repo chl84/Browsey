@@ -71,7 +71,7 @@ fn emit_delete_progress(
         let now = Instant::now();
         if finished || now.duration_since(*last_emit) >= Duration::from_millis(100) {
             let payload = DeleteProgressPayload {
-                bytes: done,
+                items: done,
                 total,
                 finished,
             };
@@ -249,6 +249,26 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn delete_progress_serializes_item_counts_not_bytes() {
+        for finished in [false, true] {
+            let payload = DeleteProgressPayload {
+                items: 1,
+                total: 2,
+                finished,
+            };
+            assert_eq!(
+                serde_json::to_value(payload).expect("serialize delete/trash progress"),
+                serde_json::json!({
+                    "unit": "items",
+                    "items": 1,
+                    "total": 2,
+                    "finished": finished,
+                })
+            );
+        }
+    }
 
     fn uniq_path(label: &str) -> PathBuf {
         let ts = SystemTime::now()

@@ -408,8 +408,10 @@ fn create_file_impl(
 }
 
 #[derive(Serialize, Clone)]
+#[serde(tag = "unit", rename = "items")]
 pub struct DeleteProgressPayload {
-    pub bytes: u64,
+    // Counts selected entries, not bytes or recursively enumerated children.
+    pub items: u64,
     pub total: u64,
     pub finished: bool,
 }
