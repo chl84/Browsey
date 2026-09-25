@@ -26,6 +26,7 @@ export const createCompressModal = (deps: Deps) => {
   const { activityApi, reloadCurrent, showToast } = deps
   const state = writable<CompressState>({ open: false, targets: [], error: '' })
   let busy = false
+  let activeEvent: string | null = null
 
   const open = (entries: Entry[], defaultBase: string) => {
     state.set({ open: true, targets: entries, error: '' })
@@ -40,17 +41,27 @@ export const createCompressModal = (deps: Deps) => {
   }
 
   const close = () => state.set({ open: false, targets: [], error: '' })
+  const cancelOrClose = () => {
+    if (!busy) {
+      close()
+    } else if (activeEvent) {
+      void activityApi.requestCancel(activeEvent).catch((error) => {
+        state.update((s) => ({ ...s, error: getErrorMessage(error) }))
+      })
+    }
+  }
 
   const confirm = async (name: string, level: number) => {
     const current = get(state)
     if (!current.open || current.targets.length === 0 || busy) {
-      close()
       return false
     }
     busy = true
+    state.update((s) => ({ ...s, error: '' }))
     const lvl = Math.min(Math.max(Math.round(level), 0), 9)
     const paths = current.targets.map((e) => e.path)
     const progressEvent = `compress-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    activeEvent = progressEvent
     try {
       await activityApi.start('Compressing…', progressEvent, () => activityApi.requestCancel(progressEvent))
       const base = (name || '').trim().replace(/\.zip$/i, '')
@@ -79,6 +90,7 @@ export const createCompressModal = (deps: Deps) => {
       return false
     } finally {
       busy = false
+      activeEvent = null
       activityApi.clearNow()
       await activityApi.cleanup()
     }
@@ -87,7 +99,7 @@ export const createCompressModal = (deps: Deps) => {
   return {
     state,
     open,
-    close,
+    close: cancelOrClose,
     confirm,
   }
 }
