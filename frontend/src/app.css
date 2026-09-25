@@ -6,7 +6,7 @@
   --row-padding-x: 10px;
   --row-font-size: 14px;
   --list-icon-size: 18px;
-  --grid-gap: 6px;
+  --grid-gap: 8px;
   --grid-card-width: 120px;
   --grid-row-height: 126px;
   --grid-thumb-size: 90px;
@@ -458,7 +458,7 @@ body.density-compact {
   --row-padding-x: 8px;
   --row-font-size: 13px;
   --list-icon-size: 16px;
-  --grid-gap: 4px;
+  --grid-gap: 6px;
   --grid-card-width: 112px;
   --grid-row-height: 116px;
   --grid-thumb-size: 80px;
