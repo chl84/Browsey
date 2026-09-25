@@ -59,6 +59,15 @@ async fn connect_network_uri_impl(
         }
         NetworkUriKind::Mountable => {
             let target = normalized_uri.unwrap_or_default();
+            #[cfg(target_os = "linux")]
+            if classified.scheme.as_deref() == Some("mtp") {
+                let mounted_path = mounts::mount_mtp_uri_impl(target, app).await?;
+                return Ok(ConnectNetworkUriResult {
+                    kind,
+                    normalized_uri: classified.normalized_uri,
+                    mounted_path: Some(mounted_path),
+                });
+            }
             mounts::mount_partition_impl(target.clone(), app).await?;
             let mounts = mounts::list_mounts_sync()?;
             let mounted_path = uri::resolve_mounted_path_for_uri_in_mounts(&target, &mounts);

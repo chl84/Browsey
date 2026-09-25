@@ -4,7 +4,7 @@
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import type { Partition } from '../model/types'
   import ContextMenu from './ContextMenu.svelte'
-  import { isUnmountedUsb } from '../services/drives.service'
+  import { canFormatPartition, isMtpPartition, isUnmountedPartition } from '../services/drives.service'
 
   const dispatch = createEventDispatcher<{ eject: { path: string }; format: { part: Partition }; properties: { part: Partition } }>()
 
@@ -42,20 +42,27 @@
           }
         }}
       >
-        <img class="nav-icon" src={partitionIcon(part)} alt="" />
-        <span class="nav-label">{part.label}{isUnmountedUsb(part.path) ? ' (not mounted)' : ''}</span>
+        {#if isMtpPartition(part)}
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <rect x="5" y="2" width="10" height="16" rx="2" />
+            <path d="M8 5h4M9 15h2" />
+          </svg>
+        {:else}
+          <img class="nav-icon" src={partitionIcon(part)} alt="" />
+        {/if}
+        <span class="nav-label">{part.label}{isUnmountedPartition(part.path) ? ' (not mounted)' : ''}</span>
       </button>
       {#if part.removable}
         <button
           class="more"
           type="button"
-          aria-label="USB actions"
-          use:fullNameTooltip={'USB actions'}
+          aria-label={isMtpPartition(part) ? 'Phone actions' : 'USB actions'}
+          use:fullNameTooltip={isMtpPartition(part) ? 'Phone actions' : 'USB actions'}
           on:click={(event) => openMenuFromButton(event.currentTarget, part)}
         >
           <span aria-hidden="true">⋮</span>
         </button>
-        {#if !isUnmountedUsb(part.path)}<button
+        {#if !isUnmountedPartition(part.path)}<button
           class="eject"
           type="button"
           aria-label="Eject"
@@ -80,13 +87,13 @@
   x={menu.x}
   y={menu.y}
   actions={[
-    ...(menu.part && isUnmountedUsb(menu.part.path) ? [{ id: 'mount', label: 'Mount and open' }] : []),
-    { id: 'format', label: 'Format…', dangerous: true },
+    ...(menu.part && isUnmountedPartition(menu.part.path) ? [{ id: 'mount', label: 'Mount and open' }] : []),
+    ...(menu.part && canFormatPartition(menu.part) ? [{ id: 'format', label: 'Format…', dangerous: true }] : []),
     { id: 'properties', label: 'Properties' },
   ]}
   onClose={() => (menu = { ...menu, open: false })}
   onSelect={(id) => {
-    if (id === 'format' && menu.part) dispatch('format', { part: menu.part })
+    if (id === 'format' && menu.part && canFormatPartition(menu.part)) dispatch('format', { part: menu.part })
     if (id === 'properties' && menu.part) dispatch('properties', { part: menu.part })
     if (id === 'mount' && menu.part) onSelect(menu.part.path)
     menu = { ...menu, open: false }

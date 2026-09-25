@@ -118,7 +118,7 @@ pub(crate) fn classify_uri(uri: &str) -> NetworkUriClassification {
 
     let kind = if matches!(
         scheme.as_str(),
-        "sftp" | "smb" | "nfs" | "ftp" | "dav" | "davs" | "afp"
+        "sftp" | "smb" | "nfs" | "ftp" | "dav" | "davs" | "afp" | "mtp"
     ) {
         NetworkUriKind::Mountable
     } else if matches!(scheme.as_str(), "http" | "https") {
@@ -504,6 +504,12 @@ mod tests {
 
     #[test]
     fn classify_uri_detects_mountable_external_and_unsupported() {
+        let phone = classify_uri("mtp://SAMSUNG_Android/");
+        assert_eq!(phone.kind, NetworkUriKind::Mountable);
+        assert_eq!(
+            phone.normalized_uri.as_deref(),
+            Some("mtp://SAMSUNG_Android/")
+        );
         let mountable = classify_uri("ssh://alice@nas.local/share");
         assert_eq!(mountable.kind, NetworkUriKind::Mountable);
         assert_eq!(mountable.scheme.as_deref(), Some("sftp"));

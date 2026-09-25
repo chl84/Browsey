@@ -130,5 +130,32 @@ describe('useExplorerNavigation cloud goToPath', () => {
     expect(deps.loadRaw).toHaveBeenCalledWith('rclone://browsey-gdrive/unknown', {})
     expect(deps.open).not.toHaveBeenCalled()
   })
-})
 
+  it('mounts a phone before opening the exact returned path', async () => {
+    const deps = createDeps('/mock')
+    const nav = useExplorerNavigation(deps)
+    connectNetworkUriMock.mockResolvedValueOnce({ kind: 'mountable', mountedPath: '/run/user/1000/gvfs/mtp:host=Phone_A' })
+    await nav.openPartition('mtp://Phone_A/')
+    expect(connectNetworkUriMock).toHaveBeenCalledWith('mtp://Phone_A/')
+    expect(deps.loadPartitions).toHaveBeenCalled()
+    expect(deps.loadRaw).toHaveBeenCalledWith('/run/user/1000/gvfs/mtp:host=Phone_A', {})
+  })
+
+  it('coalesces repeated phone clicks and allows retry after a mount error', async () => {
+    const deps = createDeps('/mock')
+    const nav = useExplorerNavigation(deps)
+    let fail!: (error: Error) => void
+    connectNetworkUriMock.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject }))
+    const first = nav.openPartition('mtp://Phone_A/')
+    await nav.openPartition('mtp://Phone_A/')
+    expect(connectNetworkUriMock).toHaveBeenCalledTimes(1)
+    fail(new Error('Unlock the phone and allow File transfer (MTP).'))
+    await first
+    expect(deps.showToast).toHaveBeenCalledWith('Phone connection failed: Unlock the phone and allow File transfer (MTP).')
+    expect(deps.loadRaw).not.toHaveBeenCalled()
+    connectNetworkUriMock.mockResolvedValueOnce({ kind: 'mountable', mountedPath: '/phone' })
+    await nav.openPartition('mtp://Phone_A/')
+    expect(connectNetworkUriMock).toHaveBeenCalledTimes(2)
+    expect(deps.loadRaw).toHaveBeenCalledWith('/phone', {})
+  })
+})

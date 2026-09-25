@@ -945,6 +945,10 @@ pub async fn mount_partition(path: String, app: tauri::AppHandle) -> ApiResult<(
 
 #[cfg(not(target_os = "windows"))]
 pub(super) async fn mount_partition_impl(path: String, app: tauri::AppHandle) -> NetworkResult<()> {
+    #[cfg(target_os = "linux")]
+    if path.starts_with("mtp://") {
+        return mount_mtp_uri_impl(path, app).await.map(|_| ());
+    }
     let lower = path.to_ascii_lowercase();
     let scheme = lower
         .split_once("://")
@@ -1007,6 +1011,25 @@ pub(super) async fn mount_partition_impl(path: String, app: tauri::AppHandle) ->
         );
         Ok(())
     }
+}
+
+#[cfg(target_os = "linux")]
+pub(super) async fn mount_mtp_uri_impl(
+    path: String,
+    app: tauri::AppHandle,
+) -> NetworkResult<String> {
+    runtime_lifecycle::emit_if_running(
+        &app,
+        "mounting-started",
+        json!({ "path": &path, "fs": "mtp", "outcome": "connecting" }),
+    );
+    let result = crate::mtp::mount(path.clone(), app.clone()).await;
+    runtime_lifecycle::emit_if_running(
+        &app,
+        "mounting-done",
+        json!({ "path": &path, "fs": "mtp", "ok": result.is_ok(), "outcome": if result.is_ok() { "connected" } else { "failed" } }),
+    );
+    result.map_err(|error| NetworkError::new(NetworkErrorCode::MountFailed, error))
 }
 
 #[cfg(target_os = "windows")]

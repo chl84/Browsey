@@ -426,6 +426,12 @@ fn display_name(path: &Path) -> Option<String> {
 #[cfg(not(target_os = "windows"))]
 pub fn list_gvfs_mounts() -> Vec<MountInfo> {
     let mut mounts = Vec::new();
+    #[cfg(target_os = "linux")]
+    let phones = crate::mtp::devices();
+    #[cfg(target_os = "linux")]
+    if let Some(phones) = &phones {
+        mounts.extend(phones.iter().map(crate::mtp::Device::mount_info));
+    }
     // Track mounted paths separately; only used to avoid adding duplicate entries when already mounted.
     ensure_gvfsd_fuse_running();
     let root = match gvfs_root() {
@@ -457,6 +463,13 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
             else {
                 continue;
             };
+
+            // The GIO snapshot owns phone identity and mount state. Do not add
+            // a second entry from the FUSE directory (or keep a stale one).
+            #[cfg(target_os = "linux")]
+            if fs == "mtp" && phones.is_some() {
+                continue;
+            }
 
             let label = display_name(&path).unwrap_or_else(|| name.clone());
             let path_str = path.to_string_lossy().into_owned();

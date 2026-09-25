@@ -5,7 +5,7 @@
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import { normalizePath, parentPath } from '../utils'
   import type { Entry, Partition } from '../model/types'
-  import { isUnmountedUsb } from '../services/drives.service'
+  import { isMtpPartition, isUnmountedPartition, isUnmountedUsb } from '../services/drives.service'
   export let open = false
   export let entry: Entry | null = null
   export let partition: Partition | null = null
@@ -34,8 +34,9 @@
   const tabs = ['basic', 'extra', 'ownership', 'permissions'] as const
   type Tab = (typeof tabs)[number]
   $: visibleTabs = partition ? tabs.filter((tab) => tab !== 'extra') : tabs
-  $: unmounted = partition !== null && isUnmountedUsb(partition.path)
-  $: drivePath = partition ? (unmounted ? partition.path.slice('usb-volume://'.length) : partition.path) : ''
+  $: phone = partition !== null && isMtpPartition(partition)
+  $: unmounted = partition !== null && isUnmountedPartition(partition.path)
+  $: drivePath = partition ? (isUnmountedUsb(partition.path) ? partition.path.slice('usb-volume://'.length) : partition.path) : ''
   export let permissions:
     | {
         accessSupported: boolean
@@ -182,7 +183,7 @@
         {#if count === 1 && entry}
           <div class="row"><span class="label">Name</span><span class="value">{entry.name}</span></div>
           {#if partition}
-            <div class="row"><span class="label">Type</span><span class="value">Removable drive</span></div>
+            <div class="row"><span class="label">Type</span><span class="value">{phone ? 'Phone (MTP)' : 'Removable drive'}</span></div>
             <div class="row"><span class="label">Filesystem</span><span class="value">{partition.fs || 'Unknown'}</span></div>
             <div class="row"><span class="label">Status</span><span class="value">{unmounted ? 'Not mounted' : 'Mounted'}</span></div>
             <div class="row">
@@ -282,7 +283,9 @@
         </div>
       {/if}
     {:else if activeTab === 'ownership'}
-      {#if unmounted}
+      {#if phone}
+        <p>Ownership is managed by the phone. MTP does not expose Linux ownership settings.</p>
+      {:else if unmounted}
         <p>Mount the drive to view ownership.</p>
       {:else if permissionsLoading}
         <div class="rows status-rows">
@@ -360,7 +363,9 @@
         </div>
       {/if}
     {:else if activeTab === 'permissions'}
-      {#if unmounted}
+      {#if phone}
+        <p>Access is controlled on the phone. Unlock it and allow File transfer (MTP).</p>
+      {:else if unmounted}
         <p>Mount the drive to view permissions.</p>
       {:else if permissionsLoading}
         <div class="rows status-rows">
@@ -429,7 +434,7 @@
       {/if}
     {/if}
 
-    {#if partition && !unmounted && (activeTab === 'ownership' || activeTab === 'permissions')}
+    {#if partition && !phone && !unmounted && (activeTab === 'ownership' || activeTab === 'permissions')}
       <p>Changes apply only to the drive’s root folder, not its contents.</p>
     {/if}
   </ModalShell>
