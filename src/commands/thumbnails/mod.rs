@@ -13,11 +13,8 @@ use jpeg_decoder::{
     Decoder as JpegScaleDecoder, ImageInfo as JpegImageInfo, PixelFormat as JpegPixelFormat,
 };
 use once_cell::sync::Lazy;
-use rayon::ThreadPool;
-use rayon::ThreadPoolBuilder;
 use serde::Serialize;
 use std::io::{self, BufRead, Read, Seek};
-use std::sync::mpsc;
 use std::sync::RwLock;
 use std::time::Duration;
 use tauri::AppHandle;
@@ -32,6 +29,7 @@ mod thumbnails_video;
 use thumbnails_video::render_video_thumbnail;
 mod cache_flow;
 mod cloud_source;
+mod control;
 mod error;
 
 use crate::db;
@@ -47,13 +45,12 @@ pub(super) const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
 const MAX_FILE_BYTES_VIDEO: u64 = 1_000 * 1024 * 1024; // 1 GB
 const POOL_MIN_THREADS: usize = 2;
 const POOL_MAX_THREADS: usize = 8;
-const CACHE_MAX_FILES: usize = 2000;
 const MAX_SOURCE_DIM: u32 = 20000;
 const DECODE_TIMEOUT_MS: u64 = 2000;
 const DECODE_TIMEOUT_MS_GVFS: u64 = 8000;
 const DECODE_TIMEOUT_MS_HDR_EXR: u64 = 6000;
 const DECODE_TIMEOUT_MS_GVFS_HDR_EXR: u64 = 12000;
-const GLOBAL_HARD_MAX_INFLIGHT: usize = 32;
+const GLOBAL_HARD_MAX_INFLIGHT: usize = 8;
 const CACHE_DEFAULT_MB: u64 = 300;
 const CACHE_MIN_MB: u64 = 50;
 const CACHE_MAX_MB: u64 = 1000;
@@ -194,16 +191,6 @@ pub(super) enum ThumbKind {
 
 static POOL_THREADS: Lazy<usize> =
     Lazy::new(|| num_cpus::get().clamp(POOL_MIN_THREADS, POOL_MAX_THREADS));
-static DECODE_POOL: Lazy<ThreadPool> = Lazy::new(|| {
-    let threads = (*POOL_THREADS)
-        .saturating_mul(2)
-        .clamp(POOL_MIN_THREADS, POOL_MAX_THREADS * 2);
-    ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .thread_name(|i| format!("thumb-decode-{i}"))
-        .build()
-        .expect("failed to build decode pool")
-});
 
 static LOG_THUMBS: Lazy<bool> =
     Lazy::new(|| std::env::var("BROWSEY_DEBUG_THUMBS").is_ok() || cfg!(debug_assertions));
@@ -213,6 +200,8 @@ static BLOCKING_SEM: Lazy<Semaphore> = Lazy::new(|| {
         .clamp(POOL_MIN_THREADS, GLOBAL_HARD_MAX_INFLIGHT);
     Semaphore::new(permits)
 });
+// Leave worker capacity for local folders even if a remote filesystem stalls.
+static REMOTE_SEM: Lazy<Semaphore> = Lazy::new(|| Semaphore::new(4));
 
 #[derive(Serialize, Clone)]
 pub struct ThumbnailResponse {
@@ -270,21 +259,119 @@ pub async fn get_thumbnail(
     path: String,
     max_dim: Option<u32>,
     generation: Option<String>,
+    request_id: Option<String>,
+    cancel: tauri::State<'_, crate::tasks::CancelState>,
 ) -> ApiResult<ThumbnailResponse> {
-    map_api_result(get_thumbnail_impl(app_handle, path, max_dim, generation).await)
+    let guard = match request_id {
+        Some(id) => match cancel.register(id) {
+            Ok(guard) => Some(guard),
+            Err(error) => {
+                return map_api_result(Err(ThumbnailError::from_external_message(
+                    error.to_string(),
+                )))
+            }
+        },
+        None => None,
+    };
+    let flag = guard.as_ref().map(|g| g.token()).unwrap_or_default();
+    let source_kind = if path.starts_with("rclone://") {
+        "cloud"
+    } else if path.contains("/gvfs/") {
+        "gvfs"
+    } else {
+        "local"
+    };
+    let budget = if path.starts_with("rclone://") {
+        30
+    } else if path.contains("/gvfs/") {
+        12
+    } else {
+        10
+    };
+    let control = control::Control::new(flag, Duration::from_secs(budget));
+    let remote_permit =
+        if path.starts_with("rclone://") || path.contains("/gvfs/") || path.starts_with("\\\\") {
+            match REMOTE_SEM.try_acquire() {
+                Ok(permit) => Some(permit),
+                Err(_) => {
+                    return map_api_result(Err(ThumbnailError::from_external_message(
+                        "Too many concurrent thumbnails",
+                    )))
+                }
+            }
+        } else {
+            None
+        };
+    // Keep both admission and I/O off the runtime's async worker threads.
+    // Never release a worker permit just because the caller timed out.
+    let permit = match BLOCKING_SEM.try_acquire() {
+        Ok(permit) => permit,
+        Err(_) => {
+            return map_api_result(Err(ThumbnailError::from_external_message(
+                "Too many concurrent thumbnails",
+            )))
+        }
+    };
+    let worker_control = control.clone();
+    let started = std::time::Instant::now();
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
+        let _remote_permit = remote_permit;
+        let _guard = guard;
+        get_thumbnail_sync(app_handle, path, max_dim, generation, &worker_control)
+    });
+    let result = wait_for_worker(task, &control).await;
+    tracing::debug!(
+        source_kind,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        cached = result.as_ref().is_ok_and(|r| r.cached),
+        success = result.is_ok(),
+        error_code = result
+            .as_ref()
+            .err()
+            .map(|error| error.code().as_code_str()),
+        "thumbnail request completed"
+    );
+    map_api_result(result)
 }
 
-async fn get_thumbnail_impl(
+async fn wait_for_worker<T>(
+    mut task: tauri::async_runtime::JoinHandle<ThumbnailResult<T>>,
+    control: &control::Control,
+) -> ThumbnailResult<T> {
+    loop {
+        match tokio::time::timeout(Duration::from_millis(25), &mut task).await {
+            Ok(result) => {
+                return result.unwrap_or_else(|error| {
+                    Err(ThumbnailError::from_external_message(format!(
+                        "Thumbnail task cancelled: {error}"
+                    )))
+                })
+            }
+            Err(_) => {
+                if let Err(error) = control.check() {
+                    control
+                        .cancelled
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                    return Err(error);
+                }
+            }
+        }
+    }
+}
+
+fn get_thumbnail_sync(
     app_handle: AppHandle,
     path: String,
     max_dim: Option<u32>,
-    generation: Option<String>,
+    _generation: Option<String>,
+    control: &control::Control,
 ) -> ThumbnailResult<ThumbnailResponse> {
+    control.check()?;
     let max_dim = max_dim
         .unwrap_or(MAX_DIM_DEFAULT)
         .clamp(MIN_DIM_HARD_LIMIT, MAX_DIM_HARD_LIMIT);
     let settings = runtime_settings();
-
     let cache_dir = cache_dir()?;
     fs::create_dir_all(&cache_dir).map_err(|e| {
         ThumbnailError::from_external_message(format!("Failed to create thumbnail cache dir: {e}"))
@@ -292,30 +379,29 @@ async fn get_thumbnail_impl(
 
     let (target, meta, kind, ffmpeg_override, key) = if path.starts_with("rclone://") {
         let source = cloud_source::precheck_cloud_thumbnail_source(&path, &settings)?;
+        control.check()?;
         let key = cloud_source::cache_key_for_cloud_source(&source, max_dim);
-        let cache_path = cache_dir.join(format!("{key}.png"));
-        if let Some((w, h)) = cached_dims(&cache_path) {
-            return Ok(ThumbnailResponse {
-                path: cache_path.to_string_lossy().into_owned(),
-                width: w,
-                height: h,
-                cached: true,
-            });
+        if let Some(response) = cached_response(&cache_dir.join(format!("{key}.png"))) {
+            return Ok(response);
         }
         let (target, meta, kind, ffmpeg_override) =
-            cloud_source::materialize_cloud_thumbnail_source(&app_handle, &source).await?;
+            cloud_source::materialize_cloud_thumbnail_source(
+                &app_handle,
+                &source,
+                &control.cancelled,
+            )?;
         (target, meta, kind, ffmpeg_override, key)
     } else {
         let (target, meta, kind, ffmpeg_override) =
             resolve_local_thumbnail_source(&path, &settings)?;
-        let mtime = meta.modified().ok();
-        let key = cache_key(&target, mtime, max_dim);
+        let key = cache_key(&target, meta.modified().ok(), max_dim);
         (target, meta, kind, ffmpeg_override, key)
     };
-
-    let size_limit = match kind {
-        ThumbKind::Video => MAX_FILE_BYTES_VIDEO,
-        _ => MAX_FILE_BYTES,
+    control.check()?;
+    let size_limit = if matches!(kind, ThumbKind::Video) {
+        MAX_FILE_BYTES_VIDEO
+    } else {
+        MAX_FILE_BYTES
     };
     if meta.len() > size_limit {
         return Err(ThumbnailError::from_external_message(format!(
@@ -323,79 +409,45 @@ async fn get_thumbnail_impl(
             size_limit / 1024 / 1024
         )));
     }
-
     let cache_path = cache_dir.join(format!("{key}.png"));
-
-    if let Some((w, h)) = cached_dims(&cache_path) {
-        return Ok(ThumbnailResponse {
-            path: cache_path.to_string_lossy().into_owned(),
-            width: w,
-            height: h,
-            cached: true,
-        });
+    if let Some(response) = cached_response(&cache_path) {
+        return Ok(response);
     }
-
-    // In-flight deduplication
-    if let Some(rx) = cache_flow::register_or_wait(&key) {
-        let res: Result<ThumbnailResult<ThumbnailResponse>, _> = rx.await;
-        return res
-            .map_err(|_| ThumbnailError::from_external_message("Thumbnail task cancelled"))?
-            .map(|mut r| {
-                r.cached = true;
-                r
-            });
-    }
-
-    let task_path = target.clone();
-    let task_cache = cache_path.clone();
-
-    let permits = if matches!(kind, ThumbKind::Svg | ThumbKind::Pdf | ThumbKind::Video) {
-        2
-    } else {
-        1
-    };
-    let permit_global = BLOCKING_SEM
-        .acquire_many(permits)
-        .await
-        .map_err(|_| ThumbnailError::from_external_message("Semaphore closed"))?;
-
-    let res = tauri::async_runtime::spawn_blocking(move || {
-        let res_dir_opt = app_handle.path().resource_dir().ok();
-        generate_thumbnail(
-            &task_path,
-            &task_cache,
+    cache_flow::with_key_lock(&key, control, || {
+        control.check()?;
+        if let Some(response) = cached_response(&cache_path) {
+            return Ok(response);
+        }
+        let pending = cache_flow::pending_path(&cache_path);
+        let _cleanup = cache_flow::PendingFile(pending.clone());
+        let resource_dir = app_handle.path().resource_dir().ok();
+        let mut response = generate_thumbnail(
+            &target,
+            &pending,
             max_dim,
-            res_dir_opt.as_deref(),
-            generation.as_deref(),
-            ffmpeg_override.clone(),
-        )
+            resource_dir.as_deref(),
+            ffmpeg_override,
+            control,
+        )?;
+        control.check()?;
+        fs::rename(&pending, &cache_path).map_err(|e| {
+            ThumbnailError::from_external_message(format!("Publish thumbnail failed: {e}"))
+        })?;
+        response.path = cache_path.to_string_lossy().into_owned();
+        cache_flow::schedule_trim(cache_dir.clone(), settings.cache_max_bytes());
+        Ok(response)
     })
-    .await
-    .map_err(|e| ThumbnailError::from_external_message(format!("Thumbnail task cancelled: {e}")));
+}
 
-    if let Err(err) = res.as_ref() {
-        // Make sure callers waiting on the same key get released even on panics/JoinError.
-        cache_flow::notify_waiters(&key, Err(err.clone()));
-    }
-
-    drop(permit_global);
-
-    let res = res?;
-
-    match res {
-        Ok(r) => {
-            cache_flow::notify_waiters(&key, Ok(r.clone()));
-            if cache_flow::bump_trim_counter_should_trim() {
-                let max_bytes = settings.cache_max_bytes();
-                cache_flow::trim_cache(&cache_dir, max_bytes, CACHE_MAX_FILES);
-            }
-            Ok(r)
-        }
-        Err(err) => {
-            cache_flow::notify_waiters(&key, Err(err.clone()));
-            Err(err)
-        }
-    }
+fn cached_response(path: &Path) -> Option<ThumbnailResponse> {
+    let (width, height) = cached_dims(path)?;
+    cache_flow::touch_cache_entry(path);
+    Some(ThumbnailResponse {
+        path: path.to_string_lossy().into_owned(),
+        width,
+        height,
+        cached: true,
+    })
 }
 
 fn resolve_local_thumbnail_source(
@@ -403,11 +455,6 @@ fn resolve_local_thumbnail_source(
     settings: &ThumbnailRuntimeSettings,
 ) -> ThumbnailResult<(PathBuf, fs::Metadata, ThumbKind, Option<PathBuf>)> {
     let target = sanitize_input_path(path)?;
-    if let Err(error) = fs::File::open(&target) {
-        return Err(ThumbnailError::from_external_message(format!(
-            "Cannot read file: {error}"
-        )));
-    }
     let meta = fs::metadata(&target).map_err(|error| {
         ThumbnailError::from_external_message(format!("Failed to read metadata: {error}"))
     })?;
@@ -515,16 +562,17 @@ fn generate_thumbnail(
     cache_path: &Path,
     max_dim: u32,
     resource_dir: Option<&Path>,
-    generation: Option<&str>,
     ffmpeg_override: Option<PathBuf>,
+    control: &control::Control,
 ) -> ThumbnailResult<ThumbnailResponse> {
+    control.check()?;
     if matches!(thumb_kind(path), ThumbKind::Video) {
         let (w, h) = render_video_thumbnail(
             path,
             cache_path,
             max_dim,
-            generation,
             ffmpeg_override.as_deref(),
+            control,
         )?;
         return Ok(ThumbnailResponse {
             path: cache_path.to_string_lossy().into_owned(),
@@ -597,22 +645,29 @@ fn generate_thumbnail(
 
     let timeout = decode_timeout_for_path(path);
     let (img, orientation) = if fmt == ImageFormat::Jpeg {
-        match decode_jpeg_scaled_with_timeout(path, max_dim, timeout) {
+        match decode_jpeg_scaled_with_timeout(reader.into_inner(), max_dim, timeout, control) {
             Ok(img) => {
                 thumb_log(&format!("jpeg scaled decode used: {}", path.display()));
                 img
             }
             Err(err) => {
+                if err.code() != ThumbnailErrorCode::UnsupportedFormat {
+                    return Err(err);
+                }
+                control.check()?;
                 thumb_log(&format!(
                     "jpeg scaled decode fallback: source={} reason={}",
                     path.display(),
                     err
                 ));
-                decode_with_timeout(reader, fmt, timeout)?
+                let reader = ImageReader::open(path).map_err(|e| {
+                    ThumbnailError::from_external_message(format!("Open failed: {e}"))
+                })?;
+                decode_with_timeout(reader, fmt, timeout, control)?
             }
         }
     } else {
-        decode_with_timeout(reader, fmt, timeout)?
+        decode_with_timeout(reader, fmt, timeout, control)?
     };
 
     let (src_w, src_h) = img.dimensions();
@@ -667,121 +722,73 @@ fn decode_with_timeout<R: BufRead + Seek + Send + 'static>(
     reader: ImageReader<R>,
     format: ImageFormat,
     timeout: Duration,
-) -> ThumbnailResult<(image::DynamicImage, Option<Orientation>)> {
-    // Apply codec limits to guard against pathological inputs.
+    control: &control::Control,
+) -> ThumbnailResult<(DynamicImage, Option<Orientation>)> {
     let mut limits = Limits::default();
     limits.max_image_width = Some(MAX_SOURCE_DIM);
     limits.max_image_height = Some(MAX_SOURCE_DIM);
     limits.max_alloc = Some(MAX_DECODE_BYTES);
-
-    // Wrap reader so we can cooperatively abort on timeout.
-    let inner = reader.into_inner();
-    let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let decode_control =
+        control::Control::new(control.cancelled.clone(), control.remaining(timeout)?);
     let wrapped = CancelableReader {
-        inner,
-        cancelled: cancel_flag.clone(),
+        inner: reader.into_inner(),
+        control: decode_control.clone(),
     };
-
     let mut reader = ImageReader::with_format(wrapped, format);
     reader.limits(limits);
-
-    let (tx, rx) = mpsc::channel();
-
-    DECODE_POOL.spawn_fifo(move || {
-        let res = (|| {
-            let mut decoder = reader.into_decoder()?;
-            let orientation = decoder.orientation().ok();
-            let img = image::DynamicImage::from_decoder(decoder)?;
-            Ok::<_, image::ImageError>((img, orientation))
-        })();
-        let _ = tx.send(res);
-    });
-
-    match rx.recv_timeout(timeout) {
-        Ok(Ok(img)) => Ok(img),
-        Ok(Err(e)) => Err(ThumbnailError::from_external_message(format!(
-            "Decode failed: {e}"
-        ))),
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-            Err(ThumbnailError::from_external_message("Decode timed out"))
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(ThumbnailError::from_external_message(
-            "Decode worker crashed",
-        )),
-    }
+    let result = (|| {
+        let mut decoder = reader.into_decoder()?;
+        let orientation = decoder.orientation().ok();
+        let image = DynamicImage::from_decoder(decoder)?;
+        Ok::<_, image::ImageError>((image, orientation))
+    })();
+    decode_control.check()?;
+    result.map_err(|e| ThumbnailError::from_external_message(format!("Decode failed: {e}")))
 }
 
-fn decode_jpeg_scaled_with_timeout(
-    path: &Path,
+fn decode_jpeg_scaled_with_timeout<R: BufRead + Seek>(
+    reader: R,
     max_dim: u32,
     timeout: Duration,
+    control: &control::Control,
 ) -> ThumbnailResult<(DynamicImage, Option<Orientation>)> {
-    let file = fs::File::open(path)
-        .map_err(|e| ThumbnailError::from_external_message(format!("Open failed: {e}")))?;
-    let reader = std::io::BufReader::new(file);
-
-    let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let decode_control =
+        control::Control::new(control.cancelled.clone(), control.remaining(timeout)?);
     let wrapped = CancelableReader {
         inner: reader,
-        cancelled: cancel_flag.clone(),
+        control: decode_control.clone(),
     };
-
-    let (tx, rx) = mpsc::channel();
-
-    DECODE_POOL.spawn_fifo(move || {
-        let res: ThumbnailResult<(DynamicImage, Option<Orientation>)> = (|| {
-            let mut decoder = JpegScaleDecoder::new(wrapped);
-            decoder.set_max_decoding_buffer_size(MAX_DECODE_BYTES.min(usize::MAX as u64) as usize);
-
-            decoder.read_info().map_err(|e| {
-                ThumbnailError::from_external_message(format!("JPEG scaled decode failed: {e}"))
-            })?;
-
-            let src_info = decoder.info().ok_or_else(|| {
-                ThumbnailError::from_external_message("JPEG scaled decode missing metadata")
-            })?;
-            if u32::from(src_info.width) > MAX_SOURCE_DIM
-                || u32::from(src_info.height) > MAX_SOURCE_DIM
-            {
-                return Err(ThumbnailError::from_external_message(
-                    "Image dimensions too large for thumbnail",
-                ));
-            }
-
-            let req_dim = max_dim
-                .saturating_mul(JPEG_SCALED_DECODE_TARGET_MULTIPLIER)
-                .clamp(1, u16::MAX as u32) as u16;
-            let _ = decoder.scale(req_dim, req_dim).map_err(|e| {
-                ThumbnailError::from_external_message(format!(
-                    "JPEG scaled decode setup failed: {e}"
-                ))
-            })?;
-
-            let pixels = decoder.decode().map_err(|e| {
-                ThumbnailError::from_external_message(format!("JPEG scaled decode failed: {e}"))
-            })?;
-            let orientation = decoder.exif_data().and_then(Orientation::from_exif_chunk);
-            let info = decoder.info().ok_or_else(|| {
-                ThumbnailError::from_external_message("JPEG scaled decode missing output metadata")
-            })?;
-            let img = jpeg_pixels_to_dynamic_image(pixels, info)?;
-            Ok((img, orientation))
-        })();
-        let _ = tx.send(res);
-    });
-
-    match rx.recv_timeout(timeout) {
-        Ok(Ok(img)) => Ok(img),
-        Ok(Err(e)) => Err(e),
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            cancel_flag.store(true, std::sync::atomic::Ordering::SeqCst);
-            Err(ThumbnailError::from_external_message("Decode timed out"))
+    let result = (|| {
+        let mut decoder = JpegScaleDecoder::new(wrapped);
+        decoder.set_max_decoding_buffer_size(MAX_DECODE_BYTES.min(usize::MAX as u64) as usize);
+        decoder.read_info().map_err(|e| {
+            ThumbnailError::from_external_message(format!("JPEG scaled decode failed: {e}"))
+        })?;
+        let src = decoder.info().ok_or_else(|| {
+            ThumbnailError::from_external_message("JPEG scaled decode missing metadata")
+        })?;
+        if u32::from(src.width) > MAX_SOURCE_DIM || u32::from(src.height) > MAX_SOURCE_DIM {
+            return Err(ThumbnailError::from_external_message(
+                "Image dimensions too large for thumbnail",
+            ));
         }
-        Err(mpsc::RecvTimeoutError::Disconnected) => Err(ThumbnailError::from_external_message(
-            "Decode worker crashed",
-        )),
-    }
+        let requested = max_dim
+            .saturating_mul(JPEG_SCALED_DECODE_TARGET_MULTIPLIER)
+            .clamp(1, u16::MAX as u32) as u16;
+        decoder.scale(requested, requested).map_err(|e| {
+            ThumbnailError::from_external_message(format!("JPEG scaled decode setup failed: {e}"))
+        })?;
+        let pixels = decoder.decode().map_err(|e| {
+            ThumbnailError::from_external_message(format!("JPEG scaled decode failed: {e}"))
+        })?;
+        let orientation = decoder.exif_data().and_then(Orientation::from_exif_chunk);
+        let info = decoder.info().ok_or_else(|| {
+            ThumbnailError::from_external_message("JPEG scaled decode missing output metadata")
+        })?;
+        Ok((jpeg_pixels_to_dynamic_image(pixels, info)?, orientation))
+    })();
+    decode_control.check()?;
+    result
 }
 
 fn jpeg_pixels_to_dynamic_image(
@@ -804,12 +811,13 @@ fn jpeg_pixels_to_dynamic_image(
             Ok(DynamicImage::ImageLuma8(img))
         }
         // Rare camera/legacy cases; fallback to the existing image crate path for compatibility.
-        JpegPixelFormat::L16 | JpegPixelFormat::CMYK32 => {
-            Err(ThumbnailError::from_external_message(format!(
+        JpegPixelFormat::L16 | JpegPixelFormat::CMYK32 => Err(ThumbnailError::new(
+            ThumbnailErrorCode::UnsupportedFormat,
+            format!(
                 "JPEG scaled decode unsupported pixel format: {:?}",
                 info.pixel_format
-            )))
-        }
+            ),
+        )),
     }
 }
 
@@ -840,16 +848,13 @@ fn decode_timeout_for_path(path: &Path) -> Duration {
 /// Reader wrapper that allows cooperative cancellation via an AtomicBool flag.
 struct CancelableReader<R> {
     inner: R,
-    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    control: control::Control,
 }
 
 impl<R: Read> Read for CancelableReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err(io::Error::new(
-                io::ErrorKind::Interrupted,
-                "decode cancelled",
-            ));
+        if self.control.check().is_err() {
+            return Err(io::Error::other("decode cancelled"));
         }
         self.inner.read(buf)
     }
@@ -857,11 +862,8 @@ impl<R: Read> Read for CancelableReader<R> {
 
 impl<R: BufRead> BufRead for CancelableReader<R> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err(io::Error::new(
-                io::ErrorKind::Interrupted,
-                "decode cancelled",
-            ));
+        if self.control.check().is_err() {
+            return Err(io::Error::other("decode cancelled"));
         }
         self.inner.fill_buf()
     }
@@ -873,11 +875,8 @@ impl<R: BufRead> BufRead for CancelableReader<R> {
 
 impl<R: Seek> Seek for CancelableReader<R> {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
-        if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err(io::Error::new(
-                io::ErrorKind::Interrupted,
-                "decode cancelled",
-            ));
+        if self.control.check().is_err() {
+            return Err(io::Error::other("decode cancelled"));
         }
         self.inner.seek(pos)
     }
@@ -956,6 +955,126 @@ mod tests {
         invalidate_runtime_settings_cache, runtime_settings, ThumbnailRuntimeSettings,
         RUNTIME_SETTINGS,
     };
+
+    fn fixture_dir() -> std::path::PathBuf {
+        static SEQUENCE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "browsey-thumb-test-{}-{}-{}",
+            std::process::id(),
+            SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn stalled_io_times_out_without_releasing_its_worker_permit() {
+        use std::sync::{mpsc, Arc};
+        use std::time::Duration;
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+        let permit = semaphore.clone().try_acquire_owned().unwrap();
+        let (release, wait) = mpsc::channel();
+        let (finished, done) = mpsc::channel();
+        let task = tauri::async_runtime::spawn_blocking(move || {
+            let _permit = permit;
+            wait.recv_timeout(Duration::from_secs(5)).unwrap();
+            drop(_permit);
+            finished.send(()).unwrap();
+            Ok(())
+        });
+        let control = super::control::Control::new(Default::default(), Duration::from_millis(5));
+        let result = tauri::async_runtime::block_on(super::wait_for_worker(task, &control));
+        assert_eq!(
+            result.unwrap_err().code(),
+            super::ThumbnailErrorCode::TimedOut
+        );
+        assert_eq!(semaphore.available_permits(), 0);
+        release.send(()).unwrap();
+        done.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert_eq!(semaphore.available_permits(), 1);
+    }
+
+    #[test]
+    fn cancelled_reader_is_not_retried_as_an_interrupted_read() {
+        use std::io::Read;
+        let control = super::control::Control::new(
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            std::time::Duration::from_secs(1),
+        );
+        let mut reader = super::CancelableReader {
+            inner: std::io::Cursor::new(vec![1, 2, 3]),
+            control,
+        };
+        assert_eq!(
+            reader.read(&mut [0; 2]).unwrap_err().kind(),
+            std::io::ErrorKind::Other
+        );
+    }
+
+    #[test]
+    fn jpeg_timeout_is_terminal_not_a_full_decode_fallback() {
+        let control = super::control::Control::new(Default::default(), std::time::Duration::ZERO);
+        let error = super::decode_jpeg_scaled_with_timeout(
+            std::io::Cursor::new(Vec::<u8>::new()),
+            96,
+            std::time::Duration::from_secs(8),
+            &control,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), super::ThumbnailErrorCode::TimedOut);
+        assert_ne!(error.code(), super::ThumbnailErrorCode::UnsupportedFormat);
+    }
+
+    #[test]
+    fn local_jpeg_decode_and_warm_cache_preserve_dimensions() {
+        let dir = fixture_dir();
+        let source = dir.join("source.jpg");
+        let cache = dir.join("cache.png");
+        image::RgbImage::from_pixel(1920, 1080, image::Rgb([24, 128, 200]))
+            .save(&source)
+            .unwrap();
+        let control =
+            super::control::Control::new(Default::default(), std::time::Duration::from_secs(10));
+        let start = std::time::Instant::now();
+        let generated =
+            super::generate_thumbnail(&source, &cache, 96, None, None, &control).unwrap();
+        let cold = start.elapsed();
+        let start = std::time::Instant::now();
+        let cached = super::cached_response(&cache).unwrap();
+        let warm = start.elapsed();
+        assert_eq!((generated.width, generated.height), (96, 54));
+        assert!(cached.cached);
+        assert_eq!((cached.width, cached.height), (96, 54));
+        eprintln!("synthetic local JPEG: cold={cold:?}, warm={warm:?}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cache_validation_does_not_open_source_and_still_rejects_symlinks() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let dir = fixture_dir();
+        let source = dir.join("source.jpg");
+        std::fs::write(&source, b"not read when checking metadata").unwrap();
+        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert!(super::resolve_local_thumbnail_source(
+            source.to_str().unwrap(),
+            &ThumbnailRuntimeSettings::default()
+        )
+        .is_ok());
+        let link = dir.join("link.jpg");
+        symlink(&source, &link).unwrap();
+        assert!(super::resolve_local_thumbnail_source(
+            link.to_str().unwrap(),
+            &ThumbnailRuntimeSettings::default()
+        )
+        .is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn runtime_settings_cache_invalidation_clears_cached_snapshot() {

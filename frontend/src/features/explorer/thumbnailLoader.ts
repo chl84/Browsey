@@ -10,326 +10,219 @@ type Options = {
   allowVideos?: boolean
   allowCloudThumbs?: boolean
 }
-
 type ThumbMap = Map<string, string>
-
-const DEFAULT_CONCURRENCY = 4
-const DEFAULT_VIDEO_CONCURRENCY = 1
-const DEFAULT_DIM = 96
-const MAX_RETRIES = 3
-const BASE_BACKOFF_MS = 300
-type Priority = 'high' | 'low'
+type Observation = { path: string; near: boolean; visible: boolean }
+type Job = { id: string; epoch: number; video: boolean }
+const imageExtensions = new Set([
+  'png', 'jpg', 'jpeg', 'jpe', 'jfif', 'gif', 'bmp', 'ico', 'pnm', 'pbm', 'pgm', 'ppm',
+  'pam', 'tga', 'webp', 'tif', 'tiff', 'hdr', 'exr', 'dds', 'svg', 'pdf',
+])
+const videoExtensions = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'])
+const cloudExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'tif', 'tiff', 'svg', 'pdf'])
 
 export function createThumbnailLoader(opts: Options = {}) {
-  const maxConcurrent = opts.maxConcurrent ?? DEFAULT_CONCURRENCY
-  const maxConcurrentVideos = Math.max(0, Math.min(opts.maxConcurrentVideos ?? DEFAULT_VIDEO_CONCURRENCY, maxConcurrent))
-  const maxDim = opts.maxDim ?? DEFAULT_DIM
+  const maxConcurrent = Math.max(1, opts.maxConcurrent ?? 4)
+  const maxVideos = Math.max(0, Math.min(opts.maxConcurrentVideos ?? 1, maxConcurrent))
+  const maxDim = opts.maxDim ?? 96
+  const loaderId = crypto.randomUUID()
+  let sequence = 0
+  let epoch = 0
   let generation = opts.initialGeneration ?? 'init'
   let allowVideos = opts.allowVideos ?? true
   let allowCloudThumbs = opts.allowCloudThumbs ?? false
-
-  const thumbs = writable<ThumbMap>(new Map())
-  const requested = new Set<string>()
-  const highQueue: string[] = []
-  const lowQueue: string[] = []
-  const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  let active = 0
-  let activeVideos = 0
   let destroyed = false
+  let scheduled = false
+  const thumbs = writable<ThumbMap>(new Map())
+  const loaded = new Map<string, string>()
+  const revisions = new Map<string, string>()
+  const failedUntil = new Map<string, number>()
+  const observed = new Map<Element, Observation>()
+  const active = new Map<string, Job>()
   const retries = new Map<string, number>()
-  const videoExt = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'])
-  const cloudThumbAllowedExt = new Set([
-    'png',
-    'jpg',
-    'jpeg',
-    'gif',
-    'bmp',
-    'webp',
-    'tif',
-    'tiff',
-    'avif',
-    'heic',
-    'heif',
-    'svg',
-    'pdf',
-  ])
-  const isCloudPath = (path: string) => path.startsWith('rclone://')
-  const isVideo = (path: string) => {
-    const ext = path.split('.').pop()?.toLowerCase()
-    return ext ? videoExt.has(ext) : false
-  }
+  const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const extOf = (path: string) => path.split('.').pop()?.toLowerCase() ?? ''
-  const isCloudThumbEligible = (path: string) => {
-    if (!isCloudPath(path)) return true
-    if (!allowCloudThumbs) return false
-    if (isVideo(path)) return false
-    const ext = extOf(path)
-    return ext.length > 0 && cloudThumbAllowedExt.has(ext)
+  const isVideo = (path: string) => videoExtensions.has(extOf(path))
+  const eligible = (path: string) => path.startsWith('rclone://')
+    ? allowCloudThumbs && cloudExtensions.has(extOf(path))
+    : imageExtensions.has(extOf(path)) || (allowVideos && maxVideos > 0 && isVideo(path))
+
+  const publish = () => thumbs.set(new Map(loaded))
+  const wanted = (path: string) => [...observed.values()].some(o => o.path === path && o.near)
+  const cancel = (path: string) => {
+    const job = active.get(path)
+    if (!job) return
+    active.delete(path)
+    // Late replies are ignored by job identity. Backend worker permits remain
+    // occupied until outstanding filesystem I/O has actually stopped.
+    void invoke('cancel_task', { id: job.id }).catch(() => {})
+  }
+  const clearRetry = (path: string) => {
+    clearTimeout(retryTimers.get(path))
+    retryTimers.delete(path)
+  }
+  const schedule = () => {
+    if (scheduled || destroyed) return
+    scheduled = true
+    queueMicrotask(() => { scheduled = false; pump() })
   }
 
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          const path = observed.get(entry.target)
-          if (path) {
-            const queued = enqueue(path)
-            if (queued) {
-              observer.unobserve(entry.target)
-              observed.delete(entry.target)
-            }
-          }
-        }
-      }
-    },
-    { root: null, rootMargin: '200px 0px', threshold: 0.01 }
-  )
-
-  const observed = new Map<Element, string>()
-
-  function enqueue(path: string, priority?: Priority) {
-    if (destroyed) return false
-    if (!isCloudThumbEligible(path)) return false
-    if (!allowVideos && isVideo(path)) return false
-    clearRetryTimer(path)
-    if (requested.has(path)) return false
-    requested.add(path)
-    const prio = priority ?? (isVideo(path) ? 'low' : 'high')
-    if (prio === 'high') {
-      highQueue.push(path)
-    } else {
-      lowQueue.push(path)
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const observation = observed.get(entry.target)
+      if (!observation) continue
+      observation.near = entry.isIntersecting
+      const rect = entry.boundingClientRect ?? entry.target.getBoundingClientRect()
+      const height = window.innerHeight || document.documentElement.clientHeight
+      observation.visible = entry.isIntersecting && rect.bottom > 0 && rect.top < height
     }
-    pump()
-    return true
-  }
+    schedule()
+  }, { root: null, rootMargin: '200px 0px', threshold: 0.01 })
+  const visibleObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const observation = observed.get(entry.target)
+      if (observation) observation.visible = entry.isIntersecting
+    }
+    schedule()
+  }, { root: null, threshold: 0.01 })
 
   function pump() {
     if (destroyed) return
-    while (active < maxConcurrent && (highQueue.length > 0 || lowQueue.length > 0)) {
-      const path = dequeueNextEligible()
-      if (!path) break
-      const genAtStart = generation
-      const isVideoTask = isVideo(path)
-      active++
-      if (isVideoTask) activeVideos++
-      loadThumb(path, genAtStart)
-        .then((thumbPath) => {
-          if (destroyed) return
-          if (genAtStart !== generation) return
-          if (!thumbPath) return
-          thumbs.update((m) => {
-            const next = new Map(m)
-            next.set(path, thumbPath)
-            return next
-          })
-          retries.delete(path)
-          requested.delete(path)
-        })
-        .catch(() => {
-          requested.delete(path)
-        })
-        .finally(() => {
-          active--
-          if (isVideoTask) activeVideos = Math.max(0, activeVideos - 1)
-          pump()
-        })
+    for (const path of active.keys()) {
+      if (!wanted(path) || !eligible(path)) cancel(path)
+    }
+    const candidates = new Map<string, number>()
+    for (const { path, near, visible } of observed.values()) {
+      if (!near || !eligible(path) || loaded.has(path) || active.has(path)
+        || retryTimers.has(path) || (failedUntil.get(path) ?? 0) > Date.now()) continue
+      const priority = (visible ? 0 : 2) + (isVideo(path) ? 1 : 0)
+      candidates.set(path, Math.min(candidates.get(path) ?? Infinity, priority))
+    }
+    for (const [path] of [...candidates].sort((a, b) => a[1] - b[1])) {
+      if (active.size >= maxConcurrent) break
+      if (isVideo(path) && [...active.values()].filter(job => job.video).length >= maxVideos) continue
+      const job: Job = { id: `thumb-${loaderId}-${++sequence}`, epoch, video: isVideo(path) }
+      active.set(path, job)
+      void load(path, job)
     }
   }
 
-  function dequeueNextEligible(): string | undefined {
-    const high = highQueue.shift()
-    if (high) return high
-    if (lowQueue.length === 0) return undefined
-    if (maxConcurrentVideos < 1 || activeVideos >= maxConcurrentVideos) {
-      const nonVideoIndex = lowQueue.findIndex((p) => !isVideo(p))
-      if (nonVideoIndex >= 0) {
-        const [path] = lowQueue.splice(nonVideoIndex, 1)
-        return path
-      }
-      return undefined
-    }
-    return lowQueue.shift()
-  }
-
-  async function loadThumb(path: string, genAtStart: string): Promise<string | null> {
+  async function load(path: string, job: Job) {
     try {
-      const res = await invoke<{
-        path: string
-        width: number
-        height: number
-        cached: boolean
-      }>('get_thumbnail', { path, max_dim: maxDim, generation })
-      if (genAtStart !== generation) return null
-      return res.path
-    } catch (err) {
-      if (genAtStart !== generation) {
-        retries.delete(path)
-        return null
-      }
-      const msg = getErrorMessage(err)
-
-      const isBusy = msg.toLowerCase().includes('too many concurrent thumbnails')
-      if (isBusy) {
-        const attempt = (retries.get(path) ?? 0) + 1
-        if (attempt <= MAX_RETRIES) {
-          retries.set(path, attempt)
-          const delay = Math.min(BASE_BACKOFF_MS * Math.pow(2, attempt - 1), 2000)
-          requested.delete(path)
-          const retryId = setTimeout(() => {
-            retryTimers.delete(path)
-            enqueue(path)
-          }, delay)
-          retryTimers.set(path, retryId)
-        } else {
-          retries.delete(path)
-          requested.delete(path)
-        }
+      const result = await invoke<{ path: string }>('get_thumbnail', {
+        path, maxDim, generation, requestId: job.id,
+      })
+      if (destroyed || job.epoch !== epoch || active.get(path) !== job) return
+      loaded.set(path, result.path)
+      retries.delete(path)
+      failedUntil.delete(path)
+      publish()
+    } catch (error) {
+      if (destroyed || job.epoch !== epoch || active.get(path) !== job) return
+      const busy = getErrorMessage(error).toLowerCase().includes('too many concurrent thumbnails')
+      const attempt = (retries.get(path) ?? 0) + 1
+      if (busy && attempt <= 3) {
+        retries.set(path, attempt)
+        retryTimers.set(path, setTimeout(() => {
+          retryTimers.delete(path)
+          schedule()
+        }, 300 * 2 ** (attempt - 1)))
       } else {
+        // Do not retry a bad file on every scroll/metadata refresh.
+        failedUntil.set(path, Date.now() + 5000)
         retries.delete(path)
-        requested.delete(path)
       }
-      return null
+    } finally {
+      if (active.get(path) === job) active.delete(path)
+      schedule()
     }
   }
 
-  function observe(node: Element, path: string) {
-    if (destroyed) {
-      return {
-        update() {},
-        destroy() {},
-      }
-    }
-    observed.set(node, path)
+  function invalidate(path: string) {
+    cancel(path)
+    clearRetry(path)
+    retries.delete(path)
+    failedUntil.delete(path)
+    loaded.delete(path)
+    publish()
+    schedule()
+  }
+
+  function checkRevision(path: string, revision?: string) {
+    if (revision === undefined) return
+    const previous = revisions.get(path)
+    revisions.set(path, revision)
+    if (previous !== undefined && previous !== revision) invalidate(path)
+  }
+
+  function observe(node: Element, path: string, revision?: string) {
+    if (destroyed) return { update() {}, destroy() {} }
+    checkRevision(path, revision)
+    observed.set(node, { path, near: false, visible: false })
     observer.observe(node)
+    visibleObserver.observe(node)
     return {
-      update(newPath: string) {
-        observed.set(node, newPath)
+      update(newPath: string, revision?: string) {
+        checkRevision(newPath, revision)
+        const previous = observed.get(node)
+        if (previous) observed.set(node, { ...previous, path: newPath })
+        schedule()
       },
       destroy() {
         observer.unobserve(node)
+        visibleObserver.unobserve(node)
         observed.delete(node)
+        schedule()
       },
     }
   }
 
-  function clearRetryTimer(path: string) {
-    const retryId = retryTimers.get(path)
-    if (retryId !== undefined) {
-      clearTimeout(retryId)
-      retryTimers.delete(path)
+  const reset = (token?: string) => {
+    epoch++ // Unique even for A -> B -> A navigation.
+    generation = `${loaderId}:${epoch}:${token ?? ''}`
+    for (const path of active.keys()) cancel(path)
+    for (const path of retryTimers.keys()) clearRetry(path)
+    retries.clear()
+    failedUntil.clear()
+    loaded.clear()
+    revisions.clear()
+    publish()
+    // Prevent submitting old cards before Svelte replaces the directory.
+    for (const observation of observed.values()) observation.near = false
+    for (const node of observed.keys()) {
+      observer.unobserve(node)
+      observer.observe(node)
     }
   }
-
-  function clearRetryTimers() {
-    retryTimers.forEach((retryId) => clearTimeout(retryId))
-    retryTimers.clear()
+  const refreshEligibility = () => {
+    for (const path of loaded.keys()) if (!eligible(path)) loaded.delete(path)
+    for (const [node, observation] of observed) {
+      const rect = node.getBoundingClientRect()
+      observation.near = rect.bottom >= -200 && rect.top <= window.innerHeight + 200
+      observation.visible = rect.bottom > 0 && rect.top < window.innerHeight
+    }
+    publish()
+    schedule()
   }
-
   return {
     observe,
-    reset: (token?: string) => {
-      generation = token ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
-      requested.clear()
-      retries.clear()
-      clearRetryTimers()
-      highQueue.length = 0
-      lowQueue.length = 0
-      thumbs.set(new Map())
-    },
-    setAllowVideos: (value: boolean) => {
-      const wasAllowed = allowVideos
-      allowVideos = value
-      if (!allowVideos) {
-        // Drop queued and cached video thumbnails
-        for (let i = highQueue.length - 1; i >= 0; i--) {
-          if (isVideo(highQueue[i])) highQueue.splice(i, 1)
-        }
-        for (let i = lowQueue.length - 1; i >= 0; i--) {
-          if (isVideo(lowQueue[i])) lowQueue.splice(i, 1)
-        }
-        requested.forEach((p) => {
-          if (isVideo(p)) {
-            requested.delete(p)
-            clearRetryTimer(p)
-          }
-        })
-        retries.forEach((_, p) => {
-          if (isVideo(p)) {
-            retries.delete(p)
-            clearRetryTimer(p)
-          }
-        })
-        thumbs.update((m) => {
-          const next = new Map(m)
-          for (const [p] of next) {
-            if (isVideo(p)) next.delete(p)
-          }
-          return next
-        })
-      } else if (!wasAllowed && allowVideos) {
-        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
-        const margin = 200
-        observed.forEach((path, node) => {
-          if (!isVideo(path)) return
-          const rect = node.getBoundingClientRect()
-          const inView = rect.bottom >= -margin && rect.top <= viewportHeight + margin
-          if (inView) {
-            const queued = enqueue(path, 'low')
-            if (queued) {
-              observer.unobserve(node)
-              observed.delete(node)
-            }
-          }
-        })
-      }
-    },
-    setAllowCloudThumbs: (value: boolean) => {
-      const wasAllowed = allowCloudThumbs
-      allowCloudThumbs = value
-      if (wasAllowed || !allowCloudThumbs) return
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
-      const margin = 200
-      observed.forEach((path, node) => {
-        if (!isCloudPath(path)) return
-        const rect = node.getBoundingClientRect()
-        const inView = rect.bottom >= -margin && rect.top <= viewportHeight + margin
-        if (inView) {
-          const queued = enqueue(path, 'high')
-          if (queued) {
-            observer.unobserve(node)
-            observed.delete(node)
-          }
-        }
-      })
-    },
-    drop: (path: string) => {
-      requested.delete(path)
+    reset,
+    setAllowVideos(value: boolean) { allowVideos = value; refreshEligibility() },
+    setAllowCloudThumbs(value: boolean) { allowCloudThumbs = value; refreshEligibility() },
+    drop(path: string) {
+      cancel(path)
+      clearRetry(path)
       retries.delete(path)
-      clearRetryTimer(path)
-      for (let i = highQueue.length - 1; i >= 0; i--) {
-        if (highQueue[i] === path) highQueue.splice(i, 1)
-      }
-      for (let i = lowQueue.length - 1; i >= 0; i--) {
-        if (lowQueue[i] === path) lowQueue.splice(i, 1)
-      }
-      thumbs.update((m) => {
-        const next = new Map(m)
-        next.delete(path)
-        return next
-      })
+      loaded.delete(path)
+      failedUntil.set(path, Date.now() + 5000)
+      publish()
     },
-    destroy: () => {
-      if (destroyed) return
+    invalidate,
+    destroy() {
       destroyed = true
+      reset()
       observer.disconnect()
+      visibleObserver.disconnect()
       observed.clear()
-      clearRetryTimers()
-      requested.clear()
-      retries.clear()
-      highQueue.length = 0
-      lowQueue.length = 0
-      thumbs.set(new Map())
     },
     subscribe: thumbs.subscribe as Readable<ThumbMap>['subscribe'],
   }

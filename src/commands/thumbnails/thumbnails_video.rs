@@ -1,8 +1,6 @@
 use image::ImageReader;
-use once_cell::sync::Lazy;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use super::{
@@ -16,8 +14,8 @@ pub fn render_video_thumbnail(
     path: &Path,
     cache_path: &Path,
     max_dim: u32,
-    generation: Option<&str>,
     ffmpeg_override: Option<&Path>,
+    control: &super::control::Control,
 ) -> ThumbnailResult<(u32, u32)> {
     let ffmpeg = ffmpeg_override
         .and_then(|p| {
@@ -31,6 +29,7 @@ pub fn render_video_thumbnail(
         .ok_or_else(|| ThumbnailError::from_external_message("ffmpeg not found in PATH"))?;
 
     let tmp_path = cache_path.with_extension("tmp.png");
+    let _cleanup = super::cache_flow::PendingFile(tmp_path.clone());
 
     // Seek to 1.5s to avoid black intro frames.
     let mut cmd = Command::new(ffmpeg);
@@ -51,12 +50,7 @@ pub fn render_video_thumbnail(
         ))
         .arg(tmp_path.as_os_str());
 
-    let status = run_with_timeout(
-        cmd,
-        Duration::from_secs(10),
-        generation.unwrap_or("unknown"),
-    )
-    .map_err(|e| ThumbnailError::from_external_message(format!("Failed to run ffmpeg: {e}")))?;
+    let status = run_with_timeout(cmd, Duration::from_secs(10), control)?;
 
     if !status.success() {
         return Err(ThumbnailError::from_external_message(format!(
@@ -100,95 +94,39 @@ fn which_ffmpeg() -> Option<PathBuf> {
         .or_else(|| which::which("ffmpeg").ok())
 }
 
-fn kill_other_video_processes(current_gen: &str) {
-    let mut map = VIDEO_PROCS.lock().expect("video procs poisoned");
-    let mut to_kill: Vec<u32> = Vec::new();
-    for (pid, (gen, _)) in map.iter() {
-        if gen != current_gen {
-            to_kill.push(*pid);
-        }
-    }
-    for pid in to_kill {
-        if let Some((_, mut child)) = map.remove(&pid) {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    }
-}
-
 fn run_with_timeout(
     mut cmd: Command,
     timeout: Duration,
-    generation: &str,
+    control: &super::control::Control,
 ) -> ThumbnailResult<std::process::ExitStatus> {
-    use std::thread;
-    use std::time::Instant;
-
-    // Kill any stale video jobs from previous generations before starting this one.
-    kill_other_video_processes(generation);
-
+    let control =
+        super::control::Control::new(control.cancelled.clone(), control.remaining(timeout)?);
+    control.check()?;
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped());
-
-    let child = cmd
+        .stderr(Stdio::null());
+    let mut child = cmd
         .spawn()
         .map_err(|e| ThumbnailError::from_external_message(format!("Spawn ffmpeg failed: {e}")))?;
-    let pid = child.id();
-
-    {
-        let mut map = VIDEO_PROCS.lock().expect("video procs poisoned");
-        map.insert(pid, (generation.to_string(), child));
-    }
-
-    let start = Instant::now();
-
     loop {
-        let mut finished: Option<std::process::ExitStatus> = None;
-        {
-            let mut map = VIDEO_PROCS.lock().expect("video procs poisoned");
-            if let Some((_, child)) = map.get_mut(&pid) {
-                match child.try_wait() {
-                    Ok(Some(status)) => finished = Some(status),
-                    Ok(None) => {}
-                    Err(e) => {
-                        if let Some((_gen, mut child)) = map.remove(&pid) {
-                            let _ = child.kill();
-                            let _ = child.wait();
-                        }
-                        return Err(ThumbnailError::from_external_message(format!(
-                            "Wait ffmpeg failed: {e}"
-                        )));
-                    }
-                }
-            } else {
-                return Err(ThumbnailError::from_external_message(
-                    "Video process missing",
-                ));
-            }
+        if let Err(error) = control.check() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
         }
-
-        if let Some(status) = finished {
-            let mut map = VIDEO_PROCS.lock().expect("video procs poisoned");
-            map.remove(&pid);
-            return Ok(status);
-        }
-
-        if start.elapsed() > timeout {
-            let mut map = VIDEO_PROCS.lock().expect("video procs poisoned");
-            if let Some((_, mut child)) = map.remove(&pid) {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => std::thread::sleep(Duration::from_millis(25)),
+            Err(error) => {
                 let _ = child.kill();
                 let _ = child.wait();
+                return Err(ThumbnailError::from_external_message(format!(
+                    "Wait ffmpeg failed: {error}"
+                )));
             }
-            return Err(ThumbnailError::from_external_message("ffmpeg timed out"));
         }
-
-        thread::sleep(Duration::from_millis(50));
     }
 }
-
-static VIDEO_PROCS: Lazy<std::sync::Mutex<HashMap<u32, (String, Child)>>> =
-    Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
 
 #[cfg(test)]
 mod tests {
@@ -220,7 +158,11 @@ mod tests {
 
         let source = uniq_path("source.mp4");
         let cache = uniq_path("cache.png");
-        let err = render_video_thumbnail(&source, &cache, 96, Some("test"), None)
+        let control = crate::commands::thumbnails::control::Control::new(
+            Default::default(),
+            Duration::from_secs(1),
+        );
+        let err = render_video_thumbnail(&source, &cache, 96, None, &control)
             .expect_err("missing ffmpeg should fail");
 
         assert!(err.to_string().contains("ffmpeg not found in PATH"));

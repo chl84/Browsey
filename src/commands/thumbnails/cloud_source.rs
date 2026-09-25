@@ -79,29 +79,21 @@ pub(super) fn precheck_cloud_thumbnail_source(
     })
 }
 
-pub(super) async fn materialize_cloud_thumbnail_source(
+pub(super) fn materialize_cloud_thumbnail_source(
     app_handle: &AppHandle,
     source: &CloudThumbnailSource,
+    cancel: &std::sync::atomic::AtomicBool,
 ) -> ThumbnailResult<(PathBuf, fs::Metadata, ThumbKind, Option<PathBuf>)> {
     let cloud_path_for_task = source.cloud_path.clone();
     let snapshot_for_task = source.snapshot.clone();
     let app_for_task = app_handle.clone();
-    let target = tauri::async_runtime::spawn_blocking(move || {
-        materialize_cloud_file_for_local_use_with_snapshot(
-            &cloud_path_for_task,
-            &snapshot_for_task,
-            &app_for_task,
-            None,
-            None,
-        )
-    })
-    .await
-    .map_err(|error| {
-        ThumbnailError::new(
-            ThumbnailErrorCode::Cancelled,
-            format!("Cloud thumbnail materialization task cancelled: {error}"),
-        )
-    })?
+    let target = materialize_cloud_file_for_local_use_with_snapshot(
+        &cloud_path_for_task,
+        &snapshot_for_task,
+        &app_for_task,
+        None,
+        Some(cancel),
+    )
     .map_err(|error| map_cloud_command_error("Cloud thumbnail materialization failed", error))?;
     let meta = fs::metadata(&target).map_err(|error| {
         ThumbnailError::new(
