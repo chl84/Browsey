@@ -87,6 +87,7 @@
   import { useExplorerPageLifecycle } from './useExplorerPageLifecycle'
   import { useExplorerPageUiState } from './useExplorerPageUiState'
   import { useExplorerViewportLayout } from './useExplorerViewportLayout'
+  import { createWheelZoom, nextZoomState, DEFAULT_GRID_ZOOM_SIZE } from '../hooks/createWheelZoom'
   import {
     activeSystemTheme,
     destroyThemeController,
@@ -114,6 +115,7 @@
   let pathInput = ''
   let mode: 'address' | 'filter' = 'address'
   let viewMode: ViewMode = 'list'
+  let gridThumbSize = DEFAULT_GRID_ZOOM_SIZE
   let defaultViewPref: ViewMode = 'list'
   let inputFocused = false
   let filterActive = false
@@ -523,6 +525,8 @@
         })
       } else {
         await tick()
+        recomputeGrid()
+        await tick()
         viewAnchor.scroll({
           viewMode,
           rowsEl: rowsElRef,
@@ -593,7 +597,7 @@
   let gridGap = 6
   const GRID_OVERSCAN = 8
 
-  let viewAnchor = createViewSwitchAnchor({
+  const viewAnchor = createViewSwitchAnchor({
     filteredEntries,
     rowHeight: get(rowHeight),
     gridRowHeight,
@@ -627,6 +631,7 @@
 
   const viewportLayout = useExplorerViewportLayout({
     getViewMode: () => viewMode,
+    getGridThumbSize: () => gridThumbSize,
     setSidebarCollapsed: (collapsed) => {
       sidebarCollapsed = collapsed
     },
@@ -642,8 +647,7 @@
       gridConfig.rowHeight = nextGridRowHeight
     },
     recreateViewAnchor: ({ rowHeight: nextRowHeight, gridGap: nextGridGap, gridRowHeight: nextGridRowHeight }) => {
-      viewAnchor = createViewSwitchAnchor({
-        filteredEntries,
+      viewAnchor.setMetrics({
         rowHeight: nextRowHeight,
         gridRowHeight: nextGridRowHeight,
         gridGap: nextGridGap,
@@ -658,6 +662,36 @@
     updateViewportHeight,
     recomputeList: (entriesList) => recompute(entriesList as Entry[]),
   })
+
+  let zoomInFlight = false
+  const stepZoom = async (direction: -1 | 1) => {
+    if (zoomInFlight || toggleViewModeInFlight) return
+    const next = nextZoomState(viewMode, gridThumbSize, direction)
+    if (next.viewMode === viewMode && next.size === gridThumbSize) return
+    zoomInFlight = true
+    try {
+      if (next.viewMode !== viewMode) {
+        gridThumbSize = next.size
+        viewportLayout.applyDensityMetrics()
+        await toggleViewMode()
+      } else {
+        viewAnchor.capture({ viewMode, rowsEl: rowsElRef, headerEl: headerElRef, gridEl: gridElRef, gridCols: getGridCols() })
+        gridThumbSize = next.size
+        viewportLayout.applyDensityMetrics()
+        await tick()
+        recomputeGrid()
+        await tick()
+        viewAnchor.scroll({ viewMode, rowsEl: rowsElRef, headerEl: headerElRef, gridEl: gridElRef, gridCols: getGridCols() })
+        recomputeGrid()
+      }
+    } finally {
+      zoomInFlight = false
+    }
+  }
+  const handleZoomWheel = createWheelZoom(direction => { void stepZoom(direction) }, () => get(anyModalOpenStore))
+  const handleListingWheel = (event: WheelEvent) => {
+    if (!handleZoomWheel(event)) handleWheelCombined(event)
+  }
 
   $: viewportLayout.applyDensityClass($density)
   $: {
@@ -1851,7 +1885,7 @@
     clipboardMode,
     clipboardPaths,
     handleRowsScrollCombined,
-    handleWheelCombined,
+    handleWheelCombined: handleListingWheel,
     handleRowsKeydownCombined,
     handleRowsMouseDown,
     handleRowsClickSafe,
@@ -1883,6 +1917,9 @@
     cloudThumbs: $cloudThumbs,
     currentView,
     thumbnailRefreshToken,
+    gridThumbSize,
+    gridCardWidth,
+    gridRowHeight,
     contextMenu: $contextMenu,
     blankMenu: $blankMenu,
     handleContextSelect,

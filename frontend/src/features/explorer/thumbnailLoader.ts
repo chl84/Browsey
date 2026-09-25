@@ -12,7 +12,7 @@ type Options = {
 }
 type ThumbMap = Map<string, string>
 type Observation = { path: string; near: boolean; visible: boolean }
-type Job = { id: string; epoch: number; video: boolean }
+type Job = { id: string; epoch: number; video: boolean; dimension: number }
 const imageExtensions = new Set([
   'png', 'jpg', 'jpeg', 'jpe', 'jfif', 'gif', 'bmp', 'ico', 'pnm', 'pbm', 'pgm', 'ppm',
   'pam', 'tga', 'webp', 'tif', 'tiff', 'hdr', 'exr', 'dds', 'svg', 'pdf',
@@ -23,7 +23,7 @@ const cloudExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'ti
 export function createThumbnailLoader(opts: Options = {}) {
   const maxConcurrent = Math.max(1, opts.maxConcurrent ?? 4)
   const maxVideos = Math.max(0, Math.min(opts.maxConcurrentVideos ?? 1, maxConcurrent))
-  const maxDim = opts.maxDim ?? 96
+  let maxDim = opts.maxDim ?? 96
   const loaderId = crypto.randomUUID()
   let sequence = 0
   let epoch = 0
@@ -34,6 +34,7 @@ export function createThumbnailLoader(opts: Options = {}) {
   let scheduled = false
   const thumbs = writable<ThumbMap>(new Map())
   const loaded = new Map<string, string>()
+  const loadedSizes = new Map<string, number>()
   const revisions = new Map<string, string>()
   const failedUntil = new Map<string, number>()
   const observed = new Map<Element, Observation>()
@@ -92,7 +93,7 @@ export function createThumbnailLoader(opts: Options = {}) {
     }
     const candidates = new Map<string, number>()
     for (const { path, near, visible } of observed.values()) {
-      if (!near || !eligible(path) || loaded.has(path) || active.has(path)
+      if (!near || !eligible(path) || (loaded.has(path) && (loadedSizes.get(path) ?? 0) >= maxDim) || active.has(path)
         || retryTimers.has(path) || (failedUntil.get(path) ?? 0) > Date.now()) continue
       const priority = (visible ? 0 : 2) + (isVideo(path) ? 1 : 0)
       candidates.set(path, Math.min(candidates.get(path) ?? Infinity, priority))
@@ -100,7 +101,7 @@ export function createThumbnailLoader(opts: Options = {}) {
     for (const [path] of [...candidates].sort((a, b) => a[1] - b[1])) {
       if (active.size >= maxConcurrent) break
       if (isVideo(path) && [...active.values()].filter(job => job.video).length >= maxVideos) continue
-      const job: Job = { id: `thumb-${loaderId}-${++sequence}`, epoch, video: isVideo(path) }
+      const job: Job = { id: `thumb-${loaderId}-${++sequence}`, epoch, video: isVideo(path), dimension: maxDim }
       active.set(path, job)
       void load(path, job)
     }
@@ -109,10 +110,11 @@ export function createThumbnailLoader(opts: Options = {}) {
   async function load(path: string, job: Job) {
     try {
       const result = await invoke<{ path: string }>('get_thumbnail', {
-        path, maxDim, generation, requestId: job.id,
+        path, maxDim: job.dimension, generation, requestId: job.id,
       })
       if (destroyed || job.epoch !== epoch || active.get(path) !== job) return
       loaded.set(path, result.path)
+      loadedSizes.set(path, job.dimension)
       retries.delete(path)
       failedUntil.delete(path)
       publish()
@@ -143,6 +145,7 @@ export function createThumbnailLoader(opts: Options = {}) {
     retries.delete(path)
     failedUntil.delete(path)
     loaded.delete(path)
+    loadedSizes.delete(path)
     publish()
     schedule()
   }
@@ -184,6 +187,7 @@ export function createThumbnailLoader(opts: Options = {}) {
     retries.clear()
     failedUntil.clear()
     loaded.clear()
+    loadedSizes.clear()
     revisions.clear()
     publish()
     // Prevent submitting old cards before Svelte replaces the directory.
@@ -206,6 +210,15 @@ export function createThumbnailLoader(opts: Options = {}) {
   return {
     observe,
     reset,
+    setMaxDim(value: number) {
+      const next = Math.max(32, Math.min(512, Math.ceil(value)))
+      if (!Number.isFinite(next) || next === maxDim) return
+      maxDim = next
+      for (const [path, job] of active) if (job.dimension < maxDim) cancel(path)
+      // Retain the old preview while a higher-resolution replacement loads.
+      failedUntil.clear()
+      schedule()
+    },
     setAllowVideos(value: boolean) { allowVideos = value; refreshEligibility() },
     setAllowCloudThumbs(value: boolean) { allowCloudThumbs = value; refreshEligibility() },
     drop(path: string) {

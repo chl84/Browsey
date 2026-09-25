@@ -31,6 +31,7 @@ type MockClipboardState = {
 
 type E2eMockControl = {
   thumbnailFixture?: boolean
+  defaultView?: 'list' | 'grid'
   thumbnailHold?: boolean
   systemClipboard?: MockClipboardState
   failCommands?: string[]
@@ -298,7 +299,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'reset_all_shortcuts':
       return [] as T
     case 'load_default_view':
-      return (control?.thumbnailFixture ? 'grid' : 'list') as T
+      return (control?.defaultView ?? (control?.thumbnailFixture ? 'grid' : 'list')) as T
     case 'load_show_hidden':
       return false as T
     case 'load_hidden_files_last':

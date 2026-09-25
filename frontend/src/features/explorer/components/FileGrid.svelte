@@ -13,10 +13,14 @@
   export let cloudThumbs = false
   export let thumbnailsEnabled = true
   export let thumbnailRefreshToken = 0
+  export let gridThumbSize = 96
+  export let gridCardWidth = 126
+  export let gridRowHeight = 132
+  const thumbnailPixels = (size: number) => Math.min(512, Math.ceil(size * (window.devicePixelRatio || 1)))
 
   const thumbLoader = createThumbnailLoader({
     maxConcurrent: 3,
-    maxDim: 96,
+    maxDim: thumbnailPixels(gridThumbSize),
     initialGeneration: currentPath,
     allowVideos: videoThumbs && thumbnailsEnabled,
     allowCloudThumbs: cloudThumbs && thumbnailsEnabled,
@@ -25,6 +29,7 @@
   const unsubThumbs = thumbLoader.subscribe((m) => {
     thumbMap = m
   })
+  $: thumbLoader.setMaxDim(thumbnailPixels(gridThumbSize))
 
   let lastPath = currentPath
   $: if (currentPath !== lastPath) {
@@ -137,7 +142,7 @@
   }
 </script>
 
-<section class="grid-container">
+<section class="grid-container" style={`--grid-thumb-size:${gridThumbSize}px;--grid-card-width:${gridCardWidth}px;--grid-row-height:${gridRowHeight}px`}>
   <div
     class="grid"
     role="grid"
@@ -145,7 +150,7 @@
     bind:this={rowsEl}
     style="user-select:none"
     on:scroll={onRowsScroll}
-    on:wheel={onWheel}
+    on:wheel|nonpassive={onWheel}
     on:contextmenu={onRowsContextMenu}
     on:click={onRowsClick}
     on:mousedown={onRowsMousedown}
