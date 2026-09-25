@@ -18,6 +18,8 @@ pub(super) enum OpenWithErrorCode {
     DatabaseOpenFailed,
     AppNotFound,
     LaunchFailed,
+    #[cfg(target_os = "linux")]
+    DefaultAppFailed,
     UnknownError,
 }
 
@@ -32,6 +34,8 @@ impl ErrorCode for OpenWithErrorCode {
             Self::DatabaseOpenFailed => "database_open_failed",
             Self::AppNotFound => "app_not_found",
             Self::LaunchFailed => "launch_failed",
+            #[cfg(target_os = "linux")]
+            Self::DefaultAppFailed => "default_app_failed",
             Self::UnknownError => "unknown_error",
         }
     }

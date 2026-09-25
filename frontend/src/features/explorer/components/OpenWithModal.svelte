@@ -31,19 +31,25 @@
       })
     : apps
 
-  const confirm = () => {
+  const confirm = (setDefault = false) => {
     if (busy || loading || !selected || !filtered.some((app) => app.id === selected)) return
+    if (setDefault && !defaultContentType) return
     onConfirm({
       appId: selected,
+      ...(setDefault ? { setDefault: true } : {}),
     })
   }
   $: hasSelection = !loading && selected !== null && filtered.some((app) => app.id === selected)
+  $: defaultContentType = filtered.find((app) => app.id === selected)?.defaultContentType
+  $: supportsDefaults = apps.some((app) => app.defaultContentType)
 </script>
 
 {#if open}
   <ModalShell
     open={open}
     onClose={onClose}
+    closeOnEscape={!busy}
+    closeOnOverlay={!busy}
     modalClass="open-with-modal"
     initialFocusSelector="input[type='search']"
     guardOverlayPointer={true}
@@ -55,6 +61,7 @@
         type="search"
         id="open-with-filter"
         autocomplete="off"
+        disabled={busy}
         placeholder="Filter apps"
         bind:value={filter}
         on:keydown={(e) => {
@@ -91,14 +98,29 @@
       </div>
     </section>
 
+    {#if supportsDefaults}
+      <p class="muted default-hint">
+        {#if defaultContentType}
+          Set as default applies to all files of type <strong>{defaultContentType}</strong> for your user account, not just this file. It does not open the file.
+        {:else}
+          Select an application to make it the default for this file type.
+        {/if}
+      </p>
+    {/if}
+
     {#if error}
-      <div class="pill error">{error}</div>
+      <div class="pill error" role="alert">{error}</div>
     {/if}
 
     <div slot="actions">
       <button type="button" class="secondary" on:click={onClose} disabled={busy}>Cancel</button>
-      <button type="button" on:click={confirm} disabled={!hasSelection || busy}>
-        {busy ? 'Opening…' : 'Open'}
+      {#if supportsDefaults}
+        <button type="button" class="secondary" on:click={() => confirm(true)} disabled={!hasSelection || !defaultContentType || busy}>
+          Set as default
+        </button>
+      {/if}
+      <button type="button" on:click={() => confirm()} disabled={!hasSelection || busy}>
+        {busy ? 'Working…' : 'Open'}
       </button>
     </div>
   </ModalShell>
@@ -110,6 +132,11 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .default-hint {
+    max-width: 52ch;
+    overflow-wrap: anywhere;
   }
 
   .apps {

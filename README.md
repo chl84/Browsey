@@ -17,7 +17,7 @@ Browsey `1.0.2` continues the Linux-first 1.0 line, with USB/MTP improvements, m
 - System/Omarchy theme colors in Settings, with light/dark fallback and a translucent lasso.
 - Live refresh from filesystem watcher events.
 - Native clipboard flow with conflict preview/resolve and background transfer progress.
-- Recursive search, duplicate scanning, archive extract/compress, and open-with workflows.
+- Recursive search, duplicate scanning, archive extract/compress, and open-with workflows. On Linux, **Open with… → select an app → Set as default** saves the desktop default for the displayed file type (all files of that MIME type, not just the selected file), without opening it. **Open** remains a one-time choice. This action is unavailable for directories and unknown file types.
 - Extraction guardrails with total-size and entry-count caps to prevent runaway unpack operations.
 - Settings-driven shortcut remapping with conflict validation.
 - Properties with editable permissions (Unix + Windows) and lazy type-specific Extra metadata.

@@ -312,6 +312,7 @@ fn main() {
             watch_dir,
             open_entry,
             list_open_with_apps,
+            set_default_app,
             open_with,
             toggle_star,
             list_starred,

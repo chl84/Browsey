@@ -2,7 +2,7 @@ import { writable, get } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import type { Entry } from '../model/types'
 import type { OpenWithApp, OpenWithChoice } from '../services/openWith.service'
-import { fetchOpenWithApps, openWithSelection, defaultOpenWithApp } from '../services/openWith.service'
+import { fetchOpenWithApps, openWithSelection, setDefaultApplication, defaultOpenWithApp } from '../services/openWith.service'
 
 export type OpenWithState = {
   open: boolean
@@ -30,6 +30,8 @@ export const createOpenWithModal = (deps: Deps) => {
   let loadId = 0
 
   const close = () => {
+    if (get(state).submitting) return
+    ++loadId
     state.set({
       open: false,
       entry: null,
@@ -64,6 +66,7 @@ export const createOpenWithModal = (deps: Deps) => {
   }
 
   const open = (entry: Entry) => {
+    if (get(state).submitting) return
     state.set({
       open: true,
       entry,
@@ -77,19 +80,29 @@ export const createOpenWithModal = (deps: Deps) => {
 
   const confirm = async (choice: OpenWithChoice) => {
     const current = get(state)
-    if (!current.open || !current.entry || current.submitting) return
+    if (!current.open || !current.entry || current.submitting || current.loading) return
     const normalized: OpenWithChoice = {
       appId: choice.appId ?? undefined,
     }
-    const hasApp = Boolean(normalized.appId)
-    if (!hasApp) {
+    const app = current.apps.find((app) => app.id === normalized.appId)
+    if (!app) {
       state.update((s) => ({ ...s, error: 'Pick an application.' }))
+      return
+    }
+    if (choice.setDefault && !app.defaultContentType) {
+      state.update((s) => ({ ...s, error: 'A default cannot be set for this application or file type.' }))
       return
     }
     state.update((s) => ({ ...s, submitting: true, error: '' }))
     try {
-      await openWithSelection(current.entry.path, normalized)
-      showToast(`Opening ${current.entry.name}…`)
+      if (choice.setDefault && app.defaultContentType) {
+        await setDefaultApplication(current.entry.path, app.id, app.defaultContentType)
+        showToast(`${app.name} is now the default for ${app.defaultContentType}`)
+      } else {
+        await openWithSelection(current.entry.path, normalized)
+        showToast(`Opening ${current.entry.name}…`)
+      }
+      state.update((s) => ({ ...s, submitting: false }))
       close()
     } catch (err) {
       state.update((s) => ({

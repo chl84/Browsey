@@ -1,4 +1,5 @@
 use super::{error::OpenWithError, spawn_detached, OpenWithApp, OpenWithResult};
+use gio::prelude::*;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -7,7 +8,12 @@ use std::process::{Command, Stdio};
 pub(super) fn list_linux_apps(target: &Path) -> Vec<OpenWithApp> {
     let mut matches_list = Vec::new();
     let mut fallback = Vec::new();
+    let content_type = default_content_type(target).ok();
     for app in linux_app_candidates(target) {
+        let default_content_type = content_type
+            .as_ref()
+            .filter(|_| registered_app(&app).is_some())
+            .cloned();
         let open_app = OpenWithApp {
             id: app.id,
             name: app.desktop.name,
@@ -16,6 +22,7 @@ pub(super) fn list_linux_apps(target: &Path) -> Vec<OpenWithApp> {
             icon: app.desktop.icon,
             matches: app.matches,
             terminal: app.desktop.terminal,
+            default_content_type,
         };
         if app.matches {
             matches_list.push(open_app);
@@ -27,6 +34,60 @@ pub(super) fn list_linux_apps(target: &Path) -> Vec<OpenWithApp> {
     fallback.sort_by_key(|app| app.name.to_lowercase());
     matches_list.extend(fallback);
     matches_list
+}
+
+// Resolve a real desktop ID through GIO, not the opaque ID sent by the UI.
+// Comparing canonical filenames prevents a shadowed system entry from silently
+// selecting a different user entry with the same desktop ID (also handles Flatpak exports).
+fn registered_app(app: &LinuxAppCandidate) -> Option<gio::DesktopAppInfo> {
+    let info = gio::DesktopAppInfo::new(&app.desktop_id)?;
+    let resolved = fs::canonicalize(info.filename()?).ok()?;
+    (resolved == app.desktop.path).then_some(info)
+}
+
+fn default_content_type(target: &Path) -> OpenWithResult<String> {
+    let info = gio::File::for_path(target)
+        .query_info(
+            "standard::type,standard::content-type",
+            gio::FileQueryInfoFlags::NONE,
+            gio::Cancellable::NONE,
+        )
+        .map_err(|error| {
+            OpenWithError::invalid_input(format!("Could not determine file type: {error}"))
+        })?;
+    if info.file_type() != gio::FileType::Regular {
+        return Err(OpenWithError::invalid_input(
+            "A default application can only be set for regular files",
+        ));
+    }
+    info.content_type()
+        .filter(|value| !gio::content_type_is_unknown(value))
+        .map(|value| value.to_string())
+        .ok_or_else(|| {
+            OpenWithError::invalid_input("The file type is unknown; no default was changed")
+        })
+}
+
+pub(super) fn set_default_app(
+    target: &Path,
+    app_id: &str,
+    expected_type: &str,
+) -> OpenWithResult<()> {
+    let content_type = default_content_type(target)?;
+    if content_type != expected_type {
+        return Err(OpenWithError::invalid_input(
+            "The file type changed. Reopen Open with and try again; no default was changed",
+        ));
+    }
+    let app = resolve_linux_app_for_target(target, app_id)
+        .and_then(|app| registered_app(&app))
+        .ok_or_else(|| OpenWithError::app_not_found("Selected application is unavailable"))?;
+    app.set_as_default_for_type(&content_type).map_err(|error| {
+        OpenWithError::new(
+            super::OpenWithErrorCode::DefaultAppFailed,
+            format!("Could not save the default application: {error}"),
+        )
+    })
 }
 
 pub(super) fn launch_desktop_entry_by_id(target: &Path, app_id: &str) -> OpenWithResult<()> {
@@ -67,6 +128,7 @@ struct DesktopEntry {
 #[derive(Clone)]
 struct LinuxAppCandidate {
     id: String,
+    desktop_id: String,
     desktop: DesktopEntry,
     matches: bool,
 }
@@ -158,6 +220,7 @@ fn linux_app_candidates_in_dirs(target: &Path, app_dirs: &[PathBuf]) -> Vec<Linu
             let matches = matches_mime(&desktop.mime_types, &target_mime, is_dir);
             out.push(LinuxAppCandidate {
                 id,
+                desktop_id: entry.file_name().to_string_lossy().into_owned(),
                 desktop,
                 matches,
             });
@@ -371,8 +434,8 @@ fn mime_for_path(path: &Path) -> String {
 
 fn linux_application_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    if let Some(home) = dirs_next::home_dir() {
-        dirs.push(home.join(".local/share/applications"));
+    if let Some(data_home) = dirs_next::data_dir() {
+        dirs.push(data_home.join("applications"));
     }
     if let Ok(raw) = std::env::var("XDG_DATA_DIRS") {
         for dir in raw.split(':') {
@@ -610,5 +673,177 @@ mod tests {
         let error = command_from_exec(&entry, &target).expect_err("empty exec should fail");
         assert_eq!(error.code_str(), "invalid_input");
         assert_eq!(error.message(), "Exec is empty");
+    }
+    // GIO caches XDG paths globally. Exercise real persistence in a fresh child,
+    // never mutate the test runner's environment or the user's mimeapps.list.
+    #[test]
+    fn default_app_persists_in_isolated_xdg_config() {
+        let root = uniq_dir("default-app");
+        fs::create_dir(&root).unwrap();
+        for blocked in [false, true] {
+            let config = root.join(if blocked { "blocked-config" } else { "config" });
+            if blocked {
+                fs::write(&config, b"not a directory").unwrap();
+            } else {
+                fs::create_dir(&config).unwrap();
+            }
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "commands::open_with::linux::tests::default_app_isolated_child",
+                    "--nocapture",
+                ])
+                .env("BROWSEY_DEFAULT_APP_TEST_ROOT", &root)
+                .env(
+                    "BROWSEY_DEFAULT_APP_TEST_BLOCKED",
+                    if blocked { "1" } else { "0" },
+                )
+                .env("XDG_CONFIG_HOME", &config)
+                .env("XDG_CONFIG_DIRS", root.join("config-dirs"))
+                .env("XDG_DATA_HOME", root.join("data"))
+                .env(
+                    "XDG_DATA_DIRS",
+                    std::env::join_paths([
+                        root.join("flatpak/exports/share"),
+                        PathBuf::from("/usr/local/share"),
+                        PathBuf::from("/usr/share"),
+                    ])
+                    .unwrap(),
+                )
+                .env("XDG_CACHE_HOME", root.join("cache"))
+                .env("XDG_CURRENT_DESKTOP", "BrowseyTest")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn default_app_isolated_child() {
+        let Some(root) = std::env::var_os("BROWSEY_DEFAULT_APP_TEST_ROOT") else {
+            return;
+        };
+        let root = PathBuf::from(root);
+        let app_dir = root.join("data/applications");
+        fs::create_dir_all(&app_dir).unwrap();
+        let desktop = app_dir.join("browsey-default-test.desktop");
+        // /bin/true is never launched: setting a default is not opening a file.
+        fs::write(&desktop, "[Desktop Entry]\nType=Application\nName=Browsey default test\nExec=/bin/true %f\nMimeType=text/plain;application/pdf;\n").unwrap();
+        let export_dir = root.join("flatpak/exports/share/applications");
+        let flatpak_dir =
+            root.join("flatpak/app/test/x86_64/stable/hash/export/share/applications");
+        fs::create_dir_all(&export_dir).unwrap();
+        fs::create_dir_all(&flatpak_dir).unwrap();
+        let flatpak_file = flatpak_dir.join("browsey-flatpak-test.desktop");
+        write_desktop(&flatpak_file, "Browsey Flatpak test");
+        let export = export_dir.join("browsey-flatpak-test.desktop");
+        if !export.exists() {
+            symlink(&flatpak_file, &export).unwrap();
+        }
+        let target = root.join("notes.txt");
+        fs::write(&target, "ordinary text\n").unwrap();
+        let apps = list_linux_apps(&target);
+        let app = apps
+            .iter()
+            .find(|app| app.name == "Browsey default test")
+            .unwrap();
+        assert_eq!(app.default_content_type.as_deref(), Some("text/plain"));
+        assert_eq!(
+            apps.iter()
+                .find(|app| app.name == "Browsey Flatpak test")
+                .unwrap()
+                .default_content_type
+                .as_deref(),
+            Some("text/plain")
+        );
+        let shadow_dir = root.join("shadowed");
+        fs::create_dir_all(&shadow_dir).unwrap();
+        write_desktop(
+            &shadow_dir.join("browsey-default-test.desktop"),
+            "Shadowed app",
+        );
+        let shadowed = linux_app_candidates_in_dirs(&target, &[shadow_dir]);
+        assert!(
+            registered_app(&shadowed[0]).is_none(),
+            "must not silently save a different app sharing the same desktop ID"
+        );
+        for invalid_id in ["__default__", "desktop:missing", desktop.to_str().unwrap()] {
+            assert_eq!(
+                set_default_app(&target, invalid_id, "text/plain")
+                    .unwrap_err()
+                    .code_str(),
+                "app_not_found"
+            );
+        }
+        assert_eq!(
+            set_default_app(&target, &app.id, "application/pdf")
+                .unwrap_err()
+                .code_str(),
+            "invalid_input"
+        );
+        assert_eq!(
+            set_default_app(&root, &app.id, "inode/directory")
+                .unwrap_err()
+                .code_str(),
+            "invalid_input"
+        );
+        let unknown = root.join("unknown.browsey-unknown-extension");
+        fs::write(&unknown, [0u8, 255, 0, 255]).unwrap();
+        assert!(default_content_type(&unknown).is_err());
+
+        if std::env::var("BROWSEY_DEFAULT_APP_TEST_BLOCKED").as_deref() == Ok("1") {
+            assert_eq!(
+                set_default_app(&target, &app.id, "text/plain")
+                    .unwrap_err()
+                    .code_str(),
+                "default_app_failed"
+            );
+            return;
+        }
+        let config = PathBuf::from(std::env::var_os("XDG_CONFIG_HOME").unwrap());
+        let mimeapps = config.join("mimeapps.list");
+        assert!(
+            !mimeapps.exists(),
+            "invalid requests must not write defaults"
+        );
+        // A separate existing association must survive our update.
+        fs::write(
+            &mimeapps,
+            "[Default Applications]\napplication/pdf=browsey-default-test.desktop;\n",
+        )
+        .unwrap();
+        super::super::set_default_app_impl(target.to_str().unwrap(), &app.id, "text/plain")
+            .unwrap();
+        let saved = fs::read_to_string(&mimeapps).unwrap();
+        assert!(saved.contains("text/plain=browsey-default-test.desktop"));
+        assert!(saved.contains("application/pdf=browsey-default-test.desktop"));
+        // A fresh GIO consumer must see the persisted desktop ID, not our hashed UI ID.
+        let query = Command::new("gio")
+            .args(["mime", "text/plain"])
+            .env("LC_ALL", "C")
+            .output()
+            .unwrap();
+        assert!(query.status.success());
+        assert!(
+            String::from_utf8_lossy(&query.stdout)
+                .lines()
+                .next()
+                .is_some_and(|line| line.ends_with(": browsey-default-test.desktop")),
+            "{}",
+            String::from_utf8_lossy(&query.stdout)
+        );
+        let extensionless = root.join("extensionless");
+        fs::write(&extensionless, "plain text without an extension\n").unwrap();
+        assert_eq!(default_content_type(&extensionless).unwrap(), "text/plain");
+        assert!(list_linux_apps(&root)
+            .iter()
+            .all(|app| app.default_content_type.is_none()));
     }
 }
