@@ -43,10 +43,33 @@ enum ClipboardMode {
     Cut,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 struct ClipboardState {
     entries: Vec<PathBuf>,
     mode: ClipboardMode,
+}
+
+/// Explicit operation input: never reads or replaces the shared clipboard.
+#[derive(serde::Deserialize)]
+pub struct ClipboardInput {
+    paths: Vec<String>,
+    mode: String,
+}
+
+fn resolve_clipboard_input(input: Option<ClipboardInput>) -> ClipboardResult<ClipboardState> {
+    if let Some(input) = input {
+        if input.paths.is_empty() {
+            return Err(ClipboardError::new(
+                ClipboardErrorCode::ClipboardEmpty,
+                "No source paths provided",
+            ));
+        }
+        validate_clipboard_input(input.paths, input.mode)
+    } else {
+        current_clipboard().ok_or_else(|| {
+            ClipboardError::new(ClipboardErrorCode::ClipboardEmpty, "Clipboard is empty")
+        })
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -179,6 +202,13 @@ fn set_clipboard_impl(paths: Vec<String>, mode: String) -> ClipboardResult<()> {
         return Ok(());
     }
 
+    let state = validate_clipboard_input(paths, mode)?;
+    let mut guard = CLIPBOARD.lock().unwrap();
+    *guard = Some(state);
+    Ok(())
+}
+
+fn validate_clipboard_input(paths: Vec<String>, mode: String) -> ClipboardResult<ClipboardState> {
     let parsed_mode = match mode.to_lowercase().as_str() {
         "copy" => ClipboardMode::Copy,
         "cut" => ClipboardMode::Cut,
@@ -210,28 +240,32 @@ fn set_clipboard_impl(paths: Vec<String>, mode: String) -> ClipboardResult<()> {
         entries.push(clean);
     }
 
-    let mut guard = CLIPBOARD.lock().unwrap();
-    *guard = Some(ClipboardState {
+    Ok(ClipboardState {
         entries,
         mode: parsed_mode,
-    });
-    Ok(())
+    })
 }
 
 #[tauri::command]
-pub fn paste_clipboard_preview(dest: String) -> ApiResult<Vec<ConflictInfo>> {
-    map_api_result(paste_clipboard_preview_impl(dest))
+pub fn paste_clipboard_preview(
+    dest: String,
+    input: Option<ClipboardInput>,
+) -> ApiResult<Vec<ConflictInfo>> {
+    map_api_result(preview_entries(dest, input))
 }
 
+#[cfg(test)]
 fn paste_clipboard_preview_impl(dest: String) -> ClipboardResult<Vec<ConflictInfo>> {
+    preview_entries(dest, None)
+}
+
+fn preview_entries(
+    dest: String,
+    input: Option<ClipboardInput>,
+) -> ClipboardResult<Vec<ConflictInfo>> {
     reject_cloud_clipboard_path(&dest, "preview")?;
     let dest = map_clipboard_result(sanitize_path_follow(&dest, false))?;
-    let Some(state) = current_clipboard() else {
-        return Err(ClipboardError::new(
-            ClipboardErrorCode::ClipboardEmpty,
-            "Clipboard is empty",
-        ));
-    };
+    let state = resolve_clipboard_input(input)?;
 
     let mut conflicts = Vec::new();
     for src in state.entries.iter() {
@@ -265,6 +299,7 @@ pub async fn paste_clipboard_cmd(
     undo: tauri::State<'_, UndoState>,
     cancel: tauri::State<'_, CancelState>,
     progress_event: Option<String>,
+    input: Option<ClipboardInput>,
 ) -> ApiResult<Vec<String>> {
     let undo_inner = undo.clone_inner();
     let cancel_state = cancel.inner().clone();
@@ -277,6 +312,7 @@ pub async fn paste_clipboard_cmd(
             undo_inner,
             cancel_state,
             progress_event,
+            input,
         )
     })
     .await;
@@ -296,17 +332,20 @@ fn paste_clipboard_impl(
     undo_inner: std::sync::Arc<std::sync::Mutex<crate::undo::UndoManager>>,
     cancel_state: CancelState,
     progress_event: Option<String>,
+    input: Option<ClipboardInput>,
 ) -> ClipboardResult<Vec<String>> {
-    paste_clipboard_core(
+    paste_entries_core(
         Some(&app),
         dest,
         policy,
         undo_inner,
         cancel_state,
         progress_event,
+        input,
     )
 }
 
+#[cfg(test)]
 fn paste_clipboard_core(
     app: Option<&tauri::AppHandle>,
     dest: String,
@@ -315,14 +354,33 @@ fn paste_clipboard_core(
     cancel_state: CancelState,
     progress_event: Option<String>,
 ) -> ClipboardResult<Vec<String>> {
+    paste_entries_core(
+        app,
+        dest,
+        policy,
+        undo_inner,
+        cancel_state,
+        progress_event,
+        None,
+    )
+}
+
+fn paste_entries_core(
+    app: Option<&tauri::AppHandle>,
+    dest: String,
+    policy: Option<String>,
+    undo_inner: std::sync::Arc<std::sync::Mutex<crate::undo::UndoManager>>,
+    cancel_state: CancelState,
+    progress_event: Option<String>,
+    input: Option<ClipboardInput>,
+) -> ClipboardResult<Vec<String>> {
     if app.is_some_and(runtime_lifecycle::is_shutting_down) {
         return Err(ClipboardError::cancelled());
     }
     reject_cloud_clipboard_path(&dest, "paste")?;
     let dest = map_clipboard_result(sanitize_path_follow(&dest, false))?;
-    let state = current_clipboard().ok_or_else(|| {
-        ClipboardError::new(ClipboardErrorCode::ClipboardEmpty, "Clipboard is empty")
-    })?;
+    let explicit_input = input.is_some();
+    let state = resolve_clipboard_input(input)?;
     let policy = policy
         .map(|p| policy_from_str(&p))
         .transpose()?
@@ -531,9 +589,11 @@ fn paste_clipboard_core(
         }
     }
 
-    if let ClipboardMode::Cut = state.mode {
+    if !explicit_input && state.mode == ClipboardMode::Cut {
         let mut guard = CLIPBOARD.lock().unwrap();
-        *guard = None;
+        if guard.as_ref() == Some(&state) {
+            *guard = None;
+        }
     }
 
     Ok(created)

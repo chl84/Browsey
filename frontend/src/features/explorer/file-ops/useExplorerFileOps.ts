@@ -15,6 +15,7 @@ import {
   pasteClipboardCmd,
   pasteClipboardPreview,
   getSystemClipboardPaths,
+  type PasteSources,
 } from '../services/clipboard.service'
 import {
   copyMixedEntryTo,
@@ -42,6 +43,12 @@ type ConflictItem = {
   target: string
   is_dir: boolean
 }
+
+type PasteOperation = Readonly<{
+  dest: string
+  input: PasteSources
+  clipboard: { mode: 'copy' | 'cut'; paths: Set<string> } | null
+}>
 
 const isCloudPath = (path: string) => path.startsWith('rclone://')
 const CLOUD_REFRESH_DEBOUNCE_MS = 200
@@ -125,7 +132,8 @@ type Deps = {
 }
 
 export const useExplorerFileOps = (deps: Deps) => {
-  let conflictDest: string | null = null
+  let conflictOperation: PasteOperation | null = null
+  let pasteBusy = false
   let extracting = false
   let duplicateScanToken = 0
   let activeDuplicateProgressEvent: string | null = null
@@ -143,27 +151,25 @@ export const useExplorerFileOps = (deps: Deps) => {
   const clearConflictState = () => {
     conflictModalOpen.set(false)
     conflictList.set([])
-    conflictDest = null
+    conflictOperation = null
   }
 
-  const getClipboardPaths = () => Array.from(get(clipboardState).paths)
-
-  const clearCutClipboardAfterMoveSuccess = async () => {
-    if (get(clipboardState).mode !== 'cut') return
+  const clearCutClipboardAfterMoveSuccess = async (operation: PasteOperation) => {
+    // A drop does not own the clipboard. A completed paste must not clear a newer selection.
+    if (operation.input.mode !== 'cut' || !operation.clipboard
+      || get(clipboardState) !== operation.clipboard) return
     clearClipboardState()
+    deps.setClipboardPaths(new Set())
     try {
-      await setClipboardCmd([], 'copy')
       await clearSystemClipboard()
     } catch {
       // Ignore; move already succeeded.
     }
-    deps.setClipboardPaths(new Set())
   }
 
   type PasteRoute = 'local' | 'cloud' | 'local_to_cloud' | 'cloud_to_local' | 'unsupported'
 
-  const classifyPasteRoute = (dest: string): PasteRoute => {
-    const sources = getClipboardPaths()
+  const classifyPasteRoute = ({ dest, input: { paths: sources } }: PasteOperation): PasteRoute => {
     if (sources.length === 0) return isCloudPath(dest) ? 'cloud' : 'local'
     const sourceCloudCount = sources.filter(isCloudPath).length
     const destCloud = isCloudPath(dest)
@@ -248,8 +254,8 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
   }
 
-  const runCloudPaste = async (target: string, policy: 'rename' | 'overwrite' = 'rename') => {
-    const state = get(clipboardState)
+  const runCloudPaste = async (operation: PasteOperation, policy: 'rename' | 'overwrite' = 'rename') => {
+    const { dest: target, input: state } = operation
     const sources = Array.from(state.paths)
     if (sources.length === 0) {
       deps.showToast('Clipboard is empty')
@@ -319,7 +325,7 @@ export const useExplorerFileOps = (deps: Deps) => {
       }
 
       deps.activityApi.hideSoon()
-      await clearCutClipboardAfterMoveSuccess()
+      await clearCutClipboardAfterMoveSuccess(operation)
       refreshCloudViewAfterWrite('Paste')
       return true
     } catch (err) {
@@ -330,13 +336,13 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
   }
 
-  const runPaste = async (target: string, policy: 'rename' | 'overwrite' = 'rename') => {
-    const route = classifyPasteRoute(target)
+  const runPaste = async (operation: PasteOperation, policy: 'rename' | 'overwrite' = 'rename') => {
+    const { dest: target, input: state } = operation
+    const route = classifyPasteRoute(operation)
     if (route === 'cloud') {
-      return runCloudPaste(target, policy)
+      return runCloudPaste(operation, policy)
     }
     if (route === 'local_to_cloud' || route === 'cloud_to_local') {
-      const state = get(clipboardState)
       const sources = Array.from(state.paths)
       if (sources.length === 0) {
         deps.showToast('Clipboard is empty')
@@ -444,7 +450,7 @@ export const useExplorerFileOps = (deps: Deps) => {
 
         if (route === 'local_to_cloud') {
           deps.activityApi.hideSoon()
-          await clearCutClipboardAfterMoveSuccess()
+          await clearCutClipboardAfterMoveSuccess(operation)
           refreshCloudViewAfterWrite('Paste')
           return true
         }
@@ -455,7 +461,7 @@ export const useExplorerFileOps = (deps: Deps) => {
           deps.showToast('Paste completed, but refresh failed. Press F5 to refresh.', 3500)
         }
         deps.activityApi.hideSoon()
-        await clearCutClipboardAfterMoveSuccess()
+        await clearCutClipboardAfterMoveSuccess(operation)
         return true
       } catch (err) {
         deps.activityApi.clearNow()
@@ -480,7 +486,7 @@ export const useExplorerFileOps = (deps: Deps) => {
       deps.showToast('Mixed local/cloud paste is not supported yet')
       return false
     }
-    const mode = get(clipboardState).mode
+    const mode = state.mode
     const progressEvent = `${mode}-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       await deps.activityApi.start(
@@ -488,10 +494,10 @@ export const useExplorerFileOps = (deps: Deps) => {
         progressEvent,
         () => deps.activityApi.requestCancel(progressEvent),
       )
-      await pasteClipboardCmd(target, policy, progressEvent)
+      await pasteClipboardCmd(target, policy, progressEvent, state)
       await deps.reloadCurrent()
       deps.activityApi.hideSoon()
-      await clearCutClipboardAfterMoveSuccess()
+      await clearCutClipboardAfterMoveSuccess(operation)
       return true
     } catch (err) {
       deps.activityApi.clearNow()
@@ -501,9 +507,25 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
   }
 
-  const handlePasteOrMove = async (dest: string) => {
+  const handlePasteOrMove = async (dest: string, input?: PasteSources) => {
+    if (pasteBusy || conflictOperation) {
+      deps.showToast('Finish or cancel the current transfer first')
+      return false
+    }
+    const clipboard = get(clipboardState)
+    const source = input ?? { mode: clipboard.mode, paths: Array.from(clipboard.paths) }
+    const operation: PasteOperation = Object.freeze({
+      dest,
+      input: Object.freeze({ mode: source.mode, paths: Object.freeze([...source.paths]) }),
+      clipboard: input ? null : clipboard,
+    })
+    if (operation.input.paths.length === 0) {
+      deps.showToast('Clipboard is empty')
+      return false
+    }
+    pasteBusy = true
     try {
-      const route = classifyPasteRoute(dest)
+      const route = classifyPasteRoute(operation)
       if (route === 'unsupported') {
         deps.showToast('Mixed local/cloud paste is not supported yet')
         return false
@@ -511,33 +533,35 @@ export const useExplorerFileOps = (deps: Deps) => {
 
       const conflicts =
         route === 'cloud'
-          ? (await previewCloudConflicts(getClipboardPaths(), dest)).map((c) => ({
+          ? (await previewCloudConflicts([...operation.input.paths], dest)).map((c) => ({
               src: c.src,
               target: c.target,
               is_dir: c.isDir,
             }))
           : route === 'local_to_cloud' || route === 'cloud_to_local'
-            ? (await previewMixedTransferConflicts(getClipboardPaths(), dest)).map((c) => ({
+            ? (await previewMixedTransferConflicts([...operation.input.paths], dest)).map((c) => ({
                 src: c.src,
                 target: c.target,
                 is_dir: c.isDir,
               }))
-          : await pasteClipboardPreview(dest)
+          : await pasteClipboardPreview(dest, operation.input)
       if (conflicts && conflicts.length > 0) {
         const destNorm = normalizePath(dest)
         const selfPaste = conflicts.every((c) => normalizePath(parentPath(c.src)) === destNorm)
         if (selfPaste) {
-          return await runPaste(dest, 'rename')
+          return await runPaste(operation, 'rename')
         }
         conflictList.set(conflicts)
-        conflictDest = dest
+        conflictOperation = operation
         conflictModalOpen.set(true)
         return false
       }
-      return await runPaste(dest, 'rename')
+      return await runPaste(operation, 'rename')
     } catch (err) {
       deps.showToast(`Paste failed: ${getErrorMessage(err)}`)
       return false
+    } finally {
+      pasteBusy = false
     }
   }
 
@@ -579,13 +603,14 @@ export const useExplorerFileOps = (deps: Deps) => {
   }
 
   const resolveConflicts = async (policy: 'rename' | 'overwrite') => {
-    if (!conflictDest) return
-    conflictModalOpen.set(false)
+    if (pasteBusy || !conflictOperation) return
+    const operation = conflictOperation
+    clearConflictState()
+    pasteBusy = true
     try {
-      await runPaste(conflictDest, policy)
+      await runPaste(operation, policy)
     } finally {
-      conflictDest = null
-      conflictList.set([])
+      pasteBusy = false
     }
   }
 
