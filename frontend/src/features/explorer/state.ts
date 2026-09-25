@@ -550,14 +550,18 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   }
 
   let lastMountPaths: string[] = []
+  let mountsRequest = 0
   const loadPartitions = async (options: { forceNetworkRefresh?: boolean } = {}) => {
+    const request = ++mountsRequest
     const { forceNetworkRefresh = false } = options
     try {
       const result = await listMounts()
+      if (request !== mountsRequest) return
       partitions.set(result)
       if (get(current) === 'Network') {
         try {
           const networkEntries = await listNetworkEntries(forceNetworkRefresh)
+          if (request !== mountsRequest || get(current) !== 'Network') return
           entries.set(sortExplorerEntriesInMemory(networkEntries, sortPayload()))
           await refreshNetworkNotice(networkEntries)
           callbacks.onEntriesChanged?.()
@@ -565,11 +569,12 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
           console.error('Failed to list network entries', err)
         }
       }
+      if (request !== mountsRequest) return
       const nextPaths = result.map((p) => normalizePath(p.path))
-      const removedMount = lastMountPaths.find((p) => !nextPaths.includes(p))
+      const currentMountRemoved = lastMountPaths.some((p) => !nextPaths.includes(p) && isUnderMount(get(current), p))
       lastMountPaths = nextPaths
 
-      if (removedMount && isUnderMount(get(current), removedMount)) {
+      if (currentMountRemoved) {
         error.set('Volume disconnected; returning to Home')
         void load(undefined)
       }

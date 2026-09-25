@@ -24,6 +24,9 @@ export type UsbFormatResult = {
 
 export const ejectDrive = (path: string) => invoke<void>('eject_drive', { path })
 
+export const isUnmountedUsb = (path: string) => path.startsWith('usb-volume://')
+export const mountUsbVolume = (path: string) => invoke<string>('mount_usb_volume', { path })
+
 export const formatRemovablePartition = (
   path: string,
   filesystem: 'exfat' | 'fat32' | 'ext4' | 'btrfs',

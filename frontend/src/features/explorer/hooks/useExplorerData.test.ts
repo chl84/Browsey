@@ -1,7 +1,8 @@
 import { writable } from 'svelte/store'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { listenMock, eventHandlers, createExplorerStateMock } = vi.hoisted(() => ({
+const { listenMock, eventHandlers, createExplorerStateMock, cleanups } = vi.hoisted(() => ({
+  cleanups: [] as Array<() => void>,
   listenMock: vi.fn(),
   eventHandlers: new Map<string, (event: { payload: unknown }) => void>(),
   createExplorerStateMock: vi.fn(),
@@ -11,7 +12,10 @@ vi.mock('svelte', async () => {
   const actual = await vi.importActual<typeof import('svelte')>('svelte')
   return {
     ...actual,
-    onMount: (fn: () => void | (() => void)) => fn(),
+    onMount: (fn: () => void | (() => void)) => {
+      const cleanup = fn()
+      if (cleanup) cleanups.push(cleanup)
+    },
   }
 })
 
@@ -28,6 +32,10 @@ import { useExplorerData } from './useExplorerData'
 const asyncNoop = vi.fn(async () => {})
 
 describe('useExplorerData cloud refresh event', () => {
+  afterEach(() => {
+    cleanups.splice(0).forEach((cleanup) => cleanup())
+    vi.useRealTimers()
+  })
   beforeEach(() => {
     vi.useRealTimers()
     vi.clearAllMocks()
@@ -183,20 +191,41 @@ describe('useExplorerData cloud refresh event', () => {
     mountsPollMs.set(40)
 
     useExplorerData()
-    await vi.waitFor(() => {
-      expect(loadPartitionsMock).toHaveBeenCalledTimes(1)
-    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(eventHandlers.has('volumes-changed')).toBe(true)
+    loadPartitionsMock.mockClear()
 
     await vi.advanceTimersByTimeAsync(40)
-    expect(loadPartitionsMock).toHaveBeenCalledTimes(2)
+    expect(loadPartitionsMock).toHaveBeenCalledTimes(1)
 
     mountsPollMs.set(120)
     await Promise.resolve()
     await vi.advanceTimersByTimeAsync(80)
-    expect(loadPartitionsMock).toHaveBeenCalledTimes(2)
+    expect(loadPartitionsMock).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(40)
-    expect(loadPartitionsMock).toHaveBeenCalledTimes(3)
+    expect(loadPartitionsMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('debounces volume notifications even with polling disabled and cleans up listeners', async () => {
+    vi.useFakeTimers()
+    const { loadPartitionsMock } = installExplorerStateMock('~')
+    useExplorerData()
+    await vi.advanceTimersByTimeAsync(0)
+    loadPartitionsMock.mockClear()
+    const handler = eventHandlers.get('volumes-changed')
+    expect(handler).toBeTypeOf('function')
+    handler?.({ payload: null })
+    handler?.({ payload: null })
+    await vi.advanceTimersByTimeAsync(199)
+    expect(loadPartitionsMock).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(loadPartitionsMock).toHaveBeenCalledOnce()
+    handler?.({ payload: null })
+    cleanups.splice(0).forEach((cleanup) => cleanup())
+    expect(eventHandlers.has('volumes-changed')).toBe(false)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(loadPartitionsMock).toHaveBeenCalledOnce()
   })
 
   it('starts cancellable activity for interactive cloud directory loads and hides it on success', async () => {

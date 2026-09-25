@@ -3,6 +3,7 @@ import { get, type Readable, type Writable } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import { connectNetworkUri, isMountUri, statCloudEntry } from '@/features/network'
 import { entryKind } from '../services/files.service'
+import { isUnmountedUsb, mountUsbVolume } from '../services/drives.service'
 import { createSelectionMemory } from '../selection/selectionMemory'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
@@ -249,6 +250,16 @@ export const useExplorerNavigation = (deps: Deps) => {
   }
 
   const openPartition = async (path: string) => {
+    if (isUnmountedUsb(path)) {
+      try {
+        const mountedPath = await mountUsbVolume(path)
+        await deps.loadPartitions()
+        await loadDirIfIdle(mountedPath)
+      } catch (err) {
+        deps.showToast(`Mount failed: ${getErrorMessage(err)}`)
+      }
+      return
+    }
     if (isCloudPath(path)) {
       await loadDirIfIdle(path)
       return

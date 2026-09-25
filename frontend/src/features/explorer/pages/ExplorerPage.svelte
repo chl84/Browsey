@@ -156,6 +156,8 @@
   let formatFilesystem: UsbFilesystem = 'exfat'
   let formatLabel = ''
   let formatInfo: UsbFormatInfo | null = null
+  let formatError = ''
+  let formatRequest = 0
   let formatResult: UsbFormatResult | null = null
 
   // Drag & clipboard
@@ -1690,32 +1692,44 @@
   }
 
   const handleSidebarPartitionFormat = async (part: Partition) => {
-    if (!part.removable) return
+    if (!part.removable || formatting) return
+    const request = ++formatRequest
     formatTarget = part
+    formatError = ''
     formatInfo = null
     formatResult = null
     formatLabel = ''
     try {
-      formatInfo = await getRemovableUsbFormatInfo(part.path)
+      const info = await getRemovableUsbFormatInfo(part.path)
+      if (request !== formatRequest) return
+      formatInfo = info
       const firstAvailable = formatInfo.filesystems.find((item) => item.available)
       if (firstAvailable) formatFilesystem = firstAvailable.id
     } catch (err) {
-      formatTarget = null
-      showToast(`USB inspection failed: ${getErrorMessage(err)}`)
+      if (request !== formatRequest) return
+      formatError = `USB inspection failed: ${getErrorMessage(err)}`
     }
   }
 
   const confirmFormatPartition = async () => {
-    if (!formatTarget || formatting) return
+    if (!formatTarget || !formatInfo || formatting) return
     formatting = true
+    formatError = ''
     try {
       formatResult = await formatRemovablePartition(formatTarget.path, formatFilesystem, formatLabel)
       showToast(`Formatted ${formatTarget.label} as ${formatResult.filesystem}`)
       await loadPartitions({ forceNetworkRefresh: true })
     } catch (err) {
-      showToast(`Format failed: ${getErrorMessage(err)}`)
+      formatError = `Format failed: ${getErrorMessage(err)}`
+      // A failed mount can follow a successful erase: inspect again before
+      // allowing another destructive request, and refresh even on failure.
+      formatInfo = null
+      await loadPartitions({ forceNetworkRefresh: true })
     } finally {
       formatting = false
+      // Unmounting invalidates inotify watches, even if the new filesystem
+      // reuses the same mount path before the next mount-list refresh.
+      await reloadCurrent()
     }
   }
 
@@ -2069,6 +2083,8 @@
   bind:label={formatLabel}
   result={formatResult}
   busy={formatting}
+  error={formatError}
+  onRetry={() => { if (formatTarget) void handleSidebarPartitionFormat(formatTarget) }}
   onConfirm={confirmFormatPartition}
   onOpen={() => {
     if (formatResult?.mountPath) handleSidebarPartitionSelect(formatResult.mountPath)
@@ -2077,6 +2093,7 @@
   }}
   onCancel={() => {
     if (!formatting) {
+      formatRequest++
       formatTarget = null
       formatResult = null
     }

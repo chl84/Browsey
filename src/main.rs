@@ -19,6 +19,8 @@ mod statusbar;
 mod svg_options;
 mod tasks;
 mod undo;
+#[cfg(target_os = "linux")]
+mod volume_monitor;
 mod watcher;
 
 use std::io::Write;
@@ -245,6 +247,14 @@ fn main() {
         .manage(UndoState::default())
         .manage(RuntimeLifecycle::default())
         .setup(|app| {
+            #[cfg(target_os = "linux")]
+            {
+                let monitor = volume_monitor::VolumeMonitor::default();
+                if let Err(error) = monitor.start(app.handle().clone()) {
+                    warn!(%error, "volume notifications unavailable; using polling");
+                }
+                app.manage(monitor);
+            }
             for window in &app.config().app.windows {
                 if window.create {
                     continue;
@@ -362,6 +372,7 @@ fn main() {
             format_removable_partition,
             get_removable_usb_format_info,
             mount_partition,
+            mount_usb_volume,
             open_network_uri,
             classify_network_uri,
             resolve_mounted_path_for_uri,
@@ -415,6 +426,10 @@ fn main() {
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Exit = event {
             runtime_lifecycle::begin_shutdown_from_app(app_handle);
+            #[cfg(target_os = "linux")]
+            if let Some(monitor) = app_handle.try_state::<volume_monitor::VolumeMonitor>() {
+                monitor.stop();
+            }
             if let Some(cancel) = app_handle.try_state::<CancelState>() {
                 if let Err(error) = cancel.cancel_all() {
                     warn!(%error, "failed to cancel running tasks during shutdown");
