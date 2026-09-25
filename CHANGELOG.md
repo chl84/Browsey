@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Wait for the actual UDisks formatting reply instead of the CLI's default timeout; treat lost replies as unknown status and never automatically repeat an erase.
+- Check device-scoped UDisks jobs before formatting or retrying, and reject overlapping Browsey formatting requests.
+- Reuse a shared progress bar in the topbar and USB format dialog, showing real per-job percentages only when available and indeterminate progress otherwise.
+- Add a private D-Bus regression test with a 26-second simulated format, plus UI tests for progress and uncertain completion.
+
 - Keep compression failures visible and allow retry; prevent duplicate submissions from closing the dialog.
 - Keep Open With selection inside the filtered app list and correct its empty-state text.
 - Preserve directory monitoring on rejected USB formatting requests and reattach watches after formatting.

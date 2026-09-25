@@ -55,9 +55,9 @@ fn command_output_text(cmd: &str, args: &[&str]) -> Result<String, CmdError> {
         parts.push(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
     let msg = if parts.is_empty() {
-        format!("exit status {}", output.status)
+        output.status.to_string()
     } else {
-        format!("exit status {}: {}", output.status, parts.join(" | "))
+        format!("{}: {}", output.status, parts.join(" | "))
     };
     let busy = msg.to_lowercase().contains("busy");
     Err(CmdError { message: msg, busy })
@@ -211,6 +211,22 @@ pub struct UsbFormatResult {
     size_bytes: u64,
     filesystem: String,
     label: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct UsbFormatProgress {
+    pub phase: String,
+    pub percent: Option<f64>,
+}
+
+#[cfg(not(target_os = "windows"))]
+impl UsbFormatProgress {
+    pub(super) fn new(phase: &str, percent: Option<f64>) -> Self {
+        Self {
+            phase: phase.to_owned(),
+            percent,
+        }
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -369,107 +385,6 @@ fn unmount_mounted_partitions(listing: &LsblkOutput, disk: &str) -> NetworkResul
         })?;
     }
     Ok(())
-}
-
-#[cfg(not(target_os = "windows"))]
-fn device_from_udisks_object_path(object_path: &str) -> NetworkResult<String> {
-    let name = object_path
-        .rsplit('/')
-        .next()
-        .filter(|name| {
-            !name.is_empty()
-                && name
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-        })
-        .ok_or_else(|| {
-            NetworkError::new(
-                NetworkErrorCode::FormatFailed,
-                "Could not identify the newly created USB partition.",
-            )
-        })?;
-    Ok(format!("/dev/{name}"))
-}
-
-#[cfg(not(target_os = "windows"))]
-fn create_partition_and_format(
-    disk_object_path: &str,
-    filesystem: UsbFilesystem,
-    label: Option<&str>,
-) -> NetworkResult<String> {
-    let format_options = label
-        .map(|label| format!("{{'label': <'{label}'>}}"))
-        .unwrap_or_else(|| "{}".to_string());
-    let output = command_output_text(
-        "gdbus",
-        &[
-            "call",
-            "--system",
-            "--dest",
-            "org.freedesktop.UDisks2",
-            "--object-path",
-            disk_object_path,
-            "--method",
-            "org.freedesktop.UDisks2.PartitionTable.CreatePartitionAndFormat",
-            "0",
-            "0",
-            "",
-            "",
-            "{}",
-            filesystem.udisks_type(),
-            &format_options,
-        ],
-    )
-    .map_err(|error| {
-        NetworkError::new(
-            NetworkErrorCode::FormatFailed,
-            format!("Could not create the USB partition: {}", error.message),
-        )
-    })?;
-    let object_path = output
-        .split('\'')
-        .find(|value| value.starts_with("/org/freedesktop/UDisks2/block_devices/"))
-        .ok_or_else(|| {
-            NetworkError::new(
-                NetworkErrorCode::FormatFailed,
-                "UDisks did not return the new USB partition.",
-            )
-        })?;
-    device_from_udisks_object_path(object_path)
-}
-
-#[cfg(not(target_os = "windows"))]
-fn format_removable_usb_disk(
-    disk: &str,
-    filesystem: UsbFilesystem,
-    label: Option<&str>,
-) -> NetworkResult<String> {
-    let disk_object_path = udisks_object_path(disk)?;
-    command_output(
-        "gdbus",
-        &[
-            "call",
-            "--system",
-            "--dest",
-            "org.freedesktop.UDisks2",
-            "--object-path",
-            &disk_object_path,
-            "--method",
-            "org.freedesktop.UDisks2.Block.Format",
-            "gpt",
-            "{}",
-        ],
-    )
-    .map_err(|error| {
-        NetworkError::new(
-            NetworkErrorCode::FormatFailed,
-            format!(
-                "Could not create a new USB partition table: {}",
-                error.message
-            ),
-        )
-    })?;
-    create_partition_and_format(&disk_object_path, filesystem, label)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -781,11 +696,14 @@ pub async fn format_removable_partition(
     path: String,
     filesystem: String,
     label: String,
+    on_progress: tauri::ipc::Channel<UsbFormatProgress>,
 ) -> ApiResult<UsbFormatResult> {
     // Linux inotify watches do not hold mounts busy. Keep the current directory
     // watch alive, especially when validation or authorization fails.
     let result = tauri::async_runtime::spawn_blocking(move || {
-        format_removable_partition_impl(&path, &filesystem, &label)
+        format_removable_partition_impl(&path, &filesystem, &label, &|progress| {
+            let _ = on_progress.send(progress);
+        })
     })
     .await
     .map_err(|error| {
@@ -804,6 +722,7 @@ pub async fn format_removable_partition(
     _path: String,
     _filesystem: String,
     _label: String,
+    _on_progress: tauri::ipc::Channel<UsbFormatProgress>,
 ) -> ApiResult<UsbFormatResult> {
     map_api_result(Err(NetworkError::new(
         NetworkErrorCode::FormatNotAllowed,
@@ -825,7 +744,9 @@ fn format_removable_partition_impl(
     path: &str,
     filesystem: &str,
     label: &str,
+    report: &(dyn Fn(UsbFormatProgress) + Sync),
 ) -> NetworkResult<UsbFormatResult> {
+    report(UsbFormatProgress::new("Checking USB drive", None));
     let filesystem = UsbFilesystem::parse(filesystem)?;
     if !filesystem.is_available() {
         return Err(NetworkError::new(
@@ -834,17 +755,22 @@ fn format_removable_partition_impl(
         ));
     }
     let label = volume_label(label)?;
+    let _guard = super::usb_format::acquire_format_lock()?;
     let (listing, disk) = removable_usb_disk_for_mount(path)?;
+    let client = super::usb_format::Client::connect(&udisks_object_path(&disk)?)?;
+    client.ensure_idle()?;
     let size_bytes = listing
         .blockdevices
         .iter()
         .find(|entry| entry.path == disk)
         .map(|entry| entry.size)
         .unwrap_or_default();
+    report(UsbFormatProgress::new("Unmounting USB volumes", None));
     unmount_mounted_partitions(&listing, &disk)?;
-    let new_partition = format_removable_usb_disk(&disk, filesystem, label.as_deref())?;
+    let new_partition = client.format_disk(filesystem.udisks_type(), label.as_deref(), report)?;
     // Formatting replaces the partition table and necessarily unmounts the old filesystem.
     // Mount the newly created filesystem so it is immediately visible in Partitions.
+    report(UsbFormatProgress::new("Mounting USB drive", None));
     mount_new_partition(&new_partition, filesystem)?;
     invalidate_network_discovery_cache();
     Ok(UsbFormatResult {
@@ -860,7 +786,9 @@ fn format_removable_partition_impl(
 #[tauri::command]
 pub async fn get_removable_usb_format_info(path: String) -> ApiResult<UsbFormatInfo> {
     let result = tauri::async_runtime::spawn_blocking(move || {
+        let _guard = super::usb_format::acquire_format_lock()?;
         let (listing, disk) = removable_usb_disk_for_mount(&path)?;
+        super::usb_format::Client::connect(&udisks_object_path(&disk)?)?.ensure_idle()?;
         let device = listing
             .blockdevices
             .iter()
@@ -1171,9 +1099,13 @@ mod tests {
 
     #[test]
     fn invalid_format_requests_fail_before_resolving_or_touching_devices() {
-        assert!(
-            format_removable_partition_impl("/definitely/not/a/device", "invalid", "OK").is_err()
-        );
+        assert!(format_removable_partition_impl(
+            "/definitely/not/a/device",
+            "invalid",
+            "OK",
+            &|_| {}
+        )
+        .is_err());
         assert!(volume_label("bad/name").is_err());
     }
 

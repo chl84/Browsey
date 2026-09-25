@@ -34,7 +34,7 @@
 
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import TopbarActionMenu from './TopbarActionMenu.svelte'
-import PulseTravelIndicator from '@/shared/ui/PulseTravelIndicator.svelte'
+import ProgressBar from '@/shared/ui/ProgressBar.svelte'
 
   const appWindow = getCurrentWindow()
 
@@ -273,13 +273,9 @@ import PulseTravelIndicator from '@/shared/ui/PulseTravelIndicator.svelte'
         {#if activity.detail}
           <span class="detail">{activity.detail}</span>
         {/if}
+        <ProgressBar percent={activity.percent} label={activity.label} width="var(--topbar-progress-width)" height="var(--topbar-progress-height)" />
         {#if activity.percent !== null}
-          <div class="progress-bar" aria-hidden="true">
-            <div class="progress-fill" style={`width:${Math.min(100, Math.max(0, activity.percent))}%;`}></div>
-          </div>
           <span class="percent">{Math.min(100, Math.max(0, activity.percent)).toFixed(0)}%</span>
-        {:else}
-          <PulseTravelIndicator />
         {/if}
         {#if activity.cancel}
           <button
@@ -443,21 +439,6 @@ import PulseTravelIndicator from '@/shared/ui/PulseTravelIndicator.svelte'
   .pill-cancel:disabled {
     cursor: not-allowed;
     opacity: 0.5;
-  }
-
-  .progress-bar {
-    width: var(--topbar-progress-width);
-    height: var(--topbar-progress-height);
-    border-radius: 0;
-    background: var(--border);
-    overflow: hidden;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: var(--border-accent);
-    border-radius: 0;
-    transition: width 120ms ease;
   }
 
   .percent {

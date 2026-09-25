@@ -32,6 +32,9 @@ type MockClipboardState = {
 type E2eMockControl = {
   systemClipboard?: MockClipboardState
   failCommands?: string[]
+  formatHold?: boolean
+  formatProgress?: { phase: string; percent: number | null }
+  formatError?: { code: string; message: string }
   calls?: Array<{ cmd: string; args?: Record<string, unknown> }>
   partitions?: Array<{ label: string; path: string; fs?: string; removable?: boolean }>
 }
@@ -379,7 +382,14 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       ] as T
     case 'open_with':
       return undefined as T
-    case 'format_removable_partition':
+    case 'format_removable_partition': {
+      const control = e2eControl()
+      const channel = args?.onProgress as Channel<{ phase: string; percent: number | null }> | undefined
+      while (control?.formatHold) {
+        channel?.onmessage?.(control.formatProgress ?? { phase: 'Creating partition and filesystem', percent: null })
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      if (control?.formatError) throw control.formatError
       return {
         device: '/dev/sdz',
         mountPath: '/mock/USB',
@@ -387,6 +397,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
         filesystem: args?.filesystem ?? 'exFAT',
         label: args?.label || null,
       } as T
+    }
     case 'open_entry':
     case 'open_cloud_entry':
       return undefined as T

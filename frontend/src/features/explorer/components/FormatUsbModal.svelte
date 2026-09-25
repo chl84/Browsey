@@ -4,7 +4,8 @@
 
 <script lang="ts">
   import ModalShell from '@/shared/ui/ModalShell.svelte'
-  import type { UsbFilesystemOption, UsbFormatInfo, UsbFormatResult } from '../services/drives.service'
+  import ProgressBar from '@/shared/ui/ProgressBar.svelte'
+  import type { UsbFilesystemOption, UsbFormatInfo, UsbFormatResult, UsbFormatProgress } from '../services/drives.service'
 
   type UsbFilesystem = 'exfat' | 'fat32' | 'ext4' | 'btrfs'
 
@@ -15,6 +16,7 @@
   export let label = ''
   export let result: UsbFormatResult | null = null
   export let busy = false
+  export let progress: UsbFormatProgress | null = null
   export let error = ''
   export let onRetry: () => void = () => {}
   let copyStatus = ''
@@ -82,6 +84,17 @@
       <p class="muted">Inspecting the USB drive…</p>
     {/if}
 
+    {#if busy}
+      <section class="format-progress" aria-label="Formatting status">
+        <p role="status">{progress?.phase ?? 'Preparing USB drive'}</p>
+        <ProgressBar percent={progress?.percent ?? null} label="Formatting progress" />
+        {#if progress?.percent != null}
+          <p class="muted">{Math.round(progress.percent)}% of current step</p>
+        {/if}
+        <p class="muted">Do not unplug the USB drive. Formatting may take several minutes.</p>
+      </section>
+    {/if}
+
     {#if error}
       <div class="format-error" role="alert"><pre>{error}</pre></div>
       <button type="button" class="secondary" on:click={copyError}>Copy error details</button>
@@ -109,6 +122,8 @@
 {/if}
 
 <style>
+  .format-progress { display: grid; gap: 10px; }
+  .format-progress p { margin: 0; }
   .format-error { max-height: 180px; overflow: auto; }
   pre { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; color: var(--danger, var(--fg)); }
   .details { margin: 0; display: grid; gap: 6px; }

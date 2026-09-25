@@ -195,6 +195,7 @@ dependencies = [
  "chrono",
  "dirs-next",
  "flate2",
+ "gio",
  "image",
  "jpeg-decoder",
  "libc",

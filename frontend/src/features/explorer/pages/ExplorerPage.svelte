@@ -1,7 +1,7 @@
 <script lang="ts">
   // --- Imports -------------------------------------------------------------
   import { onMount, onDestroy, tick } from 'svelte'
-  import { getErrorMessage } from '@/shared/lib/error'
+  import { getErrorMessage, normalizeError } from '@/shared/lib/error'
   import { get } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, normalizePath, parentPath } from '@/features/explorer/utils'
   import { openEntry as openExplorerEntry } from '@/features/explorer/services/files.service'
@@ -21,6 +21,7 @@
     getRemovableUsbFormatInfo,
     type UsbFormatInfo,
     type UsbFormatResult,
+    type UsbFormatProgress,
   } from '@/features/explorer/services/drives.service'
   import FormatUsbModal, { type UsbFilesystem } from '@/features/explorer/components/FormatUsbModal.svelte'
   import { openConsole } from '@/features/explorer/services/console.service'
@@ -157,6 +158,7 @@
   let formatLabel = ''
   let formatInfo: UsbFormatInfo | null = null
   let formatError = ''
+  let formatProgress: UsbFormatProgress | null = null
   let formatRequest = 0
   let formatResult: UsbFormatResult | null = null
 
@@ -1715,18 +1717,24 @@
     if (!formatTarget || !formatInfo || formatting) return
     formatting = true
     formatError = ''
+    formatProgress = { phase: 'Checking USB drive', percent: null }
     try {
-      formatResult = await formatRemovablePartition(formatTarget.path, formatFilesystem, formatLabel)
+      formatResult = await formatRemovablePartition(formatTarget.path, formatFilesystem, formatLabel, (progress) => {
+        if (formatting) formatProgress = progress
+      })
       showToast(`Formatted ${formatTarget.label} as ${formatResult.filesystem}`)
       await loadPartitions({ forceNetworkRefresh: true })
     } catch (err) {
-      formatError = `Format failed: ${getErrorMessage(err)}`
+      const error = normalizeError(err)
+      const heading = error.code === 'format_status_unknown' ? 'Formatting status unknown' : error.code === 'format_busy' ? 'USB drive busy' : 'Format failed'
+      formatError = `${heading}: ${error.message}`
       // A failed mount can follow a successful erase: inspect again before
       // allowing another destructive request, and refresh even on failure.
       formatInfo = null
       await loadPartitions({ forceNetworkRefresh: true })
     } finally {
       formatting = false
+      formatProgress = null
       // Unmounting invalidates inotify watches, even if the new filesystem
       // reuses the same mount path before the next mount-list refresh.
       await reloadCurrent()
@@ -2083,6 +2091,7 @@
   bind:label={formatLabel}
   result={formatResult}
   busy={formatting}
+  progress={formatProgress}
   error={formatError}
   onRetry={() => { if (formatTarget) void handleSidebarPartitionFormat(formatTarget) }}
   onConfirm={confirmFormatPartition}

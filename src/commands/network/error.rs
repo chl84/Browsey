@@ -15,6 +15,8 @@ pub(super) enum NetworkErrorCode {
     EjectFailed,
     FormatNotAllowed,
     FormatFailed,
+    FormatBusy,
+    FormatStatusUnknown,
     TaskFailed,
 }
 
@@ -30,6 +32,8 @@ impl ErrorCode for NetworkErrorCode {
             Self::EjectFailed => "eject_failed",
             Self::FormatNotAllowed => "format_not_allowed",
             Self::FormatFailed => "format_failed",
+            Self::FormatBusy => "format_busy",
+            Self::FormatStatusUnknown => "format_status_unknown",
             Self::TaskFailed => "task_failed",
         }
     }

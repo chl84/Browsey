@@ -7,3 +7,5 @@ pub mod gio_mounts;
 pub mod mounts;
 pub mod sftp;
 pub mod uri;
+#[cfg(not(target_os = "windows"))]
+mod usb_format;
