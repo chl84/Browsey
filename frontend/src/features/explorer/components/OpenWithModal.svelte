@@ -15,16 +15,9 @@
   let selected: string | null = null
   let filtered: OpenWithApp[] = []
 
-  $: {
-    if (!open) {
-      filter = ''
-      selected = null
-    } else if (selected && apps.every((a) => a.id !== selected)) {
-      selected = null
-    } else if (!selected && apps.length > 0) {
-      selected = apps[0].id
-    }
-  }
+  $: if (!open) filter = ''
+  $: if (!open) selected = null
+  else if (!filtered.some((app) => app.id === selected)) selected = filtered[0]?.id ?? null
 
   $: filtered = filter
     ? apps.filter((app) => {
@@ -39,12 +32,12 @@
     : apps
 
   const confirm = () => {
-    if (busy) return
+    if (busy || loading || !selected || !filtered.some((app) => app.id === selected)) return
     onConfirm({
       appId: selected,
     })
   }
-  const hasSelection = () => Boolean(selected)
+  $: hasSelection = !loading && selected !== null && filtered.some((app) => app.id === selected)
 </script>
 
 {#if open}
@@ -65,7 +58,7 @@
         placeholder="Filter apps"
         bind:value={filter}
         on:keydown={(e) => {
-          if (e.key === 'Enter' && hasSelection() && !busy) {
+          if (e.key === 'Enter' && hasSelection && !busy) {
             e.preventDefault()
             confirm()
           }
@@ -75,7 +68,7 @@
         {#if loading}
           <div class="muted">Loading apps…</div>
         {:else if filtered.length === 0}
-          <div class="muted">No associated applications found. Add a custom command below.</div>
+          <div class="muted">{apps.length ? 'No applications match your filter.' : 'No associated applications found.'}</div>
         {:else}
           {#each filtered as app}
             <button
@@ -104,7 +97,7 @@
 
     <div slot="actions">
       <button type="button" class="secondary" on:click={onClose} disabled={busy}>Cancel</button>
-      <button type="button" on:click={confirm} disabled={!hasSelection() || busy}>
+      <button type="button" on:click={confirm} disabled={!hasSelection || busy}>
         {busy ? 'Opening…' : 'Open'}
       </button>
     </div>
