@@ -211,7 +211,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
         return
       }
       // Export is copy-only: the receiving app controls completion; never delete source files here.
-      void startNativeFileDrag(paths, 'copy').then(ok => {
+      void startNativeFileDrag(paths).then(ok => {
         if (!ok) deps.showToast('Native drag failed')
       }).catch(error => deps.showToast(`Native drag failed: ${getErrorMessage(error)}`))
       return

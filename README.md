@@ -104,6 +104,9 @@ For setup details, migration notes, and cloud limitations, see the docs site.
 - Hold Alt when starting a drag to copy local files to another app. Cloud files must first be copied/downloaded to a local folder; automatic cloud materialization for external drag is not implemented. Local and cloud sources cannot be combined in one selection.
 - These changes are not included in the published v1.0.2 release assets.
 
+Native drag startup/teardown coverage and the manual acceptance checklist are in
+[Native file drag regression checks](docs/testing-native-drag.md).
+
 ## Development
 1) Install system deps (above).
 2) Install frontend deps:

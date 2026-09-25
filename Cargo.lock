@@ -194,6 +194,7 @@ dependencies = [
  "bzip2",
  "chrono",
  "dirs-next",
+ "drag",
  "flate2",
  "gio",
  "image",
@@ -218,7 +219,6 @@ dependencies = [
  "tar",
  "tauri",
  "tauri-build",
- "tauri-plugin-drag",
  "tokio",
  "tracing",
  "tracing-appender",
@@ -845,7 +845,6 @@ dependencies = [
  "log",
  "objc",
  "raw-window-handle",
- "serde",
  "thiserror 1.0.69",
  "windows 0.52.0",
  "windows-core 0.58.0",
@@ -4300,38 +4299,6 @@ dependencies = [
  "syn 2.0.117",
  "tauri-codegen",
  "tauri-utils",
-]
-
-[[package]]
-name = "tauri-plugin"
-version = "2.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddde7d51c907b940fb573006cdda9a642d6a7c8153657e88f8a5c3c9290cd4aa"
-dependencies = [
- "anyhow",
- "glob",
- "plist",
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "tauri-utils",
- "toml 0.9.12+spec-1.1.0",
- "walkdir",
-]
-
-[[package]]
-name = "tauri-plugin-drag"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57788e3175d71de47f449e642ebf135e86a41279be1e4714c7eb8c682abb37ca"
-dependencies = [
- "base64 0.21.7",
- "drag",
- "serde",
- "serde_json",
- "tauri",
- "tauri-plugin",
- "thiserror 1.0.69",
 ]
 
 [[package]]

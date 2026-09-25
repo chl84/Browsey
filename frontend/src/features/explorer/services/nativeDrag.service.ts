@@ -1,27 +1,11 @@
-import { startDrag } from '@crabnebula/tauri-plugin-drag'
-import { resourceDir, join } from '@tauri-apps/api/path'
+import { invoke } from '../../../shared/lib/tauri'
 
-const resolveIcon = async (fallbackPath: string) => {
+// Copy-only: the receiving application owns the transfer. Do not retain an IPC
+// completion Channel in native GTK callbacks or delete the source on completion.
+export const startNativeFileDrag = async (paths: string[]) => {
+  if (paths.length === 0 || paths.some(path => path.startsWith('rclone://'))) return false
   try {
-    const resDir = await resourceDir()
-    const candidate = await join(resDir, 'icons', 'icon.png')
-    return candidate
-  } catch {
-    // ignore, fall through
-  }
-  return fallbackPath
-}
-
-export const startNativeFileDrag = async (paths: string[], mode: 'copy' | 'move' = 'copy') => {
-  if (!paths || paths.length === 0) return false
-  if (paths.some(path => path.startsWith('rclone://'))) return false
-  const iconPath = await resolveIcon(paths[0])
-  try {
-    await startDrag({
-      item: paths,
-      icon: iconPath,
-      mode,
-    })
+    await invoke<void>('start_native_file_drag', { paths })
     return true
   } catch (err) {
     console.error('native drag failed', err)

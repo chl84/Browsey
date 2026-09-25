@@ -463,6 +463,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     }
     case 'open_entry':
     case 'open_cloud_entry':
+    case 'start_native_file_drag':
       return undefined as T
     default:
       return null as T

@@ -35,7 +35,6 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
-    "@crabnebula/tauri-plugin-drag": "^2.1.0",
     "@tauri-apps/api": "^2.10.1"
   }
 }

@@ -26,6 +26,23 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('grid', { name: 'File list' })).toBeVisible()
 })
 
+test('Alt-drag exports through the copy-only command without changing clipboard or source', async ({ page }) => {
+  const notes = row(page, 'notes')
+  await notes.click()
+  await page.keyboard.press('Control+x')
+  const transfer = await page.evaluateHandle(() => new DataTransfer())
+  await notes.dispatchEvent('dragstart', { dataTransfer: transfer, altKey: true })
+  const calls = await page.evaluate(() => (window as unknown as {
+    __BROWSEY_E2E__: { calls: Array<{ cmd: string; args: unknown }> }
+  }).__BROWSEY_E2E__.calls)
+  expect(calls.filter(call => call.cmd === 'start_native_file_drag')).toEqual([
+    { cmd: 'start_native_file_drag', args: { paths: ['/mock/notes.txt'] } },
+  ])
+  expect(calls.filter(call => ['paste_clipboard_cmd', 'clear_system_clipboard', 'delete_entries'].includes(call.cmd))).toHaveLength(0)
+  await expect(notes).toBeVisible()
+  await transfer.dispose()
+})
+
 test('native drop copies its own file and preserves a previously cut selection', async ({ page }) => {
   const notes = row(page, 'notes')
   await notes.click()
