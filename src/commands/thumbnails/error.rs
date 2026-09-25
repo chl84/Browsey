@@ -16,6 +16,7 @@ pub(super) enum ThumbnailErrorCode {
     UnsupportedFormat,
     CacheFailed,
     Cancelled,
+    TimedOut,
     UnknownError,
 }
 
@@ -29,6 +30,7 @@ impl ErrorCode for ThumbnailErrorCode {
             Self::UnsupportedFormat => "unsupported_format",
             Self::CacheFailed => "cache_failed",
             Self::Cancelled => "cancelled",
+            Self::TimedOut => "timeout",
             Self::UnknownError => "unknown_error",
         }
     }
@@ -41,6 +43,9 @@ pub(super) struct ThumbnailError {
 }
 
 impl ThumbnailError {
+    pub(super) fn code(&self) -> ThumbnailErrorCode {
+        self.code
+    }
     pub(super) fn new(code: ThumbnailErrorCode, message: impl Into<String>) -> Self {
         Self {
             code,

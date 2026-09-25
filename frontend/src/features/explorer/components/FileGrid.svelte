@@ -106,12 +106,15 @@
 
   const observeThumb = (node: Element, payload: { entry: Entry; thumbnailsEnabled: boolean }) => {
     let binding: ReturnType<typeof thumbLoader.observe> | null = null
+    let previous = payload
+    const revision = (entry: Entry) => entry.modified == null && entry.size == null
+      ? undefined : JSON.stringify([entry.modified, entry.size])
 
     const bind = (next: { entry: Entry; thumbnailsEnabled: boolean }) => {
       binding?.destroy()
       binding = null
       if (next.thumbnailsEnabled && next.entry.kind === 'file') {
-        binding = thumbLoader.observe(node, next.entry.path)
+        binding = thumbLoader.observe(node, next.entry.path, revision(next.entry))
       }
     }
 
@@ -119,7 +122,13 @@
 
     return {
       update(next: { entry: Entry; thumbnailsEnabled: boolean }) {
-        bind(next)
+        if (next.entry.path === previous.entry.path && next.thumbnailsEnabled === previous.thumbnailsEnabled
+          && next.entry.kind === previous.entry.kind) {
+          binding?.update(next.entry.path, revision(next.entry))
+        } else {
+          bind(next)
+        }
+        previous = next
       },
       destroy() {
         binding?.destroy()

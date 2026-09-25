@@ -41,7 +41,7 @@ image = { version = "0.25.9", default-features = false, features = ["png", "jpeg
 jpeg-decoder = "0.3.2"
 blake3 = "1.8.3"
 num_cpus = "1.17.0"
-tokio = { version = "1.50.0", default-features = false, features = ["sync", "fs", "io-util"] }
+tokio = { version = "1.50.0", default-features = false, features = ["sync", "fs", "io-util", "time"] }
 resvg = "0.47.0"
 pdfium-render = "0.8.37"
 which = "8.0.0"

@@ -30,6 +30,8 @@ type MockClipboardState = {
 }
 
 type E2eMockControl = {
+  thumbnailFixture?: boolean
+  thumbnailHold?: boolean
   systemClipboard?: MockClipboardState
   failCommands?: string[]
   formatHold?: boolean
@@ -44,6 +46,7 @@ type E2eMockControl = {
 import { emitMockEvent } from './event'
 
 const ROOT = '/mock'
+const cancelledThumbnails = new Set<string>()
 
 const FILE_TREE: Record<string, ExplorerEntry[]> = {
   [ROOT]: [
@@ -210,14 +213,37 @@ const emptyFacets = {
 }
 
 export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
-  e2eControl()?.calls?.push({ cmd, args })
+  const control = e2eControl()
+  control?.calls?.push({ cmd, args })
   if (shouldFailCommand(cmd)) {
     throw new Error(`Simulated ${cmd} failure`)
   }
 
   switch (cmd) {
     case 'list_dir':
+      if (control?.thumbnailFixture) {
+        const current = (args?.path as string | undefined) || ROOT
+        const entries: ExplorerEntry[] = Array.from({ length: current === ROOT ? 100 : 1 }, (_, i) => ({
+          name: `photo-${i.toString().padStart(3, '0')}.jpg`,
+          path: `${current}/photo-${i.toString().padStart(3, '0')}.jpg`,
+          kind: 'file', size: 4096, modified: '2026-09-25 12:00', iconId: 12,
+        }))
+        if (current === ROOT) entries.unshift(...cloneEntries(FILE_TREE[ROOT]))
+        return { current, entries } as T
+      }
       return listDirMock(args?.path as string | undefined) as T
+    case 'cancel_task':
+      cancelledThumbnails.add(String(args?.id))
+      return undefined as T
+    case 'get_thumbnail': {
+      const id = String(args?.requestId)
+      while (control?.thumbnailHold && !cancelledThumbnails.has(id)) {
+        await new Promise(resolve => setTimeout(resolve, 20))
+      }
+      if (cancelledThumbnails.delete(id)) throw new Error('Thumbnail cancelled')
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" fill="green"/></svg>'
+      return { path: `data:image/svg+xml,${encodeURIComponent(svg)}`, width: 96, height: 96, cached: false } as T
+    }
     case 'list_recent':
       return { current: 'recent://', entries: [] } as T
     case 'list_starred':
@@ -272,7 +298,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'reset_all_shortcuts':
       return [] as T
     case 'load_default_view':
-      return 'list' as T
+      return (control?.thumbnailFixture ? 'grid' : 'list') as T
     case 'load_show_hidden':
       return false as T
     case 'load_hidden_files_last':
