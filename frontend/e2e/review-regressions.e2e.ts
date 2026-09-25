@@ -92,6 +92,8 @@ test('hotplug exposes an unmounted USB and its keyboard menu mounts it', async (
   await page.keyboard.press('Home')
   await expect(page.getByRole('menuitem', { name: 'Mount and open' })).toBeFocused()
   await page.keyboard.press('End')
+  await expect(page.getByRole('menuitem', { name: 'Properties', exact: true })).toBeFocused()
+  await page.keyboard.press('ArrowUp')
   await expect(page.getByRole('menuitem', { name: 'Format…' })).toBeFocused()
   await page.keyboard.press('ArrowUp')
   await expect(page.getByRole('menuitem', { name: 'Mount and open' })).toBeFocused()

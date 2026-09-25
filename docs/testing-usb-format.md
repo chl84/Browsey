@@ -17,6 +17,8 @@ This test exports a simulated UDisks service on a private **session** bus, not t
 system bus. It checks the actual GIO method signatures, waits 26 seconds for the
 format reply, reads job progress, rejects a busy-device check, and resolves the
 returned device property. It never invokes mkfs, mounts, or writes to a block device.
+It also checks that `take-ownership` is a boolean set to `true` in the filesystem
+options for ext4, btrfs, exFAT, and FAT32, including formatting without a label.
 
 ## Runtime behavior
 
@@ -24,6 +26,11 @@ returned device property. It never invokes mkfs, mounts, or writes to a block de
 - Job queries are bounded separately; unavailable progress does not abort formatting.
 - Percentages describe the **current job**, not an estimated percentage of the whole workflow.
 - An uncertain reply never causes an automatic reformat. Reinspection checks jobs again.
+- New ext4/btrfs filesystem roots belong to the calling user via UDisks
+  `take-ownership`; this does not repair ownership on already-formatted media.
+- USB **Properties** reuses the ownership/permissions dialog for the mounted root.
+  Opening it does not change permissions, scan the drive recursively, or mount an
+  unmounted volume. Hidden/rename controls are not offered for mount roots.
 - Closing the client or losing its bus connection is not proof that UDisks stopped writing.
 - Physical formatting and filesystem integrity still require separate, explicit testing
   on disposable media; the automated tests are not a hardware validation.

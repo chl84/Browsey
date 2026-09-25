@@ -34,6 +34,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   let onPartitionSelect: (path: string) => void = () => {}
   let onPartitionEject: (path: string) => void = () => {}
   let onPartitionFormat: (part: Partition) => void = () => {}
+  let onPartitionProperties: (part: Partition) => void = () => {}
   export let pathInput = ''
   export let pathInputEl: HTMLInputElement | null = null
   let mode: 'address' | 'filter' = 'address'
@@ -219,6 +220,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
 
   let propertiesOpen = false
   let propertiesEntry: Entry | null = null
+  let propertiesPartition: Partition | null = null
   let propertiesMutationsLocked = false
   let propertiesCount = 1
   let propertiesSize: number | null = null
@@ -289,6 +291,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     onPartitionSelect: typeof onPartitionSelect
     onPartitionEject: typeof onPartitionEject
     onPartitionFormat: typeof onPartitionFormat
+    onPartitionProperties: typeof onPartitionProperties
   }
 
   type ExplorerShellTopbarProps = {
@@ -446,6 +449,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     onCloseOpenWith: typeof onCloseOpenWith
     propertiesOpen: typeof propertiesOpen
     propertiesEntry: typeof propertiesEntry
+    propertiesPartition: typeof propertiesPartition
     propertiesMutationsLocked: typeof propertiesMutationsLocked
     propertiesCount: typeof propertiesCount
     propertiesSize: typeof propertiesSize
@@ -502,6 +506,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     onPartitionSelect,
     onPartitionEject,
     onPartitionFormat,
+    onPartitionProperties,
   } = sidebarProps)
 
   $: ({
@@ -659,6 +664,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     onCloseOpenWith,
     propertiesOpen,
     propertiesEntry,
+    propertiesPartition,
     propertiesMutationsLocked,
     propertiesCount,
     propertiesSize,
@@ -716,6 +722,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
       onPartitionSelect={onPartitionSelect}
       onPartitionEject={onPartitionEject}
       onPartitionFormat={onPartitionFormat}
+      onPartitionProperties={onPartitionProperties}
     />
 
     <section class="content">
@@ -956,6 +963,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
 <PropertiesModal
   open={propertiesOpen}
   entry={propertiesEntry}
+  partition={propertiesPartition}
   mutationsLocked={propertiesMutationsLocked}
   count={propertiesCount}
   size={propertiesSize}

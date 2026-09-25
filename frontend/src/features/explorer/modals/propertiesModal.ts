@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store'
 import { invoke } from '@/shared/lib/tauri'
-import type { Entry } from '../model/types'
+import type { Entry, Partition } from '../model/types'
+import { isUnmountedUsb } from '../services/drives.service'
 import { parentPath } from '../utils'
 
 type AccessBit = boolean | 'mixed'
@@ -154,6 +155,7 @@ export type PermissionsState = {
 
 export type PropertiesState = {
   open: boolean
+  partition: Partition | null
   entry: Entry | null
   targets: Entry[]
   mutationsLocked: boolean
@@ -321,6 +323,7 @@ export const createPropertiesModal = (deps: Deps) => {
   const { computeDirStats, showToast } = deps
   const state = writable<PropertiesState>({
     open: false,
+    partition: null,
     entry: null,
     targets: [],
     mutationsLocked: false,
@@ -348,8 +351,10 @@ export const createPropertiesModal = (deps: Deps) => {
   let lastPermissionsErrorAt = 0
 
   const close = () => {
+    ++token
     state.set({
       open: false,
+      partition: null,
       entry: null,
       targets: [],
       mutationsLocked: false,
@@ -374,7 +379,7 @@ export const createPropertiesModal = (deps: Deps) => {
     ownershipPrincipalsLoadedToken = -1
   }
 
-  const openModal = async (entries: Entry[]) => {
+  const openModal = async (entries: Entry[], partition: Partition | null = null) => {
     const nextToken = ++token
     ownershipPrincipalsLoadedToken = -1
     const files = entries.filter((e) => e.kind === 'file')
@@ -386,11 +391,12 @@ export const createPropertiesModal = (deps: Deps) => {
 
     state.set({
       open: true,
+      partition,
       entry: entries.length === 1 ? entries[0] : null,
       targets: entries,
-      mutationsLocked: shouldLockMutations(entries),
+      mutationsLocked: shouldLockMutations(entries) || (partition !== null && singleVirtualUri),
       count: entries.length,
-      size: fileBytes,
+      size: partition ? null : fileBytes,
       itemCount: dirs.length === 0 ? fileCount : null,
       hidden: combine(entries.map((e) => e.hidden == true)),
       extraMetadataLoading: false,
@@ -412,12 +418,14 @@ export const createPropertiesModal = (deps: Deps) => {
       const entry = entries[0]
       if (!singleVirtualUri) {
         void loadPermissions(entry, nextToken)
-        void loadEntryTimes(entry, nextToken)
+        if (!partition) void loadEntryTimes(entry, nextToken)
       }
     } else {
       void loadPermissionsMulti(entries, nextToken)
     }
 
+    // Inspect the mount root, not every file on a potentially large USB drive.
+    if (partition) return
     if (localDirs.length > 0) {
       const { total, items } = await computeDirStats(
         localDirs.map((d) => d.path),
@@ -598,7 +606,7 @@ export const createPropertiesModal = (deps: Deps) => {
 
   const loadExtraIfNeeded = () => {
     const current = get(state)
-    if (!current.open || current.count !== 1 || !current.entry) return
+    if (!current.open || current.partition || current.count !== 1 || !current.entry) return
     if (current.extraMetadataLoading) return
     if (current.extraMetadata && current.extraMetadataPath === current.entry.path) return
     const activeToken = token
@@ -789,6 +797,12 @@ export const createPropertiesModal = (deps: Deps) => {
   return {
     state,
     open: openModal,
+    openPartition: (partition: Partition) => openModal([{
+      name: partition.label,
+      path: partition.path,
+      kind: 'dir',
+      iconId: 0,
+    }], { ...partition }),
     close,
     loadExtraIfNeeded,
     toggleAccess,
@@ -796,11 +810,13 @@ export const createPropertiesModal = (deps: Deps) => {
     async copyParentFolder() {
       const current = get(state)
       if (!current.open || current.count !== 1 || !current.entry) return
-      const parent = parentPath(current.entry.path)
+      const parent = current.partition
+        ? (isUnmountedUsb(current.entry.path) ? current.entry.path.slice('usb-volume://'.length) : current.entry.path)
+        : parentPath(current.entry.path)
       if (!parent) return
       try {
         await copyToClipboard(parent)
-        showToast('Parent folder copied', 1500)
+        showToast(current.partition ? 'Drive path copied' : 'Parent folder copied', 1500)
       } catch (error) {
         const message = invokeErrorMessage(error)
         showToast(`Copy failed: ${message}`)
@@ -808,7 +824,7 @@ export const createPropertiesModal = (deps: Deps) => {
     },
     async toggleHidden(next: boolean) {
       const current = get(state)
-      if (current.mutationsLocked) return
+      if (current.mutationsLocked || current.partition) return
       const targets = current.targets.length > 0 ? current.targets : current.entry ? [current.entry] : []
       if (targets.length === 0) return
       const activeToken = token

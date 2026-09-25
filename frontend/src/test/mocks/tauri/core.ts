@@ -234,6 +234,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
           { id: 'rename', label: 'Rename…' },
           { id: 'open-with', label: 'Open with…' },
           { id: 'compress', label: 'Compress…' },
+          { id: 'properties', label: 'Properties' },
         ] as T
       }
       return [] as T
@@ -353,6 +354,18 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return undefined as T
     case 'can_extract_paths':
       return false as T
+    case 'get_permissions':
+      return {
+        access_supported: true, executable_supported: true, ownership_supported: true,
+        read_only: false, executable: true, owner_name: 'chris', group_name: 'users',
+        owner: { read: true, write: true, exec: true },
+        group: { read: true, write: false, exec: true },
+        other: { read: true, write: false, exec: true },
+      } as T
+    case 'entry_times_cmd':
+      return { accessed: null, modified: null, created: null } as T
+    case 'list_ownership_principals':
+      return (args?.kind === 'user' ? ['chris', 'root'] : ['users', 'root']) as T
     case 'get_removable_usb_format_info':
       return {
         device: '/dev/sdz',
