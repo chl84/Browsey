@@ -27,6 +27,7 @@ const paletteVariables = [
   '--border-subtle',
   '--selection-border',
   '--selection-fill',
+  '--lasso-fill',
   '--selection-shadow',
   '--drop-allowed-bg',
   '--drop-allowed-border',
@@ -113,6 +114,8 @@ const setPalette = (theme: SystemTheme) => {
   set('--border-subtle', theme.muted)
   set('--selection-border', selectionBorder)
   set('--selection-fill', selectionFill)
+  // Keep the drag rectangle translucent without weakening selected file highlights.
+  set('--lasso-fill', colorWithAlpha(theme.selection, 0.16))
   set('--selection-shadow', `0 0 0 1px ${colorWithAlpha(theme.accent, 0.28)}`)
   set('--drop-allowed-bg', colorWithAlpha(theme.accent, 0.14))
   set('--drop-allowed-border', colorWithAlpha(theme.accent, 0.72))
