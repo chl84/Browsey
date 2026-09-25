@@ -34,7 +34,7 @@ Install or upgrade via `apt` so dependency resolution stays native to the
 distribution:
 
 ```bash
-sudo apt install ./browsey_<version>_amd64.deb
+sudo apt install ./Browsey_<version>_amd64.deb
 ```
 
 Expected source: GitHub Releases DEB artifact.
@@ -56,7 +56,7 @@ sudo apt purge browsey
 - Supported Linux release path includes install and in-place upgrade.
 - The supported package path is native package replacement:
   - `rpm -Uvh --replacepkgs ...` on Fedora
-  - `apt install ./browsey_<version>_amd64.deb` on Ubuntu/Debian-family
+  - `apt install ./Browsey_<version>_amd64.deb` on Ubuntu/Debian-family
 - Package downgrade is not part of the supported Linux 1.0 release path.
 
 ## Notes
