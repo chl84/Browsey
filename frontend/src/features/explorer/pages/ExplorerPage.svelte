@@ -594,7 +594,7 @@
   }
   let gridCardWidth = 120
   let gridRowHeight = 126
-  let gridGap = 6
+  let gridGap = 8
   const GRID_OVERSCAN = 8
 
   const viewAnchor = createViewSwitchAnchor({

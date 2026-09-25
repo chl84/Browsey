@@ -87,6 +87,7 @@ test('native Ctrl-wheel zooms files, not the page, and compact density keeps zoo
   await page.keyboard.up('Control')
   await expectSize(page, 64)
   expect(await page.evaluate(() => window.devicePixelRatio)).toBe(ratio)
+  await expect(page.locator('.grid-viewport')).toHaveCSS('gap', '8px')
 
   await page.getByRole('button', { name: 'Main menu' }).click()
   await page.getByRole('menuitem', { name: 'Settings…' }).click()
@@ -99,6 +100,7 @@ test('native Ctrl-wheel zooms files, not the page, and compact density keeps zoo
   await page.getByRole('option', { name: 'Compact' }).click()
   await page.keyboard.press('Escape')
   await expect(settings).toBeHidden()
+  await expect(page.locator('.grid-viewport')).toHaveCSS('gap', '6px')
   await expectSize(page, 64)
   await zoom(page, -120)
   await expectSize(page, 96)

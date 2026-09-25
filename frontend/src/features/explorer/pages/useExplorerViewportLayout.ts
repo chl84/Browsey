@@ -44,7 +44,7 @@ export const useExplorerViewportLayout = (params: Params) => {
 
   const applyDensityMetrics = () => {
     const nextRowHeight = readCssNumber('--row-height', 32)
-    const nextGridGap = readCssNumber('--grid-gap', 6)
+    const nextGridGap = readCssNumber('--grid-gap', 8)
     const baseThumb = readCssNumber('--grid-thumb-size', 90)
     const zoomDelta = (params.getGridThumbSize?.() ?? baseThumb) - baseThumb
     const nextGridCardWidth = readCssNumber('--grid-card-width', 120) + zoomDelta
