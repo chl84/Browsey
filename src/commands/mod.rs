@@ -13,7 +13,6 @@ pub mod fs;
 pub mod keymap;
 pub mod library;
 pub mod listing;
-pub mod native_drag;
 pub mod network;
 pub mod open_with;
 pub mod permissions;
@@ -54,7 +53,6 @@ pub use library::{
     clear_recents, clear_stars, list_recent, list_starred, remove_recent, toggle_star,
 };
 pub use listing::{list_dir, list_facets, watch_dir};
-pub use native_drag::start_native_file_drag;
 pub use network::connect::connect_network_uri;
 pub use network::discovery::{list_network_devices, open_network_uri};
 pub use network::entries::list_network_entries;

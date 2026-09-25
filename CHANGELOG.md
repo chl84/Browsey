@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-- Fix a Linux crash when closing Browsey after native file drag: use a copy-only Rust adapter without a JavaScript completion channel retained by GTK signal handlers. Validate export paths and embed the drag icon; add native window-teardown regression coverage.
+- Export local files to other applications with ordinary drag, without Alt. Keep WebKit's original drag session and deliver a correctly escaped native URI list through a small GTK bridge, including multiple files and special characters. The receiving application handles copy/move; Browsey never deletes sources on drag completion.
+- Fix the Linux window-close crash after file drag by removing completion IPC channels from GTK callbacks. Retire the separate drag plugin/backend and test real WebKit export followed by Tauri window teardown.
 - Resolve native drops from the actual pointer position (including display scaling), with shared highlighting for folders, breadcrumbs, bookmarks, mounted drives, and list/grid background. Reject ambiguous backgrounds and drops while dialogs or navigation are active.
-- Use live Ctrl/Meta (copy) and Shift (move) modifiers for internal drops, copy cloud transfers and incoming external files by default, and keep local filesystem-aware defaults. Retire stale previews and pending listeners when a drag ends.
-- Add edge autoscroll and delayed folder opening during drag, plus copy-only Alt-drag export for local files with explicit download-first guidance for cloud files. Document these gestures in Settings > Shortcuts.
+- Respect explicit local drag-start actions (Ctrl/Meta locks copy, Shift locks move) across internal and external destinations. Otherwise use live modifiers for internal drops and local filesystem-aware defaults. Copy cloud transfers and incoming external files by default; retire stale previews and pending listeners when a drag ends.
+- Add edge autoscroll and delayed folder opening during drag, with download-first guidance for exporting cloud files. Document these gestures in Settings > Shortcuts.
 - Isolate drag-and-drop sources from the clipboard so native drops cannot copy or move a previously selected cloud file.
 - Keep source paths, destination, and copy/move mode fixed through conflict preview and confirmation for local, cloud, and mixed transfers. Reject overlapping requests and repeated confirmation, and preserve newer clipboard selections when an older move finishes.
 

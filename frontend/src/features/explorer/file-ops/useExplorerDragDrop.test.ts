@@ -4,7 +4,6 @@ import { get, writable } from 'svelte/store'
 const setClipboardPathsStateMock = vi.fn()
 const setClipboardCmdMock = vi.fn()
 const resolveDropClipboardModeMock = vi.fn()
-const startNativeFileDragMock = vi.fn()
 let onNativeDrop: (paths: string[], point: { x: number; y: number }) => Promise<void>
 let onNativeHover: (paths: string[], point: { x: number; y: number }) => void
 let onNativeLeave: () => void
@@ -40,10 +39,6 @@ vi.mock('../services/clipboard.service', () => ({
   setClipboardCmd: (...args: unknown[]) => setClipboardCmdMock(...args),
 }))
 
-vi.mock('../services/nativeDrag.service', () => ({
-  startNativeFileDrag: (...args: unknown[]) => startNativeFileDragMock(...args),
-}))
-
 import { useExplorerDragDrop } from './useExplorerDragDrop'
 
 const createDataTransfer = () =>
@@ -51,6 +46,7 @@ const createDataTransfer = () =>
     effectAllowed: 'copyMove',
     dropEffect: 'none',
     setData: vi.fn(),
+    clearData: vi.fn(),
     setDragImage: vi.fn(),
   }) as unknown as DataTransfer
 
@@ -74,7 +70,6 @@ describe('useExplorerDragDrop bookmark drop handlers', () => {
     vi.clearAllMocks()
     resolveDropClipboardModeMock.mockResolvedValue('copy')
     setClipboardCmdMock.mockResolvedValue(undefined)
-    startNativeFileDragMock.mockResolvedValue(true)
   })
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); document.body.innerHTML = '' })
 
@@ -159,7 +154,6 @@ describe('drop policy and destination safety', () => {
     vi.useFakeTimers()
     vi.clearAllMocks()
     resolveDropClipboardModeMock.mockResolvedValue('cut')
-    startNativeFileDragMock.mockResolvedValue(true)
   })
   afterEach(async () => {
     await Promise.all(hooks.splice(0).map(hook => hook.stopNativeDrop()))
@@ -178,7 +172,7 @@ describe('drop policy and destination safety', () => {
     [{ shiftKey: true }, 'rclone://remote/dest', 'cut'],
   ] as const)('uses live event modifiers %j for %s (%s)', async (keys, dest, mode) => {
     const { hook, deps } = setup()
-    hook.handleRowDragStart(source, createDragEvent({ ctrlKey: true }))
+    hook.handleRowDragStart(source, createDragEvent())
     await hook.handleBookmarkDrop(dest, createDragEvent(keys))
     expect(deps.handlePasteOrMove).toHaveBeenCalledWith(dest, { paths: ['/tmp/source.txt'], mode })
   })
@@ -306,22 +300,59 @@ describe('drop policy and destination safety', () => {
     expect(get(hook.dragAction)).toBe('copy')
   })
 
-  it('rejects mixed selections and native cloud export with actionable feedback', () => {
+  it('rejects mixed selections and does not expose cloud paths as file URIs', () => {
     const { hook, deps } = setup({ getSelectedSet: () => new Set(['/tmp/source.txt', 'rclone://remote/file']) })
     const event = createDragEvent()
     hook.handleRowDragStart(source, event)
     expect(event.preventDefault).toHaveBeenCalled()
-    hook.handleRowDragStart({ path: 'rclone://remote/other', kind: 'file' } as never, createDragEvent({ altKey: true }))
-    expect(startNativeFileDragMock).not.toHaveBeenCalled()
-    expect(deps.showToast).toHaveBeenLastCalledWith(expect.stringContaining('Download cloud files'))
+    const cloudEvent = createDragEvent()
+    hook.handleRowDragStart({ path: 'rclone://remote/other', kind: 'file' } as never, cloudEvent)
+    expect(cloudEvent.dataTransfer!.setData).not.toHaveBeenCalledWith('text/uri-list', expect.anything())
+    expect(deps.showToast).toHaveBeenCalledWith('Drag local files and cloud files separately')
   })
 
-  it('exports local files as a native copy and handles rejected plugin promises', async () => {
+  it('exports ordinary drags as file URIs and never cancels them for Alt', () => {
+    const { hook } = setup()
+    for (const altKey of [false, true]) {
+      const event = createDragEvent({ altKey })
+      hook.handleRowDragStart(source, event)
+      expect(event.preventDefault).not.toHaveBeenCalled()
+      expect(event.dataTransfer!.setData).toHaveBeenCalledWith('text/uri-list', 'file:///tmp/source.txt\r\n')
+      expect(event.dataTransfer!.effectAllowed).toBe('copyMove')
+    }
+  })
+
+  it('routes a returning native self-drop once and preserves its mode across blur', async () => {
     const { hook, deps } = setup()
-    startNativeFileDragMock.mockRejectedValueOnce(new Error('unavailable'))
-    hook.handleRowDragStart(source, createDragEvent({ altKey: true, shiftKey: true }))
-    await vi.advanceTimersByTimeAsync(0)
-    expect(startNativeFileDragMock).toHaveBeenCalledWith(['/tmp/source.txt'])
-    expect(deps.showToast).toHaveBeenCalledWith('Native drag failed: unavailable')
+    await hook.startNativeDrop()
+    target('/tmp/dest')
+    hook.handleRowDragStart(source, createDragEvent({ shiftKey: true }))
+    window.dispatchEvent(new Event('blur'))
+    onNativeHover(['/tmp/source.txt'], point)
+    expect(get(hook.dragAction)).toBe('move')
+    await onNativeDrop(['/tmp/source.txt'], point)
+    document.dispatchEvent(new MouseEvent('drop', { bubbles: true, cancelable: true }))
+    expect(deps.handlePasteOrMove).toHaveBeenCalledExactlyOnceWith('/tmp/dest', { paths: ['/tmp/source.txt'], mode: 'cut' })
+  })
+
+  it.each([
+    [{ ctrlKey: true }, { shiftKey: true }, 'copy', 'copy'],
+    [{ shiftKey: true }, { ctrlKey: true }, 'cut', 'move'],
+    [{ ctrlKey: true, shiftKey: true }, {}, 'copy', 'copy'],
+  ] as const)('keeps the explicit start action consistent with the native offer (%j)', async (startKeys, dropKeys, mode, effect) => {
+    const { hook, deps } = setup()
+    const event = createDragEvent(startKeys)
+    hook.handleRowDragStart(source, event)
+    expect(event.dataTransfer!.effectAllowed).toBe(effect)
+    await hook.handleBookmarkDrop('/tmp/dest', createDragEvent(dropKeys))
+    expect(deps.handlePasteOrMove).toHaveBeenCalledWith('/tmp/dest', { paths: ['/tmp/source.txt'], mode })
+  })
+
+  it('does not replace an active internal source with an unrelated native selection', async () => {
+    const { hook, deps } = setup()
+    target('/tmp/dest')
+    hook.handleRowDragStart(source, createDragEvent())
+    await onNativeDrop(['/tmp/unrelated.txt'], point)
+    expect(deps.handlePasteOrMove).not.toHaveBeenCalled()
   })
 })

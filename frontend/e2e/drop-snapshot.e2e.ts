@@ -26,20 +26,42 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('grid', { name: 'File list' })).toBeVisible()
 })
 
-test('Alt-drag exports through the copy-only command without changing clipboard or source', async ({ page }) => {
+test('ordinary drag exports a file selection without changing clipboard or source', async ({ page }) => {
   const notes = row(page, 'notes')
   await notes.click()
   await page.keyboard.press('Control+x')
   const transfer = await page.evaluateHandle(() => new DataTransfer())
-  await notes.dispatchEvent('dragstart', { dataTransfer: transfer, altKey: true })
+  await notes.dispatchEvent('dragstart', { dataTransfer: transfer })
+  expect(await transfer.evaluate(data => data.getData('text/uri-list'))).toBe('file:///mock/notes.txt\r\n')
   const calls = await page.evaluate(() => (window as unknown as {
     __BROWSEY_E2E__: { calls: Array<{ cmd: string; args: unknown }> }
   }).__BROWSEY_E2E__.calls)
-  expect(calls.filter(call => call.cmd === 'start_native_file_drag')).toEqual([
-    { cmd: 'start_native_file_drag', args: { paths: ['/mock/notes.txt'] } },
-  ])
+  expect(calls.filter(call => call.cmd === 'start_native_file_drag')).toHaveLength(0)
   expect(calls.filter(call => ['paste_clipboard_cmd', 'clear_system_clipboard', 'delete_entries'].includes(call.cmd))).toHaveLength(0)
   await expect(notes).toBeVisible()
+  await transfer.dispose()
+})
+
+test('GTK export preserves a multi-selection and a native self-drop transfers only once', async ({ page }) => {
+  await page.evaluate(() => {
+    Object.defineProperty(window, '__BROWSEY_FILE_DRAG_BRIDGE__', { value: true })
+  })
+  await row(page, 'Documents').click()
+  await row(page, 'notes').click({ modifiers: ['Control'] })
+  const transfer = await page.evaluateHandle(() => new DataTransfer())
+  await row(page, 'notes').dispatchEvent('dragstart', { dataTransfer: transfer })
+  const payload = await transfer.evaluate(data => data.getData('text/uri-list'))
+  expect(JSON.parse(new URL(payload).searchParams.get('paths')!)).toEqual(['/mock/Documents', '/mock/notes.txt'])
+  await row(page, 'notes').dispatchEvent('dragend', { dataTransfer: transfer })
+  await row(page, 'notes').click()
+  await row(page, 'notes').dispatchEvent('dragstart', { dataTransfer: transfer, ctrlKey: true })
+  await nativeDrop(page, ['/mock/notes.txt'], row(page, 'Documents'))
+  await row(page, 'notes').dispatchEvent('dragend', { dataTransfer: transfer })
+  await expect.poll(() => page.evaluate(() => (window as unknown as {
+    __BROWSEY_E2E__: { calls: Array<{ cmd: string; args: unknown }> }
+  }).__BROWSEY_E2E__.calls.filter(call => call.cmd === 'paste_clipboard_cmd'))).toMatchObject([
+    { cmd: 'paste_clipboard_cmd', args: { dest: '/mock/Documents', input: { paths: ['/mock/notes.txt'], mode: 'copy' } } },
+  ])
   await transfer.dispose()
 })
 

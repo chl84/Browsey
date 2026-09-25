@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store'
 import { onDestroy } from 'svelte'
+import { fileDragPayload, fileDragStartMode, hasNativeFileDragBridge } from './fileDragPayload'
 
 export type DragState = {
   dragging: boolean
@@ -35,9 +36,12 @@ export const useDragDrop = (options: DragDropOptions = {}) => {
   const start = (paths: string[], event: DragEvent) => {
     if (!event.dataTransfer) return
     state.set({ dragging: true, paths, target: null, position: { x: event.clientX, y: event.clientY } })
-    // Allow both copy and move; drop handlers decide which to use.
-    event.dataTransfer.effectAllowed = 'copyMove'
-    event.dataTransfer.setData('text/plain', paths.join('\n'))
+    event.dataTransfer.clearData()
+    event.dataTransfer.setData('application/x-browsey-paths', JSON.stringify(paths))
+    const payload = fileDragPayload(paths, hasNativeFileDragBridge())
+    const mode = payload ? fileDragStartMode(event) : null
+    event.dataTransfer.effectAllowed = mode === 'copy' ? 'copy' : mode === 'cut' ? 'move' : 'copyMove'
+    if (payload) event.dataTransfer.setData('text/uri-list', payload)
     const labelText =
       options.getLabel?.(paths) ?? `${paths.length} item${paths.length === 1 ? '' : 's'}`
 
