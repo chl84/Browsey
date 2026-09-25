@@ -15,6 +15,18 @@
   export let label = ''
   export let result: UsbFormatResult | null = null
   export let busy = false
+  export let error = ''
+  export let onRetry: () => void = () => {}
+  let copyStatus = ''
+  $: if (!error || !open) copyStatus = ''
+  const copyError = async () => {
+    try {
+      await navigator.clipboard.writeText(error)
+      copyStatus = 'Error details copied.'
+    } catch {
+      copyStatus = 'Could not copy automatically. Select and copy the details above.'
+    }
+  }
   export let onConfirm: () => void = () => {}
   export let onCancel: () => void = () => {}
   export let onOpen: () => void = () => {}
@@ -66,8 +78,15 @@
           {/each}
         </select>
       </label>
-    {:else}
+    {:else if !error}
       <p class="muted">Inspecting the USB drive…</p>
+    {/if}
+
+    {#if error}
+      <div class="format-error" role="alert"><pre>{error}</pre></div>
+      <button type="button" class="secondary" on:click={copyError}>Copy error details</button>
+      <p role="status">{copyStatus}</p>
+      <p class="muted">Check the drive before trying again. If formatting succeeded but mounting failed, close this dialog and use “Mount and open” in Partitions.</p>
     {/if}
 
     <div slot="actions">
@@ -76,6 +95,7 @@
         {#if result.mountPath}<button type="button" on:click={onOpen}>Open USB</button>{/if}
       {:else}
         <button type="button" data-cancel="1" class="secondary" on:click={onCancel} disabled={busy}>Cancel</button>
+        {#if error && !info}<button type="button" on:click={onRetry} disabled={busy}>Inspect again</button>{/if}
         <button type="button" class="danger" on:click={onConfirm} disabled={busy || !info || availableFilesystems.length === 0}>
           {#if busy}
             Working...
@@ -89,6 +109,8 @@
 {/if}
 
 <style>
+  .format-error { max-height: 180px; overflow: auto; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; color: var(--danger, var(--fg)); }
   .details { margin: 0; display: grid; gap: 6px; }
   .details div { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 8px; }
   dt { color: var(--fg-muted); }

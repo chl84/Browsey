@@ -95,6 +95,10 @@ struct LsblkDevice {
     size: u64,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default)]
+    fstype: Option<String>,
     #[serde(rename = "type")]
     kind: String,
     rm: bool,
@@ -234,8 +238,9 @@ fn lsblk_listing() -> NetworkResult<LsblkOutput> {
             "--json",
             "--bytes",
             "--paths",
+            "--list",
             "--output",
-            "PATH,SIZE,MODEL,TYPE,RM,TRAN,PKNAME,MOUNTPOINTS",
+            "PATH,SIZE,MODEL,LABEL,FSTYPE,TYPE,RM,TRAN,PKNAME,MOUNTPOINTS",
         ])
         .output()
         .map_err(|error| NetworkError::new(NetworkErrorCode::FormatFailed, error.to_string()))?;
@@ -280,17 +285,42 @@ fn removable_usb_disk_for_partition(listing: &LsblkOutput, device: &str) -> Opti
     if !is_usb(target) && !is_usb(parent) {
         return None;
     }
+    // Never offer a system disk or a disk with active layered devices for
+    // whole-drive formatting, even when the machine booted from USB.
+    let partitions: Vec<_> = listing
+        .blockdevices
+        .iter()
+        .filter(|entry| entry.pkname.as_deref() == Some(&parent.path))
+        .collect();
+    if partitions.iter().any(|entry| {
+        entry.mountpoints.iter().flatten().any(|mount| {
+            matches!(
+                mount.as_str(),
+                "/" | "/boot" | "/boot/efi" | "/home" | "/usr" | "/var" | "[SWAP]"
+            )
+        })
+    }) || listing.blockdevices.iter().any(|entry| {
+        partitions
+            .iter()
+            .any(|partition| entry.pkname.as_deref() == Some(&partition.path))
+    }) {
+        return None;
+    }
     Some(parent.path.clone())
 }
 
 #[cfg(not(target_os = "windows"))]
 fn removable_usb_disk_for_mount(path: &str) -> NetworkResult<(LsblkOutput, String)> {
-    let partition = block_device_for_mount(path).ok_or_else(|| {
-        NetworkError::new(
-            NetworkErrorCode::FormatNotAllowed,
-            "Selected volume is no longer mounted.",
-        )
-    })?;
+    let partition = path
+        .strip_prefix("usb-volume://")
+        .map(str::to_owned)
+        .or_else(|| block_device_for_mount(path))
+        .ok_or_else(|| {
+            NetworkError::new(
+                NetworkErrorCode::FormatNotAllowed,
+                "Selected volume is no longer mounted.",
+            )
+        })?;
     let listing = lsblk_listing()?;
     let disk = removable_usb_disk_for_partition(&listing, &partition).ok_or_else(|| {
         NetworkError::new(
@@ -467,16 +497,76 @@ fn mount_new_partition(device: &str, filesystem: UsbFilesystem) -> NetworkResult
 #[cfg(not(target_os = "windows"))]
 fn mount_path_for_device(device: &str) -> Option<String> {
     let output = Command::new("findmnt")
-        .args(["-n", "-o", "TARGET", "--source", device])
+        .args(["--json", "-o", "TARGET", "--source", device])
         .output()
         .ok()?;
     if !output.status.success() {
         return None;
     }
-    String::from_utf8_lossy(&output.stdout)
-        .split_whitespace()
-        .next()
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
+    value["filesystems"][0]["target"]
+        .as_str()
         .map(str::to_owned)
+}
+
+/// Synthetic sidebar locations: resolve against a fresh device listing before use.
+#[cfg(not(target_os = "windows"))]
+fn unmounted_usb_volumes(listing: &LsblkOutput) -> Vec<MountInfo> {
+    listing.blockdevices.iter().filter(|entry| {
+        removable_usb_disk_for_partition(listing, &entry.path).is_some()
+            && !entry.mountpoints.iter().flatten().any(|path| !path.is_empty())
+            // Layered/crypt volumes need an unlock workflow, not a mount request.
+            && !listing.blockdevices.iter().any(|child| child.pkname.as_deref() == Some(&entry.path))
+            && !matches!(entry.fstype.as_deref(), Some("swap" | "crypto_LUKS" | "LVM2_member" | "linux_raid_member"))
+    }).map(|entry| MountInfo {
+        label: entry.label.as_deref().filter(|label| !label.is_empty()).unwrap_or(&entry.path).to_owned(),
+        path: format!("usb-volume://{}", entry.path),
+        fs: entry.fstype.clone().unwrap_or_default(),
+        removable: true,
+    }).collect()
+}
+
+#[tauri::command]
+pub async fn mount_usb_volume(path: String) -> ApiResult<String> {
+    #[cfg(not(target_os = "windows"))]
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let device = path.strip_prefix("usb-volume://").ok_or_else(|| {
+            NetworkError::new(
+                NetworkErrorCode::MountFailed,
+                "Invalid USB volume location.",
+            )
+        })?;
+        let listing = lsblk_listing()?;
+        if removable_usb_disk_for_partition(&listing, device).is_none() {
+            return Err(NetworkError::new(
+                NetworkErrorCode::MountFailed,
+                "USB volume is no longer available.",
+            ));
+        }
+        if let Some(path) = mount_path_for_device(device) {
+            return Ok(path);
+        }
+        command_output("udisksctl", &["mount", "--block-device", device])
+            .map_err(|error| NetworkError::new(NetworkErrorCode::MountFailed, error.message))?;
+        mount_path_for_device(device).ok_or_else(|| {
+            NetworkError::new(
+                NetworkErrorCode::MountFailed,
+                "Mounted, but no mount path was found.",
+            )
+        })
+    })
+    .await
+    .map_err(|error| NetworkError::new(NetworkErrorCode::TaskFailed, error.to_string()))
+    .and_then(|result| result);
+    #[cfg(target_os = "windows")]
+    let result = {
+        let _ = path;
+        Err(NetworkError::new(
+            NetworkErrorCode::MountFailed,
+            "USB mounting is only available on Linux.",
+        ))
+    };
+    map_api_result(result)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -663,6 +753,9 @@ fn linux_mounts() -> NetworkResult<Vec<MountInfo>> {
             ));
         }
     }
+    if let Ok(listing) = lsblk_listing() {
+        mounts.extend(unmounted_usb_volumes(&listing));
+    }
     Ok(mounts)
 }
 
@@ -688,11 +781,9 @@ pub async fn format_removable_partition(
     path: String,
     filesystem: String,
     label: String,
-    watcher: tauri::State<'_, WatchState>,
 ) -> ApiResult<UsbFormatResult> {
-    if let Err(error) = watcher.replace(None) {
-        return map_api_result(Err(NetworkError::from(error)));
-    }
+    // Linux inotify watches do not hold mounts busy. Keep the current directory
+    // watch alive, especially when validation or authorization fails.
     let result = tauri::async_runtime::spawn_blocking(move || {
         format_removable_partition_impl(&path, &filesystem, &label)
     })
@@ -1011,6 +1102,8 @@ mod tests {
             path: path.into(),
             size: 0,
             model: None,
+            label: None,
+            fstype: None,
             kind: kind.into(),
             rm: removable,
             tran: transport.map(str::to_owned),
@@ -1034,6 +1127,54 @@ mod tests {
         assert_eq!(volume_label(" ").unwrap(), None);
         assert!(volume_label("label-with-too-many-characters").is_err());
         assert!(volume_label("not/allowed").is_err());
+    }
+
+    #[test]
+    fn lists_unmounted_usb_partitions_without_mounted_or_internal_duplicates() {
+        let listing: LsblkOutput = serde_json::from_str(r#"{"blockdevices":[
+            {"path":"/dev/sdz","type":"disk","rm":true,"tran":"usb","pkname":null},
+            {"path":"/dev/sdz1","type":"part","rm":true,"tran":null,"pkname":"/dev/sdz","label":"MY USB","fstype":"exfat","mountpoints":[null]},
+            {"path":"/dev/sdz2","type":"part","rm":true,"tran":null,"pkname":"/dev/sdz","mountpoints":["/run/media/user/SECOND"]},
+            {"path":"/dev/nvme0n1","type":"disk","rm":false,"tran":"nvme","pkname":null},
+            {"path":"/dev/nvme0n1p1","type":"part","rm":false,"tran":null,"pkname":"/dev/nvme0n1"}
+        ]}"#).unwrap();
+        let volumes = unmounted_usb_volumes(&listing);
+        assert_eq!(volumes.len(), 1);
+        assert_eq!(volumes[0].path, "usb-volume:///dev/sdz1");
+        assert_eq!(volumes[0].label, "MY USB");
+        assert_eq!(volumes[0].fs, "exfat");
+    }
+
+    #[test]
+    fn rejects_usb_system_disks_and_active_layered_devices() {
+        let mut root = lsblk_device("/dev/sdz1", "part", true, None, Some("/dev/sdz"));
+        root.mountpoints = vec![Some("/".into())];
+        let mut listing = LsblkOutput {
+            blockdevices: vec![
+                lsblk_device("/dev/sdz", "disk", true, Some("usb"), None),
+                root,
+                lsblk_device("/dev/sdz2", "part", true, None, Some("/dev/sdz")),
+            ],
+        };
+        assert!(removable_usb_disk_for_partition(&listing, "/dev/sdz2").is_none());
+        assert!(unmounted_usb_volumes(&listing).is_empty());
+        listing.blockdevices[1].mountpoints.clear();
+        listing.blockdevices.push(lsblk_device(
+            "/dev/mapper/secret",
+            "crypt",
+            false,
+            None,
+            Some("/dev/sdz1"),
+        ));
+        assert!(removable_usb_disk_for_partition(&listing, "/dev/sdz2").is_none());
+    }
+
+    #[test]
+    fn invalid_format_requests_fail_before_resolving_or_touching_devices() {
+        assert!(
+            format_removable_partition_impl("/definitely/not/a/device", "invalid", "OK").is_err()
+        );
+        assert!(volume_label("bad/name").is_err());
     }
 
     #[test]

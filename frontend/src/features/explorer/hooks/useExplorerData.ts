@@ -100,6 +100,8 @@ export const useExplorerData = (options: Options = {}) => {
 
   let partitionsPoll: ReturnType<typeof setInterval> | null = null
   let unlistenDirChanged: UnlistenFn | null = null
+  let unlistenVolumesChanged: UnlistenFn | null = null
+  let volumesRefreshTimer: ReturnType<typeof setTimeout> | null = null
   let unlistenEntryMeta: UnlistenFn | null = null
   let unlistenEntryMetaBatch: UnlistenFn | null = null
   let unlistenCloudDirRefreshed: UnlistenFn | null = null
@@ -269,6 +271,22 @@ export const useExplorerData = (options: Options = {}) => {
       return
     }
 
+    const unlistenVolumes = await listen('volumes-changed', () => {
+      if (disposed) return
+      if (volumesRefreshTimer) clearTimeout(volumesRefreshTimer)
+      volumesRefreshTimer = setTimeout(() => {
+        volumesRefreshTimer = null
+        if (!disposed) void loadPartitions()
+      }, 200)
+    })
+    if (disposed) {
+      unlistenVolumes()
+      return
+    }
+    unlistenVolumesChanged = unlistenVolumes
+    // Cover devices attached between the initial listing and listener registration.
+    void loadPartitions()
+
     const unlistenDir = await listen<string>('dir-changed', (event) => {
       if (disposed) return
       const curr = get(current)
@@ -362,6 +380,10 @@ export const useExplorerData = (options: Options = {}) => {
       unlistenDirChanged()
       unlistenDirChanged = null
     }
+    unlistenVolumesChanged?.()
+    unlistenVolumesChanged = null
+    if (volumesRefreshTimer) clearTimeout(volumesRefreshTimer)
+    volumesRefreshTimer = null
     if (unlistenEntryMeta) {
       unlistenEntryMeta()
       unlistenEntryMeta = null

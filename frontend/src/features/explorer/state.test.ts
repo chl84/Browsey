@@ -65,6 +65,29 @@ describe('createExplorerState sort refresh behavior', () => {
     })
   })
 
+  it('does not overwrite a newer mount list with a stale response', async () => {
+    const state = createExplorerState()
+    let resolveOld!: (mounts: Array<{ path: string; label: string }>) => void
+    listMountsMock.mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve }))
+      .mockResolvedValueOnce([{ path: '/new', label: 'New' }])
+    const oldRequest = state.loadPartitions()
+    await state.loadPartitions()
+    resolveOld([{ path: '/old', label: 'Old' }])
+    await oldRequest
+    expect(get(state.partitions)).toEqual([{ path: '/new', label: 'New' }])
+  })
+
+  it('returns home when the active volume is among several removed volumes', async () => {
+    const state = createExplorerState()
+    listMountsMock.mockResolvedValueOnce([{ path: '/first', label: 'First' }, { path: '/second', label: 'Second' }])
+      .mockResolvedValueOnce([])
+    await state.loadPartitions()
+    state.current.set('/second/folder')
+    listDirMock.mockResolvedValue({ current: '/home', entries: [] })
+    await state.loadPartitions()
+    await vi.waitFor(() => expect(get(state.current)).toBe('/home'))
+  })
+
   it('does not reload cloud directory from backend on sort toggle', async () => {
     listDirMock.mockResolvedValue({
       current: 'rclone://work/docs',

@@ -4,6 +4,7 @@
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import type { Partition } from '../model/types'
   import ContextMenu from './ContextMenu.svelte'
+  import { isUnmountedUsb } from '../services/drives.service'
 
   const dispatch = createEventDispatcher<{ eject: { path: string }; format: { part: Partition } }>()
 
@@ -15,6 +16,7 @@
   const openMenu = (event: MouseEvent, part: Partition) => {
     if (!part.removable) return
     event.preventDefault()
+    ;(event.currentTarget as HTMLElement).focus()
     menu = { open: true, x: event.clientX, y: event.clientY, part }
   }
   const openMenuFromButton = (button: HTMLElement, part: Partition) => {
@@ -41,7 +43,7 @@
         }}
       >
         <img class="nav-icon" src={partitionIcon(part)} alt="" />
-        <span class="nav-label">{part.label}</span>
+        <span class="nav-label">{part.label}{isUnmountedUsb(part.path) ? ' (not mounted)' : ''}</span>
       </button>
       {#if part.removable}
         <button
@@ -53,7 +55,7 @@
         >
           <span aria-hidden="true">⋮</span>
         </button>
-        <button
+        {#if !isUnmountedUsb(part.path)}<button
           class="eject"
           type="button"
           aria-label="Eject"
@@ -67,7 +69,7 @@
               fill-rule="evenodd"
               clip-rule="evenodd" />
           </svg>
-        </button>
+        </button>{/if}
       {/if}
     </div>
   {/each}
@@ -77,10 +79,14 @@
   open={menu.open}
   x={menu.x}
   y={menu.y}
-  actions={[{ id: 'format', label: 'Format…', dangerous: true }]}
+  actions={[
+    ...(menu.part && isUnmountedUsb(menu.part.path) ? [{ id: 'mount', label: 'Mount and open' }] : []),
+    { id: 'format', label: 'Format…', dangerous: true },
+  ]}
   onClose={() => (menu = { ...menu, open: false })}
   onSelect={(id) => {
     if (id === 'format' && menu.part) dispatch('format', { part: menu.part })
+    if (id === 'mount' && menu.part) onSelect(menu.part.path)
     menu = { ...menu, open: false }
   }}
 />
@@ -130,9 +136,9 @@
     background: var(--bg-hover);
   }
 
-  .nav:focus,
   .nav:focus-visible {
-    outline: none;
+    outline: 2px solid var(--border-accent);
+    outline-offset: -2px;
   }
 
   .nav:active {
