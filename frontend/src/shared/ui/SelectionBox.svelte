@@ -19,7 +19,7 @@
   .selection-box {
     position: absolute;
     border: 1px solid var(--selection-border);
-    background: var(--selection-fill);
+    background: var(--lasso-fill, var(--selection-fill));
     pointer-events: none;
     border-radius: 0;
     box-shadow: none;
