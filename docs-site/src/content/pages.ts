@@ -390,7 +390,7 @@ export const docsPages: DocPage[] = [
           'Open with lists associated applications and includes an explicit "Open normally" system default option',
           'Entries are filtered in the modal by app name, comment, and command',
           'System default handler can be selected explicitly',
-          'On Linux, select an installed app and choose Set as default to save the desktop default for the displayed MIME type without opening the file. This affects all files of that type; Open remains a one-time choice. Directories and unknown types do not offer this action',
+          'On Linux, select an installed app, check Set as default to the left of Cancel, and press Open to save the desktop default for the displayed MIME type and open the file. This affects all files of that type. The checkbox starts unchecked; Open without it remains a one-time choice. Directories and unknown types do not offer this action',
           'Launches are detached to avoid terminal noise',
           'Cloud files opened normally are first materialized into a managed local cache before the system handler is launched',
         ],

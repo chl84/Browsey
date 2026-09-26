@@ -19,14 +19,18 @@ const setup = async () => {
 describe('open-with defaults', () => {
   beforeEach(() => { invoke.mockReset() })
 
-  it('sets the file-type default without opening the file', async () => {
+  it('saves the file-type default before opening the file when checked', async () => {
     const { modal, showToast } = await setup()
     invoke.mockResolvedValueOnce(undefined)
     await modal.confirm({ appId: 'editor', setDefault: true })
-    expect(invoke).toHaveBeenCalledExactlyOnceWith('set_default_app', {
+    expect(invoke).toHaveBeenNthCalledWith(1, 'set_default_app', {
       path: '/test/file.txt', appId: 'editor', contentType: 'text/plain',
     })
-    expect(showToast).toHaveBeenCalledWith('Editor is now the default for text/plain')
+    expect(invoke).toHaveBeenNthCalledWith(2, 'open_with', {
+      path: '/test/file.txt', choice: { appId: 'editor' },
+    })
+    expect(invoke).toHaveBeenCalledTimes(2)
+    expect(showToast).toHaveBeenCalledWith('Opening file.txt… Editor is now the default for text/plain')
     expect(get(modal.state).open).toBe(false)
   })
 
@@ -52,8 +56,27 @@ describe('open-with defaults', () => {
     await modal.confirm({ appId: 'editor', setDefault: true })
     expect(get(modal.state)).toMatchObject({ open: true, submitting: false, error: 'Could not save the default application: Permission denied' })
     expect(showToast).not.toHaveBeenCalled()
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('set_default_app', {
+      path: '/test/file.txt', appId: 'editor', contentType: 'text/plain',
+    })
     invoke.mockResolvedValueOnce(undefined)
     await modal.confirm({ appId: 'editor', setDefault: true })
+    expect(get(modal.state).open).toBe(false)
+  })
+
+  it('reports partial success if saving worked but opening failed', async () => {
+    const { modal, showToast } = await setup()
+    invoke.mockResolvedValueOnce(undefined).mockRejectedValueOnce({ code: 'launch_failed', message: 'Missing executable' })
+    await modal.confirm({ appId: 'editor', setDefault: true })
+    expect(get(modal.state)).toMatchObject({
+      open: true, submitting: false,
+      error: 'The default application was saved, but the file could not be opened: Browsey could not start the selected application',
+    })
+    expect(showToast).not.toHaveBeenCalled()
+    invoke.mockClear()
+    invoke.mockResolvedValueOnce(undefined)
+    await modal.confirm({ appId: 'editor', setDefault: false })
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('open_with', { path: '/test/file.txt', choice: { appId: 'editor' } })
     expect(get(modal.state).open).toBe(false)
   })
 
