@@ -116,8 +116,13 @@ fn list_open_with_apps_impl(path: String) -> OpenWithResult<Vec<OpenWithApp>> {
 }
 
 #[tauri::command]
-pub fn open_with(path: String, choice: OpenWithChoice) -> ApiResult<()> {
-    map_api_result(open_with_impl(path, choice))
+pub async fn open_with(path: String, choice: OpenWithChoice) -> ApiResult<()> {
+    let result = tauri::async_runtime::spawn_blocking(move || open_with_impl(path, choice))
+        .await
+        .map_err(|error| {
+            crate::errors::api_error::ApiError::new("unknown_error", error.to_string())
+        })?;
+    map_api_result(result)
 }
 
 fn open_with_impl(path: String, choice: OpenWithChoice) -> OpenWithResult<()> {
@@ -136,8 +141,10 @@ fn open_with_impl(path: String, choice: OpenWithChoice) -> OpenWithResult<()> {
     }
 
     if matches!(app_id.as_deref(), Some("__default__")) || app_id.is_none() {
-        return crate::commands::fs::open_entry(target.to_string_lossy().to_string())
-            .map_err(map_open_entry_api_error);
+        return crate::errors::domain::map_api_result(
+            crate::commands::fs::open_path_without_recent(&target),
+        )
+        .map_err(map_open_entry_api_error);
     }
 
     #[cfg(target_os = "linux")]

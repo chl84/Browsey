@@ -77,6 +77,17 @@ describe('createExplorerState sort refresh behavior', () => {
     expect(get(state.partitions)).toEqual([{ path: '/new', label: 'New' }])
   })
 
+  it('surfaces default-app launch failures without rejecting and clears the error on retry', async () => {
+    const onOpenEntry = vi.fn().mockRejectedValueOnce({ code: 'open_failed', message: 'Failed to open: executable missing' }).mockResolvedValueOnce(undefined)
+    const state = createExplorerState({ onOpenEntry })
+    const file = makeEntry('example.py', '/test/example.py')
+    await expect(state.open(file)).resolves.toBeUndefined()
+    expect(get(state.error)).toBe('Failed to open: executable missing')
+    await state.open(file)
+    expect(get(state.error)).toBe('')
+    expect(onOpenEntry).toHaveBeenCalledTimes(2)
+  })
+
   it('returns home when the active volume is among several removed volumes', async () => {
     const state = createExplorerState()
     listMountsMock.mockResolvedValueOnce([{ path: '/first', label: 'First' }, { path: '/second', label: 'Second' }])

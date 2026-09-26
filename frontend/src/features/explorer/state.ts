@@ -414,15 +414,18 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     },
   })
 
-  const open = (entry: Entry) => {
-    if (entry.kind === 'dir') {
-      void load(entry.path)
-    } else {
-      if (callbacks.onOpenEntry) {
-        void callbacks.onOpenEntry(entry)
+  const open = async (entry: Entry) => {
+    error.set('')
+    try {
+      if (entry.kind === 'dir') {
+        await load(entry.path)
+      } else if (callbacks.onOpenEntry) {
+        await callbacks.onOpenEntry(entry)
       } else {
-        void openEntry(entry)
+        await openEntry(entry)
       }
+    } catch (err) {
+      error.set(getErrorMessage(err))
     }
   }
 

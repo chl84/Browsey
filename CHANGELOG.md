@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Use GIO for Linux default-app opening as well as default-app selection, fixing Python files whose MIME type differs between GIO and xdg-open. Return handler lookup/startup errors to the UI, and perform file opening off the UI thread. Add isolated real-launch regression tests for Python files and failed launches.
 - Add a Linux Open With action to set the selected application as the desktop default for the displayed MIME type, without opening the file. Validate installed desktop IDs and recheck the file type before saving; keep save failures visible for retry. Directories and unknown file types cannot change defaults through this action.
 - Export local files to other applications with ordinary drag, without Alt. Keep WebKit's original drag session and deliver a correctly escaped native URI list through a small GTK bridge, including multiple files and special characters. The receiving application handles copy/move; Browsey never deletes sources on drag completion.
 - Fix the Linux window-close crash after file drag by removing completion IPC channels from GTK callbacks. Retire the separate drag plugin/backend and test real WebKit export followed by Tauri window teardown.

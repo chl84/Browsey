@@ -30,8 +30,13 @@ fn map_db_open_error(error: crate::db::DbError) -> FsError {
 }
 
 #[tauri::command]
-pub fn open_entry(path: String) -> ApiResult<()> {
-    map_api_result(open_entry_impl(path))
+pub async fn open_entry(path: String) -> ApiResult<()> {
+    let result = tauri::async_runtime::spawn_blocking(move || open_entry_impl(path))
+        .await
+        .map_err(|error| {
+            crate::errors::api_error::ApiError::new("task_failed", error.to_string())
+        })?;
+    map_api_result(result)
 }
 
 fn open_entry_impl(path: String) -> FsResult<()> {
@@ -56,15 +61,11 @@ fn open_path_impl(path: &Path) -> FsResult<()> {
             let (tx, rx) = mpsc::channel();
             let path_for_open = path.to_path_buf();
             std::thread::spawn(move || {
-                let res =
-                    open::that_detached(&path_for_open).map_err(|e| format!("Failed to open: {e}"));
+                let res = launch_default(&path_for_open);
                 let _ = tx.send(res);
             });
             let res = match rx.recv_timeout(OPEN_TIMEOUT_GVFS) {
-                Ok(res) => res.map_err(|error_message| {
-                    warn!(path = %path.display(), error = %error_message, "failed to open gvfs path");
-                    FsError::new(FsErrorCode::OpenFailed, error_message)
-                }),
+                Ok(res) => res,
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     warn!(
                         path = %path.display(),
@@ -73,7 +74,7 @@ fn open_path_impl(path: &Path) -> FsResult<()> {
                     );
                     Err(FsError::new(
                         FsErrorCode::OpenFailed,
-                        "Open timed out on remote device",
+                        "Opening the file on the remote device is taking too long. It may still open; check before retrying",
                     ))
                 }
                 Err(_) => {
@@ -84,7 +85,23 @@ fn open_path_impl(path: &Path) -> FsResult<()> {
             return res;
         }
     }
-    open::that_detached(path).map_err(|error| {
+    launch_default(path)
+}
+
+fn launch_default(path: &Path) -> FsResult<()> {
+    #[cfg(target_os = "linux")]
+    let result = {
+        use gio::prelude::*;
+        // Match the GIO MIME lookup used by Set as default. xdg-open's generic
+        // backend can identify the same Python file as a different MIME type.
+        // GIO also returns handler lookup/spawn errors, unlike a detached xdg-open.
+        let file = gio::File::for_path(path);
+        file.query_default_handler(gio::Cancellable::NONE)
+            .and_then(|app| app.launch(&[file], gio::AppLaunchContext::NONE))
+    };
+    #[cfg(not(target_os = "linux"))]
+    let result = open::that_detached(path);
+    result.map_err(|error| {
         warn!(path = %path.display(), error = %error, "failed to open path");
         FsError::new(FsErrorCode::OpenFailed, format!("Failed to open: {error}"))
     })
