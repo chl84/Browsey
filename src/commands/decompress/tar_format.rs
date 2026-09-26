@@ -12,17 +12,20 @@ use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use super::error::{DecompressError, DecompressResult};
+use super::util::ScanControl;
 use super::util::{
     check_cancel, clean_relative_path, copy_with_progress, ensure_dir_nofollow, first_component,
-    map_copy_err, open_buffered_file, open_unique_file, path_exists_nofollow, CreatedPaths,
-    ExtractBudget, ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
+    map_copy_err, open_buffered_file, open_unique_file, path_exists_nofollow, restore_file_mode,
+    CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 use super::ArchiveKind;
 
 pub(super) fn single_root_in_tar(
     path: &Path,
     kind: ArchiveKind,
+    control: ScanControl<'_>,
 ) -> DecompressResult<Option<PathBuf>> {
+    control.check()?;
     let file = File::open(path).map_err(|e| {
         DecompressError::from_external_message(format!("Failed to open tar for root: {e}"))
     })?;
@@ -37,15 +40,21 @@ pub(super) fn single_root_in_tar(
         })?),
         _ => return Ok(None),
     };
-    let mut archive = Archive::new(reader);
+    let mut archive = Archive::new(control.reader(reader));
     let mut root: Option<PathBuf> = None;
     let mut entries_seen = 0u64;
+    let mut scanned_bytes = 0u64;
     for entry_result in archive.entries().map_err(|e| {
         DecompressError::from_external_message(format!("Failed to iterate tar: {e}"))
     })? {
         let entry = entry_result.map_err(|e| {
             DecompressError::from_external_message(format!("Failed to read tar entry: {e}"))
         })?;
+        control.check()?;
+        scanned_bytes = scanned_bytes.saturating_add(entry.size());
+        if scanned_bytes > control.max_bytes {
+            return Err("Archive preflight exceeds extraction size cap".into());
+        }
         entries_seen = entries_seen.saturating_add(1);
         if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
             return Err(DecompressError::from_external_message(format!(
@@ -156,6 +165,10 @@ pub(super) fn extract_tar<R: Read>(
             stats.skip_unsupported(&raw_str, "unsupported type");
             continue;
         }
+        let mode = entry
+            .header()
+            .mode()
+            .map_err(|e| format!("Invalid tar permissions: {e}"))?;
         let clean_rel = match clean_relative_path(&raw_path) {
             Ok(p) => p,
             Err(err) => {
@@ -164,6 +177,9 @@ pub(super) fn extract_tar<R: Read>(
             }
         };
         if clean_rel.as_os_str().is_empty() {
+            if entry_type.is_dir() {
+                created.defer_directory_mode(dest_dir.to_path_buf(), Some(mode));
+            }
             continue;
         }
 
@@ -177,11 +193,15 @@ pub(super) fn extract_tar<R: Read>(
         };
 
         if clean_rel.as_os_str().is_empty() {
+            if entry_type.is_dir() {
+                created.defer_directory_mode(dest_dir.to_path_buf(), Some(mode));
+            }
             continue;
         }
 
         let dest_path = dest_dir.join(clean_rel);
         if entry_type.is_dir() {
+            created.defer_directory_mode(dest_path.clone(), Some(mode));
             match ensure_dir_nofollow(&dest_path) {
                 Ok(created_dirs) => {
                     for dir in created_dirs {
@@ -228,27 +248,38 @@ pub(super) fn extract_tar<R: Read>(
         copy_with_progress(&mut entry, &mut out, progress, cancel, budget, &mut buf).map_err(
             |e| DecompressError::from_external_message(map_copy_err("write tar entry", e)),
         )?;
+        restore_file_mode(out.get_ref(), Some(mode))?;
     }
     Ok(())
 }
 
-pub(super) fn tar_uncompressed_total(path: &Path) -> DecompressResult<u64> {
+pub(super) fn tar_uncompressed_total(
+    path: &Path,
+    control: ScanControl<'_>,
+) -> DecompressResult<u64> {
+    control.check()?;
     let file = File::open(path).map_err(|e| {
         DecompressError::from_external_message(format!("Failed to open tar for total: {e}"))
     })?;
     let reader = BufReader::with_capacity(CHUNK, file);
-    let mut archive = Archive::new(reader);
+    let mut archive = Archive::new(control.reader(reader));
     let mut total = 0u64;
     let entries = archive.entries().map_err(|e| {
         DecompressError::from_external_message(format!("Failed to iterate tar for total: {e}"))
     })?;
     let mut entries_seen = 0u64;
+    let mut scanned_bytes = 0u64;
     for entry_result in entries {
         let entry = entry_result.map_err(|e| {
             DecompressError::from_external_message(format!(
                 "Failed to read tar entry for total: {e}"
             ))
         })?;
+        control.check()?;
+        scanned_bytes = scanned_bytes.saturating_add(entry.size());
+        if scanned_bytes > control.max_bytes {
+            return Err("Archive preflight exceeds extraction size cap".into());
+        }
         entries_seen = entries_seen.saturating_add(1);
         if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
             return Err(DecompressError::from_external_message(format!(
@@ -270,6 +301,7 @@ pub(super) fn tar_uncompressed_total(path: &Path) -> DecompressResult<u64> {
 
 #[cfg(test)]
 mod tests {
+    use super::ScanControl;
     use super::{extract_tar_with_reader, single_root_in_tar, tar_uncompressed_total};
     use crate::commands::decompress::{
         error::is_cancelled_error,
@@ -325,11 +357,12 @@ mod tests {
         write_tar_archive(&tar_path, "folder/large.bin", &payload);
 
         assert_eq!(
-            single_root_in_tar(&tar_path, ArchiveKind::Tar).expect("single root"),
+            single_root_in_tar(&tar_path, ArchiveKind::Tar, ScanControl::default())
+                .expect("single root"),
             Some(PathBuf::from("folder"))
         );
         assert_eq!(
-            tar_uncompressed_total(&tar_path).expect("uncompressed total"),
+            tar_uncompressed_total(&tar_path, ScanControl::default()).expect("uncompressed total"),
             payload.len() as u64
         );
 

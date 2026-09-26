@@ -1,6 +1,7 @@
 //! Aggregates Tauri command modules and re-exports them for the builder.
 
 pub mod about;
+mod archive_identity;
 pub mod bookmarks;
 pub mod cloud;
 pub mod compress;

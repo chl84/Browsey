@@ -1,5 +1,7 @@
 mod error;
 mod rar_format;
+#[cfg(test)]
+mod regression_tests;
 mod seven_z_format;
 mod tar_format;
 mod util;
@@ -36,7 +38,7 @@ use util::{
     available_disk_bytes, copy_with_progress, create_unique_dir_nofollow,
     effective_extract_bytes_cap, ensure_dir_nofollow, map_copy_err, map_io, open_buffered_file,
     open_unique_file, strip_known_suffixes, CreatedPaths, DiskSpaceGuard, ExtractBudget,
-    ProgressEmitter, SkipStats, CHUNK, EXTRACT_DISK_CHECK_INTERVAL_BYTES,
+    ProgressEmitter, ScanControl, SkipStats, CHUNK, EXTRACT_DISK_CHECK_INTERVAL_BYTES,
     EXTRACT_MIN_FREE_DISK_RESERVE, EXTRACT_TOTAL_BYTES_CAP, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 use zip_format::{extract_zip, single_root_in_zip, zip_uncompressed_total};
@@ -208,11 +210,21 @@ fn extract_archives_blocking(
     };
     let batch_token = batch_guard.as_ref().map(|g| g.token());
 
+    let control = ScanControl {
+        cancel: batch_token.as_deref(),
+        ..ScanControl::default()
+    };
     // Compute batch total hint inside blocking context to avoid nested runtimes.
     let mut batch_total: u64 = 0;
     for path in &paths {
+        // Preserve the itemized batch API: extraction below returns the first
+        // cancelled item without opening it, and stops the remaining batch.
+        if control.check().is_err() {
+            break;
+        }
         let path_buf = PathBuf::from(path);
-        batch_total = batch_total.saturating_add(estimate_total_hint(&path_buf).unwrap_or(1));
+        batch_total =
+            batch_total.saturating_add(estimate_total_hint(&path_buf, control).unwrap_or(1));
     }
     if batch_total == 0 {
         batch_total = 1;
@@ -312,6 +324,29 @@ fn do_extract_impl(
     shared_progress: Option<ProgressEmitter>,
     batch_actions: Option<Arc<Mutex<Vec<Action>>>>,
 ) -> DecompressResult<ExtractResult> {
+    let mut _cancel_guard: Option<CancelGuard> = None;
+    let cancel_token_arc: Option<Arc<AtomicBool>> = if let Some(shared) = shared_cancel {
+        Some(shared)
+    } else if let Some(evt) = progress_event.as_ref() {
+        let guard = cancel_state.register(evt.clone()).map_err(|error| {
+            DecompressError::new(
+                DecompressErrorCode::TaskFailed,
+                format!("Failed to register cancel: {error}"),
+            )
+        })?;
+        let token = guard.token();
+        _cancel_guard = Some(guard);
+        Some(token)
+    } else {
+        None
+    };
+    let cancel_token = cancel_token_arc.as_deref();
+
+    let control = ScanControl {
+        cancel: cancel_token,
+        ..ScanControl::default()
+    };
+    control.check()?;
     let nofollow = sanitize_path_nofollow(&path, true).map_err(DecompressError::from)?;
     let meta = fs::symlink_metadata(&nofollow).map_err(|e| {
         DecompressError::from_external_message(format!("Failed to read archive metadata: {e}"))
@@ -337,18 +372,21 @@ fn do_extract_impl(
 
     let kind = detect_archive(&archive_path)?;
     let total_hint = match kind {
-        ArchiveKind::Zip => zip_uncompressed_total(&archive_path).unwrap_or(meta.len()),
-        ArchiveKind::Tar => tar_uncompressed_total(&archive_path).unwrap_or(meta.len()),
+        ArchiveKind::Zip => zip_uncompressed_total(&archive_path, control).unwrap_or(meta.len()),
+        ArchiveKind::Tar => tar_uncompressed_total(&archive_path, control).unwrap_or(meta.len()),
         ArchiveKind::TarGz => gzip_uncompressed_size(&archive_path).unwrap_or(meta.len()),
-        ArchiveKind::SevenZ => sevenz_uncompressed_total(&archive_path).unwrap_or(meta.len()),
+        ArchiveKind::SevenZ => {
+            sevenz_uncompressed_total(&archive_path, control).unwrap_or(meta.len())
+        }
         ArchiveKind::Rar => {
-            let entries = parse_rar_entries(&archive_path)?;
+            let entries = parse_rar_entries(&archive_path, control)?;
             rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len())
         }
         ArchiveKind::Gz => gzip_uncompressed_size(&archive_path).unwrap_or(meta.len()),
         _ => meta.len(),
     }
     .max(1);
+    control.check()?;
     let available_bytes = available_disk_bytes(parent)?;
     let effective_bytes_cap = effective_extract_bytes_cap(
         EXTRACT_TOTAL_BYTES_CAP,
@@ -389,28 +427,14 @@ fn do_extract_impl(
     };
     let mut created = CreatedPaths::default();
 
-    let mut _cancel_guard: Option<CancelGuard> = None;
-    let cancel_token_arc: Option<Arc<AtomicBool>> = if let Some(shared) = shared_cancel {
-        Some(shared)
-    } else if let Some(evt) = progress_id.as_ref() {
-        let guard = cancel_state.register(evt.clone()).map_err(|error| {
-            DecompressError::new(
-                DecompressErrorCode::TaskFailed,
-                format!("Failed to register cancel: {error}"),
-            )
-        })?;
-        let token = guard.token();
-        _cancel_guard = Some(guard);
-        Some(token)
-    } else {
-        None
+    let control = ScanControl {
+        max_bytes: budget.max_total_bytes(),
+        ..control
     };
-    let cancel_token = cancel_token_arc.as_deref();
-
     let stats = SkipStats::default();
     let destination = match kind {
         ArchiveKind::Zip => {
-            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind, control)?;
             created.record_dir(dest_dir.clone());
             extract_zip(
                 &archive_path,
@@ -425,7 +449,7 @@ fn do_extract_impl(
             dest_dir
         }
         ArchiveKind::Tar => {
-            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind, control)?;
             created.record_dir(dest_dir.clone());
             extract_tar_with_reader(
                 &archive_path,
@@ -441,7 +465,7 @@ fn do_extract_impl(
             dest_dir
         }
         ArchiveKind::TarGz => {
-            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind, control)?;
             created.record_dir(dest_dir.clone());
             extract_tar_with_reader(
                 &archive_path,
@@ -457,7 +481,7 @@ fn do_extract_impl(
             dest_dir
         }
         ArchiveKind::TarBz2 => {
-            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind, control)?;
             created.record_dir(dest_dir.clone());
             extract_tar_with_reader(
                 &archive_path,
@@ -473,7 +497,7 @@ fn do_extract_impl(
             dest_dir
         }
         ArchiveKind::TarXz => {
-            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind, control)?;
             created.record_dir(dest_dir.clone());
             extract_tar_with_reader(
                 &archive_path,
@@ -489,7 +513,7 @@ fn do_extract_impl(
             dest_dir
         }
         ArchiveKind::TarZstd => {
-            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind, control)?;
             created.record_dir(dest_dir.clone());
             extract_tar_with_reader(
                 &archive_path,
@@ -513,7 +537,7 @@ fn do_extract_impl(
             dest_dir
         }
         ArchiveKind::SevenZ => {
-            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind, control)?;
             created.record_dir(dest_dir.clone());
             extract_7z(
                 &archive_path,
@@ -528,7 +552,7 @@ fn do_extract_impl(
             dest_dir
         }
         ArchiveKind::Rar => {
-            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind)?;
+            let (dest_dir, strip) = choose_destination_dir(&archive_path, kind, control)?;
             created.record_dir(dest_dir.clone());
             extract_rar(
                 &archive_path,
@@ -588,19 +612,19 @@ fn do_extract_impl(
         )?,
     };
 
-    if owns_progress {
-        if let Some(p) = progress.as_ref() {
-            p.finish();
-        }
-    }
-    created.disarm();
-
     let backup = temp_backup_path(&destination).map_err(|e| {
         DecompressError::new(
             DecompressErrorCode::TaskFailed,
             format!("Cannot allocate undo backup: {e}"),
         )
     })?;
+    created.finish_permissions()?;
+    if owns_progress {
+        if let Some(p) = progress.as_ref() {
+            p.finish();
+        }
+    }
+    created.disarm();
     let action = Action::Create {
         path: destination.clone(),
         backup,
@@ -738,20 +762,21 @@ fn has_suffix(name: &str, suffixes: &[&str]) -> bool {
 fn choose_destination_dir(
     archive_path: &Path,
     kind: ArchiveKind,
+    control: ScanControl<'_>,
 ) -> DecompressResult<(PathBuf, Option<PathBuf>)> {
     let parent = archive_path.parent().ok_or_else(|| {
         DecompressError::from_external_message("Cannot extract archive at filesystem root")
     })?;
 
     let single_root = match kind {
-        ArchiveKind::Zip => single_root_in_zip(archive_path)?,
+        ArchiveKind::Zip => single_root_in_zip(archive_path, control)?,
         ArchiveKind::Tar
         | ArchiveKind::TarGz
         | ArchiveKind::TarBz2
         | ArchiveKind::TarXz
-        | ArchiveKind::TarZstd => single_root_in_tar(archive_path, kind)?,
-        ArchiveKind::SevenZ => single_root_in_7z(archive_path)?,
-        ArchiveKind::Rar => single_root_in_rar(archive_path)?,
+        | ArchiveKind::TarZstd => single_root_in_tar(archive_path, kind, control)?,
+        ArchiveKind::SevenZ => single_root_in_7z(archive_path, control)?,
+        ArchiveKind::Rar => single_root_in_rar(archive_path, control)?,
         _ => None,
     };
 
@@ -858,18 +883,18 @@ fn gzip_uncompressed_size(path: &Path) -> DecompressResult<u64> {
     Ok(size.max(1))
 }
 
-fn estimate_total_hint(path: &Path) -> DecompressResult<u64> {
+fn estimate_total_hint(path: &Path, control: ScanControl<'_>) -> DecompressResult<u64> {
     let meta = fs::metadata(path).map_err(|e| {
         DecompressError::from_external_message(format!("Failed to read archive metadata: {e}"))
     })?;
     let kind = detect_archive(path)?;
     let total = match kind {
-        ArchiveKind::Zip => zip_uncompressed_total(path).unwrap_or(meta.len()),
-        ArchiveKind::Tar => tar_uncompressed_total(path).unwrap_or(meta.len()),
+        ArchiveKind::Zip => zip_uncompressed_total(path, control).unwrap_or(meta.len()),
+        ArchiveKind::Tar => tar_uncompressed_total(path, control).unwrap_or(meta.len()),
         ArchiveKind::TarGz => gzip_uncompressed_size(path).unwrap_or(meta.len()),
-        ArchiveKind::SevenZ => sevenz_uncompressed_total(path).unwrap_or(meta.len()),
+        ArchiveKind::SevenZ => sevenz_uncompressed_total(path, control).unwrap_or(meta.len()),
         ArchiveKind::Rar => {
-            let entries = parse_rar_entries(path)?;
+            let entries = parse_rar_entries(path, control)?;
             rar_uncompressed_total_from_entries(&entries).unwrap_or(meta.len())
         }
         ArchiveKind::Gz => gzip_uncompressed_size(path).unwrap_or(meta.len()),

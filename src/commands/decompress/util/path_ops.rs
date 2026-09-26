@@ -150,7 +150,7 @@ fn open_unique_file_nofollow(path: &Path) -> io::Result<File> {
             parent_fd.as_raw_fd(),
             name.as_ptr(),
             libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-            0o644,
+            0o600,
         )
     };
     if fd < 0 {
@@ -203,7 +203,7 @@ pub(crate) fn ensure_dir_nofollow(path: &Path) -> DecompressResult<Vec<PathBuf>>
                     let c_seg = cstring_from_os_component(seg)
                         .map_err(|e| format!("Invalid path component in {}: {e}", abs.display()))?;
                     let mkdir_rc =
-                        unsafe { libc::mkdirat(current.as_raw_fd(), c_seg.as_ptr(), 0o755) };
+                        unsafe { libc::mkdirat(current.as_raw_fd(), c_seg.as_ptr(), 0o700) };
                     if mkdir_rc != 0 {
                         let err = io::Error::last_os_error();
                         if err.kind() != io::ErrorKind::AlreadyExists {
@@ -268,7 +268,15 @@ pub(crate) fn ensure_dir_nofollow(path: &Path) -> DecompressResult<Vec<PathBuf>>
     #[cfg(not(all(unix, target_os = "linux")))]
     {
         let existed = path.exists();
-        fs::create_dir_all(path)
+        let mut builder = fs::DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        builder
+            .create(path)
             .map_err(|e| format!("Failed to create directory {}: {e}", path.display()))?;
         if existed {
             Ok(Vec::new())
@@ -335,7 +343,7 @@ pub(crate) fn path_exists_nofollow(path: &Path) -> DecompressResult<bool> {
         match fs::symlink_metadata(path) {
             Ok(_) => Ok(true),
             Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
-            Err(err) => Err(format!("Failed to stat path {}: {err}", path.display())),
+            Err(err) => Err(format!("Failed to stat path {}: {err}", path.display()).into()),
         }
     }
 }
@@ -370,7 +378,7 @@ pub(crate) fn create_unique_dir_nofollow(parent: &Path, base: &str) -> Decompres
                     name
                 )
             })?;
-            let rc = unsafe { libc::mkdirat(parent_fd.as_raw_fd(), c_name.as_ptr(), 0o755) };
+            let rc = unsafe { libc::mkdirat(parent_fd.as_raw_fd(), c_name.as_ptr(), 0o700) };
             if rc == 0 {
                 return Ok(abs_parent.join(name));
             }
@@ -391,8 +399,14 @@ pub(crate) fn create_unique_dir_nofollow(parent: &Path, base: &str) -> Decompres
         ensure_dir_nofollow(parent)?;
         let mut candidate = parent.join(base);
         let mut idx = 1usize;
+        let mut builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
         loop {
-            match fs::create_dir(&candidate) {
+            match builder.create(&candidate) {
                 Ok(_) => return Ok(candidate),
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
                     candidate = parent.join(format!("{base}-{idx}"));
@@ -402,7 +416,8 @@ pub(crate) fn create_unique_dir_nofollow(parent: &Path, base: &str) -> Decompres
                     return Err(format!(
                         "Failed to create destination folder {}: {e}",
                         candidate.display()
-                    ))
+                    )
+                    .into())
                 }
             }
         }
@@ -419,10 +434,16 @@ pub(crate) fn open_unique_file(dest_path: &Path) -> DecompressResult<(File, Path
         #[cfg(all(unix, target_os = "linux"))]
         let create_result = open_unique_file_nofollow(&candidate);
         #[cfg(not(all(unix, target_os = "linux")))]
-        let create_result = File::options()
-            .write(true)
-            .create_new(true)
-            .open(&candidate);
+        let create_result = {
+            let mut options = File::options();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            options.open(&candidate)
+        };
 
         match create_result {
             Ok(f) => return Ok((f, candidate)),

@@ -88,6 +88,12 @@ impl fmt::Display for CompressError {
 
 impl std::error::Error for CompressError {}
 
+impl From<String> for CompressError {
+    fn from(message: String) -> Self {
+        Self::from_external_message(message)
+    }
+}
+
 impl DomainError for CompressError {
     fn code_str(&self) -> &'static str {
         self.code.as_code_str()

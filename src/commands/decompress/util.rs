@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs,
     path::PathBuf,
     sync::{
@@ -7,10 +8,13 @@ use std::{
     },
 };
 
+use crate::commands::archive_identity::ArchiveIdentity;
 use crate::fs_utils::debug_log;
 
 mod budget;
 mod path_ops;
+mod permissions;
+mod scan;
 mod stream_io;
 
 pub(super) const CHUNK: usize = 4 * 1024 * 1024;
@@ -26,6 +30,8 @@ pub(super) use path_ops::{
     clean_relative_path, create_unique_dir_nofollow, ensure_dir_nofollow, first_component,
     open_unique_file, path_exists_nofollow, strip_known_suffixes,
 };
+pub(super) use permissions::{restore_file_mode, sevenz_mode};
+pub(super) use scan::ScanControl;
 #[cfg(test)]
 pub(super) use stream_io::set_copy_cancel_after_writes_for_tests;
 pub(super) use stream_io::{
@@ -52,8 +58,9 @@ impl SkipStats {
 }
 
 pub(super) struct CreatedPaths {
-    pub(super) files: Vec<PathBuf>,
-    pub(super) dirs: Vec<PathBuf>,
+    files: Vec<(PathBuf, Option<ArchiveIdentity>)>,
+    dirs: Vec<(PathBuf, Option<ArchiveIdentity>)>,
+    dir_modes: HashMap<PathBuf, u32>,
     active: bool,
 }
 
@@ -62,6 +69,7 @@ impl Default for CreatedPaths {
         Self {
             files: Vec::new(),
             dirs: Vec::new(),
+            dir_modes: HashMap::new(),
             active: true,
         }
     }
@@ -69,15 +77,39 @@ impl Default for CreatedPaths {
 
 impl CreatedPaths {
     pub(super) fn record_file(&mut self, path: PathBuf) {
-        self.files.push(path);
+        let identity = ArchiveIdentity::capture(&path);
+        self.files.push((path, identity));
     }
 
     pub(super) fn record_dir(&mut self, path: PathBuf) {
-        self.dirs.push(path);
+        let identity = ArchiveIdentity::capture(&path);
+        self.dirs.push((path, identity));
     }
 
     pub(super) fn disarm(&mut self) {
         self.active = false;
+    }
+
+    pub(super) fn defer_directory_mode(&mut self, path: PathBuf, mode: Option<u32>) {
+        if let Some(mode) = mode {
+            self.dir_modes.insert(path, mode & 0o777);
+        }
+    }
+
+    pub(super) fn finish_permissions(&self) -> super::error::DecompressResult<()> {
+        // Children first: a read-only directory must not obstruct extraction.
+        for (path, identity) in self.dirs.iter().rev() {
+            if let Some(mode) = self.dir_modes.get(path) {
+                let identity = identity
+                    .as_ref()
+                    .ok_or("Cannot verify extracted directory identity")?;
+                if !identity.matches(path) {
+                    return Err("Extracted directory changed".into());
+                }
+                permissions::restore_directory_mode(path, *mode)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -86,12 +118,23 @@ impl Drop for CreatedPaths {
         if !self.active {
             return;
         }
-        // Remove files first, then dirs in reverse to clean up partially extracted content.
-        for file in self.files.iter().rev() {
-            let _ = fs::remove_file(file);
+        // Undo any restrictive directory modes applied before a later failure.
+        for (dir, identity) in &self.dirs {
+            if identity.as_ref().is_some_and(|id| id.matches(dir)) {
+                let _ = permissions::restore_directory_mode(dir, 0o700);
+            }
         }
-        for dir in self.dirs.iter().rev() {
-            let _ = fs::remove_dir_all(dir);
+        // Remove files first, then dirs in reverse to clean up partially extracted content.
+        for (file, identity) in self.files.iter().rev() {
+            if identity.as_ref().is_some_and(|id| id.matches(file)) {
+                let _ = fs::remove_file(file);
+            }
+        }
+        for (dir, identity) in self.dirs.iter().rev() {
+            if identity.as_ref().is_some_and(|id| id.matches(dir)) {
+                // Never recursively erase files added by another process.
+                let _ = fs::remove_dir(dir);
+            }
         }
     }
 }
@@ -121,6 +164,51 @@ mod tests {
         let path = std::env::temp_dir().join(unique);
         fs::create_dir_all(&path).expect("create temp dir");
         path
+    }
+
+    #[test]
+    fn copy_reports_failure_when_only_final_flush_fails() {
+        let mut out = io::BufWriter::with_capacity(
+            1024,
+            DestinationUnavailableWriter {
+                writes: 0,
+                fail_on_write: 0,
+                data: Vec::new(),
+            },
+        );
+        let error = copy_with_progress(
+            &b"small file"[..],
+            &mut out,
+            None,
+            None,
+            &ExtractBudget::new(1024, 1),
+            &mut [0; 32],
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+    }
+
+    #[test]
+    fn rollback_preserves_untracked_and_replaced_files() {
+        let root = unique_temp_dir("rollback-other-files");
+        let dir = root.join("output");
+        fs::create_dir(&dir).unwrap();
+        let file = dir.join("owned.txt");
+        fs::write(&file, b"partial").unwrap();
+        let mut created = CreatedPaths::default();
+        created.record_dir(dir.clone());
+        created.record_file(file.clone());
+        // Retain the original inode to make replacement deterministic.
+        fs::rename(&file, root.join("original.txt")).unwrap();
+        fs::write(&file, b"replacement").unwrap();
+        fs::write(dir.join("untracked.txt"), b"not extracted").unwrap();
+        drop(created);
+        assert_eq!(fs::read(&file).unwrap(), b"replacement");
+        assert_eq!(
+            fs::read(dir.join("untracked.txt")).unwrap(),
+            b"not extracted"
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     struct CancelAfterReads {

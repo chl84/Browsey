@@ -10,18 +10,24 @@ use sevenz_rust2::{
 };
 
 use super::error::{DecompressError, DecompressResult};
+use super::util::ScanControl;
 use super::util::{
     clean_relative_path, copy_with_progress, ensure_dir_nofollow, first_component, is_cancelled,
-    open_unique_file, path_exists_nofollow, CreatedPaths, ExtractBudget, ProgressEmitter,
-    SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
+    open_unique_file, path_exists_nofollow, restore_file_mode, sevenz_mode, CreatedPaths,
+    ExtractBudget, ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 use crate::errors::domain::DomainError;
 
-pub(super) fn single_root_in_7z(path: &Path) -> DecompressResult<Option<PathBuf>> {
+pub(super) fn single_root_in_7z(
+    path: &Path,
+    control: ScanControl<'_>,
+) -> DecompressResult<Option<PathBuf>> {
+    control.check()?;
     let archive = SevenZArchive::open(path).map_err(|e| format!("Failed to read 7z: {e}"))?;
     let mut root: Option<PathBuf> = None;
     let mut entries_seen = 0u64;
     for entry in archive.files {
+        control.check()?;
         entries_seen = entries_seen.saturating_add(1);
         if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
             return Err(format!(
@@ -45,7 +51,7 @@ pub(super) fn single_root_in_7z(path: &Path) -> DecompressResult<Option<PathBuf>
             continue;
         };
         let rest_is_empty = clean_rel.components().count() == 1;
-        let is_dir = entry.is_directory || (!entry.has_stream && rest_is_empty);
+        let is_dir = entry.is_directory;
         if !is_dir && rest_is_empty {
             return Ok(None);
         }
@@ -87,6 +93,7 @@ pub(super) fn extract_7z(
         }
 
         let raw_name = entry.name.clone();
+        let mode = sevenz_mode(entry.has_windows_attributes, entry.windows_attributes);
         let clean_rel = match clean_relative_path(Path::new(&raw_name)) {
             Ok(p) => p,
             Err(err) => {
@@ -103,11 +110,15 @@ pub(super) fn extract_7z(
             clean_rel
         };
         if clean_rel.as_os_str().is_empty() {
+            if entry.is_directory {
+                created.defer_directory_mode(dest_dir.to_path_buf(), mode);
+            }
             return Ok(true);
         }
         let dest_path = dest_dir.join(clean_rel);
 
         if entry.is_directory {
+            created.defer_directory_mode(dest_path.clone(), mode);
             match ensure_dir_nofollow(&dest_path) {
                 Ok(created_dirs) => {
                     for dir in created_dirs {
@@ -144,9 +155,11 @@ pub(super) fn extract_7z(
                     return Ok(true);
                 }
             }
-            let (_file, dest_actual) = open_unique_file(&dest_path)
+            let (file, dest_actual) = open_unique_file(&dest_path)
                 .map_err(|e| SevenZError::Other(Cow::Owned(e.message().to_owned())))?;
             created.record_file(dest_actual);
+            restore_file_mode(&file, mode)
+                .map_err(|e| SevenZError::Other(Cow::Owned(e.to_string())))?;
             return Ok(true);
         }
 
@@ -174,17 +187,24 @@ pub(super) fn extract_7z(
                 Cow::Owned(format!("Failed to write 7z entry {raw_name}")),
             )
         })?;
+        restore_file_mode(out.get_ref(), mode)
+            .map_err(|e| SevenZError::Other(Cow::Owned(e.to_string())))?;
         Ok(true)
     })
     .map_err(|e| DecompressError::from_external_message(format!("Failed to extract 7z: {e}")))
 }
 
-pub(super) fn sevenz_uncompressed_total(path: &Path) -> DecompressResult<u64> {
+pub(super) fn sevenz_uncompressed_total(
+    path: &Path,
+    control: ScanControl<'_>,
+) -> DecompressResult<u64> {
+    control.check()?;
     let archive =
         SevenZArchive::open(path).map_err(|e| format!("Failed to read 7z for total size: {e}"))?;
     let mut total = 0u64;
     let mut entries_seen = 0u64;
     for entry in archive.files {
+        control.check()?;
         entries_seen = entries_seen.saturating_add(1);
         if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
             return Err(format!(

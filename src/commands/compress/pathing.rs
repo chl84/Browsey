@@ -7,6 +7,48 @@ use crate::fs_utils::sanitize_path_nofollow;
 
 use super::{CompressError, CompressResult};
 
+pub(super) fn archive_entry_name(path: &Path) -> CompressResult<String> {
+    let mut parts = Vec::new();
+    for component in path.components() {
+        let std::path::Component::Normal(name) = component else {
+            return Err(CompressError::from_external_message(
+                "Archive entry must be a relative path",
+            ));
+        };
+        let name = name.to_str().ok_or_else(|| {
+            CompressError::from_external_message(
+                "Cannot represent a non-UTF-8 filename in ZIP without changing it",
+            )
+        })?;
+        // ZIP consumers disagree about literal backslashes. Fail explicitly
+        // instead of silently changing a Linux filename into directory segments.
+        if name.contains(['\\', '\0']) {
+            return Err(CompressError::from_external_message(format!(
+                "Cannot represent filename safely in ZIP: {name:?}"
+            )));
+        }
+        parts.push(name);
+    }
+    if parts.is_empty() {
+        return Err(CompressError::from_external_message(
+            "Archive entry name cannot be empty",
+        ));
+    }
+    Ok(parts.join("/"))
+}
+
+pub(super) fn archive_link_target(path: &Path) -> CompressResult<String> {
+    let target = path.to_str().ok_or_else(|| {
+        CompressError::from_external_message(
+            "Cannot represent a non-UTF-8 symlink target in ZIP without changing it",
+        )
+    })?;
+    #[cfg(windows)]
+    return Ok(target.replace('\\', "/"));
+    #[cfg(not(windows))]
+    Ok(target.to_owned())
+}
+
 pub(super) fn ensure_same_parent(paths: &[PathBuf]) -> CompressResult<PathBuf> {
     let mut parent: Option<PathBuf> = None;
     for p in paths {
