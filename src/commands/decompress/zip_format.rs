@@ -5,7 +5,18 @@ use std::{
     sync::atomic::AtomicBool,
 };
 
+use super::password::{is_password_read_error, PasswordReader};
 use zip::ZipArchive;
+
+fn zip_error(error: zip::result::ZipError) -> DecompressError {
+    match error {
+        zip::result::ZipError::InvalidPassword => DecompressError::invalid_password(),
+        zip::result::ZipError::UnsupportedArchive(zip::result::ZipError::PASSWORD_REQUIRED) => {
+            DecompressError::password_required()
+        }
+        error => DecompressError::from_external_message(format!("Failed to read ZIP: {error}")),
+    }
+}
 
 use super::error::{DecompressError, DecompressResult};
 use super::util::ScanControl;
@@ -28,7 +39,7 @@ pub(super) fn single_root_in_zip(
     for i in 0..archive.len() {
         control.check()?;
         let entry = archive
-            .by_index(i)
+            .by_index_raw(i)
             .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
         entries_seen = entries_seen.saturating_add(1);
         if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
@@ -82,15 +93,18 @@ pub(super) fn extract_zip(
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
     budget: &ExtractBudget,
+    password: Option<&str>,
 ) -> DecompressResult<()> {
     let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip"))?)
         .map_err(|e| format!("Failed to read zip: {e}"))?;
     let mut buf = vec![0u8; CHUNK];
 
     for i in 0..archive.len() {
-        let mut entry = archive
-            .by_index(i)
-            .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
+        let mut entry = match password {
+            Some(password) => archive.by_index_decrypt(i, password.as_bytes()),
+            None => archive.by_index(i),
+        }
+        .map_err(zip_error)?;
         budget
             .reserve_entry(1)
             .map_err(|e| map_copy_err("Extraction entry cap exceeded", e))?;
@@ -179,8 +193,21 @@ pub(super) fn extract_zip(
         let (file, actual_path) = open_unique_file(&dest_path)?;
         created.record_file(actual_path);
         let mut out = BufWriter::with_capacity(CHUNK, file);
-        if let Err(e) = copy_with_progress(&mut entry, &mut out, progress, cancel, budget, &mut buf)
-        {
+        let encrypted = entry.encrypted();
+        if let Err(e) = copy_with_progress(
+            &mut PasswordReader {
+                reader: &mut entry,
+                encrypted,
+            },
+            &mut out,
+            progress,
+            cancel,
+            budget,
+            &mut buf,
+        ) {
+            if is_password_read_error(&e) {
+                return Err(DecompressError::password_or_corrupt());
+            }
             let msg = map_copy_err(&format!("Failed to write zip entry {raw_name}"), e);
             return Err(DecompressError::from_external_message(msg));
         }
@@ -202,7 +229,7 @@ pub(super) fn zip_uncompressed_total(
     for i in 0..archive.len() {
         control.check()?;
         let entry = archive
-            .by_index(i)
+            .by_index_raw(i)
             .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
         entries_seen = entries_seen.saturating_add(1);
         if entries_seen > EXTRACT_TOTAL_ENTRIES_CAP {
@@ -301,6 +328,7 @@ mod tests {
             &mut created,
             None,
             &budget,
+            None,
         )
         .expect("extract zip64/stored archive");
 
@@ -338,6 +366,7 @@ mod tests {
                 &mut created,
                 Some(cancel.as_ref()),
                 &budget,
+                None,
             );
             let err = result.expect_err("extract should stop once cancellation is observed");
             drop(created);

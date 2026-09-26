@@ -12,7 +12,11 @@ use std::{
 use chrono::{DateTime as ChronoDateTime, Datelike, Local, Timelike};
 use serde::Serialize;
 use walkdir::WalkDir;
-use zip::{write::SimpleFileOptions, CompressionMethod, DateTime as ZipDateTime, ZipWriter};
+use zeroize::Zeroizing;
+use zip::{
+    write::{FileOptions, SimpleFileOptions},
+    AesMode, CompressionMethod, DateTime as ZipDateTime, ZipWriter,
+};
 
 use crate::commands::archive_identity::ArchiveIdentity;
 use crate::errors::api_error::ApiResult;
@@ -93,8 +97,8 @@ fn current_millis() -> u64 {
 fn add_path_to_zip(
     zip: &mut ZipWriter<BufWriter<File>>,
     entry: &EntryMeta,
-    deflated_opts: &SimpleFileOptions,
-    stored_opts: &SimpleFileOptions,
+    deflated_opts: &FileOptions<'_, ()>,
+    stored_opts: &FileOptions<'_, ()>,
     progress: Option<&ProgressEmitter>,
     cancel: Option<&AtomicBool>,
     buf: &mut [u8],
@@ -168,7 +172,7 @@ fn open_regular_input(path: &Path) -> io::Result<File> {
     Ok(file)
 }
 
-fn with_entry_metadata(base: SimpleFileOptions, entry: &EntryMeta) -> SimpleFileOptions {
+fn with_entry_metadata<'a>(base: FileOptions<'a, ()>, entry: &EntryMeta) -> FileOptions<'a, ()> {
     let mut opts = base;
     if let Some(mode) = entry.mode {
         opts = opts.unix_permissions(mode);
@@ -399,6 +403,7 @@ fn map_copy_err(context: &str, err: io::Error) -> String {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn compress_entries(
     app: tauri::AppHandle,
     cancel: tauri::State<'_, CancelState>,
@@ -407,6 +412,7 @@ pub async fn compress_entries(
     name: Option<String>,
     level: Option<u32>,
     progress_event: Option<String>,
+    password: Option<String>,
 ) -> ApiResult<String> {
     map_api_result(
         compress_entries_impl(
@@ -417,11 +423,13 @@ pub async fn compress_entries(
             name,
             level,
             progress_event,
+            password.map(Zeroizing::new),
         )
         .await,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn compress_entries_impl(
     app: tauri::AppHandle,
     cancel_state: CancelState,
@@ -430,6 +438,7 @@ async fn compress_entries_impl(
     name: Option<String>,
     level: Option<u32>,
     progress_event: Option<String>,
+    password: Option<Zeroizing<String>>,
 ) -> CompressResult<String> {
     let task = tauri::async_runtime::spawn_blocking(move || {
         do_compress(
@@ -440,6 +449,7 @@ async fn compress_entries_impl(
             name,
             level,
             progress_event,
+            password.as_deref().map(String::as_str),
         )
     });
     match task.await {
@@ -451,6 +461,7 @@ async fn compress_entries_impl(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn do_compress(
     app: Option<tauri::AppHandle>,
     cancel_state: CancelState,
@@ -459,7 +470,14 @@ fn do_compress(
     name: Option<String>,
     level: Option<u32>,
     progress_event: Option<String>,
+    password: Option<&str>,
 ) -> CompressResult<String> {
+    if password.is_some_and(|value| value.is_empty() || value.contains('\0')) {
+        return Err(CompressError::new(
+            CompressErrorCode::InvalidInput,
+            "Password must not be empty or contain NUL characters",
+        ));
+    }
     // Register before any path resolution or recursive scanning.
     let cancel_guard: Option<CancelGuard> = progress_event
         .as_ref()
@@ -552,13 +570,18 @@ fn do_compress(
         Some(lvl as i64)
     };
 
-    let deflated_opts = SimpleFileOptions::default()
+    let mut deflated_opts = SimpleFileOptions::default()
         .compression_method(method)
         .compression_level(level_opt);
 
-    let stored_opts = SimpleFileOptions::default()
+    let mut stored_opts = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Stored)
         .compression_level(None);
+
+    if let Some(password) = password {
+        deflated_opts = deflated_opts.with_aes_encryption(AesMode::Aes256, password);
+        stored_opts = stored_opts.with_aes_encryption(AesMode::Aes256, password);
+    }
 
     let mut entries = entries;
     if entries.is_empty() {

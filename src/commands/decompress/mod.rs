@@ -1,4 +1,5 @@
 mod error;
+mod password;
 mod rar_format;
 #[cfg(test)]
 mod regression_tests;
@@ -15,10 +16,12 @@ use std::{
     sync::{atomic::AtomicBool, Arc, Mutex},
 };
 
+use crate::errors::domain::DomainError;
 use bzip2::read::BzDecoder;
 use flate2::read::{GzDecoder, MultiGzDecoder};
 use serde::Serialize;
 use xz2::read::XzDecoder;
+use zeroize::Zeroizing;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::errors::api_error::ApiResult;
@@ -72,6 +75,7 @@ pub struct ExtractBatchItem {
     pub ok: bool,
     pub result: Option<ExtractResult>,
     pub error: Option<String>,
+    pub error_code: Option<String>,
 }
 
 pub(crate) fn are_extractable_archive_paths(paths: &[String]) -> bool {
@@ -106,6 +110,7 @@ pub async fn extract_archive(
     undo: tauri::State<'_, UndoState>,
     path: String,
     progress_event: Option<String>,
+    password: Option<String>,
 ) -> ApiResult<ExtractResult> {
     map_api_result(
         extract_archive_impl(
@@ -114,6 +119,7 @@ pub async fn extract_archive(
             undo.inner().clone(),
             path,
             progress_event,
+            password.map(Zeroizing::new),
         )
         .await,
     )
@@ -125,10 +131,11 @@ async fn extract_archive_impl(
     undo_state: UndoState,
     path: String,
     progress_event: Option<String>,
+    password: Option<Zeroizing<String>>,
 ) -> DecompressResult<ExtractResult> {
     let task = tauri::async_runtime::spawn_blocking(move || -> DecompressResult<ExtractResult> {
-        do_extract(
-            app,
+        do_extract_with_password(
+            Some(&app),
             cancel_state,
             undo_state,
             path,
@@ -136,6 +143,7 @@ async fn extract_archive_impl(
             None,
             None,
             None,
+            password.as_deref().map(String::as_str),
         )
     });
     match task.await {
@@ -272,6 +280,7 @@ where
                 ok: true,
                 result: Some(result),
                 error: None,
+                error_code: None,
             }),
             Err(error) => {
                 let was_cancel = is_cancelled_error(&error);
@@ -280,6 +289,7 @@ where
                     ok: false,
                     result: None,
                     error: Some(error.to_string()),
+                    error_code: Some(error.code_str().to_owned()),
                 });
                 if was_cancel {
                     break;
@@ -288,29 +298,6 @@ where
         }
     }
     results
-}
-
-#[allow(clippy::too_many_arguments)]
-fn do_extract(
-    app: tauri::AppHandle,
-    cancel_state: CancelState,
-    undo: UndoState,
-    path: String,
-    progress_event: Option<String>,
-    shared_cancel: Option<Arc<AtomicBool>>,
-    shared_progress: Option<ProgressEmitter>,
-    batch_actions: Option<Arc<Mutex<Vec<Action>>>>,
-) -> DecompressResult<ExtractResult> {
-    do_extract_impl(
-        Some(&app),
-        cancel_state,
-        undo,
-        path,
-        progress_event,
-        shared_cancel,
-        shared_progress,
-        batch_actions,
-    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -324,6 +311,37 @@ fn do_extract_impl(
     shared_progress: Option<ProgressEmitter>,
     batch_actions: Option<Arc<Mutex<Vec<Action>>>>,
 ) -> DecompressResult<ExtractResult> {
+    do_extract_with_password(
+        app,
+        cancel_state,
+        undo,
+        path,
+        progress_event,
+        shared_cancel,
+        shared_progress,
+        batch_actions,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn do_extract_with_password(
+    app: Option<&tauri::AppHandle>,
+    cancel_state: CancelState,
+    undo: UndoState,
+    path: String,
+    progress_event: Option<String>,
+    shared_cancel: Option<Arc<AtomicBool>>,
+    shared_progress: Option<ProgressEmitter>,
+    batch_actions: Option<Arc<Mutex<Vec<Action>>>>,
+    password: Option<&str>,
+) -> DecompressResult<ExtractResult> {
+    if password.is_some_and(|value| value.contains('\0')) {
+        return Err(DecompressError::new(
+            DecompressErrorCode::InvalidInput,
+            "Password must not contain NUL characters",
+        ));
+    }
     let mut _cancel_guard: Option<CancelGuard> = None;
     let cancel_token_arc: Option<Arc<AtomicBool>> = if let Some(shared) = shared_cancel {
         Some(shared)
@@ -344,6 +362,7 @@ fn do_extract_impl(
 
     let control = ScanControl {
         cancel: cancel_token,
+        password,
         ..ScanControl::default()
     };
     control.check()?;
@@ -445,6 +464,7 @@ fn do_extract_impl(
                 &mut created,
                 cancel_token,
                 &budget,
+                password,
             )?;
             dest_dir
         }
@@ -548,6 +568,7 @@ fn do_extract_impl(
                 &mut created,
                 cancel_token,
                 &budget,
+                password,
             )?;
             dest_dir
         }
@@ -563,6 +584,7 @@ fn do_extract_impl(
                 &mut created,
                 cancel_token,
                 &budget,
+                password,
             )?;
             dest_dir
         }

@@ -10,6 +10,7 @@ use std::{
 pub(crate) struct ScanControl<'a> {
     pub(crate) cancel: Option<&'a AtomicBool>,
     pub(crate) max_bytes: u64,
+    pub(crate) password: Option<&'a str>,
 }
 
 impl Default for ScanControl<'_> {
@@ -17,6 +18,7 @@ impl Default for ScanControl<'_> {
         Self {
             cancel: None,
             max_bytes: EXTRACT_TOTAL_BYTES_CAP,
+            password: None,
         }
     }
 }
@@ -82,6 +84,7 @@ mod tests {
         let mut reader = ScanControl {
             cancel: Some(&cancel),
             max_bytes: 8,
+            ..ScanControl::default()
         }
         .reader(io::repeat(0));
         let error = reader.read_exact(&mut [0; 8]).unwrap_err();
@@ -98,6 +101,7 @@ mod tests {
         let control = ScanControl {
             cancel: None,
             max_bytes: 8,
+            ..ScanControl::default()
         };
         let mut reader = control.reader(io::repeat(0));
         reader.read = control.max_bytes + EXTRACT_TOTAL_ENTRIES_CAP * 1024;

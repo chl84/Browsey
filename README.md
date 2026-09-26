@@ -195,6 +195,8 @@ Tauri bundles:
 - Extra metadata is lazy-loaded when opening the Extra tab.
 - HDR/EXR image thumbnail decoding uses a longer timeout window than standard image formats.
 - Archive extraction enforces a total output cap (100 GB) and total entry cap (2,000,000 entries).
+- ZIP creation offers optional AES-256 password protection with confirmation. ZIP file names remain visible; readers must support WinZip AES. Password-protected ZIP (AES/ZipCrypto), 7z and RAR extraction prompts for a password and allows retry/cancel, including encrypted 7z/RAR file names. Batch extraction prompts separately for each protected archive.
+- Archive passwords are not saved in settings, history or logs. Dialog inputs are cleared after submission/close; each archive attempt receives only its own password. See [archive tests and limitations](docs/testing-archives.md).
 - Archive preflight is cancellable between entries; TAR scanning also bounds decoded bytes. Extraction checks final buffered writes and rolls back only its own still-identifiable outputs, preserving files added or replaced by other processes.
 - On Unix, archive outputs start private. Extraction restores ordinary stored permission bits (including executability), never setuid/setgid/sticky bits; entries without Unix mode metadata remain private. Directory modes are restored after their contents are written.
 - ZIP creation rejects devices, sockets, FIFOs, non-UTF-8 entry names, and literal backslashes in Unix entry names with an explicit error. It does not silently rewrite such names; Unicode names and literal Unix symlink targets are preserved.

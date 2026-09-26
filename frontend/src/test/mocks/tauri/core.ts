@@ -35,6 +35,7 @@ type E2eMockControl = {
   thumbnailHold?: boolean
   systemClipboard?: MockClipboardState
   failCommands?: string[]
+  archivePassword?: string
   formatHold?: boolean
   formatProgress?: { phase: string; percent: number | null }
   formatError?: { code: string; message: string }
@@ -264,6 +265,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
           { id: 'rename', label: 'Rename…' },
           { id: 'open-with', label: 'Open with…' },
           { id: 'compress', label: 'Compress…' },
+          ...(control?.archivePassword !== undefined ? [{ id: 'extract', label: 'Extract' }] : []),
           { id: 'properties', label: 'Properties' },
         ] as T
       }
@@ -391,7 +393,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       )
       return undefined as T
     case 'can_extract_paths':
-      return false as T
+      return (control?.archivePassword !== undefined) as T
     case 'get_permissions':
       return {
         access_supported: true, executable_supported: true, ownership_supported: true,
@@ -438,6 +440,11 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     }
     case 'compress_entries':
       return `/mock/${args?.name}` as T
+    case 'extract_archive':
+      if (control?.archivePassword !== undefined && args?.password !== control.archivePassword) {
+        throw { code: args?.password === undefined ? 'archive_password_required' : 'archive_invalid_password', message: args?.password === undefined ? 'Password required' : 'Incorrect archive password' }
+      }
+      return { destination: '/mock/extracted', skipped_symlinks: 0, skipped_entries: 0 } as T
     case 'list_open_with_apps':
       return [
         { id: 'alpha', name: 'Alpha editor', exec: 'alpha', matches: true, terminal: false, defaultContentType: 'text/plain' },

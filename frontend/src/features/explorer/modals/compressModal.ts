@@ -51,7 +51,7 @@ export const createCompressModal = (deps: Deps) => {
     }
   }
 
-  const confirm = async (name: string, level: number) => {
+  const confirm = async (name: string, level: number, password?: string) => {
     const current = get(state)
     if (!current.open || current.targets.length === 0 || busy) {
       return false
@@ -71,6 +71,7 @@ export const createCompressModal = (deps: Deps) => {
         name: finalName,
         level: lvl,
         progressEvent,
+        ...(password === undefined ? {} : { password }),
       })
       if (reloadCurrent) {
         await reloadCurrent()
@@ -89,6 +90,7 @@ export const createCompressModal = (deps: Deps) => {
       }
       return false
     } finally {
+      password = undefined
       busy = false
       activeEvent = null
       activityApi.clearNow()

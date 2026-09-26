@@ -37,6 +37,7 @@ import { clipboardState, setClipboardState, clearClipboardState } from './clipbo
 import { normalizePath, parentPath } from '../utils'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
+import { createArchivePasswordModal, isArchivePasswordError } from '../modals/archivePasswordModal'
 
 type ConflictItem = {
   src: string
@@ -135,6 +136,14 @@ export const useExplorerFileOps = (deps: Deps) => {
   let conflictOperation: PasteOperation | null = null
   let pasteBusy = false
   let extracting = false
+  let extractionCancelled = false
+  let activeExtractionEvent: string | null = null
+  const archivePasswordModal = createArchivePasswordModal()
+  const cancelExtraction = () => {
+    extractionCancelled = true
+    archivePasswordModal.cancel()
+    if (activeExtractionEvent) void Promise.resolve(deps.activityApi.requestCancel(activeExtractionEvent)).catch(() => {})
+  }
   let duplicateScanToken = 0
   let activeDuplicateProgressEvent: string | null = null
   let unlistenDuplicateProgress: UnlistenFn | null = null
@@ -626,19 +635,50 @@ export const useExplorerFileOps = (deps: Deps) => {
   const extractEntries = async (entriesToExtract: Entry[]) => {
     if (extracting) return
     if (entriesToExtract.length === 0) return
+    extracting = true
+    extractionCancelled = false
     const allArchives = await canExtractPaths(entriesToExtract.map((entry) => entry.path))
     if (!allArchives) {
+      extracting = false
       deps.showToast('Extraction available for archive files only')
       return
     }
 
-    extracting = true
     const progressEvent = `extract-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    await deps.activityApi.start(
-      `Extracting${entriesToExtract.length > 1 ? ` ${entriesToExtract.length} items…` : '…'}`,
-      progressEvent,
-      () => deps.activityApi.requestCancel(progressEvent),
-    )
+    activeExtractionEvent = progressEvent
+
+    const extractWithPassword = async (path: string, initialError?: unknown) => {
+      let password: string | undefined
+      let error = initialError
+      try {
+        for (;;) {
+          if (extractionCancelled) throw new Error('Extraction cancelled')
+          if (error) {
+            if (!isArchivePasswordError(error)) throw error
+            await deps.activityApi.start('Waiting for archive password…', progressEvent, cancelExtraction)
+            if (extractionCancelled) throw new Error('Extraction cancelled')
+            const response = await archivePasswordModal.request(path, error)
+            if (response === null || extractionCancelled) throw new Error('Extraction cancelled')
+            password = response
+            // A failed attempt may have advanced the counter. Each retry starts at zero.
+            await deps.activityApi.start('Extracting…', progressEvent, cancelExtraction)
+            if (extractionCancelled) throw new Error('Extraction cancelled')
+          }
+          try {
+            return password === undefined
+              ? await extractArchive(path, progressEvent)
+              : await extractArchive(path, progressEvent, password)
+          } catch (failure) {
+            error = failure
+          } finally {
+            password = undefined
+          }
+        }
+      } finally {
+        password = undefined
+        archivePasswordModal.cancel()
+      }
+    }
 
     const summarize = (skippedSymlinks: number, skippedOther: number) => {
       const skipParts = []
@@ -648,9 +688,15 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
 
     try {
+      await deps.activityApi.start(
+        `Extracting${entriesToExtract.length > 1 ? ` ${entriesToExtract.length} items…` : '…'}`,
+        progressEvent,
+        cancelExtraction,
+      )
+      if (extractionCancelled) throw new Error('Extraction cancelled')
       if (entriesToExtract.length === 1) {
         const entry = entriesToExtract[0]
-        const result = await extractArchive(entry.path, progressEvent)
+        const result = await extractWithPassword(entry.path)
         if (deps.shouldOpenDestAfterExtract() && result?.destination) {
           try {
             const kind = await entryKind(result.destination)
@@ -666,6 +712,25 @@ export const useExplorerFileOps = (deps: Deps) => {
         deps.showToast(`Extracted to ${result.destination}${suffix}`)
       } else {
         const result = await extractArchives(entriesToExtract.map((entry) => entry.path), progressEvent)
+        for (const item of result) {
+          if (extractionCancelled) break
+          const error = { code: item.error_code, message: item.error }
+          if (item.ok || !isArchivePasswordError(error)) continue
+          try {
+            item.result = await extractWithPassword(item.path, error)
+            item.ok = true
+            item.error = null
+            item.error_code = null
+          } catch (failure) {
+            const normalized = normalizeError(failure)
+            item.error = normalized.message
+            item.error_code = normalized.code
+            if (normalized.message.toLowerCase().includes('cancelled')) {
+              extractionCancelled = true
+              break
+            }
+          }
+        }
         const successes = result.filter((item) => item.ok && item.result)
         const failures = result.filter((item) => !item.ok)
         // In batch extraction, keep current location stable even if opening destination is enabled.
@@ -679,7 +744,9 @@ export const useExplorerFileOps = (deps: Deps) => {
           0,
         )
         const suffix = summarize(totalSkippedSymlinks, totalSkippedOther)
-        if (failures.length === 0) {
+        if (extractionCancelled) {
+          deps.showToast(`Extracted ${successes.length} archives; extraction cancelled${suffix}`)
+        } else if (failures.length === 0) {
           deps.showToast(`Extracted ${successes.length} archives${suffix}`)
         } else if (successes.length === 0) {
           deps.showToast(`Extraction failed for ${failures.length} archives`)
@@ -696,6 +763,8 @@ export const useExplorerFileOps = (deps: Deps) => {
       }
     } finally {
       extracting = false
+      activeExtractionEvent = null
+      archivePasswordModal.cancel()
       deps.activityApi.clearNow()
       await deps.activityApi.cleanup()
     }
@@ -885,6 +954,8 @@ export const useExplorerFileOps = (deps: Deps) => {
   }
 
   return {
+    archivePasswordModal,
+    cancelExtraction,
     conflictModalOpen,
     conflictList,
     computeDirStats,

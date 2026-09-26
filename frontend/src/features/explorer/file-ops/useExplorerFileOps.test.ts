@@ -31,7 +31,7 @@ const copyMixedEntryToMock = vi.fn()
 const moveMixedEntryToMock = vi.fn()
 const canExtractPathsMock = vi.fn<(_: string[]) => Promise<boolean>>(async (_paths: string[]) => false)
 const extractArchiveMock = vi.fn<
-  (_path: string, _progressEvent?: string) => Promise<
+  (_path: string, _progressEvent?: string, _password?: string) => Promise<
     | {
         destination: string
         skipped_symlinks: number
@@ -51,6 +51,7 @@ const extractArchivesMock = vi.fn<
         skipped_entries: number
       } | null
       error?: string | null
+      error_code?: string | null
     }>
   >
 >(async (_paths: string[], _progressEvent?: string) => [])
@@ -75,8 +76,8 @@ vi.mock('../services/files.service', () => ({
   entryKind: vi.fn(),
   dirSizes: vi.fn(),
   canExtractPaths: (paths: string[]) => canExtractPathsMock(paths),
-  extractArchive: (path: string, progressEvent?: string) =>
-    extractArchiveMock(path, progressEvent),
+  extractArchive: (path: string, progressEvent?: string, password?: string) =>
+    extractArchiveMock(path, progressEvent, password),
   extractArchives: (paths: string[], progressEvent?: string) =>
     extractArchivesMock(paths, progressEvent),
 }))
@@ -138,6 +139,53 @@ describe('useExplorerFileOps extract recovery', () => {
       skipped_entries: 0,
     })
     extractArchivesMock.mockResolvedValue([])
+  })
+
+  it('prompts for passwords, retries wrong passwords, and forgets them afterwards', async () => {
+    extractArchiveMock.mockRejectedValueOnce({ code: 'archive_password_required', message: 'Password required' })
+      .mockRejectedValueOnce({ code: 'archive_invalid_password', message: 'Incorrect archive password' })
+    const deps = createDeps()
+    const fileOps = useExplorerFileOps(deps)
+    const pending = fileOps.extractEntries([{ name: 'secret.zip', path: '/tmp/secret.zip', kind: 'file', iconId: 0 }])
+    await vi.waitFor(() => expect(get(fileOps.archivePasswordModal.state).open).toBe(true))
+    fileOps.archivePasswordModal.submit('wrong')
+    await vi.waitFor(() => expect(get(fileOps.archivePasswordModal.state).error).toBe('Incorrect archive password'))
+    fileOps.archivePasswordModal.submit(' good password ')
+    await pending
+    expect(extractArchiveMock.mock.calls.map((call) => call[2])).toEqual([undefined, 'wrong', ' good password '])
+    expect(get(fileOps.archivePasswordModal.state)).toEqual({ open: false, path: '', error: '' })
+    expect(deps.reloadCurrent).toHaveBeenCalledOnce()
+  })
+
+  it('cancels while waiting for a password without retrying extraction', async () => {
+    extractArchiveMock.mockRejectedValueOnce({ code: 'archive_password_required', message: 'Password required' })
+    const deps = createDeps()
+    const fileOps = useExplorerFileOps(deps)
+    const pending = fileOps.extractEntries([{ name: 'secret.zip', path: '/tmp/secret.zip', kind: 'file', iconId: 0 }])
+    await vi.waitFor(() => expect(get(fileOps.archivePasswordModal.state).open).toBe(true))
+    fileOps.cancelExtraction()
+    await pending
+    expect(extractArchiveMock).toHaveBeenCalledOnce()
+    expect(deps.showToast).toHaveBeenCalledWith('Extraction cancelled')
+    expect(get(fileOps.archivePasswordModal.state).open).toBe(false)
+  })
+
+  it('retries only encrypted batch failures and requests a separate password for each', async () => {
+    extractArchivesMock.mockResolvedValueOnce([
+      { path: '/tmp/plain.zip', ok: true, result: { destination: '/tmp/plain', skipped_symlinks: 0, skipped_entries: 0 } },
+      { path: '/tmp/a.rar', ok: false, error: 'Password required', error_code: 'archive_password_required' },
+      { path: '/tmp/b.7z', ok: false, error: 'Password required', error_code: 'archive_password_required' },
+    ])
+    const deps = createDeps()
+    const fileOps = useExplorerFileOps(deps)
+    const pending = fileOps.extractEntries(['plain.zip', 'a.rar', 'b.7z'].map((name) => ({ name, path: `/tmp/${name}`, kind: 'file', iconId: 0 })))
+    await vi.waitFor(() => expect(get(fileOps.archivePasswordModal.state).path).toBe('/tmp/a.rar'))
+    fileOps.archivePasswordModal.submit('first')
+    await vi.waitFor(() => expect(get(fileOps.archivePasswordModal.state).path).toBe('/tmp/b.7z'))
+    fileOps.archivePasswordModal.submit('second')
+    await pending
+    expect(extractArchiveMock.mock.calls.map((call) => [call[0], call[2]])).toEqual([['/tmp/a.rar', 'first'], ['/tmp/b.7z', 'second']])
+    expect(deps.showToast).toHaveBeenCalledWith('Extracted 3 archives')
   })
 
   it('surfaces extraction cancellation cleanly and clears activity state', async () => {
