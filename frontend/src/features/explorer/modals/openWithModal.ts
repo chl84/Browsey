@@ -94,20 +94,24 @@ export const createOpenWithModal = (deps: Deps) => {
       return
     }
     state.update((s) => ({ ...s, submitting: true, error: '' }))
+    let defaultSaved = false
     try {
       if (choice.setDefault && app.defaultContentType) {
         await setDefaultApplication(current.entry.path, app.id, app.defaultContentType)
-        showToast(`${app.name} is now the default for ${app.defaultContentType}`)
-      } else {
-        await openWithSelection(current.entry.path, normalized)
-        showToast(`Opening ${current.entry.name}…`)
+        defaultSaved = true
       }
+      await openWithSelection(current.entry.path, normalized)
+      showToast(defaultSaved
+        ? `Opening ${current.entry.name}… ${app.name} is now the default for ${app.defaultContentType}`
+        : `Opening ${current.entry.name}…`)
       state.update((s) => ({ ...s, submitting: false }))
       close()
     } catch (err) {
       state.update((s) => ({
         ...s,
-        error: getErrorMessage(err),
+        error: defaultSaved
+          ? `The default application was saved, but the file could not be opened: ${getErrorMessage(err)}`
+          : getErrorMessage(err),
       }))
     } finally {
       state.update((s) => ({ ...s, submitting: false }))

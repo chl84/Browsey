@@ -13,6 +13,7 @@
 
   let filter = ''
   let selected: string | null = null
+  let setDefault = false
   let filtered: OpenWithApp[] = []
 
   $: if (!open) filter = ''
@@ -31,7 +32,7 @@
       })
     : apps
 
-  const confirm = (setDefault = false) => {
+  const confirm = () => {
     if (busy || loading || !selected || !filtered.some((app) => app.id === selected)) return
     if (setDefault && !defaultContentType) return
     onConfirm({
@@ -42,6 +43,7 @@
   $: hasSelection = !loading && selected !== null && filtered.some((app) => app.id === selected)
   $: defaultContentType = filtered.find((app) => app.id === selected)?.defaultContentType
   $: supportsDefaults = apps.some((app) => app.defaultContentType)
+  $: if (!open || loading || !defaultContentType) setDefault = false
 </script>
 
 {#if open}
@@ -101,7 +103,7 @@
     {#if supportsDefaults}
       <p class="muted default-hint">
         {#if defaultContentType}
-          Set as default applies to all files of type <strong>{defaultContentType}</strong> for your user account, not just this file. It does not open the file.
+          When checked, Open also sets this application as the default for all files of type <strong>{defaultContentType}</strong> for your user account.
         {:else}
           Select an application to make it the default for this file type.
         {/if}
@@ -112,13 +114,14 @@
       <div class="pill error" role="alert">{error}</div>
     {/if}
 
-    <div slot="actions">
-      <button type="button" class="secondary" on:click={onClose} disabled={busy}>Cancel</button>
+    <div slot="actions" class="open-with-actions">
       {#if supportsDefaults}
-        <button type="button" class="secondary" on:click={() => confirm(true)} disabled={!hasSelection || !defaultContentType || busy}>
+        <label class="default-checkbox">
+          <input type="checkbox" bind:checked={setDefault} disabled={!hasSelection || !defaultContentType || busy} />
           Set as default
-        </button>
+        </label>
       {/if}
+      <button type="button" class="secondary" on:click={onClose} disabled={busy}>Cancel</button>
       <button type="button" on:click={() => confirm()} disabled={!hasSelection || busy}>
         {busy ? 'Working…' : 'Open'}
       </button>
@@ -137,6 +140,23 @@
   .default-hint {
     max-width: 52ch;
     overflow-wrap: anywhere;
+  }
+
+  .open-with-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: var(--modal-actions-gap);
+    width: 100%;
+  }
+
+  .default-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: auto;
+    white-space: nowrap;
   }
 
   .apps {
