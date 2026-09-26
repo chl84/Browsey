@@ -32,9 +32,22 @@ The frontend therefore writes one URL-encoded envelope on Linux. An AFTER
 `drag-data-get` handler replaces the borrowed GTK selection with separate, escaped
 `file:` URIs before delivery. Running after WebKit is essential: WebKit can install
 its handler lazily, and an ordinary handler can run before the data is populated.
-No filesystem I/O or JavaScript evaluation runs in this callback. The private
+No JavaScript evaluation runs in this callback. The private
 envelope is never intended as a URI to open. Invalid envelopes produce an empty
 selection; relative paths, cloud paths, empty selections and NUL are rejected.
+
+For portal targets, the bridge registers files with `autostop=false`, rather than
+using GTK3's `set_uris` portal conversion (which defaults to stopping after the
+first read). Nautilus/GTK4 can retrieve the same token more than once; the former
+conversion caused `AccessDenied: Invalid transfer` on the second read. One token
+is reused per drag and `StopTransfer` is queued at drag end (including cancellation),
+the next drag start, or callback destruction. Cleanup captures no Tauri handles.
+Registration opens metadata-only `O_PATH` descriptors in batches of 16 and uses
+bounded D-Bus calls; no file contents are read. Errors leave an empty selection
+and are logged. Plain URI-list destinations do not need the portal.
+
+The protocol is documented in the upstream
+[FileTransfer interface](https://github.com/flatpak/xdg-desktop-portal/blob/main/data/org.freedesktop.portal.FileTransfer.xml).
 
 Returning native self-drops retain the internal source snapshot/modifiers and
 use the existing transfer/conflict workflow exactly once. Incoming external drops
@@ -80,6 +93,23 @@ isolated data/config/cache/runtime directories, checks filenames/content and sou
 then removes only its fixtures and stops only its own process group. No device
 permissions or desktop configuration are changed. Prefer an external 60s timeout.
 
+Also run all three modes with `BROWSEY_TEST_NAUTILUS_BUS=session`. This keeps
+Nautilus and Browsey on the real shared session bus, exercising portal negotiation
+that the private-bus test misses. Close Nautilus first: the helper refuses to run
+if its D-Bus name is already owned. Data/config/cache/runtime remain isolated,
+and only disposable fixtures are used. This requires `gdbus` and a running
+FileTransfer portal. Do not start Nautilus separately while the test runs.
+
+The portal lifetime test needs no pointer automation:
+
+```sh
+cargo test portal_token_survives_multiple_reads_and_expires_on_drop -- --ignored --test-threads=1 --nocapture
+```
+
+It registers 18 disposable entries (including a directory), reads the same token
+three times, then verifies that dropping the transfer invalidates it. It also
+checks registration failure for a missing file.
+
 Nautilus 50.3.1 on X11 explicitly forces external-process drops to COPY in
 [`on_view_drop` / `on_item_drop`](https://gitlab.gnome.org/GNOME/nautilus/-/blob/50.3.1/src/nautilus-list-base.c).
 Consequently the X11 URI receiver/copy tests cannot certify real move semantics.
@@ -110,5 +140,8 @@ the GTK URI receiver accepted both exact paths, and real Wayland Nautilus runs
 passed `default -> move`, `copy -> copy`, and `move -> move`, checking both file
 contents and source state before closing the Tauri source window. Keyboard-to-
 offer mapping and returning self-drops are covered separately by frontend tests.
+After reproducing the portal expiry bug, all three modes were also verified on
+the real shared session bus with the explicit token-lifetime fix. The standalone
+portal test verified repeated retrieval and rejection after cleanup.
 The acceptance helper depends on an undisturbed graphical session; unsuccessful
 synthetic-input attempts during development are not treated as successful tests.
