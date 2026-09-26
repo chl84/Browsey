@@ -78,6 +78,21 @@ test('Open with saves a file-type default explicitly and keeps save errors retry
   expect(calls.filter((call) => call.cmd === 'set_default_app')[1]).toMatchObject({ args: { appId: 'beta', contentType: 'text/plain' } })
 })
 
+test('double-click reports a failed default-app launch and permits retry', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => { (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__.failCommands = ['open_entry'] })
+  const file = page.locator('.row', { has: page.locator('.name', { hasText: 'notes' }) })
+  await file.dblclick()
+  await expect(page.getByText('Simulated open_entry failure', { exact: false }).first()).toBeVisible()
+  await page.evaluate(() => { (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__.failCommands = [] })
+  await file.dblclick()
+  const { calls } = await page.evaluate(control)
+  expect(calls.filter((call) => call.cmd === 'open_entry')).toMatchObject([
+    { args: { path: '/mock/notes.txt' } },
+    { args: { path: '/mock/notes.txt' } },
+  ])
+})
+
 test('USB format failure stays visible, is copyable, and requires reinspection', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.goto('/')
