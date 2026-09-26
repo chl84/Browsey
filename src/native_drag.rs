@@ -3,11 +3,13 @@
 //! WebKitGTK sanitizes DOM text/uri-list as a single URL, concatenating multiline
 //! selections. The frontend supplies one URL envelope; this source-only GTK hook
 //! substitutes a correctly encoded URI list when a native destination requests it.
-use std::path::Path;
+use std::{cell::RefCell, path::Path, rc::Rc};
 
 use gtk::prelude::*;
 use tauri::{Runtime, WebviewWindow};
 use url::Url;
+
+mod portal;
 
 pub const INIT_SCRIPT: &str =
     "Object.defineProperty(window, '__BROWSEY_FILE_DRAG_BRIDGE__', { value: true });";
@@ -44,32 +46,65 @@ fn file_uris(envelope: &str) -> Option<Vec<String>> {
         .collect()
 }
 
-fn rewrite_file_data(data: &gtk::SelectionData) {
+fn rewrite_file_data(data: &gtk::SelectionData, transfer: &RefCell<Option<portal::Transfer>>) {
     let uris = data.uris();
     if uris.len() != 1 || !uris[0].starts_with(PREFIX) {
         return;
     }
     if let Some(files) = file_uris(&uris[0]) {
+        if portal::is_target(data.target().name().as_str()) {
+            let mut slot = transfer.borrow_mut();
+            if slot.is_none() {
+                match portal::Transfer::register(&files) {
+                    Ok(active) => *slot = Some(active),
+                    Err(err) => {
+                        data.set(&data.target(), 8, &[]);
+                        tracing::warn!("Could not export native drag through file portal: {err}");
+                        return;
+                    }
+                }
+            }
+            if let Some(active) = slot.as_ref() {
+                data.set(&data.target(), 8, active.key().as_bytes());
+            }
+            return;
+        }
         let refs = files.iter().map(String::as_str).collect::<Vec<_>>();
-        data.set_uris(&refs);
+        if !data.set_uris(&refs) {
+            tracing::warn!("Could not export native drag URI list");
+        }
     } else {
         // Never expose a malformed envelope as a real file selection.
-        data.set_uris(&[]);
+        data.set(&data.target(), 8, &[]);
         tracing::warn!("Rejected invalid native file drag payload");
     }
 }
 
 pub fn install<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()> {
     window.with_webview(|platform| {
+        let transfer = Rc::new(RefCell::new(None::<portal::Transfer>));
+        let begin_transfer = transfer.clone();
+        platform.inner().connect_drag_begin(move |_, _| {
+            begin_transfer.borrow_mut().take();
+        });
+        let end_transfer = transfer.clone();
+        platform.inner().connect_drag_end(move |_, _| {
+            end_transfer.borrow_mut().take();
+        });
+        let destroy_transfer = transfer.clone();
+        platform.inner().connect_destroy(move |_| {
+            destroy_transfer.borrow_mut().take();
+        });
+        // Callback destruction also drops state; no Tauri handles are involved.
         // Run AFTER WebKit's handlers, including ones it installs lazily. Rewrite
         // the borrowed selection before GTK delivers it to the destination. This closure
         // owns no Tauri handle or IPC Channel: destruction cannot evaluate JS or
         // re-enter the window registry (the previous window-close crash).
         platform
             .inner()
-            .connect_local("drag-data-get", true, |values| {
+            .connect_local("drag-data-get", true, move |values| {
                 if let Ok(data) = values[2].get::<&gtk::SelectionData>() {
-                    rewrite_file_data(data);
+                    rewrite_file_data(data, &transfer);
                 }
                 None
             });

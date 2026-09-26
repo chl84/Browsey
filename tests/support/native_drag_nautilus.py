@@ -18,6 +18,17 @@ sx, sy = sys.argv[1:3]
 root = Path(sys.argv[3])
 mode = sys.argv[4]
 backend = os.environ.get('BROWSEY_TEST_NAUTILUS_BACKEND', 'x11')
+bus = os.environ.get('BROWSEY_TEST_NAUTILUS_BUS', 'private')
+assert bus in ('private', 'session')
+# Shared-bus coverage exercises GTK's real portal negotiation. Never forward
+# the fixture window to a user's already running Nautilus instance.
+if bus == 'session':
+    owner = subprocess.check_output([
+        'gdbus', 'call', '--session', '--dest', 'org.freedesktop.DBus',
+        '--object-path', '/org/freedesktop/DBus', '--method',
+        'org.freedesktop.DBus.NameHasOwner', 'org.gnome.Nautilus',
+    ], text=True)
+    assert 'false' in owner, 'Close Nautilus before running the shared-session test'
 assert backend in ('x11', 'wayland')
 assert mode in ('default', 'copy', 'move')
 assert root.parent == Path('/tmp') and root.name.startswith('browsey-native-acceptance-')
@@ -46,7 +57,10 @@ try:
     if wayland_display and not os.path.isabs(wayland_display):
         env['WAYLAND_DISPLAY'] = str(Path(os.environ['XDG_RUNTIME_DIR']) / wayland_display)
     env.pop('AT_SPI_BUS_ADDRESS', None)
-    process = subprocess.Popen(['dbus-run-session', '--', 'nautilus', '--new-window', str(dest)], env=env, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    command = ['nautilus', '--new-window', str(dest)]
+    if bus == 'private':
+        command = ['dbus-run-session', '--', *command]
+    process = subprocess.Popen(command, env=env, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     deadline = time.monotonic() + 12
     window = None
     source = None
