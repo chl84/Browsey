@@ -11,6 +11,7 @@
   export let name: string | undefined = undefined
   export let autocomplete: HTMLInputAttributes['autocomplete'] = undefined
   export let ariaLabel: string | undefined = undefined
+  export let ariaDescribedBy: string | undefined = undefined
 
   const dispatch = createEventDispatcher<{
     input: { value: number; originalEvent: Event }
@@ -42,6 +43,7 @@
   {name}
   {autocomplete}
   aria-label={ariaLabel}
+  aria-describedby={ariaDescribedBy}
   {min}
   {max}
   {step}
