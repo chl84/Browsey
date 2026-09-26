@@ -195,6 +195,9 @@ Tauri bundles:
 - Extra metadata is lazy-loaded when opening the Extra tab.
 - HDR/EXR image thumbnail decoding uses a longer timeout window than standard image formats.
 - Archive extraction enforces a total output cap (100 GB) and total entry cap (2,000,000 entries).
+- Archive preflight is cancellable between entries; TAR scanning also bounds decoded bytes. Extraction checks final buffered writes and rolls back only its own still-identifiable outputs, preserving files added or replaced by other processes.
+- On Unix, archive outputs start private. Extraction restores ordinary stored permission bits (including executability), never setuid/setgid/sticky bits; entries without Unix mode metadata remain private. Directory modes are restored after their contents are written.
+- ZIP creation rejects devices, sockets, FIFOs, non-UTF-8 entry names, and literal backslashes in Unix entry names with an explicit error. It does not silently rewrite such names; Unicode names and literal Unix symlink targets are preserved.
 - Linux console launch uses a strict allowlist of terminal binaries/arguments (no env-injected command strings).
 - Cloud remotes are `rclone`-backed and use manual refresh semantics in some flows because filesystem watching is not available for `rclone://` paths.
 

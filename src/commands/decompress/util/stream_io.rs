@@ -154,6 +154,10 @@ pub(crate) fn copy_with_progress<R: Read, W: Write>(
             p.add(n as u64);
         }
     }
+    // BufWriter::drop discards flush errors. Success must mean that buffered
+    // output reached the underlying writer, not merely its memory buffer.
+    check_cancel(cancel)?;
+    writer.flush()?;
     Ok(written)
 }
 

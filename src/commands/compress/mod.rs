@@ -14,6 +14,7 @@ use serde::Serialize;
 use walkdir::WalkDir;
 use zip::{write::SimpleFileOptions, CompressionMethod, DateTime as ZipDateTime, ZipWriter};
 
+use crate::commands::archive_identity::ArchiveIdentity;
 use crate::errors::api_error::ApiResult;
 use crate::undo::{temp_backup_path, Action, UndoState};
 use crate::{
@@ -24,7 +25,17 @@ use error::{map_api_result, CompressError, CompressErrorCode, CompressResult};
 
 mod error;
 mod pathing;
-use pathing::{destination_path, ensure_same_parent, resolve_input_path};
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+thread_local! {
+    static BEFORE_COLLECT: std::cell::RefCell<Option<Box<dyn FnOnce()>>> = const { std::cell::RefCell::new(None) };
+}
+use pathing::{
+    archive_entry_name, archive_link_target, destination_path, ensure_same_parent,
+    resolve_input_path,
+};
 
 const CHUNK: usize = 4 * 1024 * 1024;
 const FILE_READ_BUF: usize = 256 * 1024;
@@ -91,7 +102,7 @@ fn add_path_to_zip(
     check_cancel(cancel).map_err(|e| {
         CompressError::from_external_message(map_copy_err("Compression cancelled", e))
     })?;
-    let mut rel_name = entry.rel_path.to_string_lossy().replace('\\', "/");
+    let mut rel_name = archive_entry_name(&entry.rel_path)?;
     match &entry.kind {
         EntryKind::Dir => {
             if !rel_name.ends_with('/') {
@@ -106,7 +117,7 @@ fn add_path_to_zip(
             if rel_name.ends_with('/') {
                 rel_name.pop();
             }
-            let target = target.to_string_lossy().replace('\\', "/");
+            let target = archive_link_target(target)?;
             let opts = with_entry_metadata(*stored_opts, entry);
             zip.add_symlink(rel_name, target, opts).map_err(|e| {
                 CompressError::from_external_message(format!("Failed to add symlink to zip: {e}"))
@@ -125,7 +136,7 @@ fn add_path_to_zip(
             zip.start_file(rel_name, opts).map_err(|e| {
                 CompressError::from_external_message(format!("Failed to start zip entry: {e}"))
             })?;
-            let file = File::open(&entry.path).map_err(|e| {
+            let file = open_regular_input(&entry.path).map_err(|e| {
                 CompressError::from_external_message(format!("Failed to open file: {e}"))
             })?;
             let mut reader = BufReader::with_capacity(FILE_READ_BUF, file);
@@ -135,6 +146,26 @@ fn add_path_to_zip(
         }
     }
     Ok(())
+}
+
+fn open_regular_input(path: &Path) -> io::Result<File> {
+    let mut options = File::options();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // A file may have been replaced since collection. Never block on a
+        // FIFO or follow a replacement symlink when opening the input.
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Only regular files can be read into an archive",
+        ));
+    }
+    Ok(file)
 }
 
 fn with_entry_metadata(base: SimpleFileOptions, entry: &EntryMeta) -> SimpleFileOptions {
@@ -188,15 +219,24 @@ fn collect_entries(
     base: &Path,
     input: &[PathBuf],
     store_precompressed: bool,
+    cancel: Option<&AtomicBool>,
 ) -> CompressResult<(Vec<EntryMeta>, u64)> {
+    #[cfg(test)]
+    BEFORE_COLLECT.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().take() {
+            hook();
+        }
+    });
     let mut out = Vec::new();
     let mut total_size = 0u64;
 
     let mut push_entry = |p: PathBuf, meta: fs::Metadata| -> CompressResult<()> {
+        check_cancel(cancel).map_err(|e| map_copy_err("Compression cancelled", e))?;
         let rel = p
             .strip_prefix(base)
             .map_err(|_| CompressError::from_external_message("Paths must share the same parent"))?
             .to_path_buf();
+        archive_entry_name(&rel)?;
         let file_type = meta.file_type();
         if file_type.is_file() {
             total_size = total_size.saturating_add(meta.len());
@@ -213,10 +253,15 @@ fn collect_entries(
                     p.display()
                 ))
             })?;
+            archive_link_target(&target)?;
             EntryKind::Symlink { target }
-        } else {
+        } else if file_type.is_file() {
             let precompressed = store_precompressed && is_precompressed(&p);
             EntryKind::File { precompressed }
+        } else {
+            return Err(CompressError::from_external_message(format!(
+                "Unsupported file type for compression: {} (devices, sockets and FIFOs are not supported)", p.display()
+            )));
         };
 
         out.push(EntryMeta {
@@ -231,11 +276,13 @@ fn collect_entries(
     };
 
     for path in input {
+        check_cancel(cancel).map_err(|e| map_copy_err("Compression cancelled", e))?;
         let meta = fs::symlink_metadata(path).map_err(|e| {
             CompressError::from_external_message(format!("Failed to read metadata: {e}"))
         })?;
         if meta.is_dir() {
             for entry in WalkDir::new(path).follow_links(false) {
+                check_cancel(cancel).map_err(|e| map_copy_err("Compression cancelled", e))?;
                 let entry = entry.map_err(|e| {
                     CompressError::from_external_message(format!("Failed to read directory: {e}"))
                 })?;
@@ -386,7 +433,7 @@ async fn compress_entries_impl(
 ) -> CompressResult<String> {
     let task = tauri::async_runtime::spawn_blocking(move || {
         do_compress(
-            app,
+            Some(app),
             cancel_state,
             undo_state,
             paths,
@@ -405,7 +452,7 @@ async fn compress_entries_impl(
 }
 
 fn do_compress(
-    app: tauri::AppHandle,
+    app: Option<tauri::AppHandle>,
     cancel_state: CancelState,
     undo: UndoState,
     paths: Vec<String>,
@@ -413,11 +460,25 @@ fn do_compress(
     level: Option<u32>,
     progress_event: Option<String>,
 ) -> CompressResult<String> {
+    // Register before any path resolution or recursive scanning.
+    let cancel_guard: Option<CancelGuard> = progress_event
+        .as_ref()
+        .map(|evt| cancel_state.register(evt.clone()))
+        .transpose()
+        .map_err(|error| {
+            CompressError::new(
+                CompressErrorCode::TaskFailed,
+                format!("Failed to register cancel: {error}"),
+            )
+        })?;
+    let cancel_token = cancel_guard.as_ref().map(|c| c.token());
     if paths.is_empty() {
         return Err(CompressError::from_external_message("Nothing to compress"));
     }
     let mut resolved: Vec<PathBuf> = Vec::new();
     for raw in paths {
+        check_cancel(cancel_token.as_deref())
+            .map_err(|e| map_copy_err("Compression cancelled", e))?;
         let pb = resolve_input_path(&raw)?;
         resolved.push(pb);
     }
@@ -436,13 +497,16 @@ fn do_compress(
     let dest_name = name.unwrap_or(suggested);
     let lvl = level.unwrap_or(6).min(9);
     let mut dest_idx = 0usize;
+    let mut output_options = File::options();
+    output_options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        output_options.mode(0o600);
+    }
     let (dest, file) = loop {
         let candidate = destination_path(&parent, &dest_name, dest_idx)?;
-        match File::options()
-            .write(true)
-            .create_new(true)
-            .open(&candidate)
-        {
+        match output_options.open(&candidate) {
             Ok(f) => break (candidate, f),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 dest_idx = dest_idx.saturating_add(1);
@@ -456,29 +520,25 @@ fn do_compress(
         }
     };
 
+    // Own cleanup immediately; writer drops first so deletion also works on Windows.
+    let mut cleanup = CompressionCleanup::new(dest.clone());
     let mut writer = ZipWriter::new(BufWriter::with_capacity(CHUNK, file));
 
     let store_precompressed = lvl == 0;
-    let (entries, total_size) = collect_entries(&parent, &resolved, store_precompressed)?;
+    let (entries, total_size) = collect_entries(
+        &parent,
+        &resolved,
+        store_precompressed,
+        cancel_token.as_deref(),
+    )?;
     if entries.is_empty() {
         return Err(CompressError::from_external_message("Nothing to compress"));
     }
     let progress_id = progress_event;
-    let progress = progress_id
-        .as_ref()
-        .map(|evt| ProgressEmitter::new(app.clone(), evt.clone(), total_size));
-    let cancel_guard: Option<CancelGuard> = progress_id
-        .as_ref()
-        .map(|evt| cancel_state.register(evt.clone()))
-        .transpose()
-        .map_err(|error| {
-            CompressError::new(
-                CompressErrorCode::TaskFailed,
-                format!("Failed to register cancel: {error}"),
-            )
-        })?;
-    let cancel_token = cancel_guard.as_ref().map(|c| c.token());
-    let mut cleanup = CompressionCleanup::new(dest.clone());
+    let progress = progress_id.as_ref().and_then(|evt| {
+        app.as_ref()
+            .map(|app| ProgressEmitter::new(app.clone(), evt.clone(), total_size))
+    });
     let mut buf = vec![0u8; CHUNK];
 
     let method = if lvl == 0 {
@@ -522,9 +582,14 @@ fn do_compress(
             )?;
         }
 
-        writer.finish().map_err(|e| {
+        let mut output = writer.finish().map_err(|e| {
             CompressError::from_external_message(format!("Failed to finalize zip: {e}"))
         })?;
+        output
+            .flush()
+            .map_err(|e| format!("Failed to flush zip: {e}"))?;
+        check_cancel(cancel_token.as_deref())
+            .map_err(|e| map_copy_err("Compression cancelled", e))?;
 
         if let Some(p) = progress.as_ref() {
             p.finish();
@@ -534,13 +599,13 @@ fn do_compress(
 
     match result {
         Ok(_) => {
-            cleanup.disarm();
             let backup = temp_backup_path(&dest).map_err(|e| {
                 CompressError::new(
                     CompressErrorCode::TaskFailed,
                     format!("Cannot allocate undo backup: {e}"),
                 )
             })?;
+            cleanup.disarm();
             let _ = undo.record_applied(Action::Create {
                 path: dest.clone(),
                 backup,
@@ -554,11 +619,17 @@ fn do_compress(
 struct CompressionCleanup {
     dest: PathBuf,
     active: bool,
+    identity: Option<ArchiveIdentity>,
 }
 
 impl CompressionCleanup {
     fn new(dest: PathBuf) -> Self {
-        Self { dest, active: true }
+        let identity = ArchiveIdentity::capture(&dest);
+        Self {
+            dest,
+            active: true,
+            identity,
+        }
     }
 
     fn disarm(&mut self) {
@@ -568,7 +639,12 @@ impl CompressionCleanup {
 
 impl Drop for CompressionCleanup {
     fn drop(&mut self) {
-        if self.active {
+        if self.active
+            && self
+                .identity
+                .as_ref()
+                .is_some_and(|id| id.matches(&self.dest))
+        {
             let _ = fs::remove_file(&self.dest);
         }
     }

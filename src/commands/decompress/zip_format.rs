@@ -8,19 +8,25 @@ use std::{
 use zip::ZipArchive;
 
 use super::error::{DecompressError, DecompressResult};
+use super::util::ScanControl;
 use super::util::{
     check_cancel, clean_relative_path, copy_with_progress, ensure_dir_nofollow, first_component,
-    map_copy_err, map_io, open_unique_file, path_exists_nofollow, CreatedPaths, ExtractBudget,
-    ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
+    map_copy_err, map_io, open_unique_file, path_exists_nofollow, restore_file_mode, CreatedPaths,
+    ExtractBudget, ProgressEmitter, SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 use crate::fs_utils::debug_log;
 
-pub(super) fn single_root_in_zip(path: &Path) -> DecompressResult<Option<PathBuf>> {
+pub(super) fn single_root_in_zip(
+    path: &Path,
+    control: ScanControl<'_>,
+) -> DecompressResult<Option<PathBuf>> {
+    control.check()?;
     let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip for root"))?)
         .map_err(|e| format!("Failed to read zip: {e}"))?;
     let mut root: Option<PathBuf> = None;
     let mut entries_seen = 0u64;
     for i in 0..archive.len() {
+        control.check()?;
         let entry = archive
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
@@ -114,6 +120,9 @@ pub(super) fn extract_zip(
         };
         check_cancel(cancel).map_err(|e| map_copy_err("Extraction cancelled", e))?;
         if clean_rel.as_os_str().is_empty() {
+            if entry.is_dir() {
+                created.defer_directory_mode(dest_dir.to_path_buf(), entry.unix_mode());
+            }
             continue;
         }
         let is_symlink = entry
@@ -126,6 +135,7 @@ pub(super) fn extract_zip(
         }
         let dest_path = dest_dir.join(clean_rel);
         if entry.is_dir() || raw_name.ends_with('/') {
+            created.defer_directory_mode(dest_path.clone(), entry.unix_mode());
             match ensure_dir_nofollow(&dest_path) {
                 Ok(created_dirs) => {
                     for dir in created_dirs {
@@ -174,17 +184,23 @@ pub(super) fn extract_zip(
             let msg = map_copy_err(&format!("Failed to write zip entry {raw_name}"), e);
             return Err(DecompressError::from_external_message(msg));
         }
+        restore_file_mode(out.get_ref(), entry.unix_mode())?;
     }
 
     Ok(())
 }
 
-pub(super) fn zip_uncompressed_total(path: &Path) -> DecompressResult<u64> {
+pub(super) fn zip_uncompressed_total(
+    path: &Path,
+    control: ScanControl<'_>,
+) -> DecompressResult<u64> {
+    control.check()?;
     let mut archive = ZipArchive::new(File::open(path).map_err(map_io("open zip for total"))?)
         .map_err(|e| format!("Failed to read zip: {e}"))?;
     let mut total = 0u64;
     let mut entries_seen = 0u64;
     for i in 0..archive.len() {
+        control.check()?;
         let entry = archive
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry {i}: {e}"))?;
@@ -206,6 +222,7 @@ pub(super) fn zip_uncompressed_total(path: &Path) -> DecompressResult<u64> {
 
 #[cfg(test)]
 mod tests {
+    use super::ScanControl;
     use super::{extract_zip, single_root_in_zip, zip_uncompressed_total};
     use crate::commands::decompress::{
         error::is_cancelled_error,
@@ -264,11 +281,11 @@ mod tests {
         assert_eq!(entry.compression(), CompressionMethod::Stored);
 
         assert_eq!(
-            single_root_in_zip(&zip_path).expect("single root"),
+            single_root_in_zip(&zip_path, ScanControl::default()).expect("single root"),
             Some(PathBuf::from("folder"))
         );
         assert_eq!(
-            zip_uncompressed_total(&zip_path).expect("uncompressed total"),
+            zip_uncompressed_total(&zip_path, ScanControl::default()).expect("uncompressed total"),
             payload.len() as u64
         );
 

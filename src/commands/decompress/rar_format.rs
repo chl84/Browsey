@@ -14,10 +14,11 @@ use std::os::windows::ffi::OsStrExt;
 use unrar_sys as unrar;
 
 use super::error::{DecompressError, DecompressResult};
+use super::util::ScanControl;
 use super::util::{
     check_cancel, clean_relative_path, ensure_dir_nofollow, first_component, open_unique_file,
-    path_exists_nofollow, CreatedPaths, ExtractBudget, ProgressEmitter, SkipStats, CHUNK,
-    EXTRACT_TOTAL_ENTRIES_CAP,
+    path_exists_nofollow, restore_file_mode, CreatedPaths, ExtractBudget, ProgressEmitter,
+    SkipStats, CHUNK, EXTRACT_TOTAL_ENTRIES_CAP,
 };
 
 #[derive(Clone, Debug)]
@@ -25,6 +26,7 @@ pub(super) struct RarEntry {
     name: PathBuf,
     length: u64,
     is_dir: bool,
+    mode: Option<u32>,
 }
 
 struct RarArchive(*const unrar::Handle);
@@ -96,6 +98,7 @@ impl RarArchive {
                 name: header_path(&header),
                 length: unpack_size(header.unp_size, header.unp_size_high),
                 is_dir: header.flags & unrar::RHDF_DIRECTORY != 0,
+                mode: (header.host_os == 3).then_some(header.file_attr),
             })),
             unrar::ERAR_END_ARCHIVE => Ok(None),
             code => Err(unrar_error("read RAR header", code)),
@@ -205,8 +208,12 @@ extern "C" fn stream_callback(
     }
 }
 
-pub(super) fn single_root_in_rar(path: &Path) -> DecompressResult<Option<PathBuf>> {
-    let entries = parse_rar_entries(path)?;
+pub(super) fn single_root_in_rar(
+    path: &Path,
+    control: ScanControl<'_>,
+) -> DecompressResult<Option<PathBuf>> {
+    control.check()?;
+    let entries = parse_rar_entries(path, control)?;
     let mut root = None;
     for entry in entries {
         let clean = match clean_relative_path(&entry.name) {
@@ -265,11 +272,15 @@ pub(super) fn extract_rar(
             .and_then(|prefix| clean.strip_prefix(prefix).ok().map(Path::to_path_buf))
             .unwrap_or(clean);
         if clean.as_os_str().is_empty() {
+            if entry.is_dir {
+                created.defer_directory_mode(dest_dir.to_path_buf(), entry.mode);
+            }
             archive.skip_entry()?;
             continue;
         }
         let dest_path = dest_dir.join(clean);
         if entry.is_dir {
+            created.defer_directory_mode(dest_path.clone(), entry.mode);
             match ensure_dir_nofollow(&dest_path) {
                 Ok(dirs) => dirs.into_iter().for_each(|dir| created.record_dir(dir)),
                 Err(error) => {
@@ -315,16 +326,22 @@ pub(super) fn extract_rar(
             budget,
             failure: None,
         })?;
+        restore_file_mode(writer.get_ref(), entry.mode)?;
     }
     Ok(())
 }
 
-pub(super) fn parse_rar_entries(path: &Path) -> DecompressResult<Vec<RarEntry>> {
+pub(super) fn parse_rar_entries(
+    path: &Path,
+    control: ScanControl<'_>,
+) -> DecompressResult<Vec<RarEntry>> {
+    control.check()?;
     // Listing mode excludes continuation headers of split entries, so a
     // multi-volume archive contributes one logical entry per file.
     let archive = RarArchive::open(path, unrar::RAR_OM_LIST)?;
     let mut entries = Vec::new();
     while let Some(entry) = archive.read_header()? {
+        control.check()?;
         if entries.len() as u64 >= EXTRACT_TOTAL_ENTRIES_CAP {
             return Err(DecompressError::from_external_message(format!(
                 "Archive exceeds entry cap (more than {} entries)",
@@ -389,6 +406,7 @@ fn unrar_error(context: &str, code: i32) -> DecompressError {
 
 #[cfg(test)]
 mod tests {
+    use super::ScanControl;
     use super::{extract_rar, parse_rar_entries, single_root_in_rar};
     use crate::commands::decompress::util::{CreatedPaths, ExtractBudget, SkipStats};
     use std::{
@@ -420,11 +438,15 @@ mod tests {
     #[test]
     fn extracts_decoded_rar_entry_through_browsey_file_guard() {
         let archive = fixture("version.rar");
-        let entries = parse_rar_entries(&archive).expect("list RAR entries");
+        let entries =
+            parse_rar_entries(&archive, ScanControl::default()).expect("list RAR entries");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, PathBuf::from("VERSION"));
         assert_eq!(entries[0].length, 11);
-        assert_eq!(single_root_in_rar(&archive).expect("single root"), None);
+        assert_eq!(
+            single_root_in_rar(&archive, ScanControl::default()).expect("single root"),
+            None
+        );
 
         let root = unique_temp_dir("extract");
         let output = root.join("out");
@@ -452,7 +474,8 @@ mod tests {
     #[test]
     fn preserves_unicode_entry_names() {
         let archive = fixture("unicode-entry.rar");
-        let entries = parse_rar_entries(&archive).expect("list RAR entries");
+        let entries =
+            parse_rar_entries(&archive, ScanControl::default()).expect("list RAR entries");
         assert_eq!(entries[0].name, PathBuf::from("unicodefilename❤️.txt"));
 
         let root = unique_temp_dir("unicode");
@@ -505,7 +528,8 @@ mod tests {
     #[test]
     fn extracts_compressed_rar5_entry() {
         let archive = fixture("rar5-compressed.rar");
-        let entries = parse_rar_entries(&archive).expect("list RAR5 entries");
+        let entries =
+            parse_rar_entries(&archive, ScanControl::default()).expect("list RAR5 entries");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, PathBuf::from("test.bin"));
         assert_eq!(entries[0].length, 1_200);
@@ -541,7 +565,8 @@ mod tests {
     #[test]
     fn extracts_rar5_multi_volume_archive() {
         let archive = fixture("test_read_format_rar5_multiarchive.part01.rar");
-        let entries = parse_rar_entries(&archive).expect("list multi-volume RAR5 entries");
+        let entries = parse_rar_entries(&archive, ScanControl::default())
+            .expect("list multi-volume RAR5 entries");
         assert_eq!(entries.len(), 2);
         assert_eq!(
             entries[0].name,
