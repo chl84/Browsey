@@ -37,21 +37,42 @@
   {/if}
 
   {#if showMountsPollRow}
-    <div class="form-label">Mount refresh interval</div>
-    <div class="form-control">
-      <Slider
-        min="500"
-        max="10000"
-        step="100"
-        value={settings.mountsPollMs}
-        on:input={(e) => {
-          const next = e.detail.value
-          onPatch({ mountsPollMs: next })
-          onChangeMountsPollMs(next)
-        }}
-      />
-      <small>{settings.mountsPollMs} ms</small>
-      <small>Controls how often Browsey rescans partitions and removable media when live events are unavailable.</small>
+    <label class="form-label" for="settings-mount-refresh">Mount refresh interval</label>
+    <div class="form-control column">
+      <div class="mount-refresh-range">
+        <Slider
+          id="settings-mount-refresh"
+          ariaDescribedBy="settings-mount-refresh-help"
+          min="500"
+          max="10000"
+          step="100"
+          value={settings.mountsPollMs}
+          on:input={(e) => {
+            const next = e.detail.value
+            onPatch({ mountsPollMs: next })
+            onChangeMountsPollMs(next)
+          }}
+        />
+        <small class="mount-refresh-value">{settings.mountsPollMs} ms</small>
+      </div>
+      <small id="settings-mount-refresh-help">Controls how often Browsey rescans partitions and removable media when live events are unavailable.</small>
     </div>
   {/if}
 {/if}
+
+<style>
+  .mount-refresh-range {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--settings-control-gap);
+    width: 100%;
+  }
+
+  .mount-refresh-value {
+    min-width: 8ch;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
