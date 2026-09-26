@@ -21,6 +21,9 @@ pub(super) enum DecompressErrorCode {
     DiskSpaceExceeded,
     ArchiveTooLarge,
     UnsupportedArchive,
+    PasswordRequired,
+    InvalidPassword,
+    PasswordOrCorrupt,
     Cancelled,
     ExtractFailed,
     TaskFailed,
@@ -41,6 +44,9 @@ impl ErrorCode for DecompressErrorCode {
             Self::DiskSpaceExceeded => "disk_space_exceeded",
             Self::ArchiveTooLarge => "archive_too_large",
             Self::UnsupportedArchive => "unsupported_archive",
+            Self::PasswordRequired => "archive_password_required",
+            Self::InvalidPassword => "archive_invalid_password",
+            Self::PasswordOrCorrupt => "archive_password_or_corrupt",
             Self::Cancelled => "cancelled",
             Self::ExtractFailed => "extract_failed",
             Self::TaskFailed => "task_failed",
@@ -56,6 +62,27 @@ pub(super) struct DecompressError {
 }
 
 impl DecompressError {
+    pub(super) fn password_required() -> Self {
+        Self::new(
+            DecompressErrorCode::PasswordRequired,
+            "This archive requires a password",
+        )
+    }
+
+    pub(super) fn invalid_password() -> Self {
+        Self::new(
+            DecompressErrorCode::InvalidPassword,
+            "Incorrect archive password",
+        )
+    }
+
+    pub(super) fn password_or_corrupt() -> Self {
+        Self::new(
+            DecompressErrorCode::PasswordOrCorrupt,
+            "Incorrect password or damaged encrypted archive",
+        )
+    }
+
     pub(super) fn new(code: DecompressErrorCode, message: impl Into<String>) -> Self {
         Self {
             code,

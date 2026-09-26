@@ -7,17 +7,33 @@
   export let value = ''
   export let level: number = 6
   export let error = ''
-  export let onConfirm: (name: string, level: number) => void | Promise<void> = () => {}
+  export let onConfirm: (name: string, level: number, password?: string) => void | Promise<void> = () => {}
   export let onCancel: () => void = () => {}
 
   let inputEl: HTMLInputElement | null = null
   let selectedThisOpen = false
   let busy = false
+  let protect = false
+  let password = ''
+  let confirmation = ''
+  let showPassword = false
+  let passwordError = ''
+  $: if (!open || !protect) {
+    password = ''; confirmation = ''; showPassword = false; passwordError = ''
+    if (!open) protect = false
+  }
   const confirm = async () => {
     if (busy) return
+    passwordError = ''
+    if (protect && (!password || password.includes('\0') || password !== confirmation)) {
+      passwordError = !password ? 'Enter a password.' : password.includes('\0') ? 'Password must not contain NUL characters.' : 'Passwords do not match.'
+      return
+    }
     busy = true
     try {
-      await onConfirm(value, Number(level))
+      const pending = onConfirm(value, Number(level), protect ? password : undefined)
+      password = ''; confirmation = ''; showPassword = false
+      await pending
     } finally {
       busy = false
     }
@@ -82,6 +98,23 @@
       </div>
       <div class="muted">0 = store only, 9 = maximum compression</div>
     </label>
+    <label><input type="checkbox" bind:checked={protect} disabled={busy} /> Protect with password</label>
+    {#if protect}
+      <p class="muted">AES-256 encryption. File names remain visible. Some older ZIP tools cannot open encrypted ZIP files.</p>
+      {#if passwordError}<div class="pill error" role="alert">{passwordError}</div>{/if}
+      <label class="field">
+        <span>Password</span>
+        <input type={showPassword ? 'text' : 'password'} bind:value={password} disabled={busy}
+          autocomplete="new-password" spellcheck={false} autocapitalize="none" />
+      </label>
+      <label class="field">
+        <span>Confirm password</span>
+        <input type={showPassword ? 'text' : 'password'} bind:value={confirmation} disabled={busy}
+          autocomplete="new-password" spellcheck={false} autocapitalize="none"
+          on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void confirm() } }} />
+      </label>
+      <label><input type="checkbox" bind:checked={showPassword} disabled={busy} /> Show password</label>
+    {/if}
     <div slot="actions">
       <button type="button" class="secondary" on:click={onCancel}>{busy ? 'Cancel compression' : 'Cancel'}</button>
       <button type="button" on:click={confirm} disabled={busy}>{busy ? 'Compressing…' : 'Create'}</button>

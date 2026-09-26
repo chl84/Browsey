@@ -12,6 +12,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::windows::ffi::OsStrExt;
 
 use unrar_sys as unrar;
+use zeroize::Zeroizing;
 
 use super::error::{DecompressError, DecompressResult};
 use super::util::ScanControl;
@@ -29,7 +30,57 @@ pub(super) struct RarEntry {
     mode: Option<u32>,
 }
 
-struct RarArchive(*const unrar::Handle);
+struct RarPassword(Zeroizing<Vec<unrar::WCHAR>>);
+
+impl RarPassword {
+    fn new(password: Option<&str>) -> DecompressResult<Self> {
+        let password = password.unwrap_or_default();
+        #[cfg(windows)]
+        let wide: Vec<unrar::WCHAR> = password.encode_utf16().collect();
+        #[cfg(not(windows))]
+        let wide: Vec<unrar::WCHAR> = password.chars().map(|c| c as unrar::WCHAR).collect();
+        if wide.len() >= 512 || password.contains('\0') {
+            return Err("RAR password is too long or contains NUL characters".into());
+        }
+        Ok(Self(Zeroizing::new(wide)))
+    }
+
+    fn supply(&self, message: unrar::UINT, buffer: unrar::LPARAM, capacity: unrar::LPARAM) -> i32 {
+        if message != unrar::UCM_NEEDPASSWORDW
+            || buffer == 0
+            || capacity <= 0
+            || self.0.is_empty()
+            || self.0.len() >= capacity as usize
+        {
+            return -1;
+        }
+        // UnRAR owns this writable WCHAR buffer for the duration of its callback.
+        unsafe {
+            let output = buffer as *mut unrar::WCHAR;
+            std::ptr::copy_nonoverlapping(self.0.as_ptr(), output, self.0.len());
+            output.add(self.0.len()).write(0);
+        }
+        1
+    }
+}
+
+extern "C" fn password_callback(
+    message: unrar::UINT,
+    data: unrar::LPARAM,
+    p1: unrar::LPARAM,
+    p2: unrar::LPARAM,
+) -> i32 {
+    if message == unrar::UCM_CHANGEVOLUME || message == unrar::UCM_CHANGEVOLUMEW {
+        return if p2 == unrar::RAR_VOL_NOTIFY { 1 } else { -1 };
+    }
+    if data == 0 {
+        return -1;
+    }
+    // The boxed password outlives the archive handle, including its close callback.
+    unsafe { (&*(data as *const RarPassword)).supply(message, p1, p2) }
+}
+
+struct RarArchive(*const unrar::Handle, Box<RarPassword>);
 
 impl Drop for RarArchive {
     fn drop(&mut self) {
@@ -39,7 +90,9 @@ impl Drop for RarArchive {
 
 impl RarArchive {
     #[allow(clippy::unnecessary_mut_passed)] // unrar_sys declares C output buffers as `*const`.
-    fn open(path: &Path, mode: unrar::UINT) -> DecompressResult<Self> {
+    fn open(path: &Path, mode: unrar::UINT, password: Option<&str>) -> DecompressResult<Self> {
+        let password = Box::new(RarPassword::new(password)?);
+        let password_ptr = &*password as *const RarPassword as unrar::LPARAM;
         #[cfg(windows)]
         let (handle, result) = {
             let wide: Vec<unrar::WCHAR> = path
@@ -48,6 +101,8 @@ impl RarArchive {
                 .chain(std::iter::once(0))
                 .collect();
             let mut data = unrar::OpenArchiveDataEx::new(wide.as_ptr(), mode);
+            data.callback = Some(password_callback);
+            data.user_data = password_ptr;
             (
                 unsafe { unrar::RAROpenArchiveEx(&mut data) },
                 data.open_result as i32,
@@ -61,6 +116,8 @@ impl RarArchive {
                 )
             })?;
             let mut data = unrar::OpenArchiveDataEx::new(path.as_ptr(), mode);
+            data.callback = Some(password_callback);
+            data.user_data = password_ptr;
             (
                 unsafe { unrar::RAROpenArchiveEx(&mut data) },
                 data.open_result as i32,
@@ -79,15 +136,23 @@ impl RarArchive {
                 .chain(std::iter::once(0))
                 .collect();
             let mut data = unrar::OpenArchiveDataEx::new(wide.as_ptr(), mode);
+            data.callback = Some(password_callback);
+            data.user_data = password_ptr;
             (
                 unsafe { unrar::RAROpenArchiveEx(&mut data) },
                 data.open_result as i32,
             )
         };
         if handle.is_null() || result != unrar::ERAR_SUCCESS {
+            if !handle.is_null() {
+                unsafe { unrar::RARCloseArchive(handle) };
+            }
+            if result == unrar::ERAR_BAD_DATA && !password.0.is_empty() {
+                return Err(DecompressError::password_or_corrupt());
+            }
             return Err(unrar_error("open RAR archive", result));
         }
-        Ok(Self(handle))
+        Ok(Self(handle, password))
     }
 
     #[allow(clippy::unnecessary_mut_passed)] // unrar_sys declares C output buffers as `*const`.
@@ -101,6 +166,9 @@ impl RarArchive {
                 mode: (header.host_os == 3).then_some(header.file_attr),
             })),
             unrar::ERAR_END_ARCHIVE => Ok(None),
+            unrar::ERAR_BAD_DATA if !self.1 .0.is_empty() => {
+                Err(DecompressError::password_or_corrupt())
+            }
             code => Err(unrar_error("read RAR header", code)),
         }
     }
@@ -125,11 +193,20 @@ impl RarArchive {
         let result = unsafe {
             unrar::RARProcessFile(self.0, unrar::RAR_TEST, std::ptr::null(), std::ptr::null())
         };
-        unsafe { unrar::RARSetCallback(self.0, None, 0) };
+        unsafe {
+            unrar::RARSetCallback(
+                self.0,
+                Some(password_callback),
+                &*self.1 as *const RarPassword as unrar::LPARAM,
+            )
+        };
         if let Some(error) = state.failure.take() {
             return Err(error);
         }
         if result != unrar::ERAR_SUCCESS {
+            if result == unrar::ERAR_BAD_DATA && !self.1 .0.is_empty() {
+                return Err(DecompressError::password_or_corrupt());
+            }
             return Err(unrar_error("extract RAR entry", result));
         }
         state.writer.flush().map_err(|error| {
@@ -142,6 +219,7 @@ impl RarArchive {
 }
 
 struct StreamState<'a> {
+    password: &'a RarPassword,
     writer: &'a mut BufWriter<File>,
     raw_name: &'a str,
     progress: Option<&'a ProgressEmitter>,
@@ -160,6 +238,15 @@ extern "C" fn stream_callback(
         return if p2 == unrar::RAR_VOL_NOTIFY { 1 } else { -1 };
     }
     if user_data == 0 || message != unrar::UCM_PROCESSDATA {
+        if user_data != 0
+            && (message == unrar::UCM_NEEDPASSWORD || message == unrar::UCM_NEEDPASSWORDW)
+        {
+            return unsafe {
+                (&*(user_data as *const StreamState<'_>))
+                    .password
+                    .supply(message, p1, p2)
+            };
+        }
         return 0;
     }
     let state = unsafe { &mut *(user_data as *mut StreamState<'_>) };
@@ -248,8 +335,9 @@ pub(super) fn extract_rar(
     created: &mut CreatedPaths,
     cancel: Option<&AtomicBool>,
     budget: &ExtractBudget,
+    password: Option<&str>,
 ) -> DecompressResult<()> {
-    let archive = RarArchive::open(archive_path, unrar::RAR_OM_EXTRACT)?;
+    let archive = RarArchive::open(archive_path, unrar::RAR_OM_EXTRACT, password)?;
     while let Some(entry) = archive.read_header()? {
         check_cancel(cancel).map_err(|error| {
             DecompressError::from_external_message(format!("Extraction cancelled: {error}"))
@@ -319,6 +407,7 @@ pub(super) fn extract_rar(
         created.record_file(actual_path);
         let mut writer = BufWriter::with_capacity(CHUNK, file);
         archive.stream_entry(&mut StreamState {
+            password: &archive.1,
             writer: &mut writer,
             raw_name: &raw_name,
             progress,
@@ -338,7 +427,7 @@ pub(super) fn parse_rar_entries(
     control.check()?;
     // Listing mode excludes continuation headers of split entries, so a
     // multi-volume archive contributes one logical entry per file.
-    let archive = RarArchive::open(path, unrar::RAR_OM_LIST)?;
+    let archive = RarArchive::open(path, unrar::RAR_OM_LIST, control.password)?;
     let mut entries = Vec::new();
     while let Some(entry) = archive.read_header()? {
         control.check()?;
@@ -391,8 +480,8 @@ fn header_path(header: &unrar::HeaderDataEx) -> PathBuf {
 
 fn unrar_error(context: &str, code: i32) -> DecompressError {
     let detail = match code {
-        unrar::ERAR_MISSING_PASSWORD => "archive requires a password",
-        unrar::ERAR_BAD_PASSWORD => "incorrect archive password",
+        unrar::ERAR_MISSING_PASSWORD => return DecompressError::password_required(),
+        unrar::ERAR_BAD_PASSWORD => return DecompressError::invalid_password(),
         unrar::ERAR_BAD_ARCHIVE => "invalid RAR archive",
         unrar::ERAR_BAD_DATA => "corrupt RAR entry data",
         unrar::ERAR_UNKNOWN_FORMAT => "unsupported RAR format",
@@ -461,6 +550,7 @@ mod tests {
             &mut created,
             None,
             &ExtractBudget::new(1_000_000, 100),
+            None,
         )
         .expect("extract RAR");
         assert_eq!(
@@ -491,6 +581,7 @@ mod tests {
             &mut created,
             None,
             &ExtractBudget::new(1_000_000, 100),
+            None,
         )
         .expect("extract RAR");
         assert_eq!(
@@ -517,6 +608,7 @@ mod tests {
             &mut created,
             None,
             &ExtractBudget::new(1_000_000, 100),
+            None,
         )
         .expect_err("encrypted archive must fail without a password");
         assert!(error.to_string().contains("requires a password"));
@@ -547,6 +639,7 @@ mod tests {
             &mut created,
             None,
             &ExtractBudget::new(1_000_000, 100),
+            None,
         )
         .expect("extract RAR5");
         let bytes = fs::read(output.join("test.bin")).expect("read extracted RAR5 file");
@@ -590,6 +683,7 @@ mod tests {
             &mut created,
             None,
             &ExtractBudget::new(1_000_000, 100),
+            None,
         )
         .expect("extract multi-volume RAR5");
         assert_eq!(
@@ -629,6 +723,7 @@ mod tests {
             &mut created,
             None,
             &ExtractBudget::new(1_000_000, 100),
+            None,
         )
         .expect_err("incomplete multi-volume archive must fail");
         assert!(error.to_string().contains("required volume"));

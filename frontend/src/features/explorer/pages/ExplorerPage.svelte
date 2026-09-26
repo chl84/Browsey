@@ -1,6 +1,7 @@
 <script lang="ts">
   // --- Imports -------------------------------------------------------------
   import { onMount, onDestroy, tick } from 'svelte'
+  import ArchivePasswordModal from '../components/ArchivePasswordModal.svelte'
   import { getErrorMessage, normalizeError } from '@/shared/lib/error'
   import { get } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, parentPath } from '@/features/explorer/utils'
@@ -1363,6 +1364,7 @@
     searchCheckDuplicates,
     cancelConflicts,
   } = fileOps
+  const archivePasswordState = fileOps.archivePasswordModal.state
   const {
     deleteModal,
     deleteState,
@@ -1688,8 +1690,8 @@
     compressModal.close()
   }
 
-  const confirmCompress = async (name: string, level: number) => {
-    await compressModal.confirm(name, level)
+  const confirmCompress = async (name: string, level: number, password?: string) => {
+    await compressModal.confirm(name, level, password)
   }
 
   const handleSidebarBookmarkSelect = (path: string) => {
@@ -2043,6 +2045,7 @@
   $: setThemeHighContrast($highContrast)
 
   onDestroy(() => {
+    fileOps.cancelExtraction()
     destroyThemeController()
     pageLifecycle.handlePageDestroy()
   })
@@ -2051,6 +2054,14 @@
     return pageLifecycle.initLifecycle()
   })
 </script>
+
+<ArchivePasswordModal
+  open={$archivePasswordState.open}
+  path={$archivePasswordState.path}
+  error={$archivePasswordState.error}
+  onSubmit={fileOps.archivePasswordModal.submit}
+  onCancel={fileOps.cancelExtraction}
+/>
 
 <!-- Render root: keep composition at page level; push glue/helpers out over time. -->
 <svelte:document

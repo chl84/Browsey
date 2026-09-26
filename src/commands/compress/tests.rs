@@ -24,6 +24,7 @@ impl Fixture {
             Some("result.zip".into()),
             Some(6),
             None,
+            None,
         )
     }
 }
@@ -31,6 +32,75 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
+}
+
+#[test]
+fn aes_zip_roundtrip_protects_empty_and_nonempty_files() {
+    for level in [0, 6] {
+        let root = Fixture::new();
+        let input = root.0.join("folder");
+        fs::create_dir(&input).unwrap();
+        fs::write(input.join("secret.txt"), b"secret content").unwrap();
+        fs::write(input.join("empty"), b"").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("secret.txt", input.join("link")).unwrap();
+        let password = " blåbær🔑 with spaces ";
+        let dest = do_compress(
+            None,
+            CancelState::default(),
+            UndoState::default(),
+            vec![input.to_string_lossy().into_owned()],
+            Some("encrypted.zip".into()),
+            Some(level),
+            None,
+            Some(password),
+        )
+        .unwrap();
+        let mut archive = zip::ZipArchive::new(File::open(&dest).unwrap()).unwrap();
+        for i in 0..archive.len() {
+            if archive.by_index_raw(i).unwrap().is_dir() {
+                continue;
+            }
+            assert!(archive.by_index_raw(i).unwrap().encrypted());
+            assert!(archive.by_index(i).is_err());
+            assert!(archive.by_index_decrypt(i, b"wrong").is_err());
+            let mut bytes = Vec::new();
+            let mut entry = archive.by_index_decrypt(i, password.as_bytes()).unwrap();
+            entry.read_to_end(&mut bytes).unwrap();
+            assert_eq!(
+                bytes,
+                match entry.name() {
+                    "folder/empty" => b"".as_slice(),
+                    "folder/link" => b"secret.txt".as_slice(),
+                    _ => b"secret content".as_slice(),
+                }
+            );
+        }
+        let bytes = fs::read(dest).unwrap();
+        assert!(!bytes
+            .windows(b"secret content".len())
+            .any(|w| w == b"secret content"));
+    }
+}
+
+#[test]
+fn empty_encryption_password_does_not_create_an_archive() {
+    let root = Fixture::new();
+    let input = root.0.join("file");
+    fs::write(&input, b"payload").unwrap();
+    let error = do_compress(
+        None,
+        CancelState::default(),
+        UndoState::default(),
+        vec![input.to_string_lossy().into_owned()],
+        Some("encrypted.zip".into()),
+        None,
+        None,
+        Some(""),
+    )
+    .unwrap_err();
+    assert_eq!(error.code_str(), "invalid_input");
+    assert!(!root.0.join("encrypted.zip").exists());
 }
 
 #[test]
@@ -71,6 +141,7 @@ fn cancel_is_registered_before_collection_and_removes_output() {
         Some("result.zip".into()),
         None,
         Some("scan-cancel-test".into()),
+        None,
     )
     .unwrap_err();
     assert_eq!(err.code_str(), "cancelled");

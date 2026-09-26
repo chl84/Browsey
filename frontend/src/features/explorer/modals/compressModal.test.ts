@@ -19,6 +19,17 @@ const setup = () => {
 describe('compression lifecycle', () => {
   beforeEach(() => { invoke.mockReset() })
 
+  it('sends the exact password only for the current operation, without adding it to modal state', async () => {
+    const { modal } = setup()
+    invoke.mockResolvedValue('/test/Archive.zip')
+    await modal.confirm('Archive', 6, ' blåbær🔑 ')
+    expect(invoke).toHaveBeenLastCalledWith('compress_entries', expect.objectContaining({ password: ' blåbær🔑 ' }))
+    expect(JSON.stringify(get(modal.state))).not.toContain('blåbær')
+    modal.open([{ path: '/test/file.txt', name: 'file.txt', kind: 'file', iconId: 0 }], 'Archive')
+    await modal.confirm('Archive', 6)
+    expect(invoke.mock.calls[1][1]).not.toHaveProperty('password')
+  })
+
   it('keeps errors and targets visible, then closes after a successful retry', async () => {
     const { modal, deps } = setup()
     invoke.mockRejectedValueOnce(new Error('No space left')).mockResolvedValueOnce('/test/Archive.zip')

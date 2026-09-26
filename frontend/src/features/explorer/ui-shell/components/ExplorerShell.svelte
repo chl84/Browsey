@@ -187,7 +187,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   export let compressName = ''
   export let compressLevel = 6
   let compressError = ''
-  let onConfirmCompress: (name: string, level: number) => void = () => {}
+  let onConfirmCompress: (name: string, level: number, password?: string) => void | Promise<void> = () => {}
   let onCancelCompress: () => void = () => {}
   let checkDuplicatesOpen = false
   let checkDuplicatesTarget: Entry | null = null

@@ -121,13 +121,14 @@ export type ExtractBatchItem = {
   ok: boolean
   result?: ExtractResult | null
   error?: string | null
+  error_code?: string | null
 }
 
-export const extractArchive = (path: string, progressEvent?: string) => {
+export const extractArchive = (path: string, progressEvent?: string, password?: string) => {
   if (isCloudPath(path)) {
     throw new Error('Archive extraction is not supported for cloud entries yet')
   }
-  return invoke<ExtractResult>('extract_archive', { path, progressEvent })
+  return invoke<ExtractResult>('extract_archive', { path, progressEvent, ...(password === undefined ? {} : { password }) })
 }
 
 export const extractArchives = (paths: string[], progressEvent?: string) => {
