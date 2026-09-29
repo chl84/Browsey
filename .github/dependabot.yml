@@ -1,0 +1,54 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 3
+    groups:
+      compatible-rust:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+      # Coordinate these with their JS stack, native ABI, source and licenses.
+      - dependency-name: tauri
+      - dependency-name: tauri-build
+      - dependency-name: gtk
+      - dependency-name: gio
+      - dependency-name: glib
+      - dependency-name: unrar_sys
+      - dependency-name: pdfium-render
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 3
+    groups:
+      compatible-frontend:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+      - dependency-name: '@tauri-apps/api'
+      - dependency-name: '@tauri-apps/cli'
+  - package-ecosystem: npm
+    directory: /docs-site
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 3
+    groups:
+      compatible-docs:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+    open-pull-requests-limit: 2

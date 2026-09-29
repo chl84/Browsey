@@ -31,6 +31,9 @@ assert.match(iterator, /g_variant_get_child\([\s\S]*?&mut p,/)
 const cargo = readFileSync(join(root, 'Cargo.toml'), 'utf8')
 assert.ok(cargo.includes('glib = { path = "vendor/glib" }'))
 assert.ok(readFileSync(join(vendor, 'glib/LICENSE'), 'utf8').includes('Permission is hereby granted'))
+for (const file of ['LICENSE', 'COPYRIGHT']) {
+  assert.equal(readFileSync(join(root, `resources/glib-${file}`), 'utf8'), readFileSync(join(vendor, `glib/${file}`), 'utf8'))
+}
 if (manifest.unrar_source) {
   assert.ok(cargo.includes('unrar_sys = { path = "vendor/unrar-sys" }'))
   const version = readFileSync(join(vendor, 'unrar-sys/vendor/unrar/version.hpp'), 'utf8')
@@ -40,5 +43,8 @@ if (manifest.unrar_source) {
   const bindings = readFileSync(join(vendor, 'unrar-sys/src/lib.rs'), 'utf8')
   assert.equal(bindings.match(/#\[repr\(C, packed\)\]/g)?.length, 4)
   assert.equal(readFileSync(join(root, 'resources/unrar-LICENSE.txt'), 'utf8'), readFileSync(join(vendor, 'unrar-sys/vendor/unrar/license.txt'), 'utf8'))
+  for (const file of ['LICENSE-MIT', 'LICENSE-APACHE']) {
+    assert.equal(readFileSync(join(root, `resources/unrar-sys-${file}`), 'utf8'), readFileSync(join(vendor, `unrar-sys/${file}`), 'utf8'))
+  }
 }
 console.log('Vendored source hashes, native UnRAR version/ABI and the GLib soundness backport verified.')

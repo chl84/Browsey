@@ -6,6 +6,11 @@ on:
       - 'src/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'vendor/**'
+      - 'resources/glib-*'
+      - 'resources/unrar-*'
+      - 'scripts/maintenance/check-vendor.mjs'
+      - 'scripts/maintenance/check-dependency-policy*.mjs'
       - 'build.rs'
       - 'resources/pdfium*'
       - 'resources/pdfium*/**'
@@ -21,6 +26,11 @@ on:
       - 'src/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - 'vendor/**'
+      - 'resources/glib-*'
+      - 'resources/unrar-*'
+      - 'scripts/maintenance/check-vendor.mjs'
+      - 'scripts/maintenance/check-dependency-policy*.mjs'
       - 'build.rs'
       - 'resources/pdfium*'
       - 'resources/pdfium*/**'
@@ -68,6 +78,12 @@ jobs:
 
       - name: Verify bundled PDFium provenance and checksums
         run: node scripts/maintenance/check-pdfium.mjs
+
+      - name: Verify local backports and coordinated dependency pins
+        run: |
+          node scripts/maintenance/check-vendor.mjs
+          node --test scripts/maintenance/check-dependency-policy.test.mjs
+          node scripts/maintenance/check-dependency-policy.mjs
 
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings

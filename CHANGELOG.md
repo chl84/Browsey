@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make dependency security checks blocking, add weekly grouped Dependabot proposals without auto-merge, and verify coordinated Tauri/native pins in CI. Keep the upgrade helper within existing manifest constraints and document the two remaining indirect build-macro maintenance warnings and platform-validation limits.
+
 - Refresh the SQLite persistence, disk-information and async runtime dependencies to rusqlite 0.40.2, sysinfo 0.39.6 and Tokio 1.53.1, align Zstandard at 0.14, and update compatible Rust lockfile dependencies while retaining explicit native/desktop ABI pins.
 
 - Update ZIP to 8.6.0 and 7z to 0.23.0, including hardened header parsing and refreshed codecs/cryptography. Recheck encrypted archive and extraction-safety regressions and round-trip non-solid archives with all nine enabled 7z codecs.
