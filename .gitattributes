@@ -1,5 +1,5 @@
 # Treat bundled third-party binaries/headers as vendored so they don't skew GitHub language stats.
-resources/pdfium-win-x64/** linguist-vendored
+resources/pdfium-win-x64/** linguist-vendored whitespace=cr-at-eol
 resources/pdfium-linux-x64/** linguist-vendored
 resources/icons/scalable/** linguist-vendored
 docs/** linguist-vendored

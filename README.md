@@ -39,6 +39,10 @@ Common:
 - Rust (stable) via `rustup`
 - Node.js LTS + npm (frontend build/dev only)
 - PDFium is bundled in `resources/pdfium-<platform>/` so no system PDF libs are needed.
+  The pinned version is `156.0.8076.0`, with `pdfium-render 0.9.4` and the
+  explicit `pdfium_7881` API profile. Provenance and checksums are in
+  [`resources/pdfium.json`](resources/pdfium.json); run
+  `node scripts/maintenance/check-pdfium.mjs` to verify the bundled resources.
 - Optional for cloud remotes (OneDrive/Google Drive/Nextcloud via `rclone`): `rclone` in `PATH` (Linux v1 strategy).
 - Optional for video thumbnails: `ffmpeg` in PATH (or `FFMPEG_BIN`), otherwise video files fall back to icons.
 - Linux (GNOME Wayland): install `xclip` for file clipboard interoperability between Browsey instances without GNOME shell focus/dock side-effects on `Ctrl+C` / `Ctrl+V`.

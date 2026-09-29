@@ -7,6 +7,11 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'build.rs'
+      - 'resources/pdfium*'
+      - 'resources/pdfium*/**'
+      - 'tests/fixtures/pdf/**'
+      - 'THIRD_PARTY_NOTICES'
+      - 'scripts/maintenance/check-pdfium.mjs'
       - '.github/workflows/rust-quality.yml'
       - 'scripts/maintenance/check-backend-error-hardening-guard.sh'
   push:
@@ -17,6 +22,11 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'build.rs'
+      - 'resources/pdfium*'
+      - 'resources/pdfium*/**'
+      - 'tests/fixtures/pdf/**'
+      - 'THIRD_PARTY_NOTICES'
+      - 'scripts/maintenance/check-pdfium.mjs'
       - '.github/workflows/rust-quality.yml'
       - 'scripts/maintenance/check-backend-error-hardening-guard.sh'
   workflow_dispatch:
@@ -50,6 +60,13 @@ jobs:
 
       - name: Rustfmt
         run: cargo fmt --all -- --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify bundled PDFium provenance and checksums
+        run: node scripts/maintenance/check-pdfium.mjs
 
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings

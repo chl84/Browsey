@@ -43,7 +43,9 @@ blake3 = "1.8.3"
 num_cpus = "1.17.0"
 tokio = { version = "1.50.0", default-features = false, features = ["sync", "fs", "io-util", "time"] }
 resvg = "0.47.0"
-pdfium-render = "0.8.37"
+# Pin both the wrapper and its supported ABI; the bundled binary is verified
+# against this profile by the PDF regression tests (see resources/pdfium.json).
+pdfium-render = { version = "=0.9.4", default-features = false, features = ["pdfium_7881", "thread_safe", "image_025"] }
 which = "8.0.0"
 url = "2.5.8"
 unrar_sys = "=0.5.8"

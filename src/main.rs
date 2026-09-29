@@ -17,6 +17,7 @@ mod mtp;
 #[cfg(target_os = "linux")]
 mod native_drag;
 mod path_guard;
+mod pdfium_runtime;
 mod runtime_lifecycle;
 mod sorting;
 mod statusbar;

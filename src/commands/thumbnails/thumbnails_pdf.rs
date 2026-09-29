@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::ImageEncoder;
@@ -16,9 +16,8 @@ pub fn render_pdf_thumbnail(
     max_dim: u32,
     resource_dir: Option<&Path>,
 ) -> ThumbnailResult<(u32, u32)> {
-    let bindings = load_pdfium_bindings(resource_dir)?;
-    thumb_log(&format!("pdfium: bindings loaded for {}", path.display()));
-    let pdfium = Pdfium::new(bindings);
+    let pdfium = crate::pdfium_runtime::pdfium(resource_dir)
+        .map_err(|e| ThumbnailError::from_external_message(format!("Pdfium load failed: {e}")))?;
 
     let doc = pdfium
         .load_pdf_from_file(path, None)
@@ -32,8 +31,8 @@ pub fn render_pdf_thumbnail(
     let dims = (page.width().value, page.height().value);
     let max_side = dims.0.max(dims.1);
     let scale = (max_dim as f32 / max_side).min(1.0);
-    let target_w = (dims.0 * scale).round() as i32;
-    let target_h = (dims.1 * scale).round() as i32;
+    let target_w = ((dims.0 * scale).round() as i32).max(1);
+    let target_h = ((dims.1 * scale).round() as i32).max(1);
 
     let render = page
         .render_with_config(
@@ -44,7 +43,9 @@ pub fn render_pdf_thumbnail(
         )
         .map_err(|e| ThumbnailError::from_external_message(format!("PDF render failed: {e}")))?;
 
-    let image = render.as_image();
+    let image = render.as_image().map_err(|e| {
+        ThumbnailError::from_external_message(format!("PDF image conversion failed: {e}"))
+    })?;
     let rgba = image.to_rgba8();
     let file = File::create(cache_path).map_err(|e| {
         ThumbnailError::from_external_message(format!("Save PDF thumbnail failed (open): {e}"))
@@ -72,77 +73,6 @@ pub fn render_pdf_thumbnail(
     Ok((image.width(), image.height()))
 }
 
-fn load_pdfium_bindings(
-    resource_dir: Option<&Path>,
-) -> ThumbnailResult<Box<dyn PdfiumLibraryBindings>> {
-    // 1) Explicit override
-    if let Ok(path) = std::env::var("PDFIUM_LIB_PATH") {
-        if let Ok(b) = Pdfium::bind_to_library(&path) {
-            thumb_log(&format!("pdfium: using PDFIUM_LIB_PATH={path}"));
-            return Ok(b);
-        }
-        thumb_log(&format!(
-            "pdfium: failed PDFIUM_LIB_PATH={path}, falling back"
-        ));
-    }
-
-    // 2) Bundled paths (dev + packaged)
-    let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Some(res) = resource_dir {
-        #[cfg(target_os = "linux")]
-        candidates.push(res.join("pdfium-linux-x64/lib/libpdfium.so"));
-        #[cfg(target_os = "windows")]
-        candidates.push(res.join("pdfium-win-x64/bin/pdfium.dll"));
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            // Common layouts: installed bundle keeps resources beside the exe; dev sits at target/{debug,release}
-            #[cfg(target_os = "linux")]
-            candidates.push(dir.join("libpdfium.so"));
-            #[cfg(target_os = "linux")]
-            candidates.push(dir.join("resources/pdfium-linux-x64/lib/libpdfium.so"));
-            #[cfg(target_os = "windows")]
-            candidates.push(dir.join("resources/pdfium-win-x64/bin/pdfium.dll"));
-
-            // For dev builds where exe is target/{debug,release}/browsey.exe, project root is two levels up.
-            let proj_root = dir.parent().and_then(|p| p.parent()).unwrap_or(dir);
-            #[cfg(target_os = "linux")]
-            candidates.push(proj_root.join("resources/pdfium-linux-x64/lib/libpdfium.so"));
-            #[cfg(target_os = "windows")]
-            candidates.push(proj_root.join("resources/pdfium-win-x64/bin/pdfium.dll"));
-
-            // In case pdfium.dll is copied next to the exe (paranoia)
-            #[cfg(target_os = "windows")]
-            candidates.push(dir.join("pdfium.dll"));
-        }
-    }
-
-    // 3) Common distro names/paths (fallback)
-    #[cfg(target_os = "linux")]
-    {
-        candidates.extend([
-            PathBuf::from("/usr/lib64/libpdfium.so"),
-            PathBuf::from("/usr/lib/libpdfium.so"),
-            PathBuf::from("/usr/lib64/libdeepin-pdfium.so.1"),
-            PathBuf::from("/usr/lib64/libdeepin-pdfium.so"),
-        ]);
-    }
-
-    for cand in candidates {
-        if cand.exists() {
-            let p = cand.to_string_lossy().to_string();
-            if let Ok(b) = Pdfium::bind_to_library(&p) {
-                thumb_log(&format!("pdfium: using candidate {}", p));
-                return Ok(b);
-            }
-            thumb_log(&format!("pdfium: failed candidate {}, continuing", p));
-        }
-    }
-
-    // 4) System search
-    Pdfium::bind_to_system_library()
-        .map_err(|e| ThumbnailError::from_external_message(format!("Pdfium load failed: {e}")))
-        .inspect(|_b| {
-            thumb_log("pdfium: using system library search");
-        })
-}
+#[cfg(test)]
+#[path = "thumbnails_pdf_tests.rs"]
+mod tests;
