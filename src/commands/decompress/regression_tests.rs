@@ -37,6 +37,59 @@ fn extract_password(path: &Path, password: Option<&str>) -> DecompressResult<Ext
     )
 }
 
+#[test]
+fn tar_pax_size_overrides_nonzero_header_across_gnu_longname() {
+    // PAX x -> GNU L -> file must apply the size to the file, never to L.
+    // The base file header deliberately has a different, nonzero size.
+    // These independently constructed bytes exercise both PAX security fixes.
+    for longname in [false, true] {
+        let root = Fixture::new();
+        let path = root.0.join("pax.tar");
+        let name = if longname {
+            format!("root/{}.txt", "a".repeat(140))
+        } else {
+            "root/payload.txt".into()
+        };
+        let mut writer = tar::Builder::new(File::create(&path).unwrap());
+        writer
+            .append_pax_extensions([("size", &b"1024"[..])])
+            .unwrap();
+        if longname {
+            let mut header = tar::Header::new_gnu();
+            header.set_path("././@LongLink").unwrap();
+            header.set_entry_type(tar::EntryType::GNULongName);
+            header.set_mode(0o600);
+            header.set_size(name.len() as u64 + 1);
+            header.set_cksum();
+            let mut data = name.as_bytes().to_vec();
+            data.push(0);
+            writer.append(&header, data.as_slice()).unwrap();
+        }
+        let mut header = tar::Header::new_gnu();
+        header.set_path("root/payload.txt").unwrap();
+        header.set_mode(0o600);
+        header.set_size(512);
+        header.set_cksum();
+        let data = vec![b'A'; 1024];
+        writer.append(&header, data.as_slice()).unwrap();
+        let mut tail = tar::Header::new_gnu();
+        tail.set_mode(0o600);
+        tail.set_size(4);
+        writer
+            .append_data(&mut tail, "root/tail.txt", &b"tail"[..])
+            .unwrap();
+        writer.finish().unwrap();
+        drop(writer);
+        let result = extract_password(&path, None).unwrap();
+        let destination = Path::new(&result.destination);
+        assert_eq!(
+            fs::read(destination.join(name.strip_prefix("root/").unwrap())).unwrap(),
+            data
+        );
+        assert_eq!(fs::read(destination.join("tail.txt")).unwrap(), b"tail");
+    }
+}
+
 fn expect_password_error(path: &Path, password: Option<&str>, code: &str) {
     let error = extract_password(path, password).err().expect("must fail");
     assert_eq!(error.code_str(), code, "{error}");

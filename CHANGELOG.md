@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add weekly and dependency-change security checks for Cargo and both npm projects. Update TAR to 0.4.46 and compatible indirect Rust security fixes; cover PAX size overrides across GNU long-name headers with real extraction regressions.
+
 - Update bundled Linux and Windows PDFium to `156.0.8076.0` and `pdfium-render` to `0.9.4`, with an explicitly pinned API profile, verified release-asset/binary checksums, refreshed headers/licenses, and immutable third-party provenance. Share one process-lifetime PDFium runtime between thumbnails and metadata; handle fallible image conversion and keep extreme-aspect thumbnails nonzero. Add real PDF regressions for rotations, fonts, metadata, malformed/encrypted inputs, repeated calls, and concurrent requests.
 - Fix the mount refresh interval slider collapsing to zero width in Settings. Keep its value and unit together, place helper text below the control, and add accessible labeling and pointer/keyboard layout regression coverage.
 - Add optional AES-256 password protection when creating ZIP archives, with password confirmation and a visible-filenames warning. Extract password-protected ZIP (AES and legacy ZipCrypto), 7z, and RAR archives, including encrypted 7z/RAR headers. Prompt per archive, support wrong-password retries and cancellation, and retry only password failures in a batch. Keep passwords out of settings/logs, clear dialog inputs, zeroize owned backend input buffers, and add real encrypted-archive and browser regression tests.
