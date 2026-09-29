@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refresh frontend and docs-site Svelte/Vite/tool dependencies within their current major versions, resolve npm security advisories in both lockfiles, and bind the desktop development server to loopback instead of all network interfaces.
+
 - Add weekly and dependency-change security checks for Cargo and both npm projects. Update TAR to 0.4.46 and compatible indirect Rust security fixes; cover PAX size overrides across GNU long-name headers with real extraction regressions.
 
 - Update bundled Linux and Windows PDFium to `156.0.8076.0` and `pdfium-render` to `0.9.4`, with an explicitly pinned API profile, verified release-asset/binary checksums, refreshed headers/licenses, and immutable third-party provenance. Share one process-lifetime PDFium runtime between thumbnails and metadata; handle fallible image conversion and keep extreme-aspect thumbnails nonzero. Add real PDF regressions for rotations, fonts, metadata, malformed/encrypted inputs, repeated calls, and concurrent requests.
