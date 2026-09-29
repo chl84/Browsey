@@ -7,6 +7,9 @@ cd "$ROOT"
 echo "== Backend: bundled PDFium integrity =="
 node scripts/maintenance/check-pdfium.mjs
 
+echo "== Backend: vendored source integrity =="
+node scripts/maintenance/check-vendor.mjs
+
 echo "== Backend: rustfmt check =="
 cargo fmt --all -- --check
 

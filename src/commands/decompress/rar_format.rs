@@ -3,7 +3,10 @@ use std::{
     fs::File,
     io::{BufWriter, Write},
     path::{Path, PathBuf},
-    sync::atomic::AtomicBool,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex, MutexGuard, TryLockError,
+    },
 };
 
 #[cfg(any(target_os = "linux", target_os = "netbsd"))]
@@ -30,7 +33,10 @@ pub(super) struct RarEntry {
     mode: Option<u32>,
 }
 
-struct RarPassword(Zeroizing<Vec<unrar::WCHAR>>);
+struct RarPassword {
+    value: Zeroizing<Vec<unrar::WCHAR>>,
+    requested: AtomicBool,
+}
 
 impl RarPassword {
     fn new(password: Option<&str>) -> DecompressResult<Self> {
@@ -42,25 +48,47 @@ impl RarPassword {
         if wide.len() >= 512 || password.contains('\0') {
             return Err("RAR password is too long or contains NUL characters".into());
         }
-        Ok(Self(Zeroizing::new(wide)))
+        Ok(Self {
+            value: Zeroizing::new(wide),
+            requested: AtomicBool::new(false),
+        })
     }
 
     fn supply(&self, message: unrar::UINT, buffer: unrar::LPARAM, capacity: unrar::LPARAM) -> i32 {
+        if message == unrar::UCM_NEEDPASSWORDW {
+            self.requested.store(true, Ordering::SeqCst);
+        }
         if message != unrar::UCM_NEEDPASSWORDW
             || buffer == 0
             || capacity <= 0
-            || self.0.is_empty()
-            || self.0.len() >= capacity as usize
+            || self.value.is_empty()
+            || self.value.len() >= capacity as usize
         {
             return -1;
         }
         // UnRAR owns this writable WCHAR buffer for the duration of its callback.
         unsafe {
             let output = buffer as *mut unrar::WCHAR;
-            std::ptr::copy_nonoverlapping(self.0.as_ptr(), output, self.0.len());
-            output.add(self.0.len()).write(0);
+            std::ptr::copy_nonoverlapping(self.value.as_ptr(), output, self.value.len());
+            output.add(self.value.len()).write(0);
         }
         1
+    }
+
+    fn decoder_error(&self, context: &str, code: i32) -> DecompressError {
+        // Since UnRAR 7.23, a declined header-password callback can surface
+        // as EOPEN. Require evidence of that callback in this operation; a
+        // missing file/volume must never become a password retry.
+        if code == unrar::ERAR_EOPEN
+            && self.value.is_empty()
+            && self.requested.load(Ordering::SeqCst)
+        {
+            return DecompressError::password_required();
+        }
+        if code == unrar::ERAR_BAD_DATA && !self.value.is_empty() {
+            return DecompressError::password_or_corrupt();
+        }
+        unrar_error(context, code)
     }
 }
 
@@ -80,17 +108,48 @@ extern "C" fn password_callback(
     unsafe { (&*(data as *const RarPassword)).supply(message, p1, p2) }
 }
 
-struct RarArchive(*const unrar::Handle, Box<RarPassword>);
+// RARDLL retains a process-global ErrHandler. Hold the lock for the whole
+// handle lifetime, including callbacks and close, not just individual calls.
+static RAR_NATIVE: Mutex<()> = Mutex::new(());
+
+fn acquire_decoder(cancel: Option<&AtomicBool>) -> DecompressResult<MutexGuard<'static, ()>> {
+    loop {
+        check_cancel(cancel).map_err(|e| {
+            DecompressError::from_external_message(format!("Extraction cancelled: {e}"))
+        })?;
+        match RAR_NATIVE.try_lock() {
+            Ok(guard) => return Ok(guard),
+            Err(TryLockError::WouldBlock) => {
+                std::thread::sleep(std::time::Duration::from_millis(10))
+            }
+            Err(TryLockError::Poisoned(_)) => {
+                return Err("UnRAR decoder state lock is poisoned".into())
+            }
+        }
+    }
+}
+
+struct RarArchive {
+    handle: *const unrar::Handle,
+    password: Box<RarPassword>,
+    _guard: MutexGuard<'static, ()>,
+}
 
 impl Drop for RarArchive {
     fn drop(&mut self) {
-        unsafe { unrar::RARCloseArchive(self.0) };
+        unsafe { unrar::RARCloseArchive(self.handle) };
     }
 }
 
 impl RarArchive {
     #[allow(clippy::unnecessary_mut_passed)] // unrar_sys declares C output buffers as `*const`.
-    fn open(path: &Path, mode: unrar::UINT, password: Option<&str>) -> DecompressResult<Self> {
+    fn open(
+        path: &Path,
+        mode: unrar::UINT,
+        password: Option<&str>,
+        cancel: Option<&AtomicBool>,
+    ) -> DecompressResult<Self> {
+        let guard = acquire_decoder(cancel)?;
         let password = Box::new(RarPassword::new(password)?);
         let password_ptr = &*password as *const RarPassword as unrar::LPARAM;
         #[cfg(windows)]
@@ -147,18 +206,20 @@ impl RarArchive {
             if !handle.is_null() {
                 unsafe { unrar::RARCloseArchive(handle) };
             }
-            if result == unrar::ERAR_BAD_DATA && !password.0.is_empty() {
-                return Err(DecompressError::password_or_corrupt());
-            }
-            return Err(unrar_error("open RAR archive", result));
+            return Err(password.decoder_error("open RAR archive", result));
         }
-        Ok(Self(handle, password))
+        Ok(Self {
+            handle,
+            password,
+            _guard: guard,
+        })
     }
 
     #[allow(clippy::unnecessary_mut_passed)] // unrar_sys declares C output buffers as `*const`.
     fn read_header(&self) -> DecompressResult<Option<RarEntry>> {
+        self.password.requested.store(false, Ordering::SeqCst);
         let mut header = unrar::HeaderDataEx::default();
-        match unsafe { unrar::RARReadHeaderEx(self.0, &mut header) } {
+        match unsafe { unrar::RARReadHeaderEx(self.handle, &mut header) } {
             unrar::ERAR_SUCCESS => Ok(Some(RarEntry {
                 name: header_path(&header),
                 length: unpack_size(header.unp_size, header.unp_size_high),
@@ -166,48 +227,54 @@ impl RarArchive {
                 mode: (header.host_os == 3).then_some(header.file_attr),
             })),
             unrar::ERAR_END_ARCHIVE => Ok(None),
-            unrar::ERAR_BAD_DATA if !self.1 .0.is_empty() => {
-                Err(DecompressError::password_or_corrupt())
-            }
-            code => Err(unrar_error("read RAR header", code)),
+            code => Err(self.password.decoder_error("read RAR header", code)),
         }
     }
 
     fn skip_entry(&self) -> DecompressResult<()> {
+        self.password.requested.store(false, Ordering::SeqCst);
         let result = unsafe {
-            unrar::RARProcessFile(self.0, unrar::RAR_SKIP, std::ptr::null(), std::ptr::null())
+            unrar::RARProcessFile(
+                self.handle,
+                unrar::RAR_SKIP,
+                std::ptr::null(),
+                std::ptr::null(),
+            )
         };
         (result == unrar::ERAR_SUCCESS)
             .then_some(())
-            .ok_or_else(|| unrar_error("skip RAR entry", result))
+            .ok_or_else(|| self.password.decoder_error("skip RAR entry", result))
     }
 
     fn stream_entry(&self, state: &mut StreamState<'_>) -> DecompressResult<()> {
+        self.password.requested.store(false, Ordering::SeqCst);
         unsafe {
             unrar::RARSetCallback(
-                self.0,
+                self.handle,
                 Some(stream_callback),
                 state as *mut _ as unrar::LPARAM,
             );
         }
         let result = unsafe {
-            unrar::RARProcessFile(self.0, unrar::RAR_TEST, std::ptr::null(), std::ptr::null())
+            unrar::RARProcessFile(
+                self.handle,
+                unrar::RAR_TEST,
+                std::ptr::null(),
+                std::ptr::null(),
+            )
         };
         unsafe {
             unrar::RARSetCallback(
-                self.0,
+                self.handle,
                 Some(password_callback),
-                &*self.1 as *const RarPassword as unrar::LPARAM,
+                &*self.password as *const RarPassword as unrar::LPARAM,
             )
         };
         if let Some(error) = state.failure.take() {
             return Err(error);
         }
         if result != unrar::ERAR_SUCCESS {
-            if result == unrar::ERAR_BAD_DATA && !self.1 .0.is_empty() {
-                return Err(DecompressError::password_or_corrupt());
-            }
-            return Err(unrar_error("extract RAR entry", result));
+            return Err(self.password.decoder_error("extract RAR entry", result));
         }
         state.writer.flush().map_err(|error| {
             DecompressError::from_external_message(format!(
@@ -337,7 +404,7 @@ pub(super) fn extract_rar(
     budget: &ExtractBudget,
     password: Option<&str>,
 ) -> DecompressResult<()> {
-    let archive = RarArchive::open(archive_path, unrar::RAR_OM_EXTRACT, password)?;
+    let archive = RarArchive::open(archive_path, unrar::RAR_OM_EXTRACT, password, cancel)?;
     while let Some(entry) = archive.read_header()? {
         check_cancel(cancel).map_err(|error| {
             DecompressError::from_external_message(format!("Extraction cancelled: {error}"))
@@ -407,7 +474,7 @@ pub(super) fn extract_rar(
         created.record_file(actual_path);
         let mut writer = BufWriter::with_capacity(CHUNK, file);
         archive.stream_entry(&mut StreamState {
-            password: &archive.1,
+            password: &archive.password,
             writer: &mut writer,
             raw_name: &raw_name,
             progress,
@@ -427,7 +494,7 @@ pub(super) fn parse_rar_entries(
     control.check()?;
     // Listing mode excludes continuation headers of split entries, so a
     // multi-volume archive contributes one logical entry per file.
-    let archive = RarArchive::open(path, unrar::RAR_OM_LIST, control.password)?;
+    let archive = RarArchive::open(path, unrar::RAR_OM_LIST, control.password, control.cancel)?;
     let mut entries = Vec::new();
     while let Some(entry) = archive.read_header()? {
         control.check()?;
@@ -455,23 +522,25 @@ fn unpack_size(low: u32, high: u32) -> u64 {
 
 #[cfg(windows)]
 fn header_path(header: &unrar::HeaderDataEx) -> PathBuf {
-    let end = header
-        .filename_w
+    // The native DLL ABI packs structures to one-byte alignment. Copy the
+    // array before borrowing it so no unaligned Rust references are created.
+    let filename = header.filename_w;
+    let end = filename
         .iter()
         .position(|&c| c == 0)
-        .unwrap_or(header.filename_w.len());
-    PathBuf::from(std::ffi::OsString::from_wide(&header.filename_w[..end]))
+        .unwrap_or(filename.len());
+    PathBuf::from(std::ffi::OsString::from_wide(&filename[..end]))
 }
 
 #[cfg(not(windows))]
 fn header_path(header: &unrar::HeaderDataEx) -> PathBuf {
-    let end = header
-        .filename_w
+    let filename = header.filename_w;
+    let end = filename
         .iter()
         .position(|&c| c == 0)
-        .unwrap_or(header.filename_w.len());
+        .unwrap_or(filename.len());
     PathBuf::from(
-        header.filename_w[..end]
+        filename[..end]
             .iter()
             .map(|&c| char::from_u32(c as u32).unwrap_or(char::REPLACEMENT_CHARACTER))
             .collect::<String>(),
@@ -496,8 +565,10 @@ fn unrar_error(context: &str, code: i32) -> DecompressError {
 #[cfg(test)]
 mod tests {
     use super::ScanControl;
+    use super::{acquire_decoder, RarPassword};
     use super::{extract_rar, parse_rar_entries, single_root_in_rar};
     use crate::commands::decompress::util::{CreatedPaths, ExtractBudget, SkipStats};
+    use crate::errors::domain::DomainError;
     use std::{
         fs,
         path::{Path, PathBuf},
@@ -508,6 +579,61 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/rar")
             .join(name)
+    }
+
+    #[test]
+    fn missing_volume_is_not_reclassified_as_missing_password() {
+        let password = RarPassword::new(None).unwrap();
+        assert_eq!(
+            password
+                .decoder_error("open", unrar_sys::ERAR_EOPEN)
+                .code_str(),
+            "extract_failed"
+        );
+        let mut buffer = [0; 8];
+        assert_eq!(
+            password.supply(
+                unrar_sys::UCM_NEEDPASSWORDW,
+                buffer.as_mut_ptr() as unrar_sys::LPARAM,
+                8
+            ),
+            -1
+        );
+        assert_eq!(
+            password
+                .decoder_error("header", unrar_sys::ERAR_EOPEN)
+                .code_str(),
+            "archive_password_required"
+        );
+        password
+            .requested
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(
+            password
+                .decoder_error("volume", unrar_sys::ERAR_EOPEN)
+                .code_str(),
+            "extract_failed"
+        );
+    }
+
+    #[test]
+    fn queued_rar_decode_can_be_cancelled_while_native_handle_is_busy() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc, Barrier,
+        };
+        let _guard = acquire_decoder(None).unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let barrier = Arc::new(Barrier::new(2));
+        let child_cancel = cancel.clone();
+        let child_barrier = barrier.clone();
+        let child = std::thread::spawn(move || {
+            child_barrier.wait();
+            acquire_decoder(Some(&child_cancel)).unwrap_err().code_str()
+        });
+        barrier.wait();
+        cancel.store(true, Ordering::SeqCst);
+        assert_eq!(child.join().unwrap(), "cancelled");
     }
 
     fn unique_temp_dir(label: &str) -> PathBuf {

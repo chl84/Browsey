@@ -57,6 +57,7 @@ sevenz-rust2 = { version = "0.20.2", default-features = false, features = ["comp
 [patch.crates-io]
 # Keep Tauri's GTK3 ABI while backporting the upstream mutable out-pointer fix.
 glib = { path = "vendor/glib" }
+unrar_sys = { path = "vendor/unrar-sys" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_NetworkManagement_WNet", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Ioctl", "Win32_System_IO", "Win32_Security", "Win32_Security_Authorization"] }

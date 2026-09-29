@@ -20,6 +20,9 @@ for (const [name, record] of Object.entries(manifest)) {
     hash.update(file).update('\0').update(readFileSync(join(directory, file))).update('\0')
   }
   assert.equal(hash.digest('hex'), record.source_tree_sha256, `${name}: source tree changed`)
+  for (const [file, expected] of Object.entries(record.files ?? {})) {
+    assert.equal(createHash('sha256').update(readFileSync(join(vendor, file))).digest('hex'), expected, `${file}: checksum mismatch`)
+  }
 }
 
 const iterator = readFileSync(join(vendor, 'glib/src/variant_iter.rs'), 'utf8')
@@ -28,4 +31,14 @@ assert.match(iterator, /g_variant_get_child\([\s\S]*?&mut p,/)
 const cargo = readFileSync(join(root, 'Cargo.toml'), 'utf8')
 assert.ok(cargo.includes('glib = { path = "vendor/glib" }'))
 assert.ok(readFileSync(join(vendor, 'glib/LICENSE'), 'utf8').includes('Permission is hereby granted'))
-console.log('Vendored source hashes and the GLib soundness backport verified.')
+if (manifest.unrar_source) {
+  assert.ok(cargo.includes('unrar_sys = { path = "vendor/unrar-sys" }'))
+  const version = readFileSync(join(vendor, 'unrar-sys/vendor/unrar/version.hpp'), 'utf8')
+  assert.match(version, /RARVER_MAJOR\s+7\b/)
+  assert.match(version, /RARVER_MINOR\s+23\b/)
+  assert.match(version, /RARVER_BETA\s+0\b/)
+  const bindings = readFileSync(join(vendor, 'unrar-sys/src/lib.rs'), 'utf8')
+  assert.equal(bindings.match(/#\[repr\(C, packed\)\]/g)?.length, 4)
+  assert.equal(readFileSync(join(root, 'resources/unrar-LICENSE.txt'), 'utf8'), readFileSync(join(vendor, 'unrar-sys/vendor/unrar/license.txt'), 'utf8'))
+}
+console.log('Vendored source hashes, native UnRAR version/ABI and the GLib soundness backport verified.')

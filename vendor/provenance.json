@@ -1,4 +1,22 @@
 {
+  "unrar_source": {
+    "version": "7.23",
+    "source": "https://www.rarlab.com/rar/unrarsrc-7.2.7.tar.gz",
+    "archive_sha256": "01d903a7dcf413cb2925696d7796e48e38d471f79bfe7ef3ad2aebf6c12dbefd",
+    "source_directory": "unrar-sys/vendor/unrar",
+    "source_tree_sha256": "40f5aae16594f1db8553abbaccec2576082cdf39295d3c331d786bda7e25e8a5"
+  },
+  "unrar_bindings": {
+    "version": "0.5.8",
+    "source": "https://crates.io/api/v1/crates/unrar_sys/0.5.8/download",
+    "archive_sha256": "8b77675b883cfbe6bf41e6b7a5cd6008e0a83ba497de3d96e41a064bbeead765",
+    "source_directory": "unrar-sys/src",
+    "source_tree_sha256": "9c0e81849d8492498cf123f344cdd27e7e6856f97ec4487990a4d377fa7207d4",
+    "files": {
+      "unrar-sys/build.rs": "14e2dc0871d3c13d2c9c01661d97dfed6a66598097bc431d8fe4701cb2effe7b",
+      "unrar-sys/abi_probe.cpp": "1f3c2ef48034f66f57fe0fc28b596f87c7dd876c7ad1b27ebe1139ab399bbe3a"
+    }
+  },
   "glib": {
     "version": "0.18.5",
     "source": "https://crates.io/api/v1/crates/glib/0.18.5/download",

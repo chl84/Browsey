@@ -5,4 +5,5 @@ resources/icons/scalable/** linguist-vendored
 docs/** linguist-vendored
 # Preserve upstream whitespace verbatim in vendored source and license copies.
 vendor/** linguist-vendored whitespace=-blank-at-eol,-blank-at-eof,cr-at-eol
+vendor/unrar-sys/vendor/unrar/** whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab,cr-at-eol
 resources/*LICENSE* whitespace=-blank-at-eol,-blank-at-eof,cr-at-eol

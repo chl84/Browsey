@@ -43,7 +43,13 @@ Fix: https://github.com/gtk-rs/gtk-rs-core/pull/1343
 UnRAR decoder source (UnRAR license)
 ------------------------------------
 Browsey statically links the UnRAR decoder through `unrar_sys` for read-only
-RAR extraction. The Rust bindings are MIT OR Apache-2.0; the decoder source is
+RAR extraction. The native decoder is stable UnRAR 7.23, built from source
+package revision 7.2.7 (not the source-download beta). Browsey carries a local
+unrar_sys 0.5.8 patch with refreshed native source and matching packed FFI
+structures. Source hashes and build provenance are in `vendor/provenance.json`.
+The Rust bindings are MIT OR Apache-2.0; their full licenses are packaged as
+`resources/unrar-sys-LICENSE-MIT` and `resources/unrar-sys-LICENSE-APACHE`.
+The native license is included as `resources/unrar-LICENSE.txt`. The decoder source is
 distributed under the UnRAR license:
 
 UnRAR source code may be used in any software to handle RAR archives without
@@ -55,4 +61,4 @@ paragraph, starting from "UnRAR source code" words, is included in license, or
 in documentation if license is not available, and in source code comments of
 resulting package.
 
-Source: https://www.rarlab.com/rar/unrarsrc-7.2.1.tar.gz
+Source: https://www.rarlab.com/rar/unrarsrc-7.2.7.tar.gz
