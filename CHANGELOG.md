@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Update ZIP to 8.6.0 and 7z to 0.23.0, including hardened header parsing and refreshed codecs/cryptography. Recheck encrypted archive and extraction-safety regressions and round-trip non-solid archives with all nine enabled 7z codecs.
+
 - Update image decoding to image 0.25.10 and SVG rendering to resvg 0.48.1, replacing unmaintained font parsers with harfrust/skrifa. Restore arithmetic-filter thumbnails after the upstream fix and test oversized filters, nested transforms, viewBox sizing and real font rendering.
 
 - Refresh the statically linked native UnRAR decoder to stable 7.23 while preserving Browsey's streaming/password/cancellation adapter. Match the native packed DLL structures, add runtime size/offset/source-version checks, and record source hashes and full packaged decoder/binding licenses.

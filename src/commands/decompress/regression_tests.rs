@@ -191,6 +191,59 @@ fn damaged_aes_zip_authentication_is_not_reported_as_success() {
 }
 
 #[test]
+fn sevenz_non_solid_archives_roundtrip_all_enabled_codecs() {
+    use sevenz_rust2::{ArchiveEntry, ArchiveWriter, EncoderConfiguration, EncoderMethod};
+    for method in [
+        EncoderMethod::COPY,
+        EncoderMethod::LZMA,
+        EncoderMethod::LZMA2,
+        EncoderMethod::BZIP2,
+        EncoderMethod::DEFLATE,
+        EncoderMethod::LZ4,
+        EncoderMethod::ZSTD,
+        EncoderMethod::BROTLI,
+        EncoderMethod::PPMD,
+    ] {
+        let root = Fixture::new();
+        let path = root.0.join("codecs.7z");
+        let payload: Vec<u8> = (0..4096).map(|i| (i % 251) as u8).collect();
+        let mut writer = ArchiveWriter::new(File::create(&path).unwrap()).unwrap();
+        writer.set_content_methods(vec![EncoderConfiguration::new(method)]);
+        for (name, data) in [
+            ("first.bin", payload.as_slice()),
+            ("second.txt", b"tail".as_slice()),
+        ] {
+            writer
+                .push_archive_entry(ArchiveEntry::new_file(name), Some(data))
+                .unwrap();
+        }
+        // Empty entries have no packed stream in the 7z format.
+        writer
+            .push_archive_entry::<&[u8]>(ArchiveEntry::new_file("empty.txt"), None)
+            .unwrap();
+        writer.finish().unwrap();
+        let result =
+            extract_password(&path, None).unwrap_or_else(|error| panic!("{method:?}: {error}"));
+        let output = Path::new(&result.destination);
+        assert_eq!(
+            fs::read(output.join("first.bin")).unwrap(),
+            payload,
+            "{method:?}"
+        );
+        assert_eq!(
+            fs::read(output.join("second.txt")).unwrap(),
+            b"tail",
+            "{method:?}"
+        );
+        assert_eq!(
+            fs::metadata(output.join("empty.txt")).unwrap().len(),
+            0,
+            "{method:?}"
+        );
+    }
+}
+
+#[test]
 fn encrypted_sevenz_supports_visible_and_encrypted_headers() {
     use sevenz_rust2::{
         encoder_options::{AesEncoderOptions, Lzma2Options},
