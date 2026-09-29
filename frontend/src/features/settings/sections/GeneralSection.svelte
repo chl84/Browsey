@@ -1,5 +1,6 @@
 <script lang="ts">
   import Checkbox from '../../../shared/ui/Checkbox.svelte'
+  import Radio from '../../../shared/ui/Radio.svelte'
   import type { Settings } from '../settingsTypes'
 
   export let show = false
@@ -26,32 +27,24 @@
   {#if showDefaultViewRow}
     <div class="form-label">Default view</div>
     <div class="form-control radios">
-      <label class="radio">
-        <input
-          type="radio"
-          name="default-view"
-          value="list"
-          checked={settings.defaultView === 'list'}
-          on:change={() => {
-            onPatch({ defaultView: 'list' })
-            onChangeDefaultView('list')
-          }}
-        />
-        <span>List</span>
-      </label>
-      <label class="radio">
-        <input
-          type="radio"
-          name="default-view"
-          value="grid"
-          checked={settings.defaultView === 'grid'}
-          on:change={() => {
-            onPatch({ defaultView: 'grid' })
-            onChangeDefaultView('grid')
-          }}
-        />
-        <span>Grid</span>
-      </label>
+      <Radio
+        name="default-view"
+        value="list"
+        checked={settings.defaultView === 'list'}
+        on:change={() => {
+          onPatch({ defaultView: 'list' })
+          onChangeDefaultView('list')
+        }}
+      >List</Radio>
+      <Radio
+        name="default-view"
+        value="grid"
+        checked={settings.defaultView === 'grid'}
+        on:change={() => {
+          onPatch({ defaultView: 'grid' })
+          onChangeDefaultView('grid')
+        }}
+      >Grid</Radio>
     </div>
   {/if}
 

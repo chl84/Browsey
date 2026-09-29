@@ -611,7 +611,8 @@ button:focus {
   outline: none;
 }
 
-button:focus-visible {
+button:focus-visible,
+[role='button']:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
   border-radius: 0;
@@ -687,6 +688,7 @@ button:focus-visible {
 }
 
 .modal input[type='text'],
+.modal input[type='password'],
 .modal input[type='search'],
 .modal input[type='number'],
 .modal input[type='range'],

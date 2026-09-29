@@ -2,6 +2,7 @@
   import type { OpenWithApp, OpenWithChoice } from '../services/openWith.service'
 
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
+  import Checkbox from '../../../shared/ui/Checkbox.svelte'
 
   export let open = false
   export let apps: OpenWithApp[] = []
@@ -116,10 +117,11 @@
 
     <div slot="actions" class="open-with-actions">
       {#if supportsDefaults}
-        <label class="default-checkbox">
-          <input type="checkbox" bind:checked={setDefault} disabled={!hasSelection || !defaultContentType || busy} />
-          Set as default
-        </label>
+        <div class="default-checkbox">
+          <Checkbox bind:checked={setDefault} disabled={!hasSelection || !defaultContentType || busy}>
+            Set as default
+          </Checkbox>
+        </div>
       {/if}
       <button type="button" class="secondary" on:click={onClose} disabled={busy}>Cancel</button>
       <button type="button" on:click={() => confirm()} disabled={!hasSelection || busy}>
@@ -154,7 +156,6 @@
   .default-checkbox {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
     margin-right: auto;
     white-space: nowrap;
   }

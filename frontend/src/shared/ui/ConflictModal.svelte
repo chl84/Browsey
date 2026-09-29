@@ -31,7 +31,7 @@
     <div slot="actions">
       <button class="secondary" type="button" on:click={onCancel}>Cancel</button>
       <button class="secondary" type="button" data-default-action="1" on:click={onRenameAll}>Auto-rename</button>
-      <button class="primary" type="button" on:click={onOverwrite}>Overwrite</button>
+      <button class="danger" type="button" on:click={onOverwrite}>Overwrite</button>
     </div>
   </ModalShell>
 {/if}

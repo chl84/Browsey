@@ -1,6 +1,8 @@
 <script lang="ts">
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
   import Slider from '../../../shared/ui/Slider.svelte'
+  import Checkbox from '../../../shared/ui/Checkbox.svelte'
+  import TextField from '../../../shared/ui/TextField.svelte'
   import { autoSelectOnOpen } from '../../../shared/ui/modalUtils'
 
   export let open = false
@@ -98,22 +100,22 @@
       </div>
       <div class="muted">0 = store only, 9 = maximum compression</div>
     </label>
-    <label><input type="checkbox" bind:checked={protect} disabled={busy} /> Protect with password</label>
+    <Checkbox bind:checked={protect} disabled={busy}>Protect with password</Checkbox>
     {#if protect}
       <p class="muted">AES-256 encryption. File names remain visible. Some older ZIP tools cannot open encrypted ZIP files.</p>
       {#if passwordError}<div class="pill error" role="alert">{passwordError}</div>{/if}
       <label class="field">
         <span>Password</span>
-        <input type={showPassword ? 'text' : 'password'} bind:value={password} disabled={busy}
+        <TextField type={showPassword ? 'text' : 'password'} bind:value={password} disabled={busy}
           autocomplete="new-password" spellcheck={false} autocapitalize="none" />
       </label>
       <label class="field">
         <span>Confirm password</span>
-        <input type={showPassword ? 'text' : 'password'} bind:value={confirmation} disabled={busy}
+        <TextField type={showPassword ? 'text' : 'password'} bind:value={confirmation} disabled={busy}
           autocomplete="new-password" spellcheck={false} autocapitalize="none"
           on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void confirm() } }} />
       </label>
-      <label><input type="checkbox" bind:checked={showPassword} disabled={busy} /> Show password</label>
+      <Checkbox bind:checked={showPassword} disabled={busy}>Show password</Checkbox>
     {/if}
     <div slot="actions">
       <button type="button" class="secondary" on:click={onCancel}>{busy ? 'Cancel compression' : 'Cancel'}</button>

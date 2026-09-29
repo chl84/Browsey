@@ -1,5 +1,7 @@
 <script lang="ts">
   import ModalShell from '@/shared/ui/ModalShell.svelte'
+  import Checkbox from '@/shared/ui/Checkbox.svelte'
+  import TextField from '@/shared/ui/TextField.svelte'
   export let open = false
   export let path = ''
   export let error = ''
@@ -23,10 +25,10 @@
     <form id="archive-password-form" on:submit|preventDefault={submit}>
       <label class="field">
         <span>Password</span>
-        <input id="extract-password" type={showPassword ? 'text' : 'password'} bind:value={password}
+        <TextField id="extract-password" type={showPassword ? 'text' : 'password'} bind:value={password}
           autocomplete="off" spellcheck={false} autocapitalize="none" />
       </label>
-      <label><input type="checkbox" bind:checked={showPassword} /> Show password</label>
+      <Checkbox bind:checked={showPassword}>Show password</Checkbox>
     </form>
     <div slot="actions">
       <button type="button" class="secondary" on:click={onCancel}>Cancel extraction</button>

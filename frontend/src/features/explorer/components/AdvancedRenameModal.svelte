@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
   import Checkbox from '../../../shared/ui/Checkbox.svelte'
+  import Radio from '../../../shared/ui/Radio.svelte'
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
   import { autoSelectOnOpen } from '../../../shared/ui/modalUtils'
   import type { Entry } from '../model/types'
@@ -165,43 +166,29 @@
           <div class="panel">
             <fieldset class="field sequence">
               <legend>Sequence</legend>
-              <label class="radio">
-                <input type="radio" name="seq-mode" value="none" bind:group={sequenceMode} on:change={handleChange} />
-                <span>None</span>
-              </label>
-              <label class="radio">
-                <input type="radio" name="seq-mode" value="numeric" bind:group={sequenceMode} on:change={handleChange} />
-                <span>Numeric</span>
-              </label>
-              <label class="radio">
-                <input type="radio" name="seq-mode" value="alpha" bind:group={sequenceMode} on:change={handleChange} />
-                <span>Alphanumeric</span>
-              </label>
+              <Radio name="seq-mode" value="none" checked={sequenceMode === 'none'}
+                on:change={() => { sequenceMode = 'none'; handleChange() }}>None</Radio>
+              <Radio name="seq-mode" value="numeric" checked={sequenceMode === 'numeric'}
+                on:change={() => { sequenceMode = 'numeric'; handleChange() }}>Numeric</Radio>
+              <Radio name="seq-mode" value="alpha" checked={sequenceMode === 'alpha'}
+                on:change={() => { sequenceMode = 'alpha'; handleChange() }}>Alphanumeric</Radio>
               <div class="field sequence-position">
                 <span>Position</span>
                 <div class="sequence-position-options">
-                  <label class="radio">
-                    <input
-                      type="radio"
+                    <Radio
                       name="seq-placement"
                       value="start"
-                      bind:group={sequencePlacement}
-                      on:change={handleChange}
+                      checked={sequencePlacement === 'start'}
+                      on:change={() => { sequencePlacement = 'start'; handleChange() }}
                       disabled={sequenceMode === 'none'}
-                    />
-                    <span>Start</span>
-                  </label>
-                  <label class="radio">
-                    <input
-                      type="radio"
+                    >Start</Radio>
+                    <Radio
                       name="seq-placement"
                       value="end"
-                      bind:group={sequencePlacement}
-                      on:change={handleChange}
+                      checked={sequencePlacement === 'end'}
+                      on:change={() => { sequencePlacement = 'end'; handleChange() }}
                       disabled={sequenceMode === 'none'}
-                    />
-                    <span>End</span>
-                  </label>
+                    >End</Radio>
                 </div>
               </div>
               <div class="sequence-grid">
@@ -302,14 +289,6 @@
     grid-template-columns: repeat(2, minmax(65px, 1fr));
     gap: var(--modal-field-gap);
     margin-top: var(--modal-field-gap);
-  }
-
-  .radio {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--modal-field-gap);
-    font-size: var(--modal-font-size);
-    color: var(--fg);
   }
 
   .checkbox-row {

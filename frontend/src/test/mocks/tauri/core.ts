@@ -30,6 +30,7 @@ type MockClipboardState = {
 }
 
 type E2eMockControl = {
+  bookmarks?: Array<{ label: string; path: string }>
   thumbnailFixture?: boolean
   defaultView?: 'list' | 'grid'
   thumbnailHold?: boolean
@@ -290,7 +291,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return undefined as T
     }
     case 'get_bookmarks':
-      return [] as T
+      return (control?.bookmarks ?? []) as T
     case 'load_saved_column_widths':
       return null as T
     case 'load_shortcuts':

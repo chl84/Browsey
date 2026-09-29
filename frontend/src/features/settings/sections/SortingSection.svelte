@@ -1,5 +1,6 @@
 <script lang="ts">
   import ComboBox, { type ComboOption } from '../../../shared/ui/ComboBox.svelte'
+  import Radio from '../../../shared/ui/Radio.svelte'
   import type { Settings } from '../settingsTypes'
 
   export let show = false
@@ -38,32 +39,24 @@
   {#if showSortDirectionRow}
     <div class="form-label">Sort direction</div>
     <div class="form-control radios">
-      <label class="radio">
-        <input
-          type="radio"
-          name="sort-direction"
-          value="asc"
-          checked={settings.sortDirection === 'asc'}
-          on:change={() => {
-            onPatch({ sortDirection: 'asc' })
-            onChangeSortDirection('asc')
-          }}
-        />
-        <span>Ascending</span>
-      </label>
-      <label class="radio">
-        <input
-          type="radio"
-          name="sort-direction"
-          value="desc"
-          checked={settings.sortDirection === 'desc'}
-          on:change={() => {
-            onPatch({ sortDirection: 'desc' })
-            onChangeSortDirection('desc')
-          }}
-        />
-        <span>Descending</span>
-      </label>
+      <Radio
+        name="sort-direction"
+        value="asc"
+        checked={settings.sortDirection === 'asc'}
+        on:change={() => {
+          onPatch({ sortDirection: 'asc' })
+          onChangeSortDirection('asc')
+        }}
+      >Ascending</Radio>
+      <Radio
+        name="sort-direction"
+        value="desc"
+        checked={settings.sortDirection === 'desc'}
+        on:change={() => {
+          onPatch({ sortDirection: 'desc' })
+          onChangeSortDirection('desc')
+        }}
+      >Descending</Radio>
     </div>
   {/if}
 {/if}
