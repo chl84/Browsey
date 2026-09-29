@@ -36,7 +36,8 @@ Supported platforms: Linux and Windows (macOS is not supported yet). The main re
 Historical baseline: Fedora 43. Recent desktop checks were run on Arch/Omarchy; see release notes for the per-release validation scope.
 
 Common:
-- Rust (stable) via `rustup`
+- Recent Rust stable via `rustup` (dependency-upgrade validation used Rust 1.98.0;
+  sysinfo 0.39 requires at least 1.95)
 - Node.js LTS + npm (frontend build/dev only)
 - PDFium is bundled in `resources/pdfium-<platform>/` so no system PDF libs are needed.
   The pinned version is `156.0.8076.0`, with `pdfium-render 0.9.4` and the
@@ -50,8 +51,11 @@ Common:
 - Linux USB formatting: UDisks2, a working PolicyKit authentication agent, and the matching tools from `exfatprogs`, `dosfstools`, `e2fsprogs`, or `btrfs-progs`. Only installed filesystem tools are offered.
 
 Linux build deps (Fedora names; adapt to your distro):
-- `webkit2gtk4.1-devel` `javascriptcoregtk4.1-devel` `libsoup3-devel` `gtk3-devel`
+- `webkit2gtk4.1-devel` `javascriptcoregtk4.1-devel` `libsoup3-devel` `gtk3-devel` `dbus-devel`
 - `libappindicator-gtk3` `librsvg2-devel` `patchelf` `rpm-build`
+
+For coordinated dependency updates, security checks and native-library pins,
+see [Dependency maintenance](docs/maintenance/dependencies.md).
 
 Windows:
 - WebView2 Runtime (built-in on Win11; otherwise install from Microsoft)

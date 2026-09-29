@@ -37,7 +37,8 @@ GLib Rust bindings (MIT)
 Browsey uses GLib 0.18.5 with the upstream mutable out-pointer fix backported
 for RUSTSEC-2024-0429, preserving Tauri's GTK3/GIO ABI. The source, MIT license
 and COPYRIGHT are retained under `vendor/glib/`; the packaged MIT license is
-`resources/glib-LICENSE`. Provenance is recorded in `vendor/provenance.json`.
+`resources/glib-LICENSE`, with attribution in `resources/glib-COPYRIGHT`.
+Provenance is recorded in `vendor/provenance.json`.
 Fix: https://github.com/gtk-rs/gtk-rs-core/pull/1343
 
 UnRAR decoder source (UnRAR license)

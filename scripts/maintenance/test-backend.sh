@@ -9,6 +9,8 @@ node scripts/maintenance/check-pdfium.mjs
 
 echo "== Backend: vendored source integrity =="
 node scripts/maintenance/check-vendor.mjs
+node --test scripts/maintenance/check-dependency-policy.test.mjs
+node scripts/maintenance/check-dependency-policy.mjs
 
 echo "== Backend: rustfmt check =="
 cargo fmt --all -- --check

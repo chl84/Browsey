@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# All-in-one Rust dependency upgrade helper.
-# - Ensures cargo-edit and cargo-outdated are installed.
-# - Shows outdated crates.
-# - Upgrades to newest compatible versions.
-# - Updates lockfile and runs backend quality verification.
+# Compatible Rust lockfile upgrade helper.
+# Keep manifest constraints, coordinated Tauri/GTK versions and native ABI pins.
+# Breaking changes and source/ABI refreshes are reviewed separately.
 
 usage() {
   cat <<'EOF'
 Usage: bash scripts/maintenance/upgrade-deps.sh [--allow-dirty] [--quick]
+
+Updates Cargo.lock within the current manifest constraints, never widens pins.
+Use the documented staged process for major/0.x-breaking or native updates.
 
 Options:
   --allow-dirty  Allow running when git worktree is not clean.
@@ -53,38 +54,23 @@ if [[ "$ALLOW_DIRTY" -ne 1 ]]; then
   fi
 fi
 
-need_tool() {
-  local bin="$1"
-  local crate="$2"
-  if ! command -v "$bin" >/dev/null 2>&1; then
-    echo "Installing $crate..."
-    cargo install --locked "$crate"
-  fi
-}
+echo "Verifying native sources and coordinated dependency pins..."
+node scripts/maintenance/check-pdfium.mjs
+node scripts/maintenance/check-vendor.mjs
+node scripts/maintenance/check-dependency-policy.mjs
 
-need_tool cargo-outdated cargo-outdated
-need_tool cargo-upgrade cargo-edit
-
-echo "Checking for outdated crates..."
-if ! cargo outdated --depth 1; then
-  echo "warning: 'cargo outdated' failed (often due to cargo-outdated resolver conflicts)." >&2
-  echo "         Verifying with Cargo resolver before deciding to fail..." >&2
-  if ! cargo update --dry-run >/dev/null; then
-    echo "error: Cargo resolver check also failed. Resolve dependency graph issues first." >&2
-    exit 1
-  fi
-  echo "warning: Cargo resolver is healthy; continuing despite cargo-outdated failure." >&2
-fi
-
-echo "Upgrading Cargo.toml dependencies..."
-cargo upgrade
+echo "Previewing compatible lockfile updates..."
+cargo update --dry-run
 
 echo "Updating lockfile..."
 cargo update
 
+echo "Checking Rust security advisories..."
+cargo audit
+
 if [[ "$QUICK" -eq 1 ]]; then
   echo "Running quick verification (cargo check --all-targets --all-features)..."
-  cargo check --all-targets --all-features
+  cargo check --locked --all-targets --all-features
 else
   echo "Running full backend verification suite..."
   bash scripts/maintenance/test-backend.sh
