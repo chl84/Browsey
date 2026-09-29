@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Coordinate Tauri core/API/CLI 2.12.0 with tauri-build 2.7.0, update the plist/XML parser security fixes, and backport the GLib mutable out-pointer fix without breaking GTK3/GIO's ABI. Verify vendored-source provenance and native drag/teardown on an isolated virtual screen; cover GLib iteration in optimized builds.
+
 - Refresh frontend and docs-site Svelte/Vite/tool dependencies within their current major versions, resolve npm security advisories in both lockfiles, and bind the desktop development server to loopback instead of all network interfaces.
 
 - Add weekly and dependency-change security checks for Cargo and both npm projects. Update TAR to 0.4.46 and compatible indirect Rust security fixes; cover PAX size overrides across GNU long-name headers with real extraction regressions.

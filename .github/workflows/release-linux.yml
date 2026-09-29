@@ -44,7 +44,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev patchelf rpm \
-            dbus-x11 xvfb desktop-file-utils
+            dbus-x11 libdbus-1-dev xvfb desktop-file-utils
       - name: Build production RPM and DEB
         run: |
           node scripts/maintenance/check-pdfium.mjs

@@ -49,6 +49,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libjavascriptcoregtk-4.1-dev \
             libsoup-3.0-dev
+          sudo apt-get install -y libdbus-1-dev dbus-x11 xvfb libxtst6
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -86,3 +87,13 @@ jobs:
 
       - name: Tests
         run: cargo test --all-targets --all-features
+
+      - name: Native WebKit drag and window teardown
+        run: |
+          GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 \
+            timeout --signal=TERM --kill-after=3s 60s \
+            dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' \
+            cargo test --locked webkit_file_export_and_window_teardown -- --ignored --test-threads=1 --nocapture
+
+      - name: Optimized GLib backport regression
+        run: cargo test --locked --release glib_variant_string_iterator_out_pointer_is_mutable

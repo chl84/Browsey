@@ -5,10 +5,10 @@ edition = "2021"
 license = "MIT"
 
 [build-dependencies]
-tauri-build = { version = "=2.5.5", features = [] }
+tauri-build = { version = "=2.7.0", features = [] }
 
 [dependencies]
-tauri = { version = "=2.10.2", features = ["protocol-asset"] }
+tauri = { version = "=2.12.0", features = ["protocol-asset"] }
 serde = { version = "1.0.228", features = ["derive"] }
 chrono = { version = "0.4.44", default-features = false, features = ["clock"] }
 dirs-next = "2.0.0"
@@ -53,6 +53,10 @@ wait-timeout = "0.2.1"
 
 [dev-dependencies]
 sevenz-rust2 = { version = "0.20.2", default-features = false, features = ["compress"] }
+
+[patch.crates-io]
+# Keep Tauri's GTK3 ABI while backporting the upstream mutable out-pointer fix.
+glib = { path = "vendor/glib" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_NetworkManagement_WNet", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Ioctl", "Win32_System_IO", "Win32_Security", "Win32_Security_Authorization"] }

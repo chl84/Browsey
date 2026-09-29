@@ -75,6 +75,10 @@ Tauri. Fixture paths are protocol-only; no source files are read or changed.
 The test does not run Browsey's database setup or device monitors. Use an external
 timeout. X11/XWayland is needed for input automation, not for production drag.
 
+Rust Quality also runs this regression on an isolated Xvfb screen. On X11 the
+fixture places source and receiver side by side, so it does not need a window
+manager. The virtual-screen pointer does not affect a real desktop session.
+
 For real file operations against an isolated Nautilus on Omarchy/Hyprland, use
 the opt-in Wayland acceptance modes (one at a time):
 

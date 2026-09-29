@@ -1,0 +1,11 @@
+{
+  "glib": {
+    "version": "0.18.5",
+    "source": "https://crates.io/api/v1/crates/glib/0.18.5/download",
+    "archive_sha256": "233daaf6e83ae6a12a52055f568f9d7cf4671dabb78ff9560ab6da230ce00ee5",
+    "source_directory": "glib/src",
+    "source_tree_sha256": "73892aa0b92b3909214194610d617de208f752477217496422263f7d7f72ae5c",
+    "patch": "https://github.com/gtk-rs/gtk-rs-core/pull/1343",
+    "advisory": "RUSTSEC-2024-0429"
+  }
+}
