@@ -137,14 +137,6 @@
   gap: var(--settings-radios-gap);
 }
 
-.settings-modal .form-control.radios .radio {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--settings-control-gap-tight);
-  cursor: pointer;
-  color: var(--fg);
-}
-
 .settings-modal .archive-name {
   display: flex;
   align-items: center;

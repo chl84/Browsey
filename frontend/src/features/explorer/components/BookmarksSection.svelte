@@ -160,11 +160,6 @@
     background: var(--bg-hover);
   }
 
-  .filter-toggle:focus,
-  .filter-toggle:focus-visible {
-    outline: none;
-  }
-
   .filter-toggle svg {
     width: 16px;
     height: 16px;
@@ -213,11 +208,6 @@
     box-shadow: none;
   }
 
-  .nav:focus,
-  .nav:focus-visible {
-    outline: none;
-  }
-
   .nav.bookmark {
     position: relative;
   }
@@ -252,7 +242,8 @@
     line-height: 1;
   }
 
-  .nav.bookmark:hover .remove-bookmark {
+  .nav.bookmark:hover .remove-bookmark,
+  .nav.bookmark:focus-within .remove-bookmark {
     opacity: 1;
   }
 </style>
