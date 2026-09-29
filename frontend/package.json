@@ -26,13 +26,13 @@
     "eslint": "^9.39.1",
     "eslint-plugin-svelte": "^3.12.5",
     "jsdom": "^28.1.0",
-    "svelte": "^5.53.7",
+    "svelte": "^5.57.1",
     "svelte-check": "^4.4.4",
     "svelte-eslint-parser": "^1.5.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.56.1",
-    "vite": "^7.2.4",
-    "vitest": "^4.0.18"
+    "vite": "^7.3.6",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.1"
