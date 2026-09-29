@@ -1,27 +1,7 @@
-use super::{
-    error::{ThumbnailError, ThumbnailResult},
-    thumb_log,
-};
+use super::error::{ThumbnailError, ThumbnailResult};
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::Tree;
 use std::path::Path;
-
-fn contains_ascii_nocase(haystack: &[u8], needle: &[u8]) -> bool {
-    if needle.is_empty() {
-        return true;
-    }
-    haystack
-        .windows(needle.len())
-        .any(|w| w.eq_ignore_ascii_case(needle))
-}
-
-fn has_unsupported_arithmetic_composite_filter(data: &[u8]) -> bool {
-    // Guardrail: resvg 0.46 can panic on some malformed/complex feComposite arithmetic filters.
-    // If these tokens are present together, skip thumbnail generation for this file.
-    contains_ascii_nocase(data, b"fecomposite")
-        && contains_ascii_nocase(data, b"operator")
-        && contains_ascii_nocase(data, b"arithmetic")
-}
 
 pub fn render_svg_thumbnail(
     path: &Path,
@@ -30,16 +10,6 @@ pub fn render_svg_thumbnail(
 ) -> ThumbnailResult<(u32, u32)> {
     let data = std::fs::read(path)
         .map_err(|e| ThumbnailError::from_external_message(format!("Read SVG failed: {e}")))?;
-    if has_unsupported_arithmetic_composite_filter(&data) {
-        thumb_log(&format!(
-            "svg thumbnail skipped (unsupported feComposite arithmetic filter): {}",
-            path.display()
-        ));
-        return Err(ThumbnailError::from_external_message(
-            "SVG uses unsupported arithmetic composite filter",
-        ));
-    }
-
     let opt = crate::svg_options::usvg_options_for_path(path);
 
     let tree = Tree::from_data(&data, &opt)
@@ -74,17 +44,87 @@ pub fn render_svg_thumbnail(
 
 #[cfg(test)]
 mod tests {
-    use super::has_unsupported_arithmetic_composite_filter;
+    use super::render_svg_thumbnail;
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
-    #[test]
-    fn detects_fecomposite_arithmetic_filter() {
-        let svg = br#"<svg><filter id='f'><feComposite operator="arithmetic"/></filter></svg>"#;
-        assert!(has_unsupported_arithmetic_composite_filter(svg));
+    fn render(svg: &str, max_dim: u32) -> image::RgbaImage {
+        let dir = std::env::temp_dir().join(format!(
+            "browsey-svg-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&dir).unwrap();
+        let input = dir.join("input.svg");
+        let output = dir.join("thumbnail.png");
+        fs::write(&input, svg).unwrap();
+        let size = render_svg_thumbnail(&input, &output, max_dim).unwrap();
+        let image = image::open(&output).unwrap().to_rgba8();
+        assert_eq!(image.dimensions(), size);
+        fs::remove_dir_all(dir).unwrap();
+        image
     }
 
     #[test]
-    fn ignores_regular_svg_without_arithmetic_filter() {
-        let svg = br#"<svg><rect width="10" height="10"/></svg>"#;
-        assert!(!has_unsupported_arithmetic_composite_filter(svg));
+    fn arithmetic_filter_with_oversized_region_renders_without_panicking() {
+        // resvg 0.48 fixes the clamped-layer arithmetic filter panic. Exercise
+        // the real thumbnail path instead of keeping the old token blacklist.
+        let image = render(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
+          <defs><filter id="f" x="-100%" y="-100%" width="300%" height="300%">
+            <feComposite in="SourceGraphic" in2="SourceGraphic" operator="arithmetic" k2="1"/>
+          </filter></defs>
+          <rect width="200" height="100" fill="red" filter="url(#f)"/>
+        </svg>"#,
+            64,
+        );
+        assert_eq!(image.dimensions(), (64, 32));
+        assert!(image.get_pixel(32, 16)[0] > 200);
+        assert!(image.get_pixel(32, 16)[3] > 200);
+    }
+
+    #[test]
+    fn missing_height_uses_viewbox_aspect_ratio_and_nested_transform() {
+        let image = render(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" viewBox="0 0 200 100">
+          <svg x="0" y="0" width="100" height="100" transform="translate(100 0)">
+            <rect width="100" height="100" fill="red"/>
+          </svg>
+        </svg>"#,
+            100,
+        );
+        assert_eq!(image.dimensions(), (100, 50));
+        assert_eq!(image.get_pixel(20, 25)[3], 0);
+        assert!(image.get_pixel(75, 25)[0] > 200);
+        assert!(image.get_pixel(75, 25)[3] > 200);
+    }
+
+    #[test]
+    fn system_font_text_renders_with_the_maintained_font_stack() {
+        let options = crate::svg_options::usvg_options_for_path(std::path::Path::new("text.svg"));
+        let face = options
+            .fontdb
+            .faces()
+            .next()
+            .expect("system fonts required for SVG text");
+        let family = face.families[0]
+            .0
+            .replace('&', "&amp;")
+            .replace('"', "&quot;")
+            .replace('<', "&lt;");
+        let image = render(
+            &format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="60">
+          <text x="5" y="45" font-size="36" font-family="{family}" fill="black">Browsey 123</text>
+        </svg>"#
+            ),
+            300,
+        );
+        assert!(image.pixels().filter(|p| p[3] > 128).count() > 100);
     }
 }

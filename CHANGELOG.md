@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Update image decoding to image 0.25.10 and SVG rendering to resvg 0.48.1, replacing unmaintained font parsers with harfrust/skrifa. Restore arithmetic-filter thumbnails after the upstream fix and test oversized filters, nested transforms, viewBox sizing and real font rendering.
+
 - Refresh the statically linked native UnRAR decoder to stable 7.23 while preserving Browsey's streaming/password/cancellation adapter. Match the native packed DLL structures, add runtime size/offset/source-version checks, and record source hashes and full packaged decoder/binding licenses.
 
 - Coordinate Tauri core/API/CLI 2.12.0 with tauri-build 2.7.0, update the plist/XML parser security fixes, and backport the GLib mutable out-pointer fix without breaking GTK3/GIO's ABI. Verify vendored-source provenance and native drag/teardown on an isolated virtual screen; cover GLib iteration in optimized builds.
