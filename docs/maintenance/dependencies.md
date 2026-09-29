@@ -28,3 +28,8 @@ Run relevant regression suites after each step, and all Rust/frontend/browser
 suites plus the production Tauri build before installation. Do not upgrade
 GTK/GIO independently of the Tauri/WebKitGTK ABI. Native libraries must record
 their actual compiled source revision, not merely their Rust wrapper version.
+
+The GLib 0.18 ABI compatibility backport is a local Cargo patch. Registry-only
+advisory checkers do not audit local source packages; `check-vendor.mjs` verifies
+the entire patched source tree and CI exercises the affected iterator both
+normally and with optimizations. See `vendor/glib/BROWSEY-PATCH.md`.

@@ -8,6 +8,8 @@ on:
       - 'frontend/package*.json'
       - 'docs-site/package*.json'
       - '.cargo/audit.toml'
+      - 'vendor/**'
+      - 'scripts/maintenance/check-vendor.mjs'
       - '.github/workflows/dependency-security.yml'
   push:
     branches: [main]
@@ -17,6 +19,8 @@ on:
       - 'frontend/package*.json'
       - 'docs-site/package*.json'
       - '.cargo/audit.toml'
+      - 'vendor/**'
+      - 'scripts/maintenance/check-vendor.mjs'
       - '.github/workflows/dependency-security.yml'
   schedule:
     - cron: '17 6 * * 1'
@@ -49,6 +53,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Verify vendored source and backports
+        run: node scripts/maintenance/check-vendor.mjs
       - name: npm advisory baseline (advisory during staged upgrade)
         continue-on-error: true
         run: npm --prefix "${{ matrix.project }}" audit --audit-level=moderate

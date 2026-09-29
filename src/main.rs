@@ -9,6 +9,8 @@ mod entry;
 mod errors;
 mod filter;
 mod fs_utils;
+#[cfg(all(test, not(target_os = "windows")))]
+mod gtk_regression_tests;
 mod icons;
 mod keymap;
 mod metadata;
