@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refresh the SQLite persistence, disk-information and async runtime dependencies to rusqlite 0.40.2, sysinfo 0.39.6 and Tokio 1.53.1, align Zstandard at 0.14, and update compatible Rust lockfile dependencies while retaining explicit native/desktop ABI pins.
+
 - Update ZIP to 8.6.0 and 7z to 0.23.0, including hardened header parsing and refreshed codecs/cryptography. Recheck encrypted archive and extraction-safety regressions and round-trip non-solid archives with all nine enabled 7z codecs.
 
 - Update image decoding to image 0.25.10 and SVG rendering to resvg 0.48.1, replacing unmaintained font parsers with harfrust/skrifa. Restore arithmetic-filter thumbnails after the upstream fix and test oversized filters, nested transforms, viewBox sizing and real font rendering.
