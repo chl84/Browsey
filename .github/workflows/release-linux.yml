@@ -47,6 +47,7 @@ jobs:
             dbus-x11 xvfb desktop-file-utils
       - name: Build production RPM and DEB
         run: |
+          node scripts/maintenance/check-pdfium.mjs
           npm --prefix frontend ci
           frontend/node_modules/.bin/tauri build --ci --bundles rpm,deb -- --locked
       - name: Inspect packages and smoke-test packaged binary

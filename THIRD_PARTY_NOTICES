@@ -6,11 +6,31 @@ This file lists bundled third-party components and their licenses.
 PDFium (BSD-like, Chromium project)
 -----------------------------------
 Included binaries and headers under `resources/pdfium-linux-x64/` and `resources/pdfium-win-x64/`.
-Primary license: BSD-style (see `resources/pdfium-*/LICENSE` and `resources/pdfium-*/licenses/pdfium.txt`).
+Bundled version: 156.0.8076.0 (chromium/8076), x64, without V8 or XFA.
+PDFium license: BSD-style (see `resources/pdfium-*/licenses/pdfium.txt`).
+The binary-distribution packaging is MIT-licensed by Benoit Blanchon
+(see `resources/pdfium-*/LICENSE`).
 Additional third-party licenses for PDFium dependencies are provided in `resources/pdfium-*/licenses/`.
 
-Download source for bundled PDFium binaries:
-- https://github.com/bblanchon/pdfium-binaries/releases/latest
+Immutable binary release:
+- https://github.com/bblanchon/pdfium-binaries/releases/tag/chromium/8076
+Distribution source commit: f2e9a1c45bb17b85b540abf1af30146ef65416ac
+PDFium upstream source: https://pdfium.googlesource.com/pdfium/
+
+Archive SHA-256 checksums (also published with the upstream release assets):
+- pdfium-linux-x64.tgz: d9d67bc40af03aef4fe28a60b19b1086f28ace019c8c9caf19cb7fe3d14ceca3
+- pdfium-win-x64.tgz: 808d36da9bc5a3104315fb307c80998121f565ee53953633bf33e80d7429e5ac
+Exact download URLs and installed binary checksums: `resources/pdfium.json`.
+
+pdfium-render Rust bindings (MIT OR Apache-2.0)
+---------------------------------------------
+Browsey links pdfium-render 0.9.4, using the explicitly selected pdfium_7881
+API profile, thread_safe, and image_025. The bundled 8076 binaries are tested
+against this profile; pdfium_latest is not used as an implicit ABI selection.
+Included license declaration: `resources/pdfium-render-LICENSE.md`.
+Source and license: https://docs.rs/crate/pdfium-render/0.9.4/source/LICENSE.md
+License expressions and crate checksum are also recorded in Cargo.lock / the
+published crate metadata.
 
 UnRAR decoder source (UnRAR license)
 ------------------------------------

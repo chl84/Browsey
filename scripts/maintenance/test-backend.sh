@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
+echo "== Backend: bundled PDFium integrity =="
+node scripts/maintenance/check-pdfium.mjs
+
 echo "== Backend: rustfmt check =="
 cargo fmt --all -- --check
 

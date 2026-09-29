@@ -1,13 +1,12 @@
 use crate::metadata::types::{ExtraMetadataField, ExtraMetadataSection};
 use crate::metadata::{MetadataError, MetadataErrorCode, MetadataResult};
 use pdfium_render::prelude::*;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub fn collect(path: &Path) -> Vec<ExtraMetadataSection> {
-    let Ok(bindings) = load_pdfium_bindings() else {
+    let Ok(pdfium) = load_pdfium() else {
         return Vec::new();
     };
-    let pdfium = Pdfium::new(bindings);
     let Ok(doc) = pdfium.load_pdf_from_file(path, None) else {
         return Vec::new();
     };
@@ -87,54 +86,8 @@ fn security_label(revision: PdfSecurityHandlerRevision) -> String {
     }
 }
 
-fn load_pdfium_bindings() -> MetadataResult<Box<dyn PdfiumLibraryBindings>> {
-    if let Ok(path) = std::env::var("PDFIUM_LIB_PATH") {
-        if let Ok(bindings) = Pdfium::bind_to_library(&path) {
-            return Ok(bindings);
-        }
-    }
-
-    let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            #[cfg(target_os = "linux")]
-            candidates.push(dir.join("libpdfium.so"));
-            #[cfg(target_os = "linux")]
-            candidates.push(dir.join("resources/pdfium-linux-x64/lib/libpdfium.so"));
-            #[cfg(target_os = "windows")]
-            candidates.push(dir.join("resources/pdfium-win-x64/bin/pdfium.dll"));
-
-            let proj_root = dir.parent().and_then(|p| p.parent()).unwrap_or(dir);
-            #[cfg(target_os = "linux")]
-            candidates.push(proj_root.join("resources/pdfium-linux-x64/lib/libpdfium.so"));
-            #[cfg(target_os = "windows")]
-            candidates.push(proj_root.join("resources/pdfium-win-x64/bin/pdfium.dll"));
-
-            #[cfg(target_os = "windows")]
-            candidates.push(dir.join("pdfium.dll"));
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        candidates.extend([
-            PathBuf::from("/usr/lib64/libpdfium.so"),
-            PathBuf::from("/usr/lib/libpdfium.so"),
-            PathBuf::from("/usr/lib64/libdeepin-pdfium.so.1"),
-            PathBuf::from("/usr/lib64/libdeepin-pdfium.so"),
-        ]);
-    }
-
-    for candidate in candidates {
-        if candidate.exists() {
-            let candidate = candidate.to_string_lossy().to_string();
-            if let Ok(bindings) = Pdfium::bind_to_library(&candidate) {
-                return Ok(bindings);
-            }
-        }
-    }
-
-    Pdfium::bind_to_system_library().map_err(|error| {
+fn load_pdfium() -> MetadataResult<&'static Pdfium> {
+    crate::pdfium_runtime::pdfium(None).map_err(|error| {
         MetadataError::new(
             MetadataErrorCode::PdfiumLoadFailed,
             format!("Pdfium load failed: {error}"),
