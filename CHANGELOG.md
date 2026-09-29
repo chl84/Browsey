@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refresh the statically linked native UnRAR decoder to stable 7.23 while preserving Browsey's streaming/password/cancellation adapter. Match the native packed DLL structures, add runtime size/offset/source-version checks, and record source hashes and full packaged decoder/binding licenses.
+
 - Coordinate Tauri core/API/CLI 2.12.0 with tauri-build 2.7.0, update the plist/XML parser security fixes, and backport the GLib mutable out-pointer fix without breaking GTK3/GIO's ABI. Verify vendored-source provenance and native drag/teardown on an isolated virtual screen; cover GLib iteration in optimized builds.
 
 - Refresh frontend and docs-site Svelte/Vite/tool dependencies within their current major versions, resolve npm security advisories in both lockfiles, and bind the desktop development server to loopback instead of all network interfaces.

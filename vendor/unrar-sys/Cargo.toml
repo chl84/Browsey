@@ -1,0 +1,21 @@
+[package]
+name = "unrar_sys"
+version = "0.5.8"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Browsey-maintained unrar_sys 0.5.8 bindings with stable UnRAR 7.23"
+repository = "https://github.com/muja/unrar.rs"
+build = "build.rs"
+
+[dependencies]
+libc = { version = "0.2", default-features = false }
+
+[build-dependencies]
+cc = "1"
+
+[features]
+default = ["std"]
+std = ["libc/std", "winapi/std"]
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["minwindef", "ntdef"] }

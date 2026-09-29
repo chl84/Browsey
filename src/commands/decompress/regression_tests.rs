@@ -3,6 +3,35 @@ use std::io::{self, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 struct Fixture(PathBuf);
+
+#[test]
+fn unrar_native_abi_and_stable_source_version_match_rust_bindings() {
+    use std::mem::{offset_of, size_of};
+    use unrar_sys::{HeaderData, HeaderDataEx, OpenArchiveData, OpenArchiveDataEx};
+    let expected = [
+        size_of::<HeaderData>(),
+        size_of::<HeaderDataEx>(),
+        size_of::<OpenArchiveData>(),
+        size_of::<OpenArchiveDataEx>(),
+        offset_of!(HeaderDataEx, comment_buffer),
+        offset_of!(HeaderDataEx, redir_type),
+        offset_of!(HeaderDataEx, archive_name_ex),
+        offset_of!(OpenArchiveDataEx, callback),
+        offset_of!(OpenArchiveDataEx, comment_buffer_w),
+        offset_of!(OpenArchiveDataEx, mark_of_the_web),
+        7,
+        23,
+        0,
+    ];
+    for (index, value) in expected.into_iter().enumerate() {
+        assert_eq!(
+            unsafe { unrar_sys::browsey_unrar_abi(index as u32) },
+            value,
+            "native ABI field {index}"
+        );
+    }
+    assert_eq!(unsafe { unrar_sys::RARGetDllVersion() }, 10);
+}
 impl Fixture {
     fn new() -> Self {
         let path = std::env::temp_dir().join(format!(
