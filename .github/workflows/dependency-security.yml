@@ -1,20 +1,8 @@
 name: Dependency Security
 
 on:
+  # Required branch checks must report a result for every pull request.
   pull_request:
-    paths:
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'frontend/package*.json'
-      - 'docs-site/package*.json'
-      - '.cargo/audit.toml'
-      - 'vendor/**'
-      - 'resources/glib-*'
-      - 'resources/unrar-*'
-      - 'THIRD_PARTY_NOTICES'
-      - 'scripts/maintenance/check-vendor.mjs'
-      - 'scripts/maintenance/check-dependency-policy*.mjs'
-      - '.github/workflows/dependency-security.yml'
   push:
     branches: [main]
     paths:
