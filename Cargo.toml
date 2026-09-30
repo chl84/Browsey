@@ -4,6 +4,16 @@ version = "1.0.2"
 edition = "2021"
 license = "MIT"
 
+[workspace]
+members = ["tests/glib-regression"]
+default-members = ["."]
+exclude = ["vendor/glib", "vendor/unrar-sys"]
+resolver = "2"
+
+[workspace.dependencies]
+# Both the application and the optimized regression must use the same ABI pin.
+gio = "=0.18.4"
+
 [build-dependencies]
 tauri-build = { version = "=2.7.0", features = [] }
 
@@ -66,7 +76,7 @@ winreg = "0.55.0"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 # Already used by Tauri/GTK; direct access avoids short-lived CLI D-Bus calls.
-gio = "=0.18.4"
+gio.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "=0.18.2"
