@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { validateDependencyPolicy } from './check-dependency-policy.mjs'
+import { validateDependencyPolicy, validateGlibRegressionPolicy } from './check-dependency-policy.mjs'
 
 const cargo = `tauri = { version = "=2.12.0", features = [] }
 tauri-build = { version = "=2.7.0", features = [] }
@@ -46,4 +46,18 @@ test('rejects unpinned desktop/native dependencies and independent GTK ABI upgra
   ]) {
     assert.throws(() => validateDependencyPolicy(cargo.replace(from, to), frontend, lock))
   }
+})
+
+test('keeps the optimized GLib regression on the application GIO pin', () => {
+  const application = `${cargo}\ngio.workspace = true`
+  const regression = '[dev-dependencies]\ngio.workspace = true'
+  assert.doesNotThrow(() => validateGlibRegressionPolicy(application, regression))
+  assert.throws(
+    () => validateGlibRegressionPolicy(cargo, regression),
+    /Browsey must inherit the shared GIO pin/,
+  )
+  assert.throws(
+    () => validateGlibRegressionPolicy(application, regression.replace('gio.workspace = true', 'gio = "=0.18.4"')),
+    /GLib regression must inherit the shared GIO pin/,
+  )
 })
