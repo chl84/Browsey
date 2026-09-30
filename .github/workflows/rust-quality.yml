@@ -19,6 +19,7 @@ on:
       - 'resources/pdfium*'
       - 'resources/pdfium*/**'
       - 'tests/fixtures/pdf/**'
+      - 'tests/glib-regression/**'
       - 'THIRD_PARTY_NOTICES'
       - 'scripts/maintenance/check-pdfium.mjs'
       - '.github/workflows/rust-quality.yml'
@@ -70,7 +71,7 @@ jobs:
           node scripts/maintenance/check-dependency-policy.mjs
 
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
       - name: Install Semgrep
         run: python3 -m pip install --upgrade semgrep
@@ -86,7 +87,7 @@ jobs:
         run: bash scripts/maintenance/check-backend-error-hardening-guard.sh
 
       - name: Tests
-        run: cargo test --all-targets --all-features
+        run: cargo test --locked --workspace --all-targets --all-features
 
       - name: Native WebKit drag and window teardown
         run: |
@@ -96,4 +97,6 @@ jobs:
             cargo test --locked webkit_file_export_and_window_teardown -- --ignored --test-threads=1 --nocapture
 
       - name: Optimized GLib backport regression
-        run: cargo test --locked --release glib_variant_string_iterator_out_pointer_is_mutable
+        # Reuse the application test and ABI, but only optimize GIO/GLib and the
+        # small harness rather than Tauri, WebKit, codecs and the whole app.
+        run: cargo test --locked --release -p browsey-glib-regression --lib
