@@ -4,6 +4,8 @@
 
 ## v1.0.3 — 2026-09-30
 
+- Replace the newly yanked yoke-derive 0.8.3 with compatible 0.8.4 before publication, retaining native/desktop pins and the existing manifest constraints. The upstream patch restores minimum-Rust-version compatibility; registry audits retain only the two documented unmaintained build-time notices.
+
 - Add a preview-first release bump helper coordinating app version metadata, current README/docs references, changelog and new release notes. Require a clean working tree for writes, reject existing notes/tags and failed origin checks, preserve dependency pins and historical releases, and optionally run strict maintenance/docs gates. Keep release validation checklists unchecked and commit/push/tag/publication/installation explicit; cover planning, safe application, failures and preservation with isolated regression tests.
 
 - Honor a directory path or local `file://` URI passed at launch, fixing default-file-manager folder launches such as T3 Code's Open action. Resolve relative paths from the launch working directory, retain the saved start folder when no argument is supplied, and surface invalid arguments without silently opening Home. Add backend parsing and frontend startup/recovery regression coverage.
