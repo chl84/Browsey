@@ -763,6 +763,10 @@ mod tests {
         if !export.exists() {
             symlink(&flatpak_file, &export).unwrap();
         }
+        // Prepare every registered launch fixture before the first GIO lookup.
+        // Adding desktop files after GIO caches the directory races its async
+        // file monitor; this test covers defaults/launching, not discovery.
+        let launch_target = prepare_default_launch_fixture(&root, &app_dir);
         let target = root.join("notes.txt");
         fs::write(&target, "ordinary text\n").unwrap();
         let apps = list_linux_apps(&target);
@@ -861,15 +865,13 @@ mod tests {
         assert!(list_linux_apps(&root)
             .iter()
             .all(|app| app.default_content_type.is_none()));
-        exercise_default_launch(&root, &app_dir);
+        exercise_default_launch(&root, &launch_target);
     }
 
-    fn exercise_default_launch(root: &Path, app_dir: &Path) {
+    fn prepare_default_launch_fixture(root: &Path, app_dir: &Path) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
-        use std::time::{Duration, Instant};
 
         let recorder = root.join("record-open");
-        let record = root.join("opened-path");
         fs::write(
             &recorder,
             "#!/bin/sh\nprintf '%s' \"$1\" > \"$BROWSEY_DEFAULT_APP_TEST_ROOT/opened-path\"\n",
@@ -881,12 +883,24 @@ mod tests {
         let target = root.join("æ python #100% file.py");
         fs::write(&target, "#!/usr/bin/env python\nraise RuntimeError('This file must be opened, never executed')\n").unwrap();
         fs::set_permissions(&target, fs::Permissions::from_mode(0o700)).unwrap();
-        assert_eq!(default_content_type(&target).unwrap(), "text/x-python");
-        let app = list_linux_apps(&target)
+        fs::write(app_dir.join("browsey-broken-open-test.desktop"), format!(
+            "[Desktop Entry]\nType=Application\nName=Browsey broken launch test\nExec={} %F\nPath={}\nMimeType=text/x-python;\n",
+            recorder.display(), root.join("nonexistent-working-directory").display(),
+        )).unwrap();
+        target
+    }
+
+    fn exercise_default_launch(root: &Path, target: &Path) {
+        use std::time::{Duration, Instant};
+
+        let record = root.join("opened-path");
+        assert_eq!(default_content_type(target).unwrap(), "text/x-python");
+        let app = list_linux_apps(target)
             .into_iter()
             .find(|app| app.name == "Browsey open test")
             .unwrap();
-        set_default_app(&target, &app.id, "text/x-python").unwrap();
+        assert_eq!(app.default_content_type.as_deref(), Some("text/x-python"));
+        set_default_app(target, &app.id, "text/x-python").unwrap();
 
         let assert_opened = || {
             let start = Instant::now();
@@ -918,21 +932,21 @@ mod tests {
         .unwrap();
         assert_opened();
         // Cached cloud files also enter this shared opening helper.
-        crate::commands::fs::open_path_without_recent(&target).unwrap();
+        crate::commands::fs::open_path_without_recent(target).unwrap();
         assert_opened();
 
         // A discoverable handler with an invalid working directory: GIO reports
         // this launch error before its launcher helper is started. Applications
         // that start successfully and then exit/crash cannot be monitored here.
-        fs::write(app_dir.join("browsey-broken-open-test.desktop"), format!(
-            "[Desktop Entry]\nType=Application\nName=Browsey broken launch test\nExec={} %F\nPath={}\nMimeType=text/x-python;\n",
-            recorder.display(), root.join("nonexistent-working-directory").display(),
-        )).unwrap();
-        let broken = list_linux_apps(&target)
+        let broken = list_linux_apps(target)
             .into_iter()
             .find(|app| app.name == "Browsey broken launch test")
             .unwrap();
-        set_default_app(&target, &broken.id, "text/x-python").unwrap();
+        assert_eq!(
+            broken.default_content_type.as_deref(),
+            Some("text/x-python")
+        );
+        set_default_app(target, &broken.id, "text/x-python").unwrap();
         let error = tauri::async_runtime::block_on(crate::commands::fs::open_entry(
             target.to_string_lossy().into_owned(),
         ))
