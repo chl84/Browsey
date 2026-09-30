@@ -6,10 +6,10 @@ The project is developed with AI assistance from OpenAI Codex.
 Documentation: https://chl84.github.io/Browsey/
 For technical deep-dives (module maps, behavior details, and release notes), use the docs site.
 
-Downloads: [Browsey 1.0.2](https://github.com/chl84/Browsey/releases/tag/v1.0.2).
+Downloads: [Browsey 1.0.3 release page](https://github.com/chl84/Browsey/releases/tag/v1.0.3) (in preparation; use the [latest published release](https://github.com/chl84/Browsey/releases/latest) until packages are published).
 
 ## Status
-Browsey `1.0.2` continues the Linux-first 1.0 line, with USB/MTP improvements, more responsive thumbnail scheduling, grid zoom, and theme polish. Core flows include browse, search, clipboard, trash, compress, duplicate checks, open with, properties, settings persistence, and supported cloud remotes. See the [changelog](CHANGELOG.md) and [1.0.2 release notes](docs/releases/1.0.2.md) for changes and validation scope. Windows support remains in maintenance mode (critical fixes and compatibility updates); the 1.0.2 release packages target Linux x86_64. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
+Browsey `1.0.3` is Linux-first. This version includes safer drag-and-drop and archive operations, archive passwords, corrected default-app/folder opening, and coordinated dependency updates. Core flows include browse, search, clipboard, trash, compress, duplicate checks, open with, properties, settings persistence, and supported cloud remotes. See the [changelog](CHANGELOG.md) and [1.0.3 release notes](docs/releases/1.0.3.md) for changes and validation scope. Windows support remains in maintenance mode (critical fixes and compatibility updates); the planned 1.0.3 release packages target Linux x86_64. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
 
 ## Highlights
 - Virtualized list and grid views tuned for large folders.
@@ -19,6 +19,7 @@ Browsey `1.0.2` continues the Linux-first 1.0 line, with USB/MTP improvements, m
 - Native clipboard flow with conflict preview/resolve and background transfer progress.
 - Recursive search, duplicate scanning, archive extract/compress, and open-with workflows. On Linux, **Open with… → select an app → check Set as default → Open** saves the desktop default for the displayed file type (all files of that MIME type, not just the selected file) and opens the file. The checkbox starts unchecked; **Open** without it remains a one-time choice. Setting a default is unavailable for directories and unknown file types.
 - Extraction guardrails with total-size and entry-count caps to prevent runaway unpack operations.
+- Optional AES-256 passwords when creating ZIP archives; password prompts and retries when extracting encrypted ZIP, 7z, and RAR archives. ZIP passwords encrypt file contents, not filenames.
 - Settings-driven shortcut remapping with conflict validation.
 - Properties with editable permissions (Unix + Windows) and lazy type-specific Extra metadata.
 - Image thumbnails support common raster formats plus HDR (`.hdr`) and OpenEXR (`.exr`).
@@ -66,7 +67,7 @@ Windows:
 - Fedora/RPM: download the latest `Browsey-<version>-1.x86_64.rpm` from Releases and install with `sudo rpm -Uvh --replacepkgs Browsey-<version>-1.x86_64.rpm`.
 - Ubuntu/Debian (`.deb`): download the latest `Browsey_<version>_amd64.deb` from Releases and install with `sudo apt install ./Browsey_<version>_amd64.deb`.
 - Supported Linux release path is install + upgrade. Package downgrade is not part of the Linux 1.0 supported path.
-- Windows: build an NSIS installer with `cargo tauri build --bundles nsis`; no new Windows installer is included in 1.0.2.
+- Windows: build an NSIS installer with `cargo tauri build --bundles nsis`; no new Windows installer is included in 1.0.3.
 - From source: clone, run `npm --prefix frontend install`, then `cargo tauri dev --no-dev-server` (or `cargo tauri build` for a release bundle).
 - Cloud features require a separately installed `rclone` binary discoverable in `PATH` (Browsey does not bundle `rclone`).
 
@@ -75,7 +76,7 @@ Linux upgrade path:
 - Ubuntu/Debian (`.deb`): use the next release DEB with `sudo apt install ./Browsey_<new-version>_amd64.deb`.
 - Ubuntu/Debian uninstall path: `sudo apt remove browsey` (or `sudo apt purge browsey` if config cleanup is explicitly desired).
 
-Opening a folder (development / unreleased): `browsey /path/to/folder` or
+Opening a folder (1.0.3): `browsey /path/to/folder` or
 `browsey 'file:///path/to/folder'` opens that folder instead of the saved start
 folder. Relative paths resolve from the launch working directory. This also
 supports folder launches from other applications through the default file-manager
@@ -113,7 +114,7 @@ Notes:
 
 For setup details, migration notes, and cloud limitations, see the docs site.
 
-## Drag and drop (development / unreleased)
+## Drag and drop (1.0.3)
 
 - Drop onto a folder, breadcrumb, bookmark, mounted drive, or empty space in a normal directory view. Files, unmounted drives, and backgrounds in search/virtual views are not destinations. Open dialogs block drops.
 - For local files, holding Ctrl/Meta at drag start locks the gesture to copy; Shift locks it to move (Ctrl/Meta wins if both are held). Otherwise internal drops use live modifiers and filesystem-aware defaults: move on the same filesystem and copy across filesystems. Cloud transfers default to copy.

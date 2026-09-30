@@ -6,7 +6,7 @@
 %global _missing_build_ids_terminate_build 0
 
 Name:           browsey
-Version:        1.0.2
+Version:        1.0.3
 Release:        1%{?dist}
 Summary:        Minimalist and fast file explorer built with Tauri
 
@@ -68,6 +68,9 @@ install -m 0644 resources/icons/icon.png %{buildroot}%{_datadir}/icons/hicolor/5
 %{_datadir}/icons/hicolor/512x512/apps/browsey.png
 
 %changelog
+* Wed Sep 30 2026 Browsey Maintainers <maintainers@example.com> - 1.0.3-1
+- Release 1.0.3; see CHANGELOG.md and docs/releases/1.0.3.md
+
 * Fri Sep 25 2026 Browsey Maintainers <maintainers@example.com> - 1.0.2-1
 - USB formatting, MTP discovery, thumbnail scheduling, zoom, and theme polish
 

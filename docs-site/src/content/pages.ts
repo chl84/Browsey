@@ -43,7 +43,7 @@ export const docsPages: DocPage[] = [
       {
         id: 'status',
         title: 'Current Status',
-        body: 'Browsey 1.0.2 continues the Linux-first 1.0 line with USB formatting and phone discovery improvements, thumbnail scheduling, grid zoom, and theme polish. Windows support is in maintenance mode; 1.0.2 packages target Linux x86_64.',
+        body: 'Browsey 1.0.3 is Linux-first, with safer drag-and-drop and archives, archive passwords, corrected default-app/folder opening, and coordinated dependency updates. Windows support is in maintenance mode; planned 1.0.3 packages target Linux x86_64. See release notes for validation scope and publication status.',
         bullets: [
           'Search and duplicate scanning are streamed and cancellable',
           'Permissions editing works on Unix and Windows',
@@ -190,7 +190,7 @@ export const docsPages: DocPage[] = [
         bullets: [
           'Linux RPM: Browsey-<version>-1.x86_64.rpm from Releases',
           'Linux DEB: Browsey_<version>_amd64.deb from Releases',
-          'Windows NSIS can be built from source; no new Windows installer is published for 1.0.2',
+          'Windows NSIS can be built from source; no new Windows installer is published for 1.0.3',
           'Binaries and bundles are emitted under target/release/',
         ],
       },
@@ -335,9 +335,9 @@ export const docsPages: DocPage[] = [
       },
       {
         id: 'drag-drop-development',
-        title: 'Drag and Drop (Development / Unreleased)',
+        title: 'Drag and Drop (1.0.3)',
         bullets: [
-          'These changes apply to development builds, not the published v1.0.2 release assets',
+          'Available in 1.0.3 source/builds; these changes are not included in the published v1.0.2 release assets',
           'Drop onto folders, breadcrumbs, bookmarks, mounted drives, or empty list/grid space in a normal directory view. Files, unmounted drives, and search/virtual-view backgrounds reject drops; dialogs block transfers',
           'For local files, Ctrl/Meta held at drag start locks the gesture to copy; Shift locks it to move. Otherwise internal drops use live modifiers and filesystem-aware defaults (move on the same filesystem, copy across filesystems). Cloud transfers default to copy',
           'Incoming external drops always copy and resolve the destination under the pointer, with display scaling accounted for',
@@ -843,6 +843,21 @@ capabilities/default.json`,
         id: 'unreleased',
         title: 'Unreleased',
         bullets: [],
+      },
+      {
+        id: 'v1-0-3',
+        title: 'v1.0.3 (2026-09-30)',
+        bullets: [
+          "Safer Linux drag-and-drop: ordinary file export, repeated Nautilus drops, stable conflict snapshots, hover navigation and edge scrolling; fixed window-close crash after dragging",
+          "AES-256 passwords for ZIP creation and password prompts/retries/cancellation for encrypted ZIP, 7z and RAR extraction; ZIP filenames remain visible",
+          "Archive safety fixes for permissions, rollback, final buffered writes, cancellation, special files and empty 7z entries",
+          "GIO-based default-app opening and a Set as default checkbox in Open With, including Python-file launch regression coverage",
+          "Directory paths and local file URIs passed at launch open the requested folder, including T3 Code Open; no-argument launches keep the saved start folder",
+          "Coordinated PDFium, Tauri/GLib, UnRAR, image/SVG, archive and backend dependency updates, plus blocking security checks and controlled Dependabot proposals",
+          "Corrected mount refresh interval slider layout and accessibility",
+          "Preview-first version bump helper, matching metadata and docs, isolated regression tests and explicit publication steps",
+        ],
+        note: 'Release preparation: packages are not published yet. See CHANGELOG.md and docs/releases/1.0.3.md for full changes, fresh validation results and remaining release gates.',
       },
       {
         id: 'v102',
