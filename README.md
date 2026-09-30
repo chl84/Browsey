@@ -172,6 +172,41 @@ Tauri bundles:
   For manual `rpmbuild`/COPR packaging (not standard release flow), use:
   `packaging/rpm/browsey.spec` and `packaging/rpm/README.md`.
 
+### Version bumps and release preparation
+
+Use the release helper with the chosen stable version (replace `X.Y.Z` below).
+The default is a read-only preview; `--apply` requires a clean working tree:
+
+```bash
+node scripts/release/bump.mjs X.Y.Z
+node scripts/release/bump.mjs X.Y.Z --apply
+# Optional: run strict maintenance plus docs lint/typecheck/build after applying
+node scripts/release/bump.mjs X.Y.Z --apply --verify
+```
+
+Choose **one** apply command, not both. The date defaults to today in UTC;
+use `--date YYYY-MM-DD` to set the planned release date explicitly.
+The helper updates the app version in Cargo/lockfile, RPM and AppStream, scopes
+current README/docs version references, moves changelog Unreleased entries to the
+new version, and creates release notes with an unchecked validation checklist.
+It preserves dependencies and historical entries; frontend/docs package versions
+remain independent. Local tags and origin tags (when configured) are checked;
+failed origin checks block preparation. No GitHub release/assets are modified.
+
+Review `git diff`, curate the generated notes, and reconcile any remaining
+development/unreleased labels and platform claims manually. A bump is not proof
+of testing or publication. If `--verify` fails, the uncommitted bump remains for
+inspection; rerun the checks after fixing it rather than applying the same version
+again. Verification requires the normal development dependencies and Bash; CI
+security checks and fresh manual acceptance remain separate gates.
+
+After validation, commit/push, create an annotated `vX.Y.Z` tag on the tested
+commit, and manually dispatch **Linux Release Bundles** with that tag. Inspect
+the RPM/DEB packages and `SHA256SUMS`, then review and publish a draft GitHub
+release. Do not overwrite old notes, tags or assets. Tagging alone does not start
+the build. The helper never commits, pushes, tags, publishes, installs or updates
+dependencies. Regression tests: `node --test scripts/release/bump.test.mjs`.
+
 ## Keyboard & interaction map (defaults)
 - Default bindings are remappable in Settings.
 - Core defaults: `Ctrl+F` search, `Ctrl+G` view toggle, `Ctrl+A` select all, `Ctrl+C/X/V` clipboard.
@@ -203,7 +238,7 @@ Tauri bundles:
 - `docs/` — project documents (strategy, operations, audits, TODO archive).
 - `docs-site/` — standalone documentation app (Svelte/Vite, GitHub Pages).
 - `packaging/` — desktop metadata and optional manual packaging assets (including RPM spec).
-- `scripts/` — helper scripts grouped by area (`build/`, `dev/`, `docs/`, `install/`, `maintenance/`).
+- `scripts/` — helper scripts grouped by area (`build/`, `dev/`, `docs/`, `install/`, `maintenance/`, `release/`).
 - `resources/` and `capabilities/` — bundled assets and Tauri capability files.
 
 ## Behavior notes

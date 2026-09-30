@@ -26,6 +26,9 @@ EOF
     ;;
 esac
 
+echo "== Running release helper regression tests =="
+node --test "${SCRIPT_DIR}/../release/bump.test.mjs"
+
 echo "== Running backend suite =="
 "${SCRIPT_DIR}/test-backend.sh"
 

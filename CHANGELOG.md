@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a preview-first release bump helper coordinating app version metadata, current README/docs references, changelog and new release notes. Require a clean working tree for writes, reject existing notes/tags and failed origin checks, preserve dependency pins and historical releases, and optionally run strict maintenance/docs gates. Keep release validation checklists unchecked and commit/push/tag/publication/installation explicit; cover planning, safe application, failures and preservation with isolated regression tests.
+
 - Honor a directory path or local `file://` URI passed at launch, fixing default-file-manager folder launches such as T3 Code's Open action. Resolve relative paths from the launch working directory, retain the saved start folder when no argument is supplied, and surface invalid arguments without silently opening Home. Add backend parsing and frontend startup/recovery regression coverage.
 
 - Make dependency security checks blocking, add weekly grouped Dependabot proposals without auto-merge, and verify coordinated Tauri/native pins in CI. Keep the upgrade helper within existing manifest constraints and document the two remaining indirect build-macro maintenance warnings and platform-validation limits.
