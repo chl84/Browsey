@@ -30,6 +30,7 @@ type MockClipboardState = {
 }
 
 type E2eMockControl = {
+  windowControlPolicy?: { minimize: boolean; maximize: boolean }
   bookmarks?: Array<{ label: string; path: string }>
   thumbnailFixture?: boolean
   defaultView?: 'list' | 'grid'
@@ -226,6 +227,8 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
   }
 
   switch (cmd) {
+    case 'get_window_control_policy':
+      return (control?.windowControlPolicy ?? { minimize: true, maximize: true }) as T
     case 'get_startup_path':
       return (control?.startupPath ?? null) as T
     case 'list_dir':

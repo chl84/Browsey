@@ -33,13 +33,32 @@
   export let onToggleViewMode: (mode: 'list' | 'grid') => void = () => {}
 
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { onMount } from 'svelte'
+import { fetchWindowControlPolicy, type WindowControlPolicy } from '../../services/windowControls.service'
 import TopbarActionMenu from './TopbarActionMenu.svelte'
 import ProgressBar from '@/shared/ui/ProgressBar.svelte'
 
   const appWindow = getCurrentWindow()
+  let windowControls: WindowControlPolicy = { minimize: false, maximize: false }
 
-  const minimize = () => {
-    void appWindow.minimize()
+  onMount(() => {
+    let disposed = false
+    void fetchWindowControlPolicy()
+      .then((policy) => {
+        if (!disposed) windowControls = policy
+      })
+      .catch((err) => {
+        console.error('Failed to load window control policy', err)
+      })
+    return () => { disposed = true }
+  })
+
+  const minimize = async () => {
+    try {
+      await appWindow.minimize()
+    } catch (err) {
+      console.error('minimize failed', err)
+    }
   }
 
   const toggleMaximize = async () => {
@@ -50,8 +69,12 @@ import ProgressBar from '@/shared/ui/ProgressBar.svelte'
     }
   }
 
-  const closeWindow = () => {
-    void appWindow.close()
+  const closeWindow = async () => {
+    try {
+      await appWindow.close()
+    } catch (err) {
+      console.error('closeWindow failed', err)
+    }
   }
 
   let menuButtonEl: HTMLButtonElement | null = null
@@ -159,8 +182,12 @@ import ProgressBar from '@/shared/ui/ProgressBar.svelte'
         <line x1="0" y1="6.5" x2="10" y2="6.5"></line>
       </svg>
     </button>
-    <button class="win-btn minimize" type="button" aria-label="Minimize window" on:click|stopPropagation={minimize}>–</button>
-    <button class="win-btn maximize" type="button" aria-label="Toggle maximize window" on:click|stopPropagation={toggleMaximize}>□</button>
+    {#if windowControls.minimize}
+      <button class="win-btn minimize" type="button" aria-label="Minimize window" on:click|stopPropagation={minimize}>–</button>
+    {/if}
+    {#if windowControls.maximize}
+      <button class="win-btn maximize" type="button" aria-label="Toggle maximize window" on:click|stopPropagation={toggleMaximize}>□</button>
+    {/if}
     <button class="win-btn close" type="button" aria-label="Close window" on:click|stopPropagation={closeWindow}>×</button>
   </div>
 </div>

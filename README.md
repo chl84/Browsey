@@ -215,6 +215,7 @@ dependencies. Regression tests: `node --test scripts/release/bump.test.mjs`.
 - Navigation/helpers: `Ctrl+H` hidden files, `Ctrl+B` bookmark modal, `Ctrl+T` open terminal.
 - `Esc` exits search/filter contexts.
 - `Ctrl` + mouse wheel zooms the file view through list and five grid sizes. Zoom is per window and resets on restart; grid gaps are 8 px (Cozy) or 6 px (Compact).
+- On Hyprland, the titlebar keeps Menu and Close but hides Minimize and Maximize; use the compositor's window controls instead. Other desktops retain the normal buttons. Browsey does not alter Omarchy/Hyprland settings.
 
 ## USB drives and phones
 

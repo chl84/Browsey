@@ -23,6 +23,7 @@ pub mod settings;
 pub mod system_clipboard;
 pub mod thumbnails;
 pub mod transfer;
+pub mod window_controls;
 
 pub use crate::clipboard::{
     paste_clipboard_cmd, paste_clipboard_preview, resolve_drop_clipboard_mode, set_clipboard_cmd,
@@ -93,3 +94,4 @@ pub use transfer::{
     copy_mixed_entries, copy_mixed_entry_to, move_mixed_entries, move_mixed_entry_to,
     preview_mixed_transfer_conflicts,
 };
+pub use window_controls::get_window_control_policy;

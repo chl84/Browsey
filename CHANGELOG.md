@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Hide custom minimize/maximize buttons on Hyprland, retaining menu/close and normal controls on other desktops. Respect Omarchy's window-management policy without changing compositor settings; handle window-action failures and cover desktop detection and titlebar rendering with regression tests.
+
 ## v1.0.3 — 2026-09-30
 
 - Replace the newly yanked yoke-derive 0.8.3 with compatible 0.8.4 before publication, retaining native/desktop pins and the existing manifest constraints. The upstream patch restores minimum-Rust-version compatibility; registry audits retain only the two documented unmaintained build-time notices.
