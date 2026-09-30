@@ -30,7 +30,7 @@ jobs:
           test "$RELEASE_TAG" = "v$version"
           test "$(git describe --tags --exact-match)" = "$RELEASE_TAG"
           echo "APP_VERSION=$version" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
