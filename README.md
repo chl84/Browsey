@@ -6,10 +6,10 @@ The project is developed with AI assistance from OpenAI Codex.
 Documentation: https://chl84.github.io/Browsey/
 For technical deep-dives (module maps, behavior details, and release notes), use the docs site.
 
-Downloads: [Browsey 1.0.3 release page](https://github.com/chl84/Browsey/releases/tag/v1.0.3) (in preparation; use the [latest published release](https://github.com/chl84/Browsey/releases/latest) until packages are published).
+Downloads: [Browsey 1.0.3](https://github.com/chl84/Browsey/releases/tag/v1.0.3).
 
 ## Status
-Browsey `1.0.3` is Linux-first. This version includes safer drag-and-drop and archive operations, archive passwords, corrected default-app/folder opening, and coordinated dependency updates. Core flows include browse, search, clipboard, trash, compress, duplicate checks, open with, properties, settings persistence, and supported cloud remotes. See the [changelog](CHANGELOG.md) and [1.0.3 release notes](docs/releases/1.0.3.md) for changes and validation scope. Windows support remains in maintenance mode (critical fixes and compatibility updates); the planned 1.0.3 release packages target Linux x86_64. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
+Browsey `1.0.3` is Linux-first. This version includes safer drag-and-drop and archive operations, archive passwords, corrected default-app/folder opening, and coordinated dependency updates. Core flows include browse, search, clipboard, trash, compress, duplicate checks, open with, properties, settings persistence, and supported cloud remotes. See the [changelog](CHANGELOG.md) and [1.0.3 release notes](docs/releases/1.0.3.md) for changes and validation scope. Windows support remains in maintenance mode (critical fixes and compatibility updates); the 1.0.3 release packages target Linux x86_64. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
 
 ## Highlights
 - Virtualized list and grid views tuned for large folders.

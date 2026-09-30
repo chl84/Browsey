@@ -43,7 +43,7 @@ export const docsPages: DocPage[] = [
       {
         id: 'status',
         title: 'Current Status',
-        body: 'Browsey 1.0.3 is Linux-first, with safer drag-and-drop and archives, archive passwords, corrected default-app/folder opening, and coordinated dependency updates. Windows support is in maintenance mode; planned 1.0.3 packages target Linux x86_64. See release notes for validation scope and publication status.',
+        body: 'Browsey 1.0.3 is Linux-first, with safer drag-and-drop and archives, archive passwords, corrected default-app/folder opening, and coordinated dependency updates. Windows support is in maintenance mode; 1.0.3 packages target Linux x86_64. See release notes for validation scope.',
         bullets: [
           'Search and duplicate scanning are streamed and cancellable',
           'Permissions editing works on Unix and Windows',
@@ -857,7 +857,7 @@ capabilities/default.json`,
           "Corrected mount refresh interval slider layout and accessibility",
           "Preview-first version bump helper, matching metadata and docs, isolated regression tests and explicit publication steps",
         ],
-        note: 'Release preparation: packages are not published yet. See CHANGELOG.md and docs/releases/1.0.3.md for full changes, fresh validation results and remaining release gates.',
+        note: 'Published Linux x86_64 RPM and DEB packages are available on GitHub Releases. See CHANGELOG.md and docs/releases/1.0.3.md for full changes, validation evidence, checksums and platform limitations.',
       },
       {
         id: 'v102',
