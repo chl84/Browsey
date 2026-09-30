@@ -280,6 +280,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             about_info,
+            get_startup_path,
             list_dir,
             list_facets,
             list_mounts,

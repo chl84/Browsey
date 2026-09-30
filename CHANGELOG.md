@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Honor a directory path or local `file://` URI passed at launch, fixing default-file-manager folder launches such as T3 Code's Open action. Resolve relative paths from the launch working directory, retain the saved start folder when no argument is supplied, and surface invalid arguments without silently opening Home. Add backend parsing and frontend startup/recovery regression coverage.
+
 - Make dependency security checks blocking, add weekly grouped Dependabot proposals without auto-merge, and verify coordinated Tauri/native pins in CI. Keep the upgrade helper within existing manifest constraints and document the two remaining indirect build-macro maintenance warnings and platform-validation limits.
 
 - Refresh the SQLite persistence, disk-information and async runtime dependencies to rusqlite 0.40.2, sysinfo 0.39.6 and Tokio 1.53.1, align Zstandard at 0.14, and update compatible Rust lockfile dependencies while retaining explicit native/desktop ABI pins.

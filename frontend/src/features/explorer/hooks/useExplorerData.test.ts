@@ -1,11 +1,12 @@
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { listenMock, eventHandlers, createExplorerStateMock, cleanups } = vi.hoisted(() => ({
+const { listenMock, eventHandlers, createExplorerStateMock, getStartupPathMock, cleanups } = vi.hoisted(() => ({
   cleanups: [] as Array<() => void>,
   listenMock: vi.fn(),
   eventHandlers: new Map<string, (event: { payload: unknown }) => void>(),
   createExplorerStateMock: vi.fn(),
+  getStartupPathMock: vi.fn(),
 }))
 
 vi.mock('svelte', async () => {
@@ -27,6 +28,10 @@ vi.mock('../state', () => ({
   createExplorerState: createExplorerStateMock,
 }))
 
+vi.mock('../services/listing.service', () => ({
+  getStartupPath: getStartupPathMock,
+}))
+
 import { useExplorerData } from './useExplorerData'
 
 const asyncNoop = vi.fn(async () => {})
@@ -39,6 +44,7 @@ describe('useExplorerData cloud refresh event', () => {
   beforeEach(() => {
     vi.useRealTimers()
     vi.clearAllMocks()
+    getStartupPathMock.mockResolvedValue(null)
     eventHandlers.clear()
     listenMock.mockImplementation(async (eventName: string, handler: (event: { payload: unknown }) => void) => {
       eventHandlers.set(eventName, handler)
@@ -55,6 +61,7 @@ describe('useExplorerData cloud refresh event', () => {
     const highContrast = writable(false)
     const scrollbarWidth = writable(10)
     const startDirPref = writable<string | null>(null)
+    const error = writable('')
     const loadMock = vi.fn(async (path?: string) => {
       if (path) {
         current.set(path)
@@ -102,6 +109,7 @@ describe('useExplorerData cloud refresh event', () => {
       highContrast,
       scrollbarWidth,
       startDirPref,
+      error,
       invalidateFacetCache: vi.fn(),
     })
 
@@ -113,8 +121,72 @@ describe('useExplorerData cloud refresh event', () => {
       highContrast,
       scrollbarWidth,
       loadPartitionsMock,
+      startDirPref,
+      error,
     }
   }
+
+  it('opens the requested launch folder instead of the saved start folder', async () => {
+    const { loadMock, startDirPref } = installExplorerStateMock('')
+    startDirPref.set('/saved/home')
+    getStartupPathMock.mockResolvedValue('/project/æ folder #100%')
+
+    useExplorerData()
+    await vi.waitFor(() => expect(loadMock).toHaveBeenCalledWith('/project/æ folder #100%'))
+    expect(loadMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves the saved start folder when launched without a folder argument', async () => {
+    const { loadMock, startDirPref } = installExplorerStateMock('')
+    startDirPref.set('/saved/home')
+
+    useExplorerData()
+    await vi.waitFor(() => expect(loadMock).toHaveBeenCalledWith('/saved/home'))
+  })
+
+  it('preserves the default Home fallback when there is no argument or preference', async () => {
+    const { loadMock } = installExplorerStateMock('')
+
+    useExplorerData()
+    await vi.waitFor(() => expect(loadMock).toHaveBeenCalledWith(undefined))
+  })
+
+  it('keeps an explicitly supplied initialPath ahead of process arguments', async () => {
+    const { loadMock } = installExplorerStateMock('')
+    getStartupPathMock.mockResolvedValue('/launch/folder')
+
+    useExplorerData({ initialPath: '/explicit/folder' })
+    await vi.waitFor(() => expect(loadMock).toHaveBeenCalledWith('/explicit/folder'))
+    expect(getStartupPathMock).not.toHaveBeenCalled()
+  })
+
+  it('shows an invalid launch target error without silently loading the saved folder', async () => {
+    const { loadMock, startDirPref, error } = installExplorerStateMock('')
+    startDirPref.set('/saved/home')
+    getStartupPathMock.mockRejectedValue({ code: 'invalid_input', message: 'Invalid start folder address' })
+    let message = ''
+    const unsubscribe = error.subscribe((value) => { message = value })
+
+    useExplorerData()
+    await vi.waitFor(() => expect(message).toBe('Invalid start folder address'))
+    expect(loadMock).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(eventHandlers.has('cloud-dir-refreshed')).toBe(true))
+    unsubscribe()
+  })
+
+  it('does not navigate when disposed while the startup command is pending', async () => {
+    const { loadMock } = installExplorerStateMock('')
+    let resolvePath!: (path: string) => void
+    getStartupPathMock.mockReturnValue(new Promise<string>((resolve) => { resolvePath = resolve }))
+
+    useExplorerData()
+    await vi.waitFor(() => expect(getStartupPathMock).toHaveBeenCalledTimes(1))
+    cleanups.splice(0).forEach((cleanup) => cleanup())
+    resolvePath('/late/folder')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(loadMock).not.toHaveBeenCalled()
+  })
 
   it('reloads the active cloud directory when background refresh completes', async () => {
     const { loadMock } = installExplorerStateMock('rclone://work/docs')

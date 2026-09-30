@@ -15,6 +15,7 @@ mod error;
 #[path = "windows.rs"]
 pub mod fs_windows;
 mod open_ops;
+mod startup_ops;
 mod trash;
 
 pub use crate::commands::listing::DirListing;
@@ -36,6 +37,7 @@ use error::{
 };
 pub use open_ops::open_entry;
 pub(crate) use open_ops::open_path_without_recent;
+pub use startup_ops::get_startup_path;
 pub use trash::{
     cleanup_stale_trash_staging, list_trash, move_to_trash, move_to_trash_many, purge_trash_items,
     restore_trash_items,

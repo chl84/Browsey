@@ -1,6 +1,8 @@
 import { onMount } from 'svelte'
 import { get } from 'svelte/store'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getErrorMessage } from '@/shared/lib/error'
+import { getStartupPath } from '../services/listing.service'
 import type { Entry } from '../model/types'
 import { createExplorerState } from '../state'
 import type { createActivity } from './createActivity'
@@ -260,8 +262,15 @@ export const useExplorerData = (options: Options = {}) => {
       return
     }
 
-    const initial = options.initialPath ?? (get(startDirPref) ?? undefined)
-    await load(initial)
+    try {
+      const initial = options.initialPath ?? (await getStartupPath()) ?? (get(startDirPref) ?? undefined)
+      if (disposed) return
+      await load(initial)
+    } catch (error) {
+      if (disposed) return
+      // An explicit but invalid launch target must not silently open Home.
+      explorer.error.set(getErrorMessage(error))
+    }
     if (disposed) return
     ensureGvfsRefresh(get(current))
     unsubscribeCurrent = current.subscribe((p) => ensureGvfsRefresh(p))

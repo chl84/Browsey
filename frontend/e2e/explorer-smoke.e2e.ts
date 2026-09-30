@@ -49,6 +49,45 @@ test('opens a directory from list view with keyboard open', async ({ page }) => 
   await expect(page.getByLabel('Path breadcrumbs').getByRole('button', { name: 'Documents' })).toBeVisible()
 })
 
+test('launch folder overrides the saved start folder without changing Home', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __BROWSEY_E2E__: unknown }).__BROWSEY_E2E__ = {
+      startupPath: '/mock/Documents', calls: [],
+    }
+  })
+  await page.goto('/')
+  await expect(page.locator('.row .name', { hasText: 'report' })).toBeVisible()
+  await expect(page.getByLabel('Path breadcrumbs').getByRole('button', { name: 'Documents' })).toBeVisible()
+  const listings = await page.evaluate(() => {
+    const control = (window as unknown as {
+      __BROWSEY_E2E__: { calls: Array<{ cmd: string; args?: { path?: string } }> }
+    }).__BROWSEY_E2E__
+    return control.calls.filter(({ cmd }) => cmd === 'list_dir').map(({ args }) => args?.path)
+  })
+  expect(listings).toEqual(['/mock/Documents'])
+  await page.getByRole('button', { name: 'Home', exact: true }).click()
+  await expect(page.locator('.row .name', { hasText: 'notes' })).toBeVisible()
+})
+
+test('invalid launch arguments show an error instead of opening the saved folder', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __BROWSEY_E2E__: unknown }).__BROWSEY_E2E__ = {
+      failCommands: ['get_startup_path'], calls: [],
+    }
+  })
+  await page.goto('/')
+  await expect(page.getByText('Error: Simulated get_startup_path failure', { exact: true })).toBeVisible()
+  const listingCount = await page.evaluate(() => {
+    const control = (window as unknown as {
+      __BROWSEY_E2E__: { calls: Array<{ cmd: string }> }
+    }).__BROWSEY_E2E__
+    return control.calls.filter(({ cmd }) => cmd === 'list_dir').length
+  })
+  expect(listingCount).toBe(0)
+  await page.getByRole('button', { name: 'Home', exact: true }).click()
+  await expect(page.locator('.row .name', { hasText: 'notes' })).toBeVisible()
+})
+
 test('search finds entries in the current folder scope', async ({ page }) => {
   await page.goto('/')
 

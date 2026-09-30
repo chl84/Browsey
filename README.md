@@ -75,6 +75,16 @@ Linux upgrade path:
 - Ubuntu/Debian (`.deb`): use the next release DEB with `sudo apt install ./Browsey_<new-version>_amd64.deb`.
 - Ubuntu/Debian uninstall path: `sudo apt remove browsey` (or `sudo apt purge browsey` if config cleanup is explicitly desired).
 
+Opening a folder (development / unreleased): `browsey /path/to/folder` or
+`browsey 'file:///path/to/folder'` opens that folder instead of the saved start
+folder. Relative paths resolve from the launch working directory. This also
+supports folder launches from other applications through the default file-manager
+association, such as T3 Code's Open action. With no argument, Settings > Start
+folder still applies; an explicit launch does not change that setting. Only one
+folder per launch is supported. Use `browsey -- -folder` for a relative folder name
+starting with a dash. Invalid arguments show an error rather than silently opening
+Home; missing/inaccessible folders use the existing listing error handling.
+
 ## Cloud (rclone) (Linux-first)
 - Browsey cloud support is `rclone`-backed. Supported Linux providers are OneDrive, Google Drive, and Nextcloud (`webdav` when recognized as Nextcloud).
 - Cloud integration is opt-in and off by default in Settings > Cloud, so local browsing is not coupled to `rclone`.

@@ -33,6 +33,7 @@ type E2eMockControl = {
   bookmarks?: Array<{ label: string; path: string }>
   thumbnailFixture?: boolean
   defaultView?: 'list' | 'grid'
+  startupPath?: string | null
   thumbnailHold?: boolean
   systemClipboard?: MockClipboardState
   failCommands?: string[]
@@ -183,7 +184,8 @@ const e2eControl = (): E2eMockControl | null => {
 const shouldFailCommand = (cmd: string) => e2eControl()?.failCommands?.includes(cmd) === true
 
 const listDirMock = (path?: string | null): Listing => {
-  const current = typeof path === 'string' && path.length > 0 ? path : ROOT
+  // Match the backend's Home expansion rather than treating ~ as a directory.
+  const current = typeof path === 'string' && path.length > 0 && path !== '~' ? path : ROOT
   const entries = FILE_TREE[current] ?? []
   return {
     current,
@@ -224,6 +226,8 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
   }
 
   switch (cmd) {
+    case 'get_startup_path':
+      return (control?.startupPath ?? null) as T
     case 'list_dir':
       if (control?.thumbnailFixture) {
         const current = (args?.path as string | undefined) || ROOT

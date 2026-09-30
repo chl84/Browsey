@@ -3,6 +3,8 @@ import type { Listing, ListingFacets, Partition, SortField, SortDirection } from
 
 export type FacetScope = 'dir' | 'recent' | 'starred' | 'trash'
 
+export const getStartupPath = () => invoke<string | null>('get_startup_path')
+
 export const listDir = (
   path: string | undefined,
   sort: { field: SortField; direction: SortDirection },
