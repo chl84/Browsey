@@ -38,6 +38,19 @@ advisory checkers do not audit local source packages; `check-vendor.mjs` verifie
 the entire patched source tree and CI exercises the affected iterator both
 normally and with optimizations. See `vendor/glib/BROWSEY-PATCH.md`.
 
+The optimized regression runs in the small `browsey-glib-regression` workspace
+package, not the entire release-mode application. It imports the same test source
+as Browsey and shares the root lockfile, GIO pin and vendored GLib patch. Ordinary
+`cargo build`, `cargo test` and Tauri commands still select Browsey by default;
+CI also lints and tests the harness with `--workspace`. Run its optimized test with:
+
+```sh
+cargo test --locked --release -p browsey-glib-regression --lib
+```
+
+Keep all mandatory PR checks, ordinary application tests and the native WebKit
+test enabled. This optimization reduces compilation work, not test coverage.
+
 UnRAR is also a local patch: stable native 7.23 (source package revision 7.2.7),
 not just wrapper 0.5.8. Its unmodified source, patched bindings/build and native
 licenses are hash-checked. Rust tests compare packed structure sizes/offsets

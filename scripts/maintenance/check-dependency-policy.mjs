@@ -19,11 +19,18 @@ export function validateDependencyPolicy(cargo, frontend, lock) {
   return version
 }
 
+export function validateGlibRegressionPolicy(cargo, regressionCargo) {
+  assert.match(cargo, /^gio\.workspace = true$/m, 'Browsey must inherit the shared GIO pin')
+  assert.match(regressionCargo, /^gio\.workspace = true$/m, 'GLib regression must inherit the shared GIO pin')
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
   const cargo = readFileSync(join(root, 'Cargo.toml'), 'utf8')
   const frontend = JSON.parse(readFileSync(join(root, 'frontend/package.json'), 'utf8'))
   const lock = JSON.parse(readFileSync(join(root, 'frontend/package-lock.json'), 'utf8'))
   const version = validateDependencyPolicy(cargo, frontend, lock)
+  const regressionCargo = readFileSync(join(root, 'tests/glib-regression/Cargo.toml'), 'utf8')
+  validateGlibRegressionPolicy(cargo, regressionCargo)
   console.log(`Coordinated Tauri ${version}, PDFium and GTK/GIO dependency pins verified.`)
 }
