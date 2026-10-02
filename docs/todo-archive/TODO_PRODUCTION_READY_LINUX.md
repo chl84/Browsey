@@ -1,5 +1,13 @@
 # TODO: Make Browsey Production-Ready for Linux
 
+Status: Completed for `v1.0.0`; archived on 2026-10-02.
+
+Completion is recorded in the [Linux 1.0 release-candidate log](../operations/linux-release/release-candidate-log.md).
+This checklist preserves the original track's signoff, not fresh validation for
+later releases. The unchecked downgrade test is conditional: downgrade was
+explicitly declared unsupported. For version-specific evidence and outstanding
+validation, see [release notes](../releases/).
+
 Goal: Completed for `v1.0.0`: move Browsey from a strong Linux-first beta into a production-ready Linux release by hardening core workflows, tightening release gates, and validating real install/use/update behavior on supported Linux targets.
 
 ## 1. Define the release bar

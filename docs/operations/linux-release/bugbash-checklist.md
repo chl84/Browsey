@@ -1,8 +1,14 @@
 # Linux 1.0 Bugbash Checklist
 
 Created: 2026-03-06
-Track: `docs/todo/TODO_PRODUCTION_READY_LINUX.md`
+Track: `docs/todo-archive/TODO_PRODUCTION_READY_LINUX.md`
 Release-bar reference: `docs/operations/linux-release/release-bar.md`
+
+Status: Reusable checklist defined for the completed Linux 1.0 track.
+
+The blank rows below are a template, not recorded acceptance results. Fill in
+fresh run metadata and outcomes for each tested build, and link the run from
+the relevant [version-specific release notes](../../releases/).
 
 ## Purpose
 

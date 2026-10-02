@@ -1,7 +1,15 @@
 # Linux Stabilization Regression Audit
 
 Created: 2026-03-07
-Track: `docs/todo/TODO_PRODUCTION_READY_LINUX.md`
+Track: `docs/todo-archive/TODO_PRODUCTION_READY_LINUX.md`
+Status: Historical Linux 1.0 audit snapshot, not a current backlog.
+
+The findings and evidence below describe the review recorded during Linux 1.0
+stabilization. Preserve them as history; a "remaining" or "missing" item here
+does not establish an open issue in the current code. The completed track's
+signoff is recorded in the [release-candidate log](../../operations/linux-release/release-candidate-log.md).
+For later releases, use [version-specific release notes](../../releases/) and
+fresh reproduction or validation rather than reusing this snapshot as signoff.
 Scope: Step 7 (`Add regression tests for every stabilization bug that gets fixed`)
 
 ## Purpose

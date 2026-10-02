@@ -1,7 +1,7 @@
 # Linux 1.0 Release Bar
 
 Created: 2026-03-06
-Track: `docs/todo/TODO_PRODUCTION_READY_LINUX.md`
+Track: `docs/todo-archive/TODO_PRODUCTION_READY_LINUX.md`
 Status: Active source of truth for the Browsey Linux 1.0 production claim.
 
 ## Purpose

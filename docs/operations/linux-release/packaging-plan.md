@@ -1,8 +1,8 @@
 # Linux 1.0 Packaging Plan
 
 Created: 2026-03-06
-Track: `docs/todo/TODO_PRODUCTION_READY_LINUX.md`
-Status: Active Linux packaging decision record.
+Track: `docs/todo-archive/TODO_PRODUCTION_READY_LINUX.md`
+Status: Linux 1.0 packaging decision record; validation below is scoped to that track.
 
 ## Purpose
 
@@ -51,4 +51,7 @@ prove:
 - uninstall behavior on the supported targets
 - desktop entry/file association correctness in installed builds
 
-Those remain separate Step 9 validation items.
+These were separate Step 9 validation items, with Linux 1.0 completion recorded
+in the [RC log](release-candidate-log.md) and archived track. New releases need
+their own packaging evidence in [release notes](../../releases/); choosing RPM
+and DEB alone does not validate installation on a target distribution.

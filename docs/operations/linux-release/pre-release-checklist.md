@@ -1,8 +1,13 @@
 # Linux 1.0 Pre-Release Checklist
 
 Created: 2026-03-06
-Track: `docs/todo/TODO_PRODUCTION_READY_LINUX.md`
-Status: Active Linux 1.0 release gate.
+Track: `docs/todo-archive/TODO_PRODUCTION_READY_LINUX.md`
+Status: Reusable Linux release gate with historical Linux 1.0 run results.
+
+The checked rows and run metadata below belong to Linux 1.0 signoff. Copy the
+gate into a fresh run record and reset result checkboxes for each new candidate;
+do not treat this completed run as evidence for later versions. See
+[version-specific release notes](../../releases/).
 
 ## Purpose
 

@@ -1,8 +1,12 @@
 # Linux 1.0 Release Candidate Log
 
 Created: 2026-03-07
-Track: `docs/todo/TODO_PRODUCTION_READY_LINUX.md`
-Status: Active run log for the Linux 1.0 stabilization finish.
+Track: `docs/todo-archive/TODO_PRODUCTION_READY_LINUX.md`
+Status: Completed Linux 1.0 RC/signoff record, not an active release log.
+
+The entries below preserve the recorded `v1.0.0` signoff. They are not fresh
+validation for later versions. Record subsequent release evidence and remaining
+checks in [version-specific release notes](../../releases/).
 
 ## Purpose
 
@@ -19,7 +23,7 @@ This log does not replace:
 - `docs/operations/core-operations/release-checklist.md`
 - `docs/operations/core-operations/release-blocking-policy.md`
 
-## How To Use This Log
+## Original Recording Procedure
 
 For each release candidate:
 
@@ -70,6 +74,8 @@ For each release candidate:
   - `Follow-Up Issue (Non-Blocking)`: none
 - Notes: final signoff RC with green full maintenance suite, completed provider appendices, and no non-bugfix merges after RC1 without explicit re-approval.
 
-### Additional RCs
+### Template Reuse
 
-Duplicate the RC2 block as needed if more than two candidates are required.
+For a future stabilization cycle, reuse the metadata fields in a new
+version-specific record. Do not append new versions as Linux 1.0 candidates or
+overwrite the historical RC1/RC2 entries.

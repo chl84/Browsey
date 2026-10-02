@@ -1,8 +1,12 @@
 # Linux 1.0 Stabilization Window
 
 Created: 2026-03-06
-Track: `docs/todo/TODO_PRODUCTION_READY_LINUX.md`
-Status: Active Linux 1.0 release-discipline policy.
+Track: `docs/todo-archive/TODO_PRODUCTION_READY_LINUX.md`
+Status: Historical Linux 1.0 stabilization policy; the window closed with `v1.0.0` signoff.
+
+The [RC log](release-candidate-log.md) records completion of this window.
+The criteria below preserve the original release discipline; they do not place
+current development in an active Linux 1.0 stabilization window.
 
 ## Purpose
 
@@ -48,11 +52,9 @@ The stabilization window ends only when one of these happens:
   - `Acceptable Known Limitation`
   - `Follow-Up Issue (Non-Blocking)`
 
-## What This Policy Does Not Claim
+## Evidence Boundary
 
-This document defines the stabilization window and merge discipline only. It
-does not claim that:
-
-- RC runs have already happened
-- Linux install/upgrade validation is complete
-- the Linux 1.0 exit criteria have already been met
+This policy defines criteria, not test results. Linux 1.0 signoff is recorded
+separately in the RC log and archived track. Neither that signoff nor this
+policy establishes fresh platform/device acceptance for a later release;
+record that evidence in the relevant version's release notes.

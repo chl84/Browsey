@@ -1,7 +1,7 @@
 # Linux Install and Upgrade Path
 
 Created: 2026-03-06
-Track: `docs/todo/TODO_PRODUCTION_READY_LINUX.md`
+Track: `docs/todo-archive/TODO_PRODUCTION_READY_LINUX.md`
 Status: Active Linux 1.0 install/upgrade documentation.
 
 ## Purpose
