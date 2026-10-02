@@ -153,23 +153,7 @@ fn add_path_to_zip(
 }
 
 fn open_regular_input(path: &Path) -> io::Result<File> {
-    let mut options = File::options();
-    options.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        // A file may have been replaced since collection. Never block on a
-        // FIFO or follow a replacement symlink when opening the input.
-        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
-    }
-    let file = options.open(path)?;
-    if !file.metadata()?.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "Only regular files can be read into an archive",
-        ));
-    }
-    Ok(file)
+    crate::fs_utils::open_regular_file_nofollow(path)
 }
 
 fn with_entry_metadata<'a>(base: FileOptions<'a, ()>, entry: &EntryMeta) -> FileOptions<'a, ()> {

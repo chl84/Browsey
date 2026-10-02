@@ -27,6 +27,10 @@ The docs web app lives in `../docs-site/` and is built/deployed separately.
 
 ## Current Work vs. Historical Evidence
 
+The active [daily-driver completeness plan](todo/TODO_DAILY_DRIVER_COMPLETENESS.md)
+defines the next validation and improvement priorities. Its unchecked tasks are
+not newly confirmed defects; verify current behavior before making changes.
+
 The [Linux 1.0 production-readiness track](todo-archive/TODO_PRODUCTION_READY_LINUX.md)
 was completed for `v1.0.0`. Its audits are dated snapshots, including gaps that
 were reported before final signoff; they are not the current issue backlog.

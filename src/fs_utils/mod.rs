@@ -9,6 +9,32 @@ mod error;
 
 pub use error::{FsUtilsError, FsUtilsErrorCode, FsUtilsResult};
 
+/// Open a regular input without following a replacement symlink at the leaf.
+/// Unix nonblocking open prevents a replaced FIFO from hanging before validation.
+/// Callers must still validate parent components according to their operation.
+pub(crate) fn open_regular_file_nofollow(path: &Path) -> io::Result<std::fs::File> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Only regular files can be read",
+        ));
+    }
+    Ok(file)
+}
+
 #[cfg(target_os = "windows")]
 fn normalize_drive_root(raw: &str) -> String {
     let mut chars = raw.chars();

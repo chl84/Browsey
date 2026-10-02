@@ -294,6 +294,101 @@ fn copy_delete_fallback_refuses_existing_destination() {
 }
 
 #[test]
+fn fallback_copy_reports_final_sync_failure_and_keeps_source() {
+    let root = uniq_path("copy-sync-failure");
+    let source = root.join("source.txt");
+    let destination = root.join("destination.txt");
+    write_file(&source, b"original-data");
+    let error = super::path_ops::copy_file_noreplace_with_sync(&source, &destination, |file| {
+        assert_eq!(
+            file.metadata().unwrap().len(),
+            13,
+            "all writes precede sync"
+        );
+        Err(std::io::Error::other("injected delayed writeback failure"))
+    })
+    .unwrap_err();
+    assert_eq!(error.code(), UndoErrorCode::IoError);
+    assert!(error
+        .to_string()
+        .contains("injected delayed writeback failure"));
+    assert_eq!(fs::read(&source).unwrap(), b"original-data");
+    assert_eq!(fs::read(&destination).unwrap(), b"original-data");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn fallback_move_rejects_fifo_without_deleting_source_or_creating_target() {
+    use std::os::unix::ffi::OsStrExt;
+    let root = uniq_path("fallback-fifo");
+    fs::create_dir(&root).unwrap();
+    let source = root.join("pipe");
+    let destination = root.join("destination");
+    let cpath = std::ffi::CString::new(source.as_os_str().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(cpath.as_ptr(), 0o600) }, 0);
+    let snapshot = snapshot_existing_path(&source).unwrap();
+    assert!(move_by_copy_delete_noreplace(&source, &destination, &snapshot).is_err());
+    assert!(fs::symlink_metadata(&source).is_ok());
+    assert!(!destination.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn fallback_copy_checks_sync_only_after_exclusive_destination_creation() {
+    let root = uniq_path("copy-sync-existing");
+    let source = root.join("source.txt");
+    let destination = root.join("destination.txt");
+    write_file(&source, b"original-data");
+    write_file(&destination, b"other-process-data");
+    let error = super::path_ops::copy_file_noreplace_with_sync(&source, &destination, |_| {
+        panic!("an existing destination must never be opened for finalization");
+    })
+    .unwrap_err();
+    assert_eq!(error.code(), UndoErrorCode::TargetExists);
+    assert_eq!(fs::read(&source).unwrap(), b"original-data");
+    assert_eq!(fs::read(&destination).unwrap(), b"other-process-data");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn copy_delete_fallback_keeps_complete_destination_after_partial_source_deletion() {
+    use std::os::unix::fs::PermissionsExt;
+    if unsafe { libc::geteuid() } == 0 {
+        return;
+    }
+    let root = uniq_path("fallback-partial-delete");
+    let parent = root.join("source-parent");
+    let source = parent.join("tree");
+    let dest = root.join("destination");
+    write_file(&source.join("document.txt"), b"irreplaceable-data");
+    let snapshot = snapshot_existing_path(&source).unwrap();
+    // Child removal is allowed, but removing the source root from its parent
+    // fails only after the directory's contents have already been deleted.
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o500)).unwrap();
+    let result = move_by_copy_delete_noreplace(&source, &dest, &snapshot);
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o700)).unwrap();
+    let original_exists = source.join("document.txt").exists();
+    let copied = fs::read(dest.join("document.txt")).ok();
+    fs::remove_dir_all(root).unwrap();
+    assert!(result.is_err());
+    assert!(
+        !original_exists,
+        "source deletion must actually have progressed"
+    );
+    assert_eq!(
+        copied.as_deref(),
+        Some(b"irreplaceable-data".as_slice()),
+        "failed source deletion must never destroy the only complete copy"
+    );
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("destination retained"));
+}
+
+#[test]
 fn delete_entry_path_removes_non_empty_directory() {
     let dir = uniq_path("delete-dir-recursive");
     let nested = dir.join("nested");
@@ -353,6 +448,94 @@ fn path_snapshot_accepts_unchanged_path() {
     );
 
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn history_keeps_only_the_last_fifty_actions() {
+    let root = uniq_path("history-cap");
+    fs::create_dir(&root).unwrap();
+    let mut manager = UndoManager::new();
+    for index in 0..51 {
+        manager
+            .apply(Action::CreateFolder {
+                path: root.join(index.to_string()),
+            })
+            .unwrap();
+    }
+    for _ in 0..50 {
+        manager.undo().unwrap();
+    }
+    assert!(!manager.can_undo());
+    assert!(manager.can_redo());
+    assert!(
+        root.join("0").is_dir(),
+        "oldest action is outside retained history"
+    );
+    assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn new_action_clears_redo_and_a_new_manager_has_no_history() {
+    let root = uniq_path("history-lifetime");
+    fs::create_dir(&root).unwrap();
+    let mut manager = UndoManager::new();
+    manager
+        .apply(Action::CreateFolder {
+            path: root.join("first"),
+        })
+        .unwrap();
+    manager.undo().unwrap();
+    assert!(manager.can_redo());
+    manager
+        .apply(Action::CreateFolder {
+            path: root.join("second"),
+        })
+        .unwrap();
+    assert!(!manager.can_redo());
+    assert_eq!(
+        manager.redo().unwrap_err().code(),
+        UndoErrorCode::RedoUnavailable
+    );
+    let mut fresh = UndoManager::new();
+    assert!(!fresh.can_undo());
+    assert_eq!(
+        fresh.undo().unwrap_err().code(),
+        UndoErrorCode::UndoUnavailable
+    );
+    assert!(root.join("second").exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn redo_failure_keeps_history_and_preserves_conflicting_destination() {
+    let root = uniq_path("redo-conflict");
+    let source = root.join("source.txt");
+    let destination = root.join("destination.txt");
+    write_file(&source, b"original");
+    let mut manager = UndoManager::new();
+    manager
+        .apply(Action::Move {
+            from: source.clone(),
+            to: destination.clone(),
+        })
+        .unwrap();
+    manager.undo().unwrap();
+    write_file(&destination, b"other-process-data");
+    assert_eq!(
+        manager.redo().unwrap_err().code(),
+        UndoErrorCode::TargetExists
+    );
+    assert!(manager.can_redo());
+    assert!(!manager.can_undo());
+    assert_eq!(fs::read(&source).unwrap(), b"original");
+    assert_eq!(fs::read(&destination).unwrap(), b"other-process-data");
+    fs::remove_file(&destination).unwrap();
+    manager.redo().unwrap();
+    assert!(manager.can_undo());
+    assert!(!source.exists());
+    assert_eq!(fs::read(&destination).unwrap(), b"original");
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

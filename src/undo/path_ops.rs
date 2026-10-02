@@ -31,7 +31,15 @@ pub(crate) fn copy_entry(src: &Path, dest: &Path) -> UndoResult<()> {
 }
 
 fn copy_file_noreplace(src: &Path, dest: &Path) -> UndoResult<()> {
-    let mut src_file = fs::File::open(src).map_err(|e| {
+    copy_file_noreplace_with_sync(src, dest, fs::File::sync_all)
+}
+
+pub(super) fn copy_file_noreplace_with_sync(
+    src: &Path,
+    dest: &Path,
+    sync: impl FnOnce(&fs::File) -> io::Result<()>,
+) -> UndoResult<()> {
+    let mut src_file = crate::fs_utils::open_regular_file_nofollow(src).map_err(|e| {
         UndoError::from_io_error(format!("Failed to open source file {}", src.display()), e)
     })?;
     let permissions = src_file
@@ -74,9 +82,20 @@ fn copy_file_noreplace(src: &Path, dest: &Path) -> UndoResult<()> {
             )
         })?
         .permissions();
-    fs::set_permissions(dest, perms).map_err(|e| {
+    dst_file.set_permissions(perms).map_err(|e| {
         UndoError::from_io_error(
             format!("Failed to set permissions on {}", dest.display()),
+            e,
+        )
+    })?;
+    // File::drop ignores close/writeback errors. Do not delete a move's source
+    // until destination finalization has actually succeeded.
+    sync(&dst_file).map_err(|e| {
+        UndoError::from_io_error(
+            format!(
+                "Failed to sync copied file {}; source retained",
+                dest.display()
+            ),
             e,
         )
     })
@@ -163,12 +182,12 @@ pub(crate) fn move_by_copy_delete_noreplace(
     copy_entry(src, dst).and_then(|_| {
         assert_path_snapshot(src, src_snapshot)?;
         delete_entry_path(src).map_err(|del_err| {
-            // Best effort: clean up destination if delete failed to avoid duplicates.
-            let _ = delete_entry_path(dst);
+            // Recursive deletion can fail after some source children are gone.
+            // The destination may now be the only complete copy: never remove it.
             UndoError::new(
                 del_err.code(),
                 format!(
-                    "Copied {} -> {} after fallback move, but failed to delete source: {del_err}",
+                    "Copied {} -> {} after fallback move, but failed to delete source; destination retained: {del_err}",
                     src.display(),
                     dst.display()
                 ),

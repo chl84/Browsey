@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Harden local moves and undo fallback: use atomic no-replace rename, honor cancellation before moving, retain the completed destination after partial source deletion fails, sync fallback copies before source removal, and surface failed cancellation rollback. Reuse a regular-file input guard across copying/undo/compression so FIFOs and replacement symlinks cannot hang or redirect reads. Add deterministic race/failure, filename, undo-history, and killed-session cleanup regressions.
+
 - Archive the completed Linux 1.0 readiness track, update its references, and distinguish historical audits/RC results from current release validation while retaining reusable safety gates.
 
 - Hide custom minimize/maximize buttons on Hyprland, retaining menu/close and normal controls on other desktops. Respect Omarchy's window-management policy without changing compositor settings; handle window-action failures and cover desktop detection and titlebar rendering with regression tests.

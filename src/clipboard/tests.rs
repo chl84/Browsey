@@ -301,6 +301,135 @@ fn rename_candidate_is_deterministic_without_exists_probe() {
 }
 
 #[test]
+fn move_entry_preserves_a_destination_created_after_the_conflict_check() {
+    let base = uniq_path("move-late-conflict");
+    let src = base.join("src.txt");
+    let dest = base.join("dest.txt");
+    write_file(&src, b"source-data");
+    let late_dest = dest.clone();
+    ops::set_before_move_rename_test_hook(Some(Box::new(move || {
+        fs::write(late_dest, b"other-process-data").unwrap();
+    })));
+    let result = move_entry(&src, &dest, None, None, None);
+    ops::set_before_move_rename_test_hook(None);
+    let source = fs::read(&src).ok();
+    let destination = fs::read(&dest).unwrap();
+    fs::remove_dir_all(base).unwrap();
+    assert!(result.is_err(), "late conflict must not be overwritten");
+    assert_eq!(
+        result.unwrap_err().code(),
+        ClipboardErrorCode::DestinationExists
+    );
+    assert_eq!(source.as_deref(), Some(b"source-data".as_slice()));
+    assert_eq!(destination, b"other-process-data");
+}
+
+#[test]
+fn move_entry_cancelled_before_rename_keeps_source() {
+    let base = uniq_path("move-cancelled-before-rename");
+    let src = base.join("src.txt");
+    let dest = base.join("dest.txt");
+    write_file(&src, b"source-data");
+    let cancel = AtomicBool::new(true);
+    let result = move_entry(&src, &dest, None, None, Some(&cancel));
+    let source = fs::read(&src).ok();
+    let destination_exists = dest.exists();
+    fs::remove_dir_all(base).unwrap();
+    assert!(result.is_err(), "cancelled move must not start");
+    assert_eq!(result.unwrap_err().code(), ClipboardErrorCode::Cancelled);
+    assert_eq!(source.as_deref(), Some(b"source-data".as_slice()));
+    assert!(!destination_exists);
+}
+
+#[test]
+fn move_entry_revalidates_source_identity_before_rename() {
+    let root = uniq_path("move-replaced-source");
+    let source = root.join("source.txt");
+    let destination = root.join("destination.txt");
+    let saved_original = root.join("saved-original.txt");
+    write_file(&source, b"original-data");
+    let hook_source = source.clone();
+    let hook_saved = saved_original.clone();
+    ops::set_before_move_rename_test_hook(Some(Box::new(move || {
+        fs::rename(&hook_source, &hook_saved).unwrap();
+        fs::write(hook_source, b"new-source-data").unwrap();
+    })));
+    let result = move_entry(&source, &destination, None, None, None);
+    ops::set_before_move_rename_test_hook(None);
+    let source_data = fs::read(&source).ok();
+    let original_data = fs::read(&saved_original).unwrap();
+    let destination_exists = destination.exists();
+    fs::remove_dir_all(root).unwrap();
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Path changed during operation"));
+    assert_eq!(source_data.as_deref(), Some(b"new-source-data".as_slice()));
+    assert_eq!(original_data, b"original-data");
+    assert!(!destination_exists);
+}
+
+#[test]
+#[cfg(unix)]
+fn copy_rejects_special_inputs_without_creating_a_target() {
+    use std::os::unix::{ffi::OsStrExt, net::UnixListener};
+    let root = uniq_path("copy-special-inputs");
+    fs::create_dir(&root).unwrap();
+    let fifo = root.join("pipe");
+    let cpath = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(cpath.as_ptr(), 0o600) }, 0);
+    let socket = root.join("socket");
+    let listener = UnixListener::bind(&socket).unwrap();
+    for source in [&fifo, &socket] {
+        let target = root.join("destination");
+        assert!(copy_file_best_effort(source, &target, None, None, None, None).is_err());
+        assert!(!target.exists());
+        assert!(fs::symlink_metadata(source).is_ok());
+    }
+    drop(listener);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn direct_file_copy_does_not_follow_a_replacement_symlink() {
+    let root = uniq_path("copy-direct-symlink");
+    let original = root.join("original.txt");
+    let link = root.join("replacement.txt");
+    let target = root.join("destination.txt");
+    write_file(&original, b"do-not-read-through-link");
+    symlink(&original, &link).unwrap();
+    assert!(copy_file_best_effort(&link, &target, None, None, None, None).is_err());
+    assert!(!target.exists());
+    assert_eq!(fs::read(&original).unwrap(), b"do-not-read-through-link");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn directory_copy_preserves_unicode_and_non_utf8_child_names() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+    let root = uniq_path("copy-native-child-names");
+    let source = root.join("source");
+    let target = root.join("target");
+    let names = [
+        OsString::from("kamera æøå\n bilde.txt"),
+        OsString::from_vec(vec![0xff, b'x', b'.', b't', b'x', b't']),
+    ];
+    for name in &names {
+        write_file(&source.join(name), b"unchanged-data");
+    }
+    copy_entry(&source, &target, None, None, None).unwrap();
+    for name in &names {
+        assert_eq!(fs::read(target.join(name)).unwrap(), b"unchanged-data");
+        assert_eq!(fs::read(source.join(name)).unwrap(), b"unchanged-data");
+    }
+    assert_eq!(fs::read_dir(target).unwrap().count(), names.len());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn resolve_drop_mode_prefers_copy_modifier() {
     let base = uniq_path("drop-mode-copy");
     let src_dir = base.join("src");

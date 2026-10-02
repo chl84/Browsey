@@ -101,11 +101,19 @@ where
     let mut performed: Vec<Action> = Vec::with_capacity(paths.len());
     for raw in paths {
         if should_abort(cancel) {
-            if !performed.is_empty() {
+            let rollback_error = if !performed.is_empty() {
                 let mut rollback = performed.clone();
-                let _ = run_actions(&mut rollback, Direction::Backward);
-            }
+                run_actions(&mut rollback, Direction::Backward).err()
+            } else {
+                None
+            };
             emit_progress(done, total, true);
+            if let Some(error) = rollback_error {
+                return Err(FsError::new(
+                    FsErrorCode::DeleteFailed,
+                    format!("Delete cancelled; rollback also failed: {error}. Undo backups were retained; inspect the affected paths before retrying."),
+                ));
+            }
             return Err(FsError::new(FsErrorCode::Cancelled, "Delete cancelled"));
         }
         let path = match sanitize_path_nofollow(&raw, true).map_err(FsError::from) {
@@ -468,6 +476,45 @@ mod tests {
         assert!(second.exists(), "second file should be restored");
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cancelled_delete_reports_failed_rollback_without_overwriting_new_file() {
+        let dir = uniq_path("cancel-rollback-conflict");
+        let first = dir.join("first.txt");
+        let second = dir.join("second.txt");
+        write_file(&first, b"original-first");
+        write_file(&second, b"original-second");
+        let checks = Cell::new(0);
+        let result = delete_entries_with_hooks(
+            vec![
+                first.to_string_lossy().into_owned(),
+                second.to_string_lossy().into_owned(),
+            ],
+            UndoState::default(),
+            None,
+            |_| {
+                checks.set(checks.get() + 1);
+                checks.get() >= 2
+            },
+            |done, _, finished| {
+                if done == 1 && !finished {
+                    write_file(&first, b"other-process-data");
+                }
+            },
+        );
+        let first_data = fs::read(&first).unwrap();
+        let second_data = fs::read(&second).unwrap();
+        fs::remove_dir_all(dir).unwrap();
+        let error = result.unwrap_err();
+        assert_eq!(
+            error.code(),
+            FsErrorCode::DeleteFailed,
+            "failed restoration must not be reported as ordinary cancellation"
+        );
+        assert!(error.to_string().contains("rollback also failed"));
+        assert_eq!(first_data, b"other-process-data");
+        assert_eq!(second_data, b"original-second");
     }
 
     #[cfg(unix)]

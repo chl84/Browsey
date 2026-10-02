@@ -263,4 +263,74 @@ mod tests {
         assert!(base.join("legacy").exists());
         fs::remove_dir_all(base).unwrap();
     }
+
+    #[test]
+    fn held_session_child() {
+        if let Some(base) = std::env::var_os("BROWSEY_TEST_HELD_SESSION_ROOT") {
+            use std::io::{Read, Write};
+            let session = BackupSession::create(Path::new(&base)).unwrap();
+            fs::write(session.directory.join("document.txt"), b"owned-backup").unwrap();
+            println!("BROWSEY_HELD_SESSION_READY");
+            std::io::stdout().flush().unwrap();
+            let _ = std::io::stdin().read(&mut [0_u8]);
+            drop(session);
+        }
+    }
+
+    #[test]
+    fn cleanup_after_killed_process_keeps_the_other_live_session() {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+
+        let base = unique_base();
+        let live = BackupSession::create(&base).unwrap();
+        fs::write(live.directory.join("document.txt"), b"live-backup").unwrap();
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "undo::backup::tests::held_session_child",
+                "--nocapture",
+            ])
+            .env("BROWSEY_TEST_HELD_SESSION_ROOT", &base)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let ready = BufReader::new(child.stdout.take().unwrap())
+            .lines()
+            .map_while(Result::ok)
+            .any(|line| line.contains("BROWSEY_HELD_SESSION_READY"));
+        if !ready {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("child session was not initialized");
+        }
+        cleanup_sessions(&base, None);
+        assert_eq!(
+            fs::read_dir(&base)
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_type().unwrap().is_dir())
+                .count(),
+            2
+        );
+        child.kill().unwrap();
+        assert!(!child.wait().unwrap().success());
+        cleanup_sessions(&base, None);
+        assert_eq!(
+            fs::read(live.directory.join("document.txt")).unwrap(),
+            b"live-backup"
+        );
+        assert_eq!(
+            fs::read_dir(&base)
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_type().unwrap().is_dir())
+                .count(),
+            1
+        );
+        drop(live);
+        cleanup_sessions(&base, None);
+        fs::remove_dir_all(base).unwrap();
+    }
 }

@@ -238,7 +238,7 @@ fn rename_nofollow_raw(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
     ))
 }
 
-pub(super) fn rename_nofollow_io(src: &Path, dst: &Path) -> UndoResult<()> {
+pub(crate) fn rename_nofollow_io(src: &Path, dst: &Path) -> UndoResult<()> {
     rename_nofollow_raw(src, dst).map_err(|error| map_rename_nofollow_error(src, dst, error))
 }
 

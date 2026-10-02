@@ -26,6 +26,12 @@ type AfterMergeItemTestHook = Box<dyn FnMut(&Path)>;
 #[cfg(test)]
 thread_local! {
     static AFTER_MERGE_ITEM_TEST_HOOK: RefCell<Option<AfterMergeItemTestHook>> = RefCell::new(None);
+    static BEFORE_MOVE_RENAME_TEST_HOOK: RefCell<Option<Box<dyn FnOnce()>>> = RefCell::new(None);
+}
+
+#[cfg(test)]
+pub(super) fn set_before_move_rename_test_hook(callback: Option<Box<dyn FnOnce()>>) {
+    BEFORE_MOVE_RENAME_TEST_HOOK.with(|hook| *hook.borrow_mut() = callback);
 }
 
 #[cfg(test)]
@@ -419,7 +425,7 @@ pub(super) fn copy_file_best_effort(
     }
 
     // Fallback: manual chunked copy with progress
-    let mut reader = fs::File::open(src).map_err(|e| {
+    let mut reader = crate::fs_utils::open_regular_file_nofollow(src).map_err(|e| {
         ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
             &format!("Failed to open source for copy {}", src.display()),
@@ -646,18 +652,56 @@ pub(super) fn move_entry(
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<()> {
     ensure_not_child(src, dest)?;
+    if transfer_cancelled(cancel, app) {
+        return Err(ClipboardError::cancelled());
+    }
+    let source_snapshot = crate::undo::snapshot_existing_path(src).map_err(ClipboardError::from)?;
     if metadata_if_exists_nofollow(dest)?.is_some() {
         return Err(ClipboardError::new(
             ClipboardErrorCode::DestinationExists,
             format!("Destination already exists: {}", dest.display()),
         ));
     }
-    match fs::rename(src, dest) {
-        Ok(_) => Ok(()),
-        Err(_) => {
-            copy_entry(src, dest, app, progress_event, cancel)?;
-            delete_entry_path(src)
+    #[cfg(test)]
+    BEFORE_MOVE_RENAME_TEST_HOOK.with(|hook| {
+        let callback = hook.borrow_mut().take();
+        if let Some(callback) = callback {
+            callback();
         }
+    });
+    if transfer_cancelled(cancel, app) {
+        return Err(ClipboardError::cancelled());
+    }
+    crate::undo::assert_path_snapshot(src, &source_snapshot).map_err(ClipboardError::from)?;
+    // A prior existence check is only advisory: another process can create the
+    // destination before rename. Reuse the undo engine's native no-replace move.
+    match crate::undo::rename_nofollow_io(src, dest) {
+        Ok(_) => Ok(()),
+        Err(error)
+            if matches!(
+                error.code(),
+                crate::undo::UndoErrorCode::CrossDeviceMove
+                    | crate::undo::UndoErrorCode::AtomicRenameUnsupported
+            ) =>
+        {
+            copy_entry(src, dest, app, progress_event, cancel)?;
+            if transfer_cancelled(cancel, app) {
+                return Err(ClipboardError::cancelled().with_context(format!(
+                    "Copy retained at {}; source not removed",
+                    dest.display()
+                )));
+            }
+            crate::undo::assert_path_snapshot(src, &source_snapshot)
+                .map_err(ClipboardError::from)?;
+            delete_entry_path(src).map_err(|error| {
+                error.with_context(format!(
+                    "Copied {} to {}; destination retained because source deletion failed",
+                    src.display(),
+                    dest.display()
+                ))
+            })
+        }
+        Err(error) => Err(ClipboardError::from(error)),
     }
 }
 

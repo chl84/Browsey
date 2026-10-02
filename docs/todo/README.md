@@ -2,7 +2,9 @@
 
 Place active execution TODO documents in this directory.
 
-- _No active execution TODOs at the moment._
+- [Browsey daily-driver completeness](TODO_DAILY_DRIVER_COMPLETENESS.md):
+  prioritized validation and improvement plan, with optional product expansions
+  kept separate from the required completion gate.
 
 The completed Linux 1.0 production-readiness track is in
 [`todo-archive/`](../todo-archive/TODO_PRODUCTION_READY_LINUX.md).
