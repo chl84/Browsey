@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Separate daily-driver engineering TODOs from outstanding acceptance, optional product decisions and release rules. Archive 33 already-verified coverage/safety increments with their evidence, preserve 29 unverified checks in a dedicated validation checklist and keep five engineering follow-ups active. Do not mark moved tests passed or imply missing functionality from unchecked acceptance.
+
 - Compare local manual-copy outputs with BLAKE3 digests of the written stream before recording completion or deleting fallback move sources. Share bounded open-handle readback between clipboard and undo engines, recheck versions around verification, retain uncertain output on mismatches/read failures and honor clipboard cancellation between readback chunks. Reuse the existing dependency, keep verification reads out of transfer-byte totals and document the extra target read pass, measured warm-cache cost and remaining post-check races. GIO/cloud writers and native same-filesystem rename are unchanged.
 
 - Protect original destinations before moving them into clipboard overwrite backups, closing the process-interruption window before failure rollback. Carry protection through the whole paste/merge and reuse it during rollback and undo/redo; only clear it after whole-operation success. Stop before moving originals when protection fails, preserve uncertain backup candidates, and verify killed copy/move/merge processes, marker faults and history lifecycle with disposable fixtures. Ordinary delete/trash protection scope is unchanged; this is not persistent undo or power-loss durability.

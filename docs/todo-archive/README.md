@@ -2,6 +2,13 @@
 
 This folder is used to archive completed TODO lists.
 
+## Daily-driver safety increments
+
+- [Verified safety work](TODO_DAILY_DRIVER_SAFETY_COMPLETED.md): 33 completed
+  coverage/safety increments archived on 2026-10-03. Overall daily-driver signoff
+  remains open; engineering follow-ups and unverified acceptance are linked
+  separately from the archive. Moving completed work is not a new test pass.
+
 ## Linux 1.0 completion
 
 - [Linux production-readiness track](TODO_PRODUCTION_READY_LINUX.md): completed

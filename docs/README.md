@@ -11,6 +11,7 @@ The docs web app lives in `../docs-site/` and is built/deployed separately.
 - `strategy/`: product and positioning assessments
 - `operations/core-operations/`: core-operations matrix, checklist, and policy
 - `operations/linux-release/`: Linux release bar and Linux-specific release rules
+- `audits/daily-driver/`: dated implementation/verification evidence and safety limits
 - `audits/core-operations/`: gap audits tied to core-operations hardening
 - `audits/linux-release/`: historical Linux 1.0 workflow reviews and release-gap audits
 - `cloud/checklists/`: provider/runtime-specific cloud checklists
@@ -28,8 +29,14 @@ The docs web app lives in `../docs-site/` and is built/deployed separately.
 ## Current Work vs. Historical Evidence
 
 The active [daily-driver completeness plan](todo/TODO_DAILY_DRIVER_COMPLETENESS.md)
-defines the next validation and improvement priorities. Its unchecked tasks are
-not newly confirmed defects; verify current behavior before making changes.
+contains engineering follow-ups, not a checklist of missing features. Outstanding
+test requirements live in the separate
+[daily-driver validation checklist](operations/linux-release/daily-driver-validation-checklist.md).
+The 33 completed coverage/safety increments and their evidence are in the
+[verified-work archive](todo-archive/TODO_DAILY_DRIVER_SAFETY_COMPLETED.md).
+Unverified acceptance is not a confirmed defect or an unimplemented feature;
+reproduce a gap before adding implementation work. Optional product proposals
+and release procedures are not counted as development TODOs.
 
 The [Linux 1.0 production-readiness track](todo-archive/TODO_PRODUCTION_READY_LINUX.md)
 was completed for `v1.0.0`. Its audits are dated snapshots, including gaps that

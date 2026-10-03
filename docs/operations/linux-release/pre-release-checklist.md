@@ -9,6 +9,11 @@ gate into a fresh run record and reset result checkboxes for each new candidate;
 do not treat this completed run as evidence for later versions. See
 [version-specific release notes](../../releases/).
 
+Outstanding daily-driver acceptance is tracked separately in the
+[daily-driver validation checklist](daily-driver-validation-checklist.md).
+Use it to plan affected-scope candidate runs; its unchecked rows are not a
+missing-feature backlog or fresh failures.
+
 ## Purpose
 
 Define the minimum required gates before a Browsey release may claim
