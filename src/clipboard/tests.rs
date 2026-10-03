@@ -1,4 +1,5 @@
 use super::*;
+use crate::undo::{run_actions, Direction};
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -54,7 +55,137 @@ fn write_file(path: &Path, content: &[u8]) {
 }
 
 #[test]
-fn local_copy_and_move_faults_preserve_sources_and_clean_partial_targets() {
+fn failed_streaming_copy_preserves_in_place_target_edits() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for moving in [false, true] {
+        for failure in ["read", "write", "cancel"] {
+            let root = uniq_path("streaming-target-edit");
+            let source = root.join("source.bin");
+            let target = root.join("target.bin");
+            let data = vec![0x58; 64 * 1024];
+            write_file(&source, &data);
+            let cancel = std::sync::Arc::new(AtomicBool::new(false));
+            let hook_cancel = cancel.clone();
+            let reached = std::rc::Rc::new(std::cell::Cell::new(false));
+            let observed = reached.clone();
+            let scope = Scope::new(move |_, dst, phase, bytes| {
+                if moving && phase == Phase::Rename {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Unsupported,
+                        "force copy fallback",
+                    ));
+                }
+                let boundary = if failure == "write" {
+                    Phase::Write
+                } else {
+                    Phase::Read
+                };
+                if phase == boundary && bytes == 8192 && !observed.replace(true) {
+                    // Same inode: identity-only cleanup must not erase this edit.
+                    fs::OpenOptions::new()
+                        .write(true)
+                        .open(dst)?
+                        .write_all(b"foreign document")?;
+                    if failure == "cancel" {
+                        hook_cancel.store(true, Ordering::Relaxed);
+                        return Ok(());
+                    }
+                    return Err(std::io::Error::other("injected stream failure"));
+                }
+                Ok(())
+            });
+            let result = if moving {
+                move_entry(&source, &target, None, None, Some(&cancel))
+            } else {
+                copy_entry(&source, &target, None, None, Some(&cancel)).map(|_| ())
+            };
+            drop(scope);
+            let retained = fs::read(&target);
+            let source_data = fs::read(&source).unwrap();
+            fs::remove_dir_all(root).unwrap();
+            let error = result.expect_err("stream fault must fail");
+            assert!(reached.get());
+            assert_eq!(source_data, data);
+            assert!(
+                retained.unwrap().starts_with(b"foreign document"),
+                "{error}"
+            );
+            if failure == "cancel" {
+                assert_eq!(error.code(), ClipboardErrorCode::Cancelled);
+            }
+            assert!(error.to_string().contains("no cleanup attempted"));
+        }
+    }
+}
+
+#[test]
+fn failed_overwrite_preserves_foreign_edits_and_reports_protected_original() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    for moving in [false, true] {
+        let root = uniq_path("overwrite-foreign-edit");
+        let source = root.join("source/file.bin");
+        let target = root.join("target/file.bin");
+        let data = vec![0x46; 64 * 1024];
+        write_file(&source, &data);
+        write_file(&target, b"original document");
+        let backup = std::rc::Rc::new(std::cell::RefCell::new(None::<PathBuf>));
+        let observed = backup.clone();
+        let scope = Scope::new(move |_, dst, phase, bytes| {
+            if phase == Phase::RecoveryMarker {
+                *observed.borrow_mut() = Some(dst.to_path_buf());
+            }
+            if moving && phase == Phase::Rename {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "force copy fallback",
+                ));
+            }
+            if phase == Phase::Write && bytes == 8192 {
+                fs::OpenOptions::new()
+                    .write(true)
+                    .open(dst)?
+                    .write_all(b"foreign document")?;
+                return Err(std::io::Error::other("injected overwrite failure"));
+            }
+            Ok(())
+        });
+        set_clipboard_impl(
+            vec![source.to_string_lossy().into()],
+            if moving { "cut" } else { "copy" }.into(),
+        )
+        .unwrap();
+        let undo = UndoState::default();
+        let result = paste_clipboard_core(
+            None,
+            target.parent().unwrap().to_string_lossy().into(),
+            Some("overwrite".into()),
+            undo.clone_inner(),
+            CancelState::default(),
+            None,
+        );
+        drop(scope);
+        let error = result.unwrap_err();
+        let backup = backup.borrow().clone().expect("original must be protected");
+        assert_eq!(error.code(), ClipboardErrorCode::RollbackFailed, "{error}");
+        assert!(error.to_string().contains(&backup.display().to_string()));
+        assert!(error.to_string().contains(&target.display().to_string()));
+        assert_eq!(fs::read(&backup).unwrap(), b"original document");
+        assert!(fs::read(&target).unwrap().starts_with(b"foreign document"));
+        assert_eq!(fs::read(&source).unwrap(), data);
+        assert!(current_clipboard().is_some());
+        assert!(
+            undo.undo().is_err(),
+            "failed paste is not an undoable success"
+        );
+        clear_clipboard();
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn local_copy_and_move_faults_preserve_sources_and_retain_uncertain_targets() {
     use crate::fs_utils::copy_test_hooks::{Phase, Scope};
     use std::io::{Error, ErrorKind};
 
@@ -112,7 +243,8 @@ fn local_copy_and_move_faults_preserve_sources_and_clean_partial_targets() {
             );
             assert_eq!(source_data, data);
             assert_eq!(unrelated_data, b"unrelated-data");
-            assert!(!target_exists, "owned partial target must be cleaned");
+            assert!(target_exists, "uncertain output must not be deleted");
+            assert!(error.to_string().contains("no cleanup attempted"));
         }
     }
 }
@@ -430,7 +562,7 @@ fn local_move_cancelled_after_sync_retains_both_complete_copies() {
 }
 
 #[test]
-fn local_move_cancelled_mid_stream_preserves_source_and_removes_owned_partial() {
+fn local_move_cancelled_mid_stream_preserves_source_and_retains_uncertain_partial() {
     use crate::fs_utils::copy_test_hooks::{Phase, Scope};
     let root = uniq_path("move-cancel-mid-stream");
     let source = root.join("source.bin");
@@ -462,7 +594,7 @@ fn local_move_cancelled_mid_stream_preserves_source_and_removes_owned_partial() 
     );
     assert_eq!(result.unwrap_err().code(), ClipboardErrorCode::Cancelled);
     assert_eq!(source_data, data);
-    assert!(!target_exists);
+    assert!(target_exists);
 }
 
 #[test]
@@ -632,7 +764,7 @@ fn failed_nested_copy_preserves_untracked_files_and_reports_retained_paths() {
     fs::remove_dir_all(root).unwrap();
     let error = result.unwrap_err();
     assert_eq!(foreign.unwrap(), b"other-process-data");
-    assert!(!owned_exists);
+    assert!(owned_exists, "failed active output is not safe to delete");
     assert_eq!(source_data, vec![0x41; 32 * 1024]);
     assert!(error.to_string().contains("retained"));
 }
@@ -1543,7 +1675,7 @@ fn paste_clipboard_preview_matches_rename_execution_for_file_and_directory_confl
 }
 
 #[test]
-fn copy_file_best_effort_cancelled_before_transfer_removes_destination() {
+fn copy_file_best_effort_cancelled_before_transfer_creates_no_destination() {
     let base = uniq_path("copy-cancelled-file");
     fs::create_dir_all(&base).unwrap();
     let src = base.join("src.bin");
@@ -1556,7 +1688,10 @@ fn copy_file_best_effort_cancelled_before_transfer_removes_destination() {
 
     assert_eq!(err.code(), ClipboardErrorCode::Cancelled);
     assert!(src.exists(), "source should remain on cancel");
-    assert!(!dest.exists(), "destination should be cleaned up on cancel");
+    assert!(
+        !dest.exists(),
+        "pre-cancelled copy must not create a destination"
+    );
 
     let _ = fs::remove_dir_all(&base);
 }
@@ -2654,14 +2789,14 @@ fn merge_move_rolls_back_without_deleting_a_new_source_file() {
 
 #[test]
 #[cfg(unix)]
-fn failed_overwrite_restores_original_after_write_error() {
+fn failed_overwrite_retains_original_backup_after_write_error() {
     // File-size limits and signal dispositions affect the entire process. Keep
     // fault injection in its own test subprocess so parallel tests stay isolated.
     if std::env::var_os("BROWSEY_TEST_WRITE_ERROR_CHILD").is_none() {
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                "clipboard::tests::failed_overwrite_restores_original_after_write_error",
+                "clipboard::tests::failed_overwrite_retains_original_backup_after_write_error",
                 "--nocapture",
             ])
             .env("BROWSEY_TEST_WRITE_ERROR_CHILD", "1")
@@ -2706,8 +2841,22 @@ fn failed_overwrite_restores_original_after_write_error() {
         libc::signal(libc::SIGXFSZ, old_signal);
     }
     let error = result.expect_err("write limit must fail the copy");
-    assert_ne!(error.code(), ClipboardErrorCode::RollbackFailed, "{error}");
-    assert_eq!(fs::read(&dst).unwrap(), b"original content");
+    assert_eq!(error.code(), ClipboardErrorCode::RollbackFailed, "{error}");
+    assert_eq!(fs::read(&dst).unwrap(), b"repl");
+    let backups: Vec<_> = fs::read_dir(ensure_undo_dir())
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_dir())
+        .flat_map(|entry| fs::read_dir(entry.path()).unwrap().filter_map(Result::ok))
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.path().join("file.txt"))
+        .filter(|path| path.is_file())
+        .collect();
+    assert_eq!(backups.len(), 1);
+    assert_eq!(fs::read(&backups[0]).unwrap(), b"original content");
+    assert!(error
+        .to_string()
+        .contains(&backups[0].display().to_string()));
     assert_eq!(fs::read(&src).unwrap(), b"replacement content");
     clear_clipboard();
     fs::remove_dir_all(base).unwrap();

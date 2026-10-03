@@ -102,6 +102,16 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
 - manual local copies validate source versions/copy lengths after streaming and
   pre-sync output versions after writeback. Uncertain finalized output is kept
   for inspection instead of treated as a successful undoable copy
+- failed/aborted local file streams retain their current uncertain output, even
+  when its inode still matches: another writer's changes can be masked by our
+  writes. Cancellation detected before opening a target creates no output.
+  Inspect retained files before retrying; they may be incomplete or edited
+- clipboard failure rollback protects original overwrite backups with recovery
+  markers before attempting restoration. Occupied targets are not overwritten;
+  blocked rollback reports backup paths and keeps markers through startup cleanup.
+  Successful rollback clears its markers. If marker creation fails, rollback does
+  not start: manually recover the reported originals before closing Browsey or
+  allowing startup cleanup. This does not protect a crash before rollback begins
 - copy/delete move fallback revalidates destination receipts before source
   removal and checks recorded source entries individually; new source children
   survive because directories are only removed when empty. Errors can leave a

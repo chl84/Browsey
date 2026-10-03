@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Retain uncertain local file-copy outputs after read/write/writeback failure or cancellation instead of unlinking potentially edited files. Check cancellation before creating the target, report partial output for inspection, and protect original overwrite backups before failure rollback. Keep blocked backups across startup cleanup, clear markers only after successful rollback, and refuse rollback if protection cannot be written. Cover in-place edits, copy/move overwrite failures, actual file-size limits and separate-process cleanup; completed-output rollback and active-write success limitations remain distinct.
+
 - Revalidate completed fallback-copy receipts before deleting move sources, and reuse recorded per-entry removal instead of recursive source-tree deletion. Preserve late source additions/edits and changed destination contents; honor cancellation during source removal and report partial outcomes without automatic retry. Refuse destructive fallback completion for writers without ownership receipts, including GIO-owned copies, retaining sources and copied output for inspection.
 
 - Validate opened source versions and copied lengths after local file streaming, and check pre-sync output versions after writeback in both copy engines. Reject changed inputs and in-place target edits without adopting them into receipts or deleting sources; preserve uncertain finalized outputs and edited targets during error cleanup. Add deterministic rewrite/truncate/append and finalization-edit regressions while keeping final-check and active-writer limitations explicit.

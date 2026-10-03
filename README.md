@@ -25,6 +25,7 @@ Browsey `1.0.3` is Linux-first. This version includes safer drag-and-drop and ar
 - Image thumbnails support common raster formats plus HDR (`.hdr`) and OpenEXR (`.exr`).
 - Data maintenance actions (clear thumbnail cache, cloud file cache, stars, bookmarks, recents) with confirmation and feedback.
 - Settings > Data shows read-only undo backup measurements, recovery-marker counts and manual recovery guidance. Incomplete scans are explicit; this does not add a storage quota, automatic cleanup of protected backups or persistent undo.
+- Failed or cancelled local file copies may leave partial/uncertain output for inspection instead of deleting another program's edits. If this blocks restoration after an overwrite, Browsey reports the original backup path and protects it with a recovery marker; protection errors require manual recovery before closing the app or running startup cleanup. There is no automatic retry or crash-before-rollback guarantee.
 - Cross-platform drive/mount handling, removable media eject, and optional video thumbnails via ffmpeg.
 - Linux USB formatting (exFAT, FAT32, ext4, btrfs), drive properties, and on-demand MTP phone mounting without opening another file manager.
 - Persisted user defaults for view/sort/interaction behavior.

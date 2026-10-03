@@ -474,6 +474,9 @@ fn copy_file_tracked(
     total_hint: Option<u64>,
     outputs: Option<&mut OwnedCopyPaths>,
 ) -> ClipboardResult<u64> {
+    if transfer_cancelled(cancel, app) {
+        return Err(ClipboardError::cancelled());
+    }
     #[cfg(not(target_os = "windows"))]
     {
         if is_gvfs_path(src) || is_gvfs_path(dest) {
@@ -534,9 +537,6 @@ fn copy_file_tracked(
     let mut writer = writer;
     #[cfg(test)]
     let mut writer = crate::fs_utils::copy_test_hooks::TestFile::new(writer, src, dest);
-    let mut finalization_state = None::<crate::fs_utils::FileState>;
-    let mut finalized_bytes = 0;
-    let mut preserve_output = false;
     let result: ClipboardResult<u64> = (|| {
         let mut buf = vec![0u8; 512 * 1024];
         let mut done: u64 = 0;
@@ -590,15 +590,12 @@ fn copy_file_tracked(
             ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Set file permissions", e)
         })?;
         let completed_state = crate::fs_utils::FileState::from_file(&writer).map_err(|error| {
-            preserve_output = true;
             ClipboardError::from_io_error(
                 ClipboardErrorCode::IoError,
                 "Snapshot written copy target",
                 error,
             )
         })?;
-        finalized_bytes = done;
-        finalization_state = Some(completed_state.clone());
         let sync_result = (|| {
             #[cfg(test)]
             crate::fs_utils::copy_test_hooks::hit(
@@ -635,7 +632,6 @@ fn copy_file_tracked(
         completed_state
             .verify_copied_file(&writer, dest, done)
             .map_err(|error| {
-                preserve_output = true;
                 ClipboardError::from_io_error(
                     ClipboardErrorCode::IoError,
                     "Copied target changed during finalization; source retained",
@@ -645,7 +641,6 @@ fn copy_file_tracked(
         source_state
             .verify_copied_file(&reader, src, done)
             .map_err(|error| {
-                preserve_output = true;
                 ClipboardError::from_io_error(
                     ClipboardErrorCode::IoError,
                     "Source changed during copy; output retained for inspection",
@@ -668,20 +663,9 @@ fn copy_file_tracked(
         Ok(done)
     })();
     if let Err(error) = result {
-        if preserve_output
-            || finalization_state.as_ref().is_some_and(|state| {
-                state
-                    .verify_copied_file(&writer, dest, finalized_bytes)
-                    .is_err()
-            })
-        {
-            return Err(error.with_context(format!(
-                "Uncertain copied output retained at {}; inspect affected paths before retrying; no cleanup attempted",
-                dest.display()
-            )));
-        }
-        // Exclusive creation proves initial ownership, not current ownership.
-        // Never remove an unrelated replacement during error cleanup.
+        // Our own writes can mask another writer's metadata changes. Even a
+        // matching inode or post-write snapshot cannot justify unlinking this
+        // failed output. Do not race an active writer during failure cleanup.
         if !target_identity
             .as_ref()
             .is_some_and(|identity| identity.matches(dest))
@@ -691,16 +675,10 @@ fn copy_file_tracked(
                 dest.display()
             )));
         }
-        drop(writer);
-        if let Err(cleanup_error) = fs::remove_file(dest) {
-            if cleanup_error.kind() != ErrorKind::NotFound {
-                return Err(error.with_context(format!(
-                    "Could not remove partial copy {}: {cleanup_error}",
-                    dest.display()
-                )));
-            }
-        }
-        return Err(error);
+        return Err(error.with_context(format!(
+            "Uncertain copied output retained at {}; it may be incomplete or edited by another program; inspect affected paths before retrying; no cleanup attempted",
+            dest.display()
+        )));
     }
     result
 }

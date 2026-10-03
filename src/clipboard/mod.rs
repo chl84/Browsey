@@ -3,7 +3,7 @@ use crate::{
     fs_utils::sanitize_path_follow,
     runtime_lifecycle,
     tasks::CancelState,
-    undo::{run_actions, Action, Direction, UndoState},
+    undo::{run_rollback_actions, Action, UndoState},
 };
 mod clipboard_size;
 mod drop_mode;
@@ -92,7 +92,7 @@ fn rollback_performed_actions(performed: &[Action], error: ClipboardError) -> Cl
     }
 
     let mut rollback = performed.to_vec();
-    match run_actions(&mut rollback, Direction::Backward) {
+    match run_rollback_actions(&mut rollback) {
         Ok(_) => error,
         Err(rollback_error) => ClipboardError::new(
             ClipboardErrorCode::RollbackFailed,

@@ -72,6 +72,10 @@ The [copy version validation follow-up](../audits/daily-driver/copy-version-vali
 records changed inputs during reading, post-write output versions and the
 remaining final-check/concurrent-writer boundaries.
 
+The [active-file failure follow-up](../audits/daily-driver/active-copy-failure-retention.md)
+records preserved in-place edits, partial-output retention and protected original
+overwrite backups when failure rollback cannot restore an occupied destination.
+
 ## Priority 0 Define Scope and Verify File Safety
 
 Complete this phase first. Reliability takes precedence over feature breadth.
@@ -155,6 +159,10 @@ broader operation/platform acceptance rows above are complete.
   remove only recorded unchanged source entries, preserving late source additions.
 - [x] Honor cancellation between individual fallback source removals; keep
   destination data and report partially removed source trees without automatic retry.
+- [x] Retain uncertain active-file outputs on local copy read/write/writeback
+  failure or cancellation; verify foreign in-place edits survive without cleanup.
+- [x] Protect original overwrite backups before clipboard failure rollback;
+  report blocked restoration and verify marked-session retention across cleanup.
 - [ ] Validate manual recovery UX, retention/space budgets and installed-build
   behavior for marked sessions. Preserved backups do not imply persistent undo,
   automatic repair/resume or atomic batches.

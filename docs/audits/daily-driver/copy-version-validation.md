@@ -64,8 +64,9 @@ are outside this manual-copy increment.
   or filesystem transaction. A whole directory copy is not an atomic snapshot.
 - A foreign target edit before the pre-sync version is captured can still be
   masked by subsequent writes and adopted into that snapshot. Mid-write failure
-  cleanup before a finalization snapshot still has its prior identity-only
-  boundary. The new guards do not claim to solve these windows.
+  cleanup at this checkpoint still had its identity-only boundary. The later
+  [active-file failure increment](active-copy-failure-retention.md) removes that
+  unsafe unlink; successful active-write adoption remains open.
 - At the first checkpoint, fallback source deletion still needed destination
   receipt rechecking and per-entry checks. The follow-up below adds these checks;
   final check-to-unlink races still require a separate native design review.

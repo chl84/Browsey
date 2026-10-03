@@ -81,3 +81,13 @@ an edited remaining file must stop removal, and clipboard cancellation after an
 earlier removal must preserve all destination data and report partial source state.
 An opaque-writer fixture exercises the real completion gate with no output
 receipt; it does not simulate a live GIO/MTP device.
+
+Active-file failure fixtures edit the same target inode at a read/write boundary
+and then inject a failure or cancellation. Local copies must retain these edits,
+not unlink the output based on identity alone. Failed copy and forced move
+overwrites must preserve the source, edited output and marked original backup,
+report both destination and backup paths, and never record an undoable success.
+Separate-process cleanup validates abandoned rollback-marker retention; successful
+rollback clears its markers. Protection failure must stop rollback before any
+action starts. A real Unix file-size limit also covers partial marker writes.
+See the [active-file failure report](../../audits/daily-driver/active-copy-failure-retention.md).

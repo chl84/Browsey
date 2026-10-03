@@ -52,7 +52,7 @@ impl RecoveryMarker {
         let mut file = options
             .open(&path)
             .map_err(|error| UndoError::from_io_error("Create copy recovery marker", error))?;
-        writeln!(file, "Browsey interrupted/failed copy undo or redo. Recover this backup manually before deleting the session.\nDestination: {destination:?}\nBackup: {backup:?}")
+        writeln!(file, "Browsey interrupted/failed file operation. Recover this backup manually before deleting the session.\nDestination: {destination:?}\nBackup: {backup:?}")
             .and_then(|()| file.sync_all())
             .map_err(|error| UndoError::from_io_error("Finalize copy recovery marker", error))?;
         let identity = crate::fs_utils::FileIdentity::from_file(&file)
@@ -352,6 +352,113 @@ mod tests {
         cleanup_sessions(&base, Some(Duration::ZERO));
         assert!(!directory.exists());
         assert!(base.join("legacy").exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn clipboard_rollback_pins_blocked_overwrite_backups_across_cleanup() {
+        let base = unique_base();
+        let session = BackupSession::create(&base).unwrap();
+        let backup = session.directory.join("bucket/original.txt");
+        let destination = base.join("destination.txt");
+        fs::create_dir(backup.parent().unwrap()).unwrap();
+        fs::write(&backup, b"original document").unwrap();
+        fs::write(&destination, b"uncertain output").unwrap();
+        let mut actions = [super::super::Action::Batch(vec![
+            super::super::Action::Delete {
+                path: destination.clone(),
+                backup: backup.clone(),
+            },
+        ])];
+        let error = super::super::engine::run_rollback_actions(&mut actions).unwrap_err();
+        assert!(error.to_string().contains(&backup.display().to_string()));
+        assert!(error
+            .to_string()
+            .contains("Overwrite recovery backups retained"));
+        drop(session);
+        cleanup_in_child(&base);
+        assert_eq!(fs::read(&backup).unwrap(), b"original document");
+        assert_eq!(fs::read(&destination).unwrap(), b"uncertain output");
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn completed_clipboard_rollback_clears_its_protection_marker() {
+        let base = unique_base();
+        let session = BackupSession::create(&base).unwrap();
+        let directory = session.directory.clone();
+        let backup = directory.join("bucket/original.txt");
+        let destination = base.join("destination.txt");
+        fs::create_dir(backup.parent().unwrap()).unwrap();
+        fs::write(&backup, b"original document").unwrap();
+        let mut actions = [super::super::Action::Delete {
+            path: destination.clone(),
+            backup,
+        }];
+        super::super::engine::run_rollback_actions(&mut actions).unwrap();
+        assert!(!session_requires_recovery(&directory));
+        drop(session);
+        cleanup_in_child(&base);
+        assert!(!directory.exists());
+        assert_eq!(fs::read(&destination).unwrap(), b"original document");
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn clipboard_rollback_does_not_start_if_backup_protection_fails() {
+        use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+        let base = unique_base();
+        let session = BackupSession::create(&base).unwrap();
+        let backup = session.directory.join("bucket/original.txt");
+        let destination = base.join("destination.txt");
+        let second_backup = session.directory.join("bucket-2/original.txt");
+        let second_destination = base.join("second-destination.txt");
+        fs::create_dir(backup.parent().unwrap()).unwrap();
+        fs::write(&backup, b"original document").unwrap();
+        fs::create_dir(second_backup.parent().unwrap()).unwrap();
+        fs::write(&second_backup, b"second original document").unwrap();
+        let mut actions = [
+            super::super::Action::Delete {
+                path: destination.clone(),
+                backup: backup.clone(),
+            },
+            super::super::Action::Delete {
+                path: second_destination.clone(),
+                backup: second_backup.clone(),
+            },
+        ];
+        let mut markers = 0;
+        let scope = Scope::new(move |_, _, phase, _| {
+            if phase == Phase::RecoveryMarker {
+                markers += 1;
+            }
+            if phase == Phase::RecoveryMarker && markers == 2 {
+                return Err(std::io::Error::other("injected marker failure"));
+            }
+            Ok(())
+        });
+        let result = super::super::engine::run_rollback_actions(&mut actions);
+        drop(scope);
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("Rollback not attempted"));
+        assert!(error.to_string().contains(&backup.display().to_string()));
+        assert!(error
+            .to_string()
+            .contains(&second_backup.display().to_string()));
+        assert_eq!(fs::read(&backup).unwrap(), b"original document");
+        assert_eq!(
+            fs::read(&second_backup).unwrap(),
+            b"second original document"
+        );
+        assert!(!destination.exists());
+        assert!(!second_destination.exists());
+        drop(session);
+        cleanup_in_child(&base);
+        assert_eq!(fs::read(&backup).unwrap(), b"original document");
+        assert_eq!(
+            fs::read(&second_backup).unwrap(),
+            b"second original document"
+        );
         fs::remove_dir_all(base).unwrap();
     }
 
