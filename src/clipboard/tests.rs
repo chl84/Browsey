@@ -330,6 +330,139 @@ fn local_move_with_replaced_target_preserves_source_and_competing_file() {
 }
 
 #[test]
+fn failed_nested_copy_preserves_untracked_files_and_reports_retained_paths() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("nested-untracked");
+    let source = root.join("source");
+    let target = root.join("target");
+    write_file(&source.join("deep/file.bin"), &vec![0x41; 32 * 1024]);
+    let scope = Scope::new(|_, dst, phase, bytes| {
+        if phase == Phase::Write && bytes > 0 {
+            fs::write(
+                dst.parent().unwrap().join("untracked.txt"),
+                b"other-process-data",
+            )?;
+            return Err(std::io::Error::other("injected nested write error"));
+        }
+        Ok(())
+    });
+    let result = copy_entry(&source, &target, None, None, None);
+    drop(scope);
+    let foreign = fs::read(target.join("deep/untracked.txt"));
+    let owned_exists = target.join("deep/file.bin").exists();
+    let source_data = fs::read(source.join("deep/file.bin")).unwrap();
+    fs::remove_dir_all(root).unwrap();
+    let error = result.unwrap_err();
+    assert_eq!(foreign.unwrap(), b"other-process-data");
+    assert!(!owned_exists);
+    assert_eq!(source_data, vec![0x41; 32 * 1024]);
+    assert!(error.to_string().contains("retained"));
+}
+
+#[cfg(unix)]
+#[test]
+fn failed_nested_copy_preserves_completed_files_edited_by_another_process() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("nested-edited-output");
+    let source = root.join("source");
+    let target = root.join("target");
+    write_file(&source.join("deep/first.bin"), &vec![0x42; 32 * 1024]);
+    write_file(&source.join("deep/second.bin"), &vec![0x43; 32 * 1024]);
+    let edited = std::rc::Rc::new(std::cell::RefCell::new(None::<PathBuf>));
+    let observed = edited.clone();
+    let scope = Scope::new(move |_, dst, phase, _| {
+        if phase == Phase::Synced && observed.borrow().is_none() {
+            *observed.borrow_mut() = Some(dst.to_path_buf());
+        } else if phase == Phase::Write {
+            if let Some(first) = observed.borrow().as_ref() {
+                fs::write(first, b"edited-after-copy")?;
+                return Err(std::io::Error::other("injected next-file error"));
+            }
+        }
+        Ok(())
+    });
+    let result = copy_entry(&source, &target, None, None, None);
+    drop(scope);
+    let edited_path = edited.borrow().clone().unwrap();
+    let edited_data = fs::read(&edited_path);
+    fs::remove_dir_all(root).unwrap();
+    assert!(result.is_err());
+    assert_eq!(edited_data.unwrap(), b"edited-after-copy");
+}
+
+#[cfg(unix)]
+#[test]
+fn failed_nested_copy_preserves_a_replaced_destination_directory() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("nested-replaced-directory");
+    let source = root.join("source");
+    let target = root.join("target");
+    let retained = root.join("renamed-output");
+    write_file(&source.join("deep/file.bin"), &vec![0x44; 32 * 1024]);
+    let saved = retained.clone();
+    let destination = target.clone();
+    let scope = Scope::new(move |_, _, phase, _| {
+        if phase == Phase::Sync {
+            fs::rename(&destination, &saved)?;
+            fs::create_dir_all(destination.join("deep"))?;
+            fs::write(destination.join("deep/foreign.txt"), b"competing-directory")?;
+            return Err(std::io::Error::other("injected sync error"));
+        }
+        Ok(())
+    });
+    let result = copy_entry(&source, &target, None, None, None);
+    drop(scope);
+    let foreign = fs::read(target.join("deep/foreign.txt"));
+    let retained_data = fs::read(retained.join("deep/file.bin")).unwrap();
+    fs::remove_dir_all(root).unwrap();
+    assert!(result.is_err());
+    assert_eq!(foreign.unwrap(), b"competing-directory");
+    assert_eq!(retained_data, vec![0x44; 32 * 1024]);
+}
+
+#[test]
+fn local_fallback_move_keeps_sources_edited_after_copying() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for directory in [false, true] {
+        let root = uniq_path("move-edited-source");
+        let source = root.join("source");
+        let target = root.join("target");
+        let source_file = if directory {
+            source.join("deep/file.bin")
+        } else {
+            source.clone()
+        };
+        let target_file = if directory {
+            target.join("deep/file.bin")
+        } else {
+            target.clone()
+        };
+        let data = vec![0x45; 32 * 1024];
+        write_file(&source_file, &data);
+        let scope = Scope::new(|src, _, phase, _| {
+            if phase == Phase::Rename {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "force fallback",
+                ));
+            }
+            if phase == Phase::Synced {
+                fs::write(src, b"edited-source-content")?;
+            }
+            Ok(())
+        });
+        let result = move_entry(&source, &target, None, None, None);
+        drop(scope);
+        let edited_source = fs::read(&source_file);
+        let destination = fs::read(&target_file).unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(result.is_err(), "changed source must not be deleted");
+        assert_eq!(edited_source.unwrap(), b"edited-source-content");
+        assert_eq!(destination, data);
+    }
+}
+
+#[test]
 fn explicit_paste_ignores_clipboard_changes_between_preview_and_execution() {
     let _lock = lock_clipboard_test();
     ensure_undo_dir();

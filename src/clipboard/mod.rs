@@ -9,6 +9,7 @@ mod clipboard_size;
 mod drop_mode;
 mod error;
 mod ops;
+mod owned_copy_paths;
 #[cfg(test)]
 mod tests;
 

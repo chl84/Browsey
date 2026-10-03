@@ -205,6 +205,48 @@ fn undo_move_with_replaced_target_preserves_source_and_competing_file() {
 }
 
 #[test]
+fn undo_fallback_move_keeps_sources_edited_after_copying() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for directory in [false, true] {
+        let root = uniq_path("undo-move-edited-source");
+        let source = root.join("source");
+        let target = root.join("target");
+        let source_file = if directory {
+            source.join("deep/file.bin")
+        } else {
+            source.clone()
+        };
+        let target_file = if directory {
+            target.join("deep/file.bin")
+        } else {
+            target.clone()
+        };
+        let data = vec![0x46; 32 * 1024];
+        write_file(&source_file, &data);
+        let scope = Scope::new(|src, _, phase, _| {
+            if phase == Phase::Rename {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "force fallback",
+                ));
+            }
+            if phase == Phase::Synced {
+                fs::write(src, b"edited-source-content")?;
+            }
+            Ok(())
+        });
+        let result = move_with_fallback(&source, &target);
+        drop(scope);
+        let source_data = fs::read(&source_file).unwrap();
+        let target_data = fs::read(&target_file).unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(result.is_err());
+        assert_eq!(source_data, b"edited-source-content");
+        assert_eq!(target_data, data);
+    }
+}
+
+#[test]
 fn rename_and_undo_redo() {
     let dir = uniq_path("rename");
     let _ = fs::create_dir_all(&dir);

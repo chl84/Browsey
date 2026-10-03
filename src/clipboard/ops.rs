@@ -11,12 +11,13 @@ use std::process::Command;
 use std::{
     fs,
     io::{ErrorKind, Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
     sync::atomic::AtomicBool,
 };
 
 use super::{
     error::{ClipboardError, ClipboardErrorCode, ClipboardResult},
+    owned_copy_paths::OwnedCopyPaths,
     ClipboardMode, CopyProgressPayload,
 };
 
@@ -88,29 +89,30 @@ fn copy_dir(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<()> {
-    struct CreatedDirCleanup {
-        path: PathBuf,
-        active: bool,
+    let mut outputs = OwnedCopyPaths::default();
+    let result = copy_dir_tracked(src, dest, app, progress_event, cancel, &mut outputs);
+    if let Err(error) = result {
+        let retained = outputs.cleanup();
+        return Err(if retained.is_empty() {
+            error
+        } else {
+            error.with_context(format!(
+                "Copy cleanup retained paths: {}",
+                retained.join("; ")
+            ))
+        });
     }
+    Ok(())
+}
 
-    impl CreatedDirCleanup {
-        fn new(path: PathBuf) -> Self {
-            Self { path, active: true }
-        }
-
-        fn disarm(&mut self) {
-            self.active = false;
-        }
-    }
-
-    impl Drop for CreatedDirCleanup {
-        fn drop(&mut self) {
-            if self.active {
-                let _ = fs::remove_dir_all(&self.path);
-            }
-        }
-    }
-
+fn copy_dir_tracked(
+    src: &Path,
+    dest: &Path,
+    app: Option<&tauri::AppHandle>,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+    outputs: &mut OwnedCopyPaths,
+) -> ClipboardResult<()> {
     let source_permissions = fs::metadata(src)
         .map_err(|e| {
             ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Read source permissions", e)
@@ -130,7 +132,7 @@ fn copy_dir(
             e,
         )
     })?;
-    let mut cleanup = CreatedDirCleanup::new(dest.to_path_buf());
+    outputs.record_dir(dest);
     for entry in fs::read_dir(src).map_err(|e| {
         ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
@@ -165,15 +167,52 @@ fn copy_dir(
         let target = dest.join(entry.file_name());
         if meta.is_dir() {
             ensure_not_child(&path, &target)?;
-            copy_dir(&path, &target, app, progress_event, cancel)?;
+            copy_dir_tracked(&path, &target, app, progress_event, cancel, outputs)?;
         } else {
-            copy_file_best_effort(&path, &target, app, progress_event, cancel, None)?;
+            copy_file_tracked(
+                &path,
+                &target,
+                app,
+                progress_event,
+                cancel,
+                None,
+                Some(outputs),
+            )?;
         }
     }
-    fs::set_permissions(dest, source_permissions).map_err(|e| {
+    if !outputs.directory_matches(dest) {
+        return Err(ClipboardError::new(
+            ClipboardErrorCode::IoError,
+            "Copy destination directory changed; retained outputs",
+        ));
+    }
+    let mut directory_options = fs::File::options();
+    directory_options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        directory_options.custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::{
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+        };
+        directory_options.custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let directory = directory_options.open(dest).map_err(|error| {
+        ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Open copied directory", error)
+    })?;
+    if !outputs.directory_handle_matches(dest, &directory) {
+        return Err(ClipboardError::new(
+            ClipboardErrorCode::IoError,
+            "Copy destination directory changed; retained outputs",
+        ));
+    }
+    directory.set_permissions(source_permissions).map_err(|e| {
         ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Set directory permissions", e)
     })?;
-    cleanup.disarm();
     Ok(())
 }
 
@@ -411,6 +450,19 @@ pub(super) fn copy_file_best_effort(
     cancel: Option<&AtomicBool>,
     total_hint: Option<u64>,
 ) -> ClipboardResult<u64> {
+    copy_file_tracked(src, dest, app, progress_event, cancel, total_hint, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn copy_file_tracked(
+    src: &Path,
+    dest: &Path,
+    app: Option<&tauri::AppHandle>,
+    progress_event: Option<&str>,
+    cancel: Option<&AtomicBool>,
+    total_hint: Option<u64>,
+    outputs: Option<&mut OwnedCopyPaths>,
+) -> ClipboardResult<u64> {
     #[cfg(not(target_os = "windows"))]
     {
         if is_gvfs_path(src) || is_gvfs_path(dest) {
@@ -418,6 +470,9 @@ pub(super) fn copy_file_best_effort(
                 if let Some(bytes) =
                     try_gio_copy_progress(src, dest, app, progress_event, cancel, total_hint)?
                 {
+                    // GIO owns the open output handle, so do not pretend a later
+                    // path lookup proves our ownership. Failure cleanup retains
+                    // these untracked outputs instead of recursively deleting them.
                     return Ok(bytes);
                 }
             }
@@ -545,6 +600,15 @@ pub(super) fn copy_file_best_effort(
                     dest.display()
                 ),
             ));
+        }
+        if let Some(outputs) = outputs {
+            outputs.record_file(dest, &writer).map_err(|error| {
+                ClipboardError::from_io_error(
+                    ClipboardErrorCode::IoError,
+                    "Record copied output ownership",
+                    error,
+                )
+            })?;
         }
         emit_copy_progress(
             app,
@@ -732,6 +796,24 @@ pub(super) fn move_entry(
                     | crate::undo::UndoErrorCode::AtomicRenameUnsupported
             ) =>
         {
+            let check = || {
+                if transfer_cancelled(cancel, app) {
+                    Err(std::io::Error::from(ErrorKind::Interrupted))
+                } else {
+                    Ok(())
+                }
+            };
+            let source_tree = crate::fs_utils::TreeSnapshot::capture_with_check(src, check)
+                .map_err(|error| {
+                    if error.kind() == ErrorKind::Interrupted {
+                        return ClipboardError::cancelled();
+                    }
+                    ClipboardError::from_io_error(
+                        ClipboardErrorCode::IoError,
+                        "Snapshot source before fallback copy",
+                        error,
+                    )
+                })?;
             copy_entry(src, dest, app, progress_event, cancel)?;
             if transfer_cancelled(cancel, app) {
                 return Err(ClipboardError::cancelled().with_context(format!(
@@ -741,6 +823,22 @@ pub(super) fn move_entry(
             }
             crate::undo::assert_path_snapshot(src, &source_snapshot)
                 .map_err(ClipboardError::from)?;
+            source_tree.verify_with_check(src, check).map_err(|error| {
+                if error.kind() == ErrorKind::Interrupted {
+                    return ClipboardError::cancelled().with_context(format!(
+                        "Copy retained at {}; source not removed",
+                        dest.display()
+                    ));
+                }
+                ClipboardError::from_io_error(
+                    ClipboardErrorCode::IoError,
+                    &format!(
+                        "Source changed or could not be verified; completed copy retained at {}",
+                        dest.display()
+                    ),
+                    error,
+                )
+            })?;
             delete_entry_path(src).map_err(|error| {
                 error.with_context(format!(
                     "Copied {} to {}; destination retained because source deletion failed",

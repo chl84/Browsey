@@ -52,6 +52,10 @@ The [local-transfer fault-injection follow-up](../audits/daily-driver/local-tran
 records copy/move failure states, additional target-identity corrections, and
 the boundaries of synthetic versus real-media evidence.
 
+The [nested-copy and UI recovery follow-up](../audits/daily-driver/nested-copy-recovery.md)
+records owned-path cleanup, source-version checks, and operation-versus-refresh
+outcomes. Native installed-build acceptance remains separate.
+
 ## Priority 0 Define Scope and Verify File Safety
 
 Complete this phase first. Reliability takes precedence over feature breadth.
@@ -102,8 +106,15 @@ broader operation/platform acceptance rows above are complete.
   successful finalization, using disposable fixtures only.
 - [x] Reject completion to an unlinked/replaced target and preserve competing
   destination files during file-copy error cleanup. Verify both local move engines.
-- [ ] Extend ownership-safe cleanup to nested directories and validate concurrent
-  content edits; single-file identity checks do not establish tree-wide safety.
+- [x] Track nested local-copy outputs individually; preserve untracked/replaced
+  paths and completed files edited by others during failure cleanup.
+- [x] Check regular-file and nested source versions before fallback deletion in
+  both local move engines; reject changes and keep completed copies.
+- [x] Verify local paste reconciliation, clipboard preservation, and separate
+  operation/refresh errors with mocked UI tests; never retry automatically.
+- [ ] Guard automatic batch rollback and later undo against concurrently changed
+  outputs. Validate edits during active writes and races after final checks;
+  metadata snapshots are not content hashes or filesystem transactions.
 - [ ] Validate installed UI partial-result refresh/recovery and real-media faults.
 
 ## Priority 1 Validate Desktop and Device Integration

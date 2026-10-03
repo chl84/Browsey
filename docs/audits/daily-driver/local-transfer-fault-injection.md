@@ -91,11 +91,15 @@ unsafe; inspect both paths before any recovery action.
 - Nested-directory cleanup, concurrent content edits on the same inode, and
   directory durability still require separate work. Do not extend these file
   assertions to entire mutable trees.
+  Update: [nested-copy follow-up](nested-copy-recovery.md) covers failed-copy
+  cleanup and metadata-based source changes; transaction/durability limits remain.
 - Device disconnection and full-disk behavior remain injected OS-error semantics,
   not physical-media acceptance. Native GIO/MTP and other platform validation
   remain open in the parent plan.
 - UI partial-state feedback is the next separate validation task. These tests
   establish backend messages and filesystem state, not fresh installed UI behavior.
+  Update: the same follow-up adds mocked local UI reconciliation; installed
+  UI/device acceptance is still open.
 
 Commit/push is authorized for this batch. Publication, installation, and real
 device formatting are outside this run.

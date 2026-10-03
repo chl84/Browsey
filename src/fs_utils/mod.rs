@@ -9,8 +9,10 @@ use std::path::Prefix;
 pub(crate) mod copy_test_hooks;
 mod error;
 mod file_identity;
+mod file_state;
 
 pub(crate) use file_identity::FileIdentity;
+pub(crate) use file_state::{FileState, TreeSnapshot};
 
 pub use error::{FsUtilsError, FsUtilsErrorCode, FsUtilsResult};
 

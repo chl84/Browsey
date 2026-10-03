@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Replace recursive failed-copy cleanup with individual output ownership/version tracking, preserving untracked, replaced and edited destination files. Revalidate regular and nested source versions before fallback move deletion. Reconcile local paste failures without automatic retry, retain original errors, and distinguish completed transfers from listing-refresh failures; cover these outcomes with filesystem and mocked UI regressions.
+
 - Verify local copy/move and undo fallback with deterministic partial-write, disk-full, read/write disappearance, writeback and cancellation faults. Reuse stable archive-output identities for copies; retain sources when the written target is missing or replaced, and preserve competing files during error cleanup. Report retained undo partial outputs explicitly and track verified safety increments separately from platform acceptance.
 
 - Harden local moves and undo fallback: use atomic no-replace rename, honor cancellation before moving, retain the completed destination after partial source deletion fails, sync fallback copies before source removal, and surface failed cancellation rollback. Reuse a regular-file input guard across copying/undo/compression so FIFOs and replacement symlinks cannot hang or redirect reads. Add deterministic race/failure, filename, undo-history, and killed-session cleanup regressions.

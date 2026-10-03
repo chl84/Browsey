@@ -254,6 +254,53 @@ describe('immutable paste and drop operations', () => {
     vi.useRealTimers()
   })
 
+  it('refreshes after local paste failure, keeps the clipboard and never retries', async () => {
+    setClipboardPathsState('cut', ['/src/file.txt'])
+    const clipboard = get(clipboardState)
+    pasteClipboardCmdMock.mockRejectedValueOnce({ code: 'io_error', message: 'Copy retained at /dest/file.txt; source not removed' })
+    const deps = createDeps()
+    const ops = useExplorerFileOps(deps)
+    expect(await ops.handlePasteOrMove('/dest')).toBe(false)
+    expect(deps.reloadCurrent).toHaveBeenCalledOnce()
+    expect(pasteClipboardCmdMock).toHaveBeenCalledOnce()
+    expect(get(clipboardState)).toBe(clipboard)
+    expect(clearSystemClipboardMock).not.toHaveBeenCalled()
+    expect(deps.showToast).toHaveBeenCalledWith('Paste failed: Copy retained at /dest/file.txt; source not removed')
+  })
+
+  it('does not report a successful local move as failed when listing refresh fails', async () => {
+    setClipboardPathsState('cut', ['/src/file.txt'])
+    const deps = createDeps()
+    deps.reloadCurrent.mockRejectedValueOnce(new Error('refresh unavailable'))
+    const ops = useExplorerFileOps(deps)
+    expect(await ops.handlePasteOrMove('/dest')).toBe(true)
+    expect(pasteClipboardCmdMock).toHaveBeenCalledOnce()
+    expect(get(clipboardState).paths.size).toBe(0)
+    expect(deps.showToast).toHaveBeenCalledWith('Paste completed, but refresh failed. Press F5 to refresh.', 3500)
+  })
+
+  it('keeps the original local operation error when recovery refresh also fails', async () => {
+    pasteClipboardCmdMock.mockRejectedValueOnce({ code: 'rollback_failed', message: 'Rollback also failed; retained /dest' })
+    const deps = createDeps()
+    deps.reloadCurrent.mockRejectedValueOnce(new Error('refresh unavailable'))
+    const ops = useExplorerFileOps(deps)
+    expect(await ops.handlePasteOrMove('/dest', { paths: ['/src/file'], mode: 'copy' })).toBe(false)
+    expect(deps.reloadCurrent).toHaveBeenCalledOnce()
+    expect(deps.showToast).toHaveBeenCalledWith('Paste failed: Rollback also failed; retained /dest. Refresh also failed. Press F5 to refresh.')
+    expect(pasteClipboardCmdMock).toHaveBeenCalledOnce()
+  })
+
+  it('preserves local failure and refreshes even if progress listener cleanup fails', async () => {
+    pasteClipboardCmdMock.mockRejectedValueOnce(new Error('source changed; copies retained'))
+    const deps = createDeps()
+    vi.mocked(deps.activityApi.cleanup).mockRejectedValueOnce(new Error('listener unavailable'))
+    const ops = useExplorerFileOps(deps)
+    expect(await ops.handlePasteOrMove('/dest', { paths: ['/src/file'], mode: 'copy' })).toBe(false)
+    expect(deps.reloadCurrent).toHaveBeenCalledOnce()
+    expect(deps.showToast).toHaveBeenCalledWith('Paste failed: source changed; copies retained')
+    expect(pasteClipboardCmdMock).toHaveBeenCalledOnce()
+  })
+
   it('copies an explicit local drop, never the previously cut cloud file', async () => {
     setClipboardPathsState('cut', ['rclone://work/old.jpg'])
     const previous = get(clipboardState)

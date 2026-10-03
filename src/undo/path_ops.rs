@@ -217,8 +217,12 @@ pub(crate) fn move_by_copy_delete_noreplace(
 ) -> UndoResult<()> {
     // Controlled fallback when atomic no-replace rename is unavailable
     // (or across filesystems): copy + delete without destination overwrite.
+    let source_tree = crate::fs_utils::TreeSnapshot::capture(src)
+        .map_err(|error| UndoError::from_io_error("Snapshot source before fallback copy", error))?;
     copy_entry(src, dst).and_then(|_| {
         assert_path_snapshot(src, src_snapshot)?;
+        source_tree.verify(src).map_err(|error| UndoError::from_io_error(
+            format!("Source changed or could not be verified; completed copy retained at {}", dst.display()), error))?;
         delete_entry_path(src).map_err(|del_err| {
             // Recursive deletion can fail after some source children are gone.
             // The destination may now be the only complete copy: never remove it.

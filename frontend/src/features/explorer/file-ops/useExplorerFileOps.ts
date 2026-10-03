@@ -504,14 +504,30 @@ export const useExplorerFileOps = (deps: Deps) => {
         () => deps.activityApi.requestCancel(progressEvent),
       )
       await pasteClipboardCmd(target, policy, progressEvent, state)
-      await deps.reloadCurrent()
+      try {
+        await deps.reloadCurrent()
+      } catch {
+        deps.showToast('Paste completed, but refresh failed. Press F5 to refresh.', 3500)
+      }
       deps.activityApi.hideSoon()
       await clearCutClipboardAfterMoveSuccess(operation)
       return true
     } catch (err) {
       deps.activityApi.clearNow()
-      await deps.activityApi.cleanup()
-      deps.showToast(`Paste failed: ${getErrorMessage(err)}`)
+      try {
+        await deps.activityApi.cleanup()
+      } catch {
+        // Listener cleanup must not suppress the operation error or reconciliation.
+      }
+      let refreshWarning = ''
+      try {
+        // Rollback may fail or deliberately retain copies: reconcile the listing
+        // without retrying the operation or discarding the original error.
+        await deps.reloadCurrent()
+      } catch {
+        refreshWarning = '. Refresh also failed. Press F5 to refresh.'
+      }
+      deps.showToast(`Paste failed: ${getErrorMessage(err)}${refreshWarning}`)
       return false
     }
   }
