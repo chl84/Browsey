@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" role="img" aria-label="3D model file icon">
+  <g>
+    <!-- Same document and folded corner as the generic file icon. -->
+    <path d="M28 14H76L100 38V114H28V14Z" fill="#F3E8D2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+    <path d="M76 14v24h24" fill="#E8DBC2" stroke="#2B2419" stroke-width="2" stroke-linejoin="miter" />
+
+    <!-- Three shaded faces make the model symbol readable at small sizes. -->
+    <g stroke="#2B2419" stroke-width="2.5" stroke-linejoin="miter">
+      <path d="M64 54 90 68 64 82 38 68Z" fill="#D8EEF9" />
+      <path d="M38 68 64 82V106L38 92Z" fill="#C0D2E4" />
+      <path d="M64 82 90 68V92L64 106Z" fill="#8FAEC7" />
+    </g>
+  </g>
+</svg>

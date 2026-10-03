@@ -43,6 +43,7 @@ type E2eMockControl = {
   systemClipboard?: MockClipboardState
   failCommands?: string[]
   columnWidths?: number[]
+  listingEntries?: ExplorerEntry[]
   trashEntries?: ExplorerEntry[]
   emptyTrashHold?: boolean
   undoStorage?: { directory: string; exists: boolean; sessions: number; markedSessions: number; files: number; logicalBytes: number; incomplete: boolean }
@@ -196,7 +197,7 @@ const shouldFailCommand = (cmd: string) => e2eControl()?.failCommands?.includes(
 const listDirMock = (path?: string | null): Listing => {
   // Match the backend's Home expansion rather than treating ~ as a directory.
   const current = typeof path === 'string' && path.length > 0 && path !== '~' ? path : ROOT
-  const entries = FILE_TREE[current] ?? []
+  const entries = (current === ROOT ? e2eControl()?.listingEntries : undefined) ?? FILE_TREE[current] ?? []
   return {
     current,
     entries: cloneEntries(entries),

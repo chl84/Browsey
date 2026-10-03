@@ -87,9 +87,11 @@ for (const density of ['Cozy', 'Compact']) {
           return [...header.querySelectorAll('.filter-btn')].map(button => {
             const box = button.getBoundingClientRect()
             const ownGrip = button.closest('.header-cell')?.querySelector('.column-resizer')?.getBoundingClientRect()
+            const sortButton = button.closest('.header-controls')!.querySelector('.header-btn')!.getBoundingClientRect()
             return {
               name: button.getAttribute('aria-label'),
               resizeGap: ownGrip ? ownGrip.left - box.right : null,
+              sortFilterGap: box.left - sortButton.right,
               overlaps: grips.some(grip => Math.min(box.right, grip.right) > Math.max(box.left, grip.left)
                 && Math.min(box.bottom, grip.bottom) > Math.max(box.top, grip.top)),
               clickable: [box.left + 1, box.left + box.width / 2, box.right - 1]
@@ -100,7 +102,8 @@ for (const density of ['Cozy', 'Compact']) {
         expect(hitTests.find(hit => hit.name === 'Filter Size')?.overlaps, 'SIZE filter overlaps a resize handle')
           .toBe(false)
         for (const hit of hitTests) {
-          expect(hit.resizeGap, `${hit.name} should sit near its resize handle`).toBeCloseTo(density === 'Cozy' ? 8 : 6, 1)
+          expect(hit.sortFilterGap, `${hit.name} should have fixed spacing from sorting`).toBeCloseTo(5, 1)
+          expect(hit.resizeGap!, `${hit.name} should stay clear of its resize handle`).toBeGreaterThanOrEqual(density === 'Cozy' ? 7.9 : 5.9)
           expect(hit.overlaps, `${hit.name} overlaps a resize handle`).toBe(false)
           expect(hit.clickable, `${hit.name} has an obstructed click target`).toBe(true)
         }

@@ -33,6 +33,7 @@ pub mod icon_ids {
     pub const AUDIO_FILE: IconId = 19;
     pub const EXECUTABLE_FILE: IconId = 20;
     pub const CLOUD: IconId = 21;
+    pub const MODEL_3D_FILE: IconId = 22;
 }
 
 use icon_ids::SHORTCUT;
@@ -56,4 +57,47 @@ pub fn icon_id_for(path: &Path, meta: &Metadata, is_link: bool) -> IconId {
 // Resolve icon for non-filesystem entries (for example cloud listing rows).
 pub fn icon_id_for_virtual_entry(name: &str, is_dir: bool) -> IconId {
     icon_id_for_name(name, is_dir, None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_icon_assets_share_the_generic_document_and_match_the_frontend_id() {
+        let resource = include_str!("../../resources/icons/scalable/model_3d_file.svg");
+        let public = include_str!("../../frontend/public/icons/scalable/browsey/model_3d_file.svg");
+        assert_eq!(resource, public);
+        for shape in ["M28 14H76L100 38V114H28V14Z", "M76 14v24h24"] {
+            assert!(include_str!("../../resources/icons/scalable/file.svg").contains(shape));
+            assert!(resource.contains(shape));
+        }
+        let frontend_icons = include_str!("../../frontend/src/features/explorer/helpers/icons.ts");
+        let paths: Vec<_> = frontend_icons
+            .lines()
+            .filter(|line| line.trim().starts_with("'icons/scalable/browsey/"))
+            .collect();
+        assert!(paths[usize::from(icon_ids::MODEL_3D_FILE)].contains("model_3d_file.svg"));
+    }
+
+    #[test]
+    fn local_and_virtual_models_share_the_icon_while_links_keep_the_shortcut() {
+        // Only metadata is needed; no model contents or real user files are read.
+        let meta = std::fs::metadata(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
+            .expect("project file metadata");
+        for name in ["mesh.STL", "scene.blend", "part.step"] {
+            assert_eq!(
+                icon_id_for(Path::new(name), &meta, false),
+                icon_ids::MODEL_3D_FILE
+            );
+            assert_eq!(
+                icon_id_for_virtual_entry(name, false),
+                icon_ids::MODEL_3D_FILE
+            );
+            assert_eq!(
+                icon_id_for(Path::new(name), &meta, true),
+                icon_ids::SHORTCUT
+            );
+        }
+    }
 }

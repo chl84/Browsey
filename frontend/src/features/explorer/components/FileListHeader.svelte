@@ -222,7 +222,6 @@
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    margin-left: auto;
   }
 
   .filter-btn:focus,

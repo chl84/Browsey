@@ -1,13 +1,13 @@
 use std::path::Path;
 
-use mime::{APPLICATION, AUDIO, IMAGE, TEXT, VIDEO};
+use mime::{APPLICATION, AUDIO, IMAGE, MODEL, TEXT, VIDEO};
 
 use super::{
     icon_ids::{
         AUDIO_FILE, COMPRESSED, DESKTOP_FOLDER, DOCUMENT_FOLDER, DOWNLOAD_FOLDER, EXECUTABLE_FILE,
-        FILE, GENERIC_FOLDER, HOME_FOLDER, MUSIC_FOLDER, PDF_FILE, PICTURES_FOLDER, PICTURE_FILE,
-        PRESENTATION_FILE, PUBLIC_FOLDER, SPREADSHEET_FILE, TEMPLATES_FOLDER, TEXTFILE, VIDEO_FILE,
-        VIDEO_FOLDER,
+        FILE, GENERIC_FOLDER, HOME_FOLDER, MODEL_3D_FILE, MUSIC_FOLDER, PDF_FILE, PICTURES_FOLDER,
+        PICTURE_FILE, PRESENTATION_FILE, PUBLIC_FOLDER, SPREADSHEET_FILE, TEMPLATES_FOLDER,
+        TEXTFILE, VIDEO_FILE, VIDEO_FOLDER,
     },
     IconId,
 };
@@ -61,6 +61,11 @@ fn file_icon_id(name_lc: &str, ext: &str, mime: Option<&str>) -> IconId {
         // Executables / scripts
         "exe" | "bin" | "sh" | "bat" | "cmd" | "msi" => EXECUTABLE_FILE,
         "dll" | "so" | "dylib" => EXECUTABLE_FILE,
+        // 3D models / scenes / CAD solids. Prefer their extension even when
+        // a text-based model or packaged scene has a generic MIME type.
+        "blend" | "blend1" | "blend2" | "obj" | "stl" | "fbx" | "gltf" | "glb" | "dae" | "ply"
+        | "3ds" | "3mf" | "3dm" | "usd" | "usda" | "usdc" | "usdz" | "abc" | "step" | "stp"
+        | "iges" | "igs" => MODEL_3D_FILE,
         // Code / text
         "rs" | "c" | "cpp" | "h" | "hpp" | "py" | "js" | "ts" | "tsx" | "jsx" | "java" | "go"
         | "rb" | "php" | "lua" | "json" | "toml" | "yaml" | "yml" | "ini" | "cfg" | "md"
@@ -84,6 +89,9 @@ fn mime_icon_id(mime: Option<&str>) -> IconId {
     if let Some(raw) = mime {
         if let Ok(parsed) = raw.parse::<mime::Mime>() {
             let top = parsed.type_();
+            if top == MODEL {
+                return MODEL_3D_FILE;
+            }
             if top == IMAGE {
                 return PICTURE_FILE;
             }
@@ -123,7 +131,9 @@ fn mime_icon_id(mime: Option<&str>) -> IconId {
 #[cfg(test)]
 mod tests {
     use super::icon_id_for_name;
-    use crate::icons::icon_ids::{COMPRESSED, FILE, GENERIC_FOLDER, PDF_FILE, PICTURES_FOLDER};
+    use crate::icons::icon_ids::{
+        COMPRESSED, FILE, GENERIC_FOLDER, MODEL_3D_FILE, PDF_FILE, PICTURES_FOLDER, TEXTFILE,
+    };
 
     #[test]
     fn virtual_file_uses_extension_mapping() {
@@ -136,5 +146,47 @@ mod tests {
     fn virtual_directory_uses_named_folder_mapping() {
         assert_eq!(icon_id_for_name("Pictures", true, None), PICTURES_FOLDER);
         assert_eq!(icon_id_for_name("foo.bar", true, None), GENERIC_FOLDER);
+    }
+
+    #[test]
+    fn model_extensions_use_the_3d_icon_without_changing_other_file_types() {
+        for ext in [
+            "blend", "blend1", "blend2", "obj", "stl", "fbx", "gltf", "glb", "dae", "ply", "3ds",
+            "3mf", "3dm", "usd", "usda", "usdc", "usdz", "abc", "step", "stp", "iges", "igs",
+        ] {
+            for ext in [ext.to_string(), ext.to_uppercase()] {
+                let name = format!("scene.{ext}");
+                assert_eq!(
+                    icon_id_for_name(&name, false, None),
+                    MODEL_3D_FILE,
+                    "{name}"
+                );
+                assert_eq!(
+                    icon_id_for_name(&name, false, Some("text/plain")),
+                    MODEL_3D_FILE,
+                    "{name}"
+                );
+            }
+        }
+        assert_eq!(icon_id_for_name("folder.blend", true, None), GENERIC_FOLDER);
+        assert_eq!(icon_id_for_name("notes.txt", false, None), TEXTFILE);
+        assert_eq!(icon_id_for_name("compiled.o", false, None), FILE);
+        assert_eq!(icon_id_for_name("unknown.xyz", false, None), FILE);
+    }
+
+    #[test]
+    fn model_mime_type_handles_unrecognized_extensions() {
+        assert_eq!(
+            icon_id_for_name("scene.custom", false, Some("model/gltf+json")),
+            MODEL_3D_FILE
+        );
+        assert_eq!(
+            icon_id_for_name("scene.custom", false, Some("model/stl")),
+            MODEL_3D_FILE
+        );
+        assert_eq!(
+            icon_id_for_name("scene.custom", false, Some("invalid mime")),
+            FILE
+        );
     }
 }

@@ -2,9 +2,11 @@
 
 ## Unreleased
 
+- Restore a fixed 5 px gap between list-header sorting and filter buttons, retaining complete-header minimum widths, separate resize targets and 8/6 px SIZE content padding.
+- Add a 3D model file icon using the generic document silhouette and a shaded cube. Recognize common model/scene/CAD extensions (including Blender, STL, OBJ, FBX, glTF, USD and STEP), as well as model MIME types, without renumbering existing icon IDs.
+
 - Right-align file sizes and folder item counts with 8 px right padding in Cozy and 6 px in Compact. Measure complete list headers to enforce minimum widths during dragging, saved-width restoration and density/font changes, keeping filter and resize targets separate.
 
-- Anchor list-header filter buttons to each column’s right edge, keeping an 8 px gap to the resize target in Cozy and 6 px in Compact. Preserve left-aligned labels, sorting and independent click targets at narrow and resized widths.
 
 - Keep the SIZE header left-aligned and align stars to the left edge of their own column without reducing the star click target.
 
