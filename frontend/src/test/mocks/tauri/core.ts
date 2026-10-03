@@ -38,6 +38,8 @@ type E2eMockControl = {
   thumbnailHold?: boolean
   systemClipboard?: MockClipboardState
   failCommands?: string[]
+  undoStorage?: { directory: string; exists: boolean; sessions: number; markedSessions: number; files: number; logicalBytes: number; incomplete: boolean }
+  undoStorageHold?: boolean
   archivePassword?: string
   formatHold?: boolean
   formatProgress?: { phase: string; percent: number | null }
@@ -283,6 +285,13 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return (e2eControl()?.partitions ?? []) as T
     case 'watch_dir':
       return undefined as T
+    case 'inspect_undo_storage': {
+      while (control?.undoStorageHold) await new Promise(resolve => setTimeout(resolve, 20))
+      return (control?.undoStorage ?? {
+        directory: '/mock/browsey/undo-sessions', exists: false, sessions: 0,
+        markedSessions: 0, files: 0, logicalBytes: 0, incomplete: false,
+      }) as T
+    }
     case 'search_stream': {
       const path = typeof args?.path === 'string' ? args.path : ROOT
       const query = typeof args?.query === 'string' ? args.query : ''

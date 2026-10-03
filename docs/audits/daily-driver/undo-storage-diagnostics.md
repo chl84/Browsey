@@ -3,7 +3,8 @@
 Date: 2026-10-03
 Baseline: `c8949ca`
 Track: [Daily-driver completeness plan](../../todo/TODO_DAILY_DRIVER_COMPLETENESS.md)
-Status: Backend diagnostics verified; Settings integration in progress.
+Status: Backend fixtures and mocked Settings behavior verified; installed/manual
+recovery and retention policy remain open.
 
 ## Read-only Inspection
 
@@ -41,7 +42,6 @@ when filesystem contents change during inspection.
 
 ## Remaining Work
 
-- Finish and verify the shared Settings UI and manual guidance.
 - Measure representative real backup sizes and agree byte budgets/retention
   policy; diagnostic limits do not limit retained backup space.
 - Validate the installed application, manual recovery and actual filesystem
@@ -50,3 +50,54 @@ when filesystem contents change during inspection.
   Protected sessions stay protected regardless of diagnostic counts or size.
 
 Version remains 1.0.3. Installation/publication is not part of this increment.
+
+## Settings and Manual Recovery Guidance
+
+The backend increment was committed as `fa2fc05` before the Settings increment,
+with its narrower TODO row checked at that point. Settings > Data now contains
+a read-only inspection panel using shared `TextField`, button/focus/theme tokens
+and the explorer's existing file-size formatter, extracted unchanged into a
+shared utility. Settings filters find it by undo/recovery/backups/disk space.
+
+The panel loads when the Data section is rendered, suppresses duplicate refreshes and discards late
+successes/errors after destruction. A refresh failure preserves the previous
+measurement with an explicit stale label. Partial results never imply an empty
+or fully measured directory. No delete, restore or marker-clear action is offered.
+
+Keyboard-accessible guidance tells users to finish operations and close every
+Browsey instance before manual work, avoid older marker-unaware builds, inspect
+the error's affected paths, copy needed bytes to a separate safe location without
+overwriting uncertain files and verify them before considering cleanup. Clearing
+the last marker can expose the whole session to startup cleanup. Measurements
+exclude legacy/unknown storage; markers can indicate currently running work.
+
+Seven backend tests now cover the six fixture cases above plus the actual JSON
+field names used by Settings. New frontend tests cover scan presentation,
+repeated requests, stale error/retry behavior, lifecycle disposal, filter matches
+and unchanged shared size formatting. Five mocked-browser tests cover 900/620 px
+layout with long copyable paths, keyboard-accessible guidance, no destructive
+controls, partial measurements, refresh errors and closing/reopening while pending.
+
+The T3 collaborative preview rendered the panel and returned its text via DOM
+inspection. Snapshot calls failed and a later resize lost the preview host; no
+successful visual screenshot or native installed-build acceptance is claimed.
+
+## Final Verification
+
+- Backend maintenance checks passed PDFium/vendor integrity, four dependency
+  policy tests, formatting, cargo check, warnings-denied Clippy and the typed
+  error guard. Semgrep is absent and its checks were skipped, not passed.
+- After adding the JSON contract test, final offline/locked all-target/all-feature
+  tests passed: **593 passed, four opt-in native tests ignored**. Final Clippy
+  also passed with warnings denied. Ignored native/device tests were not run here.
+- Frontend lint/naming, Svelte and TypeScript checks passed with zero Svelte
+  errors/warnings; **296 unit tests in 40 files** and all **60 mocked browser
+  tests** passed. The production frontend build passed.
+- `git diff --check`, all **20 strict documentation consistency checks** and
+  **30 local documentation links** passed. README, CHANGELOG and undo scope
+  describe the same read-only guarantees and remaining boundaries.
+- Both narrower TODO rows were checked after their respective verification.
+  The broad manual-recovery/retention/installed-build row stays unchecked.
+
+No dependency/version change, device operation, installation, app restart,
+automatic recovery or protected-backup cleanup was performed.

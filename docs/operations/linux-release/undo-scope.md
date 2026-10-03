@@ -99,6 +99,11 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
 - history filesystem work runs on a blocking worker; repeated undo/redo requests
   in the same explorer page are suppressed until both operation and refresh
   finish. Listing refresh is attempted after errors, without retrying file work
+- Settings > Data inspects undo-session storage without changing files, locks
+  or markers. It shows measured file-content lengths, session/marker counts,
+  a copyable directory path and manual recovery guidance. Incomplete scans are
+  explicitly labelled, and marker counts also include work still in progress;
+  this is not allocated disk usage, a quota, or automatic recovery/cleanup
 
 These boundaries are part of the supported behavior, not incidental
 implementation details.
@@ -107,6 +112,8 @@ See the [copy undo ownership follow-up](../../audits/daily-driver/copy-undo-owne
 for disposable-fixture evidence and remaining safety work.
 The [copy recovery backup follow-up](../../audits/daily-driver/copy-recovery-backups.md)
 documents preserved bytes and manual recovery boundaries.
+The [storage diagnostics follow-up](../../audits/daily-driver/undo-storage-diagnostics.md)
+records scan limits, Settings behavior and outstanding retention acceptance.
 
 ## Outside the Linux 1.0 Undo/Redo Claim
 

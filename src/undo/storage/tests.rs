@@ -37,6 +37,26 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn summary_serialization_matches_the_settings_contract() {
+    let summary = UndoStorageSummary {
+        directory: "/fixture/undo-sessions".into(),
+        exists: true,
+        sessions: 3,
+        marked_sessions: 1,
+        files: 4,
+        logical_bytes: 8192,
+        incomplete: false,
+    };
+    assert_eq!(
+        serde_json::to_value(summary).unwrap(),
+        serde_json::json!({
+            "directory": "/fixture/undo-sessions", "exists": true, "sessions": 3,
+            "markedSessions": 1, "files": 4, "logicalBytes": 8192, "incomplete": false,
+        })
+    );
+}
+
+#[test]
 fn inventory_counts_regular_backups_and_marked_sessions_without_modifying_them() {
     let fixture = Fixture::new();
     let session = fixture.0.join("session-fixture");

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { DataClearTarget } from '../settingsTypes'
+  import UndoStorageSection from './UndoStorageSection.svelte'
 
   export let show = false
   export let clearBusy = false
@@ -10,6 +11,8 @@
 {#if show}
   <div class="group-divider" aria-hidden="true"></div>
   <div class="group-heading">Data</div><div class="group-spacer"></div>
+
+  <UndoStorageSection />
 
   <div class="form-label">Clear thumbnail cache</div>
   <div class="form-control">

@@ -15,6 +15,11 @@ const buildDeps = () => ({
 })
 
 describe('createSettingsModalViewModel filtering', () => {
+  it.each(['recovery', 'undo', 'backups', 'disk space'])('finds backup diagnostics for %s', filter => {
+    const vm = createSettingsModalViewModel(buildDeps())
+    vm.filter.set(filter)
+    expect(vm.buildFilterModel({ ...DEFAULT_SETTINGS }).showData).toBe(true)
+  })
   it('shows cloud thumbs row for cloud-thumb specific filter text', () => {
     const vm = createSettingsModalViewModel(buildDeps())
     vm.filter.set('cloud thumbs')

@@ -359,6 +359,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     const clearStarsTexts = rowTexts('clear stars', 'clear')
     const clearBookmarksTexts = rowTexts('clear bookmarks', 'clear')
     const clearRecentsTexts = rowTexts('clear recents', 'clear')
+    const undoStorageTexts = rowTexts('undo', 'redo', 'recovery', 'backups', 'storage', 'disk space', 'manual recovery')
     const highContrastTexts = rowTexts('high contrast', 'boost contrast for ui elements')
     const scrollbarWidthTexts = rowTexts('scrollbar width', `${settings.scrollbarWidth} px`, settings.scrollbarWidth)
     const cloudEnabledTexts = rowTexts(
@@ -438,7 +439,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       ),
       showPerformance: rowMatches(n, [...hardwareAccelerationTexts, ...mountsPollTexts]),
       showInteraction: rowMatches(n, [...doubleClickTexts]),
-      showData: rowMatches(n, [...clearThumbTexts, ...clearStarsTexts, ...clearBookmarksTexts, ...clearRecentsTexts]),
+      showData: rowMatches(n, [...clearThumbTexts, ...clearStarsTexts, ...clearBookmarksTexts, ...clearRecentsTexts, ...undoStorageTexts]),
       showAccessibility: rowMatches(n, [...highContrastTexts, ...scrollbarWidthTexts]),
       showCloud: rowMatches(n, [...cloudEnabledTexts, ...rclonePathTexts]),
       showAdvanced: rowMatches(n, [...logLevelTexts]),

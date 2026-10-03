@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show read-only undo/recovery backup diagnostics under Settings > Data, with bounded metadata scans, explicit incomplete measurements, a copyable storage path and manual recovery guidance. Preserve backups, locks and markers; distinguish file-content size from disk usage and 50-action history from a storage quota. Reuse shared size formatting and cover refresh failures, pending requests, keyboard access and narrow-window layout.
+
 - Preserve copied bytes before undo removes targets; restore redo and failed mixed-batch compensation from verified private backups instead of changed/missing original sources. Keep recovery markers through the whole operation and preserve marked sessions during startup cleanup, including after process interruption. Move history work off the event loop, reconcile listings after errors, distinguish refresh failures and suppress repeated undo/redo requests; cover backup/restore faults, source edits, native filenames, cross-filesystem copies and recovery-session cleanup.
 
 - Guard copy undo and clipboard batch rollback with receipts of created directory identities and completed open-writer versions. Preserve edited/replaced outputs, reject unverifiable GIO-owned copies, and remove only recorded files and empty directories instead of whole trees. Preflight pure-copy batches before deleting any member; cover normal undo/redo, merge overwrite backups, cancellation and deterministic post-scan mutations. Document remaining mixed-batch recovery and filesystem-race limits.

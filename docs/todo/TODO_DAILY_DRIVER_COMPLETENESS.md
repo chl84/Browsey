@@ -141,7 +141,7 @@ broader operation/platform acceptance rows above are complete.
   separate refresh failures and repeat-request suppression with mocked UI tests.
 - [x] Inspect undo-session file-content size and marked-session counts without
   changing backups, locks or markers; cap metadata scans and report partial results.
-- [ ] Expose read-only backup diagnostics and manual recovery guidance in Settings;
+- [x] Expose read-only backup diagnostics and manual recovery guidance in Settings;
   verify loading, refresh errors, partial results and lifecycle behavior.
 - [ ] Validate manual recovery UX, retention/space budgets and installed-build
   behavior for marked sessions. Preserved backups do not imply persistent undo,
