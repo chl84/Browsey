@@ -12,7 +12,7 @@ case "${1:-}" in
     cat <<'EOF'
 Usage: bash scripts/maintenance/check-docs-consistency.sh [--strict]
 
-Checks consistency across README, CHANGELOG, and docs-site release notes.
+Checks consistency across README, user guide, CHANGELOG, and docs-site release notes.
 Default mode is advisory (WARN, exit 0).
 Use --strict to return non-zero when checks fail.
 EOF
@@ -100,36 +100,36 @@ if [[ -n "${VERSION}" ]]; then
     "docs-site release notes are missing v${VERSION}"
 fi
 
-if grep -Eq 'duplicate scan, thumbnails, or direct open-with for cloud files' README.md; then
+if grep -Eq 'duplicate scan, thumbnails, or direct open-with for cloud files' README.md docs/usage.md; then
   report_issue \
     "readme-cloud-thumbs-outdated" \
-    "README still claims cloud thumbnails are unsupported"
+    "README or user guide still claims cloud thumbnails are unsupported"
 else
   report_pass \
     "readme-cloud-thumbs-outdated" \
-    "README no longer claims cloud thumbnails are unsupported"
+    "README and user guide do not claim cloud thumbnails are unsupported"
 fi
 
 check_contains_fixed \
-  "readme-cloud-thumbs-opt-in" \
-  "README.md" \
+  "usage-cloud-thumbs-opt-in" \
+  "docs/usage.md" \
   "Cloud thumbs" \
-  "README mentions Cloud thumbs opt-in behavior" \
-  "README is missing Cloud thumbs opt-in wording"
+  "User guide mentions Cloud thumbs opt-in behavior" \
+  "User guide is missing Cloud thumbs opt-in wording"
 
 check_contains_fixed \
-  "readme-cloud-thumbs-scope-grid" \
-  "README.md" \
+  "usage-cloud-thumbs-scope-grid" \
+  "docs/usage.md" \
   "Grid view" \
-  "README mentions Grid-only cloud thumbnail scope" \
-  "README is missing Grid-only cloud thumbnail scope"
+  "User guide mentions Grid-only cloud thumbnail scope" \
+  "User guide is missing Grid-only cloud thumbnail scope"
 
 check_contains_fixed \
-  "readme-cloud-thumbs-scope-formats" \
-  "README.md" \
+  "usage-cloud-thumbs-scope-formats" \
+  "docs/usage.md" \
   "image/pdf/svg" \
-  "README mentions cloud thumbnail format scope (image/pdf/svg)" \
-  "README is missing cloud thumbnail format scope (image/pdf/svg)"
+  "User guide mentions cloud thumbnail format scope (image/pdf/svg)" \
+  "User guide is missing cloud thumbnail format scope (image/pdf/svg)"
 
 check_contains_fixed \
   "readme-rename-shortcut" \
@@ -149,11 +149,11 @@ else
 fi
 
 check_contains_fixed \
-  "readme-cloud-cache-maintenance" \
-  "README.md" \
+  "usage-cloud-cache-maintenance" \
+  "docs/usage.md" \
   "cloud file cache" \
-  "README includes cloud file cache in maintenance actions" \
-  "README is missing cloud file cache in maintenance actions"
+  "User guide includes cloud file cache in maintenance actions" \
+  "User guide is missing cloud file cache in maintenance actions"
 
 check_contains_fixed \
   "linux-pre-release-core-checklist-ref" \

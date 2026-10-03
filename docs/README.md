@@ -5,6 +5,13 @@ cloud notes, and TODO tracking).
 
 The docs web app lives in `../docs-site/` and is built/deployed separately.
 
+## Start here
+
+- [Installation](installation.md): packages, runtime dependencies, upgrades and the local installer.
+- [User guide](usage.md): shortcuts, drag/drop, cloud, archives, devices and recovery.
+- [Development](development.md): build prerequisites, pinned CLI, tests, architecture and release preparation.
+- [Release notes](releases/): version-specific artifacts, checksums and validation scope.
+
 ## Structure
 
 - `releases/`: version-specific release notes, artifact scope, and validation evidence

@@ -101,10 +101,10 @@ export function buildPlan(files, version, date) {
       requireCondition(line.includes(`/releases/tag/v${oldVersion})`), 'README download tag differs from Cargo.toml.')
       return replaceVersion(line, oldVersion, version, 'README downloads')
     }, 'README downloads')
-  readme = replaceOnce(readme, /^## Status\n([^\n]+)$/m,
+  readme = replaceOnce(readme, /^## Status\n(?:\n)?([^\n]+)$/m,
     (_, status) => {
       requireCondition(status.startsWith(`Browsey \`${oldVersion}\` `), 'README status version differs from Cargo.toml.')
-      return `## Status\n${replaceVersion(status, oldVersion, version, 'README status')
+      return `## Status\n\n${replaceVersion(status, oldVersion, version, 'README status')
         .replace(/^Browsey `[^`]+` .*?\. /, `Browsey \`${version}\` is Linux-first. `)}`
     }, 'README status')
   readme = replaceOnce(readme, /^- Windows: .*no new Windows installer.*$/m,

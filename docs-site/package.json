@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "lint": "eslint \"src/**/*.{ts,js,svelte}\"",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"

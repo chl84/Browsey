@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
@@ -64,6 +64,42 @@ function changed(plan, path) {
   return plan.changes.find((change) => change.path === path).after
 }
 
+test('README and linked guides have valid local links, anchors and Markdown heading spacing', () => {
+  const guides = ['README.md', 'docs/installation.md', 'docs/usage.md', 'docs/development.md']
+  for (const path of guides) {
+    const content = readFileSync(join(root, path), 'utf8')
+    const lines = content.split('\n')
+    let fenced = false
+    for (let index = 0; index < lines.length; index++) {
+      if (/^```/.test(lines[index])) { fenced = !fenced; continue }
+      if (fenced) continue
+      if (!/^#{1,6} /.test(lines[index])) continue
+      assert.equal(lines[index + 1], '', `${path}: missing blank line after heading`)
+      if (index > 0) assert.equal(lines[index - 1], '', `${path}: missing blank line before heading`)
+    }
+    for (const match of content.matchAll(/!?\[[^\]]*\]\(([^\s)]+)\)/g)) {
+      const target = match[1]
+      if (/^[a-z][a-z\d+.-]*:/i.test(target)) continue
+      const [relative, anchor] = target.split('#')
+      const file = relative ? resolve(root, dirname(path), relative) : join(root, path)
+      assert.ok(existsSync(file), `${path}: missing target ${target}`)
+      if (!anchor) continue
+      const headings = [...readFileSync(file, 'utf8').matchAll(/^#{1,6} (.+)$/gm)]
+        .map((heading) => heading[1].toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').trim().replace(/\s/g, '-'))
+      assert.ok(headings.includes(anchor), `${path}: missing anchor ${target}`)
+    }
+  }
+})
+
+test('accepts legacy README status spacing and normalizes it without losing guide links', () => {
+  const files = { ...source, 'README.md': source['README.md'].replace('## Status\n\n', '## Status\n') }
+  const readme = changed(buildPlan(files, nextVersion, nextDate), 'README.md')
+  assert.ok(readme.includes(`## Status\n\nBrowsey \`${nextVersion}\``))
+  for (const target of ['docs/installation.md', 'docs/usage.md', 'docs/development.md']) {
+    assert.ok(readme.includes(`](${target})`))
+  }
+})
+
 test('coordinates exactly the app fields and creates honest release preparation notes', () => {
   const plan = buildPlan(source, nextVersion, nextDate)
   assert.equal(plan.changes.length, 8)
@@ -73,6 +109,7 @@ test('coordinates exactly the app fields and creates honest release preparation 
     `name = "browsey"\nversion = "${currentVersion}"`), source['Cargo.lock'])
   assert.ok(changed(plan, 'README.md').includes(`releases/tag/v${nextVersion}`))
   assert.ok(changed(plan, 'README.md').includes(`Browsey \`${nextVersion}\` is Linux-first.`))
+  assert.ok(changed(plan, 'README.md').includes(`## Status\n\nBrowsey \`${nextVersion}\``))
   assert.ok(changed(plan, 'docs-site/src/content/pages.ts').includes(`title: 'v${nextVersion} (${nextDate})'`))
   assert.ok(changed(plan, 'packaging/com.browsey.metainfo.xml').includes(`<release version="${nextVersion}" date="${nextDate}"/>`))
   const originalHistory = source['CHANGELOG.md'].slice(source['CHANGELOG.md'].indexOf(`## v${currentVersion} `))

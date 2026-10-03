@@ -24,6 +24,32 @@ body {
   min-height: 100%;
 }
 
+a { color: var(--accent); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  padding: 12px;
+  background: var(--paper);
+  transform: translateY(-150%);
+}
+
+.skip-link:focus { transform: none; }
+
+.project-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 16px;
+}
+
 body {
   min-height: 100vh;
 }
@@ -83,6 +109,9 @@ h1 {
   border: 1px solid var(--line);
   background: var(--paper);
   padding: 16px;
+  max-height: calc(100dvh - 36px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .nav h2,
@@ -90,6 +119,16 @@ h1 {
   margin: 0 0 10px;
   font-size: 16px;
 }
+
+summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 5px 0;
+}
+
+details[open] > summary { margin-bottom: 10px; }
+
+.search-sections a { overflow-wrap: anywhere; }
 
 .searchbox {
   display: grid;
@@ -113,7 +152,8 @@ h1 {
 
 .searchbox input:focus {
   border-color: var(--accent);
-  outline: none;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
@@ -128,6 +168,17 @@ h1 {
   color: var(--ink-muted);
   font-size: 14px;
 }
+
+.nav-empty:empty { display: none; }
+
+.search-sections {
+  margin: 0;
+  padding-left: 14px;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+.search-sections:empty { display: none; }
 
 .nav a,
 .toc a {
@@ -154,13 +205,31 @@ h1 {
 .content {
   display: grid;
   gap: 14px;
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .card {
   border: 1px solid var(--line);
   background: var(--paper);
   padding: 20px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  scroll-margin-top: 18px;
 }
+
+.card .related-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  list-style: none;
+  padding: 0;
+  margin-top: 12px;
+}
+
+.toc { grid-column: 3; grid-row: 1; }
+.nav { grid-column: 1; grid-row: 1; }
 
 .card.active-section {
   border-color: var(--accent);
@@ -225,9 +294,14 @@ h1 {
     grid-template-columns: 240px minmax(0, 1fr);
   }
 
+  .nav { grid-row: 1 / 3; }
+  .content { grid-row: 2; }
+
   .toc {
-    grid-column: 1 / -1;
+    grid-column: 2;
+    grid-row: 1;
     position: static;
+    max-height: none;
   }
 }
 
@@ -239,5 +313,11 @@ h1 {
   .nav,
   .toc {
     position: static;
+    max-height: none;
+    grid-column: 1;
+    grid-row: auto;
   }
+
+  .toc { grid-row: 2; }
+  .content { grid-column: 1; grid-row: 3; }
 }

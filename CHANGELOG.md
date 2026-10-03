@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Audit and correct the documentation site: separate runtime/source requirements,
+  update archive/cloud/recovery guidance, add usable reference links and concise
+  release highlights, and improve search, keyboard navigation and responsive
+  menus. Add route/content/link regression tests and non-deploying PR checks.
+
+- Simplify the GitHub README into a product overview with linked installation,
+  user and developer guides. Separate runtime/build requirements, use the pinned
+  npm Tauri CLI in source instructions, clarify Windows build limitations and
+  retain cloud/recovery safety boundaries. Keep release bumps compatible with
+  normal Markdown header spacing and check relocated usage details in docs.
+
 ## v1.0.4 — 2026-10-03
 
 - Restore a fixed 5 px gap between list-header sorting and filter buttons, retaining complete-header minimum widths, separate resize targets and 8/6 px SIZE content padding.
