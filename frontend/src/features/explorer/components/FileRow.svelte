@@ -256,6 +256,8 @@
   .col-size {
     font-weight: var(--font-weight-base);
     text-align: right;
+    padding-right: var(--list-size-padding-right);
+    box-sizing: border-box;
     min-width: 60px;
   }
 
@@ -276,10 +278,10 @@
 
   .col-star {
     color: var(--fg-muted);
-    text-align: center;
+    text-align: left;
     min-width: 25px;
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
   }
 
   .star-btn {
@@ -303,7 +305,7 @@
   .star-glyph {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     width: 100%;
     height: 100%;
     transform-origin: center center;

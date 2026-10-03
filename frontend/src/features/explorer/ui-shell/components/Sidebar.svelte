@@ -9,6 +9,7 @@ import type { Partition } from '../../model/types'
   export let partitions: Partition[] = []
   export let collapsed = false
   export let onPlaceSelect: (label: string, path: string) => void = () => {}
+  export let onEmptyWastebasket: () => void = () => {}
   export let onBookmarkSelect: (path: string) => void = () => {}
   export let onRemoveBookmark: (path: string) => void = () => {}
   export let dragTargetPath: string | null = null
@@ -26,7 +27,7 @@ import type { Partition } from '../../model/types'
   <div class="drag-top" data-tauri-drag-region></div>
   <div class="sidebar-scroll" data-drop-scroll>
     {#if places.length > 0}
-      <PlacesSection {places} onSelect={onPlaceSelect} />
+      <PlacesSection {places} onSelect={onPlaceSelect} {onEmptyWastebasket} />
     {/if}
 
     {#if bookmarks.length > 0}

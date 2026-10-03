@@ -128,7 +128,9 @@
     display: flex;
     align-items: center;
     position: relative;
-    gap: var(--list-header-cell-gap);
+    /* ColumnResizer adds a 2px margin: total click-target separation is
+       8px in Cozy and 6px in Compact. Keep this independent of label gaps. */
+    gap: var(--list-header-resize-gap);
     min-width: 0;
     flex: 1 1 0;
   }
@@ -220,6 +222,7 @@
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
+    margin-left: auto;
   }
 
   .filter-btn:focus,

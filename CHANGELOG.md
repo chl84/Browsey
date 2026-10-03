@@ -2,9 +2,17 @@
 
 ## Unreleased
 
+- Right-align file sizes and folder item counts with 8 px right padding in Cozy and 6 px in Compact. Measure complete list headers to enforce minimum widths during dragging, saved-width restoration and density/font changes, keeping filter and resize targets separate.
+
+- Anchor list-header filter buttons to each column’s right edge, keeping an 8 px gap to the resize target in Cozy and 6 px in Compact. Preserve left-aligned labels, sorting and independent click targets at narrow and resized widths.
+
+- Keep the SIZE header left-aligned and align stars to the left edge of their own column without reducing the star click target.
+
+- Add "Empty Wastebasket…" to the Wastebasket sidebar context menu, with a permanent-deletion warning in the shared confirmation modal, Cancel focused by default and controls locked while working. Empty the native system-trash catalog off the UI thread, preserve cloud trash, and refresh/report partial failures without automatic retries.
+
 - Reuse the compact Properties action-button sizing for "Copy drive path" and "Apply ownership", keeping equal typography, padding and height in Cozy and Compact layouts.
 
-- Keep list-header filter buttons separate from column resize handles, including SIZE and narrow columns. Remove overlapping alignment offsets and truncate header labels when necessary while preserving sorting, filtering and resizing.
+- Keep list-header filter buttons separate from column resize handles, including SIZE and narrow columns. Remove overlapping alignment offsets while preserving sorting, filtering and resizing.
 
 - Simplify Settings stored-data controls: remove drag-and-drop prose, group named cache/list cleanup actions, and show a concise recovery-backup overview with allocation, paths and manual recovery guidance collapsed by default. Preserve read-only inspection, safety warnings and existing cleanup confirmations.
 

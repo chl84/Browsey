@@ -39,8 +39,8 @@ pub use open_ops::open_entry;
 pub(crate) use open_ops::open_path_without_recent;
 pub use startup_ops::get_startup_path;
 pub use trash::{
-    cleanup_stale_trash_staging, list_trash, move_to_trash, move_to_trash_many, purge_trash_items,
-    restore_trash_items,
+    cleanup_stale_trash_staging, empty_trash, list_trash, move_to_trash, move_to_trash_many,
+    purge_trash_items, restore_trash_items,
 };
 
 pub fn expand_path(raw: Option<String>) -> error::FsResult<PathBuf> {

@@ -26,6 +26,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   let bookmarks: { label: string; path: string }[] = []
   let partitions: Partition[] = []
   let onPlaceSelect: (label: string, path: string) => void = () => {}
+  let onEmptyWastebasket: () => void = () => {}
   let onBookmarkSelect: (path: string) => void = () => {}
   let onRemoveBookmark: (path: string) => void = () => {}
   let onBookmarkDragOver: (path: string, e: DragEvent) => void = () => {}
@@ -285,6 +286,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     bookmarks: typeof bookmarks
     partitions: typeof partitions
     onPlaceSelect: typeof onPlaceSelect
+    onEmptyWastebasket: typeof onEmptyWastebasket
     onBookmarkSelect: typeof onBookmarkSelect
     onRemoveBookmark: typeof onRemoveBookmark
     dragTargetPath: typeof dragTargetPath
@@ -503,6 +505,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     bookmarks,
     partitions,
     onPlaceSelect,
+    onEmptyWastebasket,
     onBookmarkSelect,
     onRemoveBookmark,
     dragTargetPath,
@@ -722,6 +725,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
       {partitions}
       collapsed={sidebarCollapsed}
       onPlaceSelect={onPlaceSelect}
+      {onEmptyWastebasket}
       onBookmarkSelect={onBookmarkSelect}
       onRemoveBookmark={onRemoveBookmark}
       {dragTargetPath}

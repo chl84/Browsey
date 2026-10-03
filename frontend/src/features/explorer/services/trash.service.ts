@@ -70,6 +70,8 @@ export const moveToTrashMany = (paths: string[], progressEvent?: string) => {
 export const purgeTrashItems = (ids: string[]) =>
   invoke<void>('purge_trash_items', { ids })
 
+export const emptyTrash = () => invoke<void>('empty_trash')
+
 export const restoreTrashItems = (ids: string[]) =>
   invoke<void>('restore_trash_items', { ids })
 

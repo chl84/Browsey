@@ -42,6 +42,9 @@ type E2eMockControl = {
   thumbnailHold?: boolean
   systemClipboard?: MockClipboardState
   failCommands?: string[]
+  columnWidths?: number[]
+  trashEntries?: ExplorerEntry[]
+  emptyTrashHold?: boolean
   undoStorage?: { directory: string; exists: boolean; sessions: number; markedSessions: number; files: number; logicalBytes: number; incomplete: boolean }
   undoStorageHold?: boolean
   archivePassword?: string
@@ -280,7 +283,13 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'list_starred':
       return { current: 'starred://', entries: [] } as T
     case 'list_trash':
-      return { current: 'trash://', entries: [] } as T
+      return { current: 'trash://', entries: e2eControl()?.trashEntries ?? [] } as T
+    case 'empty_trash': {
+      const control = e2eControl()
+      while (control?.emptyTrashHold) await new Promise(resolve => setTimeout(resolve, 20))
+      if (control) control.trashEntries = []
+      return undefined as T
+    }
     case 'list_facets':
       return emptyFacets as T
     case 'context_menu_actions': {
@@ -327,7 +336,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'get_bookmarks':
       return (control?.bookmarks ?? []) as T
     case 'load_saved_column_widths':
-      return null as T
+      return (control?.columnWidths ?? null) as T
     case 'load_shortcuts':
       return [] as T
     case 'set_shortcut_binding':

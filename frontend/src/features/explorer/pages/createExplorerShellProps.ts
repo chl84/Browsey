@@ -10,6 +10,7 @@ type Params = {
   bookmarks: any
   partitions: any
   handlePlace: AnyFn
+  handleEmptyWastebasket: AnyFn
   handleSidebarBookmarkSelect: AnyFn
   handleSidebarRemoveBookmark: AnyFn
   handleBookmarkDragOver: AnyFn
@@ -148,6 +149,7 @@ export const createExplorerShellProps = (p: Params) => ({
     bookmarks: p.bookmarks,
     partitions: p.partitions,
     onPlaceSelect: p.handlePlace,
+    onEmptyWastebasket: p.handleEmptyWastebasket,
     onBookmarkSelect: p.handleSidebarBookmarkSelect,
     onRemoveBookmark: p.handleSidebarRemoveBookmark,
     dragTargetPath: p.dragTargetPath,

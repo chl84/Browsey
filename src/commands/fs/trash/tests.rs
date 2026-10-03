@@ -1,6 +1,7 @@
 use super::{
     super::error::{FsError, FsErrorCode, FsResult},
     backend::TrashBackend,
+    empty_trash_with_ops,
     listing::apply_original_trash_fields,
     move_ops::{move_single_to_trash_with_backend, move_to_trash_many_with_backend},
     purge_trash_items_with_ops, restore_trash_items_with_ops,
@@ -142,6 +143,7 @@ struct FakeTrashOps {
     purged_ids: RefCell<Vec<OsString>>,
     fail_restore: Cell<bool>,
     fail_purge: Cell<bool>,
+    purge_calls: Cell<usize>,
     list_error: RefCell<Option<FsError>>,
     restore_error: RefCell<Option<FsError>>,
 }
@@ -171,6 +173,7 @@ impl TrashOps for FakeTrashOps {
     }
 
     fn purge_items(&self, items: Vec<TrashItem>) -> FsResult<()> {
+        self.purge_calls.set(self.purge_calls.get() + 1);
         if self.fail_purge.get() {
             return Err(FsError::new(
                 FsErrorCode::TrashFailed,
@@ -182,6 +185,66 @@ impl TrashOps for FakeTrashOps {
             .extend(items.into_iter().map(|item| item.id));
         Ok(())
     }
+}
+
+#[test]
+fn empty_trash_purges_the_native_catalog_including_non_utf8_ids() {
+    let ops = FakeTrashOps::default();
+    let ids = vec![
+        OsString::from("unreadable-item"),
+        OsString::from_vec(vec![0xff]),
+    ];
+    *ops.items.borrow_mut() = ids
+        .iter()
+        .map(|id| TrashItem {
+            id: id.clone(),
+            name: OsString::from("item"),
+            original_parent: PathBuf::from("/missing/original"),
+            time_deleted: 0,
+        })
+        .collect();
+    let emitted = Cell::new(false);
+    empty_trash_with_ops(&ops, || emitted.set(true)).expect("empty trash");
+    assert_eq!(*ops.purged_ids.borrow(), ids);
+    assert_eq!(ops.purge_calls.get(), 1);
+    assert!(emitted.get());
+}
+
+#[test]
+fn empty_trash_empty_catalog_is_a_noop() {
+    let ops = FakeTrashOps::default();
+    let emitted = Cell::new(false);
+    empty_trash_with_ops(&ops, || emitted.set(true)).expect("already empty");
+    assert_eq!(ops.purge_calls.get(), 0);
+    assert!(!emitted.get());
+}
+
+#[test]
+fn empty_trash_does_not_purge_when_listing_fails() {
+    let ops = FakeTrashOps::default();
+    *ops.list_error.borrow_mut() = Some(FsError::new(FsErrorCode::TrashFailed, "list failed"));
+    let emitted = Cell::new(false);
+    let error = empty_trash_with_ops(&ops, || emitted.set(true)).expect_err("list failed");
+    assert_eq!(error.code(), FsErrorCode::TrashFailed);
+    assert_eq!(ops.purge_calls.get(), 0);
+    assert!(!emitted.get());
+}
+
+#[test]
+fn empty_trash_notifies_after_failed_purge_without_retrying() {
+    let ops = FakeTrashOps::default();
+    ops.items.borrow_mut().push(TrashItem {
+        id: OsString::from("id"),
+        name: OsString::from("item"),
+        original_parent: PathBuf::from("/missing"),
+        time_deleted: 0,
+    });
+    ops.fail_purge.set(true);
+    let emitted = Cell::new(false);
+    let error = empty_trash_with_ops(&ops, || emitted.set(true)).expect_err("purge failed");
+    assert_eq!(error.code(), FsErrorCode::TrashFailed);
+    assert_eq!(ops.purge_calls.get(), 1);
+    assert!(emitted.get());
 }
 
 #[test]

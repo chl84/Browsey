@@ -59,6 +59,39 @@ pub fn restore_trash_items(ids: Vec<String>, app: tauri::AppHandle) -> ApiResult
     map_api_result(restore_trash_items_impl(ids, app))
 }
 
+#[tauri::command]
+pub async fn empty_trash(app: tauri::AppHandle) -> ApiResult<()> {
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        empty_trash_with_ops(&SystemTrashOps, || {
+            let _ = runtime_lifecycle::emit_if_running(&app, "trash-changed", ());
+        })
+    });
+    let result = match task.await {
+        Ok(result) => result,
+        Err(error) => Err(FsError::new(
+            FsErrorCode::TaskFailed,
+            format!("Empty Wastebasket task failed: {error}"),
+        )),
+    };
+    map_api_result(result)
+}
+
+pub(super) fn empty_trash_with_ops<T: TrashOps, F: FnOnce()>(
+    ops: &T,
+    emit_changed: F,
+) -> FsResult<()> {
+    // Use the native catalog, not the UI listing: unreadable metadata and
+    // non-UTF-8 identifiers must not silently leave items behind.
+    let items = ops.list_items()?;
+    if items.is_empty() {
+        return Ok(());
+    }
+    let result = ops.purge_items(items);
+    // A failed purge can have removed some items. Refresh without retrying.
+    emit_changed();
+    result
+}
+
 fn restore_trash_items_impl(ids: Vec<String>, app: tauri::AppHandle) -> FsResult<()> {
     restore_trash_items_with_ops(ids, &SystemTrashOps, || {
         let _ = runtime_lifecycle::emit_if_running(&app, "trash-changed", ());

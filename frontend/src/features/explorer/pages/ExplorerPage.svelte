@@ -3,6 +3,8 @@
   import { onMount, onDestroy, tick } from 'svelte'
   import ArchivePasswordModal from '../components/ArchivePasswordModal.svelte'
   import CloudExportModal from '../components/CloudExportModal.svelte'
+  import ConfirmActionModal from '@/shared/ui/ConfirmActionModal.svelte'
+  import { createEmptyTrashModal } from '../modals/emptyTrashModal'
   import { getErrorMessage, normalizeError } from '@/shared/lib/error'
   import { get } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, parentPath } from '@/features/explorer/utils'
@@ -11,6 +13,7 @@
   import { ExplorerShell, useGridVirtualizer, createViewObservers } from '@/features/explorer/ui-shell'
   import { useExplorerData } from '@/features/explorer/hooks/useExplorerData'
   import { createColumnResize } from '@/features/explorer/hooks/createColumnResize'
+  import { createColumnHeaderSizing } from '@/features/explorer/hooks/createColumnHeaderSizing'
   import { createGlobalShortcuts } from '@/features/explorer/hooks/createGlobalShortcuts'
   import { createBookmarkModal } from '@/features/explorer/hooks/createBookmarkModal'
   import { useExplorerDragDrop, createClipboard, createHistoryActions, useExplorerFileOps } from '@/features/explorer/file-ops'
@@ -30,7 +33,7 @@
   import { openConsole } from '@/features/explorer/services/console.service'
   import { copyPathsToSystemClipboard } from '@/features/explorer/services/clipboard.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
-  import { deleteEntries, moveToTrashMany, purgeTrashItems } from '@/features/explorer/services/trash.service'
+  import { deleteEntries, emptyTrash, moveToTrashMany, purgeTrashItems } from '@/features/explorer/services/trash.service'
   import type { Entry, Partition, SortField } from '@/features/explorer/model/types'
   import { toast, showToast } from '@/features/explorer/hooks/useToast'
   import {
@@ -811,6 +814,12 @@
   }
 
   const { startResize } = createColumnResize(cols, persistWidths, getListMaxWidth)
+  const columnHeaderSizing = createColumnHeaderSizing(cols)
+  const handleColumnResize = (index: number, event: PointerEvent) => {
+    columnHeaderSizing.measure()
+    startResize(index, event)
+  }
+  $: columnHeaderSizing.observe(viewMode === 'list' ? headerElRef : null)
 
   $: {
     $cols
@@ -1219,6 +1228,19 @@
     }
     await loadRaw($current, { recordHistory: false })
   }
+
+  const emptyTrashModal = createEmptyTrashModal({
+    emptyTrash,
+    isTrashView: () => currentView === 'trash',
+    refresh: async () => {
+      await reloadCurrent()
+      // Listing loaders expose failures through their error store rather
+      // than rejecting. Keep refresh failure distinct from deletion failure.
+      if (get(error)) throw new Error(get(error))
+    },
+    showToast,
+  })
+  const emptyTrashState = emptyTrashModal.state
 
   const clearThumbnailCacheFromSettings = async () => {
     try {
@@ -1822,6 +1844,7 @@
     partitions,
     handlePlace,
     handleSidebarBookmarkSelect,
+    handleEmptyWastebasket: emptyTrashModal.open,
     handleSidebarRemoveBookmark,
     handleBookmarkDragOver,
     handleBookmarkDragLeave,
@@ -1880,7 +1903,7 @@
     changeSort,
     toggleColumnFilter,
     resetColumnFilter,
-    startResize,
+    startResize: handleColumnResize,
     ariaSort,
     handleRowClickWithOpen,
     handleOpenEntry,
@@ -2040,6 +2063,7 @@
   $: setThemeHighContrast($highContrast)
 
   onDestroy(() => {
+    columnHeaderSizing.cleanup()
     fileOps.cancelExtraction()
     destroyThemeController()
     pageLifecycle.handlePageDestroy()
@@ -2142,4 +2166,14 @@
       formatResult = null
     }
   }}
+/>
+<ConfirmActionModal
+  open={$emptyTrashState.open}
+  busy={$emptyTrashState.busy}
+  title="Empty Wastebasket?"
+  message="All files and folders in your system Wastebasket will be permanently deleted. This cannot be undone. Cloud providers’ trash is not affected."
+  confirmLabel="Empty Wastebasket"
+  danger
+  onConfirm={() => void emptyTrashModal.confirm()}
+  onCancel={emptyTrashModal.close}
 />

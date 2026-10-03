@@ -40,6 +40,14 @@ describe('deleteEntries', () => {
     expect(statCloudEntryMock).not.toHaveBeenCalled()
   })
 
+  it('empties the native system trash without lossy per-entry identifiers', async () => {
+    const { emptyTrash } = await import('./trash.service')
+    await emptyTrash()
+    expect(invokeMock).toHaveBeenCalledExactlyOnceWith('empty_trash')
+    expect(deleteCloudFileMock).not.toHaveBeenCalled()
+    expect(deleteCloudDirRecursiveMock).not.toHaveBeenCalled()
+  })
+
   it('tries file + dir delete when cloud stat is missing', async () => {
     const { deleteEntries } = await import('./trash.service')
 

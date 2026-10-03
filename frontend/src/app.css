@@ -57,6 +57,8 @@
   --list-rows-padding-left: 15px;
   --list-header-font-size: 12px;
   --list-header-cell-gap: 6px;
+  --list-header-resize-gap: 6px;
+  --list-size-padding-right: 8px;
   --list-header-sort-icon-size: 11px;
   --settings-modal-min-height: 420px;
   --settings-header-gap: 8px;
@@ -506,6 +508,8 @@ body.density-compact {
   --list-rows-padding-left: 15px;
   --list-header-font-size: 11px;
   --list-header-cell-gap: 5px;
+  --list-header-resize-gap: 4px;
+  --list-size-padding-right: 6px;
   --list-header-sort-icon-size: 10px;
   --settings-modal-min-height: 360px;
   --settings-header-gap: 6px;

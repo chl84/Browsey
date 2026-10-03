@@ -33,7 +33,7 @@ export const defaultColumns: Column[] = [
   { key: 'name', label: 'Name', sort: 'name', width: 320, min: 220, align: 'left' },
   { key: 'type', label: 'Type', sort: 'type', width: 120, min: 80 },
   { key: 'modified', label: 'Modified', sort: 'modified', width: 90, min: 80 },
-  { key: 'size', label: 'Size', sort: 'size', width: 90, min: 70, align: 'right' },
+  { key: 'size', label: 'Size', sort: 'size', width: 90, min: 70, align: 'left' },
   { key: 'star', label: '', sort: 'name', width: 25, min: 25, resizable: false, sortable: false },
 ]
 

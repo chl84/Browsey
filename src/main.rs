@@ -432,6 +432,7 @@ fn main() {
             search_stream,
             restore_trash_items,
             purge_trash_items,
+            empty_trash,
             create_folder,
             compress_entries,
             check_duplicates,

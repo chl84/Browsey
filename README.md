@@ -256,6 +256,7 @@ dependencies. Regression tests: `node --test scripts/release/bump.test.mjs`.
 - Default bindings are remappable in Settings.
 - Core defaults: `Ctrl+F` search, `Ctrl+G` view toggle, `Ctrl+A` select all, `Ctrl+C/X/V` clipboard.
 - File actions: `Ctrl+R` rename, `Delete` trash, `Shift+Delete` permanent delete, `Ctrl+P` properties.
+- Right-click Wastebasket and choose **Empty Wastebasket…** to permanently delete its contents after confirmation. This cannot be undone and does not empty cloud providers’ trash.
 - Navigation/helpers: `Ctrl+H` hidden files, `Ctrl+B` bookmark modal, `Ctrl+T` open terminal.
 - `Esc` exits search/filter contexts.
 - `Ctrl` + mouse wheel zooms the file view through list and five grid sizes. Zoom is per window and resets on restart; grid gaps are 8 px (Cozy) or 6 px (Compact).
