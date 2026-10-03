@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep list-header filter buttons separate from column resize handles, including SIZE and narrow columns. Remove overlapping alignment offsets and truncate header labels when necessary while preserving sorting, filtering and resizing.
+
+- Simplify Settings stored-data controls: remove drag-and-drop prose, group named cache/list cleanup actions, and show a concise recovery-backup overview with allocation, paths and manual recovery guidance collapsed by default. Preserve read-only inspection, safety warnings and existing cleanup confirmations.
+
 - Do not retry failed RC jobs or ambiguous responses after submitting a cloud write. Preserve completed-job provider codes, keep pre-submission fallback separate, bound RC response buffers and redact entire signed OData URLs (including apostrophes) and JSON secret fields in failure feedback/debug output.
 
 - Drain rclone stdout/stderr concurrently instead of waiting on pipe-blocked children; bound capture memory and report unknown completion rather than accepting truncated output. Preserve the end of lengthy failure diagnostics, redact signed provider URLs and reuse common typed cloud error classification for mixed transfers, including network loss and timeout. Add ownership-guarded OneDrive archive-tree and active cancellation/transport-fault acceptance checks.
@@ -36,7 +40,7 @@
 
 - Validate opened source versions and copied lengths after local file streaming, and check pre-sync output versions after writeback in both copy engines. Reject changed inputs and in-place target edits without adopting them into receipts or deleting sources; preserve uncertain finalized outputs and edited targets during error cleanup. Add deterministic rewrite/truncate/append and finalization-edit regressions while keeping final-check and active-writer limitations explicit.
 
-- Show read-only undo/recovery backup diagnostics under Settings > Data, with bounded metadata scans, explicit incomplete measurements, a copyable storage path and manual recovery guidance. Preserve backups, locks and markers; distinguish file-content size from disk usage and 50-action history from a storage quota. Reuse shared size formatting and cover refresh failures, pending requests, keyboard access and narrow-window layout.
+- Show read-only undo/recovery backup diagnostics under Settings > Stored data, with bounded metadata scans, explicit incomplete measurements, a copyable storage path and manual recovery guidance. Preserve backups, locks and markers; distinguish file-content size from disk usage and 50-action history from a storage quota. Reuse shared size formatting and cover refresh failures, pending requests, keyboard access and narrow-window layout.
 
 - Preserve copied bytes before undo removes targets; restore redo and failed mixed-batch compensation from verified private backups instead of changed/missing original sources. Keep recovery markers through the whole operation and preserve marked sessions during startup cleanup, including after process interruption. Move history work off the event loop, reconcile listings after errors, distinguish refresh failures and suppress repeated undo/redo requests; cover backup/restore faults, source edits, native filenames, cross-filesystem copies and recovery-session cleanup.
 

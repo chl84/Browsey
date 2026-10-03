@@ -16,6 +16,13 @@ export type UndoStorageSummary = {
 
 export const inspectUndoStorage = () => invoke<UndoStorageSummary>('inspect_undo_storage')
 
+export const describeUndoStorageOverview = (summary: UndoStorageSummary) => {
+  if (!summary.exists) return 'No undo storage directory exists yet.'
+  const prefix = summary.incomplete ? 'Incomplete scan — counted' : 'Last scan:'
+  const sessions = `${summary.sessions} ${summary.sessions === 1 ? 'session' : 'sessions'}`
+  return `${prefix} ${formatSize(summary.logicalBytes)} of file contents · ${sessions}`
+}
+
 export const describeUndoStorage = (summary: UndoStorageSummary) => {
   const prefix = summary.incomplete ? 'Incomplete scan — counted' : 'Last scan:'
   if (!summary.exists) return 'No undo storage directory exists yet.'

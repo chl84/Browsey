@@ -145,11 +145,13 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
   replacing or renaming them first; detection of some concurrent edits is not
   an active-writer safety guarantee. See the
   [concurrent-writer boundary decision](../../audits/daily-driver/concurrent-writer-boundary.md)
-- Settings > Data inspects undo-session storage without changing files, locks
-  or markers. It shows measured file-content lengths, session/marker counts,
-  a copyable directory path and manual recovery guidance. Incomplete scans are
-  explicitly labelled, and marker counts also include work still in progress;
-  this is not allocated disk usage, a quota, or automatic recovery/cleanup
+- Settings > Stored data inspects undo-session storage without changing files, locks
+  or markers. Expand "Backup details and recovery guidance" for file-content
+  lengths, filesystem-reported allocation where available, session/marker counts,
+  a copyable directory path and manual recovery steps. Incomplete scans are
+  explicitly labelled, and marker counts also include work still in progress.
+  Allocation is not exclusive physical usage on compressed/CoW filesystems;
+  these diagnostics are not a quota or automatic recovery/cleanup
 
 These boundaries are part of the supported behavior, not incidental
 implementation details.

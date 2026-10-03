@@ -38,9 +38,25 @@ for (const width of [900, 620]) {
       control.undoStorage.directory = `/mock/${'long-backup-directory-'.repeat(15)}/undo-sessions`
     })
     const recovery = await openRecoverySettings(page)
+    const layout = await recovery.evaluate(element => ({
+      top: element.getBoundingClientRect().top,
+      labelTop: document.querySelector('.backup-label')!.getBoundingClientRect().top,
+    }))
+    expect(Math.abs(layout.top - layout.labelTop)).toBeLessThanOrEqual(1)
+    for (const name of ['Caches', 'Saved lists']) {
+      const actions = page.getByRole('group', { name, exact: true })
+      const dimensions = await actions.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth }))
+      expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1)
+    }
     await expect(recovery.getByRole('status')).toContainText('Last scan: 8.2 kB')
     await expect(recovery.getByRole('status')).toContainText('1 session with recovery markers')
     const path = recovery.getByRole('textbox', { name: 'Undo backup directory' })
+    await expect(path).toBeHidden()
+    await expect(recovery.getByText('Do not remove markers just to free space', { exact: false })).toBeHidden()
+    const guidance = recovery.locator('summary', { hasText: 'Backup details and recovery guidance' })
+    await guidance.focus()
+    await guidance.press('Enter')
+    await expect(path).toBeVisible()
     await expect(path).toHaveAttribute('readonly', '')
     await path.focus()
     await path.press('Control+a')
@@ -48,9 +64,6 @@ for (const width of [900, 620]) {
       .toBe((await path.inputValue()).length)
     const dimensions = await recovery.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth }))
     expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1)
-    const guidance = recovery.locator('summary', { hasText: 'Manual recovery guidance' })
-    await guidance.focus()
-    await guidance.press('Enter')
     await expect(recovery.getByText('Do not remove markers just to free space', { exact: false })).toBeVisible()
     await expect(recovery.getByText('Finish file operations and close all Browsey windows', { exact: false })).toBeVisible()
     await expect(recovery.getByRole('button')).toHaveCount(1)
@@ -86,8 +99,43 @@ test('refresh errors retain and label the previous measurement; retry only inspe
     control.undoStorage.markedSessions = 0
   })
   await recovery.getByRole('button', { name: 'Refresh backup information' }).click()
-  await expect(recovery.getByRole('status')).toContainText('0 sessions with recovery markers')
+  await expect(recovery.getByRole('status')).not.toContainText('with recovery markers')
   await expect(recovery.getByRole('status')).not.toContainText('Could not inspect')
+})
+
+test('Settings omits drag-and-drop prose and keeps recovery details collapsed after reopening', async ({ page }) => {
+  await page.keyboard.press('Control+s')
+  const settings = page.locator('.settings-modal')
+  await expect(settings.getByText('Drag & drop:', { exact: false })).toHaveCount(0)
+  await expect(settings.locator('.shortcuts-columns')).toBeVisible()
+  const recovery = settings.locator('.undo-storage')
+  await expect(recovery.locator('details')).not.toHaveAttribute('open', '')
+  await recovery.locator('summary').click()
+  await expect(recovery.getByRole('textbox', { name: 'Undo backup directory' })).toBeVisible()
+  await recovery.locator('summary').focus()
+  await page.keyboard.press('Escape')
+  const reopened = await openRecoverySettings(page)
+  await expect(reopened.locator('details')).not.toHaveAttribute('open', '')
+  await expect(reopened.getByRole('textbox', { name: 'Undo backup directory' })).toBeHidden()
+})
+
+test('grouped cleanup buttons retain separate confirmations and never clear on cancellation', async ({ page }) => {
+  await openRecoverySettings(page)
+  const settings = page.locator('.settings-modal')
+  for (const [label, title] of [
+    ['Clear thumbnail cache', 'Clear thumbnail cache?'],
+    ['Clear cloud file cache', 'Clear cloud file cache?'],
+    ['Clear stars', 'Clear all stars?'],
+    ['Clear bookmarks', 'Clear all bookmarks?'],
+    ['Clear recents', 'Clear all recents?'],
+  ]) {
+    await settings.getByRole('button', { name: label, exact: true }).click()
+    const confirmation = page.getByRole('dialog', { name: title, exact: true })
+    await expect(confirmation).toBeVisible()
+    await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click()
+  }
+  const calls = await page.evaluate(() => (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__.calls)
+  expect(calls.some(call => /^(delete_|clear_|restore_)/.test(call.cmd))).toBe(false)
 })
 
 test('pending inspection disables repeats and closing Settings discards its late result', async ({ page }) => {

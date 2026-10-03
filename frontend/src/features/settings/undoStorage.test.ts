@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { get } from 'svelte/store'
-import { createUndoStorageModel, describeUndoStorage, type UndoStorageSummary } from './undoStorage'
+import { createUndoStorageModel, describeUndoStorage, describeUndoStorageOverview, type UndoStorageSummary } from './undoStorage'
 
 const fixture: UndoStorageSummary = {
   directory: '/fixture/browsey/undo-sessions', exists: true, sessions: 3,
@@ -8,6 +8,15 @@ const fixture: UndoStorageSummary = {
 }
 
 describe('undo storage diagnostics', () => {
+  it('keeps the overview concise without losing partial-scan or missing-storage states', () => {
+    expect(describeUndoStorageOverview(fixture)).toBe('Last scan: 8.2 kB of file contents · 3 sessions')
+    expect(describeUndoStorageOverview({ ...fixture, sessions: 1, allocatedBytes: 4096 }))
+      .toBe('Last scan: 8.2 kB of file contents · 1 session')
+    expect(describeUndoStorageOverview({ ...fixture, incomplete: true, logicalBytes: 0 }))
+      .toContain('Incomplete scan — counted 0 B')
+    expect(describeUndoStorageOverview({ ...fixture, exists: false }))
+      .toBe('No undo storage directory exists yet.')
+  })
   it('labels allocation separately and supports backends without block accounting', () => {
     expect(describeUndoStorage({ ...fixture, allocatedBytes: 4 * 1024 * 1024 }))
       .toContain('4.2 MB allocated according to the filesystem')

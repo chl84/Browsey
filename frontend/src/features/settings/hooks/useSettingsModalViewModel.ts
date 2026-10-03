@@ -356,7 +356,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
     const clearStarsTexts = rowTexts('clear stars', 'clear')
     const clearBookmarksTexts = rowTexts('clear bookmarks', 'clear')
     const clearRecentsTexts = rowTexts('clear recents', 'clear')
-    const undoStorageTexts = rowTexts('undo', 'redo', 'recovery', 'backups', 'storage', 'disk space', 'manual recovery')
+    const undoStorageTexts = rowTexts('undo', 'redo', 'recovery', 'backups', 'storage', 'stored data', 'disk space', 'manual recovery', 'backup details')
     const highContrastTexts = rowTexts('high contrast', 'boost contrast for ui elements')
     const scrollbarWidthTexts = rowTexts('scrollbar width', `${settings.scrollbarWidth} px`, settings.scrollbarWidth)
     const cloudEnabledTexts = rowTexts(

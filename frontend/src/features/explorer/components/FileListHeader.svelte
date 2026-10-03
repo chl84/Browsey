@@ -47,7 +47,6 @@
         <div
           class="header-controls"
           class:align-right={col.align === 'right'}
-          class:size-header={col.key === 'size'}
           role="columnheader"
           aria-sort={ariaSort(col.sort)}
         >
@@ -57,7 +56,7 @@
             class:active-sort={sortField === col.sort}
             on:click={() => onChangeSort(col.sort)}
           >
-            <span>{col.label}</span>
+            <span class="header-label" title={col.label}>{col.label}</span>
             <span
               class="sort-icon"
               class:desc={sortField === col.sort && sortDirection === 'desc'}
@@ -147,7 +146,7 @@
     align-items: center;
     gap: var(--list-header-cell-gap);
     justify-content: flex-start;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
     min-width: 0;
     height: 100%;
     border: none;
@@ -163,8 +162,6 @@
   }
 
   .header-controls.align-right {
-    margin-right: calc(-1 * var(--list-header-align-right-offset));
-    padding-right: var(--list-header-align-right-offset);
     justify-content: flex-end;
   }
 
@@ -173,11 +170,11 @@
     text-align: right;
   }
 
-  .header-controls.align-right.size-header {
-    /* Controls optical alignment for SIZE header relative to right edge and star column. */
-    margin-right: calc(
-      -1 * (var(--list-header-align-right-offset) + var(--list-header-size-extra-offset))
-    );
+  .header-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .header-btn.inert {
@@ -195,6 +192,7 @@
   }
 
   .sort-icon {
+    flex: 0 0 auto;
     font-size: var(--list-header-sort-icon-size);
     opacity: 0.8;
     display: inline-flex;

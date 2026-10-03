@@ -6,61 +6,51 @@
   export let clearBusy = false
   export let clearTarget: DataClearTarget | null = null
   export let onRequestClear: (target: DataClearTarget) => void = () => {}
+
+  const groups = [
+    { label: 'Caches', actions: [
+      { target: 'thumb-cache', label: 'Clear thumbnail cache' },
+      { target: 'cloud-open-cache', label: 'Clear cloud file cache' },
+    ] },
+    { label: 'Saved lists', actions: [
+      { target: 'stars', label: 'Clear stars' },
+      { target: 'bookmarks', label: 'Clear bookmarks' },
+      { target: 'recents', label: 'Clear recents' },
+    ] },
+  ] satisfies { label: string; actions: { target: DataClearTarget; label: string }[] }[]
 </script>
 
 {#if show}
   <div class="group-divider" aria-hidden="true"></div>
-  <div class="group-heading">Data</div><div class="group-spacer"></div>
+  <div class="group-heading">Stored data</div><div class="group-spacer"></div>
 
   <UndoStorageSection />
 
-  <div class="form-label">Clear thumbnail cache</div>
-  <div class="form-control">
-    <button
-      type="button"
-      class="secondary"
-      disabled={clearBusy}
-      on:click={() => onRequestClear('thumb-cache')}
-    >
-      {clearBusy && clearTarget === 'thumb-cache' ? 'Clearing...' : 'Clear'}
-    </button>
-  </div>
-
-  <div class="form-label">Clear cloud file cache</div>
-  <div class="form-control">
-    <button
-      type="button"
-      class="secondary"
-      disabled={clearBusy}
-      on:click={() => onRequestClear('cloud-open-cache')}
-    >
-      {clearBusy && clearTarget === 'cloud-open-cache' ? 'Clearing...' : 'Clear'}
-    </button>
-  </div>
-
-  <div class="form-label">Clear stars</div>
-  <div class="form-control">
-    <button type="button" class="secondary" disabled={clearBusy} on:click={() => onRequestClear('stars')}>
-      {clearBusy && clearTarget === 'stars' ? 'Clearing...' : 'Clear'}
-    </button>
-  </div>
-
-  <div class="form-label">Clear bookmarks</div>
-  <div class="form-control">
-    <button
-      type="button"
-      class="secondary"
-      disabled={clearBusy}
-      on:click={() => onRequestClear('bookmarks')}
-    >
-      {clearBusy && clearTarget === 'bookmarks' ? 'Clearing...' : 'Clear'}
-    </button>
-  </div>
-
-  <div class="form-label">Clear recents</div>
-  <div class="form-control">
-    <button type="button" class="secondary" disabled={clearBusy} on:click={() => onRequestClear('recents')}>
-      {clearBusy && clearTarget === 'recents' ? 'Clearing...' : 'Clear'}
-    </button>
-  </div>
+  {#each groups as group (group.label)}
+    <div class="form-label data-label">{group.label}</div>
+    <div class="form-control data-actions" role="group" aria-label={group.label}>
+      {#each group.actions as action (action.target)}
+        <button
+          type="button"
+          class="secondary"
+          aria-label={action.label}
+          disabled={clearBusy}
+          on:click={() => onRequestClear(action.target)}
+        >
+          {clearBusy && clearTarget === action.target ? 'Clearing…' : action.label}
+        </button>
+      {/each}
+    </div>
+  {/each}
 {/if}
+
+<style>
+  .data-actions {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .data-label {
+    align-self: start;
+    padding-top: var(--settings-control-gap);
+  }
+</style>

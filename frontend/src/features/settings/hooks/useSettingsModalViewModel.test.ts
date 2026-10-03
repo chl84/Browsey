@@ -38,7 +38,7 @@ describe('createSettingsModalViewModel filtering', () => {
     })
   })
 
-  it.each(['recovery', 'undo', 'backups', 'disk space'])('finds backup diagnostics for %s', filter => {
+  it.each(['recovery', 'undo', 'backups', 'disk space', 'stored data', 'backup details'])('finds backup diagnostics for %s', filter => {
     const vm = createSettingsModalViewModel(buildDeps())
     vm.filter.set(filter)
     expect(vm.buildFilterModel({ ...DEFAULT_SETTINGS }).showData).toBe(true)
