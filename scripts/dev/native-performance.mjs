@@ -70,7 +70,10 @@ try {
       // This instance only listed generated text files. No user file operation runs.
       assert.equal(realpathSync(`/proc/${pid}/exe`), candidate)
       const exited = once(running, 'exit')
-      running.kill('SIGTERM')
+      // Normal exit runs shutdown hooks for the test instance's mount monitor.
+      execFileSync('/usr/bin/python', [join(repo, 'tests/support/native_fixture_a11y.py'),
+        String(pid), candidate, join(profile, 'data'), 'click', 'button', 'Close window'],
+        { timeout: 10_000, env: { ...process.env, BROWSEY_TEST_A11Y_TIMEOUT: '5' }, stdio: 'ignore' })
       await Promise.race([exited, pause(5000)])
       assert.ok(running.exitCode !== null || running.signalCode !== null,
         'Candidate did not exit; leave fixture and do not start another instance')

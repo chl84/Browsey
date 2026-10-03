@@ -152,22 +152,32 @@ layers. Engineering completion and real-provider acceptance are separate.
   - [x] OneDrive extracted-tree round trip: encrypted ZIP, 32 files/eight groups,
     nested empty directories, exact bytes, original archive retained and an
     occupied directory refused. This is functional coverage, not a large-tree budget.
-  - [ ] OneDrive active cancellation and process-scoped network interruption:
+  - [x] OneDrive active cancellation and process-scoped network interruption:
     positive real rclone byte statistics observed before fault injection;
     cancellation/network error classified, source bytes preserved, owned-child
     normal trash cleanup verified. No global network or quota manipulation.
-    Cancellation revalidation passed; network privacy revalidation found an
-    OData-URL quoting case and is pending after the follow-up fix.
+    Revalidated after the OData-URL privacy fix on `ed109fb`: cancellation
+    returned in 25.1 ms and network failure in 50.2 ms after positive byte
+    statistics; signed URLs were absent from feedback and the parent was empty.
   - [x] OneDrive native archive UI/IPC/staging acceptance: context-menu password
     ZIP creation and password-modal extraction, refreshed output, exact bytes
     and nested empty directories, unchanged source/archive and scoped cleanup.
+    Revalidated with the production candidate built from `ed109fb` after the
+    RC completion/no-retry fixes, not just the earlier native checkpoint.
   - [x] OneDrive bounded post-preflight copy conflict: a same-size competing
     test file appears before rclone starts; CLI and RC progress preserve its
     bytes and the source, and a skipped copy is not reported as successful.
+    A legitimate zero-byte RC upload also succeeds and is verified remotely.
     This is not provider CAS or protection against a later in-flight race.
-  - [ ] OneDrive remaining acceptance: native external GTK receiver, large/deep
-    trees, dedicated-account quota/rate limits, server-side concurrent destination
-    races and web recycle-bin restore.
+  - [x] OneDrive bounded larger/deeper archive tree: 512 files in eight groups,
+    depth eight, nested empty directories, exact round-trip bytes, original
+    archive retained and occupied target refused. Tree upload/download took
+    207/77 seconds within existing transfer limits. All five real-provider
+    tests passed serially on `ed109fb` in 810 seconds with owned-child cleanup.
+    This is not an unlimited-scale or mixed-large-file performance budget.
+  - [ ] OneDrive remaining acceptance: native external GTK receiver, broader
+    scale/mixed-large-file budgets, dedicated-account quota/rate limits,
+    server-side concurrent destination races and web recycle-bin restore.
   - [ ] Google Drive: obtain an approved disposable remote/folder and run
     the expanded real-provider checklist.
   - [ ] Nextcloud: obtain an approved disposable remote/folder and run

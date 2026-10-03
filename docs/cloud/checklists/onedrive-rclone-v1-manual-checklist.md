@@ -52,7 +52,8 @@ Historical Linux 1.0 results below are not acceptance of Unreleased additions.
 Partial backend acceptance used an explicitly approved empty folder and a new
 uniquely named, ownership-marked child. Provider/working-copy/archive production
 helpers ran against rclone 1.75.1 on Omarchy 4.0.4. No personal paths or account
-identifiers are recorded here. This is not native UI acceptance or a release.
+identifiers are recorded here. Later native and active-fault acceptance is scoped
+explicitly in the rows below; none of these development checks is a release.
 
 - [x] Download/open working copy, retain edits after source-cache removal
 - [x] Explicit upload to a unique new name; original and local edits retained
@@ -61,9 +62,10 @@ identifiers are recorded here. This is not native UI acceptance or a release.
 - [x] Advanced rename with the shared preflight path
 - [x] Password ZIP creation/upload/download/extraction with existing archive engine
 - [x] Marker verified before owned-child normal trash cleanup; parent empty afterward
-- [x] Backend encrypted ZIP and extracted-tree upload/download: 32 files in eight
-  groups, nested empty directory, byte verification, unchanged original archive
-  and existing-directory refusal. Real opt-in transfer test passed in 120 seconds.
+- [x] Backend encrypted ZIP and extracted-tree upload/download: first 32 files
+  in eight groups, then 512 files with depth eight on `ed109fb`; nested empty
+  directory, byte verification, unchanged original archive and existing-directory
+  refusal. Larger tree upload/download took 207/77 seconds within existing limits.
 - [x] Native archive context menu, password checkbox and extraction password
   modal through real IPC/local staging/OneDrive. Private optimized candidate,
   exact returned bytes/empty directories, refreshed output and retained originals;
@@ -73,16 +75,17 @@ identifiers are recorded here. This is not native UI acceptance or a release.
 - [x] Active real-provider cancellation after positive transfer byte statistics;
   cancelled code, preserved source, remote state inspected without assuming
   rollback, then owned-child normal trash cleanup.
-- [ ] Active network interruption scoped to one test rclone process via a local
+- [x] Active network interruption scoped to one test rclone process via a local
   CONNECT proxy; real bytes precede injection, network error and source retention
-  previously verified. Follow-up privacy revalidation found quoted OData URLs;
-  rerun pending after that fix. No desktop network or remote settings change.
+  verified again after the OData-URL privacy fix on `ed109fb`: 77,824 bytes,
+  typed network failure in 50.2 ms, no signed URL in feedback, exact source and
+  empty parent after cleanup. No desktop network or remote settings change.
 - [ ] Quota/rate limit on a dedicated test account (fixtures only so far)
 - [x] Same-size destination introduced after Browsey preflight: CLI refuses
   replacement, RC progress skips the existing object and checks completed-transfer
   statistics; no-transfer is failure, competing/source bytes retained. Passed
   in 75 seconds; no provider CAS or in-flight race guarantee.
-- [ ] Large/deep trees and concurrent target races
+- [ ] Broader scale/mixed-large-file budgets and in-flight concurrent target races
 
 Opt-in backend runner: `commands::cloud::workspace::tests::real_onedrive_working_copy_and_archive_acceptance`.
 Extracted-tree runner:
@@ -91,8 +94,12 @@ It is ignored in ordinary CI and requires `BROWSEY_TEST_CLOUD_SCOPE` pointing to
 an approved empty non-root folder plus `BROWSEY_TEST_CLOUD_WRITE_APPROVED=yes`.
 Failure retains marked test data for inspection; successful cleanup uses trash,
 not a global purge. OneDrive Personal hard-delete is not assumed supported.
-Both reuse the same empty-parent and ownership-marker guard. A 32-file tree is
-functional round-trip evidence, not large/deep-tree performance acceptance.
+Both reuse the same empty-parent and ownership-marker guard. The 512-file/depth-8
+follow-up is bounded larger/deeper round-trip evidence, not an unlimited-scale or
+mixed-large-file performance budget. All five real-provider tests passed serially
+on `ed109fb` in 810 seconds. Native acceptance used production candidate SHA-256
+`137aaecab41381a84baf450ca807130563e6c3cd91760293037f825fe59ec1d9`,
+not the installed app. A legitimate zero-byte RC upload was also verified.
 Additional opt-in runners are `real_onedrive_active_fault_acceptance`,
 `real_onedrive_post_preflight_destination_acceptance` and
 `real_onedrive_native_archive_acceptance`; the last additionally requires

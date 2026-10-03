@@ -63,8 +63,10 @@ moved to normal trash before retrying.
    `IgnoreExisting` per RC call and verify an increase in completed transfers,
    including zero-byte files. CLI exit 9 and unavailable/skipped RC completion
    are typed task failures with refresh/verification guidance, not claimed copies
-   or automatic retries. Explicit overwrite behavior and move semantics are not
-   changed. The fake now models the actual single-file immutable limitation.
+   or automatic retries. These copy guards do not change explicit overwrite or
+   move policy. The separate failure-path changes below prevent automatic retry
+   of ambiguous/failed writes, including moves. The fake now models the actual
+   single-file immutable limitation.
 
 These guards reduce the preflight-to-transfer gap but cannot make a provider
 write atomic. [rclone's documented skip/no-transfer flags](https://rclone.org/docs/#ignore-existing)
@@ -77,7 +79,10 @@ The full provider rerun revalidated working copies/archives and active
 cancellation, but the network privacy assertion found a legitimate apostrophe
 inside an OData upload-session URL. That delimiter stopped the first URL scrub
 early. The corrected regression covers the entire OData URL, JSON escaping and
-case variations; pending real revalidation is left unchecked, not called a pass.
+case variations. Real revalidation on `ed109fb` passed: cancellation after
+1,060,864 accounted bytes returned in 25.1 ms; process-scoped network failure
+after 77,824 bytes returned in 50.2 ms. Feedback contained no signed URL, source
+bytes remained exact and owner-checked normal trash left the parent empty.
 The later three tests refused the nonempty test parent before writing. That is
 ownership-guard behavior, not three independent provider/native regressions.
 Only the marked failed child was moved to normal trash before retrying.
@@ -93,6 +98,37 @@ the correction. API and Debug/Display feedback reuse bounded signed-URL/JSON
 secret redaction. RC response buffers also stop at 128 MiB instead of accepting
 unbounded responses or partial JSON.
 
+## Final verification checkpoint
+
+The strict maintenance suite for `ed109fb` passed 666 backend tests (16 explicitly
+opt-in tests ignored), 318 frontend tests, 64 browser tests, Clippy with denied
+warnings, blocking/advisory Semgrep with zero findings and 20 strict docs checks.
+The production Tauri candidate then built successfully in 4 minutes 6 seconds.
+Its SHA-256 is
+`137aaecab41381a84baf450ca807130563e6c3cd91760293037f825fe59ec1d9`.
+
+All five real-provider tests passed serially against the approved empty parent
+in 809.56 seconds, with owner-checked normal trash cleanup after each test:
+
+- Working copies, same-size source changes, explicit unique upload, rename and
+  password archives were revalidated.
+- Active cancellation/network loss passed the corrected signed-URL privacy
+  assertion, as recorded above.
+- Native context-menu password ZIP creation and password-modal extraction used
+  this final candidate, including the RC completed-transfer/no-retry changes.
+- The competing-destination test preserved both source and competing bytes for
+  CLI and RC progress. A legitimate zero-byte progress upload succeeded and was
+  verified by remote stat and an empty download.
+- The archive tree used 512 files in eight groups with depth eight and nested
+  empty directories. Encrypted archive upload/download took 10.1/13.8 seconds;
+  extracted-tree upload/download took 207.0/77.5 seconds, without changing normal
+  transfer limits. All returned file bytes and the unchanged original ZIP were
+  checked; copying into the occupied tree was refused.
+
+This final checkpoint supersedes the earlier binary limitation for native
+acceptance, not the scope boundaries. No installed-app replacement, remote root
+write, global purge, quota exhaustion or desktop network change was performed.
+
 ## Reproduction
 
 Run one opt-in test at a time, with the approved parent empty:
@@ -105,6 +141,12 @@ cargo test real_onedrive_archive_tree_acceptance -- --ignored --nocapture
 cargo test real_onedrive_active_fault_acceptance -- --ignored --nocapture
 cargo test real_onedrive_post_preflight_destination_acceptance -- --ignored --nocapture
 ```
+
+The larger/deeper run sets `BROWSEY_TEST_CLOUD_TREE_FILES=512` and
+`BROWSEY_TEST_CLOUD_TREE_DEPTH=8`. Defaults are 32 files/depth one; positive
+values are bounded to 1,024 files/depth 16 before any cloud write. All five tests
+can be selected with `cargo test real_onedrive_ -- --ignored --nocapture
+--test-threads=1` after the native opt-in below; they must not run concurrently.
 
 Native acceptance additionally needs a production candidate at
 `target/release/browsey`, Hyprland and AT-SPI Python bindings. It refuses a
@@ -123,8 +165,8 @@ later changes were installed or that the final checkout passed native acceptance
 
 ## Still open
 
-Large/deep-tree scale, dedicated-account quota/rate limits, destination changes
-during an in-flight provider write, external GTK receiver, provider-web trash
+Broader scale and mixed-large-file budgets, dedicated-account quota/rate limits,
+destination changes during an in-flight provider write, external GTK receiver, provider-web trash
 restore, and approved Google Drive/Nextcloud acceptance remain open. See the
 [active TODO](../../todo/TODO_DAILY_DRIVER_COMPLETENESS.md) and
 [OneDrive checklist](../../cloud/checklists/onedrive-rclone-v1-manual-checklist.md).

@@ -185,6 +185,25 @@ was approximately 165–175 MiB / 184–185 MiB. Summed parent/descendant RSS wa
 approximately 459–479 MiB / 539–640 MiB, with shared-page double counting.
 The ordinary app remained running and was neither installed nor restarted.
 
+A final follow-up used source `ed109fb` and candidate SHA-256
+`137aaecab41381a84baf450ca807130563e6c3cd91760293037f825fe59ec1d9`,
+after the cloud failure-path fixes. The checkout was dirty only with follow-up
+documentation and the native runner's normal-close change, not production Rust
+or frontend changes. All twelve starts and normal window closes passed; generated
+fixtures were removed. No build or cloud transfer ran concurrently.
+
+| Generated folder | First private-profile start | Repeated-profile median / max |
+| --- | ---: | ---: |
+| 10,000 entries | 1,263 ms | 1,123 / 1,168 ms |
+| 100,000 entries | 2,278 ms | 1,865 / 2,015 ms |
+
+Parent RSS at readiness ranged 166–168 MiB / 185–220 MiB; parent high-water RSS
+ranged 169–174 MiB / 254–259 MiB. Summed parent/descendant RSS ranged
+444–467 MiB / 523–673 MiB with the same shared-page caveat. These observations
+show run-to-run variation, not proof of a cloud-change performance effect.
+The runner now closes its exact private candidate normally, so shutdown hooks
+stop its mount monitor, instead of using SIGTERM on successful samples.
+
 Wall-clock budgets should remain opt-in review targets until repeated native
 and storage runs establish stable variance. CI enforces semantic/structural
 bounds instead: queue capacity, virtualization, no extra traversal after observed
