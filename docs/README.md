@@ -47,6 +47,6 @@ track's completion.
 Operational safety rules and reusable checklists remain useful, but checked
 rows from an older run do not certify a newer build. For version-specific
 results and outstanding validation, consult [release notes](releases/), such as
-[1.0.4 release preparation](releases/1.0.4.md) and the published
+[1.0.4](releases/1.0.4.md) and the earlier
 [1.0.3](releases/1.0.3.md). Reproduce old audit findings against current code
 before treating them as new work.

@@ -40,14 +40,14 @@ Reference behavior: `docs/operations/core-operations/matrix.md`
 
 ## Expected Limitations (Linux 1.0 Scope)
 
-Historical Linux 1.0 results below are not acceptance of Unreleased additions.
+Historical Linux 1.0 results below are not acceptance of the 1.0.4 additions.
 
 - [x] Cloud delete uses permanent-delete semantics (no cloud trash integration)
 - [x] Advanced rename remains unavailable for cloud entries
 - [x] Cloud archive extract/compress remains unavailable
 - [x] Open-in-console is blocked for cloud folders
 
-## Unreleased Expansion Acceptance (2026-10-03)
+## 1.0.4 Expansion Acceptance (2026-10-03)
 
 Partial backend acceptance used an explicitly approved empty folder and a new
 uniquely named, ownership-marked child. Provider/working-copy/archive production

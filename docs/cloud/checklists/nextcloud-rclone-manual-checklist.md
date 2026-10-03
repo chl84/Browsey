@@ -43,14 +43,14 @@ Reference behavior: `docs/operations/core-operations/matrix.md`
 
 ## Expected Limitations (Linux 1.0 Scope)
 
-Historical Linux 1.0 results below are not acceptance of Unreleased additions.
+Historical Linux 1.0 results below are not acceptance of the 1.0.4 additions.
 
 - [x] Cloud delete uses permanent-delete semantics (no cloud trash integration)
 - [x] Advanced rename remains unavailable for cloud entries
 - [x] Cloud archive extract/compress remains unavailable
 - [x] Open-in-console is blocked for cloud folders
 
-## Unreleased Expansion Acceptance
+## 1.0.4 Expansion Acceptance
 
 Pending: no approved disposable Nextcloud remote/folder was supplied for this
 expansion. Automated provider fixtures do not constitute instance acceptance.

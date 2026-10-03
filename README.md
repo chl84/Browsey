@@ -6,10 +6,10 @@ The project is developed with AI assistance from OpenAI Codex.
 Documentation: https://chl84.github.io/Browsey/
 For technical deep-dives (module maps, behavior details, and release notes), use the docs site.
 
-Downloads: [Browsey 1.0.4](https://github.com/chl84/Browsey/releases/tag/v1.0.4) is being prepared; packages are not yet published. The latest published packages are [Browsey 1.0.3](https://github.com/chl84/Browsey/releases/tag/v1.0.3).
+Downloads: [Browsey 1.0.4](https://github.com/chl84/Browsey/releases/tag/v1.0.4).
 
 ## Status
-Browsey `1.0.4` is Linux-first. Release preparation is in progress; publication and package validation are not complete. This version adds safer local copy/move and recovery handling, expanded cloud file/archive workflows, clearer Settings and Wastebasket controls, improved list-header sizing and a 3D file icon. Core flows include browse, search, clipboard, trash, compress, duplicate checks, open with, properties, settings persistence, and supported cloud remotes. See the [changelog](CHANGELOG.md) and [1.0.4 release notes](docs/releases/1.0.4.md) for changes and validation scope. Windows support remains in maintenance mode (critical fixes and compatibility updates); the planned 1.0.4 release packages target Linux x86_64. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
+Browsey `1.0.4` is Linux-first. This version adds safer local copy/move and recovery handling, expanded cloud file/archive workflows, clearer Settings and Wastebasket controls, improved list-header sizing and a 3D file icon. Core flows include browse, search, clipboard, trash, compress, duplicate checks, open with, properties, settings persistence, and supported cloud remotes. See the [changelog](CHANGELOG.md) and [1.0.4 release notes](docs/releases/1.0.4.md) for changes, package checksums and outstanding validation. Windows support remains in maintenance mode (critical fixes and compatibility updates); the published 1.0.4 release packages target Linux x86_64. Permissions editing works on Unix (POSIX mode bits) **and** Windows (DACLs for owner/group/everyone, plus read-only/executable toggles).
 
 ## Highlights
 - Virtualized list and grid views tuned for large folders.
@@ -103,7 +103,7 @@ Home; missing/inaccessible folders use the existing listing error handling.
 - Interactive cloud folder loads are cancellable from the activity pill while a remote folder is opening.
 - Cloud operations currently use manual/explicit refresh in some flows because filesystem watching is not available for `rclone://` paths.
 
-Cloud additions in 1.0.4 source/builds (release preparation; not in the published 1.0.3 packages):
+Cloud workflows added in 1.0.4:
 
 - New File, Open With and advanced rename are available in cloud folders. Batch rename preflights all targets, refuses collisions/swaps, stops on the first execution failure and reports partial completion; it is not transactional and has no cloud undo.
 - Opening a cloud file creates a private, persistent working copy with its original filename. Find copies and retained operation data in **Settings > Cloud > Working copies**; they survive restart and clearing the preview cache. Close other writers before uploading. **Upload changes as new file** checks the original and saves under a unique edited name; it never overwrites the original or uploads automatically.

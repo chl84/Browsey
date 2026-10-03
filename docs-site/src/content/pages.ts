@@ -43,7 +43,7 @@ export const docsPages: DocPage[] = [
       {
         id: 'status',
         title: 'Current Status',
-        body: 'Browsey 1.0.4 is Linux-first and in release preparation; packages are not yet published. Changes include safer local transfers and recovery, expanded cloud workflows, Settings and list-header polish, and a 3D file icon. Windows support is in maintenance mode; planned 1.0.4 packages target Linux x86_64. See release notes for changes and outstanding validation.',
+        body: 'Browsey 1.0.4 is Linux-first, with safer local transfers and recovery, expanded cloud workflows, Settings and list-header polish, and a 3D file icon. Windows support is in maintenance mode; published 1.0.4 packages target Linux x86_64. See release notes for changes, package checksums and outstanding validation.',
         bullets: [
           'Search and duplicate scanning are streamed and cancellable',
           'Permissions editing works on Unix and Windows',
@@ -374,7 +374,7 @@ export const docsPages: DocPage[] = [
         id: 'cloud-v1-limitations',
         title: 'Cloud Limitations (rclone paths)',
         bullets: [
-          'Published 1.0.3 has permanent cloud deletion and no advanced rename, archives or dedicated Open With. The following additions are in 1.0.4 source/builds (release preparation), not in those published packages.',
+          'Since 1.0.4, cloud workflows include provider-aware trash, advanced rename, password archives, dedicated Open With and persistent working copies. Provider acceptance and remaining limits are documented separately.',
           'Normal trash is supported for OneDrive and Google Drive, with recovery through the provider website. Nextcloud has no supported trash API here; permanent delete remains an explicit action. OneDrive Personal does not support the hard-delete API.',
           'No undo/redo for cloud file operations',
           'Cloud is part of the Linux 1.0 production claim for supported providers, but it remains opt-in and provider-scoped',
@@ -888,7 +888,7 @@ capabilities/default.json`,
           "Archive the completed Linux 1.0 readiness track, update its references, and distinguish historical audits/RC results from current release validation while retaining reusable safety gates.",
           "Hide custom minimize/maximize buttons on Hyprland, retaining menu/close and normal controls on other desktops. Respect Omarchy's window-management policy without changing compositor settings; handle window-action failures and cover desktop detection and titlebar rendering with regression tests.",
         ],
-        note: 'See CHANGELOG.md and docs/releases/1.0.4.md for full changes. Release preparation does not confirm testing or publication; review validation evidence before publishing.',
+        note: 'Published Linux x86_64 RPM and DEB packages are available on GitHub Releases. See CHANGELOG.md and docs/releases/1.0.4.md for full changes, validation evidence, checksums and platform/provider limitations.',
       },
       {
         id: 'v1-0-3',
