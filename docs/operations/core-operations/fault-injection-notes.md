@@ -65,3 +65,10 @@ The opt-in Linux `copy_recovery_roundtrip_across_disposable_filesystems` test
 uses distinct `/tmp` and `/dev/shm` filesystems and requires explicit invocation
 with `--ignored`; it is not physical removable-media acceptance.
 See the [copy recovery report](../../audits/daily-driver/copy-recovery-backups.md).
+
+Streaming-copy fixtures also rewrite/truncate/append to the source at a read
+boundary and edit the same target inode at `Sync`/`Synced`. Verify source
+preservation, explicit refusal of mixed-version success and preservation of
+uncertain output/foreign edits on finalization errors. These are metadata-version
+checks, not hashing, locks or atomic snapshots.
+See the [copy version report](../../audits/daily-driver/copy-version-validation.md).

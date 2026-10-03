@@ -47,6 +47,24 @@ impl FileState {
             .as_ref()
             .is_ok_and(|current| current == self)
     }
+
+    /// Verify both the named path and the still-open descriptor against an
+    /// earlier version. Reading/syncing must not adopt a newer writer's state.
+    /// This remains metadata detection, not an atomic lock or content hash.
+    pub(crate) fn verify_copied_file(
+        &self,
+        file: &File,
+        path: &Path,
+        copied: u64,
+    ) -> io::Result<()> {
+        if Self::capture(path)? != *self || Self::from_file(file)? != *self || self.len != copied {
+            Err(io::Error::other(
+                "File version or length changed during copy",
+            ))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -262,5 +280,51 @@ mod tests {
         assert_eq!(result.err().unwrap().kind(), io::ErrorKind::Interrupted);
         assert_eq!(checks, 2);
         assert_eq!(data, b"first");
+    }
+
+    #[test]
+    fn copied_file_version_requires_matching_path_handle_and_byte_count() {
+        let root = fixture("copy-version");
+        let path = root.join("deep/file.bin");
+        let file = File::open(&path).unwrap();
+        let state = FileState::from_file(&file).unwrap();
+        state.verify_copied_file(&file, &path, 5).unwrap();
+        assert!(state.verify_copied_file(&file, &path, 4).is_err());
+        fs::rename(&path, root.join("old-inode")).unwrap();
+        fs::write(&path, b"first").unwrap();
+        assert!(state.verify_copied_file(&file, &path, 5).is_err());
+        fs::remove_file(&path).unwrap();
+        assert_eq!(
+            state
+                .verify_copied_file(&file, &path, 5)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::NotFound
+        );
+        drop(file);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copied_file_version_detects_same_size_edits_with_restored_mtime() {
+        let root = fixture("copy-restored-mtime");
+        let path = root.join("deep/file.bin");
+        let file = File::options().write(true).open(&path).unwrap();
+        let modified = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(100);
+        file.set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        let state = FileState::from_file(&file).unwrap();
+        fs::write(&path, b"other").unwrap();
+        file.set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        assert_eq!(file.metadata().unwrap().len(), 5);
+        assert_eq!(file.metadata().unwrap().modified().unwrap(), modified);
+        assert!(
+            state.verify_copied_file(&file, &path, 5).is_err(),
+            "Unix ctime must catch a restored mtime edit"
+        );
+        drop(file);
+        fs::remove_dir_all(root).unwrap();
     }
 }

@@ -505,6 +505,13 @@ fn copy_file_tracked(
             ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Read source permissions", e)
         })?
         .permissions();
+    let source_state = crate::fs_utils::FileState::from_file(&reader).map_err(|error| {
+        ClipboardError::from_io_error(
+            ClipboardErrorCode::IoError,
+            "Snapshot open copy source",
+            error,
+        )
+    })?;
     let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -527,6 +534,9 @@ fn copy_file_tracked(
     let mut writer = writer;
     #[cfg(test)]
     let mut writer = crate::fs_utils::copy_test_hooks::TestFile::new(writer, src, dest);
+    let mut finalization_state = None::<crate::fs_utils::FileState>;
+    let mut finalized_bytes = 0;
+    let mut preserve_output = false;
     let result: ClipboardResult<u64> = (|| {
         let mut buf = vec![0u8; 512 * 1024];
         let mut done: u64 = 0;
@@ -579,6 +589,16 @@ fn copy_file_tracked(
         writer.set_permissions(permissions).map_err(|e| {
             ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Set file permissions", e)
         })?;
+        let completed_state = crate::fs_utils::FileState::from_file(&writer).map_err(|error| {
+            preserve_output = true;
+            ClipboardError::from_io_error(
+                ClipboardErrorCode::IoError,
+                "Snapshot written copy target",
+                error,
+            )
+        })?;
+        finalized_bytes = done;
+        finalization_state = Some(completed_state.clone());
         let sync_result = (|| {
             #[cfg(test)]
             crate::fs_utils::copy_test_hooks::hit(
@@ -612,14 +632,29 @@ fn copy_file_tracked(
                 ),
             ));
         }
-        if let Some(outputs) = outputs {
-            outputs.record_file(dest, &writer).map_err(|error| {
+        completed_state
+            .verify_copied_file(&writer, dest, done)
+            .map_err(|error| {
+                preserve_output = true;
                 ClipboardError::from_io_error(
                     ClipboardErrorCode::IoError,
-                    "Record copied output ownership",
+                    "Copied target changed during finalization; source retained",
                     error,
                 )
             })?;
+        source_state
+            .verify_copied_file(&reader, src, done)
+            .map_err(|error| {
+                preserve_output = true;
+                ClipboardError::from_io_error(
+                    ClipboardErrorCode::IoError,
+                    "Source changed during copy; output retained for inspection",
+                    error,
+                )
+            })?;
+        if let Some(outputs) = outputs {
+            // Use the pre-sync version, never adopt an edit after verification.
+            outputs.record_file(dest, completed_state);
         }
         emit_copy_progress(
             app,
@@ -633,6 +668,18 @@ fn copy_file_tracked(
         Ok(done)
     })();
     if let Err(error) = result {
+        if preserve_output
+            || finalization_state.as_ref().is_some_and(|state| {
+                state
+                    .verify_copied_file(&writer, dest, finalized_bytes)
+                    .is_err()
+            })
+        {
+            return Err(error.with_context(format!(
+                "Uncertain copied output retained at {}; inspect affected paths before retrying; no cleanup attempted",
+                dest.display()
+            )));
+        }
         // Exclusive creation proves initial ownership, not current ownership.
         // Never remove an unrelated replacement during error cleanup.
         if !target_identity

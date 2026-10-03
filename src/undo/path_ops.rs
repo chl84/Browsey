@@ -61,6 +61,8 @@ pub(super) fn copy_file_noreplace_with_sync(
         .metadata()
         .map_err(|e| UndoError::from_io_error("Failed to read source permissions", e))?
         .permissions();
+    let source_state = FileState::from_file(&src_file)
+        .map_err(|error| UndoError::from_io_error("Snapshot open copy source", error))?;
     let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -84,7 +86,7 @@ pub(super) fn copy_file_noreplace_with_sync(
     let mut src_file = crate::fs_utils::copy_test_hooks::TestFile::new(src_file, src, dest);
     #[cfg(test)]
     let mut dst_file = crate::fs_utils::copy_test_hooks::TestFile::new(dst_file, src, dest);
-    let _copied = io::copy(&mut src_file, &mut dst_file).map_err(|e| {
+    let copied = io::copy(&mut src_file, &mut dst_file).map_err(|e| {
         UndoError::from_io_error(
             format!(
                 "Failed to copy file {} -> {}; source retained, partial destination may remain",
@@ -109,6 +111,9 @@ pub(super) fn copy_file_noreplace_with_sync(
             e,
         )
     })?;
+    let completed_state = FileState::from_file(&dst_file).map_err(|error| {
+        UndoError::from_io_error("Snapshot written copy target; source retained", error)
+    })?;
     // File::drop ignores close/writeback errors. Do not delete a move's source
     // until destination finalization has actually succeeded.
     let sync_result = (|| {
@@ -117,7 +122,7 @@ pub(super) fn copy_file_noreplace_with_sync(
             src,
             dest,
             crate::fs_utils::copy_test_hooks::Phase::Sync,
-            _copied,
+            copied,
         )?;
         sync(&dst_file)?;
         #[cfg(test)]
@@ -125,7 +130,7 @@ pub(super) fn copy_file_noreplace_with_sync(
             src,
             dest,
             crate::fs_utils::copy_test_hooks::Phase::Synced,
-            _copied,
+            copied,
         )?;
         Ok::<_, io::Error>(())
     })();
@@ -150,8 +155,13 @@ pub(super) fn copy_file_noreplace_with_sync(
             ),
         ));
     }
-    FileState::from_file(&dst_file)
-        .map_err(|error| UndoError::from_io_error("Record copied output ownership", error))
+    completed_state.verify_copied_file(&dst_file, dest, copied).map_err(|error| {
+        UndoError::from_io_error("Copied target changed during finalization; source retained, destination retained for inspection", error)
+    })?;
+    source_state.verify_copied_file(&src_file, src, copied).map_err(|error| {
+        UndoError::from_io_error("Source changed during copy; source not removed, destination retained for inspection", error)
+    })?;
+    Ok(completed_state)
 }
 
 fn copy_dir(src: &Path, dest: &Path, root: &Path, outputs: &mut TreeSnapshot) -> UndoResult<()> {

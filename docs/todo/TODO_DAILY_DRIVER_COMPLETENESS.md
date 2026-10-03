@@ -68,6 +68,10 @@ The [undo storage diagnostics follow-up](../audits/daily-driver/undo-storage-dia
 records bounded, read-only backup measurements and the remaining retention,
 manual-recovery and installed-build acceptance work.
 
+The [copy version validation follow-up](../audits/daily-driver/copy-version-validation.md)
+records changed inputs during reading, post-write output versions and the
+remaining final-check/concurrent-writer boundaries.
+
 ## Priority 0 Define Scope and Verify File Safety
 
 Complete this phase first. Reliability takes precedence over feature breadth.
@@ -143,6 +147,12 @@ broader operation/platform acceptance rows above are complete.
   changing backups, locks or markers; cap metadata scans and report partial results.
 - [x] Expose read-only backup diagnostics and manual recovery guidance in Settings;
   verify loading, refresh errors, partial results and lifecycle behavior.
+- [x] Refuse changed source versions during local streaming copy, including
+  rewrite/truncate/append; preserve uncertain finalized outputs for inspection.
+- [x] Verify the recorded pre-sync output version after writeback in both local
+  copy engines; refuse edited outputs and preserve them on finalization errors.
+- [ ] Recheck completed fallback output receipts before source deletion and
+  remove only recorded unchanged source entries, preserving late source additions.
 - [ ] Validate manual recovery UX, retention/space budgets and installed-build
   behavior for marked sessions. Preserved backups do not imply persistent undo,
   automatic repair/resume or atomic batches.

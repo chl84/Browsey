@@ -36,9 +36,8 @@ impl OwnedCopyPaths {
         self.dirs.insert(path.into(), FileIdentity::capture(path));
     }
 
-    pub(super) fn record_file(&mut self, path: &Path, file: &File) -> std::io::Result<()> {
-        self.files.push((path.into(), FileState::from_file(file)?));
-        Ok(())
+    pub(super) fn record_file(&mut self, path: &Path, state: FileState) {
+        self.files.push((path.into(), state));
     }
 
     fn parents_match(&self, path: &Path) -> bool {

@@ -38,6 +38,85 @@ fn write_file(path: &Path, content: &[u8]) {
 }
 
 #[test]
+fn undo_copy_refuses_sources_changed_during_streaming_and_keeps_paths() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for moving in [false, true] {
+        let root = uniq_path("undo-source-stream-change");
+        let source = root.join("source.bin");
+        let target = root.join("target.bin");
+        write_file(&source, &vec![0x41; 32 * 1024]);
+        let scope = Scope::new(move |src, _, phase, bytes| {
+            if moving && phase == Phase::Rename {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "force fallback",
+                ));
+            }
+            if phase == Phase::Read && bytes == 8192 {
+                fs::write(src, vec![0x42; 32 * 1024])?;
+                fs::File::open(src)?.set_times(
+                    fs::FileTimes::new()
+                        .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(100)),
+                )?;
+            }
+            Ok(())
+        });
+        let result = if moving {
+            move_with_fallback(&source, &target)
+        } else {
+            copy_entry(&source, &target)
+        };
+        drop(scope);
+        let source_data = fs::read(&source).unwrap();
+        let target_exists = target.exists();
+        fs::remove_dir_all(root).unwrap();
+        let error = result.expect_err("changed source must not be reported as a successful copy");
+        assert!(error.to_string().contains("Source changed"));
+        assert_eq!(source_data, vec![0x42; 32 * 1024]);
+        assert!(target_exists);
+    }
+}
+
+#[test]
+fn undo_copy_and_move_refuse_targets_edited_during_finalization() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for moving in [true, false] {
+        let root = uniq_path("undo-edited-finalizing-target");
+        let source = root.join("source.bin");
+        let target = root.join("target.bin");
+        let data = vec![0x41; 32 * 1024];
+        write_file(&source, &data);
+        let scope = Scope::new(move |_, dst, phase, _| {
+            if moving && phase == Phase::Rename {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "force fallback",
+                ));
+            }
+            if phase == Phase::Synced {
+                fs::write(dst, b"other-writer-data")?;
+            }
+            Ok(())
+        });
+        let result = if moving {
+            move_with_fallback(&source, &target)
+        } else {
+            copy_entry(&source, &target)
+        };
+        drop(scope);
+        let source_data = fs::read(&source);
+        let target_data = fs::read(&target).unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            result.is_err(),
+            "edited output cannot justify deleting its source"
+        );
+        assert_eq!(source_data.unwrap(), data);
+        assert_eq!(target_data, b"other-writer-data");
+    }
+}
+
+#[test]
 fn undo_copy_and_move_faults_keep_source_and_report_partial_output() {
     use crate::fs_utils::copy_test_hooks::{Phase, Scope};
     use std::io::{Error, ErrorKind};
