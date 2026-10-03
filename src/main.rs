@@ -43,7 +43,7 @@ use statusbar::dir_sizes;
 use tauri::Manager;
 use tracing::{debug, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, reload, util::SubscriberInitExt, EnvFilter};
-use undo::{redo_action, undo_action, UndoState};
+use undo::{inspect_undo_storage, redo_action, undo_action, UndoState};
 use watcher::WatchState;
 
 const MAX_LOG_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
@@ -432,6 +432,7 @@ fn main() {
             list_ownership_principals,
             undo_action,
             redo_action,
+            inspect_undo_storage,
             get_thumbnail,
             clear_thumbnail_cache,
             clear_cloud_open_cache

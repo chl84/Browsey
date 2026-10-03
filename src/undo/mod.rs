@@ -6,6 +6,7 @@ mod nofollow;
 mod path_checks;
 mod path_ops;
 mod security;
+mod storage;
 mod types;
 
 use crate::errors::api_error::ApiResult;
@@ -19,6 +20,7 @@ pub use path_ops::move_with_fallback;
 pub(crate) use security::set_unix_mode_nofollow;
 pub(crate) use security::{apply_ownership, apply_permissions, set_ownership_nofollow};
 pub use security::{ownership_snapshot, permissions_snapshot};
+pub use storage::UndoStorageSummary;
 pub(crate) use types::PathSnapshot;
 pub use types::{
     Action, CopyReceipt, Direction, OwnershipSnapshot, PermissionsSnapshot, UndoManager, UndoState,
@@ -31,6 +33,20 @@ pub(crate) use path_ops::{copy_entry, delete_entry_path, is_destination_exists_e
 
 #[cfg(test)]
 mod tests;
+
+#[tauri::command]
+pub async fn inspect_undo_storage() -> ApiResult<UndoStorageSummary> {
+    let result = tauri::async_runtime::spawn_blocking(storage::inspect_storage)
+        .await
+        .map_err(|error| {
+            UndoError::new(
+                UndoErrorCode::IoError,
+                format!("Undo storage worker failed: {error}"),
+            )
+        })
+        .and_then(|result| result);
+    error::map_api_result(result)
+}
 
 #[tauri::command]
 pub async fn undo_action(state: tauri::State<'_, UndoState>) -> ApiResult<()> {

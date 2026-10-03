@@ -9,7 +9,7 @@ use tracing::warn;
 
 use crate::undo::{UndoError, UndoResult};
 
-const RECOVERY_SUFFIX: &str = ".recovery-required";
+pub(super) const RECOVERY_SUFFIX: &str = ".recovery-required";
 
 #[derive(Debug, Clone)]
 pub(super) struct RecoveryMarker {
@@ -253,7 +253,7 @@ pub fn temp_backup_path(original: &Path) -> UndoResult<PathBuf> {
     Ok(candidate)
 }
 
-fn base_undo_dir() -> PathBuf {
+pub(super) fn base_undo_dir() -> PathBuf {
     if let Ok(custom) = std::env::var("BROWSEY_UNDO_DIR") {
         return PathBuf::from(custom);
     }
@@ -267,7 +267,7 @@ fn default_undo_dir() -> PathBuf {
         .join("undo-sessions")
 }
 
-fn validate_undo_dir(path: &Path) -> UndoResult<()> {
+pub(super) fn validate_undo_dir(path: &Path) -> UndoResult<()> {
     if cfg!(test) {
         return Ok(());
     }

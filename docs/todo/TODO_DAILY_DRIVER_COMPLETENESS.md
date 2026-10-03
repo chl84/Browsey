@@ -64,6 +64,10 @@ The [copy recovery backup follow-up](../audits/daily-driver/copy-recovery-backup
 records preserved bytes for redo/compensation, protected failure sessions,
 disposable cross-filesystem validation and mocked history UI recovery.
 
+The [undo storage diagnostics follow-up](../audits/daily-driver/undo-storage-diagnostics.md)
+records bounded, read-only backup measurements and the remaining retention,
+manual-recovery and installed-build acceptance work.
+
 ## Priority 0 Define Scope and Verify File Safety
 
 Complete this phase first. Reliability takes precedence over feature breadth.
@@ -135,6 +139,10 @@ broader operation/platform acceptance rows above are complete.
   and nested directories; this is not real-media or power-loss acceptance.
 - [x] Run history filesystem work off the UI event loop; verify error refresh,
   separate refresh failures and repeat-request suppression with mocked UI tests.
+- [x] Inspect undo-session file-content size and marked-session counts without
+  changing backups, locks or markers; cap metadata scans and report partial results.
+- [ ] Expose read-only backup diagnostics and manual recovery guidance in Settings;
+  verify loading, refresh errors, partial results and lifecycle behavior.
 - [ ] Validate manual recovery UX, retention/space budgets and installed-build
   behavior for marked sessions. Preserved backups do not imply persistent undo,
   automatic repair/resume or atomic batches.
