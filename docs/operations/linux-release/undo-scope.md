@@ -140,6 +140,11 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
   checks, not stored content hashes or locks. Readback compares the bytes it reads
   to the written stream; it does not freeze concurrent writers or guarantee a
   consistent point-in-time source/directory snapshot or power-loss recovery
+- supported local copy/move/undo completion requires stable source, destination
+  and parent entries throughout the operation. Stop other programs writing,
+  replacing or renaming them first; detection of some concurrent edits is not
+  an active-writer safety guarantee. See the
+  [concurrent-writer boundary decision](../../audits/daily-driver/concurrent-writer-boundary.md)
 - Settings > Data inspects undo-session storage without changing files, locks
   or markers. It shows measured file-content lengths, session/marker counts,
   a copyable directory path and manual recovery guidance. Incomplete scans are

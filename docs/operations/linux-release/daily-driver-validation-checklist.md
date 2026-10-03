@@ -20,6 +20,16 @@ permanent deletion, ZIP extraction and selected undo/redo. A0-2, A0-3 and A0-5
 remain partial; their untested failure, history-limit and platform scopes are
 explicit in that record. There are still 27 open top-level acceptance rows.
 
+The [error/cancellation/concurrent-writer follow-up](runs/2026-10-03-a0-errors-and-writers.md)
+adds fifteen checked subtests, including conflict policies/overwrite undo,
+permissions, mid-operation cancellation and native partial-listing refresh. Two
+real writers exercised active source/output changes with fixture-scoped timing
+interposition. VD-1 is corrected and VD-2 extraction feedback is fixed in a tested
+optimized candidate, not yet installed. The
+[concurrent-writer boundary decision](../../audits/daily-driver/concurrent-writer-boundary.md)
+closes the engineering review, not the remaining final-check races. A0-2, A0-3,
+A0-5, A0-7 and A0-8 remain partial; the top-level count is still 27 open rows.
+
 These 29 rows were moved from the former completeness plan, not automatically
 marked passed. Existing automated evidence is in the
 [verified-work archive](../../todo-archive/TODO_DAILY_DRIVER_SAFETY_COMPLETED.md).

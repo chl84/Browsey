@@ -27,13 +27,17 @@ Inspect current code and evidence before adding or replacing behavior.
 
 ## Priority 0 Safety and Recovery
 
-- [ ] Review the remaining concurrent-writer/final-check windows and document
+- [x] Review the remaining concurrent-writer/final-check windows and document
   the smallest justified mitigation or explicit supported boundary. Use the
   [content-verification audit](../audits/daily-driver/copy-content-verification.md)
   and existing deterministic tests; readback and metadata receipts do not make
   trees transactional. Do not assume staging, persistent undo or automatic
   resume is an approved solution. Acceptance of observed outcomes stays in
-  checklist A0.
+  checklist A0. The [boundary decision](../audits/daily-driver/concurrent-writer-boundary.md)
+  records the existing checks, remaining windows and requirement to stop other
+  writers. Two installed real-writer scenarios and deterministic removal tests
+  support the limited claim; A0-7 remains partial. No transaction, staging or
+  automatic recovery engine was added.
 - [ ] Measure representative backup sizes and define a safe recovery-storage
   budget/retention policy before implementing any missing controls. The
   [storage audit](../audits/daily-driver/undo-storage-diagnostics.md) and
@@ -70,9 +74,23 @@ workload only, not a cold-storage or USB/MTP performance budget.
   replace the working archive adapter. Resolved with shared Settings/filter copy
   describing compressed/password extraction and unsupported RAR creation. Four
   focused regressions, all 300 frontend tests, lint/typecheck/build, ten RAR tests
-  and the updated mock-browser Settings view pass. The installed binary has not
-  been replaced for this wording-only change. This was a non-blocking
+  and the updated mock-browser Settings view pass. The later
+  [native candidate follow-up](../operations/linux-release/runs/2026-10-03-a0-errors-and-writers.md)
+  also verified the wording and password filter in the optimized app. The
+  installed binary has not been replaced. This was a non-blocking
   capability-message defect, not a missing extraction feature.
+- [x] **VD-2** Report failed archive names/reasons in partial batch extraction;
+  preserve the real operation outcome when the subsequent listing refresh fails.
+  The [native error/writer run](../operations/linux-release/runs/2026-10-03-a0-errors-and-writers.md)
+  reproduced count-only feedback for one valid and one broken ZIP. Four new
+  regressions failed before the fix, including incorrect extraction-failure
+  feedback after successful work and missing refresh after extraction failure.
+  Reuse the existing toast/activity/listing infrastructure: show bounded failure
+  details, distinguish refresh failure with F5 guidance, and refresh after error
+  or cancellation without retrying extraction. Six new regressions pass, as do
+  all 306 frontend tests; the optimized candidate's native partial-result message,
+  contents and refreshed listing also pass. This fixes reporting, not archive
+  atomicity, automatic retry or a new persistent operation history.
 
 ## Optional Decisions, Not Required Work
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Correct the shared Settings RAR capability note and its filter text: compressed/password-protected RAR extraction is supported; RAR archive creation is not.
+
+- Show failed archive names and reasons in partial batch extraction, with bounded details and correct singular/plural counts. Refresh listings after extraction errors or cancellation; report refresh failures separately with F5 guidance instead of mislabelling completed extraction as failed. Do not retry file operations automatically.
+
 - Separate daily-driver engineering TODOs from outstanding acceptance, optional product decisions and release rules. Archive 33 already-verified coverage/safety increments with their evidence, preserve 29 unverified checks in a dedicated validation checklist and keep five engineering follow-ups active. Do not mark moved tests passed or imply missing functionality from unchecked acceptance.
 
 - Compare local manual-copy outputs with BLAKE3 digests of the written stream before recording completion or deleting fallback move sources. Share bounded open-handle readback between clipboard and undo engines, recheck versions around verification, retain uncertain output on mismatches/read failures and honor clipboard cancellation between readback chunks. Reuse the existing dependency, keep verification reads out of transfer-byte totals and document the extra target read pass, measured warm-cache cost and remaining post-check races. GIO/cloud writers and native same-filesystem rename are unchanged.
