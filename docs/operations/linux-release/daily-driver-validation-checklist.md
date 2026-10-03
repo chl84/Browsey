@@ -14,7 +14,13 @@ recovery UX scopes. Other rows remain open or partial; this is not A0 or release
 signoff. The run also reproduced misleading RAR capability wording, recorded as
 VD-1 in the active TODO. No unrelated acceptance was inferred from test counts.
 
-These 29 unchecked rows were moved from the former completeness plan, not
+The [installed native operations follow-up](runs/2026-10-03-a0-native-operations.md)
+adds ten checked subtests for move, file/folder rename, conflict rejection, trash,
+permanent deletion, ZIP extraction and selected undo/redo. A0-2, A0-3 and A0-5
+remain partial; their untested failure, history-limit and platform scopes are
+explicit in that record. There are still 27 open top-level acceptance rows.
+
+These 29 rows were moved from the former completeness plan, not automatically
 marked passed. Existing automated evidence is in the
 [verified-work archive](../../todo-archive/TODO_DAILY_DRIVER_SAFETY_COMPLETED.md).
 Features can already work while still lacking fresh installed-build, real-device
