@@ -204,16 +204,18 @@ export const createAdvancedRenameModal = ({ reloadCurrent, showToast }: Deps) =>
 
     try {
       const renamed = await renameEntries(entries)
-      await reloadCurrent()
       close()
       if (renamed.length === 0) {
         showToast('No names changed')
       } else {
         showToast(`Renamed ${renamed.length} item${renamed.length === 1 ? '' : 's'}`)
       }
+      try { await reloadCurrent() }
+      catch { showToast('Rename completed, but refresh failed. Press F5 to refresh.') }
       return true
     } catch (err) {
       const msg = invokeErrorMessage(err)
+      try { await reloadCurrent() } catch { /* Preserve partial-operation details. */ }
       state.update((s) => ({ ...s, error: msg }))
       return false
     }

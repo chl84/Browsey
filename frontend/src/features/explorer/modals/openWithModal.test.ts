@@ -2,8 +2,9 @@ import { get } from 'svelte/store'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createOpenWithModal } from './openWithModal'
 
-const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }))
+const { invoke, prepareCloudWorkingCopy } = vi.hoisted(() => ({ invoke: vi.fn(), prepareCloudWorkingCopy: vi.fn() }))
 vi.mock('@/shared/lib/tauri', () => ({ invoke }))
+vi.mock('@/features/network', () => ({ prepareCloudWorkingCopy }))
 
 const apps = [{ id: 'editor', name: 'Editor', defaultContentType: 'text/plain', matches: true, terminal: false, exec: 'editor' }]
 const setup = async () => {
@@ -17,7 +18,54 @@ const setup = async () => {
 }
 
 describe('open-with defaults', () => {
-  beforeEach(() => { invoke.mockReset() })
+  beforeEach(() => { invoke.mockReset(); prepareCloudWorkingCopy.mockReset() })
+
+  it('uses the durable local copy for cloud app discovery, default and opening', async () => {
+    prepareCloudWorkingCopy.mockResolvedValue({ localPath: '/private/work/report.txt' })
+    invoke.mockResolvedValueOnce(apps)
+    const showToast = vi.fn()
+    const modal = createOpenWithModal({ showToast })
+    modal.open({ path: 'rclone://work/report.txt', name: 'report.txt', kind: 'file', iconId: 0 })
+    await vi.waitFor(() => expect(get(modal.state).loading).toBe(false))
+    expect(prepareCloudWorkingCopy).toHaveBeenCalledExactlyOnceWith('rclone://work/report.txt')
+    expect(invoke).toHaveBeenCalledWith('list_open_with_apps', { path: '/private/work/report.txt' })
+    invoke.mockClear()
+    await modal.confirm({ appId: 'editor', setDefault: true })
+    expect(invoke).toHaveBeenNthCalledWith(1, 'set_default_app', {
+      path: '/private/work/report.txt', appId: 'editor', contentType: 'text/plain',
+    })
+    expect(invoke).toHaveBeenNthCalledWith(2, 'open_with', {
+      path: '/private/work/report.txt', choice: { appId: 'editor' },
+    })
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Upload edits from Settings'))
+  })
+
+  it('does not launch anything when the cloud working copy could not be prepared', async () => {
+    prepareCloudWorkingCopy.mockRejectedValue(new Error('Offline'))
+    const modal = createOpenWithModal({ showToast: vi.fn() })
+    modal.open({ path: 'rclone://work/report.txt', name: 'report.txt', kind: 'file', iconId: 0 })
+    await vi.waitFor(() => expect(get(modal.state).loading).toBe(false))
+    await modal.confirm({ appId: '__default__' })
+    expect(get(modal.state).error).toBe('Offline')
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('ignores a cloud preparation completing after another file is selected', async () => {
+    let resolve!: (copy: { localPath: string }) => void
+    prepareCloudWorkingCopy.mockReturnValue(new Promise((done) => { resolve = done }))
+    const modal = createOpenWithModal({ showToast: vi.fn() })
+    modal.open({ path: 'rclone://work/old.txt', name: 'old.txt', kind: 'file', iconId: 0 })
+    invoke.mockResolvedValueOnce(apps)
+    modal.open({ path: '/test/new.txt', name: 'new.txt', kind: 'file', iconId: 0 })
+    await vi.waitFor(() => expect(get(modal.state).loading).toBe(false))
+    resolve({ localPath: '/private/work/old.txt' })
+    await Promise.resolve()
+    invoke.mockClear()
+    await modal.confirm({ appId: 'editor' })
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('open_with', {
+      path: '/test/new.txt', choice: { appId: 'editor' },
+    })
+  })
 
   it('saves the file-type default before opening the file when checked', async () => {
     const { modal, showToast } = await setup()

@@ -49,4 +49,18 @@ describe('filterByCapabilities', () => {
 
     expect(filterByCapabilities(actions, [entry]).map((a) => a.id)).toEqual(['copy', 'rename'])
   })
+
+  it('recursively hides unsupported cloud additions while retaining allowed siblings', () => {
+    const entry = entryWithCaps('rclone://remote/report.txt', {
+      canList: true, canMkdir: true, canDelete: true, canRename: true,
+      canMove: true, canCopy: true, canTrash: false, canUndo: false, canPermissions: false,
+      canOpenWith: true, canArchive: false, canAdvancedRename: true, canExternalCopy: false,
+    })
+    const actions: ContextAction[] = [action('move-trash'), action('open-with'), action('rename-advanced'),
+      action('cloud-export'), { id: 'archive', label: 'Archive', children: [action('compress'), action('extract')] },
+      { id: 'other', label: 'Other', children: [action('copy'), action('compress')] }]
+    const filtered = filterByCapabilities(actions, [entry])
+    expect(filtered.map((item) => item.id)).toEqual(['open-with', 'rename-advanced', 'other'])
+    expect(filtered[2].children?.map((item) => item.id)).toEqual(['copy'])
+  })
 })

@@ -470,6 +470,26 @@ mod tests {
     }
 
     #[test]
+    fn cloud_listing_preserves_new_operation_capabilities_in_ipc() {
+        let mut cloud = cloud_entry("report.txt", CloudEntryKind::File);
+        cloud.capabilities = CloudCapabilities::v1_for_provider(
+            crate::commands::cloud::types::CloudProviderKind::Onedrive,
+        );
+        let mapped = fs_entry_from_cloud_entry(cloud);
+        let serialized = serde_json::to_value(mapped.capabilities.unwrap()).unwrap();
+        for key in [
+            "canTrash",
+            "canCreateFile",
+            "canOpenWith",
+            "canArchive",
+            "canAdvancedRename",
+            "canExternalCopy",
+        ] {
+            assert_eq!(serialized[key], true, "missing IPC capability {key}");
+        }
+    }
+
+    #[test]
     fn cloud_directory_icons_follow_named_folder_mapping() {
         let pictures = fs_entry_from_cloud_entry(cloud_entry("Pictures", CloudEntryKind::Dir));
         assert_eq!(pictures.icon_id, PICTURES_FOLDER);

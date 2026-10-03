@@ -27,6 +27,11 @@ pub struct CloudCapabilities {
     pub can_trash: bool,
     pub can_undo: bool,
     pub can_permissions: bool,
+    pub can_create_file: bool,
+    pub can_open_with: bool,
+    pub can_archive: bool,
+    pub can_advanced_rename: bool,
+    pub can_external_copy: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,11 +139,9 @@ pub struct CloudRemoteProbeStatus {
 
 impl CloudCapabilities {
     pub fn v1_for_provider(provider: CloudProviderKind) -> Self {
-        match provider {
-            CloudProviderKind::Onedrive => Self::v1_core_rw(),
-            CloudProviderKind::Gdrive => Self::v1_core_rw(),
-            CloudProviderKind::Nextcloud => Self::v1_core_rw(),
-        }
+        let mut capabilities = Self::v1_core_rw();
+        capabilities.can_trash = super::policy::cloud_trash_policy_args(provider).is_some();
+        capabilities
     }
 
     pub fn v1_core_rw() -> Self {
@@ -152,6 +155,11 @@ impl CloudCapabilities {
             can_trash: false,
             can_undo: false,
             can_permissions: false,
+            can_create_file: true,
+            can_open_with: true,
+            can_archive: true,
+            can_advanced_rename: true,
+            can_external_copy: true,
         }
     }
 }
@@ -169,6 +177,6 @@ mod tests {
         assert!(onedrive.can_list && onedrive.can_copy && onedrive.can_move);
         assert!(gdrive.can_list && gdrive.can_copy && gdrive.can_move);
         assert!(nextcloud.can_list && nextcloud.can_copy && nextcloud.can_move);
-        assert!(!onedrive.can_trash && !gdrive.can_trash && !nextcloud.can_trash);
+        assert!(onedrive.can_trash && gdrive.can_trash && !nextcloud.can_trash);
     }
 }

@@ -2,6 +2,7 @@
   // --- Imports -------------------------------------------------------------
   import { onMount, onDestroy, tick } from 'svelte'
   import ArchivePasswordModal from '../components/ArchivePasswordModal.svelte'
+  import CloudExportModal from '../components/CloudExportModal.svelte'
   import { getErrorMessage, normalizeError } from '@/shared/lib/error'
   import { get } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, parentPath } from '@/features/explorer/utils'
@@ -148,6 +149,7 @@
   let bookmarkInputEl: HTMLInputElement | null = null
   let renameValue = ''
   let compressName = 'Archive'
+  let cloudExportPaths: string[] = []
   let compressLevel = 6
   let newFolderName = 'New folder'
   let newFileName = ''
@@ -287,6 +289,7 @@
       try {
         await openExplorerEntry(entry, { progressEvent })
         activityApi.hideSoon()
+        showToast('Opened a local working copy. Upload edits from Settings → Cloud → Working copies.')
       } catch (err) {
         activityApi.clearNow()
         await activityApi.cleanup()
@@ -1022,7 +1025,8 @@
       const hasCloud = entries.some((e) => isCloudPath(e.path))
       const inTrashView = currentView === 'trash'
 
-      if (permanent || (hasNetwork && !inTrashView) || (hasCloud && !inTrashView)) {
+      const canCloudTrash = hasCloud && entries.every((entry) => entry.capabilities?.canTrash)
+      if (permanent || (hasNetwork && !hasCloud && !inTrashView) || (hasCloud && !canCloudTrash && !inTrashView)) {
         deleteModal.open(entries, inTrashView ? 'trash' : 'default')
         return true
       }
@@ -1038,11 +1042,15 @@
         } else {
           const paths = entries.map((e) => e.path)
           const progressEvent = `trash-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-          await activityApi.start(label, progressEvent)
+          await activityApi.start(label, progressEvent, () => void activityApi.requestCancel(progressEvent), { completeOnReply: hasCloud })
           await moveToTrashMany(paths, progressEvent)
+          if (hasCloud) showToast('Moved to cloud trash. Restore items from the provider website.')
         }
         await reloadCurrent()
       } catch (err) {
+        if (hasCloud) {
+          try { await reloadCurrent() } catch { /* Keep the original error after partial cloud outcomes. */ }
+        }
         console.error(inTrashView ? 'Failed to delete from trash' : 'Failed to move to trash', err)
         showToast(
           `${inTrashView ? 'Delete failed' : 'Move to trash failed'}: ${getErrorMessage(err)}`,
@@ -1406,6 +1414,7 @@
       modalActions.openCheckDuplicates(entry)
     },
     extractEntries: (entries) => extractEntries(entries),
+    prepareExternalCopy: (entries) => { cloudExportPaths = entries.map((entry) => entry.path) },
     startRename: (entry) => {
       renameValue = entry.name
       modalActions.startRename(entry)
@@ -2040,6 +2049,8 @@
     return pageLifecycle.initLifecycle()
   })
 </script>
+
+<CloudExportModal bind:paths={cloudExportPaths} {activityApi} />
 
 <ArchivePasswordModal
   open={$archivePasswordState.open}

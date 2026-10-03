@@ -44,6 +44,15 @@ pub(crate) fn cloud_delete_policy_args(kind: CloudProviderKind) -> &'static [&'s
     provider_policy(kind).delete_policy_args
 }
 
+/// Explicitly override user configuration: trash must never inherit hard-delete.
+pub(crate) fn cloud_trash_policy_args(kind: CloudProviderKind) -> Option<&'static [&'static str]> {
+    match kind {
+        CloudProviderKind::Onedrive => Some(&["--onedrive-hard-delete=false"]),
+        CloudProviderKind::Gdrive => Some(&["--drive-use-trash=true"]),
+        CloudProviderKind::Nextcloud => None,
+    }
+}
+
 /// Retry backoff windows used when `mkdir` reports transient `destination_exists`.
 ///
 /// This remains provider-tunable through the hook signature even when values are shared.

@@ -9,6 +9,24 @@ use crate::tasks::CancelState;
 use error::map_api_result;
 use serde::{Deserialize, Serialize};
 
+/// Internal archive/export staging uses the same transfer implementation and
+/// cancellation token across all phases, never move/delete or cloud undo.
+pub(crate) fn copy_staged_entry(
+    source: String,
+    destination: String,
+    app: tauri::AppHandle,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    event: Option<String>,
+) -> ApiResult<String> {
+    map_api_result(execute::copy_staged_entry(
+        source,
+        destination,
+        app,
+        cancel,
+        event,
+    ))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct MixedTransferConflictInfo {

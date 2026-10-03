@@ -2,9 +2,10 @@ import { invoke } from '@/shared/lib/tauri'
 import { writable, get } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import type { Entry } from '../model/types'
+import type { ActivityApi as SharedActivityApi } from '../hooks/createActivity'
 
 type ActivityApi = {
-  start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
+  start: SharedActivityApi['start']
   cleanup: (preserveTimer?: boolean) => Promise<void>
   clearNow: () => void
   requestCancel: (eventName: string) => Promise<void>
@@ -60,26 +61,28 @@ export const createCompressModal = (deps: Deps) => {
     state.update((s) => ({ ...s, error: '' }))
     const lvl = Math.min(Math.max(Math.round(level), 0), 9)
     const paths = current.targets.map((e) => e.path)
+    const cloud = paths.every((path) => path.startsWith('rclone://'))
     const progressEvent = `compress-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     activeEvent = progressEvent
     try {
-      await activityApi.start('Compressing…', progressEvent, () => activityApi.requestCancel(progressEvent))
+      await activityApi.start('Compressing…', progressEvent, () => activityApi.requestCancel(progressEvent), { completeOnReply: cloud })
       const base = (name || '').trim().replace(/\.zip$/i, '')
       const finalName = base.length > 0 ? `${base}.zip` : 'Archive.zip'
-      const dest = await invoke<string>('compress_entries', {
+      if (!cloud && paths.some((path) => path.startsWith('rclone://'))) throw new Error('Compress local and cloud entries separately')
+      const dest = await invoke<string>(cloud ? 'compress_cloud_entries' : 'compress_entries', {
         paths,
         name: finalName,
         level: lvl,
         progressEvent,
         ...(password === undefined ? {} : { password }),
       })
-      if (reloadCurrent) {
-        await reloadCurrent()
-      }
       close()
       showToast(`Created ${dest}`)
+      try { await reloadCurrent() }
+      catch { showToast('Archive created, but refresh failed. Press F5 to refresh.') }
       return true
     } catch (err) {
+      try { await reloadCurrent() } catch { /* Keep the operation error, not a refresh error. */ }
       const msg = getErrorMessage(err)
       if (msg.toLowerCase().includes('cancelled')) {
         state.update((s) => ({ ...s, error: '' }))

@@ -40,10 +40,38 @@ Reference behavior: `docs/operations/core-operations/matrix.md`
 
 ## Expected Limitations (Linux 1.0 Scope)
 
+Historical Linux 1.0 results below are not acceptance of Unreleased additions.
+
 - [x] Cloud delete uses permanent-delete semantics (no cloud trash integration)
 - [x] Advanced rename remains unavailable for cloud entries
 - [x] Cloud archive extract/compress remains unavailable
 - [x] Open-in-console is blocked for cloud folders
+
+## Unreleased Expansion Acceptance (2026-10-03)
+
+Partial backend acceptance used an explicitly approved empty folder and a new
+uniquely named, ownership-marked child. Provider/working-copy/archive production
+helpers ran against rclone 1.75.1 on Omarchy 4.0.4. No personal paths or account
+identifiers are recorded here. This is not native UI acceptance or a release.
+
+- [x] Download/open working copy, retain edits after source-cache removal
+- [x] Explicit upload to a unique new name; original and local edits retained
+- [x] Same-size cloud source change detected; existing target refused
+- [x] Pre-cancelled upload creates no remote target
+- [x] Advanced rename with the shared preflight path
+- [x] Password ZIP creation/upload/download/extraction with existing archive engine
+- [x] Marker verified before owned-child normal trash cleanup; parent empty afterward
+- [ ] Native full archive orchestration, extracted-folder upload and empty subfolders
+- [ ] Open With/native external drag to Nautilus (copy-only, including Shift)
+- [ ] Restore owned test data from the provider website recycle bin
+- [ ] Active network loss/quota/rate limit on a dedicated test account (fixtures only so far)
+- [ ] Active real-provider cancellation, large/deep trees and concurrent target races
+
+Opt-in backend runner: `commands::cloud::workspace::tests::real_onedrive_working_copy_and_archive_acceptance`.
+It is ignored in ordinary CI and requires `BROWSEY_TEST_CLOUD_SCOPE` pointing to
+an approved empty non-root folder plus `BROWSEY_TEST_CLOUD_WRITE_APPROVED=yes`.
+Failure retains marked test data for inspection; successful cleanup uses trash,
+not a global purge. OneDrive Personal hard-delete is not assumed supported.
 
 ## Notes
 

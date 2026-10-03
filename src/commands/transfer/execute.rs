@@ -27,6 +27,35 @@ use std::time::Instant;
 mod flow;
 mod progress;
 
+pub(super) fn copy_staged_entry(
+    source: String,
+    destination: String,
+    app: tauri::AppHandle,
+    cancel: Option<Arc<AtomicBool>>,
+    event: Option<String>,
+) -> TransferResult<String> {
+    // The caller owns a newly allocated private staging directory and validated
+    // CloudPaths. Still run normal route validation and destination preflight.
+    let pair = tauri::async_runtime::block_on(validate_mixed_transfer_pair(source, destination))?;
+    // Acquire only after route validation's async stat has released its own
+    // permits; holding a permit across that nested stat can deadlock two jobs.
+    let remotes = [&pair.src, &pair.dst]
+        .into_iter()
+        .filter_map(|arg| arg.cloud_path().map(|path| path.remote().to_owned()))
+        .collect::<Vec<_>>();
+    let _permit = cloud::limits_for_staging(remotes);
+    execute_mixed_entry_to_blocking(
+        MixedTransferOp::Copy,
+        pair,
+        MixedTransferWriteOptions::default(),
+        cancel,
+        event.map(|event_name| TransferProgressContext {
+            app: Some(app),
+            event_name,
+        }),
+    )
+}
+
 #[derive(Clone)]
 struct TransferProgressContext {
     app: Option<tauri::AppHandle>,
@@ -238,9 +267,13 @@ fn execute_rclone_transfer(
         MixedTransferOp::Move => RcloneSubcommand::MoveTo,
     };
 
-    let spec = RcloneCommandSpec::new(subcommand)
+    let mut spec = RcloneCommandSpec::new(subcommand)
         .arg(src.to_os_arg())
         .arg(dst.to_os_arg());
+    if op == MixedTransferOp::Copy {
+        // Archive staging must not silently lose empty directories on upload.
+        spec = spec.arg("--create-empty-src-dirs");
+    }
 
     cli.run_capture_text_with_cancel(spec, cancel)
         .map_err(|error| map_rclone_cli_error(error, cloud_remote_for_error_mapping))?;

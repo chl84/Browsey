@@ -9,7 +9,30 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, SystemTime};
 
-const CLOUD_OPEN_CACHE_DIRNAME: &str = "cloud-open";
+// Never evict the former cloud-open directory: external programs may have
+// edited its files. New previews are separate from durable working copies.
+#[cfg(not(test))]
+const CLOUD_OPEN_CACHE_DIRNAME: &str = "cloud-preview-v2";
+static CACHE_LOCK: std::sync::RwLock<()> = std::sync::RwLock::new(());
+
+pub(super) fn lock_cache() -> CloudCommandResult<std::sync::RwLockReadGuard<'static, ()>> {
+    CACHE_LOCK.read().map_err(|_| {
+        CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            "Cloud preview cache is unavailable",
+        )
+    })
+}
+
+pub(super) fn lock_cache_for_clear() -> CloudCommandResult<std::sync::RwLockWriteGuard<'static, ()>>
+{
+    CACHE_LOCK.write().map_err(|_| {
+        CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            "Cloud preview cache is unavailable",
+        )
+    })
+}
 const CLOUD_OPEN_PART_SUFFIX: &str = ".part";
 #[cfg(not(test))]
 const CLOUD_OPEN_CACHE_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
@@ -36,11 +59,14 @@ pub(super) struct CloudOpenDownloadContext<'a> {
 pub(super) fn cloud_open_cache_path(
     path: &CloudPath,
     original_name: &str,
+    metadata: &CloudOpenCacheMetadata,
 ) -> CloudCommandResult<PathBuf> {
     let base = cloud_open_cache_root_path();
     prepare_cloud_open_cache_dir(&base)?;
     let mut hasher = Hasher::new();
     hasher.update(path.to_string().as_bytes());
+    hasher.update(&metadata.size.unwrap_or(u64::MAX).to_le_bytes());
+    hasher.update(metadata.modified.as_deref().unwrap_or("").as_bytes());
     let key = hasher.finalize().to_hex().to_string();
     let extension = Path::new(original_name)
         .extension()
@@ -53,6 +79,12 @@ pub(super) fn cloud_open_cache_path(
     Ok(base.join(file_name))
 }
 
+#[cfg(test)]
+pub(super) fn cloud_open_cache_root_path() -> PathBuf {
+    std::env::temp_dir().join(format!("browsey-cloud-preview-test-{}", std::process::id()))
+}
+
+#[cfg(not(test))]
 pub(super) fn cloud_open_cache_root_path() -> PathBuf {
     dirs_next::cache_dir()
         .or_else(dirs_next::data_dir)
@@ -217,6 +249,11 @@ pub(super) fn prune_cloud_open_cache_dir(
         let Some(name) = entry_path.file_name().and_then(|value| value.to_str()) else {
             continue;
         };
+        // An interrupted/active transfer is recovery data until explicitly
+        // cleared. Age alone cannot establish that a part file is abandoned.
+        if name.ends_with(".part") || name.ends_with(".part.json") {
+            continue;
+        }
         if name.ends_with(".json") {
             remove_stale_cache_file(&entry_path)?;
             let paired = entry_path.with_file_name(name.trim_end_matches(".json"));

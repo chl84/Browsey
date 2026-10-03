@@ -48,6 +48,11 @@ pub(super) fn fs_entry_from_cloud_entry(entry: BrowseyCloudEntry) -> FsEntry {
             can_trash: entry.capabilities.can_trash,
             can_undo: entry.capabilities.can_undo,
             can_permissions: entry.capabilities.can_permissions,
+            can_create_file: entry.capabilities.can_create_file,
+            can_open_with: entry.capabilities.can_open_with,
+            can_archive: entry.capabilities.can_archive,
+            can_advanced_rename: entry.capabilities.can_advanced_rename,
+            can_external_copy: entry.capabilities.can_external_copy,
         }),
     }
 }

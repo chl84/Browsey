@@ -103,6 +103,54 @@ workload only, not a cold-storage or USB/MTP performance budget.
   [guard procedure](../ERROR_HARDENING_EXCEPTION_POLICY.md#running-the-semgrep-guards).
   This is local verification, not a new GitHub CI or installed-app signoff.
 
+## Approved Cloud Integration Expansion
+
+Approved on 2026-10-03. Reuse the shared provider, transfer, archive, task and UI
+layers. Engineering completion and real-provider acceptance are separate.
+
+- [x] **C1** Durable, private working copies; protect open edits from preview
+  eviction, cache clearing and subsequent opens; retain failed work across restart.
+- [x] **C2** Provider-aware normal trash and explicit permanent deletion;
+  explain recovery through the provider website and unsupported providers.
+- [x] **C3** Cloud new file, Open With and explicit upload of edited working
+  copies; detect source changes and use Save as new when atomic overwrite is unavailable.
+- [x] **C4** Compress/extract using protected local staging and the existing
+  archive engine, password prompts, cancellation and progress; retain originals
+  and recoverable working data on failure (the shared archive engine may clean
+  up its own unsuccessful partial output).
+- [x] **C5** Advanced rename, prepared external copy-only drag and consistent
+  refresh; expose only supported actions through the existing capability model.
+- [ ] **C6** Disposable acceptance on OneDrive, Google Drive and Nextcloud:
+  conflicts, network loss, quota, concurrent edits, large trees and cancellation.
+  Automated fixtures are not real-account acceptance; personal data is out of scope.
+  - [x] OneDrive backend acceptance: durable edits, unique upload, same-size
+    source changes, existing-target refusal, pre-cancellation, advanced rename,
+    encrypted ZIP round trip and owned-child trash cleanup (2026-10-03,
+    rclone 1.75.1; opt-in workspace acceptance test).
+  - [ ] OneDrive remaining acceptance: full native UI/GTK external target,
+    extracted-tree upload, large trees, active network interruption/quota,
+    server-side concurrent destination races and web recycle-bin restore.
+  - [ ] Google Drive: obtain an approved disposable remote/folder and run
+    the expanded real-provider checklist.
+  - [ ] Nextcloud: obtain an approved disposable remote/folder and run
+    the expanded real-provider checklist.
+
+C1–C5 mark implemented engineering scope, not a new production release or
+complete provider acceptance. Regression coverage reuses the shared provider,
+transfer and archive suites; new workspace tests cover persistence, permissions,
+same-size edits, manifests and reserved names. Cloud upload fixtures cover
+network/quota failure retention, retry, active cancellation and missing parents.
+Frontend tests cover cloud Open With/local paths, typed archive errors, routing,
+recursive capabilities and staged activity lifetime. UI automation separately
+covers recovery while cloud is off and prepared copy-only export. No automatic
+upload, cloud undo, provider CAS overwrite or cleanup is claimed.
+
+Verification on 2026-10-03: strict maintenance suite passed (641 backend tests,
+6 opt-in tests ignored in the ordinary run; 317 frontend tests; 62 browser
+tests). Clippy deny-warnings, blocking Semgrep, both frontend/docs builds and
+20 strict documentation checks passed. The real OneDrive opt-in test was run
+separately and passed; native external-receiver acceptance remains pending.
+
 ## Optional Decisions, Not Required Work
 
 These proposals remain unapproved and have no completion checkboxes. Confirm
@@ -112,9 +160,6 @@ localization and additional platforms are not prerequisites for local file safet
 - Decide localization scope. If approved, centralize user-facing strings
   and add English/Norwegian translations with plural, date, and size formatting
   tests. Localization is not assumed implemented or mandatory for Linux file safety.
-- Decide which gaps deserve expansion: cloud Open With via managed download,
-  archive operations, advanced rename, or external drag materialization. Each
-  needs its own cache lifetime, conflict, cancellation, and credentials design.
 - Evaluate tabs and session restoration; review state isolation, dirty
   operations, keyboard shortcuts, and memory before committing to implementation.
 - Evaluate a split view for frequent copy/move workflows; define independent

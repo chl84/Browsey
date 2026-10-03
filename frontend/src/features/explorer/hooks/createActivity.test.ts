@@ -46,6 +46,23 @@ describe('createActivity', () => {
     })
   })
 
+  it('keeps a staged cloud operation cancellable until the command reply, not a child finish', async () => {
+    const activityApi = createActivity()
+    const cancel = vi.fn()
+    await activityApi.start('Compressing…', 'staged', cancel, { completeOnReply: true })
+    const handler = eventHandlers.get('staged')
+    handler?.({ payload: { bytes: 8, total: 8, finished: true } })
+    expect(get(activityApi.activity)).toMatchObject({ percent: null, cancel })
+    expect(activityApi.hasHideTimer()).toBe(false)
+    handler?.({ payload: { bytes: 0, total: 0, finished: false, phase: 'Uploading archive…' } })
+    expect(get(activityApi.activity)).toMatchObject({ label: 'Uploading archive…', percent: null, cancel })
+    await activityApi.requestCancel('staged')
+    handler?.({ payload: { bytes: 8, total: 8, finished: true } })
+    expect(get(activityApi.activity)).toMatchObject({ label: 'Cancelling…', cancel: null })
+    expect(activityApi.hasHideTimer()).toBe(false)
+    await activityApi.cleanup()
+  })
+
   it('clears byte details while cancelling', async () => {
     const activityApi = createActivity()
 

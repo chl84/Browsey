@@ -101,11 +101,18 @@ pub(super) async fn list_cloud_entries_impl(
     let cancel_guard = register_cloud_cancel(&cancel_state, &progress_event)?;
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
-        list_cloud_dir_cached_interactive_with_refresh_event(
+        let capabilities = super::cloud_provider_kind_for_remote(path.remote())
+            .map(super::types::CloudCapabilities::v1_for_provider)
+            .unwrap_or_else(super::types::CloudCapabilities::v1_core_rw);
+        let mut entries = list_cloud_dir_cached_interactive_with_refresh_event(
             &path,
             Some(app),
             cancel_token.as_deref(),
-        )
+        )?;
+        for entry in &mut entries {
+            entry.capabilities = capabilities.clone();
+        }
+        Ok(entries)
     });
     let result = match task.await {
         Ok(result) => result,

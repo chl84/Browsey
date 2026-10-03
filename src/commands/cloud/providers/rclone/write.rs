@@ -3,8 +3,8 @@ use super::{
     logging::{classify_rc_fallback_reason, log_backend_selected},
     parse::{classify_provider_kind_from_config, parse_config_dump_summaries},
     write_shared::{ensure_destination_overwrite_policy, is_cancelled},
-    CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudPath, RcloneCliError,
-    RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
+    CloudCommandError, CloudCommandErrorCode, CloudCommandResult, CloudPath, CloudProvider,
+    RcloneCliError, RcloneCloudProvider, RcloneCommandSpec, RcloneSubcommand,
 };
 use crate::commands::cloud::cloud_provider_kind_for_remote;
 use crate::commands::cloud::policy::cloud_delete_policy_args;
@@ -23,6 +23,95 @@ pub(super) use super::write_shared::{
 };
 
 impl RcloneCloudProvider {
+    /// New objects only. Do not use RC's unconditional copyfile for edited files.
+    /// --immutable refuses replacement; this is not a provider CAS transaction.
+    pub(crate) fn upload_new_file(
+        &self,
+        local: &Path,
+        dst: &CloudPath,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()> {
+        self.ensure_runtime_ready()?;
+        if is_cancelled(cancel) {
+            return Err(cloud_write_cancelled_error());
+        }
+        if dst.is_root() {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::InvalidPath,
+                "Cannot upload to a cloud root as a file",
+            ));
+        }
+        if self.stat_path(dst)?.is_some() {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::DestinationExists,
+                format!("Destination already exists: {dst}"),
+            ));
+        }
+        let parent = dst.parent_dir_path().ok_or_else(|| {
+            CloudCommandError::new(CloudCommandErrorCode::InvalidPath, "Missing cloud parent")
+        })?;
+        if !self
+            .stat_path(&parent)?
+            .is_some_and(|entry| matches!(entry.kind, super::CloudEntryKind::Dir))
+        {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::NotFound,
+                "The cloud destination folder no longer exists",
+            ));
+        }
+        self.cli
+            .run_capture_text_with_cancel(
+                RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
+                    .arg("--immutable")
+                    .arg("--checksum")
+                    .arg(local.as_os_str())
+                    .arg(dst.to_rclone_remote_spec()),
+                cancel,
+            )
+            .map_err(|error| map_rclone_error_for_remote(dst.remote(), error))?;
+        Ok(())
+    }
+
+    pub(crate) fn trash_entry(
+        &self,
+        path: &CloudPath,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()> {
+        self.ensure_runtime_ready()?;
+        if path.is_root() {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::InvalidPath,
+                "Cannot trash a cloud root",
+            ));
+        }
+        let kind = self.resolve_provider_kind_for_delete_policy(path.remote())?;
+        let flags =
+            crate::commands::cloud::policy::cloud_trash_policy_args(kind).ok_or_else(|| {
+                CloudCommandError::new(
+                    CloudCommandErrorCode::Unsupported,
+                    "This provider has no supported trash API; use its website or explicit delete",
+                )
+            })?;
+        let entry = self.stat_path(path)?.ok_or_else(|| {
+            CloudCommandError::new(
+                CloudCommandErrorCode::NotFound,
+                "Cloud item no longer exists",
+            )
+        })?;
+        let command = RcloneCommandSpec::new(if matches!(entry.kind, super::CloudEntryKind::Dir) {
+            RcloneSubcommand::Purge
+        } else {
+            RcloneSubcommand::DeleteFile
+        });
+        let command = flags
+            .iter()
+            .fold(command, |command, flag| command.arg(*flag));
+        self.cli
+            .run_capture_text_with_cancel(command.arg(path.to_rclone_remote_spec()), cancel)
+            .map_err(|error| map_rclone_error_for_remote(path.remote(), error))?;
+        Ok(())
+    }
+
     pub(super) fn upload_file_with_progress_impl<F>(
         &self,
         local_src: &Path,
@@ -353,6 +442,12 @@ impl RcloneCloudProvider {
         cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()> {
         self.ensure_runtime_ready()?;
+        if path.is_root() {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::InvalidPath,
+                "Cannot delete a cloud root",
+            ));
+        }
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }

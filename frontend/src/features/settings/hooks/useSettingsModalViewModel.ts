@@ -438,7 +438,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       showInteraction: rowMatches(n, [...doubleClickTexts]),
       showData: rowMatches(n, [...clearThumbTexts, ...clearStarsTexts, ...clearBookmarksTexts, ...clearRecentsTexts, ...undoStorageTexts]),
       showAccessibility: rowMatches(n, [...highContrastTexts, ...scrollbarWidthTexts]),
-      showCloud: rowMatches(n, [...cloudEnabledTexts, ...rclonePathTexts]),
+      showCloud: rowMatches(n, [...cloudEnabledTexts, ...rclonePathTexts, 'working copies', 'local edits', 'upload', 'recovery']),
       showAdvanced: rowMatches(n, [...logLevelTexts]),
       showCloudEnabledRow,
       showDefaultViewRow,

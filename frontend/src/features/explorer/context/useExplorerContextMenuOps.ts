@@ -66,19 +66,20 @@ export const filterByCapabilities = (actions: ContextAction[], entries: Entry[])
   if (!all.canCopy) unsupported.add('copy')
   if (!all.canDelete) unsupported.add('delete-permanent')
   if (!all.canTrash) unsupported.add('move-trash')
+  if (!caps.every((c) => c.canOpenWith)) unsupported.add('open-with')
+  if (!caps.every((c) => c.canArchive)) { unsupported.add('compress'); unsupported.add('extract') }
+  if (!caps.every((c) => c.canAdvancedRename && c.canRename)) unsupported.add('rename-advanced')
+  if (!caps.every((c) => c.canExternalCopy && c.canCopy)) unsupported.add('cloud-export')
 
-  return actions.filter((action) => !unsupported.has(action.id))
+  return actions.filter((action) => !unsupported.has(action.id)).map((action) => ({
+    ...action,
+    ...(action.children ? { children: filterByCapabilities(action.children, entries) } : {}),
+  })).filter((action) => !action.children || action.children.length > 0)
 }
 
 const filterUnsupportedCloudActions = (actions: ContextAction[]): ContextAction[] => {
   const unsupported = new Set([
-    'move-trash',
     'open-console',
-    'new-file',
-    'open-with',
-    'rename-advanced',
-    'compress',
-    'extract',
     'check-duplicates',
   ])
   const filtered = actions
@@ -182,7 +183,12 @@ export const useExplorerContextMenuOps = (deps: Deps) => {
       }
       actions = filterByCapabilities(actions, selectionEntries)
       if (selectionPaths.every(isCloudPath)) {
+        if (selectionPaths.every((path) => /^rclone:\/\/[^/]+\/.+/.test(path))) {
+          actions.splice(1, 0, { id: 'cloud-export', label: 'Prepare external copy…' })
+        }
         actions = filterUnsupportedCloudActions(actions)
+        actions = filterByCapabilities(actions, selectionEntries)
+        actions = actions.map((action) => action.id === 'move-trash' ? { ...action, label: 'Move to cloud trash' } : action)
       }
       actions = applyContextMenuShortcuts(actions)
       if (actions.length > 0) {
@@ -221,10 +227,10 @@ export const useExplorerContextMenuOps = (deps: Deps) => {
     const pasteShortcut = shortcutFor(deps.shortcutBindings(), 'paste')?.accelerator ?? 'Ctrl+V'
     const isCloudDir = isCloudPath(deps.getCurrentPath())
     const actions: ContextAction[] = [
+      { id: 'new-file', label: 'New File…' },
       { id: 'new-folder', label: 'New Folder…' },
     ]
     if (!isCloudDir) {
-      actions.unshift({ id: 'new-file', label: 'New File…' })
       actions.push({ id: 'open-console', label: 'Open in console', shortcut: openConsoleShortcut })
     }
     if (deps.getClipboardPathCount() > 0) {

@@ -42,10 +42,26 @@ Reference behavior: `docs/operations/core-operations/matrix.md`
 
 ## Expected Limitations (Linux 1.0 Scope)
 
+Historical Linux 1.0 results below are not acceptance of Unreleased additions.
+
 - [x] Cloud delete uses permanent-delete semantics (no cloud trash integration)
 - [x] Advanced rename remains unavailable for cloud entries
 - [x] Cloud archive extract/compress remains unavailable
 - [x] Open-in-console is blocked for cloud folders
+
+## Unreleased Expansion Acceptance
+
+Pending: no approved disposable Google Drive remote/folder was supplied for
+this expansion. Provider flags and failures have automated fixture coverage;
+those fixtures do not constitute real-account acceptance.
+
+- [ ] Marked disposable child only; cleanup verifies ownership, never global trash purge
+- [ ] Durable copies survive restart/cache clearing; Open With uses the local copy
+- [ ] Explicit unique upload, changed cloud source, existing/concurrently created target
+- [ ] Normal trash with `--drive-use-trash=true`; website restore and explicit permanent delete
+- [ ] Password archives, cancellation, retained staging and uploaded extracted trees/empty directories
+- [ ] Advanced rename/duplicate-name conflicts and prepared copy-only external drag
+- [ ] Network/quota/rate limits, active cancellation and large/deep trees on a dedicated test account
 
 ## Notes
 

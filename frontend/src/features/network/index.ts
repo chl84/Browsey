@@ -17,6 +17,9 @@ export {
 } from './services'
 export {
   listCloudRemotes,
+  listCloudWorkingCopies,
+  prepareCloudWorkingCopy,
+  uploadCloudWorkingCopy,
   loadCloudSetupStatus,
   probeCloudRemote,
   validateCloudRoot,
@@ -25,6 +28,7 @@ export {
   normalizeCloudPath,
   createCloudFolder,
   deleteCloudFile,
+  trashCloudEntries,
   deleteCloudDirRecursive,
   deleteCloudDirEmpty,
   moveCloudEntry,
@@ -35,6 +39,7 @@ export {
 } from './cloud.service'
 export type {
   CloudProviderKind,
+  CloudWorkingCopy,
   CloudEntryKind,
   CloudCapabilities,
   CloudRemote,

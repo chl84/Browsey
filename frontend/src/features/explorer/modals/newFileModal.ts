@@ -42,8 +42,9 @@ export const createNewFileModal = (deps: Deps) => {
     busy = true
     try {
       const created: string = await createFile(base, trimmed)
-      await loadPath(base)
       close()
+      try { await loadPath(base) }
+      catch { showToast('File created, but refresh failed. Press F5 to refresh.') }
       return created
     } catch (err) {
       const msg = getErrorMessage(err)

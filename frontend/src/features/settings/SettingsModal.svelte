@@ -522,6 +522,7 @@
 
         <CloudSection
           show={filterModel.showCloud}
+          {activityApi}
           showCloudEnabledRow={filterModel.showCloudEnabledRow}
           showRclonePathRow={filterModel.showRclonePathRow}
           {settings}

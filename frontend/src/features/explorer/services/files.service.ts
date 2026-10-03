@@ -1,4 +1,5 @@
 import { invoke } from '@/shared/lib/tauri'
+import { normalizeError } from '@/shared/lib/error'
 import { createCloudFolder, openCloudEntry, renameCloudEntry } from '@/features/network'
 import type { Entry } from '../model/types'
 import { homeDir } from '@tauri-apps/api/path'
@@ -30,9 +31,12 @@ export const renameEntry = async (path: string, newName: string) => {
   return dst
 }
 
-export const renameEntries = (entries: Array<{ path: string; newName: string }>) => {
+export const renameEntries = async (entries: Array<{ path: string; newName: string }>) => {
   if (entries.some((entry) => isCloudPath(entry.path))) {
-    throw new Error('Advanced rename is not supported for cloud entries yet')
+    if (!entries.every((entry) => isCloudPath(entry.path))) throw new Error('Rename local and cloud entries separately')
+    const result = await invoke<{ renamed: string[]; error: string | null }>('rename_cloud_entries', { entries })
+    if (result.error) throw new Error(result.error)
+    return result.renamed
   }
   return invoke<string[]>('rename_entries', { entries })
 }
@@ -65,9 +69,6 @@ export const previewRenameEntries = (
   entries: Array<{ path: string; name: string }>,
   payload: AdvancedRenamePreviewPayload,
 ) => {
-  if (entries.some((entry) => isCloudPath(entry.path))) {
-    throw new Error('Advanced rename preview is not supported for cloud entries yet')
-  }
   return invoke<AdvancedRenamePreviewResult>('preview_rename_entries', { entries, payload })
 }
 
@@ -82,7 +83,8 @@ export const createFolder = async (base: string, name: string) => {
 
 export const createFile = (base: string, name: string) => {
   if (isCloudPath(base)) {
-    throw new Error('Creating files directly in cloud folders is not supported yet')
+    if (!name.trim() || /[/\\\0]/.test(name) || name === '.' || name === '..') throw new Error('Invalid file name')
+    return invoke<string>('create_cloud_file', { path: joinCloudPath(base, name.trim()) })
   }
   return invoke<string>('create_file', { path: base, name })
 }
@@ -104,9 +106,6 @@ export const dirSizes = (paths: string[], progressEvent?: string) => {
 }
 
 export const canExtractPaths = (paths: string[]) => {
-  if (paths.some(isCloudPath)) {
-    return Promise.resolve(false)
-  }
   return invoke<boolean>('can_extract_paths', { paths })
 }
 
@@ -126,14 +125,24 @@ export type ExtractBatchItem = {
 
 export const extractArchive = (path: string, progressEvent?: string, password?: string) => {
   if (isCloudPath(path)) {
-    throw new Error('Archive extraction is not supported for cloud entries yet')
+    return invoke<ExtractResult>('extract_cloud_archive', { path, progressEvent, ...(password === undefined ? {} : { password }) })
   }
   return invoke<ExtractResult>('extract_archive', { path, progressEvent, ...(password === undefined ? {} : { password }) })
 }
 
-export const extractArchives = (paths: string[], progressEvent?: string) => {
+export const extractArchives = async (paths: string[], progressEvent?: string) => {
   if (paths.some(isCloudPath)) {
-    throw new Error('Archive extraction is not supported for cloud entries yet')
+    if (!paths.every(isCloudPath)) throw new Error('Extract local and cloud archives separately')
+    const results: ExtractBatchItem[] = []
+    for (const path of paths) {
+      try { results.push({ path, ok: true, result: await extractArchive(path, progressEvent) }) }
+      catch (error) {
+        const normalized = normalizeError(error)
+        results.push({ path, ok: false, error: normalized.message, error_code: normalized.code })
+        if (normalized.code === 'cancelled') break
+      }
+    }
+    return results
   }
   return invoke<ExtractBatchItem[]>('extract_archives', { paths, progressEvent })
 }

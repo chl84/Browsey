@@ -69,7 +69,7 @@ export const clearTargetCopy = {
   },
   'cloud-open-cache': {
     title: 'Clear cloud file cache?',
-    message: 'This removes cached local copies of cloud files opened through Browsey.',
+    message: 'This removes cloud preview/download cache files. Durable working copies and local edits are kept.',
     confirmLabel: 'Clear cache',
   },
   stars: {

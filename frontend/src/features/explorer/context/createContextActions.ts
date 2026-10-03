@@ -30,6 +30,7 @@ type Deps = {
   openCompress: (entries: Entry[]) => void
   openCheckDuplicates: (entry: Entry) => void
   extractEntries: (entries: Entry[]) => Promise<void>
+  prepareExternalCopy?: (entries: Entry[]) => void
 }
 
 export const createContextActions = (deps: Deps) => {
@@ -142,6 +143,11 @@ export const createContextActions = (deps: Deps) => {
       return
     }
 
+    if (id === 'cloud-export') {
+      deps.prepareExternalCopy?.(selectionEntries())
+      return
+    }
+
     if (id === 'open-location') {
       await openLocation(entry)
       return
@@ -184,9 +190,13 @@ export const createContextActions = (deps: Deps) => {
         } else {
           const paths = selectionEntries().map((e) => e.path)
           await moveToTrashMany(paths)
+          if (paths.every(isCloudPath)) showToast('Moved to cloud trash. Restore items from the provider website.')
         }
         await reloadCurrent()
       } catch (err) {
+        if (paths.some(isCloudPath)) {
+          try { await reloadCurrent() } catch { /* Preserve the trash error after partial writes. */ }
+        }
         const message = getErrorMessage(err)
         showToast(
           currentView() === 'trash'

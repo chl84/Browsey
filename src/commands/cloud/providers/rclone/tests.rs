@@ -965,6 +965,300 @@ fn fake_rclone_shim_uploads_local_file_to_cloud_path() {
 
 #[cfg(unix)]
 #[test]
+fn cloud_trash_overrides_destructive_provider_flags_and_keeps_recoverable_content() {
+    for (remote, backend, flag) in [
+        ("work", "onedrive", "--onedrive-hard-delete=false"),
+        ("drive-work", "drive", "--drive-use-trash=true"),
+    ] {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.set_remote_provider_type(remote, backend);
+        sandbox.write_remote_file(remote, "photo.jpg", "keep photo");
+        sandbox.write_remote_file(remote, "album/sub/photo.jpg", "keep album");
+        let provider = sandbox.provider();
+        provider
+            .trash_entry(&cloud_path(&format!("rclone://{remote}/photo.jpg")), None)
+            .unwrap();
+        provider
+            .trash_entry(&cloud_path(&format!("rclone://{remote}/album")), None)
+            .unwrap();
+        assert!(!sandbox.remote_path(remote, "photo.jpg").exists());
+        assert_eq!(
+            fs::read_to_string(sandbox.state_root.join(".trash/photo.jpg")).unwrap(),
+            "keep photo"
+        );
+        assert_eq!(
+            fs::read_to_string(sandbox.state_root.join(".trash/album/sub/photo.jpg")).unwrap(),
+            "keep album"
+        );
+        let log = sandbox.read_log();
+        assert!(
+            log.contains(&format!("deletefile {flag} {remote}:photo.jpg")),
+            "{log}"
+        );
+        assert!(
+            log.contains(&format!("purge {flag} {remote}:album")),
+            "{log}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn cloud_trash_refuses_nextcloud_and_remote_roots_without_deleting() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.set_remote_provider_type("nc", "nextcloud");
+    set_cloud_provider_kind_override_for_tests("nc", CloudProviderKind::Nextcloud);
+    sandbox.write_remote_file("nc", "photo.jpg", "keep");
+    let provider = sandbox.provider();
+    assert_eq!(
+        provider
+            .trash_entry(&cloud_path("rclone://nc/photo.jpg"), None)
+            .unwrap_err()
+            .code(),
+        CloudCommandErrorCode::Unsupported
+    );
+    assert_eq!(
+        provider
+            .trash_entry(&cloud_path("rclone://nc"), None)
+            .unwrap_err()
+            .code(),
+        CloudCommandErrorCode::InvalidPath
+    );
+    assert_eq!(
+        provider
+            .delete_dir_recursive(&cloud_path("rclone://nc"), None)
+            .unwrap_err()
+            .code(),
+        CloudCommandErrorCode::InvalidPath
+    );
+    assert_eq!(
+        fs::read_to_string(sandbox.remote_path("nc", "photo.jpg")).unwrap(),
+        "keep"
+    );
+    assert!(!sandbox.read_log().contains("purge"));
+    clear_cloud_provider_kind_overrides_for_tests();
+}
+
+#[cfg(unix)]
+#[test]
+fn new_cloud_upload_preserves_original_and_refuses_existing_destination() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "original.txt", "original");
+    let local = sandbox.root.join("edited.txt");
+    fs::write(&local, "edited").unwrap();
+    let provider = sandbox.provider();
+    let original = cloud_path("rclone://work/original.txt");
+    assert_eq!(
+        provider
+            .upload_new_file(&local, &original, None)
+            .unwrap_err()
+            .code(),
+        CloudCommandErrorCode::DestinationExists
+    );
+    provider
+        .upload_new_file(&local, &cloud_path("rclone://work/new.txt"), None)
+        .unwrap();
+    assert_eq!(
+        fs::read_to_string(sandbox.remote_path("work", "original.txt")).unwrap(),
+        "original"
+    );
+    assert_eq!(
+        fs::read_to_string(sandbox.remote_path("work", "new.txt")).unwrap(),
+        "edited"
+    );
+    assert!(sandbox.read_log().contains("copyto --immutable --checksum"));
+}
+
+#[cfg(unix)]
+#[test]
+fn new_cloud_upload_cancellation_keeps_local_and_cloud_files() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "original.txt", "original");
+    let local = sandbox.root.join("edited.txt");
+    fs::write(&local, "edited").unwrap();
+    let token = std::sync::atomic::AtomicBool::new(true);
+    let result = sandbox.provider().upload_new_file(
+        &local,
+        &cloud_path("rclone://work/new.txt"),
+        Some(&token),
+    );
+    assert_eq!(result.unwrap_err().code(), CloudCommandErrorCode::Cancelled);
+    assert_eq!(fs::read_to_string(local).unwrap(), "edited");
+    assert!(!sandbox.remote_path("work", "new.txt").exists());
+    assert!(!sandbox.read_log().contains("copyto"));
+}
+
+#[cfg(unix)]
+#[test]
+fn edited_working_copy_detects_changed_source_and_preserves_both_versions() {
+    use crate::commands::cloud::workspace::{create_at, load_at, upload_at};
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "report.txt", "original");
+    let provider = sandbox.provider();
+    let source = cloud_path("rclone://work/report.txt");
+    let entry = provider.stat_path(&source).unwrap().unwrap();
+    let cached = sandbox.root.join("download");
+    provider.download_file(&source, &cached, None).unwrap();
+    let base = sandbox.root.join("working-copies");
+    let copy = create_at(&base, &source, &cached, entry.size, entry.modified).unwrap();
+    fs::write(&copy.local_path, "my edits").unwrap();
+    sandbox.write_remote_file("work", "report.txt", "new data");
+    let result = upload_at(&base, &copy.id, &provider, None).unwrap();
+    assert!(result.source_changed);
+    let target = cloud_path(&result.path);
+    assert_ne!(target, source);
+    assert_eq!(
+        fs::read_to_string(sandbox.remote_path("work", "report.txt")).unwrap(),
+        "new data"
+    );
+    assert_eq!(
+        fs::read_to_string(sandbox.remote_path("work", target.rel_path())).unwrap(),
+        "my edits"
+    );
+    assert_eq!(fs::read_to_string(&copy.local_path).unwrap(), "my edits");
+    assert_eq!(
+        load_at(&base, &copy.id).unwrap().uploaded_path,
+        Some(result.path)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn failed_working_copy_upload_retains_edits_and_manifest_for_retry() {
+    use crate::commands::cloud::workspace::{create_at, load_at, upload_at};
+    for failure in ["network connection reset", "quota exceeded"] {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "report.txt", "original");
+        let provider = sandbox.provider();
+        let source = cloud_path("rclone://work/report.txt");
+        let cached = sandbox.root.join("download");
+        fs::write(&cached, "original").unwrap();
+        let base = sandbox.root.join("working-copies");
+        // Different metadata means source comparison does not need a download;
+        // this failure is injected into the upload itself, not the initial read.
+        let copy = create_at(&base, &source, &cached, None, None).unwrap();
+        fs::write(&copy.local_path, "my edits").unwrap();
+        fs::write(sandbox.root.join("transfer-failure"), failure).unwrap();
+        assert!(upload_at(&base, &copy.id, &provider, None).is_err());
+        assert!(load_at(&base, &copy.id).unwrap().dirty);
+        assert_eq!(load_at(&base, &copy.id).unwrap().uploaded_path, None);
+        assert_eq!(fs::read_to_string(&copy.local_path).unwrap(), "my edits");
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "report.txt")).unwrap(),
+            "original"
+        );
+        fs::remove_file(sandbox.root.join("transfer-failure")).unwrap();
+        assert!(upload_at(&base, &copy.id, &provider, None).is_ok());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn active_cloud_upload_cancellation_stops_child_without_removing_edits() {
+    use std::sync::{atomic::AtomicBool, Arc};
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "");
+    sandbox.configure_subcommand_delay("copyto", 10_000, 1);
+    let local = sandbox.root.join("edited.txt");
+    fs::write(&local, "edited").unwrap();
+    let token = Arc::new(AtomicBool::new(false));
+    let worker_token = token.clone();
+    let provider = sandbox.provider();
+    let worker_local = local.clone();
+    let worker = thread::spawn(move || {
+        provider.upload_new_file(
+            &worker_local,
+            &cloud_path("rclone://work/new.txt"),
+            Some(&worker_token),
+        )
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !sandbox.subcommand_delay_notify_path("copyto").exists() {
+        assert!(Instant::now() < deadline, "upload did not start");
+        thread::sleep(Duration::from_millis(10));
+    }
+    token.store(true, Ordering::Relaxed);
+    assert_eq!(
+        worker.join().unwrap().unwrap_err().code(),
+        CloudCommandErrorCode::Cancelled
+    );
+    assert_eq!(fs::read_to_string(local).unwrap(), "edited");
+    assert!(!sandbox.remote_path("work", "new.txt").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn new_cloud_upload_does_not_recreate_a_deleted_destination_folder() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "");
+    let local = sandbox.root.join("edited.txt");
+    fs::write(&local, "edited").unwrap();
+    let result = sandbox.provider().upload_new_file(
+        &local,
+        &cloud_path("rclone://work/deleted/new.txt"),
+        None,
+    );
+    assert_eq!(result.unwrap_err().code(), CloudCommandErrorCode::NotFound);
+    assert!(!sandbox.remote_path("work", "deleted").exists());
+    assert!(!sandbox.read_log().contains("copyto"));
+}
+
+#[cfg(unix)]
+#[test]
+fn new_cloud_upload_refuses_a_target_created_after_preflight() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "");
+    sandbox.configure_subcommand_delay("copyto", 200, 1);
+    let local = sandbox.root.join("edited.txt");
+    fs::write(&local, "my edits").unwrap();
+    let provider = sandbox.provider();
+    let worker_local = local.clone();
+    let worker = thread::spawn(move || {
+        provider.upload_new_file(&worker_local, &cloud_path("rclone://work/new.txt"), None)
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !sandbox.subcommand_delay_notify_path("copyto").exists() {
+        assert!(Instant::now() < deadline, "upload did not start");
+        thread::sleep(Duration::from_millis(5));
+    }
+    sandbox.write_remote_file("work", "new.txt", "someone else");
+    assert!(worker.join().unwrap().is_err());
+    assert_eq!(
+        fs::read_to_string(sandbox.remote_path("work", "new.txt")).unwrap(),
+        "someone else"
+    );
+    assert_eq!(fs::read_to_string(local).unwrap(), "my edits");
+    assert!(sandbox.read_log().contains("copyto --immutable --checksum"));
+}
+
+#[cfg(unix)]
+#[test]
+fn cloud_batch_rename_preflights_all_targets_before_any_move() {
+    use crate::commands::{cloud::batch_rename::rename_batch, rename::RenameEntryRequest};
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "a.txt", "a");
+    sandbox.write_remote_file("work", "b.txt", "b");
+    sandbox.write_remote_file("work", "exists.txt", "existing");
+    let entries = vec![
+        RenameEntryRequest {
+            path: "rclone://work/a.txt".into(),
+            new_name: "new-a.txt".into(),
+        },
+        RenameEntryRequest {
+            path: "rclone://work/b.txt".into(),
+            new_name: "exists.txt".into(),
+        },
+    ];
+    assert!(rename_batch(&sandbox.provider(), entries).is_err());
+    assert_eq!(
+        fs::read_to_string(sandbox.remote_path("work", "a.txt")).unwrap(),
+        "a"
+    );
+    assert!(!sandbox.read_log().contains("moveto"));
+}
+
+#[cfg(unix)]
+#[test]
 fn upload_with_progress_falls_back_to_cli_when_rc_startup_fails() {
     let sandbox = FakeRcloneSandbox::new();
     let provider = sandbox.provider_with_forced_rc();

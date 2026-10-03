@@ -76,6 +76,11 @@ pub struct EntryCapabilities {
     pub can_trash: bool,
     pub can_undo: bool,
     pub can_permissions: bool,
+    pub can_create_file: bool,
+    pub can_open_with: bool,
+    pub can_archive: bool,
+    pub can_advanced_rename: bool,
+    pub can_external_copy: bool,
 }
 
 #[derive(Serialize, Clone)]

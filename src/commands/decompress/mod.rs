@@ -82,6 +82,16 @@ pub(crate) fn are_extractable_archive_paths(paths: &[String]) -> bool {
     if paths.is_empty() {
         return false;
     }
+    let cloud_count = paths
+        .iter()
+        .filter(|path| path.starts_with("rclone://"))
+        .count();
+    if cloud_count > 0 {
+        return cloud_count == paths.len()
+            && paths
+                .iter()
+                .all(|path| crate::commands::cloud::is_cloud_archive_candidate(path));
+    }
     paths.iter().all(|raw| {
         let path = match sanitize_path_nofollow(raw, true) {
             Ok(path) => path,
@@ -101,6 +111,26 @@ pub(crate) fn are_extractable_archive_paths(paths: &[String]) -> bool {
 #[tauri::command]
 pub fn can_extract_paths(paths: Vec<String>) -> ApiResult<bool> {
     Ok(are_extractable_archive_paths(&paths))
+}
+
+pub(crate) fn extract_staged(
+    app: Option<&tauri::AppHandle>,
+    path: String,
+    progress_event: Option<String>,
+    password: Option<&str>,
+    cancel: Option<Arc<AtomicBool>>,
+) -> ApiResult<ExtractResult> {
+    map_api_result(do_extract_with_password(
+        app,
+        CancelState::default(),
+        UndoState::default(),
+        path,
+        progress_event,
+        cancel,
+        None,
+        None,
+        password,
+    ))
 }
 
 #[tauri::command]

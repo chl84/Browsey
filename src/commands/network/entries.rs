@@ -150,13 +150,18 @@ fn to_cloud_network_entry(remote: &CloudRemote) -> FsEntry {
         capabilities: Some(EntryCapabilities {
             can_list: remote.capabilities.can_list,
             can_mkdir: remote.capabilities.can_mkdir,
-            can_delete: remote.capabilities.can_delete,
-            can_rename: remote.capabilities.can_rename,
-            can_move: remote.capabilities.can_move,
-            can_copy: remote.capabilities.can_copy,
-            can_trash: remote.capabilities.can_trash,
+            can_delete: false,
+            can_rename: false,
+            can_move: false,
+            can_copy: false,
+            can_trash: false,
             can_undo: remote.capabilities.can_undo,
             can_permissions: remote.capabilities.can_permissions,
+            can_create_file: remote.capabilities.can_create_file,
+            can_open_with: false,
+            can_archive: false,
+            can_advanced_rename: false,
+            can_external_copy: false,
         }),
     }
 }
@@ -266,5 +271,15 @@ mod tests {
         };
         let remote_entry = to_cloud_network_entry(&remote);
         assert_eq!(remote_entry.icon_id, NETWORK_ICON_ID);
+        let caps = remote_entry.capabilities.unwrap();
+        assert!(caps.can_list && caps.can_mkdir && caps.can_create_file);
+        assert!(
+            !caps.can_delete
+                && !caps.can_rename
+                && !caps.can_move
+                && !caps.can_copy
+                && !caps.can_trash
+        );
+        assert!(!caps.can_archive && !caps.can_external_copy && !caps.can_advanced_rename);
     }
 }

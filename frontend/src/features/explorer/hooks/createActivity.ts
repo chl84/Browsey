@@ -11,7 +11,9 @@ export type ActivityState = {
   cancelling?: boolean
 }
 
-export type ProgressPayload = { total: number; finished?: boolean } & (
+export type ActivityApi = Omit<ReturnType<typeof createActivity>, 'activity'>
+
+export type ProgressPayload = { total: number; finished?: boolean; phase?: string } & (
   | { unit?: 'bytes'; bytes: number }
   | { unit: 'items'; items: number }
 )
@@ -74,15 +76,18 @@ export const createActivity = (opts: Options = {}) => {
     }
   }
 
-  const start = async (label: string, eventName: string, onCancel?: () => void) => {
+  const start = async (label: string, eventName: string, onCancel?: () => void,
+    options?: { completeOnReply?: boolean }) => {
     await cleanup()
     if (activityHideTimer) {
       clearTimeout(activityHideTimer)
       activityHideTimer = null
     }
     activity.set({ label, detail: null, percent: null, cancel: onCancel ?? null, cancelling: false })
+    let phaseLabel = label
     activityUnlisten = await listen<ProgressPayload>(eventName, (event) => {
       const payload = event.payload
+      if (payload.phase) phaseLabel = payload.phase
       const completed = payload.unit === 'items' ? payload.items : payload.bytes
       let pct =
         payload.total > 0 ? Math.min(100, Math.round((completed / payload.total) * 100)) : null
@@ -91,13 +96,18 @@ export const createActivity = (opts: Options = {}) => {
       }
       const existing = get(activity)
       const cancelling = existing?.cancelling ?? false
-      const displayLabel = cancelling ? 'Cancelling…' : label
+      const displayLabel = cancelling ? 'Cancelling…' : phaseLabel
       const detail = payload.total > 0
         ? payload.unit === 'items'
           ? `${completed} / ${payload.total} ${payload.total === 1 ? 'item' : 'items'}`
           : formatByteProgress(completed, payload.total)
         : null
-      if (payload.finished) {
+      if (payload.finished && options?.completeOnReply) {
+        // A staged operation has more phases after a child transfer/archive
+        // finishes. Only the command reply owns final completion and cleanup.
+        activity.set({ label: displayLabel, detail: null, percent: null,
+          cancel: cancelling ? null : existing?.cancel ?? onCancel ?? null, cancelling })
+      } else if (payload.finished) {
         activity.set({
           label: cancelling ? 'Cancelling…' : 'Finalizing…',
           detail,

@@ -456,6 +456,53 @@ fn do_compress(
     progress_event: Option<String>,
     password: Option<&str>,
 ) -> CompressResult<String> {
+    do_compress_with_cancel(
+        app,
+        cancel_state,
+        undo,
+        paths,
+        name,
+        level,
+        progress_event,
+        password,
+        None,
+    )
+}
+
+pub(crate) fn compress_staged(
+    app: Option<tauri::AppHandle>,
+    paths: Vec<String>,
+    name: String,
+    level: Option<u32>,
+    progress_event: Option<String>,
+    password: Option<&str>,
+    cancel: Option<Arc<AtomicBool>>,
+) -> ApiResult<String> {
+    map_api_result(do_compress_with_cancel(
+        app,
+        CancelState::default(),
+        UndoState::default(),
+        paths,
+        Some(name),
+        level,
+        progress_event,
+        password,
+        cancel,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn do_compress_with_cancel(
+    app: Option<tauri::AppHandle>,
+    cancel_state: CancelState,
+    undo: UndoState,
+    paths: Vec<String>,
+    name: Option<String>,
+    level: Option<u32>,
+    progress_event: Option<String>,
+    password: Option<&str>,
+    shared_cancel: Option<Arc<AtomicBool>>,
+) -> CompressResult<String> {
     if password.is_some_and(|value| value.is_empty() || value.contains('\0')) {
         return Err(CompressError::new(
             CompressErrorCode::InvalidInput,
@@ -465,6 +512,7 @@ fn do_compress(
     // Register before any path resolution or recursive scanning.
     let cancel_guard: Option<CancelGuard> = progress_event
         .as_ref()
+        .filter(|_| shared_cancel.is_none())
         .map(|evt| cancel_state.register(evt.clone()))
         .transpose()
         .map_err(|error| {
@@ -473,7 +521,7 @@ fn do_compress(
                 format!("Failed to register cancel: {error}"),
             )
         })?;
-    let cancel_token = cancel_guard.as_ref().map(|c| c.token());
+    let cancel_token = shared_cancel.or_else(|| cancel_guard.as_ref().map(|c| c.token()));
     if paths.is_empty() {
         return Err(CompressError::from_external_message("Nothing to compress"));
     }

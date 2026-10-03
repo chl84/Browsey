@@ -16,8 +16,18 @@ pub mod rclone_cli;
 mod rclone_path;
 pub mod rclone_rc;
 mod setup_status;
+mod staging;
+pub(crate) use staging::is_cloud_archive_candidate;
+pub use staging::{compress_cloud_entries, extract_cloud_archive, prepare_cloud_external_copy};
+mod batch_rename;
+pub use batch_rename::rename_cloud_entries;
 pub mod types;
+mod workspace;
 mod write;
+pub use workspace::{
+    cloud_working_copy_storage_path, create_cloud_file, list_cloud_working_copies,
+    upload_cloud_working_copy, CloudWorkingCopy,
+};
 
 use crate::errors::api_error::ApiResult;
 use crate::tasks::{CancelGuard, CancelState};
@@ -152,6 +162,10 @@ pub(crate) fn cloud_conflict_name_key(provider: Option<CloudProviderKind>, name:
 
 pub(crate) fn invalidate_cloud_write_paths(paths: &[CloudPath]) {
     cache::invalidate_cloud_dir_listing_cache_for_write_paths(paths);
+}
+
+pub(crate) fn limits_for_staging(remotes: Vec<String>) -> limits::CloudRemotePermitGuard {
+    limits::acquire_cloud_remote_permits(remotes)
 }
 
 pub(crate) fn invalidate_cloud_caches_for_backend_change() {
@@ -312,6 +326,51 @@ pub async fn delete_cloud_file(
     map_api_result(delete_cloud_file_impl(path, cancel.inner().clone(), progress_event).await)
 }
 
+#[tauri::command]
+pub async fn trash_cloud_entries(
+    paths: Vec<String>,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
+) -> ApiResult<()> {
+    map_api_result(trash_cloud_entries_impl(paths, cancel.inner().clone(), progress_event).await)
+}
+
+async fn trash_cloud_entries_impl(
+    paths: Vec<String>,
+    cancel: CancelState,
+    progress_event: Option<String>,
+) -> CloudCommandResult<()> {
+    ensure_cloud_enabled()?;
+    let paths = paths
+        .into_iter()
+        .map(parse_cloud_path_arg)
+        .collect::<CloudCommandResult<Vec<_>>>()?;
+    if paths.iter().any(CloudPath::is_root) {
+        return Err(CloudCommandError::new(
+            CloudCommandErrorCode::InvalidPath,
+            "Cannot trash a cloud root",
+        ));
+    }
+    let guard = register_cloud_cancel(&cancel, &progress_event)?;
+    let token = guard.as_ref().map(|guard| guard.token());
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        limits::with_cloud_remote_permits(
+            paths.iter().map(|path| path.remote().to_owned()).collect(),
+            || {
+                let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
+                let result = paths
+                    .iter()
+                    .try_for_each(|path| provider.trash_entry(path, token.as_deref()));
+                // Also invalidate partial outcomes; never retry destructive commands automatically.
+                invalidate_cloud_write_paths(&paths);
+                result
+            },
+        )
+    })
+    .await;
+    map_spawn_result(result, "Cloud trash task failed")
+}
+
 async fn delete_cloud_file_impl(
     path: String,
     cancel_state: CancelState,
@@ -458,6 +517,37 @@ pub fn clear_cloud_open_cache() -> ApiResult<open::CloudOpenCacheClearResult> {
     map_api_result(open::clear_cloud_open_cache_impl())
 }
 
+#[tauri::command]
+pub async fn prepare_cloud_working_copy(
+    path: String,
+    app: tauri::AppHandle,
+    cancel: tauri::State<'_, CancelState>,
+    progress_event: Option<String>,
+) -> ApiResult<CloudWorkingCopy> {
+    map_api_result(
+        prepare_cloud_working_copy_impl(path, app, cancel.inner().clone(), progress_event).await,
+    )
+}
+
+async fn prepare_cloud_working_copy_impl(
+    path: String,
+    app: tauri::AppHandle,
+    cancel: CancelState,
+    progress_event: Option<String>,
+) -> CloudCommandResult<CloudWorkingCopy> {
+    ensure_cloud_enabled()?;
+    let path = parse_cloud_path_arg(path)?;
+    let guard = register_cloud_cancel(&cancel, &progress_event)?;
+    let token = guard.as_ref().map(|guard| guard.token());
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        limits::with_cloud_remote_permits(vec![path.remote().to_owned()], || {
+            open::prepare_working_copy(&path, &app, progress_event.as_deref(), token.as_deref())
+        })
+    })
+    .await;
+    map_spawn_result(result, "Cloud working-copy download task failed")
+}
+
 async fn copy_cloud_entry_impl(
     src: String,
     dst: String,
@@ -503,12 +593,14 @@ fn normalize_cloud_path_impl(path: String) -> CloudCommandResult<String> {
 }
 
 fn parse_cloud_path_arg(path: String) -> CloudCommandResult<CloudPath> {
-    CloudPath::parse(&path).map_err(|error| {
-        CloudCommandError::new(
-            CloudCommandErrorCode::InvalidPath,
-            format!("Invalid cloud path: {error}"),
-        )
-    })
+    CloudPath::parse(&path).map_err(map_cloud_path_error)
+}
+
+fn map_cloud_path_error(error: path::CloudPathParseError) -> CloudCommandError {
+    CloudCommandError::new(
+        CloudCommandErrorCode::InvalidPath,
+        format!("Invalid cloud path: {error}"),
+    )
 }
 
 fn map_spawn_result<T>(

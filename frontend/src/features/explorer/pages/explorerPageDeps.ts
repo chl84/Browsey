@@ -170,6 +170,7 @@ export const createExplorerContextActionsDeps = (
   openCompress: deps.openCompress,
   openCheckDuplicates: deps.openCheckDuplicates,
   extractEntries: deps.extractEntries,
+  prepareExternalCopy: deps.prepareExternalCopy,
   startRename: deps.startRename,
   startAdvancedRename: deps.startAdvancedRename,
   confirmDelete: deps.confirmDelete,

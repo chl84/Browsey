@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
+import { prepareCloudWorkingCopy } from '@/features/network'
 import type { Entry } from '../model/types'
 import type { OpenWithApp, OpenWithChoice } from '../services/openWith.service'
 import { fetchOpenWithApps, openWithSelection, setDefaultApplication, defaultOpenWithApp } from '../services/openWith.service'
@@ -28,10 +29,12 @@ export const createOpenWithModal = (deps: Deps) => {
     submitting: false,
   })
   let loadId = 0
+  let localPath: string | null = null
 
   const close = () => {
     if (get(state).submitting) return
     ++loadId
+    localPath = null
     state.set({
       open: false,
       entry: null,
@@ -46,7 +49,10 @@ export const createOpenWithModal = (deps: Deps) => {
     const requestId = ++loadId
     state.update((s) => ({ ...s, loading: true, error: '', apps: [defaultOpenWithApp] }))
     try {
-      const list = await fetchOpenWithApps(path)
+      const target = path.startsWith('rclone://') ? (await prepareCloudWorkingCopy(path)).localPath : path
+      if (requestId !== loadId) return
+      localPath = target
+      const list = await fetchOpenWithApps(target)
       const curr = get(state)
       if (!curr.open || curr.entry?.path !== path || requestId !== loadId) return
       state.update((s) => ({ ...s, apps: [defaultOpenWithApp, ...list] }))
@@ -67,6 +73,7 @@ export const createOpenWithModal = (deps: Deps) => {
 
   const open = (entry: Entry) => {
     if (get(state).submitting) return
+    localPath = null
     state.set({
       open: true,
       entry,
@@ -81,6 +88,7 @@ export const createOpenWithModal = (deps: Deps) => {
   const confirm = async (choice: OpenWithChoice) => {
     const current = get(state)
     if (!current.open || !current.entry || current.submitting || current.loading) return
+    if (!localPath) return
     const normalized: OpenWithChoice = {
       appId: choice.appId ?? undefined,
     }
@@ -97,13 +105,16 @@ export const createOpenWithModal = (deps: Deps) => {
     let defaultSaved = false
     try {
       if (choice.setDefault && app.defaultContentType) {
-        await setDefaultApplication(current.entry.path, app.id, app.defaultContentType)
+        await setDefaultApplication(localPath, app.id, app.defaultContentType)
         defaultSaved = true
       }
-      await openWithSelection(current.entry.path, normalized)
-      showToast(defaultSaved
+      await openWithSelection(localPath, normalized)
+      const message = defaultSaved
         ? `Opening ${current.entry.name}… ${app.name} is now the default for ${app.defaultContentType}`
-        : `Opening ${current.entry.name}…`)
+        : `Opening ${current.entry.name}…`
+      showToast(current.entry.path.startsWith('rclone://')
+        ? `${message} You are editing a local working copy. Upload edits from Settings → Cloud → Working copies.`
+        : message)
       state.update((s) => ({ ...s, submitting: false }))
       close()
     } catch (err) {

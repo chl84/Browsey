@@ -103,10 +103,20 @@ Home; missing/inaccessible folders use the existing listing error handling.
 - Interactive cloud folder loads are cancellable from the activity pill while a remote folder is opening.
 - Cloud operations currently use manual/explicit refresh in some flows because filesystem watching is not available for `rclone://` paths.
 
+Cloud additions on current main (Unreleased; not in the published 1.0.3 packages):
+
+- New File, Open With and advanced rename are available in cloud folders. Batch rename preflights all targets, refuses collisions/swaps, stops on the first execution failure and reports partial completion; it is not transactional and has no cloud undo.
+- Opening a cloud file creates a private, persistent working copy with its original filename. Find copies and retained operation data in **Settings > Cloud > Working copies**; they survive restart and clearing the preview cache. Close other writers before uploading. **Upload changes as new file** checks the original and saves under a unique edited name; it never overwrites the original or uploads automatically.
+- Compress and Extract use protected local staging and the existing archive engine/password flow. ZIP creation uploads a new archive; extraction uploads a uniquely named folder. Originals and local staging remain on failure/cancellation. Cloud uploads of symlinks/special files are refused; inspect the retained local output instead. Downloads and staging need local disk space and are retained until manually removed.
+- OneDrive and Google Drive expose **Move to cloud trash** separately from explicit deletion. Restore through the provider website; Browsey's local Wastebasket does not list cloud trash. Nextcloud trash is not exposed through the current WebDAV adapter. Permanent deletion depends on the account/server: OneDrive Personal cannot hard-delete through this API, and server retention policies may retain deleted data. See [OneDrive](https://rclone.org/onedrive/#onedrive-hard-delete) and [Google Drive](https://rclone.org/drive/#drive-use-trash).
+- **Prepare external copy…** downloads selected cloud items, then offers a copy-only drag using the existing native file-drag bridge. Cloud originals are never removed by external drag.
+
 Current cloud limitations:
-- no cloud trash/recycle-bin integration (delete is permanent)
+
 - no undo/redo for cloud operations
-- no advanced rename, archive extract/compress, duplicate scan, or direct open-with for cloud files
+- no cloud duplicate scan, automatic synchronization or atomic conditional overwrite; stop other writers during operations
+- archive/export selections must come from one cloud folder; cloud archive detection in menus is filename-based, with actual format/password/safety validation after download
+- protected copies and staging have no automatic retention or disk quota; remove them manually only after closing editors and finishing operations. The old `cloud-open` cache is intentionally left untouched because it may contain edits from earlier releases
 - cloud thumbnails are opt-in (`Cloud thumbs`) and currently limited to Grid view for image/pdf/svg, with provider and file-size guardrails
 - provider-specific edge cases (especially quotas/rate limits) still require normal provider-aware validation
 
@@ -124,7 +134,7 @@ For setup details, migration notes, and cloud limitations, see the docs site.
 - For local files, holding Ctrl/Meta at drag start locks the gesture to copy; Shift locks it to move (Ctrl/Meta wins if both are held). Otherwise internal drops use live modifiers and filesystem-aware defaults: move on the same filesystem and copy across filesystems. Cloud transfers default to copy.
 - Incoming drops from another app always copy. They use the folder under the pointer, not necessarily the current directory.
 - Hover over a destination for 850 ms to open it; hold near a list/grid/sidebar edge to scroll. Escape cancels the internal drag.
-- Drag local files directly to another app; no Alt key is needed. Without an explicit start modifier, Browsey offers both actions and the receiver chooses its default. Hold Ctrl/Meta or Shift **before starting** to offer only copy or move. Browsey does not delete sources on drag completion. Cloud files must first be copied/downloaded to a local folder; automatic cloud materialization for external drag is not implemented. Local and cloud sources cannot be combined in one selection.
+- Drag local files directly to another app; no Alt key is needed. Without an explicit start modifier, Browsey offers both actions and the receiver chooses its default. Hold Ctrl/Meta or Shift **before starting** to offer only copy or move. Browsey does not delete sources on drag completion. For cloud items on current main, use **Prepare external copy…** first, then drag the prepared button (copy-only). Local and cloud sources cannot be combined in one selection.
 - These changes are not included in the published v1.0.2 release assets.
 
 Native drag startup/teardown coverage and the manual acceptance checklist are in

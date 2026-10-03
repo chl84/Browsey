@@ -220,8 +220,13 @@ case "$subcmd" in
     mkdir -p -- "$target"
     ;;
   deletefile)
+    trash_mode=0
     while [[ $idx -lt ${#args[@]} ]]; do
       case "${args[$idx]}" in
+        --onedrive-hard-delete=false|--drive-use-trash=true)
+          trash_mode=1
+          idx=$((idx + 1))
+          ;;
         --onedrive-hard-delete|--drive-use-trash=false)
           idx=$((idx + 1))
           ;;
@@ -239,11 +244,21 @@ case "$subcmd" in
       echo "file not found" >&2
       exit 3
     fi
-    rm -f -- "$target"
+    if [[ "$trash_mode" -eq 1 ]]; then
+      mkdir -p -- "$state_root/.trash"
+      mv -- "$target" "$state_root/.trash/$(basename -- "$target")"
+    else
+      rm -f -- "$target"
+    fi
     ;;
   purge)
+    trash_mode=0
     while [[ $idx -lt ${#args[@]} ]]; do
       case "${args[$idx]}" in
+        --onedrive-hard-delete=false|--drive-use-trash=true)
+          trash_mode=1
+          idx=$((idx + 1))
+          ;;
         --onedrive-hard-delete|--drive-use-trash=false)
           idx=$((idx + 1))
           ;;
@@ -261,7 +276,12 @@ case "$subcmd" in
       echo "directory not found" >&2
       exit 3
     fi
-    rm -rf -- "$target"
+    if [[ "$trash_mode" -eq 1 ]]; then
+      mkdir -p -- "$state_root/.trash"
+      mv -- "$target" "$state_root/.trash/$(basename -- "$target")"
+    else
+      rm -rf -- "$target"
+    fi
     ;;
   rmdir)
     while [[ $idx -lt ${#args[@]} ]]; do
@@ -282,13 +302,29 @@ case "$subcmd" in
     rmdir -- "$target"
     ;;
   copyto|moveto)
+    immutable=0
+    while [[ $idx -lt ${#args[@]} ]]; do
+      case "${args[$idx]}" in
+        --immutable) immutable=1; idx=$((idx + 1)) ;;
+        --checksum) idx=$((idx + 1)) ;;
+        *) break ;;
+      esac
+    done
     if (( idx + 1 >= ${#args[@]} )); then
       echo "missing src/dst for $subcmd" >&2
       exit 2
     fi
     maybe_delay_subcommand "$subcmd"
+    if [[ -f "$script_dir/transfer-failure" ]]; then
+      head -c 512 -- "$script_dir/transfer-failure" >&2
+      exit 3
+    fi
     src="$(map_spec_path "${args[$idx]}")"
     dst="$(map_spec_path "${args[$idx + 1]}")"
+    if [[ "$immutable" -eq 1 && -e "$dst" ]]; then
+      echo "destination exists (immutable)" >&2
+      exit 3
+    fi
     if [[ ! -e "$src" ]]; then
       echo "object not found" >&2
       exit 3

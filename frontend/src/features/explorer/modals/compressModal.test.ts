@@ -19,6 +19,18 @@ const setup = () => {
 describe('compression lifecycle', () => {
   beforeEach(() => { invoke.mockReset() })
 
+  it('routes cloud archives through staging and keeps activity alive until the full reply', async () => {
+    const { modal, deps } = setup()
+    modal.open([{ path: 'rclone://work/report.txt', name: 'report.txt', kind: 'file', iconId: 0 }], 'Archive')
+    invoke.mockResolvedValue('rclone://work/Archive.zip')
+    expect(await modal.confirm('Archive', 6, 'password')).toBe(true)
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('compress_cloud_entries', expect.objectContaining({
+      paths: ['rclone://work/report.txt'], name: 'Archive.zip', password: 'password',
+    }))
+    expect(deps.activityApi.start).toHaveBeenCalledWith('Compressing…', expect.any(String), expect.any(Function), { completeOnReply: true })
+    expect(deps.activityApi.cleanup).toHaveBeenCalledOnce()
+  })
+
   it('sends the exact password only for the current operation, without adding it to modal state', async () => {
     const { modal } = setup()
     invoke.mockResolvedValue('/test/Archive.zip')
@@ -38,7 +50,7 @@ describe('compression lifecycle', () => {
     expect(get(modal.state).targets).toHaveLength(1)
     expect(await modal.confirm('Archive', 6)).toBe(true)
     expect(get(modal.state).open).toBe(false)
-    expect(deps.reloadCurrent).toHaveBeenCalledOnce()
+    expect(deps.reloadCurrent).toHaveBeenCalledTimes(2)
     expect(deps.activityApi.cleanup).toHaveBeenCalledTimes(2)
   })
 

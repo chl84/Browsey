@@ -32,11 +32,14 @@ pub use crate::tasks::{cancel_task, CancelState};
 pub use about::about_info;
 pub use bookmarks::{add_bookmark, clear_bookmarks, get_bookmarks, remove_bookmark};
 pub use cloud::{
-    clear_cloud_open_cache, cloud_rc_health, cloud_setup_status, copy_cloud_entry,
-    create_cloud_folder, delete_cloud_dir_empty, delete_cloud_dir_recursive, delete_cloud_file,
-    list_cloud_entries, list_cloud_remotes, move_cloud_entry, normalize_cloud_path,
-    open_cloud_entry, preview_cloud_conflicts, probe_cloud_remote, rename_cloud_entry,
-    stat_cloud_entry, validate_cloud_root,
+    clear_cloud_open_cache, cloud_rc_health, cloud_setup_status, cloud_working_copy_storage_path,
+    compress_cloud_entries, copy_cloud_entry, create_cloud_file, create_cloud_folder,
+    delete_cloud_dir_empty, delete_cloud_dir_recursive, delete_cloud_file, extract_cloud_archive,
+    list_cloud_entries, list_cloud_remotes, list_cloud_working_copies, move_cloud_entry,
+    normalize_cloud_path, open_cloud_entry, prepare_cloud_external_copy,
+    prepare_cloud_working_copy, preview_cloud_conflicts, probe_cloud_remote, rename_cloud_entries,
+    rename_cloud_entry, stat_cloud_entry, trash_cloud_entries, upload_cloud_working_copy,
+    validate_cloud_root,
 };
 pub use compress::compress_entries;
 pub use console::open_console;

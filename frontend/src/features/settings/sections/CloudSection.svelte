@@ -9,6 +9,10 @@
   } from '../cloudSetup'
   import TextField from '../../../shared/ui/TextField.svelte'
   import type { Settings } from '../settingsTypes'
+  import CloudWorkingCopies from '../CloudWorkingCopies.svelte'
+  import type { ActivityApi } from '@/features/explorer'
+
+  export let activityApi: ActivityApi | null = null
 
   export let show = false
   export let showCloudEnabledRow = false
@@ -43,6 +47,12 @@
 {#if show}
   <div class="group-divider" aria-hidden="true"></div>
   <div class="group-heading">Cloud</div><div class="group-spacer"></div>
+
+  <div class="form-label">Local working copies</div>
+  <div class="form-control column">
+    <CloudWorkingCopies {activityApi} />
+    <small>Recover downloaded files and local edits, even when cloud support is off.</small>
+  </div>
 
   {#if showCloudEnabledRow}
     <div class="form-label">Enable cloud</div>

@@ -14,6 +14,11 @@ export type CloudCapabilities = {
   canTrash: boolean
   canUndo: boolean
   canPermissions: boolean
+  canCreateFile?: boolean
+  canOpenWith?: boolean
+  canArchive?: boolean
+  canAdvancedRename?: boolean
+  canExternalCopy?: boolean
 }
 
 export type CloudRemote = {
@@ -100,6 +105,27 @@ export type CloudWriteOptions = {
   progressEvent?: string
 }
 
+export type CloudWorkingCopy = {
+  id: string
+  sourcePath: string
+  localPath: string
+  originalSize: number | null
+  originalModified: string | null
+  originalHash: string
+  createdAt: number
+  dirty: boolean
+  uploadedPath: string | null
+}
+
+export const listCloudWorkingCopies = () =>
+  invoke<CloudWorkingCopy[]>('list_cloud_working_copies')
+
+export const prepareCloudWorkingCopy = (path: string, progressEvent?: string) =>
+  invokeCloud<CloudWorkingCopy>('prepare_cloud_working_copy', { path, progressEvent })
+
+export const uploadCloudWorkingCopy = (id: string, progressEvent?: string) =>
+  invoke<{ path: string; sourceChanged: boolean }>('upload_cloud_working_copy', { id, progressEvent })
+
 const userCloudErrorMessage = (code: string | undefined, message: string) => {
   switch (code) {
     case 'binary_missing':
@@ -174,6 +200,9 @@ export const createCloudFolder = (path: string, progressEvent?: string) =>
 
 export const deleteCloudFile = (path: string, progressEvent?: string) =>
   invokeCloud<void>('delete_cloud_file', { path, progressEvent })
+
+export const trashCloudEntries = (paths: string[], progressEvent?: string) =>
+  invokeCloud<void>('trash_cloud_entries', { paths, progressEvent })
 
 export const deleteCloudDirRecursive = (path: string, progressEvent?: string) =>
   invokeCloud<void>('delete_cloud_dir_recursive', { path, progressEvent })

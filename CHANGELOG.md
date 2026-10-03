@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Expand cloud folders with private persistent working copies/recovery access, new files, Open With, explicit save-as-new uploads with source-change checks, provider-aware OneDrive/Google Drive trash, staged archive compression/extraction and passwords, preflighted advanced rename, and prepared copy-only external drag. Reuse transfer/archive/cancellation/activity/capability layers; keep originals and staging on failure, protect edits from preview-cache clearing, preserve empty copied directories and refresh after partial outcomes. No automatic sync, atomic cloud overwrite, cloud undo or Nextcloud trash API is claimed. Real-provider acceptance is tracked separately and remains open until approved disposable remotes are tested.
+
 - Keep Semgrep typed-error checks clean with explicit I/O, runtime-task and thumbnail task-error conversions, preserving existing IPC codes instead of reclassifying diagnostic text. Share local/CI scan options, make blocking findings and invalid configuration fail, and regression-test positive/negative fixtures, exclusions and exit codes without weakening rules or adding exceptions.
 
 - Correct the shared Settings RAR capability note and its filter text: compressed/password-protected RAR extraction is supported; RAR archive creation is not.

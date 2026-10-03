@@ -141,6 +141,18 @@ describe('useExplorerFileOps extract recovery', () => {
     extractArchivesMock.mockResolvedValue([])
   })
 
+  it('opens the returned cloud extraction folder without a local filesystem probe', async () => {
+    const deps = createDeps()
+    deps.shouldOpenDestAfterExtract = () => true
+    const destination = 'rclone://work/archive-extract-unique'
+    extractArchiveMock.mockResolvedValue({ destination, skipped_symlinks: 0, skipped_entries: 0 })
+    await useExplorerFileOps(deps).extractEntries([
+      { name: 'archive.zip', path: 'rclone://work/archive.zip', kind: 'file', iconId: 0 },
+    ])
+    expect(deps.loadPath).toHaveBeenCalledWith(destination, { recordHistory: true })
+    expect(deps.activityApi.start).toHaveBeenCalledWith('Extracting…', expect.any(String), expect.any(Function), { completeOnReply: true })
+  })
+
   it('prompts for passwords, retries wrong passwords, and forgets them afterwards', async () => {
     extractArchiveMock.mockRejectedValueOnce({ code: 'archive_password_required', message: 'Password required' })
       .mockRejectedValueOnce({ code: 'archive_invalid_password', message: 'Incorrect archive password' })

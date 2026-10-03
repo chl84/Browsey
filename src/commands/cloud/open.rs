@@ -91,6 +91,8 @@ pub(super) async fn open_cloud_entry_impl(
 }
 
 pub(super) fn clear_cloud_open_cache_impl() -> CloudCommandResult<CloudOpenCacheClearResult> {
+    let _workspace_guard = super::workspace::lock()?;
+    let _cache_guard = cache_store::lock_cache_for_clear()?;
     let dir = cache_store::cloud_open_cache_root_path();
     if !dir.exists() {
         cache_store::prepare_cloud_open_cache_dir(&dir)?;
@@ -121,8 +123,8 @@ fn materialize_and_open_cloud_file(
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
 ) -> CloudCommandResult<()> {
-    let cache_path = materialize_cloud_file_for_local_use(path, app, progress_event, cancel)?;
-    open_path_without_recent(&cache_path).map_err(|error| {
+    let copy = prepare_working_copy(path, app, progress_event, cancel)?;
+    open_path_without_recent(std::path::Path::new(&copy.local_path)).map_err(|error| {
         CloudCommandError::new(
             CloudCommandErrorCode::TaskFailed,
             format!("Failed to open downloaded cloud file: {error}"),
@@ -130,21 +132,29 @@ fn materialize_and_open_cloud_file(
     })
 }
 
-pub(crate) fn materialize_cloud_file_for_local_use(
+pub(super) fn prepare_working_copy(
     path: &super::path::CloudPath,
     app: &tauri::AppHandle,
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
-) -> CloudCommandResult<PathBuf> {
+) -> CloudCommandResult<super::CloudWorkingCopy> {
     let provider = configured_rclone_provider().map_err(CloudCommandError::from)?;
     let snapshot = resolve_cloud_materialize_snapshot(&provider, path)?;
-    materialize_cloud_file_for_local_use_with_provider_and_snapshot(
+    let _guard = super::workspace::lock()?;
+    let cached = materialize_cloud_file_for_local_use_with_provider_and_snapshot(
         &provider,
         path,
         &snapshot,
         app,
         progress_event,
         cancel,
+    )?;
+    super::workspace::create_at(
+        &super::workspace::root()?,
+        path,
+        &cached,
+        snapshot.size,
+        snapshot.modified,
     )
 }
 
@@ -215,6 +225,7 @@ fn resolve_cloud_materialize_snapshot(
 fn materialize_cloud_file_for_local_use_inner(
     ctx: CloudMaterializeContext<'_>,
 ) -> CloudCommandResult<PathBuf> {
+    let _cache_guard = cache_store::lock_cache()?;
     let CloudMaterializeContext {
         provider,
         path,
@@ -225,13 +236,13 @@ fn materialize_cloud_file_for_local_use_inner(
         progress_event,
         cancel,
     } = ctx;
-    let cache_path = cache_store::cloud_open_cache_path(path, original_name)?;
-    let metadata_path = cache_store::cloud_open_metadata_path(&cache_path);
     let expected_meta = cache_store::CloudOpenCacheMetadata {
         source_path: path.to_string(),
         size,
         modified: modified.map(str::to_string),
     };
+    let cache_path = cache_store::cloud_open_cache_path(path, original_name, &expected_meta)?;
+    let metadata_path = cache_store::cloud_open_metadata_path(&cache_path);
 
     if cache_store::cache_is_fresh(&cache_path, &metadata_path, &expected_meta) {
         emit_cloud_open_progress(

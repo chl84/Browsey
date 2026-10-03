@@ -8,6 +8,11 @@ export type EntryCapabilities = {
   canTrash: boolean
   canUndo: boolean
   canPermissions: boolean
+  canCreateFile?: boolean
+  canOpenWith?: boolean
+  canArchive?: boolean
+  canAdvancedRename?: boolean
+  canExternalCopy?: boolean
 }
 
 export type Entry = {

@@ -1,5 +1,5 @@
 import { invoke } from '@/shared/lib/tauri'
-import { deleteCloudDirRecursive, deleteCloudFile, statCloudEntry } from '@/features/network'
+import { deleteCloudDirRecursive, deleteCloudFile, statCloudEntry, trashCloudEntries } from '@/features/network'
 import { normalizeError } from '@/shared/lib/error'
 
 const isCloudPath = (path: string) => path.startsWith('rclone://')
@@ -61,7 +61,8 @@ export const deleteEntries = async (paths: string[], progressEvent?: string) => 
 
 export const moveToTrashMany = (paths: string[], progressEvent?: string) => {
   if (paths.some(isCloudPath)) {
-    throw new Error('Cloud trash is not supported yet')
+    if (!paths.every(isCloudPath)) throw new Error('Mixed local/cloud trash is not supported')
+    return trashCloudEntries(paths, progressEvent)
   }
   return invoke<void>('move_to_trash_many', { paths, progressEvent })
 }

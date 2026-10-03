@@ -1,5 +1,6 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { writable, get } from 'svelte/store'
+import type { ActivityApi as SharedActivityApi } from '../hooks/createActivity'
 import { getErrorMessage, normalizeError } from '@/shared/lib/error'
 import {
   copyCloudEntry,
@@ -106,7 +107,7 @@ const cloudConflictNameKey = (provider: CloudProviderKind | null, name: string) 
 const pasteActivityLabel = (mode: 'copy' | 'cut') => (mode === 'cut' ? 'Moving…' : 'Copying…')
 
 type ActivityApi = {
-  start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
+  start: SharedActivityApi['start']
   requestCancel: (eventName: string) => Promise<void> | void
   hideSoon: () => void
   clearNow: () => void
@@ -677,7 +678,7 @@ export const useExplorerFileOps = (deps: Deps) => {
             if (response === null || extractionCancelled) throw new Error('Extraction cancelled')
             password = response
             // A failed attempt may have advanced the counter. Each retry starts at zero.
-            await deps.activityApi.start('Extracting…', progressEvent, cancelExtraction)
+            await deps.activityApi.start('Extracting…', progressEvent, cancelExtraction, { completeOnReply: isCloudPath(path) })
             if (extractionCancelled) throw new Error('Extraction cancelled')
           }
           try {
@@ -722,6 +723,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         `Extracting${entriesToExtract.length > 1 ? ` ${entriesToExtract.length} items…` : '…'}`,
         progressEvent,
         cancelExtraction,
+        { completeOnReply: entriesToExtract.some((entry) => isCloudPath(entry.path)) },
       )
       if (extractionCancelled) throw new Error('Extraction cancelled')
       if (entriesToExtract.length === 1) {
@@ -730,7 +732,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         let refreshWarning = ''
         if (deps.shouldOpenDestAfterExtract() && result?.destination) {
           try {
-            const kind = await entryKind(result.destination)
+            const kind = isCloudPath(result.destination) ? 'dir' : await entryKind(result.destination)
             const target = kind === 'dir' ? result.destination : parentPath(result.destination)
             await deps.loadPath(target, { recordHistory: true })
           } catch {

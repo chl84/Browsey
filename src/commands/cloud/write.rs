@@ -77,9 +77,8 @@ pub(super) async fn delete_cloud_file_impl(
             provider.delete_file(&path, cancel_token.as_deref())
         })
     });
-    let result = map_spawn_result(task.await, "cloud delete file task failed").map(|_| {
-        invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
-    });
+    let result = map_spawn_result(task.await, "cloud delete file task failed");
+    invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
         Ok(()) => debug!(
@@ -119,9 +118,8 @@ pub(super) async fn delete_cloud_dir_recursive_impl(
             provider.delete_dir_recursive(&path, cancel_token.as_deref())
         })
     });
-    let result = map_spawn_result(task.await, "cloud delete dir task failed").map(|_| {
-        invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
-    });
+    let result = map_spawn_result(task.await, "cloud delete dir task failed");
+    invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
         Ok(()) => debug!(
@@ -161,9 +159,8 @@ pub(super) async fn delete_cloud_dir_empty_impl(
             provider.delete_dir_empty(&path, cancel_token.as_deref())
         })
     });
-    let result = map_spawn_result(task.await, "cloud rmdir task failed").map(|_| {
-        invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
-    });
+    let result = map_spawn_result(task.await, "cloud rmdir task failed");
+    invalidate_cloud_dir_listing_cache_for_write_paths(&[path_for_invalidate]);
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
         Ok(()) => debug!(
@@ -208,9 +205,8 @@ pub(super) async fn move_cloud_entry_impl(
             provider.move_entry(&src, &dst, overwrite, prechecked, cancel_token.as_deref())
         })
     });
-    let result = map_spawn_result(task.await, "cloud move task failed").map(|_| {
-        invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
-    });
+    let result = map_spawn_result(task.await, "cloud move task failed");
+    invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
         Ok(()) => debug!(
@@ -261,9 +257,8 @@ pub(super) async fn copy_cloud_entry_impl(
             provider.copy_entry(&src, &dst, overwrite, prechecked, cancel_token.as_deref())
         })
     });
-    let result = map_spawn_result(task.await, "cloud copy task failed").map(|_| {
-        invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
-    });
+    let result = map_spawn_result(task.await, "cloud copy task failed");
+    invalidate_cloud_dir_listing_cache_for_write_paths(&invalidate_paths);
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match &result {
         Ok(()) => debug!(

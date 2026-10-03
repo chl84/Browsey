@@ -30,6 +30,9 @@ type MockClipboardState = {
 }
 
 type E2eMockControl = {
+  cloudFixture?: boolean
+  cloudCopies?: Array<{ id: string; sourcePath: string; localPath: string; originalSize: number | null; originalModified: string | null; originalHash: string; createdAt: number; dirty: boolean; uploadedPath: string | null }>
+  cloudUploadChanged?: boolean
   windowControlPolicy?: { minimize: boolean; maximize: boolean }
   bookmarks?: Array<{ label: string; path: string }>
   thumbnailFixture?: boolean
@@ -234,6 +237,13 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'get_startup_path':
       return (control?.startupPath ?? null) as T
     case 'list_dir':
+      if (control?.cloudFixture && String(args?.path).startsWith('rclone://')) {
+        const current = String(args?.path)
+        return { current, entries: [{ name: 'report.txt', path: `${current}/report.txt`, kind: 'file', size: 8, iconId: 12,
+          capabilities: { canList: true, canMkdir: true, canDelete: true, canRename: true, canMove: true, canCopy: true,
+            canTrash: true, canUndo: false, canPermissions: false, canCreateFile: true, canOpenWith: true,
+            canArchive: true, canAdvancedRename: true, canExternalCopy: true } }] } as T
+      }
       if (control?.thumbnailFixture) {
         const current = (args?.path as string | undefined) || ROOT
         const entries: ExplorerEntry[] = Array.from({ length: current === ROOT ? 100 : 1 }, (_, i) => ({
@@ -467,6 +477,16 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
         { id: 'alpha', name: 'Alpha editor', exec: 'alpha', matches: true, terminal: false, defaultContentType: 'text/plain' },
         { id: 'beta', name: 'Beta editor', exec: 'beta', matches: false, terminal: false, defaultContentType: 'text/plain' },
       ] as T
+    case 'list_cloud_working_copies':
+      return (control?.cloudCopies ?? []) as T
+    case 'cloud_working_copy_storage_path':
+      return '/mock/browsey/cloud-workspaces' as T
+    case 'prepare_cloud_working_copy':
+      return { id: '1-2-3', sourcePath: args?.path, localPath: '/mock/browsey/cloud-workspaces/1-2-3/files/report.txt', dirty: false } as T
+    case 'upload_cloud_working_copy':
+      return { path: 'rclone://test/report-edited-1-2-3.txt', sourceChanged: control?.cloudUploadChanged ?? false } as T
+    case 'prepare_cloud_external_copy':
+      return ['/mock/browsey/cloud-workspaces/export/inputs/report.txt'] as T
     case 'open_with':
     case 'set_default_app':
       return undefined as T

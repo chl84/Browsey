@@ -48,7 +48,7 @@ describe('advanced rename modal', () => {
         newName: 'report.txt',
       },
     ])
-    expect(reloadCurrent).not.toHaveBeenCalled()
+    expect(reloadCurrent).toHaveBeenCalledOnce()
     expect(showToast).not.toHaveBeenCalled()
     expect(get(modal.state)).toMatchObject({
       open: true,

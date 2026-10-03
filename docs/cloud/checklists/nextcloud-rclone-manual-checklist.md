@@ -43,10 +43,25 @@ Reference behavior: `docs/operations/core-operations/matrix.md`
 
 ## Expected Limitations (Linux 1.0 Scope)
 
+Historical Linux 1.0 results below are not acceptance of Unreleased additions.
+
 - [x] Cloud delete uses permanent-delete semantics (no cloud trash integration)
 - [x] Advanced rename remains unavailable for cloud entries
 - [x] Cloud archive extract/compress remains unavailable
 - [x] Open-in-console is blocked for cloud folders
+
+## Unreleased Expansion Acceptance
+
+Pending: no approved disposable Nextcloud remote/folder was supplied for this
+expansion. Automated provider fixtures do not constitute instance acceptance.
+
+- [ ] Marked disposable child only; explicit cleanup verifies ownership
+- [ ] Durable copies survive restart/cache clearing; Open With uses the local copy
+- [ ] Explicit unique upload, changed source (including unavailable modtime/hash) and target conflict
+- [ ] Trash hidden/refused without a supported API; explicit delete never masquerades as trash
+- [ ] Password archives, cancellation, retained staging and uploaded extracted trees/empty directories
+- [ ] Advanced rename and prepared copy-only external drag
+- [ ] Network/quota/rate limits, active cancellation, server version differences and large/deep trees
 
 ## Notes
 
