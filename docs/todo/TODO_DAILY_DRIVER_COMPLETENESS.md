@@ -6,8 +6,9 @@ Status: Active engineering follow-up; acceptance is tracked separately.
 Baseline: Browsey 1.0.3, verified implementation through `0bf3ff6`.
 
 Goal: Improve dependable daily use within an explicit Linux support scope.
-This list contains five engineering follow-ups, not a count of missing file-manager
-features. Test execution, release procedures and unapproved product proposals
+This list contains engineering follow-ups and reproduced validation findings,
+not a count of missing file-manager features. Test execution, release procedures
+and unapproved product proposals
 are not implementation TODOs.
 
 ## Where Progress Is Tracked
@@ -58,6 +59,16 @@ Inspect current code and evidence before adding or replacing behavior.
 These measurements also cover the extra output read pass introduced by local
 copy content verification. The existing warm-tmpfs result is evidence for that
 workload only, not a cold-storage or USB/MTP performance budget.
+
+## Confirmed Validation Findings
+
+- [ ] **VD-1** Correct the stale Settings claim that compressed RAR entries are
+  unsupported, including its matching filter text. The
+  [Omarchy validation run](../operations/linux-release/runs/2026-10-03-a0-omarchy.md)
+  reproduced the message in both the installed app and mock browser while ten
+  RAR tests passed. Update existing wording and add a focused regression; do not
+  replace the working archive adapter. This is a non-blocking capability-message
+  defect, not a missing extraction feature.
 
 ## Optional Decisions, Not Required Work
 
@@ -119,6 +130,7 @@ engineering work (three performance rows and retention), eight are optional
 decisions, and seven are ongoing/release rules. The mixed recovery row keeps UX
 acceptance in the checklist and storage-policy work here. The concurrent-writer
 validation row remains a test requirement; its documented design boundary is
-also an explicit engineering follow-up. Thus there are five active TODO boxes,
-not five newly discovered defects. No unchecked requirement was silently dropped
+also an explicit engineering follow-up. At reclassification there were five active
+TODO boxes, not five newly discovered defects. Later reproduced findings are added
+separately above. No unchecked requirement was silently dropped
 or declared verified.

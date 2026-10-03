@@ -3,8 +3,16 @@
 Created: 2026-10-03
 Status: Outstanding acceptance, not a missing-feature backlog.
 Source: [active daily-driver TODO](../../todo/TODO_DAILY_DRIVER_COMPLETENESS.md).
-Code baseline for planning: Browsey 1.0.3 through `0bf3ff6`; no fresh acceptance
-run is recorded here.
+Code baseline for planning: Browsey 1.0.3 through `0bf3ff6`.
+
+## Current Run Evidence
+
+The [2026-10-03 Omarchy A0 run](runs/2026-10-03-a0-omarchy.md) tested candidate
+`bf82750`, built/installed its production binary with maintainer approval and
+completed A0-4 and A0-6 for the run's explicit fixture/process and read-only
+recovery UX scopes. Other rows remain open or partial; this is not A0 or release
+signoff. The run also reproduced misleading RAR capability wording, recorded as
+VD-1 in the active TODO. No unrelated acceptance was inferred from test counts.
 
 These 29 unchecked rows were moved from the former completeness plan, not
 marked passed. Existing automated evidence is in the
@@ -47,16 +55,20 @@ destructive testing.
   and failed items; preserve unrelated files; retain sources until the required
   destination completion checks pass. Never automatically repeat destructive
   operations after an uncertain result.
-- [ ] **A0-4** Test process interruption/restart with disposable fixtures. Document
+- [x] **A0-4** Test process interruption/restart with disposable fixtures. Document
   surviving partial outputs, session backup cleanup, and concurrent-instance
   ownership. Automatic resume or persistent undo requires a separate design
   review; it is not assumed safe or required by this task.
+  PASS for the documented Omarchy fixture/process scope in the linked run;
+  power-loss/real-media acceptance remains open in A0-8.
 - [ ] **A0-5** Revalidate local undo/redo, overwrite boundaries, and the documented
   50-action/session-only limits. Do not promise recovery that is not supported.
-- [ ] **A0-6** Validate manual recovery UX and installed-build behavior for marked
+- [x] **A0-6** Validate manual recovery UX and installed-build behavior for marked
   sessions, including diagnostic accuracy, safe guidance and retained backups.
   Preserved backups do not imply persistent undo, automatic repair/resume or
   atomic batches. Storage budget/retention design is tracked in the active TODO.
+  PASS for installed read-only diagnostics/guidance, restart retention and
+  separately verified manual recovery in the linked run; not automatic repair.
 - [ ] **A0-7** Validate edits during active writes and races after per-entry checks;
   metadata snapshots are not content hashes or filesystem transactions.
 - [ ] **A0-8** Validate installed UI partial-result refresh/recovery and real-media faults.

@@ -3,8 +3,8 @@
 Place active execution TODO documents in this directory.
 
 - [Browsey daily-driver completeness](TODO_DAILY_DRIVER_COMPLETENESS.md):
-  five engineering follow-ups, with optional decisions and release rules kept
-  out of the implementation checkbox count.
+  engineering follow-ups and reproduced validation findings, with optional
+  decisions and release rules kept out of the implementation checkbox count.
 - [Daily-driver validation](../operations/linux-release/daily-driver-validation-checklist.md):
   outstanding acceptance for existing capabilities, not missing features.
 - [Verified safety work](../todo-archive/TODO_DAILY_DRIVER_SAFETY_COMPLETED.md):
