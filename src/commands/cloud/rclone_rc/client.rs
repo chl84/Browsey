@@ -3,14 +3,12 @@ use super::{
     RcloneCliError, RcloneRcClient, RcloneRcMethod, RcloneSubcommand,
     RCLONE_RC_ERROR_TEXT_MAX_CHARS, RCLONE_RC_START_FAILURE_COOLDOWN,
 };
-use regex::Regex;
 use serde_json::{json, Value};
 use std::{
     io,
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
-    sync::OnceLock,
     time::{Duration, Instant},
 };
 use tracing::{debug, warn};
@@ -144,15 +142,19 @@ pub(super) fn run_rc_command_via_socket(
         timeout,
         cancel_token,
     )?;
-    let body = parse_http_response_body(&response_text, method)?;
+    let body = parse_http_response_body(&response_text, method)
+        .map_err(|error| uncertain_write_response(method, error))?;
     if body.trim().is_empty() {
         return Ok(json!({}));
     }
     serde_json::from_str::<Value>(&body).map_err(|error| {
-        RcloneCliError::Io(io::Error::other(format!(
-            "invalid JSON from rclone rc {}: {error}",
-            method.as_str()
-        )))
+        uncertain_write_response(
+            method,
+            RcloneCliError::Io(io::Error::other(format!(
+                "invalid JSON from rclone rc {}: {error}",
+                method.as_str()
+            ))),
+        )
     })
 }
 
@@ -189,30 +191,41 @@ fn send_rc_http_request_over_unix_socket(
         payload_text
     );
 
-    stream
-        .write_all(request.as_bytes())
-        .map_err(|error| map_rc_io_error(error, timeout, "write"))?;
+    stream.write_all(request.as_bytes()).map_err(|error| {
+        uncertain_write_response(method, map_rc_io_error(error, timeout, "write"))
+    })?;
 
     let mut response_bytes = Vec::new();
     let started = Instant::now();
     let mut buffer = [0u8; 8192];
     loop {
         if is_cancelled(cancel_token) {
-            return Err(RcloneCliError::Cancelled {
-                subcommand: RcloneSubcommand::Rc,
-            });
+            return Err(uncertain_write_response(
+                method,
+                RcloneCliError::Cancelled {
+                    subcommand: RcloneSubcommand::Rc,
+                },
+            ));
         }
         if started.elapsed() >= timeout {
-            return Err(RcloneCliError::Timeout {
-                subcommand: RcloneSubcommand::Rc,
-                timeout,
-                stdout: String::new(),
-                stderr: "rclone rc socket read timed out".to_string(),
-            });
+            return Err(uncertain_write_response(
+                method,
+                RcloneCliError::Timeout {
+                    subcommand: RcloneSubcommand::Rc,
+                    timeout,
+                    stdout: String::new(),
+                    stderr: "rclone rc socket read timed out".to_string(),
+                },
+            ));
         }
         match stream.read(&mut buffer) {
             Ok(0) => break,
-            Ok(bytes_read) => response_bytes.extend_from_slice(&buffer[..bytes_read]),
+            Ok(bytes_read) => append_response(
+                &mut response_bytes,
+                &buffer[..bytes_read],
+                128 * 1024 * 1024,
+            )
+            .map_err(|error| uncertain_write_response(method, error))?,
             Err(error)
                 if matches!(
                     error.kind(),
@@ -223,10 +236,51 @@ fn send_rc_http_request_over_unix_socket(
             {
                 continue;
             }
-            Err(error) => return Err(map_rc_io_error(error, timeout, "read")),
+            Err(error) => {
+                return Err(uncertain_write_response(
+                    method,
+                    map_rc_io_error(error, timeout, "read"),
+                ))
+            }
         }
     }
     Ok(String::from_utf8_lossy(&response_bytes).to_string())
+}
+
+pub(super) fn uncertain_write_response(
+    method: RcloneRcMethod,
+    error: RcloneCliError,
+) -> RcloneCliError {
+    if super::method_is_retry_safe(method)
+        || matches!(
+            &error,
+            RcloneCliError::Shutdown { .. } | RcloneCliError::WriteStateUnknown { .. }
+        )
+    {
+        error
+    } else {
+        RcloneCliError::WriteStateUnknown {
+            operation: method.as_str().to_owned(),
+            cause: Box::new(error),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn append_response(
+    response: &mut Vec<u8>,
+    chunk: &[u8],
+    limit: usize,
+) -> Result<(), RcloneCliError> {
+    if chunk.len() > limit.saturating_sub(response.len()) {
+        return Err(RcloneCliError::OutputLimit {
+            subcommand: RcloneSubcommand::Rc,
+            stream: "response",
+            limit,
+        });
+    }
+    response.extend_from_slice(chunk);
+    Ok(())
 }
 
 #[cfg(not(unix))]
@@ -365,10 +419,7 @@ fn decode_chunked_http_body(body: &str, method: RcloneRcMethod) -> Result<String
 }
 
 fn scrub_rc_error_text(raw: &str) -> String {
-    let mut out = raw.to_string();
-    for re in sensitive_json_regexes() {
-        out = re.replace_all(&out, "$1\"***\"").to_string();
-    }
+    let mut out = crate::commands::cloud::rclone_cli::sanitize_failure_message(raw);
     if out.chars().count() > RCLONE_RC_ERROR_TEXT_MAX_CHARS {
         out = out
             .chars()
@@ -379,27 +430,52 @@ fn scrub_rc_error_text(raw: &str) -> String {
     out
 }
 
-fn sensitive_json_regexes() -> &'static Vec<Regex> {
-    static REGEXES: OnceLock<Vec<Regex>> = OnceLock::new();
-    REGEXES.get_or_init(|| {
-        [
-            r#"("access_token"\s*:\s*)"[^"]*""#,
-            r#"("refresh_token"\s*:\s*)"[^"]*""#,
-            r#"("token"\s*:\s*)"[^"]*""#,
-            r#"("pass(word)?"\s*:\s*)"[^"]*""#,
-        ]
-        .iter()
-        .map(|pattern| Regex::new(pattern).expect("valid sensitive JSON regex"))
-        .collect()
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::{parse_http_response_body, run_rc_command_via_socket, scrub_rc_error_text};
     use crate::commands::cloud::rclone_rc::RcloneRcMethod;
     use serde_json::{json, Value};
     use std::time::Duration;
+
+    #[cfg(unix)]
+    #[test]
+    fn submitted_writes_with_lost_or_invalid_responses_have_unknown_state() {
+        for response in [
+            "",
+            "HTTP/1.1 200 OK\r\n\r\nnot-json",
+            "HTTP/1.1 503 Error\r\n\r\nbusy",
+        ] {
+            let (root, socket, handle) = spawn_fake_rc_http_server(response, Duration::ZERO);
+            let error = run_rc_command_via_socket(
+                &socket,
+                RcloneRcMethod::OperationsCopyFile,
+                json!({"_async": true}),
+                Duration::from_secs(1),
+                None,
+            )
+            .unwrap_err();
+            handle.join().unwrap();
+            fs::remove_dir_all(root).unwrap();
+            assert!(matches!(
+                error,
+                super::RcloneCliError::WriteStateUnknown { .. }
+            ));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rc_response_memory_limit_rejects_without_accepting_a_partial_chunk() {
+        let mut response = b"1234567".to_vec();
+        let error = super::append_response(&mut response, b"89", 8).unwrap_err();
+        assert_eq!(response, b"1234567");
+        assert!(matches!(
+            error,
+            super::RcloneCliError::OutputLimit { limit: 8, .. }
+        ));
+        super::append_response(&mut response, b"8", 8).unwrap();
+        assert_eq!(response, b"12345678");
+    }
 
     #[cfg(unix)]
     use std::{

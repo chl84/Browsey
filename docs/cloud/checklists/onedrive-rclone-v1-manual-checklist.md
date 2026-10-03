@@ -73,9 +73,10 @@ identifiers are recorded here. This is not native UI acceptance or a release.
 - [x] Active real-provider cancellation after positive transfer byte statistics;
   cancelled code, preserved source, remote state inspected without assuming
   rollback, then owned-child normal trash cleanup.
-- [x] Active network interruption scoped to one test rclone process via a local
+- [ ] Active network interruption scoped to one test rclone process via a local
   CONNECT proxy; real bytes precede injection, network error and source retention
-  verified. The desktop's network and normal rclone configuration are unchanged.
+  previously verified. Follow-up privacy revalidation found quoted OData URLs;
+  rerun pending after that fix. No desktop network or remote settings change.
 - [ ] Quota/rate limit on a dedicated test account (fixtures only so far)
 - [x] Same-size destination introduced after Browsey preflight: CLI refuses
   replacement, RC progress skips the existing object and checks completed-transfer

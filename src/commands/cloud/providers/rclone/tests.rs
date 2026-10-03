@@ -359,6 +359,50 @@ fn async_job_unknown_error_is_not_cli_fallback_safe() {
 }
 
 #[test]
+fn oversized_output_cannot_trigger_a_second_cloud_write() {
+    assert!(!should_fallback_to_cli_after_rc_error(
+        &RcloneCliError::OutputLimit {
+            subcommand: RcloneSubcommand::Rc,
+            stream: "response",
+            limit: 128,
+        }
+    ));
+}
+
+#[test]
+fn submitted_and_failed_jobs_are_not_retried_or_laundered_into_io_errors() {
+    let failed = RcloneCliError::AsyncJobFailed {
+        operation: "operations/copyfile".into(),
+        job_id: 42,
+        message: "permission denied https://example.invalid/uploadSession('ID')?tempauth=PRIVATE"
+            .into(),
+    };
+    assert!(!should_fallback_to_cli_after_rc_error(&failed));
+    let error = map_rclone_error(failed);
+    assert_eq!(error.code_str(), "permission_denied");
+    assert!(!error.to_string().contains("PRIVATE"));
+    let unknown = RcloneCliError::WriteStateUnknown {
+        operation: "operations/copyfile".into(),
+        cause: Box::new(RcloneCliError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "permission denied",
+        ))),
+    };
+    assert!(!should_fallback_to_cli_after_rc_error(&unknown));
+    assert_eq!(map_rclone_error(unknown).code_str(), "task_failed");
+}
+
+#[test]
+fn io_feedback_and_debug_redact_signed_odata_upload_urls() {
+    let error = RcloneCliError::Io(std::io::Error::other(
+        "Put https://example.invalid/uploadSession('ID')?tempauth=PRIVATE: connection reset",
+    ));
+    assert!(!format!("{error:?}").contains("PRIVATE"));
+    assert!(!error.to_string().contains("PRIVATE"));
+    assert!(!map_rclone_error(error).to_string().contains("PRIVATE"));
+}
+
+#[test]
 fn provider_specific_error_mapping_does_not_leak_between_providers() {
     // Policy unit tests own the hint rules; exercise the complete adapter here,
     // including output selection, common-error precedence and message trimming.

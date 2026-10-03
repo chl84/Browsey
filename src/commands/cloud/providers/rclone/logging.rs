@@ -18,6 +18,8 @@ pub(super) fn log_backend_selected(
 
 pub(super) fn classify_rc_fallback_reason(error: &RcloneCliError) -> &'static str {
     match error {
+        RcloneCliError::WriteStateUnknown { .. } => "rc_write_unknown",
+        RcloneCliError::AsyncJobFailed { .. } => "rc_job_failed",
         RcloneCliError::OutputLimit { .. } => "rc_output_limit",
         RcloneCliError::Timeout { .. } => "rc_timeout",
         RcloneCliError::Shutdown { .. } => "rc_shutdown",

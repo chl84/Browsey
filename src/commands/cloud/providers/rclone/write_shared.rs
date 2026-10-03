@@ -23,7 +23,15 @@ pub(super) fn ensure_destination_overwrite_policy(
 }
 
 pub(super) fn should_fallback_to_cli_after_rc_error(error: &RcloneCliError) -> bool {
-    !matches!(error, RcloneCliError::AsyncJobStateUnknown { .. })
+    !matches!(
+        error,
+        RcloneCliError::AsyncJobStateUnknown { .. }
+            | RcloneCliError::AsyncJobFailed { .. }
+            | RcloneCliError::WriteStateUnknown { .. }
+            | RcloneCliError::OutputLimit { .. }
+            | RcloneCliError::Cancelled { .. }
+            | RcloneCliError::Shutdown { .. }
+    )
 }
 
 pub(super) fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {

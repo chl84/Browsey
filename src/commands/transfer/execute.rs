@@ -410,13 +410,21 @@ fn map_rclone_cli_error(
     cloud_remote: Option<&str>,
 ) -> super::error::TransferError {
     match error {
+        RcloneCliError::WriteStateUnknown { operation, cause } => transfer_err(
+            TransferErrorCode::TaskFailed, format!("Transfer write status is unknown after rclone rc {operation}; no automatic retry. Refresh and verify the destination. Cause: {cause}")),
+        RcloneCliError::AsyncJobFailed { operation, job_id, message } => {
+            let provider = cloud_remote.and_then(cloud::cloud_provider_kind_for_remote);
+            let code = cloud::providers::rclone::classify_rclone_failure_code(provider, &message);
+            let code = if code == cloud::CloudCommandErrorCode::UnknownError { cloud::CloudCommandErrorCode::TaskFailed } else { code };
+            map_cloud_error_to_transfer(cloud::CloudCommandError::new(code, cloud::rclone_cli::failed_job_message(&operation, job_id, &message)))
+        }
         RcloneCliError::OutputLimit { subcommand, stream, limit } => transfer_err(
             TransferErrorCode::TaskFailed,
             cloud::rclone_cli::output_limit_message(subcommand, stream, limit)),
         RcloneCliError::Io(io) if io.kind() == std::io::ErrorKind::NotFound => {
             transfer_err(TransferErrorCode::BinaryMissing, "rclone not found in PATH")
         }
-        RcloneCliError::Io(io) => transfer_err(TransferErrorCode::NetworkError, format!("Failed to run rclone: {io}")),
+        RcloneCliError::Io(io) => transfer_err(TransferErrorCode::NetworkError, cloud::rclone_cli::sanitize_failure_message(&format!("Failed to run rclone: {io}"))),
         RcloneCliError::Shutdown { .. } => api_err(
             "task_failed",
             "Application is shutting down; transfer was cancelled",

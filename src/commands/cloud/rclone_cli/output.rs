@@ -2,8 +2,16 @@ const RCLONE_FAILURE_OUTPUT_MAX_CHARS: usize = 16 * 1024;
 
 fn redact_urls(raw: &str) -> std::borrow::Cow<'_, str> {
     static URL: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let url = URL.get_or_init(|| regex::Regex::new(r#"(?i)https?://[^\s\"'<>]+"#).unwrap());
+    // OData upload-session URLs legitimately contain apostrophes in their path.
+    let url = URL.get_or_init(|| regex::Regex::new(r#"(?i)https?://[^\s\"<>]+"#).unwrap());
     url.replace_all(raw, "[redacted URL]")
+}
+
+fn redact_json_secrets(raw: &str) -> std::borrow::Cow<'_, str> {
+    static SECRET: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let pattern = SECRET.get_or_init(|| regex::Regex::new(
+        r#"(?i)("(?:access_token|refresh_token|token|pass(?:word)?|secret|authorization)"\s*:\s*)"(?:\\.|[^"\\])*""#).unwrap());
+    pattern.replace_all(raw, "$1\"***\"")
 }
 
 pub(super) fn scrub_log_text(raw: &str) -> String {
@@ -41,6 +49,7 @@ pub(super) fn truncate_failure_output(raw: String) -> String {
     // Redact before shortening, so an isolated token fragment cannot survive
     // at a cut boundary. Successful JSON/config output must remain untouched.
     let raw = redact_urls(&raw);
+    let raw = redact_json_secrets(&raw);
     if raw.chars().count() <= RCLONE_FAILURE_OUTPUT_MAX_CHARS {
         return raw.into_owned();
     }

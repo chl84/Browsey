@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Do not retry failed RC jobs or ambiguous responses after submitting a cloud write. Preserve completed-job provider codes, keep pre-submission fallback separate, bound RC response buffers and redact entire signed OData URLs (including apostrophes) and JSON secret fields in failure feedback/debug output.
+
 - Drain rclone stdout/stderr concurrently instead of waiting on pipe-blocked children; bound capture memory and report unknown completion rather than accepting truncated output. Preserve the end of lengthy failure diagnostics, redact signed provider URLs and reuse common typed cloud error classification for mixed transfers, including network loss and timeout. Add ownership-guarded OneDrive archive-tree and active cancellation/transport-fault acceptance checks.
 
 - Protect new-object cloud copies against destinations appearing after Browsey's preflight. Use rclone's existing-object skip/no-transfer guard for single-file CLI copies and per-call skip plus completed-transfer verification for RC progress uploads; never report a skipped copy as successful. Preserve explicit overwrite/move behavior and document the remaining provider/in-flight race boundary; validate competing/source bytes on real OneDrive.

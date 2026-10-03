@@ -152,10 +152,12 @@ layers. Engineering completion and real-provider acceptance are separate.
   - [x] OneDrive extracted-tree round trip: encrypted ZIP, 32 files/eight groups,
     nested empty directories, exact bytes, original archive retained and an
     occupied directory refused. This is functional coverage, not a large-tree budget.
-  - [x] OneDrive active cancellation and process-scoped network interruption:
+  - [ ] OneDrive active cancellation and process-scoped network interruption:
     positive real rclone byte statistics observed before fault injection;
     cancellation/network error classified, source bytes preserved, owned-child
     normal trash cleanup verified. No global network or quota manipulation.
+    Cancellation revalidation passed; network privacy revalidation found an
+    OData-URL quoting case and is pending after the follow-up fix.
   - [x] OneDrive native archive UI/IPC/staging acceptance: context-menu password
     ZIP creation and password-modal extraction, refreshed output, exact bytes
     and nested empty directories, unchanged source/archive and scoped cleanup.

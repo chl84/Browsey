@@ -144,6 +144,8 @@ fn is_retryable_rc_error(error: &RcloneCliError) -> bool {
         RcloneCliError::Shutdown { .. }
         | RcloneCliError::Cancelled { .. }
         | RcloneCliError::AsyncJobStateUnknown { .. }
+        | RcloneCliError::WriteStateUnknown { .. }
+        | RcloneCliError::AsyncJobFailed { .. }
         | RcloneCliError::OutputLimit { .. }
         | RcloneCliError::NonZero { .. } => false,
     }

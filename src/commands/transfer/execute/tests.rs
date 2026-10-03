@@ -1859,6 +1859,33 @@ fn prechecked_cloud_copy_refuses_same_size_changed_destination() {
     );
 }
 
+#[test]
+fn rc_job_failures_and_uncertain_writes_preserve_transfer_semantics() {
+    let error = map_rclone_cli_error(
+        RcloneCliError::AsyncJobFailed {
+            operation: "operations/copyfile".into(),
+            job_id: 7,
+            message:
+                "permission denied https://example.invalid/uploadSession('ID')?tempauth=PRIVATE"
+                    .into(),
+        },
+        None,
+    );
+    assert_eq!(error.code_str(), "permission_denied");
+    assert!(!error.message().contains("PRIVATE"));
+    let unknown = map_rclone_cli_error(
+        RcloneCliError::WriteStateUnknown {
+            operation: "operations/copyfile".into(),
+            cause: Box::new(RcloneCliError::Io(std::io::Error::other(
+                "permission denied",
+            ))),
+        },
+        None,
+    );
+    assert_eq!(unknown.code_str(), "task_failed");
+    assert!(unknown.message().contains("no automatic retry"));
+}
+
 #[cfg(unix)]
 #[test]
 fn mixed_execute_uses_invalid_config_for_bad_rclone_path() {

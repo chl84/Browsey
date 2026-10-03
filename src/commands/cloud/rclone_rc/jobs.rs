@@ -117,10 +117,13 @@ impl RcloneRcClient {
             .get("jobid")
             .and_then(Value::as_u64)
             .ok_or_else(|| {
-                RcloneCliError::Io(io::Error::other(format!(
-                    "rclone rc {} async response missing numeric `jobid`",
-                    method.as_str()
-                )))
+                super::client::uncertain_write_response(
+                    method,
+                    RcloneCliError::Io(io::Error::other(format!(
+                        "rclone rc {} async response missing numeric `jobid`",
+                        method.as_str()
+                    ))),
+                )
             })?;
 
         let total_timeout = super::async_method_total_timeout(method);
@@ -190,10 +193,11 @@ impl RcloneRcClient {
                     .map(str::trim)
                     .filter(|msg| !msg.is_empty())
                     .unwrap_or("rclone rc async job failed");
-                return Err(RcloneCliError::Io(io::Error::other(format!(
-                    "rclone rc {} async job {job_id} failed: {message}",
-                    method.as_str()
-                ))));
+                return Err(RcloneCliError::AsyncJobFailed {
+                    operation: method.as_str().to_owned(),
+                    job_id,
+                    message: crate::commands::cloud::rclone_cli::sanitize_failure_message(message),
+                });
             }
 
             if Instant::now() >= deadline {

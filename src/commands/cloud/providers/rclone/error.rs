@@ -80,6 +80,13 @@ fn map_rclone_error_for_providers(
     error: RcloneCliError,
 ) -> CloudCommandError {
     match error {
+        RcloneCliError::WriteStateUnknown { operation, cause } => CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed, format!("Cloud write status is unknown after rclone rc {operation}; no automatic retry. Refresh and verify the destination. Cause: {cause}")),
+        RcloneCliError::AsyncJobFailed { operation, job_id, message } => {
+            let code = classify_rclone_message_code_for_providers(providers, &message);
+            let code = if code == CloudCommandErrorCode::UnknownError { CloudCommandErrorCode::TaskFailed } else { code };
+            CloudCommandError::new(code, crate::commands::cloud::rclone_cli::failed_job_message(&operation, job_id, &message))
+        }
         RcloneCliError::OutputLimit { subcommand, stream, limit } => CloudCommandError::new(
             CloudCommandErrorCode::TaskFailed,
             crate::commands::cloud::rclone_cli::output_limit_message(subcommand, stream, limit)),
@@ -91,7 +98,7 @@ fn map_rclone_error_for_providers(
         }
         RcloneCliError::Io(io) => CloudCommandError::new(
             CloudCommandErrorCode::NetworkError,
-            format!("Failed to run rclone: {io}"),
+            crate::commands::cloud::rclone_cli::sanitize_failure_message(&format!("Failed to run rclone: {io}")),
         ),
         RcloneCliError::Shutdown { .. } => CloudCommandError::new(
             CloudCommandErrorCode::TaskFailed,

@@ -135,9 +135,17 @@ pub struct RcloneTextOutput {
     pub stderr: String,
 }
 
-#[derive(Debug)]
 pub enum RcloneCliError {
     Io(std::io::Error),
+    WriteStateUnknown {
+        operation: String,
+        cause: Box<RcloneCliError>,
+    },
+    AsyncJobFailed {
+        operation: String,
+        job_id: u64,
+        message: String,
+    },
     OutputLimit {
         subcommand: RcloneSubcommand,
         stream: &'static str,
@@ -171,7 +179,25 @@ pub enum RcloneCliError {
 impl std::fmt::Display for RcloneCliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io(error) => write!(f, "{error}"),
+            Self::Io(error) => f.write_str(
+                &sanitize_failure_message(&error.to_string())
+                    .chars()
+                    .take(320)
+                    .collect::<String>(),
+            ),
+            Self::WriteStateUnknown { operation, cause } => {
+                write!(f,
+                "rclone rc {operation} write status is unknown; no automatic retry. Cause: {cause}")
+            }
+            Self::AsyncJobFailed {
+                operation,
+                job_id,
+                message,
+            } => write!(
+                f,
+                "rclone rc {operation} job {job_id} failed: {}",
+                scrub_log_text(message)
+            ),
             Self::OutputLimit {
                 subcommand,
                 stream,
@@ -267,6 +293,18 @@ impl std::fmt::Display for RcloneCliError {
             }
         }
     }
+}
+
+impl std::fmt::Debug for RcloneCliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("RcloneCliError")
+            .field(&self.to_string())
+            .finish()
+    }
+}
+
+pub(crate) fn failed_job_message(operation: &str, job_id: u64, message: &str) -> String {
+    format!("rclone rc {operation} job {job_id} failed and was not retried automatically. Partial writes may remain; refresh and verify the destination. Cause: {}", sanitize_failure_message(message))
 }
 
 impl std::error::Error for RcloneCliError {}
@@ -723,6 +761,10 @@ mod tests {
             r#"{"msg":"Put HTTPS://example.invalid/upload?x=1\u0026tempauth=PRIVATE: EOF"}"#.into(),
         );
         assert!(!escaped.contains("PRIVATE") && !escaped.contains("tempauth"));
+        let odata = truncate_failure_output(
+            "Put https://example.invalid/uploadSession('ID')?tempauth=PRIVATE: EOF".into(),
+        );
+        assert!(!odata.contains("PRIVATE") && !odata.contains("tempauth"));
     }
 
     #[cfg(unix)]

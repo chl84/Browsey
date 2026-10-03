@@ -90,7 +90,31 @@ fn real_onedrive_post_preflight_destination_acceptance() -> Result<(), Box<dyn s
     scope.provider.download_file(&target, &returned, None)?;
     assert_eq!(fs::read(returned)?, b"our payload B");
     assert_eq!(fs::read(source)?, b"our payload A");
+    let empty = scope.local.join("empty-source.txt");
+    fs::write(&empty, b"")?;
+    let empty_target = scope.child.child_path("new-empty.txt")?;
+    scope.provider.upload_new_file_with_progress(
+        &empty,
+        &empty_target,
+        "owned-empty-acceptance",
+        None,
+        |_, _| {},
+    )?;
+    assert_eq!(
+        scope
+            .provider
+            .stat_path(&empty_target)?
+            .ok_or("New empty file missing")?
+            .size,
+        Some(0)
+    );
+    let returned_empty = scope.local.join("returned-empty.txt");
+    scope
+        .provider
+        .download_file(&empty_target, &returned_empty, None)?;
+    assert!(fs::read(returned_empty)?.is_empty());
     eprintln!("PASS: same-size OneDrive destination created after Browsey preflight refused; RC progress protection also refused replacement; competing/source bytes retained. Not provider CAS or in-flight race proof.");
+    eprintln!("PASS: legitimate zero-byte RC upload reports success and exists remotely");
     scope.finish()?;
     Ok(())
 }

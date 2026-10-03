@@ -71,6 +71,28 @@ write atomic. [rclone's documented skip/no-transfer flags](https://rclone.org/do
 and [per-call RC configuration](https://rclone.org/rc/#setting-config-flags-with-config)
 support the mechanism; the real-account byte checks above are its bounded proof.
 
+### Follow-up failure-path hardening
+
+The full provider rerun revalidated working copies/archives and active
+cancellation, but the network privacy assertion found a legitimate apostrophe
+inside an OData upload-session URL. That delimiter stopped the first URL scrub
+early. The corrected regression covers the entire OData URL, JSON escaping and
+case variations; pending real revalidation is left unchecked, not called a pass.
+The later three tests refused the nonempty test parent before writing. That is
+ownership-guard behavior, not three independent provider/native regressions.
+Only the marked failed child was moved to normal trash before retrying.
+
+Code review also found completed failed RC jobs converted to generic I/O errors
+and allowed CLI fallback, plus ambiguous responses after write submission. The
+follow-up preserves a typed failed-job outcome and wraps post-write transport,
+HTTP/JSON, cancellation and missing-job-ID failures as unknown completion. It
+does not repeat either outcome automatically. Connect/startup failures before
+the request remain eligible for guarded CLI fallback. Local Unix-socket fixtures
+cover EOF, invalid JSON and server errors; output-limit fallback failed before
+the correction. API and Debug/Display feedback reuse bounded signed-URL/JSON
+secret redaction. RC response buffers also stop at 128 MiB instead of accepting
+unbounded responses or partial JSON.
+
 ## Reproduction
 
 Run one opt-in test at a time, with the approved parent empty:
