@@ -54,6 +54,282 @@ fn write_file(path: &Path, content: &[u8]) {
 }
 
 #[test]
+fn local_copy_and_move_faults_preserve_sources_and_clean_partial_targets() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    use std::io::{Error, ErrorKind};
+
+    for moving in [false, true] {
+        for (phase, kind) in [
+            (Phase::Write, ErrorKind::StorageFull),
+            (Phase::Read, ErrorKind::NotFound),
+            (Phase::Write, ErrorKind::BrokenPipe),
+            (Phase::Sync, ErrorKind::StorageFull),
+            (Phase::Sync, ErrorKind::Other),
+        ] {
+            let root = uniq_path("local-copy-fault");
+            let source = root.join("source.bin");
+            let target = root.join("target.bin");
+            let unrelated = root.join("unrelated.bin");
+            let data = vec![0x5a; 64 * 1024];
+            write_file(&source, &data);
+            write_file(&unrelated, b"unrelated-data");
+            let expected_source = source.clone();
+            let expected_target = target.clone();
+            let reached = std::rc::Rc::new(std::cell::Cell::new(false));
+            let observed = reached.clone();
+            let scope = Scope::new(move |src, dst, current, bytes| {
+                assert_eq!(src, expected_source);
+                assert_eq!(dst, expected_target);
+                if moving && current == Phase::Rename {
+                    return Err(Error::new(ErrorKind::Unsupported, "force copy fallback"));
+                }
+                if current == phase && bytes > 0 {
+                    observed.set(true);
+                    return Err(Error::new(kind, "injected local copy fault"));
+                }
+                Ok(())
+            });
+            let result = if moving {
+                move_entry(&source, &target, None, None, None)
+            } else {
+                copy_entry(&source, &target, None, None, None)
+            };
+            drop(scope);
+            let source_data = fs::read(&source).unwrap();
+            let unrelated_data = fs::read(&unrelated).unwrap();
+            let target_exists = target.exists();
+            fs::remove_dir_all(root).unwrap();
+            let error = result.expect_err("injected fault must fail the operation");
+            assert!(reached.get(), "fault must occur after data was copied");
+            assert!(error.to_string().contains("injected local copy fault"));
+            assert_eq!(
+                error.code(),
+                if kind == ErrorKind::NotFound {
+                    ClipboardErrorCode::NotFound
+                } else {
+                    ClipboardErrorCode::IoError
+                }
+            );
+            assert_eq!(source_data, data);
+            assert_eq!(unrelated_data, b"unrelated-data");
+            assert!(!target_exists, "owned partial target must be cleaned");
+        }
+    }
+}
+
+#[test]
+fn local_move_cancelled_after_sync_retains_both_complete_copies() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("move-cancel-after-sync");
+    let source = root.join("source.bin");
+    let target = root.join("target.bin");
+    let data = vec![0x37; 32 * 1024];
+    write_file(&source, &data);
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    let hook_cancel = cancel.clone();
+    let scope = Scope::new(move |_, _, phase, _| {
+        if phase == Phase::Rename {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "force copy fallback",
+            ));
+        }
+        if phase == Phase::Synced {
+            hook_cancel.store(true, Ordering::Relaxed);
+        }
+        Ok(())
+    });
+    let result = move_entry(&source, &target, None, None, Some(&cancel));
+    drop(scope);
+    let source_data = fs::read(&source).unwrap();
+    let target_data = fs::read(&target).unwrap();
+    fs::remove_dir_all(root).unwrap();
+    let error = result.unwrap_err();
+    assert_eq!(error.code(), ClipboardErrorCode::Cancelled);
+    assert!(error.to_string().contains("Copy retained"));
+    assert_eq!(source_data, data);
+    assert_eq!(target_data, data);
+}
+
+#[test]
+fn local_move_cancelled_mid_stream_preserves_source_and_removes_owned_partial() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("move-cancel-mid-stream");
+    let source = root.join("source.bin");
+    let target = root.join("target.bin");
+    let data = vec![0x36; 64 * 1024];
+    write_file(&source, &data);
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    let hook_cancel = cancel.clone();
+    let scope = Scope::new(move |_, _, phase, bytes| {
+        if phase == Phase::Rename {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "force copy fallback",
+            ));
+        }
+        if phase == Phase::Write && bytes == 8192 {
+            hook_cancel.store(true, Ordering::Relaxed);
+        }
+        Ok(())
+    });
+    let result = move_entry(&source, &target, None, None, Some(&cancel));
+    drop(scope);
+    let source_data = fs::read(&source).unwrap();
+    let target_exists = target.exists();
+    fs::remove_dir_all(root).unwrap();
+    assert!(
+        cancel.load(Ordering::Relaxed),
+        "cancellation must occur mid-stream"
+    );
+    assert_eq!(result.unwrap_err().code(), ClipboardErrorCode::Cancelled);
+    assert_eq!(source_data, data);
+    assert!(!target_exists);
+}
+
+#[test]
+fn local_copy_fault_scope_does_not_touch_existing_targets_or_leak_to_next_copy() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("copy-fault-scope");
+    let source = root.join("source.bin");
+    let existing = root.join("existing.bin");
+    let next = root.join("next.bin");
+    write_file(&source, b"source-data");
+    write_file(&existing, b"existing-data");
+    let scope = Scope::new(|_, _, phase, _| {
+        assert_ne!(phase, Phase::Write, "existing target must not be written");
+        assert_ne!(phase, Phase::Sync, "existing target must not be finalized");
+        Err(std::io::Error::other("scope must not reach I/O"))
+    });
+    let result = copy_entry(&source, &existing, None, None, None);
+    drop(scope);
+    assert_eq!(
+        result.unwrap_err().code(),
+        ClipboardErrorCode::DestinationExists
+    );
+    copy_entry(&source, &next, None, None, None).unwrap();
+    let existing_data = fs::read(&existing).unwrap();
+    let next_data = fs::read(&next).unwrap();
+    fs::remove_dir_all(root).unwrap();
+    assert_eq!(existing_data, b"existing-data");
+    assert_eq!(next_data, b"source-data");
+}
+
+#[cfg(unix)]
+#[test]
+fn local_move_with_unlinked_open_source_retains_completed_destination() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("move-unlinked-source");
+    let source = root.join("source.bin");
+    let target = root.join("target.bin");
+    let data = vec![0x42; 32 * 1024];
+    write_file(&source, &data);
+    let scope = Scope::new(move |src, _, phase, bytes| {
+        if phase == Phase::Rename {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "force copy fallback",
+            ));
+        }
+        if phase == Phase::Read && bytes == 8192 {
+            fs::remove_file(src)?;
+        }
+        Ok(())
+    });
+    let result = move_entry(&source, &target, None, None, None);
+    drop(scope);
+    let target_data = fs::read(&target).unwrap();
+    let source_exists = source.exists();
+    fs::remove_dir_all(root).unwrap();
+    assert_eq!(result.unwrap_err().code(), ClipboardErrorCode::NotFound);
+    assert!(!source_exists);
+    assert_eq!(target_data, data);
+}
+
+#[cfg(unix)]
+#[test]
+fn local_move_with_unlinked_open_target_must_not_delete_source() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("move-unlinked-target");
+    let source = root.join("source.bin");
+    let target = root.join("target.bin");
+    let data = vec![0x43; 32 * 1024];
+    write_file(&source, &data);
+    let scope = Scope::new(move |_, dst, phase, bytes| {
+        if phase == Phase::Rename {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "force copy fallback",
+            ));
+        }
+        if phase == Phase::Write && bytes == 8192 {
+            fs::remove_file(dst)?;
+        }
+        Ok(())
+    });
+    let result = move_entry(&source, &target, None, None, None);
+    drop(scope);
+    let source_data = fs::read(&source);
+    let target_exists = target.exists();
+    fs::remove_dir_all(root).unwrap();
+    assert!(
+        result.is_err(),
+        "sync of an unlinked inode is not successful delivery"
+    );
+    assert_eq!(source_data.unwrap(), data);
+    assert!(!target_exists);
+}
+
+#[cfg(unix)]
+#[test]
+fn local_move_with_replaced_target_preserves_source_and_competing_file() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for sync_failure in [false, true] {
+        let root = uniq_path("move-replaced-target");
+        let source = root.join("source.bin");
+        let target = root.join("target.bin");
+        let retained = root.join("retained-copy.bin");
+        let data = vec![0x45; 32 * 1024];
+        write_file(&source, &data);
+        let saved_copy = retained.clone();
+        let scope = Scope::new(move |_, dst, phase, _| {
+            if phase == Phase::Rename {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "force copy fallback",
+                ));
+            }
+            let replacement_phase = if sync_failure {
+                Phase::Sync
+            } else {
+                Phase::Synced
+            };
+            if phase == replacement_phase {
+                fs::rename(dst, &saved_copy)?;
+                fs::write(dst, b"competing-data")?;
+                if sync_failure {
+                    return Err(std::io::Error::other("injected sync failure"));
+                }
+            }
+            Ok(())
+        });
+        let result = move_entry(&source, &target, None, None, None);
+        drop(scope);
+        let source_data = fs::read(&source);
+        let competing_data = fs::read(&target);
+        let retained_data = fs::read(&retained).unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            result.is_err(),
+            "delivery to a replaced path must not succeed"
+        );
+        assert_eq!(source_data.unwrap(), data);
+        assert_eq!(competing_data.unwrap(), b"competing-data");
+        assert_eq!(retained_data, data);
+    }
+}
+
+#[test]
 fn explicit_paste_ignores_clipboard_changes_between_preview_and_execution() {
     let _lock = lock_clipboard_test();
     ensure_undo_dir();

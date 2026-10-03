@@ -38,6 +38,173 @@ fn write_file(path: &Path, content: &[u8]) {
 }
 
 #[test]
+fn undo_copy_and_move_faults_keep_source_and_report_partial_output() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    use std::io::{Error, ErrorKind};
+    for moving in [false, true] {
+        for (phase, kind) in [
+            (Phase::Write, ErrorKind::StorageFull),
+            (Phase::Read, ErrorKind::NotFound),
+            (Phase::Write, ErrorKind::BrokenPipe),
+            (Phase::Sync, ErrorKind::StorageFull),
+            (Phase::Sync, ErrorKind::Other),
+        ] {
+            let root = uniq_path("undo-copy-fault");
+            let source = root.join("source.bin");
+            let target = root.join("target.bin");
+            let unrelated = root.join("unrelated.bin");
+            let data = vec![0x5a; 64 * 1024];
+            write_file(&source, &data);
+            write_file(&unrelated, b"unrelated-data");
+            let reached = std::rc::Rc::new(std::cell::Cell::new(false));
+            let observed = reached.clone();
+            let scope = Scope::new(move |_, _, current, bytes| {
+                if moving && current == Phase::Rename {
+                    return Err(Error::new(ErrorKind::Unsupported, "force copy fallback"));
+                }
+                if current == phase && bytes > 0 {
+                    observed.set(true);
+                    return Err(Error::new(kind, "injected undo copy fault"));
+                }
+                Ok(())
+            });
+            let result = if moving {
+                move_with_fallback(&source, &target)
+            } else {
+                copy_entry(&source, &target)
+            };
+            drop(scope);
+            let source_data = fs::read(&source).unwrap();
+            let partial = fs::read(&target).unwrap();
+            let unrelated_data = fs::read(&unrelated).unwrap();
+            fs::remove_dir_all(root).unwrap();
+            let error = result.expect_err("fault must prevent source deletion");
+            assert!(reached.get());
+            assert!(error.to_string().contains("injected undo copy fault"));
+            assert!(error.to_string().contains("source retained"));
+            assert!(error.to_string().contains("destination may remain"));
+            assert_eq!(
+                error.code(),
+                if kind == ErrorKind::NotFound {
+                    UndoErrorCode::NotFound
+                } else {
+                    UndoErrorCode::IoError
+                }
+            );
+            assert_eq!(source_data, data);
+            assert_eq!(unrelated_data, b"unrelated-data");
+            if phase == Phase::Sync {
+                assert_eq!(partial, data);
+            } else {
+                assert!(!partial.is_empty() && partial.len() < data.len());
+                assert_eq!(partial, data[..partial.len()]);
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn undo_move_with_unlinked_open_target_must_not_delete_source() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("undo-move-unlinked-target");
+    let source = root.join("source.bin");
+    let target = root.join("target.bin");
+    let data = vec![0x44; 32 * 1024];
+    write_file(&source, &data);
+    let scope = Scope::new(move |_, dst, phase, bytes| {
+        if phase == Phase::Rename {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "force copy fallback",
+            ));
+        }
+        if phase == Phase::Write && bytes == 8192 {
+            fs::remove_file(dst)?;
+        }
+        Ok(())
+    });
+    let result = move_with_fallback(&source, &target);
+    drop(scope);
+    let source_data = fs::read(&source);
+    let target_exists = target.exists();
+    fs::remove_dir_all(root).unwrap();
+    assert!(
+        result.is_err(),
+        "sync of an unlinked inode is not successful delivery"
+    );
+    assert_eq!(source_data.unwrap(), data);
+    assert!(!target_exists);
+}
+
+#[cfg(unix)]
+#[test]
+fn undo_move_with_unlinked_open_source_retains_completed_destination() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("undo-move-unlinked-source");
+    let source = root.join("source.bin");
+    let target = root.join("target.bin");
+    let data = vec![0x46; 32 * 1024];
+    write_file(&source, &data);
+    let scope = Scope::new(move |src, _, phase, bytes| {
+        if phase == Phase::Rename {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "force copy fallback",
+            ));
+        }
+        if phase == Phase::Read && bytes == 8192 {
+            fs::remove_file(src)?;
+        }
+        Ok(())
+    });
+    let result = move_with_fallback(&source, &target);
+    drop(scope);
+    let target_data = fs::read(&target).unwrap();
+    let source_exists = source.exists();
+    fs::remove_dir_all(root).unwrap();
+    assert_eq!(result.unwrap_err().code(), UndoErrorCode::NotFound);
+    assert!(!source_exists);
+    assert_eq!(target_data, data);
+}
+
+#[cfg(unix)]
+#[test]
+fn undo_move_with_replaced_target_preserves_source_and_competing_file() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("undo-move-replaced-target");
+    let source = root.join("source.bin");
+    let target = root.join("target.bin");
+    let retained = root.join("retained-copy.bin");
+    let data = vec![0x47; 32 * 1024];
+    write_file(&source, &data);
+    let saved_copy = retained.clone();
+    let scope = Scope::new(move |_, dst, phase, _| {
+        if phase == Phase::Rename {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "force copy fallback",
+            ));
+        }
+        if phase == Phase::Synced {
+            fs::rename(dst, &saved_copy)?;
+            fs::write(dst, b"competing-data")?;
+        }
+        Ok(())
+    });
+    let result = move_with_fallback(&source, &target);
+    drop(scope);
+    let source_data = fs::read(&source).unwrap();
+    let target_data = fs::read(&target).unwrap();
+    let retained_data = fs::read(&retained).unwrap();
+    fs::remove_dir_all(root).unwrap();
+    assert_eq!(result.unwrap_err().code(), UndoErrorCode::IoError);
+    assert_eq!(source_data, data);
+    assert_eq!(target_data, b"competing-data");
+    assert_eq!(retained_data, data);
+}
+
+#[test]
 fn rename_and_undo_redo() {
     let dir = uniq_path("rename");
     let _ = fs::create_dir_all(&dir);

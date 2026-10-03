@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Verify local copy/move and undo fallback with deterministic partial-write, disk-full, read/write disappearance, writeback and cancellation faults. Reuse stable archive-output identities for copies; retain sources when the written target is missing or replaced, and preserve competing files during error cleanup. Report retained undo partial outputs explicitly and track verified safety increments separately from platform acceptance.
+
 - Harden local moves and undo fallback: use atomic no-replace rename, honor cancellation before moving, retain the completed destination after partial source deletion fails, sync fallback copies before source removal, and surface failed cancellation rollback. Reuse a regular-file input guard across copying/undo/compression so FIFOs and replacement symlinks cannot hang or redirect reads. Add deterministic race/failure, filename, undo-history, and killed-session cleanup regressions.
 
 - Archive the completed Linux 1.0 readiness track, update its references, and distinguish historical audits/RC results from current release validation while retaining reusable safety gates.

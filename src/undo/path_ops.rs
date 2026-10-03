@@ -39,6 +39,7 @@ pub(super) fn copy_file_noreplace_with_sync(
     dest: &Path,
     sync: impl FnOnce(&fs::File) -> io::Result<()>,
 ) -> UndoResult<()> {
+    #[cfg_attr(test, allow(unused_mut))]
     let mut src_file = crate::fs_utils::open_regular_file_nofollow(src).map_err(|e| {
         UndoError::from_io_error(format!("Failed to open source file {}", src.display()), e)
     })?;
@@ -53,6 +54,7 @@ pub(super) fn copy_file_noreplace_with_sync(
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
         options.mode(permissions.mode() & 0o777);
     }
+    #[cfg_attr(test, allow(unused_mut))]
     let mut dst_file = options.open(dest).map_err(|e| {
         if e.kind() == ErrorKind::AlreadyExists {
             UndoError::target_exists(format!("Destination already exists: {}", dest.display()))
@@ -63,10 +65,15 @@ pub(super) fn copy_file_noreplace_with_sync(
             )
         }
     })?;
-    io::copy(&mut src_file, &mut dst_file).map_err(|e| {
+    let target_identity = crate::fs_utils::FileIdentity::from_file(&dst_file);
+    #[cfg(test)]
+    let mut src_file = crate::fs_utils::copy_test_hooks::TestFile::new(src_file, src, dest);
+    #[cfg(test)]
+    let mut dst_file = crate::fs_utils::copy_test_hooks::TestFile::new(dst_file, src, dest);
+    let _copied = io::copy(&mut src_file, &mut dst_file).map_err(|e| {
         UndoError::from_io_error(
             format!(
-                "Failed to copy file {} -> {}",
+                "Failed to copy file {} -> {}; source retained, partial destination may remain",
                 src.display(),
                 dest.display()
             ),
@@ -90,15 +97,46 @@ pub(super) fn copy_file_noreplace_with_sync(
     })?;
     // File::drop ignores close/writeback errors. Do not delete a move's source
     // until destination finalization has actually succeeded.
-    sync(&dst_file).map_err(|e| {
+    let sync_result = (|| {
+        #[cfg(test)]
+        crate::fs_utils::copy_test_hooks::hit(
+            src,
+            dest,
+            crate::fs_utils::copy_test_hooks::Phase::Sync,
+            _copied,
+        )?;
+        sync(&dst_file)?;
+        #[cfg(test)]
+        crate::fs_utils::copy_test_hooks::hit(
+            src,
+            dest,
+            crate::fs_utils::copy_test_hooks::Phase::Synced,
+            _copied,
+        )?;
+        Ok::<_, io::Error>(())
+    })();
+    sync_result.map_err(|e| {
         UndoError::from_io_error(
             format!(
-                "Failed to sync copied file {}; source retained",
+                "Failed to sync copied file {}; source retained, destination may remain",
                 dest.display()
             ),
             e,
         )
-    })
+    })?;
+    if !target_identity
+        .as_ref()
+        .is_some_and(|identity| identity.matches(dest))
+    {
+        return Err(UndoError::new(
+            UndoErrorCode::IoError,
+            format!(
+                "Cannot verify copied target {}; source retained",
+                dest.display()
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn copy_dir(src: &Path, dest: &Path) -> UndoResult<()> {

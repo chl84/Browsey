@@ -32,3 +32,19 @@ Covered hostile conditions:
 - Explicit fault injection only (custom reader/writer and deterministic counters).
 - No sleep/race-based assertions.
 - Platform-specific behavior isolated where OS semantics differ.
+
+## Local Transfer Follow-Up (2026-10-03)
+
+Shared test-only seam: `src/fs_utils/copy_test_hooks.rs`. Thread-local RAII
+scopes wrap real fixture files, force short writes, inject read/write/sync
+errors, and enter the normal move fallback through an unsupported-rename error.
+No runtime configuration or dependency is added.
+
+Coverage in `src/clipboard/tests.rs` and `src/undo/tests.rs` includes injected
+storage-full, missing-source read, disconnected-destination write and final
+writeback failures; actual Unix unlink/replacement of open paths; cancellation
+mid-stream and after sync; exclusive destination creation and scope isolation.
+Inspect source/target/unrelated contents, not just the returned error.
+
+See the [local-transfer report](../../audits/daily-driver/local-transfer-fault-injection.md)
+for per-operation partial-output policies and remaining native/media/race limits.

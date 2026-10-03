@@ -239,6 +239,14 @@ fn rename_nofollow_raw(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
 }
 
 pub(crate) fn rename_nofollow_io(src: &Path, dst: &Path) -> UndoResult<()> {
+    #[cfg(test)]
+    crate::fs_utils::copy_test_hooks::hit(
+        src,
+        dst,
+        crate::fs_utils::copy_test_hooks::Phase::Rename,
+        0,
+    )
+    .map_err(|error| map_rename_nofollow_error(src, dst, error))?;
     rename_nofollow_raw(src, dst).map_err(|error| map_rename_nofollow_error(src, dst, error))
 }
 

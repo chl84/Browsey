@@ -114,6 +114,8 @@ Toolchain: Rust 1.98.0. No dependency upgrades were performed.
 - Extend fault-injection evidence to actual local transfer write/finalization
   paths for disk-full and disappearing media, rather than substituting the
   extractor's writer tests for every operation.
+  Update: [local-transfer follow-up](local-transfer-fault-injection.md) covers
+  these local copy/move I/O seams; physical-media acceptance remains open.
 - Review source/destination replacement and content changes throughout nested
   copy, cleanup and rollback. Current root identity checks do not freeze trees
   or protect every concurrent edit to an existing file.

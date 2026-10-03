@@ -5,7 +5,12 @@ use tracing::debug;
 #[cfg(target_os = "windows")]
 use std::path::Prefix;
 
+#[cfg(test)]
+pub(crate) mod copy_test_hooks;
 mod error;
+mod file_identity;
+
+pub(crate) use file_identity::FileIdentity;
 
 pub use error::{FsUtilsError, FsUtilsErrorCode, FsUtilsResult};
 

@@ -425,6 +425,7 @@ pub(super) fn copy_file_best_effort(
     }
 
     // Fallback: manual chunked copy with progress
+    #[cfg_attr(test, allow(unused_mut))]
     let mut reader = crate::fs_utils::open_regular_file_nofollow(src).map_err(|e| {
         ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
@@ -452,8 +453,15 @@ pub(super) fn copy_file_best_effort(
             e,
         )
     })?;
-    let result: ClipboardResult<u64> = (move || {
-        let mut writer = writer;
+    // Capture ownership from the open handle, never from a replaceable path.
+    let target_identity = crate::fs_utils::FileIdentity::from_file(&writer);
+    #[cfg(test)]
+    let mut reader = crate::fs_utils::copy_test_hooks::TestFile::new(reader, src, dest);
+    #[cfg_attr(test, allow(unused_mut))]
+    let mut writer = writer;
+    #[cfg(test)]
+    let mut writer = crate::fs_utils::copy_test_hooks::TestFile::new(writer, src, dest);
+    let result: ClipboardResult<u64> = (|| {
         let mut buf = vec![0u8; 512 * 1024];
         let mut done: u64 = 0;
         let total = total_hint
@@ -505,9 +513,39 @@ pub(super) fn copy_file_best_effort(
         writer.set_permissions(permissions).map_err(|e| {
             ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Set file permissions", e)
         })?;
-        writer.sync_all().map_err(|e| {
+        let sync_result = (|| {
+            #[cfg(test)]
+            crate::fs_utils::copy_test_hooks::hit(
+                src,
+                dest,
+                crate::fs_utils::copy_test_hooks::Phase::Sync,
+                done,
+            )?;
+            writer.sync_all()?;
+            #[cfg(test)]
+            crate::fs_utils::copy_test_hooks::hit(
+                src,
+                dest,
+                crate::fs_utils::copy_test_hooks::Phase::Synced,
+                done,
+            )?;
+            Ok::<_, std::io::Error>(())
+        })();
+        sync_result.map_err(|e| {
             ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Flush copied file", e)
         })?;
+        if !target_identity
+            .as_ref()
+            .is_some_and(|identity| identity.matches(dest))
+        {
+            return Err(ClipboardError::new(
+                ClipboardErrorCode::IoError,
+                format!(
+                    "Cannot verify copied target {}; source retained",
+                    dest.display()
+                ),
+            ));
+        }
         emit_copy_progress(
             app,
             progress_event,
@@ -520,8 +558,18 @@ pub(super) fn copy_file_best_effort(
         Ok(done)
     })();
     if let Err(error) = result {
-        // The target was created exclusively by this copy. Remove partial data
-        // before the caller restores an overwritten target from its backup.
+        // Exclusive creation proves initial ownership, not current ownership.
+        // Never remove an unrelated replacement during error cleanup.
+        if !target_identity
+            .as_ref()
+            .is_some_and(|identity| identity.matches(dest))
+        {
+            return Err(error.with_context(format!(
+                "Partial target {} is missing, replaced, or unverifiable; no cleanup attempted",
+                dest.display()
+            )));
+        }
+        drop(writer);
         if let Err(cleanup_error) = fs::remove_file(dest) {
             if cleanup_error.kind() != ErrorKind::NotFound {
                 return Err(error.with_context(format!(

@@ -48,6 +48,10 @@ defects and corrections, and checks that still require devices or other platform
 Priority 0 is not complete: automated fixture tests are not full manual or
 cross-distribution acceptance. Keep later phases and optional expansions open.
 
+The [local-transfer fault-injection follow-up](../audits/daily-driver/local-transfer-fault-injection.md)
+records copy/move failure states, additional target-identity corrections, and
+the boundaries of synthetic versus real-media evidence.
+
 ## Priority 0 Define Scope and Verify File Safety
 
 Complete this phase first. Reliability takes precedence over feature breadth.
@@ -77,6 +81,30 @@ Complete this phase first. Reliability takes precedence over feature breadth.
 
 Done when: the agreed matrix has current evidence, no unresolved data-loss or
 wrong-destination defects, and clear recovery outcomes under interruption.
+
+### Verified Safety Increments
+
+These narrower increments make progress visible without claiming that the
+broader operation/platform acceptance rows above are complete.
+
+- [x] Prevent late destination overwrite during clipboard move.
+- [x] Honor cancellation before rename and before fallback source deletion.
+- [x] Retain the complete destination after partial source-deletion failure.
+- [x] Surface cancellation rollback failure without overwriting competing files.
+- [x] Check final writeback before deleting sources in undo move fallback.
+- [x] Reject special-file/replacement-symlink input in guarded copy paths.
+- [x] Revalidate source identity before clipboard rename/fallback deletion.
+- [x] Inject mid-stream disk-full, source-read and destination-write failures
+  through local clipboard copy and forced cross-device move fallback.
+- [x] Inject writeback failures through undo copy/move fallback; verify source
+  preservation and explicit partial-output behavior.
+- [x] Verify disappearance of open source/target paths and cancellation after
+  successful finalization, using disposable fixtures only.
+- [x] Reject completion to an unlinked/replaced target and preserve competing
+  destination files during file-copy error cleanup. Verify both local move engines.
+- [ ] Extend ownership-safe cleanup to nested directories and validate concurrent
+  content edits; single-file identity checks do not establish tree-wide safety.
+- [ ] Validate installed UI partial-result refresh/recovery and real-media faults.
 
 ## Priority 1 Validate Desktop and Device Integration
 
