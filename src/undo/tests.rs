@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
 
+#[cfg(target_os = "linux")]
+mod measurements;
+
 fn uniq_path(label: &str) -> PathBuf {
     let ts = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)

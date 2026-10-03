@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Measure representative undo-backup allocation and history retention with opt-in disposable workloads. Show filesystem-reported allocation separately from file-content size in the existing Settings diagnostics; document a conservative storage policy without introducing automatic recovery deletion or a hard quota.
+
 - Fix cloud archive extraction and other mixed copies sending `--create-empty-src-dirs` to unsupported `rclone copyto`. Select `copyto` for files and `copy --create-empty-src-dirs` for directories, explicitly preserve entirely empty directory roots as well as nested empty folders; tighten fake-rclone argument validation and cover encrypted staged ZIP round trips and the real local-only rclone CLI contract.
 
 - Add a T3 Code project action and Linux x86_64 user-local installer that builds the current checkout with Tauri's production frontend, stages runtime resources, preserves an installation backup and desktop integration, and leaves running operations alone. Regression checks cover build/runtime failures, rollback, installation locking and Rust toolchain selection.

@@ -8,6 +8,16 @@ const fixture: UndoStorageSummary = {
 }
 
 describe('undo storage diagnostics', () => {
+  it('labels allocation separately and supports backends without block accounting', () => {
+    expect(describeUndoStorage({ ...fixture, allocatedBytes: 4 * 1024 * 1024 }))
+      .toContain('4.2 MB allocated according to the filesystem')
+    expect(describeUndoStorage({ ...fixture, allocatedBytes: 0 }))
+      .toContain('0 B allocated according to the filesystem')
+    expect(describeUndoStorage({ ...fixture, allocatedBytes: null }))
+      .not.toContain('allocated')
+    expect(describeUndoStorage({ ...fixture, incomplete: true, allocatedBytes: 4096 }))
+      .toContain('Incomplete scan')
+  })
   it('distinguishes missing storage and partial measurements from complete totals', () => {
     expect(describeUndoStorage(fixture)).toContain('Last scan: 8.2 kB')
     expect(describeUndoStorage(fixture)).toContain('1 session with recovery markers')

@@ -182,6 +182,12 @@ cloud undo/redo as unsupported.
 
 ## Release Validation Use
 
+Representative disposable measurements and the conservative budget/retention
+decision are recorded in the [recovery storage policy](../../audits/daily-driver/recovery-storage-policy.md).
+On Unix, Settings also reports filesystem-allocated blocks for scanned files and
+directories. This is not exclusive physical usage on CoW/compressed filesystems,
+and an incomplete scan does not establish the complete storage requirement.
+
 This document is the Linux 1.0 source of truth for undo/redo scope. Release
 validation, bugbash work, and user-facing Linux docs should use it to answer:
 

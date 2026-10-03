@@ -22,6 +22,8 @@ pub struct UndoStorageSummary {
     pub marked_sessions: u64,
     pub files: u64,
     pub logical_bytes: u64,
+    // Filesystem-reported blocks, not exclusive physical usage on CoW filesystems.
+    pub allocated_bytes: Option<u64>,
     pub incomplete: bool,
 }
 
@@ -70,6 +72,10 @@ fn inspect_directory(base: &Path, mut budget: ScanBudget) -> UndoResult<UndoStor
         Err(error) => return Err(UndoError::from_io_error("Inspect undo storage", error)),
     };
     summary.exists = true;
+    #[cfg(unix)]
+    {
+        summary.allocated_bytes = Some(0);
+    }
     for entry in entries {
         if !budget.take() {
             summary.incomplete = true;
@@ -117,6 +123,13 @@ fn scan_session(root: &Path, budget: &mut ScanBudget, summary: &mut UndoStorageS
             summary.incomplete = true;
             continue;
         }
+        match fs::symlink_metadata(&directory) {
+            Ok(meta) if meta.is_dir() => add_allocation(&meta, summary),
+            _ => {
+                summary.incomplete = true;
+                continue;
+            }
+        }
         let entries = match fs::read_dir(&directory) {
             Ok(entries) => entries,
             Err(_) => {
@@ -144,6 +157,7 @@ fn scan_session(root: &Path, budget: &mut ScanBudget, summary: &mut UndoStorageS
             marked |= is_marker; // Suspicious marker types pin sessions, too.
             match fs::symlink_metadata(entry.path()) {
                 Ok(meta) if meta.is_file() => {
+                    add_allocation(&meta, summary);
                     summary.files += 1;
                     if let Some(bytes) = summary.logical_bytes.checked_add(meta.len()) {
                         summary.logical_bytes = bytes;
@@ -157,6 +171,23 @@ fn scan_session(root: &Path, budget: &mut ScanBudget, summary: &mut UndoStorageS
         }
     }
     summary.marked_sessions += u64::from(marked);
+}
+
+fn add_allocation(metadata: &fs::Metadata, summary: &mut UndoStorageSummary) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match metadata.blocks().checked_mul(512).and_then(|bytes| {
+            summary
+                .allocated_bytes
+                .and_then(|total| total.checked_add(bytes))
+        }) {
+            Some(bytes) => summary.allocated_bytes = Some(bytes),
+            None => summary.incomplete = true,
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = (metadata, summary);
 }
 
 #[cfg(test)]

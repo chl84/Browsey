@@ -28,7 +28,7 @@
   {#if $summary}
     <TextField value={$summary.directory} readonly aria-label="Undo backup directory" />
   {/if}
-  <small>File-content size is not allocated disk usage; hard-linked paths are counted separately. Measurements can change while Browsey runs.</small>
+  <small>File-content size and filesystem-reported allocation differ. Allocation is not exclusive physical usage on compressed or copy-on-write filesystems; hard-linked paths are counted separately. Measurements can change while Browsey runs.</small>
   <small>Undo history holds up to 50 actions for this app session only. This is not a disk-space limit. Recovery markers keep entire sessions across restarts, without restoring undo history.</small>
   <small>Recovery markers can also belong to ongoing work; their presence alone does not mean an operation failed.</small>
   <details>

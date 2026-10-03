@@ -10,6 +10,7 @@ export type UndoStorageSummary = {
   markedSessions: number
   files: number
   logicalBytes: number
+  allocatedBytes?: number | null
   incomplete: boolean
 }
 
@@ -20,7 +21,9 @@ export const describeUndoStorage = (summary: UndoStorageSummary) => {
   if (!summary.exists) return 'No undo storage directory exists yet.'
   const sessions = `${summary.sessions} ${summary.sessions === 1 ? 'session' : 'sessions'}`
   const marked = `${summary.markedSessions} ${summary.markedSessions === 1 ? 'session' : 'sessions'}`
-  return `${prefix} ${formatSize(summary.logicalBytes)} of file contents in ${summary.files} files across ${sessions}; ${marked} with recovery markers.`
+  const allocation = summary.allocatedBytes == null
+    ? '' : `; ${formatSize(summary.allocatedBytes)} allocated according to the filesystem`
+  return `${prefix} ${formatSize(summary.logicalBytes)} of file contents in ${summary.files} files across ${sessions}${allocation}; ${marked} with recovery markers.`
 }
 
 export const createUndoStorageModel = (inspect = inspectUndoStorage) => {

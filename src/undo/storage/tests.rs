@@ -45,15 +45,38 @@ fn summary_serialization_matches_the_settings_contract() {
         marked_sessions: 1,
         files: 4,
         logical_bytes: 8192,
+        allocated_bytes: None,
         incomplete: false,
     };
     assert_eq!(
         serde_json::to_value(summary).unwrap(),
         serde_json::json!({
             "directory": "/fixture/undo-sessions", "exists": true, "sessions": 3,
-            "markedSessions": 1, "files": 4, "logicalBytes": 8192, "incomplete": false,
+            "markedSessions": 1, "files": 4, "logicalBytes": 8192,
+            "allocatedBytes": null, "incomplete": false,
         })
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn allocation_uses_reported_blocks_instead_of_assuming_logical_size() {
+    use std::os::unix::fs::MetadataExt;
+    let fixture = Fixture::new();
+    let session = fixture.0.join("session-fixture");
+    fs::create_dir(&session).unwrap();
+    let file = session.join("sparse");
+    fs::File::create(&file)
+        .unwrap()
+        .set_len(8 * 1024 * 1024)
+        .unwrap();
+    let expected =
+        (fs::metadata(&session).unwrap().blocks() + fs::metadata(&file).unwrap().blocks()) * 512;
+    let summary = fixture.inspect(100);
+    assert_eq!(summary.logical_bytes, 8 * 1024 * 1024);
+    assert_eq!(summary.allocated_bytes, Some(expected));
+    assert!(!summary.incomplete);
+    assert_eq!(fs::metadata(file).unwrap().len(), 8 * 1024 * 1024);
 }
 
 #[test]

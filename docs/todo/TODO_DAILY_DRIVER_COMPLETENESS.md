@@ -38,7 +38,7 @@ Inspect current code and evidence before adding or replacing behavior.
   writers. Two installed real-writer scenarios and deterministic removal tests
   support the limited claim; A0-7 remains partial. No transaction, staging or
   automatic recovery engine was added.
-- [ ] Measure representative backup sizes and define a safe recovery-storage
+- [x] Measure representative backup sizes and define a safe recovery-storage
   budget/retention policy before implementing any missing controls. The
   [storage audit](../audits/daily-driver/undo-storage-diagnostics.md) and
   [undo scope](../operations/linux-release/undo-scope.md) document the concrete
@@ -47,6 +47,15 @@ Inspect current code and evidence before adding or replacing behavior.
   duplicate mechanisms. Never automatically purge protected recovery sessions,
   live operations or files still needed by open programs. Keep maintenance-agent
   caches separate; installed recovery UX is checklist A0.
+  The [measurement and policy](../audits/daily-driver/recovery-storage-policy.md)
+  records four production-engine workloads on tmpfs/Btrfs, backup reuse,
+  history eviction without disk reclamation and a conservative provisioning
+  rule rather than an unsafe fixed quota. Existing Settings diagnostics now
+  separately report filesystem allocation on Unix, retaining partial-scan and
+  CoW caveats. Strict maintenance passed: 645 backend tests, 8 opt-in tests
+  ignored, 318 frontend tests, 62 browser tests, Clippy/Semgrep and 20 docs checks.
+  The disposable recovery measurement passed separately on both filesystems;
+  no automatic purge, installation or new native acceptance is claimed.
 
 ## Priority 1 Reproducible Performance Work
 
