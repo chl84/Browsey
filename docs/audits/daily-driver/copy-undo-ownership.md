@@ -5,6 +5,10 @@ Baseline: `47fde96`
 Track: [Daily-driver completeness plan](../../todo/TODO_DAILY_DRIVER_COMPLETENESS.md)
 Status: Incremental implementation; overall Priority 0 remains open.
 
+Follow-up: the later [copy recovery backup increment](copy-recovery-backups.md)
+replaces source-based redo/compensation and protects failure backups across
+startup cleanup. The observations below describe the `290e924` increment.
+
 ## Reproduction
 
 A new disposable-fixture regression failed against the preceding code: copy a

@@ -15,6 +15,8 @@ pub(crate) enum Phase {
     Sync,
     Synced,
     CopyUndoVerified,
+    CopyUndoEntry,
+    RecoveryMarker,
 }
 
 type Hook = Box<dyn FnMut(&Path, &Path, Phase, u64) -> io::Result<()>>;

@@ -60,6 +60,10 @@ The [copy undo ownership follow-up](../audits/daily-driver/copy-undo-ownership.m
 records completed-output receipts, conservative copy removal, pure-copy batch
 preflight, and the remaining recovery and race boundaries.
 
+The [copy recovery backup follow-up](../audits/daily-driver/copy-recovery-backups.md)
+records preserved bytes for redo/compensation, protected failure sessions,
+disposable cross-filesystem validation and mocked history UI recovery.
+
 ## Priority 0 Define Scope and Verify File Safety
 
 Complete this phase first. Reliability takes precedence over feature breadth.
@@ -122,9 +126,18 @@ broader operation/platform acceptance rows above are complete.
   undo/rollback; preserve foreign children and replacements added after the scan.
 - [x] Preflight all members of a pure-copy batch before removing any target;
   preserve unchanged peers when another target was already edited.
-- [ ] Preserve copied bytes for redo and failed mixed-batch undo compensation
-  instead of re-reading a changed/missing original source. Test partial undo
-  errors, backup failures and cross-filesystem recovery before claiming atomicity.
+- [x] Preserve copied bytes for redo and failed mixed-batch undo compensation
+  instead of re-reading a changed/missing original source; validate backup,
+  writeback and partial-removal failures with disposable fixtures.
+- [x] Protect incomplete/failed copy undo and redo with recovery markers;
+  keep marked sessions across startup cleanup and a killed fixture process.
+- [x] Validate copy recovery between distinct disposable filesystems for files
+  and nested directories; this is not real-media or power-loss acceptance.
+- [x] Run history filesystem work off the UI event loop; verify error refresh,
+  separate refresh failures and repeat-request suppression with mocked UI tests.
+- [ ] Validate manual recovery UX, retention/space budgets and installed-build
+  behavior for marked sessions. Preserved backups do not imply persistent undo,
+  automatic repair/resume or atomic batches.
 - [ ] Validate edits during active writes and races after per-entry checks;
   metadata snapshots are not content hashes or filesystem transactions.
 - [ ] Validate installed UI partial-result refresh/recovery and real-media faults.

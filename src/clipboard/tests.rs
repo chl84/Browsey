@@ -685,8 +685,8 @@ fn paste_copy_undo_redo_records_current_output_versions() {
         .unwrap();
         undo.undo().unwrap();
         assert!(!destination.join("item").exists());
-        // Current redo semantics read the source anew; the receipt must be
-        // replaced rather than continuing to describe the previous output.
+        // Redo must preserve the copied bytes, while renewing ownership of the
+        // newly restored output instead of reusing the old writer's identity.
         write_file(&original, b"new-source");
         undo.redo().unwrap();
         let output = if directory {
@@ -694,7 +694,7 @@ fn paste_copy_undo_redo_records_current_output_versions() {
         } else {
             destination.join("item")
         };
-        assert_eq!(fs::read(&output).unwrap(), b"new-source");
+        assert_eq!(fs::read(&output).unwrap(), b"original");
         undo.undo().unwrap();
         undo.redo().unwrap();
         write_file(&output, b"edited-output");

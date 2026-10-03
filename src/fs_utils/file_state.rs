@@ -142,6 +142,13 @@ impl TreeSnapshot {
             } else {
                 root.join(relative)
             };
+            #[cfg(test)]
+            super::copy_test_hooks::hit(
+                root,
+                &path,
+                super::copy_test_hooks::Phase::CopyUndoEntry,
+                0,
+            )?;
             let parents_match = relative
                 .ancestors()
                 .filter_map(|ancestor| match self.0.get(ancestor) {

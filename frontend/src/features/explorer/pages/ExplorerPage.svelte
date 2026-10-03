@@ -12,7 +12,7 @@
   import { createColumnResize } from '@/features/explorer/hooks/createColumnResize'
   import { createGlobalShortcuts } from '@/features/explorer/hooks/createGlobalShortcuts'
   import { createBookmarkModal } from '@/features/explorer/hooks/createBookmarkModal'
-  import { useExplorerDragDrop, createClipboard, useExplorerFileOps } from '@/features/explorer/file-ops'
+  import { useExplorerDragDrop, createClipboard, createHistoryActions, useExplorerFileOps } from '@/features/explorer/file-ops'
   import { useExplorerInputHandlers } from '@/features/explorer/hooks/useExplorerInputHandlers'
   import { useModalsController } from '@/features/explorer/hooks/useModalsController'
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
@@ -899,6 +899,12 @@
     await goToPath(path)
   }
 
+  const historyActions = createHistoryActions({
+    undo: undoAction,
+    redo: redoAction,
+    refresh: () => reloadCurrent(),
+    showToast,
+  })
   const shortcuts = createGlobalShortcuts({
     isBookmarkModalOpen: () => get(bookmarkStore).open,
     searchMode: () => isSearchSessionEnabled,
@@ -1146,28 +1152,8 @@
       caretIndex.set(list.length - 1)
       return true
     },
-    onUndo: async () => {
-      try {
-        await undoAction()
-        showToast('Undo')
-        await reloadCurrent()
-        return true
-      } catch (err) {
-        showToast(`Undo failed: ${getErrorMessage(err)}`)
-        return false
-      }
-    },
-    onRedo: async () => {
-      try {
-        await redoAction()
-        showToast('Redo')
-        await reloadCurrent()
-        return true
-      } catch (err) {
-        showToast(`Redo failed: ${getErrorMessage(err)}`)
-        return false
-      }
-    },
+    onUndo: historyActions.undo,
+    onRedo: historyActions.redo,
     onToggleSettings: async () => {
       pageUiState.toggleSettings()
       return true

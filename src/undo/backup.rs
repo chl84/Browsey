@@ -1,12 +1,83 @@
 use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::fs::{self, File, OpenOptions};
 use std::hash::{Hash, Hasher};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::warn;
 
 use crate::undo::{UndoError, UndoResult};
+
+const RECOVERY_SUFFIX: &str = ".recovery-required";
+
+#[derive(Debug, Clone)]
+pub(super) struct RecoveryMarker {
+    path: PathBuf,
+    identity: crate::fs_utils::FileIdentity,
+}
+
+impl RecoveryMarker {
+    pub(super) fn create(backup: &Path, destination: &Path) -> UndoResult<Self> {
+        let bucket = backup
+            .parent()
+            .ok_or_else(|| UndoError::invalid_input("Invalid backup path"))?;
+        let session = bucket
+            .parent()
+            .ok_or_else(|| UndoError::invalid_input("Invalid backup bucket"))?;
+        let mut name = bucket
+            .file_name()
+            .ok_or_else(|| UndoError::invalid_input("Invalid backup bucket name"))?
+            .to_os_string();
+        name.push(RECOVERY_SUFFIX);
+        let path = session.join(name);
+        crate::path_guard::ensure_no_symlink_components_existing_prefix(&path).map_err(
+            |error| UndoError::invalid_input(format!("Unsafe recovery marker: {error}")),
+        )?;
+        #[cfg(test)]
+        crate::fs_utils::copy_test_hooks::hit(
+            destination,
+            backup,
+            crate::fs_utils::copy_test_hooks::Phase::RecoveryMarker,
+            0,
+        )
+        .map_err(|error| UndoError::from_io_error("Create copy recovery marker", error))?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&path)
+            .map_err(|error| UndoError::from_io_error("Create copy recovery marker", error))?;
+        writeln!(file, "Browsey interrupted/failed copy undo or redo. Recover this backup manually before deleting the session.\nDestination: {destination:?}\nBackup: {backup:?}")
+            .and_then(|()| file.sync_all())
+            .map_err(|error| UndoError::from_io_error("Finalize copy recovery marker", error))?;
+        let identity = crate::fs_utils::FileIdentity::from_file(&file)
+            .ok_or_else(|| UndoError::invalid_input("Cannot verify recovery marker ownership"))?;
+        if !identity.matches(&path) {
+            return Err(UndoError::snapshot_mismatch(&path));
+        }
+        Ok(Self { path, identity })
+    }
+
+    pub(super) fn verify(&self) -> UndoResult<()> {
+        if self.identity.matches(&self.path) {
+            Ok(())
+        } else {
+            Err(UndoError::snapshot_mismatch(&self.path))
+        }
+    }
+
+    pub(super) fn clear(&self) -> UndoResult<()> {
+        self.verify()?;
+        fs::remove_file(&self.path).map_err(|error| {
+            UndoError::from_io_error("Remove completed copy recovery marker", error)
+        })
+    }
+}
 
 struct BackupSession {
     directory: PathBuf,
@@ -115,6 +186,15 @@ fn cleanup_sessions(base: &Path, max_age: Option<Duration>) {
         if lock.try_lock().is_err() {
             continue;
         }
+        // Recovery markers pin the entire abandoned session. Fail closed on
+        // scan errors or suspicious marker types; these are not persistent undo.
+        if session_requires_recovery(&entry.path()) {
+            warn!(
+                "Retain undo session requiring manual recovery: {:?}",
+                entry.path()
+            );
+            continue;
+        }
         if let Err(e) = fs::remove_dir_all(entry.path()) {
             warn!(
                 "Failed to remove abandoned undo session {:?}: {}",
@@ -126,6 +206,19 @@ fn cleanup_sessions(base: &Path, max_age: Option<Duration>) {
         drop(lock);
         let _ = fs::remove_file(lock_path);
     }
+}
+
+fn session_requires_recovery(directory: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return true;
+    };
+    entries.into_iter().any(|entry| match entry {
+        Ok(entry) => entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.ends_with(RECOVERY_SUFFIX)),
+        Err(_) => true,
+    })
 }
 
 pub fn temp_backup_path(original: &Path) -> UndoResult<PathBuf> {
@@ -148,15 +241,13 @@ pub fn temp_backup_path(original: &Path) -> UndoResult<PathBuf> {
     let bucket = format!("{:016x}-{sequence}", hasher.finish());
     let name = original
         .file_name()
-        .map(|n| n.to_string_lossy())
-        .unwrap_or_else(|| "item".into());
-    let mut candidate = session.directory.join(&bucket).join(name.as_ref());
+        .unwrap_or_else(|| std::ffi::OsStr::new("item"));
+    let mut candidate = session.directory.join(&bucket).join(name);
     let mut idx = 1u32;
     while fs::symlink_metadata(&candidate).is_ok() {
-        candidate = session
-            .directory
-            .join(&bucket)
-            .join(format!("{name}-{idx}"));
+        let mut alternate = name.to_os_string();
+        alternate.push(format!("-{idx}"));
+        candidate = session.directory.join(&bucket).join(alternate);
         idx += 1;
     }
     Ok(candidate)
@@ -265,11 +356,66 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_preserves_abandoned_recovery_sessions_across_processes() {
+        let base = unique_base();
+        let recovery = BackupSession::create(&base).unwrap();
+        let ordinary = BackupSession::create(&base).unwrap();
+        let backup = recovery.directory.join("bucket/file.txt");
+        fs::create_dir(backup.parent().unwrap()).unwrap();
+        fs::write(&backup, b"recoverable").unwrap();
+        let marker = RecoveryMarker::create(&backup, &base.join("destination.txt")).unwrap();
+        let ordinary_directory = ordinary.directory.clone();
+        drop(recovery);
+        drop(ordinary);
+        cleanup_in_child(&base);
+        assert_eq!(fs::read(&backup).unwrap(), b"recoverable");
+        assert!(!ordinary_directory.exists());
+        marker.clear().unwrap();
+        cleanup_in_child(&base);
+        assert!(!backup.exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn recovery_marker_cleanup_preserves_a_foreign_replacement() {
+        let base = unique_base();
+        let session = BackupSession::create(&base).unwrap();
+        let backup = session.directory.join("bucket/file.txt");
+        let marker = RecoveryMarker::create(&backup, &base.join("destination.txt")).unwrap();
+        fs::rename(&marker.path, session.directory.join("parked-marker")).unwrap();
+        fs::write(&marker.path, b"foreign marker").unwrap();
+        assert!(marker.clear().is_err());
+        assert_eq!(fs::read(&marker.path).unwrap(), b"foreign marker");
+        drop(session);
+        cleanup_in_child(&base);
+        assert!(
+            marker.path.exists(),
+            "uncertain marker must pin the session"
+        );
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
     fn held_session_child() {
         if let Some(base) = std::env::var_os("BROWSEY_TEST_HELD_SESSION_ROOT") {
             use std::io::{Read, Write};
             let session = BackupSession::create(Path::new(&base)).unwrap();
-            fs::write(session.directory.join("document.txt"), b"owned-backup").unwrap();
+            let protected = std::env::var_os("BROWSEY_TEST_HELD_COPY_RECOVERY").is_some();
+            let backup = session.directory.join(if protected {
+                "bucket/document.txt"
+            } else {
+                "document.txt"
+            });
+            fs::create_dir_all(backup.parent().unwrap()).unwrap();
+            fs::write(&backup, b"owned-backup").unwrap();
+            let _marker = if protected {
+                Some(
+                    RecoveryMarker::create(&backup, &session.directory.join("original.txt"))
+                        .unwrap(),
+                )
+            } else {
+                None
+            };
             println!("BROWSEY_HELD_SESSION_READY");
             std::io::stdout().flush().unwrap();
             let _ = std::io::stdin().read(&mut [0_u8]);
@@ -331,6 +477,49 @@ mod tests {
         );
         drop(live);
         cleanup_sessions(&base, None);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn cleanup_after_killed_recovery_process_keeps_the_protected_copy() {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+        let base = unique_base();
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "undo::backup::tests::held_session_child",
+                "--nocapture",
+            ])
+            .env("BROWSEY_TEST_HELD_SESSION_ROOT", &base)
+            .env("BROWSEY_TEST_HELD_COPY_RECOVERY", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let ready = BufReader::new(child.stdout.take().unwrap())
+            .lines()
+            .map_while(Result::ok)
+            .any(|line| line.contains("BROWSEY_HELD_SESSION_READY"));
+        if !ready {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("child recovery session was not initialized");
+        }
+        let session = fs::read_dir(&base)
+            .unwrap()
+            .filter_map(Result::ok)
+            .find(|entry| entry.file_type().unwrap().is_dir())
+            .unwrap()
+            .path();
+        child.kill().unwrap();
+        assert!(!child.wait().unwrap().success());
+        cleanup_in_child(&base);
+        assert_eq!(
+            fs::read(session.join("bucket/document.txt")).unwrap(),
+            b"owned-backup"
+        );
+        assert!(session.join("bucket.recovery-required").exists());
         fs::remove_dir_all(base).unwrap();
     }
 }

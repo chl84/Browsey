@@ -613,6 +613,488 @@ fn batch_rolls_back_on_failure() {
 }
 
 #[test]
+fn copy_redo_restores_copied_bytes_without_the_original_source() {
+    let _ = test_undo_dir();
+    for directory in [false, true] {
+        for missing in [false, true] {
+            let root = uniq_path("copy-redo-preserved-bytes");
+            let source = root.join("source");
+            let target = root.join("target");
+            let input = if directory {
+                source.join("nested/file.txt")
+            } else {
+                source.clone()
+            };
+            let output = if directory {
+                target.join("nested/file.txt")
+            } else {
+                target.clone()
+            };
+            write_file(&input, b"copied-bytes");
+            let mut manager = UndoManager::new();
+            manager
+                .apply(Action::Copy {
+                    from: source.clone(),
+                    to: target.clone(),
+                    receipt: CopyReceipt::default(),
+                })
+                .unwrap();
+            manager.undo().unwrap();
+            if missing {
+                if directory {
+                    fs::remove_dir_all(&source).unwrap();
+                } else {
+                    fs::remove_file(&source).unwrap();
+                }
+            } else {
+                write_file(&input, b"changed-source");
+            }
+            manager.redo().unwrap();
+            assert_eq!(fs::read(&output).unwrap(), b"copied-bytes");
+            if !missing {
+                assert_eq!(fs::read(&input).unwrap(), b"changed-source");
+            }
+            manager.undo().unwrap();
+            manager.redo().unwrap();
+            assert_eq!(fs::read(&output).unwrap(), b"copied-bytes");
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+}
+
+#[test]
+fn failed_mixed_batch_undo_restores_copy_without_rereading_original() {
+    let _ = test_undo_dir();
+    for missing in [false, true] {
+        let root = uniq_path("mixed-copy-undo-compensation");
+        let moved_from = root.join("moved-from.txt");
+        let moved_to = root.join("moved-to.txt");
+        let copied_from = root.join("copied-from.txt");
+        let copied_to = root.join("copied-to.txt");
+        write_file(&moved_from, b"moved");
+        write_file(&copied_from, b"copied");
+        let mut manager = UndoManager::new();
+        manager
+            .apply(Action::Batch(vec![
+                Action::Move {
+                    from: moved_from.clone(),
+                    to: moved_to.clone(),
+                },
+                Action::Copy {
+                    from: copied_from.clone(),
+                    to: copied_to.clone(),
+                    receipt: CopyReceipt::default(),
+                },
+            ]))
+            .unwrap();
+        write_file(&moved_from, b"foreign");
+        if missing {
+            fs::remove_file(&copied_from).unwrap();
+        } else {
+            write_file(&copied_from, b"changed-source");
+        }
+        let error = manager.undo().unwrap_err();
+        assert!(
+            !error.to_string().contains("additional rollback issues"),
+            "{error}"
+        );
+        assert_eq!(fs::read(&copied_to).unwrap(), b"copied");
+        assert_eq!(fs::read(&moved_to).unwrap(), b"moved");
+        assert_eq!(fs::read(&moved_from).unwrap(), b"foreign");
+        assert!(manager.can_undo());
+        fs::remove_file(&moved_from).unwrap();
+        manager.undo().unwrap();
+        assert!(!copied_to.exists());
+        manager.redo().unwrap();
+        assert_eq!(fs::read(copied_to).unwrap(), b"copied");
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn copy_restore_conflicts_and_writeback_faults_keep_recovery_bytes() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let _ = test_undo_dir();
+    for fault in ["conflict", "write", "sync"] {
+        let root = uniq_path("copy-restore-fault");
+        let source = root.join("source.bin");
+        let target = root.join("target.bin");
+        let data = vec![0x5a; 64 * 1024];
+        write_file(&source, &data);
+        let mut action = Action::Copy {
+            from: source.clone(),
+            to: target.clone(),
+            receipt: CopyReceipt::default(),
+        };
+        super::engine::execute_action(&mut action, Direction::Forward).unwrap();
+        super::engine::execute_action(&mut action, Direction::Backward).unwrap();
+        let backup = match &action {
+            Action::Copy { receipt, .. } => receipt.recovery_path().unwrap().to_path_buf(),
+            _ => unreachable!(),
+        };
+        fs::remove_file(source).unwrap();
+        let scope = if fault == "conflict" {
+            write_file(&target, b"foreign");
+            None
+        } else {
+            Some(Scope::new(move |_, _, phase, bytes| {
+                if (fault == "write" && phase == Phase::Write && bytes > 0)
+                    || (fault == "sync" && phase == Phase::Sync)
+                {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::StorageFull,
+                        "injected restore fault",
+                    ))
+                } else {
+                    Ok(())
+                }
+            }))
+        };
+        let error = super::engine::execute_action(&mut action, Direction::Forward).unwrap_err();
+        drop(scope);
+        assert!(error.to_string().contains(&backup.display().to_string()));
+        assert_eq!(fs::read(&backup).unwrap(), data);
+        if fault == "conflict" {
+            assert_eq!(fs::read(&target).unwrap(), b"foreign");
+        }
+        fs::remove_file(&target).unwrap();
+        super::engine::execute_action(&mut action, Direction::Forward).unwrap();
+        super::engine::finalize_action(&mut action);
+        assert_eq!(fs::read(&target).unwrap(), data);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn copy_undo_backup_faults_never_remove_the_target() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let _ = test_undo_dir();
+    for phase in [Phase::Write, Phase::Sync, Phase::RecoveryMarker] {
+        let root = uniq_path("copy-undo-backup-fault");
+        let source = root.join("source.bin");
+        let target = root.join("target.bin");
+        let data = vec![0x5a; 64 * 1024];
+        write_file(&source, &data);
+        let mut manager = UndoManager::new();
+        manager
+            .apply(Action::Copy {
+                from: source.clone(),
+                to: target.clone(),
+                receipt: CopyReceipt::default(),
+            })
+            .unwrap();
+        let reached = std::rc::Rc::new(std::cell::Cell::new(false));
+        let observed = reached.clone();
+        let scope = Scope::new(move |_, _, current, bytes| {
+            if current == phase && (current != Phase::Write || bytes > 0) {
+                observed.set(true);
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::StorageFull,
+                    "injected backup fault",
+                ))
+            } else {
+                Ok(())
+            }
+        });
+        let error = manager.undo().unwrap_err();
+        drop(scope);
+        assert!(reached.get());
+        assert!(error.to_string().contains("retained"));
+        assert_eq!(fs::read(&source).unwrap(), data);
+        assert_eq!(fs::read(&target).unwrap(), data);
+        assert!(manager.can_undo());
+        assert!(!manager.can_redo());
+        manager.undo().unwrap();
+        manager.redo().unwrap();
+        assert_eq!(fs::read(&target).unwrap(), data);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn partial_copy_undo_retains_a_complete_protected_backup() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let _ = test_undo_dir();
+    let root = uniq_path("copy-undo-partial-removal");
+    let source = root.join("source");
+    let target = root.join("target");
+    write_file(&source.join("a.txt"), b"alpha");
+    write_file(&source.join("z.txt"), b"zulu");
+    let mut action = Action::Copy {
+        from: source.clone(),
+        to: target.clone(),
+        receipt: CopyReceipt::default(),
+    };
+    super::engine::execute_action(&mut action, Direction::Forward).unwrap();
+    fs::remove_dir_all(source).unwrap();
+    let checked = target.join("a.txt");
+    let scope = Scope::new(move |_, path, phase, _| {
+        if phase == Phase::CopyUndoEntry && path == checked {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "injected partial undo fault",
+            ))
+        } else {
+            Ok(())
+        }
+    });
+    let error = super::engine::execute_action(&mut action, Direction::Backward).unwrap_err();
+    drop(scope);
+    assert!(
+        !target.join("z.txt").exists(),
+        "first removal must have succeeded"
+    );
+    assert_eq!(fs::read(target.join("a.txt")).unwrap(), b"alpha");
+    let backup = match &action {
+        Action::Copy { receipt, .. } => receipt.recovery_path().unwrap(),
+        _ => unreachable!(),
+    };
+    assert_eq!(fs::read(backup.join("a.txt")).unwrap(), b"alpha");
+    assert_eq!(fs::read(backup.join("z.txt")).unwrap(), b"zulu");
+    assert!(error.to_string().contains(&backup.display().to_string()));
+    assert!(fs::read_dir(backup.parent().unwrap().parent().unwrap())
+        .unwrap()
+        .any(|entry| entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".recovery-required")));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn changed_recovery_copy_is_not_used_for_redo() {
+    let _ = test_undo_dir();
+    let root = uniq_path("copy-redo-changed-backup");
+    let source = root.join("source.txt");
+    let target = root.join("target.txt");
+    write_file(&source, b"original");
+    let mut action = Action::Copy {
+        from: source,
+        to: target.clone(),
+        receipt: CopyReceipt::default(),
+    };
+    super::engine::execute_action(&mut action, Direction::Forward).unwrap();
+    super::engine::execute_action(&mut action, Direction::Backward).unwrap();
+    let backup = match &action {
+        Action::Copy { receipt, .. } => receipt.recovery_path().unwrap().to_path_buf(),
+        _ => unreachable!(),
+    };
+    write_file(&backup, b"tampered");
+    let error = super::engine::execute_action(&mut action, Direction::Forward).unwrap_err();
+    assert!(error.to_string().contains("could not be verified"));
+    assert!(!target.exists());
+    assert_eq!(fs::read(backup).unwrap(), b"tampered");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn copy_undo_rejects_target_edits_during_backup_without_caching_mixed_bytes() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let _ = test_undo_dir();
+    let root = uniq_path("copy-undo-target-edit-during-backup");
+    let source = root.join("source.txt");
+    let target = root.join("target.txt");
+    write_file(&source, b"original");
+    let mut action = Action::Copy {
+        from: source,
+        to: target.clone(),
+        receipt: CopyReceipt::default(),
+    };
+    super::engine::execute_action(&mut action, Direction::Forward).unwrap();
+    let changed_target = target.clone();
+    let scope = Scope::new(move |src, _, phase, _| {
+        if phase == Phase::Synced && src == changed_target {
+            write_file(&changed_target, b"edited-target");
+        }
+        Ok(())
+    });
+    let error = super::engine::execute_action(&mut action, Direction::Backward).unwrap_err();
+    drop(scope);
+    assert_eq!(fs::read(&target).unwrap(), b"edited-target");
+    assert!(error.to_string().contains("target not removed"));
+    if let Action::Copy { receipt, .. } = action {
+        assert!(
+            receipt.backup.is_none(),
+            "do not reuse a backup after source verification failed"
+        );
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_copy_compensation_keeps_bytes_and_allows_safe_history_retry() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let _ = test_undo_dir();
+    let root = uniq_path("copy-compensation-write-fault");
+    let moved_from = root.join("from.txt");
+    let moved_to = root.join("to.txt");
+    let source = root.join("source.bin");
+    let target = root.join("target.bin");
+    let data = vec![0x5a; 64 * 1024];
+    write_file(&source, &data);
+    write_file(&moved_from, b"moved");
+    let mut manager = UndoManager::new();
+    manager
+        .apply(Action::Batch(vec![
+            Action::Move {
+                from: moved_from.clone(),
+                to: moved_to,
+            },
+            Action::Copy {
+                from: source.clone(),
+                to: target.clone(),
+                receipt: CopyReceipt::default(),
+            },
+        ]))
+        .unwrap();
+    fs::remove_file(source).unwrap();
+    write_file(&moved_from, b"foreign");
+    let restore_target = target.clone();
+    let scope = Scope::new(move |_, dst, phase, bytes| {
+        if dst == restore_target && phase == Phase::Write && bytes > 0 {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::StorageFull,
+                "injected compensation fault",
+            ))
+        } else {
+            Ok(())
+        }
+    });
+    let error = manager.undo().unwrap_err();
+    drop(scope);
+    assert!(error.to_string().contains("additional rollback issues"));
+    assert!(error.to_string().contains("Recovery copies retained at"));
+    assert_eq!(fs::read(&moved_from).unwrap(), b"foreign");
+    assert!(
+        target.exists(),
+        "partial restored file is reported, not discarded"
+    );
+    // User-inspected, explicit fixture cleanup models manual recovery, not an
+    // automatic retry or overwrite of an uncertain destination.
+    fs::remove_file(&target).unwrap();
+    fs::remove_file(&moved_from).unwrap();
+    manager.undo().unwrap();
+    manager.redo().unwrap();
+    assert_eq!(fs::read(target).unwrap(), data);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_recovery_preserves_non_utf8_file_names() {
+    use std::os::unix::ffi::OsStringExt;
+    let _ = test_undo_dir();
+    let root = uniq_path("copy-recovery-native-name");
+    let source = root.join("source");
+    let name = std::ffi::OsString::from_vec(b"file-\xff.bin".to_vec());
+    let target = root.join(&name);
+    write_file(&source, b"native-name");
+    let mut action = Action::Copy {
+        from: source.clone(),
+        to: target.clone(),
+        receipt: CopyReceipt::default(),
+    };
+    super::engine::execute_action(&mut action, Direction::Forward).unwrap();
+    super::engine::execute_action(&mut action, Direction::Backward).unwrap();
+    let backup = match &action {
+        Action::Copy { receipt, .. } => receipt.recovery_path().unwrap(),
+        _ => unreachable!(),
+    };
+    assert_eq!(backup.file_name().unwrap(), name);
+    fs::remove_file(source).unwrap();
+    super::engine::execute_action(&mut action, Direction::Forward).unwrap();
+    super::engine::finalize_action(&mut action);
+    assert_eq!(fs::read(target).unwrap(), b"native-name");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "Requires writable disposable /dev/shm and a distinct backup filesystem"]
+fn copy_recovery_roundtrip_across_disposable_filesystems() {
+    use std::os::unix::fs::MetadataExt;
+    let _ = test_undo_dir();
+    for directory in [false, true] {
+        let root = Path::new("/dev/shm")
+            .join(uniq_path("copy-recovery-cross-volume").file_name().unwrap());
+        fs::create_dir(&root).unwrap();
+        let source = root.join("source");
+        let target = root.join("target");
+        let input = if directory {
+            source.join("nested/file.bin")
+        } else {
+            source.clone()
+        };
+        let output = if directory {
+            target.join("nested/file.bin")
+        } else {
+            target.clone()
+        };
+        write_file(&input, b"cross-volume");
+        let mut action = Action::Copy {
+            from: source.clone(),
+            to: target,
+            receipt: CopyReceipt::default(),
+        };
+        super::engine::execute_action(&mut action, Direction::Forward).unwrap();
+        super::engine::execute_action(&mut action, Direction::Backward).unwrap();
+        let backup = match &action {
+            Action::Copy { receipt, .. } => receipt.recovery_path().unwrap(),
+            _ => unreachable!(),
+        };
+        assert_ne!(
+            fs::metadata(backup).unwrap().dev(),
+            fs::metadata(&root).unwrap().dev()
+        );
+        if directory {
+            fs::remove_dir_all(source).unwrap();
+        } else {
+            fs::remove_file(source).unwrap();
+        }
+        super::engine::execute_action(&mut action, Direction::Forward).unwrap();
+        super::engine::finalize_action(&mut action);
+        assert_eq!(fs::read(output).unwrap(), b"cross-volume");
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn history_worker_keeps_typed_errors_and_copy_recovery() {
+    tauri::async_runtime::block_on(async {
+        let _ = test_undo_dir();
+        let state = UndoState::default();
+        assert_eq!(
+            super::execute_history_operation(state.clone(), Direction::Backward)
+                .await
+                .unwrap_err()
+                .code(),
+            UndoErrorCode::UndoUnavailable
+        );
+        let root = uniq_path("copy-history-worker");
+        let source = root.join("source.txt");
+        let target = root.join("target.txt");
+        write_file(&source, b"original");
+        state
+            .record(Action::Copy {
+                from: source.clone(),
+                to: target.clone(),
+                receipt: CopyReceipt::default(),
+            })
+            .unwrap();
+        super::execute_history_operation(state.clone(), Direction::Backward)
+            .await
+            .unwrap();
+        fs::remove_file(source).unwrap();
+        super::execute_history_operation(state, Direction::Forward)
+            .await
+            .unwrap();
+        assert_eq!(fs::read(target).unwrap(), b"original");
+        fs::remove_dir_all(root).unwrap();
+    });
+}
+
+#[test]
 fn move_with_fallback_refuses_existing_destination() {
     let dir = uniq_path("move-no-overwrite");
     let _ = fs::create_dir_all(&dir);

@@ -13,17 +13,22 @@ const MAX_HISTORY: usize = 50;
 /// Missing evidence (for example a GIO-owned writer) is not permission to delete.
 #[derive(Debug, Clone, Default)]
 pub struct CopyReceipt {
-    snapshot: Option<crate::fs_utils::TreeSnapshot>,
+    pub(super) snapshot: Option<crate::fs_utils::TreeSnapshot>,
+    pub(super) backup: Option<super::copy_recovery::CopyBackup>,
 }
 
 impl CopyReceipt {
     pub(crate) fn from_snapshot(snapshot: crate::fs_utils::TreeSnapshot) -> Self {
         Self {
             snapshot: snapshot.has_root().then_some(snapshot),
+            backup: None,
         }
     }
 
-    fn snapshot(&self, path: &std::path::Path) -> UndoResult<&crate::fs_utils::TreeSnapshot> {
+    pub(super) fn snapshot(
+        &self,
+        path: &std::path::Path,
+    ) -> UndoResult<&crate::fs_utils::TreeSnapshot> {
         self.snapshot.as_ref().ok_or_else(|| {
             UndoError::invalid_input(format!(
                 "Cannot verify copy target ownership; retained {}",
@@ -151,6 +156,7 @@ impl UndoManager {
     #[allow(dead_code)]
     pub fn apply(&mut self, mut action: Action) -> UndoResult<()> {
         super::engine::execute_action(&mut action, Direction::Forward)?;
+        super::engine::finalize_action(&mut action);
         self.undo_stack.push_back(action);
         self.redo_stack.clear();
         self.trim();
@@ -164,6 +170,7 @@ impl UndoManager {
             .ok_or_else(UndoError::undo_unavailable)?;
         match super::engine::execute_action(&mut action, Direction::Backward) {
             Ok(_) => {
+                super::engine::finalize_action(&mut action);
                 self.redo_stack.push_back(action);
                 Ok(())
             }
@@ -181,6 +188,7 @@ impl UndoManager {
             .ok_or_else(UndoError::redo_unavailable)?;
         match super::engine::execute_action(&mut action, Direction::Forward) {
             Ok(_) => {
+                super::engine::finalize_action(&mut action);
                 self.undo_stack.push_back(action);
                 self.trim();
                 Ok(())

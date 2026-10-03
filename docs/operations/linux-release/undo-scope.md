@@ -61,6 +61,9 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
 - undo/redo history is not persisted across app restart
 - startup cleanup removes abandoned, unlocked undo sessions from previous runs;
   backups belonging to running instances are protected by OS file locks
+- copy recovery markers also preserve abandoned sessions after failed or
+  interrupted undo/redo; those sessions require explicit manual recovery and
+  are not reconstructed into persistent undo history
 - version 1.0.1 stores sessions under `browsey/undo-sessions/`; legacy `browsey/undo/`
   backups are left intact because older processes do not provide ownership locks
 - only actions that successfully completed and were recorded are undoable
@@ -77,15 +80,33 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
   pure-copy batches preflight all targets, but late changes or I/O failures can
   still leave a partially undone operation. Inspect the reported paths before
   retrying; there is no automatic retry or transaction guarantee
-- copy redo and mixed-batch compensation currently copy from the original source
-  again, rather than restoring preserved copied bytes; changed/missing sources
-  and failures after partial undo remain explicit recovery limitations
+- copy undo first writes and verifies a complete private backup before removing
+  the unchanged target. Backup/writeback/marker failures leave the target
+  untouched; redo and mixed-batch compensation restore from the preserved bytes,
+  not from an original source that may have changed or disappeared
+- failed removal/restoration can still leave partial targets; complete backups
+  are retained and reported for manual recovery. Changed backups and occupied
+  restore targets are refused; uncertain partial trees are not overwritten or
+  adopted automatically
+- recovery markers remain until the entire action/batch completes successfully.
+  On failure/interruption, startup cleanup keeps the whole marked session.
+  Marker-clear failure is logged and conservatively retains the session
+- older builds may not recognize recovery markers; recover data before a
+  downgrade or launching an older build against abandoned-session storage
+- backups are reused across copy undo/redo cycles and may remain until session
+  cleanup. The 50-action history cap is not a byte quota; first undo needs space
+  for an additional full copy, and marked sessions can grow across restarts
+- history filesystem work runs on a blocking worker; repeated undo/redo requests
+  in the same explorer page are suppressed until both operation and refresh
+  finish. Listing refresh is attempted after errors, without retrying file work
 
 These boundaries are part of the supported behavior, not incidental
 implementation details.
 
 See the [copy undo ownership follow-up](../../audits/daily-driver/copy-undo-ownership.md)
 for disposable-fixture evidence and remaining safety work.
+The [copy recovery backup follow-up](../../audits/daily-driver/copy-recovery-backups.md)
+documents preserved bytes and manual recovery boundaries.
 
 ## Outside the Linux 1.0 Undo/Redo Claim
 

@@ -55,3 +55,13 @@ replace a copied directory at this exact boundary. Copy undo must retain these
 paths and never recursively delete new contents. Clipboard completion hooks
 also mutate completed outputs before cancellation triggers batch rollback.
 See the [copy undo ownership report](../../audits/daily-driver/copy-undo-ownership.md).
+
+Copy recovery adds `CopyUndoEntry` immediately before individual removal and
+`RecoveryMarker` before creating the protection marker. Disposable tests inject
+a failure after one child was removed, write/sync failure while preparing or
+restoring a backup, marker creation failure and target edits during backup.
+Subprocess tests verify cleanup after a recovery-session owner is killed.
+The opt-in Linux `copy_recovery_roundtrip_across_disposable_filesystems` test
+uses distinct `/tmp` and `/dev/shm` filesystems and requires explicit invocation
+with `--ignored`; it is not physical removable-media acceptance.
+See the [copy recovery report](../../audits/daily-driver/copy-recovery-backups.md).

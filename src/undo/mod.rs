@@ -1,4 +1,5 @@
 mod backup;
+mod copy_recovery;
 mod engine;
 mod error;
 mod nofollow;
@@ -32,11 +33,31 @@ pub(crate) use path_ops::{copy_entry, delete_entry_path, is_destination_exists_e
 mod tests;
 
 #[tauri::command]
-pub fn undo_action(state: tauri::State<'_, UndoState>) -> ApiResult<()> {
-    error::map_api_result(state.undo())
+pub async fn undo_action(state: tauri::State<'_, UndoState>) -> ApiResult<()> {
+    error::map_api_result(
+        execute_history_operation(state.inner().clone(), Direction::Backward).await,
+    )
 }
 
 #[tauri::command]
-pub fn redo_action(state: tauri::State<'_, UndoState>) -> ApiResult<()> {
-    error::map_api_result(state.redo())
+pub async fn redo_action(state: tauri::State<'_, UndoState>) -> ApiResult<()> {
+    error::map_api_result(
+        execute_history_operation(state.inner().clone(), Direction::Forward).await,
+    )
+}
+
+async fn execute_history_operation(state: UndoState, direction: Direction) -> UndoResult<()> {
+    // Copy recovery may write large trees. Keep blocking filesystem work off
+    // the webview/event-loop thread; the manager still serializes history.
+    tauri::async_runtime::spawn_blocking(move || match direction {
+        Direction::Backward => state.undo(),
+        Direction::Forward => state.redo(),
+    })
+    .await
+    .map_err(|error| {
+        UndoError::new(
+            UndoErrorCode::IoError,
+            format!("Undo/redo worker failed: {error}"),
+        )
+    })?
 }

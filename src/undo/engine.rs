@@ -1,5 +1,5 @@
 use super::nofollow::delete_entry_nofollow_io;
-use super::path_ops::{copy_entry_recorded, move_with_fallback};
+use super::path_ops::move_with_fallback;
 use super::{Action, Direction};
 use crate::undo::error::UndoErrorCode;
 use crate::undo::{UndoError, UndoResult};
@@ -17,7 +17,35 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 
 pub(crate) fn run_actions(actions: &mut [Action], direction: Direction) -> UndoResult<()> {
-    execute_batch(actions, direction)
+    execute_batch(actions, direction)?;
+    for action in actions {
+        finalize_action(action);
+    }
+    Ok(())
+}
+
+pub(super) fn finalize_action(action: &mut Action) {
+    match action {
+        Action::Copy { receipt, .. } => receipt.finalize_recovery(),
+        Action::Batch(actions) => actions.iter_mut().for_each(finalize_action),
+        _ => {}
+    }
+}
+
+fn recovery_paths(action: &Action, paths: &mut Vec<String>) {
+    match action {
+        Action::Copy { receipt, .. } => {
+            if let Some(path) = receipt.recovery_path() {
+                paths.push(path.display().to_string());
+            }
+        }
+        Action::Batch(actions) => {
+            for action in actions {
+                recovery_paths(action, paths);
+            }
+        }
+        _ => {}
+    }
 }
 
 pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoResult<()> {
@@ -31,11 +59,8 @@ pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoR
             move_with_fallback(src, dst)
         }
         Action::Copy { from, to, receipt } => match direction {
-            Direction::Forward => {
-                *receipt = copy_entry_recorded(from, to)?;
-                Ok(())
-            }
-            Direction::Backward => receipt.remove(to),
+            Direction::Forward => receipt.execute_forward(from, to),
+            Direction::Backward => receipt.execute_backward(to),
         },
         Action::Create { path, backup } => match direction {
             Direction::Forward => move_with_fallback(backup, path),
@@ -150,7 +175,7 @@ fn execute_batch(actions: &mut [Action], direction: Direction) -> UndoResult<()>
     {
         for (idx, action) in actions.iter().enumerate() {
             if let Action::Copy { to, receipt, .. } = action {
-                receipt.verify(to).map_err(|error| {
+                receipt.preflight_undo(to).map_err(|error| {
                     error.with_context(format!("Batch action {} preflight failed", idx + 1))
                 })?;
             }
@@ -177,6 +202,15 @@ fn execute_batch(actions: &mut [Action], direction: Direction) -> UndoResult<()>
                     ));
                 }
             }
+            let mut paths = Vec::new();
+            for action in actions.iter() {
+                recovery_paths(action, &mut paths);
+            }
+            let err = if paths.is_empty() {
+                err
+            } else {
+                err.with_context(format!("Recovery copies retained at: {}", paths.join("; ")))
+            };
             if rollback_errors.is_empty() {
                 return Err(err.with_context(format!("Batch action {} failed", idx + 1)));
             } else {
