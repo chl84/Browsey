@@ -29,6 +29,11 @@ esac
 echo "== Running release helper regression tests =="
 node --test "${SCRIPT_DIR}/../release/bump.test.mjs"
 
+if [[ $(uname -s) == Linux ]]; then
+  echo "== Running disposable performance helper regression tests =="
+  node --test "${SCRIPT_DIR}/../dev/performance-workloads.test.mjs"
+fi
+
 if [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]]; then
   echo "== Running local installer regression tests =="
   node --test "${SCRIPT_DIR}/../install/install-local.test.mjs"

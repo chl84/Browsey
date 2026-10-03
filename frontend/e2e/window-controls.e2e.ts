@@ -19,7 +19,7 @@ for (const scenario of [
       ;(window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__ = control
     }, { windowControlPolicy: scenario.policy, failCommands: scenario.failCommands, windowActions: [], calls: [] })
     await page.goto('/')
-    await expect(page.getByRole('grid', { name: 'File list' })).toBeVisible()
+    await expect(page.getByRole('group', { name: 'File list' })).toBeVisible()
     await expect.poll(async () => page.evaluate(() => {
       const control = (window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__
       return control.calls.filter(call => call.cmd === 'get_window_control_policy').length

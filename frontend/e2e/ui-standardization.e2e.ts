@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
     }
   })
   await page.goto('/')
-  await expect(page.getByRole('grid', { name: 'File list' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'File list' })).toBeVisible()
 })
 
 test.afterEach(async ({ page }) => { expect(runtimeErrors.get(page)).toEqual([]) })

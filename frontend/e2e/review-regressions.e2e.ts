@@ -152,7 +152,7 @@ test('USB format failure stays visible, is copyable, and requires reinspection',
 
 test('hotplug exposes an unmounted USB and its keyboard menu mounts it', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('grid', { name: 'File list' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'File list' })).toBeVisible()
   await page.evaluate((part) => {
     ;(window as unknown as { __BROWSEY_E2E__: Control }).__BROWSEY_E2E__.partitions = [part]
     window.dispatchEvent(new Event('browsey-e2e-volumes-changed'))

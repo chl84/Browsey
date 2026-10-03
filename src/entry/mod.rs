@@ -1,6 +1,6 @@
 use chrono::{DateTime, Local};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::{self, Metadata};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
@@ -58,9 +58,36 @@ pub fn normalize_key_for_db(path: &Path) -> String {
     }
 }
 
-static META_CACHE: OnceLock<Mutex<HashMap<String, CachedMeta>>> = OnceLock::new();
+const MAX_META_CACHE_ENTRIES: usize = 10_000;
 
-fn meta_cache() -> &'static Mutex<HashMap<String, CachedMeta>> {
+#[derive(Default)]
+struct MetadataCache {
+    entries: HashMap<String, CachedMeta>,
+    insertion_order: VecDeque<String>,
+}
+
+impl MetadataCache {
+    fn insert(&mut self, key: String, value: CachedMeta, capacity: usize) {
+        if let Some(existing) = self.entries.get_mut(&key) {
+            *existing = value;
+            return;
+        }
+        if capacity == 0 {
+            return;
+        }
+        while self.entries.len() >= capacity {
+            if let Some(oldest) = self.insertion_order.pop_front() {
+                self.entries.remove(&oldest);
+            }
+        }
+        self.insertion_order.push_back(key.clone());
+        self.entries.insert(key, value);
+    }
+}
+
+static META_CACHE: OnceLock<Mutex<MetadataCache>> = OnceLock::new();
+
+fn meta_cache() -> &'static Mutex<MetadataCache> {
     META_CACHE.get_or_init(Default::default)
 }
 
@@ -281,6 +308,11 @@ pub fn entry_times(path: &Path) -> EntryResult<EntryTimes> {
 }
 
 pub fn store_cached_meta(path: &Path, meta: &Metadata, is_link: bool) {
+    // Only remote listing/recent paths consult this cache. Local entries still
+    // get fresh metadata; do not retain or decorate them twice for no consumer.
+    if !is_network_location(path) {
+        return;
+    }
     let key = path.to_string_lossy().into_owned();
     let cached = CachedMeta {
         is_dir: meta.is_dir(),
@@ -299,7 +331,7 @@ pub fn store_cached_meta(path: &Path, meta: &Metadata, is_link: bool) {
         stored: SystemTime::now(),
     };
     if let Ok(mut map) = meta_cache().lock() {
-        map.insert(key, cached);
+        map.insert(key, cached, MAX_META_CACHE_ENTRIES);
     }
 }
 
@@ -307,11 +339,77 @@ pub fn get_cached_meta(path: &Path, ttl: Duration) -> Option<CachedMeta> {
     let key = path.to_string_lossy().into_owned();
     let now = SystemTime::now();
     let map = meta_cache().lock().ok()?;
-    let cached = map.get(&key)?;
+    let cached = map.entries.get(&key)?;
     if let Ok(age) = now.duration_since(cached.stored) {
         if age <= ttl {
             return Some(cached.clone());
         }
     }
     None
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    fn value(size: u64) -> CachedMeta {
+        CachedMeta {
+            is_dir: false,
+            is_link: false,
+            size: Some(size),
+            modified: None,
+            icon_id: 0,
+            hidden: false,
+            network: true,
+            read_only: false,
+            read_denied: false,
+            stored: SystemTime::now(),
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn local_metadata_is_not_retained_in_the_network_only_cache() {
+        let fixture = crate::performance_fixture::Fixture::new("local-cache-contract");
+        let path = fixture.0.join("local.txt");
+        fs::write(&path, b"fixture").unwrap();
+        assert!(!is_network_location(&path));
+        store_cached_meta(&path, &fs::metadata(&path).unwrap(), false);
+        assert!(!meta_cache()
+            .lock()
+            .unwrap()
+            .entries
+            .contains_key(path.to_str().unwrap()));
+        assert_eq!(
+            build_entry(&path, &fs::metadata(&path).unwrap(), false, false).size,
+            Some(7)
+        );
+    }
+
+    #[test]
+    fn metadata_cache_evicts_oldest_without_growing_its_order_queue() {
+        let mut cache = MetadataCache::default();
+        for index in 0..100 {
+            cache.insert(index.to_string(), value(index), 3);
+            assert!(cache.entries.len() <= 3);
+            assert_eq!(cache.entries.len(), cache.insertion_order.len());
+        }
+        assert!(!cache.entries.contains_key("96"));
+        assert_eq!(cache.entries["99"].size, Some(99));
+    }
+
+    #[test]
+    fn metadata_refresh_replaces_values_without_duplicate_eviction_entries() {
+        let mut cache = MetadataCache::default();
+        cache.insert("a".into(), value(1), 2);
+        cache.insert("b".into(), value(2), 2);
+        for index in 0..100 {
+            cache.insert("a".into(), value(index), 2);
+        }
+        assert_eq!(cache.insertion_order.len(), 2);
+        assert_eq!(cache.entries["a"].size, Some(99));
+        cache.insert("c".into(), value(3), 2);
+        assert!(!cache.entries.contains_key("a"));
+        assert!(cache.entries.contains_key("b") && cache.entries.contains_key("c"));
+    }
 }

@@ -35,7 +35,7 @@ test.afterEach(async ({ page }) => {
 test('opens a directory from list view with keyboard open', async ({ page }) => {
   await page.goto('/')
 
-  await expect(page.getByRole('grid', { name: 'File list' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'File list' })).toBeVisible()
 
   const rootDirRow = page.locator('.row', {
     has: page.locator('.name', { hasText: 'Documents' }),
@@ -136,7 +136,7 @@ test('formats a removable USB through the accessible format dialog', async ({ pa
 
 test('wheel assist handles short-list edge clamp and non-cancelable burst fallback', async ({ page }) => {
   await page.goto('/')
-  const rows = page.getByRole('grid', { name: 'File list' })
+  const rows = page.getByRole('group', { name: 'File list' })
   await expect(rows).toBeVisible()
 
   const result = await page.evaluate(() => {
@@ -192,7 +192,7 @@ test('paste failure is surfaced and a following paste can recover', async ({ pag
   })
 
   await page.goto('/')
-  const grid = page.getByRole('grid', { name: 'File list' })
+  const grid = page.getByRole('group', { name: 'File list' })
   await expect(grid).toBeVisible()
   await grid.click()
 
@@ -216,7 +216,7 @@ test('paste failure is surfaced and a following paste can recover', async ({ pag
 test('advanced rename modal traps Tab focus and closes on Escape', async ({ page }) => {
   await page.goto('/')
 
-  await expect(page.getByRole('grid', { name: 'File list' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'File list' })).toBeVisible()
 
   const pickTargets = async () => {
     const listRows = page.locator('.row')

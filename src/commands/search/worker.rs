@@ -134,13 +134,31 @@ pub(super) fn run_search_stream(
         }
     };
 
+    scan_search(
+        target,
+        &parsed_query,
+        simple_name_contains_needle_lc.as_deref(),
+        &star_set,
+        || cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app),
+        send,
+    );
+}
+
+fn scan_search(
+    target: std::path::PathBuf,
+    parsed_query: &super::query::Expr,
+    simple_name_contains_needle_lc: Option<&str>,
+    star_set: &HashSet<String>,
+    mut cancelled: impl FnMut() -> bool,
+    mut send: impl FnMut(Vec<FsEntry>, bool, Option<String>, Option<String>, Option<ListingFacets>),
+) {
     let mut stack = vec![target];
     let mut seen: HashSet<String> = HashSet::new();
     let mut batch: Vec<FsEntry> = Vec::with_capacity(SEARCH_BATCH_SIZE);
     let mut facets = ListingFacetBuilder::default();
 
     while let Some(dir) = stack.pop() {
-        if cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app) {
+        if cancelled() {
             return;
         }
 
@@ -161,7 +179,7 @@ pub(super) fn run_search_stream(
         };
 
         for entry in iter.flatten() {
-            if cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app) {
+            if cancelled() {
                 return;
             }
 
@@ -172,7 +190,7 @@ pub(super) fn run_search_stream(
             };
             let is_link = file_type.is_symlink();
             let is_dir = file_type.is_dir();
-            if let Some(needle_lc) = simple_name_contains_needle_lc.as_deref() {
+            if let Some(needle_lc) = simple_name_contains_needle_lc {
                 let name_lc = entry.file_name().to_string_lossy().to_lowercase();
                 if !name_lc.contains(needle_lc) {
                     if is_dir && !is_link {
@@ -192,7 +210,7 @@ pub(super) fn run_search_stream(
                     if star_set.contains(&normalize_key_for_db(&path)) {
                         item.starred = true;
                     }
-                    if matches_query(&item, &parsed_query) {
+                    if matches_query(&item, parsed_query) {
                         facets.add(&item);
                         batch.push(item);
                         if batch.len() >= SEARCH_BATCH_SIZE {
@@ -212,11 +230,14 @@ pub(super) fn run_search_stream(
         send(batch, false, None, None, None);
     }
 
-    if cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app) {
+    if cancelled() {
         return;
     }
     send(Vec::new(), true, None, None, Some(facets.finish()));
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod measurements;
 
 #[cfg(test)]
 mod tests {

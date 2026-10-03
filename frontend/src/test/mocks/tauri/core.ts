@@ -36,6 +36,7 @@ type E2eMockControl = {
   windowControlPolicy?: { minimize: boolean; maximize: boolean }
   bookmarks?: Array<{ label: string; path: string }>
   thumbnailFixture?: boolean
+  performanceFixture?: { entries: number; thumbnailDelayMs?: number }
   defaultView?: 'list' | 'grid'
   startupPath?: string | null
   thumbnailHold?: boolean
@@ -246,7 +247,9 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       }
       if (control?.thumbnailFixture) {
         const current = (args?.path as string | undefined) || ROOT
-        const entries: ExplorerEntry[] = Array.from({ length: current === ROOT ? 100 : 1 }, (_, i) => ({
+        const requested = control.performanceFixture?.entries ?? 100
+        const count = Number.isSafeInteger(requested) ? Math.max(1, Math.min(100_000, requested)) : 100
+        const entries: ExplorerEntry[] = Array.from({ length: current === ROOT ? count : 1 }, (_, i) => ({
           name: `photo-${i.toString().padStart(3, '0')}.jpg`,
           path: `${current}/photo-${i.toString().padStart(3, '0')}.jpg`,
           kind: 'file', size: 4096, modified: '2026-09-25 12:00', iconId: 12,
@@ -260,6 +263,11 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return undefined as T
     case 'get_thumbnail': {
       const id = String(args?.requestId)
+      const delay = control?.performanceFixture?.thumbnailDelayMs ?? 0
+      const deadline = Date.now() + Math.max(0, Math.min(5000, delay))
+      while (Date.now() < deadline && !cancelledThumbnails.has(id)) {
+        await new Promise(resolve => setTimeout(resolve, 20))
+      }
       while (control?.thumbnailHold && !cancelledThumbnails.has(id)) {
         await new Promise(resolve => setTimeout(resolve, 20))
       }

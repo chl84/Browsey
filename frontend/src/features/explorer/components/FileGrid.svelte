@@ -143,11 +143,14 @@
 </script>
 
 <section class="grid-container" style={`--grid-thumb-size:${gridThumbSize}px;--grid-card-width:${gridCardWidth}px;--grid-row-height:${gridRowHeight}px`}>
+  <!-- Focusable collection owns file navigation/selection; its children are buttons, not table rows. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
   <div
     class="grid"
     data-drop-background
     data-drop-scroll
-    role="grid"
+    role="group"
+    aria-label="File grid"
     tabindex="0"
     bind:this={rowsEl}
     style="user-select:none"

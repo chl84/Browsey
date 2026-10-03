@@ -31,6 +31,8 @@ mod cache_flow;
 mod cloud_source;
 mod control;
 mod error;
+#[cfg(all(test, target_os = "linux"))]
+mod measurements;
 
 use crate::db;
 use crate::errors::api_error::ApiResult;

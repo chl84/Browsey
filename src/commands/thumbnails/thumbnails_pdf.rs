@@ -75,4 +75,4 @@ pub fn render_pdf_thumbnail(
 
 #[cfg(test)]
 #[path = "thumbnails_pdf_tests.rs"]
-mod tests;
+pub(super) mod tests;

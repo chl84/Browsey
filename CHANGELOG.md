@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add opt-in, isolated 10k/100k listing/search, mixed-thumbnail, recovery and controlled-cancellation workloads with structured measurements and browser/native helpers. Avoid redundant local metadata caching and bound the existing network metadata cache to 10,000 entries without changing freshness, ownership or transfer semantics. Expose list/grid views as labelled button collections rather than malformed ARIA tables, restoring native WebKit file accessibility.
+
 - Measure representative undo-backup allocation and history retention with opt-in disposable workloads. Show filesystem-reported allocation separately from file-content size in the existing Settings diagnostics; document a conservative storage policy without introducing automatic recovery deletion or a hard quota.
 
 - Fix cloud archive extraction and other mixed copies sending `--create-empty-src-dirs` to unsupported `rclone copyto`. Select `copyto` for files and `copy --create-empty-src-dirs` for directories, explicitly preserve entirely empty directory roots as well as nested empty folders; tighten fake-rclone argument validation and cover encrypted staged ZIP round trips and the real local-only rclone CLI contract.

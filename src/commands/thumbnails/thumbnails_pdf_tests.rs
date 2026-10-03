@@ -50,7 +50,12 @@ impl Drop for Fixture {
 }
 
 // Independent, minimal PDF writer: test inputs are not produced by PDFium.
-fn plain_pdf(width: u32, height: u32, rotation: u32, font: &str) -> Vec<u8> {
+pub(in crate::commands::thumbnails) fn plain_pdf(
+    width: u32,
+    height: u32,
+    rotation: u32,
+    font: &str,
+) -> Vec<u8> {
     let content = "q 1 0 0 rg 20 20 150 150 re f Q\nBT /F1 40 Tf 20 400 Td (Browsey PDFium regression) Tj ET\n";
     let objects = [
         "<< /Type /Catalog /Pages 2 0 R >>".to_string(),

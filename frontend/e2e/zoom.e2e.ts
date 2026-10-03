@@ -28,7 +28,7 @@ test('Ctrl-wheel traverses list and five grid sizes, clamps and preserves select
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.goto('/')
-  const list = page.getByRole('grid', { name: 'File list' })
+  const list = page.getByRole('group', { name: 'File list' })
   await expect(list).toBeVisible()
   await page.locator('.row').filter({ hasText: 'photo-000' }).click()
   await zoom(page, 120)
@@ -55,7 +55,7 @@ test('Ctrl-wheel traverses list and five grid sizes, clamps and preserves select
 
 test('normal scrolling is unchanged and zoom retains the visible region', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('grid', { name: 'File list' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'File list' })).toBeVisible()
   await page.locator('.rows').evaluate(el => { el.scrollTop = 1500 })
   await zoom(page, -120)
   await expectSize(page, 64)

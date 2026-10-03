@@ -106,6 +106,8 @@
       filterActive={filterActive}
     />
   </div>
+  <!-- Focusable collection owns file navigation/selection; its children are buttons, not table rows. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
   <div
     class="rows"
     data-drop-background
@@ -118,7 +120,7 @@
     on:click={onRowsClick}
     on:contextmenu={onRowsContextMenu}
     tabindex="0"
-    role="grid"
+    role="group"
     aria-label="File list"
   >
     {#if !loading && filteredEntries.length === 0}

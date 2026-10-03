@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
     ;(window as unknown as { __BROWSEY_E2E__: unknown }).__BROWSEY_E2E__ = { calls: [] }
   })
   await page.goto('/')
-  await expect(page.getByRole('grid', { name: 'File list' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'File list' })).toBeVisible()
 })
 
 test('ordinary drag exports a file selection without changing clipboard or source', async ({ page }) => {

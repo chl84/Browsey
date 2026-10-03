@@ -59,15 +59,28 @@ Inspect current code and evidence before adding or replacing behavior.
 
 ## Priority 1 Reproducible Performance Work
 
-- [ ] Create reproducible disposable workloads for 10,000 and 100,000 entries,
+- [x] Create reproducible disposable workloads for 10,000 and 100,000 entries,
   mixed thumbnail formats, recursive search, and controlled slow storage.
   Reuse existing thumbnail and cloud performance tests before adding harnesses.
-- [ ] Measure cold/warm folder opening, first visible thumbnails, scroll/zoom,
-  search, cancellation latency, memory, and disk-cache growth. Record hardware,
-  data shape, OS, commit, and median/tail latency so results are comparable.
+  The [workload guide](../audits/daily-driver/performance-workloads.md) records
+  five opt-in production-engine workloads, mock-UI tooling and an isolated
+  native candidate observer. Runner safety and virtualization regressions pass.
+- [x] Measure generated OS-warm listing/search, mixed decoder/cache paths,
+  mock thumbnail display/scroll/zoom, controlled cancellation, native
+  fresh/repeated-profile startup, memory and owned disk-cache growth. The guide
+  records hardware/data/OS/source/binary and five-sample median/max, not p95.
+  Removing unused local caching reduced the 100k listing median 840 → 537 ms;
+  the network cache is bounded to 10k entries. Native WebKit file accessibility
+  was corrected and verified. These measurements do not prove physical cold I/O.
+- [ ] Measure real cold/slow-storage opening and first displayed native
+  thumbnails on representative local/USB/MTP/cloud inputs. Mock display and
+  fresh profiles are not substitutes; device/provider approval is required.
 - [ ] Agree measured performance budgets; investigate the slowest path first.
   Add regression thresholds only where the environment is stable enough to
   avoid flaky CI. Do not assume that more workers improve MTP/cloud performance.
+  Provisional, host-specific review targets are documented; user latency
+  requirements and cold/device budgets remain unagreed. CI uses semantic and
+  structural bounds, not workstation timing thresholds.
 
 These measurements also cover the extra output read pass introduced by local
 copy content verification. The existing warm-tmpfs result is evidence for that

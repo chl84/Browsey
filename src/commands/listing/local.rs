@@ -207,10 +207,23 @@ pub(super) fn list_dir_sync(
     let star_conn = db::open().map_err(map_db_error)?;
     let star_set: HashSet<String> = db::starred_set(&star_conn).map_err(map_db_error)?;
 
+    let (listing, pending_meta) = collect_directory(&target, &star_set, sort)?;
+    spawn_meta_refresh(app, pending_meta);
+    Ok(listing)
+}
+
+type PendingMetadata = Vec<(PathBuf, Option<fs::FileType>, bool)>;
+
+// Keep the production traversal measurable without opening a database or GUI.
+fn collect_directory(
+    target: &Path,
+    star_set: &HashSet<String>,
+    sort: Option<SortSpec>,
+) -> ListingResult<(DirListing, PendingMetadata)> {
     let mut entries = Vec::new();
     let mut pending_meta = Vec::new();
     let mut pending_seen: HashSet<PathBuf> = HashSet::new();
-    let read_dir = read_dir_resilient(&target).map_err(|e| {
+    let read_dir = read_dir_resilient(target).map_err(|e| {
         tracing::warn!(error = %e, path = %target.to_string_lossy(), "read_dir failed");
         debug_log(&format!(
             "read_dir failed: path={} error={:?}",
@@ -291,10 +304,14 @@ pub(super) fn list_dir_sync(
     }
 
     sort_entries(&mut entries, sort);
-    spawn_meta_refresh(app, pending_meta);
-
-    Ok(DirListing {
-        current: display_path(&target),
-        entries,
-    })
+    Ok((
+        DirListing {
+            current: display_path(target),
+            entries,
+        },
+        pending_meta,
+    ))
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod measurements;

@@ -29,7 +29,7 @@ const plugIn = async (page: Page) => {
 
 test('hotplug discovers a phone without mounting it; click mounts once; unplug returns Home', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('grid', { name: 'File list' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'File list' })).toBeVisible()
   await plugIn(page)
   const unmounted = page.getByRole('button', { name: 'Android phone (not mounted)', exact: true })
   await expect(unmounted).toBeVisible()

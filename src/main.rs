@@ -20,6 +20,8 @@ mod mtp;
 mod native_drag;
 mod path_guard;
 mod pdfium_runtime;
+#[cfg(all(test, target_os = "linux"))]
+mod performance_fixture;
 mod runtime_lifecycle;
 mod sorting;
 mod statusbar;

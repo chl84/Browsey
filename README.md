@@ -158,6 +158,13 @@ cargo check
 npm --prefix frontend run check
 ```
 
+Reproducible Linux performance workloads (disposable local data, opt-in):
+`bash scripts/dev/performance-workloads.sh --dry-run`, then run without
+`--dry-run` on the chosen filesystem. See the
+[workload and measurement guide](docs/audits/daily-driver/performance-workloads.md)
+for isolation, scope and the separate native-candidate check. Ordinary tests
+enforce structural bounds, not hardware-dependent timing thresholds.
+
 ## Building
 Frontend only:
 ```bash
