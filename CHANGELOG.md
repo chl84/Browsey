@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep Semgrep typed-error checks clean with explicit I/O, runtime-task and thumbnail task-error conversions, preserving existing IPC codes instead of reclassifying diagnostic text. Share local/CI scan options, make blocking findings and invalid configuration fail, and regression-test positive/negative fixtures, exclusions and exit codes without weakening rules or adding exceptions.
+
 - Correct the shared Settings RAR capability note and its filter text: compressed/password-protected RAR extraction is supported; RAR archive creation is not.
 
 - Show failed archive names and reasons in partial batch extraction, with bounded details and correct singular/plural counts. Refresh listings after extraction errors or cancellation; report refresh failures separately with F5 guidance instead of mislabelling completed extraction as failed. Do not retry file operations automatically.

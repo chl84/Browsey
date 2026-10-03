@@ -56,6 +56,16 @@ impl NetworkError {
     pub(super) fn message(&self) -> &str {
         &self.message
     }
+
+    #[cfg(not(target_os = "windows"))]
+    pub(super) fn from_io_error(
+        code: NetworkErrorCode,
+        context: &str,
+        error: std::io::Error,
+    ) -> Self {
+        // The operation determines the public code; I/O text is diagnostic only.
+        Self::new(code, format!("{context}: {error}"))
+    }
 }
 
 impl fmt::Display for NetworkError {
@@ -65,6 +75,13 @@ impl fmt::Display for NetworkError {
 }
 
 impl std::error::Error for NetworkError {}
+
+impl From<tauri::Error> for NetworkError {
+    fn from(error: tauri::Error) -> Self {
+        // Tauri's task handle returns its own typed error at the runtime boundary.
+        Self::new(NetworkErrorCode::TaskFailed, error.to_string())
+    }
+}
 
 impl DomainError for NetworkError {
     fn code_str(&self) -> &'static str {
@@ -123,5 +140,33 @@ mod tests {
         let network_error = NetworkError::from(fs_error);
         assert_eq!(network_error.code_str(), "eject_failed");
         assert_eq!(network_error.message(), "eject failed");
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn device_inspection_io_errors_keep_the_operation_code_and_context() {
+        for kind in [
+            std::io::ErrorKind::NotFound,
+            std::io::ErrorKind::PermissionDenied,
+        ] {
+            let error = NetworkError::from_io_error(
+                super::NetworkErrorCode::FormatFailed,
+                "Could not inspect the selected device",
+                std::io::Error::new(kind, "fixture I/O failure"),
+            );
+            assert_eq!(error.code_str(), "format_failed");
+            assert_eq!(
+                error.message(),
+                "Could not inspect the selected device: fixture I/O failure"
+            );
+        }
+    }
+
+    #[test]
+    fn task_errors_keep_the_task_code_without_message_classification() {
+        let error =
+            NetworkError::from(tauri::Error::Io(std::io::Error::other("permission denied")));
+        assert_eq!(error.code_str(), "task_failed");
+        assert!(error.message().contains("permission denied"));
     }
 }

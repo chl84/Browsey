@@ -55,9 +55,8 @@ pub struct OpenWithChoice {
 pub async fn list_open_with_apps(path: String) -> ApiResult<Vec<OpenWithApp>> {
     let result = tauri::async_runtime::spawn_blocking(move || list_open_with_apps_impl(path))
         .await
-        .map_err(|error| {
-            crate::errors::api_error::ApiError::new("unknown_error", error.to_string())
-        })?;
+        .map_err(OpenWithError::from)
+        .and_then(|result| result);
     map_api_result(result)
 }
 
@@ -67,7 +66,8 @@ pub async fn set_default_app(path: String, app_id: String, content_type: String)
         set_default_app_impl(&path, &app_id, &content_type)
     })
     .await
-    .map_err(|error| crate::errors::api_error::ApiError::new("unknown_error", error.to_string()))?;
+    .map_err(OpenWithError::from)
+    .and_then(|result| result);
     map_api_result(result)
 }
 
@@ -119,9 +119,8 @@ fn list_open_with_apps_impl(path: String) -> OpenWithResult<Vec<OpenWithApp>> {
 pub async fn open_with(path: String, choice: OpenWithChoice) -> ApiResult<()> {
     let result = tauri::async_runtime::spawn_blocking(move || open_with_impl(path, choice))
         .await
-        .map_err(|error| {
-            crate::errors::api_error::ApiError::new("unknown_error", error.to_string())
-        })?;
+        .map_err(OpenWithError::from)
+        .and_then(|result| result);
     map_api_result(result)
 }
 

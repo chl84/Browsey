@@ -97,6 +97,14 @@ impl fmt::Display for OpenWithError {
 
 impl std::error::Error for OpenWithError {}
 
+impl From<tauri::Error> for OpenWithError {
+    fn from(error: tauri::Error) -> Self {
+        // Keep the existing IPC code for task-join failures. Diagnostic wording
+        // must not reclassify a failed worker as a missing application/file.
+        Self::new(OpenWithErrorCode::UnknownError, error.to_string())
+    }
+}
+
 impl DomainError for OpenWithError {
     fn code_str(&self) -> &'static str {
         self.code.as_code_str()
@@ -133,6 +141,19 @@ pub(super) type OpenWithResult<T> = Result<T, OpenWithError>;
 
 pub(super) fn map_api_result<T>(result: OpenWithResult<T>) -> ApiResult<T> {
     domain::map_api_result(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn task_errors_keep_the_existing_api_code_and_diagnostic_message() {
+        let error = OpenWithError::from(tauri::Error::Io(std::io::Error::other("app not found")));
+        let mapped = map_api_result::<()>(Err(error)).unwrap_err();
+        assert_eq!(mapped.code, "unknown_error");
+        assert!(mapped.message.contains("app not found"));
+    }
 }
 
 #[cfg(target_os = "windows")]

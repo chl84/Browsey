@@ -259,7 +259,13 @@ fn lsblk_listing() -> NetworkResult<LsblkOutput> {
             "PATH,SIZE,MODEL,LABEL,FSTYPE,TYPE,RM,TRAN,PKNAME,MOUNTPOINTS",
         ])
         .output()
-        .map_err(|error| NetworkError::new(NetworkErrorCode::FormatFailed, error.to_string()))?;
+        .map_err(|error| {
+            NetworkError::from_io_error(
+                NetworkErrorCode::FormatFailed,
+                "Could not inspect the selected device",
+                error,
+            )
+        })?;
     if !output.status.success() {
         return Err(NetworkError::new(
             NetworkErrorCode::FormatFailed,
@@ -471,7 +477,7 @@ pub async fn mount_usb_volume(path: String) -> ApiResult<String> {
         })
     })
     .await
-    .map_err(|error| NetworkError::new(NetworkErrorCode::TaskFailed, error.to_string()))
+    .map_err(NetworkError::from)
     .and_then(|result| result);
     #[cfg(target_os = "windows")]
     let result = {

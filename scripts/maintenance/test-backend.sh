@@ -23,10 +23,11 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 echo "== Backend: semgrep typed-error seams (advisory) =="
 if command -v semgrep >/dev/null 2>&1; then
-  semgrep --config .semgrep/typed-errors.yml src || true
+  node --test scripts/maintenance/check-semgrep.test.mjs
+  node scripts/maintenance/check-semgrep.mjs advisory || true
 
   echo "== Backend: semgrep typed-error seams (blocking: commands-first) =="
-  semgrep --config .semgrep/typed-errors-blocking.yml src/commands
+  node scripts/maintenance/check-semgrep.mjs blocking
 else
   echo "warning: semgrep not installed; skipping semgrep advisory/blocking runs" >&2
 fi

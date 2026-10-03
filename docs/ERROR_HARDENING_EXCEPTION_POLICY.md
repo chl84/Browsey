@@ -44,3 +44,27 @@ Runtime files remain strict even when they contain inline `#[cfg(test)]` blocks.
 If a test-only seam would otherwise trip a blocking runtime guard, prefer moving
 that helper/assertion into a dedicated `tests.rs` file instead of weakening the
 runtime rule.
+
+## Running the Semgrep guards
+
+With Semgrep installed and the repository root as the working directory, run:
+
+```sh
+node --test scripts/maintenance/check-semgrep.test.mjs
+node scripts/maintenance/check-semgrep.mjs advisory
+node scripts/maintenance/check-semgrep.mjs blocking
+```
+
+Local backend maintenance and Rust Quality CI use this shared runner. Both scans
+use local rules with metrics/version checks disabled and strict configuration
+validation. The blocking scan additionally uses `--error`: findings return a
+nonzero exit code rather than merely printing a report. The advisory scan reports
+findings without making them blocking; its caller retains the existing advisory
+failure policy. Local maintenance still explicitly skips Semgrep when absent,
+whereas CI installs it before running these checks.
+
+Regression fixtures are private temporary Git projects, matching the anchored
+rule-path semantics of the real checkout. Controls verify all three forbidden
+patterns, the advisory/blocking exit distinction, clean typed conversions,
+test-file exclusions and failure on invalid configuration. Tests assert that
+production fixtures were actually scanned; zero selected files is not a pass.

@@ -265,11 +265,7 @@ pub async fn get_thumbnail(
     let guard = match request_id {
         Some(id) => match cancel.register(id) {
             Ok(guard) => Some(guard),
-            Err(error) => {
-                return map_api_result(Err(ThumbnailError::from_external_message(
-                    error.to_string(),
-                )))
-            }
+            Err(error) => return map_api_result(Err(ThumbnailError::from(error))),
         },
         None => None,
     };

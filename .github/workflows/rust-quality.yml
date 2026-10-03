@@ -24,6 +24,9 @@ on:
       - 'scripts/maintenance/check-pdfium.mjs'
       - '.github/workflows/rust-quality.yml'
       - 'scripts/maintenance/check-backend-error-hardening-guard.sh'
+      - 'scripts/maintenance/check-semgrep*.mjs'
+      - 'scripts/maintenance/test-backend.sh'
+      - '.semgrep/**'
   workflow_dispatch:
 
 jobs:
@@ -76,12 +79,15 @@ jobs:
       - name: Install Semgrep
         run: python3 -m pip install --upgrade semgrep
 
+      - name: Semgrep rule and exit-code regression tests
+        run: node --test scripts/maintenance/check-semgrep.test.mjs
+
       - name: "Semgrep Typed-Error Seams (advisory)"
         continue-on-error: true
-        run: semgrep --config .semgrep/typed-errors.yml src
+        run: node scripts/maintenance/check-semgrep.mjs advisory
 
       - name: "Semgrep Typed-Error Seams (blocking: commands-first)"
-        run: semgrep --config .semgrep/typed-errors-blocking.yml src/commands
+        run: node scripts/maintenance/check-semgrep.mjs blocking
 
       - name: Backend Error Hardening Guard
         run: bash scripts/maintenance/check-backend-error-hardening-guard.sh

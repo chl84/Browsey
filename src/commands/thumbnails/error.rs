@@ -82,6 +82,15 @@ impl fmt::Display for ThumbnailError {
 
 impl std::error::Error for ThumbnailError {}
 
+impl From<crate::tasks::TaskError> for ThumbnailError {
+    fn from(error: crate::tasks::TaskError) -> Self {
+        // Registry failures have no thumbnail-specific code. Preserve the
+        // existing unknown_error boundary, never infer cancellation/decoding
+        // from the wording of an already typed task error.
+        Self::new(ThumbnailErrorCode::UnknownError, error.message())
+    }
+}
+
 impl DomainError for ThumbnailError {
     fn code_str(&self) -> &'static str {
         self.code.as_code_str()
@@ -140,3 +149,23 @@ const THUMBNAIL_CLASSIFICATION_RULES: &[(ThumbnailErrorCode, &[&str])] = &[
         ],
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tasks::{TaskError, TaskErrorCode};
+
+    #[test]
+    fn typed_task_errors_are_not_reclassified_by_thumbnail_message_patterns() {
+        for code in [
+            TaskErrorCode::RegistryLockFailed,
+            TaskErrorCode::TaskNotFound,
+        ] {
+            let message = "cancelled: permission denied while decoding";
+            let error = ThumbnailError::from(TaskError::new(code, message));
+            let mapped = map_api_result::<()>(Err(error)).unwrap_err();
+            assert_eq!(mapped.code, "unknown_error");
+            assert_eq!(mapped.message, message);
+        }
+    }
+}

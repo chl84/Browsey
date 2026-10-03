@@ -91,6 +91,17 @@ workload only, not a cold-storage or USB/MTP performance budget.
   all 306 frontend tests; the optimized candidate's native partial-result message,
   contents and refreshed listing also pass. This fixes reporting, not archive
   atomicity, automatic retry or a new persistent operation history.
+- [x] **VD-3** Resolve the four typed-error seams found after installing Semgrep
+  and make the nominally blocking gate fail on findings. Preserve existing IPC
+  codes with explicit I/O/runtime/task conversions; do not reclassify typed task
+  errors from diagnostic text. Local and CI now reuse the
+  [scan runner](../../scripts/maintenance/check-semgrep.mjs) and four fixture
+  regressions for forbidden patterns, exit codes, exclusions and invalid config.
+  Both real scans are clean (213/147 files); all 620 backend tests and
+  warnings-denied Clippy pass, with five opt-in tests ignored. Rules and
+  allowlists are unchanged. See the
+  [guard procedure](../ERROR_HARDENING_EXCEPTION_POLICY.md#running-the-semgrep-guards).
+  This is local verification, not a new GitHub CI or installed-app signoff.
 
 ## Optional Decisions, Not Required Work
 
