@@ -38,6 +38,118 @@ fn write_file(path: &Path, content: &[u8]) {
 }
 
 #[test]
+fn undo_copy_rejects_target_edits_masked_by_later_writes() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for moving in [false, true] {
+        let root = uniq_path("undo-masked-target-edit");
+        let source = root.join("source.bin");
+        let target = root.join("target.bin");
+        let data = vec![0x42; 32 * 1024];
+        write_file(&source, &data);
+        let observed = std::rc::Rc::new(std::cell::Cell::new(false));
+        let reached = observed.clone();
+        let scope = Scope::new(move |_, dst, phase, bytes| {
+            if moving && phase == Phase::Rename {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "force fallback",
+                ));
+            }
+            if phase == Phase::Write && bytes == 8192 && !reached.replace(true) {
+                fs::OpenOptions::new()
+                    .write(true)
+                    .open(dst)?
+                    .write_all(b"foreign edit")?;
+            }
+            Ok(())
+        });
+        let result = if moving {
+            move_with_fallback(&source, &target)
+        } else {
+            copy_entry(&source, &target)
+        };
+        drop(scope);
+        let source_data = fs::read(&source);
+        let target_data = fs::read(&target).unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(observed.get());
+        assert!(
+            result.is_err(),
+            "must not adopt a foreign edit into a successful receipt"
+        );
+        assert_eq!(source_data.unwrap(), data);
+        assert!(target_data.starts_with(b"foreign edit"));
+    }
+}
+
+#[test]
+fn undo_copy_readback_faults_preserve_both_paths() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for moving in [false, true] {
+        for fault in ["read", "target", "source", "grow"] {
+            let root = uniq_path("undo-readback-fault");
+            let source = root.join("source.bin");
+            let target = root.join("target.bin");
+            let data = vec![0x44; 32 * 1024];
+            write_file(&source, &data);
+            let hook_source = source.clone();
+            let observed = std::rc::Rc::new(std::cell::Cell::new(false));
+            let reached = observed.clone();
+            let scope = Scope::new(move |_, dst, phase, bytes| {
+                if moving && phase == Phase::Rename {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Unsupported,
+                        "force fallback",
+                    ));
+                }
+                if phase == Phase::Readback && bytes == 0 && !reached.replace(true) {
+                    match fault {
+                        "read" => return Err(std::io::Error::other("injected readback failure")),
+                        "target" => fs::OpenOptions::new()
+                            .write(true)
+                            .open(dst)?
+                            .write_all(b"foreign edit")?,
+                        "source" => fs::write(&hook_source, b"changed source")?,
+                        "grow" => fs::OpenOptions::new()
+                            .append(true)
+                            .open(dst)?
+                            .write_all(&vec![0x45; 128 * 1024])?,
+                        _ => unreachable!(),
+                    }
+                }
+                Ok(())
+            });
+            let result = if moving {
+                move_with_fallback(&source, &target)
+            } else {
+                copy_entry(&source, &target)
+            };
+            drop(scope);
+            let source_data = fs::read(&source).unwrap();
+            let target_data = fs::read(&target).unwrap();
+            fs::remove_dir_all(root).unwrap();
+            assert!(result.is_err());
+            assert!(observed.get());
+            assert_eq!(
+                source_data,
+                if fault == "source" {
+                    b"changed source".to_vec()
+                } else {
+                    data.clone()
+                }
+            );
+            if fault == "target" {
+                assert!(target_data.starts_with(b"foreign edit"));
+            } else if fault == "grow" {
+                assert_eq!(target_data.len(), data.len() + 128 * 1024);
+            } else {
+                assert_eq!(target_data, data);
+            }
+        }
+    }
+}
+
+#[test]
 fn undo_copy_refuses_sources_changed_during_streaming_and_keeps_paths() {
     use crate::fs_utils::copy_test_hooks::{Phase, Scope};
     for moving in [false, true] {

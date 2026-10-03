@@ -84,8 +84,10 @@ hardware fault, removable-device or cross-distribution guarantee is made here.
 
 The killed fixtures use temporary local paths, not physical USB/MTP, and do not
 exercise a kill midway through a cross-filesystem original-backup stream. Other
-delete/trash crash windows remain separate scope. Completed-stream foreign edits
-masked before version capture and final check-to-unlink races are unchanged.
+delete/trash crash windows remain separate scope. At this checkpoint, completed
+streams could still adopt foreign edits masked before version capture. The later
+[content verification increment](copy-content-verification.md) addresses that
+case; final check-to-unlink races remain open.
 
 No installation, restart, release, dependency or version change. Broader manual
 recovery, space-budget, installed UI and real-media TODO rows remain open.

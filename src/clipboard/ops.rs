@@ -548,7 +548,7 @@ fn copy_file_tracked(
         )
     })?;
     let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
+    options.read(true).write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -571,6 +571,7 @@ fn copy_file_tracked(
     let mut writer = crate::fs_utils::copy_test_hooks::TestFile::new(writer, src, dest);
     let result: ClipboardResult<u64> = (|| {
         let mut buf = vec![0u8; 512 * 1024];
+        let mut digest = blake3::Hasher::new();
         let mut done: u64 = 0;
         let total = total_hint
             .or_else(|| progress_event.and_then(|_| fs::metadata(src).ok().map(|m| m.len())));
@@ -598,6 +599,7 @@ fn copy_file_tracked(
             writer.write_all(&buf[..n]).map_err(|e| {
                 ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Write failed", e)
             })?;
+            digest.update(&buf[..n]);
             done = done.saturating_add(n as u64);
             if progress_event.is_some() {
                 let elapsed = last_time.elapsed();
@@ -670,6 +672,43 @@ fn copy_file_tracked(
                     error,
                 )
             })?;
+        emit_copy_progress(
+            app,
+            progress_event,
+            CopyProgressPayload {
+                bytes: done,
+                total: total.unwrap_or(done),
+                finished: false,
+            },
+        );
+        crate::fs_utils::verify_copy_content(
+            &writer,
+            dest,
+            &completed_state,
+            done,
+            &digest.finalize(),
+            || {
+                if transfer_cancelled(cancel, app) {
+                    Err(std::io::Error::new(
+                        ErrorKind::Interrupted,
+                        "Copy verification cancelled",
+                    ))
+                } else {
+                    Ok(())
+                }
+            },
+        )
+        .map_err(|error| {
+            if error.kind() == ErrorKind::Interrupted && transfer_cancelled(cancel, app) {
+                ClipboardError::cancelled()
+            } else {
+                ClipboardError::from_io_error(
+                    ClipboardErrorCode::IoError,
+                    "Copied content verification failed; source retained",
+                    error,
+                )
+            }
+        })?;
         source_state
             .verify_copied_file(&reader, src, done)
             .map_err(|error| {

@@ -371,6 +371,214 @@ fn overwrite_protection_spans_whole_paste_and_replays_with_history() {
 }
 
 #[test]
+fn local_copy_rejects_target_edits_masked_by_later_writes() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for moving in [false, true] {
+        let root = uniq_path("copy-masked-target-edit");
+        let source = root.join("source.bin");
+        let target = root.join("target.bin");
+        let data = vec![0x41; 32 * 1024];
+        write_file(&source, &data);
+        let observed = std::rc::Rc::new(std::cell::Cell::new(false));
+        let reached = observed.clone();
+        let scope = Scope::new(move |_, dst, phase, bytes| {
+            if moving && phase == Phase::Rename {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "force fallback",
+                ));
+            }
+            if phase == Phase::Write && bytes == 8192 && !reached.replace(true) {
+                fs::OpenOptions::new()
+                    .write(true)
+                    .open(dst)?
+                    .write_all(b"foreign edit")?;
+            }
+            Ok(())
+        });
+        let result = if moving {
+            move_entry(&source, &target, None, None, None)
+        } else {
+            copy_entry(&source, &target, None, None, None).map(|_| ())
+        };
+        drop(scope);
+        let source_data = fs::read(&source);
+        let target_data = fs::read(&target).unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(observed.get());
+        assert!(
+            result.is_err(),
+            "must not adopt a foreign edit into a successful receipt"
+        );
+        assert_eq!(
+            source_data.unwrap(),
+            data,
+            "unsafe output must not justify source removal"
+        );
+        assert!(target_data.starts_with(b"foreign edit"));
+    }
+}
+
+#[test]
+fn local_copy_readback_faults_and_cancellation_preserve_both_paths() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for moving in [false, true] {
+        for fault in ["read", "cancel", "target", "source", "grow"] {
+            let root = uniq_path("copy-readback-fault");
+            let source = root.join("source.bin");
+            let target = root.join("target.bin");
+            let data = vec![0x43; 32 * 1024];
+            write_file(&source, &data);
+            let cancel = std::sync::Arc::new(AtomicBool::new(false));
+            let hook_cancel = cancel.clone();
+            let hook_source = source.clone();
+            let observed = std::rc::Rc::new(std::cell::Cell::new(false));
+            let reached = observed.clone();
+            let scope = Scope::new(move |_, dst, phase, bytes| {
+                if moving && phase == Phase::Rename {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Unsupported,
+                        "force fallback",
+                    ));
+                }
+                if phase == Phase::Readback && bytes == 0 && !reached.replace(true) {
+                    match fault {
+                        "read" => return Err(std::io::Error::other("injected readback failure")),
+                        "cancel" => hook_cancel.store(true, Ordering::Relaxed),
+                        "target" => fs::OpenOptions::new()
+                            .write(true)
+                            .open(dst)?
+                            .write_all(b"foreign edit")?,
+                        "source" => fs::write(&hook_source, b"changed source")?,
+                        "grow" => fs::OpenOptions::new()
+                            .append(true)
+                            .open(dst)?
+                            .write_all(&vec![0x44; 128 * 1024])?,
+                        _ => unreachable!(),
+                    }
+                }
+                Ok(())
+            });
+            let result = if moving {
+                move_entry(&source, &target, None, None, Some(&cancel))
+            } else {
+                copy_entry(&source, &target, None, None, Some(&cancel)).map(|_| ())
+            };
+            drop(scope);
+            let source_data = fs::read(&source).unwrap();
+            let target_data = fs::read(&target).unwrap();
+            fs::remove_dir_all(root).unwrap();
+            let error = result.expect_err("uncertain verification must refuse completion");
+            assert!(observed.get());
+            assert!(error.to_string().contains("no cleanup attempted"));
+            assert_eq!(
+                source_data,
+                if fault == "source" {
+                    b"changed source".to_vec()
+                } else {
+                    data.clone()
+                }
+            );
+            if fault == "cancel" {
+                assert_eq!(error.code(), ClipboardErrorCode::Cancelled);
+            }
+            if fault == "target" {
+                assert!(target_data.starts_with(b"foreign edit"));
+            } else if fault == "grow" {
+                assert_eq!(target_data.len(), data.len() + 128 * 1024);
+            } else {
+                assert_eq!(target_data, data);
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "opt-in warm-cache copy cost measurement; run with --release --ignored"]
+fn copy_readback_warm_cache_cost() {
+    use std::io::Read;
+    use std::time::Instant;
+    println!("copy-cost optimized profile: {}", !cfg!(debug_assertions));
+    let root = uniq_path("copy-readback-cost");
+    fs::create_dir(&root).unwrap();
+    let source = root.join("source.bin");
+    let chunk = vec![0x53; 1024 * 1024];
+    let mut input = fs::File::create(&source).unwrap();
+    let mut expected = blake3::Hasher::new();
+    for _ in 0..64 {
+        input.write_all(&chunk).unwrap();
+        expected.update(&chunk);
+    }
+    input.sync_all().unwrap();
+    drop(input);
+    let expected = expected.finalize();
+    for variant in [
+        "native-reference",
+        "manual-reference",
+        "verified-clipboard",
+        "verified-undo",
+    ] {
+        let mut samples = Vec::new();
+        for sample in 0..5 {
+            let target = root.join(format!("{variant}-{sample}.bin"));
+            let started = Instant::now();
+            match variant {
+                "verified-clipboard" => {
+                    assert_eq!(
+                        copy_file_best_effort(&source, &target, None, None, None, None).unwrap(),
+                        64 * 1024 * 1024
+                    );
+                }
+                "verified-undo" => crate::undo::copy_entry(&source, &target).unwrap(),
+                _ => {
+                    let mut reader = fs::File::open(&source).unwrap();
+                    let mut writer = fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(&target)
+                        .unwrap();
+                    if variant == "native-reference" {
+                        std::io::copy(&mut reader, &mut writer).unwrap();
+                    } else {
+                        let mut buf = vec![0_u8; 512 * 1024];
+                        loop {
+                            let n = reader.read(&mut buf).unwrap();
+                            if n == 0 {
+                                break;
+                            }
+                            writer.write_all(&buf[..n]).unwrap();
+                        }
+                    }
+                    writer.sync_all().unwrap();
+                }
+            }
+            samples.push(started.elapsed());
+            // Validate every result outside the measured interval.
+            let mut result = fs::File::open(&target).unwrap();
+            let mut hash = blake3::Hasher::new();
+            let mut buf = vec![0_u8; 256 * 1024];
+            loop {
+                let n = result.read(&mut buf).unwrap();
+                if n == 0 {
+                    break;
+                }
+                hash.update(&buf[..n]);
+            }
+            assert_eq!(hash.finalize(), expected);
+            drop(result);
+            fs::remove_file(target).unwrap();
+        }
+        samples.sort();
+        println!(
+            "{variant}: 64 MiB, five warm-cache samples, median={:.2} ms, max={:.2} ms",
+            samples[2].as_secs_f64() * 1000.0,
+            samples[4].as_secs_f64() * 1000.0
+        );
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn failed_streaming_copy_preserves_in_place_target_edits() {
     use crate::fs_utils::copy_test_hooks::{Phase, Scope};
     for moving in [false, true] {
@@ -872,7 +1080,8 @@ fn local_move_cancelled_after_sync_retains_both_complete_copies() {
     fs::remove_dir_all(root).unwrap();
     let error = result.unwrap_err();
     assert_eq!(error.code(), ClipboardErrorCode::Cancelled);
-    assert!(error.to_string().contains("Copy retained"));
+    assert!(error.to_string().contains("retained"));
+    assert!(error.to_string().contains("no cleanup attempted"));
     assert_eq!(source_data, data);
     assert_eq!(target_data, data);
 }

@@ -103,3 +103,22 @@ Whole-paste tests keep all markers through completed peers and clear them only
 after success; normal overwrite undo/redo reuses the same protection lifecycle.
 These are process-interruption fixtures, not power-loss or installed-device tests.
 See the [early overwrite report](../../audits/daily-driver/early-overwrite-protection.md).
+
+Local content verification adds `Readback`, passing the output path as both
+hook paths and the number of verified bytes. Fixtures edit earlier output bytes
+at `Write` and allow later writes to mask metadata; both copy engines must reject
+these mixed outputs before fallback source deletion. Readback faults, cancellation,
+source/target edits and growing outputs must retain affected paths. Growth checks
+read at most the copied length plus one byte, not an unbounded changing file.
+Shared tests cover empty/multi-chunk content and digests of actual short writes.
+
+The opt-in `copy_readback_warm_cache_cost` test compares unverified native/manual
+references with verified clipboard/undo copies. Run it in an optimized test build:
+
+```bash
+cargo test --release --locked --all-features copy_readback_warm_cache_cost -- --ignored --nocapture
+```
+
+It uses disposable 64 MiB files, five warm-cache samples per variant and validates
+each output outside timing. It is not a cold-disk/device benchmark or a CI budget.
+See the [content verification report](../../audits/daily-driver/copy-content-verification.md).

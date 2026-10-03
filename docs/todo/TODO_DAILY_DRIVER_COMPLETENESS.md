@@ -80,6 +80,10 @@ The [early overwrite protection follow-up](../audits/daily-driver/early-overwrit
 records protection before original destinations move, killed-process cleanup,
 marker failures and protection lifecycle through paste/merge and history replay.
 
+The [content verification follow-up](../audits/daily-driver/copy-content-verification.md)
+records refused masked output edits, bounded open-handle readback, cancellation
+and verification errors, with explicit extra-I/O cost and warm-cache measurements.
+
 ## Priority 0 Define Scope and Verify File Safety
 
 Complete this phase first. Reliability takes precedence over feature breadth.
@@ -169,6 +173,8 @@ broader operation/platform acceptance rows above are complete.
   report blocked restoration and verify marked-session retention across cleanup.
 - [x] Protect original destinations before moving them into overwrite backups;
   verify killed copy/move and merge processes, marker failures and history lifecycle.
+- [x] Verify manual local-copy contents against written streams before completion;
+  refuse masked output edits and retain paths on readback errors or cancellation.
 - [ ] Validate manual recovery UX, retention/space budgets and installed-build
   behavior for marked sessions. Preserved backups do not imply persistent undo,
   automatic repair/resume or atomic batches.

@@ -5,12 +5,14 @@ use tracing::debug;
 #[cfg(target_os = "windows")]
 use std::path::Prefix;
 
+mod copy_content;
 #[cfg(test)]
 pub(crate) mod copy_test_hooks;
 mod error;
 mod file_identity;
 mod file_state;
 
+pub(crate) use copy_content::{verify_copy_content, DigestWriter};
 pub(crate) use file_identity::FileIdentity;
 pub(crate) use file_state::{FileState, TreeSnapshot};
 

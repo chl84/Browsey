@@ -21,6 +21,7 @@ pub(crate) enum Phase {
     RecoveryMarkerSync,
     OverwritePrepared,
     OverwriteBackedUp,
+    Readback,
 }
 
 type Hook = Box<dyn FnMut(&Path, &Path, Phase, u64) -> io::Result<()>>;

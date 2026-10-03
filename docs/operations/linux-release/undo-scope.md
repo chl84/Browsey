@@ -102,6 +102,14 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
 - manual local copies validate source versions/copy lengths after streaming and
   pre-sync output versions after writeback. Uncertain finalized output is kept
   for inspection instead of treated as a successful undoable copy
+- both manual local copy engines compare BLAKE3 digests of the written stream
+  with a bounded readback of the still-open output. Versions are rechecked before
+  and after reading; mismatches/read errors refuse completion and source deletion.
+  Readback needs a readable/seekable output and adds one target read pass, using
+  a 256 KiB buffer; it is not a second source read or a persistent receipt hash
+- clipboard readback checks cancellation between chunks; history replay still
+  has no new cancellation API. Verification reads do not inflate transferred
+  byte totals and no successful completion event precedes verification
 - failed/aborted local file streams retain their current uncertain output, even
   when its inode still matches: another writer's changes can be masked by our
   writes. Cancellation detected before opening a target creates no output.
@@ -127,9 +135,11 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
 - opaque output writers (including GIO-owned copies) cannot justify fallback
   source deletion without ownership receipts. Such a move may copy successfully
   but then refuse source removal; inspect both paths rather than repeat the move
-- these checks do not close final check-to-unlink races or make copy/move atomic;
-  active writes can still mask earlier edits before version capture. Metadata
-  snapshots are not hashes, locks or persistent recovery guarantees
+- these checks do not close after-readback/final check-to-unlink races or make
+  copy/move atomic. Source snapshots and later removal receipts remain metadata
+  checks, not stored content hashes or locks. Readback compares the bytes it reads
+  to the written stream; it does not freeze concurrent writers or guarantee a
+  consistent point-in-time source/directory snapshot or power-loss recovery
 - Settings > Data inspects undo-session storage without changing files, locks
   or markers. It shows measured file-content lengths, session/marker counts,
   a copyable directory path and manual recovery guidance. Incomplete scans are

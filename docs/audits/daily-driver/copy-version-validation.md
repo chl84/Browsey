@@ -66,7 +66,8 @@ are outside this manual-copy increment.
   masked by subsequent writes and adopted into that snapshot. Mid-write failure
   cleanup at this checkpoint still had its identity-only boundary. The later
   [active-file failure increment](active-copy-failure-retention.md) removes that
-  unsafe unlink; successful active-write adoption remains open.
+  unsafe unlink. The later [content verification increment](copy-content-verification.md)
+  checks successful streams against output contents; post-check races remain open.
 - At the first checkpoint, fallback source deletion still needed destination
   receipt rechecking and per-entry checks. The follow-up below adds these checks;
   final check-to-unlink races still require a separate native design review.

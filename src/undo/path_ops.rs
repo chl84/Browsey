@@ -64,7 +64,7 @@ pub(super) fn copy_file_noreplace_with_sync(
     let source_state = FileState::from_file(&src_file)
         .map_err(|error| UndoError::from_io_error("Snapshot open copy source", error))?;
     let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
+    options.read(true).write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -86,7 +86,8 @@ pub(super) fn copy_file_noreplace_with_sync(
     let mut src_file = crate::fs_utils::copy_test_hooks::TestFile::new(src_file, src, dest);
     #[cfg(test)]
     let mut dst_file = crate::fs_utils::copy_test_hooks::TestFile::new(dst_file, src, dest);
-    let copied = io::copy(&mut src_file, &mut dst_file).map_err(|e| {
+    let mut writer = crate::fs_utils::DigestWriter::new(&mut dst_file);
+    let copied = io::copy(&mut src_file, &mut writer).map_err(|e| {
         UndoError::from_io_error(
             format!(
                 "Failed to copy file {} -> {}; source retained, partial destination may remain",
@@ -96,6 +97,8 @@ pub(super) fn copy_file_noreplace_with_sync(
             e,
         )
     })?;
+    let digest = writer.digest();
+    drop(writer);
     let perms = src_file
         .metadata()
         .map_err(|e| {
@@ -158,6 +161,10 @@ pub(super) fn copy_file_noreplace_with_sync(
     completed_state.verify_copied_file(&dst_file, dest, copied).map_err(|error| {
         UndoError::from_io_error("Copied target changed during finalization; source retained, destination retained for inspection", error)
     })?;
+    crate::fs_utils::verify_copy_content(&dst_file, dest, &completed_state, copied, &digest, || Ok(()))
+        .map_err(|error| UndoError::from_io_error(
+            "Copied content verification failed; source retained, destination retained for inspection", error
+        ))?;
     source_state.verify_copied_file(&src_file, src, copied).map_err(|error| {
         UndoError::from_io_error("Source changed during copy; source not removed, destination retained for inspection", error)
     })?;
