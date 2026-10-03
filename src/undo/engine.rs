@@ -30,7 +30,7 @@ pub(crate) fn run_rollback_actions(actions: &mut [Action]) -> UndoResult<()> {
     let mut backups = Vec::new();
     fn collect(action: &Action, backups: &mut Vec<(std::path::PathBuf, std::path::PathBuf)>) {
         match action {
-            Action::Delete { path, backup } => backups.push((path.clone(), backup.clone())),
+            Action::Delete { path, backup, .. } => backups.push((path.clone(), backup.clone())),
             Action::Batch(actions) => actions.iter().for_each(|action| collect(action, backups)),
             _ => {}
         }
@@ -46,13 +46,42 @@ pub(crate) fn run_rollback_actions(actions: &mut [Action]) -> UndoResult<()> {
     let mut markers = Vec::new();
     // Protect all original destinations before attempting any rollback action.
     // On marker failure, do not start a partially protected rollback.
-    for (destination, backup) in &backups {
-        markers.push(super::backup::RecoveryMarker::create(backup, destination).map_err(|error| {
-            error.with_context(format!(
-                "Rollback not attempted: could not protect backup at {}; all original backups needing inspection: {backup_paths}; recover manually before closing Browsey or running startup cleanup",
-                backup.display(),
-            ))
-        })?);
+    fn protect(
+        action: &mut Action,
+        markers: &mut Vec<super::backup::RecoveryMarker>,
+    ) -> UndoResult<()> {
+        match action {
+            Action::Delete {
+                path,
+                backup,
+                protection,
+            } => {
+                let result = if let Some(protection) = protection {
+                    protection.ensure(backup, path)
+                } else {
+                    super::backup::RecoveryMarker::create(backup, path)
+                        .map(|marker| markers.push(marker))
+                };
+                result.map_err(|error| {
+                    error.with_context(format!(
+                        "Could not protect original backup at {}",
+                        backup.display()
+                    ))
+                })
+            }
+            Action::Batch(actions) => {
+                for action in actions {
+                    protect(action, markers)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+    for action in actions.iter_mut() {
+        protect(action, &mut markers).map_err(|error| error.with_context(format!(
+            "Rollback not attempted; all original backups needing inspection: {backup_paths}; recover manually before closing Browsey or running startup cleanup"
+        )))?;
     }
     if let Err(error) = run_actions(actions, Direction::Backward) {
         return Err(if backups.is_empty() {
@@ -71,9 +100,13 @@ pub(crate) fn run_rollback_actions(actions: &mut [Action]) -> UndoResult<()> {
     Ok(())
 }
 
-pub(super) fn finalize_action(action: &mut Action) {
+pub(crate) fn finalize_action(action: &mut Action) {
     match action {
         Action::Copy { receipt, .. } => receipt.finalize_recovery(),
+        Action::Delete {
+            protection: Some(protection),
+            ..
+        } => protection.finalize(),
         Action::Batch(actions) => actions.iter_mut().for_each(finalize_action),
         _ => {}
     }
@@ -85,6 +118,13 @@ fn recovery_paths(action: &Action, paths: &mut Vec<String>) {
             if let Some(path) = receipt.recovery_path() {
                 paths.push(path.display().to_string());
             }
+        }
+        Action::Delete {
+            backup,
+            protection: Some(protection),
+            ..
+        } if protection.is_active() => {
+            paths.push(backup.display().to_string());
         }
         Action::Batch(actions) => {
             for action in actions {
@@ -124,21 +164,30 @@ pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoR
                 move_with_fallback(path, backup)
             }
         },
-        Action::Delete { path, backup } => match direction {
-            Direction::Forward => {
-                let parent = backup
-                    .parent()
-                    .ok_or_else(|| UndoError::invalid_input("Invalid backup path"))?;
-                fs::create_dir_all(parent).map_err(|e| {
-                    UndoError::from_io_error(
-                        format!("Failed to create backup dir {}", parent.display()),
-                        e,
-                    )
-                })?;
-                move_with_fallback(path, backup)
+        Action::Delete {
+            path,
+            backup,
+            protection,
+        } => {
+            if let Some(protection) = protection {
+                protection.ensure(backup, path)?;
             }
-            Direction::Backward => move_with_fallback(backup, path),
-        },
+            match direction {
+                Direction::Forward => {
+                    let parent = backup
+                        .parent()
+                        .ok_or_else(|| UndoError::invalid_input("Invalid backup path"))?;
+                    fs::create_dir_all(parent).map_err(|e| {
+                        UndoError::from_io_error(
+                            format!("Failed to create backup dir {}", parent.display()),
+                            e,
+                        )
+                    })?;
+                    move_with_fallback(path, backup)
+                }
+                Direction::Backward => move_with_fallback(backup, path),
+            }
+        }
         #[cfg(target_os = "windows")]
         Action::SetHidden { path, hidden } => {
             let next = match direction {

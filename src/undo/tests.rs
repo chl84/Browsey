@@ -455,6 +455,7 @@ fn delete_and_restore() {
     mgr.apply(Action::Delete {
         path: path.clone(),
         backup: backup.clone(),
+        protection: None,
     })
     .unwrap();
     assert!(!path.exists());
@@ -1446,6 +1447,7 @@ fn undo_failure_restores_stack() {
     mgr.apply(Action::Delete {
         path: path.clone(),
         backup: backup.clone(),
+        protection: None,
     })
     .unwrap();
     assert!(!path.exists());

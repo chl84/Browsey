@@ -42,7 +42,9 @@ cleanup. A partially written marker is still conservatively recognized by
 cleanup; an error before marker creation is not a retention guarantee. Protection
 begins at failure rollback, not at the initial overwrite backup: a crash before
 rollback begins remains an open boundary. Markers are diagnostic paths, not
-persistent undo history or a restore plan.
+persistent undo history or a restore plan. This was the boundary at `697116d`;
+the later [early overwrite increment](early-overwrite-protection.md) moves
+protection before original destinations are moved.
 
 ## Verified Checkpoint
 

@@ -231,10 +231,41 @@ pub(super) fn backup_existing_target(
             e,
         )
     })?;
-    move_with_fallback(target, &backup).map_err(ClipboardError::from)?;
+    let mut protection = crate::undo::BackupProtection::create(&backup, target)
+        .map_err(|error| ClipboardError::from(error).with_context(format!(
+            "Overwrite not started; original target not moved. Could not protect backup candidate at {}", backup.display()
+        )))?;
+    let result = (|| {
+        #[cfg(test)]
+        crate::fs_utils::copy_test_hooks::hit(
+            target,
+            &backup,
+            crate::fs_utils::copy_test_hooks::Phase::OverwritePrepared,
+            0,
+        )
+        .map_err(|error| {
+            crate::undo::UndoError::from_io_error("Prepare overwrite backup", error)
+        })?;
+        protection.ensure(&backup, target)?;
+        move_with_fallback(target, &backup)?;
+        #[cfg(test)]
+        crate::fs_utils::copy_test_hooks::hit(
+            target,
+            &backup,
+            crate::fs_utils::copy_test_hooks::Phase::OverwriteBackedUp,
+            0,
+        )
+        .map_err(|error| crate::undo::UndoError::from_io_error("Finish overwrite backup", error))?;
+        Ok::<_, crate::undo::UndoError>(())
+    })();
+    result.map_err(|error| ClipboardError::from(error).with_context(format!(
+        "Overwrite backup incomplete; protected candidate retained at {}; inspect original target {} before retrying",
+        backup.display(), target.display()
+    )))?;
     actions.push(Action::Delete {
         path: target.to_path_buf(),
         backup,
+        protection: Some(protection),
     });
     Ok(())
 }
@@ -405,6 +436,7 @@ pub(super) fn merge_dir(
         actions.push(Action::Delete {
             path: src.to_path_buf(),
             backup,
+            protection: None,
         });
     }
     Ok(())

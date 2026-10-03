@@ -89,6 +89,7 @@ fn rollback_prepared_trash(prepared: &[PreparedTrashMove]) {
         .map(|p| Action::Delete {
             path: p.src.clone(),
             backup: p.backup.clone(),
+            protection: None,
         })
         .collect();
     let _ = run_actions(&mut rollback, Direction::Backward);
@@ -216,6 +217,7 @@ where
             actions.push(Action::Delete {
                 path: prep.src,
                 backup: prep.backup,
+                protection: None,
             });
         }
     }
@@ -368,7 +370,11 @@ pub(super) fn move_single_to_trash_with_backend<B: TrashBackend>(
                 to: trash_item_path(&item),
             })
         }
-        None => Ok(Action::Delete { path: src, backup }),
+        None => Ok(Action::Delete {
+            path: src,
+            backup,
+            protection: None,
+        }),
     }
 }
 

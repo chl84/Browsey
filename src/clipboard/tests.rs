@@ -55,6 +55,322 @@ fn write_file(path: &Path, content: &[u8]) {
 }
 
 #[test]
+fn overwrite_interruption_child() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    use std::io::Read;
+    let Some(root) = env::var_os("BROWSEY_TEST_OVERWRITE_INTERRUPTION_ROOT").map(PathBuf::from)
+    else {
+        return;
+    };
+    let nested = env::var_os("BROWSEY_TEST_OVERWRITE_NESTED").is_some();
+    let moving = env::var_os("BROWSEY_TEST_OVERWRITE_MOVING").is_some();
+    let boundary = env::var("BROWSEY_TEST_OVERWRITE_BOUNDARY").unwrap_or_else(|_| "stream".into());
+    let relative = if nested {
+        "folder/file.bin"
+    } else {
+        "file.bin"
+    };
+    let source = root.join("source").join(relative);
+    let target = root.join("target").join(relative);
+    let paused_target = target.clone();
+    let _scope = Scope::new(move |src, dst, phase, bytes| {
+        if moving && phase == Phase::Rename {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "force copy fallback",
+            ));
+        }
+        let pause = match boundary.as_str() {
+            "prepared" => src == paused_target && phase == Phase::OverwritePrepared,
+            "backed-up" => src == paused_target && phase == Phase::OverwriteBackedUp,
+            _ => dst == paused_target && phase == Phase::Write && bytes == 0,
+        };
+        if pause {
+            println!("BROWSEY_OVERWRITE_PAUSED");
+            std::io::stdout().flush()?;
+            std::io::stdin().read_exact(&mut [0_u8])?;
+        }
+        Ok(())
+    });
+    let entry = if nested {
+        source.parent().unwrap()
+    } else {
+        &source
+    };
+    set_clipboard_impl(
+        vec![entry.to_string_lossy().into()],
+        if moving { "cut" } else { "copy" }.into(),
+    )
+    .unwrap();
+    paste_clipboard_core(
+        None,
+        root.join("target").to_string_lossy().into(),
+        Some("overwrite".into()),
+        UndoState::default().clone_inner(),
+        CancelState::default(),
+        None,
+    )
+    .unwrap();
+}
+
+#[test]
+fn killed_overwrite_keeps_original_backup_before_failure_rollback() {
+    use std::io::{BufRead, BufReader};
+    use std::process::{Command, Stdio};
+    for moving in [false, true] {
+        for nested in [false, true] {
+            for boundary in ["prepared", "backed-up", "stream"] {
+                let root = uniq_path("overwrite-killed");
+                let relative = if nested {
+                    "folder/file.bin"
+                } else {
+                    "file.bin"
+                };
+                let source = root.join("source").join(relative);
+                let target = root.join("target").join(relative);
+                let undo_root = root.join("undo");
+                write_file(&source, b"replacement document");
+                write_file(&target, b"original document");
+                let mut command = Command::new(env::current_exe().unwrap());
+                command
+                    .args([
+                        "--exact",
+                        "clipboard::tests::overwrite_interruption_child",
+                        "--nocapture",
+                    ])
+                    .env("BROWSEY_TEST_OVERWRITE_INTERRUPTION_ROOT", &root)
+                    .env("BROWSEY_TEST_OVERWRITE_BOUNDARY", boundary)
+                    .env("BROWSEY_UNDO_DIR", &undo_root)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped());
+                if nested {
+                    command.env("BROWSEY_TEST_OVERWRITE_NESTED", "1");
+                }
+                if moving {
+                    command.env("BROWSEY_TEST_OVERWRITE_MOVING", "1");
+                }
+                let mut child = command.spawn().unwrap();
+                let stdout = child.stdout.take().unwrap();
+                let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+                let reader = std::thread::spawn(move || {
+                    let ready = BufReader::new(stdout)
+                        .lines()
+                        .map_while(Result::ok)
+                        .any(|line| line.contains("BROWSEY_OVERWRITE_PAUSED"));
+                    let _ = ready_tx.send(ready);
+                });
+                let ready = ready_rx
+                    .recv_timeout(Duration::from_secs(10))
+                    .unwrap_or(false);
+                let _ = child.kill();
+                let status = child.wait().unwrap();
+                reader.join().unwrap();
+                assert!(ready, "child must pause before any error rollback");
+                assert!(!status.success());
+                let cleanup = Command::new(env::current_exe().unwrap())
+                    .args(["--exact", "undo::backup::tests::cleanup_child"])
+                    .env("BROWSEY_TEST_CLEANUP_ROOT", &undo_root)
+                    .output()
+                    .unwrap();
+                assert!(cleanup.status.success());
+                let backups: Vec<_> = fs::read_dir(&undo_root)
+                    .unwrap()
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.path().is_dir())
+                    .flat_map(|entry| fs::read_dir(entry.path()).unwrap().filter_map(Result::ok))
+                    .filter(|entry| entry.path().is_dir())
+                    .map(|entry| entry.path().join("file.bin"))
+                    .filter(|path| path.is_file())
+                    .collect();
+                let marker_count = fs::read_dir(&undo_root)
+                    .unwrap()
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.path().is_dir())
+                    .flat_map(|entry| fs::read_dir(entry.path()).unwrap().filter_map(Result::ok))
+                    .filter(|entry| {
+                        entry
+                            .file_name()
+                            .to_string_lossy()
+                            .ends_with(".recovery-required")
+                    })
+                    .count();
+                let source_data = fs::read(&source).unwrap();
+                let original_data = backups.first().map(fs::read);
+                let target_data = fs::read(&target);
+                fs::remove_dir_all(root).unwrap();
+                assert_eq!(source_data, b"replacement document");
+                assert_eq!(
+                    marker_count, 1,
+                    "keep protection even before the original moves"
+                );
+                if boundary == "prepared" {
+                    assert!(backups.is_empty(), "original has not moved yet");
+                    assert_eq!(target_data.unwrap(), b"original document");
+                    continue;
+                }
+                assert_eq!(
+                    backups.len(),
+                    1,
+                    "original must survive cleanup without rollback"
+                );
+                assert_eq!(original_data.unwrap().unwrap(), b"original document");
+                if boundary == "backed-up" {
+                    assert_eq!(
+                        target_data.unwrap_err().kind(),
+                        std::io::ErrorKind::NotFound
+                    );
+                } else {
+                    assert!(target_data.unwrap().is_empty(), "no new data written yet");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn overwrite_protection_failures_leave_the_original_untouched() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    for failure in ["create", "sync", "replace", "collision"] {
+        let root = uniq_path("overwrite-protection-failure");
+        let target = root.join("original.bin");
+        write_file(&target, b"original document");
+        let candidate = std::rc::Rc::new(std::cell::RefCell::new(None::<PathBuf>));
+        let observed = candidate.clone();
+        let scope = Scope::new(move |_, backup, phase, _| {
+            if phase == Phase::RecoveryMarker {
+                *observed.borrow_mut() = Some(backup.into());
+            }
+            if (failure == "create" && phase == Phase::RecoveryMarker)
+                || (failure == "sync" && phase == Phase::RecoveryMarkerSync)
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::StorageFull,
+                    "injected protection failure",
+                ));
+            }
+            if phase == Phase::OverwritePrepared {
+                if failure == "collision" {
+                    fs::write(backup, b"competing backup")?;
+                }
+                if failure == "replace" {
+                    let marker = overwrite_marker_path(backup);
+                    fs::rename(&marker, marker.with_extension("parked"))?;
+                    fs::write(marker, b"foreign marker")?;
+                }
+            }
+            Ok(())
+        });
+        let mut actions = Vec::new();
+        let result = backup_existing_target(&target, &mut actions);
+        drop(scope);
+        let candidate = candidate.borrow().clone().unwrap();
+        let original = fs::read(&target).unwrap();
+        let competing = fs::read(&candidate);
+        let marker = fs::read(overwrite_marker_path(&candidate));
+        fs::remove_dir_all(root).unwrap();
+        let error = result.unwrap_err();
+        assert_eq!(original, b"original document");
+        assert!(actions.is_empty());
+        assert!(error.to_string().contains(&candidate.display().to_string()));
+        if failure == "collision" {
+            assert_eq!(competing.unwrap(), b"competing backup");
+        } else {
+            assert_eq!(competing.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+        }
+        if failure == "replace" {
+            assert_eq!(marker.unwrap(), b"foreign marker");
+        }
+    }
+}
+
+fn overwrite_marker_path(backup: &Path) -> PathBuf {
+    let bucket = backup.parent().unwrap();
+    let mut name = bucket.file_name().unwrap().to_os_string();
+    name.push(".recovery-required");
+    bucket.parent().unwrap().join(name)
+}
+
+#[test]
+fn overwrite_protection_spans_whole_paste_and_replays_with_history() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    clear_clipboard();
+    let root = uniq_path("overwrite-marker-lifecycle");
+    let first = root.join("source/first.bin");
+    let second = root.join("source/second.bin");
+    let dest = root.join("target");
+    write_file(&first, b"first new");
+    write_file(&second, b"second new");
+    write_file(&dest.join("first.bin"), b"first original");
+    write_file(&dest.join("second.bin"), b"second original");
+    let backups = std::rc::Rc::new(std::cell::RefCell::new(Vec::<PathBuf>::new()));
+    let observed = backups.clone();
+    let scope = Scope::new(move |_, backup, phase, _| {
+        if phase == Phase::OverwriteBackedUp {
+            assert!(overwrite_marker_path(backup).is_file());
+            observed.borrow_mut().push(backup.into());
+        }
+        Ok(())
+    });
+    let checked = backups.clone();
+    set_after_paste_item_test_hook(Some(Box::new(move || {
+        for backup in checked.borrow().iter() {
+            assert!(
+                overwrite_marker_path(backup).is_file(),
+                "keep protection through the entire batch"
+            );
+        }
+    })));
+    set_clipboard_impl(
+        vec![
+            first.to_string_lossy().into(),
+            second.to_string_lossy().into(),
+        ],
+        "copy".into(),
+    )
+    .unwrap();
+    let undo = UndoState::default();
+    let result = paste_clipboard_core(
+        None,
+        dest.to_string_lossy().into(),
+        Some("overwrite".into()),
+        undo.clone_inner(),
+        CancelState::default(),
+        None,
+    );
+    set_after_paste_item_test_hook(None);
+    drop(scope);
+    result.unwrap();
+    let backups = backups.borrow().clone();
+    assert_eq!(backups.len(), 2);
+    for backup in &backups {
+        assert!(!overwrite_marker_path(backup).exists());
+    }
+    undo.undo().unwrap();
+    assert_eq!(fs::read(dest.join("first.bin")).unwrap(), b"first original");
+    assert_eq!(
+        fs::read(dest.join("second.bin")).unwrap(),
+        b"second original"
+    );
+    for backup in &backups {
+        assert!(!overwrite_marker_path(backup).exists());
+    }
+    undo.redo().unwrap();
+    assert_eq!(fs::read(dest.join("first.bin")).unwrap(), b"first new");
+    assert_eq!(fs::read(dest.join("second.bin")).unwrap(), b"second new");
+    assert_eq!(fs::read(&backups[0]).unwrap(), b"first original");
+    assert_eq!(fs::read(&backups[1]).unwrap(), b"second original");
+    for backup in &backups {
+        assert!(!overwrite_marker_path(backup).exists());
+    }
+    clear_clipboard();
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn failed_streaming_copy_preserves_in_place_target_edits() {
     use crate::fs_utils::copy_test_hooks::{Phase, Scope};
     for moving in [false, true] {
@@ -2827,7 +3143,14 @@ fn failed_overwrite_retains_original_backup_after_write_error() {
         rlim_max: original_limit.rlim_max,
     };
     let old_signal = unsafe { libc::signal(libc::SIGXFSZ, libc::SIG_IGN) };
-    assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &limit) }, 0);
+    let scope = crate::fs_utils::copy_test_hooks::Scope::new(move |_, _, phase, _| {
+        if phase == crate::fs_utils::copy_test_hooks::Phase::OverwriteBackedUp
+            && unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &limit) } != 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
+    });
     let result = paste_clipboard_core(
         None,
         dst.parent().unwrap().to_string_lossy().to_string(),
@@ -2836,6 +3159,7 @@ fn failed_overwrite_retains_original_backup_after_write_error() {
         CancelState::default(),
         None,
     );
+    drop(scope);
     unsafe {
         libc::setrlimit(libc::RLIMIT_FSIZE, &original_limit);
         libc::signal(libc::SIGXFSZ, old_signal);

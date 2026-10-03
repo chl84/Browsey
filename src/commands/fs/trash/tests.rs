@@ -245,7 +245,7 @@ fn move_single_to_trash_falls_back_to_delete_when_item_not_detected() {
     let action =
         move_single_to_trash_with_backend(&src.to_string_lossy(), &backend).expect("success");
     match action {
-        Action::Delete { path, backup: _ } => assert_eq!(path, src),
+        Action::Delete { path, .. } => assert_eq!(path, src),
         other => panic!("expected delete action, got {other:?}"),
     }
     assert_eq!(

@@ -98,6 +98,9 @@ pub enum Action {
     Delete {
         path: PathBuf,
         backup: PathBuf,
+        /// Clipboard overwrites are protected before the original is moved.
+        /// Ordinary delete/trash actions retain their existing scope.
+        protection: Option<super::BackupProtection>,
     },
     #[cfg(target_os = "windows")]
     SetHidden {

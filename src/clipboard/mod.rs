@@ -582,11 +582,13 @@ fn paste_entries_core(
     }
 
     if !performed.is_empty() {
-        let recorded = if performed.len() == 1 {
+        let mut recorded = if performed.len() == 1 {
             performed.pop().unwrap()
         } else {
             Action::Batch(performed)
         };
+        // Clear original-backup protection only after the entire paste succeeds.
+        crate::undo::finalize_action(&mut recorded);
         if let Ok(mut mgr) = undo_inner.lock() {
             mgr.record_applied(recorded);
         }

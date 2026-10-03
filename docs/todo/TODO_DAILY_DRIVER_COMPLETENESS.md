@@ -76,6 +76,10 @@ The [active-file failure follow-up](../audits/daily-driver/active-copy-failure-r
 records preserved in-place edits, partial-output retention and protected original
 overwrite backups when failure rollback cannot restore an occupied destination.
 
+The [early overwrite protection follow-up](../audits/daily-driver/early-overwrite-protection.md)
+records protection before original destinations move, killed-process cleanup,
+marker failures and protection lifecycle through paste/merge and history replay.
+
 ## Priority 0 Define Scope and Verify File Safety
 
 Complete this phase first. Reliability takes precedence over feature breadth.
@@ -163,6 +167,8 @@ broader operation/platform acceptance rows above are complete.
   failure or cancellation; verify foreign in-place edits survive without cleanup.
 - [x] Protect original overwrite backups before clipboard failure rollback;
   report blocked restoration and verify marked-session retention across cleanup.
+- [x] Protect original destinations before moving them into overwrite backups;
+  verify killed copy/move and merge processes, marker failures and history lifecycle.
 - [ ] Validate manual recovery UX, retention/space budgets and installed-build
   behavior for marked sessions. Preserved backups do not imply persistent undo,
   automatic repair/resume or atomic batches.

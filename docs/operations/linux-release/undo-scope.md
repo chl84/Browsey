@@ -106,12 +106,20 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
   when its inode still matches: another writer's changes can be masked by our
   writes. Cancellation detected before opening a target creates no output.
   Inspect retained files before retrying; they may be incomplete or edited
-- clipboard failure rollback protects original overwrite backups with recovery
-  markers before attempting restoration. Occupied targets are not overwritten;
-  blocked rollback reports backup paths and keeps markers through startup cleanup.
-  Successful rollback clears its markers. If marker creation fails, rollback does
-  not start: manually recover the reported originals before closing Browsey or
-  allowing startup cleanup. This does not protect a crash before rollback begins
+- clipboard overwrites create and sync recovery markers before moving original
+  destinations into backups. Protection creation/finalization failure leaves the
+  original unmoved. Paste/merge and rollback retain protection until the whole
+  operation succeeds; history replay reactivates it before moving the original
+- occupied restore targets are not overwritten. Blocked rollback reports backup
+  paths and keeps markers through startup cleanup, including process interruption
+  before failure handling. Uncertain failed backup candidates are also retained
+- protection verification failure refuses rollback/history movement. Inspect the
+  reported backup and destination paths rather than retrying automatically. If no
+  marker could be created for an unprotected rollback action, manually recover
+  originals before closing Browsey or allowing startup cleanup
+- this protection is scoped to clipboard overwrite backups, not every delete,
+  trash or history action. It does not imply atomic writes or power-loss durability;
+  no directory-sync/journal recovery or persistent history guarantee is added
 - copy/delete move fallback revalidates destination receipts before source
   removal and checks recorded source entries individually; new source children
   survive because directories are only removed when empty. Errors can leave a

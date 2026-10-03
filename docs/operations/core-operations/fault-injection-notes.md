@@ -91,3 +91,15 @@ Separate-process cleanup validates abandoned rollback-marker retention; successf
 rollback clears its markers. Protection failure must stop rollback before any
 action starts. A real Unix file-size limit also covers partial marker writes.
 See the [active-file failure report](../../audits/daily-driver/active-copy-failure-retention.md).
+
+Overwrite protection adds test-only `OverwritePrepared` and `OverwriteBackedUp`
+boundaries before/after the original moves, and `RecoveryMarkerSync` before marker
+writeback. Subprocess fixtures are killed at these boundaries and before streaming
+replacement bytes, then cleaned by another process. Verify original/source bytes,
+marker retention and explicit empty/absent replacement states for copy, forced
+move fallback and nested directory merges. Protection creation/sync/replacement
+faults must not move the original; a competing backup must not be overwritten.
+Whole-paste tests keep all markers through completed peers and clear them only
+after success; normal overwrite undo/redo reuses the same protection lifecycle.
+These are process-interruption fixtures, not power-loss or installed-device tests.
+See the [early overwrite report](../../audits/daily-driver/early-overwrite-protection.md).

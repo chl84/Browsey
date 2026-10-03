@@ -53,7 +53,12 @@ impl RecoveryMarker {
             .open(&path)
             .map_err(|error| UndoError::from_io_error("Create copy recovery marker", error))?;
         writeln!(file, "Browsey interrupted/failed file operation. Recover this backup manually before deleting the session.\nDestination: {destination:?}\nBackup: {backup:?}")
-            .and_then(|()| file.sync_all())
+            .and_then(|()| {
+                #[cfg(test)]
+                crate::fs_utils::copy_test_hooks::hit(destination, backup,
+                    crate::fs_utils::copy_test_hooks::Phase::RecoveryMarkerSync, 0)?;
+                file.sync_all()
+            })
             .map_err(|error| UndoError::from_io_error("Finalize copy recovery marker", error))?;
         let identity = crate::fs_utils::FileIdentity::from_file(&file)
             .ok_or_else(|| UndoError::invalid_input("Cannot verify recovery marker ownership"))?;
@@ -76,6 +81,50 @@ impl RecoveryMarker {
         fs::remove_file(&self.path).map_err(|error| {
             UndoError::from_io_error("Remove completed copy recovery marker", error)
         })
+    }
+}
+
+/// Opaque protection carried with overwrite history; never cleared by Drop.
+#[derive(Debug, Clone)]
+pub struct BackupProtection {
+    marker: Option<RecoveryMarker>,
+}
+
+impl BackupProtection {
+    pub(crate) fn create(backup: &Path, destination: &Path) -> UndoResult<Self> {
+        Ok(Self {
+            marker: Some(RecoveryMarker::create(backup, destination)?),
+        })
+    }
+
+    pub(crate) fn ensure(&mut self, backup: &Path, destination: &Path) -> UndoResult<()> {
+        let result = if let Some(marker) = &self.marker {
+            marker.verify()
+        } else {
+            RecoveryMarker::create(backup, destination).map(|marker| self.marker = Some(marker))
+        };
+        result.map_err(|error| {
+            error.with_context(format!(
+                "Original backup protection failed at {}; inspect destination {} before retrying",
+                backup.display(),
+                destination.display()
+            ))
+        })
+    }
+
+    pub(super) fn is_active(&self) -> bool {
+        self.marker.is_some()
+    }
+
+    pub(super) fn finalize(&mut self) {
+        if let Some(marker) = &self.marker {
+            match marker.clear() {
+                Ok(()) => self.marker = None,
+                Err(error) => {
+                    warn!(%error, "Keep original backup marker after completed operation")
+                }
+            }
+        }
     }
 }
 
@@ -368,6 +417,7 @@ mod tests {
             super::super::Action::Delete {
                 path: destination.clone(),
                 backup: backup.clone(),
+                protection: None,
             },
         ])];
         let error = super::super::engine::run_rollback_actions(&mut actions).unwrap_err();
@@ -394,6 +444,7 @@ mod tests {
         let mut actions = [super::super::Action::Delete {
             path: destination.clone(),
             backup,
+            protection: None,
         }];
         super::super::engine::run_rollback_actions(&mut actions).unwrap();
         assert!(!session_requires_recovery(&directory));
@@ -421,10 +472,12 @@ mod tests {
             super::super::Action::Delete {
                 path: destination.clone(),
                 backup: backup.clone(),
+                protection: None,
             },
             super::super::Action::Delete {
                 path: second_destination.clone(),
                 backup: second_backup.clone(),
+                protection: None,
             },
         ];
         let mut markers = 0;

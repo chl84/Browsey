@@ -56,6 +56,7 @@ fn delete_with_backup(path: &Path) -> FsResult<Action> {
     Ok(Action::Delete {
         path: path.to_path_buf(),
         backup,
+        protection: None,
     })
 }
 
@@ -308,7 +309,7 @@ mod tests {
 
         let action = delete_with_backup(&src).expect("delete should succeed");
         let backup = match &action {
-            Action::Delete { path, backup } => {
+            Action::Delete { path, backup, .. } => {
                 assert_eq!(path, &src);
                 backup.clone()
             }
@@ -335,7 +336,7 @@ mod tests {
 
         let action = delete_with_backup(&src_dir).expect("delete should succeed");
         let backup = match &action {
-            Action::Delete { path, backup } => {
+            Action::Delete { path, backup, .. } => {
                 assert_eq!(path, &src_dir);
                 backup.clone()
             }
