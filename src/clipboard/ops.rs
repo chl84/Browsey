@@ -88,7 +88,7 @@ fn copy_dir(
     app: Option<&tauri::AppHandle>,
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
-) -> ClipboardResult<()> {
+) -> ClipboardResult<crate::undo::CopyReceipt> {
     let mut outputs = OwnedCopyPaths::default();
     let result = copy_dir_tracked(src, dest, app, progress_event, cancel, &mut outputs);
     if let Err(error) = result {
@@ -102,7 +102,7 @@ fn copy_dir(
             ))
         });
     }
-    Ok(())
+    Ok(outputs.receipt(dest))
 }
 
 fn copy_dir_tracked(
@@ -319,10 +319,11 @@ pub(super) fn merge_dir(
                 }
                 match mode {
                     ClipboardMode::Copy => {
-                        copy_dir(&path, &target, app, progress_event, cancel)?;
+                        let receipt = copy_dir(&path, &target, app, progress_event, cancel)?;
                         actions.push(Action::Copy {
                             from: path.clone(),
                             to: target.clone(),
+                            receipt,
                         });
                     }
                     ClipboardMode::Cut => {
@@ -346,11 +347,11 @@ pub(super) fn merge_dir(
             }
             match mode {
                 ClipboardMode::Copy => {
-                    let hint = Some(meta.len());
-                    copy_file_best_effort(&path, &target, app, progress_event, cancel, hint)?;
+                    let receipt = copy_entry(&path, &target, app, progress_event, cancel)?;
                     actions.push(Action::Copy {
                         from: path.clone(),
                         to: target.clone(),
+                        receipt,
                     });
                 }
                 ClipboardMode::Cut => {
@@ -415,7 +416,7 @@ pub(super) fn copy_entry(
     app: Option<&tauri::AppHandle>,
     progress_event: Option<&str>,
     cancel: Option<&AtomicBool>,
-) -> ClipboardResult<()> {
+) -> ClipboardResult<crate::undo::CopyReceipt> {
     let meta = fs::symlink_metadata(src).map_err(|e| {
         ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
@@ -437,11 +438,21 @@ pub(super) fn copy_entry(
             return Err(ClipboardError::cancelled());
         }
         let size_hint = Some(meta.len());
-        copy_file_best_effort(src, dest, app, progress_event, cancel, size_hint)?;
-        Ok(())
+        let mut outputs = OwnedCopyPaths::default();
+        copy_file_tracked(
+            src,
+            dest,
+            app,
+            progress_event,
+            cancel,
+            size_hint,
+            Some(&mut outputs),
+        )?;
+        Ok(outputs.receipt(dest))
     }
 }
 
+#[cfg(test)]
 pub(super) fn copy_file_best_effort(
     src: &Path,
     dest: &Path,

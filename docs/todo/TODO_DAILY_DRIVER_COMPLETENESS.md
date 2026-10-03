@@ -56,6 +56,10 @@ The [nested-copy and UI recovery follow-up](../audits/daily-driver/nested-copy-r
 records owned-path cleanup, source-version checks, and operation-versus-refresh
 outcomes. Native installed-build acceptance remains separate.
 
+The [copy undo ownership follow-up](../audits/daily-driver/copy-undo-ownership.md)
+records completed-output receipts, conservative copy removal, pure-copy batch
+preflight, and the remaining recovery and race boundaries.
+
 ## Priority 0 Define Scope and Verify File Safety
 
 Complete this phase first. Reliability takes precedence over feature breadth.
@@ -112,8 +116,16 @@ broader operation/platform acceptance rows above are complete.
   both local move engines; reject changes and keep completed copies.
 - [x] Verify local paste reconciliation, clipboard preservation, and separate
   operation/refresh errors with mocked UI tests; never retry automatically.
-- [ ] Guard automatic batch rollback and later undo against concurrently changed
-  outputs. Validate edits during active writes and races after final checks;
+- [x] Carry completed-copy ownership/version receipts into paste, both merge
+  branches and undo replay; refuse changed, replaced or unverifiable outputs.
+- [x] Remove only registered unchanged files and empty directories during copy
+  undo/rollback; preserve foreign children and replacements added after the scan.
+- [x] Preflight all members of a pure-copy batch before removing any target;
+  preserve unchanged peers when another target was already edited.
+- [ ] Preserve copied bytes for redo and failed mixed-batch undo compensation
+  instead of re-reading a changed/missing original source. Test partial undo
+  errors, backup failures and cross-filesystem recovery before claiming atomicity.
+- [ ] Validate edits during active writes and races after per-entry checks;
   metadata snapshots are not content hashes or filesystem transactions.
 - [ ] Validate installed UI partial-result refresh/recovery and real-media faults.
 

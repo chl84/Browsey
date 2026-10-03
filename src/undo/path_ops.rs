@@ -2,6 +2,7 @@ use std::fs;
 use std::io::{self, ErrorKind};
 use std::path::Path;
 
+use crate::fs_utils::{FileIdentity, FileState, TreeSnapshot};
 use crate::undo::error::UndoErrorCode;
 use crate::undo::{UndoError, UndoResult};
 
@@ -13,6 +14,21 @@ use super::path_checks::{
 use super::types::{self, PathSnapshot};
 
 pub(crate) fn copy_entry(src: &Path, dest: &Path) -> UndoResult<()> {
+    copy_entry_recorded(src, dest).map(|_| ())
+}
+
+pub(super) fn copy_entry_recorded(src: &Path, dest: &Path) -> UndoResult<super::CopyReceipt> {
+    let mut outputs = TreeSnapshot::default();
+    copy_entry_tracked(src, dest, dest, &mut outputs)?;
+    Ok(super::CopyReceipt::from_snapshot(outputs))
+}
+
+fn copy_entry_tracked(
+    src: &Path,
+    dest: &Path,
+    root: &Path,
+    outputs: &mut TreeSnapshot,
+) -> UndoResult<()> {
     let meta = ensure_existing_path_nonsymlink(src)?;
     let src_snapshot = types::path_snapshot_from_meta(&meta);
     if let Some(parent) = dest.parent() {
@@ -20,25 +36,23 @@ pub(crate) fn copy_entry(src: &Path, dest: &Path) -> UndoResult<()> {
     }
     if meta.is_dir() {
         assert_path_snapshot(src, &src_snapshot)?;
-        copy_dir(src, dest)
+        copy_dir(src, dest, root, outputs)
     } else {
         if let Some(parent) = dest.parent() {
             ensure_existing_dir_nonsymlink(parent)?;
         }
         assert_path_snapshot(src, &src_snapshot)?;
-        copy_file_noreplace(src, dest)
+        let state = copy_file_noreplace_with_sync(src, dest, fs::File::sync_all)?;
+        outputs.record_file(dest.strip_prefix(root).unwrap().into(), state);
+        Ok(())
     }
-}
-
-fn copy_file_noreplace(src: &Path, dest: &Path) -> UndoResult<()> {
-    copy_file_noreplace_with_sync(src, dest, fs::File::sync_all)
 }
 
 pub(super) fn copy_file_noreplace_with_sync(
     src: &Path,
     dest: &Path,
     sync: impl FnOnce(&fs::File) -> io::Result<()>,
-) -> UndoResult<()> {
+) -> UndoResult<FileState> {
     #[cfg_attr(test, allow(unused_mut))]
     let mut src_file = crate::fs_utils::open_regular_file_nofollow(src).map_err(|e| {
         UndoError::from_io_error(format!("Failed to open source file {}", src.display()), e)
@@ -136,10 +150,11 @@ pub(super) fn copy_file_noreplace_with_sync(
             ),
         ));
     }
-    Ok(())
+    FileState::from_file(&dst_file)
+        .map_err(|error| UndoError::from_io_error("Record copied output ownership", error))
 }
 
-fn copy_dir(src: &Path, dest: &Path) -> UndoResult<()> {
+fn copy_dir(src: &Path, dest: &Path, root: &Path, outputs: &mut TreeSnapshot) -> UndoResult<()> {
     let src_snapshot = snapshot_existing_path(src)?;
     if let Some(parent) = dest.parent() {
         ensure_existing_dir_nonsymlink(parent)?;
@@ -162,6 +177,9 @@ fn copy_dir(src: &Path, dest: &Path) -> UndoResult<()> {
             UndoError::from_io_error(format!("Failed to create dir {}", dest.display()), e)
         }
     })?;
+    let identity = FileIdentity::capture(dest)
+        .ok_or_else(|| UndoError::invalid_input("Cannot verify created directory identity"))?;
+    outputs.record_directory(dest.strip_prefix(root).unwrap().into(), identity.clone());
     for entry in fs::read_dir(src)
         .map_err(|e| UndoError::from_io_error(format!("Failed to read dir {}", src.display()), e))?
     {
@@ -170,13 +188,13 @@ fn copy_dir(src: &Path, dest: &Path) -> UndoResult<()> {
         let meta = ensure_existing_path_nonsymlink(&path)?;
         let child_snapshot = types::path_snapshot_from_meta(&meta);
         let target = dest.join(entry.file_name());
-        if meta.is_dir() {
-            assert_path_snapshot(&path, &child_snapshot)?;
-            copy_dir(&path, &target)?;
-        } else {
-            assert_path_snapshot(&path, &child_snapshot)?;
-            copy_file_noreplace(&path, &target)?;
-        }
+        assert_path_snapshot(&path, &child_snapshot)?;
+        copy_entry_tracked(&path, &target, root, outputs)?;
+    }
+    if !identity.matches(dest) {
+        return Err(UndoError::invalid_input(
+            "Copy destination directory changed; retained outputs",
+        ));
     }
     fs::set_permissions(dest, permissions)
         .map_err(|e| UndoError::from_io_error("Failed to set directory permissions", e))

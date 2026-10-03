@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Guard copy undo and clipboard batch rollback with receipts of created directory identities and completed open-writer versions. Preserve edited/replaced outputs, reject unverifiable GIO-owned copies, and remove only recorded files and empty directories instead of whole trees. Preflight pure-copy batches before deleting any member; cover normal undo/redo, merge overwrite backups, cancellation and deterministic post-scan mutations. Document remaining mixed-batch recovery and filesystem-race limits.
+
 - Replace recursive failed-copy cleanup with individual output ownership/version tracking, preserving untracked, replaced and edited destination files. Revalidate regular and nested source versions before fallback move deletion. Reconcile local paste failures without automatic retry, retain original errors, and distinguish completed transfers from listing-refresh failures; cover these outcomes with filesystem and mocked UI regressions.
 
 - Verify local copy/move and undo fallback with deterministic partial-write, disk-full, read/write disappearance, writeback and cancellation faults. Reuse stable archive-output identities for copies; retain sources when the written target is missing or replaced, and preserve competing files during error cleanup. Report retained undo partial outputs explicitly and track verified safety increments separately from platform acceptance.

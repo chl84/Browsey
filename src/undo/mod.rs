@@ -20,7 +20,7 @@ pub(crate) use security::{apply_ownership, apply_permissions, set_ownership_nofo
 pub use security::{ownership_snapshot, permissions_snapshot};
 pub(crate) use types::PathSnapshot;
 pub use types::{
-    Action, Direction, OwnershipSnapshot, PermissionsSnapshot, UndoManager, UndoState,
+    Action, CopyReceipt, Direction, OwnershipSnapshot, PermissionsSnapshot, UndoManager, UndoState,
 };
 
 pub(crate) use engine::run_actions;

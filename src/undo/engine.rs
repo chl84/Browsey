@@ -1,5 +1,5 @@
 use super::nofollow::delete_entry_nofollow_io;
-use super::path_ops::{copy_entry, delete_entry_path, move_with_fallback};
+use super::path_ops::{copy_entry_recorded, move_with_fallback};
 use super::{Action, Direction};
 use crate::undo::error::UndoErrorCode;
 use crate::undo::{UndoError, UndoResult};
@@ -30,9 +30,12 @@ pub(super) fn execute_action(action: &mut Action, direction: Direction) -> UndoR
             };
             move_with_fallback(src, dst)
         }
-        Action::Copy { from, to } => match direction {
-            Direction::Forward => copy_entry(from, to),
-            Direction::Backward => delete_entry_path(to),
+        Action::Copy { from, to, receipt } => match direction {
+            Direction::Forward => {
+                *receipt = copy_entry_recorded(from, to)?;
+                Ok(())
+            }
+            Direction::Backward => receipt.remove(to),
         },
         Action::Create { path, backup } => match direction {
             Direction::Forward => move_with_fallback(backup, path),
@@ -136,6 +139,23 @@ fn set_windows_hidden_attr(path: &Path, hidden: bool) -> UndoResult<()> {
 }
 
 fn execute_batch(actions: &mut [Action], direction: Direction) -> UndoResult<()> {
+    // Pure copy batches have no path-moving dependencies. Check every target
+    // before deleting any, so an already changed member cannot strand peers.
+    // Mixed batches still use per-action checks: earlier reverse moves may be
+    // necessary before a copy target exists at its recorded path.
+    if matches!(direction, Direction::Backward)
+        && actions
+            .iter()
+            .all(|action| matches!(action, Action::Copy { .. }))
+    {
+        for (idx, action) in actions.iter().enumerate() {
+            if let Action::Copy { to, receipt, .. } = action {
+                receipt.verify(to).map_err(|error| {
+                    error.with_context(format!("Batch action {} preflight failed", idx + 1))
+                })?;
+            }
+        }
+    }
     let order: Vec<usize> = match direction {
         Direction::Forward => (0..actions.len()).collect(),
         Direction::Backward => (0..actions.len()).rev().collect(),

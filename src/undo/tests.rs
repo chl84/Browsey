@@ -383,6 +383,7 @@ fn batch_apply_and_undo_redo() {
         Action::Copy {
             from: moved.clone(),
             to: copied.clone(),
+            receipt: CopyReceipt::default(),
         },
     ]))
     .unwrap();
@@ -407,6 +408,178 @@ fn batch_apply_and_undo_redo() {
 }
 
 #[test]
+fn undo_copy_preserves_edited_and_replaced_targets() {
+    for change in ["edit", "replace"] {
+        let root = uniq_path("copy-undo-target-change");
+        let source = root.join("source.txt");
+        let target = root.join("target.txt");
+        write_file(&source, b"original");
+        let mut manager = UndoManager::new();
+        manager
+            .apply(Action::Copy {
+                from: source.clone(),
+                to: target.clone(),
+                receipt: CopyReceipt::default(),
+            })
+            .unwrap();
+        if change == "replace" {
+            fs::rename(&target, root.join("saved-copy.txt")).unwrap();
+        }
+        write_file(&target, b"foreign-changes");
+        let result = manager.undo();
+        assert!(result.is_err(), "must refuse to delete {change}d target");
+        assert_eq!(fs::read(&target).unwrap(), b"foreign-changes");
+        assert_eq!(fs::read(&source).unwrap(), b"original");
+        assert!(manager.can_undo(), "failed undo must retain history");
+        assert!(!manager.can_redo());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn undo_directory_copy_preserves_changed_children_and_foreign_files() {
+    for change in ["edit", "add", "remove", "rename"] {
+        let root = uniq_path("copy-undo-tree-change");
+        let source = root.join("source");
+        let target = root.join("target");
+        write_file(&source.join("nested/file.txt"), b"original");
+        let mut manager = UndoManager::new();
+        manager
+            .apply(Action::Copy {
+                from: source.clone(),
+                to: target.clone(),
+                receipt: CopyReceipt::default(),
+            })
+            .unwrap();
+        let child = target.join("nested/file.txt");
+        match change {
+            "edit" => write_file(&child, b"edited"),
+            "add" => write_file(&target.join("foreign.txt"), b"foreign"),
+            "remove" => fs::remove_file(&child).unwrap(),
+            _ => fs::rename(&child, target.join("renamed.txt")).unwrap(),
+        }
+        let before = crate::fs_utils::TreeSnapshot::capture(&target).unwrap();
+        let result = manager.undo();
+        assert!(result.is_err(), "must refuse changed tree: {change}");
+        before.verify(&target).unwrap();
+        assert_eq!(
+            fs::read(source.join("nested/file.txt")).unwrap(),
+            b"original"
+        );
+        assert!(manager.can_undo());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn undo_copy_rechecks_files_and_never_recursively_removes_late_foreign_children() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for change in ["edit", "add", "replace-directory"] {
+        let root = uniq_path("copy-undo-after-check");
+        let source = root.join("source");
+        let target = root.join("target");
+        write_file(&source.join("nested/file.txt"), b"original");
+        let mut manager = UndoManager::new();
+        manager
+            .apply(Action::Copy {
+                from: source,
+                to: target.clone(),
+                receipt: CopyReceipt::default(),
+            })
+            .unwrap();
+        let changed_target = target.clone();
+        let parked = root.join("parked");
+        let reached = std::rc::Rc::new(std::cell::Cell::new(false));
+        let observed = reached.clone();
+        let scope = Scope::new(move |_, _, phase, _| {
+            if phase == Phase::CopyUndoVerified {
+                observed.set(true);
+                match change {
+                    "edit" => write_file(&changed_target.join("nested/file.txt"), b"edited"),
+                    "add" => write_file(&changed_target.join("nested/foreign.txt"), b"foreign"),
+                    _ => {
+                        fs::rename(&changed_target, &parked).unwrap();
+                        write_file(&changed_target.join("nested/file.txt"), b"foreign");
+                    }
+                }
+            }
+            Ok(())
+        });
+        let error = manager.undo().unwrap_err();
+        drop(scope);
+        assert!(reached.get());
+        assert!(error.to_string().contains("retained"));
+        let preserved = match change {
+            "add" => target.join("nested/foreign.txt"),
+            _ => target.join("nested/file.txt"),
+        };
+        assert_eq!(
+            fs::read(preserved).unwrap(),
+            if change == "edit" {
+                b"edited".as_slice()
+            } else {
+                b"foreign".as_slice()
+            }
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn undo_copy_without_owned_writer_evidence_retains_target() {
+    let root = uniq_path("copy-undo-unverified");
+    let target = root.join("target.txt");
+    write_file(&target, b"unverified");
+    let mut manager = UndoManager::new();
+    manager.record_applied(Action::Copy {
+        from: root.join("source.txt"),
+        to: target.clone(),
+        receipt: CopyReceipt::default(),
+    });
+    let error = manager.undo().unwrap_err();
+    assert!(error.to_string().contains("ownership"));
+    assert_eq!(fs::read(target).unwrap(), b"unverified");
+    assert!(manager.can_undo());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn undo_copy_batch_checks_all_targets_before_removing_any() {
+    let root = uniq_path("copy-undo-batch-preflight");
+    let first = root.join("first.txt");
+    let second = root.join("second.txt");
+    let first_copy = root.join("first-copy.txt");
+    let second_copy = root.join("second-copy.txt");
+    write_file(&first, b"first");
+    write_file(&second, b"second");
+    let mut manager = UndoManager::new();
+    manager
+        .apply(Action::Batch(vec![
+            Action::Copy {
+                from: first,
+                to: first_copy.clone(),
+                receipt: CopyReceipt::default(),
+            },
+            Action::Copy {
+                from: second.clone(),
+                to: second_copy.clone(),
+                receipt: CopyReceipt::default(),
+            },
+        ]))
+        .unwrap();
+    // Without preflight undo deletes the second copy, discovers the edited
+    // first copy, then cannot compensate by re-reading the now missing source.
+    fs::remove_file(second).unwrap();
+    write_file(&first_copy, b"edited");
+    let error = manager.undo().unwrap_err();
+    assert!(error.to_string().contains("preflight"));
+    assert_eq!(fs::read(first_copy).unwrap(), b"edited");
+    assert_eq!(fs::read(second_copy).unwrap(), b"second");
+    assert!(manager.can_undo());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn batch_rolls_back_on_failure() {
     let dir = uniq_path("batch-fail");
     let _ = fs::create_dir_all(&dir);
@@ -425,6 +598,7 @@ fn batch_rolls_back_on_failure() {
             Action::Copy {
                 from: source.clone(),
                 to: existing.clone(),
+                receipt: CopyReceipt::default(),
             },
         ]))
         .unwrap_err();

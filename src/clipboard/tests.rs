@@ -92,7 +92,7 @@ fn local_copy_and_move_faults_preserve_sources_and_clean_partial_targets() {
             let result = if moving {
                 move_entry(&source, &target, None, None, None)
             } else {
-                copy_entry(&source, &target, None, None, None)
+                copy_entry(&source, &target, None, None, None).map(|_| ())
             };
             drop(scope);
             let source_data = fs::read(&source).unwrap();
@@ -611,6 +611,98 @@ fn merge_copy_can_undo_without_touching_existing() {
     assert!(src.join("a.txt").exists());
 
     let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn merge_copy_undo_preserves_edited_output_and_overwrite_backup() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    for directory in [false, true] {
+        let root = uniq_path("merge-copy-edited-output");
+        let source = root.join("source");
+        let destination = root.join("destination");
+        let child = if directory {
+            "item/nested/file.txt"
+        } else {
+            "item"
+        };
+        write_file(&source.join(child), b"original");
+        fs::create_dir_all(&destination).unwrap();
+        // A pre-existing file replaced by a directory exercises the other
+        // merge branch as well as preservation of a Delete action's backup.
+        write_file(&destination.join("item"), b"preexisting");
+        let mut actions = Vec::new();
+        merge_dir(
+            &source,
+            &destination,
+            ClipboardMode::Copy,
+            &mut actions,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let backup = match &actions[0] {
+            Action::Delete { backup, .. } => backup.clone(),
+            _ => panic!("overwrite must retain a backup"),
+        };
+        write_file(&destination.join(child), b"edited");
+        let error = run_actions(&mut actions, Direction::Backward).unwrap_err();
+        assert!(error.to_string().contains("retained"));
+        assert_eq!(fs::read(destination.join(child)).unwrap(), b"edited");
+        assert_eq!(fs::read(source.join(child)).unwrap(), b"original");
+        assert_eq!(fs::read(&backup).unwrap(), b"preexisting");
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn paste_copy_undo_redo_records_current_output_versions() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    for directory in [false, true] {
+        clear_clipboard();
+        let root = uniq_path("paste-copy-receipt-roundtrip");
+        let source = root.join("source/item");
+        let destination = root.join("destination");
+        let original = if directory {
+            source.join("nested/file.txt")
+        } else {
+            source.clone()
+        };
+        write_file(&original, b"original");
+        fs::create_dir_all(&destination).unwrap();
+        set_clipboard_impl(vec![source.to_string_lossy().into()], "copy".into()).unwrap();
+        let undo = UndoState::default();
+        paste_clipboard_core(
+            None,
+            destination.to_string_lossy().into(),
+            None,
+            undo.clone_inner(),
+            CancelState::default(),
+            None,
+        )
+        .unwrap();
+        undo.undo().unwrap();
+        assert!(!destination.join("item").exists());
+        // Current redo semantics read the source anew; the receipt must be
+        // replaced rather than continuing to describe the previous output.
+        write_file(&original, b"new-source");
+        undo.redo().unwrap();
+        let output = if directory {
+            destination.join("item/nested/file.txt")
+        } else {
+            destination.join("item")
+        };
+        assert_eq!(fs::read(&output).unwrap(), b"new-source");
+        undo.undo().unwrap();
+        undo.redo().unwrap();
+        write_file(&output, b"edited-output");
+        assert!(undo.undo().is_err());
+        assert_eq!(fs::read(output).unwrap(), b"edited-output");
+        fs::remove_dir_all(root).unwrap();
+    }
+    clear_clipboard();
 }
 
 #[test]
@@ -1402,6 +1494,90 @@ fn paste_clipboard_copy_cancelled_after_first_item_rolls_back_created_targets() 
 
     clear_clipboard();
     let _ = fs::remove_dir_all(&base);
+}
+
+#[test]
+fn paste_copy_rollback_preserves_changed_completed_outputs() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    for change in ["edit-file", "replace-file", "foreign-child", "edit-child"] {
+        clear_clipboard();
+        let root = uniq_path("paste-copy-changed-rollback");
+        let source = root.join("source/first");
+        let second = root.join("source/second.txt");
+        let destination = root.join("destination");
+        fs::create_dir_all(&destination).unwrap();
+        let is_dir = change.ends_with("child");
+        let original = if is_dir {
+            source.join("nested/file.txt")
+        } else {
+            source.clone()
+        };
+        write_file(&original, b"original");
+        write_file(&second, b"second");
+        set_clipboard_impl(
+            vec![
+                source.to_string_lossy().into(),
+                second.to_string_lossy().into(),
+            ],
+            "copy".into(),
+        )
+        .unwrap();
+        let target = destination.join("first");
+        let changed_target = target.clone();
+        let parked = destination.join("saved-copy");
+        let cancel = CancelState::default();
+        let cancellation = cancel.clone();
+        set_after_paste_item_test_hook(Some(Box::new(move || {
+            match change {
+                "edit-file" => write_file(&changed_target, b"edited"),
+                "replace-file" => {
+                    fs::rename(&changed_target, &parked).unwrap();
+                    write_file(&changed_target, b"foreign");
+                }
+                "foreign-child" => write_file(&changed_target.join("foreign.txt"), b"foreign"),
+                _ => write_file(&changed_target.join("nested/file.txt"), b"edited"),
+            }
+            cancellation.cancel("changed-copy").unwrap();
+        })));
+        let undo = UndoState::default();
+        let result = paste_clipboard_core(
+            None,
+            destination.to_string_lossy().into(),
+            None,
+            undo.clone_inner(),
+            cancel,
+            Some("changed-copy".into()),
+        );
+        set_after_paste_item_test_hook(None);
+        let error = result.unwrap_err();
+        assert_eq!(error.code(), ClipboardErrorCode::RollbackFailed);
+        assert!(error.to_string().contains("cancelled") || error.to_string().contains("Cancelled"));
+        assert!(error.to_string().contains("retained"));
+        let preserved = match change {
+            "foreign-child" => target.join("foreign.txt"),
+            "edit-child" => target.join("nested/file.txt"),
+            _ => target,
+        };
+        assert_eq!(
+            fs::read(preserved).unwrap(),
+            if change.starts_with("edit") {
+                b"edited".as_slice()
+            } else {
+                b"foreign".as_slice()
+            }
+        );
+        assert!(source.exists());
+        assert_eq!(fs::read(second).unwrap(), b"second");
+        assert!(!destination.join("second.txt").exists());
+        assert!(
+            undo.undo().is_err(),
+            "failed paste is not recorded as completed"
+        );
+        assert!(!current_clipboard().unwrap().entries.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+    clear_clipboard();
 }
 
 #[test]

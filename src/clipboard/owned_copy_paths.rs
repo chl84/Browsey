@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
-use crate::fs_utils::{FileIdentity, FileState};
+use crate::fs_utils::{FileIdentity, FileState, TreeSnapshot};
 
 #[derive(Default)]
 pub(super) struct OwnedCopyPaths {
@@ -12,6 +12,26 @@ pub(super) struct OwnedCopyPaths {
 }
 
 impl OwnedCopyPaths {
+    pub(super) fn receipt(&self, root: &Path) -> crate::undo::CopyReceipt {
+        let mut snapshot = TreeSnapshot::default();
+        for (path, identity) in &self.dirs {
+            let Some(identity) = identity else {
+                return crate::undo::CopyReceipt::default();
+            };
+            let Ok(relative) = path.strip_prefix(root) else {
+                return crate::undo::CopyReceipt::default();
+            };
+            snapshot.record_directory(relative.into(), identity.clone());
+        }
+        for (path, state) in &self.files {
+            let Ok(relative) = path.strip_prefix(root) else {
+                return crate::undo::CopyReceipt::default();
+            };
+            snapshot.record_file(relative.into(), state.clone());
+        }
+        crate::undo::CopyReceipt::from_snapshot(snapshot)
+    }
+
     pub(super) fn record_dir(&mut self, path: &Path) {
         self.dirs.insert(path.into(), FileIdentity::capture(path));
     }

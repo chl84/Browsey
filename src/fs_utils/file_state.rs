@@ -7,7 +7,7 @@ use std::time::SystemTime;
 
 use super::FileIdentity;
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FileState {
     identity: FileIdentity,
     len: u64,
@@ -49,7 +49,7 @@ impl FileState {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum TreeEntry {
     Directory(FileIdentity),
     File(FileState),
@@ -57,10 +57,24 @@ enum TreeEntry {
 
 /// Capture names, identities and regular-file versions before destructive
 /// fallback deletion. Concurrent mutation after the final check is still possible.
-#[derive(PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct TreeSnapshot(BTreeMap<PathBuf, TreeEntry>);
 
 impl TreeSnapshot {
+    // Build copy receipts from created directories and completed open writers,
+    // never by adopting a fresh lookup of the destination after the copy.
+    pub(crate) fn record_directory(&mut self, relative: PathBuf, identity: FileIdentity) {
+        self.0.insert(relative, TreeEntry::Directory(identity));
+    }
+
+    pub(crate) fn record_file(&mut self, relative: PathBuf, state: FileState) {
+        self.0.insert(relative, TreeEntry::File(state));
+    }
+
+    pub(crate) fn has_root(&self) -> bool {
+        self.0.contains_key(Path::new(""))
+    }
+
     pub(crate) fn capture(root: &Path) -> io::Result<Self> {
         Self::capture_with_check(root, || Ok(()))
     }
@@ -108,6 +122,51 @@ impl TreeSnapshot {
         self.verify_with_check(root, || Ok(()))
     }
 
+    /// Remove only recorded, still-unchanged outputs, children before parents.
+    /// Never recursively delete a directory: a late foreign child must survive.
+    /// This is conservative cleanup, not an atomic filesystem transaction.
+    pub(crate) fn remove_created(&self, root: &Path) -> io::Result<()> {
+        self.verify(root)?;
+        #[cfg(test)]
+        super::copy_test_hooks::hit(
+            root,
+            root,
+            super::copy_test_hooks::Phase::CopyUndoVerified,
+            0,
+        )?;
+        for (relative, entry) in self.0.iter().rev() {
+            // Joining an empty path appends a separator on Unix, which would
+            // turn a regular-file root into an invalid directory lookup.
+            let path = if relative.as_os_str().is_empty() {
+                root.to_path_buf()
+            } else {
+                root.join(relative)
+            };
+            let parents_match = relative
+                .ancestors()
+                .filter_map(|ancestor| match self.0.get(ancestor) {
+                    Some(TreeEntry::Directory(identity)) => Some((ancestor, identity)),
+                    _ => None,
+                })
+                .all(|(ancestor, identity)| identity.matches(&root.join(ancestor)));
+            let unchanged = match entry {
+                TreeEntry::Directory(identity) => identity.matches(&path),
+                TreeEntry::File(state) => state.matches(&path),
+            };
+            if !parents_match || !unchanged {
+                return Err(io::Error::other(format!(
+                    "Copy target changed during undo; retained {}",
+                    path.display()
+                )));
+            }
+            match entry {
+                TreeEntry::Directory(_) => fs::remove_dir(&path)?,
+                TreeEntry::File(_) => fs::remove_file(&path)?,
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn verify_with_check(
         &self,
         root: &Path,
@@ -116,9 +175,7 @@ impl TreeSnapshot {
         if &Self::capture_with_check(root, check)? == self {
             Ok(())
         } else {
-            Err(io::Error::other(
-                "Source changed during copy; source and destination retained",
-            ))
+            Err(io::Error::other("Filesystem tree changed since snapshot"))
         }
     }
 }

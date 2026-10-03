@@ -48,3 +48,10 @@ Inspect source/target/unrelated contents, not just the returned error.
 
 See the [local-transfer report](../../audits/daily-driver/local-transfer-fault-injection.md)
 for per-operation partial-output policies and remaining native/media/race limits.
+
+The test-only `CopyUndoVerified` phase runs after a copy receipt's full tree
+scan and before per-entry removal. Tests add a foreign child, edit a file or
+replace a copied directory at this exact boundary. Copy undo must retain these
+paths and never recursively delete new contents. Clipboard completion hooks
+also mutate completed outputs before cancellation triggers batch rollback.
+See the [copy undo ownership report](../../audits/daily-driver/copy-undo-ownership.md).

@@ -498,7 +498,7 @@ fn paste_entries_core(
             }
         }
 
-        loop {
+        let receipt = loop {
             let result = match state.mode {
                 ClipboardMode::Copy => copy_entry(
                     src,
@@ -513,11 +513,12 @@ fn paste_entries_core(
                     app,
                     progress_event.as_deref(),
                     cancel_flag.as_deref(),
-                ),
+                )
+                .map(|()| crate::undo::CopyReceipt::default()),
             };
 
             match result {
-                Ok(_) => {
+                Ok(receipt) => {
                     done_items = done_items.saturating_add(1);
                     if total_bytes.is_none() {
                         if let (Some(app), Some(evt)) = (app, progress_event.as_ref()) {
@@ -532,7 +533,7 @@ fn paste_entries_core(
                             );
                         }
                     }
-                    break;
+                    break receipt;
                 }
                 Err(err) => {
                     if matches!(policy, ConflictPolicy::Rename)
@@ -549,12 +550,13 @@ fn paste_entries_core(
                     ));
                 }
             }
-        }
+        };
 
         let action = match state.mode {
             ClipboardMode::Copy => Action::Copy {
                 from: src.clone(),
                 to: target.clone(),
+                receipt,
             },
             ClipboardMode::Cut => Action::Move {
                 from: src.clone(),

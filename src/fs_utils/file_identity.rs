@@ -3,7 +3,7 @@
 use std::fs::File;
 use std::path::Path;
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FileIdentity {
     #[cfg(unix)]
     device: u64,

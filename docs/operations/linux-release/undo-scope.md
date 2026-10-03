@@ -68,9 +68,24 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
   than many separate undo steps
 - a newly recorded action clears redo history
 - history depth is capped at 50 recorded items
+- copy undo checks a receipt of created directory identities and completed
+  regular-file versions; changed, replaced, missing or unverifiable targets
+  cause an explicit error instead of blind recursive deletion
+- GIO-owned copy writers (including some GVfs/MTP transfers) do not provide
+  this ownership evidence; their targets are retained when copy undo is refused
+- copy undo removes only recorded unchanged files and empty directories;
+  pure-copy batches preflight all targets, but late changes or I/O failures can
+  still leave a partially undone operation. Inspect the reported paths before
+  retrying; there is no automatic retry or transaction guarantee
+- copy redo and mixed-batch compensation currently copy from the original source
+  again, rather than restoring preserved copied bytes; changed/missing sources
+  and failures after partial undo remain explicit recovery limitations
 
 These boundaries are part of the supported behavior, not incidental
 implementation details.
+
+See the [copy undo ownership follow-up](../../audits/daily-driver/copy-undo-ownership.md)
+for disposable-fixture evidence and remaining safety work.
 
 ## Outside the Linux 1.0 Undo/Redo Claim
 

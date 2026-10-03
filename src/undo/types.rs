@@ -9,6 +9,54 @@ use crate::undo::{UndoError, UndoResult};
 
 const MAX_HISTORY: usize = 50;
 
+/// In-memory evidence of the paths actually produced by a completed copy.
+/// Missing evidence (for example a GIO-owned writer) is not permission to delete.
+#[derive(Debug, Clone, Default)]
+pub struct CopyReceipt {
+    snapshot: Option<crate::fs_utils::TreeSnapshot>,
+}
+
+impl CopyReceipt {
+    pub(crate) fn from_snapshot(snapshot: crate::fs_utils::TreeSnapshot) -> Self {
+        Self {
+            snapshot: snapshot.has_root().then_some(snapshot),
+        }
+    }
+
+    fn snapshot(&self, path: &std::path::Path) -> UndoResult<&crate::fs_utils::TreeSnapshot> {
+        self.snapshot.as_ref().ok_or_else(|| {
+            UndoError::invalid_input(format!(
+                "Cannot verify copy target ownership; retained {}",
+                path.display()
+            ))
+        })
+    }
+
+    pub(crate) fn verify(&self, path: &std::path::Path) -> UndoResult<()> {
+        self.snapshot(path)?.verify(path).map_err(|error| {
+            UndoError::from_io_error(
+                format!(
+                    "Copy target changed or could not be verified; retained {}",
+                    path.display()
+                ),
+                error,
+            )
+        })
+    }
+
+    pub(crate) fn remove(&self, path: &std::path::Path) -> UndoResult<()> {
+        self.snapshot(path)?.remove_created(path).map_err(|error| {
+            UndoError::from_io_error(
+                format!(
+                    "Copy target changed or could not be removed safely; remaining paths retained at {}",
+                    path.display()
+                ),
+                error,
+            )
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum Action {
@@ -23,6 +71,7 @@ pub enum Action {
     Copy {
         from: PathBuf,
         to: PathBuf,
+        receipt: CopyReceipt,
     },
     /// Represents a newly created path. Undo (Backward) moves the path to a
     /// backup location (effectively deleting it while retaining data); redo
