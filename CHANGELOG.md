@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.0.4 — 2026-10-03
+
 - Restore a fixed 5 px gap between list-header sorting and filter buttons, retaining complete-header minimum widths, separate resize targets and 8/6 px SIZE content padding.
 - Add a 3D model file icon using the generic document silhouette and a shaded cube. Recognize common model/scene/CAD extensions (including Blender, STL, OBJ, FBX, glTF, USD and STEP), as well as model MIME types, without renumbering existing icon IDs.
 
