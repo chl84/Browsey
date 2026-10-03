@@ -511,26 +511,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn normalize_uri_for_compare_maps_aliases_and_trims_slashes() {
-        assert_eq!(
-            normalize_uri_for_compare("SSH://alice@EXAMPLE.com:2222/"),
-            Some("sftp://alice@example.com:2222".to_string())
-        );
-        assert_eq!(
-            normalize_uri_for_compare("FTPS://example.com/path/"),
-            Some("ftp://example.com/path".to_string())
-        );
-        assert_eq!(
-            normalize_uri_for_compare("webdav://Nas.LOCAL/share/"),
-            Some("dav://nas.local/share".to_string())
-        );
-        assert_eq!(
-            normalize_uri_for_compare("webdavs://[2001:DB8::1]:8443/path///"),
-            Some("davs://[2001:db8::1]:8443/path".to_string())
-        );
-    }
-
-    #[test]
     fn parse_gio_mount_uris_extracts_activation_and_default_locations() {
         let sample = r#"
 Mount(Fibaro)

@@ -1,7 +1,7 @@
 use super::{
     error::{
-        classify_provider_rclone_message_code, classify_rclone_message_code,
-        is_rclone_not_found_text, map_rclone_error, map_rclone_error_for_provider,
+        classify_rclone_message_code, is_rclone_not_found_text, map_rclone_error,
+        map_rclone_error_for_provider,
     },
     parse::{
         classify_provider_kind, classify_provider_kind_from_config, parse_config_dump_summaries,
@@ -272,31 +272,6 @@ fn classifies_common_rclone_error_messages() {
 }
 
 #[test]
-fn provider_specific_rclone_message_mapping_is_isolated() {
-    assert_eq!(
-        classify_provider_rclone_message_code(
-            CloudProviderKind::Onedrive,
-            "graph returned ActivityLimitReached"
-        ),
-        Some(CloudCommandErrorCode::RateLimited)
-    );
-    assert_eq!(
-        classify_provider_rclone_message_code(
-            CloudProviderKind::Gdrive,
-            "graph returned ActivityLimitReached"
-        ),
-        None
-    );
-    assert_eq!(
-        classify_provider_rclone_message_code(
-            CloudProviderKind::Nextcloud,
-            "graph returned ActivityLimitReached"
-        ),
-        None
-    );
-}
-
-#[test]
 fn parses_rclone_version_output() {
     let out = "rclone v1.69.1\n- os/version: fedora 41\n";
     assert_eq!(parse_rclone_version_stdout(out).as_deref(), Some("1.69.1"));
@@ -384,30 +359,68 @@ fn async_job_unknown_error_is_not_cli_fallback_safe() {
 
 #[test]
 fn provider_specific_error_mapping_does_not_leak_between_providers() {
-    let onedrive_err = map_rclone_error_for_provider(
-        CloudProviderKind::Onedrive,
-        RcloneCliError::NonZero {
-            status: fake_exit_status(1),
-            stdout: String::new(),
-            stderr: "ActivityLimitReached".to_string(),
-        },
-    );
-    let gdrive_err = map_rclone_error_for_provider(
-        CloudProviderKind::Gdrive,
-        RcloneCliError::NonZero {
-            status: fake_exit_status(1),
-            stdout: String::new(),
-            stderr: "ActivityLimitReached".to_string(),
-        },
-    );
-    assert_eq!(
-        onedrive_err.code_str(),
-        CloudCommandErrorCode::RateLimited.as_code_str()
-    );
-    assert_eq!(
-        gdrive_err.code_str(),
-        CloudCommandErrorCode::UnknownError.as_code_str()
-    );
+    // Policy unit tests own the hint rules; exercise the complete adapter here,
+    // including output selection, common-error precedence and message trimming.
+    for (provider, hint_code) in [
+        (
+            CloudProviderKind::Onedrive,
+            CloudCommandErrorCode::RateLimited,
+        ),
+        (
+            CloudProviderKind::Gdrive,
+            CloudCommandErrorCode::UnknownError,
+        ),
+        (
+            CloudProviderKind::Nextcloud,
+            CloudCommandErrorCode::UnknownError,
+        ),
+    ] {
+        for (stderr, stdout, expected_code, expected_message) in [
+            (
+                " \nActivityLimitReached\t ",
+                "Permission denied",
+                hint_code,
+                "ActivityLimitReached",
+            ),
+            (
+                " \t\n ",
+                " \nActivityLimitReached\t ",
+                hint_code,
+                "ActivityLimitReached",
+            ),
+            (
+                "Permission denied",
+                "ActivityLimitReached",
+                CloudCommandErrorCode::PermissionDenied,
+                "Permission denied",
+            ),
+            (
+                "ActivityLimitReached: Permission denied",
+                "",
+                CloudCommandErrorCode::PermissionDenied,
+                "ActivityLimitReached: Permission denied",
+            ),
+        ] {
+            let error = map_rclone_error_for_provider(
+                provider,
+                RcloneCliError::NonZero {
+                    status: fake_exit_status(1),
+                    stdout: stdout.to_string(),
+                    stderr: stderr.to_string(),
+                },
+            );
+            assert_eq!(
+                error.code_str(),
+                expected_code.as_code_str(),
+                "provider={provider:?}, stderr={stderr:?}, stdout={stdout:?}"
+            );
+            assert_eq!(
+                error.message(),
+                expected_message,
+                "provider={provider:?}, stderr={stderr:?}, stdout={stdout:?}"
+            );
+        }
+    }
 }
 
 #[test]
