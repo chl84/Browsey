@@ -6,6 +6,7 @@ import {
   clearTargetCopy,
   type DataClearTarget,
   DEFAULT_SETTINGS,
+  rarSupportNote,
   restoreDefaultsCopy,
   type Settings,
 } from '../settingsTypes'
@@ -320,11 +321,7 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       'open destination after extract',
       settings.openDestAfterExtract ? 'enabled' : 'disabled',
     )
-    const rarNoteTexts = rowTexts(
-      'note',
-      'rar compressed entries are currently unsupported (fail fast)',
-      'rar',
-    )
+    const rarNoteTexts = rowTexts('note', rarSupportNote, 'rar')
     const videoThumbsTexts = rowTexts(
       'video thumbs',
       'enable video thumbnails',

@@ -62,13 +62,17 @@ workload only, not a cold-storage or USB/MTP performance budget.
 
 ## Confirmed Validation Findings
 
-- [ ] **VD-1** Correct the stale Settings claim that compressed RAR entries are
+- [x] **VD-1** Correct the stale Settings claim that compressed RAR entries are
   unsupported, including its matching filter text. The
   [Omarchy validation run](../operations/linux-release/runs/2026-10-03-a0-omarchy.md)
   reproduced the message in both the installed app and mock browser while ten
   RAR tests passed. Update existing wording and add a focused regression; do not
-  replace the working archive adapter. This is a non-blocking capability-message
-  defect, not a missing extraction feature.
+  replace the working archive adapter. Resolved with shared Settings/filter copy
+  describing compressed/password extraction and unsupported RAR creation. Four
+  focused regressions, all 300 frontend tests, lint/typecheck/build, ten RAR tests
+  and the updated mock-browser Settings view pass. The installed binary has not
+  been replaced for this wording-only change. This was a non-blocking
+  capability-message defect, not a missing extraction feature.
 
 ## Optional Decisions, Not Required Work
 

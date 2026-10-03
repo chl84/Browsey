@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { DEFAULT_SETTINGS, type Settings } from '../settingsTypes'
+import { DEFAULT_SETTINGS, rarSupportNote, type Settings } from '../settingsTypes'
 import { createSettingsModalViewModel } from './useSettingsModalViewModel'
 
 const buildDeps = () => ({
@@ -15,6 +15,29 @@ const buildDeps = () => ({
 })
 
 describe('createSettingsModalViewModel filtering', () => {
+  it('uses current RAR capability wording rather than the old unsupported-extraction claim', () => {
+    expect(rarSupportNote).toBe(
+      'RAR extraction supports compressed entries and passwords. Creating RAR archives is not supported.',
+    )
+    const vm = createSettingsModalViewModel(buildDeps())
+    vm.filter.set(rarSupportNote)
+    expect(vm.buildFilterModel({ ...DEFAULT_SETTINGS })).toMatchObject({
+      showArchives: true,
+      showRarNoteRow: true,
+    })
+    vm.filter.set('currently unsupported (fail fast)')
+    expect(vm.buildFilterModel({ ...DEFAULT_SETTINGS }).showRarNoteRow).toBe(false)
+  })
+
+  it.each(['compressed entries', 'passwords', 'creating rar'])('finds the RAR capability note for %s', filter => {
+    const vm = createSettingsModalViewModel(buildDeps())
+    vm.filter.set(filter)
+    expect(vm.buildFilterModel({ ...DEFAULT_SETTINGS })).toMatchObject({
+      showArchives: true,
+      showRarNoteRow: true,
+    })
+  })
+
   it.each(['recovery', 'undo', 'backups', 'disk space'])('finds backup diagnostics for %s', filter => {
     const vm = createSettingsModalViewModel(buildDeps())
     vm.filter.set(filter)

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Checkbox from '../../../shared/ui/Checkbox.svelte'
   import Slider from '../../../shared/ui/Slider.svelte'
-  import type { Settings } from '../settingsTypes'
+  import { rarSupportNote, type Settings } from '../settingsTypes'
 
   export let show = false
   export let showArchiveNameRow = false
@@ -72,7 +72,7 @@
   {#if showRarNoteRow}
     <div class="form-label">Note</div>
     <div class="form-control">
-      <p class="note">RAR compressed entries are currently unsupported (fail fast).</p>
+      <p class="note">{rarSupportNote}</p>
     </div>
   {/if}
 {/if}

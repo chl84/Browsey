@@ -89,6 +89,9 @@ export const clearTargetCopy = {
   },
 } satisfies Record<DataClearTarget, { title: string; message: string; confirmLabel: string }>
 
+export const rarSupportNote =
+  'RAR extraction supports compressed entries and passwords. Creating RAR archives is not supported.'
+
 export const restoreDefaultsCopy = {
   title: 'Restore default settings?',
   message: 'This resets all settings and keyboard shortcuts back to their default values.',
