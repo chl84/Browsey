@@ -205,7 +205,7 @@ describe('useExplorerFileOps extract recovery', () => {
 
     expect(canExtractPathsMock).toHaveBeenCalledWith(['/tmp/archive.zip'])
     expect(extractArchiveMock).toHaveBeenCalledTimes(1)
-    expect(deps.reloadCurrent).not.toHaveBeenCalled()
+    expect(deps.reloadCurrent).toHaveBeenCalledOnce()
     expect(deps.showToast).toHaveBeenCalledWith('Extraction cancelled')
     expect(activityApi.clearNow).toHaveBeenCalledTimes(1)
     expect(activityApi.cleanup).toHaveBeenCalledTimes(1)
@@ -228,10 +228,98 @@ describe('useExplorerFileOps extract recovery', () => {
 
     expect(canExtractPathsMock).toHaveBeenCalledWith(['/tmp/archive.zip'])
     expect(extractArchiveMock).toHaveBeenCalledTimes(1)
-    expect(deps.reloadCurrent).not.toHaveBeenCalled()
+    expect(deps.reloadCurrent).toHaveBeenCalledOnce()
     expect(deps.showToast).toHaveBeenCalledWith('Failed to extract: Permission denied')
     expect(activityApi.clearNow).toHaveBeenCalledTimes(1)
     expect(activityApi.cleanup).toHaveBeenCalledTimes(1)
+  })
+
+  it('names failed batch archives and preserves completed and skipped counts without retrying', async () => {
+    extractArchivesMock.mockResolvedValueOnce([
+      { path: '/tmp/good.zip', ok: true, result: { destination: '/tmp/good', skipped_symlinks: 1, skipped_entries: 0 } },
+      { path: '/tmp/bad.zip', ok: false, error: 'Invalid ZIP archive', error_code: 'archive_open_failed' },
+    ])
+    const deps = createDeps()
+    const ops = useExplorerFileOps(deps)
+    await ops.extractEntries(['good.zip', 'bad.zip'].map(name => ({ name, path: `/tmp/${name}`, kind: 'file', iconId: 0 })))
+    expect(deps.showToast).toHaveBeenCalledWith(
+      'Extracted 1 archive, 1 failed (skipped 1 symlink)\nbad.zip: Invalid ZIP archive', 12000,
+    )
+    expect(deps.reloadCurrent).toHaveBeenCalledOnce()
+    expect(extractArchivesMock).toHaveBeenCalledOnce()
+    expect(extractArchiveMock).not.toHaveBeenCalled()
+    expect(activityApi.clearNow).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the actual batch outcome when listing refresh fails', async () => {
+    extractArchivesMock.mockResolvedValueOnce([
+      { path: '/tmp/good.zip', ok: true, result: { destination: '/tmp/good', skipped_symlinks: 0, skipped_entries: 0 } },
+      { path: '/tmp/bad.zip', ok: false, error: 'Invalid ZIP archive' },
+    ])
+    const deps = createDeps()
+    deps.reloadCurrent.mockRejectedValueOnce(new Error('listing unavailable'))
+    await useExplorerFileOps(deps).extractEntries(['good.zip', 'bad.zip'].map(name => ({ name, path: `/tmp/${name}`, kind: 'file', iconId: 0 })))
+    expect(deps.showToast).toHaveBeenCalledWith(
+      'Extracted 1 archive, 1 failed. Refresh failed. Press F5 to refresh.\nbad.zip: Invalid ZIP archive', 12000,
+    )
+    expect(extractArchivesMock).toHaveBeenCalledOnce()
+  })
+
+  it('does not label successful extraction as failed when listing refresh fails', async () => {
+    const deps = createDeps()
+    deps.reloadCurrent.mockRejectedValueOnce(new Error('listing unavailable'))
+    await useExplorerFileOps(deps).extractEntries([{ name: 'good.zip', path: '/tmp/good.zip', kind: 'file', iconId: 0 }])
+    expect(deps.showToast).toHaveBeenCalledWith('Extracted to /tmp/out. Refresh failed. Press F5 to refresh.', 12000)
+    expect(extractArchiveMock).toHaveBeenCalledOnce()
+  })
+
+  it('refreshes after extraction errors without hiding the original failure or retrying', async () => {
+    extractArchiveMock.mockRejectedValueOnce(new Error('Output retained at /tmp/partial'))
+    const deps = createDeps()
+    deps.reloadCurrent.mockRejectedValueOnce(new Error('listing unavailable'))
+    await useExplorerFileOps(deps).extractEntries([{ name: 'bad.zip', path: '/tmp/bad.zip', kind: 'file', iconId: 0 }])
+    expect(deps.reloadCurrent).toHaveBeenCalledOnce()
+    expect(deps.showToast).toHaveBeenCalledWith(
+      'Failed to extract: Output retained at /tmp/partial. Refresh failed. Press F5 to refresh.', 12000,
+    )
+    expect(extractArchiveMock).toHaveBeenCalledOnce()
+  })
+
+  it('bounds batch failure details while keeping the full failed count explicit', async () => {
+    const names = ['a.zip', 'b.zip', 'c.zip', 'd.zip']
+    extractArchivesMock.mockResolvedValueOnce(names.map(name => ({
+      path: `/tmp/${name}`, ok: false, error: 'Invalid ZIP archive',
+    })))
+    const deps = createDeps()
+    await useExplorerFileOps(deps).extractEntries(names.map(name => ({ name, path: `/tmp/${name}`, kind: 'file', iconId: 0 })))
+    expect(deps.showToast).toHaveBeenCalledWith(
+      'Extraction failed for 4 archives\na.zip: Invalid ZIP archive\nb.zip: Invalid ZIP archive\nc.zip: Invalid ZIP archive\n… 1 archive more failed', 12000,
+    )
+    expect(extractArchivesMock).toHaveBeenCalledOnce()
+    expect(extractArchiveMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps completed counts after mid-batch cancellation and warns separately about refresh', async () => {
+    let finish!: (results: Awaited<ReturnType<typeof extractArchivesMock>>) => void
+    extractArchivesMock.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const deps = createDeps()
+    deps.reloadCurrent.mockRejectedValueOnce(new Error('listing unavailable'))
+    const ops = useExplorerFileOps(deps)
+    const pending = ops.extractEntries(['good.zip', 'pending.zip'].map(name => ({ name, path: `/tmp/${name}`, kind: 'file', iconId: 0 })))
+    await vi.waitFor(() => expect(extractArchivesMock).toHaveBeenCalledOnce())
+    ops.cancelExtraction()
+    finish([
+      { path: '/tmp/good.zip', ok: true, result: { destination: '/tmp/good', skipped_symlinks: 0, skipped_entries: 0 } },
+      { path: '/tmp/pending.zip', ok: false, error: 'Extraction cancelled' },
+    ])
+    await pending
+    expect(deps.showToast).toHaveBeenCalledWith(
+      'Extracted 1 archive; extraction cancelled. Refresh failed. Press F5 to refresh.', 12000,
+    )
+    expect(extractArchiveMock).not.toHaveBeenCalled()
+    expect(activityApi.requestCancel).toHaveBeenCalledOnce()
+    expect(activityApi.clearNow).toHaveBeenCalledOnce()
+    expect(activityApi.cleanup).toHaveBeenCalledOnce()
   })
 })
 

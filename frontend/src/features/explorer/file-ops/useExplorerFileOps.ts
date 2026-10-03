@@ -703,6 +703,20 @@ export const useExplorerFileOps = (deps: Deps) => {
       return skipParts.length > 0 ? ` (skipped ${skipParts.join(', ')})` : ''
     }
 
+    const refreshAfterExtraction = async () => {
+      try {
+        await deps.reloadCurrent()
+        return ''
+      } catch {
+        // Refresh is not extraction: preserve the actual filesystem outcome.
+        return '. Refresh failed. Press F5 to refresh.'
+      }
+    }
+    const reportExtraction = (message: string, needsInspection = false) => {
+      if (needsInspection) deps.showToast(message, 12000)
+      else deps.showToast(message)
+    }
+
     try {
       await deps.activityApi.start(
         `Extracting${entriesToExtract.length > 1 ? ` ${entriesToExtract.length} items…` : '…'}`,
@@ -713,19 +727,20 @@ export const useExplorerFileOps = (deps: Deps) => {
       if (entriesToExtract.length === 1) {
         const entry = entriesToExtract[0]
         const result = await extractWithPassword(entry.path)
+        let refreshWarning = ''
         if (deps.shouldOpenDestAfterExtract() && result?.destination) {
           try {
             const kind = await entryKind(result.destination)
             const target = kind === 'dir' ? result.destination : parentPath(result.destination)
             await deps.loadPath(target, { recordHistory: true })
           } catch {
-            await deps.reloadCurrent()
+            refreshWarning = await refreshAfterExtraction()
           }
         } else {
-          await deps.reloadCurrent()
+          refreshWarning = await refreshAfterExtraction()
         }
         const suffix = summarize(result?.skipped_symlinks ?? 0, result?.skipped_entries ?? 0)
-        deps.showToast(`Extracted to ${result.destination}${suffix}`)
+        reportExtraction(`Extracted to ${result.destination}${suffix}${refreshWarning}`, Boolean(refreshWarning))
       } else {
         const result = await extractArchives(entriesToExtract.map((entry) => entry.path), progressEvent)
         for (const item of result) {
@@ -750,7 +765,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         const successes = result.filter((item) => item.ok && item.result)
         const failures = result.filter((item) => !item.ok)
         // In batch extraction, keep current location stable even if opening destination is enabled.
-        await deps.reloadCurrent()
+        const refreshWarning = await refreshAfterExtraction()
         const totalSkippedSymlinks = successes.reduce(
           (count, item) => count + (item.result?.skipped_symlinks ?? 0),
           0,
@@ -760,22 +775,37 @@ export const useExplorerFileOps = (deps: Deps) => {
           0,
         )
         const suffix = summarize(totalSkippedSymlinks, totalSkippedOther)
+        const archiveCount = (count: number) => `${count} archive${count === 1 ? '' : 's'}`
+        // Keep the existing toast bounded; name the first failures and disclose
+        // the remainder rather than rendering hundreds of rows over the window.
+        const failureLines = failures.slice(0, 3).map(item => {
+          const name = entriesToExtract.find(entry => entry.path === item.path)?.name
+            ?? item.path ?? 'Unknown archive'
+          return `${name}: ${item.error?.trim() || 'Unknown error'}`
+        })
+        if (failures.length > failureLines.length) {
+          failureLines.push(`… ${archiveCount(failures.length - failureLines.length)} more failed`)
+        }
+        const details = failureLines.length > 0 ? `\n${failureLines.join('\n')}` : ''
         if (extractionCancelled) {
-          deps.showToast(`Extracted ${successes.length} archives; extraction cancelled${suffix}`)
+          reportExtraction(`Extracted ${archiveCount(successes.length)}; extraction cancelled${suffix}${refreshWarning}`, Boolean(refreshWarning))
         } else if (failures.length === 0) {
-          deps.showToast(`Extracted ${successes.length} archives${suffix}`)
+          reportExtraction(`Extracted ${archiveCount(successes.length)}${suffix}${refreshWarning}`, Boolean(refreshWarning))
         } else if (successes.length === 0) {
-          deps.showToast(`Extraction failed for ${failures.length} archives`)
+          reportExtraction(`Extraction failed for ${archiveCount(failures.length)}${refreshWarning}${details}`, true)
         } else {
-          deps.showToast(`Extracted ${successes.length} archives, ${failures.length} failed${suffix}`)
+          reportExtraction(`Extracted ${archiveCount(successes.length)}, ${failures.length} failed${suffix}${refreshWarning}${details}`, true)
         }
       }
     } catch (err) {
       const msg = getErrorMessage(err)
+      // A cancelled/failed extractor may roll back or retain output. Reconcile
+      // the listing once, without retrying file work or hiding the primary error.
+      const refreshWarning = await refreshAfterExtraction()
       if (msg.toLowerCase().includes('cancelled')) {
-        deps.showToast('Extraction cancelled')
+        reportExtraction(`Extraction cancelled${refreshWarning}`, Boolean(refreshWarning))
       } else {
-        deps.showToast(`Failed to extract: ${msg}`)
+        reportExtraction(`Failed to extract: ${msg}${refreshWarning}`, Boolean(refreshWarning))
       }
     } finally {
       extracting = false
