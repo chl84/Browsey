@@ -173,7 +173,30 @@ use `cargo build --release` for a distributable desktop binary: it does not set
 Tauri's production build environment and may try to load the Vite development
 server.
 
-Tauri bundles:
+### Local installation from T3 Code (Linux x86_64)
+
+The repository's `t3.json` declares an **Installer Browsey** action. In T3 Code,
+select this project under Settings → Project → Actions and import the action
+from `t3.json` once. It runs:
+
+```bash
+bash scripts/install/install-local.sh
+```
+
+The script builds the current checkout with Tauri's production frontend, checks
+runtime libraries, and installs the binary and resources under
+`~/.local/opt/browsey`, with a launcher at `~/.local/bin/browsey`. It keeps the
+previous installation in a printed `.browsey-backup.*` directory alongside it,
+preserves existing desktop integration, and does not change file associations,
+commit/push, or stop running Browsey processes. Finish any active operations
+before reopening Browsey. System dependencies must already be installed; missing
+frontend dependencies are installed with `npm ci`.
+
+Use `--dry-run` to inspect the plan without building or changing files. Installer
+regressions can be run with `node --test scripts/install/install-local.test.mjs`.
+
+### Tauri bundles
+
 - Windows NSIS:
   ```bash
   cargo tauri build --bundles nsis

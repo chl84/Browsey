@@ -8,7 +8,9 @@ use super::{MixedTransferOp, MixedTransferWriteOptions};
 use crate::commands::cloud;
 use crate::commands::cloud::path::CloudPath;
 use crate::commands::cloud::provider::CloudProvider;
-use crate::commands::cloud::providers::rclone::RcloneCloudProvider;
+use crate::commands::cloud::providers::rclone::{
+    RcloneCloudProvider, RcloneReadBackend, RcloneReadOptions,
+};
 use crate::commands::cloud::rclone_cli::{
     RcloneCli, RcloneCliError, RcloneCommandSpec, RcloneSubcommand,
 };
@@ -263,6 +265,9 @@ fn execute_rclone_transfer(
     }
 
     let subcommand = match op {
+        MixedTransferOp::Copy if copy_source_is_directory(cli, &src, cancel)? => {
+            RcloneSubcommand::Copy
+        }
         MixedTransferOp::Copy => RcloneSubcommand::CopyTo,
         MixedTransferOp::Move => RcloneSubcommand::MoveTo,
     };
@@ -270,14 +275,86 @@ fn execute_rclone_transfer(
     let mut spec = RcloneCommandSpec::new(subcommand)
         .arg(src.to_os_arg())
         .arg(dst.to_os_arg());
-    if op == MixedTransferOp::Copy {
+    if subcommand == RcloneSubcommand::Copy {
         // Archive staging must not silently lose empty directories on upload.
+        // This flag belongs to `copy`, not `copyto` (even for directory sources).
         spec = spec.arg("--create-empty-src-dirs");
     }
 
     cli.run_capture_text_with_cancel(spec, cancel)
         .map_err(|error| map_rclone_cli_error(error, cloud_remote_for_error_mapping))?;
+    if subcommand == RcloneSubcommand::Copy {
+        // rclone copies directory contents; even --create-empty-src-dirs does
+        // not create the destination root when the source itself is empty.
+        ensure_copied_directory_root(cli, &dst, cloud_remote_for_error_mapping, cancel)?;
+    }
     Ok(())
+}
+
+fn ensure_copied_directory_root(
+    cli: &RcloneCli,
+    dst: &LocalOrCloudArg,
+    cloud_remote: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> TransferResult<()> {
+    if transfer_cancelled(cancel) {
+        return Err(transfer_err(
+            TransferErrorCode::Cancelled,
+            "Transfer cancelled",
+        ));
+    }
+    match dst {
+        LocalOrCloudArg::Local(path) => fs::create_dir_all(path).map_err(|error| {
+            let code = match error.kind() {
+                ErrorKind::PermissionDenied => TransferErrorCode::PermissionDenied,
+                ErrorKind::AlreadyExists => TransferErrorCode::DestinationExists,
+                _ => TransferErrorCode::IoError,
+            };
+            transfer_err(code, format!("Failed to create copied directory: {error}"))
+        }),
+        LocalOrCloudArg::Cloud(path) => cli
+            .run_capture_text_with_cancel(
+                RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(path.to_rclone_remote_spec()),
+                cancel,
+            )
+            .map(|_| ())
+            .map_err(|error| map_rclone_cli_error(error, cloud_remote)),
+    }
+}
+
+fn copy_source_is_directory(
+    cli: &RcloneCli,
+    src: &LocalOrCloudArg,
+    cancel: Option<&AtomicBool>,
+) -> TransferResult<bool> {
+    match src {
+        LocalOrCloudArg::Local(path) => fs::symlink_metadata(path)
+            .map(|metadata| metadata.is_dir())
+            .map_err(|error| {
+                let code = match error.kind() {
+                    ErrorKind::NotFound => TransferErrorCode::NotFound,
+                    ErrorKind::PermissionDenied => TransferErrorCode::PermissionDenied,
+                    _ => TransferErrorCode::IoError,
+                };
+                transfer_err(code, format!("Failed to read source metadata: {error}"))
+            }),
+        LocalOrCloudArg::Cloud(path) => {
+            let entry = mixed_cloud_provider_for_cli(cli)
+                .stat_path_with_read_options(
+                    path,
+                    RcloneReadOptions {
+                        cancel,
+                        backend: RcloneReadBackend::CliOnly,
+                        ..Default::default()
+                    },
+                )
+                .map_err(map_cloud_error_to_transfer)?
+                .ok_or_else(|| {
+                    transfer_err(TransferErrorCode::NotFound, "Cloud source was not found")
+                })?;
+            Ok(matches!(entry.kind, CloudEntryKind::Dir))
+        }
+    }
 }
 
 fn mixed_target_exists(

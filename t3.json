@@ -1,0 +1,11 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "scripts": [
+    {
+      "name": "Installer Browsey",
+      "command": "bash scripts/install/install-local.sh",
+      "icon": "build",
+      "runOnWorktreeCreate": false
+    }
+  ]
+}

@@ -146,6 +146,235 @@ fn fake_rclone_test_lock() -> std::sync::MutexGuard<'static, ()> {
 
 #[cfg(unix)]
 #[test]
+fn fake_rclone_rejects_unknown_transfer_flags_before_mutating_files() {
+    let sandbox = FakeRcloneSandbox::new();
+    let source = sandbox.write_local_file("source.txt", "original");
+    let destination = sandbox.write_local_file("destination.txt", "keep-me");
+    for command in [RcloneSubcommand::CopyTo, RcloneSubcommand::MoveTo] {
+        for flag_first in [true, false] {
+            let spec = RcloneCommandSpec::new(command);
+            let spec = if flag_first {
+                spec.arg("--create-empty-src-dirs")
+                    .arg(source.as_os_str())
+                    .arg(destination.as_os_str())
+            } else {
+                spec.arg(source.as_os_str())
+                    .arg(destination.as_os_str())
+                    .arg("--create-empty-src-dirs")
+            };
+            let error = sandbox.cli().run_capture_text(spec).unwrap_err();
+            assert!(matches!(error, RcloneCliError::NonZero { ref stderr, .. }
+                if stderr.contains("unknown flag: --create-empty-src-dirs")));
+            assert_eq!(fs::read_to_string(&source).unwrap(), "original");
+            assert_eq!(fs::read_to_string(&destination).unwrap(), "keep-me");
+        }
+    }
+    let error = sandbox
+        .cli()
+        .run_capture_text(
+            RcloneCommandSpec::new(RcloneSubcommand::Copy)
+                .arg(source.as_os_str())
+                .arg(destination.as_os_str())
+                .arg("--not-a-valid-flag"),
+        )
+        .unwrap_err();
+    assert!(matches!(error, RcloneCliError::NonZero { ref stderr, .. }
+        if stderr.contains("unknown flag: --not-a-valid-flag")));
+    assert_eq!(fs::read_to_string(&destination).unwrap(), "keep-me");
+}
+
+#[cfg(unix)]
+#[test]
+fn staged_zip_round_trip_preserves_original_and_uploads_nested_empty_directories() {
+    let _guard = fake_rclone_test_lock();
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "archives");
+    let source = sandbox.write_local_file("inputs/image.txt", "test image");
+    let empty = sandbox.local_path("inputs/empty");
+    fs::create_dir_all(empty.join("nested")).unwrap();
+    let archive = crate::commands::compress::compress_staged(
+        None,
+        vec![
+            source.to_string_lossy().into_owned(),
+            empty.to_string_lossy().into_owned(),
+        ],
+        "photos.zip".into(),
+        None,
+        None,
+        Some("test-only-password"),
+        None,
+    )
+    .unwrap();
+    let cli = sandbox.cli();
+    let original = sandbox.cloud_path("rclone://work/archives/photos.zip");
+    let local_zip = sandbox.local_path("downloaded/renamed.zip");
+    fs::create_dir_all(local_zip.parent().unwrap()).unwrap();
+    let transfer = |src, dst| {
+        execute_mixed_entry_to_blocking_with_cli(
+            &cli,
+            MixedTransferOp::Copy,
+            MixedTransferPair {
+                src,
+                dst,
+                cloud_remote_for_error_mapping: Some("work".into()),
+            },
+            MixedTransferWriteOptions::default(),
+            None,
+            None,
+        )
+        .unwrap()
+    };
+    transfer(
+        LocalOrCloudArg::Local(PathBuf::from(&archive)),
+        LocalOrCloudArg::Cloud(original.clone()),
+    );
+    transfer(
+        LocalOrCloudArg::Cloud(original.clone()),
+        LocalOrCloudArg::Local(local_zip.clone()),
+    );
+    assert_eq!(fs::read(&local_zip).unwrap(), fs::read(&archive).unwrap());
+    let password_error = crate::commands::decompress::extract_staged(
+        None,
+        local_zip.to_string_lossy().into_owned(),
+        None,
+        None,
+        None,
+    )
+    .err()
+    .expect("encrypted archive must require its password");
+    assert_eq!(password_error.code, "archive_password_required");
+    let extracted = crate::commands::decompress::extract_staged(
+        None,
+        local_zip.to_string_lossy().into_owned(),
+        None,
+        Some("test-only-password"),
+        None,
+    )
+    .unwrap();
+    let output = PathBuf::from(extracted.destination);
+    assert_eq!(fs::read(output.join("image.txt")).unwrap(), b"test image");
+    assert!(output.join("empty/nested").is_dir());
+    transfer(
+        LocalOrCloudArg::Local(output.clone()),
+        LocalOrCloudArg::Cloud(sandbox.cloud_path("rclone://work/archives/unpacked")),
+    );
+    assert_eq!(
+        fs::read(sandbox.remote_path("work", "archives/unpacked/image.txt")).unwrap(),
+        b"test image"
+    );
+    assert!(sandbox
+        .remote_path("work", "archives/unpacked/empty/nested")
+        .is_dir());
+    assert_eq!(
+        fs::read(sandbox.remote_path("work", "archives/photos.zip")).unwrap(),
+        fs::read(&archive).unwrap()
+    );
+    assert!(
+        local_zip.exists() && output.exists(),
+        "staging data must remain available"
+    );
+    let log = fs::read_to_string(sandbox.root.join("fake-rclone.log")).unwrap();
+    assert!(log.contains(&format!(
+        "copyto work:archives/photos.zip {}",
+        local_zip.display()
+    )));
+    assert!(log.contains(&format!(
+        "copy {} work:archives/unpacked --create-empty-src-dirs",
+        output.display()
+    )));
+}
+
+#[cfg(unix)]
+#[test]
+fn mixed_execute_entirely_empty_directory_copy_preserves_roots_in_both_directions() {
+    let _guard = fake_rclone_test_lock();
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "dest");
+    let source = sandbox.local_path("entirely-empty");
+    fs::create_dir(&source).unwrap();
+    let cloud = sandbox.cloud_path("rclone://work/dest/entirely-empty");
+    let local_target = sandbox.local_path("downloaded-empty");
+    for (src, dst) in [
+        (
+            LocalOrCloudArg::Local(source.clone()),
+            LocalOrCloudArg::Cloud(cloud.clone()),
+        ),
+        (
+            LocalOrCloudArg::Cloud(cloud),
+            LocalOrCloudArg::Local(local_target.clone()),
+        ),
+    ] {
+        execute_mixed_entry_to_blocking_with_cli(
+            &sandbox.cli(),
+            MixedTransferOp::Copy,
+            MixedTransferPair {
+                src,
+                dst,
+                cloud_remote_for_error_mapping: Some("work".into()),
+            },
+            MixedTransferWriteOptions::default(),
+            None,
+            None,
+        )
+        .unwrap();
+    }
+    assert!(sandbox.remote_path("work", "dest/entirely-empty").is_dir());
+    assert!(local_target.is_dir());
+    assert!(source.is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "requires real rclone; operates only on newly allocated local temporary files"]
+fn real_rclone_copy_command_contract_preserves_renames_and_empty_directories() {
+    let sandbox = FakeRcloneSandbox::new();
+    let cli = RcloneCli::new(
+        which::which("rclone")
+            .expect("real rclone installed")
+            .as_os_str(),
+    );
+    let source = sandbox.write_local_file("file with spaces.txt", "copy payload");
+    let target = sandbox.local_path("renamed file.txt");
+    let dir = sandbox.local_path("directory with spaces");
+    fs::create_dir_all(dir.join("empty/nested")).unwrap();
+    fs::write(dir.join("file.txt"), "directory payload").unwrap();
+    let dir_target = sandbox.local_path("copied directory");
+    let empty_source = sandbox.local_path("entirely empty directory");
+    fs::create_dir(&empty_source).unwrap();
+    let empty_target = sandbox.local_path("copied empty directory");
+    // Bypass mixed-route validation solely to run the actual production CLI
+    // dispatch on two local temporary paths. No remote/account is accessed.
+    for (src, dst) in [
+        (&source, &target),
+        (&dir, &dir_target),
+        (&empty_source, &empty_target),
+    ] {
+        execute_rclone_transfer(
+            RcloneTransferContext {
+                cli: &cli,
+                cloud_remote_for_error_mapping: None,
+                cancel: None,
+                progress: None,
+            },
+            MixedTransferOp::Copy,
+            LocalOrCloudArg::Local(src.clone()),
+            LocalOrCloudArg::Local(dst.clone()),
+            MixedTransferWriteOptions::default(),
+        )
+        .unwrap();
+    }
+    assert_eq!(fs::read_to_string(&target).unwrap(), "copy payload");
+    assert!(dir_target.join("empty/nested").is_dir());
+    assert_eq!(
+        fs::read_to_string(dir_target.join("file.txt")).unwrap(),
+        "directory payload"
+    );
+    assert!(empty_target.is_dir());
+    assert!(source.exists() && dir.exists() && empty_source.exists());
+}
+
+#[cfg(unix)]
+#[test]
 fn mixed_execute_local_to_cloud_file_copy_and_move_via_fake_rclone() {
     let _guard = fake_rclone_test_lock();
     let sandbox = FakeRcloneSandbox::new();
@@ -508,6 +737,7 @@ fn mixed_execute_local_to_cloud_directory_copy_and_move_via_fake_rclone() {
 
     let copy_dir = sandbox.local_path("src/folder-copy");
     fs::create_dir_all(copy_dir.join("nested")).expect("mkdir local copy dir");
+    fs::create_dir_all(copy_dir.join("empty/nested-empty")).expect("mkdir empty local directories");
     fs::write(copy_dir.join("nested/file.txt"), b"copy-dir").expect("write local nested");
     let copy_route = MixedTransferRoute::LocalToCloud {
         sources: vec![copy_dir.clone()],
@@ -527,6 +757,14 @@ fn mixed_execute_local_to_cloud_directory_copy_and_move_via_fake_rclone() {
     .expect("copy dir local->cloud");
     assert_eq!(copy_out, vec!["rclone://work/dest/folder-copy".to_string()]);
     assert!(copy_dir.exists(), "copy should preserve local source dir");
+    assert!(sandbox
+        .remote_path("work", "dest/folder-copy/empty/nested-empty")
+        .is_dir());
+    let log = fs::read_to_string(sandbox.root.join("fake-rclone.log")).unwrap();
+    assert!(log.contains(&format!(
+        "copy {} work:dest/folder-copy --create-empty-src-dirs",
+        copy_dir.display()
+    )));
     assert_eq!(
         fs::read_to_string(sandbox.remote_path("work", "dest/folder-copy/nested/file.txt"))
             .expect("read remote nested"),
@@ -685,6 +923,7 @@ fn mixed_execute_cloud_to_local_directory_copy_and_move_via_fake_rclone() {
     let _guard = fake_rclone_test_lock();
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "src/folder-copy/nested/file.txt", "copy-dir");
+    sandbox.mkdir_remote("work", "src/folder-copy/empty/nested-empty");
     sandbox.write_remote_file("work", "src/folder-move/nested/file.txt", "move-dir");
     let cli = sandbox.cli();
     let local_dest = sandbox.local_path("dest");
@@ -710,6 +949,12 @@ fn mixed_execute_cloud_to_local_directory_copy_and_move_via_fake_rclone() {
         copy_out,
         vec![local_dest.join("folder-copy").to_string_lossy().to_string()]
     );
+    assert!(local_dest.join("folder-copy/empty/nested-empty").is_dir());
+    let log = fs::read_to_string(sandbox.root.join("fake-rclone.log")).unwrap();
+    assert!(log.contains(&format!(
+        "copy work:src/folder-copy {} --create-empty-src-dirs",
+        local_dest.join("folder-copy").display()
+    )));
     assert_eq!(
         fs::read_to_string(local_dest.join("folder-copy/nested/file.txt"))
             .expect("read local copied dir"),
@@ -1231,7 +1476,7 @@ fn mixed_execute_local_to_cloud_directory_copy_cancels_during_second_active_tran
     let _guard = fake_rclone_test_lock();
     let sandbox = FakeRcloneSandbox::new();
     sandbox.mkdir_remote("work", "dest");
-    sandbox.set_subcommand_delay("copyto", 2, 1500);
+    sandbox.set_subcommand_delay("copy", 2, 1500);
     let cli = sandbox.cli();
     fs::create_dir_all(sandbox.local_path("src/dir-a/nested")).expect("mkdir dir a");
     fs::create_dir_all(sandbox.local_path("src/dir-b/nested")).expect("mkdir dir b");
@@ -1260,7 +1505,7 @@ fn mixed_execute_local_to_cloud_directory_copy_cancels_during_second_active_tran
         )
     });
 
-    sandbox.wait_for_subcommand_delay("copyto", Duration::from_secs(3));
+    sandbox.wait_for_subcommand_delay("copy", Duration::from_secs(3));
     cancel.store(true, Ordering::SeqCst);
     let err = worker
         .join()
@@ -1283,7 +1528,7 @@ fn mixed_execute_cloud_to_local_directory_copy_cancels_during_second_active_tran
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "src/dir-a/nested/file.txt", "alpha");
     sandbox.write_remote_file("work", "src/dir-b/nested/file.txt", "beta");
-    sandbox.set_subcommand_delay("copyto", 2, 1500);
+    sandbox.set_subcommand_delay("copy", 2, 1500);
     let cli = sandbox.cli();
     let local_dest = sandbox.local_path("dest");
     fs::create_dir_all(&local_dest).expect("mkdir local dest");
@@ -1311,7 +1556,7 @@ fn mixed_execute_cloud_to_local_directory_copy_cancels_during_second_active_tran
         )
     });
 
-    sandbox.wait_for_subcommand_delay("copyto", Duration::from_secs(3));
+    sandbox.wait_for_subcommand_delay("copy", Duration::from_secs(3));
     cancel.store(true, Ordering::SeqCst);
     let err = worker
         .join()

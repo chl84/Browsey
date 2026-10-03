@@ -38,6 +38,7 @@ pub enum RcloneSubcommand {
     Purge,
     Rmdir,
     MoveTo,
+    Copy,
     CopyTo,
 }
 
@@ -55,6 +56,7 @@ impl RcloneSubcommand {
             Self::Purge => "purge",
             Self::Rmdir => "rmdir",
             Self::MoveTo => "moveto",
+            Self::Copy => "copy",
             Self::CopyTo => "copyto",
         }
     }
@@ -68,7 +70,7 @@ impl RcloneSubcommand {
             Self::Mkdir => Duration::from_secs(45),
             Self::DeleteFile | Self::Rmdir => Duration::from_secs(120),
             Self::Purge => Duration::from_secs(300),
-            Self::MoveTo | Self::CopyTo => Duration::from_secs(300),
+            Self::MoveTo | Self::Copy | Self::CopyTo => Duration::from_secs(300),
         }
     }
 }
@@ -614,6 +616,7 @@ mod tests {
         assert_eq!(RcloneSubcommand::Rmdir.default_timeout().as_secs(), 120);
         assert_eq!(RcloneSubcommand::Purge.default_timeout().as_secs(), 300);
         assert_eq!(RcloneSubcommand::CopyTo.default_timeout().as_secs(), 300);
+        assert_eq!(RcloneSubcommand::Copy.default_timeout().as_secs(), 300);
     }
 
     #[test]

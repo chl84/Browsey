@@ -301,17 +301,31 @@ case "$subcmd" in
     target="$(map_spec_path "${args[$idx]}")"
     rmdir -- "$target"
     ;;
-  copyto|moveto)
+  copy|copyto|moveto)
     immutable=0
+    create_empty_dirs=0
+    transfer_paths=()
     while [[ $idx -lt ${#args[@]} ]]; do
       case "${args[$idx]}" in
         --immutable) immutable=1; idx=$((idx + 1)) ;;
         --checksum) idx=$((idx + 1)) ;;
-        *) break ;;
+        --create-empty-src-dirs)
+          if [[ "$subcmd" != copy ]]; then
+            echo "Error: unknown flag: --create-empty-src-dirs" >&2
+            exit 2
+          fi
+          create_empty_dirs=1
+          idx=$((idx + 1))
+          ;;
+        -*)
+          echo "Error: unknown flag: ${args[$idx]}" >&2
+          exit 2
+          ;;
+        *) transfer_paths+=("${args[$idx]}"); idx=$((idx + 1)) ;;
       esac
     done
-    if (( idx + 1 >= ${#args[@]} )); then
-      echo "missing src/dst for $subcmd" >&2
+    if [[ ${#transfer_paths[@]} -ne 2 ]]; then
+      echo "expected exactly two src/dst paths for $subcmd" >&2
       exit 2
     fi
     maybe_delay_subcommand "$subcmd"
@@ -319,8 +333,8 @@ case "$subcmd" in
       head -c 512 -- "$script_dir/transfer-failure" >&2
       exit 3
     fi
-    src="$(map_spec_path "${args[$idx]}")"
-    dst="$(map_spec_path "${args[$idx + 1]}")"
+    src="$(map_spec_path "${transfer_paths[0]}")"
+    dst="$(map_spec_path "${transfer_paths[1]}")"
     if [[ "$immutable" -eq 1 && -e "$dst" ]]; then
       echo "destination exists (immutable)" >&2
       exit 3
@@ -330,10 +344,28 @@ case "$subcmd" in
       exit 3
     fi
     mkdir -p -- "$(dirname -- "$dst")"
-    if [[ "$subcmd" == "copyto" ]]; then
+    if [[ "$subcmd" == copy || "$subcmd" == copyto ]]; then
       if [[ -d "$src" ]]; then
-        rm -rf -- "$dst"
-        cp -R -- "$src" "$dst"
+        # Like real rclone, an entirely empty source has no contents to copy;
+        # --create-empty-src-dirs handles descendants, not the source root.
+        if [[ -z "$(find "$src" -mindepth 1 -print -quit)" ]]; then
+          exit 0
+        fi
+        mkdir -p -- "$dst"
+        if [[ "$create_empty_dirs" -eq 1 ]]; then
+          cp -R -- "$src/." "$dst/"
+        else
+          # Ignore empty source directories, never delete existing destination
+          # directories: copy/copyto are not sync.
+          while IFS= read -r -d '' source_file; do
+            relative_file="${source_file#"$src/"}"
+            mkdir -p -- "$(dirname -- "$dst/$relative_file")"
+            cp -f -- "$source_file" "$dst/$relative_file"
+          done < <(find "$src" -type f -print0)
+        fi
+      elif [[ "$subcmd" == copy ]]; then
+        mkdir -p -- "$dst"
+        cp -f -- "$src" "$dst/"
       else
         cp -f -- "$src" "$dst"
       fi

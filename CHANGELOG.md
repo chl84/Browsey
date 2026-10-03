@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix cloud archive extraction and other mixed copies sending `--create-empty-src-dirs` to unsupported `rclone copyto`. Select `copyto` for files and `copy --create-empty-src-dirs` for directories, explicitly preserve entirely empty directory roots as well as nested empty folders; tighten fake-rclone argument validation and cover encrypted staged ZIP round trips and the real local-only rclone CLI contract.
+
+- Add a T3 Code project action and Linux x86_64 user-local installer that builds the current checkout with Tauri's production frontend, stages runtime resources, preserves an installation backup and desktop integration, and leaves running operations alone. Regression checks cover build/runtime failures, rollback, installation locking and Rust toolchain selection.
+
 - Expand cloud folders with private persistent working copies/recovery access, new files, Open With, explicit save-as-new uploads with source-change checks, provider-aware OneDrive/Google Drive trash, staged archive compression/extraction and passwords, preflighted advanced rename, and prepared copy-only external drag. Reuse transfer/archive/cancellation/activity/capability layers; keep originals and staging on failure, protect edits from preview-cache clearing, preserve empty copied directories and refresh after partial outcomes. No automatic sync, atomic cloud overwrite, cloud undo or Nextcloud trash API is claimed. Real-provider acceptance is tracked separately and remains open until approved disposable remotes are tested.
 
 - Keep Semgrep typed-error checks clean with explicit I/O, runtime-task and thumbnail task-error conversions, preserving existing IPC codes instead of reclassifying diagnostic text. Share local/CI scan options, make blocking findings and invalid configuration fail, and regression-test positive/negative fixtures, exclusions and exit codes without weakening rules or adding exceptions.
