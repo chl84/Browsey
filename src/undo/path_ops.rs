@@ -247,20 +247,24 @@ pub(crate) fn move_by_copy_delete_noreplace(
     // (or across filesystems): copy + delete without destination overwrite.
     let source_tree = crate::fs_utils::TreeSnapshot::capture(src)
         .map_err(|error| UndoError::from_io_error("Snapshot source before fallback copy", error))?;
-    copy_entry(src, dst).and_then(|_| {
+    copy_entry_recorded(src, dst).and_then(|receipt| {
         assert_path_snapshot(src, src_snapshot)?;
-        source_tree.verify(src).map_err(|error| UndoError::from_io_error(
-            format!("Source changed or could not be verified; completed copy retained at {}", dst.display()), error))?;
-        delete_entry_path(src).map_err(|del_err| {
-            // Recursive deletion can fail after some source children are gone.
+        #[cfg(test)]
+        crate::fs_utils::copy_test_hooks::hit(src, dst, crate::fs_utils::copy_test_hooks::Phase::BeforeSourceDelete, 0)
+            .map_err(|error| UndoError::from_io_error("Prepare fallback source deletion", error))?;
+        receipt.verify(dst).map_err(|error| error.with_context(format!(
+            "Fallback target changed or unverifiable; source not removed, copied output retained at {}", dst.display()
+        )))?;
+        source_tree.remove_recorded(src).map_err(|del_err| {
+            // Per-entry removal can fail after some source children are gone.
             // The destination may now be the only complete copy: never remove it.
-            UndoError::new(
-                del_err.code(),
+            UndoError::from_io_error(
                 format!(
-                    "Copied {} -> {} after fallback move, but failed to delete source; destination retained: {del_err}",
+                    "Copied {} -> {} after fallback move, but failed to remove all source entries; destination retained. Inspect remaining source entries before retrying",
                     src.display(),
                     dst.display()
                 ),
+                del_err,
             )
         })
     })

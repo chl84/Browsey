@@ -99,6 +99,19 @@ The Linux 1.0 undo/redo claim is subject to these hard boundaries:
 - history filesystem work runs on a blocking worker; repeated undo/redo requests
   in the same explorer page are suppressed until both operation and refresh
   finish. Listing refresh is attempted after errors, without retrying file work
+- manual local copies validate source versions/copy lengths after streaming and
+  pre-sync output versions after writeback. Uncertain finalized output is kept
+  for inspection instead of treated as a successful undoable copy
+- copy/delete move fallback revalidates destination receipts before source
+  removal and checks recorded source entries individually; new source children
+  survive because directories are only removed when empty. Errors can leave a
+  partially removed source tree and retain the destination without automatic retry
+- opaque output writers (including GIO-owned copies) cannot justify fallback
+  source deletion without ownership receipts. Such a move may copy successfully
+  but then refuse source removal; inspect both paths rather than repeat the move
+- these checks do not close final check-to-unlink races or make copy/move atomic;
+  active writes can still mask earlier edits before version capture. Metadata
+  snapshots are not hashes, locks or persistent recovery guarantees
 - Settings > Data inspects undo-session storage without changing files, locks
   or markers. It shows measured file-content lengths, session/marker counts,
   a copyable directory path and manual recovery guidance. Incomplete scans are
@@ -114,6 +127,8 @@ The [copy recovery backup follow-up](../../audits/daily-driver/copy-recovery-bac
 documents preserved bytes and manual recovery boundaries.
 The [storage diagnostics follow-up](../../audits/daily-driver/undo-storage-diagnostics.md)
 records scan limits, Settings behavior and outstanding retention acceptance.
+The [copy version follow-up](../../audits/daily-driver/copy-version-validation.md)
+records source/read and output/writeback checks plus fallback removal boundaries.
 
 ## Outside the Linux 1.0 Undo/Redo Claim
 

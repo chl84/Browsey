@@ -151,8 +151,10 @@ broader operation/platform acceptance rows above are complete.
   rewrite/truncate/append; preserve uncertain finalized outputs for inspection.
 - [x] Verify the recorded pre-sync output version after writeback in both local
   copy engines; refuse edited outputs and preserve them on finalization errors.
-- [ ] Recheck completed fallback output receipts before source deletion and
+- [x] Recheck completed fallback output receipts before source deletion and
   remove only recorded unchanged source entries, preserving late source additions.
+- [x] Honor cancellation between individual fallback source removals; keep
+  destination data and report partially removed source trees without automatic retry.
 - [ ] Validate manual recovery UX, retention/space budgets and installed-build
   behavior for marked sessions. Preserved backups do not imply persistent undo,
   automatic repair/resume or atomic batches.

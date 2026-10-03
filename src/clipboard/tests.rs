@@ -235,6 +235,167 @@ fn local_copy_and_move_preserve_targets_edited_during_finalization() {
 }
 
 #[test]
+fn local_fallback_move_rechecks_outputs_and_preserves_late_source_changes() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for change in [
+        "target-edit",
+        "target-child",
+        "source-child",
+        "source-edit",
+        "source-entry",
+        "source-late-child",
+    ] {
+        let root = uniq_path("fallback-last-gate");
+        let source = root.join("source");
+        let target = root.join("target");
+        write_file(&source.join("a.bin"), b"first-original");
+        write_file(&source.join("z.bin"), b"last-original");
+        let src_root = source.clone();
+        let dst_root = target.clone();
+        let scope = Scope::new(move |src, dst, phase, _| {
+            if phase == Phase::Rename {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "force fallback",
+                ));
+            }
+            if phase == Phase::BeforeSourceDelete {
+                match change {
+                    "target-edit" => fs::write(dst.join("a.bin"), b"other-writer-data")?,
+                    "target-child" => fs::write(dst.join("new.txt"), b"foreign-child")?,
+                    "source-child" => fs::write(src.join("new.txt"), b"late-source-child")?,
+                    "source-edit" => fs::write(src.join("a.bin"), b"late-source-edit")?,
+                    _ => {}
+                }
+            }
+            if change == "source-entry"
+                && phase == Phase::CopyUndoEntry
+                && src == src_root
+                && dst == src_root.join("a.bin")
+            {
+                assert!(
+                    !src_root.join("z.bin").exists(),
+                    "source deletion has already progressed"
+                );
+                fs::write(dst, b"late-source-edit")?;
+                assert_eq!(fs::read(dst_root.join("a.bin"))?, b"first-original");
+            }
+            if change == "source-late-child" && phase == Phase::CopyUndoVerified && src == src_root
+            {
+                fs::write(src.join("new.txt"), b"late-source-child")?;
+            }
+            Ok(())
+        });
+        let result = move_entry(&source, &target, None, None, None);
+        drop(scope);
+        let source_data = fs::read(source.join("a.bin"));
+        let target_data = fs::read(target.join("a.bin")).unwrap();
+        let new_source_data = fs::read(source.join("new.txt")).ok();
+        let new_target_data = fs::read(target.join("new.txt")).ok();
+        let other_source_data = fs::read(source.join("z.bin")).ok();
+        fs::remove_dir_all(root).unwrap();
+        let error =
+            result.expect_err("a late mutation must not become a successful destructive move");
+        assert!(error.to_string().contains("retained"));
+        if change == "source-late-child" {
+            assert_eq!(
+                source_data.unwrap_err().kind(),
+                std::io::ErrorKind::NotFound
+            );
+        } else {
+            assert_eq!(
+                source_data.unwrap(),
+                if ["source-edit", "source-entry"].contains(&change) {
+                    b"late-source-edit".as_slice()
+                } else {
+                    b"first-original".as_slice()
+                }
+            );
+        }
+        assert_eq!(
+            target_data,
+            if change == "target-edit" {
+                b"other-writer-data".as_slice()
+            } else {
+                b"first-original".as_slice()
+            }
+        );
+        if ["source-child", "source-late-child"].contains(&change) {
+            assert_eq!(new_source_data.unwrap(), b"late-source-child");
+        }
+        if change == "target-child" {
+            assert_eq!(new_target_data.unwrap(), b"foreign-child");
+        }
+        if !["source-entry", "source-late-child"].contains(&change) {
+            assert_eq!(other_source_data.unwrap(), b"last-original");
+        }
+    }
+}
+
+#[test]
+fn local_fallback_move_honors_cancellation_during_source_removal() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("fallback-removal-cancel");
+    let source = root.join("source");
+    let target = root.join("target");
+    write_file(&source.join("a.bin"), b"first");
+    write_file(&source.join("z.bin"), b"last");
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    let observed = cancel.clone();
+    let checked_root = source.clone();
+    let scope = Scope::new(move |src, dst, phase, _| {
+        if phase == Phase::Rename {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "force fallback",
+            ));
+        }
+        if phase == Phase::CopyUndoEntry && src == checked_root && dst == checked_root.join("a.bin")
+        {
+            assert!(!checked_root.join("z.bin").exists());
+            observed.store(true, Ordering::Relaxed);
+        }
+        Ok(())
+    });
+    let result = move_entry(&source, &target, None, None, Some(&cancel));
+    drop(scope);
+    let remaining = fs::read(source.join("a.bin"));
+    let target_a = fs::read(target.join("a.bin")).unwrap();
+    let target_z = fs::read(target.join("z.bin")).unwrap();
+    fs::remove_dir_all(root).unwrap();
+    assert_eq!(result.unwrap_err().code(), ClipboardErrorCode::Cancelled);
+    assert!(cancel.load(Ordering::Relaxed));
+    assert_eq!(remaining.unwrap(), b"first");
+    assert_eq!(target_a, b"first");
+    assert_eq!(target_z, b"last");
+}
+
+#[test]
+fn fallback_move_without_output_receipt_keeps_source_and_completed_output() {
+    let root = uniq_path("fallback-opaque-writer");
+    let source = root.join("source.bin");
+    let target = root.join("target.bin");
+    write_file(&source, b"original");
+    write_file(&target, b"original");
+    let source_tree = crate::fs_utils::TreeSnapshot::capture(&source).unwrap();
+    let result = ops::finish_fallback_move(
+        &source,
+        &target,
+        &source_tree,
+        &crate::undo::CopyReceipt::default(),
+        || Ok(()),
+    );
+    let source_data = fs::read(&source).unwrap();
+    let target_data = fs::read(&target).unwrap();
+    fs::remove_dir_all(root).unwrap();
+    let error = result.unwrap_err();
+    assert!(error.to_string().contains("source not removed"));
+    assert!(error.to_string().contains("ownership"));
+    assert_eq!(source_data, b"original");
+    assert_eq!(target_data, b"original");
+}
+
+#[test]
 fn local_move_cancelled_after_sync_retains_both_complete_copies() {
     use crate::fs_utils::copy_test_hooks::{Phase, Scope};
     let root = uniq_path("move-cancel-after-sync");

@@ -14,6 +14,7 @@ pub(crate) enum Phase {
     Write,
     Sync,
     Synced,
+    BeforeSourceDelete,
     CopyUndoVerified,
     CopyUndoEntry,
     RecoveryMarker,

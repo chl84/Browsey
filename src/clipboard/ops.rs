@@ -787,33 +787,6 @@ fn is_gvfs_path(path: &Path) -> bool {
     path.to_string_lossy().to_lowercase().contains("/gvfs/")
 }
 
-fn delete_entry_path(path: &Path) -> ClipboardResult<()> {
-    let meta = fs::symlink_metadata(path).map_err(|e| {
-        ClipboardError::from_io_error(
-            ClipboardErrorCode::IoError,
-            &format!("Failed to read metadata for {}", path.display()),
-            e,
-        )
-    })?;
-    if meta.is_dir() {
-        fs::remove_dir_all(path).map_err(|e| {
-            ClipboardError::from_io_error(
-                ClipboardErrorCode::IoError,
-                &format!("Failed to delete directory {}", path.display()),
-                e,
-            )
-        })
-    } else {
-        fs::remove_file(path).map_err(|e| {
-            ClipboardError::from_io_error(
-                ClipboardErrorCode::IoError,
-                &format!("Failed to delete file {}", path.display()),
-                e,
-            )
-        })
-    }
-}
-
 pub(super) fn move_entry(
     src: &Path,
     dest: &Path,
@@ -872,7 +845,7 @@ pub(super) fn move_entry(
                         error,
                     )
                 })?;
-            copy_entry(src, dest, app, progress_event, cancel)?;
+            let receipt = copy_entry(src, dest, app, progress_event, cancel)?;
             if transfer_cancelled(cancel, app) {
                 return Err(ClipboardError::cancelled().with_context(format!(
                     "Copy retained at {}; source not removed",
@@ -881,32 +854,50 @@ pub(super) fn move_entry(
             }
             crate::undo::assert_path_snapshot(src, &source_snapshot)
                 .map_err(ClipboardError::from)?;
-            source_tree.verify_with_check(src, check).map_err(|error| {
-                if error.kind() == ErrorKind::Interrupted {
-                    return ClipboardError::cancelled().with_context(format!(
-                        "Copy retained at {}; source not removed",
-                        dest.display()
-                    ));
-                }
+            #[cfg(test)]
+            crate::fs_utils::copy_test_hooks::hit(
+                src,
+                dest,
+                crate::fs_utils::copy_test_hooks::Phase::BeforeSourceDelete,
+                0,
+            )
+            .map_err(|error| {
                 ClipboardError::from_io_error(
                     ClipboardErrorCode::IoError,
-                    &format!(
-                        "Source changed or could not be verified; completed copy retained at {}",
-                        dest.display()
-                    ),
+                    "Prepare fallback source deletion",
                     error,
                 )
             })?;
-            delete_entry_path(src).map_err(|error| {
-                error.with_context(format!(
-                    "Copied {} to {}; destination retained because source deletion failed",
-                    src.display(),
-                    dest.display()
-                ))
-            })
+            finish_fallback_move(src, dest, &source_tree, &receipt, check)
         }
         Err(error) => Err(ClipboardError::from(error)),
     }
+}
+
+pub(super) fn finish_fallback_move(
+    src: &Path,
+    dest: &Path,
+    source_tree: &crate::fs_utils::TreeSnapshot,
+    receipt: &crate::undo::CopyReceipt,
+    mut check_cancel: impl FnMut() -> std::io::Result<()>,
+) -> ClipboardResult<()> {
+    // No receipt (for example a GIO-owned writer) is not permission to delete.
+    receipt.verify_with_check(dest, &mut check_cancel).map_err(|error| {
+        let error = if check_cancel().is_err_and(|error| error.kind() == ErrorKind::Interrupted) {
+            ClipboardError::cancelled()
+        } else {
+            ClipboardError::from(error)
+        };
+        error.with_context(format!("Fallback target changed or unverifiable; source not removed, copied output retained at {}", dest.display()))
+    })?;
+    source_tree.remove_recorded_with_check(src, check_cancel).map_err(|error| {
+        let context = format!("Copied {} to {}; destination retained because source removal failed or was interrupted; inspect remaining source entries before retrying", src.display(), dest.display());
+        if error.kind() == ErrorKind::Interrupted {
+            ClipboardError::cancelled().with_context(context)
+        } else {
+            ClipboardError::from_io_error(ClipboardErrorCode::IoError, &context, error)
+        }
+    })
 }
 
 pub(super) fn metadata_if_exists_nofollow(path: &Path) -> ClipboardResult<Option<fs::Metadata>> {

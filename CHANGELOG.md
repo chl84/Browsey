@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Revalidate completed fallback-copy receipts before deleting move sources, and reuse recorded per-entry removal instead of recursive source-tree deletion. Preserve late source additions/edits and changed destination contents; honor cancellation during source removal and report partial outcomes without automatic retry. Refuse destructive fallback completion for writers without ownership receipts, including GIO-owned copies, retaining sources and copied output for inspection.
+
 - Validate opened source versions and copied lengths after local file streaming, and check pre-sync output versions after writeback in both copy engines. Reject changed inputs and in-place target edits without adopting them into receipts or deleting sources; preserve uncertain finalized outputs and edited targets during error cleanup. Add deterministic rewrite/truncate/append and finalization-edit regressions while keeping final-check and active-writer limitations explicit.
 
 - Show read-only undo/recovery backup diagnostics under Settings > Data, with bounded metadata scans, explicit incomplete measurements, a copyable storage path and manual recovery guidance. Preserve backups, locks and markers; distinguish file-content size from disk usage and 50-action history from a storage quota. Reuse shared size formatting and cover refresh failures, pending requests, keyboard access and narrow-window layout.

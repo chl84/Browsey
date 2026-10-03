@@ -140,11 +140,19 @@ impl TreeSnapshot {
         self.verify_with_check(root, || Ok(()))
     }
 
-    /// Remove only recorded, still-unchanged outputs, children before parents.
+    /// Remove only recorded, still-unchanged entries, children before parents.
     /// Never recursively delete a directory: a late foreign child must survive.
     /// This is conservative cleanup, not an atomic filesystem transaction.
-    pub(crate) fn remove_created(&self, root: &Path) -> io::Result<()> {
-        self.verify(root)?;
+    pub(crate) fn remove_recorded(&self, root: &Path) -> io::Result<()> {
+        self.remove_recorded_with_check(root, || Ok(()))
+    }
+
+    pub(crate) fn remove_recorded_with_check(
+        &self,
+        root: &Path,
+        mut check: impl FnMut() -> io::Result<()>,
+    ) -> io::Result<()> {
+        self.verify_with_check(root, &mut check)?;
         #[cfg(test)]
         super::copy_test_hooks::hit(
             root,
@@ -180,10 +188,11 @@ impl TreeSnapshot {
             };
             if !parents_match || !unchanged {
                 return Err(io::Error::other(format!(
-                    "Copy target changed during undo; retained {}",
+                    "Filesystem entry changed during removal; retained {}",
                     path.display()
                 )));
             }
+            check()?;
             match entry {
                 TreeEntry::Directory(_) => fs::remove_dir(&path)?,
                 TreeEntry::File(_) => fs::remove_file(&path)?,

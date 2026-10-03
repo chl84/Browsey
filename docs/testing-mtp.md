@@ -16,6 +16,13 @@ Automated checks: `cargo test`, `npm --prefix frontend test`, and
 mount success, locked phones, repeated clicks, unplug/replug and unplug during
 connection. They do not mount or modify a physical phone.
 
+File-operation safety boundary: a GIO-owned copy writer does not provide a safe
+output ownership receipt. A copy/delete fallback move therefore may finish the
+copy but refuse source deletion. Copy is unchanged; ordinary native rename is
+unchanged when available. The error must retain the source and any remaining
+output for inspection, without an automatic move retry. See the
+[copy version/fallback report](audits/daily-driver/copy-version-validation.md).
+
 Manual acceptance on Linux with `gvfs-mtp` installed:
 
 1. Close Files/Nautilus and start Browsey.
@@ -27,6 +34,11 @@ Manual acceptance on Linux with `gvfs-mtp` installed:
 5. Reconnect; also check a locked/rejected connection and retry after unlocking.
 6. If available, connect two phones with the same display name; selecting each
    must open that specific phone, with no duplicate mounted/unmounted entries.
+7. With disposable files only, check Copy and requested Move in both directions.
+   A fallback writer without ownership evidence must refuse source deletion
+   explicitly and retain both paths. Verify the result before any manual source
+   cleanup; do not repeat an uncertain move automatically. This acceptance is
+   separate from the automated opaque-writer fixture.
 
 `RUST_LOG=browsey::mtp=debug browsey` logs discovery counts (not phone identifiers)
 for diagnosis. Do not stop shared GVFS services while other applications use them.

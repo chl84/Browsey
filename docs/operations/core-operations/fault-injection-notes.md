@@ -72,3 +72,12 @@ preservation, explicit refusal of mixed-version success and preservation of
 uncertain output/foreign edits on finalization errors. These are metadata-version
 checks, not hashing, locks or atomic snapshots.
 See the [copy version report](../../audits/daily-driver/copy-version-validation.md).
+
+`BeforeSourceDelete` is a test-only boundary after fallback copying and before
+the final move gate. Fixtures mutate source/destination files and children there;
+the move must refuse unsafe deletion. Recorded source removal reuses the
+`CopyUndoVerified`/`CopyUndoEntry` seams: a child added after scanning must survive,
+an edited remaining file must stop removal, and clipboard cancellation after an
+earlier removal must preserve all destination data and report partial source state.
+An opaque-writer fixture exercises the real completion gate with no output
+receipt; it does not simulate a live GIO/MTP device.

@@ -117,6 +117,95 @@ fn undo_copy_and_move_refuse_targets_edited_during_finalization() {
 }
 
 #[test]
+fn undo_fallback_move_rechecks_outputs_and_preserves_late_source_changes() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    for change in [
+        "target-edit",
+        "target-child",
+        "source-child",
+        "source-edit",
+        "source-entry",
+        "source-late-child",
+    ] {
+        let root = uniq_path("undo-fallback-last-gate");
+        let source = root.join("source");
+        let target = root.join("target");
+        write_file(&source.join("a.bin"), b"first-original");
+        write_file(&source.join("z.bin"), b"last-original");
+        let checked_root = source.clone();
+        let scope = Scope::new(move |src, dst, phase, _| {
+            if phase == Phase::Rename {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "force fallback",
+                ));
+            }
+            if phase == Phase::BeforeSourceDelete {
+                match change {
+                    "target-edit" => fs::write(dst.join("a.bin"), b"other-writer-data")?,
+                    "target-child" => fs::write(dst.join("new.txt"), b"foreign-child")?,
+                    "source-child" => fs::write(src.join("new.txt"), b"late-source-child")?,
+                    "source-edit" => fs::write(src.join("a.bin"), b"late-source-edit")?,
+                    _ => {}
+                }
+            }
+            if change == "source-entry"
+                && phase == Phase::CopyUndoEntry
+                && src == checked_root
+                && dst == checked_root.join("a.bin")
+            {
+                assert!(!checked_root.join("z.bin").exists());
+                fs::write(dst, b"late-source-edit")?;
+            }
+            if change == "source-late-child"
+                && phase == Phase::CopyUndoVerified
+                && src == checked_root
+            {
+                fs::write(src.join("new.txt"), b"late-source-child")?;
+            }
+            Ok(())
+        });
+        let result = move_with_fallback(&source, &target);
+        drop(scope);
+        let source_data = fs::read(source.join("a.bin"));
+        let target_data = fs::read(target.join("a.bin")).unwrap();
+        let new_source_data = fs::read(source.join("new.txt")).ok();
+        let new_target_data = fs::read(target.join("new.txt")).ok();
+        fs::remove_dir_all(root).unwrap();
+        assert!(result.is_err());
+        if change == "source-late-child" {
+            assert_eq!(
+                source_data.unwrap_err().kind(),
+                std::io::ErrorKind::NotFound
+            );
+        } else {
+            assert_eq!(
+                source_data.unwrap(),
+                if ["source-edit", "source-entry"].contains(&change) {
+                    b"late-source-edit".as_slice()
+                } else {
+                    b"first-original".as_slice()
+                }
+            );
+        }
+        assert_eq!(
+            target_data,
+            if change == "target-edit" {
+                b"other-writer-data".as_slice()
+            } else {
+                b"first-original".as_slice()
+            }
+        );
+        if ["source-child", "source-late-child"].contains(&change) {
+            assert_eq!(new_source_data.unwrap(), b"late-source-child");
+        }
+        if change == "target-child" {
+            assert_eq!(new_target_data.unwrap(), b"foreign-child");
+        }
+    }
+}
+
+#[test]
 fn undo_copy_and_move_faults_keep_source_and_report_partial_output() {
     use crate::fs_utils::copy_test_hooks::{Phase, Scope};
     use std::io::{Error, ErrorKind};

@@ -225,6 +225,7 @@ dependencies. Regression tests: `node --test scripts/release/bump.test.mjs`.
 - Formatting shows real UDisks percentages when available, otherwise indeterminate progress. If completion is uncertain, inspect the device before retrying; Browsey never automatically repeats an erase.
 - MTP phones are discovered through GIO and mounted when opened. Phone Properties are informational; formatting and POSIX permission editing are not offered.
 - If a phone folder reports a temporary I/O error, keep the phone unlocked, check the USB connection and file-transfer mode, and retry. MTP responsiveness depends on the phone and GVFS backend.
+- GVfs/MTP fallback moves without a verifiable output ownership receipt may finish copying but refuse source deletion. Browsey retains the source and any remaining output for inspection; use Copy and verify the result instead of automatically repeating the move.
 
 ## Architecture snapshot
 - `src/`: Rust/Tauri backend command layer, metadata providers, filesystem watcher, keymap, and persistence.

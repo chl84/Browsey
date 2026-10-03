@@ -38,19 +38,29 @@ impl CopyReceipt {
     }
 
     pub(crate) fn verify(&self, path: &std::path::Path) -> UndoResult<()> {
-        self.snapshot(path)?.verify(path).map_err(|error| {
-            UndoError::from_io_error(
-                format!(
-                    "Copy target changed or could not be verified; retained {}",
-                    path.display()
-                ),
-                error,
-            )
-        })
+        self.verify_with_check(path, || Ok(()))
+    }
+
+    pub(crate) fn verify_with_check(
+        &self,
+        path: &std::path::Path,
+        check: impl FnMut() -> std::io::Result<()>,
+    ) -> UndoResult<()> {
+        self.snapshot(path)?
+            .verify_with_check(path, check)
+            .map_err(|error| {
+                UndoError::from_io_error(
+                    format!(
+                        "Copy target changed or could not be verified; retained {}",
+                        path.display()
+                    ),
+                    error,
+                )
+            })
     }
 
     pub(crate) fn remove(&self, path: &std::path::Path) -> UndoResult<()> {
-        self.snapshot(path)?.remove_created(path).map_err(|error| {
+        self.snapshot(path)?.remove_recorded(path).map_err(|error| {
             UndoError::from_io_error(
                 format!(
                     "Copy target changed or could not be removed safely; remaining paths retained at {}",
