@@ -69,3 +69,34 @@ test('unmounted USB properties show device details without mounting it', async (
   const state = await page.evaluate(getControl)
   expect(state.calls.some(({ cmd }) => ['mount_usb_volume', 'get_permissions', 'set_permissions', 'set_ownership', 'set_hidden'].includes(cmd))).toBe(false)
 })
+
+for (const density of ['Cozy', 'Compact']) {
+  test(`Copy drive path uses the same compact sizing as Apply ownership with ${density}`, async ({ page }) => {
+    await page.goto('/')
+    await page.keyboard.press('Control+s')
+    const settings = page.locator('.settings-modal')
+    await settings.getByPlaceholder('Filter settings').fill('density')
+    await settings.locator('.combo-btn').click()
+    await page.getByRole('option', { name: density, exact: true }).click()
+    await page.keyboard.press('Escape')
+    await expect(settings).toBeHidden()
+    await page.getByRole('button', { name: 'USB', exact: true }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Properties', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    const sizing = (button: HTMLElement) => {
+      const style = getComputedStyle(button)
+      return {
+        height: button.getBoundingClientRect().height,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        lineHeight: style.lineHeight,
+        padding: style.padding,
+        minHeight: style.minHeight,
+      }
+    }
+    const copy = await dialog.getByRole('button', { name: 'Copy drive path', exact: true }).evaluate(sizing)
+    await dialog.getByRole('button', { name: 'Ownership', exact: true }).click()
+    const apply = await dialog.getByRole('button', { name: 'Apply ownership', exact: true }).evaluate(sizing)
+    expect(copy).toEqual(apply)
+  })
+}

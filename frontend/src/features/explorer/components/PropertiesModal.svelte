@@ -190,7 +190,7 @@
               <span class="label">{unmounted ? 'Device' : 'Mount point'}</span>
               <span class="value">
                 <span>{drivePath}</span>
-                <button type="button" class="secondary" on:click={() => void onCopyParentFolder()}>Copy drive path</button>
+                <button type="button" class="secondary properties-action-button" on:click={() => void onCopyParentFolder()}>Copy drive path</button>
               </span>
             </div>
           {:else}
@@ -332,7 +332,7 @@
                 <span class="value ownership-controls">
                   <button
                     type="button"
-                    class="ownership-apply-button"
+                    class="ownership-apply-button properties-action-button"
                     on:click={applyOwnership}
                     disabled={ownershipApplying || mutationsLocked}
                   >
@@ -598,7 +598,7 @@
     word-break: break-word;
   }
 
-  .ownership-apply-button {
+  .properties-action-button {
     padding: var(--properties-apply-button-padding-y) var(--properties-apply-button-padding-x);
     min-height: var(--properties-apply-button-min-height);
     font-size: var(--properties-apply-button-font-size);

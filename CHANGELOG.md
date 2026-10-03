@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse the compact Properties action-button sizing for "Copy drive path" and "Apply ownership", keeping equal typography, padding and height in Cozy and Compact layouts.
+
 - Keep list-header filter buttons separate from column resize handles, including SIZE and narrow columns. Remove overlapping alignment offsets and truncate header labels when necessary while preserving sorting, filtering and resizing.
 
 - Simplify Settings stored-data controls: remove drag-and-drop prose, group named cache/list cleanup actions, and show a concise recovery-backup overview with allocation, paths and manual recovery guidance collapsed by default. Preserve read-only inspection, safety warnings and existing cleanup confirmations.
