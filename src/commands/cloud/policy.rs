@@ -76,7 +76,9 @@ pub(crate) fn classify_provider_rclone_message_code(
             }
             None
         }
-        CloudProviderKind::Gdrive => None,
+        CloudProviderKind::Gdrive => (lower.contains("userratelimitexceeded")
+            || lower.contains("ratelimitexceeded"))
+        .then_some(CloudCommandErrorCode::RateLimited),
         CloudProviderKind::Nextcloud => None,
     }
 }

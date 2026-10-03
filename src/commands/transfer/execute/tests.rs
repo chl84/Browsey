@@ -1,4 +1,12 @@
 use super::*;
+#[cfg(target_os = "linux")]
+mod active_onedrive;
+#[cfg(target_os = "linux")]
+mod native_onedrive;
+#[cfg(target_os = "linux")]
+mod race_onedrive;
+#[cfg(unix)]
+mod real_onedrive;
 use crate::commands::cloud::set_rclone_path_override_for_tests;
 #[cfg(unix)]
 use std::fs;
@@ -279,7 +287,7 @@ fn staged_zip_round_trip_preserves_original_and_uploads_nested_empty_directories
         local_zip.display()
     )));
     assert!(log.contains(&format!(
-        "copy {} work:archives/unpacked --create-empty-src-dirs",
+        "copy {} work:archives/unpacked --immutable --checksum --create-empty-src-dirs",
         output.display()
     )));
 }
@@ -762,7 +770,7 @@ fn mixed_execute_local_to_cloud_directory_copy_and_move_via_fake_rclone() {
         .is_dir());
     let log = fs::read_to_string(sandbox.root.join("fake-rclone.log")).unwrap();
     assert!(log.contains(&format!(
-        "copy {} work:dest/folder-copy --create-empty-src-dirs",
+        "copy {} work:dest/folder-copy --immutable --checksum --create-empty-src-dirs",
         copy_dir.display()
     )));
     assert_eq!(
@@ -1745,17 +1753,21 @@ fn register_mixed_cancel_progress_event_sets_token_on_cancel() {
 
 #[test]
 fn provider_specific_error_mapping_handles_onedrive_activity_limit() {
+    use crate::commands::cloud::{
+        providers::rclone::classify_rclone_failure_code, types::CloudProviderKind,
+        CloudCommandErrorCode,
+    };
     assert_eq!(
-        provider_specific_rclone_code(Some(CloudProviderKind::Onedrive), "activitylimitreached"),
-        Some("rate_limited")
+        classify_rclone_failure_code(Some(CloudProviderKind::Onedrive), "activitylimitreached"),
+        CloudCommandErrorCode::RateLimited
     );
     assert_eq!(
-        provider_specific_rclone_code(Some(CloudProviderKind::Gdrive), "userratelimitexceeded"),
-        Some("rate_limited")
+        classify_rclone_failure_code(Some(CloudProviderKind::Gdrive), "userratelimitexceeded"),
+        CloudCommandErrorCode::RateLimited
     );
     assert_eq!(
-        provider_specific_rclone_code(Some(CloudProviderKind::Nextcloud), "activitylimitreached"),
-        None
+        classify_rclone_failure_code(Some(CloudProviderKind::Nextcloud), "activitylimitreached"),
+        CloudCommandErrorCode::UnknownError
     );
 }
 
@@ -1781,6 +1793,70 @@ fn maps_rclone_nonzero_errors_to_consistent_transfer_codes() {
         Some("work"),
     );
     assert_eq!(permission_denied.code_str(), "permission_denied");
+    for (message, expected) in [
+        ("read: connection reset by peer", "network_error"),
+        ("dial tcp: no such host", "network_error"),
+        ("request timed out", "timeout"),
+        ("HTTP error 429: too many requests", "rate_limited"),
+        ("quota exceeded", "rate_limited"),
+        ("x509: certificate has expired", "tls_certificate_error"),
+        ("token expired", "auth_required"),
+        ("not configured", "invalid_config"),
+        ("HTTP error 404", "not_found"),
+        ("file exists", "destination_exists"),
+        ("read tcp: unexpected EOF", "network_error"),
+    ] {
+        let error = map_rclone_cli_error(
+            RcloneCliError::NonZero {
+                status: std::process::ExitStatus::from_raw(256),
+                stdout: String::new(),
+                stderr: message.into(),
+            },
+            None,
+        );
+        assert_eq!(error.code_str(), expected, "{message}");
+    }
+    let error = map_rclone_cli_error(RcloneCliError::NonZero {
+        status: std::process::ExitStatus::from_raw(256),
+        stdout: String::new(),
+        stderr: "Put https://example.invalid/upload/PRIVATE?tempauth=PRIVATE: connection reset by peer".into(),
+    }, None);
+    assert_eq!(error.code_str(), "network_error");
+    assert!(!error.to_string().contains("PRIVATE"));
+}
+
+#[cfg(unix)]
+#[test]
+fn prechecked_cloud_copy_refuses_same_size_changed_destination() {
+    let sandbox = FakeRcloneSandbox::new();
+    let source = sandbox.write_local_file("source.txt", "our payload A");
+    sandbox.write_remote_file("work", "target.txt", "our payload B");
+    let result = execute_mixed_entry_to_blocking_with_cli(
+        &sandbox.cli(),
+        MixedTransferOp::Copy,
+        MixedTransferPair {
+            src: LocalOrCloudArg::Local(source.clone()),
+            dst: LocalOrCloudArg::Cloud(sandbox.cloud_path("rclone://work/target.txt")),
+            cloud_remote_for_error_mapping: Some("work".into()),
+        },
+        MixedTransferWriteOptions {
+            overwrite: false,
+            prechecked: true,
+        },
+        None,
+        None,
+    );
+    assert_eq!(
+        result
+            .expect_err("New competing destination must not be overwritten")
+            .code_str(),
+        "task_failed"
+    );
+    assert_eq!(fs::read(source).unwrap(), b"our payload A");
+    assert_eq!(
+        fs::read(sandbox.remote_path("work", "target.txt")).unwrap(),
+        b"our payload B"
+    );
 }
 
 #[cfg(unix)]

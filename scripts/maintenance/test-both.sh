@@ -32,6 +32,7 @@ node --test "${SCRIPT_DIR}/../release/bump.test.mjs"
 if [[ $(uname -s) == Linux ]]; then
   echo "== Running disposable performance helper regression tests =="
   node --test "${SCRIPT_DIR}/../dev/performance-workloads.test.mjs"
+  node --test "${SCRIPT_DIR}/../../tests/support/cloud-fault-proxy.test.mjs"
 fi
 
 if [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]]; then

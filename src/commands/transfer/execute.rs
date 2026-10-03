@@ -14,7 +14,7 @@ use crate::commands::cloud::providers::rclone::{
 use crate::commands::cloud::rclone_cli::{
     RcloneCli, RcloneCliError, RcloneCommandSpec, RcloneSubcommand,
 };
-use crate::commands::cloud::types::{CloudEntryKind, CloudProviderKind};
+use crate::commands::cloud::types::CloudEntryKind;
 use crate::runtime_lifecycle;
 use crate::tasks::{CancelGuard, CancelState};
 use serde::Serialize;
@@ -259,7 +259,7 @@ fn execute_rclone_transfer(
     }
 
     if let Some(result) = progress::try_execute_local_to_cloud_file_transfer_with_progress(
-        cli, op, &src, &dst, cancel, progress,
+        cli, op, &src, &dst, cancel, progress, options,
     )? {
         return result;
     }
@@ -275,6 +275,14 @@ fn execute_rclone_transfer(
     let mut spec = RcloneCommandSpec::new(subcommand)
         .arg(src.to_os_arg())
         .arg(dst.to_os_arg());
+    if op == MixedTransferOp::Copy && dst.cloud_path().is_some() && !options.overwrite {
+        // A destination can appear after our preflight. This is an additional
+        // rclone guard, not an atomic provider compare-and-swap transaction.
+        spec = spec.arg("--immutable").arg("--checksum");
+        if subcommand == RcloneSubcommand::CopyTo {
+            spec = spec.arg("--ignore-existing").arg("--error-on-no-transfer");
+        }
+    }
     if subcommand == RcloneSubcommand::Copy {
         // Archive staging must not silently lose empty directories on upload.
         // This flag belongs to `copy`, not `copyto` (even for directory sources).
@@ -402,6 +410,9 @@ fn map_rclone_cli_error(
     cloud_remote: Option<&str>,
 ) -> super::error::TransferError {
     match error {
+        RcloneCliError::OutputLimit { subcommand, stream, limit } => transfer_err(
+            TransferErrorCode::TaskFailed,
+            cloud::rclone_cli::output_limit_message(subcommand, stream, limit)),
         RcloneCliError::Io(io) if io.kind() == std::io::ErrorKind::NotFound => {
             transfer_err(TransferErrorCode::BinaryMissing, "rclone not found in PATH")
         }
@@ -420,7 +431,7 @@ fn map_rclone_cli_error(
             "task_failed",
             format!(
                 "Transfer status is unknown after rclone rc {operation} job {job_id}; Browsey did not retry automatically to avoid duplicate operations. Refresh and verify destination state before retrying. Cause: {}",
-                reason.trim()
+                cloud::rclone_cli::sanitize_failure_message(reason.trim())
             ),
         ),
         RcloneCliError::Timeout {
@@ -435,41 +446,19 @@ fn map_rclone_cli_error(
                 timeout.as_secs()
             ),
         ),
-        RcloneCliError::NonZero { stderr, stdout, .. } => {
+        RcloneCliError::NonZero { status, stderr, stdout } => {
+            if status.code() == Some(9) {
+                return transfer_err(TransferErrorCode::TaskFailed,
+                    cloud::rclone_cli::NO_TRANSFER_MESSAGE);
+            }
             let msg_ref = if !stderr.trim().is_empty() {
                 stderr.as_str()
             } else {
                 stdout.as_str()
             };
-            let lower = msg_ref.to_ascii_lowercase();
-            let not_found = is_rclone_not_found_text(&stderr, &stdout);
             let provider = cloud_remote.and_then(cloud::cloud_provider_kind_for_remote);
-            let provider_code = provider_specific_rclone_code(provider, &lower);
-            let code = if lower.contains("quota exceeded")
-                || lower.contains("rate_limit_exceeded")
-                || lower.contains("too many requests")
-            {
-                "rate_limited"
-            } else if lower.contains("unauthorized")
-                || lower.contains("invalid_grant")
-                || lower.contains("token") && lower.contains("expired")
-            {
-                "auth_required"
-            } else if lower.contains("permission denied") || lower.contains("access denied") {
-                "permission_denied"
-            } else if lower.contains("already exists")
-                || lower.contains("destination exists")
-                || lower.contains("file exists")
-            {
-                "destination_exists"
-            } else if not_found {
-                "not_found"
-            } else if lower.contains("x509") || lower.contains("certificate") {
-                "tls_certificate_error"
-            } else {
-                provider_code.unwrap_or("unknown_error")
-            };
-            api_err(code, msg_ref.trim())
+            let code = cloud::providers::rclone::classify_rclone_failure_code(provider, msg_ref);
+            map_cloud_error_to_transfer(cloud::CloudCommandError::new(code, cloud::rclone_cli::sanitize_failure_message(msg_ref.trim())))
         }
     }
 }
@@ -494,29 +483,6 @@ fn transfer_cancelled(cancel: Option<&AtomicBool>) -> bool {
     cancel
         .map(|token| token.load(Ordering::SeqCst))
         .unwrap_or(false)
-}
-
-fn provider_specific_rclone_code(
-    provider: Option<CloudProviderKind>,
-    lower_message: &str,
-) -> Option<&'static str> {
-    match provider {
-        Some(CloudProviderKind::Onedrive) => {
-            if lower_message.contains("activitylimitreached") {
-                return Some("rate_limited");
-            }
-            None
-        }
-        Some(CloudProviderKind::Gdrive) => {
-            if lower_message.contains("userratelimitexceeded")
-                || lower_message.contains("ratelimitexceeded")
-            {
-                return Some("rate_limited");
-            }
-            None
-        }
-        Some(CloudProviderKind::Nextcloud) | None => None,
-    }
 }
 
 fn emit_transfer_progress(

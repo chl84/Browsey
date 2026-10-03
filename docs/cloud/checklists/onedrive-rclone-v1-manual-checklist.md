@@ -61,17 +61,42 @@ identifiers are recorded here. This is not native UI acceptance or a release.
 - [x] Advanced rename with the shared preflight path
 - [x] Password ZIP creation/upload/download/extraction with existing archive engine
 - [x] Marker verified before owned-child normal trash cleanup; parent empty afterward
-- [ ] Native full archive orchestration, extracted-folder upload and empty subfolders
+- [x] Backend encrypted ZIP and extracted-tree upload/download: 32 files in eight
+  groups, nested empty directory, byte verification, unchanged original archive
+  and existing-directory refusal. Real opt-in transfer test passed in 120 seconds.
+- [x] Native archive context menu, password checkbox and extraction password
+  modal through real IPC/local staging/OneDrive. Private optimized candidate,
+  exact returned bytes/empty directories, refreshed output and retained originals;
+  passed in 141 seconds. This does not validate an external GTK drag receiver.
 - [ ] Open With/native external drag to Nautilus (copy-only, including Shift)
 - [ ] Restore owned test data from the provider website recycle bin
-- [ ] Active network loss/quota/rate limit on a dedicated test account (fixtures only so far)
-- [ ] Active real-provider cancellation, large/deep trees and concurrent target races
+- [x] Active real-provider cancellation after positive transfer byte statistics;
+  cancelled code, preserved source, remote state inspected without assuming
+  rollback, then owned-child normal trash cleanup.
+- [x] Active network interruption scoped to one test rclone process via a local
+  CONNECT proxy; real bytes precede injection, network error and source retention
+  verified. The desktop's network and normal rclone configuration are unchanged.
+- [ ] Quota/rate limit on a dedicated test account (fixtures only so far)
+- [x] Same-size destination introduced after Browsey preflight: CLI refuses
+  replacement, RC progress skips the existing object and checks completed-transfer
+  statistics; no-transfer is failure, competing/source bytes retained. Passed
+  in 75 seconds; no provider CAS or in-flight race guarantee.
+- [ ] Large/deep trees and concurrent target races
 
 Opt-in backend runner: `commands::cloud::workspace::tests::real_onedrive_working_copy_and_archive_acceptance`.
+Extracted-tree runner:
+`commands::transfer::execute::tests::real_onedrive::real_onedrive_archive_tree_acceptance`.
 It is ignored in ordinary CI and requires `BROWSEY_TEST_CLOUD_SCOPE` pointing to
 an approved empty non-root folder plus `BROWSEY_TEST_CLOUD_WRITE_APPROVED=yes`.
 Failure retains marked test data for inspection; successful cleanup uses trash,
 not a global purge. OneDrive Personal hard-delete is not assumed supported.
+Both reuse the same empty-parent and ownership-marker guard. A 32-file tree is
+functional round-trip evidence, not large/deep-tree performance acceptance.
+Additional opt-in runners are `real_onedrive_active_fault_acceptance`,
+`real_onedrive_post_preflight_destination_acceptance` and
+`real_onedrive_native_archive_acceptance`; the last additionally requires
+`BROWSEY_NATIVE_CLOUD_TEST_APPROVED=yes` and an isolated production candidate.
+See the [scoped follow-up evidence](../../audits/daily-driver/onedrive-acceptance.md).
 
 ## Notes
 

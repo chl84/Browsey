@@ -90,6 +90,7 @@ pub(super) fn try_execute_local_to_cloud_file_transfer_with_progress(
     dst: &LocalOrCloudArg,
     cancel: Option<&AtomicBool>,
     progress: Option<&TransferProgressContext>,
+    options: MixedTransferWriteOptions,
 ) -> TransferResult<Option<TransferResult<()>>> {
     let Some(progress) = progress else {
         return Ok(None);
@@ -109,35 +110,30 @@ pub(super) fn try_execute_local_to_cloud_file_transfer_with_progress(
 
     let provider = mixed_cloud_provider_for_cli(cli);
     let total = metadata.len();
-    let result = match op {
-        MixedTransferOp::Copy => provider
-            .upload_file_with_progress(
-                src_path,
-                dst_path,
-                &progress.event_name,
-                cancel,
-                |bytes, total| {
-                    emit_transfer_progress(progress, bytes, total, false);
-                },
-            )
-            .map_err(map_cloud_error_to_transfer),
-        MixedTransferOp::Move => {
-            provider
-                .upload_file_with_progress(
-                    src_path,
-                    dst_path,
-                    &progress.event_name,
-                    cancel,
-                    |bytes, total| {
-                        emit_transfer_progress(progress, bytes, total, false);
-                    },
-                )
-                .map_err(map_cloud_error_to_transfer)?;
-            remove_local_source_after_mixed_file_move(src_path)
+    let on_progress = |bytes, total| emit_transfer_progress(progress, bytes, total, false);
+    let upload = if op == MixedTransferOp::Copy && !options.overwrite {
+        provider.upload_new_file_with_progress(
+            src_path,
+            dst_path,
+            &progress.event_name,
+            cancel,
+            on_progress,
+        )
+    } else {
+        provider.upload_file_with_progress(
+            src_path,
+            dst_path,
+            &progress.event_name,
+            cancel,
+            on_progress,
+        )
+    };
+    let result = upload.map_err(map_cloud_error_to_transfer).and_then(|_| {
+        if op == MixedTransferOp::Move {
+            remove_local_source_after_mixed_file_move(src_path)?;
         }
-    }
-    .map(|_| {
         emit_transfer_progress(progress, total, total, true);
+        Ok(())
     });
 
     Ok(Some(result))
@@ -245,6 +241,7 @@ pub(super) fn execute_local_to_cloud_file_transfer_with_aggregate_progress(
     src: &std::path::Path,
     dst: &CloudPath,
     aggregate: AggregateTransferProgress<'_>,
+    options: MixedTransferWriteOptions,
 ) -> TransferResult<()> {
     let AggregateTransferProgress {
         cancel,
@@ -254,12 +251,16 @@ pub(super) fn execute_local_to_cloud_file_transfer_with_aggregate_progress(
         file_size,
     } = aggregate;
     let provider = mixed_cloud_provider_for_cli(cli);
-    provider
-        .upload_file_with_progress(src, dst, &progress.event_name, cancel, |bytes, _| {
-            let aggregate = completed_before.saturating_add(bytes.min(file_size));
-            emit_transfer_progress(progress, aggregate, total_bytes, false);
-        })
-        .map_err(map_cloud_error_to_transfer)?;
+    let on_progress = |bytes: u64, _| {
+        let aggregate = completed_before.saturating_add(bytes.min(file_size));
+        emit_transfer_progress(progress, aggregate, total_bytes, false);
+    };
+    let upload = if op == MixedTransferOp::Copy && !options.overwrite {
+        provider.upload_new_file_with_progress(src, dst, &progress.event_name, cancel, on_progress)
+    } else {
+        provider.upload_file_with_progress(src, dst, &progress.event_name, cancel, on_progress)
+    };
+    upload.map_err(map_cloud_error_to_transfer)?;
     if op == MixedTransferOp::Move {
         remove_local_source_after_mixed_file_move(src)?;
     }

@@ -130,50 +130,11 @@ fn workspace_files_are_private_and_symlinks_are_rejected() {
 #[test]
 #[ignore = "requires an explicitly approved disposable real OneDrive folder"]
 fn real_onedrive_working_copy_and_archive_acceptance() -> Result<(), Box<dyn std::error::Error>> {
-    use crate::commands::{
-        cloud::{
-            provider::CloudProvider, providers::rclone::RcloneCloudProvider, rclone_cli::RcloneCli,
-        },
-        rename::RenameEntryRequest,
-    };
-    let raw = std::env::var("BROWSEY_TEST_CLOUD_SCOPE")?;
-    let parent = CloudPath::parse(&raw)?;
-    if parent.is_root() || std::env::var("BROWSEY_TEST_CLOUD_WRITE_APPROVED")?.as_str() != "yes" {
-        return Err("Explicit approval and a non-root disposable folder are required".into());
-    }
-    let provider = RcloneCloudProvider::new(RcloneCli::new("rclone"));
-    let remotes = provider.list_remotes()?;
-    if !remotes.iter().any(|remote| {
-        remote.id == parent.remote()
-            && remote.provider == crate::commands::cloud::types::CloudProviderKind::Onedrive
-    }) {
-        return Err("The approved remote must be a supported OneDrive remote".into());
-    }
-    if !provider.stat_path(&parent)?.is_some_and(|entry| {
-        matches!(
-            entry.kind,
-            crate::commands::cloud::types::CloudEntryKind::Dir
-        )
-    }) || !provider.list_dir(&parent)?.is_empty()
-    {
-        return Err("The approved test folder must exist and be empty; no writes performed".into());
-    }
-    let local = fixture();
-    let name = local.file_name().unwrap().to_str().unwrap();
-    let child = parent.child_path(name)?;
-    if provider.stat_path(&child)?.is_some() {
-        return Err("Refusing to reuse an existing test child".into());
-    }
-    provider.mkdir(&child, None)?;
-    // Printed only to the local test runner for recovery if a later check fails.
-    eprintln!(
-        "Owned disposable acceptance child: {child}; local data: {}",
-        local.display()
-    );
-    let marker = local.join("owner.txt");
-    fs::write(&marker, name)?;
-    let marker_cloud = child.child_path("browsey-test-owner.txt")?;
-    provider.upload_new_file(&marker, &marker_cloud, None)?;
+    use crate::commands::{cloud::provider::CloudProvider, rename::RenameEntryRequest};
+    let scope = super::super::acceptance_tests::OneDriveFixture::new()?;
+    let local = scope.local.clone();
+    let provider = &scope.provider;
+    let child = &scope.child;
     let original = child.child_path("report.txt")?;
     let input = local.join("report.txt");
     fs::write(&input, "original")?;
@@ -189,7 +150,7 @@ fn real_onedrive_working_copy_and_archive_acceptance() -> Result<(), Box<dyn std
     fs::write(&copy.local_path, "my edits")?;
     fs::remove_file(&downloaded)?;
     assert!(load_at(&base, &copy.id)?.dirty);
-    let uploaded = upload_at(&base, &copy.id, &provider, None)?;
+    let uploaded = upload_at(&base, &copy.id, provider, None)?;
     assert!(!uploaded.source_changed);
     let new_path = CloudPath::parse(&uploaded.path)?;
     provider.download_file(&new_path, &downloaded, None)?;
@@ -198,7 +159,7 @@ fn real_onedrive_working_copy_and_archive_acceptance() -> Result<(), Box<dyn std
     provider.trash_entry(&original, None)?;
     fs::write(&input, "new data")?;
     provider.upload_new_file(&input, &original, None)?;
-    let uploaded_again = upload_at(&base, &copy.id, &provider, None)?;
+    let uploaded_again = upload_at(&base, &copy.id, provider, None)?;
     assert!(uploaded_again.source_changed);
     assert_ne!(uploaded.path, uploaded_again.path);
     assert_eq!(
@@ -224,7 +185,7 @@ fn real_onedrive_working_copy_and_archive_acceptance() -> Result<(), Box<dyn std
     assert!(provider.stat_path(&cancelled)?.is_none());
     let renamed = child.child_path("renamed.txt")?;
     let outcome = super::super::batch_rename::rename_batch(
-        &provider,
+        provider,
         vec![RenameEntryRequest {
             path: uploaded_again.path,
             new_name: "renamed.txt".into(),
@@ -274,15 +235,6 @@ fn real_onedrive_working_copy_and_archive_acceptance() -> Result<(), Box<dyn std
     assert!(provider.stat_path(&archive_cloud)?.is_some());
     eprintln!("PASS: password-protected ZIP through existing archive engine and real cloud upload/download");
 
-    // Trash, not hard delete. Verify our marker before removing only our child.
-    provider.download_file(&marker_cloud, &downloaded, None)?;
-    assert_eq!(fs::read_to_string(&downloaded)?, name);
-    provider.trash_entry(&child, None)?;
-    assert!(provider.stat_path(&child)?.is_none());
-    assert!(provider.list_dir(&parent)?.is_empty());
-    eprintln!(
-        "PASS: owned child moved to provider trash; test parent empty. Web restore not verified."
-    );
-    fs::remove_dir_all(local)?;
+    scope.finish()?;
     Ok(())
 }

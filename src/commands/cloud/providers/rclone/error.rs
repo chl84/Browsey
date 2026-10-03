@@ -80,6 +80,9 @@ fn map_rclone_error_for_providers(
     error: RcloneCliError,
 ) -> CloudCommandError {
     match error {
+        RcloneCliError::OutputLimit { subcommand, stream, limit } => CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            crate::commands::cloud::rclone_cli::output_limit_message(subcommand, stream, limit)),
         RcloneCliError::Io(io) if io.kind() == std::io::ErrorKind::NotFound => {
             CloudCommandError::new(
                 CloudCommandErrorCode::BinaryMissing,
@@ -104,7 +107,7 @@ fn map_rclone_error_for_providers(
             CloudCommandErrorCode::TaskFailed,
             format!(
                 "Cloud operation status is unknown after rclone rc {operation} job {job_id}; Browsey did not retry automatically to avoid duplicate operations. Refresh and verify the destination before retrying. Cause: {}",
-                reason.trim()
+                crate::commands::cloud::rclone_cli::sanitize_failure_message(reason.trim())
             ),
         ),
         RcloneCliError::Timeout {
@@ -119,14 +122,18 @@ fn map_rclone_error_for_providers(
                 timeout.as_secs()
             ),
         ),
-        RcloneCliError::NonZero { stderr, stdout, .. } => {
+        RcloneCliError::NonZero { status, stderr, stdout } => {
+            if status.code() == Some(9) {
+                return CloudCommandError::new(CloudCommandErrorCode::TaskFailed,
+                    crate::commands::cloud::rclone_cli::NO_TRANSFER_MESSAGE);
+            }
             let msg = if !stderr.trim().is_empty() {
                 stderr
             } else {
                 stdout
             };
             let code = classify_rclone_message_code_for_providers(providers, &msg);
-            CloudCommandError::new(code, msg.trim())
+            CloudCommandError::new(code, crate::commands::cloud::rclone_cli::sanitize_failure_message(msg.trim()))
         }
     }
 }
@@ -146,14 +153,25 @@ fn classify_rclone_message_code_for_providers(
     CloudCommandErrorCode::UnknownError
 }
 
+pub(crate) fn classify_rclone_failure_code(
+    provider: Option<CloudProviderKind>,
+    message: &str,
+) -> CloudCommandErrorCode {
+    classify_common_rclone_message_code(message)
+        .or_else(|| provider.and_then(|kind| classify_provider_rclone_message_code(kind, message)))
+        .unwrap_or(CloudCommandErrorCode::UnknownError)
+}
+
 fn classify_common_rclone_message_code(message: &str) -> Option<CloudCommandErrorCode> {
     let lower = message.to_ascii_lowercase();
     if lower.contains("didn't find section") || lower.contains("not configured") {
         return Some(CloudCommandErrorCode::InvalidConfig);
     }
     if lower.contains("already exists")
+        || lower.contains("file exists")
         || lower.contains("duplicate object")
         || lower.contains("destination exists")
+        || lower.contains("immutable file modified")
     {
         return Some(CloudCommandErrorCode::DestinationExists);
     }
@@ -170,6 +188,8 @@ fn classify_common_rclone_message_code(message: &str) -> Option<CloudCommandErro
         return Some(CloudCommandErrorCode::TlsCertificateError);
     }
     if lower.contains("too many requests")
+        || lower.contains("quota exceeded")
+        || lower.contains("rate_limit_exceeded")
         || lower.contains("rate limit")
         || lower.contains("rate-limited")
         || lower.contains("retry after")
@@ -195,13 +215,19 @@ fn classify_common_rclone_message_code(message: &str) -> Option<CloudCommandErro
     if lower.contains("connection")
         || lower.contains("network")
         || lower.contains("dial tcp")
+        || lower.contains("read tcp")
+        || lower.contains("write tcp")
+        || lower.contains("proxyconnect tcp")
         || lower.contains("no such host")
         || lower.contains("name resolution")
         || lower.contains("tls handshake")
     {
         return Some(CloudCommandErrorCode::NetworkError);
     }
-    if is_rclone_not_found_text(message, "") {
+    if is_rclone_not_found_text(message, "")
+        || lower.contains("status code 404")
+        || lower.contains("http error 404")
+    {
         return Some(CloudCommandErrorCode::NotFound);
     }
     None

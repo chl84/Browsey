@@ -303,12 +303,16 @@ case "$subcmd" in
     ;;
   copy|copyto|moveto)
     immutable=0
+    ignore_existing=0
+    error_on_no_transfer=0
     create_empty_dirs=0
     transfer_paths=()
     while [[ $idx -lt ${#args[@]} ]]; do
       case "${args[$idx]}" in
         --immutable) immutable=1; idx=$((idx + 1)) ;;
         --checksum) idx=$((idx + 1)) ;;
+        --ignore-existing) ignore_existing=1; idx=$((idx + 1)) ;;
+        --error-on-no-transfer) error_on_no_transfer=1; idx=$((idx + 1)) ;;
         --create-empty-src-dirs)
           if [[ "$subcmd" != copy ]]; then
             echo "Error: unknown flag: --create-empty-src-dirs" >&2
@@ -335,7 +339,15 @@ case "$subcmd" in
     fi
     src="$(map_spec_path "${transfer_paths[0]}")"
     dst="$(map_spec_path "${transfer_paths[1]}")"
-    if [[ "$immutable" -eq 1 && -e "$dst" ]]; then
+    if [[ "$ignore_existing" -eq 1 && -e "$dst" ]]; then
+      if [[ "$error_on_no_transfer" -eq 1 ]]; then
+        echo "No files transferred" >&2
+        exit 9
+      fi
+      exit 0
+    fi
+    # The real single-file CopyFile path does not enforce --immutable alone.
+    if [[ "$subcmd" == copy && "$immutable" -eq 1 && -e "$dst" ]]; then
       echo "destination exists (immutable)" >&2
       exit 3
     fi

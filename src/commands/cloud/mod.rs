@@ -1,5 +1,7 @@
 //! Cloud-provider Tauri commands (rclone-backed, CLI-first).
 
+#[cfg(test)]
+pub(crate) mod acceptance_tests;
 mod cache;
 mod conflicts;
 mod error;

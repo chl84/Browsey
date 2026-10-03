@@ -19,6 +19,21 @@ pub(crate) struct RcCopyFileFromLocalProgressSpec<'a> {
     pub dst_remote: &'a str,
     pub group: &'a str,
     pub cancel_token: Option<&'a AtomicBool>,
+    pub refuse_replace: bool,
+}
+
+fn local_upload_payload(spec: &RcCopyFileFromLocalProgressSpec<'_>) -> Value {
+    let mut payload = json!({
+        "srcFs": {"type": "local", "_root": spec.src_dir},
+        "srcRemote": spec.src_remote,
+        "dstFs": spec.dst_fs,
+        "dstRemote": spec.dst_remote,
+    });
+    if spec.refuse_replace {
+        // Per-call config only: never change the daemon's global options.
+        payload["_config"] = json!({"Immutable": true, "CheckSum": true, "IgnoreExisting": true});
+    }
+    payload
 }
 
 impl RcloneRcClient {
@@ -204,23 +219,12 @@ impl RcloneRcClient {
     where
         F: FnMut(Value),
     {
+        let payload = local_upload_payload(&spec);
         let RcCopyFileFromLocalProgressSpec {
-            src_dir,
-            src_remote,
-            dst_fs,
-            dst_remote,
             group,
             cancel_token,
+            ..
         } = spec;
-        let payload = json!({
-            "srcFs": {
-                "type": "local",
-                "_root": src_dir,
-            },
-            "srcRemote": src_remote,
-            "dstFs": dst_fs,
-            "dstRemote": dst_remote,
-        });
         self.run_method_async_with_job_control_and_progress(
             RcloneRcMethod::OperationsCopyFile,
             payload,
@@ -254,5 +258,30 @@ impl RcloneRcClient {
 
     pub(super) fn job_stop(&self, job_id: u64) -> Result<Value, RcloneCliError> {
         self.run_method(RcloneRcMethod::JobStop, json!({ "jobid": job_id }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn no_replace_upload_is_per_call_and_checks_content() {
+        let mut spec = RcCopyFileFromLocalProgressSpec {
+            src_dir: "/generated",
+            src_remote: "source.txt",
+            dst_fs: "work:",
+            dst_remote: "target.txt",
+            group: "test",
+            cancel_token: None,
+            refuse_replace: true,
+        };
+        let protected = local_upload_payload(&spec);
+        assert_eq!(
+            protected["_config"],
+            json!({"Immutable": true, "CheckSum": true, "IgnoreExisting": true})
+        );
+        assert_eq!(protected["dstRemote"], "target.txt");
+        spec.refuse_replace = false;
+        assert!(local_upload_payload(&spec).get("_config").is_none());
     }
 }

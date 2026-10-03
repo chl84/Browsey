@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Drain rclone stdout/stderr concurrently instead of waiting on pipe-blocked children; bound capture memory and report unknown completion rather than accepting truncated output. Preserve the end of lengthy failure diagnostics, redact signed provider URLs and reuse common typed cloud error classification for mixed transfers, including network loss and timeout. Add ownership-guarded OneDrive archive-tree and active cancellation/transport-fault acceptance checks.
+
+- Protect new-object cloud copies against destinations appearing after Browsey's preflight. Use rclone's existing-object skip/no-transfer guard for single-file CLI copies and per-call skip plus completed-transfer verification for RC progress uploads; never report a skipped copy as successful. Preserve explicit overwrite/move behavior and document the remaining provider/in-flight race boundary; validate competing/source bytes on real OneDrive.
+
 - Add opt-in, isolated 10k/100k listing/search, mixed-thumbnail, recovery and controlled-cancellation workloads with structured measurements and browser/native helpers. Avoid redundant local metadata caching and bound the existing network metadata cache to 10,000 entries without changing freshness, ownership or transfer semantics. Expose list/grid views as labelled button collections rather than malformed ARIA tables, restoring native WebKit file accessibility.
 
 - Measure representative undo-backup allocation and history retention with opt-in disposable workloads. Show filesystem-reported allocation separately from file-content size in the existing Settings diagnostics; document a conservative storage policy without introducing automatic recovery deletion or a hard quota.

@@ -11,8 +11,15 @@ use std::{
 use tracing::{debug, warn};
 use wait_timeout::ChildExt;
 
+mod capture;
 mod output;
 use output::{scrub_log_text, truncate_failure_output};
+
+pub(crate) fn sanitize_failure_message(raw: &str) -> String {
+    truncate_failure_output(raw.to_owned())
+}
+
+pub(crate) const NO_TRANSFER_MESSAGE: &str = "No file was transferred; the destination may have appeared during upload. Refresh and verify the destination before retrying";
 
 const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] =
     &["--retries", "2", "--low-level-retries", "2", "--stats", "0"];
@@ -131,6 +138,11 @@ pub struct RcloneTextOutput {
 #[derive(Debug)]
 pub enum RcloneCliError {
     Io(std::io::Error),
+    OutputLimit {
+        subcommand: RcloneSubcommand,
+        stream: &'static str,
+        limit: usize,
+    },
     Shutdown {
         subcommand: RcloneSubcommand,
     },
@@ -160,6 +172,11 @@ impl std::fmt::Display for RcloneCliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io(error) => write!(f, "{error}"),
+            Self::OutputLimit {
+                subcommand,
+                stream,
+                limit,
+            } => f.write_str(&output_limit_message(*subcommand, stream, *limit)),
             Self::Shutdown { subcommand } => {
                 write!(
                     f,
@@ -254,6 +271,15 @@ impl std::fmt::Display for RcloneCliError {
 
 impl std::error::Error for RcloneCliError {}
 
+pub(crate) fn output_limit_message(
+    subcommand: RcloneSubcommand,
+    stream: &str,
+    limit: usize,
+) -> String {
+    format!("rclone {} {} exceeded the {} byte capture limit; completion is unknown. Refresh and verify the destination before retrying",
+        subcommand.as_str(), stream, limit)
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct RcloneCli {
@@ -330,12 +356,56 @@ impl RcloneCli {
         let mut command = self.command(spec);
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
-        let child = Arc::new(Mutex::new(Some(
-            spawn_with_etxtbsy_retry(&mut command, subcommand).map_err(RcloneCliError::Io)?,
-        )));
+        let mut process =
+            spawn_with_etxtbsy_retry(&mut command, subcommand).map_err(RcloneCliError::Io)?;
+        let pipes = match capture::Pipes::start(&mut process) {
+            Ok(pipes) => pipes,
+            Err(error) => {
+                let _ = process.kill();
+                let _ = process.wait();
+                return Err(RcloneCliError::Io(error));
+            }
+        };
+        let child = Arc::new(Mutex::new(Some(process)));
         let _registration = RunningChildRegistration::register(child.clone());
-        let output =
-            wait_for_child_output_or_cancel(&child, subcommand, timeout, started, cancel_token)?;
+        let outcome =
+            wait_for_child_output_or_cancel(&child, subcommand, timeout, started, cancel_token);
+        if matches!(&outcome, Err(RcloneCliError::Io(_))) {
+            let _ = child_kill(&child);
+            let _ = child_wait_with_output(&child);
+        }
+        let captured = pipes.finish();
+        let output = match outcome {
+            Ok(mut output) => {
+                let (stdout, stderr) = captured.map_err(RcloneCliError::Io)?;
+                for (capture, stream, limit) in [
+                    (&stdout, "stdout", capture::STDOUT_LIMIT),
+                    (&stderr, "stderr", capture::STDERR_LIMIT),
+                ] {
+                    if capture.overflow {
+                        return Err(RcloneCliError::OutputLimit {
+                            subcommand,
+                            stream,
+                            limit,
+                        });
+                    }
+                }
+                output.stdout = stdout.bytes;
+                output.stderr = stderr.bytes;
+                output
+            }
+            Err(mut error) => {
+                if let (RcloneCliError::Timeout { stdout, stderr, .. }, Ok((out, err))) =
+                    (&mut error, captured)
+                {
+                    *stdout =
+                        truncate_failure_output(String::from_utf8_lossy(&out.bytes).into_owned());
+                    *stderr =
+                        truncate_failure_output(String::from_utf8_lossy(&err.bytes).into_owned());
+                }
+                return Err(error);
+            }
+        };
         let elapsed_ms = started.elapsed().as_millis() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -624,6 +694,10 @@ mod tests {
         let scrubbed = scrub_log_text("token=abc123\npermission denied");
         assert!(scrubbed.contains("[redacted]"));
         assert!(scrubbed.contains("permission denied"));
+        let signed =
+            scrub_log_text("read tcp: EOF https://example.invalid/private/VALUE?tempauth=VALUE");
+        assert!(signed.contains("read tcp: EOF"));
+        assert!(!signed.contains("VALUE"));
 
         let long = "x".repeat(500);
         let truncated = scrub_log_text(&long);
@@ -634,7 +708,88 @@ mod tests {
     fn truncates_failure_output_to_bounded_size() {
         let long = "y".repeat(20_000);
         let truncated = truncate_failure_output(long);
-        assert!(truncated.ends_with("… [truncated]"));
+        assert!(truncated.contains("… [truncated]"));
         assert!(truncated.chars().count() <= 16 * 1024 + "… [truncated]".chars().count());
+    }
+
+    #[test]
+    fn failure_capture_preserves_final_cause_and_redacts_signed_url_tokens() {
+        let raw = format!("{}\nPut \"https://example.invalid/private/TOKEN?tempauth=SECRET\": connection reset by peer", "progress\n".repeat(3000));
+        let bounded = truncate_failure_output(raw);
+        assert!(bounded.ends_with("connection reset by peer"));
+        assert!(!bounded.contains("TOKEN") && !bounded.contains("SECRET"));
+        assert!(bounded.contains("[redacted URL]"));
+        let escaped = truncate_failure_output(
+            r#"{"msg":"Put HTTPS://example.invalid/upload?x=1\u0026tempauth=PRIVATE: EOF"}"#.into(),
+        );
+        assert!(!escaped.contains("PRIVATE") && !escaped.contains("tempauth"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn captures_outputs_larger_than_a_pipe_without_waiting_for_timeout() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!(
+            "browsey-capture-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let script = root.join("rclone-output.sh");
+        let body = format!(
+            "#!/usr/bin/env bash\nprintf '%s' '{}'\nprintf '%s' '{}' >&2\n",
+            "x".repeat(128 * 1024),
+            "y".repeat(128 * 1024)
+        );
+        std::fs::write(&script, body).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let result = RcloneCli::new(script).run_capture_text_with_cancel_and_timeout(
+            RcloneCommandSpec::new(RcloneSubcommand::Version),
+            None,
+            Some(std::time::Duration::from_secs(2)),
+        );
+        std::fs::remove_dir_all(root).unwrap();
+        let output = result.expect("pipe readers must drain while the child is running");
+        assert_eq!(output.stdout.len(), 128 * 1024);
+        assert_eq!(output.stderr.len(), 128 * 1024);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn oversized_successful_output_returns_typed_unknown_completion_error() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!(
+            "browsey-capture-limit-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let script = root.join("output.sh");
+        std::fs::write(
+            &script,
+            "#!/usr/bin/env bash\nhead -c 8388609 /dev/zero >&2\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let result = RcloneCli::new(script).run_capture_text_with_cancel_and_timeout(
+            RcloneCommandSpec::new(RcloneSubcommand::Version),
+            None,
+            Some(std::time::Duration::from_secs(5)),
+        );
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(matches!(
+            result,
+            Err(super::RcloneCliError::OutputLimit {
+                stream: "stderr",
+                limit: 8388608,
+                ..
+            })
+        ));
     }
 }

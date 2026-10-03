@@ -24,10 +24,31 @@ pub(super) use super::write_shared::{
 
 impl RcloneCloudProvider {
     /// New objects only. Do not use RC's unconditional copyfile for edited files.
-    /// --immutable refuses replacement; this is not a provider CAS transaction.
+    /// Skip newly appeared objects and reject a no-transfer exit. This is not CAS.
     pub(crate) fn upload_new_file(
         &self,
         local: &Path,
+        dst: &CloudPath,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()> {
+        self.ensure_new_file_destination(dst, cancel)?;
+        self.cli
+            .run_capture_text_with_cancel(
+                RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
+                    .arg("--immutable")
+                    .arg("--checksum")
+                    .arg("--ignore-existing")
+                    .arg("--error-on-no-transfer")
+                    .arg(local.as_os_str())
+                    .arg(dst.to_rclone_remote_spec()),
+                cancel,
+            )
+            .map_err(|error| map_rclone_error_for_remote(dst.remote(), error))?;
+        Ok(())
+    }
+
+    pub(super) fn ensure_new_file_destination(
+        &self,
         dst: &CloudPath,
         cancel: Option<&AtomicBool>,
     ) -> CloudCommandResult<()> {
@@ -59,16 +80,6 @@ impl RcloneCloudProvider {
                 "The cloud destination folder no longer exists",
             ));
         }
-        self.cli
-            .run_capture_text_with_cancel(
-                RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
-                    .arg("--immutable")
-                    .arg("--checksum")
-                    .arg(local.as_os_str())
-                    .arg(dst.to_rclone_remote_spec()),
-                cancel,
-            )
-            .map_err(|error| map_rclone_error_for_remote(dst.remote(), error))?;
         Ok(())
     }
 
@@ -119,6 +130,7 @@ impl RcloneCloudProvider {
         progress_group: &str,
         cancel: Option<&AtomicBool>,
         mut on_progress: F,
+        refuse_replace: bool,
     ) -> CloudCommandResult<()>
     where
         F: FnMut(u64, u64),
@@ -150,53 +162,84 @@ impl RcloneCloudProvider {
         let mut fell_back_from_rc = false;
         let mut fallback_reason: Option<&'static str> = None;
         if self.rc.is_write_enabled() {
-            let local_parent_str = local_parent.to_string_lossy().to_string();
-            let dst_fs = format!("{}:", dst.remote());
-            match self.rc.operations_copyfile_from_local_with_progress(
-                RcCopyFileFromLocalProgressSpec {
-                    src_dir: &local_parent_str,
-                    src_remote: local_name,
-                    dst_fs: &dst_fs,
-                    dst_remote: dst.rel_path(),
-                    group: progress_group,
-                    cancel_token: cancel,
-                },
-                |stats| {
-                    if let Some((bytes, total)) = rc_stats_progress(&stats) {
-                        on_progress(bytes, total);
+            let before = if refuse_replace {
+                self.rc
+                    .core_stats(Some(progress_group), true)
+                    .map_err(|error| map_rclone_error_for_remote(dst.remote(), error))
+                    .and_then(|stats| rc_transfer_count(&stats))
+                    .map(Some)
+            } else {
+                Ok(None)
+            };
+            // A failed baseline read precedes any write job: guarded CLI fallback
+            // is safe here, unlike fallback after an unknown write-job outcome.
+            if let Ok(before) = before {
+                let local_parent_str = local_parent.to_string_lossy().to_string();
+                let dst_fs = format!("{}:", dst.remote());
+                match self.rc.operations_copyfile_from_local_with_progress(
+                    RcCopyFileFromLocalProgressSpec {
+                        src_dir: &local_parent_str,
+                        src_remote: local_name,
+                        dst_fs: &dst_fs,
+                        dst_remote: dst.rel_path(),
+                        group: progress_group,
+                        cancel_token: cancel,
+                        refuse_replace,
+                    },
+                    |stats| {
+                        if let Some((bytes, total)) = rc_stats_progress(&stats) {
+                            on_progress(bytes, total);
+                        }
+                    },
+                ) {
+                    Ok(_) => {
+                        let verified = if let Some(before) = before {
+                            self.rc.core_stats(Some(progress_group), true)
+                            .map_err(|_| CloudCommandError::new(CloudCommandErrorCode::TaskFailed,
+                                "Upload completion could not be verified; refresh and verify the destination before retrying"))
+                            .and_then(|stats| verify_new_rc_transfer(before, &stats))
+                        } else {
+                            Ok(())
+                        };
+                        let _ = self.rc.core_stats_delete(progress_group);
+                        return verified;
                     }
-                },
-            ) {
-                Ok(_) => {
-                    let _ = self.rc.core_stats_delete(progress_group);
-                    return Ok(());
+                    Err(RcloneCliError::Cancelled { .. }) => {
+                        return Err(cloud_write_cancelled_error())
+                    }
+                    Err(error) if !should_fallback_to_cli_after_rc_error(&error) => {
+                        let _ = self.rc.core_stats_delete(progress_group);
+                        return Err(map_rclone_error_for_remote(dst.remote(), error));
+                    }
+                    Err(error) => {
+                        let _ = self.rc.core_stats_delete(progress_group);
+                        fell_back_from_rc = true;
+                        fallback_reason = Some(classify_rc_fallback_reason(&error));
+                        debug!(
+                            src = %local_src.display(),
+                            dst = %dst,
+                            error = %error,
+                            "rclone rc upload failed; falling back to CLI copyto"
+                        );
+                    }
                 }
-                Err(RcloneCliError::Cancelled { .. }) => return Err(cloud_write_cancelled_error()),
-                Err(error) if !should_fallback_to_cli_after_rc_error(&error) => {
-                    let _ = self.rc.core_stats_delete(progress_group);
-                    return Err(map_rclone_error_for_remote(dst.remote(), error));
-                }
-                Err(error) => {
-                    let _ = self.rc.core_stats_delete(progress_group);
-                    fell_back_from_rc = true;
-                    fallback_reason = Some(classify_rc_fallback_reason(&error));
-                    debug!(
-                        src = %local_src.display(),
-                        dst = %dst,
-                        error = %error,
-                        "rclone rc upload failed; falling back to CLI copyto"
-                    );
-                }
+            } else {
+                fell_back_from_rc = true;
+                fallback_reason = Some("rc_stats_before_write");
             }
         }
-
+        let mut spec = RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
+            .arg(local_src.as_os_str())
+            .arg(dst.to_rclone_remote_spec());
+        if refuse_replace {
+            spec = spec
+                .arg("--immutable")
+                .arg("--checksum")
+                .arg("--ignore-existing")
+                .arg("--error-on-no-transfer");
+        }
         self.cli
-            .run_capture_text_with_cancel(
-                RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
-                    .arg(local_src.as_os_str())
-                    .arg(dst.to_rclone_remote_spec()),
-                cancel,
-            )
+            .run_capture_text_with_cancel(spec, cancel)
             .map_err(|error| map_rclone_error_for_remote(dst.remote(), error))?;
         log_backend_selected(
             "cloud_upload_file_upload",
@@ -690,4 +733,38 @@ fn rc_stats_progress(stats: &Value) -> Option<(u64, u64)> {
                 .and_then(Value::as_u64)
         })?;
     Some((bytes.min(total), total))
+}
+
+fn rc_transfer_count(stats: &Value) -> CloudCommandResult<u64> {
+    stats.get("transfers").and_then(Value::as_u64).ok_or_else(|| {
+        CloudCommandError::new(CloudCommandErrorCode::TaskFailed,
+            "Upload completion statistics are unavailable; refresh and verify the destination before retrying")
+    })
+}
+
+pub(crate) fn verify_new_rc_transfer(before: u64, stats: &Value) -> CloudCommandResult<()> {
+    if rc_transfer_count(stats)? <= before {
+        return Err(CloudCommandError::new(
+            CloudCommandErrorCode::TaskFailed,
+            crate::commands::cloud::rclone_cli::NO_TRANSFER_MESSAGE,
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::errors::domain::DomainError;
+    #[test]
+    fn skipped_rc_upload_is_not_success_even_for_empty_files() {
+        assert!(
+            verify_new_rc_transfer(3, &serde_json::json!({"transfers": 4, "bytes": 0})).is_ok()
+        );
+        for stats in [serde_json::json!({"transfers": 3}), serde_json::json!({})] {
+            let error = verify_new_rc_transfer(3, &stats).unwrap_err();
+            assert_eq!(error.code_str(), "task_failed");
+            assert!(error.to_string().contains("verify the destination"));
+        }
+    }
 }

@@ -149,9 +149,23 @@ layers. Engineering completion and real-provider acceptance are separate.
     source changes, existing-target refusal, pre-cancellation, advanced rename,
     encrypted ZIP round trip and owned-child trash cleanup (2026-10-03,
     rclone 1.75.1; opt-in workspace acceptance test).
-  - [ ] OneDrive remaining acceptance: full native UI/GTK external target,
-    extracted-tree upload, large trees, active network interruption/quota,
-    server-side concurrent destination races and web recycle-bin restore.
+  - [x] OneDrive extracted-tree round trip: encrypted ZIP, 32 files/eight groups,
+    nested empty directories, exact bytes, original archive retained and an
+    occupied directory refused. This is functional coverage, not a large-tree budget.
+  - [x] OneDrive active cancellation and process-scoped network interruption:
+    positive real rclone byte statistics observed before fault injection;
+    cancellation/network error classified, source bytes preserved, owned-child
+    normal trash cleanup verified. No global network or quota manipulation.
+  - [x] OneDrive native archive UI/IPC/staging acceptance: context-menu password
+    ZIP creation and password-modal extraction, refreshed output, exact bytes
+    and nested empty directories, unchanged source/archive and scoped cleanup.
+  - [x] OneDrive bounded post-preflight copy conflict: a same-size competing
+    test file appears before rclone starts; CLI and RC progress preserve its
+    bytes and the source, and a skipped copy is not reported as successful.
+    This is not provider CAS or protection against a later in-flight race.
+  - [ ] OneDrive remaining acceptance: native external GTK receiver, large/deep
+    trees, dedicated-account quota/rate limits, server-side concurrent destination
+    races and web recycle-bin restore.
   - [ ] Google Drive: obtain an approved disposable remote/folder and run
     the expanded real-provider checklist.
   - [ ] Nextcloud: obtain an approved disposable remote/folder and run

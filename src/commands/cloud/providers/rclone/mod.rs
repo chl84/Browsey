@@ -1,4 +1,7 @@
 mod error;
+pub(crate) use error::classify_rclone_failure_code;
+#[cfg(test)]
+pub(crate) use write::verify_new_rc_transfer;
 mod logging;
 mod parse;
 mod read;
@@ -99,7 +102,36 @@ impl RcloneCloudProvider {
     where
         F: FnMut(u64, u64),
     {
-        self.upload_file_with_progress_impl(local_src, dst, progress_group, cancel, on_progress)
+        self.upload_file_with_progress_impl(
+            local_src,
+            dst,
+            progress_group,
+            cancel,
+            on_progress,
+            false,
+        )
+    }
+
+    pub(crate) fn upload_new_file_with_progress<F>(
+        &self,
+        local_src: &Path,
+        dst: &CloudPath,
+        progress_group: &str,
+        cancel: Option<&AtomicBool>,
+        on_progress: F,
+    ) -> CloudCommandResult<()>
+    where
+        F: FnMut(u64, u64),
+    {
+        self.ensure_new_file_destination(dst, cancel)?;
+        self.upload_file_with_progress_impl(
+            local_src,
+            dst,
+            progress_group,
+            cancel,
+            on_progress,
+            true,
+        )
     }
 }
 

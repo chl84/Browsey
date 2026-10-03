@@ -104,6 +104,7 @@ pub(super) fn execute_mixed_entries_blocking_with_cli(
                             total_bytes: plan.total_bytes,
                             file_size: plan.file_sizes[index],
                         },
+                        options,
                     )?;
                     completed_bytes = completed_bytes.saturating_add(plan.file_sizes[index]);
                 } else {

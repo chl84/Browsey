@@ -320,7 +320,7 @@ fn maps_async_job_unknown_to_task_failed_with_guidance() {
         subcommand: RcloneSubcommand::Rc,
         operation: "operations/copyfile".to_string(),
         job_id: 42,
-        reason: "job/status failed: connection reset".to_string(),
+        reason: "job/status failed: connection reset https://example.invalid/upload/PRIVATE?tempauth=PRIVATE".to_string(),
     });
     assert_eq!(
         err.code_str(),
@@ -336,6 +336,7 @@ fn maps_async_job_unknown_to_task_failed_with_guidance() {
         "unexpected message: {msg}"
     );
     assert!(msg.contains("job 42"), "unexpected message: {msg}");
+    assert!(!msg.contains("PRIVATE"));
 }
 
 #[test]
