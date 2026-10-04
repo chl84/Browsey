@@ -530,6 +530,13 @@ export const useExplorerFileOps = (deps: Deps) => {
       }
       deps.showToast(`Paste failed: ${getErrorMessage(err)}${refreshWarning}`)
       return false
+    } finally {
+      try {
+        await deps.activityApi.cleanup(true)
+      } catch {
+        // Listener cleanup must not reclassify a completed transfer or hide
+        // the original cancellation/partial-output error.
+      }
     }
   }
 

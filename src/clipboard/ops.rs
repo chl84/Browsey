@@ -4,10 +4,6 @@ use crate::{
 };
 #[cfg(test)]
 use std::cell::RefCell;
-#[cfg(not(target_os = "windows"))]
-use std::io::BufRead;
-#[cfg(not(target_os = "windows"))]
-use std::process::Command;
 use std::{
     fs,
     io::{ErrorKind, Read, Write},
@@ -18,6 +14,7 @@ use std::{
 use super::{
     error::{ClipboardError, ClipboardErrorCode, ClipboardResult},
     owned_copy_paths::OwnedCopyPaths,
+    progress::CopyProgress,
     ClipboardMode, CopyProgressPayload,
 };
 
@@ -72,13 +69,9 @@ pub(super) fn transfer_cancelled(
             .unwrap_or(false)
 }
 
-fn emit_copy_progress(
-    app: Option<&tauri::AppHandle>,
-    event: Option<&str>,
-    payload: CopyProgressPayload,
-) {
-    if let (Some(app), Some(evt)) = (app, event) {
-        let _ = runtime_lifecycle::emit_if_running(app, evt, payload);
+fn emit_copy_progress(event: Option<&CopyProgress<'_>>, payload: CopyProgressPayload) {
+    if let Some(progress) = event {
+        progress.report(payload);
     }
 }
 
@@ -86,7 +79,7 @@ fn copy_dir(
     src: &Path,
     dest: &Path,
     app: Option<&tauri::AppHandle>,
-    progress_event: Option<&str>,
+    progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<crate::undo::CopyReceipt> {
     let mut outputs = OwnedCopyPaths::default();
@@ -109,7 +102,7 @@ fn copy_dir_tracked(
     src: &Path,
     dest: &Path,
     app: Option<&tauri::AppHandle>,
-    progress_event: Option<&str>,
+    progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
     outputs: &mut OwnedCopyPaths,
 ) -> ClipboardResult<()> {
@@ -276,7 +269,7 @@ pub(super) fn merge_dir(
     mode: ClipboardMode,
     actions: &mut Vec<Action>,
     app: Option<&tauri::AppHandle>,
-    progress_event: Option<&str>,
+    progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<()> {
     ensure_not_child(src, dest)?;
@@ -446,7 +439,7 @@ pub(super) fn copy_entry(
     src: &Path,
     dest: &Path,
     app: Option<&tauri::AppHandle>,
-    progress_event: Option<&str>,
+    progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<crate::undo::CopyReceipt> {
     let meta = fs::symlink_metadata(src).map_err(|e| {
@@ -489,7 +482,7 @@ pub(super) fn copy_file_best_effort(
     src: &Path,
     dest: &Path,
     app: Option<&tauri::AppHandle>,
-    progress_event: Option<&str>,
+    progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
     total_hint: Option<u64>,
 ) -> ClipboardResult<u64> {
@@ -501,7 +494,7 @@ fn copy_file_tracked(
     src: &Path,
     dest: &Path,
     app: Option<&tauri::AppHandle>,
-    progress_event: Option<&str>,
+    progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
     total_hint: Option<u64>,
     outputs: Option<&mut OwnedCopyPaths>,
@@ -512,16 +505,15 @@ fn copy_file_tracked(
     #[cfg(not(target_os = "windows"))]
     {
         if is_gvfs_path(src) || is_gvfs_path(dest) {
-            if let Some(app) = app {
-                if let Some(bytes) =
-                    try_gio_copy_progress(src, dest, app, progress_event, cancel, total_hint)?
-                {
-                    // GIO owns the open output handle, so do not pretend a later
-                    // path lookup proves our ownership. Failure cleanup retains
-                    // these untracked outputs instead of recursively deleting them.
-                    return Ok(bytes);
-                }
-            }
+            // GIO owns the output handle; a later path lookup is not an ownership
+            // receipt. Retain uncertain outputs and never retry through local I/O.
+            return super::gio_copy::copy(
+                src,
+                dest,
+                total_hint,
+                || transfer_cancelled(cancel, app),
+                |payload| emit_copy_progress(progress_event, payload),
+            );
         }
     }
 
@@ -580,12 +572,11 @@ fn copy_file_tracked(
         loop {
             if transfer_cancelled(cancel, app) {
                 emit_copy_progress(
-                    app,
                     progress_event,
                     CopyProgressPayload {
                         bytes: done,
                         total: total.unwrap_or(done),
-                        finished: true,
+                        finished: false,
                     },
                 );
                 return Err(ClipboardError::cancelled());
@@ -607,7 +598,6 @@ fn copy_file_tracked(
                     || elapsed >= std::time::Duration::from_millis(200)
                 {
                     emit_copy_progress(
-                        app,
                         progress_event,
                         CopyProgressPayload {
                             bytes: done,
@@ -673,7 +663,6 @@ fn copy_file_tracked(
                 )
             })?;
         emit_copy_progress(
-            app,
             progress_event,
             CopyProgressPayload {
                 bytes: done,
@@ -723,7 +712,6 @@ fn copy_file_tracked(
             outputs.record_file(dest, completed_state);
         }
         emit_copy_progress(
-            app,
             progress_event,
             CopyProgressPayload {
                 bytes: done,
@@ -755,83 +743,6 @@ fn copy_file_tracked(
 }
 
 #[cfg(not(target_os = "windows"))]
-fn try_gio_copy_progress(
-    src: &Path,
-    dest: &Path,
-    app: &tauri::AppHandle,
-    progress_event: Option<&str>,
-    cancel: Option<&AtomicBool>,
-    total_hint: Option<u64>,
-) -> ClipboardResult<Option<u64>> {
-    let mut cmd = Command::new("gio");
-    cmd.arg("copy").arg("--progress").arg(src).arg(dest);
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(_) => return Ok(None),
-    };
-
-    let stdout = child.stdout.take();
-    let mut total_seen: Option<u64> = total_hint;
-    let mut last_bytes: u64 = 0;
-
-    if let Some(out) = stdout {
-        let reader = std::io::BufReader::new(out);
-        for line in reader.lines().map_while(Result::ok) {
-            if transfer_cancelled(cancel, Some(app)) {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(ClipboardError::cancelled());
-            }
-
-            // Parse integers in the line; expect two numbers = transferred, total.
-            let nums: Vec<u64> = line
-                .split(|c: char| !c.is_ascii_digit())
-                .filter(|s| !s.is_empty())
-                .filter_map(|s| s.parse::<u64>().ok())
-                .collect();
-            if nums.len() >= 2 {
-                last_bytes = nums[0];
-                total_seen = Some(nums[1]);
-                if let (Some(evt), Some(total)) = (progress_event, total_seen) {
-                    let _ = runtime_lifecycle::emit_if_running(
-                        app,
-                        evt,
-                        CopyProgressPayload {
-                            bytes: last_bytes,
-                            total,
-                            finished: false,
-                        },
-                    );
-                }
-            }
-        }
-    }
-
-    let status = child.wait().map_err(|e| {
-        ClipboardError::from_io_error(ClipboardErrorCode::IoError, "gio copy wait failed", e)
-    })?;
-    if status.success() {
-        if let Some(evt) = progress_event {
-            let _ = runtime_lifecycle::emit_if_running(
-                app,
-                evt,
-                CopyProgressPayload {
-                    bytes: last_bytes,
-                    total: total_seen.unwrap_or(last_bytes),
-                    finished: true,
-                },
-            );
-        }
-        return Ok(Some(last_bytes));
-    }
-
-    Ok(None)
-}
-
-#[cfg(not(target_os = "windows"))]
 fn is_gvfs_path(path: &Path) -> bool {
     path.to_string_lossy().to_lowercase().contains("/gvfs/")
 }
@@ -840,7 +751,7 @@ pub(super) fn move_entry(
     src: &Path,
     dest: &Path,
     app: Option<&tauri::AppHandle>,
-    progress_event: Option<&str>,
+    progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<()> {
     ensure_not_child(src, dest)?;

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Use native GIO byte progress for GVFS/network copies in both directions, with
+  cancellable I/O independent of progress callbacks. Never automatically retry
+  a failed or cancelled GIO copy through a different writer. Aggregate progress
+  across files and folders, count file contents rather than directory metadata,
+  and retain uncertain outputs without deleting the source. Release paste
+  listeners after completion; only the entire paste finishes its progress task.
+
 - Share keyboard and context-menu clipboard/deletion actions, including progress,
   cancellation, network confirmation and partial-result refresh. Keep successful
   mutations distinct from subsequent refresh failures and never retry deletion.

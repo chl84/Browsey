@@ -118,6 +118,18 @@ destructive testing.
 - [ ] **A1-7** Validate network disconnect/reconnect and stale-path handling against
   controlled mounts; check that discovery and refresh settings behave as documented.
 
+  Network copy implementation scope (2026-10-04): direct GIO callbacks replace
+  CLI progress parsing for GVFS transfers in either direction. A separate
+  cancellation watcher interrupts GIO even without callbacks; failed or
+  cancelled transfers are not retried through the manual writer. Regression
+  tests exercise GIO with disposable local fixtures, raw byte totals, file and
+  folder aggregation, existing/racing targets, source retention, cancellation
+  through the task registry and UI listener cleanup. Unknown totals remain
+  indeterminate; directory metadata is not counted as file contents. These are
+  candidate backend/mock-UI tests, not real SFTP, MTP or native-WebKit acceptance.
+  The previously approved SFTP test folder was unavailable during this run.
+  Real transfer progress and mid-transfer cancellation remain unchecked.
+
   Network deletion implementation scope (2026-10-04): regression tests cover
   no content download/local undo for remote deletion, supported trash,
   confirmation before unsupported trash or permanent deletion, cancellation,

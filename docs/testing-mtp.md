@@ -18,10 +18,17 @@ connection. They do not mount or modify a physical phone.
 
 File-operation safety boundary: a GIO-owned copy writer does not provide a safe
 output ownership receipt. A copy/delete fallback move therefore may finish the
-copy but refuse source deletion. Copy is unchanged; ordinary native rename is
+copy but refuse source deletion. Ordinary native rename is
 unchanged when available. The error must retain the source and any remaining
 output for inspection, without an automatic move retry. See the
 [copy version/fallback report](audits/daily-driver/copy-version-validation.md).
+
+GVFS copies use native GIO byte callbacks in either direction. Cancellation is
+forwarded independently of those callbacks, and a failed/cancelled GIO copy is
+not restarted using another writer. Aggregate file-content totals keep the task
+open across multiple files; unavailable totals remain indeterminate. GIO may
+retain partial output on failure or cancellation; inspect it before retrying.
+Disposable local GIO tests do not replace physical-phone acceptance.
 
 Manual acceptance on Linux with `gvfs-mtp` installed:
 
@@ -48,6 +55,10 @@ Manual acceptance on Linux with `gvfs-mtp` installed:
    loading, and check that selection remains tied to paths.
 9. Navigate elsewhere during a slow refresh or start a search. A late directory
    reply must not reopen the old folder or replace the search results.
+10. Copy a large disposable file and a multi-file folder in each direction.
+    Verify intermediate byte progress, then cancel a separate large transfer.
+    It should stop without starting another copy, retain the source and refresh
+    the destination. Inspect any retained partial output before cleanup.
 
 Automated snapshot/metadata tests and simulated browser fixtures cover these
 refresh contracts, not physical-phone or native-WebKit acceptance.

@@ -17,7 +17,6 @@ pub(crate) enum ClipboardErrorCode {
     TaskFailed,
     RollbackFailed,
     IoError,
-    UnknownError,
 }
 
 impl ErrorCode for ClipboardErrorCode {
@@ -34,7 +33,6 @@ impl ErrorCode for ClipboardErrorCode {
             Self::TaskFailed => "task_failed",
             Self::RollbackFailed => "rollback_failed",
             Self::IoError => "io_error",
-            Self::UnknownError => "unknown_error",
         }
     }
 }

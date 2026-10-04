@@ -8,14 +8,18 @@ use crate::{
 mod clipboard_size;
 mod drop_mode;
 mod error;
+#[cfg(not(target_os = "windows"))]
+mod gio_copy;
 mod ops;
 mod owned_copy_paths;
+mod progress;
 #[cfg(test)]
 mod tests;
 
 use clipboard_size::estimate_total_size;
 use error::{map_api_result, ClipboardError, ClipboardErrorCode, ClipboardResult};
 use once_cell::sync::Lazy;
+use progress::CopyProgress;
 use serde::Serialize;
 #[cfg(test)]
 use std::cell::RefCell;
@@ -378,6 +382,13 @@ fn paste_entries_core(
     if app.is_some_and(runtime_lifecycle::is_shutting_down) {
         return Err(ClipboardError::cancelled());
     }
+    // Register before path resolution/metadata I/O, not only once copying starts.
+    let cancel_guard = progress_event
+        .as_ref()
+        .map(|id| cancel_state.register(id.clone()))
+        .transpose()
+        .map_err(ClipboardError::from)?;
+    let cancel_flag = cancel_guard.as_ref().map(|g| g.token());
     reject_cloud_clipboard_path(&dest, "paste")?;
     let dest = map_clipboard_result(sanitize_path_follow(&dest, false))?;
     let explicit_input = input.is_some();
@@ -387,29 +398,16 @@ fn paste_entries_core(
         .transpose()?
         .unwrap_or(ConflictPolicy::Rename);
 
-    let cancel_guard = progress_event
-        .as_ref()
-        .map(|id| cancel_state.register(id.clone()))
-        .transpose()
-        .map_err(ClipboardError::from)?;
-    let cancel_flag = cancel_guard.as_ref().map(|g| g.token());
-
-    let total_items = state.entries.len() as u64;
-    let total_bytes = progress_event
-        .as_ref()
-        .and_then(|evt| app.map(|app| estimate_total_size(&state.entries, evt, app)));
-    let mut done_items: u64 = 0;
-    if let (Some(app), Some(evt), Some(total)) = (app, progress_event.as_ref(), total_bytes) {
-        let _ = runtime_lifecycle::emit_if_running(
-            app,
-            evt,
-            CopyProgressPayload {
-                bytes: done_items,
-                total,
-                finished: false,
-            },
-        );
-    }
+    let total_bytes = if progress_event.is_some() {
+        estimate_total_size(&state.entries, || {
+            transfer_cancelled(cancel_flag.as_deref(), app)
+        })?
+    } else {
+        None
+    };
+    let progress = progress_event
+        .as_deref()
+        .map(|event| CopyProgress::new(app, event, total_bytes));
 
     let mut created = Vec::new();
     let mut performed: Vec<Action> = Vec::with_capacity(state.entries.len() * 4);
@@ -475,7 +473,7 @@ fn paste_entries_core(
                         state.mode,
                         &mut performed,
                         app,
-                        progress_event.as_deref(),
+                        progress.as_ref(),
                         cancel_flag.as_deref(),
                     ) {
                         return Err(rollback_performed_actions(&performed, err));
@@ -500,39 +498,17 @@ fn paste_entries_core(
 
         let receipt = loop {
             let result = match state.mode {
-                ClipboardMode::Copy => copy_entry(
-                    src,
-                    &target,
-                    app,
-                    progress_event.as_deref(),
-                    cancel_flag.as_deref(),
-                ),
-                ClipboardMode::Cut => move_entry(
-                    src,
-                    &target,
-                    app,
-                    progress_event.as_deref(),
-                    cancel_flag.as_deref(),
-                )
-                .map(|()| crate::undo::CopyReceipt::default()),
+                ClipboardMode::Copy => {
+                    copy_entry(src, &target, app, progress.as_ref(), cancel_flag.as_deref())
+                }
+                ClipboardMode::Cut => {
+                    move_entry(src, &target, app, progress.as_ref(), cancel_flag.as_deref())
+                        .map(|()| crate::undo::CopyReceipt::default())
+                }
             };
 
             match result {
                 Ok(receipt) => {
-                    done_items = done_items.saturating_add(1);
-                    if total_bytes.is_none() {
-                        if let (Some(app), Some(evt)) = (app, progress_event.as_ref()) {
-                            let _ = runtime_lifecycle::emit_if_running(
-                                app,
-                                evt,
-                                CopyProgressPayload {
-                                    bytes: done_items,
-                                    total: total_items,
-                                    finished: false,
-                                },
-                            );
-                        }
-                    }
                     break receipt;
                 }
                 Err(err) => {
@@ -569,18 +545,6 @@ fn paste_entries_core(
         run_after_paste_item_test_hook();
     }
 
-    if let (Some(app), Some(evt)) = (app, progress_event.as_ref()) {
-        let _ = runtime_lifecycle::emit_if_running(
-            app,
-            evt,
-            CopyProgressPayload {
-                bytes: total_bytes.unwrap_or(done_items),
-                total: total_bytes.unwrap_or(total_items),
-                finished: true,
-            },
-        );
-    }
-
     if !performed.is_empty() {
         let mut recorded = if performed.len() == 1 {
             performed.pop().unwrap()
@@ -599,6 +563,10 @@ fn paste_entries_core(
         if guard.as_ref() == Some(&state) {
             *guard = None;
         }
+    }
+
+    if let Some(progress) = progress.as_ref() {
+        progress.finish();
     }
 
     Ok(created)

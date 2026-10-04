@@ -1,78 +1,112 @@
-use std::path::{Path, PathBuf};
+//! Estimate file-content bytes, never directory inode sizes. Unknown totals stay
+//! indeterminate; cancellation during preflight cannot start a mutation.
+use std::path::PathBuf;
 
-#[cfg(not(target_os = "windows"))]
-use std::process::Command;
+use super::error::{ClipboardError, ClipboardResult};
 
-use crate::clipboard::error::{ClipboardError, ClipboardErrorCode, ClipboardResult};
-use crate::clipboard::CopyProgressPayload;
-use crate::runtime_lifecycle;
-
-pub fn estimate_total_size(entries: &[PathBuf], evt: &str, app: &tauri::AppHandle) -> u64 {
-    let mut total: u64 = 0;
-    for p in entries {
-        if runtime_lifecycle::is_shutting_down(app) {
-            break;
-        }
-        if let Ok(meta) = std::fs::metadata(p) {
-            total = total.saturating_add(meta.len());
-            continue;
+pub(super) fn estimate_total_size(
+    entries: &[PathBuf],
+    abort: impl Fn() -> bool + Sync,
+) -> ClipboardResult<Option<u64>> {
+    let mut total = 0u64;
+    for root in entries {
+        if abort() {
+            return Err(ClipboardError::cancelled());
         }
         #[cfg(not(target_os = "windows"))]
-        {
-            if let Ok(size) = gio_size(p) {
-                total = total.saturating_add(size);
+        if root.to_string_lossy().contains("/gvfs/") {
+            match super::gio_copy::estimate_size(root, &abort) {
+                Ok(Some(size)) => {
+                    let Some(sum) = total.checked_add(size) else {
+                        return Ok(None);
+                    };
+                    total = sum;
+                    continue;
+                }
+                Err(error) if error.code() == super::error::ClipboardErrorCode::Cancelled => {
+                    return Err(error)
+                }
+                _ => return Ok(None),
+            }
+        }
+        for entry in walkdir::WalkDir::new(root).follow_links(false) {
+            if abort() {
+                return Err(ClipboardError::cancelled());
+            }
+            let Ok(entry) = entry else { return Ok(None) };
+            if entry.file_type().is_symlink() {
+                return Ok(None);
+            }
+            if entry.file_type().is_file() {
+                let Ok(meta) = entry.metadata() else {
+                    return Ok(None);
+                };
+                let Some(sum) = total.checked_add(meta.len()) else {
+                    return Ok(None);
+                };
+                total = sum;
+            } else if !entry.file_type().is_dir() {
+                return Ok(None);
             }
         }
     }
-    if total > 0 {
-        let _ = runtime_lifecycle::emit_if_running(
-            app,
-            evt,
-            CopyProgressPayload {
-                bytes: 0,
-                total,
-                finished: false,
-            },
+    if abort() {
+        return Err(ClipboardError::cancelled());
+    }
+    Ok(Some(total))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::performance_fixture::Fixture;
+    use std::fs;
+
+    #[test]
+    fn counts_nested_file_contents_not_directory_inode_sizes() {
+        let fixture = Fixture::new("copy-size-plan");
+        fs::create_dir_all(fixture.0.join("empty/nested")).unwrap();
+        fs::write(fixture.0.join("a"), [1; 13]).unwrap();
+        fs::write(fixture.0.join("empty/b"), [2; 27]).unwrap();
+        assert_eq!(
+            estimate_total_size(std::slice::from_ref(&fixture.0), || false).unwrap(),
+            Some(40)
+        );
+        assert_eq!(
+            estimate_total_size(&[fixture.0.join("empty/nested")], || false).unwrap(),
+            Some(0)
         );
     }
-    total
-}
 
-#[cfg(not(target_os = "windows"))]
-fn gio_size(path: &Path) -> ClipboardResult<u64> {
-    let output = Command::new("gio")
-        .arg("info")
-        .arg("--attributes=standard::size")
-        .arg(path)
-        .output()
-        .map_err(|e| {
-            ClipboardError::new(ClipboardErrorCode::IoError, format!("gio info failed: {e}"))
-        })?;
-    if !output.status.success() {
-        return Err(ClipboardError::new(
-            ClipboardErrorCode::IoError,
-            "gio info failed",
-        ));
+    #[test]
+    fn cancelled_size_scan_never_becomes_an_unknown_total() {
+        let fixture = Fixture::new("copy-size-cancel");
+        assert_eq!(
+            estimate_total_size(std::slice::from_ref(&fixture.0), || true)
+                .unwrap_err()
+                .code(),
+            super::super::error::ClipboardErrorCode::Cancelled
+        );
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split(':').map(|s| s.trim()).collect();
-        if parts.len() == 2 && parts[0] == "standard::size" {
-            if let Ok(n) = parts[1].parse::<u64>() {
-                return Ok(n);
-            }
-        }
-    }
-    Err(ClipboardError::new(
-        ClipboardErrorCode::UnknownError,
-        "size not found",
-    ))
-}
 
-#[cfg(target_os = "windows")]
-fn gio_size(_path: &Path) -> ClipboardResult<u64> {
-    Err(ClipboardError::new(
-        ClipboardErrorCode::UnknownError,
-        "gio size unsupported on Windows",
-    ))
+    #[test]
+    fn unavailable_metadata_has_an_unknown_total_not_fake_item_bytes() {
+        let fixture = Fixture::new("copy-size-unknown");
+        assert_eq!(
+            estimate_total_size(&[fixture.0.join("missing")], || false).unwrap(),
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn size_scan_does_not_follow_symlinks() {
+        let fixture = Fixture::new("copy-size-symlink");
+        fs::write(fixture.0.join("source"), [1; 17]).unwrap();
+        std::os::unix::fs::symlink(fixture.0.join("source"), fixture.0.join("link")).unwrap();
+        assert_eq!(
+            estimate_total_size(&[fixture.0.join("link")], || false).unwrap(),
+            None
+        );
+    }
 }

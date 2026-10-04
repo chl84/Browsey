@@ -354,6 +354,53 @@ describe('immutable paste and drop operations', () => {
     vi.useRealTimers()
   })
 
+  it.each([
+    ['/fixture/gvfs/server/source.bin', '/tmp/dest'],
+    ['/tmp/source.bin', '/fixture/gvfs/server/dest'],
+  ])('keeps %s transfer busy until cancellation is acknowledged without retry', async (source, target) => {
+    const deps = createDeps()
+    const ops = useExplorerFileOps(deps)
+    let rejectCopy!: (error: unknown) => void
+    pasteClipboardCmdMock.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+      rejectCopy = reject
+    }))
+    const pending = ops.handlePasteOrMove(target, { paths: [source], mode: 'copy' })
+    await vi.waitFor(() => expect(pasteClipboardCmdMock).toHaveBeenCalledOnce())
+    const eventName = pasteClipboardCmdMock.mock.calls[0][2]
+    const onCancel = vi.mocked(activityApi.start).mock.calls[0][2]
+    expect(onCancel).toBeTypeOf('function')
+    onCancel?.()
+    expect(activityApi.requestCancel).toHaveBeenCalledWith(eventName)
+    expect(activityApi.cleanup).not.toHaveBeenCalled()
+    expect(await ops.handlePasteOrMove(target, { paths: [source], mode: 'copy' })).toBe(false)
+    expect(pasteClipboardCmdMock).toHaveBeenCalledOnce()
+    rejectCopy({ code: 'cancelled', message: 'Copy cancelled; partial output retained; source not removed' })
+    expect(await pending).toBe(false)
+    expect(deps.reloadCurrent).toHaveBeenCalledOnce()
+    expect(activityApi.clearNow).toHaveBeenCalledOnce()
+    expect(activityApi.cleanup).toHaveBeenLastCalledWith(true)
+    expect(deps.showToast).toHaveBeenLastCalledWith('Paste failed: Copy cancelled; partial output retained; source not removed')
+    expect(pasteClipboardCmdMock).toHaveBeenCalledOnce()
+  })
+
+  it('releases successful local paste listeners without cancelling the completion timer', async () => {
+    const deps = createDeps()
+    const ops = useExplorerFileOps(deps)
+    expect(await ops.handlePasteOrMove('/tmp/dest', { paths: ['/tmp/source'], mode: 'copy' })).toBe(true)
+    expect(activityApi.hideSoon).toHaveBeenCalledOnce()
+    expect(activityApi.cleanup).toHaveBeenCalledExactlyOnceWith(true)
+    expect(activityApi.clearNow).not.toHaveBeenCalled()
+  })
+
+  it('does not retry or report successful paste as failed when listener cleanup fails', async () => {
+    const deps = createDeps()
+    vi.mocked(activityApi.cleanup).mockRejectedValueOnce(new Error('listener unavailable'))
+    const ops = useExplorerFileOps(deps)
+    expect(await ops.handlePasteOrMove('/tmp/dest', { paths: ['/tmp/source'], mode: 'copy' })).toBe(true)
+    expect(pasteClipboardCmdMock).toHaveBeenCalledOnce()
+    expect(deps.showToast).not.toHaveBeenCalled()
+  })
+
   it('refreshes after local paste failure, keeps the clipboard and never retries', async () => {
     setClipboardPathsState('cut', ['/src/file.txt'])
     const clipboard = get(clipboardState)
