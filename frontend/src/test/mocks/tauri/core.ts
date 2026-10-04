@@ -65,6 +65,7 @@ type E2eMockControl = {
   networkConnectError?: string
   networkTrashSupported?: boolean
   networkDeleteHold?: boolean
+  selectionActionsFixture?: boolean
   calls?: Array<{ cmd: string; args?: Record<string, unknown> }>
   partitions?: Array<{ label: string; path: string; fs?: string; removable?: boolean; sizeBytes?: number | null }>
   volumeUsage?: { totalBytes: number; usedBytes: number; freeBytes: number; reservedBytes: number } | null
@@ -312,6 +313,13 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return emptyFacets as T
     case 'context_menu_actions': {
       const count = Number(args?.count ?? 0)
+      if (count > 0 && control?.selectionActionsFixture) {
+        return [
+          { id: 'copy', label: 'Copy' }, { id: 'cut', label: 'Cut' },
+          { id: 'move-trash', label: 'Move to wastebasket' },
+          { id: 'delete-permanent', label: 'Delete permanently…' },
+        ] as T
+      }
       if (count > 1) {
         return [{ id: 'rename-advanced', label: 'Rename…' }] as T
       }

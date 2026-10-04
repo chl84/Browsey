@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { writable } from 'svelte/store'
-import { createContextActions, type CurrentView } from './createContextActions'
+import { createContextActions as createContextActionHandler, type CurrentView } from './createContextActions'
+import { createSelectionActions } from '../file-ops/createSelectionActions'
 import type { Entry } from '../model/types'
 import type { ClipboardApi } from '../file-ops/createClipboard'
 
@@ -52,6 +53,13 @@ const createDeps = (entries: Entry[], selectedPaths: string[], view: CurrentView
   confirmDeleteEnabled: () => true,
   reloadCurrent: vi.fn(async () => {}),
   clipboard: makeClipboard(),
+  activityApi: {
+    start: vi.fn(async () => {}), cleanup: vi.fn(async () => {}),
+    requestCancel: vi.fn(async () => {}), clearNow: vi.fn(),
+    hideSoon: vi.fn(), hasHideTimer: () => false,
+  },
+  getCurrentPath: () => '/tmp',
+  isWindows: () => false,
   showToast: vi.fn(),
   openWith: vi.fn(),
   startRename: vi.fn(),
@@ -64,7 +72,27 @@ const createDeps = (entries: Entry[], selectedPaths: string[], view: CurrentView
   extractEntries: vi.fn(async () => {}),
 })
 
+const createContextActions = (deps: ReturnType<typeof createDeps>) =>
+  createContextActionHandler({ ...deps, selectionActions: createSelectionActions(deps) })
+
 describe('createContextActions', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('passes the complete selection to the shared action when right-clicking a selected item', async () => {
+    const a = fileEntry('/tmp/a', 'a')
+    const b = fileEntry('/tmp/b', 'b')
+    const deps = createDeps([a, b], [a.path, b.path])
+    await createContextActions(deps)('copy', b)
+    expect(deps.clipboard.copyPaths).toHaveBeenCalledWith([a.path, b.path])
+  })
+
+  it('acts only on the right-clicked item when it is outside the current selection', async () => {
+    const a = fileEntry('/tmp/a', 'a')
+    const b = fileEntry('/tmp/b', 'b')
+    const deps = createDeps([a, b], [a.path])
+    await createContextActions(deps)('move-trash', b)
+    expect(moveToTrashManyMock).toHaveBeenCalledWith([b.path], expect.stringMatching(/^trash-progress-/))
+  })
   it('requires network confirmation even when regular delete confirmation is disabled', async () => {
     deleteEntriesMock.mockRejectedValueOnce({ code: 'network_confirmation_required', message: 'Confirm' })
     const entry = fileEntry('/mnt/share/file', 'file')
@@ -93,7 +121,7 @@ describe('createContextActions', () => {
 
     await handle('move-trash', entry)
 
-    expect(moveToTrashManyMock).toHaveBeenCalledWith([entry.path], undefined)
+    expect(moveToTrashManyMock).toHaveBeenCalledWith([entry.path], expect.stringMatching(/^trash-progress-/))
     expect(deleteEntriesMock).not.toHaveBeenCalled()
   })
 
@@ -109,7 +137,7 @@ describe('createContextActions', () => {
 
     await handle('delete-permanent', entry)
 
-    expect(deleteEntriesMock).toHaveBeenCalledWith([entry.path], undefined)
+    expect(deleteEntriesMock).toHaveBeenCalledWith([entry.path], expect.stringMatching(/^delete-progress-/))
     expect(moveToTrashManyMock).not.toHaveBeenCalled()
   })
 
@@ -189,7 +217,7 @@ describe('createContextActions', () => {
     expect(deps.showToast).toHaveBeenCalledWith('Restore failed: restore blocked')
   })
 
-  it('shows a recovery toast and skips reload when purge fails in trash view', async () => {
+  it('shows the purge error and refreshes potentially partial results in trash view', async () => {
     purgeTrashItemsMock.mockRejectedValueOnce(new Error('purge blocked'))
     const entry = { ...fileEntry('/tmp/a.txt', 'a.txt'), trash_id: 'trash-a' }
     const deps = createDeps([entry], [entry.path], 'trash')
@@ -198,7 +226,7 @@ describe('createContextActions', () => {
     await handle('move-trash', entry)
 
     expect(purgeTrashItemsMock).toHaveBeenCalledWith(['trash-a'])
-    expect(deps.reloadCurrent).not.toHaveBeenCalled()
+    expect(deps.reloadCurrent).toHaveBeenCalledTimes(1)
     expect(deps.showToast).toHaveBeenCalledWith('Delete failed: purge blocked')
   })
 })

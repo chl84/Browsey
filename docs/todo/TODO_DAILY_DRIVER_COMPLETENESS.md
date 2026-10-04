@@ -93,6 +93,35 @@ These measurements also cover the extra output read pass introduced by local
 copy content verification. The existing warm-tmpfs result is evidence for that
 workload only, not a cold-storage or USB/MTP performance budget.
 
+## Maintainability Follow-up
+
+Added: 2026-10-04. Work through these four review findings in order; extend
+existing modules rather than reopening completed refactoring tracks.
+
+- [x] **M1** Share copy, cut and deletion action flows between keyboard
+  shortcuts and context menus, preserving confirmation, progress and cancellation.
+  Resolved 2026-10-04 with `createSelectionActions`, reused by both entry points.
+  Regression coverage includes selection resolution, clipboard sync failures,
+  network confirmation, cancellation, duplicate requests and partial-result
+  refresh without mutation retry. Refresh warnings cannot be overwritten by
+  success feedback; Wastebasket purge offers no unsupported cancellation.
+  Verification: 29 focused regressions; all 510 frontend tests and 99 mock-browser
+  tests, lint/typecheck/build pass. Strict maintenance/docs checks pass, including
+  728 backend tests (18 opt-in tests ignored) and 20 documentation checks.
+  The final purge-cancellation adjustment was rechecked with the focused tests,
+  lint/typecheck/build. Native WebKit acceptance remains separate.
+- [ ] **M2** Replace `any` in `createExplorerShellProps.ts` with concrete
+  types for values, modal state and callbacks.
+- [ ] **M3** Extract USB formatting, shortcut registration and file-operation
+  orchestration from `ExplorerPage.svelte` into existing or focused modules.
+  Keep the page as the composition root and preserve user-facing behavior.
+- [ ] **M4** Reuse shared error normalization in the Properties modal,
+  preserving supported error shapes and permission-specific messages.
+
+After each item, run relevant regression tests and frontend lint, typecheck
+and build. Check the item only when verified and record the results; native
+acceptance remains in the separate validation checklist.
+
 ## Confirmed Validation Findings
 
 - [x] **VD-1** Correct the stale Settings claim that compressed RAR entries are

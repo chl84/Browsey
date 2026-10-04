@@ -16,7 +16,7 @@
   import { createColumnHeaderSizing } from '@/features/explorer/hooks/createColumnHeaderSizing'
   import { createGlobalShortcuts } from '@/features/explorer/hooks/createGlobalShortcuts'
   import { createBookmarkModal } from '@/features/explorer/hooks/createBookmarkModal'
-  import { useExplorerDragDrop, createClipboard, createHistoryActions, useExplorerFileOps } from '@/features/explorer/file-ops'
+  import { useExplorerDragDrop, createClipboard, createHistoryActions, createSelectionActions, useExplorerFileOps } from '@/features/explorer/file-ops'
   import { useExplorerInputHandlers } from '@/features/explorer/hooks/useExplorerInputHandlers'
   import { useModalsController } from '@/features/explorer/hooks/useModalsController'
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
@@ -33,10 +33,8 @@
   } from '@/features/explorer/services/drives.service'
   import FormatUsbModal from '@/features/explorer/components/FormatUsbModal.svelte'
   import { openConsole } from '@/features/explorer/services/console.service'
-  import { copyPathsToSystemClipboard } from '@/features/explorer/services/clipboard.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
-  import { deleteEntries, emptyTrash, moveToTrashMany, purgeTrashItems, needsNetworkDeleteConfirmation } from '@/features/explorer/services/trash.service'
-  import { mustUsePermanentDelete } from '@/features/explorer/helpers/deletionPolicy'
+  import { emptyTrash } from '@/features/explorer/services/trash.service'
   import type { Entry, Partition, SortField } from '@/features/explorer/model/types'
   import { toast, showToast } from '@/features/explorer/hooks/useToast'
   import {
@@ -975,45 +973,8 @@
     openBookmarkModal: async (entry) => openBookmarkModal(entry as Entry),
     goBack,
     goForward,
-    onCopy: async () => {
-      const paths = Array.from($selected)
-      const result = await clipboard.copyPaths(paths)
-      if (!result.ok) {
-        showToast(`Copy failed: ${result.error}`)
-        return false
-      }
-      showToast('Copied', 1500)
-      if (paths.some(isCloudPath)) {
-        return true
-      }
-      void copyPathsToSystemClipboard(paths).catch((err) => {
-        showToast(
-          `Copied (system clipboard unavailable: ${getErrorMessage(err)})`,
-          2500
-        )
-      })
-      return true
-    },
-    onCut: async () => {
-      if (currentView === 'network') return false
-      const paths = Array.from($selected)
-      const result = await clipboard.cutPaths(paths)
-      if (!result.ok) {
-        showToast(`Cut failed: ${result.error}`)
-        return false
-      }
-      showToast('Cut', 1500)
-      if (paths.some(isCloudPath)) {
-        return true
-      }
-      void copyPathsToSystemClipboard(paths, 'cut').catch((err) => {
-        showToast(
-          `Cut (system clipboard unavailable: ${getErrorMessage(err)})`,
-          2500
-        )
-      })
-      return true
-    },
+    onCopy: () => selectionActions.copy(Array.from($selected)),
+    onCut: () => selectionActions.cut(Array.from($selected)),
     onPaste: async () => {
       if (currentView !== 'dir') return false
       return pasteIntoCurrent()
@@ -1029,123 +990,14 @@
       return true
     },
     onDelete: async (permanent) => {
-      if (currentView === 'network') return false
-      const selectedPaths = Array.from($selected)
-      if (selectedPaths.length === 0) return false
-      const selectedPathSet = new Set(selectedPaths)
+      const selectedPathSet = new Set($selected)
       const entries = $filteredEntries.filter((e) => selectedPathSet.has(e.path))
-      if (entries.length === 0) return false
-      const hasCloud = entries.some((e) => isCloudPath(e.path))
-      const inTrashView = currentView === 'trash'
-
-      const windows = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('windows')
-      if (mustUsePermanentDelete(entries, permanent, inTrashView, windows)) {
-        deleteModal.open(entries, inTrashView ? 'trash' : 'default')
-        return true
-      }
-      const label = inTrashView ? 'Deleting…' : 'Moving to trash…'
-      const total = entries.length
-      await activityApi.cleanup()
-      activity.set({ label, percent: total > 0 ? 0 : null })
-      try {
-        if (inTrashView) {
-          const ids = entries.map((e) => e.trash_id ?? e.path)
-          await purgeTrashItems(ids)
-          activity.set({ label, percent: 100 })
-        } else {
-          const paths = entries.map((e) => e.path)
-          const progressEvent = `trash-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-          await activityApi.start(label, progressEvent, () => void activityApi.requestCancel(progressEvent), { completeOnReply: hasCloud })
-          await moveToTrashMany(paths, progressEvent)
-          if (hasCloud) showToast('Moved to cloud trash. Restore items from the provider website.')
-        }
-        await reloadCurrent()
-      } catch (err) {
-        if (!inTrashView && needsNetworkDeleteConfirmation(err)) {
-          modalActions.confirmDelete(entries, 'network-trash')
-          return true
-        }
-        if (hasCloud) {
-          try { await reloadCurrent() } catch { /* Keep the original error after partial cloud outcomes. */ }
-        }
-        console.error(inTrashView ? 'Failed to delete from trash' : 'Failed to move to trash', err)
-        showToast(
-          `${inTrashView ? 'Delete failed' : 'Move to trash failed'}: ${getErrorMessage(err)}`,
-          3000
-        )
-      } finally {
-        if (inTrashView) {
-          activityApi.hideSoon()
-        } else {
-          const hadTimer = activityApi.hasHideTimer()
-          await activityApi.cleanup(true)
-          if (!hadTimer) {
-            activityApi.clearNow()
-          }
-        }
-      }
-      return true
+      return permanent ? selectionActions.deletePermanently(entries, true) : selectionActions.trash(entries)
     },
     onDeletePermanentFast: async () => {
-      if (currentView === 'network') return false
       const sel = get(selected)
-      if (sel.size === 0) return false
       const list = get(filteredEntries).filter((e) => sel.has(e.path))
-      if (list.length === 0) return false
-      const inTrashView = currentView === 'trash'
-      if (get(explorer.confirmDelete)) {
-        modalActions.confirmDelete(list, inTrashView ? 'trash' : 'default')
-        return true
-      }
-      const label = 'Deleting…'
-      const progressEvent = `delete-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
-      try {
-        await activityApi.start(label, progressEvent)
-        const cloudDelete = !inTrashView && list.some((e) => isCloudPath(e.path))
-        if (inTrashView) {
-          const ids = list.map((e) => e.trash_id ?? e.path)
-          await purgeTrashItems(ids)
-        } else {
-          const paths = list.map((e) => e.path)
-          await deleteEntries(paths, progressEvent)
-        }
-        if (cloudDelete) {
-          const refreshTarget = get(current)
-          void (async () => {
-            if (get(current) !== refreshTarget) {
-              return
-            }
-            try {
-              await reloadCurrent()
-            } catch {
-              if (get(current) !== refreshTarget) {
-                return
-              }
-              showToast('Delete completed, but refresh took too long. Press F5 to refresh.', 3500)
-            }
-          })()
-        } else {
-          await reloadCurrent()
-        }
-        activityApi.hideSoon()
-        showToast('Deleted')
-        return true
-      } catch (err) {
-        activityApi.clearNow()
-        await activityApi.cleanup()
-        if (!inTrashView && needsNetworkDeleteConfirmation(err)) {
-          modalActions.confirmDelete(list, 'network')
-          return true
-        }
-        showToast(`Delete failed: ${getErrorMessage(err)}`)
-        return false
-      } finally {
-        const hadTimer = activityApi.hasHideTimer()
-        await activityApi.cleanup(true)
-        if (!hadTimer) {
-          activityApi.clearNow()
-        }
-      }
+      return selectionActions.deletePermanently(list)
     },
     onProperties: async () => {
       if ($selected.size === 0) return false
@@ -1430,14 +1282,25 @@
 
   let clearPendingOpenCandidate = () => {}
 
+  const selectionActions = createSelectionActions({
+    clipboard,
+    activityApi,
+    currentView: () => currentView,
+    getCurrentPath: () => get(current),
+    confirmDeleteEnabled: () => get(explorer.confirmDelete),
+    confirmDelete: (entries, mode) => modalActions.confirmDelete(entries, mode),
+    reloadCurrent,
+    showToast,
+  })
+
   const contextActions = createContextActions(createExplorerContextActionsDeps({
     getSelectedPaths: () => Array.from($selected),
     getSelectedSet: () => $selected,
     getFilteredEntries: () => $filteredEntries,
     currentView: () => currentView,
-    confirmDeleteEnabled: () => get(explorer.confirmDelete),
     reloadCurrent,
     clipboard,
+    selectionActions,
     showToast,
     openWith: (entry) => modalActions.openWith(entry),
     openCompress: (entries) => {
@@ -1456,8 +1319,6 @@
     startAdvancedRename: (entries) => {
       advancedRenameModal.open(entries)
     },
-    confirmDelete: (entries) =>
-      modalActions.confirmDelete(entries, currentView === 'trash' ? 'trash' : 'default'),
     openProperties: (entries) => {
       void modalActions.openProperties(entries)
     },

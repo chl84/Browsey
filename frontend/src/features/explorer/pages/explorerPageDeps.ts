@@ -162,9 +162,9 @@ export const createExplorerContextActionsDeps = (
   getSelectedSet: deps.getSelectedSet,
   getFilteredEntries: deps.getFilteredEntries,
   currentView: deps.currentView,
-  confirmDeleteEnabled: deps.confirmDeleteEnabled,
   reloadCurrent: deps.reloadCurrent,
   clipboard: deps.clipboard,
+  selectionActions: deps.selectionActions,
   showToast: deps.showToast,
   openWith: deps.openWith,
   openCompress: deps.openCompress,
@@ -173,7 +173,6 @@ export const createExplorerContextActionsDeps = (
   prepareExternalCopy: deps.prepareExternalCopy,
   startRename: deps.startRename,
   startAdvancedRename: deps.startAdvancedRename,
-  confirmDelete: deps.confirmDelete,
   openProperties: deps.openProperties,
   openLocation: deps.openLocation,
 })

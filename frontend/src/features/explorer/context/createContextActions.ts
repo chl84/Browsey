@@ -1,16 +1,11 @@
 import { getErrorMessage } from '@/shared/lib/error'
 import type { Entry } from '../model/types'
 import type { ClipboardApi } from '../file-ops/createClipboard'
-import { copyPathsToSystemClipboard } from '../services/clipboard.service'
+import type { SelectionActions } from '../file-ops/createSelectionActions'
 import {
   restoreTrashItems,
   removeRecent,
-  deleteEntries,
-  moveToTrashMany,
-  purgeTrashItems,
-  needsNetworkDeleteConfirmation,
 } from '../services/trash.service'
-import type { DeleteConfirmMode } from '../modals/deleteConfirmModal'
 
 export type CurrentView = 'recent' | 'starred' | 'trash' | 'network' | 'dir'
 
@@ -19,14 +14,13 @@ type Deps = {
   getSelectedSet: () => Set<string>
   getFilteredEntries: () => Entry[]
   currentView: () => CurrentView
-  confirmDeleteEnabled: () => boolean
   reloadCurrent: () => Promise<void>
   clipboard: ClipboardApi
+  selectionActions: SelectionActions
   showToast: (msg: string, durationMs?: number) => void
   openWith: (entry: Entry) => void
   startRename: (entry: Entry) => void
   startAdvancedRename: (entries: Entry[]) => void
-  confirmDelete: (entries: Entry[], mode?: DeleteConfirmMode) => void
   openProperties: (entries: Entry[]) => Promise<void> | void
   openLocation: (entry: Entry) => Promise<void> | void
   openCompress: (entries: Entry[]) => void
@@ -36,19 +30,17 @@ type Deps = {
 }
 
 export const createContextActions = (deps: Deps) => {
-  const isCloudPath = (path: string) => path.startsWith('rclone://')
   const {
     getSelectedSet,
     getFilteredEntries,
     currentView,
-    confirmDeleteEnabled,
     reloadCurrent,
     clipboard,
+    selectionActions,
     showToast,
     openWith,
     startRename,
     startAdvancedRename,
-    confirmDelete,
     openProperties,
     openLocation,
     openCompress,
@@ -108,35 +100,7 @@ export const createContextActions = (deps: Deps) => {
     }
 
     if (id === 'cut' || id === 'copy') {
-      if (id === 'cut') {
-        const result = await clipboard.cutPaths(paths)
-        if (!result.ok) {
-          showToast(`Cut failed: ${result.error}`)
-          return
-        }
-        showToast('Cut', 1500)
-        if (paths.some(isCloudPath)) return
-        void copyPathsToSystemClipboard(paths, 'cut').catch((err) => {
-          showToast(
-            `Cut (system clipboard unavailable: ${getErrorMessage(err)})`,
-            2500
-          )
-        })
-        return
-      }
-      const result = await clipboard.copyPaths(paths)
-      if (!result.ok) {
-        showToast(`Copy failed: ${result.error}`)
-        return
-      }
-      showToast('Copied', 1500)
-      if (paths.some(isCloudPath)) return
-      void copyPathsToSystemClipboard(paths).catch((err) => {
-        showToast(
-          `Copied (system clipboard unavailable: ${getErrorMessage(err)})`,
-          2500
-        )
-      })
+      await selectionActions[id](paths)
       return
     }
 
@@ -185,67 +149,12 @@ export const createContextActions = (deps: Deps) => {
     }
 
     if (id === 'move-trash') {
-      try {
-        if (currentView() === 'trash') {
-          const ids = selectionEntries().map((e) => e.trash_id ?? e.path)
-          await purgeTrashItems(ids)
-        } else {
-          const paths = selectionEntries().map((e) => e.path)
-          await moveToTrashMany(paths)
-          if (paths.every(isCloudPath)) showToast('Moved to cloud trash. Restore items from the provider website.')
-        }
-        await reloadCurrent()
-      } catch (err) {
-        if (currentView() !== 'trash' && needsNetworkDeleteConfirmation(err)) {
-          confirmDelete(selectionEntries(), 'network-trash')
-          return
-        }
-        if (paths.some(isCloudPath)) {
-          try { await reloadCurrent() } catch { /* Preserve the trash error after partial writes. */ }
-        }
-        const message = getErrorMessage(err)
-        showToast(
-          currentView() === 'trash'
-            ? `Delete failed: ${message}`
-            : `Failed to move to trash: ${message}`
-        )
-      }
+      await selectionActions.trash(selectionEntries())
       return
     }
 
     if (id === 'delete-permanent') {
-      if (currentView() === 'trash') {
-        const ids = selectionEntries().map((e) => e.trash_id ?? e.path)
-        try {
-          await purgeTrashItems(ids)
-          await reloadCurrent()
-        } catch (err) {
-          showToast(`Delete failed: ${getErrorMessage(err)}`)
-        }
-        return
-      }
-      if (!confirmDeleteEnabled()) {
-        const paths = selectionEntries().map((e) => e.path)
-        try {
-          await deleteEntries(paths)
-          if (paths.some(isCloudPath)) {
-            void reloadCurrent().catch(() => {
-              showToast('Delete completed, but refresh took too long. Press F5 to refresh.')
-            })
-          } else {
-            await reloadCurrent()
-          }
-        } catch (err) {
-          if (needsNetworkDeleteConfirmation(err)) {
-            confirmDelete(selectionEntries(), 'network')
-            return
-          }
-          const msg = getErrorMessage(err)
-          showToast(`Delete failed: ${msg}`)
-        }
-        return
-      }
-      confirmDelete(selectionEntries())
+      await selectionActions.deletePermanently(selectionEntries())
       return
     }
 
