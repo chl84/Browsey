@@ -29,9 +29,8 @@ type Params = {
 export const useExplorerViewportLayout = (params: Params) => {
   const sidebarCollapseWidthPx = params.sidebarCollapseWidthPx ?? 700
 
-  const readCssNumber = (name: string, fallback: number) => {
-    if (typeof document === 'undefined') return fallback
-    const raw = getComputedStyle(document.body).getPropertyValue(name)
+  const readCssNumber = (styles: CSSStyleDeclaration | null, name: string, fallback: number) => {
+    const raw = styles?.getPropertyValue(name) ?? ''
     const parsed = parseFloat(raw)
     return Number.isFinite(parsed) ? parsed : fallback
   }
@@ -42,13 +41,14 @@ export const useExplorerViewportLayout = (params: Params) => {
     document.body.classList.add(`density-${density}`)
   }
 
-  const applyDensityMetrics = () => {
-    const nextRowHeight = readCssNumber('--row-height', 32)
-    const nextGridGap = readCssNumber('--grid-gap', 8)
-    const baseThumb = readCssNumber('--grid-thumb-size', 90)
+  const applyDensityMetrics = ({ recompute = true }: { recompute?: boolean } = {}) => {
+    const styles = typeof document === 'undefined' ? null : getComputedStyle(document.body)
+    const nextRowHeight = readCssNumber(styles, '--row-height', 32)
+    const nextGridGap = readCssNumber(styles, '--grid-gap', 8)
+    const baseThumb = readCssNumber(styles, '--grid-thumb-size', 90)
     const zoomDelta = (params.getGridThumbSize?.() ?? baseThumb) - baseThumb
-    const nextGridCardWidth = readCssNumber('--grid-card-width', 120) + zoomDelta
-    const nextGridRowHeight = readCssNumber('--grid-row-height', 126) + zoomDelta
+    const nextGridCardWidth = readCssNumber(styles, '--grid-card-width', 120) + zoomDelta
+    const nextGridRowHeight = readCssNumber(styles, '--grid-row-height', 126) + zoomDelta
 
     params.setDensityMetrics({
       rowHeight: nextRowHeight,
@@ -62,6 +62,9 @@ export const useExplorerViewportLayout = (params: Params) => {
       gridRowHeight: nextGridRowHeight,
       gridGap: nextGridGap,
     })
+
+    // Zoom owns its anchored reflow; do not publish an intermediate old-scroll window.
+    if (!recompute) return
 
     if (params.getViewMode() === 'grid') {
       params.recomputeGrid()

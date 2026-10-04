@@ -15,7 +15,7 @@ const zoom = async (page: Page, deltaY: number) => {
     return event.defaultPrevented
   }, deltaY)
   expect(consumed).toBe(true)
-  // Separate deliberate notches from the touchpad burst throttle.
+  // Wait for the rendered step when testing individual sizes, not a burst.
   await page.waitForTimeout(100)
 }
 
@@ -104,4 +104,103 @@ test('native Ctrl-wheel zooms files, not the page, and compact density keeps zoo
   await expectSize(page, 64)
   await zoom(page, -120)
   await expectSize(page, 96)
+})
+
+test('rapid notches reach the final size and reverse back to list without losing selection', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.row').filter({ hasText: 'photo-000' }).click()
+  const burst = async (delta: number) => page.locator('.rows, .grid').evaluate((el, deltaY) => {
+    for (let i = 0; i < 5; i++) {
+      const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true, deltaY })
+      el.dispatchEvent(event)
+      if (!event.defaultPrevented) throw new Error('Zoom event was not consumed')
+    }
+  }, delta)
+  await burst(-120)
+  await expectSize(page, 192)
+  await burst(120)
+  await expect(page.getByRole('group', { name: 'File list' })).toBeVisible()
+  await expect(page.locator('.row.selected').filter({ hasText: 'photo-000' })).toHaveCount(1)
+})
+
+test('zoom at the bottom never publishes an empty grid after content shrinks', async ({ page }) => {
+  await page.goto('/')
+  await zoom(page, -120)
+  for (let i = 0; i < 4; i++) await zoom(page, -120)
+  await page.locator('.grid').evaluate(el => { el.scrollTop = el.scrollHeight })
+  await expect(page.locator('.card[data-path="/mock/photo-099.jpg"]')).toBeVisible()
+  for (const size of [160, 128, 96, 64]) {
+    await zoom(page, 120)
+    await expectSize(page, size)
+    const inViewport = await page.locator('.grid').evaluate(el => {
+      const bounds = el.getBoundingClientRect()
+      return [...el.querySelectorAll('.card')].some(card => {
+        const rect = card.getBoundingClientRect()
+        return rect.bottom > bounds.top && rect.top < bounds.bottom
+      })
+    })
+    expect(inViewport).toBe(true)
+  }
+})
+
+test('a continuous zoom gesture skips intermediate thumbnail resolutions', async ({ page }) => {
+  await page.goto('/')
+  await zoom(page, -120)
+  await expect(page.locator('.card img.icon[src^="data:image"]').first()).toBeVisible()
+  const dimensions = await page.evaluate(async () => {
+    const host = window as unknown as {
+      __BROWSEY_E2E__: { calls: Array<{ cmd: string; args: Record<string, unknown> }> }
+    }
+    const control = host.__BROWSEY_E2E__
+    const start = control.calls.length
+    for (let i = 0; i < 4; i++) {
+      document.querySelector('.grid')!.dispatchEvent(new WheelEvent('wheel', {
+        bubbles: true, cancelable: true, ctrlKey: true, deltaY: -120,
+      }))
+      await new Promise(resolve => setTimeout(resolve, 40))
+    }
+    return control.calls.slice(start).filter(call => call.cmd === 'get_thumbnail').map(call => call.args.maxDim)
+  })
+  const ratio = await page.evaluate(() => devicePixelRatio)
+  expect(dimensions.every(size => Number(size) === Math.ceil(64 * ratio))).toBe(true)
+  await expectSize(page, 192)
+  await expect.poll(() => page.evaluate(() => {
+    const host = window as unknown as {
+      __BROWSEY_E2E__: { calls: Array<{ cmd: string; args: Record<string, unknown> }> }
+    }
+    return host.__BROWSEY_E2E__.calls.some(call => call.cmd === 'get_thumbnail' && call.args.maxDim === Math.ceil(192 * devicePixelRatio))
+  })).toBe(true)
+})
+
+test('a coalesced grid-to-list switch captures the anchor before changing grid geometry', async ({ page }) => {
+  await page.addInitScript(() => {
+    const host = window as unknown as { __BROWSEY_E2E__: { performanceFixture?: { entries: number } } }
+    host.__BROWSEY_E2E__.performanceFixture = { entries: 1000 }
+  })
+  await page.goto('/')
+  await page.locator('.rows').evaluate(el => {
+    for (let i = 0; i < 5; i++) el.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true, cancelable: true, ctrlKey: true, deltaY: -120,
+    }))
+  })
+  await expectSize(page, 192)
+  const anchorPath = await page.locator('.grid').evaluate(async el => {
+    el.scrollTop = 1600
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    const bounds = el.getBoundingClientRect()
+    const centre = bounds.top + el.clientHeight / 2
+    return [...el.querySelectorAll<HTMLElement>('.card')].find(card => {
+      const rect = card.getBoundingClientRect()
+      return rect.top <= centre && rect.bottom > centre
+    })?.dataset.path
+  })
+  expect(anchorPath).toBeTruthy()
+  await page.locator('.grid').evaluate(el => {
+    for (let i = 0; i < 5; i++) el.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true, cancelable: true, ctrlKey: true, deltaY: 120,
+    }))
+  })
+  const anchorName = anchorPath!.split('/').at(-1)!.replace(/\.jpg$/, '')
+  await expect(page.locator('.row').filter({ hasText: anchorName })).toBeInViewport()
 })

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Improve Ctrl-wheel zoom responsiveness: retain rapid notches, coalesce target
+  sizes per animation frame, and publish the final anchored grid window without
+  intermediate layout passes. Debounce thumbnail resolution upgrades while
+  keeping existing previews and useful in-flight work; preserve selection,
+  modal blocking, compact density and list/grid transitions.
+
 - Translate remaining Norwegian code and SVG comments and the T3 installation-action
   label to English; preserve intentional Unicode fixtures and historical filenames.
 

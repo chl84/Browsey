@@ -92,7 +92,8 @@
   import { useExplorerPageLifecycle } from './useExplorerPageLifecycle'
   import { useExplorerPageUiState } from './useExplorerPageUiState'
   import { useExplorerViewportLayout } from './useExplorerViewportLayout'
-  import { createWheelZoom, nextZoomState, DEFAULT_GRID_ZOOM_SIZE } from '../hooks/createWheelZoom'
+  import { createWheelZoom, DEFAULT_GRID_ZOOM_SIZE } from '../hooks/createWheelZoom'
+  import { createZoomController } from '../hooks/createZoomController'
   import {
     activeSystemTheme,
     destroyThemeController,
@@ -487,8 +488,9 @@
     }
   }
 
-  const toggleViewMode = async () => {
+  const toggleViewMode = async (fromZoom = false, beforeSwitch?: () => void) => {
     if (toggleViewModeInFlight) return
+    if (!fromZoom) zoomController.clearPending()
     toggleViewModeInFlight = true
     cancelToggleViewModeRaf()
     viewAnchor.capture({
@@ -502,6 +504,8 @@
     const switchingToList = nextMode === 'list'
 
     try {
+      // Capture using the old geometry before a coalesced zoom changes it.
+      beforeSwitch?.()
       if (switchingToList) {
         viewObservers.disconnectGrid()
       }
@@ -670,32 +674,30 @@
     recomputeList: (entriesList) => recompute(entriesList as Entry[]),
   })
 
-  let zoomInFlight = false
-  const stepZoom = async (direction: -1 | 1) => {
-    if (zoomInFlight || toggleViewModeInFlight) return
-    const next = nextZoomState(viewMode, gridThumbSize, direction)
-    if (next.viewMode === viewMode && next.size === gridThumbSize) return
-    zoomInFlight = true
-    try {
+  const zoomController = createZoomController({
+    getState: () => ({ viewMode, size: gridThumbSize }),
+    isBlocked: () => get(anyModalOpenStore),
+    onError: error => showToast(`Zoom failed: ${getErrorMessage(error)}`),
+    apply: async next => {
       if (next.viewMode !== viewMode) {
-        gridThumbSize = next.size
-        viewportLayout.applyDensityMetrics()
-        await toggleViewMode()
+        await toggleViewMode(true, () => {
+          gridThumbSize = next.size
+          viewportLayout.applyDensityMetrics({ recompute: false })
+        })
       } else {
         viewAnchor.capture({ viewMode, rowsEl: rowsElRef, headerEl: headerElRef, gridEl: gridElRef, gridCols: getGridCols() })
         gridThumbSize = next.size
-        viewportLayout.applyDensityMetrics()
+        viewportLayout.applyDensityMetrics({ recompute: false })
+        // Calculate the final visible window against the new geometry before
+        // publishing it. Restore scroll only after the new spacer is committed,
+        // so the browser cannot clamp it against the previous content height.
+        const targetTop = recomputeGrid((gridCols, viewport) => viewAnchor.takeScrollTarget({ viewMode, gridCols, viewport }))
         await tick()
-        recomputeGrid()
-        await tick()
-        viewAnchor.scroll({ viewMode, rowsEl: rowsElRef, headerEl: headerElRef, gridEl: gridElRef, gridCols: getGridCols() })
-        recomputeGrid()
+        if (targetTop !== undefined) gridElRef?.scrollTo({ top: targetTop, behavior: 'auto' })
       }
-    } finally {
-      zoomInFlight = false
-    }
-  }
-  const handleZoomWheel = createWheelZoom(direction => { void stepZoom(direction) }, () => get(anyModalOpenStore))
+    },
+  })
+  const handleZoomWheel = createWheelZoom(zoomController.step, () => get(anyModalOpenStore))
   const handleListingWheel = (event: WheelEvent) => {
     if (!handleZoomWheel(event)) handleWheelCombined(event)
   }
@@ -2063,6 +2065,7 @@
   $: setThemeHighContrast($highContrast)
 
   onDestroy(() => {
+    zoomController.destroy()
     columnHeaderSizing.cleanup()
     fileOps.cancelExtraction()
     destroyThemeController()

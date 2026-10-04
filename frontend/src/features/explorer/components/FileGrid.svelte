@@ -21,6 +21,7 @@
   const thumbLoader = createThumbnailLoader({
     maxConcurrent: 3,
     maxDim: thumbnailPixels(gridThumbSize),
+    resizeDebounceMs: 150,
     initialGeneration: currentPath,
     allowVideos: videoThumbs && thumbnailsEnabled,
     allowCloudThumbs: cloudThumbs && thumbnailsEnabled,

@@ -6,6 +6,7 @@ type Options = {
   maxConcurrent?: number
   maxConcurrentVideos?: number
   maxDim?: number
+  resizeDebounceMs?: number
   initialGeneration?: string
   allowVideos?: boolean
   allowCloudThumbs?: boolean
@@ -24,6 +25,9 @@ export function createThumbnailLoader(opts: Options = {}) {
   const maxConcurrent = Math.max(1, opts.maxConcurrent ?? 4)
   const maxVideos = Math.max(0, Math.min(opts.maxConcurrentVideos ?? 1, maxConcurrent))
   let maxDim = opts.maxDim ?? 96
+  const resizeDebounceMs = Math.max(0, opts.resizeDebounceMs ?? 0)
+  let requestedMaxDim = maxDim
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined
   const loaderId = crypto.randomUUID()
   let sequence = 0
   let epoch = 0
@@ -180,6 +184,10 @@ export function createThumbnailLoader(opts: Options = {}) {
   }
 
   const reset = (token?: string) => {
+    clearTimeout(resizeTimer)
+    resizeTimer = undefined
+    // A new directory should start at the requested size, not the old zoom.
+    maxDim = requestedMaxDim
     epoch++ // Unique even for A -> B -> A navigation.
     generation = `${loaderId}:${epoch}:${token ?? ''}`
     for (const path of active.keys()) cancel(path)
@@ -212,12 +220,26 @@ export function createThumbnailLoader(opts: Options = {}) {
     reset,
     setMaxDim(value: number) {
       const next = Math.max(32, Math.min(512, Math.ceil(value)))
-      if (!Number.isFinite(next) || next === maxDim) return
-      maxDim = next
-      for (const [path, job] of active) if (job.dimension < maxDim) cancel(path)
-      // Retain the old preview while a higher-resolution replacement loads.
-      failedUntil.clear()
-      schedule()
+      if (destroyed || !Number.isFinite(next) || next === requestedMaxDim) return
+      requestedMaxDim = next
+      clearTimeout(resizeTimer)
+      resizeTimer = undefined
+      const applyDimension = () => {
+        resizeTimer = undefined
+        if (destroyed || maxDim === next) return
+        maxDim = next
+        // Let an in-flight smaller preview finish. Its completion will queue
+        // the settled resolution, instead of repeatedly restarting source I/O.
+        failedUntil.clear()
+        schedule()
+      }
+      // CSS scales existing previews immediately. Only higher-resolution I/O
+      // waits for a quiet period; zooming out needs no expensive regeneration.
+      if (next > maxDim && resizeDebounceMs > 0) {
+        resizeTimer = setTimeout(applyDimension, resizeDebounceMs)
+      } else {
+        applyDimension()
+      }
     },
     setAllowVideos(value: boolean) { allowVideos = value; refreshEligibility() },
     setAllowCloudThumbs(value: boolean) { allowCloudThumbs = value; refreshEligibility() },

@@ -31,7 +31,7 @@ describe('explorer wheel zoom', () => {
     expect(step).not.toHaveBeenCalled()
   })
 
-  it('consumes Ctrl-wheel, advances once per notch and filters a rapid burst', () => {
+  it('consumes Ctrl-wheel and retains every deliberate notch in a rapid burst', () => {
     let now = 0
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     const step = vi.fn(), handle = createWheelZoom(step)
@@ -39,12 +39,40 @@ describe('explorer wheel zoom', () => {
     expect(handle(event)).toBe(true)
     expect(event.defaultPrevented).toBe(true)
     handle(wheel(-120))
-    expect(step).toHaveBeenCalledExactlyOnceWith(1)
+    expect(step).toHaveBeenCalledTimes(2)
     now = 100
     handle(wheel(-120))
-    expect(step).toHaveBeenCalledTimes(2)
+    expect(step).toHaveBeenCalledTimes(3)
     handle(wheel(120))
     expect(step).toHaveBeenLastCalledWith(-1)
+  })
+
+  it.each([0, 16, 30, 40, 60])('does not discard notches %i ms apart', interval => {
+    let now = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    const step = vi.fn(), handle = createWheelZoom(step)
+    for (let i = 0; i < 10; i++) {
+      now = i * interval
+      handle(wheel(-120))
+    }
+    expect(step).toHaveBeenCalledTimes(10)
+  })
+
+  it('does not carry partial trackpad movement across a pause or a modal', () => {
+    let now = 0, blocked = false
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    const step = vi.fn(), handle = createWheelZoom(step, () => blocked)
+    handle(wheel(-30))
+    now = 200
+    handle(wheel(-30))
+    expect(step).not.toHaveBeenCalled()
+    blocked = true
+    handle(wheel(-120))
+    blocked = false
+    handle(wheel(-30))
+    expect(step).not.toHaveBeenCalled()
+    handle(wheel(-20))
+    expect(step).toHaveBeenCalledExactlyOnceWith(1)
   })
 
   it('accumulates small trackpad deltas and resets on direction change', () => {

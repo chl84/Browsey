@@ -20,11 +20,13 @@ type Options = {
 
 export const createViewSwitchAnchor = ({ filteredEntries, rowHeight, gridRowHeight, gridGap }: Options) => {
   let anchorPath: string | null = null
+  let anchorIndex = -1
 
   const capture = ({ viewMode, rowsEl, gridEl, gridCols }: Refs & { viewMode: ViewMode }) => {
     const list = get(filteredEntries)
     if (list.length === 0) {
       anchorPath = null
+      anchorIndex = -1
       return
     }
 
@@ -32,12 +34,14 @@ export const createViewSwitchAnchor = ({ filteredEntries, rowHeight, gridRowHeig
       const viewport = Math.max(0, rowsEl?.clientHeight ?? 0)
       const midOffset = Math.max(0, (rowsEl?.scrollTop ?? 0) + viewport / 2)
       const idx = Math.min(list.length - 1, Math.floor(midOffset / rowHeight))
+      anchorIndex = idx
       anchorPath = list[idx]?.path ?? null
       return
     }
 
     if (!gridEl) {
       anchorPath = null
+      anchorIndex = -1
       return
     }
 
@@ -46,37 +50,36 @@ export const createViewSwitchAnchor = ({ filteredEntries, rowHeight, gridRowHeig
     const midOffset = (gridEl.scrollTop ?? 0) + viewport / 2
     const row = Math.max(0, Math.floor(midOffset / rowStride))
     const idx = Math.min(list.length - 1, row * Math.max(1, gridCols))
+    anchorIndex = idx
     anchorPath = list[idx]?.path ?? null
   }
 
-  const scroll = ({ viewMode, rowsEl, gridEl, gridCols }: Refs & { viewMode: ViewMode }) => {
-    if (!anchorPath) return
+  const takeScrollTarget = ({ viewMode, gridCols, viewport }: { viewMode: ViewMode; gridCols: number; viewport: number }) => {
+    if (!anchorPath) return null
     const list = get(filteredEntries)
     const anchor = anchorPath
     anchorPath = null
-    const idx = list.findIndex((e) => e.path === anchor)
-
-    if (idx < 0) {
-      if (viewMode === 'list') {
-        rowsEl?.scrollTo({ top: 0 })
-      } else {
-        gridEl?.scrollTo({ top: 0 })
-      }
-      return
-    }
+    // The entry order does not change during zoom. Avoid scanning a large
+    // listing, but still resolve by path if sorting/filtering changed it.
+    const idx = list[anchorIndex]?.path === anchor ? anchorIndex : list.findIndex((e) => e.path === anchor)
+    anchorIndex = -1
+    if (idx < 0) return 0
 
     if (viewMode === 'list') {
-      const viewport = Math.max(0, rowsEl?.clientHeight ?? 0)
       const target = idx * rowHeight - Math.max(0, viewport / 2 - rowHeight / 2)
-      rowsEl?.scrollTo({ top: Math.max(0, target), behavior: 'auto' })
-      return
+      return Math.max(0, target)
     }
 
     const rowStride = gridRowHeight + gridGap
     const row = Math.floor(idx / Math.max(1, gridCols))
-    const viewport = gridEl?.clientHeight ?? 0
     const target = row * rowStride - Math.max(0, viewport / 2 - rowStride / 2)
-    gridEl?.scrollTo({ top: Math.max(0, target), behavior: 'auto' })
+    return Math.max(0, target)
+  }
+
+  const scroll = ({ viewMode, rowsEl, gridEl, gridCols }: Refs & { viewMode: ViewMode }) => {
+    const element = viewMode === 'list' ? rowsEl : gridEl
+    const target = takeScrollTarget({ viewMode, gridCols, viewport: Math.max(0, element?.clientHeight ?? 0) })
+    if (target !== null) element?.scrollTo({ top: target, behavior: 'auto' })
   }
 
   const setMetrics = (metrics: Pick<Options, 'rowHeight' | 'gridRowHeight' | 'gridGap'>) => {
@@ -84,5 +87,5 @@ export const createViewSwitchAnchor = ({ filteredEntries, rowHeight, gridRowHeig
     gridRowHeight = metrics.gridRowHeight
     gridGap = metrics.gridGap
   }
-  return { capture, scroll, setMetrics }
+  return { capture, scroll, takeScrollTarget, setMetrics }
 }

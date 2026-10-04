@@ -104,6 +104,11 @@ in-flight limits and protected-cloud-copy rules remain unchanged.
 
 ## Browser UI
 
+The [2026-10-04 Ctrl-wheel follow-up](ctrl-wheel-zoom.md) records the subsequent
+zoom-input, anchored-layout and thumbnail-resolution changes with isolated
+before/after browser measurements. The observations below remain the original
+2026-10-03 checkpoint.
+
 Use the existing mock-IPC e2e server and the T3 collaborative preview:
 
 ```js

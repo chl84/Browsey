@@ -38,37 +38,36 @@ export const useGridVirtualizer = ({
 
   const getGridCols = () => gridColsValue
 
-  const getHorizontalPadding = (gridEl: HTMLDivElement) => {
-    const styles = getComputedStyle(gridEl)
-    const left = parseFloat(styles.paddingLeft) || 0
-    const right = parseFloat(styles.paddingRight) || 0
-    return left + right
-  }
-
-  const recomputeGrid = () => {
+  const recomputeGrid = (resolveScrollTop?: (cols: number, viewport: number) => number | null) => {
     if (getViewMode() !== 'grid') return
     const gridEl = getGridEl()
     if (!gridEl) return
     const list = getEntries()
-    const width = Math.max(0, gridEl.clientWidth - getHorizontalPadding(gridEl))
+    const styles = getComputedStyle(gridEl)
+    const horizontalPadding = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0)
+    const verticalPadding = (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0)
+    const width = Math.max(0, gridEl.clientWidth - horizontalPadding)
     gridColsValue = Math.max(1, Math.floor((width + config.gap) / (config.cardWidth + config.gap)))
     gridColsStore.set(gridColsValue)
     const rowStride = config.rowHeight + config.gap
     const totalRows = Math.ceil(list.length / gridColsValue)
-    const scrollTop = gridEl.scrollTop
     const viewport = gridEl.clientHeight
-    const startRow = Math.max(0, Math.floor(scrollTop / rowStride) - config.overscan)
+    const totalH = totalRows * rowStride
+    const requestedTop = resolveScrollTop?.(gridColsValue, viewport)
+    const scrollTop = requestedTop == null ? gridEl.scrollTop
+      : Math.max(0, Math.min(requestedTop, totalH + verticalPadding - viewport))
+    const startRow = Math.min(totalRows, Math.max(0, Math.floor(scrollTop / rowStride) - config.overscan))
     const endRow = Math.min(totalRows, Math.ceil((scrollTop + viewport) / rowStride) + config.overscan)
     const startIdx = startRow * gridColsValue
     const endIdx = Math.min(list.length, endRow * gridColsValue)
     gridStart.set(startIdx)
     gridOffsetY.set(startRow * rowStride)
-    const totalH = totalRows * rowStride
     gridTotalHeight.set(totalH)
     visibleEntries.set(list.slice(startIdx, endIdx))
     start.set(startIdx)
     offsetY.set(startRow * rowStride)
     totalHeight.set(totalH)
+    return scrollTop
   }
 
   const handleGridScroll = () => {
