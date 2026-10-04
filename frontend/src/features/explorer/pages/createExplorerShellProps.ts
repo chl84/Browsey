@@ -259,6 +259,7 @@ export const createExplorerShellProps = (p: Params) => ({
   modalProps: {
     deleteConfirmOpen: p.deleteState.open,
     deleteTargets: p.deleteState.targets,
+    deleteMode: p.deleteState.mode,
     onConfirmDelete: p.deleteModal.confirm,
     onCancelDelete: p.deleteModal.close,
     renameModalOpen: p.renameState.open,

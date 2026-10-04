@@ -35,7 +35,8 @@
   import { openConsole } from '@/features/explorer/services/console.service'
   import { copyPathsToSystemClipboard } from '@/features/explorer/services/clipboard.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
-  import { deleteEntries, emptyTrash, moveToTrashMany, purgeTrashItems } from '@/features/explorer/services/trash.service'
+  import { deleteEntries, emptyTrash, moveToTrashMany, purgeTrashItems, needsNetworkDeleteConfirmation } from '@/features/explorer/services/trash.service'
+  import { mustUsePermanentDelete } from '@/features/explorer/helpers/deletionPolicy'
   import type { Entry, Partition, SortField } from '@/features/explorer/model/types'
   import { toast, showToast } from '@/features/explorer/hooks/useToast'
   import {
@@ -1034,12 +1035,11 @@
       const selectedPathSet = new Set(selectedPaths)
       const entries = $filteredEntries.filter((e) => selectedPathSet.has(e.path))
       if (entries.length === 0) return false
-      const hasNetwork = entries.some((e) => e.network)
       const hasCloud = entries.some((e) => isCloudPath(e.path))
       const inTrashView = currentView === 'trash'
 
-      const canCloudTrash = hasCloud && entries.every((entry) => entry.capabilities?.canTrash)
-      if (permanent || (hasNetwork && !hasCloud && !inTrashView) || (hasCloud && !canCloudTrash && !inTrashView)) {
+      const windows = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('windows')
+      if (mustUsePermanentDelete(entries, permanent, inTrashView, windows)) {
         deleteModal.open(entries, inTrashView ? 'trash' : 'default')
         return true
       }
@@ -1061,6 +1061,10 @@
         }
         await reloadCurrent()
       } catch (err) {
+        if (!inTrashView && needsNetworkDeleteConfirmation(err)) {
+          modalActions.confirmDelete(entries, 'network-trash')
+          return true
+        }
         if (hasCloud) {
           try { await reloadCurrent() } catch { /* Keep the original error after partial cloud outcomes. */ }
         }
@@ -1129,6 +1133,10 @@
       } catch (err) {
         activityApi.clearNow()
         await activityApi.cleanup()
+        if (!inTrashView && needsNetworkDeleteConfirmation(err)) {
+          modalActions.confirmDelete(list, 'network')
+          return true
+        }
         showToast(`Delete failed: ${getErrorMessage(err)}`)
         return false
       } finally {

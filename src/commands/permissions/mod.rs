@@ -31,6 +31,11 @@ pub use ownership::maybe_run_ownership_helper_from_args;
 
 pub const OWNERSHIP_HELPER_FLAG: &str = "--browsey-ownership-helper";
 
+#[cfg(target_os = "linux")]
+pub(crate) fn network_mount_root(path: &Path) -> ApiResult<Option<std::path::PathBuf>> {
+    map_api_result(filesystem::network_mount_root(path))
+}
+
 pub(super) fn ensure_absolute_path(raw: &str) -> PermissionsResult<()> {
     if Path::new(raw).is_absolute() {
         Ok(())

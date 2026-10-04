@@ -187,6 +187,7 @@ describe('cloud modal background refresh', () => {
     expect(deleteEntriesMock).toHaveBeenCalledWith(
       ['rclone://work/docs/sample.txt'],
       expect.stringMatching(/^delete-progress-/),
+      true,
     )
     expect(reloadCurrent).toHaveBeenCalledTimes(1)
     expect(showToast).toHaveBeenCalledWith(

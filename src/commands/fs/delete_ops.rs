@@ -32,7 +32,8 @@ fn delete_entry_impl(path: String, state: tauri::State<UndoState>) -> FsResult<(
     Ok(())
 }
 
-fn delete_with_backup(path: &Path) -> FsResult<Action> {
+pub(super) fn delete_with_backup(path: &Path) -> FsResult<Action> {
+    super::network_delete::require_local_backup_path(path)?;
     map_external_result(ensure_existing_path_nonsymlink(path))?;
     let src_snapshot = map_external_result(snapshot_existing_path(path))?;
     let backup = temp_backup_path(path).map_err(FsError::from)?;
@@ -96,6 +97,9 @@ where
     if paths.is_empty() {
         emit_progress(0, 0, true);
         return Ok(());
+    }
+    for raw in &paths {
+        super::network_delete::require_local_backup_path(Path::new(raw))?;
     }
     let total = paths.len() as u64;
     let mut done = 0u64;

@@ -12,6 +12,7 @@ const removeRecentMock = vi.fn(async (_paths: string[]) => {})
 const copyPathsToSystemClipboardMock = vi.fn(async (_paths: string[], _mode?: string) => {})
 
 vi.mock('../services/trash.service', () => ({
+  needsNetworkDeleteConfirmation: (error: { code?: string }) => error?.code === 'network_confirmation_required',
   moveToTrashMany: (paths: string[], progressEvent?: string) =>
     moveToTrashManyMock(paths, progressEvent),
   deleteEntries: (paths: string[], progressEvent?: string) =>
@@ -64,6 +65,25 @@ const createDeps = (entries: Entry[], selectedPaths: string[], view: CurrentView
 })
 
 describe('createContextActions', () => {
+  it('requires network confirmation even when regular delete confirmation is disabled', async () => {
+    deleteEntriesMock.mockRejectedValueOnce({ code: 'network_confirmation_required', message: 'Confirm' })
+    const entry = fileEntry('/mnt/share/file', 'file')
+    const deps = { ...createDeps([entry], [entry.path]), confirmDeleteEnabled: () => false }
+    await createContextActions(deps)('delete-permanent', entry)
+    expect(deps.confirmDelete).toHaveBeenCalledWith([entry], 'network')
+    expect(deps.reloadCurrent).not.toHaveBeenCalled()
+    expect(deps.showToast).not.toHaveBeenCalled()
+  })
+
+  it('asks before falling back from unsupported network trash', async () => {
+    moveToTrashManyMock.mockRejectedValueOnce({ code: 'network_confirmation_required', message: 'Confirm' })
+    const entry = fileEntry('/mnt/share/file', 'file')
+    const deps = createDeps([entry], [entry.path])
+    await createContextActions(deps)('move-trash', entry)
+    expect(deps.confirmDelete).toHaveBeenCalledWith([entry], 'network-trash')
+    expect(deps.reloadCurrent).not.toHaveBeenCalled()
+    expect(deps.showToast).not.toHaveBeenCalled()
+  })
   it('routes move-trash to trash service (not permanent delete)', async () => {
     moveToTrashManyMock.mockClear()
     deleteEntriesMock.mockClear()

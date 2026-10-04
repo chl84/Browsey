@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Delete Linux network/GVFS files directly through GIO instead of downloading
+  them into local undo backups. Use the mounted server's trash when supported;
+  otherwise require explicit permanent-delete confirmation even when ordinary
+  confirmation is disabled. Preserve local undo in mixed batches, item progress,
+  cancellation and partial-outcome reporting. Never silently retry a failed
+  trash operation as permanent deletion.
+
 - Show each saved SFTP/FTP connection only once in Network, merging server-root,
   home-folder and existing GVFS mount aliases while preserving the saved target.
   Keep separate accounts, ports and SMB/AFP shares or NFS/WebDAV scopes distinct.

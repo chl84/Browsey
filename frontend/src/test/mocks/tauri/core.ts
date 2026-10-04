@@ -63,6 +63,8 @@ type E2eMockControl = {
   networkConnections?: Array<{ uri: string; label: string }>
   networkMountedPaths?: Record<string, string>
   networkConnectError?: string
+  networkTrashSupported?: boolean
+  networkDeleteHold?: boolean
   calls?: Array<{ cmd: string; args?: Record<string, unknown> }>
   partitions?: Array<{ label: string; path: string; fs?: string; removable?: boolean; sizeBytes?: number | null }>
   volumeUsage?: { totalBytes: number; usedBytes: number; freeBytes: number; reservedBytes: number } | null
@@ -520,6 +522,13 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     }
     case 'list_saved_network_connections':
       return (control?.networkConnections ?? []) as T
+    case 'network_delete_paths':
+      return (Array.isArray(args?.paths) ? args.paths.filter(path => typeof path === 'string' && path.includes('/gvfs/')) : []) as T
+    case 'network_delete_entries':
+      if (args?.trash === true && control?.networkTrashSupported === false && args?.confirmed !== true) throw { code: 'network_confirmation_required', message: 'Network trash is unsupported.' }
+      if (args?.trash !== true && args?.confirmed !== true) throw { code: 'network_confirmation_required', message: 'Network deletion requires confirmation.' }
+      while (control?.networkDeleteHold) await new Promise(resolve => setTimeout(resolve, 20))
+      return undefined as T
     case 'forget_network_connection':
       if (control) control.networkConnections = control.networkConnections?.filter(connection => connection.uri !== args?.uri)
       return undefined as T

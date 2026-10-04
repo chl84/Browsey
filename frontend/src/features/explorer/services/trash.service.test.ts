@@ -22,7 +22,7 @@ vi.mock('@/features/network', async () => {
 describe('deleteEntries', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    invokeMock.mockResolvedValue(undefined)
+    invokeMock.mockImplementation(async (cmd: string) => cmd === 'network_delete_paths' ? [] : undefined)
     statCloudEntryMock.mockResolvedValue(null)
     deleteCloudFileMock.mockResolvedValue(undefined)
     deleteCloudDirRecursiveMock.mockResolvedValue(undefined)
@@ -38,6 +38,55 @@ describe('deleteEntries', () => {
       progressEvent: 'delete-progress-1',
     })
     expect(statCloudEntryMock).not.toHaveBeenCalled()
+  })
+
+  it('routes network deletion without a local backup and requires explicit approval', async () => {
+    const { deleteEntries } = await import('./trash.service')
+    const path = '/run/user/1000/gvfs/sftp:host=server/large.bin'
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'network_delete_paths') return [path]
+      if (cmd === 'network_delete_entries') throw { code: 'network_confirmation_required', message: 'Confirm' }
+    })
+    await expect(deleteEntries([path], 'progress')).rejects.toMatchObject({ code: 'network_confirmation_required' })
+    expect(invokeMock).toHaveBeenCalledWith('network_delete_entries', { paths: [path], trash: false, confirmed: false, progressEvent: 'progress' })
+    expect(invokeMock).not.toHaveBeenCalledWith('delete_entries', expect.anything())
+  })
+
+  it('keeps mixed local/network targets in one job with shared progress and confirmation', async () => {
+    const { deleteEntries } = await import('./trash.service')
+    const network = '/mnt/share/large.bin'
+    const paths = ['/tmp/local.txt', network]
+    invokeMock.mockImplementation(async (cmd: string) => cmd === 'network_delete_paths' ? [network] : undefined)
+    await deleteEntries(paths, 'progress', true)
+    expect(invokeMock).toHaveBeenCalledWith('network_delete_entries', { paths, trash: false, confirmed: true, progressEvent: 'progress' })
+    expect(invokeMock).not.toHaveBeenCalledWith('delete_entries', expect.anything())
+  })
+
+  it('never falls back from a failed network trash call to permanent or local deletion', async () => {
+    const { moveToTrashMany } = await import('./trash.service')
+    const path = '/mnt/share/file'
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'network_delete_paths') return [path]
+      throw { code: 'permission_denied', message: 'Denied' }
+    })
+    await expect(moveToTrashMany([path], 'progress')).rejects.toMatchObject({ code: 'permission_denied' })
+    expect(invokeMock).toHaveBeenCalledWith('network_delete_entries', { paths: [path], trash: true, confirmed: false, progressEvent: 'progress' })
+    expect(invokeMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('sends approval for unsupported trash only after confirmation', async () => {
+    const { moveToTrashMany } = await import('./trash.service')
+    const path = '/mnt/share/file'
+    invokeMock.mockImplementation(async (cmd: string) => cmd === 'network_delete_paths' ? [path] : undefined)
+    await moveToTrashMany([path], 'progress', true)
+    expect(invokeMock).toHaveBeenCalledWith('network_delete_entries', { paths: [path], trash: true, confirmed: true, progressEvent: 'progress' })
+  })
+
+  it('does not mutate files if backend policy lookup fails', async () => {
+    const { deleteEntries } = await import('./trash.service')
+    invokeMock.mockRejectedValueOnce(new Error('Mount table unavailable'))
+    await expect(deleteEntries(['/tmp/file'])).rejects.toThrow('Mount table unavailable')
+    expect(invokeMock).toHaveBeenCalledExactlyOnceWith('network_delete_paths', { paths: ['/tmp/file'] })
   })
 
   it('empties the native system trash without lossy per-entry identifiers', async () => {

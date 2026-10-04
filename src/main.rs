@@ -417,6 +417,8 @@ fn main() {
             detect_new_file_type,
             delete_entry,
             delete_entries,
+            network_delete_entries,
+            network_delete_paths,
             entry_times_cmd,
             entry_kind_cmd,
             entry_extra_metadata_cmd,

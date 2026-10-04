@@ -1,4 +1,5 @@
 import { createDeleteConfirmModal } from '../modals/deleteConfirmModal'
+import type { DeleteConfirmMode } from '../modals/deleteConfirmModal'
 import { createOpenWithModal } from '../modals/openWithModal'
 import { createPropertiesModal } from '../modals/propertiesModal'
 import { createRenameModal } from '../modals/renameModal'
@@ -93,7 +94,7 @@ export const useModalsController = ({
     openCheckDuplicates: (entry: Entry) => checkDuplicatesModal.open(entry),
     startRename: (entry: Entry) => renameModal.open(entry),
     startAdvancedRename: (entries: Entry[]) => advancedRenameModal.open(entries),
-    confirmDelete: (entries: Entry[], mode: 'default' | 'trash' = 'default') => deleteModal.open(entries, mode),
+    confirmDelete: (entries: Entry[], mode: DeleteConfirmMode = 'default') => deleteModal.open(entries, mode),
     openProperties: (entries: Entry[]) => propertiesModal.open(entries),
   }
 

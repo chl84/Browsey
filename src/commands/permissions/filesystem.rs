@@ -116,6 +116,7 @@ fn decode_mount_path(raw: &str) -> std::path::PathBuf {
 
 #[cfg(target_os = "linux")]
 struct MountInfo<'a> {
+    root: std::path::PathBuf,
     fs: &'a str,
     options: Vec<&'a str>,
 }
@@ -143,11 +144,27 @@ fn mount_for_path<'a>(mounts: &'a str, path: &Path) -> Option<MountInfo<'a>> {
             .chain(super_fields[2].split(','))
             .collect();
         selected = Some(MountInfo {
+            root: mount,
             fs: super_fields[0],
             options,
         });
     }
     selected
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn network_mount_root(path: &Path) -> PermissionsResult<Option<std::path::PathBuf>> {
+    let mounts = std::fs::read_to_string("/proc/self/mountinfo").map_err(|error| {
+        PermissionsError::from_io_error(
+            PermissionsErrorCode::MetadataReadFailed,
+            "Failed to read filesystem mount options",
+            error,
+        )
+    })?;
+    let mount = mount_for_path(&mounts, path);
+    Ok(mount
+        .filter(|mount| classify_mount(Some(mount), false).network)
+        .map(|mount| mount.root))
 }
 
 #[cfg(target_os = "linux")]

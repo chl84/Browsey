@@ -1,13 +1,14 @@
 import { writable, get } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import type { Entry } from '../model/types'
-import { deleteEntries, purgeTrashItems } from '../services/trash.service'
+import { deleteEntries, moveToTrashMany, purgeTrashItems } from '../services/trash.service'
 
 type ActivityApi = {
   start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
   cleanup: (preserveTimer?: boolean) => Promise<void>
   clearNow: () => void
   hasHideTimer: () => boolean
+  requestCancel?: (eventName: string) => Promise<void>
 }
 
 type Deps = {
@@ -17,10 +18,12 @@ type Deps = {
   showToast: (msg: string) => void
 }
 
+export type DeleteConfirmMode = 'default' | 'trash' | 'network' | 'network-trash'
+
 export type DeleteConfirmState = {
   open: boolean
   targets: Entry[]
-  mode: 'default' | 'trash'
+  mode: DeleteConfirmMode
 }
 
 export const createDeleteConfirmModal = (deps: Deps) => {
@@ -30,6 +33,8 @@ export const createDeleteConfirmModal = (deps: Deps) => {
   const isCloudPath = (path: string) => path.startsWith('rclone://')
 
   const open = (entries: Entry[], mode: DeleteConfirmState['mode'] = 'default') => {
+    if (deleting) { showToast('Wait for the current deletion to finish or cancel it first.'); return }
+    if (mode === 'default' && entries.some(entry => entry.network || entry.path.includes('/gvfs/'))) mode = 'network'
     state.set({ open: true, targets: entries, mode })
   }
 
@@ -39,18 +44,24 @@ export const createDeleteConfirmModal = (deps: Deps) => {
     const current = get(state)
     if (!current.open || current.targets.length === 0 || deleting) return
     deleting = true
+    // The confirmation is complete. Let the operation's shared progress UI
+    // receive cancellation instead of trapping it behind the modal overlay.
+    if (current.mode === 'network' || current.mode === 'network-trash') close()
     const progressEvent = `delete-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
-      await activityApi.start('Deleting…', progressEvent)
+      await activityApi.start(current.mode === 'network-trash' ? 'Moving to trash / deleting…' : 'Deleting…', progressEvent,
+        activityApi.requestCancel ? () => void activityApi.requestCancel?.(progressEvent) : undefined)
       if (current.mode === 'trash') {
         const ids = current.targets.map((t) => t.trash_id ?? t.path)
         await purgeTrashItems(ids)
+      } else if (current.mode === 'network-trash') {
+        await moveToTrashMany(current.targets.map(t => t.path), progressEvent, true)
       } else {
         const paths = current.targets.map((t) => t.path)
-        await deleteEntries(paths, progressEvent)
+        await deleteEntries(paths, progressEvent, true)
       }
       const cloudDelete =
-        current.mode === 'default' && current.targets.length > 0 && current.targets.every((t) => isCloudPath(t.path))
+        current.mode !== 'trash' && current.targets.length > 0 && current.targets.every((t) => isCloudPath(t.path))
       if (cloudDelete) {
         const refreshTarget = getCurrentPath?.() ?? null
         void (async () => {

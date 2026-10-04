@@ -49,8 +49,8 @@ pub use entry_metadata::{entry_extra_metadata_cmd, entry_kind_cmd, entry_times_c
 pub use file_types::detect_new_file_type;
 pub use fs::{
     create_file, create_folder, delete_entries, delete_entry, empty_trash, get_startup_path,
-    list_trash, move_to_trash, move_to_trash_many, open_entry, purge_trash_items,
-    restore_trash_items, set_hidden,
+    list_trash, move_to_trash, move_to_trash_many, network_delete_entries, network_delete_paths,
+    open_entry, purge_trash_items, restore_trash_items, set_hidden,
 };
 pub use keymap::{
     load_shortcuts, reset_all_shortcuts, reset_shortcut_binding, set_shortcut_binding,

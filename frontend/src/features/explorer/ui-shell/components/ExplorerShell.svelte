@@ -8,6 +8,7 @@ import GridFilterIndicator from '../../components/GridFilterIndicator.svelte'
 import Statusbar from '../../../../shared/ui/Statusbar.svelte'
 import ContextMenu from '../../components/ContextMenu.svelte'
 import DeleteConfirmModal from '../../components/DeleteConfirmModal.svelte'
+import type { DeleteConfirmMode } from '../../modals/deleteConfirmModal'
 import RenameModal from '../../components/RenameModal.svelte'
 import NewFolderModal from '../../components/NewFolderModal.svelte'
 import OpenWithModal from '../../components/OpenWithModal.svelte'
@@ -157,6 +158,7 @@ import type { VolumeUsageState } from '../../modals/propertiesModal'
 
   let deleteConfirmOpen = false
   let deleteTargets: Entry[] = []
+  let deleteMode: DeleteConfirmMode = 'default'
   let onConfirmDelete: () => void = () => {}
   let onCancelDelete: () => void = () => {}
 
@@ -399,6 +401,7 @@ import type { VolumeUsageState } from '../../modals/propertiesModal'
   type ExplorerShellModalProps = {
     deleteConfirmOpen: typeof deleteConfirmOpen
     deleteTargets: typeof deleteTargets
+    deleteMode: typeof deleteMode
     onConfirmDelete: typeof onConfirmDelete
     onCancelDelete: typeof onCancelDelete
     renameModalOpen: typeof renameModalOpen
@@ -619,6 +622,7 @@ import type { VolumeUsageState } from '../../modals/propertiesModal'
   $: ({
     deleteConfirmOpen,
     deleteTargets,
+    deleteMode,
     onConfirmDelete,
     onCancelDelete,
     renameModalOpen,
@@ -891,6 +895,7 @@ import type { VolumeUsageState } from '../../modals/propertiesModal'
 />
 <DeleteConfirmModal
   open={deleteConfirmOpen}
+  mode={deleteMode}
   targetLabel={deleteTargets.length === 1 ? deleteTargets[0].path : `${deleteTargets.length} items`}
   onConfirm={onConfirmDelete}
   onCancel={onCancelDelete}

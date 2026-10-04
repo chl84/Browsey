@@ -5,6 +5,21 @@ import { normalizeError } from '@/shared/lib/error'
 const isCloudPath = (path: string) => path.startsWith('rclone://')
 const isNotFoundError = (error: unknown) => normalizeError(error).code === 'not_found'
 
+export const needsNetworkDeleteConfirmation = (error: unknown) =>
+  normalizeError(error).code === 'network_confirmation_required'
+
+const mutateNativeEntries = async (paths: string[], progressEvent: string | undefined, trash: boolean, confirmed: boolean) => {
+  const networkPaths = await invoke<string[]>('network_delete_paths', { paths })
+  // The mixed backend preflights remote trash before mutating any target and
+  // owns one cancellation token/progress counter. Local targets keep undo.
+  if (networkPaths.length) {
+    return invoke<void>('network_delete_entries', { paths, trash, confirmed, progressEvent })
+  }
+  if (paths.length) {
+    return invoke<void>(trash ? 'move_to_trash_many' : 'delete_entries', { paths, progressEvent })
+  }
+}
+
 const cloudDeleteVerificationError = (path: string) =>
   new Error(
     `Cloud delete could not be verified for "${path}". Refresh and try again.`,
@@ -36,10 +51,10 @@ const deleteCloudEntryWhenTypeUnknown = async (path: string, progressEvent?: str
   }
 }
 
-export const deleteEntries = async (paths: string[], progressEvent?: string) => {
+export const deleteEntries = async (paths: string[], progressEvent?: string, networkConfirmed = false) => {
   const cloudCount = paths.filter(isCloudPath).length
   if (cloudCount === 0) {
-    return invoke<void>('delete_entries', { paths, progressEvent })
+    return mutateNativeEntries(paths, progressEvent, false, networkConfirmed)
   }
   if (cloudCount !== paths.length) {
     throw new Error('Mixed local/cloud delete is not supported yet')
@@ -59,12 +74,12 @@ export const deleteEntries = async (paths: string[], progressEvent?: string) => 
   }
 }
 
-export const moveToTrashMany = (paths: string[], progressEvent?: string) => {
+export const moveToTrashMany = (paths: string[], progressEvent?: string, networkConfirmed = false) => {
   if (paths.some(isCloudPath)) {
     if (!paths.every(isCloudPath)) throw new Error('Mixed local/cloud trash is not supported')
     return trashCloudEntries(paths, progressEvent)
   }
-  return invoke<void>('move_to_trash_many', { paths, progressEvent })
+  return mutateNativeEntries(paths, progressEvent, true, networkConfirmed)
 }
 
 export const purgeTrashItems = (ids: string[]) =>

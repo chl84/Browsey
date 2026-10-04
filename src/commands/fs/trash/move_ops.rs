@@ -96,6 +96,7 @@ fn rollback_prepared_trash(prepared: &[PreparedTrashMove]) {
 }
 
 fn prepare_trash_move(raw: &str) -> FsResult<PreparedTrashMove> {
+    super::super::network_delete::require_local_backup_path(std::path::Path::new(raw))?;
     let src = sanitize_path_nofollow(raw, true).map_err(FsError::from)?;
     map_external_result(check_no_symlink_components(&src))?;
     let src_snapshot = map_external_result(snapshot_existing_path(&src))?;
@@ -146,6 +147,9 @@ where
         return Ok(());
     }
     // Capture current trash contents once to avoid O(n^2) directory scans.
+    for raw in &paths {
+        super::super::network_delete::require_local_backup_path(std::path::Path::new(raw))?;
+    }
     let before_ids: HashSet<OsString> = backend
         .list_items()?
         .into_iter()
@@ -317,6 +321,7 @@ pub(super) fn move_single_to_trash_with_backend<B: TrashBackend>(
     path: &str,
     backend: &B,
 ) -> FsResult<Action> {
+    super::super::network_delete::require_local_backup_path(std::path::Path::new(path))?;
     let src = sanitize_path_nofollow(path, true).map_err(FsError::from)?;
     map_external_result(check_no_symlink_components(&src))?;
     let src_snapshot = map_external_result(snapshot_existing_path(&src))?;
@@ -379,10 +384,15 @@ pub(super) fn move_single_to_trash_with_backend<B: TrashBackend>(
 }
 
 fn move_single_to_trash(path: &str, app: &tauri::AppHandle, emit_event: bool) -> FsResult<Action> {
-    let backend = SystemTrashBackend;
-    let action = move_single_to_trash_with_backend(path, &backend)?;
+    let action = move_single_to_trash_with_system_backend(path)?;
     if emit_event {
         let _ = runtime_lifecycle::emit_if_running(app, "trash-changed", ());
     }
     Ok(action)
+}
+
+pub(in crate::commands::fs) fn move_single_to_trash_with_system_backend(
+    path: &str,
+) -> FsResult<Action> {
+    move_single_to_trash_with_backend(path, &SystemTrashBackend)
 }

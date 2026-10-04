@@ -227,6 +227,7 @@ pub(crate) enum FsErrorCode {
     DeleteFailed,
     OpenFailed,
     TrashFailed,
+    NetworkConfirmationRequired,
     UnknownError,
 }
 
@@ -248,6 +249,7 @@ impl ErrorCode for FsErrorCode {
             Self::DeleteFailed => "delete_failed",
             Self::OpenFailed => "open_failed",
             Self::TrashFailed => "trash_failed",
+            Self::NetworkConfirmationRequired => "network_confirmation_required",
             Self::UnknownError => "unknown_error",
         }
     }

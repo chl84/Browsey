@@ -210,6 +210,16 @@ Right-click Wastebasket > **Empty Wastebasket…** opens a permanent-deletion
 warning. Emptying cannot be undone and does not empty cloud-provider trash.
 Windows network paths use permanent deletion rather than the recycle bin.
 
+On Linux, network-mounted files (including GVFS/SFTP and phone storage) are not
+downloaded into local undo backups before deletion. Browsey uses the mounted
+backend's trash when supported; recovery is handled by the server/provider,
+not Browsey's undo history. If trash is unavailable, a separate confirmation
+is required before direct permanent deletion, even when the normal deletion
+confirmation is disabled. Cancel leaves the selection unchanged; errors during
+execution can leave a partially completed batch and are not automatically
+retried. Stop other writers and refresh before deciding whether to retry.
+Local files retain their existing undo behavior, including in mixed selections.
+
 Search/duplicate scans skip symlinks, and symlink permissions are not editable.
 Extra metadata is loaded when its Properties tab opens. HDR/OpenEXR thumbnail
 decoding may take longer than standard raster formats.

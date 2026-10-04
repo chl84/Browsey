@@ -118,6 +118,27 @@ destructive testing.
 - [ ] **A1-7** Validate network disconnect/reconnect and stale-path handling against
   controlled mounts; check that discovery and refresh settings behave as documented.
 
+  Network deletion implementation scope (2026-10-04): regression tests cover
+  no content download/local undo for remote deletion, supported trash,
+  confirmation before unsupported trash or permanent deletion, cancellation,
+  partial outcomes, symlink targets and local undo in mixed selections. An
+  8 GiB sparse disposable local surrogate exercises direct GIO deletion; this
+  is not a measured SFTP performance or installed-build acceptance result.
+  Opt-in candidate-backend acceptance in an explicitly approved SFTP folder
+  deleted a 64 MiB file and a nested directory in approximately 56 ms (one run,
+  excluding fixture upload/setup). The server reported no trash support;
+  unconfirmed deletion and cancellation before mutation left fixtures intact,
+  confirmed deletion created no undo history, and server queries verified
+  removal. GVFS retained stale positive file metadata, but a fresh FUSE directory
+  listing was empty. Only uniquely allocated disposable fixtures were removed,
+  including cleanup after an initial stale-metadata assertion failed.
+  The read-only existing-GVFS mapping check also passed with real mounts.
+  A simulated browser checked ordinary Delete routing, unsupported-trash
+  confirmation with initial focus on Cancel, supported trash without a prompt,
+  Shift+Delete warnings, and progress access after confirmation. These checks
+  are not installed-build/native-WebKit acceptance; real supported server trash,
+  disconnect/reconnect and cancellation during deletion remain unchecked.
+
   SFTP implementation evidence (2026-10-04): Linux GTK/GVFS authentication,
   bounded/cancellable connection handling, exact mount identity and persistent
   server-address history have Rust/frontend regression coverage. The simulated

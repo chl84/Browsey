@@ -8,7 +8,9 @@ import {
   deleteEntries,
   moveToTrashMany,
   purgeTrashItems,
+  needsNetworkDeleteConfirmation,
 } from '../services/trash.service'
+import type { DeleteConfirmMode } from '../modals/deleteConfirmModal'
 
 export type CurrentView = 'recent' | 'starred' | 'trash' | 'network' | 'dir'
 
@@ -24,7 +26,7 @@ type Deps = {
   openWith: (entry: Entry) => void
   startRename: (entry: Entry) => void
   startAdvancedRename: (entries: Entry[]) => void
-  confirmDelete: (entries: Entry[], mode?: 'default' | 'trash') => void
+  confirmDelete: (entries: Entry[], mode?: DeleteConfirmMode) => void
   openProperties: (entries: Entry[]) => Promise<void> | void
   openLocation: (entry: Entry) => Promise<void> | void
   openCompress: (entries: Entry[]) => void
@@ -194,6 +196,10 @@ export const createContextActions = (deps: Deps) => {
         }
         await reloadCurrent()
       } catch (err) {
+        if (currentView() !== 'trash' && needsNetworkDeleteConfirmation(err)) {
+          confirmDelete(selectionEntries(), 'network-trash')
+          return
+        }
         if (paths.some(isCloudPath)) {
           try { await reloadCurrent() } catch { /* Preserve the trash error after partial writes. */ }
         }
@@ -230,6 +236,10 @@ export const createContextActions = (deps: Deps) => {
             await reloadCurrent()
           }
         } catch (err) {
+          if (needsNetworkDeleteConfirmation(err)) {
+            confirmDelete(selectionEntries(), 'network')
+            return
+          }
           const msg = getErrorMessage(err)
           showToast(`Delete failed: ${msg}`)
         }

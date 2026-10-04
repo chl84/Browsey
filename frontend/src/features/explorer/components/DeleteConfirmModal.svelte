@@ -1,8 +1,10 @@
 <script lang="ts">
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
+  import type { DeleteConfirmMode } from '../modals/deleteConfirmModal'
 
   export let open = false
   export let targetLabel = ''
+  export let mode: DeleteConfirmMode = 'default'
   export let onConfirm: () => void = () => {}
   export let onCancel: () => void = () => {}
 </script>
@@ -12,13 +14,19 @@
     open={open}
     onClose={onCancel}
     overlayClass="danger-overlay"
-    initialFocusSelector="button[data-confirm-delete='1']"
+    initialFocusSelector={mode === 'network' || mode === 'network-trash' ? "button[data-cancel-delete='1']" : "button[data-confirm-delete='1']"}
   >
-    <svelte:fragment slot="header">Delete permanently?</svelte:fragment>
-    <p class="muted">This cannot be undone.</p>
+    <svelte:fragment slot="header">{mode === 'network-trash' ? 'Network trash unavailable' : 'Delete permanently?'}</svelte:fragment>
+    {#if mode === 'network-trash'}
+      <p class="muted">Some network items cannot be moved to trash. Delete those items permanently? Browsey cannot undo this and will not download a backup. Other items will be moved to trash where supported.</p>
+    {:else if mode === 'network'}
+      <p class="muted">Network items will be deleted directly on the server, without a local backup. Browsey cannot undo this.</p>
+    {:else}
+      <p class="muted">This cannot be undone.</p>
+    {/if}
     <p class="path">{targetLabel}</p>
     <div slot="actions">
-      <button type="button" class="secondary" on:click={onCancel}>Cancel</button>
+      <button type="button" data-cancel-delete="1" class="secondary" on:click={onCancel}>Cancel</button>
       <button
         type="button"
         data-confirm-delete="1"

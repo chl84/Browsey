@@ -14,6 +14,7 @@ mod error;
 #[cfg(target_os = "windows")]
 #[path = "windows.rs"]
 pub mod fs_windows;
+mod network_delete;
 mod open_ops;
 mod startup_ops;
 mod trash;
@@ -35,6 +36,7 @@ use error::{
     is_expected_set_hidden_error, map_api_result, SetHiddenError, SetHiddenErrorCode,
     SetHiddenResult,
 };
+pub use network_delete::{network_delete_entries, network_delete_paths};
 pub use open_ops::open_entry;
 pub(crate) use open_ops::open_path_without_recent;
 pub use startup_ops::get_startup_path;
