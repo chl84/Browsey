@@ -1,15 +1,15 @@
 # RPM Spec Usage
 
 `browsey.spec` in this directory is an optional packaging path for manual
-`rpmbuild`/COPR workflows.
+`rpmbuild` workflows. The obsolete `.copr/` automation has been removed.
 
 It is **not** used by the default Browsey release flow:
 
-- local/release scripts use `cargo tauri build --bundles rpm`
+- local/release builds use the Tauri bundler to create RPM packages
 - GitHub workflows do not consume this spec file
 
 Use this spec only when you intentionally build/package Browsey with
-`rpmbuild` (for example COPR).
+`rpmbuild`.
 
 ## Before Using the Spec
 
@@ -25,4 +25,4 @@ rpmbuild -ba packaging/rpm/browsey.spec \
   --define "_topdir $(pwd)/.rpmbuild"
 ```
 
-Adjust `rpmbuild` paths/macros for your environment or COPR setup.
+Adjust `rpmbuild` paths/macros for your environment.

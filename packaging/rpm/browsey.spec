@@ -1,5 +1,5 @@
-# Optional manual rpmbuild/COPR spec.
-# Default Browsey release packaging uses `cargo tauri build --bundles rpm`.
+# Optional manual rpmbuild spec.
+# Default Browsey release packaging uses the Tauri bundler.
 # See packaging/rpm/README.md for usage notes.
 
 %global _build_id_links none

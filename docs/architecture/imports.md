@@ -1,5 +1,7 @@
 # Architecture: Import Boundaries
 
+[Development guide](../development.md) · [Naming conventions](naming.md)
+
 This project uses strict frontend import boundaries to keep features isolated and make refactoring safer.
 
 ## Rules
@@ -44,4 +46,5 @@ import type { Entry } from '@/features/explorer'
   - `npm --prefix frontend run build`
 
 Related:
-- See `ARCHITECTURE_NAMING.md` for file naming and placement conventions.
+
+- See [Naming conventions](naming.md) for file naming and placement conventions.

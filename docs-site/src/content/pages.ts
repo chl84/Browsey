@@ -818,12 +818,17 @@ frontend/src/
     shortcuts/{index.ts,keymap.ts,service.ts}
 
 docs-site/src/content/pages.ts
-ARCHITECTURE_IMPORTS.md ARCHITECTURE_NAMING.md CHANGELOG.md
-docs/{strategy/*,operations/*,audits/*,cloud/*,todo/*,todo-archive/*}
+CHANGELOG.md
+docs/{architecture/*,strategy/*,operations/*,audits/*,cloud/*,todo/*,todo-archive/*}
 scripts/{dev/*,build/*,docs/*,install/*,maintenance/*}
 resources/{icons/,schemas/,pdfium-linux-x64/,pdfium-win-x64/}
 capabilities/default.json`,
         note: 'When in doubt, add user-facing behavior notes in docs first, then keep README concise with links/summaries.',
+        links: [
+          { label: 'Project layout and architecture', href: 'https://github.com/chl84/Browsey/blob/main/docs/development.md#project-layout-and-architecture' },
+          { label: 'Import boundaries', href: 'https://github.com/chl84/Browsey/blob/main/docs/architecture/imports.md' },
+          { label: 'Naming conventions', href: 'https://github.com/chl84/Browsey/blob/main/docs/architecture/naming.md' },
+        ],
       },
     ],
   },

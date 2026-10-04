@@ -14,6 +14,7 @@ The docs web app lives in `../docs-site/` and is built/deployed separately.
 
 ## Structure
 
+- `architecture/`: frontend import boundaries and naming/placement conventions
 - `releases/`: version-specific release notes, artifact scope, and validation evidence
 - `strategy/`: product and positioning assessments
 - `operations/core-operations/`: core-operations matrix, checklist, and policy
@@ -28,6 +29,10 @@ The docs web app lives in `../docs-site/` and is built/deployed separately.
 
 ## Conventions
 
+- Older changelog entries and archived plans may use the historical names
+  `ARCHITECTURE_IMPORTS.md` and `ARCHITECTURE_NAMING.md`; current policies are
+  [Import boundaries](architecture/imports.md) and
+  [Naming conventions](architecture/naming.md).
 - Prefer stable, domain-based folders over date-based dump files.
 - Keep active TODOs in `todo/` and move completed tracks to `todo-archive/`.
 - Keep behavior definitions in operations docs; audits/checklists should refer to

@@ -18,12 +18,12 @@ export const hitTestGridVirtualized = (rect: Rect, entries: { path: string }[], 
   const rectRight = rect.x + rect.width
   const rectBottom = rect.y + rect.height
   const x0 = Math.max(0, rect.x - paddingLeft)
-  // Juster y for scroll/oversettelse: rektangelet gis i viewport-koordinater,
+  // Adjust y for scrolling/translation: the rectangle uses viewport coordinates,
   // rows start at padding and are not transformed by translateY in the hit test.
   const y0 = Math.max(0, rect.y - paddingTop)
   const colStride = cardWidth + gap
   const rowStride = cardHeight + gap
-  // Bruk gulv for start og tak for slutt slik at vi inkluderer nedre rad selv ved avrundingsfeil.
+  // Floor the start and ceil the end to include the bottom row despite rounding errors.
   const startRow = Math.max(0, Math.floor(y0 / rowStride))
   const endRow = Math.max(startRow, Math.ceil((y0 + rect.height) / rowStride) - 1)
   const startCol = Math.max(0, Math.floor(x0 / colStride))

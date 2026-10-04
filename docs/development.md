@@ -145,11 +145,22 @@ Regression tests: `node --test scripts/release/bump.test.mjs`.
 - `docs-site/`: separately built/deployed documentation app.
 - `packaging/`: desktop metadata and manual RPM packaging assets.
 - `scripts/`: build, dev, install, maintenance, docs and release helpers.
-- `resources/` and `capabilities/`: bundled assets and Tauri permissions.
+- `tests/`: shared fixtures, native regression crates and integration helpers;
+  module-local Rust and frontend tests remain alongside their implementations.
+- `resources/`: bundled icons, schemas and native libraries, with provenance.
+- `capabilities/`: Tauri permissions.
+- `vendor/`: patched third-party sources; keep their licenses and upgrade checks.
+
+The root keeps Cargo/Tauri manifests, `build.rs`, README, changelog, license and
+third-party notices, plus tool configuration (`.cargo/`, `.github/`, `.semgrep/`
+and `t3.json`). Architecture policies live under `docs/architecture/`.
+Local build outputs such as `target/`, `dist/` and `gen/` are ignored, not source
+folders. There is no active COPR configuration; `packaging/rpm/` retains an
+optional manual rpmbuild spec, separate from the Tauri release workflow.
 
 State uses SQLite (settings/bookmarks/stars/recents), a thumbnail disk cache,
 and separate undo/log directories in the user data path. Import boundaries
-and placement rules are in [Architecture imports](../ARCHITECTURE_IMPORTS.md)
-and [Architecture naming](../ARCHITECTURE_NAMING.md). Module-level behavior is
+and placement rules are in [Architecture imports](architecture/imports.md)
+and [Architecture naming](architecture/naming.md). Module-level behavior is
 documented on the docs site; operational policies and TODOs are indexed in
 the project docs.

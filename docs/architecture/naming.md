@@ -1,5 +1,7 @@
 # Architecture: Naming Conventions
 
+[Development guide](../development.md) · [Import boundaries](imports.md)
+
 This document defines lightweight naming rules for frontend files under `frontend/src`.
 
 ## Core Rules
@@ -45,7 +47,7 @@ import { something } from '@/features/explorer/internal/privateFile'
   - `frontend/scripts/check-naming-conventions.mjs`
   - Fails when `use*.ts/js` exports `create*` but no `use*`, except explicit allowlist entries.
 - Lint warning policy and current baseline are tracked in:
-  - `docs/quality/lint-baseline.md`
+  - [Lint baseline](../quality/lint-baseline.md)
 
 ## Quick Decision Checklist
 

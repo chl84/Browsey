@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Translate remaining Norwegian code and SVG comments and the T3 installation-action
+  label to English; preserve intentional Unicode fixtures and historical filenames.
+
+- Consolidate import/naming policies under docs/architecture, update project
+  layout guidance and current links, and remove obsolete COPR automation while
+  preserving the separate manual RPM packaging path and historical records.
+
 - Audit and correct the documentation site: separate runtime/source requirements,
   update archive/cloud/recovery guidance, add usable reference links and concise
   release highlights, and improve search, keyboard navigation and responsive

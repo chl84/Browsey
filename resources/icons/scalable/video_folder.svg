@@ -8,7 +8,7 @@
   <!-- Video symbol: screen -->
   <rect x="34" y="66" width="60" height="34" rx="0" fill="rgba(243,232,210,0.22)"></rect>
 
-  <!-- Play-triangel -->
+  <!-- Play triangle -->
   <path d="M60 75.5c0-1.2 1.3-2 2.4-1.3l16 9.2c1.1.6 1.1 2.1 0 2.7l-16 9.2c-1.1.6-2.4-.1-2.4-1.3V75.5Z" fill="rgba(243,232,210,0.78)"></path>
 
   <!-- Small filmstrip notches (subtle) -->

@@ -71,7 +71,7 @@ pub(super) fn single_root_in_zip(
         let is_dir = entry.is_dir() || raw_name.ends_with('/');
         let rest_is_empty = clean_rel.components().count() == 1;
         if !is_dir && rest_is_empty {
-            // File i roten -> ikke enkel rotmappe.
+            // A file at the archive root means there is no single root directory.
             return Ok(None);
         }
         match &root {

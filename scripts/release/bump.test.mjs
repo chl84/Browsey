@@ -65,7 +65,10 @@ function changed(plan, path) {
 }
 
 test('README and linked guides have valid local links, anchors and Markdown heading spacing', () => {
-  const guides = ['README.md', 'docs/installation.md', 'docs/usage.md', 'docs/development.md']
+  const guides = [
+    'README.md', 'docs/README.md', 'docs/installation.md', 'docs/usage.md',
+    'docs/development.md', 'docs/architecture/imports.md', 'docs/architecture/naming.md',
+  ]
   for (const path of guides) {
     const content = readFileSync(join(root, path), 'utf8')
     const lines = content.split('\n')

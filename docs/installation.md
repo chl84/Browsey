@@ -89,7 +89,7 @@ file-manager associations, commit/push, or stop running Browsey processes.
 Finish operations before restarting. On a fresh installation, ensure
 `~/.local/bin` is on PATH; desktop integration may need separate setup.
 
-The repository's `t3.json` declares an **Installer Browsey** project action
+The repository's `t3.json` declares an **Install Browsey** project action
 running this same script. Where action import is unavailable, add an action
 with command `bash scripts/install/install-local.sh`; no special import is
 required to run the installer from a terminal.

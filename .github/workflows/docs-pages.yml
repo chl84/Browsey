@@ -12,6 +12,7 @@ on:
       - "docs/installation.md"
       - "docs/usage.md"
       - "docs/development.md"
+      - "docs/architecture/**"
       - "scripts/maintenance/check-docs-consistency.sh"
       - ".github/workflows/docs-pages.yml"
   workflow_dispatch:
