@@ -61,6 +61,9 @@ export function tooltip(node: HTMLElement, input: TooltipInput) {
   }
 
   const handleMove = () => place()
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') hide()
+  }
 
   const scheduleShow = () => {
     if (tooltipEl || showTimer !== null) return
@@ -77,6 +80,7 @@ export function tooltip(node: HTMLElement, input: TooltipInput) {
   node.addEventListener('mousemove', handleMove)
   window.addEventListener('scroll', hide, true)
   window.addEventListener('resize', hide)
+  window.addEventListener('keydown', handleKeydown, true)
 
   return {
     update(nextInput: TooltipInput) {
@@ -102,7 +106,7 @@ export function tooltip(node: HTMLElement, input: TooltipInput) {
       node.removeEventListener('mousemove', handleMove)
       window.removeEventListener('scroll', hide, true)
       window.removeEventListener('resize', hide)
+      window.removeEventListener('keydown', handleKeydown, true)
     },
   }
 }
-

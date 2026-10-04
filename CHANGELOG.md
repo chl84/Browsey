@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Let Escape dismiss shared tooltips and cancel pending tooltip display without
+  moving focus or consuming the key used by dialogs and other controls.
+
 - Improve Ctrl-wheel zoom responsiveness: retain rapid notches, coalesce target
   sizes per animation frame, and publish the final anchored grid window without
   intermediate layout passes. Debounce thumbnail resolution upgrades while

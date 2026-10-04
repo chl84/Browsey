@@ -12,7 +12,7 @@ describe('tooltip', () => {
     const node = document.createElement('button')
     document.body.appendChild(node)
 
-    tooltip(node, 'Copy path')
+    const action = tooltip(node, 'Copy path')
     node.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
 
     expect(document.querySelector('.browsey-tooltip')).toBeNull()
@@ -25,6 +25,7 @@ describe('tooltip', () => {
 
     node.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
     expect(document.querySelector('.browsey-tooltip')).toBeNull()
+    action.destroy()
   })
 
   it('updates text while visible', () => {
@@ -39,6 +40,50 @@ describe('tooltip', () => {
 
     action.update('Second')
     expect(document.querySelector('.browsey-tooltip')?.textContent).toBe('Second')
+    action.destroy()
+  })
+
+  it.each([0, 750])('dismisses tooltips with Escape after %s ms without consuming the key', (elapsed) => {
+    vi.useFakeTimers()
+    const node = document.createElement('button')
+    document.body.appendChild(node)
+    const action = tooltip(node, 'Copy path')
+
+    try {
+      node.focus()
+      vi.advanceTimersByTime(elapsed)
+      const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      const onKeydown = vi.fn()
+      window.addEventListener('keydown', onKeydown, { once: true })
+      node.dispatchEvent(event)
+      vi.advanceTimersByTime(750)
+
+      expect(document.querySelector('.browsey-tooltip')).toBeNull()
+      expect(document.activeElement).toBe(node)
+      expect(event.defaultPrevented).toBe(false)
+      expect(onKeydown).toHaveBeenCalledOnce()
+    } finally {
+      action.destroy()
+    }
+  })
+
+  it('keeps a hovered tooltip visible for other keys and dismisses it with Escape', () => {
+    vi.useFakeTimers()
+    const node = document.createElement('button')
+    document.body.appendChild(node)
+    const action = tooltip(node, 'Copy path')
+
+    try {
+      node.dispatchEvent(new MouseEvent('mouseenter'))
+      vi.advanceTimersByTime(750)
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+      expect(document.querySelector('.browsey-tooltip')?.textContent).toBe('Copy path')
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      expect(document.querySelector('.browsey-tooltip')).toBeNull()
+    } finally {
+      action.destroy()
+    }
   })
 
   it('removes tooltip on destroy', () => {
@@ -55,4 +100,3 @@ describe('tooltip', () => {
     expect(document.querySelector('.browsey-tooltip')).toBeNull()
   })
 })
-
