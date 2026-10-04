@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Notify the desktop after a verified user-local installation, preferring
+  Omarchy's notification command. Keep notifications optional and time-bounded;
+  failed installs and dry runs never send a success notification.
+
 - Use native GIO byte progress for GVFS/network copies in both directions, with
   cancellable I/O independent of progress callbacks. Never automatically retry
   a failed or cancelled GIO copy through a different writer. Aggregate progress

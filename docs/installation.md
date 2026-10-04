@@ -89,6 +89,12 @@ launcher at `~/.local/bin/browsey`. Missing frontend dependencies are installed
 with `npm ci`. The previous installation is retained in the printed
 `.browsey-backup.*` directory alongside it.
 
+After successful verification, it sends a desktop notification using Omarchy's
+notification command, with `notify-send` as a fallback on other desktops. No
+success notification is sent after a failed install or during `--dry-run`.
+Unavailable or unresponsive notification services do not fail the installation;
+a warning is printed instead.
+
 It preserves existing desktop integration but does not create/change default
 file-manager associations, commit/push, or stop running Browsey processes.
 Finish operations before restarting. On a fresh installation, ensure

@@ -14,6 +14,7 @@ function fixture(t) {
   const repo = join(root, 'checkout')
   const local = join(root, 'local')
   const commands = join(root, 'commands')
+  const notificationLog = join(root, 'notifications')
   for (const folder of ['scripts/install', 'frontend/node_modules/.bin', 'resources/pdfium-linux-x64/lib']) {
     mkdirSync(join(repo, folder), { recursive: true })
   }
@@ -29,6 +30,14 @@ function fixture(t) {
     chmodSync(path, 0o755)
   }
   executable(join(commands, 'cargo'), '#!/bin/sh\nexit 0\n')
+  // Never send real desktop notifications from installer fixtures.
+  for (const name of ['omarchy', 'notify-send']) {
+    executable(join(commands, name), `#!/bin/sh
+printf '%s\\0' '${name}' "$@" >> "$BROWSEY_TEST_NOTIFICATION_LOG"
+if [ '${name}' = omarchy ]; then exit "\${BROWSEY_TEST_OMARCHY_STATUS:-0}"; fi
+exit "\${BROWSEY_TEST_NOTIFY_STATUS:-0}"
+`)
+  }
   executable(join(commands, 'ldd'), '#!/bin/sh\nif [ "${BROWSEY_TEST_MISSING_LIB:-}" = 1 ]; then echo "library => not found"; else echo "library => /lib/library"; fi\n')
   executable(join(repo, 'frontend/node_modules/.bin/tauri'), `#!/bin/sh
 set -eu
@@ -39,11 +48,16 @@ printf '#!/bin/sh\\nprintf new-browsey\\n' > target/release/browsey
 chmod 755 target/release/browsey
 `)
   function run(args = [], extraEnv = {}) {
-    return spawnSync('bash', [join(repo, 'scripts/install/install-local.sh'), ...args], {
+    const result = spawnSync('bash', [join(repo, 'scripts/install/install-local.sh'), ...args], {
       cwd: tmpdir(), // The caller need not be at the repository root.
-      env: { ...process.env, PATH: `${commands}:${process.env.PATH}`, BROWSEY_LOCAL_DIR: local, ...extraEnv },
+      env: { ...process.env, PATH: `${commands}:${process.env.PATH}`, BROWSEY_LOCAL_DIR: local,
+        BROWSEY_TEST_NOTIFICATION_LOG: notificationLog, ...extraEnv },
       encoding: 'utf8',
     })
+    if (result.status !== 0 || args.includes('--dry-run') || args.includes('--help')) {
+      assert.equal(existsSync(notificationLog), false, 'No success notification before successful installation')
+    }
+    return result
   }
   function installOld() {
     const old = join(local, 'opt/browsey/usr')
@@ -52,7 +66,7 @@ chmod 755 target/release/browsey
     writeFileSync(join(old, 'bin/browsey'), 'old binary')
     writeFileSync(join(old, 'share/applications/Browsey.desktop'), 'existing desktop integration')
   }
-  return { root, repo, local, commands, executable, run, installOld }
+  return { root, repo, local, commands, notificationLog, executable, run, installOld }
 }
 
 test('dry run and help do not build or create an installation', t => {
@@ -63,6 +77,7 @@ test('dry run and help do not build or create an installation', t => {
   }
   assert.equal(existsSync(f.local), false)
   assert.equal(existsSync(join(f.repo, 'target')), false)
+  assert.equal(existsSync(f.notificationLog), false)
 })
 
 test('fresh installation includes frontend build, resources and a relocatable launcher', t => {
@@ -99,6 +114,7 @@ test('failed build cannot install a stale release binary', t => {
   const result = f.run([], { BROWSEY_TEST_BUILD_FAILURE: '1' })
   assert.notEqual(result.status, 0)
   assert.equal(readFileSync(join(f.local, 'opt/browsey/usr/bin/browsey'), 'utf8'), 'old binary')
+  assert.equal(existsSync(f.notificationLog), false)
 })
 
 test('missing runtime libraries leave the existing installation untouched', t => {
@@ -174,4 +190,76 @@ test('an existing rustup cargo takes precedence over an unconfigured PATH shim',
   writeFileSync(tauriPath, tauri.replace('set -eu\n', 'set -eu\ntest "$(cargo)" = rustup-cargo\n'))
   const result = f.run([], { HOME: rustHome })
   assert.equal(result.status, 0, result.stderr)
+})
+
+test('successful installation sends one Omarchy notification only after verification', t => {
+  const f = fixture(t)
+  const realNotifier = readFileSync(join(f.commands, 'omarchy'), 'utf8')
+  f.executable(join(f.commands, 'omarchy'), realNotifier.replace("printf '%s\\0'", `test -x "$BROWSEY_LOCAL_DIR/bin/browsey" || exit 90
+cmp "$BROWSEY_LOCAL_DIR/opt/browsey/usr/bin/browsey" target/release/browsey || exit 91
+printf '%s\\0'`))
+  const result = f.run()
+  assert.equal(result.status, 0, result.stderr)
+  const args = readFileSync(f.notificationLog, 'utf8').split('\0').filter(Boolean)
+  assert.deepEqual(args, ['omarchy', 'notification', 'send', '--app-name', 'Browsey',
+    '-u', 'normal', '-i', 'folder', 'Browsey installed',
+    'Installation completed successfully. Finish active file operations before restarting Browsey.'])
+})
+
+test('failed Omarchy notification falls back to standard desktop notifications', t => {
+  const f = fixture(t)
+  const result = f.run([], { BROWSEY_TEST_OMARCHY_STATUS: '1' })
+  assert.equal(result.status, 0, result.stderr)
+  const args = readFileSync(f.notificationLog, 'utf8').split('\0').filter(Boolean)
+  assert.equal(args.filter(arg => arg === 'omarchy').length, 1)
+  assert.equal(args.filter(arg => arg === 'notify-send').length, 1)
+  assert.ok(args.includes('Browsey installed'))
+})
+
+test('failed final installation verification never sends a success notification', t => {
+  const f = fixture(t)
+  f.executable(join(f.commands, 'cmp'), `#!/bin/sh
+case "$3" in */opt/browsey/usr/bin/browsey) exit 1;; esac
+exec /usr/bin/cmp "$@"
+`)
+  assert.notEqual(f.run().status, 0)
+  assert.equal(existsSync(f.notificationLog), false)
+})
+
+test('notification failures never turn a verified installation into failure', t => {
+  const f = fixture(t)
+  const result = f.run([], { BROWSEY_TEST_OMARCHY_STATUS: '1', BROWSEY_TEST_NOTIFY_STATUS: '1' })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Installed:/)
+  assert.match(result.stderr, /desktop notification could not be delivered/)
+  assert.equal(existsSync(join(f.local, 'opt/browsey/usr/bin/browsey')), true)
+})
+
+test('notification calls are bounded and timeout does not change installation success', t => {
+  const f = fixture(t)
+  f.executable(join(f.commands, 'timeout'), `#!/bin/sh
+test "$1" = --kill-after=1s || exit 90
+test "$2" = 5s || exit 91
+exit 124
+`)
+  const result = f.run()
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /desktop notification could not be delivered/)
+  assert.equal(existsSync(f.notificationLog), false)
+})
+
+test('missing desktop notification tools do not prevent headless installation', t => {
+  const f = fixture(t)
+  rmSync(join(f.commands, 'omarchy'))
+  rmSync(join(f.commands, 'notify-send'))
+  for (const name of ['bash', 'uname', 'dirname', 'npm', 'node', 'flock', 'tar', 'install',
+    'mktemp', 'realpath', 'mkdir', 'mv', 'cmp', 'cp', 'rm', 'chmod', 'timeout']) {
+    const found = spawnSync('bash', ['-c', 'command -v "$1"', 'locate', name], { encoding: 'utf8' })
+    assert.equal(found.status, 0, name)
+    symlinkSync(found.stdout.trim(), join(f.commands, name))
+  }
+  const result = f.run([], { PATH: f.commands, HOME: f.root })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stderr, /desktop notification could not be delivered/)
+  assert.equal(existsSync(f.notificationLog), false)
 })

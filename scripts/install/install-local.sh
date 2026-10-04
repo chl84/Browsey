@@ -5,6 +5,27 @@ set -euo pipefail
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 local_dir=${BROWSEY_LOCAL_DIR:-"$HOME/.local"}
 dry_run=false
+
+notify_installation_complete() {
+  local title='Browsey installed'
+  local body='Installation completed successfully. Finish active file operations before restarting Browsey.'
+  # Notifications are optional and bounded: headless sessions or a stalled
+  # notification service must never fail or indefinitely delay installation.
+  if command -v timeout >/dev/null 2>&1; then
+    if command -v omarchy >/dev/null 2>&1 &&
+      timeout --kill-after=1s 5s omarchy notification send --app-name Browsey \
+        -u normal -i folder "$title" "$body" 9>&- >/dev/null 2>&1; then
+      return 0
+    fi
+    if command -v notify-send >/dev/null 2>&1 &&
+      timeout --kill-after=1s 5s notify-send --app-name=Browsey \
+        --urgency=normal --icon=folder "$title" "$body" 9>&- >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+  printf '%s\n' 'Warning: Browsey was installed successfully, but the desktop notification could not be delivered.' >&2
+}
+
 case "${1:-}" in
   '') ;;
   --dry-run) dry_run=true ;;
@@ -118,3 +139,4 @@ cmp -- "$binary" "$install_dir/usr/bin/browsey"
 printf 'Installed: %s\n' "$launcher"
 [[ -z $backup_dir ]] || printf 'Previous installation retained: %s/app\n' "$backup_dir"
 printf '%s\n' 'Open Browsey normally. If it is already running, finish active operations before restarting.'
+notify_installation_complete
