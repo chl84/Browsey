@@ -1,4 +1,5 @@
 import type { ShortcutCommandId } from '@/features/shortcuts'
+import type { Entry } from '../model/types'
 
 type ShortcutArgs = {
   isBookmarkModalOpen: () => boolean
@@ -8,8 +9,8 @@ type ShortcutArgs = {
   onTypeChar: (char: string) => Promise<boolean> | boolean
   onRemoveChar: () => Promise<boolean> | boolean
   getSelectedPaths: () => string[]
-  findEntryByPath: (path: string) => { kind: string } | null
-  openBookmarkModal: (entry: { kind: string }) => Promise<void>
+  findEntryByPath: (path: string) => Entry | null
+  openBookmarkModal: (entry: Entry) => Promise<void>
   goBack: () => void
   goForward: () => void
   isShortcut: (event: KeyboardEvent, commandId: ShortcutCommandId) => boolean

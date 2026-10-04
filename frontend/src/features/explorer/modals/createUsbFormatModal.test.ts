@@ -186,4 +186,19 @@ describe('USB format controller', () => {
     pending.resolve(result)
     await formatting
   })
+
+  it('allows closing a completed result while directory-watch refresh is still pending', async () => {
+    const { modal, reloadCurrent } = setup()
+    const pending = deferred<void>()
+    reloadCurrent.mockReturnValueOnce(pending.promise)
+    await modal.open(drive)
+    const formatting = modal.confirm()
+    await vi.waitFor(() => expect(reloadCurrent).toHaveBeenCalledOnce())
+    expect(get(modal.state)).toMatchObject({ result, busy: false, progress: null })
+    modal.close()
+    expect(get(modal.state).target).toBeNull()
+    pending.resolve()
+    await formatting
+    expect(get(modal.state).target).toBeNull()
+  })
 })

@@ -73,14 +73,13 @@ export const createUsbFormatModal = (deps: Deps) => {
     } finally {
       // Listing refresh is not formatting: it cannot change the erase outcome
       // or suppress reattaching watches invalidated by the unmount.
-      for (const refresh of [
-        () => deps.loadPartitions({ forceNetworkRefresh: true }), deps.reloadCurrent,
-      ]) {
-        try { await refresh() } catch {
-          deps.showToast('Could not refresh the drive listing. Press F5 to refresh.')
-        }
-      }
+      let refreshFailed = false
+      try { await deps.loadPartitions({ forceNetworkRefresh: true }) } catch { refreshFailed = true }
       state.update(s => ({ ...s, busy: false, progress: null }))
+      // Formatting is finished. As before, a slow watcher refresh must not
+      // prevent closing the result dialog or opening the newly mounted drive.
+      try { await deps.reloadCurrent() } catch { refreshFailed = true }
+      if (refreshFailed) deps.showToast('Could not refresh the drive listing. Press F5 to refresh.')
     }
   }
 

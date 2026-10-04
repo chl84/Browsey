@@ -9,6 +9,9 @@
   assembly through rendering, without untyped prop-bag fallbacks.
 - Extract USB-format modal orchestration with stale-response/progress guards.
   Preserve formatting outcomes and repair watches even when drive refresh fails.
+- Move Explorer shortcut composition and file-action orchestration into focused
+  controllers, retaining the existing keyboard router and shared mutation policy.
+  Release cloud-open progress listeners after both success and failure.
 
 - Delete Linux network/GVFS files directly through GIO instead of downloading
   them into local undo backups. Use the mounted server's trash when supported;

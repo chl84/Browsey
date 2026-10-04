@@ -9,21 +9,19 @@
   import { getErrorMessage } from '@/shared/lib/error'
   import { get } from 'svelte/store'
   import { formatItems, formatSelectionLine, formatSize, parentPath } from '@/features/explorer/utils'
-  import { openEntry as openExplorerEntry } from '@/features/explorer/services/files.service'
   import { createListState } from '@/features/explorer/state/list.store'
   import { ExplorerShell, useGridVirtualizer, createViewObservers } from '@/features/explorer/ui-shell'
   import { useExplorerData } from '@/features/explorer/hooks/useExplorerData'
   import { createColumnResize } from '@/features/explorer/hooks/createColumnResize'
   import { createColumnHeaderSizing } from '@/features/explorer/hooks/createColumnHeaderSizing'
-  import { createGlobalShortcuts } from '@/features/explorer/hooks/createGlobalShortcuts'
+  import { createExplorerShortcuts } from '@/features/explorer/hooks/createExplorerShortcuts'
   import { createBookmarkModal } from '@/features/explorer/hooks/createBookmarkModal'
-  import { useExplorerDragDrop, createClipboard, createHistoryActions, createSelectionActions, useExplorerFileOps } from '@/features/explorer/file-ops'
+  import { useExplorerDragDrop, createClipboard, createHistoryActions, createSelectionActions, createExplorerFileActions, useExplorerFileOps } from '@/features/explorer/file-ops'
   import { useExplorerInputHandlers } from '@/features/explorer/hooks/useExplorerInputHandlers'
   import { useModalsController } from '@/features/explorer/hooks/useModalsController'
   import { addBookmark, removeBookmark } from '@/features/explorer/services/bookmarks.service'
   import { ejectDrive } from '@/features/explorer/services/drives.service'
   import FormatUsbModal from '@/features/explorer/components/FormatUsbModal.svelte'
-  import { openConsole } from '@/features/explorer/services/console.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
   import { emptyTrash } from '@/features/explorer/services/trash.service'
   import type { Entry, Partition, SortField } from '@/features/explorer/model/types'
@@ -262,27 +260,7 @@
         }
       }
     },
-    onOpenEntry: async (entry) => {
-      if (!isCloudPath(entry.path) || entry.kind === 'dir') {
-        await openExplorerEntry(entry)
-        return
-      }
-      const progressEvent = `cloud-open-${Date.now()}-${Math.random().toString(16).slice(2)}`
-      await activityApi.start(
-        'Opening cloud file…',
-        progressEvent,
-        () => activityApi.requestCancel(progressEvent),
-      )
-      try {
-        await openExplorerEntry(entry, { progressEvent })
-        activityApi.hideSoon()
-        showToast('Opened a local working copy. Upload edits from Settings → Cloud → Working copies.')
-      } catch (err) {
-        activityApi.clearNow()
-        await activityApi.cleanup()
-        showToast(getErrorMessage(err))
-      }
-    },
+    onOpenEntry: (entry) => fileActions.open(entry),
   })
 
   const {
@@ -874,8 +852,6 @@
     pathInputEl?.blur()
   }
 
-  const canUseSearch = () => currentView === 'dir'
-
   const { handleTopbarAction, handleTopbarViewModeChange } = createTopbarActions({
     openSettings: (initialFilter) => pageUiState.openSettings(initialFilter),
     isSearchMode: () => isSearchSessionEnabled,
@@ -902,125 +878,29 @@
     refresh: () => reloadCurrent(),
     showToast,
   })
-  const shortcuts = createGlobalShortcuts({
+  const shortcuts = createExplorerShortcuts({
     isBookmarkModalOpen: () => get(bookmarkStore).open,
-    searchMode: () => isSearchSessionEnabled,
-    setSearchMode: async (value: boolean) => setSearchModeState(value),
-    focusPath: () => focusPathInput(),
     isShortcut,
-    onToggleHidden: () => Promise.resolve(toggleShowHidden()),
-    onTypeChar: async (char) => {
-      if (inputFocused && mode === 'address' && canUseSearch()) {
-        return false
-      }
-      if (isSearchSessionEnabled && canUseSearch()) {
-        pathInput = `${pathInput}${char}`
-        focusPathInput()
-        return true
-      }
-      if (mode !== 'filter') {
-        await transitionToFilterMode('')
-      }
-      pathInput = `${pathInput}${char}`
-      focusPathInput()
-      return true
-    },
-    onRemoveChar: async () => {
-      if (isSearchSessionEnabled) {
-        if (pathInput.length === 0) {
-          await enterAddressMode()
-          focusPathInput()
-          return true
-        }
-        pathInput = pathInput.slice(0, -1)
-        focusPathInput()
-        return true
-      }
-      if (mode === 'filter') {
-        if (pathInput.length <= 1) {
-          await transitionToAddressMode({ path: $current, blur: true })
-          return true
-        }
-        pathInput = pathInput.slice(0, -1)
-        focusPathInput()
-        return true
-      }
-      if (mode === 'address') {
-        return false
-      }
-      return false
-    },
-    getSelectedPaths: () => Array.from($selected),
-    findEntryByPath: (path: string) => $entries.find((e) => e.path === path) ?? null,
-    openBookmarkModal: async (entry) => openBookmarkModal(entry as Entry),
-    goBack,
-    goForward,
-    onCopy: () => selectionActions.copy(Array.from($selected)),
-    onCut: () => selectionActions.cut(Array.from($selected)),
-    onPaste: async () => {
-      if (currentView !== 'dir') return false
-      return pasteIntoCurrent()
-    },
-    onRename: async () => {
-      if (currentView === 'network') return false
-      if ($selected.size !== 1) return false
-      const path = Array.from($selected)[0]
-      const entry = $entries.find((e) => e.path === path)
-      if (!entry) return false
-      renameValue = entry.name
-      renameModal.open(entry)
-      return true
-    },
-    onDelete: async (permanent) => {
-      const selectedPathSet = new Set($selected)
-      const entries = $filteredEntries.filter((e) => selectedPathSet.has(e.path))
-      return permanent ? selectionActions.deletePermanently(entries, true) : selectionActions.trash(entries)
-    },
-    onDeletePermanentFast: async () => {
-      const sel = get(selected)
-      const list = get(filteredEntries).filter((e) => sel.has(e.path))
-      return selectionActions.deletePermanently(list)
-    },
-    onProperties: async () => {
-      if ($selected.size === 0) return false
-      const selection = $entries.filter((e) => $selected.has(e.path))
-      if (selection.length === 0) return false
-      void propertiesModal.open(selection)
-      return true
-    },
-    onOpenConsole: async () => {
-      if (currentView !== 'dir') return false
-      if (isCloudPath(get(current))) {
-        showToast('Open in console is not available for cloud folders')
-        return true
-      }
-      try {
-        await openConsole(get(current))
-        return true
-      } catch (err) {
-        showToast(`Open console failed: ${getErrorMessage(err)}`)
-        return false
-      }
-    },
-    onRefresh: async () => {
-      await reloadCurrent()
-      return true
-    },
-    onToggleView: async () => toggleViewMode(),
-    onSelectAll: async () => {
-      const list = get(filteredEntries)
-      if (list.length === 0) return false
-      selected.set(new Set(list.map((entry) => entry.path)))
-      anchorIndex.set(0)
-      caretIndex.set(list.length - 1)
-      return true
-    },
-    onUndo: historyActions.undo,
-    onRedo: historyActions.redo,
-    onToggleSettings: async () => {
-      pageUiState.toggleSettings()
-      return true
-    },
+    currentView: () => currentView,
+    getMode: () => mode,
+    isInputFocused: () => inputFocused,
+    getPathInput: () => pathInput,
+    setPathInput: (value) => { pathInput = value },
+    getCurrentPath: () => get(current),
+    isSearchSessionEnabled: () => isSearchSessionEnabled,
+    setSearchMode: setSearchModeState,
+    focusPath: focusPathInput,
+    transitionToFilterMode, transitionToAddressMode, enterAddressMode,
+    getSelectedPaths: () => Array.from(get(selected)),
+    getEntries: () => get(entries),
+    openBookmarkModal: async (entry) => openBookmarkModal(entry),
+    goBack, goForward,
+    fileActions: () => fileActions,
+    reloadCurrent: () => reloadCurrent(),
+    toggleViewMode, toggleShowHidden,
+    undo: historyActions.undo,
+    redo: historyActions.redo,
+    toggleSettings: pageUiState.toggleSettings,
   })
   const { handleGlobalKeydown } = shortcuts
 
@@ -1272,6 +1152,24 @@
     confirmDeleteEnabled: () => get(explorer.confirmDelete),
     confirmDelete: (entries, mode) => modalActions.confirmDelete(entries, mode),
     reloadCurrent,
+    showToast,
+  })
+
+  const fileActions = createExplorerFileActions({
+    selectionActions, activityApi,
+    currentView: () => currentView,
+    getCurrentPath: () => get(current),
+    getSelected: () => get(selected),
+    getEntries: () => get(entries),
+    getFilteredEntries: () => get(filteredEntries),
+    pasteIntoCurrent,
+    startRename: (entry) => { renameValue = entry.name; renameModal.open(entry) },
+    openProperties: propertiesModal.open,
+    setSelection: (paths, anchor, caret) => {
+      selected.set(paths)
+      anchorIndex.set(anchor)
+      caretIndex.set(caret)
+    },
     showToast,
   })
 
@@ -1540,18 +1438,12 @@
 
   const confirmNewFolder = async () => {
     const created = await newFolderModal.confirm(newFolderName)
-    if (!created) return
-    selected.set(new Set([created]))
-    anchorIndex.set(null)
-    caretIndex.set(null)
+    fileActions.selectCreated(created)
   }
 
   const confirmNewFile = async () => {
     const created = await newFileModal.confirm(newFileName)
-    if (!created) return
-    selected.set(new Set([created]))
-    anchorIndex.set(null)
-    caretIndex.set(null)
+    fileActions.selectCreated(created)
   }
 
   const confirmRename = async (name: string) => {

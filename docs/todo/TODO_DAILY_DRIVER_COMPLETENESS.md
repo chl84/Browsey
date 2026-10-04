@@ -119,14 +119,20 @@ existing modules rather than reopening completed refactoring tracks.
   assignments that must remain compile errors. All 513 frontend tests and
   99 mock-browser tests, lint/typecheck/build pass. No runtime UI changes;
   native acceptance is not inferred from the mock-browser checks.
-- [ ] **M3** Extract USB formatting, shortcut registration and file-operation
+- [x] **M3** Extract USB formatting, shortcut registration and file-operation
   orchestration from `ExplorerPage.svelte` into existing or focused modules.
   Keep the page as the composition root and preserve user-facing behavior.
-  Progress 2026-10-04: USB formatting now uses `createUsbFormatModal` with typed
-  state, stale-response/progress guards and safe refresh-error handling.
-  Fourteen controller regressions and 20 relevant mock-browser tests pass,
-  as do lint/typecheck/build. Shortcut and file-action extraction remain open;
-  do not check M3 until the complete flow has been verified.
+  Resolved 2026-10-04 with `createUsbFormatModal`, `createExplorerShortcuts` and
+  `createExplorerFileActions`. The page remains the composition root; the
+  existing keyboard router, shared selection mutations and service boundaries
+  remain authoritative. USB inspection/progress cannot overwrite newer requests,
+  refresh failures do not reclassify erase outcomes, and completed dialogs can
+  close while watcher refresh finishes. Cloud-open listeners are released.
+  Verification: 52 focused controller regressions, all 565 frontend tests and
+  103 mock-browser tests, lint/typecheck/build pass. Four new browser regressions
+  cover filter/backspace, rename/Escape, fresh Properties selection, console and
+  select-all after navigation. No physical drive was formatted; native/device
+  acceptance remains separate.
 - [ ] **M4** Reuse shared error normalization in the Properties modal,
   preserving supported error shapes and permission-specific messages.
 
