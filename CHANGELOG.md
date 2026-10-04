@@ -5,6 +5,8 @@
 - Share keyboard and context-menu clipboard/deletion actions, including progress,
   cancellation, network confirmation and partial-result refresh. Keep successful
   mutations distinct from subsequent refresh failures and never retry deletion.
+- Enforce concrete ExplorerShell prop, modal-state and callback contracts from
+  assembly through rendering, without untyped prop-bag fallbacks.
 
 - Delete Linux network/GVFS files directly through GIO instead of downloading
   them into local undo backups. Use the mounted server's trash when supported;

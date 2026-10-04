@@ -110,8 +110,15 @@ existing modules rather than reopening completed refactoring tracks.
   728 backend tests (18 opt-in tests ignored) and 20 documentation checks.
   The final purge-cancellation adjustment was rechecked with the focused tests,
   lint/typecheck/build. Native WebKit acceptance remains separate.
-- [ ] **M2** Replace `any` in `createExplorerShellProps.ts` with concrete
+- [x] **M2** Replace `any` in `createExplorerShellProps.ts` with concrete
   types for values, modal state and callbacks.
+  Resolved 2026-10-04. Assembly uses the consuming component's prop contract and
+  existing modal/controller types; the page and ExplorerShell no longer bypass
+  those contracts with `any` prop bags. Explicit value types avoid narrowing
+  initial state to `false`/`null`. Three contract tests include five invalid
+  assignments that must remain compile errors. All 513 frontend tests and
+  99 mock-browser tests, lint/typecheck/build pass. No runtime UI changes;
+  native acceptance is not inferred from the mock-browser checks.
 - [ ] **M3** Extract USB formatting, shortcut registration and file-operation
   orchestration from `ExplorerPage.svelte` into existing or focused modules.
   Keep the page as the composition root and preserve user-facing behavior.

@@ -1,148 +1,164 @@
+import type { ComponentProps } from 'svelte'
+import type { Readable } from 'svelte/store'
+import type ExplorerShell from '../ui-shell/components/ExplorerShell.svelte'
+import type { useModalsController } from '../hooks/useModalsController'
+import type { useExplorerSearchSession } from '../navigation/useExplorerSearchSession'
+import type { CurrentView } from '../context/createContextActions'
 import type { OpenWithChoice } from '../services/openWith.service'
 import type { SortField } from '../model/types'
 import type { AdvancedRenamePayload } from '../modals/advancedRenameModal'
 
-type AnyFn = (...args: any[]) => any
+// Use the consuming component's contract rather than a parallel prop schema.
+type ShellProps = ComponentProps<typeof ExplorerShell>
+export type ExplorerShellProps = Pick<ShellProps,
+  'sidebarProps' | 'topbarProps' | 'listingProps' | 'menuProps' | 'modalProps' | 'statusProps'>
+type SidebarProps = ExplorerShellProps['sidebarProps']
+type TopbarProps = ExplorerShellProps['topbarProps']
+type ListingProps = ExplorerShellProps['listingProps']
+type MenuProps = ExplorerShellProps['menuProps']
+type ModalProps = ExplorerShellProps['modalProps']
+type Modals = ReturnType<typeof useModalsController>
+type StoreValue<T> = T extends Readable<infer Value> ? Value : never
 
-type Params = {
+export type ExplorerShellParams = {
   sidebarCollapsed: boolean
-  places: any
-  bookmarks: any
-  partitions: any
-  handlePlace: AnyFn
-  handleEmptyWastebasket: AnyFn
-  handleSidebarBookmarkSelect: AnyFn
-  handleSidebarRemoveBookmark: AnyFn
-  handleBookmarkDragOver: AnyFn
-  handleBookmarkDragLeave: AnyFn
-  handleBookmarkDrop: AnyFn
-  handleSidebarPartitionSelect: AnyFn
-  handleSidebarPartitionEject: AnyFn
-  handleSidebarPartitionFormat: AnyFn
+  places: SidebarProps['places']
+  bookmarks: SidebarProps['bookmarks']
+  partitions: SidebarProps['partitions']
+  handlePlace: SidebarProps['onPlaceSelect']
+  handleEmptyWastebasket: SidebarProps['onEmptyWastebasket']
+  handleSidebarBookmarkSelect: SidebarProps['onBookmarkSelect']
+  handleSidebarRemoveBookmark: SidebarProps['onRemoveBookmark']
+  handleBookmarkDragOver: SidebarProps['onBookmarkDragOver']
+  handleBookmarkDragLeave: SidebarProps['onBookmarkDragLeave']
+  handleBookmarkDrop: SidebarProps['onBookmarkDrop']
+  handleSidebarPartitionSelect: SidebarProps['onPartitionSelect']
+  handleSidebarPartitionEject: SidebarProps['onPartitionEject']
+  handleSidebarPartitionFormat: SidebarProps['onPartitionFormat']
 
   mode: 'address' | 'filter'
   isSearchSessionEnabled: boolean
   loading: boolean
   viewMode: 'list' | 'grid'
   showHidden: boolean
-  activity: any
-  handleInputFocus: AnyFn
-  handleInputBlur: AnyFn
-  goBack: AnyFn
-  goForward: AnyFn
-  submitPath: AnyFn
-  submitSearch: AnyFn
-  transitionToAddressMode: AnyFn
+  activity: TopbarProps['activity']
+  handleInputFocus: TopbarProps['onFocus']
+  handleInputBlur: TopbarProps['onBlur']
+  goBack: TopbarProps['onGoBack']
+  goForward: TopbarProps['onGoForward']
+  submitPath: TopbarProps['onSubmitPath']
+  submitSearch: TopbarProps['onSearch']
+  transitionToAddressMode: ReturnType<typeof useExplorerSearchSession>['transitionToAddressMode']
   currentPathValue: string
   navigateToBreadcrumb: (path: string) => void | Promise<void>
-  handleTopbarAction: AnyFn
-  handleTopbarViewModeChange: AnyFn
+  handleTopbarAction: TopbarProps['onTopbarAction']
+  handleTopbarViewModeChange: TopbarProps['onTopbarViewModeChange']
 
   errorMessage: string
   searchRunning: boolean
   filterActive: boolean
   filterValue: string
-  cols: any
+  cols: ListingProps['cols']
   gridTemplate: string
-  filterSourceEntries: any
-  filteredEntries: any
-  visibleEntries: any
-  columnFilters: any
-  columnFacets: any
+  filterSourceEntries: ListingProps['filterSourceEntries']
+  filteredEntries: ListingProps['filteredEntries']
+  visibleEntries: ListingProps['visibleEntries']
+  columnFilters: ListingProps['columnFilters']
+  columnFacets: ListingProps['columnFacets']
   columnFacetsLoading: boolean
-  ensureColumnFacets: AnyFn
+  ensureColumnFacets: ListingProps['onEnsureColumnFacets']
   start: number
   offsetY: number
   totalHeight: number
   selected: Set<string>
   sortField: SortField
   sortDirection: 'asc' | 'desc'
-  isHidden: AnyFn
-  displayName: AnyFn
-  formatSize: AnyFn
-  formatItems: AnyFn
+  isHidden: ListingProps['isHidden']
+  displayName: ListingProps['displayName']
+  formatSize: ListingProps['formatSize']
+  formatItems: ListingProps['formatItems']
   clipboardMode: 'copy' | 'cut'
   clipboardPaths: Set<string>
-  handleRowsScrollCombined: AnyFn
-  handleWheelCombined: AnyFn
-  handleRowsKeydownCombined: AnyFn
-  handleRowsMouseDown: AnyFn
-  handleRowsClickSafe: AnyFn
-  handleBlankContextMenu: AnyFn
-  changeSort: AnyFn
-  toggleColumnFilter: AnyFn
-  resetColumnFilter: AnyFn
-  startResize: AnyFn
-  ariaSort: AnyFn
-  handleRowClickWithOpen: AnyFn
-  handleOpenEntry: AnyFn
-  handleRowContextMenu: AnyFn
-  toggleStar: AnyFn
-  handleRowDragStart: AnyFn
-  handleRowDragEnd: AnyFn
-  handleRowDragEnter: AnyFn
-  handleRowDragOver: AnyFn
-  handleRowDrop: AnyFn
-  handleRowDragLeave: AnyFn
+  handleRowsScrollCombined: ListingProps['onRowsScroll']
+  handleWheelCombined: ListingProps['onWheel']
+  handleRowsKeydownCombined: ListingProps['onRowsKeydown']
+  handleRowsMouseDown: ListingProps['onRowsMousedown']
+  handleRowsClickSafe: ListingProps['onRowsClick']
+  handleBlankContextMenu: ListingProps['onRowsContextMenu']
+  changeSort: ListingProps['onChangeSort']
+  toggleColumnFilter: ListingProps['onToggleFilter']
+  resetColumnFilter: ListingProps['onResetFilter']
+  startResize: ListingProps['onStartResize']
+  ariaSort: ListingProps['ariaSort']
+  handleRowClickWithOpen: ListingProps['onRowClick']
+  handleOpenEntry: ListingProps['onOpen']
+  handleRowContextMenu: ListingProps['onContextMenu']
+  toggleStar: ListingProps['onToggleStar']
+  handleRowDragStart: ListingProps['onRowDragStart']
+  handleRowDragEnd: ListingProps['onRowDragEnd']
+  handleRowDragEnter: ListingProps['onRowDragEnter']
+  handleRowDragOver: ListingProps['onRowDragOver']
+  handleRowDrop: ListingProps['onRowDrop']
+  handleRowDragLeave: ListingProps['onRowDragLeave']
   dragTargetPath: string | null
   dragPathsLength: number
   dragging: boolean
-  handleBreadcrumbDragOver: AnyFn
-  handleBreadcrumbDragLeave: AnyFn
-  handleBreadcrumbDrop: AnyFn
+  handleBreadcrumbDragOver: ListingProps['onBreadcrumbDragOver']
+  handleBreadcrumbDragLeave: ListingProps['onBreadcrumbDragLeave']
+  handleBreadcrumbDrop: ListingProps['onBreadcrumbDrop']
   selectionActive: boolean
-  selectionRect: any
+  selectionRect: ListingProps['selectionRect']
   videoThumbs: boolean
   cloudThumbs: boolean
-  currentView: string
+  currentView: CurrentView
   thumbnailRefreshToken: number
   gridThumbSize: number
   gridCardWidth: number
   gridRowHeight: number
 
-  contextMenu: any
-  blankMenu: any
-  handleContextSelect: AnyFn
-  handleBlankContextAction: AnyFn
-  closeContextMenu: AnyFn
-  closeBlankContextMenu: AnyFn
+  contextMenu: MenuProps['contextMenu']
+  blankMenu: MenuProps['blankMenu']
+  handleContextSelect: MenuProps['onContextSelect']
+  handleBlankContextAction: MenuProps['onBlankContextSelect']
+  closeContextMenu: MenuProps['onCloseContextMenu']
+  closeBlankContextMenu: MenuProps['onCloseBlankContextMenu']
 
-  deleteState: any
-  deleteModal: any
-  renameState: any
-  confirmRename: AnyFn
-  closeRenameModal: AnyFn
-  advancedRenameState: any
-  advancedRenameModal: any
-  compressState: any
-  confirmCompress: AnyFn
-  closeCompress: AnyFn
-  checkDuplicatesState: any
-  checkDuplicatesModal: any
-  copyCheckDuplicatesList: AnyFn
-  searchCheckDuplicates: AnyFn
-  closeCheckDuplicatesModal: AnyFn
-  newFolderState: any
-  confirmNewFolder: AnyFn
-  closeNewFolderModal: AnyFn
-  newFileState: any
+  deleteState: StoreValue<Modals['deleteState']>
+  deleteModal: Modals['deleteModal']
+  renameState: StoreValue<Modals['renameState']>
+  confirmRename: ModalProps['onConfirmRename']
+  closeRenameModal: ModalProps['onCancelRename']
+  advancedRenameState: StoreValue<Modals['advancedRenameState']>
+  advancedRenameModal: Modals['advancedRenameModal']
+  compressState: StoreValue<Modals['compressState']>
+  confirmCompress: ModalProps['onConfirmCompress']
+  closeCompress: ModalProps['onCancelCompress']
+  checkDuplicatesState: StoreValue<Modals['checkDuplicatesState']>
+  checkDuplicatesModal: Modals['checkDuplicatesModal']
+  copyCheckDuplicatesList: ModalProps['onCopyCheckDuplicates']
+  searchCheckDuplicates: ModalProps['onSearchCheckDuplicates']
+  closeCheckDuplicatesModal: ModalProps['onCloseCheckDuplicates']
+  newFolderState: StoreValue<Modals['newFolderState']>
+  confirmNewFolder: ModalProps['onConfirmNewFolder']
+  closeNewFolderModal: ModalProps['onCancelNewFolder']
+  newFileState: StoreValue<Modals['newFileState']>
   newFileTypeHint: string
-  confirmNewFile: AnyFn
-  closeNewFileModal: AnyFn
-  openWithState: any
-  openWithModal: any
-  propertiesState: any
-  propertiesModal: any
+  confirmNewFile: ModalProps['onConfirmNewFile']
+  closeNewFileModal: ModalProps['onCancelNewFile']
+  openWithState: StoreValue<Modals['openWithState']>
+  openWithModal: Modals['openWithModal']
+  propertiesState: StoreValue<Modals['propertiesState']>
+  propertiesModal: Modals['propertiesModal']
   bookmarkModalOpen: boolean
-  bookmarkCandidate: any
-  confirmBookmark: AnyFn
-  closeBookmarkModal: AnyFn
+  bookmarkCandidate: ModalProps['bookmarkCandidate']
+  confirmBookmark: ModalProps['onConfirmBookmark']
+  closeBookmarkModal: ModalProps['onCancelBookmark']
   toastMessage: string | null
 
   selectionText: string
 }
 
-export const createExplorerShellProps = (p: Params) => ({
+export const createExplorerShellProps = (p: ExplorerShellParams): ExplorerShellProps => ({
   sidebarProps: {
     collapsed: p.sidebarCollapsed,
     places: p.places,

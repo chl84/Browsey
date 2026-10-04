@@ -87,7 +87,7 @@
     createExplorerNavigationDeps,
   } from './explorerPageDeps'
   import { createExplorerSettingsModalProps } from './createExplorerSettingsModalProps'
-  import { createExplorerShellProps } from './createExplorerShellProps'
+  import { createExplorerShellProps, type ExplorerShellProps } from './createExplorerShellProps'
   import ExplorerPageOverlays from './ExplorerPageOverlays.svelte'
   import { useBookmarkModalFlow } from './useBookmarkModalFlow'
   import { useExplorerPageLifecycle } from './useExplorerPageLifecycle'
@@ -1697,12 +1697,12 @@
   }
 
   // --- Extraction seam: ExplorerShell prop assembly (Step 2) --------------
-  let explorerShellSidebarProps: any
-  let explorerShellTopbarProps: any
-  let explorerShellListingProps: any
-  let explorerShellMenuProps: any
-  let explorerShellModalProps: any
-  let explorerShellStatusProps: any
+  let explorerShellSidebarProps: ExplorerShellProps['sidebarProps']
+  let explorerShellTopbarProps: ExplorerShellProps['topbarProps']
+  let explorerShellListingProps: ExplorerShellProps['listingProps']
+  let explorerShellMenuProps: ExplorerShellProps['menuProps']
+  let explorerShellModalProps: ExplorerShellProps['modalProps']
+  let explorerShellStatusProps: ExplorerShellProps['statusProps']
   let settingsModalProps: any
 
   $: ({

@@ -22,7 +22,8 @@ import type { Column, Entry, ListingFacets, Partition, SortField } from '../../m
 import type { ContextAction } from '../../context/createContextMenus'
 import type { OpenWithApp, OpenWithChoice } from '../../services/openWith.service'
 import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
-import type { VolumeUsageState } from '../../modals/propertiesModal'
+import type { PropertiesState, VolumeUsageState } from '../../modals/propertiesModal'
+import type { ActivityState } from '../../hooks/createActivity'
 
   let sidebarCollapsed = false
   let places: { label: string; path: string }[] = []
@@ -115,9 +116,7 @@ import type { VolumeUsageState } from '../../modals/propertiesModal'
   let onRowDragLeave: (entry: Entry, event: DragEvent) => void = () => {}
 
   let selectionText = ''
-  let activity:
-    | { label: string; percent: number | null; cancel?: (() => void) | null; cancelling?: boolean }
-    | null = null
+  let activity: ActivityState | null = null
   let selectionActive = false
   let selectionRect: { x: number; y: number; width: number; height: number } = {
     x: 0,
@@ -287,14 +286,14 @@ import type { VolumeUsageState } from '../../modals/propertiesModal'
 
   type ExplorerShellSidebarProps = {
     collapsed: boolean
-    places: typeof places
-    bookmarks: typeof bookmarks
-    partitions: typeof partitions
+    places: { label: string; path: string }[]
+    bookmarks: { label: string; path: string }[]
+    partitions: Partition[]
     onPlaceSelect: typeof onPlaceSelect
     onEmptyWastebasket: typeof onEmptyWastebasket
     onBookmarkSelect: typeof onBookmarkSelect
     onRemoveBookmark: typeof onRemoveBookmark
-    dragTargetPath: typeof dragTargetPath
+    dragTargetPath: string | null
     onBookmarkDragOver: typeof onBookmarkDragOver
     onBookmarkDragLeave: typeof onBookmarkDragLeave
     onBookmarkDrop: typeof onBookmarkDrop
@@ -305,12 +304,12 @@ import type { VolumeUsageState } from '../../modals/propertiesModal'
   }
 
   type ExplorerShellTopbarProps = {
-    mode: typeof mode
-    searchMode: typeof searchMode
-    loading: typeof loading
-    viewMode: typeof viewMode
-    showHidden: typeof showHidden
-    activity: typeof activity
+    mode: 'address' | 'filter'
+    searchMode: boolean
+    loading: boolean
+    viewMode: 'list' | 'grid'
+    showHidden: boolean
+    activity: ActivityState | null
     onFocus: typeof onFocus
     onBlur: typeof onBlur
     onGoBack: () => void | Promise<void>
@@ -324,33 +323,33 @@ import type { VolumeUsageState } from '../../modals/propertiesModal'
   }
 
   type ExplorerShellListingProps = {
-    noticeMessage: typeof noticeMessage
-    searchRunning: typeof searchRunning
-    filterActive: typeof filterActive
-    filterValue: typeof filterValue
-    currentPath: typeof currentPath
-    cols: typeof cols
-    gridTemplate: typeof gridTemplate
-    filterSourceEntries: typeof filterSourceEntries
-    filteredEntries: typeof filteredEntries
-    visibleEntries: typeof visibleEntries
+    noticeMessage: string
+    searchRunning: boolean
+    filterActive: boolean
+    filterValue: string
+    currentPath: string
+    cols: Column[]
+    gridTemplate: string
+    filterSourceEntries: Entry[]
+    filteredEntries: Entry[]
+    visibleEntries: Entry[]
     columnFilters: typeof columnFilters
-    columnFacets: typeof columnFacets
-    columnFacetsLoading: typeof columnFacetsLoading
+    columnFacets: ListingFacets
+    columnFacetsLoading: boolean
     onEnsureColumnFacets: typeof onEnsureColumnFacets
-    start: typeof start
-    offsetY: typeof offsetY
-    totalHeight: typeof totalHeight
-    wide: typeof wide
-    selected: typeof selected
-    sortField: typeof sortField
-    sortDirection: typeof sortDirection
+    start: number
+    offsetY: number
+    totalHeight: number
+    wide: boolean
+    selected: Set<string>
+    sortField: SortField
+    sortDirection: 'asc' | 'desc'
     isHidden: typeof isHidden
     displayName: typeof displayName
     formatSize: typeof formatSize
     formatItems: typeof formatItems
-    clipboardMode: typeof clipboardMode
-    clipboardPaths: typeof clipboardPaths
+    clipboardMode: 'copy' | 'cut'
+    clipboardPaths: Set<string>
     onRowsScroll: typeof onRowsScroll
     onWheel: typeof onWheel
     onRowsKeydown: typeof onRowsKeydown
@@ -372,26 +371,26 @@ import type { VolumeUsageState } from '../../modals/propertiesModal'
     onRowDragEnter: typeof onRowDragEnter
     onRowDrop: typeof onRowDrop
     onRowDragLeave: typeof onRowDragLeave
-    dragTargetPath: typeof dragTargetPath
-    dragAllowed: typeof dragAllowed
-    dragging: typeof dragging
+    dragTargetPath: string | null
+    dragAllowed: boolean
+    dragging: boolean
     onBreadcrumbDragOver: typeof onBreadcrumbDragOver
     onBreadcrumbDragLeave: typeof onBreadcrumbDragLeave
     onBreadcrumbDrop: typeof onBreadcrumbDrop
-    selectionActive: typeof selectionActive
-    selectionRect: typeof selectionRect
-    videoThumbs: typeof videoThumbs
-    cloudThumbs: typeof cloudThumbs
-    thumbnailsEnabled: typeof thumbnailsEnabled
-    thumbnailRefreshToken: typeof thumbnailRefreshToken
+    selectionActive: boolean
+    selectionRect: { x: number; y: number; width: number; height: number }
+    videoThumbs: boolean
+    cloudThumbs: boolean
+    thumbnailsEnabled: boolean
+    thumbnailRefreshToken: number
     gridThumbSize: number
     gridCardWidth: number
     gridRowHeight: number
   }
 
   type ExplorerShellMenuProps = {
-    contextMenu: typeof contextMenu
-    blankMenu: typeof blankMenu
+    contextMenu: { open: boolean; x: number; y: number; actions: ContextAction[] }
+    blankMenu: { open: boolean; x: number; y: number; actions: ContextAction[] }
     onContextSelect: typeof onContextSelect
     onBlankContextSelect: typeof onBlankContextSelect
     onCloseContextMenu: typeof onCloseContextMenu
@@ -399,112 +398,112 @@ import type { VolumeUsageState } from '../../modals/propertiesModal'
   }
 
   type ExplorerShellModalProps = {
-    deleteConfirmOpen: typeof deleteConfirmOpen
-    deleteTargets: typeof deleteTargets
-    deleteMode: typeof deleteMode
+    deleteConfirmOpen: boolean
+    deleteTargets: Entry[]
+    deleteMode: DeleteConfirmMode
     onConfirmDelete: typeof onConfirmDelete
     onCancelDelete: typeof onCancelDelete
-    renameModalOpen: typeof renameModalOpen
-    renameTarget: typeof renameTarget
-    renameError: typeof renameError
+    renameModalOpen: boolean
+    renameTarget: Entry | null
+    renameError: string
     onConfirmRename: typeof onConfirmRename
     onCancelRename: typeof onCancelRename
-    advancedRenameOpen: typeof advancedRenameOpen
-    advancedRenameEntries: typeof advancedRenameEntries
-    advancedRenameRegex: typeof advancedRenameRegex
-    advancedRenameReplacement: typeof advancedRenameReplacement
-    advancedRenamePrefix: typeof advancedRenamePrefix
-    advancedRenameSuffix: typeof advancedRenameSuffix
-    advancedRenameCaseSensitive: typeof advancedRenameCaseSensitive
-    advancedRenameKeepExtension: typeof advancedRenameKeepExtension
-    advancedRenameSequenceMode: typeof advancedRenameSequenceMode
-    advancedRenameSequencePlacement: typeof advancedRenameSequencePlacement
-    advancedRenameSequenceStart: typeof advancedRenameSequenceStart
-    advancedRenameSequenceStep: typeof advancedRenameSequenceStep
-    advancedRenameSequencePad: typeof advancedRenameSequencePad
-    advancedRenameError: typeof advancedRenameError
-    advancedRenamePreview: typeof advancedRenamePreview
-    advancedRenamePreviewError: typeof advancedRenamePreviewError
-    advancedRenamePreviewLoading: typeof advancedRenamePreviewLoading
+    advancedRenameOpen: boolean
+    advancedRenameEntries: Entry[]
+    advancedRenameRegex: string
+    advancedRenameReplacement: string
+    advancedRenamePrefix: string
+    advancedRenameSuffix: string
+    advancedRenameCaseSensitive: boolean
+    advancedRenameKeepExtension: boolean
+    advancedRenameSequenceMode: 'none' | 'numeric' | 'alpha'
+    advancedRenameSequencePlacement: 'start' | 'end'
+    advancedRenameSequenceStart: number
+    advancedRenameSequenceStep: number
+    advancedRenameSequencePad: number
+    advancedRenameError: string
+    advancedRenamePreview: { original: string; next: string }[]
+    advancedRenamePreviewError: string
+    advancedRenamePreviewLoading: boolean
     onAdvancedRenameChange: typeof onAdvancedRenameChange
     onConfirmAdvancedRename: typeof onConfirmAdvancedRename
     onCancelAdvancedRename: typeof onCancelAdvancedRename
-    compressOpen: typeof compressOpen
-    compressError: typeof compressError
+    compressOpen: boolean
+    compressError: string
     onConfirmCompress: typeof onConfirmCompress
     onCancelCompress: typeof onCancelCompress
-    checkDuplicatesOpen: typeof checkDuplicatesOpen
-    checkDuplicatesTarget: typeof checkDuplicatesTarget
-    checkDuplicatesSearchRoot: typeof checkDuplicatesSearchRoot
-    checkDuplicatesDuplicates: typeof checkDuplicatesDuplicates
-    checkDuplicatesScanning: typeof checkDuplicatesScanning
-    checkDuplicatesProgressPercent: typeof checkDuplicatesProgressPercent
-    checkDuplicatesProgressLabel: typeof checkDuplicatesProgressLabel
-    checkDuplicatesError: typeof checkDuplicatesError
+    checkDuplicatesOpen: boolean
+    checkDuplicatesTarget: Entry | null
+    checkDuplicatesSearchRoot: string
+    checkDuplicatesDuplicates: string[]
+    checkDuplicatesScanning: boolean
+    checkDuplicatesProgressPercent: number
+    checkDuplicatesProgressLabel: string
+    checkDuplicatesError: string
     onChangeCheckDuplicatesSearchRoot: typeof onChangeCheckDuplicatesSearchRoot
     onCopyCheckDuplicates: typeof onCopyCheckDuplicates
     onSearchCheckDuplicates: typeof onSearchCheckDuplicates
     onCloseCheckDuplicates: typeof onCloseCheckDuplicates
-    newFolderOpen: typeof newFolderOpen
-    newFolderError: typeof newFolderError
+    newFolderOpen: boolean
+    newFolderError: string
     onConfirmNewFolder: typeof onConfirmNewFolder
     onCancelNewFolder: typeof onCancelNewFolder
-    newFileOpen: typeof newFileOpen
-    newFileError: typeof newFileError
-    newFileTypeHint: typeof newFileTypeHint
+    newFileOpen: boolean
+    newFileError: string
+    newFileTypeHint: string
     onConfirmNewFile: typeof onConfirmNewFile
     onCancelNewFile: typeof onCancelNewFile
-    openWithOpen: typeof openWithOpen
-    openWithApps: typeof openWithApps
-    openWithLoading: typeof openWithLoading
-    openWithError: typeof openWithError
-    openWithBusy: typeof openWithBusy
+    openWithOpen: boolean
+    openWithApps: OpenWithApp[]
+    openWithLoading: boolean
+    openWithError: string
+    openWithBusy: boolean
     onConfirmOpenWith: typeof onConfirmOpenWith
     onCloseOpenWith: typeof onCloseOpenWith
-    propertiesOpen: typeof propertiesOpen
-    propertiesEntry: typeof propertiesEntry
-    propertiesPartition: typeof propertiesPartition
-    propertiesVolumeUsage: typeof propertiesVolumeUsage
-    propertiesMutationsLocked: typeof propertiesMutationsLocked
-    propertiesCount: typeof propertiesCount
-    propertiesSize: typeof propertiesSize
-    propertiesItemCount: typeof propertiesItemCount
-    propertiesHidden: typeof propertiesHidden
-    propertiesExtraMetadataLoading: typeof propertiesExtraMetadataLoading
-    propertiesExtraMetadataError: typeof propertiesExtraMetadataError
-    propertiesExtraMetadata: typeof propertiesExtraMetadata
-    propertiesPermissionsLoading: typeof propertiesPermissionsLoading
-    propertiesPermissionsApplying: typeof propertiesPermissionsApplying
-    propertiesOwnershipApplying: typeof propertiesOwnershipApplying
-    propertiesOwnershipError: typeof propertiesOwnershipError
-    propertiesOwnershipUsers: typeof propertiesOwnershipUsers
-    propertiesOwnershipGroups: typeof propertiesOwnershipGroups
-    propertiesOwnershipOptionsLoading: typeof propertiesOwnershipOptionsLoading
-    propertiesOwnershipOptionsError: typeof propertiesOwnershipOptionsError
-    propertiesPermissions: typeof propertiesPermissions
+    propertiesOpen: boolean
+    propertiesEntry: Entry | null
+    propertiesPartition: Partition | null
+    propertiesVolumeUsage: VolumeUsageState
+    propertiesMutationsLocked: boolean
+    propertiesCount: number
+    propertiesSize: number | null
+    propertiesItemCount: number | null
+    propertiesHidden: boolean | 'mixed' | null
+    propertiesExtraMetadataLoading: boolean
+    propertiesExtraMetadataError: string | null
+    propertiesExtraMetadata: PropertiesState['extraMetadata']
+    propertiesPermissionsLoading: boolean
+    propertiesPermissionsApplying: boolean
+    propertiesOwnershipApplying: boolean
+    propertiesOwnershipError: string | null
+    propertiesOwnershipUsers: string[]
+    propertiesOwnershipGroups: string[]
+    propertiesOwnershipOptionsLoading: boolean
+    propertiesOwnershipOptionsError: string | null
+    propertiesPermissions: PropertiesState['permissions']
     onTogglePermissionsAccess: typeof onTogglePermissionsAccess
     onSetOwnership: typeof onSetOwnership
     onToggleHidden: typeof onToggleHidden
     onCopyParentFolder: typeof onCopyParentFolder
     onLoadPropertiesExtraMetadata: typeof onLoadPropertiesExtraMetadata
     onCloseProperties: typeof onCloseProperties
-    bookmarkModalOpen: typeof bookmarkModalOpen
-    bookmarkCandidate: typeof bookmarkCandidate
+    bookmarkModalOpen: boolean
+    bookmarkCandidate: Entry | null
     onConfirmBookmark: typeof onConfirmBookmark
     onCancelBookmark: typeof onCancelBookmark
-    toastMessage: typeof toastMessage
+    toastMessage: string | null
   }
 
   type ExplorerShellStatusProps = {
-    selectionText: typeof selectionText
+    selectionText: string
   }
 
-  export let sidebarProps: ExplorerShellSidebarProps | any = {}
-  export let topbarProps: ExplorerShellTopbarProps | any = {}
-  export let listingProps: ExplorerShellListingProps | any = {}
-  export let menuProps: ExplorerShellMenuProps | any = {}
-  export let modalProps: ExplorerShellModalProps | any = {}
-  export let statusProps: ExplorerShellStatusProps | any = {}
+  export let sidebarProps: ExplorerShellSidebarProps
+  export let topbarProps: ExplorerShellTopbarProps
+  export let listingProps: ExplorerShellListingProps
+  export let menuProps: ExplorerShellMenuProps
+  export let modalProps: ExplorerShellModalProps
+  export let statusProps: ExplorerShellStatusProps
 
   $: ({
     collapsed: sidebarCollapsed,
