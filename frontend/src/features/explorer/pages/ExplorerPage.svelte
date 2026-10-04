@@ -1316,6 +1316,7 @@
   const {
     dragState,
     dragAction,
+    dragGhostVisible,
     startNativeDrop,
     stopNativeDrop,
     handleRowDragStart,
@@ -1804,7 +1805,7 @@
   }}
 />
 <ExplorerPageOverlays
-  dragGhostVisible={$dragState.dragging}
+  dragGhostVisible={$dragGhostVisible}
   dragGhostX={$dragState.position.x}
   dragGhostY={$dragState.position.y}
   dragGhostCount={$dragState.paths.length}

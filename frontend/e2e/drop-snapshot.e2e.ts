@@ -83,6 +83,47 @@ test('native drop copies its own file and preserves a previously cut selection',
   expect(calls.filter(call => call.cmd === 'clear_system_clipboard')).toHaveLength(0)
 })
 
+test('a missed source dragend hides the invalid-drop label and does not block the next native drop', async ({ page }) => {
+  const transfer = await page.evaluateHandle(() => new DataTransfer())
+  await row(page, 'notes').dispatchEvent('dragstart', { dataTransfer: transfer, shiftKey: true })
+  const header = page.locator('.header-row').first()
+  const bounds = await header.boundingBox()
+  if (!bounds) throw new Error('Missing list header')
+  await header.dispatchEvent('dragover', { dataTransfer: transfer, clientX: bounds.x + 5, clientY: bounds.y + 5 })
+  await expect(page.getByText('Cannot drop here', { exact: true })).toBeVisible()
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('browsey-e2e-native-drop', { detail: { type: 'leave' } }))
+    document.dispatchEvent(new DragEvent('dragleave', { bubbles: true, relatedTarget: null }))
+    window.dispatchEvent(new Event('blur'))
+  })
+  await expect(page.getByText('Cannot drop here', { exact: true })).toHaveCount(0)
+  // Deliberately omit dragend; a new, unrelated native offer must still work.
+  await nativeDrop(page, ['/mock/Documents/report.txt'])
+  await expect(row(page, 'report')).toBeVisible()
+  const calls = await page.evaluate(() => (window as unknown as {
+    __BROWSEY_E2E__: { calls: Array<{ cmd: string; args: unknown }> }
+  }).__BROWSEY_E2E__.calls.filter(call => call.cmd === 'paste_clipboard_cmd'))
+  expect(calls).toMatchObject([{ args: { dest: '/mock', input: { paths: ['/mock/Documents/report.txt'], mode: 'copy' } } }])
+  await expect(row(page, 'notes')).toBeVisible()
+  await transfer.dispose()
+})
+
+test('ordinary mouse input removes an abandoned invalid-drop label without dragend', async ({ page }) => {
+  const transfer = await page.evaluateHandle(() => new DataTransfer())
+  await row(page, 'notes').dispatchEvent('dragstart', { dataTransfer: transfer })
+  await page.evaluate(() => {
+    document.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, clientX: 0, clientY: 0 }))
+  })
+  await expect(page.getByText('Cannot drop here', { exact: true })).toBeVisible()
+  await page.evaluate(() => {
+    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 0 }))
+  })
+  await expect(page.getByText('Cannot drop here', { exact: true })).toHaveCount(0)
+  await nativeDrop(page, ['/mock/Documents/report.txt'])
+  await expect(row(page, 'report')).toBeVisible()
+  await transfer.dispose()
+})
+
 test('recipient leaves Loading after a drop refresh and accepts another drop despite watcher notifications', async ({ page }) => {
   const calls = (cmd: string) => page.evaluate(command => (window as unknown as {
     __BROWSEY_E2E__: { calls: Array<{ cmd: string }> }

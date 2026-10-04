@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Hide drag feedback when leaving the window or delivering a drop, independently
+  of the retained source selection. Recover from a missing DOM `dragend` on normal
+  pointer input or a different incoming native offer after leaving. Keep returning
+  self-drops and their explicit copy/move action intact, and do not interrupt or
+  duplicate an accepted transfer while it finishes.
+
 - Notify the desktop after a verified user-local installation, preferring
   Omarchy's notification command. Keep notifications optional and time-bounded;
   failed installs and dry runs never send a success notification.

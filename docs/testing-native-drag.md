@@ -60,6 +60,14 @@ Rust tests cover URI encoding/validation; frontend tests cover export payloads,
 cloud/mixed rejection, ordinary drag, and returning native self-drops. Those
 tests alone cannot detect WebKit sanitization or GTK teardown crashes.
 
+Frontend regressions also omit source `dragend` deliberately: feedback must hide
+on window exit, normal pointer input must clear abandoned state, and a different
+incoming native offer after exit must remain copy-only. Returning self-drops keep
+their source/action, while accepted asynchronous transfers hide feedback without
+being cancelled or repeated. These mocked checks do not establish native WebKit
+acceptance for the missing-`dragend` sequence; verify it in the installed app by
+dragging outside, cancelling or dropping, then returning and trying another drop.
+
 In a real Linux graphical session with X11/XWayland available, run the explicit
 native regression separately:
 

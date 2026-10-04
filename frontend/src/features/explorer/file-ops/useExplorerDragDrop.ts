@@ -33,8 +33,10 @@ export const useExplorerDragDrop = (deps: Deps) => {
   const dragDrop = useDragDrop()
   const dragState = dragDrop.state
   const dragAction = writable<DragAction>(null)
+  const dragGhostVisible = writable(false)
   let dragPaths: string[] = []
   let external = false
+  let sourceOutside = false
   let navigating = false
   let transferring = false
   let session = 0
@@ -80,6 +82,8 @@ export const useExplorerDragDrop = (deps: Deps) => {
     session += 1
     dragPaths = []
     external = false
+    sourceOutside = false
+    dragGhostVisible.set(false)
     modifiers = noModifiers
     sourceMode = null
     lastPoint = null
@@ -89,6 +93,20 @@ export const useExplorerDragDrop = (deps: Deps) => {
     dragDrop.end()
     modeCache.clear()
     resolvedModes.clear()
+  }
+
+  const hidePreview = () => {
+    dragGhostVisible.set(false)
+    navigation.stop()
+    clearTarget()
+    lastPoint = null
+    if (dragPaths.length && !external) sourceOutside = true
+  }
+
+  const showPreview = () => {
+    if (transferring) return
+    sourceOutside = false
+    dragGhostVisible.set(dragPaths.length > 0)
   }
 
   const canDrop = (paths: string[], dest: string) => !blocked() && isDropDirectoryPath(dest)
@@ -139,6 +157,8 @@ export const useExplorerDragDrop = (deps: Deps) => {
     deps.currentView() === 'dir' && !deps.isSearchActive() ? deps.currentPath() : null)
 
   const updateAt = (point: DropPosition, event?: DragEvent) => {
+    if (transferring) return
+    showPreview()
     if (hoverOpenedAt && (hoverOpenedAt.x !== point.x || hoverOpenedAt.y !== point.y)) hoverOpenedAt = null
     lastPoint = point
     dragDrop.setPosition(point.x, point.y)
@@ -158,8 +178,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     if (transferring) return
     const accepted = dest !== null && canDrop(paths, dest)
     const token = session
-    navigation.stop()
-    clearTarget()
+    hidePreview()
     if (!accepted || !dest) {
       handleRowDragEnd()
       return
@@ -180,9 +199,16 @@ export const useExplorerDragDrop = (deps: Deps) => {
 
   const nativeDrop = createNativeFileDrop({
     onHover: (paths, point) => {
+      if (transferring) return
       if (dragPaths.length && !external) {
-        if (paths.length === dragPaths.length && paths.every((path, i) => path === dragPaths[i])) updateAt(point)
-        return
+        if (paths.length === dragPaths.length && paths.every((path, i) => path === dragPaths[i])) {
+          updateAt(point)
+          return
+        }
+        if (!sourceOutside) return
+        // A different native offer after leaving cannot be this source's return.
+        // Recover even when WebKit omitted the previous source's DOM dragend.
+        handleRowDragEnd()
       }
       external = true
       dragPaths = [...paths]
@@ -191,17 +217,20 @@ export const useExplorerDragDrop = (deps: Deps) => {
     },
     onLeave: () => {
       if (external && !transferring) handleRowDragEnd()
-      else { navigation.stop(); clearTarget() }
+      else hidePreview()
     },
     onDrop: async (paths, point) => {
+      if (transferring) return
       const dest = blocked() ? null : targetAt(point)?.path ?? null
       if (dragPaths.length && !external) {
         // URI exports can re-enter this same webview through Tauri's native drop
         // interceptor. Preserve internal modifiers and route exactly once.
         if (paths.length === dragPaths.length && paths.every((path, i) => path === dragPaths[i])) {
           await performDrop(dest, [...dragPaths], modifiers, false)
+          return
         }
-        return
+        if (!sourceOutside) return
+        handleRowDragEnd()
       }
       await performDrop(dest, [...paths], noModifiers, true)
     },
@@ -225,6 +254,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     sourceMode = paths.some(isCloudPath) ? null : fileDragStartMode(event)
     modifiers = event
     dragDrop.start(paths, event)
+    dragGhostVisible.set(get(dragState).dragging)
   }
 
   // Document capture gives every destination (including empty list/grid space and
@@ -245,17 +275,13 @@ export const useExplorerDragDrop = (deps: Deps) => {
   }
   const handleDocumentLeave = (event: DragEvent) => {
     if (event.relatedTarget !== null) return
-    navigation.stop()
-    clearTarget()
-    lastPoint = null
+    hidePreview()
   }
   const handleBlur = () => {
     if (dragPaths.length && !external && !transferring) {
-      // Crossing into another app must not discard the source session. Native
-      // dragend/Escape completes it; re-entering Browsey still has its snapshot.
-      navigation.stop()
-      clearTarget()
-      lastPoint = null
+      // Crossing into another app must not discard the source session.
+      // Re-entering Browsey must retain its selection and explicit start action.
+      hidePreview()
       return
     }
     if (!transferring) {
@@ -263,9 +289,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
       return
     }
     modifiers = noModifiers
-    navigation.stop()
-    clearTarget()
-    lastPoint = null
+    hidePreview()
   }
   const handleKey = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
@@ -277,6 +301,13 @@ export const useExplorerDragDrop = (deps: Deps) => {
     if (lastPoint) updateAt(lastPoint)
   }
   const endUnlessTransferring = () => { if (!transferring) handleRowDragEnd() }
+  // Ordinary pointer input resumes after native DND, even if DOM dragend was
+  // lost. Do not mistake held-button motion or an accepted paste for completion.
+  const handlePointerInput = (event: MouseEvent) => {
+    if (!dragPaths.length || transferring) return
+    if (event.type.endsWith('down') || event.buttons === 0) handleRowDragEnd()
+  }
+  const pointerEvents = ['pointerdown', 'pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup'] as const
   const startNativeDrop = async () => {
     if (!listening) {
       listening = true
@@ -286,6 +317,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
       document.addEventListener('dragend', endUnlessTransferring, true)
       document.addEventListener('keydown', handleKey, true)
       document.addEventListener('keyup', handleKey, true)
+      for (const type of pointerEvents) document.addEventListener(type, handlePointerInput, true)
       window.addEventListener('blur', handleBlur)
     }
     await nativeDrop.start()
@@ -298,6 +330,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     document.removeEventListener('dragend', endUnlessTransferring, true)
     document.removeEventListener('keydown', handleKey, true)
     document.removeEventListener('keyup', handleKey, true)
+    for (const type of pointerEvents) document.removeEventListener(type, handlePointerInput, true)
     window.removeEventListener('blur', handleBlur)
     handleRowDragEnd()
     await nativeDrop.stop()
@@ -306,6 +339,8 @@ export const useExplorerDragDrop = (deps: Deps) => {
 
   // Component adapters also work independently of document listeners (e.g. tests).
   const handlePathDragOver = (path: string, event: DragEvent) => {
+    if (transferring) return
+    showPreview()
     modifiers = event
     event.preventDefault()
     if (canDrop(dragPaths, path)) preview(path, event)
@@ -330,7 +365,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     else clearTarget()
   }
   return {
-    dragState, dragAction, startNativeDrop, stopNativeDrop,
+    dragState, dragAction, dragGhostVisible, startNativeDrop, stopNativeDrop,
     handleRowDragStart, handleRowDragEnd: endUnlessTransferring,
     handleRowDragOver, handleRowDragEnter: handleRowDragOver,
     handleRowDrop: (entry: Entry, event: DragEvent) => entry.kind === 'dir'
