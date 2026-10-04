@@ -19,11 +19,13 @@
   let open = false
   let highlighted = -1
   let rootEl: HTMLDivElement | null = null
+  let triggerEl: HTMLButtonElement | null = null
   let searchInputEl: HTMLInputElement | null = null
   let searchQuery = ''
   let filteredOptions: ComboOption[] = []
   let selectedOption: ComboOption | undefined
   let listWrapEl: HTMLDivElement | null = null
+  let listEl: HTMLUListElement | null = null
   let openDirection: 'down' | 'up' = 'down'
   let listMaxHeight = 240
 
@@ -50,6 +52,25 @@
     } else if (highlighted >= filteredOptions.length) {
       highlighted = filteredOptions.length - 1
     }
+  }
+
+  const revealHighlightedOption = () => {
+    if (!open || !listEl) return
+    const option = listEl.querySelector<HTMLElement>('.active')
+    if (!option) return
+    const listTop = listEl.getBoundingClientRect().top + listEl.clientTop
+    const listBottom = listTop + listEl.clientHeight
+    const optionRect = option.getBoundingClientRect()
+    // Scroll only the option list, preserving the dialog and page position.
+    if (optionRect.top < listTop) {
+      listEl.scrollTop += optionRect.top - listTop
+    } else if (optionRect.bottom > listBottom) {
+      listEl.scrollTop += optionRect.bottom - listBottom
+    }
+  }
+
+  $: if (open && highlighted >= 0 && filteredOptions.length > 0 && listMaxHeight > 0) {
+    void tick().then(revealHighlightedOption)
   }
 
   const focusSearchInput = () => {
@@ -87,6 +108,13 @@
   const closeDropdown = () => {
     open = false
     searchQuery = ''
+  }
+
+  const dismissDropdown = (event: KeyboardEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    closeDropdown()
+    triggerEl?.focus()
   }
 
   const choose = (val: string) => {
@@ -136,8 +164,7 @@
       }
     } else if (e.key === 'Escape') {
       if (open) {
-        e.preventDefault()
-        closeDropdown()
+        dismissDropdown(e)
       }
     }
   }
@@ -156,8 +183,7 @@
         choose(filteredOptions[highlighted].value)
       }
     } else if (e.key === 'Escape') {
-      e.preventDefault()
-      closeDropdown()
+      dismissDropdown(e)
     }
   }
 
@@ -186,6 +212,7 @@
     class="combo-btn"
     aria-haspopup="listbox"
     aria-expanded={open}
+    bind:this={triggerEl}
     disabled={disabled}
     on:click={onToggle}
     on:keydown={handleKeydown}
@@ -215,7 +242,7 @@
         </div>
       {/if}
 
-      <ul class="combo-list" role="listbox" tabindex="-1" style={`max-height: ${listMaxHeight}px;`}>
+      <ul class="combo-list" role="listbox" tabindex="-1" bind:this={listEl} style={`max-height: ${listMaxHeight}px;`}>
         {#if filteredOptions.length === 0}
           <li class="empty">
             {searchable && searchQuery.trim().length > 0 ? noMatchesLabel : emptyLabel}

@@ -143,6 +143,7 @@ test('configuration refuses another checkout and symlink state', t => {
 
 test('processor uses workspace-write without inherited bypass, integrations or network', () => {
   const args = processorArgs({ source: '/source' }, '/result')
+  assert.equal(args[args.indexOf('--model') + 1], 'gpt-6.1-sol')
   assert.equal(args[args.indexOf('--sandbox') + 1], 'workspace-write')
   assert.ok(args.includes('--ignore-user-config'))
   assert.ok(args.includes('--ignore-rules'))
@@ -191,6 +192,58 @@ test('an earlier passing command cannot hide a later failure', () => {
     { command: 'node --test fixture.test.mjs', exitCode: 0 },
     { command: 'node --test fixture.test.mjs', exitCode: 1 },
   ]), /evidence/)
+})
+
+test('resolved failures preserve honest history after a verified successful rerun', () => {
+  const id = reportId('Report')
+  const value = outcome(id)
+  value.findings[0].verification.unshift({ command: 'node --test fixture.test.mjs', result: 'resolved-failure', details: 'Unexpected test issue was corrected' })
+  const commands = [{ command: 'node --test fixture.test.mjs', exitCode: 1 }, { command: 'node --test fixture.test.mjs', exitCode: 0 }]
+  assert.equal(validateOutcome(value, id, commands), value)
+  const schema = JSON.parse(fs.readFileSync(path.join(here, 'process-report.schema.json'), 'utf8'))
+  assert.ok(schema.properties.findings.items.properties.verification.items.properties.result.enum.includes('resolved-failure'))
+})
+
+test('resolved-failure requires failed evidence and a later successful rerun of the same command', () => {
+  const id = reportId('Report')
+  const value = outcome(id)
+  value.findings[0].verification.unshift({ command: 'node --test fixture.test.mjs', result: 'resolved-failure', details: 'Claimed correction' })
+  for (const commands of [
+    [{ command: 'node --test fixture.test.mjs', exitCode: 0 }],
+    [{ command: 'node --test fixture.test.mjs', exitCode: 1 }],
+    [{ command: 'different-test', exitCode: 1 }, { command: 'node --test fixture.test.mjs', exitCode: 0 }],
+    [{ command: 'node --test fixture.test.mjs', exitCode: 0 }, { command: 'node --test fixture.test.mjs', exitCode: 1 }],
+    [{ command: 'node --test fixture.test.mjs', exitCode: null }, { command: 'node --test fixture.test.mjs', exitCode: 0 }],
+  ]) assert.throws(() => validateOutcome(value, id, commands))
+  value.findings[0].verification.pop()
+  assert.throws(() => validateOutcome(value, id, [
+    { command: 'node --test fixture.test.mjs', exitCode: 1 },
+    { command: 'node --test fixture.test.mjs', exitCode: 0 },
+  ]))
+})
+
+test('a resolved failure never hides an unrelated unresolved failure', () => {
+  const id = reportId('Report')
+  const value = outcome(id)
+  value.findings[0].verification.unshift({ command: 'node --test fixture.test.mjs', result: 'resolved-failure', details: 'Corrected' })
+  value.findings[0].verification.push({ command: 'other-test', result: 'failed', details: 'Still broken' })
+  assert.throws(() => validateOutcome(value, id, [
+    { command: 'node --test fixture.test.mjs', exitCode: 1 },
+    { command: 'node --test fixture.test.mjs', exitCode: 0 },
+  ]), /failed checks/)
+})
+
+test('processor records resolved failures without incorrectly leaving a completed report needs-review', async t => {
+  const f = fixture(t)
+  const value = outcome(reportId(fs.readFileSync(path.join(f.config.reports, 'latest.txt'), 'utf8')))
+  value.findings[0].verification.unshift({ command: 'node --test fixture.test.mjs', result: 'resolved-failure', details: 'Test corrected and rerun' })
+  const failure = { type: 'item.completed', item: { type: 'command_execution', command: '/bin/bash -lc "node --test fixture.test.mjs"', exit_code: 1 } }
+  fakeCodex(f, `console.log(${JSON.stringify(JSON.stringify(failure))});`, value)
+  assert.equal(await processReport(f.config), 'completed')
+  assert.equal(latestStatus(f.config.reports).state, 'handled')
+  const attempt = readLedger(f.config.reports).reports[0].attempts[0]
+  assert.equal(attempt.findings[0].verification[0].result, 'resolved-failure')
+  assert.deepEqual(attempt.commands.map(command => command.exitCode), [1, 0])
 })
 
 test('successful processing records verified findings and changes without committing', async t => {

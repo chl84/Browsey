@@ -100,16 +100,19 @@ export function validateOutcome(value, id, commands) {
         !Array.isArray(finding.verification)) throw new Error('Invalid finding disposition')
     for (const check of finding.verification) {
       if (!check || typeof check.command !== 'string' || !check.command.trim() ||
-          !['passed', 'failed', 'expected-failure', 'not-run'].includes(check.result) || typeof check.details !== 'string') {
+          !['passed', 'failed', 'expected-failure', 'resolved-failure', 'not-run'].includes(check.result) || typeof check.details !== 'string') {
         throw new Error('Invalid verification result')
       }
       const matching = commands.filter(command => command.command.includes(check.command))
       if (check.result === 'passed' && matching.at(-1)?.exitCode !== 0) {
         throw new Error(`No successful command evidence for: ${check.command}`)
       }
-      if (check.result === 'expected-failure' && (!matching.some(command => typeof command.exitCode === 'number' && command.exitCode !== 0) ||
-          !finding.verification.some(other => other.command === check.command && other.result === 'passed'))) {
-        throw new Error('Expected pre-fix failure needs failed command evidence and a successful rerun')
+      if (['expected-failure', 'resolved-failure'].includes(check.result) && (
+        matching.at(-1)?.exitCode !== 0 ||
+        !matching.slice(0, -1).some(command => typeof command.exitCode === 'number' && command.exitCode !== 0) ||
+        !finding.verification.some(other => other.command === check.command && other.result === 'passed')
+      )) {
+        throw new Error(`${check.result === 'expected-failure' ? 'Expected pre-fix' : 'Resolved'} failure needs earlier failed command evidence and a later successful rerun`)
       }
     }
     if (finding.status === 'implemented' && (!finding.verification.some(check => check.result === 'passed') || finding.verification.some(check => check.result === 'failed'))) {

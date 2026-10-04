@@ -41,7 +41,7 @@ export function configuration(root = defaultRoot, environment = process.env) {
 
 export function processorArgs(config, output) {
   return [
-    'exec', '--ignore-user-config', '--ignore-rules', '--ephemeral',
+    'exec', '--model', 'gpt-6.1-sol', '--ignore-user-config', '--ignore-rules', '--ephemeral',
     '--sandbox', 'workspace-write', '--cd', config.source,
     '-c', 'approval_policy="never"', '-c', 'sandbox_workspace_write.network_access=false',
     '-c', 'sandbox_workspace_write.exclude_tmpdir_env_var=true',
@@ -74,7 +74,12 @@ executed, so it can be checked against the command_execution event and exit code
 Include all relevant failures, skipped checks and remaining risks, not just passes.
 For intentional pre-fix regression failures, use expected-failure, and include a
 passed rerun of the exact same command after the fix. Use failed for unresolved
-or unexpected failures, and defer implementation if verification remains blocked.
+failures, and defer implementation if verification remains blocked. Use
+resolved-failure for an unexpected historical failure that you corrected, together
+with a later passed rerun of the exact same command. Explain what failed and what
+was fixed; never mislabel an unexpected issue as an intentional regression failure.
+Historical failures that remain unresolved must still use failed. Keep not-run
+native checks and their remaining risks explicit, even when unit tests pass.
 Constraints: no commit/push/PR/branch/tag, installation/release, Git configuration,
 dependency upgrades, unrelated refactoring, real user-file/cloud/USB/MTP operations,
 desktop launches, sudo/pkexec, network, subagents, or sandbox escalation.

@@ -163,12 +163,15 @@ report, evaluates suggestions, implements appropriate small fixes and runs
 relevant tests. Passed verification must match a successful captured command;
 that evidence does not itself certify test relevance or native acceptance.
 Intentional pre-fix regression failures are recorded as `expected-failure` only
-with failed-command evidence and a successful rerun of the same command;
-unresolved failures cannot certify an implemented fix.
+with earlier failed-command evidence and a later successful rerun of the same
+command. Unexpected historical failures that were corrected use
+`resolved-failure` with the same evidence requirements; they are not silently
+discarded or mislabelled as expected regressions. `failed` means unresolved and
+still prevents an implemented result. Keep unperformed native checks explicit.
 Results are retained in the private handling log. The action uses workspace-write
 with network disabled, no inherited user config/rules/integrations and a bounded
-runtime. Both the weekly reviewer and manual processor explicitly request
-`model_reasoning_effort="high"`; neither pins a model. The action never commits,
+runtime. Both the weekly reviewer and manual processor explicitly select
+`--model gpt-6.1-sol` and `model_reasoning_effort="high"`. The action never commits,
 pushes, installs or publishes. Review and commit its diff separately; record
 that commit in the handling entry if desired.
 

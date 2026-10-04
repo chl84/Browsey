@@ -14,6 +14,11 @@ Defaults are remappable in Settings:
 - `Ctrl+H` hidden files; `Ctrl+B` bookmarks; `Ctrl+T` terminal.
 - `Esc` exits search/filter contexts.
 
+In Settings and Properties dropdowns, arrow keys keep the highlighted option
+visible. Escape closes an open dropdown and returns focus to its button;
+press Escape again to close the dialog. The same behavior applies to searchable
+user/group dropdowns in Properties.
+
 Ctrl + mouse wheel zooms between list and five grid sizes (64, 96, 128, 160,
 and 192 CSS pixels). Zoom is window-local and resets on restart. Grid gaps
 are 8 px in Cozy and 6 px in Compact.

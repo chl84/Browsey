@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Distinguish resolved historical verification failures from unresolved failures
+  in maintenance reports; require evidence of a later successful rerun before
+  recording completed work, while preserving skipped checks and remaining risks.
+
+- Keep Settings and Properties open when Escape dismisses a ComboBox menu,
+  restore focus to its trigger, and reveal highlighted options within long
+  lists when opening or navigating with the keyboard.
+
 - Add a manual T3 maintenance-report follow-up action with report-identity checks,
   private per-finding handling history, verified command evidence and retained
   interrupted attempts. Keep weekly reviews read-only and implementation,

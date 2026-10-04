@@ -26,7 +26,7 @@
               "required": ["command", "result", "details"],
               "properties": {
                 "command": { "type": "string" },
-                "result": { "type": "string", "enum": ["passed", "failed", "expected-failure", "not-run"] },
+                "result": { "type": "string", "enum": ["passed", "failed", "expected-failure", "resolved-failure", "not-run"] },
                 "details": { "type": "string" }
               }
             }

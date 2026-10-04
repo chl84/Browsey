@@ -405,6 +405,12 @@ export const useExplorerInputHandlers = (deps: Deps) => {
     // Menus own their keyboard navigation and activation. This handler runs
     // in capture phase, before their local key handlers.
     if (event.target instanceof Element && event.target.closest('[role="menu"]')) return
+    // An open ComboBox consumes Escape locally and restores its trigger focus.
+    if (
+      event.key === 'Escape' &&
+      event.target instanceof Element &&
+      event.target.closest('.combo[data-open="true"]')
+    ) return
     if (blurTextEntryTargetOnEscape(event)) {
       return
     }

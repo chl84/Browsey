@@ -231,11 +231,18 @@ export const createSettingsModalViewModel = (deps: ViewModelDeps) => {
       void applyShortcutCapture(accelerator)
       return
     }
+    // Capture must let the open ComboBox dismiss itself before closing Settings.
+    if (
+      e.key === 'Escape' &&
+      e.target instanceof Element &&
+      e.target.closest('.combo[data-open="true"]')
+    ) return
     if (blurTextEntryTargetOnEscape(e)) {
       return
     }
     if (e.key === 'Escape') {
       e.preventDefault()
+      e.stopPropagation()
       if (get(clearTarget)) {
         cancelClear()
         return
