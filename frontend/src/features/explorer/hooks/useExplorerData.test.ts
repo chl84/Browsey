@@ -222,6 +222,25 @@ describe('useExplorerData cloud refresh event', () => {
 
   const cameraPath = '/run/user/1000/gvfs/mtp:host=test/DCIM/Camera'
 
+  it('does not let a local watcher refresh replace pending user navigation before Loading becomes visible', async () => {
+    vi.useFakeTimers()
+    const { loadMock } = installExplorerStateMock('/dest')
+    const hook = useExplorerData()
+    await vi.advanceTimersByTimeAsync(0)
+    loadMock.mockClear()
+    let finish!: () => void
+    loadMock.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve }))
+    const navigation = hook.load('/next')
+    eventHandlers.get('dir-changed')?.({ payload: '/dest' })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(loadMock).toHaveBeenCalledExactlyOnceWith('/next', undefined)
+    finish()
+    await navigation
+    eventHandlers.get('dir-changed')?.({ payload: '/dest' })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(loadMock).toHaveBeenCalledTimes(2)
+  })
+
   it('coalesces GVFS polling and watcher notifications while a refresh is in flight', async () => {
     vi.useFakeTimers()
     const { loadMock } = installExplorerStateMock(cameraPath)
@@ -239,6 +258,22 @@ describe('useExplorerData cloud refresh event', () => {
     eventHandlers.get('dir-changed')?.({ payload: cameraPath })
     await vi.advanceTimersByTimeAsync(300)
     expect(loadMock).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['loading', 'searchMode'] as const)('does not let a local watcher interrupt %s and resumes after it ends', async (blockedBy) => {
+    vi.useFakeTimers()
+    const fixture = installExplorerStateMock('/dest')
+    useExplorerData()
+    await vi.advanceTimersByTimeAsync(0)
+    fixture.loadMock.mockClear()
+    fixture[blockedBy].set(true)
+    eventHandlers.get('dir-changed')?.({ payload: '/dest' })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(fixture.loadMock).not.toHaveBeenCalled()
+    fixture[blockedBy].set(false)
+    eventHandlers.get('dir-changed')?.({ payload: '/dest' })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(fixture.loadMock).toHaveBeenCalledExactlyOnceWith('/dest', { silent: true, recordHistory: false })
   })
 
   it('does not let GVFS polling interrupt navigation or active search', async () => {

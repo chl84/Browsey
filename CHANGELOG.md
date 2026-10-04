@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Show partition names one word per line, truncating overlong words with an
+  ellipsis instead of breaking them across lines. Keep full labels available to
+  assistive technology and in the existing tooltip.
+
+- Fix a stuck Loading indicator when a silent directory refresh supersedes a
+  foreground load: the replacement inherits responsibility for clearing it on
+  success or failure, while stale replies cannot clear newer loading state.
+  Local watcher refreshes no longer interrupt user navigation or active search,
+  preventing the stuck state from blocking subsequent drag-and-drop transfers.
+
 - Keep GVFS/MTP grid order stable during automatic directory refresh and preserve
   known metadata while placeholders are refreshed, so camera thumbnails do not
   shuffle or restart just because lazy metadata arrives. Coalesce polling and

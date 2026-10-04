@@ -306,6 +306,7 @@ export const useExplorerData = (options: Options = {}) => {
           clearTimeout(refreshTimer)
         }
         refreshTimer = setTimeout(() => {
+          if (disposed || userNavActive || get(searchMode) || get(loading)) return
           const latest = get(current)
           if (!latest || latest !== payload) return
           if (isGvfsPath(latest)) refreshGvfsPath(latest)

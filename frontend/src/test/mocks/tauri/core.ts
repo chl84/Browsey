@@ -47,6 +47,7 @@ type E2eMockControl = {
   columnWidths?: number[]
   listingEntries?: ExplorerEntry[]
   listingSnapshot?: Listing
+  listingHold?: boolean
   sortField?: 'name' | 'type' | 'modified' | 'size'
   trashEntries?: ExplorerEntry[]
   emptyTrashHold?: boolean
@@ -249,6 +250,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'get_startup_path':
       return (control?.startupPath ?? null) as T
     case 'list_dir':
+      while (control?.listingHold) await new Promise(resolve => setTimeout(resolve, 20))
       if (control?.listingSnapshot && control.listingSnapshot.current === args?.path) {
         return { ...control.listingSnapshot, entries: cloneEntries(control.listingSnapshot.entries) } as T
       }

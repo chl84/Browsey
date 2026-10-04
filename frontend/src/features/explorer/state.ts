@@ -98,7 +98,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   let searchRunId = 0
   let cancelActiveSearch: (() => void) | null = null
   let activeSearchCancelId: string | null = null
-  let directoryRequest: { id: number; metadata: Map<string, Entry> } | null = null
+  let directoryRequest: { id: number; metadata: Map<string, Entry>; ownsLoading: boolean } | null = null
   const invalidateSearchRun = () => {
     directoryRequest = null
     const cancelId = activeSearchCancelId
@@ -198,6 +198,9 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       progressEvent,
       showLoadingIndicator = !silent,
     } = opts
+    // A silent refresh can replace foreground work before the delayed indicator
+    // is visible. Transfer ownership instead of leaving its requested state set.
+    const ownsLoading = showLoadingIndicator || directoryRequest?.ownsLoading === true
     if (showLoadingIndicator) {
       loading.set(true)
     }
@@ -206,7 +209,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     networkNotice.set('')
     invalidateSearchRun()
     searchRunning.set(false)
-    const request = { id: searchRunId, metadata: new Map<string, Entry>() }
+    const request = { id: searchRunId, metadata: new Map<string, Entry>(), ownsLoading }
     directoryRequest = request
     const currentAtStart = get(current)
     const requestedSort = sortPayload()
@@ -244,7 +247,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       error.set(message)
       return { ok: false as const, code: normalized.code, message }
     } finally {
-      if (directoryRequest === request && request.id === searchRunId && showLoadingIndicator) {
+      if (directoryRequest === request && request.id === searchRunId && request.ownsLoading) {
         loading.set(false)
       }
       if (directoryRequest === request) directoryRequest = null
@@ -504,9 +507,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   // Search mode and streaming orchestration (high-churn hotspot).
   const cancelSearch = () => {
     const hadActiveSearch = activeSearchCancelId !== null || get(searchRunning)
+    const hadDirectoryLoading = directoryRequest?.ownsLoading === true
     invalidateSearchRun()
     searchRunning.set(false)
-    if (hadActiveSearch) {
+    if (hadActiveSearch || hadDirectoryLoading) {
       loading.set(false)
     }
   }

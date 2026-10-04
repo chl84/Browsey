@@ -1,6 +1,6 @@
 import { get } from 'svelte/store'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Entry } from './model/types'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Entry, Listing } from './model/types'
 
 const {
   listDirMock,
@@ -45,7 +45,15 @@ const makeEntry = (name: string, path: string, kind: 'file' | 'dir' = 'file'): E
   iconId: 0,
 })
 
+const deferred = <T>() => {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
+}
+
 describe('createExplorerState sort refresh behavior', () => {
+  afterEach(() => vi.useRealTimers())
   beforeEach(() => {
     listDirMock.mockReset()
     listRecentMock.mockReset().mockResolvedValue({ current: 'Recent', entries: [] })
@@ -63,6 +71,96 @@ describe('createExplorerState sort refresh behavior', () => {
       unsupportedRemoteCount: 0,
       supportedRemotes: [],
     })
+  })
+
+  it.each([true, false])('hands loading ownership to a silent replacement (old finishes first: %s)', async (oldFirst) => {
+    vi.useFakeTimers()
+    const state = createExplorerState()
+    const oldReply = deferred<Listing>(), latestReply = deferred<Listing>()
+    listDirMock.mockReturnValueOnce(oldReply.promise).mockReturnValueOnce(latestReply.promise)
+    const old = state.load('/dest')
+    const latest = state.load('/dest', { silent: true, recordHistory: false })
+    if (oldFirst) {
+      oldReply.resolve({ current: '/dest', entries: [makeEntry('stale.jpg', '/dest/stale.jpg')] })
+      await old
+    }
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(true)
+    latestReply.resolve({ current: '/dest', entries: [makeEntry('photo.jpg', '/dest/photo.jpg')] })
+    await latest
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(false)
+    if (!oldFirst) {
+      oldReply.resolve({ current: '/old', entries: [] })
+      await old
+    }
+    expect(get(state.current)).toBe('/dest')
+    expect(get(state.entries).map(entry => entry.name)).toEqual(['photo.jpg'])
+  })
+
+  it('clears inherited loading when the silent replacement fails without surfacing a stale failure', async () => {
+    vi.useFakeTimers()
+    const state = createExplorerState()
+    const oldReply = deferred<Listing>(), latestReply = deferred<Listing>()
+    listDirMock.mockReturnValueOnce(oldReply.promise).mockReturnValueOnce(latestReply.promise)
+    const old = state.load('/dest')
+    const latest = state.load('/dest', { silent: true })
+    await vi.advanceTimersByTimeAsync(200)
+    latestReply.reject(new Error('Refresh failed'))
+    await latest
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(false)
+    oldReply.reject(new Error('Stale failure'))
+    await old
+    expect(get(state.error)).toBe('Refresh failed')
+  })
+
+  it('keeps a newer foreground load busy when an older load completes', async () => {
+    vi.useFakeTimers()
+    const state = createExplorerState()
+    const oldReply = deferred<Listing>(), latestReply = deferred<Listing>()
+    listDirMock.mockReturnValueOnce(oldReply.promise).mockReturnValueOnce(latestReply.promise)
+    const old = state.load('/old')
+    const latest = state.load('/new')
+    await vi.advanceTimersByTimeAsync(200)
+    oldReply.resolve({ current: '/old', entries: [] })
+    await old
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(true)
+    latestReply.resolve({ current: '/new', entries: [] })
+    await latest
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(false)
+    expect(get(state.current)).toBe('/new')
+  })
+
+  it('clears loading when cancellation abandons a directory request', async () => {
+    vi.useFakeTimers()
+    const state = createExplorerState()
+    const reply = deferred<Listing>()
+    listDirMock.mockReturnValueOnce(reply.promise)
+    const pending = state.load('/dest')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(true)
+    state.cancelSearch()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(get(state.loading)).toBe(false)
+    reply.resolve({ current: '/dest', entries: [] })
+    await pending
+    expect(get(state.current)).toBe('')
+  })
+
+  it('does not create a loading indicator for an ordinary silent refresh', async () => {
+    vi.useFakeTimers()
+    const state = createExplorerState()
+    const reply = deferred<Listing>()
+    listDirMock.mockReturnValueOnce(reply.promise)
+    const pending = state.load('/dest', { silent: true })
+    await vi.advanceTimersByTimeAsync(500)
+    expect(get(state.loading)).toBe(false)
+    reply.resolve({ current: '/dest', entries: [] })
+    await pending
+    expect(get(state.loading)).toBe(false)
   })
 
   it('does not overwrite a newer mount list with a stale response', async () => {

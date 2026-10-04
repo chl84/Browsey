@@ -34,6 +34,7 @@
         class:removable={part.removable}
         data-drop-path={isUnmountedPartition(part.path) ? '' : part.path}
         type="button"
+        aria-label={[part.label, isUnmountedPartition(part.path) ? '(not mounted)' : '', partitionCapacity(part.sizeBytes)].filter(Boolean).join(' ')}
         on:click={() => onSelect(part.path)}
         on:contextmenu={(e) => openMenu(e, part)}
         on:keydown={(event) => {
@@ -53,7 +54,12 @@
         {/if}
         <span class="nav-text">
           <span class="nav-label" use:fullNameTooltip={part.label}>
-            {part.label}{isUnmountedPartition(part.path) ? ' (not mounted)' : ''}
+            {#each part.label.trim().split(/\s+/) as word}
+              <span class="nav-word">{word}</span>
+            {/each}
+            {#if isUnmountedPartition(part.path)}
+              <span class="nav-word">(not mounted)</span>
+            {/if}
           </span>
           {#if partitionCapacity(part.sizeBytes)}
             <span class="capacity" use:fullNameTooltip={'Total partition capacity'}>
@@ -161,7 +167,14 @@
 
   .nav-label {
     min-width: 0;
-    overflow-wrap: anywhere;
+    max-width: 100%;
+  }
+
+  .nav-word {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .nav-text {

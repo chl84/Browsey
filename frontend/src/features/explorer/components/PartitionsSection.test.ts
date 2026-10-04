@@ -51,6 +51,35 @@ it('does not invent capacity for phone, network or unavailable volumes', async (
   expect(document.querySelector('[aria-label="Phone actions"]')).not.toBeNull()
 })
 
+it('puts each name word on its own line while preserving full names and mount status', async () => {
+  vi.useFakeTimers()
+  try {
+    const onSelect = vi.fn()
+    const phone = { label: 'SAMSUNG Android', path: '/mock/Phone', fs: 'mtp', removable: true }
+    const disk = { label: '  Backup\tUSB  Disk  ', path: '/media/backup', sizeBytes: 32_000_000_000 }
+    const offline = { label: 'VeryLongPartitionName', path: 'usb-volume:///dev/sdb1', removable: true }
+    components.push(mount(PartitionsSection, {
+      target: document.body, props: { partitions: [phone, disk, offline], onSelect },
+    }))
+    await tick()
+    const buttons = document.querySelectorAll<HTMLButtonElement>('button.nav')
+    const words = (button: HTMLElement) => Array.from(button.querySelectorAll('.nav-word'), word => word.textContent)
+    expect(words(buttons[0])).toEqual(['SAMSUNG', 'Android'])
+    expect(words(buttons[1])).toEqual(['Backup', 'USB', 'Disk'])
+    expect(words(buttons[2])).toEqual(['VeryLongPartitionName', '(not mounted)'])
+    expect(buttons[0].getAttribute('aria-label')).toBe('SAMSUNG Android')
+    expect(buttons[2].getAttribute('aria-label')).toBe('VeryLongPartitionName (not mounted)')
+    expect(buttons[1].querySelector('.capacity')?.textContent?.trim()).toBe('32 GB')
+    buttons[0].click()
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(phone.path)
+    buttons[0].querySelector('.nav-label')!.dispatchEvent(new MouseEvent('mouseenter'))
+    await vi.advanceTimersByTimeAsync(750)
+    expect(document.querySelector('.browsey-tooltip')?.textContent).toBe(phone.label)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 it.each(['contextmenu', 'ContextMenu', 'Shift+F10'])('opens Properties for a fixed volume using %s without offering format', async (action) => {
   const part = { label: '/', path: '/', fs: 'btrfs', removable: false }
   const onProperties = vi.fn()

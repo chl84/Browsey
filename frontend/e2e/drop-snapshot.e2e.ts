@@ -83,6 +83,38 @@ test('native drop copies its own file and preserves a previously cut selection',
   expect(calls.filter(call => call.cmd === 'clear_system_clipboard')).toHaveLength(0)
 })
 
+test('recipient leaves Loading after a drop refresh and accepts another drop despite watcher notifications', async ({ page }) => {
+  const calls = (cmd: string) => page.evaluate(command => (window as unknown as {
+    __BROWSEY_E2E__: { calls: Array<{ cmd: string }> }
+  }).__BROWSEY_E2E__.calls.filter(call => call.cmd === command).length, cmd)
+  const listingCount = await calls('list_dir')
+  await page.evaluate(() => {
+    ;(window as unknown as { __BROWSEY_E2E__: { listingHold: boolean } }).__BROWSEY_E2E__.listingHold = true
+  })
+  try {
+    await nativeDrop(page, ['/mock/Documents/report.txt'])
+    await expect.poll(() => calls('list_dir')).toBe(listingCount + 1)
+    await expect(page.getByText('Loading…', { exact: true })).toBeVisible()
+    await page.evaluate(async () => {
+      const { emitMockEvent } = await import('/src/test/mocks/tauri/event.ts')
+      emitMockEvent('dir-changed', '/mock')
+    })
+    // Let the real 300ms watcher debounce run while the transfer refresh is held.
+    await page.waitForTimeout(400)
+    expect(await calls('list_dir')).toBe(listingCount + 1)
+  } finally {
+    await page.evaluate(() => {
+      ;(window as unknown as { __BROWSEY_E2E__: { listingHold: boolean } }).__BROWSEY_E2E__.listingHold = false
+    })
+  }
+  await expect(page.getByText('Loading…', { exact: true })).toHaveCount(0)
+  await expect(row(page, 'report')).toBeVisible()
+  await nativeDrop(page, ['/mock/notes.txt'])
+  await expect(row(page, 'notes-1')).toBeVisible()
+  await expect.poll(() => calls('paste_clipboard_cmd')).toBe(2)
+  await expect(page.getByText('Loading…', { exact: true })).toHaveCount(0)
+})
+
 test('another native drop cannot replace a pending conflict operation', async ({ page }) => {
   await nativeDrop(page, ['/mock/Documents/report.txt'])
   await expect(row(page, 'report')).toBeVisible()
