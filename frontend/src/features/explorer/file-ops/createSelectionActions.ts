@@ -66,6 +66,7 @@ export const createSelectionActions = (deps: Deps) => {
     const isSameLocation = () => getCurrentPath() === location && currentView() === view
     deleting = true
     let completed = false
+    let networkConfirmation: DeleteConfirmMode | null = null
     try {
       await activityApi.start(label, event, inTrash ? undefined : () => void activityApi.requestCancel(event), { completeOnReply: cloud })
       if (inTrash) {
@@ -93,7 +94,7 @@ export const createSelectionActions = (deps: Deps) => {
       return true
     } catch (error) {
       if (!inTrash && needsNetworkDeleteConfirmation(error)) {
-        confirmDelete(entries, permanent ? 'network' : 'network-trash')
+        networkConfirmation = permanent ? 'network' : 'network-trash'
         return true
       }
       // Refresh partial results without replacing the original failure or retrying.
@@ -113,6 +114,9 @@ export const createSelectionActions = (deps: Deps) => {
       } finally {
         deleting = false
       }
+      // A fast confirmation can start the next operation immediately. Do not
+      // let the old listener cleanup or clearNow remove that new progress UI.
+      if (networkConfirmation) confirmDelete(entries, networkConfirmation)
     }
   }
 

@@ -104,12 +104,15 @@ existing modules rather than reopening completed refactoring tracks.
   Regression coverage includes selection resolution, clipboard sync failures,
   network confirmation, cancellation, duplicate requests and partial-result
   refresh without mutation retry. Refresh warnings cannot be overwritten by
-  success feedback; Wastebasket purge offers no unsupported cancellation.
+  success feedback; direct Wastebasket purge offers no unsupported cancellation.
   Verification: 29 focused regressions; all 510 frontend tests and 99 mock-browser
   tests, lint/typecheck/build pass. Strict maintenance/docs checks pass, including
   728 backend tests (18 opt-in tests ignored) and 20 documentation checks.
   The final purge-cancellation adjustment was rechecked with the focused tests,
   lint/typecheck/build. Native WebKit acceptance remains separate.
+  Final review also reproduced and fixed confirmation opening before previous
+  progress cleanup finished. The sequencing regression brings focused coverage
+  to 30 tests; lint/typecheck/build and all 103 mock-browser tests pass.
 - [x] **M2** Replace `any` in `createExplorerShellProps.ts` with concrete
   types for values, modal state and callbacks.
   Resolved 2026-10-04. Assembly uses the consuming component's prop contract and

@@ -12,6 +12,8 @@
 - Move Explorer shortcut composition and file-action orchestration into focused
   controllers, retaining the existing keyboard router and shared mutation policy.
   Release cloud-open progress listeners after both success and failure.
+- Finish failed network-delete progress cleanup before showing confirmation,
+  so a quick confirmation cannot lose the next operation's progress UI.
 
 - Delete Linux network/GVFS files directly through GIO instead of downloading
   them into local undo backups. Use the mounted server's trash when supported;

@@ -92,6 +92,28 @@ describe('shared selection actions', () => {
     expect(service).toHaveBeenCalledTimes(1)
   })
 
+  it('finishes the old progress cleanup before exposing network confirmation', async () => {
+    services.moveToTrashMany.mockRejectedValueOnce({ code: 'network_confirmation_required' })
+    let finishCleanup!: () => void
+    let cleanupStarted!: () => void
+    const started = new Promise<void>(resolve => { cleanupStarted = resolve })
+    const { actions, activityApi, confirmDelete } = setup({ confirmDeleteEnabled: () => false })
+    vi.mocked(activityApi.cleanup).mockImplementationOnce(() => {
+      cleanupStarted()
+      return new Promise<void>(resolve => { finishCleanup = resolve })
+    })
+    const pending = actions.trash([entry])
+    await started
+    expect(confirmDelete).not.toHaveBeenCalled()
+    expect(await actions.trash([entry])).toBe(false)
+    finishCleanup()
+    expect(await pending).toBe(true)
+    expect(confirmDelete).toHaveBeenCalledExactlyOnceWith([entry], 'network-trash')
+    expect(vi.mocked(activityApi.clearNow).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(confirmDelete).mock.invocationCallOrder[0])
+    expect(services.moveToTrashMany).toHaveBeenCalledOnce()
+  })
+
   it('confirms permanent deletion without starting activity or mutation', async () => {
     const { actions, confirmDelete, activityApi } = setup()
     await actions.deletePermanently([entry])
