@@ -122,6 +122,11 @@ existing modules rather than reopening completed refactoring tracks.
 - [ ] **M3** Extract USB formatting, shortcut registration and file-operation
   orchestration from `ExplorerPage.svelte` into existing or focused modules.
   Keep the page as the composition root and preserve user-facing behavior.
+  Progress 2026-10-04: USB formatting now uses `createUsbFormatModal` with typed
+  state, stale-response/progress guards and safe refresh-error handling.
+  Fourteen controller regressions and 20 relevant mock-browser tests pass,
+  as do lint/typecheck/build. Shortcut and file-action extraction remain open;
+  do not check M3 until the complete flow has been verified.
 - [ ] **M4** Reuse shared error normalization in the Properties modal,
   preserving supported error shapes and permission-specific messages.
 
