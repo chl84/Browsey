@@ -8,6 +8,7 @@ use crate::errors::api_error::{ApiError, ApiResult};
 use crate::fs_utils::{check_no_symlink_components, sanitize_path_nofollow};
 
 mod error;
+mod filesystem;
 mod ownership;
 mod platform;
 mod set_permissions;
@@ -54,6 +55,7 @@ pub struct AccessUpdate {
 
 #[derive(serde::Serialize)]
 pub struct PermissionInfo {
+    pub restriction: Option<PermissionRestriction>,
     pub read_only: bool,
     pub executable: Option<bool>,
     pub executable_supported: bool,
@@ -64,6 +66,13 @@ pub struct PermissionInfo {
     pub owner: Option<AccessBits>,
     pub group: Option<AccessBits>,
     pub other: Option<AccessBits>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionRestriction {
+    WriteProtection,
+    MountManaged,
 }
 
 #[derive(Debug, serde::Serialize, Clone, PartialEq, Eq)]
@@ -82,6 +91,7 @@ pub struct AggregatedAccess {
 
 #[derive(serde::Serialize)]
 pub struct PermissionsBatchAggregate {
+    pub restriction: Option<PermissionRestriction>,
     pub access_supported: bool,
     pub executable_supported: bool,
     pub ownership_supported: bool,
@@ -114,6 +124,7 @@ pub(super) fn permission_info_fallback() -> PermissionInfo {
     #[cfg(target_os = "windows")]
     {
         PermissionInfo {
+            restriction: None,
             read_only: false,
             executable: None,
             executable_supported: true,
@@ -129,6 +140,7 @@ pub(super) fn permission_info_fallback() -> PermissionInfo {
     #[cfg(unix)]
     {
         PermissionInfo {
+            restriction: None,
             read_only: false,
             executable: None,
             executable_supported: true,
@@ -144,6 +156,7 @@ pub(super) fn permission_info_fallback() -> PermissionInfo {
     #[cfg(not(any(unix, target_os = "windows")))]
     {
         PermissionInfo {
+            restriction: None,
             read_only: false,
             executable: None,
             executable_supported: false,
@@ -160,6 +173,7 @@ pub(super) fn permission_info_fallback() -> PermissionInfo {
 
 pub(super) fn permission_info_unsupported() -> PermissionInfo {
     PermissionInfo {
+        restriction: None,
         read_only: false,
         executable: None,
         executable_supported: false,
@@ -294,6 +308,18 @@ fn aggregate_permissions(items: &[PermissionsBatchItem]) -> PermissionsBatchAggr
         .collect();
 
     PermissionsBatchAggregate {
+        restriction: if items
+            .iter()
+            .any(|item| item.permissions.restriction == Some(PermissionRestriction::MountManaged))
+        {
+            Some(PermissionRestriction::MountManaged)
+        } else if items.iter().any(|item| {
+            item.permissions.restriction == Some(PermissionRestriction::WriteProtection)
+        }) {
+            Some(PermissionRestriction::WriteProtection)
+        } else {
+            None
+        },
         access_supported,
         executable_supported,
         ownership_supported,

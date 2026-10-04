@@ -21,6 +21,7 @@ import type { Column, Entry, ListingFacets, Partition, SortField } from '../../m
 import type { ContextAction } from '../../context/createContextMenus'
 import type { OpenWithApp, OpenWithChoice } from '../../services/openWith.service'
 import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
+import type { VolumeUsageState } from '../../modals/propertiesModal'
 
   let sidebarCollapsed = false
   let places: { label: string; path: string }[] = []
@@ -226,6 +227,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   let propertiesOpen = false
   let propertiesEntry: Entry | null = null
   let propertiesPartition: Partition | null = null
+  let propertiesVolumeUsage: VolumeUsageState = { data: null, loading: false, error: null }
   let propertiesMutationsLocked = false
   let propertiesCount = 1
   let propertiesSize: number | null = null
@@ -459,6 +461,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     propertiesOpen: typeof propertiesOpen
     propertiesEntry: typeof propertiesEntry
     propertiesPartition: typeof propertiesPartition
+    propertiesVolumeUsage: typeof propertiesVolumeUsage
     propertiesMutationsLocked: typeof propertiesMutationsLocked
     propertiesCount: typeof propertiesCount
     propertiesSize: typeof propertiesSize
@@ -678,6 +681,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
     propertiesOpen,
     propertiesEntry,
     propertiesPartition,
+    propertiesVolumeUsage,
     propertiesMutationsLocked,
     propertiesCount,
     propertiesSize,
@@ -973,6 +977,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
   open={propertiesOpen}
   entry={propertiesEntry}
   partition={propertiesPartition}
+  volumeUsage={propertiesVolumeUsage}
   mutationsLocked={propertiesMutationsLocked}
   count={propertiesCount}
   size={propertiesSize}

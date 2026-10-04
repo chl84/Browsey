@@ -15,13 +15,11 @@
   const eject = (path: string) => dispatch('eject', { path })
   let menu = { open: false, x: 0, y: 0, part: null as Partition | null }
   const openMenu = (event: MouseEvent, part: Partition) => {
-    if (!part.removable) return
     event.preventDefault()
     ;(event.currentTarget as HTMLElement).focus()
     menu = { open: true, x: event.clientX, y: event.clientY, part }
   }
   const openMenuFromButton = (button: HTMLElement, part: Partition) => {
-    if (!part.removable) return
     const rect = button.getBoundingClientRect()
     menu = { open: true, x: rect.right, y: rect.bottom, part }
   }

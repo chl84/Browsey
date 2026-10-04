@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Disable unsupported Read, Execute and ownership changes on Linux exFAT/FAT
+  mounts, with a short explanation. Preserve supported file write-protection
+  toggles, respecting mount masks and verifying the actual result.
+
+- Open Properties for fixed volumes as well as removable drives from the sidebar
+  context menu. Keep Basic compact with a theme-aware, shared usage meter and
+  fresh total/used/free filesystem statistics, without scanning contents or
+  automatically mounting devices.
+
 - Show small decimal-GB capacity labels beside local partitions and USB volumes
   in the sidebar, reusing Linux device metadata without probing remote mounts.
   Show shared root-volume capacity only at `/`, retaining labels for separate

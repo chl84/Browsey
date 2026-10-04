@@ -321,6 +321,7 @@ export const createExplorerShellProps = (p: Params) => ({
     propertiesOpen: p.propertiesState.open,
     propertiesEntry: p.propertiesState.entry,
     propertiesPartition: p.propertiesState.partition,
+    propertiesVolumeUsage: p.propertiesState.volumeUsage,
     propertiesMutationsLocked: p.propertiesState.mutationsLocked,
     propertiesCount: p.propertiesState.count,
     propertiesSize: p.propertiesState.size,

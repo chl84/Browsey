@@ -280,6 +280,20 @@ fn lsblk_listing() -> NetworkResult<LsblkOutput> {
     })
 }
 
+/// Only local block-backed mount roots may be queried for filesystem usage.
+#[cfg(target_os = "linux")]
+pub(super) fn is_local_block_mount(path: &str) -> NetworkResult<bool> {
+    if !std::path::Path::new(path).is_absolute() {
+        return Ok(false);
+    }
+    let listing = lsblk_listing()?;
+    Ok(listing.blockdevices.iter().any(|device| {
+        device.mountpoints.iter().flatten().any(|mountpoint| {
+            !mountpoint.is_empty() && same_mount_path(mountpoint, path)
+        })
+    }))
+}
+
 #[cfg(not(target_os = "windows"))]
 fn removable_usb_disk_for_partition(listing: &LsblkOutput, device: &str) -> Option<String> {
     let target = listing

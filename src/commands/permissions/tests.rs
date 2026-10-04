@@ -7,6 +7,47 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
+#[test]
+fn mixed_selections_keep_the_strictest_filesystem_restriction() {
+    use super::{
+        aggregate_permissions, permission_info_fallback, PermissionRestriction,
+        PermissionsBatchItem,
+    };
+    let make_item = |restriction| {
+        let mut permissions = permission_info_fallback();
+        permissions.restriction = restriction;
+        permissions.ownership_supported = restriction.is_none();
+        permissions.executable_supported = restriction.is_none();
+        PermissionsBatchItem {
+            path: "/example".into(),
+            ok: true,
+            permissions,
+            error: None,
+        }
+    };
+    let items = [
+        make_item(None),
+        make_item(Some(PermissionRestriction::WriteProtection)),
+    ];
+    let aggregate = aggregate_permissions(&items);
+    assert_eq!(
+        aggregate.restriction,
+        Some(PermissionRestriction::WriteProtection)
+    );
+    assert!(!aggregate.ownership_supported);
+    assert!(!aggregate.executable_supported);
+    let items = [
+        make_item(Some(PermissionRestriction::WriteProtection)),
+        make_item(Some(PermissionRestriction::MountManaged)),
+    ];
+    assert_eq!(
+        aggregate_permissions(&items).restriction,
+        Some(PermissionRestriction::MountManaged)
+    );
+    let json = serde_json::to_value(aggregate).unwrap();
+    assert_eq!(json["restriction"], "write_protection");
+}
+
 fn temp_file(prefix: &str) -> std::path::PathBuf {
     let unique = format!(
         "{}-{}-{}",

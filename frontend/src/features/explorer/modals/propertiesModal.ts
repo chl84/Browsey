@@ -1,14 +1,16 @@
 import { writable, get } from 'svelte/store'
 import { invoke } from '@/shared/lib/tauri'
 import type { Entry, Partition } from '../model/types'
-import { isMtpPartition, isUnmountedUsb } from '../services/drives.service'
+import { getVolumeUsage, isMtpPartition, isUnmountedPartition, isUnmountedUsb, type VolumeUsage } from '../services/drives.service'
 import { parentPath } from '../utils'
 
 type AccessBit = boolean | 'mixed'
 type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
+export type PermissionRestriction = 'write_protection' | 'mount_managed' | null
 type OwnershipPrincipalKind = 'user' | 'group'
 type InvokeApiError = { code: string; message: string }
 type PermissionPayload = {
+  restriction?: PermissionRestriction
   access_supported: boolean
   executable_supported: boolean
   ownership_supported?: boolean
@@ -29,6 +31,7 @@ type PermissionBatchItemPayload = {
 }
 
 type PermissionBatchAggregatePayload = {
+  restriction?: PermissionRestriction
   access_supported: boolean
   executable_supported: boolean
   ownership_supported: boolean
@@ -144,6 +147,7 @@ const copyToClipboard = async (text: string): Promise<void> => {
 }
 
 export type PermissionsState = {
+  restriction?: PermissionRestriction
   accessSupported: boolean
   ownershipSupported: boolean
   ownerName: string | null
@@ -153,9 +157,27 @@ export type PermissionsState = {
   other: Access | null
 }
 
+export const canEditAccess = (
+  permissions: PermissionsState,
+  scope: 'owner' | 'group' | 'other',
+  key: 'read' | 'write' | 'exec',
+): boolean => permissions.accessSupported && (
+  !permissions.restriction ||
+  (permissions.restriction === 'write_protection' && scope === 'owner' && key === 'write')
+)
+
+export type VolumeUsageState = {
+  data: VolumeUsage | null
+  loading: boolean
+  error: string | null
+}
+
+const emptyVolumeUsage = (): VolumeUsageState => ({ data: null, loading: false, error: null })
+
 export type PropertiesState = {
   open: boolean
   partition: Partition | null
+  volumeUsage: VolumeUsageState
   entry: Entry | null
   targets: Entry[]
   mutationsLocked: boolean
@@ -324,6 +346,7 @@ export const createPropertiesModal = (deps: Deps) => {
   const state = writable<PropertiesState>({
     open: false,
     partition: null,
+    volumeUsage: emptyVolumeUsage(),
     entry: null,
     targets: [],
     mutationsLocked: false,
@@ -355,6 +378,7 @@ export const createPropertiesModal = (deps: Deps) => {
     state.set({
       open: false,
       partition: null,
+      volumeUsage: emptyVolumeUsage(),
       entry: null,
       targets: [],
       mutationsLocked: false,
@@ -394,6 +418,11 @@ export const createPropertiesModal = (deps: Deps) => {
     state.set({
       open: true,
       partition,
+      volumeUsage: {
+        data: null,
+        loading: partition !== null && !singleVirtualUri && !phone && !isUnmountedPartition(partition.path),
+        error: null,
+      },
       entry: entries.length === 1 ? entries[0] : null,
       targets: entries,
       mutationsLocked: shouldLockMutations(entries) || phone || (partition !== null && singleVirtualUri),
@@ -426,8 +455,11 @@ export const createPropertiesModal = (deps: Deps) => {
       void loadPermissionsMulti(entries, nextToken)
     }
 
-    // Inspect the mount root, not every file on a potentially large USB drive.
-    if (partition) return
+    // Inspect the mount root, never scan all files or automatically mount devices.
+    if (partition) {
+      if (get(state).volumeUsage.loading) void loadVolumeUsage(partition.path, nextToken)
+      return
+    }
     if (localDirs.length > 0) {
       const { total, items } = await computeDirStats(
         localDirs.map((d) => d.path),
@@ -442,6 +474,20 @@ export const createPropertiesModal = (deps: Deps) => {
       }
     } else if (dirs.length === 0) {
       state.update((s) => ({ ...s, itemCount: fileCount }))
+    }
+  }
+
+  const loadVolumeUsage = async (path: string, requestToken: number) => {
+    try {
+      const data = await getVolumeUsage(path)
+      if (requestToken !== token) return
+      state.update((s) => ({ ...s, volumeUsage: { data, loading: false, error: null } }))
+    } catch {
+      if (requestToken !== token) return
+      state.update((s) => ({
+        ...s,
+        volumeUsage: { data: null, loading: false, error: 'Could not read storage usage.' },
+      }))
     }
   }
 
@@ -511,6 +557,7 @@ export const createPropertiesModal = (deps: Deps) => {
         permissionsLoading: false,
         permissions: {
           accessSupported: aggregate.access_supported,
+          restriction: aggregate.restriction ?? null,
           ownershipSupported: aggregate.ownership_supported,
           ownerName: aggregate.owner_name ?? null,
           groupName: aggregate.group_name ?? null,
@@ -542,6 +589,7 @@ export const createPropertiesModal = (deps: Deps) => {
         permissionsLoading: false,
         permissions: {
           accessSupported: perms.access_supported,
+          restriction: perms.restriction ?? null,
           ownershipSupported: perms.ownership_supported === true,
           ownerName: perms.owner_name ?? null,
           groupName: perms.group_name ?? null,
@@ -661,6 +709,7 @@ export const createPropertiesModal = (deps: Deps) => {
 
     try {
       const perms = await invoke<{
+        restriction?: PermissionRestriction
         access_supported?: boolean
         executable_supported?: boolean
         ownership_supported?: boolean
@@ -681,6 +730,7 @@ export const createPropertiesModal = (deps: Deps) => {
         ...s,
         permissions: {
           accessSupported: perms.access_supported ?? currentPerms?.accessSupported ?? false,
+          restriction: perms.restriction === undefined ? currentPerms?.restriction ?? null : perms.restriction,
           ownershipSupported: perms.ownership_supported ?? currentPerms?.ownershipSupported ?? false,
           ownerName: perms.owner_name ?? currentPerms?.ownerName ?? null,
           groupName: perms.group_name ?? currentPerms?.groupName ?? null,
@@ -724,7 +774,7 @@ export const createPropertiesModal = (deps: Deps) => {
     const current = get(state)
     if (current.mutationsLocked) return
     const perms = current.permissions
-    if (!perms || !perms.accessSupported) return
+    if (!perms || !canEditAccess(perms, scope, key)) return
     const prev = JSON.parse(JSON.stringify(perms)) as PermissionsState
     const updatedScope = perms[scope] ? { ...perms[scope], [key]: next } : perms[scope]
     const updated = { ...perms, [scope]: updatedScope }
@@ -772,6 +822,7 @@ export const createPropertiesModal = (deps: Deps) => {
         ...s,
         permissions: {
           accessSupported: perms.access_supported ?? currentPerms?.accessSupported ?? false,
+          restriction: perms.restriction === undefined ? currentPerms?.restriction ?? null : perms.restriction,
           ownershipSupported: perms.ownership_supported ?? currentPerms?.ownershipSupported ?? false,
           ownerName: perms.owner_name ?? currentPerms?.ownerName ?? null,
           groupName: perms.group_name ?? currentPerms?.groupName ?? null,

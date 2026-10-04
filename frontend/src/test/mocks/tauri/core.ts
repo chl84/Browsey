@@ -56,6 +56,7 @@ type E2eMockControl = {
   mtpError?: string
   calls?: Array<{ cmd: string; args?: Record<string, unknown> }>
   partitions?: Array<{ label: string; path: string; fs?: string; removable?: boolean; sizeBytes?: number | null }>
+  volumeUsage?: { totalBytes: number; usedBytes: number; freeBytes: number; reservedBytes: number } | null
 }
 
 import { emitMockEvent } from './event'
@@ -311,6 +312,8 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     }
     case 'list_mounts':
       return (e2eControl()?.partitions ?? []) as T
+    case 'get_volume_usage':
+      return (e2eControl()?.volumeUsage ?? null) as T
     case 'watch_dir':
       return undefined as T
     case 'inspect_undo_storage': {

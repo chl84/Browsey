@@ -117,6 +117,7 @@ pub(super) fn permission_info_from_metadata(
     {
         let bits = super::windows_acl::read_bits(target, meta.is_dir())?;
         return Ok(PermissionInfo {
+            restriction: None,
             read_only: !bits.owner.write,
             executable: Some(bits.owner.exec),
             executable_supported: true,
@@ -132,7 +133,8 @@ pub(super) fn permission_info_from_metadata(
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = target;
+        let fat = super::filesystem::fat_permissions(target, meta.is_dir())?;
+        let restriction = fat.map(|fat| fat.restriction());
         let read_only = meta.permissions().readonly();
         let executable = is_executable(meta);
         #[cfg(unix)]
@@ -163,11 +165,12 @@ pub(super) fn permission_info_from_metadata(
         let (access_supported, owner, group, other) = (false, None, None, None);
 
         Ok(PermissionInfo {
+            restriction,
             read_only,
             executable,
-            executable_supported: executable.is_some(),
+            executable_supported: executable.is_some() && restriction.is_none(),
             access_supported,
-            ownership_supported: cfg!(unix),
+            ownership_supported: cfg!(unix) && restriction.is_none(),
             owner_name,
             group_name,
             owner,

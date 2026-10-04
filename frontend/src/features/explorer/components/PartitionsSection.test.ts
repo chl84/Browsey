@@ -50,3 +50,31 @@ it('does not invent capacity for phone, network or unavailable volumes', async (
   expect(document.querySelector('.capacity')).toBeNull()
   expect(document.querySelector('[aria-label="Phone actions"]')).not.toBeNull()
 })
+
+it.each(['contextmenu', 'ContextMenu', 'Shift+F10'])('opens Properties for a fixed volume using %s without offering format', async (action) => {
+  const part = { label: '/', path: '/', fs: 'btrfs', removable: false }
+  const onProperties = vi.fn()
+  components.push(mount(PartitionsSection, {
+    target: document.body, props: { partitions: [part] },
+    events: { properties: onProperties },
+  }))
+  await tick()
+  const button = document.querySelector<HTMLButtonElement>('.nav')!
+  if (action === 'contextmenu') {
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
+    button.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+  } else {
+    button.dispatchEvent(new KeyboardEvent('keydown', {
+      key: action === 'Shift+F10' ? 'F10' : action,
+      shiftKey: action === 'Shift+F10', bubbles: true, cancelable: true,
+    }))
+  }
+  await tick()
+  const items = document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')
+  expect(items).toHaveLength(1)
+  expect(items[0].textContent).toContain('Properties')
+  items[0].click()
+  expect(onProperties).toHaveBeenCalledOnce()
+  expect(onProperties.mock.calls[0][0].detail.part).toEqual(part)
+})

@@ -287,6 +287,7 @@ fn main() {
             list_dir,
             list_facets,
             list_mounts,
+            get_volume_usage,
             list_cloud_remotes,
             cloud_rc_health,
             cloud_setup_status,

@@ -11,6 +11,15 @@ root volume (such as Btrfs subvolumes) show capacity only at `/`; separate
 partitions and USB volumes retain their own capacity labels. Unknown capacities
 are hidden, including phone and network endpoints.
 
+Right-click any partition and choose **Properties** (or use the context-menu key
+or Shift+F10 while its row is focused). On Linux, **Basic** shows total, used, and
+free filesystem space for mounted local volumes using the current theme. Free
+space excludes filesystem reservations; a tooltip explains any reserved space.
+These statistics are read when the dialog opens, without counting files.
+Unmounted devices are not mounted automatically, and phone/network storage is
+not probed for local usage. Ownership and permission changes still affect only
+the mount root, not its contents.
+
 Defaults are remappable in Settings:
 
 - `Ctrl+F` search; `Ctrl+G` switch between list and grid.

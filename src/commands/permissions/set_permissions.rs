@@ -97,6 +97,20 @@ pub(super) fn set_permissions_batch(
             }
             debug!(path = %target.display(), "set_permissions resolved target");
 
+            let fat_mode = super::filesystem::fat_permissions(&target, meta.is_dir())?
+                .map(|fat| {
+                    fat.updated_mode(
+                        meta.permissions().mode(),
+                        read_only,
+                        executable,
+                        [
+                            owner_update.as_ref(),
+                            group_update.as_ref(),
+                            other_update.as_ref(),
+                        ],
+                    )
+                })
+                .transpose()?;
             let before = permissions_snapshot(&target)?;
 
             let mut perms: Permissions = meta.permissions();
@@ -189,6 +203,9 @@ pub(super) fn set_permissions_batch(
                     }
                 }
             }
+            if let Some(fat_mode) = fat_mode {
+                mode = fat_mode;
+            }
             if mode != original_mode {
                 changed = true;
                 perms.set_mode(mode);
@@ -243,6 +260,24 @@ pub(super) fn set_permissions_batch(
                     path: target.clone(),
                     before,
                 });
+                if fat_mode.is_some() {
+                    let actual = fs::symlink_metadata(&target)
+                        .map_err(|error| {
+                            PermissionsError::from_io_error(
+                                PermissionsErrorCode::MetadataReadFailed,
+                                "Failed to verify write protection",
+                                error,
+                            )
+                        })?
+                        .permissions()
+                        .mode();
+                    if actual & 0o777 != mode & 0o777 {
+                        return Err(PermissionsError::new(
+                            PermissionsErrorCode::PermissionsUpdateFailed,
+                            "The filesystem did not apply the requested write protection.",
+                        ));
+                    }
+                }
             }
             Ok(())
         })();

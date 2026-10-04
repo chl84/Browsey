@@ -474,6 +474,11 @@ fn set_ownership_batch_impl(
             ));
         }
         let current_uid = meta.uid();
+        if super::super::filesystem::fat_permissions(&target, meta.is_dir())?.is_some() {
+            return Err(PermissionsError::invalid_input(
+                "Ownership is controlled by mount options.",
+            ));
+        }
         let current_gid = meta.gid();
         let uid_update = desired_uid.filter(|uid| *uid != current_uid);
         let gid_update = desired_gid.filter(|gid| *gid != current_gid);

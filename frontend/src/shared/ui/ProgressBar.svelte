@@ -3,20 +3,24 @@
   export let label = 'Progress'
   export let width = '100%'
   export let height = '8px'
+  export let role: 'progressbar' | 'meter' = 'progressbar'
+  export let valueText: string | undefined = undefined
+  export let fillColor = 'var(--border-accent)'
 
   $: value = percent !== null && Number.isFinite(percent) ? Math.min(100, Math.max(0, percent)) : null
 </script>
 
 <div
   class="progress-bar"
-  role="progressbar"
+  {role}
   aria-label={label}
   aria-valuemin="0"
   aria-valuemax="100"
   aria-valuenow={value ?? undefined}
+  aria-valuetext={valueText}
   style={`width:${width};height:${height};`}
 >
-  <div class="progress-fill" class:indeterminate={value === null} style:width={value === null ? '30%' : `${value}%`}></div>
+  <div class="progress-fill" class:indeterminate={value === null} style:background={fillColor} style:width={value === null ? '30%' : `${value}%`}></div>
 </div>
 
 <style>

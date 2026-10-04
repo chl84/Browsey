@@ -24,6 +24,7 @@ const makeEntry = (path: string, kind: Entry['kind'] = 'file'): Entry => ({
 const makeOpenState = (entry: Entry, count = 1): PropertiesState => ({
   open: true,
   partition: null,
+  volumeUsage: { data: null, loading: false, error: null },
   entry,
   targets: [entry],
   mutationsLocked: false,
@@ -249,6 +250,59 @@ describe('properties modal copyParentFolder', () => {
   })
 })
 
+describe('mount-managed permissions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    invokeMock.mockReset()
+  })
+
+  const payload = {
+    restriction: 'write_protection', access_supported: true, executable_supported: false,
+    ownership_supported: false, read_only: false, executable: true,
+    owner: { read: true, write: true, exec: true },
+    group: { read: true, write: true, exec: true },
+    other: { read: true, write: false, exec: true },
+  }
+  const createModal = () => createPropertiesModal({ computeDirStats: computeDirStatsMock, showToast: showToastMock })
+
+  it('loads FAT restrictions and ignores unsupported checkbox requests without invoking mutations', async () => {
+    invokeMock.mockResolvedValue(payload)
+    const modal = createModal()
+    await modal.open([makeEntry('/media/USB/file.pdf')])
+    await vi.waitFor(() => expect(get(modal.state).permissions?.restriction).toBe('write_protection'))
+    modal.toggleAccess('owner', 'read', false)
+    modal.toggleAccess('owner', 'exec', false)
+    modal.toggleAccess('group', 'write', false)
+    modal.toggleAccess('other', 'write', false)
+    expect(invokeMock.mock.calls.some(([cmd]) => cmd === 'set_permissions')).toBe(false)
+    expect(get(modal.state).permissions?.owner?.read).toBe(true)
+    expect(invokeMock.mock.calls.some(([cmd]) => cmd === 'list_ownership_principals')).toBe(false)
+  })
+
+  it('keeps owner Write available and refreshes all scopes after a global write-protection toggle', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => cmd === 'set_permissions' ? {
+      ...payload, read_only: true,
+      owner: { ...payload.owner, write: false }, group: { ...payload.group, write: false },
+    } : payload)
+    const modal = createModal()
+    await modal.open([makeEntry('/media/USB/file.pdf')])
+    await vi.waitFor(() => expect(get(modal.state).permissions?.restriction).toBe('write_protection'))
+    modal.toggleAccess('owner', 'write', false)
+    await vi.waitFor(() => expect(get(modal.state).permissions?.group?.write).toBe(false))
+    expect(invokeMock).toHaveBeenCalledWith('set_permissions', { paths: ['/media/USB/file.pdf'], owner: { write: false } })
+    expect(get(modal.state).permissions).toMatchObject({ restriction: 'write_protection', owner: { write: false } })
+  })
+
+  it('carries batch restrictions into mixed selections and blocks all edits for mount-managed batches', async () => {
+    invokeMock.mockResolvedValue({ aggregate: { ...payload, restriction: 'mount_managed' }, per_item: [], failures: 0, unexpected_failures: 0 })
+    const modal = createModal()
+    await modal.open([makeEntry('/media/USB/file.pdf'), makeEntry('/media/USB/folder', 'dir')])
+    await vi.waitFor(() => expect(get(modal.state).permissions?.restriction).toBe('mount_managed'))
+    modal.toggleAccess('owner', 'write', false)
+    expect(invokeMock.mock.calls.some(([cmd]) => cmd === 'set_permissions')).toBe(false)
+  })
+})
+
 describe('USB properties', () => {
   const partition = { label: 'USB', path: '/media/chris/USB', fs: 'btrfs', removable: true }
   const permissions = {
@@ -262,7 +316,7 @@ describe('USB properties', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     invokeMock.mockReset()
-    invokeMock.mockImplementation(async (cmd: string) => cmd === 'get_permissions' ? permissions : [])
+    invokeMock.mockImplementation(async (cmd: string) => cmd === 'get_permissions' ? permissions : cmd === 'get_volume_usage' ? null : [])
   })
 
   it('reads mount-root permissions without scanning contents or changing anything', async () => {
@@ -274,7 +328,7 @@ describe('USB properties', () => {
     expect(computeDirStatsMock).not.toHaveBeenCalled()
     await modal.toggleHidden(true)
     modal.loadExtraIfNeeded()
-    expect(invokeMock.mock.calls.every(([cmd]) => ['get_permissions', 'list_ownership_principals'].includes(cmd))).toBe(true)
+    expect(invokeMock.mock.calls.every(([cmd]) => ['get_permissions', 'list_ownership_principals', 'get_volume_usage'].includes(cmd))).toBe(true)
   })
 
   it('does not mount, inspect, or mutate an unmounted device', async () => {
@@ -326,12 +380,74 @@ describe('USB properties', () => {
 
   it('ignores a pending permissions reply after the dialog closes', async () => {
     let resolve!: (value: typeof permissions) => void
-    invokeMock.mockReturnValueOnce(new Promise((done) => { resolve = done }))
+    invokeMock.mockImplementation((cmd: string) => cmd === 'get_permissions'
+      ? new Promise((done) => { resolve = done }) : Promise.resolve(null))
     const modal = createModal()
     await modal.openPartition(partition)
     modal.close()
     resolve(permissions)
     await Promise.resolve()
     expect(get(modal.state)).toMatchObject({ open: false, partition: null, permissions: null })
+  })
+
+  const usage = { totalBytes: 32_000_000_000, usedBytes: 8_000_000_000, freeBytes: 24_000_000_000, reservedBytes: 0 }
+
+  it('loads filesystem statistics for a fixed volume without scanning files', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => cmd === 'get_permissions' ? permissions : cmd === 'get_volume_usage' ? usage : [])
+    const modal = createModal()
+    await modal.openPartition({ label: '/', path: '/', fs: 'btrfs', removable: false })
+    await vi.waitFor(() => expect(get(modal.state).volumeUsage).toEqual({ data: usage, loading: false, error: null }))
+    expect(invokeMock).toHaveBeenCalledWith('get_volume_usage', { path: '/' })
+    expect(computeDirStatsMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps Properties open with a concise usage error when reading fails', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_volume_usage') throw new Error('Device disconnected')
+      return cmd === 'get_permissions' ? permissions : []
+    })
+    const modal = createModal()
+    await modal.openPartition(partition)
+    await vi.waitFor(() => expect(get(modal.state).volumeUsage).toEqual({ data: null, loading: false, error: 'Could not read storage usage.' }))
+    expect(get(modal.state).open).toBe(true)
+    expect(showToastMock).not.toHaveBeenCalled()
+  })
+
+  it('ignores a pending usage reply after Properties closes', async () => {
+    let resolve!: (value: typeof usage) => void
+    invokeMock.mockImplementation((cmd: string) => cmd === 'get_volume_usage'
+      ? new Promise((done) => { resolve = done }) : Promise.resolve(cmd === 'get_permissions' ? permissions : []))
+    const modal = createModal()
+    await modal.openPartition(partition)
+    expect(get(modal.state).volumeUsage.loading).toBe(true)
+    modal.close()
+    resolve(usage)
+    await Promise.resolve()
+    expect(get(modal.state).volumeUsage).toEqual({ data: null, loading: false, error: null })
+  })
+
+  it('ignores old usage when opening a different volume', async () => {
+    let resolveOld!: (value: typeof usage) => void
+    const newer = { ...usage, usedBytes: 16_000_000_000, freeBytes: 16_000_000_000 }
+    invokeMock.mockImplementation((cmd: string, args: { path?: string }) => {
+      if (cmd === 'get_volume_usage') return args.path === partition.path
+        ? new Promise((done) => { resolveOld = done }) : Promise.resolve(newer)
+      return Promise.resolve(cmd === 'get_permissions' ? permissions : [])
+    })
+    const modal = createModal()
+    await modal.openPartition(partition)
+    await modal.openPartition({ label: '/', path: '/', fs: 'btrfs' })
+    await vi.waitFor(() => expect(get(modal.state).volumeUsage.data).toEqual(newer))
+    resolveOld(usage)
+    await Promise.resolve()
+    expect(get(modal.state).partition?.path).toBe('/')
+    expect(get(modal.state).volumeUsage.data).toEqual(newer)
+  })
+
+  it('does not probe virtual network addresses for local storage statistics', async () => {
+    const modal = createModal()
+    await modal.openPartition({ label: 'NAS', path: 'smb://nas/share', fs: 'smb' })
+    expect(get(modal.state).volumeUsage).toEqual({ data: null, loading: false, error: null })
+    expect(invokeMock).not.toHaveBeenCalled()
   })
 })

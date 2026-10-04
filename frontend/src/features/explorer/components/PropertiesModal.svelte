@@ -1,6 +1,8 @@
 <script lang="ts">
   import Checkbox from '../../../shared/ui/Checkbox.svelte'
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
+  import VolumeUsageSummary from './VolumeUsageSummary.svelte'
+  import { canEditAccess, type PermissionsState, type VolumeUsageState } from '../modals/propertiesModal'
   import ComboBox, { type ComboOption } from '../../../shared/ui/ComboBox.svelte'
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import { normalizePath, parentPath } from '../utils'
@@ -9,6 +11,7 @@
   export let open = false
   export let entry: Entry | null = null
   export let partition: Partition | null = null
+  export let volumeUsage: VolumeUsageState = { data: null, loading: false, error: null }
   export let count = 1
   export let size: number | null = null
   export let deepCount: number | null = null
@@ -27,7 +30,6 @@
   export let ownershipGroups: string[] = []
   export let ownershipOptionsLoading = false
   export let ownershipOptionsError: string | null = null
-  type Access = { read: boolean | 'mixed'; write: boolean | 'mixed'; exec: boolean | 'mixed' }
   type HiddenBit = boolean | 'mixed' | null
   const scopes = ['owner', 'group', 'other'] as const
   type Scope = (typeof scopes)[number]
@@ -37,17 +39,7 @@
   $: phone = partition !== null && isMtpPartition(partition)
   $: unmounted = partition !== null && isUnmountedPartition(partition.path)
   $: drivePath = partition ? (isUnmountedUsb(partition.path) ? partition.path.slice('usb-volume://'.length) : partition.path) : ''
-  export let permissions:
-    | {
-        accessSupported: boolean
-        ownershipSupported: boolean
-        ownerName: string | null
-        groupName: string | null
-        owner: Access | null
-        group: Access | null
-        other: Access | null
-      }
-    | null = null
+  export let permissions: PermissionsState | null = null
   export let hidden: HiddenBit = null
   export let mutationsLocked = false
   export let onToggleAccess: (
@@ -183,7 +175,7 @@
         {#if count === 1 && entry}
           <div class="row"><span class="label">Name</span><span class="value">{entry.name}</span></div>
           {#if partition}
-            <div class="row"><span class="label">Type</span><span class="value">{phone ? 'Phone (MTP)' : 'Removable drive'}</span></div>
+            <div class="row"><span class="label">Type</span><span class="value">{phone ? 'Phone (MTP)' : partition.removable ? 'Removable drive' : 'Volume'}</span></div>
             <div class="row"><span class="label">Filesystem</span><span class="value">{partition.fs || 'Unknown'}</span></div>
             <div class="row"><span class="label">Status</span><span class="value">{unmounted ? 'Not mounted' : 'Mounted'}</span></div>
             <div class="row">
@@ -251,6 +243,9 @@
         </div>
         {/if}
       </div>
+      {#if partition && !phone}
+        <VolumeUsageSummary usage={volumeUsage} capacity={partition.sizeBytes} {unmounted} />
+      {/if}
     {:else if activeTab === 'extra'}
       {#if count !== 1}
         <div class="rows status-rows">
@@ -352,7 +347,7 @@
               <div class="row"><span class="label">Group</span><span class="value">{principalLabel(permissions.groupName)}</span></div>
               <div class="row">
                 <span class="label" aria-hidden="true"></span>
-                <span class="value ownership-hint">Changing user/group is not supported on this platform.</span>
+                <span class="value ownership-hint">{permissions.restriction ? 'Ownership is controlled by mount options.' : 'Changing user/group is not supported on this platform.'}</span>
               </div>
             {/if}
           </div>
@@ -388,7 +383,7 @@
                       checked={permissions[scope].read === true}
                       indeterminate={permissions[scope].read === 'mixed'}
                       ariaLabel={`${accessLabels[scope]} read permission`}
-                      disabled={mutationsLocked || permissionsApplying}
+                      disabled={mutationsLocked || permissionsApplying || !canEditAccess(permissions, scope, 'read')}
                       on:change={(e) =>
                         onToggleAccess(scope, 'read', (e.target as HTMLInputElement).checked)}
                     />
@@ -399,7 +394,7 @@
                       checked={permissions[scope].write === true}
                       indeterminate={permissions[scope].write === 'mixed'}
                       ariaLabel={`${accessLabels[scope]} write permission`}
-                      disabled={mutationsLocked || permissionsApplying}
+                      disabled={mutationsLocked || permissionsApplying || !canEditAccess(permissions, scope, 'write')}
                       on:change={(e) =>
                         onToggleAccess(scope, 'write', (e.target as HTMLInputElement).checked)}
                     />
@@ -410,7 +405,7 @@
                       checked={permissions[scope].exec === true}
                       indeterminate={permissions[scope].exec === 'mixed'}
                       ariaLabel={`${accessLabels[scope]} execute permission`}
-                      disabled={mutationsLocked || permissionsApplying}
+                      disabled={mutationsLocked || permissionsApplying || !canEditAccess(permissions, scope, 'exec')}
                       on:change={(e) =>
                         onToggleAccess(scope, 'exec', (e.target as HTMLInputElement).checked)}
                     />
@@ -418,6 +413,9 @@
                 {/if}
               {/each}
             </div>
+            {#if permissions.restriction}
+              <p class="permission-hint">{permissions.restriction === 'write_protection' ? 'Only write protection is supported; it applies to everyone.' : 'Permissions are controlled by mount options.'}</p>
+            {/if}
           </div>
         {:else}
           <div class="rows status-rows permissions-status">
@@ -434,7 +432,7 @@
       {/if}
     {/if}
 
-    {#if partition && !phone && !unmounted && (activeTab === 'ownership' || activeTab === 'permissions')}
+    {#if partition && !phone && !unmounted && !permissions?.restriction && (activeTab === 'ownership' || activeTab === 'permissions')}
       <p>Changes apply only to the drive’s root folder, not its contents.</p>
     {/if}
   </ModalShell>
@@ -583,7 +581,8 @@
     max-width: 100%;
   }
 
-  .ownership-hint {
+  .ownership-hint,
+  .permission-hint {
     color: var(--fg-muted);
     font-size: var(--properties-ownership-meta-font-size);
   }

@@ -13,6 +13,9 @@ controls separately:
   only change `type`, not the field's styling or dimensions.
 - `Slider` and `ComboBox`: use for ranges and custom option selectors.
 - `ModalShell`: use for shared modal layout, focus handling, and action slots.
+- `ProgressBar`: use for progress, or set `role="meter"` for measured values
+  such as disk usage. Supply a descriptive `label`/`valueText`; `fillColor` may
+  reference a theme token without changing the styling of other bars.
 
 Use the existing theme and density variables from `app.css`. Checkbox and radio
 indicators intentionally share size, foreground, border, disabled, and focus

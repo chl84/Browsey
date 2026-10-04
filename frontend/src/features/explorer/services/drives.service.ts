@@ -28,6 +28,16 @@ export type UsbFormatResult = {
 
 export const ejectDrive = (path: string) => invoke<void>('eject_drive', { path })
 
+export type VolumeUsage = {
+  totalBytes: number
+  usedBytes: number
+  freeBytes: number
+  reservedBytes: number
+}
+
+export const getVolumeUsage = (path: string) =>
+  invoke<VolumeUsage | null>('get_volume_usage', { path })
+
 export const isUnmountedUsb = (path: string) => path.startsWith('usb-volume://')
 export const isMtpUri = (path: string) => /^mtp:\/\//i.test(path)
 export const isMtpPartition = (part: Partition) =>
