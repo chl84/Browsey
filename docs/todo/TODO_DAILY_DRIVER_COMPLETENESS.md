@@ -72,6 +72,13 @@ Inspect current code and evidence before adding or replacing behavior.
   Removing unused local caching reduced the 100k listing median 840 → 537 ms;
   the network cache is bounded to 10k entries. Native WebKit file accessibility
   was corrected and verified. These measurements do not prove physical cold I/O.
+  The [2026-10-04 Ctrl-wheel follow-up](../audits/daily-driver/ctrl-wheel-zoom.md)
+  adds rapid-input/layout/thumbnail fixes and same-browser before/after zoom
+  measurements at 10k/100k entries. Its automated interaction/density subtests
+  are recorded under A2-1/A2-3 in the
+  [validation checklist](../operations/linux-release/daily-driver-validation-checklist.md#a2-interaction-and-feedback);
+  installed WebKit, real thumbnail I/O and the open performance rows below
+  are not signed off by those mock measurements.
 - [ ] Measure real cold/slow-storage opening and first displayed native
   thumbnails on representative local/USB/MTP/cloud inputs. Mock display and
   fresh profiles are not substitutes; device/provider approval is required.

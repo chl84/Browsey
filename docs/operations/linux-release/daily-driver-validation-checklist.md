@@ -30,6 +30,14 @@ optimized candidate, not yet installed. The
 closes the engineering review, not the remaining final-check races. A0-2, A0-3,
 A0-5, A0-7 and A0-8 remain partial; the top-level count is still 27 open rows.
 
+The [2026-10-04 Ctrl-wheel zoom follow-up](../../audits/daily-driver/ctrl-wheel-zoom.md)
+records the fixes subsequently committed as `4cc722e`, before/after mock-UI
+measurements and automated browser evidence. Five zoom-specific subtests under
+A2-1 and A2-3 are checked below for that scope only. Installed Browsey/WebKit,
+real thumbnail I/O and the remaining interaction/display cases were not
+validated by this work; both parent rows and all 27 open top-level rows remain
+open. Performance engineering evidence is linked separately below.
+
 These 29 rows were moved from the former completeness plan, not automatically
 marked passed. Existing automated evidence is in the
 [verified-work archive](../../todo-archive/TODO_DAILY_DRIVER_SAFETY_COMPLETED.md).
@@ -117,11 +125,40 @@ destructive testing.
 
 - [ ] **A2-1** Audit selection, keyboard navigation, context menus, search transitions,
   breadcrumbs, and focus after refresh or deletion in both list and grid views.
+
+  Automated zoom-only scope: PASS in the linked Ctrl-wheel report, not an
+  installed-build acceptance pass.
+
+  - [x] **A2-1-Z1** Preserve selection through rapid Ctrl-wheel bursts, all five
+    grid sizes and list/grid round trips in the browser fixture.
+  - [x] **A2-1-Z2** Preserve the visible-region anchor, including coalesced
+    grid-to-list switches, and keep visible cards when zooming out at the bottom.
+  - [x] **A2-1-Z3** Keep ordinary scrolling unchanged and block zoom behind
+    a modal, including queued work checked by unit regressions.
+
+  Remaining: repeat the affected zoom workflows in installed Browsey/WebKit;
+  complete the parent row's keyboard, menu, search, breadcrumb and post-operation
+  focus acceptance. These browser-only subtests do not close those cases.
+
 - [ ] **A2-2** Audit every modal for initial focus, Tab trapping, restoration, Enter/Esc,
   safe destructive defaults, validation, busy state, and double submission.
   Reuse ModalShell and existing controls; fix deviations rather than replacing them.
 - [ ] **A2-3** Test small windows, long filenames/messages, 100/150/200 percent display
   scaling, Cozy/Compact density, system/light/dark themes, and high contrast.
+
+  Automated zoom-only scope: PASS in the linked Ctrl-wheel report, not a full
+  density/scaling/theme matrix.
+
+  - [x] **A2-3-Z1** Retain the requested thumbnail size when switching between
+    Cozy/Compact, with the respective 8/6 px grid gaps in the browser fixture.
+  - [x] **A2-3-Z2** Consume browser-native Ctrl-wheel input without page zoom
+    or a device-pixel-ratio change in the tested browser profile.
+
+  Remaining: installed Browsey/WebKit zoom and density checks, small-window and
+  long-content acceptance, the 100/150/200 percent display-scaling matrix, and
+  system/light/dark/high-contrast coverage. A fixed browser device ratio is not
+  physical display-scaling validation.
+
 - [ ] **A2-4** Verify progress distinguishes byte counts, item counts, phases, and
   indeterminate work. Unknown size must not be presented as a synthetic byte total.
 - [ ] **A2-5** Check all operation outcomes give actionable feedback, including partial
@@ -160,6 +197,13 @@ work in the [active TODO](../../todo/TODO_DAILY_DRIVER_COMPLETENESS.md). Link th
 results from the candidate run; measurements are not a claim that features are
 missing. Support expansion, localization, tabs, split view and cloud parity are
 optional decisions there, not automatically required acceptance cases.
+
+The [Ctrl-wheel zoom report](../../audits/daily-driver/ctrl-wheel-zoom.md) extends
+the active TODO's completed mock-UI workload/measurement evidence: rapid input,
+anchored layout and thumbnail-resolution scheduling were corrected and measured
+at 10k/100k entries. Real cold/slow-storage and first displayed native thumbnails,
+agreed performance budgets and comparison with Nautilus remain unverified; no
+additional performance acceptance or top-level row is marked complete.
 
 ## Findings and Signoff
 

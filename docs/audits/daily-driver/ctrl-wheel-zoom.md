@@ -4,6 +4,14 @@ Date: 2026-10-04. Baseline: `7947998`; candidate: the working-tree zoom changes
 from this increment. This is development verification, not an installed release
 or a direct comparison with Nautilus.
 
+The tested working-tree changes were subsequently committed as `4cc722e`.
+Five browser-only zoom subtests are recorded under A2-1/A2-3 in the
+[daily-driver validation checklist](../../operations/linux-release/daily-driver-validation-checklist.md#a2-interaction-and-feedback),
+with the parent rows still open. Performance measurements extend the completed
+mock-UI evidence in the
+[active TODO](../../todo/TODO_DAILY_DRIVER_COMPLETENESS.md#priority-1-reproducible-performance-work),
+not its outstanding cold/native-I/O or budget acceptance.
+
 ## Changes
 
 - Remove the 80 ms wheel-step gate. Keep the existing trackpad threshold, delta
