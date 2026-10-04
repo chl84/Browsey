@@ -151,6 +151,8 @@ test('processor uses workspace-write without inherited bypass, integrations or n
   assert.ok(args.includes('sandbox_workspace_write.network_access=false'))
   assert.ok(args.includes('--output-schema'))
   assert.ok(args.includes('features.plugins=false'))
+  assert.ok(args.includes('model_reasoning_effort="high"'))
+  assert.ok(!args.includes('model_reasoning_effort="medium"'))
   assert.ok(!args.some(arg => /bypass|danger-full-access|--add-dir|--worktree/.test(arg)))
 })
 

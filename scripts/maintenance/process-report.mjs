@@ -49,7 +49,7 @@ export function processorArgs(config, output) {
     '-c', 'web_search="disabled"', '-c', 'features.multi_agent=false',
     '-c', 'features.multi_agent_v2=false', '-c', 'features.apps=false',
     '-c', 'features.plugins=false', '-c', 'features.remote_plugin=false',
-    '-c', 'features.skill_mcp_dependency_install=false', '-c', 'model_reasoning_effort="medium"',
+    '-c', 'features.skill_mcp_dependency_install=false', '-c', 'model_reasoning_effort="high"',
     '--color', 'never', '--json', '--output-schema', schema, '--output-last-message', output, '-',
   ]
 }

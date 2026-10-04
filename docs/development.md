@@ -167,8 +167,10 @@ with failed-command evidence and a successful rerun of the same command;
 unresolved failures cannot certify an implemented fix.
 Results are retained in the private handling log. The action uses workspace-write
 with network disabled, no inherited user config/rules/integrations and a bounded
-runtime. It never commits, pushes, installs or publishes. Review and commit its
-diff separately; record that commit in the handling entry if desired.
+runtime. Both the weekly reviewer and manual processor explicitly request
+`model_reasoning_effort="high"`; neither pins a model. The action never commits,
+pushes, installs or publishes. Review and commit its diff separately; record
+that commit in the handling entry if desired.
 
 For an unhandled report, use the original clean `main` checkout, installed Codex
 CLI/ChatGPT login and existing test dependencies. Do not edit the checkout while
