@@ -61,12 +61,39 @@ cloud/mixed rejection, ordinary drag, and returning native self-drops. Those
 tests alone cannot detect WebKit sanitization or GTK teardown crashes.
 
 Frontend regressions also omit source `dragend` deliberately: feedback must hide
-on window exit, normal pointer input must clear abandoned state, and a different
-incoming native offer after exit must remain copy-only. Returning self-drops keep
-their source/action, while accepted asynchronous transfers hide feedback without
-being cancelled or repeated. These mocked checks do not establish native WebKit
+on window exit, fresh pointer presses/releases must clear abandoned state, and a
+different incoming native offer after exit must remain copy-only. Returning
+self-drops keep their source/action, while accepted asynchronous transfers hide
+feedback without being cancelled or repeated. These mocked checks do not establish native WebKit
 acceptance for the missing-`dragend` sequence; verify it in the installed app by
 dragging outside, cancelling or dropping, then returning and trying another drop.
+
+Zero-button mouse/pointer motion must not end an internal drag or convert its next
+native hover into an external offer. Targeted frontend regressions verify that
+subsequent DOM `dragover` coordinates still position the label and that a native
+self-drop retains the explicit start action. These checks do not establish the
+actual native event cadence or smooth tracking in the installed WebKit build.
+
+Row/card `dragleave` with a null `relatedTarget` must not unmount the feedback
+label. Native leave/blur still hides it on webview exit, and root DOM leave is
+handled separately. Listing consumers subscribe to scalar target/count/active
+values: moving over rejected files must not republish these values, resolve a
+destination, or rebuild Explorer prop bags. Unit tests cover these invariants;
+a large mocked list/grid checks that the same label node survives row changes.
+Repeated movement over the same valid background destination must also retain
+its target and highlight without republishing listing inputs. This applies to
+DOM hovers, returning internal native offers, and external native offers. Drop
+guards still run for every hover: opening a dialog immediately removes acceptance.
+Tests cover stable target/action notifications, DOM attributes and resolver calls.
+The disposable browser comparison measured about 11 ms per rejected-file hover
+before this isolation and 0.6 ms after, with 200 and 100,000 entries; these are
+development JavaScript-update measurements, not installed WebKit timings or
+proof that the reported native lag is resolved.
+An additional comparison with 10,000 mocked files measured about 10–16 ms per
+same-background hover before retaining the target, versus 0.2–0.3 ms after. The
+first change into a new destination still updates the listing; further motion
+over that destination does not. These are synthetic dispatch/update timings in
+the development Chromium preview, not native input-to-paint measurements.
 
 In a real Linux graphical session with X11/XWayland available, run the explicit
 native regression separately:

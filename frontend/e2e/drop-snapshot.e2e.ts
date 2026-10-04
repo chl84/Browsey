@@ -108,7 +108,7 @@ test('a missed source dragend hides the invalid-drop label and does not block th
   await transfer.dispose()
 })
 
-test('ordinary mouse input removes an abandoned invalid-drop label without dragend', async ({ page }) => {
+test('a fresh mouse press removes an abandoned invalid-drop label without dragend', async ({ page }) => {
   const transfer = await page.evaluateHandle(() => new DataTransfer())
   await row(page, 'notes').dispatchEvent('dragstart', { dataTransfer: transfer })
   await page.evaluate(() => {
@@ -116,12 +116,104 @@ test('ordinary mouse input removes an abandoned invalid-drop label without drage
   })
   await expect(page.getByText('Cannot drop here', { exact: true })).toBeVisible()
   await page.evaluate(() => {
-    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 0 }))
+    document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, buttons: 1 }))
   })
   await expect(page.getByText('Cannot drop here', { exact: true })).toHaveCount(0)
   await nativeDrop(page, ['/mock/Documents/report.txt'])
   await expect(row(page, 'report')).toBeVisible()
   await transfer.dispose()
+})
+
+test('zero-button motion retains DOM label tracking and the explicit native self-drop action', async ({ page }) => {
+  const notes = row(page, 'notes')
+  const transfer = await page.evaluateHandle(() => new DataTransfer())
+  await notes.dispatchEvent('dragstart', { dataTransfer: transfer, shiftKey: true })
+  const folder = await row(page, 'Documents').boundingBox()
+  const header = await page.locator('.header-row').boundingBox()
+  if (!folder || !header) throw new Error('Missing drag destinations')
+  const point = { x: Math.round(header.x + 200), y: Math.round(header.y + 5) }
+  await page.evaluate(({ folder, point }) => {
+    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 0 }))
+    document.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, buttons: 0 }))
+    window.dispatchEvent(new CustomEvent('browsey-e2e-native-drop', {
+      detail: { type: 'enter', paths: ['/mock/notes.txt'], position: {
+        x: (folder.x + folder.width / 2) * devicePixelRatio,
+        y: (folder.y + folder.height / 2) * devicePixelRatio,
+      } },
+    }))
+    document.dispatchEvent(new DragEvent('dragover', {
+      bubbles: true, cancelable: true, clientX: point.x, clientY: point.y,
+    }))
+  }, { folder, point })
+  await expect(page.getByText('Cannot drop here', { exact: true })).toBeVisible()
+  await expect.poll(() => page.locator('.ghost').evaluate(el => ({
+    x: Number.parseFloat((el as HTMLElement).style.left),
+    y: Number.parseFloat((el as HTMLElement).style.top),
+  }))).toEqual({ x: point.x + 12, y: point.y + 12 })
+  await nativeDrop(page, ['/mock/notes.txt'], row(page, 'Documents'))
+  await expect.poll(() => page.evaluate(() => (window as unknown as {
+    __BROWSEY_E2E__: { calls: Array<{ cmd: string; args: unknown }> }
+  }).__BROWSEY_E2E__.calls.filter(call => call.cmd === 'paste_clipboard_cmd'))).toMatchObject([
+    { args: { dest: '/mock/Documents', input: { paths: ['/mock/notes.txt'], mode: 'cut' } } },
+  ])
+  await expect(page.getByText('Cannot drop here', { exact: true })).toHaveCount(0)
+  await transfer.dispose()
+})
+
+test('moving between files keeps the same drag-label node in a large list and grid', async ({ page }) => {
+  await page.evaluate(() => {
+    const control = (window as unknown as { __BROWSEY_E2E__: {
+      thumbnailFixture: boolean; performanceFixture: { entries: number }; calls: unknown[]
+    } }).__BROWSEY_E2E__
+    control.thumbnailFixture = true
+    control.performanceFixture = { entries: 2000 }
+  })
+  await page.getByRole('group', { name: 'File list' }).focus()
+  await page.keyboard.press('F5')
+  await expect(page.getByRole('button', { name: /photo-000/ })).toBeVisible()
+  for (const mode of ['list', 'grid'] as const) {
+    const result = await page.evaluate(async mode => {
+      const viewport = document.querySelector(mode === 'list' ? '.rows' : '.grid')!
+      const files = [...viewport.querySelectorAll<HTMLElement>(mode === 'list' ? '.row' : '.card')]
+        .filter(node => node.getAttribute('data-drop-path') === '').slice(0, 8)
+      if (files.length < 8) throw new Error('Large fixture did not render enough files')
+      const transfer = new DataTransfer()
+      files[0].dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: transfer }))
+      const over = async (node: HTMLElement) => {
+        const rect = node.getBoundingClientRect()
+        node.dispatchEvent(new DragEvent('dragover', {
+          bubbles: true, cancelable: true, dataTransfer: transfer,
+          clientX: Math.round(rect.x + rect.width / 2), clientY: Math.round(rect.y + rect.height / 2),
+        }))
+        await Promise.resolve()
+        await Promise.resolve()
+      }
+      await over(files[0])
+      const label = document.querySelector('.ghost')
+      if (!label) throw new Error('Drag feedback is missing')
+      let kept = true
+      for (let i = 1; i < files.length; i++) {
+        files[i - 1].dispatchEvent(new DragEvent('dragleave', { bubbles: true, relatedTarget: null }))
+        await Promise.resolve()
+        await Promise.resolve()
+        kept &&= label.isConnected
+        await over(files[i])
+        kept &&= label === document.querySelector('.ghost')
+      }
+      const text = label.textContent
+      const virtualized = viewport.querySelectorAll('.row,.card').length < 500
+      document.dispatchEvent(new DragEvent('dragend', { bubbles: true }))
+      return { kept, text, virtualized }
+    }, mode)
+    expect(result).toMatchObject({ kept: true, virtualized: true })
+    expect(result.text).toContain('Cannot drop here')
+    if (mode === 'list') {
+      await page.locator('.rows').evaluate(el => {
+        el.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true, deltaY: -120 }))
+      })
+      await expect(page.getByRole('group', { name: 'File grid' })).toBeVisible()
+    }
+  }
 })
 
 test('recipient leaves Loading after a drop refresh and accepts another drop despite watcher notifications', async ({ page }) => {

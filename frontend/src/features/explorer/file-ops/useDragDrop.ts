@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { onDestroy } from 'svelte'
 import { fileDragPayload, fileDragStartMode, hasNativeFileDragBridge } from './fileDragPayload'
 
@@ -88,6 +88,7 @@ export const useDragDrop = (options: DragDropOptions = {}) => {
   }
 
   const setTarget = (target: string | null) => {
+    if (get(state).target === target) return
     state.update((s) => ({ ...s, target }))
   }
 

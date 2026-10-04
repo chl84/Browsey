@@ -360,7 +360,7 @@ describe('drop policy and destination safety', () => {
     expect(deps.handlePasteOrMove).not.toHaveBeenCalled()
   })
 
-  it.each(['mousemove', 'mouseup', 'pointermove', 'pointerup', 'mousedown', 'pointerdown'])(
+  it.each(['mouseup', 'pointerup', 'mousedown', 'pointerdown'])(
     'clears a missed dragend on ordinary %s input', async type => {
       const { hook, deps } = setup()
       await hook.startNativeDrop()
@@ -373,6 +373,30 @@ describe('drop policy and destination safety', () => {
       expect(deps.handlePasteOrMove).toHaveBeenCalledExactlyOnceWith('/tmp/dest', { paths: ['/other/file'], mode: 'copy' })
     },
   )
+
+  it.each([
+    ['mousemove', { shiftKey: true }, 'cut'],
+    ['pointermove', { shiftKey: true }, 'cut'],
+    ['mousemove', { ctrlKey: true }, 'copy'],
+    ['pointermove', { ctrlKey: true }, 'copy'],
+  ] as const)('preserves internal drag after zero-button %s motion (%j)', async (type, keys, mode) => {
+    const { hook, deps } = setup()
+    await hook.startNativeDrop()
+    target('/tmp/dest')
+    hook.handleRowDragStart(source, createDragEvent(keys))
+    document.dispatchEvent(new MouseEvent(type, { bubbles: true, buttons: 0 }))
+    expect(get(hook.dragState).dragging).toBe(true)
+    window.dispatchEvent(new Event('blur'))
+    document.dispatchEvent(new MouseEvent(type, { bubbles: true, buttons: 0 }))
+    expect(get(hook.dragState).dragging).toBe(true)
+    expect(get(hook.dragGhostVisible)).toBe(false)
+    onNativeHover(['/tmp/source.txt'], point)
+    document.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 80, clientY: 90 }))
+    expect(get(hook.dragState).position).toEqual({ x: 80, y: 90 })
+    expect(get(hook.dragGhostVisible)).toBe(true)
+    await onNativeDrop(['/tmp/source.txt'], point)
+    expect(deps.handlePasteOrMove).toHaveBeenCalledExactlyOnceWith('/tmp/dest', { paths: ['/tmp/source.txt'], mode })
+  })
 
   it.each(['hover', 'drop'])('accepts an unrelated native %s after the source leaves without dragend', async event => {
     const { hook, deps } = setup()
@@ -419,6 +443,87 @@ describe('drop policy and destination safety', () => {
     document.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: point.x, clientY: point.y }))
     expect(get(hook.dragGhostVisible)).toBe(true)
   })
+
+  it('keeps the label alive on child dragleave with no relatedTarget', async () => {
+    const { hook, deps } = setup()
+    await hook.startNativeDrop()
+    const file = target('')
+    hook.handleRowDragStart(source, createDragEvent({ shiftKey: true }))
+    file.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 20, clientY: 30 }))
+    const visibility = vi.fn()
+    const stop = hook.dragGhostVisible.subscribe(visibility)
+    try {
+      visibility.mockClear()
+      file.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, relatedTarget: null }))
+      file.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: 80, clientY: 90 }))
+      expect(visibility).not.toHaveBeenCalled()
+      expect(get(hook.dragState).position).toEqual({ x: 80, y: 90 })
+      expect(get(hook.dragGhostVisible)).toBe(true)
+      target('/tmp/dest')
+      await onNativeDrop(['/tmp/source.txt'], point)
+      expect(deps.handlePasteOrMove).toHaveBeenCalledExactlyOnceWith('/tmp/dest', { paths: ['/tmp/source.txt'], mode: 'cut' })
+    } finally { stop() }
+  })
+
+  it('does not publish listing inputs or resolve a destination while moving over rejected files', async () => {
+    const { hook } = setup()
+    await hook.startNativeDrop()
+    const file = target('')
+    hook.handleRowDragStart(source, createDragEvent())
+    const notifications = [vi.fn(), vi.fn(), vi.fn()]
+    const stops = [hook.dragTargetPath, hook.dragPathsLength, hook.dragging].map((store, i) => store.subscribe(notifications[i]))
+    try {
+      notifications.forEach(spy => spy.mockClear())
+      for (let i = 0; i < 100; i++) {
+        file.dispatchEvent(new MouseEvent('dragover', { bubbles: true, cancelable: true, clientX: i, clientY: 30 }))
+        file.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, relatedTarget: null }))
+      }
+      notifications.forEach(spy => expect(spy).not.toHaveBeenCalled())
+      expect(resolveDropClipboardModeMock).not.toHaveBeenCalled()
+      expect(get(hook.dragState).position).toEqual({ x: 99, y: 30 })
+    } finally { stops.forEach(stop => stop()) }
+  })
+
+  it.each(['internal-document', 'internal-native', 'external-native'] as const)(
+    'retains a valid background target without republishing listing inputs (%s)', async origin => {
+      let blocked = false
+      const { hook } = setup({ isBlocked: () => blocked })
+      await hook.startNativeDrop()
+      const background = target()
+      const paths = origin === 'external-native' ? ['/other/source.txt'] : ['/tmp/source.txt']
+      if (origin !== 'external-native') hook.handleRowDragStart(source, createDragEvent())
+      const over = (x: number) => {
+        if (origin === 'internal-document') background.dispatchEvent(new MouseEvent('dragover', {
+          bubbles: true, cancelable: true, clientX: x, clientY: 30,
+        }))
+        else onNativeHover(paths, { x, y: 30 })
+      }
+      over(20)
+      await vi.advanceTimersByTimeAsync(0)
+      const notifications = [vi.fn(), vi.fn(), vi.fn(), vi.fn()]
+      const stops = [hook.dragTargetPath, hook.dragPathsLength, hook.dragging, hook.dragAction]
+        .map((store, i) => store.subscribe(notifications[i]))
+      const setAttribute = vi.spyOn(background, 'setAttribute')
+      const removeAttribute = vi.spyOn(background, 'removeAttribute')
+      try {
+        notifications.forEach(spy => spy.mockClear())
+        for (let i = 0; i < 100; i++) over(i)
+        await vi.advanceTimersByTimeAsync(0)
+        notifications.forEach(spy => expect(spy).not.toHaveBeenCalled())
+        expect(setAttribute).not.toHaveBeenCalled()
+        expect(removeAttribute).not.toHaveBeenCalled()
+        expect(get(hook.dragState).target).toBe('/tmp')
+        expect(get(hook.dragState).position).toEqual({ x: 99, y: 30 })
+        expect(resolveDropClipboardModeMock).toHaveBeenCalledTimes(origin === 'external-native' ? 0 : 1)
+        // Retaining feedback does not cache permission to drop when a dialog opens.
+        blocked = true
+        over(100)
+        expect(get(hook.dragState).target).toBeNull()
+        expect(get(hook.dragAction)).toBeNull()
+        expect(background.hasAttribute('data-drop-active')).toBe(false)
+      } finally { stops.forEach(stop => stop()) }
+    },
+  )
 
   it.each(['internal', 'external'])('hides the %s preview throughout an accepted asynchronous transfer', async origin => {
     let finish!: (result: boolean) => void

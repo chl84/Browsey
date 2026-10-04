@@ -2,11 +2,23 @@
 
 ## Unreleased
 
+- Keep the drag label mounted when moving between file rows/cards with a null
+  `relatedTarget`; these are not webview exits. Publish listing drag inputs only
+  when target, source count or dragging state changes, not for pointer position
+  updates, and skip redundant target notifications. Retain an unchanged valid
+  target/highlight on background movement and repeated native hovers instead of
+  clearing/reapplying it. Repeated hovers no longer rebuild Explorer prop bags
+  or refresh thumbnail bindings; drop safety is still checked on each hover.
+
+- Keep internal drags active on zero-button pointer motion, preserving DOM label
+  position updates and explicit copy/move actions. Recover abandoned state on
+  fresh pointer presses/releases, not ordinary movement.
+
 - Hide drag feedback when leaving the window or delivering a drop, independently
   of the retained source selection. Recover from a missing DOM `dragend` on normal
-  pointer input or a different incoming native offer after leaving. Keep returning
-  self-drops and their explicit copy/move action intact, and do not interrupt or
-  duplicate an accepted transfer while it finishes.
+  pointer presses/releases or a different incoming native offer after leaving.
+  Keep returning self-drops and their explicit copy/move action intact, and do
+  not interrupt or duplicate an accepted transfer while it finishes.
 
 - Notify the desktop after a verified user-local installation, preferring
   Omarchy's notification command. Keep notifications optional and time-bounded;

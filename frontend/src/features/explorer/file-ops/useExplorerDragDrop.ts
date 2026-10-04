@@ -1,5 +1,5 @@
 import { onDestroy } from 'svelte'
-import { get, writable } from 'svelte/store'
+import { derived, get, writable } from 'svelte/store'
 import { getErrorMessage } from '@/shared/lib/error'
 import { useDragDrop } from './useDragDrop'
 import { createNativeFileDrop, type DropPosition } from './createNativeFileDrop'
@@ -32,6 +32,10 @@ const noModifiers: Modifiers = { ctrlKey: false, metaKey: false, shiftKey: false
 export const useExplorerDragDrop = (deps: Deps) => {
   const dragDrop = useDragDrop()
   const dragState = dragDrop.state
+  // Position changes must not republish ExplorerShell's complete prop bags.
+  const dragTargetPath = derived(dragState, state => state.target)
+  const dragPathsLength = derived(dragState, state => state.paths.length)
+  const dragging = derived(dragState, state => state.dragging)
   const dragAction = writable<DragAction>(null)
   const dragGhostVisible = writable(false)
   let dragPaths: string[] = []
@@ -164,12 +168,19 @@ export const useExplorerDragDrop = (deps: Deps) => {
     dragDrop.setPosition(point.x, point.y)
     const target = blocked() ? null : targetAt(point)
     const allowed = target && canDrop(dragPaths, target.path) ? target : null
-    clearTarget()
     if (allowed) {
-      highlighted = allowed.element
-      highlighted.setAttribute('data-drop-active', 'true')
+      // Recheck every hover, but do not clear/reapply the same destination and
+      // highlight: that republishes listing props for pure pointer movement.
+      if (highlighted !== allowed.element) {
+        highlighted?.removeAttribute('data-drop-active')
+        highlighted = allowed.element
+        highlighted.setAttribute('data-drop-active', 'true')
+      }
       preview(allowed.path, event)
-    } else if (event?.dataTransfer) event.dataTransfer.dropEffect = 'none'
+    } else {
+      clearTarget()
+      if (event?.dataTransfer) event.dataTransfer.dropEffect = 'none'
+    }
     if (blocked()) navigation.stop()
     else navigation.update(point, !hoverOpenedAt && allowed && allowed.path !== deps.currentPath() ? allowed : null)
   }
@@ -210,9 +221,11 @@ export const useExplorerDragDrop = (deps: Deps) => {
         // Recover even when WebKit omitted the previous source's DOM dragend.
         handleRowDragEnd()
       }
-      external = true
-      dragPaths = [...paths]
-      dragState.set({ dragging: paths.length > 0, paths: [...paths], target: null, position: point })
+      if (!external || paths.length !== dragPaths.length || paths.some((path, i) => path !== dragPaths[i])) {
+        external = true
+        dragPaths = [...paths]
+        dragState.set({ dragging: paths.length > 0, paths: [...paths], target: null, position: point })
+      }
       updateAt(point)
     },
     onLeave: () => {
@@ -275,6 +288,14 @@ export const useExplorerDragDrop = (deps: Deps) => {
   }
   const handleDocumentLeave = (event: DragEvent) => {
     if (event.relatedTarget !== null) return
+    if (event.target !== document && event.target !== document.documentElement) {
+      // A row/child leave is not proof of leaving the webview. Keep the label's
+      // DOM node alive between files; native leave/blur handles window exits.
+      navigation.stop()
+      clearTarget()
+      lastPoint = null
+      return
+    }
     hidePreview()
   }
   const handleBlur = () => {
@@ -301,13 +322,15 @@ export const useExplorerDragDrop = (deps: Deps) => {
     if (lastPoint) updateAt(lastPoint)
   }
   const endUnlessTransferring = () => { if (!transferring) handleRowDragEnd() }
-  // Ordinary pointer input resumes after native DND, even if DOM dragend was
-  // lost. Do not mistake held-button motion or an accepted paste for completion.
+  // A fresh press/release can clear abandoned state when DOM dragend was lost.
+  // Movement alone (even with buttons === 0) does not prove native DND ended:
+  // clearing its source makes the next native hover external and ignores DOM
+  // dragover positions, also losing the explicit copy/move action.
   const handlePointerInput = (event: MouseEvent) => {
     if (!dragPaths.length || transferring) return
     if (event.type.endsWith('down') || event.buttons === 0) handleRowDragEnd()
   }
-  const pointerEvents = ['pointerdown', 'pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup'] as const
+  const pointerEvents = ['pointerdown', 'pointerup', 'mousedown', 'mouseup'] as const
   const startNativeDrop = async () => {
     if (!listening) {
       listening = true
@@ -365,7 +388,8 @@ export const useExplorerDragDrop = (deps: Deps) => {
     else clearTarget()
   }
   return {
-    dragState, dragAction, dragGhostVisible, startNativeDrop, stopNativeDrop,
+    dragState, dragAction, dragGhostVisible, dragTargetPath, dragPathsLength, dragging,
+    startNativeDrop, stopNativeDrop,
     handleRowDragStart, handleRowDragEnd: endUnlessTransferring,
     handleRowDragOver, handleRowDragEnter: handleRowDragOver,
     handleRowDrop: (entry: Entry, event: DragEvent) => entry.kind === 'dir'
