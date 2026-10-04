@@ -1,5 +1,5 @@
 import type { ContextAction } from '@/features/explorer'
-import { classifyNetworkUri } from './services'
+import { classifyNetworkUri, listSavedNetworkConnections, resolveMountedPathForUri } from './services'
 
 export const buildNetworkEntryContextActions = (
   path: string,
@@ -40,6 +40,14 @@ const buildNetworkEntryContextActionsInternal = async (
       id: 'copy-network-address',
       label: selectionCount > 1 ? 'Copy Server Addresses' : 'Copy Server Address',
     })
+    if (isMountable && selectionCount === 1) {
+      const saved = await listSavedNetworkConnections().catch(() => [])
+      if (saved.some((connection) => connection.uri === path)) {
+        const mountedPath = await resolveMountedPathForUri(path).catch(() => null)
+        if (mountedPath) actions.push({ id: 'disconnect-network', label: 'Disconnect' })
+        actions.push({ id: 'forget-network-connection', label: 'Forget Connection' })
+      }
+    }
     return actions
   }
 

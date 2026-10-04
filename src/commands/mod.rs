@@ -66,6 +66,7 @@ pub use network::mounts::{
     eject_drive, format_removable_partition, get_removable_usb_format_info, list_mounts,
     mount_partition, mount_usb_volume,
 };
+pub use network::saved::{forget_network_connection, list_saved_network_connections};
 pub use network::uri::{classify_network_uri, resolve_mounted_path_for_uri};
 pub use network::volume_usage::get_volume_usage;
 pub use open_with::{list_open_with_apps, open_with, set_default_app};

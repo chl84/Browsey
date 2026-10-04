@@ -60,6 +60,9 @@ type E2eMockControl = {
   formatError?: { code: string; message: string }
   mtpHold?: boolean
   mtpError?: string
+  networkConnections?: Array<{ uri: string; label: string }>
+  networkMountedPaths?: Record<string, string>
+  networkConnectError?: string
   calls?: Array<{ cmd: string; args?: Record<string, unknown> }>
   partitions?: Array<{ label: string; path: string; fs?: string; removable?: boolean; sizeBytes?: number | null }>
   volumeUsage?: { totalBytes: number; usedBytes: number; freeBytes: number; reservedBytes: number } | null
@@ -491,6 +494,20 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     }
     case 'connect_network_uri': {
       const control = e2eControl()
+      if (typeof args?.uri === 'string' && !args.uri.startsWith('mtp://')) {
+        if (control?.networkConnectError) throw { code: 'mount_failed', message: control.networkConnectError }
+        const uri = args.uri
+        const mountedPath = control?.networkMountedPaths?.[uri] ?? '/mock/Network'
+        if (control) {
+          control.networkMountedPaths ??= {}
+          control.networkMountedPaths[uri] = mountedPath
+          control.networkConnections ??= []
+          if (!control.networkConnections.some(connection => connection.uri === uri)) {
+            control.networkConnections.push({ uri, label: `SFTP (${new URL(uri).host})` })
+          }
+        }
+        return { kind: 'mountable', normalizedUri: uri, mountedPath } as T
+      }
       while (control?.mtpHold) await new Promise((resolve) => setTimeout(resolve, 50))
       if (control?.mtpError) throw { code: 'mount_failed', message: control.mtpError }
       if (!control?.partitions?.some((part) => part.path === args?.uri)) {
@@ -500,6 +517,26 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       control.partitions = control.partitions.map((part) => part.path === args?.uri ? { ...part, path: mountedPath } : part)
       emitMockEvent('volumes-changed', null)
       return { kind: 'mountable', normalizedUri: args?.uri, mountedPath } as T
+    }
+    case 'list_saved_network_connections':
+      return (control?.networkConnections ?? []) as T
+    case 'forget_network_connection':
+      if (control) control.networkConnections = control.networkConnections?.filter(connection => connection.uri !== args?.uri)
+      return undefined as T
+    case 'list_network_entries':
+      return (control?.networkConnections ?? []).map(connection => ({
+        name: connection.label, path: connection.uri, kind: 'dir', iconId: 10, network: true,
+      })) as T
+    case 'resolve_mounted_path_for_uri':
+      return (control?.networkMountedPaths?.[String(args?.uri)] ?? null) as T
+    case 'classify_network_uri': {
+      const address = String(args?.uri ?? '').trim()
+      const rawScheme = address.split('://')[0].toLowerCase()
+      if (!address.includes('://')) return { kind: 'not_uri', scheme: null, normalizedUri: null } as T
+      const scheme = rawScheme === 'ssh' ? 'sftp' : rawScheme
+      const kind = ['sftp', 'smb', 'nfs', 'ftp', 'dav', 'davs', 'afp', 'mtp'].includes(scheme) ? 'mountable'
+        : ['http', 'https'].includes(scheme) ? 'external' : 'unsupported'
+      return { kind, scheme, normalizedUri: address.replace(`${rawScheme}://`, `${scheme}://`) } as T
     }
     case 'compress_entries':
       return `/mock/${args?.name}` as T

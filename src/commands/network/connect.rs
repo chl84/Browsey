@@ -4,7 +4,7 @@ use crate::errors::api_error::ApiResult;
 use serde::Serialize;
 
 #[cfg(target_os = "windows")]
-use super::error::NetworkErrorCode;
+use super::error::{NetworkError, NetworkErrorCode};
 #[cfg(not(target_os = "windows"))]
 use super::mounts;
 use super::{
@@ -19,6 +19,8 @@ pub struct ConnectNetworkUriResult {
     pub kind: NetworkUriKind,
     pub normalized_uri: Option<String>,
     pub mounted_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -47,6 +49,7 @@ async fn connect_network_uri_impl(
             kind,
             normalized_uri: classified.normalized_uri,
             mounted_path: None,
+            warning: None,
         }),
         NetworkUriKind::External => {
             let target = normalized_uri.unwrap_or_default();
@@ -55,6 +58,7 @@ async fn connect_network_uri_impl(
                 kind,
                 normalized_uri: classified.normalized_uri,
                 mounted_path: None,
+                warning: None,
             })
         }
         NetworkUriKind::Mountable => {
@@ -66,16 +70,31 @@ async fn connect_network_uri_impl(
                     kind,
                     normalized_uri: classified.normalized_uri,
                     mounted_path: Some(mounted_path),
+                    warning: None,
                 });
             }
-            mounts::mount_partition_impl(target.clone(), app).await?;
-            let mounts = mounts::list_mounts_sync()?;
-            let mounted_path = uri::resolve_mounted_path_for_uri_in_mounts(&target, &mounts);
-            Ok(ConnectNetworkUriResult {
-                kind,
-                normalized_uri: classified.normalized_uri,
-                mounted_path,
-            })
+            #[cfg(target_os = "linux")]
+            {
+                let mounted = mounts::mount_network_uri_impl(target, app).await?;
+                Ok(ConnectNetworkUriResult {
+                    kind,
+                    normalized_uri: Some(mounted.uri),
+                    mounted_path: Some(mounted.path),
+                    warning: mounted.warning,
+                })
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                mounts::mount_partition_impl(target.clone(), app).await?;
+                let mounts = mounts::list_mounts_sync()?;
+                let mounted_path = uri::resolve_mounted_path_for_uri_in_mounts(&target, &mounts);
+                Ok(ConnectNetworkUriResult {
+                    kind,
+                    normalized_uri: classified.normalized_uri,
+                    mounted_path,
+                    warning: None,
+                })
+            }
         }
     }
 }
@@ -100,6 +119,7 @@ async fn connect_network_uri_impl(uri: String) -> NetworkResult<ConnectNetworkUr
             kind,
             normalized_uri: classified.normalized_uri,
             mounted_path: None,
+            warning: None,
         }),
         NetworkUriKind::External => {
             let target = normalized_uri.unwrap_or_default();
@@ -108,6 +128,7 @@ async fn connect_network_uri_impl(uri: String) -> NetworkResult<ConnectNetworkUr
                 kind,
                 normalized_uri: classified.normalized_uri,
                 mounted_path: None,
+                warning: None,
             })
         }
         NetworkUriKind::Mountable => Err(NetworkError::new(

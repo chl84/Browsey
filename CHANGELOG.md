@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Use GTK/GVFS authentication dialogs for Linux network mounts, including SFTP
+  username/password, optional system-keyring storage and host-key questions.
+  Bound and cancel pending connections, report the real backend error, and open
+  the exact server/account/folder rather than an unrelated protocol mount.
+  Remember successful server addresses (never passwords) in Network across
+  restarts, deduplicate mounted/discovered entries, and add Forget Connection
+  without disconnecting the server or deleting keyring credentials.
+
 - Show partition names one word per line, truncating overlong words with an
   ellipsis instead of breaking them across lines. Keep full labels available to
   assistive technology and in the existing tooltip.

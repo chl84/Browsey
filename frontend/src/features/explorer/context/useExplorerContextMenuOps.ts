@@ -4,6 +4,7 @@ import {
   copyTextToSystemClipboard,
   isMountUri,
   networkBlankContextActions,
+  forgetNetworkConnection,
 } from '@/features/network'
 import { shortcutFor, type ShortcutBinding, type ShortcutCommandId } from '@/features/shortcuts'
 import { ensureSelectionBeforeMenu } from '../helpers/contextMenuHelpers'
@@ -304,6 +305,19 @@ export const useExplorerContextMenuOps = (deps: Deps) => {
         deps.showToast('Disconnected')
       } catch (err) {
         deps.showToast(`Disconnect failed: ${getErrorMessage(err)}`)
+      }
+      return
+    }
+
+    if (entry && id === 'forget-network-connection') {
+      try {
+        await forgetNetworkConnection(entry.path)
+        if (deps.currentView() === 'network') {
+          await deps.loadNetwork(false, { resetScroll: false })
+        }
+        deps.showToast('Saved connection forgotten; mounted servers remain connected')
+      } catch (err) {
+        deps.showToast(`Could not forget connection: ${getErrorMessage(err)}`)
       }
       return
     }

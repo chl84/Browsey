@@ -13,7 +13,16 @@ export type ConnectNetworkUriResult = {
   kind: NetworkUriKind
   normalizedUri: string | null
   mountedPath: string | null
+  warning?: string | null
 }
+
+export type SavedNetworkConnection = { uri: string; label: string }
+
+export const listSavedNetworkConnections = () =>
+  invoke<SavedNetworkConnection[]>('list_saved_network_connections')
+
+export const forgetNetworkConnection = (uri: string) =>
+  invoke<void>('forget_network_connection', { uri })
 
 export const listNetworkDevices = () =>
   invoke<Partition[]>('list_network_devices')

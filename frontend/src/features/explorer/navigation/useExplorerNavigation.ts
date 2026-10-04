@@ -279,6 +279,7 @@ export const useExplorerNavigation = (deps: Deps) => {
     if (isMtpUri(path) || await isMountUri(path)) {
       try {
         const result = await connectNetworkUri(path)
+        if (result.warning) deps.showToast(result.warning)
         if (result.kind === 'unsupported') {
           deps.showToast('Unsupported network protocol')
           return

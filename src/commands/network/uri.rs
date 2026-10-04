@@ -241,6 +241,16 @@ pub fn classify_network_uri(uri: String) -> NetworkUriClassification {
 #[tauri::command]
 pub fn resolve_mounted_path_for_uri(uri: String) -> ApiResult<Option<String>> {
     map_api_result((|| -> NetworkResult<Option<String>> {
+        #[cfg(target_os = "linux")]
+        if classify_uri(&uri).kind == NetworkUriKind::Mountable
+            && classify_uri(&uri).scheme.as_deref() != Some("mtp")
+        {
+            use gio::prelude::*;
+            let address = super::saved::connection_uri(&uri, None)?;
+            return Ok(gio::File::for_uri(&address)
+                .path()
+                .map(|path| path.to_string_lossy().into_owned()));
+        }
         let mounts = mounts::list_mounts_sync()?;
         Ok(resolve_mounted_path_for_uri_in_mounts(&uri, &mounts))
     })())

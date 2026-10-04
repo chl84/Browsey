@@ -11,10 +11,13 @@ export {
   listNetworkDevices,
   listNetworkEntries,
   connectNetworkUri,
+  listSavedNetworkConnections,
+  forgetNetworkConnection,
   openNetworkUri,
   classifyNetworkUri,
   resolveMountedPathForUri,
 } from './services'
+export type { SavedNetworkConnection } from './services'
 export {
   listCloudRemotes,
   listCloudWorkingCopies,

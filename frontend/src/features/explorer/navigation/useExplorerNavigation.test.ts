@@ -158,4 +158,25 @@ describe('useExplorerNavigation cloud goToPath', () => {
     expect(connectNetworkUriMock).toHaveBeenCalledTimes(2)
     expect(deps.loadRaw).toHaveBeenCalledWith('/phone', {})
   })
+
+  it('opens the exact connected SFTP folder and reports a non-fatal history warning', async () => {
+    const deps = createDeps('Network')
+    const nav = useExplorerNavigation(deps)
+    isMountUriMock.mockResolvedValue(true)
+    const mountedPath = '/run/user/1000/gvfs/sftp:host=server,user=alice/Photos'
+    connectNetworkUriMock.mockResolvedValueOnce({ kind: 'mountable', mountedPath, warning: 'Connected, but the address could not be saved.' })
+    await nav.openPartition('sftp://alice@server/Photos')
+    expect(deps.loadRaw).toHaveBeenCalledWith(mountedPath, {})
+    expect(deps.showToast).toHaveBeenCalledWith('Connected, but the address could not be saved.')
+  })
+
+  it('never navigates to an existing server after another server connection fails', async () => {
+    const deps = createDeps('/run/user/1000/gvfs/sftp:host=server-a,user=alice')
+    const nav = useExplorerNavigation(deps)
+    isMountUriMock.mockResolvedValue(true)
+    connectNetworkUriMock.mockRejectedValueOnce(new Error('Authentication failed'))
+    await nav.openPartition('sftp://alice@server-b/')
+    expect(deps.loadRaw).not.toHaveBeenCalled()
+    expect(deps.showToast).toHaveBeenCalledWith('Connect failed: Authentication failed')
+  })
 })

@@ -117,6 +117,15 @@ destructive testing.
   Formatting tests require explicit approval and a dedicated disposable device.
 - [ ] **A1-7** Validate network disconnect/reconnect and stale-path handling against
   controlled mounts; check that discovery and refresh settings behave as documented.
+
+  SFTP implementation evidence (2026-10-04): Linux GTK/GVFS authentication,
+  bounded/cancellable connection handling, exact mount identity and persistent
+  server-address history have Rust/frontend regression coverage. The simulated
+  browser flow checks saved-server menus, reconnect and forgetting without
+  disconnecting. This is not native acceptance: test the installed build against
+  approved servers with distinct accounts/passwords, rejected login, Cancel,
+  host-key questions, optional keyring saving, restart and stale mounts. No real
+  password or host-key approval was automated.
 - [ ] **A1-8** Record fresh RPM/DEB clean install, upgrade, reinstall, and uninstall on
   the agreed distribution targets. Preserve user settings and verify the
   packaged frontend, PDFium, desktop entry, icons, and associations.

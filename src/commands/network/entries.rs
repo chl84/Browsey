@@ -1,4 +1,4 @@
-//! Build deduped network listing entries from mounts, discovered network targets, and cloud remotes.
+//! Network entries from saved connections, mounts, discovery and cloud remotes.
 
 use crate::{
     commands::{cloud, cloud::types::CloudRemote, fs::MountInfo},
@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use super::{
     discovery,
     error::{map_api_result, NetworkError, NetworkErrorCode, NetworkResult},
-    mounts, uri,
+    mounts, saved, uri,
 };
 
 const NETWORK_ICON_ID: u16 = 10;
@@ -198,14 +198,64 @@ pub(super) fn to_network_entries(mounts: &[MountInfo]) -> Vec<FsEntry> {
 
 pub(super) fn list_network_entries_sync(force_refresh: bool) -> NetworkResult<Vec<FsEntry>> {
     let mut mounts_list = mounts::list_mounts_sync()?;
-    mounts_list.extend(discovery::list_network_devices_sync(force_refresh)?);
+    // Optional LAN discovery must not hide saved servers when discovery fails.
+    match discovery::list_network_devices_sync(force_refresh) {
+        Ok(discovered) => mounts_list.extend(discovered),
+        Err(_) => {
+            tracing::warn!("Network discovery unavailable; retaining mounted and saved connections")
+        }
+    }
     let mut entries = to_network_entries(&mounts_list);
+    merge_saved_connections(&mut entries, &saved::list()?, |uri| {
+        #[cfg(not(target_os = "windows"))]
+        {
+            use gio::prelude::*;
+            // path() only maps an existing mount; it does not mount/contact servers.
+            gio::File::for_uri(uri)
+                .path()
+                .map(|path| path.to_string_lossy().into_owned())
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = uri;
+            None
+        }
+    });
     entries.extend(
         cloud::list_cloud_remotes_sync_best_effort(force_refresh)
             .into_iter()
             .map(|remote| to_cloud_network_entry(&remote)),
     );
     Ok(entries)
+}
+
+fn merge_saved_connections(
+    entries: &mut Vec<FsEntry>,
+    saved: &[saved::SavedNetworkConnection],
+    mut local_path: impl FnMut(&str) -> Option<String>,
+) {
+    for connection in saved {
+        let Ok(address) = saved::connection_uri(&connection.uri, None) else {
+            continue;
+        };
+        let mounted_path = local_path(&address);
+        entries.retain(|entry| {
+            let same_uri = saved::connection_uri(&entry.path, None).is_ok_and(|uri| uri == address);
+            let same_path = mounted_path
+                .as_ref()
+                .is_some_and(|path| normalize_path(&entry.path) == normalize_path(path));
+            !same_uri && !same_path
+        });
+        entries.push(to_network_entry(&MountInfo {
+            label: connection.label.clone(),
+            path: address,
+            fs: uri::classify_uri(&connection.uri)
+                .scheme
+                .unwrap_or_default(),
+            removable: false,
+            size_bytes: None,
+        }));
+    }
 }
 
 #[tauri::command]
@@ -229,6 +279,57 @@ async fn list_network_entries_impl(force_refresh: Option<bool>) -> NetworkResult
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saved_servers_remain_available_offline_and_keep_account_and_child_paths() {
+        let saved = vec![
+            saved::SavedNetworkConnection {
+                uri: "ssh://alice@server/Photos".into(),
+                label: "Photos server".into(),
+            },
+            saved::SavedNetworkConnection {
+                uri: "sftp://bob@server/".into(),
+                label: "Other account".into(),
+            },
+        ];
+        let mut entries = Vec::new();
+        merge_saved_connections(&mut entries, &saved, |_| None);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].path, "sftp://alice@server/Photos");
+        assert_eq!(entries[0].name, "Photos server");
+        assert!(entries
+            .iter()
+            .all(|entry| entry.network && entry.kind == "dir"));
+    }
+
+    #[test]
+    fn saved_connection_replaces_only_exact_discovery_and_mount_duplicates() {
+        let mut entries = to_network_entries(&[
+            mount("Discovered", "ssh://alice@server/", "sftp"),
+            mount(
+                "Mounted",
+                "/run/user/1000/gvfs/sftp:host=server,user=alice",
+                "sftp",
+            ),
+            mount(
+                "Another server",
+                "/run/user/1000/gvfs/sftp:host=other,user=alice",
+                "sftp",
+            ),
+        ]);
+        let saved = vec![saved::SavedNetworkConnection {
+            uri: "sftp://alice@server/".into(),
+            label: "Saved".into(),
+        }];
+        merge_saved_connections(&mut entries, &saved, |_| {
+            Some("/run/user/1000/gvfs/sftp:host=server,user=alice".into())
+        });
+        assert_eq!(entries.len(), 2);
+        assert!(entries
+            .iter()
+            .any(|entry| entry.name == "Saved" && entry.path == "sftp://alice@server/"));
+        assert!(entries.iter().any(|entry| entry.name == "Another server"));
+    }
 
     fn mount(label: &str, path: &str, fs: &str) -> MountInfo {
         MountInfo {

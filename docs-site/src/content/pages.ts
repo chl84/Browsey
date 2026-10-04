@@ -377,10 +377,12 @@ export const docsPages: DocPage[] = [
         id: 'network-flow',
         title: 'Network View and Server Addresses',
         bullets: [
-          'Network view merges mounted endpoints with discovered LAN devices/resources',
+          'Network view merges saved server connections, mounted endpoints and discovered LAN devices/resources. Successfully connected Linux servers remain available here across restarts; listing saved servers does not automatically reconnect them',
           'Supported rclone cloud remotes (for example OneDrive and Google Drive; Nextcloud depends on configured WebDAV remotes) also appear in Network view when rclone is installed and configured',
           'Address bar accepts mountable server URIs (for example `sftp://`, `smb://`, `nfs://`, `ftp://`, `dav://`, `davs://`, `afp://`)',
           'URI aliases are normalized for compatibility (`ssh://` as SFTP, `webdav://`/`webdavs://` as DAV/DAVS, and `ftps://` in the FTP family)',
+          'On Linux, GTK/GVFS prompts for credentials when needed and offers system-keyring password storage when supported. Browsey stores only server addresses and usernames, never passwords. Use `sftp://<user>@<host>:<port>/<folder>` to specify another account or port; do not embed passwords in addresses',
+          'Right-click a saved server and choose Forget Connection to remove its shortcut. This does not disconnect an active mount or delete credentials from the system keyring; use Disconnect separately when the server is mounted',
           'Context menus adapt to entry type: URI entries show Connect/Open in Browser + Copy Server Address, mounted entries show Open/Disconnect + Copy Mount Path',
           'rclone cloud paths support direct navigation via `rclone://<remote>/<subpath>` and use manual/explicit refresh in some flows because filesystem watch support is not available for `rclone://` paths',
           'Connection activity states are explicit: Connecting, Already connected, Connected, Failed',

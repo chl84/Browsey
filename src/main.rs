@@ -323,6 +323,8 @@ fn main() {
             list_network_devices,
             list_network_entries,
             connect_network_uri,
+            list_saved_network_connections,
+            forget_network_connection,
             get_bookmarks,
             add_bookmark,
             remove_bookmark,
@@ -459,6 +461,8 @@ fn main() {
             runtime_lifecycle::begin_shutdown_from_app(app_handle);
             #[cfg(target_os = "linux")]
             mtp::stop();
+            #[cfg(target_os = "linux")]
+            commands::network::native_mount::stop();
             #[cfg(target_os = "linux")]
             if let Some(monitor) = app_handle.try_state::<volume_monitor::VolumeMonitor>() {
                 monitor.stop();

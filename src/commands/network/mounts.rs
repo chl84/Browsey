@@ -1025,6 +1025,10 @@ pub(super) async fn mount_partition_impl(path: String, app: tauri::AppHandle) ->
     if path.starts_with("mtp://") {
         return mount_mtp_uri_impl(path, app).await.map(|_| ());
     }
+    #[cfg(target_os = "linux")]
+    if super::uri::classify_uri(&path).kind == super::uri::NetworkUriKind::Mountable {
+        return mount_network_uri_impl(path, app).await.map(|_| ());
+    }
     let lower = path.to_ascii_lowercase();
     let scheme = lower
         .split_once("://")
@@ -1087,6 +1091,36 @@ pub(super) async fn mount_partition_impl(path: String, app: tauri::AppHandle) ->
         );
         Ok(())
     }
+}
+
+#[cfg(target_os = "linux")]
+pub(super) async fn mount_network_uri_impl(
+    path: String,
+    app: tauri::AppHandle,
+) -> NetworkResult<super::native_mount::MountedNetwork> {
+    // Reject credential-bearing addresses before publishing/logging an address.
+    let path = super::saved::connection_uri(&path, None)?;
+    let fs_kind = super::uri::classify_uri(&path).scheme.unwrap_or_default();
+    runtime_lifecycle::emit_if_running(
+        &app,
+        "mounting-started",
+        json!({ "path": &path, "fs": &fs_kind, "outcome": "connecting" }),
+    );
+    let started = Instant::now();
+    let result = super::native_mount::mount(path.clone(), app.clone()).await;
+    runtime_lifecycle::emit_if_running(
+        &app,
+        "mounting-done",
+        json!({
+            "path": &path, "fs": &fs_kind, "ok": result.is_ok(),
+            "outcome": if result.is_ok() { "connected" } else { "failed" },
+            "duration_ms": started.elapsed().as_millis() as u64,
+        }),
+    );
+    if result.is_ok() {
+        invalidate_network_discovery_cache();
+    }
+    result
 }
 
 #[cfg(target_os = "linux")]
