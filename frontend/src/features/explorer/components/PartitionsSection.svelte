@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte'
   import { partitionIcon } from '../utils'
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
+  import { partitionCapacity } from '../helpers/partitionCapacity'
   import type { Partition } from '../model/types'
   import ContextMenu from './ContextMenu.svelte'
   import { canFormatPartition, isMtpPartition, isUnmountedPartition } from '../services/drives.service'
@@ -32,6 +33,7 @@
     <div class="row">
       <button
         class="nav"
+        class:removable={part.removable}
         data-drop-path={isUnmountedPartition(part.path) ? '' : part.path}
         type="button"
         on:click={() => onSelect(part.path)}
@@ -51,7 +53,16 @@
         {:else}
           <img class="nav-icon" src={partitionIcon(part)} alt="" />
         {/if}
-        <span class="nav-label">{part.label}{isUnmountedPartition(part.path) ? ' (not mounted)' : ''}</span>
+        <span class="nav-text">
+          <span class="nav-label" use:fullNameTooltip={part.label}>
+            {part.label}{isUnmountedPartition(part.path) ? ' (not mounted)' : ''}
+          </span>
+          {#if partitionCapacity(part.sizeBytes)}
+            <span class="capacity" use:fullNameTooltip={'Total partition capacity'}>
+              {partitionCapacity(part.sizeBytes)}
+            </span>
+          {/if}
+        </span>
       </button>
       {#if part.removable}
         <button
@@ -125,7 +136,7 @@
   .nav {
     border: none;
     border-radius: 0;
-    padding: 5px 66px 5px 22px; /* extra right padding so hover bg reaches behind controls */
+    padding: 5px 10px 5px 22px;
     background: transparent;
     color: var(--fg);
     font-size: var(--font-size-base);
@@ -144,6 +155,36 @@
 
   .nav:hover {
     background: var(--bg-hover);
+  }
+
+  .nav.removable {
+    padding-right: 66px; /* Reserve space for the actions and eject buttons. */
+  }
+
+  .nav-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .nav-text {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  :global(body.density-compact) .nav.removable .nav-text {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+  }
+
+  .capacity {
+    flex-shrink: 0;
+    white-space: nowrap;
+    color: var(--fg-muted);
+    font-size: 10px;
+    font-weight: 400;
   }
 
   .nav:focus-visible {

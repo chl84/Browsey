@@ -97,6 +97,7 @@ fn mount_info(label: String, path: String, fs: &str) -> MountInfo {
         path,
         fs: fs.to_string(),
         removable: false,
+        size_bytes: None,
     }
 }
 
@@ -614,6 +615,7 @@ mod tests {
             path: path.to_string(),
             fs: fs.to_string(),
             removable: false,
+            size_bytes: None,
         }
     }
 

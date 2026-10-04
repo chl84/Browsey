@@ -16,6 +16,7 @@ impl Device {
             path: self.mounted_path.as_ref().unwrap_or(&self.uri).clone(),
             fs: "mtp".into(),
             removable: true,
+            size_bytes: None,
         }
     }
 }

@@ -5,6 +5,12 @@
 
 ## Navigation and shortcuts
 
+On Linux, the Partitions sidebar shows total block-volume capacity in decimal
+GB beside each known local volume. This is not free space. Mounts sharing the
+root volume (such as Btrfs subvolumes) show capacity only at `/`; separate
+partitions and USB volumes retain their own capacity labels. Unknown capacities
+are hidden, including phone and network endpoints.
+
 Defaults are remappable in Settings:
 
 - `Ctrl+F` search; `Ctrl+G` switch between list and grid.
@@ -22,6 +28,10 @@ user/group dropdowns in Properties.
 Ctrl + mouse wheel zooms between list and five grid sizes (64, 96, 128, 160,
 and 192 CSS pixels). Zoom is window-local and resets on restart. Grid gaps
 are 8 px in Cozy and 6 px in Compact.
+
+Column filters remain active when switching to grid view. Use **Reset** beside
+**Column filters active** to clear all column filters without changing text
+search, sorting, or hidden-file visibility.
 
 Launch with `browsey /path/to/folder` or `browsey 'file:///path/to/folder'` to
 open a particular directory. Relative paths resolve from the launch working

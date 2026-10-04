@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Show small decimal-GB capacity labels beside local partitions and USB volumes
+  in the sidebar, reusing Linux device metadata without probing remote mounts.
+  Show shared root-volume capacity only at `/`, retaining labels for separate
+  partitions even when their capacities match.
+
+- Add a compact, red-outlined Reset button beside the active column-filter
+  indicator in grid view, clearing column filters without changing search or sort.
+
 - Distinguish resolved historical verification failures from unresolved failures
   in maintenance reports; require evidence of a later successful rerun before
   recording completed work, while preserving skipped checks and remaining risks.

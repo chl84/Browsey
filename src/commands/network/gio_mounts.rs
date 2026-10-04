@@ -479,6 +479,7 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
                 path: path_str,
                 fs: fs.to_string(),
                 removable,
+                size_bytes: None,
             });
         }
     }
@@ -490,6 +491,7 @@ pub fn list_gvfs_mounts() -> Vec<MountInfo> {
             fs: "sftp".to_string(),
             // Mountable addresses are not mounted yet and should not expose "eject".
             removable: false,
+            size_bytes: None,
         });
     }
 

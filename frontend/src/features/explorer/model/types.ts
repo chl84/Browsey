@@ -72,6 +72,8 @@ export type Partition = {
   path: string
   fs?: string
   removable?: boolean
+  /** Total block-volume capacity, not free space; omitted when unknown or redundant with root. */
+  sizeBytes?: number | null
 }
 
 export type Column = {

@@ -73,6 +73,9 @@ pub struct MountInfo {
     pub path: String,
     pub fs: String,
     pub removable: bool,
+    /// Total block-volume capacity, not free space; omitted when unknown or redundant with root.
+    #[serde(rename = "sizeBytes", skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
 }
 
 pub(crate) fn entry_from_cached(path: &Path, cached: &CachedMeta, starred: bool) -> FsEntry {

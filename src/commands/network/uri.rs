@@ -555,12 +555,14 @@ mod tests {
                 path: "/run/user/1000/gvfs/smb-share:server=nas-a.local,share=files".into(),
                 fs: "smb".into(),
                 removable: false,
+                size_bytes: None,
             },
             MountInfo {
                 label: "NAS B".into(),
                 path: "/run/user/1000/gvfs/smb-share:server=nas-b.local,share=files".into(),
                 fs: "smb".into(),
                 removable: false,
+                size_bytes: None,
             },
         ];
 

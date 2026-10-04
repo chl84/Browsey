@@ -55,7 +55,7 @@ type E2eMockControl = {
   mtpHold?: boolean
   mtpError?: string
   calls?: Array<{ cmd: string; args?: Record<string, unknown> }>
-  partitions?: Array<{ label: string; path: string; fs?: string; removable?: boolean }>
+  partitions?: Array<{ label: string; path: string; fs?: string; removable?: boolean; sizeBytes?: number | null }>
 }
 
 import { emitMockEvent } from './event'

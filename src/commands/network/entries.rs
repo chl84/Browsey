@@ -236,6 +236,7 @@ mod tests {
             path: path.to_string(),
             fs: fs.to_string(),
             removable: false,
+            size_bytes: None,
         }
     }
 

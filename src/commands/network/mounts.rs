@@ -444,6 +444,7 @@ fn unmounted_usb_volumes(listing: &LsblkOutput) -> Vec<MountInfo> {
         path: format!("usb-volume://{}", entry.path),
         fs: entry.fstype.clone().unwrap_or_default(),
         removable: true,
+        size_bytes: (entry.size > 0).then_some(entry.size),
     }).collect()
 }
 
@@ -640,6 +641,7 @@ fn parse_linux_mounts(contents: &str, gvfs_root: Option<&str>) -> Vec<MountInfo>
             path: target,
             fs,
             removable: removable_hint || dev_removable,
+            size_bytes: None,
         });
     }
 
@@ -675,9 +677,41 @@ fn linux_mounts() -> NetworkResult<Vec<MountInfo>> {
         }
     }
     if let Ok(listing) = lsblk_listing() {
+        annotate_mount_sizes(&mut mounts, &listing);
         mounts.extend(unmounted_usb_volumes(&listing));
     }
     Ok(mounts)
+}
+
+/// Reuse the existing lsblk snapshot; never probe remote/FUSE filesystems for capacity.
+#[cfg(not(target_os = "windows"))]
+fn annotate_mount_sizes(mounts: &mut [MountInfo], listing: &LsblkOutput) {
+    let has_root_mount = mounts.iter().any(|mount| mount.path == "/");
+    for mount in mounts {
+        mount.size_bytes = listing
+            .blockdevices
+            .iter()
+            .find(|device| {
+                device.size > 0
+                    && device
+                        .mountpoints
+                        .iter()
+                        .flatten()
+                        .any(|path| !path.is_empty() && same_mount_path(path, &mount.path))
+            })
+            // Root subvolumes share one block volume: show its capacity at / only.
+            // Compare device mountpoints, never capacities (separate disks can match).
+            .filter(|device| {
+                mount.path == "/"
+                    || !has_root_mount
+                    || !device
+                        .mountpoints
+                        .iter()
+                        .flatten()
+                        .any(|path| path == "/")
+            })
+            .map(|device| device.size);
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -1076,6 +1110,99 @@ mod tests {
         assert_eq!(UsbFilesystem::parse("ext4").unwrap(), UsbFilesystem::Ext4);
         assert_eq!(UsbFilesystem::parse("btrfs").unwrap(), UsbFilesystem::Btrfs);
         assert!(UsbFilesystem::parse("ntfs").is_err());
+    }
+
+    #[test]
+    fn shows_root_volume_capacity_only_at_root() {
+        let mut device = lsblk_device("/dev/nvme0n1p2", "part", false, None, None);
+        device.size = 512_000_000_000;
+        device.mountpoints = vec![Some("/".into()), Some("/home".into())];
+        let mut zero_size = lsblk_device("/dev/sdb1", "part", true, Some("usb"), None);
+        zero_size.mountpoints = vec![Some("/media/USB".into())];
+        let listing = LsblkOutput {
+            blockdevices: vec![device, zero_size],
+        };
+        let mut mounts = parse_linux_mounts(
+            "/dev/nvme0n1p2 / btrfs rw 0 0\n/dev/nvme0n1p2 /home btrfs rw 0 0\n/dev/sdb1 /media/USB exfat rw 0 0\nserver:/share /mnt/nas nfs4 rw 0 0\n",
+            None,
+        );
+        annotate_mount_sizes(&mut mounts, &listing);
+        assert_eq!(mounts[0].size_bytes, Some(512_000_000_000));
+        assert_eq!(mounts[1].size_bytes, None);
+        assert_eq!(mounts[2].size_bytes, None);
+        assert_eq!(mounts[3].size_bytes, None);
+        let payload = serde_json::to_value(&mounts).unwrap();
+        assert_eq!(payload[0]["sizeBytes"], 512_000_000_000_u64);
+        assert!(payload[1].get("sizeBytes").is_none());
+        assert!(payload[3].get("sizeBytes").is_none());
+    }
+
+    #[test]
+    fn preserves_separate_volumes_even_when_their_capacities_match_root() {
+        let mut root = lsblk_device("/dev/mapper/root", "crypt", false, None, None);
+        root.size = 32_000_000_000;
+        root.mountpoints = ["/var/log", "/var/cache/pacman/pkg", "/home", "/"]
+            .into_iter()
+            .map(|path| Some(path.into()))
+            .collect();
+        let mut boot = lsblk_device("/dev/nvme0n1p1", "part", false, None, None);
+        boot.size = root.size;
+        boot.mountpoints = vec![Some("/boot".into())];
+        let mut usb = lsblk_device("/dev/sdb1", "part", true, Some("usb"), None);
+        usb.size = root.size;
+        usb.mountpoints = vec![Some("/media/USB".into())];
+        let listing = LsblkOutput {
+            blockdevices: vec![root, boot, usb],
+        };
+        // Root is deliberately last: suppression must not depend on row order.
+        let mut mounts = parse_linux_mounts(
+            "/dev/mapper/root /home btrfs rw 0 0\n/dev/mapper/root /var/cache/pacman/pkg btrfs rw 0 0\n/dev/mapper/root /var/log btrfs rw 0 0\n/dev/nvme0n1p1 /boot vfat rw 0 0\n/dev/sdb1 /media/USB exfat rw 0 0\n/dev/mapper/root / btrfs rw 0 0\n",
+            None,
+        );
+        annotate_mount_sizes(&mut mounts, &listing);
+        assert!(mounts[..3].iter().all(|mount| mount.size_bytes.is_none()));
+        assert!(mounts[3..]
+            .iter()
+            .all(|mount| mount.size_bytes == Some(32_000_000_000)));
+    }
+
+    #[test]
+    fn shows_separate_home_capacity_and_keeps_capacity_without_a_root_row() {
+        let mut root = lsblk_device("/dev/mapper/root", "crypt", false, None, None);
+        root.size = 32_000_000_000;
+        root.mountpoints = vec![Some("/".into()), Some("/var/log".into())];
+        let mut home = lsblk_device("/dev/nvme0n1p3", "part", false, None, None);
+        home.size = root.size;
+        home.mountpoints = vec![Some("/home".into())];
+        let listing = LsblkOutput {
+            blockdevices: vec![root, home],
+        };
+        let mut mounts = parse_linux_mounts(
+            "/dev/mapper/root / btrfs rw 0 0\n/dev/nvme0n1p3 /home btrfs rw 0 0\n/dev/mapper/root /var/log btrfs rw 0 0\n",
+            None,
+        );
+        annotate_mount_sizes(&mut mounts, &listing);
+        assert_eq!(mounts[1].size_bytes, Some(32_000_000_000));
+        assert_eq!(mounts[2].size_bytes, None);
+        mounts.remove(0);
+        annotate_mount_sizes(&mut mounts, &listing);
+        assert!(mounts
+            .iter()
+            .all(|mount| mount.size_bytes == Some(32_000_000_000)));
+    }
+
+    #[test]
+    fn unmounted_usb_capacity_uses_partition_not_parent_disk_size() {
+        let mut disk = lsblk_device("/dev/sdb", "disk", true, Some("usb"), None);
+        disk.size = 64_000_000_000;
+        let mut partition = lsblk_device("/dev/sdb1", "part", true, None, Some("/dev/sdb"));
+        partition.size = 32_000_000_000;
+        let listing = LsblkOutput {
+            blockdevices: vec![disk, partition],
+        };
+        let mounts = unmounted_usb_volumes(&listing);
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].size_bytes, Some(32_000_000_000));
     }
 
     #[test]

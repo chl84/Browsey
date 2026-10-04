@@ -4,6 +4,7 @@ import Topbar from './Topbar.svelte'
 import Notice from '../../../../shared/ui/Notice.svelte'
 import FileList from '../../components/FileList.svelte'
 import FileGrid from '../../components/FileGrid.svelte'
+import GridFilterIndicator from '../../components/GridFilterIndicator.svelte'
 import Statusbar from '../../../../shared/ui/Statusbar.svelte'
 import ContextMenu from '../../components/ContextMenu.svelte'
 import DeleteConfirmModal from '../../components/DeleteConfirmModal.svelte'
@@ -709,12 +710,6 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
 
   $: ({ selectionText } = statusProps)
 
-  $: hasActiveColumnFilters =
-    columnFilters.name.size > 0 ||
-    columnFilters.type.size > 0 ||
-    columnFilters.modified.size > 0 ||
-    columnFilters.size.size > 0
-
 </script>
 
 <main class="shell">
@@ -827,9 +822,7 @@ import type { AdvancedRenamePayload } from '../../modals/advancedRenameModal'
           selectionRect={selectionRect}
         />
       {:else}
-      {#if hasActiveColumnFilters}
-        <div class="grid-filter-indicator">Column filters active</div>
-      {/if}
+      <GridFilterIndicator {columnFilters} {onResetFilter} />
       <FileGrid
         entries={filteredEntries}
         visibleEntries={visibleEntries}

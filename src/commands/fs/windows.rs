@@ -124,6 +124,7 @@ pub fn list_windows_mounts() -> FsResult<Vec<MountInfo>> {
             path: drive,
             fs,
             removable: matches!(drive_type, DRIVE_REMOVABLE | DRIVE_CDROM),
+            size_bytes: None,
         });
     }
 
