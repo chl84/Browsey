@@ -126,6 +126,33 @@ fn operation_error(message: &str) -> NetworkError {
 }
 
 impl Client {
+    pub(super) fn ensure_can_format(&self, filesystem: &str) -> NetworkResult<()> {
+        let reply = self.connection.call_sync(
+            Some(&self.destination),
+            "/org/freedesktop/UDisks2/Manager",
+            "org.freedesktop.UDisks2.Manager",
+            "CanFormat",
+            Some(&(filesystem,).to_variant()),
+            None,
+            DBusCallFlags::NONE,
+            2000,
+            gio::Cancellable::NONE,
+        ).map_err(|error| NetworkError::new(NetworkErrorCode::FormatNotAllowed,
+            format!("Could not verify {filesystem} formatting support. No data was erased. Details: {error}")))?;
+        let ((available, required_tool),) = reply.get::<((bool, String),)>().ok_or_else(|| {
+            NetworkError::new(
+                NetworkErrorCode::FormatNotAllowed,
+                "Invalid UDisks formatting support reply. No data was erased.",
+            )
+        })?;
+        if !available {
+            return Err(NetworkError::new(NetworkErrorCode::FormatNotAllowed,
+                format!("UDisks cannot format {filesystem}; missing filesystem utility: {}. No data was erased.",
+                    if required_tool.is_empty() { "unknown" } else { &required_tool })));
+        }
+        Ok(())
+    }
+
     pub(super) fn connect(disk: &str) -> NetworkResult<Self> {
         let connection =
             gio::bus_get_sync(gio::BusType::System, gio::Cancellable::NONE).map_err(|error| {
@@ -239,6 +266,8 @@ impl Client {
         label: Option<&str>,
         report: Reporter<'_>,
     ) -> NetworkResult<String> {
+        // Recheck immediately before the first destructive call too.
+        self.ensure_can_format(filesystem)?;
         let empty = Properties::new();
         self.call(
             BLOCK,
@@ -295,7 +324,12 @@ fn filesystem_format_options(label: Option<&str>) -> Properties {
     // UDisks assigns the new filesystem root to the D-Bus caller for
     // filesystems with Unix ownership (notably ext4 and btrfs).
     // FAT/exFAT use mount-time ownership instead and ignore this option.
-    let mut options = Properties::from([("take-ownership".into(), true.to_variant())]);
+    // The default GPT partition type is OS-dependent. Ask UDisks to select the
+    // filesystem's type (e.g. Microsoft Basic Data for NTFS/FAT/exFAT).
+    let mut options = Properties::from([
+        ("take-ownership".into(), true.to_variant()),
+        ("update-partition-type".into(), true.to_variant()),
+    ]);
     if let Some(label) = label {
         options.insert("label".into(), label.to_variant());
     }
@@ -316,10 +350,11 @@ mod tests {
     }
 
     #[test]
-    fn requests_caller_ownership_with_or_without_a_label() {
+    fn requests_caller_ownership_and_matching_partition_type_with_or_without_a_label() {
         for label in [None, Some("TEST")] {
             let options = filesystem_format_options(label);
             assert_eq!(options["take-ownership"].get::<bool>(), Some(true));
+            assert_eq!(options["update-partition-type"].get::<bool>(), Some(true));
             assert_eq!(
                 options
                     .get("label")

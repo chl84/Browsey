@@ -3,12 +3,23 @@ import { Channel } from '@tauri-apps/api/core'
 import type { Partition } from '../model/types'
 
 export type UsbFormatProgress = { phase: string; percent: number | null }
+export type UsbFilesystem = 'exfat' | 'fat32' | 'ext4' | 'btrfs' | 'ntfs'
 
 export type UsbFilesystemOption = {
-  id: 'exfat' | 'fat32' | 'ext4' | 'btrfs'
+  id: UsbFilesystem
   label: string
   description: string
   available: boolean
+  requiredTool: string
+  labelMaxLength: number
+}
+
+export const usbVolumeLabelError = (label: string, option: UsbFilesystemOption | undefined) => {
+  if (!option) return ''
+  const value = label.trim()
+  return value.length > option.labelMaxLength || !/^[A-Za-z0-9 _-]*$/.test(value)
+    ? `Use up to ${option.labelMaxLength} ASCII letters, numbers, spaces, hyphens, or underscores.`
+    : ''
 }
 
 export type UsbFormatInfo = {
@@ -50,7 +61,7 @@ export const mountUsbVolume = (path: string) => invoke<string>('mount_usb_volume
 
 export const formatRemovablePartition = async (
   path: string,
-  filesystem: 'exfat' | 'fat32' | 'ext4' | 'btrfs',
+  filesystem: UsbFilesystem,
   label: string,
   onProgress: (progress: UsbFormatProgress) => void = () => {},
 ) => {

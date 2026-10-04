@@ -65,8 +65,13 @@ contain edits or backups still needed for recovery.
 - MTP phones: a GVFS MTP backend (`gvfs-mtp` on Arch/Fedora, or `gvfs-backends`
   on Ubuntu). Unlock the phone and enable USB file-transfer mode.
 - USB formatting: UDisks2, a working PolicyKit authentication agent, and the
-  filesystem tool from `exfatprogs`, `dosfstools`, `e2fsprogs`, or `btrfs-progs`.
-  Only installed filesystem tools are offered.
+  matching filesystem tool: `mkfs.exfat` (`exfatprogs`), `mkfs.fat`
+  (`dosfstools`), `mkfs.ext4` (`e2fsprogs`), `mkfs.btrfs` (`btrfs-progs`),
+  or `mkntfs` for NTFS. On current Arch Linux, `mkntfs` is provided by
+  [`ntfsprogs`](https://archlinux.org/packages/extra/x86_64/ntfsprogs/),
+  separately from the `ntfs-3g` mount driver; package names vary by distribution.
+  Missing tools are shown as disabled options with an explanation. Browsey also
+  checks UDisks formatting support before unmounting or erasing anything.
 
 ## User-local installation from source (Linux x86_64)
 

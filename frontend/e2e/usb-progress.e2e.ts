@@ -2,9 +2,10 @@ import { expect, test } from '@playwright/test'
 
 type UsbControl = {
   formatHold: boolean
+  ntfsFormatAvailable?: boolean
   formatProgress?: { phase: string; percent: number | null }
   formatError?: { code: string; message: string }
-  calls: Array<{ cmd: string }>
+  calls: Array<{ cmd: string; args?: Record<string, unknown> }>
 }
 
 test.beforeEach(async ({ page }) => {
@@ -65,4 +66,41 @@ test('lost reply is reported as unknown and does not offer immediate reformattin
   await expect(dialog.getByRole('alert')).not.toContainText('Format failed:')
   await expect(dialog.getByRole('button', { name: 'Format and erase' })).toBeDisabled()
   await expect(dialog.getByRole('progressbar')).not.toBeVisible()
+})
+
+test('NTFS supports a long label and switching to FAT requires correcting it without truncation', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'USB', exact: true }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Format…' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Format USB drive?' })
+  await dialog.getByLabel('Filesystem', { exact: true }).selectOption('ntfs')
+  const label = dialog.getByLabel('Volume name')
+  await expect(label).toHaveAttribute('maxlength', '128')
+  await label.fill('Windows_backup_2026')
+  await dialog.getByLabel('Filesystem', { exact: true }).selectOption('fat32')
+  await expect(label).toHaveValue('Windows_backup_2026')
+  await expect(dialog.getByRole('alert')).toContainText('up to 11 ASCII')
+  await expect(dialog.getByRole('button', { name: 'Format and erase' })).toBeDisabled()
+  await dialog.getByLabel('Filesystem', { exact: true }).selectOption('ntfs')
+  await expect(dialog.getByRole('button', { name: 'Format and erase' })).toBeEnabled()
+  await dialog.getByRole('button', { name: 'Format and erase' }).click()
+  await expect(dialog.getByRole('progressbar')).toBeVisible()
+  await page.evaluate(() => { (window as unknown as { __BROWSEY_E2E__: UsbControl }).__BROWSEY_E2E__.formatHold = false })
+  await expect(page.getByRole('dialog', { name: 'USB drive ready' })).toContainText('Windows_backup_2026 is formatted as NTFS')
+  const calls = await page.evaluate(() => (window as unknown as { __BROWSEY_E2E__: UsbControl }).__BROWSEY_E2E__.calls.filter(call => call.cmd === 'format_removable_partition'))
+  expect(calls).toHaveLength(1)
+  expect(calls[0].args).toMatchObject({ filesystem: 'ntfs', label: 'Windows_backup_2026' })
+})
+
+test('NTFS remains visible but disabled when its utility is missing', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => { (window as unknown as { __BROWSEY_E2E__: UsbControl }).__BROWSEY_E2E__.ntfsFormatAvailable = false })
+  await page.getByRole('button', { name: 'USB', exact: true }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Format…' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Format USB drive?' })
+  await expect(dialog.locator('option[value="ntfs"]')).toBeDisabled()
+  await expect(dialog).toContainText('NTFS requires mkntfs')
+  await expect(dialog.getByRole('button', { name: 'Format and erase' })).toBeEnabled()
+  const calls = await page.evaluate(() => (window as unknown as { __BROWSEY_E2E__: UsbControl }).__BROWSEY_E2E__.calls.filter(call => call.cmd === 'format_removable_partition'))
+  expect(calls).toHaveLength(0)
 })

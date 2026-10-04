@@ -28,8 +28,10 @@
     type UsbFormatInfo,
     type UsbFormatResult,
     type UsbFormatProgress,
+    type UsbFilesystem,
+    usbVolumeLabelError,
   } from '@/features/explorer/services/drives.service'
-  import FormatUsbModal, { type UsbFilesystem } from '@/features/explorer/components/FormatUsbModal.svelte'
+  import FormatUsbModal from '@/features/explorer/components/FormatUsbModal.svelte'
   import { openConsole } from '@/features/explorer/services/console.service'
   import { copyPathsToSystemClipboard } from '@/features/explorer/services/clipboard.service'
   import { undoAction, redoAction } from '@/features/explorer/services/history.service'
@@ -1761,6 +1763,8 @@
 
   const confirmFormatPartition = async () => {
     if (!formatTarget || !formatInfo || formatting) return
+    const option = formatInfo.filesystems.find((item) => item.id === formatFilesystem)
+    if (!option?.available || usbVolumeLabelError(formatLabel, option)) return
     formatting = true
     formatError = ''
     formatProgress = { phase: 'Checking USB drive', percent: null }

@@ -50,6 +50,7 @@ type E2eMockControl = {
   undoStorageHold?: boolean
   archivePassword?: string
   formatHold?: boolean
+  ntfsFormatAvailable?: boolean
   formatProgress?: { phase: string; percent: number | null }
   formatError?: { code: string; message: string }
   mtpHold?: boolean
@@ -464,10 +465,11 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
         model: 'Mock USB drive',
         sizeBytes: 32000000000,
         filesystems: [
-          { id: 'exfat', label: 'exFAT', description: 'Compatible everywhere', available: true },
-          { id: 'fat32', label: 'FAT32', description: '4 GB file limit', available: true },
-          { id: 'ext4', label: 'ext4', description: 'Linux filesystem', available: true },
-          { id: 'btrfs', label: 'Btrfs', description: 'Linux filesystem', available: true },
+          { id: 'exfat', label: 'exFAT', description: 'Compatible everywhere', available: true, requiredTool: 'mkfs.exfat', labelMaxLength: 11 },
+          { id: 'fat32', label: 'FAT32', description: '4 GB file limit', available: true, requiredTool: 'mkfs.fat', labelMaxLength: 11 },
+          { id: 'ext4', label: 'ext4', description: 'Linux filesystem', available: true, requiredTool: 'mkfs.ext4', labelMaxLength: 11 },
+          { id: 'btrfs', label: 'Btrfs', description: 'Linux filesystem', available: true, requiredTool: 'mkfs.btrfs', labelMaxLength: 11 },
+          { id: 'ntfs', label: 'NTFS', description: 'Windows filesystem; also usable on Linux', available: control?.ntfsFormatAvailable ?? true, requiredTool: 'mkntfs', labelMaxLength: 128 },
         ],
       } as T
     case 'mount_usb_volume': {
@@ -527,7 +529,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
         device: '/dev/sdz',
         mountPath: '/mock/USB',
         sizeBytes: 32000000000,
-        filesystem: args?.filesystem ?? 'exFAT',
+        filesystem: args?.filesystem === 'ntfs' ? 'NTFS' : args?.filesystem ?? 'exFAT',
         label: args?.label || null,
       } as T
     }

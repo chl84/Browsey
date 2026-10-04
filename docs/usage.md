@@ -154,10 +154,16 @@ repeat an ambiguous write; refresh and inspect its destination first.
 ## USB drives and phones
 
 Right-click a removable USB drive for mounting, Properties, or Format.
-Formatting supports exFAT, FAT32, ext4, and btrfs when matching system tools
+Formatting supports exFAT, FAT32, ext4, btrfs, and NTFS when matching system tools
 are installed. Formatting erases the selected device: verify its identity
 and keep backups. New ext4/btrfs roots are made writable by the formatting
 user; existing volumes are not automatically re-owned.
+
+Unavailable filesystems remain visible but disabled, with the missing utility
+shown below the selector. NTFS requires `mkntfs`. Reopen the dialog after
+installing tools. Volume names accept ASCII letters, numbers, spaces, hyphens,
+and underscores: up to 128 characters for NTFS, or 11 for the other formats.
+Switching formats preserves the name but requires correcting it if it is too long.
 
 Progress uses real UDisks percentages when available, otherwise indeterminate
 progress. If completion is uncertain, inspect the device before retrying;

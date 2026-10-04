@@ -115,6 +115,7 @@ enum UsbFilesystem {
     Fat32,
     Ext4,
     Btrfs,
+    Ntfs,
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -125,6 +126,7 @@ impl UsbFilesystem {
             "fat32" => Ok(Self::Fat32),
             "ext4" => Ok(Self::Ext4),
             "btrfs" => Ok(Self::Btrfs),
+            "ntfs" => Ok(Self::Ntfs),
             _ => Err(NetworkError::new(
                 NetworkErrorCode::FormatNotAllowed,
                 "Unsupported USB filesystem.",
@@ -138,6 +140,7 @@ impl UsbFilesystem {
             Self::Fat32 => "vfat",
             Self::Ext4 => "ext4",
             Self::Btrfs => "btrfs",
+            Self::Ntfs => "ntfs",
         }
     }
 
@@ -147,6 +150,7 @@ impl UsbFilesystem {
             Self::Fat32 => "fat32",
             Self::Ext4 => "ext4",
             Self::Btrfs => "btrfs",
+            Self::Ntfs => "ntfs",
         }
     }
 
@@ -156,6 +160,7 @@ impl UsbFilesystem {
             Self::Fat32 => "Widest compatibility; files are limited to 4 GB",
             Self::Ext4 => "Linux filesystem",
             Self::Btrfs => "Linux filesystem with checksums and snapshots",
+            Self::Ntfs => "Windows filesystem; also usable on Linux",
         }
     }
 
@@ -165,11 +170,22 @@ impl UsbFilesystem {
             Self::Fat32 => "mkfs.fat",
             Self::Ext4 => "mkfs.ext4",
             Self::Btrfs => "mkfs.btrfs",
+            Self::Ntfs => "mkntfs",
         }
     }
 
     fn is_available(self) -> bool {
         which::which(self.mkfs_program()).is_ok()
+    }
+
+    fn label_max_length(self) -> usize {
+        // Retain the existing cross-platform limit for other formats. libblockdev
+        // accepts at most 128 bytes for NTFS; our ASCII-only labels fit that limit.
+        if self == Self::Ntfs {
+            128
+        } else {
+            11
+        }
     }
 }
 
@@ -181,6 +197,7 @@ impl fmt::Display for UsbFilesystem {
             Self::Fat32 => "FAT32",
             Self::Ext4 => "ext4",
             Self::Btrfs => "Btrfs",
+            Self::Ntfs => "NTFS",
         })
     }
 }
@@ -192,6 +209,8 @@ pub struct UsbFilesystemOption {
     label: String,
     description: String,
     available: bool,
+    required_tool: String,
+    label_max_length: usize,
 }
 
 #[derive(Serialize)]
@@ -236,6 +255,7 @@ fn supported_usb_filesystems() -> Vec<UsbFilesystemOption> {
         UsbFilesystem::Fat32,
         UsbFilesystem::Ext4,
         UsbFilesystem::Btrfs,
+        UsbFilesystem::Ntfs,
     ]
     .into_iter()
     .map(|filesystem| UsbFilesystemOption {
@@ -243,6 +263,8 @@ fn supported_usb_filesystems() -> Vec<UsbFilesystemOption> {
         label: filesystem.to_string(),
         description: filesystem.description().to_string(),
         available: filesystem.is_available(),
+        required_tool: filesystem.mkfs_program().to_string(),
+        label_max_length: filesystem.label_max_length(),
     })
     .collect()
 }
@@ -288,9 +310,11 @@ pub(super) fn is_local_block_mount(path: &str) -> NetworkResult<bool> {
     }
     let listing = lsblk_listing()?;
     Ok(listing.blockdevices.iter().any(|device| {
-        device.mountpoints.iter().flatten().any(|mountpoint| {
-            !mountpoint.is_empty() && same_mount_path(mountpoint, path)
-        })
+        device
+            .mountpoints
+            .iter()
+            .flatten()
+            .any(|mountpoint| !mountpoint.is_empty() && same_mount_path(mountpoint, path))
     }))
 }
 
@@ -368,19 +392,19 @@ fn removable_usb_disk_for_mount(path: &str) -> NetworkResult<(LsblkOutput, Strin
 }
 
 #[cfg(not(target_os = "windows"))]
-fn volume_label(label: &str) -> NetworkResult<Option<String>> {
+fn volume_label(label: &str, filesystem: UsbFilesystem) -> NetworkResult<Option<String>> {
     let label = label.trim();
     if label.is_empty() {
         return Ok(None);
     }
-    if label.len() > 11
+    if label.len() > filesystem.label_max_length()
         || !label.bytes().all(|byte| {
             byte.is_ascii_alphanumeric() || byte == b' ' || byte == b'_' || byte == b'-'
         })
     {
         return Err(NetworkError::new(
             NetworkErrorCode::FormatNotAllowed,
-            "Volume names may contain up to 11 letters, numbers, spaces, hyphens, or underscores.",
+            format!("Volume names may contain up to {} ASCII letters, numbers, spaces, hyphens, or underscores.", filesystem.label_max_length()),
         ));
     }
     Ok(Some(label.to_string()))
@@ -718,11 +742,7 @@ fn annotate_mount_sizes(mounts: &mut [MountInfo], listing: &LsblkOutput) {
             .filter(|device| {
                 mount.path == "/"
                     || !has_root_mount
-                    || !device
-                        .mountpoints
-                        .iter()
-                        .flatten()
-                        .any(|path| path == "/")
+                    || !device.mountpoints.iter().flatten().any(|path| path == "/")
             })
             .map(|device| device.size);
     }
@@ -805,13 +825,15 @@ fn format_removable_partition_impl(
     if !filesystem.is_available() {
         return Err(NetworkError::new(
             NetworkErrorCode::FormatNotAllowed,
-            format!("{} formatting support is not installed.", filesystem),
+            format!("{} formatting requires {}. Install the filesystem utilities and inspect the drive again.", filesystem, filesystem.mkfs_program()),
         ));
     }
-    let label = volume_label(label)?;
+    let label = volume_label(label, filesystem)?;
     let _guard = super::usb_format::acquire_format_lock()?;
     let (listing, disk) = removable_usb_disk_for_mount(path)?;
     let client = super::usb_format::Client::connect(&udisks_object_path(&disk)?)?;
+    // Check daemon support before unmounting, not only after replacing the table.
+    client.ensure_can_format(filesystem.udisks_type())?;
     client.ensure_idle()?;
     let size_bytes = listing
         .blockdevices
@@ -1123,7 +1145,12 @@ mod tests {
         assert_eq!(UsbFilesystem::parse("fat32").unwrap(), UsbFilesystem::Fat32);
         assert_eq!(UsbFilesystem::parse("ext4").unwrap(), UsbFilesystem::Ext4);
         assert_eq!(UsbFilesystem::parse("btrfs").unwrap(), UsbFilesystem::Btrfs);
-        assert!(UsbFilesystem::parse("ntfs").is_err());
+        assert_eq!(UsbFilesystem::parse("ntfs").unwrap(), UsbFilesystem::Ntfs);
+        assert_eq!(UsbFilesystem::Ntfs.udisks_type(), "ntfs");
+        assert_eq!(UsbFilesystem::Ntfs.mkfs_program(), "mkntfs");
+        assert_eq!(UsbFilesystem::Ntfs.to_string(), "NTFS");
+        assert!(UsbFilesystem::parse("ntfs3").is_err());
+        assert!(UsbFilesystem::parse("xfs").is_err());
     }
 
     #[test]
@@ -1221,10 +1248,44 @@ mod tests {
 
     #[test]
     fn validates_cross_platform_volume_labels() {
-        assert_eq!(volume_label(" SHARE_01 ").unwrap(), Some("SHARE_01".into()));
-        assert_eq!(volume_label(" ").unwrap(), None);
-        assert!(volume_label("label-with-too-many-characters").is_err());
-        assert!(volume_label("not/allowed").is_err());
+        for fs in [
+            UsbFilesystem::Exfat,
+            UsbFilesystem::Fat32,
+            UsbFilesystem::Ext4,
+            UsbFilesystem::Btrfs,
+        ] {
+            assert_eq!(
+                volume_label(" SHARE_01 ", fs).unwrap(),
+                Some("SHARE_01".into())
+            );
+            assert_eq!(volume_label(" ", fs).unwrap(), None);
+            assert!(volume_label("label-with-too-many-characters", fs).is_err());
+            assert!(volume_label("not/allowed", fs).is_err());
+        }
+    }
+
+    #[test]
+    fn validates_ntfs_labels_and_serializes_format_metadata() {
+        let fs = UsbFilesystem::Ntfs;
+        assert_eq!(
+            volume_label(" Windows_backup_2026 ", fs).unwrap(),
+            Some("Windows_backup_2026".into())
+        );
+        assert_eq!(
+            volume_label(&"A".repeat(128), fs).unwrap(),
+            Some("A".repeat(128))
+        );
+        assert!(volume_label(&"A".repeat(129), fs).is_err());
+        assert!(volume_label("bad/name", fs).is_err());
+        assert!(volume_label("bad\nname", fs).is_err());
+        assert!(volume_label("følsom", fs).is_err());
+        assert_eq!(volume_label(" ", fs).unwrap(), None);
+        let options = supported_usb_filesystems();
+        assert_eq!(options.len(), 5);
+        let ntfs = serde_json::to_value(options.iter().find(|option| option.id == "ntfs").unwrap())
+            .unwrap();
+        assert_eq!(ntfs["requiredTool"], "mkntfs");
+        assert_eq!(ntfs["labelMaxLength"], 128);
     }
 
     #[test]
@@ -1276,7 +1337,7 @@ mod tests {
             &|_| {}
         )
         .is_err());
-        assert!(volume_label("bad/name").is_err());
+        assert!(volume_label("bad/name", UsbFilesystem::Exfat).is_err());
     }
 
     #[test]

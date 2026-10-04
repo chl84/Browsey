@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add NTFS USB formatting via UDisks and `mkntfs`, with 128-character ASCII volume
+  names. Show missing filesystem tools as disabled choices in the shared format
+  modal, validate names when switching formats, and check daemon support before
+  unmounting or erasing the drive. Ask UDisks to match the GPT partition type to
+  the filesystem, including Windows-compatible formats. Existing whole-drive
+  warnings, job progress,
+  mount handling, and no-automatic-retry protections remain in place.
+
 - Remove the Copy drive path button from volume Properties while retaining the
   mount point/device path.
 

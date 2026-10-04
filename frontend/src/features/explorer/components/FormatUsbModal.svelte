@@ -1,13 +1,7 @@
-<script context="module" lang="ts">
-  export type UsbFilesystem = 'exfat' | 'fat32' | 'ext4' | 'btrfs'
-</script>
-
 <script lang="ts">
   import ModalShell from '@/shared/ui/ModalShell.svelte'
   import ProgressBar from '@/shared/ui/ProgressBar.svelte'
-  import type { UsbFilesystemOption, UsbFormatInfo, UsbFormatResult, UsbFormatProgress } from '../services/drives.service'
-
-  type UsbFilesystem = 'exfat' | 'fat32' | 'ext4' | 'btrfs'
+  import { usbVolumeLabelError, type UsbFilesystem, type UsbFormatInfo, type UsbFormatResult, type UsbFormatProgress } from '../services/drives.service'
 
   export let open = false
   export let volumeLabel = ''
@@ -40,7 +34,12 @@
     return `${(bytes / 1000 ** index).toFixed(index >= 3 ? 1 : 0)} ${units[index]}`
   }
 
-  $: availableFilesystems = (info?.filesystems ?? []).filter((item) => item.available) as UsbFilesystemOption[]
+  $: filesystems = info?.filesystems ?? []
+  $: availableFilesystems = filesystems.filter((item) => item.available)
+  $: unavailableFilesystems = filesystems.filter((item) => !item.available)
+  $: selectedFilesystem = filesystems.find((item) => item.id === filesystem)
+  $: labelError = usbVolumeLabelError(label, selectedFilesystem)
+  $: canConfirm = !busy && Boolean(selectedFilesystem?.available) && !labelError
 </script>
 
 {#if open}
@@ -70,16 +69,24 @@
       </p>
       <label class="field" for="usb-volume-label">
         <span>Volume name <em>(optional)</em></span>
-        <input id="usb-volume-label" bind:value={label} maxlength="11" autocomplete="off" disabled={busy} />
+        <input id="usb-volume-label" bind:value={label} maxlength={selectedFilesystem?.labelMaxLength ?? 11} autocomplete="off" disabled={busy}
+          aria-invalid={Boolean(labelError)} aria-describedby={labelError ? 'usb-label-error' : undefined} />
       </label>
+      {#if labelError}<p id="usb-label-error" class="label-error" role="alert">{labelError}</p>{/if}
       <label class="field" for="usb-filesystem">
         <span>Filesystem</span>
         <select id="usb-filesystem" bind:value={filesystem} disabled={busy || availableFilesystems.length === 0}>
-          {#each availableFilesystems as option}
-            <option value={option.id}>{option.label} — {option.description}</option>
+          {#each filesystems as option}
+            <option value={option.id} disabled={!option.available}>{option.label} — {option.available ? option.description : 'unavailable'}</option>
           {/each}
         </select>
       </label>
+      {#if unavailableFilesystems.length}
+        <p class="muted tool-hint">
+          Unavailable: {unavailableFilesystems.map((item) => `${item.label} requires ${item.requiredTool}`).join('; ')}.
+          Install the matching filesystem utilities, then reopen this dialog.
+        </p>
+      {/if}
     {:else if !error}
       <p class="muted">Inspecting the USB drive…</p>
     {/if}
@@ -109,7 +116,7 @@
       {:else}
         <button type="button" data-cancel="1" class="secondary" on:click={onCancel} disabled={busy}>Cancel</button>
         {#if error && !info}<button type="button" on:click={onRetry} disabled={busy}>Inspect again</button>{/if}
-        <button type="button" class="danger" on:click={onConfirm} disabled={busy || !info || availableFilesystems.length === 0}>
+        <button type="button" class="danger" on:click={() => { if (canConfirm) onConfirm() }} disabled={!canConfirm}>
           {#if busy}
             Working...
           {:else}
@@ -123,6 +130,8 @@
 
 <style>
   .format-progress { display: grid; gap: 10px; }
+  .label-error { color: var(--danger, var(--fg)); }
+  .tool-hint { overflow-wrap: anywhere; }
   .format-progress p { margin: 0; }
   .format-error { max-height: 180px; overflow: auto; }
   pre { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; color: var(--danger, var(--fg)); }

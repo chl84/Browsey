@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
-import { canFormatPartition, formatRemovablePartition, isMtpPartition, isUnmountedPartition } from './drives.service'
+import { canFormatPartition, formatRemovablePartition, isMtpPartition, isUnmountedPartition, usbVolumeLabelError, type UsbFilesystemOption } from './drives.service'
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }))
 vi.mock('@/shared/lib/tauri', () => ({ invoke }))
 vi.mock('@tauri-apps/api/core', () => ({ Channel: class { onmessage?: (value: unknown) => void } }))
 
 describe('USB format progress', () => {
+  it('passes NTFS and a long label unchanged in a single formatting request', async () => {
+    invoke.mockClear()
+    invoke.mockResolvedValueOnce({ filesystem: 'NTFS' })
+    await expect(formatRemovablePartition('/usb', 'ntfs', 'Windows_backup_2026')).resolves.toEqual({ filesystem: 'NTFS' })
+    expect(invoke).toHaveBeenCalledOnce()
+    expect(invoke).toHaveBeenCalledWith('format_removable_partition', expect.objectContaining({ path: '/usb', filesystem: 'ntfs', label: 'Windows_backup_2026' }))
+  })
   it('forwards progress while running and ignores late messages after completion', async () => {
     const onProgress = vi.fn()
     let finish!: (result: unknown) => void
@@ -26,6 +33,20 @@ describe('USB format progress', () => {
     invoke.mockRejectedValueOnce({ code: 'format_status_unknown', message: 'Connection lost' })
     await expect(formatRemovablePartition('/usb', 'ext4', '')).rejects.toMatchObject({ code: 'format_status_unknown' })
     expect(invoke).toHaveBeenCalledOnce()
+  })
+})
+
+describe('USB volume labels', () => {
+  const ntfs: UsbFilesystemOption = { id: 'ntfs', label: 'NTFS', description: '', available: true, requiredTool: 'mkntfs', labelMaxLength: 128 }
+  it.each(['', '  ', 'Windows_backup_2026', 'A'.repeat(128)])('accepts supported NTFS labels (%s)', label => {
+    expect(usbVolumeLabelError(label, ntfs)).toBe('')
+  })
+  it.each(['A'.repeat(129), 'bad/name', 'bad\nname', 'følsom'])('rejects unsupported NTFS labels (%s)', label => {
+    expect(usbVolumeLabelError(label, ntfs)).toContain('up to 128 ASCII')
+  })
+  it('uses the backend limit when switching to another format', () => {
+    expect(usbVolumeLabelError('Windows_backup_2026', { ...ntfs, id: 'exfat', labelMaxLength: 11 })).toContain('up to 11 ASCII')
+    expect(usbVolumeLabelError('SHARE_01', { ...ntfs, id: 'exfat', labelMaxLength: 11 })).toBe('')
   })
 })
 
