@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Show each saved SFTP/FTP connection only once in Network, merging server-root,
+  home-folder and existing GVFS mount aliases while preserving the saved target.
+  Keep separate accounts, ports and SMB/AFP shares or NFS/WebDAV scopes distinct.
+  Forget Connection removes saved folder aliases for that connection together.
+
 - Use GTK/GVFS authentication dialogs for Linux network mounts, including SFTP
   username/password, optional system-keyring storage and host-key questions.
   Bound and cancel pending connections, report the real backend error, and open

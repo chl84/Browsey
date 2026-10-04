@@ -234,28 +234,112 @@ fn merge_saved_connections(
     saved: &[saved::SavedNetworkConnection],
     mut local_path: impl FnMut(&str) -> Option<String>,
 ) {
-    for connection in saved {
-        let Ok(address) = saved::connection_uri(&connection.uri, None) else {
-            continue;
+    // Saved targets win over discovery, which in turn wins over local mount
+    // labels. Preserve the selected saved folder instead of rewriting its path.
+    let saved = saved::unique_connections(saved.to_vec());
+    let mut candidates: Vec<_> = saved
+        .into_iter()
+        .map(|connection| {
+            to_network_entry(&MountInfo {
+                label: connection.label.clone(),
+                path: connection.uri.clone(),
+                fs: uri::classify_uri(&connection.uri)
+                    .scheme
+                    .unwrap_or_default(),
+                removable: false,
+                size_bytes: None,
+            })
+        })
+        .collect();
+    entries.sort_by_key(|entry| {
+        (
+            saved::connection_identity(&entry.path).is_err(),
+            entry.path.len(),
+            entry.path.clone(),
+        )
+    });
+    candidates.append(entries);
+    let mut mapped_paths = HashMap::new();
+    let mut groups: Vec<NetworkConnectionEntry> = Vec::new();
+    for entry in candidates {
+        let identity = saved::connection_identity(&entry.path).ok();
+        let mounted_root = if identity.is_some() {
+            mapped_paths
+                .entry(entry.path.clone())
+                .or_insert_with(|| local_path(&entry.path))
+                .as_deref()
+                .map(mount_path_identity)
+        } else if std::path::Path::new(&entry.path).is_absolute() {
+            Some(mount_path_identity(&entry.path))
+        } else {
+            None
         };
-        let mounted_path = local_path(&address);
-        entries.retain(|entry| {
-            let same_uri = saved::connection_uri(&entry.path, None).is_ok_and(|uri| uri == address);
-            let same_path = mounted_path
-                .as_ref()
-                .is_some_and(|path| normalize_path(&entry.path) == normalize_path(path));
-            !same_uri && !same_path
-        });
-        entries.push(to_network_entry(&MountInfo {
-            label: connection.label.clone(),
-            path: address,
-            fs: uri::classify_uri(&connection.uri)
-                .scheme
-                .unwrap_or_default(),
-            removable: false,
-            size_bytes: None,
-        }));
+        let candidate = NetworkConnectionEntry {
+            entry,
+            identity,
+            mounted_root,
+        };
+        if let Some(group) = groups
+            .iter_mut()
+            .find(|group| group.same_connection(&candidate))
+        {
+            if group.mounted_root.is_none() {
+                group.mounted_root.clone_from(&candidate.mounted_root);
+            }
+            // Bind an unspecified user to the proven live account so a second,
+            // different explicit account can never be swallowed by that alias.
+            if let Some(identity) = &candidate.identity {
+                if let Some(current) = &mut group.identity {
+                    current.bind_account(identity);
+                } else {
+                    group.identity = Some(identity.clone());
+                }
+            }
+        } else {
+            groups.push(candidate);
+        }
     }
+    entries.extend(groups.into_iter().map(|group| group.entry));
+}
+
+struct NetworkConnectionEntry {
+    entry: FsEntry,
+    identity: Option<saved::ConnectionIdentity>,
+    mounted_root: Option<String>,
+}
+
+impl NetworkConnectionEntry {
+    fn same_connection(&self, other: &Self) -> bool {
+        let same_mount = self
+            .mounted_root
+            .as_ref()
+            .is_some_and(|root| Some(root) == other.mounted_root.as_ref());
+        match (&self.identity, &other.identity) {
+            (Some(a), Some(b)) => a == b || (same_mount && a.compatible_mount(b)),
+            _ => same_mount || self.entry.path == other.entry.path,
+        }
+    }
+}
+
+fn mount_path_identity(path: &str) -> String {
+    let mut root = std::path::PathBuf::new();
+    let mut after_gvfs = false;
+    for component in std::path::Path::new(path).components() {
+        root.push(component.as_os_str());
+        let name = component.as_os_str().to_string_lossy();
+        if after_gvfs
+            && name
+                .split_once(':')
+                .is_some_and(|(scheme, _)| uri::canonical_scheme(scheme).is_some())
+        {
+            // A URI child maps below its actual GVFS mount; the mount root and
+            // its default/home folder are two representations of that session.
+            return normalize_path(&root.to_string_lossy());
+        }
+        after_gvfs = name == "gvfs";
+    }
+    // Non-GVFS paths require an exact match; never guess another filesystem root.
+    normalize_path(path)
 }
 
 #[tauri::command]
@@ -281,6 +365,162 @@ mod tests {
     use super::*;
 
     #[test]
+    fn saved_server_root_home_and_gvfs_mount_are_one_connection() {
+        let root = "/run/user/1000/gvfs/sftp:host=server,user=alice";
+        let mut entries = to_network_entries(&[
+            mount("alice on server", root, "sftp"),
+            mount("Home from GIO", "sftp://alice@server/home/alice", "sftp"),
+        ]);
+        let saved = vec![
+            saved::SavedNetworkConnection {
+                uri: "sftp://alice@server/".into(),
+                label: "Saved root".into(),
+            },
+            saved::SavedNetworkConnection {
+                uri: "sftp://alice@server/home/alice".into(),
+                label: "Saved home".into(),
+            },
+        ];
+        merge_saved_connections(&mut entries, &saved, |uri| {
+            Some(if uri.ends_with("/home/alice") {
+                format!("{root}/home/alice")
+            } else {
+                root.to_string()
+            })
+        });
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "sftp://alice@server/");
+        assert_eq!(entries[0].name, "Saved root");
+    }
+
+    #[test]
+    fn saved_home_hides_mount_root_without_changing_the_requested_folder() {
+        let root = "/run/user/1000/gvfs/sftp:host=server";
+        let mut entries = to_network_entries(&[mount("Mounted root", root, "sftp")]);
+        let saved = vec![saved::SavedNetworkConnection {
+            uri: "sftp://server/root".into(),
+            label: "Saved home".into(),
+        }];
+        merge_saved_connections(&mut entries, &saved, |_| Some(format!("{root}/root")));
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].path, "sftp://server/root");
+    }
+
+    #[test]
+    fn duplicate_connection_addresses_are_collapsed_offline_but_accounts_and_ports_are_not() {
+        let saved = [
+            "ssh://alice@server/home/alice",
+            "sftp://alice@server/",
+            "sftp://alice@server:22/",
+            "sftp://bob@server/",
+            "sftp://alice@server:2222/",
+            "sftp://alice@other/",
+        ]
+        .map(|uri| saved::SavedNetworkConnection {
+            uri: uri.into(),
+            label: uri.into(),
+        });
+        let mut entries = Vec::new();
+        merge_saved_connections(&mut entries, &saved, |_| None);
+        assert_eq!(entries.len(), 4);
+        assert!(entries
+            .iter()
+            .any(|entry| entry.path == "sftp://alice@server/"));
+        assert!(entries
+            .iter()
+            .any(|entry| entry.path == "sftp://bob@server/"));
+        assert!(entries
+            .iter()
+            .any(|entry| entry.path == "sftp://alice@server:2222/"));
+        assert!(entries
+            .iter()
+            .any(|entry| entry.path == "sftp://alice@other/"));
+    }
+
+    #[test]
+    fn unsaved_mount_and_discovered_home_are_one_entry_without_connecting() {
+        let root = "/run/user/1000/gvfs/sftp:host=server,user=alice";
+        let mut entries = to_network_entries(&[
+            mount("Mounted", root, "sftp"),
+            mount("Discovered", "sftp://alice@server/home/alice", "sftp"),
+        ]);
+        merge_saved_connections(&mut entries, &[], |_| Some(format!("{root}/home/alice")));
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn keeps_different_accounts_even_if_a_mapping_provider_returns_the_same_path() {
+        let saved = [
+            "sftp://alice@server/",
+            "sftp://bob@server/",
+            "sftp://alice@server:2222/",
+        ]
+        .map(|uri| saved::SavedNetworkConnection {
+            uri: uri.into(),
+            label: uri.into(),
+        });
+        let mut entries = Vec::new();
+        merge_saved_connections(&mut entries, &saved, |_| {
+            Some("/run/user/1000/gvfs/sftp:host=server".into())
+        });
+        assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn missing_account_requires_live_mount_proof_to_merge_and_does_not_hide_other_users() {
+        let mut entries = to_network_entries(&[
+            mount("Default account", "sftp://server/", "sftp"),
+            mount("Alice", "sftp://alice@server/", "sftp"),
+            mount("Bob", "sftp://bob@server/", "sftp"),
+        ]);
+        merge_saved_connections(&mut entries, &[], |_| None);
+        assert_eq!(entries.len(), 3);
+        merge_saved_connections(&mut entries, &[], |_| {
+            Some("/run/user/1000/gvfs/sftp:host=server".into())
+        });
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn discovered_mount_supplies_missing_mapping_without_reintroducing_a_local_duplicate() {
+        let root = "/run/user/1000/gvfs/sftp:host=server,user=alice";
+        let mut entries = to_network_entries(&[
+            mount("Mounted", root, "sftp"),
+            mount("Home", "sftp://alice@server/home/alice", "sftp"),
+        ]);
+        let saved = vec![saved::SavedNetworkConnection {
+            uri: "sftp://alice@server/".into(),
+            label: "Saved".into(),
+        }];
+        merge_saved_connections(&mut entries, &saved, |uri| {
+            uri.ends_with("/home/alice")
+                .then(|| format!("{root}/home/alice"))
+        });
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Saved");
+    }
+
+    #[test]
+    fn connection_merge_does_not_change_phone_cloud_or_ordinary_mount_paths() {
+        let mut entries = vec![
+            to_network_entry(&mount("Phone", "mtp://phone/", "mtp")),
+            to_network_entry(&mount("Cloud", "rclone://remote/", "rclone")),
+            to_network_entry(&mount("Mounted NFS", "/mnt/export", "nfs")),
+        ];
+        let before: Vec<_> = entries.iter().map(|entry| entry.path.clone()).collect();
+        let mut mapping_calls = 0;
+        merge_saved_connections(&mut entries, &[], |_| {
+            mapping_calls += 1;
+            None
+        });
+        assert_eq!(mapping_calls, 0);
+        assert_eq!(entries.len(), 3);
+        for path in before {
+            assert!(entries.iter().any(|entry| entry.path == path));
+        }
+    }
+
+    #[test]
     fn saved_servers_remain_available_offline_and_keep_account_and_child_paths() {
         let saved = vec![
             saved::SavedNetworkConnection {
@@ -295,8 +535,14 @@ mod tests {
         let mut entries = Vec::new();
         merge_saved_connections(&mut entries, &saved, |_| None);
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].path, "sftp://alice@server/Photos");
-        assert_eq!(entries[0].name, "Photos server");
+        let photos = entries
+            .iter()
+            .find(|entry| entry.path == "sftp://alice@server/Photos")
+            .unwrap();
+        assert_eq!(photos.name, "Photos server");
+        assert!(entries
+            .iter()
+            .any(|entry| entry.path == "sftp://bob@server/"));
         assert!(entries
             .iter()
             .all(|entry| entry.network && entry.kind == "dir"));

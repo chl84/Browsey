@@ -122,7 +122,12 @@ destructive testing.
   bounded/cancellable connection handling, exact mount identity and persistent
   server-address history have Rust/frontend regression coverage. The simulated
   browser flow checks saved-server menus, reconnect and forgetting without
-  disconnecting. This is not native acceptance: test the installed build against
+  disconnecting. Backend regressions also cover server-root/home/GVFS alias
+  deduplication, offline history, account/port/share separation and forgetting
+  saved folder aliases. Read-only GIO checks confirmed that the two already
+  mounted SFTP servers map root and home URIs below the same GVFS mount; the
+  corrected installed Network view has not yet been checked.
+  This is not native acceptance: test the installed build against
   approved servers with distinct accounts/passwords, rejected login, Cancel,
   host-key questions, optional keyring saving, restart and stale mounts. No real
   password or host-key approval was automated.
