@@ -136,8 +136,19 @@ existing modules rather than reopening completed refactoring tracks.
   cover filter/backspace, rename/Escape, fresh Properties selection, console and
   select-all after navigation. No physical drive was formatted; native/device
   acceptance remains separate.
-- [ ] **M4** Reuse shared error normalization in the Properties modal,
+- [x] **M4** Reuse shared error normalization in the Properties modal,
   preserving supported error shapes and permission-specific messages.
+  Resolved 2026-10-04. Properties uses shared `getErrorMessage`/`getErrorCode`
+  rather than parallel parsers. Normalization retains nested/JSON-encoded typed
+  IPC codes, diagnostic metadata and immutable Error identity/stack; codes are
+  never inferred from prose. Permission/ownership-specific messages and previous
+  UI state remain intact after failed requests, without mutation retries.
+  Verification: 84 focused error/IPC/Properties tests, including four Properties
+  cases reproduced before the fix. Final combined strict maintenance run passes:
+  728 backend tests (18 unchanged opt-in tests ignored), 621 frontend tests,
+  103 mock-browser tests, Rustfmt/Clippy/Semgrep, frontend lint/typecheck/build
+  and 20 documentation checks. Native WebKit and physical USB formatting were
+  not exercised by these checks.
 
 After each item, run relevant regression tests and frontend lint, typecheck
 and build. Check the item only when verified and record the results; native

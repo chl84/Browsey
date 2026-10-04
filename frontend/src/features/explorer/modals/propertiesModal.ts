@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store'
 import { invoke } from '@/shared/lib/tauri'
+import { getErrorCode, getErrorMessage } from '@/shared/lib/error'
 import type { Entry, Partition } from '../model/types'
 import { getVolumeUsage, isMtpPartition, isUnmountedPartition, isUnmountedUsb, type VolumeUsage } from '../services/drives.service'
 import { parentPath } from '../utils'
@@ -244,61 +245,6 @@ const fetchOwnershipPrincipalList = async (
   return normalizePrincipalList(raw)
 }
 
-const invokeErrorMessage = (err: unknown): string => {
-  if (err instanceof Error && err.message.trim().length > 0) return err.message
-  if (typeof err === 'string' && err.trim().length > 0) return err
-  if (err && typeof err === 'object') {
-    const record = err as Record<string, unknown>
-    const nestedError =
-      record.error && typeof record.error === 'object'
-        ? (record.error as Record<string, unknown>)
-        : null
-    const candidates = [
-      record.message,
-      record.error,
-      record.cause,
-      nestedError?.message,
-      nestedError?.error,
-      nestedError?.cause,
-    ]
-    for (const candidate of candidates) {
-      if (typeof candidate === 'string' && candidate.trim().length > 0) return candidate
-    }
-    try {
-      const serialized = JSON.stringify(err)
-      if (serialized && serialized !== '{}') return serialized
-    } catch {
-      // Ignore serialization issues and use fallback.
-    }
-  }
-  return 'Unknown error'
-}
-
-const invokeErrorCode = (err: unknown): string | null => {
-  if (typeof err === 'string' && err.trim().length > 0) {
-    try {
-      const parsed = JSON.parse(err) as Record<string, unknown>
-      if (typeof parsed.code === 'string' && parsed.code.trim().length > 0) {
-        return parsed.code.trim()
-      }
-    } catch {
-      // Ignore parse failures for plain strings.
-    }
-  }
-  if (!err || typeof err !== 'object') return null
-  const record = err as Record<string, unknown>
-  if (typeof record.code === 'string' && record.code.trim().length > 0) {
-    return record.code.trim()
-  }
-  if (record.error && typeof record.error === 'object') {
-    const nested = record.error as Record<string, unknown>
-    if (typeof nested.code === 'string' && nested.code.trim().length > 0) {
-      return nested.code.trim()
-    }
-  }
-  return null
-}
-
 const isExpectedOwnershipError = (code: string | null): boolean => {
   return (
     code === 'authentication_cancelled' ||
@@ -539,8 +485,8 @@ export const createPropertiesModal = (deps: Deps) => {
       }))
     } catch (err) {
       if (currToken !== token) return
-      const code = invokeErrorCode(err)
-      const message = invokeErrorMessage(err)
+      const code = getErrorCode(err)
+      const message = getErrorMessage(err)
       const userMessage = userPermissionsErrorMessage(code, message)
       console.warn('Failed to load ownership principals', message)
       state.update((s) => ({
@@ -588,8 +534,8 @@ export const createPropertiesModal = (deps: Deps) => {
         void ensureOwnershipPrincipalsLoaded(currToken)
       }
     } catch (err) {
-      const code = invokeErrorCode(err)
-      const message = invokeErrorMessage(err)
+      const code = getErrorCode(err)
+      const message = getErrorMessage(err)
       console.error(
         `Failed to load multi permissions${code ? ` [${code}]` : ''}: ${message}`,
       )
@@ -620,8 +566,8 @@ export const createPropertiesModal = (deps: Deps) => {
         void ensureOwnershipPrincipalsLoaded(currToken)
       }
     } catch (err) {
-      const code = invokeErrorCode(err)
-      const message = invokeErrorMessage(err)
+      const code = getErrorCode(err)
+      const message = getErrorMessage(err)
       console.error(`Failed to load permissions${code ? ` [${code}]` : ''}: ${message}`)
       if (currToken !== token) return
       state.update((s) => ({ ...s, permissionsLoading: false }))
@@ -641,8 +587,8 @@ export const createPropertiesModal = (deps: Deps) => {
         entry: { ...entry, ...times },
       }))
     } catch (err) {
-      const code = invokeErrorCode(err)
-      const message = invokeErrorMessage(err)
+      const code = getErrorCode(err)
+      const message = getErrorMessage(err)
       console.error(`Failed to load entry times${code ? ` [${code}]` : ''}: ${message}`)
     }
   }
@@ -661,7 +607,7 @@ export const createPropertiesModal = (deps: Deps) => {
       }))
     } catch (err) {
       if (currToken !== token) return
-      const message = invokeErrorMessage(err)
+      const message = getErrorMessage(err)
       state.update((s) => ({
         ...s,
         extraMetadataLoading: false,
@@ -759,8 +705,8 @@ export const createPropertiesModal = (deps: Deps) => {
       }))
     } catch (err) {
       if (activeToken !== token) return
-      const code = invokeErrorCode(err)
-      const rawMessage = invokeErrorMessage(err)
+      const code = getErrorCode(err)
+      const rawMessage = getErrorMessage(err)
       const message = userPermissionsErrorMessage(code, rawMessage)
       const signature = `${targets.join('\n')}|${JSON.stringify(opts)}|${code ?? ''}|${message}`
       const now = Date.now()
@@ -852,8 +798,8 @@ export const createPropertiesModal = (deps: Deps) => {
       }))
     } catch (err) {
       if (activeToken !== token) return
-      const code = invokeErrorCode(err)
-      const rawMessage = invokeErrorMessage(err)
+      const code = getErrorCode(err)
+      const rawMessage = getErrorMessage(err)
       const message = userOwnershipErrorMessage(code, rawMessage)
       if (!isExpectedOwnershipError(code)) {
         console.warn('Ownership update failed:', message)
@@ -890,7 +836,7 @@ export const createPropertiesModal = (deps: Deps) => {
         await copyToClipboard(parent)
         showToast(current.partition ? 'Drive path copied' : 'Parent folder copied', 1500)
       } catch (error) {
-        const message = invokeErrorMessage(error)
+        const message = getErrorMessage(error)
         showToast(`Copy failed: ${message}`)
       }
     },

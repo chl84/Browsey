@@ -2,6 +2,7 @@ import { get } from 'svelte/store'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Entry } from '../model/types'
 import { createPropertiesModal, type PropertiesState } from './propertiesModal'
+import { normalizeError } from '@/shared/lib/error'
 
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -247,6 +248,58 @@ describe('properties modal copyParentFolder', () => {
         'Permissions update failed: Browsey could not complete the privileged permissions step.',
       )
     })
+  })
+})
+
+describe('Properties error-shape compatibility', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    invokeMock.mockReset()
+  })
+
+  it.each([
+    ['nested helper', { error: { code: 'helper_start_failed', message: 'Private helper diagnostic' } }, 'Browsey could not complete the privileged permissions step.'],
+    ['JSON authentication', JSON.stringify({ code: 'authentication_cancelled', message: 'Authentication diagnostic' }), 'Authentication was cancelled.'],
+    ['normalized JSON authentication', normalizeError(JSON.stringify({ code: 'authentication_cancelled', message: 'Authentication diagnostic' })), 'Authentication was cancelled.'],
+    ['normalized nested ownership', normalizeError({ error: { code: 'elevated_required', message: 'Elevated diagnostic' } }), 'Permission denied. Changing owner or group requires elevated privileges.'],
+    ['Error with code', Object.assign(new Error('Owner diagnostic'), { code: ' permission_denied ' }), 'Permission denied. Changing owner or group requires elevated privileges.'],
+    ['metadata', { code: 'metadata_read_failed', message: 'Metadata diagnostic' }, 'Browsey could not read the current permissions.'],
+    ['snapshot', { code: 'post_change_snapshot_failed', message: 'Snapshot diagnostic' }, 'Permissions were changed, but Browsey could not verify the final state. Refresh and review the item before continuing.'],
+    ['rollback', { code: 'rollback_failed', message: 'Rollback diagnostic' }, 'Some permission changes could not be rolled back cleanly. Refresh and review the item before continuing.'],
+    ['read-only', { code: 'read_only_filesystem', message: 'Mount diagnostic' }, 'This location is read-only.'],
+    ['cause string', { cause: 'Original cause' }, 'Original cause'],
+    ['nested cause', { error: { cause: 'Nested cause' } }, 'Nested cause'],
+    ['untyped prose', 'permission_denied', 'permission_denied'],
+  ])('preserves ownership feedback for %s', async (_shape, error, expected) => {
+    invokeMock.mockRejectedValueOnce(error)
+    const modal = createPropertiesModal({ computeDirStats: computeDirStatsMock, showToast: showToastMock })
+    modal.state.set(makeOpenState(makeEntry('/mock/file.txt')))
+    await modal.setOwnership('test-user', 'test-group')
+    expect(get(modal.state).ownershipError).toBe(expected)
+    expect(get(modal.state).ownershipApplying).toBe(false)
+    expect(invokeMock).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['helper', normalizeError({ error: { code: 'helper_io_error', message: 'Helper diagnostic' } }), 'Browsey could not complete the privileged permissions step.'],
+    ['cancelled', normalizeError(JSON.stringify({ code: 'authentication_cancelled', message: 'Cancelled diagnostic' })), 'Authentication was cancelled.'],
+    ['snapshot', { error: { code: 'post_change_snapshot_failed', message: 'Snapshot diagnostic' } }, 'Permissions were changed, but Browsey could not verify the final state. Refresh and review the item before continuing.'],
+    ['read-only', { code: 'read_only_filesystem', message: 'Read-only diagnostic' }, 'This location is read-only.'],
+  ])('preserves permission feedback and previous UI state for %s', async (_shape, error, expected) => {
+    invokeMock.mockRejectedValueOnce(error)
+    const modal = createPropertiesModal({ computeDirStats: computeDirStatsMock, showToast: showToastMock })
+    modal.state.set({
+      ...makeOpenState(makeEntry('/mock/file.txt')),
+      permissions: {
+        accessSupported: true, ownershipSupported: true, ownerName: 'test-user', groupName: 'test-group',
+        owner: { read: false, write: true, exec: false }, group: null, other: null,
+      },
+    })
+    modal.toggleAccess('owner', 'read', true)
+    await vi.waitFor(() => expect(showToastMock).toHaveBeenCalledWith(`Permissions update failed: ${expected}`))
+    expect(get(modal.state).permissions?.owner?.read).toBe(false)
+    expect(get(modal.state).permissionsApplying).toBe(false)
+    expect(invokeMock).toHaveBeenCalledOnce()
   })
 })
 

@@ -12,6 +12,9 @@
 - Move Explorer shortcut composition and file-action orchestration into focused
   controllers, retaining the existing keyboard router and shared mutation policy.
   Release cloud-open progress listeners after both success and failure.
+- Reuse shared error normalization in Properties, retaining nested and
+  JSON-encoded IPC error codes and permission-specific recovery messages.
+  Preserve existing Error instances, stacks and diagnostic metadata.
 - Finish failed network-delete progress cleanup before showing confirmation,
   so a quick confirmation cannot lose the next operation's progress UI.
 

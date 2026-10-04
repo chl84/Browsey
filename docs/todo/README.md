@@ -3,7 +3,7 @@
 Place active execution TODO documents in this directory.
 
 - [Browsey daily-driver completeness](TODO_DAILY_DRIVER_COMPLETENESS.md):
-  engineering follow-ups, four ordered maintainability tasks (M1–M4), and
+  engineering follow-ups, the completed maintainability follow-up (M1–M4), and
   reproduced validation findings, with optional
   decisions and release rules kept out of the implementation checkbox count.
 - [Daily-driver validation](../operations/linux-release/daily-driver-validation-checklist.md):
