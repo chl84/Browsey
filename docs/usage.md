@@ -176,6 +176,13 @@ and POSIX permission editing are not offered. GVFS/MTP fallback moves without
 verifiable output ownership may copy but refuse source deletion; inspect both
 sides rather than automatically repeating the move.
 
+Automatic refresh in GVFS/MTP folders keeps existing entries in place while
+metadata and thumbnails arrive. New files are appended and deleted files are
+removed; cached details remain visible while fresh metadata is pending. Use F5
+or change the sort setting to apply the current sorting again. Sorting uses the
+metadata currently available; a newly opened phone folder may still be resolving
+dates and sizes. Background refresh does not interrupt navigation or search.
+
 ## File safety and recovery
 
 Keep backups, verify paths before destructive actions, and stop other writers

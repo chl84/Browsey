@@ -120,6 +120,102 @@ describe('createExplorerState sort refresh behavior', () => {
     expect(get(state.entries).map((entry) => entry.name)).toEqual(['beta.txt', 'alpha.txt'])
   })
 
+  const cameraPath = '/run/user/1000/gvfs/mtp:host=test/DCIM/Camera'
+  const photo = (name: string, modified: string | null = null): Entry => ({ ...makeEntry(name, `${cameraPath}/${name}`), modified })
+
+  it('preserves camera file order across metadata-driven background refreshes but allows manual refresh to sort', async () => {
+    const state = createExplorerState()
+    state.sortField.set('modified')
+    listDirMock.mockResolvedValueOnce({ current: cameraPath, entries: [photo('a.jpg'), photo('b.jpg')] })
+    await state.load(cameraPath)
+    listDirMock.mockResolvedValue({ current: cameraPath, entries: [photo('b.jpg', '2026-01-01 12:00'), photo('a.jpg', '2026-01-02 12:00')] })
+    await state.load(cameraPath, { silent: true, recordHistory: false })
+    expect(get(state.entries).map(entry => entry.name)).toEqual(['a.jpg', 'b.jpg'])
+    expect(get(state.entries)[1].modified).toBe('2026-01-01 12:00')
+    expect(watchDirMock).toHaveBeenCalledOnce()
+    await state.load(cameraPath, { recordHistory: false })
+    expect(get(state.entries).map(entry => entry.name)).toEqual(['b.jpg', 'a.jpg'])
+  })
+
+  it('does not replace known metadata with placeholders or move remaining entries when files arrive or disappear', async () => {
+    const state = createExplorerState()
+    const a = { ...photo('a.jpg', '2026-01-02 12:00'), size: 20, iconId: 14, readOnly: true }
+    listDirMock.mockResolvedValueOnce({ current: cameraPath, entries: [a, photo('b.jpg')] })
+    await state.load(cameraPath)
+    listDirMock.mockResolvedValue({ current: cameraPath, entries: [photo('c.jpg'), { ...photo('a.jpg'), kind: 'dir', iconId: 0, readOnly: false }], pendingMetadataPaths: [`${cameraPath}/a.jpg`] })
+    await state.load(cameraPath, { silent: true, recordHistory: false })
+    expect(get(state.entries).map(entry => entry.name)).toEqual(['a.jpg', 'c.jpg'])
+    expect(get(state.entries)[0]).toMatchObject({ kind: 'file', size: 20, iconId: 14, modified: '2026-01-02 12:00', readOnly: true, metadataPending: true })
+  })
+
+  it('uses retained metadata when manually sorting a refreshed placeholder snapshot', async () => {
+    const state = createExplorerState()
+    state.sortField.set('modified')
+    listDirMock.mockResolvedValueOnce({ current: cameraPath, entries: [photo('b.jpg', '2026-01-01 12:00'), photo('a.jpg', '2026-01-02 12:00')] })
+    await state.load(cameraPath)
+    listDirMock.mockResolvedValue({ current: cameraPath, entries: [photo('a.jpg'), photo('b.jpg')], pendingMetadataPaths: [`${cameraPath}/a.jpg`, `${cameraPath}/b.jpg`] })
+    await state.load(cameraPath, { recordHistory: false })
+    expect(get(state.entries).map(entry => entry.name)).toEqual(['b.jpg', 'a.jpg'])
+  })
+
+  it('applies early metadata when it beats the initial directory reply and ignores updates for other paths', async () => {
+    const state = createExplorerState()
+    let finish!: (value: unknown) => void
+    listDirMock.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const pending = state.load(cameraPath)
+    state.applyEntryMetadata([{ ...photo('a.jpg', '2026-01-02 12:00'), size: 200 }, photo('outside.jpg')])
+    finish({ current: cameraPath, entries: [photo('a.jpg')], pendingMetadataPaths: [`${cameraPath}/a.jpg`] })
+    await pending
+    expect(get(state.entries)).toHaveLength(1)
+    expect(get(state.entries)[0]).toMatchObject({ size: 200, modified: '2026-01-02 12:00', metadataPending: false })
+    state.applyEntryMetadata([{ ...photo('a.jpg'), size: 300 }, photo('outside.jpg')])
+    expect(get(state.entries)).toHaveLength(1)
+    expect(get(state.entries)[0].size).toBe(300)
+  })
+
+  it('ignores a delayed camera refresh after navigation to another directory', async () => {
+    const state = createExplorerState()
+    listDirMock.mockResolvedValueOnce({ current: cameraPath, entries: [photo('a.jpg')] })
+    await state.load(cameraPath)
+    let finish!: (value: unknown) => void
+    listDirMock.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const old = state.load(cameraPath, { silent: true, recordHistory: false })
+    listDirMock.mockResolvedValueOnce({ current: '/local', entries: [makeEntry('local.txt', '/local/local.txt')] })
+    await state.load('/local')
+    finish({ current: cameraPath, entries: [photo('stale.jpg')] })
+    await old
+    expect(get(state.current)).toBe('/local')
+    expect(get(state.entries).map(entry => entry.path)).toEqual(['/local/local.txt'])
+    expect(watchDirMock.mock.calls.map(call => call[0])).toEqual([cameraPath, '/local'])
+  })
+
+  it('does not publish unchanged camera snapshots or reset the current-path callback', async () => {
+    const onEntriesChanged = vi.fn(), onCurrentChange = vi.fn()
+    const state = createExplorerState({ onEntriesChanged, onCurrentChange })
+    listDirMock.mockResolvedValue({ current: cameraPath, entries: [photo('a.jpg')] })
+    await state.load(cameraPath)
+    const before = get(state.entries)
+    await state.load(cameraPath, { silent: true, recordHistory: false })
+    expect(get(state.entries)).toBe(before)
+    expect(onEntriesChanged).toHaveBeenCalledOnce()
+    expect(onCurrentChange).toHaveBeenCalledOnce()
+  })
+
+  it('sorts GVFS entries in memory and rejects an earlier unsorted background reply', async () => {
+    const state = createExplorerState()
+    listDirMock.mockResolvedValueOnce({ current: cameraPath, entries: [photo('a.jpg'), photo('b.jpg')] })
+    await state.load(cameraPath)
+    let finish!: (value: unknown) => void
+    listDirMock.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const pending = state.load(cameraPath, { silent: true, recordHistory: false })
+    await state.changeSort('name')
+    expect(get(state.entries).map(entry => entry.name)).toEqual(['b.jpg', 'a.jpg'])
+    finish({ current: cameraPath, entries: [photo('a.jpg'), photo('b.jpg')] })
+    await pending
+    expect(get(state.entries).map(entry => entry.name)).toEqual(['b.jpg', 'a.jpg'])
+    expect(listDirMock).toHaveBeenCalledTimes(2)
+  })
+
   it('reloads local directory from backend on sort toggle', async () => {
     listDirMock
       .mockResolvedValueOnce({

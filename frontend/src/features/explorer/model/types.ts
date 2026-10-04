@@ -35,11 +35,14 @@ export type Entry = {
   readOnly?: boolean
   readDenied?: boolean
   capabilities?: EntryCapabilities | null
+  /** Internal view state: metadata is still being read, not a filesystem capability. */
+  metadataPending?: boolean
 }
 
 export type Listing = {
   current: string
   entries: Entry[]
+  pendingMetadataPaths?: string[]
 }
 
 export type SortField = 'name' | 'type' | 'modified' | 'size'

@@ -25,6 +25,8 @@ import { patchEntryStarred, removeEntryByPath } from './state/entryMutations'
 import { createPreferenceSlice } from './state/preferencesSlice'
 import { sortExplorerEntriesInMemory } from './state/searchSort'
 import { createExplorerStores } from './state/stores'
+import { isGvfsPath } from './helpers/location'
+import { applyDirectoryMetadata, reconcileDirectorySnapshot } from './state/directorySnapshots'
 
 export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   // Store composition root; keep the returned object shape as the stable public API.
@@ -96,7 +98,9 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   let searchRunId = 0
   let cancelActiveSearch: (() => void) | null = null
   let activeSearchCancelId: string | null = null
+  let directoryRequest: { id: number; metadata: Map<string, Entry> } | null = null
   const invalidateSearchRun = () => {
+    directoryRequest = null
     const cancelId = activeSearchCancelId
     activeSearchCancelId = null
     if (cancelId) {
@@ -202,18 +206,33 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     networkNotice.set('')
     invalidateSearchRun()
     searchRunning.set(false)
+    const request = { id: searchRunId, metadata: new Map<string, Entry>() }
+    directoryRequest = request
+    const currentAtStart = get(current)
+    const requestedSort = sortPayload()
     try {
-      const result = await listDir(path, sortPayload(), progressEvent)
-      current.set(result.current)
-      entries.set(mapNameLower(result.entries))
-      callbacks.onEntriesChanged?.()
-      callbacks.onCurrentChange?.(result.current)
+      const result = await listDir(path, requestedSort, progressEvent)
+      if (directoryRequest !== request || request.id !== searchRunId) return { ok: false as const, code: 'cancelled', message: '' }
+      const sameDirectory = result.current === get(current) && currentAtStart === result.current
+      const stableRefresh = silent && sameDirectory && isGvfsPath(result.current)
+      const previous = get(entries)
+      let next = reconcileDirectorySnapshot(sameDirectory ? previous : [], result, stableRefresh, request.metadata)
+      if (isGvfsPath(result.current) && !stableRefresh) {
+        next = sortExplorerEntriesInMemory(next, requestedSort)
+      }
+      if (result.current !== get(current)) current.set(result.current)
+      if (next !== previous) {
+        entries.set(next)
+        callbacks.onEntriesChanged?.()
+      }
+      if (!stableRefresh) callbacks.onCurrentChange?.(result.current)
       if (recordHistory) {
         pushHistory({ type: 'dir', path: result.current })
       }
-      await watchDir(result.current)
+      if (!stableRefresh) await watchDir(result.current)
       return { ok: true as const }
     } catch (err) {
+      if (directoryRequest !== request || request.id !== searchRunId) return { ok: false as const, code: 'cancelled', message: '' }
       const normalized = normalizeError(err)
       if (isCloudDirectoryPath(path ?? '') && normalized.code === 'cancelled') {
         error.set('')
@@ -225,9 +244,10 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       error.set(message)
       return { ok: false as const, code: normalized.code, message }
     } finally {
-      if (showLoadingIndicator) {
+      if (directoryRequest === request && request.id === searchRunId && showLoadingIndicator) {
         loading.set(false)
       }
+      if (directoryRequest === request) directoryRequest = null
     }
   }
 
@@ -241,6 +261,21 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     } = {},
   ) => {
     await loadDetailed(path, opts)
+  }
+
+  const applyEntryMetadata = (updates: Entry[]) => {
+    const pending = new Map(updates.map(entry => [entry.path, entry]))
+    // Metadata events can beat the initial list reply. Keep them with that
+    // request, and apply only to placeholders in its authoritative snapshot.
+    if (directoryRequest) {
+      for (const [path, entry] of pending) directoryRequest.metadata.set(path, entry)
+    }
+    const previous = get(entries)
+    const next = applyDirectoryMetadata(previous, pending)
+    if (next !== previous) {
+      invalidateFacetCache()
+      entries.set(next)
+    }
   }
 
   const loadRecent = async (recordHistory = true, applySort = false) => {
@@ -405,7 +440,11 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadNetworkForSort: () => loadNetwork(false),
     loadTrashForSort: () => loadTrash(false),
     loadDirectoryForSort: async (where) => {
-      if (isCloudDirectoryPath(where)) {
+      if (isCloudDirectoryPath(where) || isGvfsPath(where)) {
+        if (isGvfsPath(where)) {
+          invalidateSearchRun()
+          loading.set(false)
+        }
         entries.set(sortExplorerEntriesInMemory(get(entries), sortPayload()))
         callbacks.onEntriesChanged?.()
         return
@@ -711,6 +750,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
   )
 
   return {
+    applyEntryMetadata,
     cols,
     gridTemplate,
     current,

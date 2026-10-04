@@ -13,7 +13,34 @@ use std::collections::HashSet;
 use std::{
     fs, io,
     path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
 };
+
+static ACTIVE_METADATA_REFRESHES: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+
+struct MetadataRefreshGuard(PathBuf);
+
+impl MetadataRefreshGuard {
+    fn acquire(directory: &Path) -> Option<Self> {
+        let mut active = ACTIVE_METADATA_REFRESHES
+            .get_or_init(Default::default)
+            .lock()
+            .ok()?;
+        active
+            .insert(directory.to_path_buf())
+            .then(|| Self(directory.to_path_buf()))
+    }
+}
+
+impl Drop for MetadataRefreshGuard {
+    fn drop(&mut self) {
+        if let Some(active) = ACTIVE_METADATA_REFRESHES.get() {
+            if let Ok(mut active) = active.lock() {
+                active.remove(&self.0);
+            }
+        }
+    }
+}
 
 fn map_db_error(error: crate::db::DbError) -> ListingError {
     let code = match error.code() {
@@ -98,7 +125,9 @@ fn stub_entry(path: &Path, file_type: Option<fs::FileType>, starred: bool) -> Fs
         .as_ref()
         .map(|ft| ft.is_symlink())
         .unwrap_or(false);
-    let is_dir = file_type.as_ref().map(|ft| ft.is_dir()).unwrap_or(!is_link);
+    // An unknown file type must not turn every camera image into a temporary
+    // folder: resolving it would reshuffle the folders-first grid repeatedly.
+    let is_dir = file_type.as_ref().map(|ft| ft.is_dir()).unwrap_or(false);
     let kind = if is_link {
         "link"
     } else if is_dir {
@@ -147,15 +176,25 @@ fn stub_entry(path: &Path, file_type: Option<fs::FileType>, starred: bool) -> Fs
     }
 }
 
-fn spawn_meta_refresh(app: tauri::AppHandle, jobs: Vec<(PathBuf, Option<fs::FileType>, bool)>) {
+fn spawn_meta_refresh(
+    app: tauri::AppHandle,
+    directory: &Path,
+    jobs: Vec<(PathBuf, Option<fs::FileType>, bool)>,
+) {
     if jobs.is_empty() {
         return;
     }
+    // GVFS polling may return long before this worker has finished. Share the
+    // ongoing worker instead of starting another competing MTP metadata scan.
+    let Some(refresh_guard) = MetadataRefreshGuard::acquire(directory) else {
+        return;
+    };
     let Some(activity_guard) = crate::runtime_lifecycle::try_enter_background_job_from_app(&app)
     else {
         return;
     };
     tauri::async_runtime::spawn_blocking(move || {
+        let _refresh_guard = refresh_guard;
         let _activity_guard = activity_guard;
         let mut batch: Vec<FsEntry> = Vec::with_capacity(128);
         for (idx, (path, _file_type, starred)) in jobs.into_iter().enumerate() {
@@ -208,7 +247,7 @@ pub(super) fn list_dir_sync(
     let star_set: HashSet<String> = db::starred_set(&star_conn).map_err(map_db_error)?;
 
     let (listing, pending_meta) = collect_directory(&target, &star_set, sort)?;
-    spawn_meta_refresh(app, pending_meta);
+    spawn_meta_refresh(app, &target, pending_meta);
     Ok(listing)
 }
 
@@ -308,6 +347,10 @@ fn collect_directory(
         DirListing {
             current: display_path(target),
             entries,
+            pending_metadata_paths: pending_meta
+                .iter()
+                .map(|(path, _, _)| path.to_string_lossy().into_owned())
+                .collect(),
         },
         pending_meta,
     ))

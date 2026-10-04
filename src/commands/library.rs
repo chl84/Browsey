@@ -119,6 +119,7 @@ fn list_starred_impl(sort: Option<SortSpec>) -> LibraryResult<DirListing> {
     Ok(DirListing {
         current: "Starred".to_string(),
         entries: out,
+        pending_metadata_paths: Vec::new(),
     })
 }
 
@@ -176,6 +177,7 @@ fn list_recent_impl(sort: Option<SortSpec>) -> LibraryResult<DirListing> {
     Ok(DirListing {
         current: "Recent".to_string(),
         entries: out,
+        pending_metadata_paths: Vec::new(),
     })
 }
 

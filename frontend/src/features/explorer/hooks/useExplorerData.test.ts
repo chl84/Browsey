@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store'
+import type { Entry } from '../model/types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { listenMock, eventHandlers, createExplorerStateMock, getStartupPathMock, cleanups } = vi.hoisted(() => ({
@@ -56,7 +57,10 @@ describe('useExplorerData cloud refresh event', () => {
 
   const installExplorerStateMock = (currentPath: string) => {
     const current = writable(currentPath)
-    const entries = writable([])
+    const entries = writable<Entry[]>([])
+    const searchMode = writable(false)
+    const loading = writable(false)
+    const applyEntryMetadata = vi.fn()
     const mountsPollMs = writable(0)
     const highContrast = writable(false)
     const scrollbarWidth = writable(10)
@@ -105,6 +109,9 @@ describe('useExplorerData cloud refresh event', () => {
       loadDoubleClickMsPref: asyncNoop,
       loadLogLevelPref: asyncNoop,
       entries,
+      searchMode,
+      loading,
+      applyEntryMetadata,
       current,
       highContrast,
       scrollbarWidth,
@@ -123,6 +130,10 @@ describe('useExplorerData cloud refresh event', () => {
       loadPartitionsMock,
       startDirPref,
       error,
+      entries,
+      searchMode,
+      loading,
+      applyEntryMetadata,
     }
   }
 
@@ -207,6 +218,63 @@ describe('useExplorerData cloud refresh event', () => {
     })
 
     expect(loadMock).toHaveBeenCalledTimes(1)
+  })
+
+  const cameraPath = '/run/user/1000/gvfs/mtp:host=test/DCIM/Camera'
+
+  it('coalesces GVFS polling and watcher notifications while a refresh is in flight', async () => {
+    vi.useFakeTimers()
+    const { loadMock } = installExplorerStateMock(cameraPath)
+    useExplorerData()
+    await vi.advanceTimersByTimeAsync(0)
+    loadMock.mockClear()
+    let finish!: () => void
+    loadMock.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve }))
+    await vi.advanceTimersByTimeAsync(5000)
+    eventHandlers.get('dir-changed')?.({ payload: cameraPath })
+    await vi.advanceTimersByTimeAsync(5300)
+    expect(loadMock).toHaveBeenCalledExactlyOnceWith(cameraPath, { recordHistory: false, silent: true })
+    finish()
+    await vi.advanceTimersByTimeAsync(0)
+    eventHandlers.get('dir-changed')?.({ payload: cameraPath })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(loadMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not let GVFS polling interrupt navigation or active search', async () => {
+    vi.useFakeTimers()
+    const { loadMock, loading, searchMode } = installExplorerStateMock(cameraPath)
+    useExplorerData()
+    await vi.advanceTimersByTimeAsync(0)
+    loadMock.mockClear()
+    loading.set(true)
+    eventHandlers.get('dir-changed')?.({ payload: cameraPath })
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(loadMock).not.toHaveBeenCalled()
+    loading.set(false)
+    searchMode.set(true)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(loadMock).not.toHaveBeenCalled()
+    searchMode.set(false)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(loadMock).toHaveBeenCalledOnce()
+  })
+
+  it('batches metadata events through the state reconciliation API and cancels pending work on cleanup', async () => {
+    vi.useFakeTimers()
+    const { applyEntryMetadata } = installExplorerStateMock(cameraPath)
+    useExplorerData()
+    await vi.advanceTimersByTimeAsync(0)
+    const a: Entry = { name: 'a.jpg', path: `${cameraPath}/a.jpg`, kind: 'file', iconId: 0, size: 1 }
+    eventHandlers.get('entry-meta')?.({ payload: a })
+    eventHandlers.get('entry-meta-batch')?.({ payload: [{ ...a, size: 20 }] })
+    await vi.advanceTimersByTimeAsync(50)
+    expect(applyEntryMetadata).toHaveBeenCalledExactlyOnceWith([{ ...a, size: 20 }])
+    eventHandlers.get('entry-meta')?.({ payload: a })
+    cleanups.splice(0).forEach(cleanup => cleanup())
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(applyEntryMetadata).toHaveBeenCalledOnce()
+    expect(eventHandlers.has('dir-changed')).toBe(false)
   })
 
   it('ignores background refresh events for other directories', async () => {

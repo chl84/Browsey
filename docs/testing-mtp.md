@@ -40,6 +40,18 @@ Manual acceptance on Linux with `gvfs-mtp` installed:
    cleanup; do not repeat an uncertain move automatically. This acceptance is
    separate from the automated opaque-writer fixture.
 
+8. Open a large camera folder in Grid with Date or Size sorting. Allow metadata
+   and thumbnails to finish and wait through several five-second refresh cycles.
+   Existing image cards should not reshuffle or lose their loaded thumbnails.
+   New files appear at the end; deleted files disappear. Use F5 or change sorting
+   to reapply the order using available metadata. Scroll and select files during
+   loading, and check that selection remains tied to paths.
+9. Navigate elsewhere during a slow refresh or start a search. A late directory
+   reply must not reopen the old folder or replace the search results.
+
+Automated snapshot/metadata tests and simulated browser fixtures cover these
+refresh contracts, not physical-phone or native-WebKit acceptance.
+
 `RUST_LOG=browsey::mtp=debug browsey` logs discovery counts (not phone identifiers)
 for diagnosis. Do not stop shared GVFS services while other applications use them.
 

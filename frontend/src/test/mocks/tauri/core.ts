@@ -9,11 +9,13 @@ type ExplorerEntry = {
   iconId: number
   starred?: boolean
   hidden?: boolean
+  network?: boolean
 }
 
 type Listing = {
   current: string
   entries: ExplorerEntry[]
+  pendingMetadataPaths?: string[]
 }
 
 type SearchProgressPayload = {
@@ -44,6 +46,8 @@ type E2eMockControl = {
   failCommands?: string[]
   columnWidths?: number[]
   listingEntries?: ExplorerEntry[]
+  listingSnapshot?: Listing
+  sortField?: 'name' | 'type' | 'modified' | 'size'
   trashEntries?: ExplorerEntry[]
   emptyTrashHold?: boolean
   undoStorage?: { directory: string; exists: boolean; sessions: number; markedSessions: number; files: number; logicalBytes: number; incomplete: boolean }
@@ -245,6 +249,9 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'get_startup_path':
       return (control?.startupPath ?? null) as T
     case 'list_dir':
+      if (control?.listingSnapshot && control.listingSnapshot.current === args?.path) {
+        return { ...control.listingSnapshot, entries: cloneEntries(control.listingSnapshot.entries) } as T
+      }
       if (control?.cloudFixture && String(args?.path).startsWith('rclone://')) {
         const current = String(args?.path)
         return { current, entries: [{ name: 'report.txt', path: `${current}/report.txt`, kind: 'file', size: 8, iconId: 12,
@@ -364,7 +371,7 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
     case 'load_confirm_delete':
       return true as T
     case 'load_sort_field':
-      return 'name' as T
+      return (control?.sortField ?? 'name') as T
     case 'load_sort_direction':
       return 'asc' as T
     case 'load_density':

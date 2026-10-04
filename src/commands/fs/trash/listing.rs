@@ -95,5 +95,6 @@ fn list_trash_impl(sort: Option<SortSpec>) -> FsResult<DirListing> {
     Ok(DirListing {
         current: "Trash".to_string(),
         entries,
+        pending_metadata_paths: Vec::new(),
     })
 }

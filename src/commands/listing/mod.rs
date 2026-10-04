@@ -181,6 +181,9 @@ fn name_filter_rank(id: &str) -> i64 {
 pub struct DirListing {
     pub current: String,
     pub entries: Vec<FsEntry>,
+    /// Paths represented by placeholders until the lazy metadata worker replies.
+    #[serde(rename = "pendingMetadataPaths", skip_serializing_if = "Vec::is_empty")]
+    pub pending_metadata_paths: Vec<String>,
 }
 
 fn entry_type_label(e: &FsEntry) -> String {

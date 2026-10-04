@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Keep GVFS/MTP grid order stable during automatic directory refresh and preserve
+  known metadata while placeholders are refreshed, so camera thumbnails do not
+  shuffle or restart just because lazy metadata arrives. Coalesce polling and
+  watcher refreshes, share one metadata scan per directory, and ignore stale
+  directory replies after navigation or explicit sorting. Manual refresh still
+  adopts sorted snapshots; GVFS sort changes use already-loaded entries.
+
 - Add NTFS USB formatting via UDisks and `mkntfs`, with 128-character ASCII volume
   names. Show missing filesystem tools as disabled choices in the shared format
   modal, validate names when switching formats, and check daemon support before

@@ -94,6 +94,7 @@ pub(super) async fn list_cloud_dir(
     Ok(DirListing {
         current: raw_path.to_string(),
         entries: mapped,
+        pending_metadata_paths: Vec::new(),
     })
 }
 

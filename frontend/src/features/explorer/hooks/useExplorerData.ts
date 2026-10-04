@@ -6,9 +6,8 @@ import { getStartupPath } from '../services/listing.service'
 import type { Entry } from '../model/types'
 import { createExplorerState } from '../state'
 import type { createActivity } from './createActivity'
+import { isGvfsPath } from '../helpers/location'
 
-const isGvfsPath = (path: string | null | undefined) =>
-  !!path && path.includes('/run/user/') && path.includes('/gvfs/')
 const isCloudPath = (path: string | null | undefined) => !!path && path.startsWith('rclone://')
 const CLOUD_DIR_REFRESHED_EVENT = 'cloud-dir-refreshed'
 
@@ -62,12 +61,13 @@ export const useExplorerData = (options: Options = {}) => {
     loadDoubleClickMsPref,
     loadLogLevelPref,
     loadRclonePathPref,
-    entries,
+    applyEntryMetadata,
+    searchMode,
+    loading,
     current,
     highContrast,
     scrollbarWidth,
     startDirPref,
-    invalidateFacetCache,
   } = explorer
 
   const cloudLoadProgressEventName = () =>
@@ -117,7 +117,7 @@ export const useExplorerData = (options: Options = {}) => {
   let unsubscribeMountsPoll: (() => void) | null = null
   let unsubscribeHighContrast: (() => void) | null = null
   let unsubscribeScrollbarWidth: (() => void) | null = null
-  let metaQueue = new Map<string, Partial<Entry>>()
+  let metaQueue = new Map<string, Entry>()
   let metaTimer: ReturnType<typeof setTimeout> | null = null
   let disposed = false
 
@@ -132,6 +132,7 @@ export const useExplorerData = (options: Options = {}) => {
   }
 
   const refreshGvfsPath = (path: string | null | undefined) => {
+    if (disposed || get(searchMode) || get(loading)) return
     if (!path || !isGvfsPath(path)) return
     if (userNavActive) return
     // Debounce: skip if same path already refreshing
@@ -307,7 +308,8 @@ export const useExplorerData = (options: Options = {}) => {
         refreshTimer = setTimeout(() => {
           const latest = get(current)
           if (!latest || latest !== payload) return
-          void load(latest, { recordHistory: false, silent: true })
+          if (isGvfsPath(latest)) refreshGvfsPath(latest)
+          else void load(latest, { recordHistory: false, silent: true })
         }, 300)
       }
     })
@@ -423,13 +425,7 @@ export const useExplorerData = (options: Options = {}) => {
     if (metaQueue.size === 0) return
     const pending = metaQueue
     metaQueue = new Map()
-    invalidateFacetCache()
-    entries.update((list) =>
-      list.map((item) => {
-        const upd = pending.get(item.path)
-        return upd ? { ...item, ...upd } : item
-      }),
-    )
+    applyEntryMetadata([...pending.values()])
   }
 
   const enqueueMetaUpdate = (update: Entry) => {

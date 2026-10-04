@@ -570,7 +570,7 @@ export const docsPages: DocPage[] = [
           'Generic GVFS root mounts are hidden from Partitions while concrete GVFS endpoints stay visible',
           'Network discovery combines GVFS, Avahi/mDNS, and SSDP sources for broader endpoint coverage',
           'Mount scanning cadence is user-configurable (default 8000 ms)',
-          'Active GVFS locations get periodic refresh (5s) in addition to watcher-driven updates',
+          'Active GVFS locations get coalesced periodic refresh (5s) and watcher-driven updates, preserving existing item order while metadata and thumbnails arrive; F5 or a sort change reapplies sorting with available metadata',
         ],
       },
       {
