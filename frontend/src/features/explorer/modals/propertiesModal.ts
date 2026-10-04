@@ -6,7 +6,7 @@ import { parentPath } from '../utils'
 
 type AccessBit = boolean | 'mixed'
 type Access = { read: AccessBit; write: AccessBit; exec: AccessBit }
-export type PermissionRestriction = 'write_protection' | 'mount_managed' | null
+export type PermissionRestriction = 'write_protection' | 'mount_managed' | 'network_managed' | 'read_only' | null
 type OwnershipPrincipalKind = 'user' | 'group'
 type InvokeApiError = { code: string; message: string }
 type PermissionPayload = {
@@ -166,6 +166,21 @@ export const canEditAccess = (
   (permissions.restriction === 'write_protection' && scope === 'owner' && key === 'write')
 )
 
+export const permissionRestrictionMessage = (
+  restriction: PermissionRestriction | undefined,
+  ownership = false,
+): string => {
+  switch (restriction) {
+    case 'read_only': return 'This filesystem is mounted read-only.'
+    case 'network_managed': return 'Permissions are managed by the server.'
+    case 'write_protection': return ownership
+      ? 'Ownership is controlled by mount options.'
+      : 'Only write protection is supported; it applies to everyone.'
+    case 'mount_managed': return 'Permissions are controlled by mount options.'
+    default: return ''
+  }
+}
+
 export type VolumeUsageState = {
   data: VolumeUsage | null
   loading: boolean
@@ -290,7 +305,9 @@ const isExpectedOwnershipError = (code: string | null): boolean => {
     code === 'principal_not_found' ||
     code === 'permission_denied' ||
     code === 'elevated_required' ||
-    code === 'unsupported_platform'
+    code === 'unsupported_platform' ||
+    code === 'unsupported_filesystem' ||
+    code === 'read_only_filesystem'
   )
 }
 
@@ -299,7 +316,8 @@ const isExpectedPermissionUpdateError = (code: string | null): boolean => {
     code === 'permission_denied' ||
     code === 'elevated_required' ||
     code === 'read_only_filesystem' ||
-    code === 'symlink_unsupported'
+    code === 'symlink_unsupported' ||
+    code === 'unsupported_filesystem'
   )
 }
 
@@ -785,6 +803,7 @@ export const createPropertiesModal = (deps: Deps) => {
   const setOwnership = async (ownerRaw: string, groupRaw: string) => {
     const current = get(state)
     if (current.mutationsLocked) return
+    if (current.permissions && !current.permissions.ownershipSupported) return
     const targets =
       current.targets.length > 0
         ? current.targets.map((p) => p.path)

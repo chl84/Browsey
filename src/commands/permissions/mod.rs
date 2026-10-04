@@ -73,6 +73,19 @@ pub struct PermissionInfo {
 pub enum PermissionRestriction {
     WriteProtection,
     MountManaged,
+    NetworkManaged,
+    ReadOnly,
+}
+
+impl PermissionRestriction {
+    fn priority(self) -> u8 {
+        match self {
+            Self::WriteProtection => 1,
+            Self::MountManaged => 2,
+            Self::NetworkManaged => 3,
+            Self::ReadOnly => 4,
+        }
+    }
 }
 
 #[derive(Debug, serde::Serialize, Clone, PartialEq, Eq)]
@@ -308,18 +321,10 @@ fn aggregate_permissions(items: &[PermissionsBatchItem]) -> PermissionsBatchAggr
         .collect();
 
     PermissionsBatchAggregate {
-        restriction: if items
+        restriction: items
             .iter()
-            .any(|item| item.permissions.restriction == Some(PermissionRestriction::MountManaged))
-        {
-            Some(PermissionRestriction::MountManaged)
-        } else if items.iter().any(|item| {
-            item.permissions.restriction == Some(PermissionRestriction::WriteProtection)
-        }) {
-            Some(PermissionRestriction::WriteProtection)
-        } else {
-            None
-        },
+            .filter_map(|item| item.permissions.restriction)
+            .max_by_key(|restriction| restriction.priority()),
         access_supported,
         executable_supported,
         ownership_supported,

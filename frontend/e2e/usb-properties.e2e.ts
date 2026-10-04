@@ -14,8 +14,7 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test('USB context menu reuses Properties with ownership and permissions', async ({ page, context }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+test('USB context menu reuses Properties with ownership and permissions', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'USB', exact: true }).click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Properties', exact: true }).click()
@@ -24,8 +23,7 @@ test('USB context menu reuses Properties with ownership and permissions', async 
   await expect(dialog.getByText('/mock/USB', { exact: true })).toBeVisible()
   await expect(dialog.getByLabel('Hidden attribute')).toHaveCount(0)
   await expect(dialog.getByRole('button', { name: 'Extra', exact: true })).toHaveCount(0)
-  await dialog.getByRole('button', { name: 'Copy drive path' }).click()
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('/mock/USB')
+  await expect(dialog.getByRole('button', { name: 'Copy drive path' })).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Ownership', exact: true }).click()
   await expect(dialog.getByRole('button', { name: 'Apply ownership' })).toBeEnabled()
   await expect(dialog.getByRole('button', { name: 'chris', exact: true })).toBeVisible()
@@ -71,7 +69,7 @@ test('unmounted USB properties show device details without mounting it', async (
 })
 
 for (const density of ['Cozy', 'Compact']) {
-  test(`Copy drive path uses the same compact sizing as Apply ownership with ${density}`, async ({ page }) => {
+  test(`volume Basic has no redundant copy action and keeps compact ownership controls with ${density}`, async ({ page }) => {
     await page.goto('/')
     await page.keyboard.press('Control+s')
     const settings = page.locator('.settings-modal')
@@ -94,9 +92,11 @@ for (const density of ['Cozy', 'Compact']) {
         minHeight: style.minHeight,
       }
     }
-    const copy = await dialog.getByRole('button', { name: 'Copy drive path', exact: true }).evaluate(sizing)
+    await expect(dialog.getByRole('button', { name: 'Copy drive path', exact: true })).toHaveCount(0)
+    await expect(dialog.getByText('/mock/USB', { exact: true })).toBeVisible()
     await dialog.getByRole('button', { name: 'Ownership', exact: true }).click()
     const apply = await dialog.getByRole('button', { name: 'Apply ownership', exact: true }).evaluate(sizing)
-    expect(copy).toEqual(apply)
+    expect(Number.parseFloat(apply.fontSize)).toBeLessThanOrEqual(13)
+    expect(apply.height).toBeLessThanOrEqual(36)
   })
 }

@@ -46,6 +46,17 @@ fn mixed_selections_keep_the_strictest_filesystem_restriction() {
     );
     let json = serde_json::to_value(aggregate).unwrap();
     assert_eq!(json["restriction"], "write_protection");
+
+    for restriction in [
+        PermissionRestriction::NetworkManaged,
+        PermissionRestriction::ReadOnly,
+    ] {
+        let items = [
+            make_item(Some(PermissionRestriction::MountManaged)),
+            make_item(Some(restriction)),
+        ];
+        assert_eq!(aggregate_permissions(&items).restriction, Some(restriction));
+    }
 }
 
 fn temp_file(prefix: &str) -> std::path::PathBuf {

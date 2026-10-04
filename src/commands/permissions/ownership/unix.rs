@@ -33,6 +33,21 @@ fn rollback_ownership_actions(actions: &[OwnershipRollback]) -> PermissionsResul
     for action in actions.iter().rev() {
         if let Err(err) = apply_ownership(&action.path, &action.before) {
             errors.push(format!("{}: {err}", action.path.display()));
+        } else {
+            match ownership_snapshot(&action.path) {
+                Ok(actual)
+                    if verify_ownership(
+                        &actual,
+                        Some(action.before.uid),
+                        Some(action.before.gid),
+                    )
+                    .is_ok() => {}
+                Ok(_) => errors.push(format!(
+                    "{}: filesystem did not restore ownership",
+                    action.path.display()
+                )),
+                Err(err) => errors.push(format!("{}: {err}", action.path.display())),
+            }
         }
     }
     if errors.is_empty() {
@@ -430,6 +445,7 @@ struct OwnershipTarget {
     before: crate::undo::OwnershipSnapshot,
     uid_update: Option<u32>,
     gid_update: Option<u32>,
+    network: bool,
 }
 
 fn set_ownership_batch_impl(
@@ -474,11 +490,9 @@ fn set_ownership_batch_impl(
             ));
         }
         let current_uid = meta.uid();
-        if super::super::filesystem::fat_permissions(&target, meta.is_dir())?.is_some() {
-            return Err(PermissionsError::invalid_input(
-                "Ownership is controlled by mount options.",
-            ));
-        }
+        let capabilities =
+            super::super::filesystem::filesystem_capabilities(&target, meta.is_dir())?;
+        capabilities.ensure_editable(true)?;
         let current_gid = meta.gid();
         let uid_update = desired_uid.filter(|uid| *uid != current_uid);
         let gid_update = desired_gid.filter(|gid| *gid != current_gid);
@@ -488,6 +502,7 @@ fn set_ownership_batch_impl(
             before,
             uid_update,
             gid_update,
+            network: capabilities.network,
         });
     }
 
@@ -502,7 +517,10 @@ fn set_ownership_batch_impl(
             if let Err(e) =
                 set_ownership_nofollow(&target.target, target.uid_update, target.gid_update)
             {
-                if allow_pkexec_retry && should_retry_with_pkexec(&e) {
+                if allow_pkexec_retry
+                    && ownership_elevation_allowed(&targets)
+                    && should_retry_with_pkexec(&e)
+                {
                     let helper_paths: Vec<String> = targets
                         .iter()
                         .map(|t| t.target.to_string_lossy().into_owned())
@@ -528,7 +546,7 @@ fn set_ownership_batch_impl(
                         return Err(PermissionsError::new(
                             PermissionsErrorCode::PostChangeSnapshotFailed,
                             format!(
-                                "Failed to capture post-change ownership for {}: {}; current target rolled back",
+                                "Failed to capture post-change ownership for {}: {}; rollback requested, but final state could not be verified",
                                 target.target.display(),
                                 snapshot_err
                             ),
@@ -552,6 +570,7 @@ fn set_ownership_batch_impl(
                     before: target.before.clone(),
                 });
             }
+            verify_ownership(&after, target.uid_update, target.gid_update)?;
             Ok(())
         })();
 
@@ -578,6 +597,7 @@ fn set_ownership_batch_impl(
                 continue;
             }
             let after = ownership_snapshot(&target.target)?;
+            verify_ownership(&after, target.uid_update, target.gid_update)?;
             if after.uid != target.before.uid || after.gid != target.before.gid {
                 changed = true;
             }
@@ -592,6 +612,24 @@ fn set_ownership_batch_impl(
     }
 
     Ok(permission_info_fallback())
+}
+
+fn verify_ownership(
+    actual: &crate::undo::OwnershipSnapshot,
+    uid: Option<u32>,
+    gid: Option<u32>,
+) -> PermissionsResult<()> {
+    if uid.is_some_and(|uid| actual.uid != uid) || gid.is_some_and(|gid| actual.gid != gid) {
+        return Err(PermissionsError::new(
+            PermissionsErrorCode::OwnershipUpdateFailed,
+            "The filesystem did not apply the requested ownership.",
+        ));
+    }
+    Ok(())
+}
+
+fn ownership_elevation_allowed(targets: &[OwnershipTarget]) -> bool {
+    targets.iter().all(|target| !target.network)
 }
 
 pub(super) fn set_ownership_batch(
@@ -649,6 +687,48 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
+
+    #[test]
+    fn ownership_verification_rejects_ignored_and_partial_changes() {
+        let actual = crate::undo::OwnershipSnapshot {
+            uid: 1000,
+            gid: 1000,
+        };
+        assert!(verify_ownership(&actual, Some(1000), Some(1000)).is_ok());
+        assert!(verify_ownership(&actual, None, Some(1000)).is_ok());
+        assert_eq!(
+            verify_ownership(&actual, Some(1001), None)
+                .unwrap_err()
+                .code(),
+            "ownership_update_failed"
+        );
+        assert_eq!(
+            verify_ownership(&actual, Some(1000), Some(1001))
+                .unwrap_err()
+                .code(),
+            "ownership_update_failed"
+        );
+    }
+
+    #[test]
+    fn network_targets_never_use_local_elevation_even_in_mixed_batches() {
+        let make_target = |network| OwnershipTarget {
+            target: "/example".into(),
+            before: crate::undo::OwnershipSnapshot {
+                uid: 1000,
+                gid: 1000,
+            },
+            uid_update: Some(1001),
+            gid_update: None,
+            network,
+        };
+        assert!(ownership_elevation_allowed(&[make_target(false)]));
+        assert!(!ownership_elevation_allowed(&[make_target(true)]));
+        assert!(!ownership_elevation_allowed(&[
+            make_target(false),
+            make_target(true)
+        ]));
+    }
 
     fn temp_path(prefix: &str) -> PathBuf {
         let unique = format!(

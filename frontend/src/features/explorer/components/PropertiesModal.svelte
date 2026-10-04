@@ -2,7 +2,7 @@
   import Checkbox from '../../../shared/ui/Checkbox.svelte'
   import ModalShell from '../../../shared/ui/ModalShell.svelte'
   import VolumeUsageSummary from './VolumeUsageSummary.svelte'
-  import { canEditAccess, type PermissionsState, type VolumeUsageState } from '../modals/propertiesModal'
+  import { canEditAccess, permissionRestrictionMessage, type PermissionsState, type VolumeUsageState } from '../modals/propertiesModal'
   import ComboBox, { type ComboOption } from '../../../shared/ui/ComboBox.svelte'
   import { fullNameTooltip } from '../helpers/fullNameTooltip'
   import { normalizePath, parentPath } from '../utils'
@@ -180,10 +180,7 @@
             <div class="row"><span class="label">Status</span><span class="value">{unmounted ? 'Not mounted' : 'Mounted'}</span></div>
             <div class="row">
               <span class="label">{unmounted ? 'Device' : 'Mount point'}</span>
-              <span class="value">
-                <span>{drivePath}</span>
-                <button type="button" class="secondary properties-action-button" on:click={() => void onCopyParentFolder()}>Copy drive path</button>
-              </span>
+              <span class="value">{drivePath}</span>
             </div>
           {:else}
           <div class="row">
@@ -347,7 +344,7 @@
               <div class="row"><span class="label">Group</span><span class="value">{principalLabel(permissions.groupName)}</span></div>
               <div class="row">
                 <span class="label" aria-hidden="true"></span>
-                <span class="value ownership-hint">{permissions.restriction ? 'Ownership is controlled by mount options.' : 'Changing user/group is not supported on this platform.'}</span>
+                <span class="value ownership-hint">{permissions.restriction ? permissionRestrictionMessage(permissions.restriction, true) : 'Changing user/group is not supported on this platform.'}</span>
               </div>
             {/if}
           </div>
@@ -414,7 +411,7 @@
               {/each}
             </div>
             {#if permissions.restriction}
-              <p class="permission-hint">{permissions.restriction === 'write_protection' ? 'Only write protection is supported; it applies to everyone.' : 'Permissions are controlled by mount options.'}</p>
+              <p class="permission-hint">{permissionRestrictionMessage(permissions.restriction)}</p>
             {/if}
           </div>
         {:else}

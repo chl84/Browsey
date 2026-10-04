@@ -35,6 +35,16 @@ fn rollback_permissions_actions(actions: &[PermissionRollback]) -> PermissionsRe
     for action in actions.iter().rev() {
         if let Err(err) = apply_permissions(&action.path, &action.before) {
             errors.push(format!("{}: {err}", action.path.display()));
+        } else {
+            #[cfg(unix)]
+            match permissions_snapshot(&action.path) {
+                Ok(actual) if verify_mode(actual.mode, action.before.mode).is_ok() => {}
+                Ok(_) => errors.push(format!(
+                    "{}: filesystem did not restore permissions",
+                    action.path.display()
+                )),
+                Err(err) => errors.push(format!("{}: {err}", action.path.display())),
+            }
         }
     }
     if errors.is_empty() {
@@ -47,6 +57,17 @@ fn rollback_permissions_actions(actions: &[PermissionRollback]) -> PermissionsRe
             joined,
         ))
     }
+}
+
+#[cfg(unix)]
+fn verify_mode(actual: u32, requested: u32) -> PermissionsResult<()> {
+    if actual & 0o7777 != requested & 0o7777 {
+        return Err(PermissionsError::new(
+            PermissionsErrorCode::PermissionsUpdateFailed,
+            "The filesystem did not apply the requested permissions.",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -97,7 +118,10 @@ pub(super) fn set_permissions_batch(
             }
             debug!(path = %target.display(), "set_permissions resolved target");
 
-            let fat_mode = super::filesystem::fat_permissions(&target, meta.is_dir())?
+            let capabilities = super::filesystem::filesystem_capabilities(&target, meta.is_dir())?;
+            capabilities.ensure_editable(false)?;
+            let fat_mode = capabilities
+                .fat
                 .map(|fat| {
                     fat.updated_mode(
                         meta.permissions().mode(),
@@ -231,14 +255,14 @@ pub(super) fn set_permissions_batch(
                         )
                     })?;
                 }
-                match permissions_snapshot(&target) {
-                    Ok(_) => {}
+                let after = match permissions_snapshot(&target) {
+                    Ok(after) => after,
                     Err(snapshot_err) => match apply_permissions(&target, &before) {
                         Ok(()) => {
                             return Err(PermissionsError::new(
                                 PermissionsErrorCode::PostChangeSnapshotFailed,
                                 format!(
-                                    "Failed to capture post-change permissions for {}: {}; current target rolled back",
+                                    "Failed to capture post-change permissions for {}: {}; rollback requested, but final state could not be verified",
                                     target.display(),
                                     snapshot_err
                                 ),
@@ -255,29 +279,12 @@ pub(super) fn set_permissions_batch(
                             ));
                         }
                     },
-                }
+                };
                 rollbacks.push(PermissionRollback {
                     path: target.clone(),
                     before,
                 });
-                if fat_mode.is_some() {
-                    let actual = fs::symlink_metadata(&target)
-                        .map_err(|error| {
-                            PermissionsError::from_io_error(
-                                PermissionsErrorCode::MetadataReadFailed,
-                                "Failed to verify write protection",
-                                error,
-                            )
-                        })?
-                        .permissions()
-                        .mode();
-                    if actual & 0o777 != mode & 0o777 {
-                        return Err(PermissionsError::new(
-                            PermissionsErrorCode::PermissionsUpdateFailed,
-                            "The filesystem did not apply the requested write protection.",
-                        ));
-                    }
-                }
+                verify_mode(after.mode, mode)?;
             }
             Ok(())
         })();
@@ -516,6 +523,17 @@ mod tests {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
+
+    #[test]
+    fn verification_rejects_successful_syscalls_with_ignored_or_partial_mode_changes() {
+        assert!(verify_mode(0o100640, 0o640).is_ok());
+        for (actual, requested) in [(0o644, 0o244), (0o600, 0o640), (0o644, 0o4644)] {
+            assert_eq!(
+                verify_mode(actual, requested).unwrap_err().code(),
+                "permissions_update_failed"
+            );
+        }
+    }
 
     fn temp_path(prefix: &str) -> PathBuf {
         let unique = format!(

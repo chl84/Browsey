@@ -51,3 +51,28 @@ it('retains all permission controls on ordinary Unix filesystems', async () => {
   expect(document.querySelectorAll('input[type="checkbox"]:not(:disabled)')).toHaveLength(9)
   expect(document.querySelector('.permission-hint')).toBeNull()
 })
+
+it.each([
+  ['read_only', 'This filesystem is mounted read-only.'],
+  ['network_managed', 'Permissions are managed by the server.'],
+] as const)('disables permission and ownership edits with a short %s explanation', async (restriction, explanation) => {
+  await openPermissions({ ...permissions, restriction })
+  expect(document.querySelectorAll('input[type="checkbox"]:not(:disabled)')).toHaveLength(0)
+  expect(document.querySelector('.permission-hint')?.textContent).toBe(explanation)
+  Array.from(document.querySelectorAll<HTMLButtonElement>('.tabs button')).find(button => button.textContent === 'Ownership')!.click()
+  await tick()
+  expect(document.querySelector('.ownership-hint')?.textContent).toBe(explanation)
+  expect(document.querySelectorAll('[role="combobox"]')).toHaveLength(0)
+})
+
+it('shows the volume mount point without a Copy drive path button', async () => {
+  components.push(mount(PropertiesModal, {
+    target: document.body,
+    props: { open: true, partition: { label: '/', path: '/', fs: 'btrfs', removable: false }, entry: { name: '/', path: '/', kind: 'dir', iconId: 0 } },
+  }))
+  await tick()
+  const mountRow = Array.from(document.querySelectorAll('.row')).find(row => row.querySelector('.label')?.textContent === 'Mount point')!
+  expect(mountRow.querySelector('.value')?.textContent).toBe('/')
+  expect(mountRow.querySelector('button')).toBeNull()
+  expect(document.body.textContent).not.toContain('Copy drive path')
+})

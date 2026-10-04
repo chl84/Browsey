@@ -301,6 +301,31 @@ describe('mount-managed permissions', () => {
     modal.toggleAccess('owner', 'write', false)
     expect(invokeMock.mock.calls.some(([cmd]) => cmd === 'set_permissions')).toBe(false)
   })
+
+  it.each(['read_only', 'network_managed'])('prevents permission and ownership IPC mutations for %s', async (restriction) => {
+    invokeMock.mockResolvedValue({ ...payload, restriction })
+    const modal = createModal()
+    await modal.open([makeEntry('/volume/file.pdf')])
+    await vi.waitFor(() => expect(get(modal.state).permissions?.restriction).toBe(restriction))
+    for (const scope of ['owner', 'group', 'other'] as const) {
+      for (const key of ['read', 'write', 'exec'] as const) modal.toggleAccess(scope, key, false)
+    }
+    await modal.setOwnership('another-user', 'another-group')
+    expect(invokeMock.mock.calls.some(([cmd]) => ['set_permissions', 'set_ownership'].includes(cmd))).toBe(false)
+  })
+
+  it('restores checkbox state and reports a verification failure instead of showing an ignored remote change as applied', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'set_permissions') throw { code: 'permissions_update_failed', message: 'The filesystem did not apply the requested permissions.' }
+      return { ...payload, restriction: null, ownership_supported: true }
+    })
+    const modal = createModal()
+    await modal.open([makeEntry('/network/file.pdf')])
+    await vi.waitFor(() => expect(get(modal.state).permissions?.owner?.write).toBe(true))
+    modal.toggleAccess('owner', 'write', false)
+    await vi.waitFor(() => expect(showToastMock).toHaveBeenCalledWith('Permissions update failed: The filesystem did not apply the requested permissions.'))
+    expect(get(modal.state).permissions?.owner?.write).toBe(true)
+  })
 })
 
 describe('USB properties', () => {

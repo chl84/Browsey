@@ -5,6 +5,15 @@
 
 ## Navigation and shortcuts
 
+Properties disables permission and ownership edits on read-only mounts, and
+shows a short explanation when mount options or the server control access.
+On Linux, NTFS3 supports normal edits unless its access rules are disabled;
+NTFS-3G requires confirmed `permissions`/`acl` support without `inherit`.
+Unidentified `fuseblk` mounts are conservatively non-editable. NFS, SSHFS and
+SMB mounts with reported Unix/POSIX or ACL support remain editable, subject to
+server authorization. Browsey verifies the returned permission/ownership state;
+it does not remount drives or change server policy.
+
 On Linux, the Partitions sidebar shows total block-volume capacity in decimal
 GB beside each known local volume. This is not free space. Mounts sharing the
 root volume (such as Btrfs subvolumes) show capacity only at `/`; separate

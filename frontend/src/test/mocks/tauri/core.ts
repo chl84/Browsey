@@ -57,6 +57,7 @@ type E2eMockControl = {
   calls?: Array<{ cmd: string; args?: Record<string, unknown> }>
   partitions?: Array<{ label: string; path: string; fs?: string; removable?: boolean; sizeBytes?: number | null }>
   volumeUsage?: { totalBytes: number; usedBytes: number; freeBytes: number; reservedBytes: number } | null
+  permissionRestriction?: 'write_protection' | 'mount_managed' | 'read_only' | 'network_managed' | null
 }
 
 import { emitMockEvent } from './event'
@@ -444,7 +445,10 @@ export const invoke = async <T>(cmd: string, args?: Record<string, unknown>): Pr
       return (control?.archivePassword !== undefined) as T
     case 'get_permissions':
       return {
-        access_supported: true, executable_supported: true, ownership_supported: true,
+        restriction: control?.permissionRestriction ?? null,
+        access_supported: true,
+        executable_supported: !control?.permissionRestriction,
+        ownership_supported: !control?.permissionRestriction,
         read_only: false, executable: true, owner_name: 'chris', group_name: 'users',
         owner: { read: true, write: true, exec: true },
         group: { read: true, write: false, exec: true },

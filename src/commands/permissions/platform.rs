@@ -133,8 +133,8 @@ pub(super) fn permission_info_from_metadata(
 
     #[cfg(not(target_os = "windows"))]
     {
-        let fat = super::filesystem::fat_permissions(target, meta.is_dir())?;
-        let restriction = fat.map(|fat| fat.restriction());
+        let restriction =
+            super::filesystem::filesystem_capabilities(target, meta.is_dir())?.restriction;
         let read_only = meta.permissions().readonly();
         let executable = is_executable(meta);
         #[cfg(unix)]

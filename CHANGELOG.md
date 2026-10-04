@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Remove the Copy drive path button from volume Properties while retaining the
+  mount point/device path.
+
+- Respect read-only mounts and NTFS/network permission capabilities in Properties.
+  Keep supported POSIX edits available, disable synthetic or unverified controls
+  with short explanations, and verify permission/ownership changes and rollback
+  results rather than trusting syscall success. Never request local privilege
+  elevation for a batch containing network targets.
+
 - Disable unsupported Read, Execute and ownership changes on Linux exFAT/FAT
   mounts, with a short explanation. Preserve supported file write-protection
   toggles, respecting mount masks and verifying the actual result.
