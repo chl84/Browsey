@@ -12,6 +12,9 @@ node scripts/maintenance/check-vendor.mjs
 node --test scripts/maintenance/check-dependency-policy.test.mjs
 node scripts/maintenance/check-dependency-policy.mjs
 
+echo "== Maintenance: report processing and handling-log safety =="
+node --test scripts/maintenance/process-report.test.mjs
+
 echo "== Backend: rustfmt check =="
 cargo fmt --all -- --check
 

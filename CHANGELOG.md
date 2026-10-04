@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a manual T3 maintenance-report follow-up action with report-identity checks,
+  private per-finding handling history, verified command evidence and retained
+  interrupted attempts. Keep weekly reviews read-only and implementation,
+  commits, installation and publication separate.
+
 - Let Escape dismiss shared tooltips and cancel pending tooltip display without
   moving focus or consuming the key used by dialogs and other controls.
 

@@ -6,6 +6,12 @@
       "command": "bash scripts/install/install-local.sh",
       "icon": "build",
       "runOnWorktreeCreate": false
+    },
+    {
+      "name": "Process latest maintenance report",
+      "command": "node scripts/maintenance/process-report.mjs",
+      "icon": "configure",
+      "runOnWorktreeCreate": false
     }
   ]
 }

@@ -137,6 +137,65 @@ or assets. Do not restart an installed app during active file operations.
 
 Regression tests: `node --test scripts/release/bump.test.mjs`.
 
+## Local maintenance reports and T3 follow-up
+
+The optional local weekly reviewer only reads the original checkout and proposes
+improvements. It never implements changes. Private reports live in
+`docs/maintenance/agent-reports/`, locally excluded using `.git/info/exclude`.
+This machine-specific folder is not part of the public repository.
+
+`handling-log.json` records each report's SHA-256 identity and handling attempts,
+with per-finding `implemented`, `rejected` or `deferred` decisions, reasons,
+verification, remaining risks and an optional commit. The weekly reviewer reads
+this history before suggesting work; it must recheck current code rather than
+repeat implemented/rejected/deferred suggestions without new evidence.
+
+The manually triggered **Process latest maintenance report** action in
+[t3.json](../t3.json) runs:
+
+```bash
+node scripts/maintenance/process-report.mjs
+```
+
+This starts a separate Codex CLI job in the T3 terminal, not a turn in the current
+chat. It checks the handling log first, skips completed reports, snapshots the
+report, evaluates suggestions, implements appropriate small fixes and runs
+relevant tests. Passed verification must match a successful captured command;
+that evidence does not itself certify test relevance or native acceptance.
+Intentional pre-fix regression failures are recorded as `expected-failure` only
+with failed-command evidence and a successful rerun of the same command;
+unresolved failures cannot certify an implemented fix.
+Results are retained in the private handling log. The action uses workspace-write
+with network disabled, no inherited user config/rules/integrations and a bounded
+runtime. It never commits, pushes, installs or publishes. Review and commit its
+diff separately; record that commit in the handling entry if desired.
+
+For an unhandled report, use the original clean `main` checkout, installed Codex
+CLI/ChatGPT login and existing test dependencies. Do not edit the checkout while
+the action runs. The local service config supplies the original repository,
+shared lock/state path, Codex binary and time limit when present. A different
+worktree/clone is refused rather than silently editing the original repository.
+
+```bash
+# Read-only status; does not launch a model or edit files
+node scripts/maintenance/process-report.mjs --check
+# Only after inspecting an interrupted/failed attempt and resolving its changes
+node scripts/maintenance/process-report.mjs --retry
+node --test scripts/maintenance/process-report.test.mjs
+```
+
+Failures/timeouts retain changes and a `needs-review` attempt; they are not
+automatically retried or marked completed. Completed deferred decisions are
+reviewed outcomes, not finished implementations. Report archives and handling
+history are not subject to the 12-week technical-log cleanup.
+
+In T3 Code, choose **Add Action**, use the name above and paste the command into
+**Command**, leave automatic worktree execution off, then **Save action**. If T3
+offers import from `t3.json`, import the existing entry instead of adding a
+duplicate. Do not run another modifying action/agent on the same checkout at the
+same time. Keep personal reports/handling logs private; check Git exclusions
+before publishing.
+
 ## Project layout and architecture
 
 - `src/`: Rust/Tauri commands, metadata, watchers, keymap and persistence.
