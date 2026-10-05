@@ -22,7 +22,7 @@
     {:else if mode === 'network'}
       <p class="muted">Network items will be deleted directly on the server, without a local backup. Browsey cannot undo this.</p>
     {:else}
-      <p class="muted">This cannot be undone.</p>
+      <p class="muted">Items bypass the Wastebasket. Browsey can undo supported local deletions only while this session is running. Cloud and network deletions cannot be undone.</p>
     {/if}
     <p class="path">{targetLabel}</p>
     <div slot="actions">

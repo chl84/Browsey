@@ -28,6 +28,7 @@
     onClose={onCancel}
     initialFocusSelector="input"
     selectTextOnFocus={false}
+    restoreFocusToAncestor={true}
   >
     <svelte:fragment slot="header">Rename</svelte:fragment>
     <p class="muted">{entryName}</p>

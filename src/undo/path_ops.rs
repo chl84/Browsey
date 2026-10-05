@@ -224,6 +224,80 @@ pub(crate) fn delete_entry_path(path: &Path) -> UndoResult<()> {
 }
 
 pub fn move_with_fallback(src: &Path, dst: &Path) -> UndoResult<()> {
+    if cfg!(target_os = "linux") && is_mtp_case_only_rename(src, dst) {
+        return move_case_only_via_temporary(src, dst, move_single_with_fallback);
+    }
+    move_single_with_fallback(src, dst)
+}
+
+fn is_mtp_case_only_rename(src: &Path, dst: &Path) -> bool {
+    let mut previous_is_gvfs = false;
+    let mtp = src.components().any(|part| {
+        let name = part.as_os_str().to_string_lossy();
+        let found = previous_is_gvfs && name.starts_with("mtp:host=");
+        previous_is_gvfs = name == "gvfs";
+        found
+    });
+    mtp && src.is_absolute()
+        && src != dst
+        && src.parent() == dst.parent()
+        && src
+            .file_name()
+            .map(|name| name.to_string_lossy().to_lowercase())
+            == dst
+                .file_name()
+                .map(|name| name.to_string_lossy().to_lowercase())
+}
+
+fn move_case_only_via_temporary(
+    src: &Path,
+    dst: &Path,
+    mut move_one: impl FnMut(&Path, &Path) -> UndoResult<()>,
+) -> UndoResult<()> {
+    // GVFS/MTP can return the renamed object twice after a direct case-only
+    // rename. Two distinct names avoid that alias cache without relaxing any
+    // existing no-follow/no-replace checks, including during Undo/Redo.
+    ensure_existing_dir_nonsymlink(
+        dst.parent()
+            .ok_or_else(|| UndoError::invalid_input("Invalid rename destination"))?,
+    )?;
+    match fs::symlink_metadata(dst) {
+        Ok(_) => {
+            return Err(UndoError::target_exists(
+                "Rename destination already exists",
+            ))
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(UndoError::from_io_error(
+                "Inspect rename destination",
+                error,
+            ))
+        }
+    }
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let sequence = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let temporary = src
+        .parent()
+        .ok_or_else(|| UndoError::invalid_input("Cannot rename root"))?
+        .join(format!(
+            ".browsey-rename-{}-{nanos}-{sequence}",
+            std::process::id()
+        ));
+    for (from, to) in [(src, temporary.as_path()), (temporary.as_path(), dst)] {
+        move_one(from, to).map_err(|error| UndoError::new(UndoErrorCode::IoError, format!(
+            "Case-only MTP rename may be incomplete. Inspect {}, {} and {} before retrying. No automatic retry or rollback was attempted: {error}",
+            src.display(), temporary.display(), dst.display(),
+        )))?;
+    }
+    Ok(())
+}
+
+fn move_single_with_fallback(src: &Path, dst: &Path) -> UndoResult<()> {
     let src_meta = ensure_existing_path_nonsymlink(src)?;
     let src_snapshot = types::path_snapshot_from_meta(&src_meta);
     if let Some(parent) = dst.parent() {
@@ -287,4 +361,123 @@ fn is_noreplace_unsupported(err: &UndoError) -> bool {
 
 pub(crate) fn is_destination_exists_error(err: &UndoError) -> bool {
     err.code() == UndoErrorCode::TargetExists
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod case_rename_tests {
+    use super::*;
+
+    #[test]
+    fn mtp_case_route_requires_same_parent_and_only_a_casing_change() {
+        let src = Path::new("/runtime/gvfs/mtp:host=fixture/owned/report.txt");
+        assert!(is_mtp_case_only_rename(
+            src,
+            Path::new("/runtime/gvfs/mtp:host=fixture/owned/Report.txt")
+        ));
+        for destination in [
+            src,
+            Path::new("/runtime/gvfs/mtp:host=fixture/other/Report.txt"),
+            Path::new("/runtime/gvfs/mtp:host=fixture/owned/other.txt"),
+        ] {
+            assert!(!is_mtp_case_only_rename(src, destination));
+        }
+        for root in [
+            "/owned",
+            "/runtime/gvfs/sftp:host=fixture",
+            "/runtime/gvfs/mtp-fake:host=fixture",
+        ] {
+            assert!(!is_mtp_case_only_rename(
+                &Path::new(root).join("report.txt"),
+                &Path::new(root).join("Report.txt")
+            ));
+        }
+    }
+
+    #[test]
+    fn case_rename_preserves_nested_bytes_and_failed_stage_recovery_without_retry() {
+        for failed_stage in [0, 1, 2] {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let root = std::env::temp_dir().join(format!(
+                "browsey-mtp-case-{}-{nanos}-{failed_stage}",
+                std::process::id()
+            ));
+            fs::create_dir(&root).unwrap();
+            let (src, dst) = (root.join("tree"), root.join("TREE"));
+            fs::create_dir(&src).unwrap();
+            fs::create_dir(src.join("empty")).unwrap();
+            fs::write(src.join("nested.txt"), b"preserved").unwrap();
+            fs::write(root.join("unrelated.txt"), b"unrelated").unwrap();
+            let mut calls = 0;
+            let result = move_case_only_via_temporary(&src, &dst, |from, to| {
+                calls += 1;
+                assert_ne!(
+                    from.file_name().unwrap().to_string_lossy().to_lowercase(),
+                    to.file_name().unwrap().to_string_lossy().to_lowercase()
+                );
+                if calls == failed_stage {
+                    return Err(UndoError::target_exists("injected occupied destination"));
+                }
+                move_single_with_fallback(from, to)
+            });
+            let entries = fs::read_dir(&root)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .collect::<Vec<_>>();
+            let tree = entries.iter().find(|path| path.is_dir()).unwrap();
+            let bytes = fs::read(tree.join("nested.txt")).unwrap();
+            let empty = tree.join("empty").is_dir();
+            let unrelated = fs::read(root.join("unrelated.txt")).unwrap();
+            let recovery_name = tree.file_name().unwrap().to_string_lossy().to_string();
+            fs::remove_dir_all(&root).unwrap();
+            assert_eq!(bytes, b"preserved");
+            assert!(empty);
+            assert_eq!(unrelated, b"unrelated");
+            assert_eq!(entries.len(), 2);
+            if failed_stage == 0 {
+                result.unwrap();
+                assert_eq!(calls, 2);
+                assert_eq!(tree, &dst);
+            } else {
+                let error = result.unwrap_err();
+                assert_eq!(calls, failed_stage);
+                assert_eq!(error.code(), UndoErrorCode::IoError);
+                assert!(error.to_string().contains("may be incomplete"));
+                assert!(error.to_string().contains(&recovery_name));
+                assert!(error.to_string().contains("No automatic retry or rollback"));
+                if failed_stage == 1 {
+                    assert_eq!(tree, &src);
+                } else {
+                    assert!(recovery_name.starts_with(".browsey-rename-"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn case_rename_refuses_existing_destination_before_the_first_write() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "browsey-mtp-collision-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).unwrap();
+        let (src, dst) = (root.join("file"), root.join("FILE"));
+        fs::write(&src, b"source").unwrap();
+        fs::write(&dst, b"occupied").unwrap();
+        let result = move_case_only_via_temporary(&src, &dst, |_, _| {
+            panic!("A collision must stop before any move")
+        });
+        let source = fs::read(&src).unwrap();
+        let occupied = fs::read(&dst).unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert_eq!(result.unwrap_err().code(), UndoErrorCode::TargetExists);
+        assert_eq!(source, b"source");
+        assert_eq!(occupied, b"occupied");
+    }
 }

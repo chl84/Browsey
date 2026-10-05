@@ -3,6 +3,7 @@ import { isScrollbarClick } from '../helpers/scrollbar'
 import { applyWheelScrollAssist } from '../helpers/wheelScrollHelper'
 import { blurTextEntryTargetOnEscape } from '@/shared/lib/escapeBlur'
 import type { Entry } from '../model/types'
+import { createPrimaryClickGuard } from '../selection/primaryClick'
 import type { CurrentView } from '../context/createContextActions'
 import { createGridKeyboardHandler } from './createGridKeyboardHandler'
 
@@ -208,6 +209,10 @@ export const useExplorerInputHandlers = (deps: Deps) => {
   }
 
   const handleRowClickWithOpen = (entry: Entry, absoluteIndex: number, event: MouseEvent) => {
+    if (!rowClickGuard.accept(event)) {
+      pendingOpenCandidate = null
+      return
+    }
     deps.getRowSelectionHandler()?.(entry, absoluteIndex, event)
 
     if (!isOpenClickCandidate(event)) {
@@ -231,7 +236,9 @@ export const useExplorerInputHandlers = (deps: Deps) => {
     pendingOpenCandidate = { path: entry.path, atMs: nowMs }
   }
 
+  const rowClickGuard = createPrimaryClickGuard()
   const handleRowsMouseDown = (event: MouseEvent) => {
+    rowClickGuard.down(event)
     const target = event.target as HTMLElement | null
     if (deps.getViewMode() === 'list') {
       const rowsEl = deps.getRowsEl()

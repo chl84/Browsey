@@ -11,6 +11,14 @@ export function requirements(item) {
     navigation: ['directory-read', 'owned-navigation', 'history-navigation', 'breadcrumb-navigation', 'refresh',
       `ui-${item.id.split('-')[1]}-navigation`, 'view-switch'] }
   return Object.fromEntries(item.providers.map((provider, index) => {
+    if (item.id.startsWith('rename-edge-')) return [provider, ['file-rename', 'nonempty-directory-rename',
+      'rename-collision', 'rename-extension', 'rename-case-only', 'rename-cancel', 'rename-repeat', 'rename-preservation']]
+    if (operation === 'fileops') return [provider, ['mixed-copy', 'mixed-cut-paste', 'keyboard-context-operations',
+      'no-selection', 'repeated-dispatch', 'permanent-delete-warning', 'cancelled-delete', 'independent-preservation']]
+    if (operation === 'properties') return [provider, ['selected-properties', 'size-type', 'permission-capabilities',
+      'ownership-capabilities', 'properties-tabs', 'properties-focus', 'independent-preservation']]
+    if (operation === 'history') return [provider, ['local-move-undo-redo', 'local-rename-undo-redo',
+      'local-delete-undo-redo', 'local-overwrite-undo-redo', 'redo-invalidation', 'history-50-limit', 'owned-restart-history']]
     if (operation === 'creation') return [provider, ['file-create', 'directory-create', 'empty-created-contents',
       'creation-invalid-name', 'creation-collision', 'creation-cancel', 'creation-escape', 'creation-focus', 'creation-preservation', 'view-switch']]
     if (operation === 'listing') return [provider, ['directory-read', 'ui-sort', 'ui-column-filters', 'ui-filter-reset',

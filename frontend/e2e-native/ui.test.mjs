@@ -3,6 +3,18 @@ import { test } from 'node:test'
 import { Key } from 'webdriverio'
 import { NativeUi } from './ui.mjs'
 
+test('Properties reads visible children of display-contents rows and excludes hidden tabs', async () => {
+  const original = globalThis.document
+  const row = (label, value, visible) => ({ getClientRects: () => [], querySelector: selector => ({
+    textContent: selector === '.label' ? label : value, getClientRects: () => visible ? [{}] : [],
+  }) })
+  globalThis.document = { querySelectorAll: () => [row('Size', '42 B\n (1 item)', true), row('Size', 'stale hidden tab', false)] }
+  try {
+    const ui = new NativeUi({ execute: async action => action() }, [])
+    assert.deepEqual(await ui.propertiesRows(), { Size: '42 B (1 item)' })
+  } finally { globalThis.document = original }
+})
+
 test('native modifier actions use WebDriver key codes and release on failure', async () => {
   const values = []
   let released = 0
@@ -13,6 +25,20 @@ test('native modifier actions use WebDriver key codes and release on failure', a
   await assert.rejects(ui.chord('Delete', 'Shift'), /delivery failure/)
   assert.deepEqual(values, [['down', Key.Shift], ['down', Key.Delete], ['up', Key.Delete], ['up', Key.Shift]])
   assert.equal(released, 1)
+})
+
+test('deliberate repeated input is bounded and releases modifiers after a failed delivery', async () => {
+  let releases = 0, deliveries = 0
+  const values = []
+  const action = { down(value) { values.push(['down', value]); return this }, up(value) { values.push(['up', value]); return this },
+    perform: async () => { deliveries++; throw Error('delivery failed') } }
+  const ui = new NativeUi({ action: () => action, releaseActions: async () => { releases++ } }, ['/owned/files'])
+  await assert.rejects(ui.burst('v', 0)); await assert.rejects(ui.burst('v', 4))
+  assert.equal(deliveries, 0)
+  await assert.rejects(ui.burst('v', 3), /delivery failed/)
+  assert.equal(deliveries, 1); assert.equal(releases, 1)
+  assert.equal(values.filter(([operation, value]) => operation === 'down' && value === 'v').length, 3)
+  assert.deepEqual(values[0], ['down', Key.Control]); assert.deepEqual(values.at(-1), ['up', Key.Control])
 })
 
 test('modified selection rejects outside paths before input and releases a held modifier if click fails', async () => {

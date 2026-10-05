@@ -3,6 +3,13 @@ import { afterEach, expect, it, vi } from 'vitest'
 import DeleteConfirmModal from './DeleteConfirmModal.svelte'
 
 const components: ReturnType<typeof mount>[] = []
+it('distinguishes session-local Undo from irreversible remote deletion', async () => {
+  components.push(mount(DeleteConfirmModal, { target: document.body, props: { open: true, targetLabel: 'generated.txt' } }))
+  await tick()
+  expect(document.body.textContent).toContain('supported local deletions')
+  expect(document.body.textContent).toContain('while this session is running')
+  expect(document.body.textContent).toContain('Cloud and network deletions cannot be undone')
+})
 afterEach(async () => {
   for (const component of components.splice(0)) await unmount(component)
   document.body.innerHTML = ''

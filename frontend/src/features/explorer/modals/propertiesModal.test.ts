@@ -13,6 +13,19 @@ vi.mock('@/shared/lib/tauri', () => ({
 }))
 
 const computeDirStatsMock = vi.fn(async () => ({ total: 0, items: 0 }))
+
+it.each([false, true])('keeps unmeasured cloud directory totals unknown (mixed=%s)', async mixed => {
+  invokeMock.mockResolvedValue([])
+  invokeMock.mockClear()
+  computeDirStatsMock.mockClear()
+  const modal = createPropertiesModal({ computeDirStats: computeDirStatsMock, showToast: vi.fn() })
+  const folder = { ...makeEntry('rclone://test/owned/tree'), kind: 'dir' as const, size: 0 }
+  const file = { ...makeEntry('rclone://test/owned/file.txt'), size: 41 }
+  await modal.open(mixed ? [file, folder] : [folder])
+  expect(get(modal.state)).toMatchObject({ size: null, itemCount: null })
+  expect(computeDirStatsMock).not.toHaveBeenCalled()
+  expect(invokeMock).not.toHaveBeenCalled()
+})
 const showToastMock = vi.fn()
 
 const makeEntry = (path: string, kind: Entry['kind'] = 'file'): Entry => ({

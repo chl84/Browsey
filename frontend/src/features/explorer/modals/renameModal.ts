@@ -73,6 +73,7 @@ export const createRenameModal = (deps: Deps) => {
     const current = get(state)
     if (!current.target || busy) return false
     busy = true
+    state.update((s) => ({ ...s, error: '' }))
     const progressEvent = `rename-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       if (activityApi) {

@@ -166,6 +166,21 @@ case "$subcmd" in
     fi
     target="$(map_spec_path "${args[$idx]}")"
     if [[ $want_stat -eq 1 ]]; then
+      # Opt-in alias lookup models OneDrive's case-insensitive metadata without
+      # changing the case-sensitive fixture storage or transfer destination.
+      if [[ ! -e "$target" && -f "$script_dir/stat-case-insensitive" ]]; then
+        target="$(python3 - "$target" <<'PY_ALIAS'
+import pathlib
+import sys
+path = pathlib.Path(sys.argv[1])
+if path.parent.is_dir():
+    matches = [entry for entry in path.parent.iterdir() if entry.name.casefold() == path.name.casefold()]
+    if len(matches) == 1:
+        path = matches[0]
+print(path)
+PY_ALIAS
+)"
+      fi
       if [[ ! -e "$target" ]]; then
         echo "object not found" >&2
         exit 3
@@ -312,6 +327,7 @@ case "$subcmd" in
       case "${args[$idx]}" in
         --immutable) immutable=1; idx=$((idx + 1)) ;;
         --checksum) idx=$((idx + 1)) ;;
+        --retries|--low-level-retries) idx=$((idx + 2)) ;;
         --ignore-existing) ignore_existing=1; idx=$((idx + 1)) ;;
         --error-on-no-transfer) error_on_no_transfer=1; idx=$((idx + 1)) ;;
         --create-empty-src-dirs)
@@ -342,12 +358,20 @@ case "$subcmd" in
       exit 2
     fi
     maybe_delay_subcommand "$subcmd"
+    if [[ "$subcmd" == moveto && -f "$script_dir/moveto-fail-invocation" && "$(cat "$script_dir/moveto-count")" == "$(cat "$script_dir/moveto-fail-invocation")" ]]; then
+      echo "forced moveto failure" >&2
+      exit 3
+    fi
     if [[ -f "$script_dir/transfer-failure" ]]; then
       head -c 512 -- "$script_dir/transfer-failure" >&2
       exit 3
     fi
     src="$(map_spec_path "${transfer_paths[0]}")"
     dst="$(map_spec_path "${transfer_paths[1]}")"
+    if [[ "$subcmd" == moveto && -d "$src" && -f "$script_dir/stat-case-insensitive" && "$src" != "$dst" && "${src,,}" == "${dst,,}" ]]; then
+      echo "can't sync or move files on overlapping remotes" >&2
+      exit 3
+    fi
     if [[ "$ignore_existing" -eq 1 && -e "$dst" ]]; then
       if [[ "$error_on_no_transfer" -eq 1 ]]; then
         echo "No files transferred" >&2

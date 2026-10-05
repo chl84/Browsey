@@ -74,6 +74,28 @@ const makeDeps = (onClose: () => void): Parameters<typeof useExplorerInputHandle
   closeBlankContextMenu: vi.fn(),
 })
 
+it('a context gesture breaks the double-click sequence while preserving the next genuine double click', () => {
+  const deps = makeDeps(vi.fn()), select = vi.fn()
+  deps.getRowSelectionHandler = () => select
+  const handlers = useExplorerInputHandlers(deps)
+  const entry = { name: 'sample.txt', path: '/owned/sample.txt', kind: 'file' as const, iconId: 0 }
+  const click = (time: number) => {
+    const event = new MouseEvent('click', { button: 0, detail: 1 })
+    Object.defineProperty(event, 'timeStamp', { value: time })
+    handlers.handleRowClickWithOpen(entry, 0, event)
+  }
+  click(1000)
+  handlers.handleRowsMouseDown(new MouseEvent('mousedown', { button: 2 }))
+  click(1100)
+  handlers.handleRowsMouseDown(new MouseEvent('mousedown', { button: 0 }))
+  click(1200)
+  expect(deps.open).not.toHaveBeenCalled()
+  expect(select).toHaveBeenCalledTimes(2)
+  handlers.handleRowsMouseDown(new MouseEvent('mousedown', { button: 0 }))
+  click(1300)
+  expect(deps.open).toHaveBeenCalledOnce()
+})
+
 it('lets the searchable Properties dropdown consume Escape before the document capture handler', async () => {
   const onClose = vi.fn()
   const onSetOwnership = vi.fn()

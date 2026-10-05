@@ -181,18 +181,42 @@ Use shared cases for applicable providers and independently verify actual files.
   657 frontend tests and 770 Rust tests passed (19 Rust tests ignored). Concurrent
   writers, platform-specific reserved names and other keyboard layouts remain
   outside this scope; all real runs are retained.
-- [ ] **NT1-5** Rename files and non-empty folders, checking nested contents,
+- [x] **NT1-5** Rename files and non-empty folders, checking nested contents,
   collisions, extensions, case-only changes, cancellation and repeated submission.
   Verify old/new paths and preservation of unrelated fixture files.
-- [ ] **NT1-6** Revalidate copy/cut/paste and deletion through keyboard/context
+  Verified by the [editing/rename runs](../operations/linux-release/runs/2026-10-05-native-editing-history-properties.md):
+  all 60 parts passed across local, USB, network, OneDrive and mobile, preserving
+  exact nested/unrelated bytes after every attempt. OneDrive case-only file/folder
+  rename and MTP duplicate-entry handling are corrected and retested; collisions,
+  Cancel/Escape, repeated Enter and corrected rejection pass. All owned teardown
+  stages and fresh private audits passed; original failures remain retained.
+- [x] **NT1-6** Revalidate copy/cut/paste and deletion through keyboard/context
   menus: mixed/no selection, rapid repeated requests, permanent-delete warnings
   and cancelled confirmation without duplicated operations.
-- [ ] **NT1-7** Expand local undo/redo to move, rename, supported deletion and
+  Verified by the [editing/file-operation runs](../operations/linux-release/runs/2026-10-05-native-editing-history-properties.md):
+  all 40 parts passed across local, USB, network, OneDrive and mobile with exact
+  generated-tree/byte readback. Mixed context selection and permanent-delete
+  warnings are fixed; repeated requests and Cancel/Escape preserve the expected
+  state. Owned accessibility, teardown and fresh private audits passed. Original
+  stopped reports remain retained with explicit scoped acceptance.
+- [x] **NT1-7** Expand local undo/redo to move, rename, supported deletion and
   overwrite. Verify redo invalidation, the documented 50-action limit and restart
   semantics; do not imply cloud undo or persistent history.
-- [ ] **NT1-8** Verify Properties for generated files/folders: correct selection,
+  Verified by the [editing/history run](../operations/linux-release/runs/2026-10-05-native-editing-history-properties.md):
+  all 108 history parts passed on the final candidate, including move, rename,
+  nested permanent deletion, overwrite, redo invalidation and the exact 50-action
+  boundary. Both Undo and Redo were populated before one owned restart and
+  unavailable afterward; retained fixture bytes/paths remained correct. All six
+  old/new captured processes exited and fresh private retention audit passed.
+  History remains local and limited to the active app session.
+- [x] **NT1-8** Verify Properties for generated files/folders: correct selection,
   size/type, ownership/permission capabilities, tabs and focus. Do not inspect
   drive roots or personal metadata.
+  Verified by the [editing/Properties runs](../operations/linux-release/runs/2026-10-05-native-editing-history-properties.md):
+  all 15 file/folder/mixed parts passed across local, USB, network, OneDrive and
+  mobile. Known totals/counts, unknown cloud directory totals, all four tabs,
+  ownership/permission capabilities, focus and independent preservation passed.
+  No permissions were changed; owned teardown and fresh private audits passed.
 
 ## Priority 2 Transfer matrix and conflicts
 

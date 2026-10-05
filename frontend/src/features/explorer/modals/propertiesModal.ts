@@ -374,8 +374,10 @@ export const createPropertiesModal = (deps: Deps) => {
     const dirs = entries.filter((e) => e.kind === 'dir')
     const localDirs = dirs.filter((e) => !isVirtualUriEntry(e))
     const singleVirtualUri = entries.length === 1 && isVirtualUriEntry(entries[0])
+    const allVirtualUri = entries.length > 0 && entries.every(isVirtualUriEntry)
+    const unmeasuredDirs = localDirs.length !== dirs.length
     const phone = partition !== null && isMtpPartition(partition)
-    const skipPermissions = singleVirtualUri || phone
+    const skipPermissions = allVirtualUri || phone
     const fileBytes = files.reduce((sum, f) => sum + (f.size ?? 0), 0)
     const fileCount = files.length
 
@@ -391,7 +393,7 @@ export const createPropertiesModal = (deps: Deps) => {
       targets: entries,
       mutationsLocked: shouldLockMutations(entries) || phone || (partition !== null && singleVirtualUri),
       count: entries.length,
-      size: partition ? null : fileBytes,
+      size: partition || unmeasuredDirs ? null : fileBytes,
       itemCount: dirs.length === 0 ? fileCount : null,
       hidden: combine(entries.map((e) => e.hidden == true)),
       extraMetadataLoading: false,
@@ -415,7 +417,7 @@ export const createPropertiesModal = (deps: Deps) => {
         void loadPermissions(entry, nextToken)
         if (!partition) void loadEntryTimes(entry, nextToken)
       }
-    } else {
+    } else if (!skipPermissions) {
       void loadPermissionsMulti(entries, nextToken)
     }
 
@@ -424,7 +426,7 @@ export const createPropertiesModal = (deps: Deps) => {
       if (get(state).volumeUsage.loading) void loadVolumeUsage(partition.path, nextToken)
       return
     }
-    if (localDirs.length > 0) {
+    if (localDirs.length > 0 && !unmeasuredDirs) {
       const { total, items } = await computeDirStats(
         localDirs.map((d) => d.path),
         (partialBytes) => {

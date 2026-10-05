@@ -95,7 +95,7 @@ impl RcloneCloudProvider {
                 "Cannot trash a cloud root",
             ));
         }
-        let kind = self.resolve_provider_kind_for_delete_policy(path.remote())?;
+        let kind = self.resolve_provider_kind_for_write_policy(path.remote())?;
         let flags =
             crate::commands::cloud::policy::cloud_trash_policy_args(kind).ok_or_else(|| {
                 CloudCommandError::new(
@@ -547,8 +547,28 @@ impl RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
-        if !prechecked {
+        // On case-insensitive providers the destination stat of a case-only
+        // rename resolves the source itself. Only a same-parent move can use
+        // that alias; copies and all other existing destinations still reject.
+        let case_only_rename = mode == TransferMode::Move
+            && src != dst
+            && src.parent_dir_path().is_some()
+            && src.parent_dir_path() == dst.parent_dir_path()
+            && src.rel_path().to_lowercase() == dst.rel_path().to_lowercase();
+        let same_entry_alias = case_only_rename
+            && crate::commands::cloud::policy::provider_policy(
+                self.resolve_provider_kind_for_write_policy(src.remote())?,
+            )
+            .conflict_case_insensitive;
+        if !prechecked && !same_entry_alias {
             ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
+        }
+        if same_entry_alias
+            && self
+                .stat_path(src)?
+                .is_some_and(|entry| matches!(entry.kind, super::CloudEntryKind::Dir))
+        {
+            return self.rename_directory_case_only(src, dst, cancel);
         }
         let mut fell_back_from_rc = false;
         let mut fallback_reason: Option<&'static str> = None;
@@ -626,6 +646,56 @@ impl RcloneCloudProvider {
         Ok(())
     }
 
+    fn rename_directory_case_only(
+        &self,
+        src: &CloudPath,
+        dst: &CloudPath,
+        cancel: Option<&AtomicBool>,
+    ) -> CloudCommandResult<()> {
+        // moveto constructs overlapping directory roots for this case. Use two
+        // distinct sibling moves like rclone's DirMoveCaseInsensitive helper.
+        // Never retry or roll back an uncertain write; expose all recovery paths.
+        static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let sequence = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let temporary = src
+            .parent_dir_path()
+            .ok_or_else(|| {
+                CloudCommandError::new(
+                    CloudCommandErrorCode::InvalidPath,
+                    "Cannot rename a cloud root",
+                )
+            })?
+            .child_path(&format!(
+                ".browsey-rename-{}-{nanos}-{sequence}",
+                std::process::id()
+            ))
+            .map_err(crate::commands::cloud::map_cloud_path_error)?;
+        ensure_destination_overwrite_policy(self, src, &temporary, false)?;
+        for (from, to) in [(src, &temporary), (&temporary, dst)] {
+            self.cli.run_capture_text_with_cancel(
+                RcloneCommandSpec::new(RcloneSubcommand::MoveTo)
+                    .arg("--retries").arg("1").arg("--low-level-retries").arg("1")
+                    .arg(from.to_rclone_remote_spec()).arg(to.to_rclone_remote_spec()), cancel,
+            ).map_err(|error| {
+                let mapped = map_rclone_error_for_paths(&[src, dst, &temporary], error);
+                CloudCommandError::new(mapped.code(), format!(
+                    "Case-only folder rename may be incomplete. Inspect {src}, {temporary} and {dst} before retrying. No automatic retry or rollback was attempted: {mapped}"
+                ))
+            })?;
+        }
+        log_backend_selected(
+            "cloud_write_move",
+            "cli",
+            false,
+            Some("case_only_directory"),
+        );
+        Ok(())
+    }
+
     fn probe_path_exists_via_cli_stat(&self, path: &CloudPath) -> CloudCommandResult<bool> {
         let spec = RcloneCommandSpec::new(RcloneSubcommand::LsJson)
             .arg("--stat")
@@ -656,11 +726,11 @@ impl RcloneCloudProvider {
         &self,
         remote_id: &str,
     ) -> CloudCommandResult<&'static [&'static str]> {
-        let provider = self.resolve_provider_kind_for_delete_policy(remote_id)?;
+        let provider = self.resolve_provider_kind_for_write_policy(remote_id)?;
         Ok(cloud_delete_policy_args(provider))
     }
 
-    fn resolve_provider_kind_for_delete_policy(
+    fn resolve_provider_kind_for_write_policy(
         &self,
         remote_id: &str,
     ) -> CloudCommandResult<crate::commands::cloud::types::CloudProviderKind> {
@@ -674,13 +744,13 @@ impl RcloneCloudProvider {
                 let mapped = map_rclone_error_for_remote(remote_id, error);
                 CloudCommandError::new(
                     mapped.code(),
-                    format!("Cloud delete policy lookup failed for remote `{remote_id}`: {mapped}"),
+                    format!("Cloud write policy lookup failed for remote `{remote_id}`: {mapped}"),
                 )
             })?;
         let config_map = parse_config_dump_summaries(&config_dump.stdout).map_err(|error| {
             CloudCommandError::new(
                 error.code(),
-                format!("Cloud delete policy lookup failed for remote `{remote_id}`: {error}"),
+                format!("Cloud write policy lookup failed for remote `{remote_id}`: {error}"),
             )
         })?;
         let provider = config_map
@@ -690,7 +760,7 @@ impl RcloneCloudProvider {
                 CloudCommandError::new(
                     CloudCommandErrorCode::InvalidConfig,
                     format!(
-                        "Cloud delete policy lookup failed for remote `{remote_id}`: provider is missing or unsupported in rclone config dump"
+                        "Cloud write policy lookup failed for remote `{remote_id}`: provider is missing or unsupported in rclone config dump"
                     ),
                 )
             })?;

@@ -1343,22 +1343,154 @@ fn upload_with_progress_falls_back_to_cli_when_rc_startup_fails() {
 #[cfg(unix)]
 #[test]
 fn fake_rclone_shim_supports_case_only_rename() {
-    let sandbox = FakeRcloneSandbox::new();
-    sandbox.write_remote_file("work", "docs/report.txt", "payload");
-    let provider = sandbox.provider();
+    for directory in [false, true] {
+        let sandbox = FakeRcloneSandbox::new();
+        fs::write(sandbox.root.join("stat-case-insensitive"), "1").unwrap();
+        let original = if directory {
+            "docs/tree"
+        } else {
+            "docs/report.txt"
+        };
+        let renamed = if directory {
+            "docs/TREE"
+        } else {
+            "docs/Report.txt"
+        };
+        let contents = if directory {
+            "docs/tree/nested.txt"
+        } else {
+            original
+        };
+        sandbox.write_remote_file("work", contents, "payload");
+        let provider = sandbox.provider();
+        let src = cloud_path(&format!("rclone://work/{original}"));
+        let dst = cloud_path(&format!("rclone://work/{renamed}"));
+        assert!(
+            provider.stat_path(&dst).unwrap().is_some(),
+            "Destination metadata resolves the source alias"
+        );
+        provider
+            .move_entry(&src, &dst, false, false, None)
+            .expect("case-only rename");
+        assert!(!sandbox.remote_path("work", original).exists());
+        let result = if directory {
+            "docs/TREE/nested.txt"
+        } else {
+            renamed
+        };
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", result)).unwrap(),
+            "payload"
+        );
+    }
+}
 
-    provider
-        .move_entry(
-            &cloud_path("rclone://work/docs/report.txt"),
-            &cloud_path("rclone://work/docs/Report.txt"),
-            false,
-            false,
-            None,
+#[cfg(unix)]
+#[test]
+fn case_only_directory_rename_preserves_recovery_paths_and_does_not_retry_failed_stage() {
+    for failed_stage in [1, 2] {
+        let sandbox = FakeRcloneSandbox::new();
+        fs::write(sandbox.root.join("stat-case-insensitive"), "1").unwrap();
+        fs::write(
+            sandbox.root.join("moveto-fail-invocation"),
+            failed_stage.to_string(),
         )
-        .expect("case-only rename");
+        .unwrap();
+        sandbox.write_remote_file("work", "docs/tree/nested.txt", "payload");
+        sandbox.write_remote_file("work", "docs/unrelated.txt", "preserve");
+        let error = sandbox
+            .provider()
+            .move_entry(
+                &cloud_path("rclone://work/docs/tree"),
+                &cloud_path("rclone://work/docs/TREE"),
+                false,
+                false,
+                None,
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("may be incomplete"));
+        assert!(error.to_string().contains("No automatic retry or rollback"));
+        let siblings = fs::read_dir(sandbox.remote_path("work", "docs"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect::<Vec<_>>();
+        let recovery = siblings.iter().find(|path| path.is_dir()).unwrap();
+        assert_eq!(
+            fs::read_to_string(recovery.join("nested.txt")).unwrap(),
+            "payload"
+        );
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "docs/unrelated.txt")).unwrap(),
+            "preserve"
+        );
+        if failed_stage == 1 {
+            assert_eq!(recovery, &sandbox.remote_path("work", "docs/tree"));
+        } else {
+            assert!(recovery
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with(".browsey-rename-"));
+            assert!(error
+                .to_string()
+                .contains(recovery.file_name().unwrap().to_str().unwrap()));
+        }
+        assert!(!sandbox.remote_path("work", "docs/TREE").exists());
+        assert_eq!(
+            siblings.len(),
+            2,
+            "Only the intact tree and unrelated file remain"
+        );
+        assert_eq!(
+            sandbox
+                .read_log()
+                .lines()
+                .filter(|line| line.contains(" moveto "))
+                .count(),
+            failed_stage
+        );
+    }
+}
 
-    assert!(!sandbox.remote_path("work", "docs/report.txt").exists());
-    assert!(sandbox.remote_path("work", "docs/Report.txt").exists());
+#[cfg(unix)]
+#[test]
+fn case_only_alias_does_not_bypass_copy_other_parent_or_case_sensitive_collisions() {
+    for (copy, source, destination, provider_type) in [
+        (true, "docs/report.txt", "docs/Report.txt", "onedrive"),
+        (false, "docs/report.txt", "other/Report.txt", "onedrive"),
+        (false, "docs/report.txt", "docs/Report.txt", "drive"),
+    ] {
+        let sandbox = FakeRcloneSandbox::new();
+        fs::write(sandbox.root.join("stat-case-insensitive"), "1").unwrap();
+        sandbox.set_remote_provider_type("work", provider_type);
+        sandbox.write_remote_file("work", source, "source");
+        if !copy {
+            sandbox.write_remote_file("work", destination, "occupied");
+        }
+        let provider = sandbox.provider();
+        let src = cloud_path(&format!("rclone://work/{source}"));
+        let dst = cloud_path(&format!("rclone://work/{destination}"));
+        let error = if copy {
+            provider.copy_entry(&src, &dst, false, false, None)
+        } else {
+            provider.move_entry(&src, &dst, false, false, None)
+        }
+        .unwrap_err();
+        assert_eq!(error.code(), CloudCommandErrorCode::DestinationExists);
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", source)).unwrap(),
+            "source"
+        );
+        if !copy {
+            assert_eq!(
+                fs::read_to_string(sandbox.remote_path("work", destination)).unwrap(),
+                "occupied"
+            );
+        }
+        assert!(!sandbox.read_log().contains("moveto"));
+        assert!(!sandbox.read_log().contains("copyto"));
+    }
 }
 
 #[cfg(unix)]
@@ -1721,7 +1853,7 @@ fn delete_fails_when_delete_policy_lookup_cannot_be_verified() {
         .expect_err("delete should fail when policy lookup cannot be verified");
     assert!(
         err.to_string()
-            .contains("Cloud delete policy lookup failed for remote `work`"),
+            .contains("Cloud write policy lookup failed for remote `work`"),
         "unexpected error: {err}"
     );
     assert!(

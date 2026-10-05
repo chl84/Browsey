@@ -31,20 +31,15 @@ pub struct DirSizeResult {
     pub entries: Vec<DirSizeEntry>,
 }
 
-fn should_skip(path: &Path, pseudo_roots: &HashSet<&str>) -> bool {
-    if let Some(s) = path.to_str() {
-        for root in pseudo_roots {
-            let prefix = if root.ends_with('/') {
-                root.trim_end_matches('/')
-            } else {
-                *root
-            };
-            if s == prefix || s.starts_with(&format!("{}/", prefix)) {
-                return true;
-            }
-        }
-    }
-    false
+fn should_skip(path: &Path, pseudo_roots: &HashSet<&str>, scan_root: &Path) -> bool {
+    pseudo_roots.iter().any(|prefix| {
+        let excluded = Path::new(prefix);
+        // Avoid runtime/temp trees during ancestor scans, but honor a user's
+        // explicit selection inside them (including USB/GVFS mount paths).
+        // Kernel/device pseudo-filesystems stay excluded even when selected.
+        path.starts_with(excluded)
+            && (matches!(*prefix, "/proc" | "/sys" | "/dev") || !scan_root.starts_with(excluded))
+    })
 }
 
 fn dir_size_recursive<F, S>(
@@ -71,7 +66,7 @@ where
             stopped = true;
             break;
         }
-        if should_skip(&path, pseudo_roots) {
+        if should_skip(&path, pseudo_roots, root) {
             continue;
         }
 
@@ -256,5 +251,71 @@ async fn dir_sizes_impl(
             StatusbarErrorCode::TaskFailed,
             format!("Failed to compute directory sizes: {error}"),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scan(root: &Path, excluded: &HashSet<&str>) -> (u64, u64, bool) {
+        #[cfg(unix)]
+        let device = Some(fs::symlink_metadata(root).unwrap().dev());
+        #[cfg(not(unix))]
+        let device = None;
+        dir_size_recursive(root, device, excluded, |_, _| {}, || false)
+    }
+
+    #[test]
+    fn selected_fixture_below_runtime_prefix_is_measured() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let fixture = std::env::temp_dir().join(format!(
+            "browsey-statusbar-test-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir(&fixture).unwrap();
+        let runtime = fixture.join("runtime");
+        let selected = runtime.join("media/owned/tree");
+        fs::create_dir_all(&selected).unwrap();
+        fs::write(selected.join("nested.txt"), b"known bytes").unwrap();
+        let excluded = HashSet::from([runtime.to_str().unwrap()]);
+        let selected_result = scan(&selected, &excluded);
+        // An ancestor scan still avoids the runtime subtree.
+        let ancestor_result = scan(&fixture, &excluded);
+        fs::remove_dir_all(&fixture).unwrap();
+        assert_eq!(selected_result, (11, 2, false));
+        assert_eq!(ancestor_result, (0, 1, false));
+    }
+
+    #[test]
+    fn pseudo_exclusions_keep_component_boundaries_and_hard_roots() {
+        let excluded = HashSet::from(["/run", "/tmp", "/proc", "/sys", "/dev"]);
+        assert!(!should_skip(
+            Path::new("/run/media/owned/file"),
+            &excluded,
+            Path::new("/run/media/owned")
+        ));
+        assert!(!should_skip(
+            Path::new("/tmp/owned/file"),
+            &excluded,
+            Path::new("/tmp/owned")
+        ));
+        assert!(should_skip(
+            Path::new("/run/media/owned"),
+            &excluded,
+            Path::new("/")
+        ));
+        assert!(!should_skip(
+            Path::new("/runner/file"),
+            &excluded,
+            Path::new("/")
+        ));
+        for root in ["/proc", "/sys", "/dev"] {
+            let selected = Path::new(root).join("explicit");
+            assert!(should_skip(&selected.join("file"), &excluded, &selected));
+        }
     }
 }

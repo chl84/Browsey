@@ -544,6 +544,167 @@ export class NativeUi {
     await this.idle()
   }
 
+  async menuAction(id, raw) {
+    assert.ok(['rename', 'copy', 'cut', 'paste', 'delete-permanent', 'properties'].includes(id))
+    const selected = raw ? await this.browser.execute(() => [...document.querySelectorAll('.rows [data-path].selected, .grid [data-path].selected')].map(node => node.dataset.path).sort()) : null
+    if (raw) {
+      ownedPath(this.roots, raw)
+      await (await this.browser.$(`[data-path=${JSON.stringify(raw)}]`)).click({ button: 'right' })
+    } else {
+      const collection = await this.browser.$('.rows, .grid')
+      const size = await collection.getSize()
+      await collection.click({ button: 'right', x: 0, y: Math.max(0, Math.floor(size.height / 2) - 16) })
+    }
+    const action = await this.browser.$(`[role="menuitem"][data-action-id="${id}"]`)
+    await action.waitForDisplayed({ timeout: 5000 })
+    if (selected?.includes(raw)) assert.deepEqual(await this.browser.execute(() => [...document.querySelectorAll('.rows [data-path].selected, .grid [data-path].selected')].map(node => node.dataset.path).sort()), selected,
+      'Opening a selected-entry context menu must preserve the full selection')
+    await action.click()
+  }
+
+  async beginRename(raw, menu = false) {
+    ownedPath(this.roots, raw)
+    await this.select(raw)
+    if (menu) await this.menuAction('rename', raw)
+    else await this.chord('r')
+    const input = await this.browser.$('#rename-entry-name')
+    await input.waitForDisplayed({ timeout: 5000 })
+    assert.equal(await input.getValue(), raw.split('/').at(-1))
+    assert.ok(await input.isFocused())
+    return input
+  }
+
+  async renameDraft(value, { error, repeat = false, button = false } = {}) {
+    await this.fill(await this.browser.$('#rename-entry-name'), value)
+    if (button) await (await this.browser.$('//*[@role="dialog"]//button[normalize-space(.)="Rename"]')).click()
+    else await this.burst('Enter', 1 + Number(repeat), null)
+    if (error) {
+      const pill = await this.browser.$('[role="dialog"] .pill.error')
+      await pill.waitForDisplayed({ timeout: 60_000 })
+      assert.match(await pill.getText(), error)
+      assert.ok(await (await this.browser.$('#rename-entry-name')).isDisplayed())
+    } else await this.idle()
+  }
+
+  async cancelRename(escape = false) {
+    if (escape) { await this.browser.keys([Key.Escape]); await this.browser.keys([Key.Escape]) }
+    else await (await this.browser.$('//*[@role="dialog"]//button[normalize-space(.)="Cancel"]')).click()
+    await this.idle()
+  }
+
+  async burst(key, count = 3, modifier = 'Control') {
+    assert.ok(Number.isSafeInteger(count) && count > 0 && count <= 3)
+    const action = this.browser.action('key')
+    const value = Key[key] ?? key
+    if (modifier) action.down(Key[modifier])
+    for (let i = 0; i < count; i++) action.down(value).up(value)
+    if (modifier) action.up(Key[modifier])
+    try { await action.perform() } finally { await this.browser.releaseActions() }
+  }
+
+  async populateClipboard(base, paths, move = false, menu = false, { directories = [] } = {}) {
+    ownedPath(this.roots, base)
+    assert.ok(paths.length > 0 && new Set(paths).size === paths.length)
+    for (const raw of paths) ownedPath(this.roots, raw)
+    await this.navigate(base); await this.select(paths[0])
+    for (const raw of paths.slice(1)) await this.modifiedSelect(raw, 'Control')
+    await this.selection(base, paths, { directories })
+    await this.browser.waitUntil(async () => !['Copied', 'Cut'].includes(await this.browser.execute(() =>
+      document.querySelector('.toast[role="status"]')?.textContent.trim())), { timeout: 5000 })
+    if (menu) await this.menuAction(move ? 'cut' : 'copy', paths[0])
+    else await this.chord(move ? 'x' : 'c')
+    await this.idle({ toast: move ? 'Cut' : 'Copied', ...(move ? { cutPath: paths[0] } : {}) })
+  }
+
+  async paste(dest, firstPath, { menu = false, repeat = false, conflict } = {}) {
+    ownedPath(this.roots, dest); ownedPath(this.roots, firstPath)
+    await this.navigate(dest); await this.emptySpace(dest)
+    if (menu) await this.menuAction('paste')
+    else await this.burst('v', repeat ? 3 : 1)
+    if (conflict) {
+      const dialog = await this.browser.$('.conflict-modal')
+      await dialog.waitForDisplayed({ timeout: 60_000 })
+      await (await dialog.$(`.//button[normalize-space(.)="${conflict}"]`)).click()
+    }
+    await this.idle(conflict === 'Cancel' ? {} : { resultPath: firstPath }, 360_000)
+  }
+
+  async deleteSelection({ menu = false, raw, cancel = false, escape = false, repeat = false } = {}) {
+    if (menu) await this.menuAction('delete-permanent', raw)
+    else await this.chord('Delete', 'Shift')
+    const dialog = await this.browser.$('[role="dialog"]')
+    await dialog.waitForDisplayed({ timeout: 5000 })
+    assert.match(await dialog.getText(), /Delete permanently\?/)
+    assert.match(await dialog.getText(), /cannot be undone|cannot undo/i)
+    if (escape) await this.browser.keys([Key.Escape])
+    else if (repeat && !cancel) {
+      await (await this.browser.$('[data-confirm-delete="1"]')).click()
+      await this.burst('Enter', 2, null)
+    } else await (await this.browser.$(cancel ? '[data-cancel-delete="1"]' : '[data-confirm-delete="1"]')).click()
+    await this.idle()
+  }
+
+  async historyStep(redo, expected = {}, unavailable = false) {
+    await this.chord(redo ? 'y' : 'z')
+    if (!unavailable) return this.idle({ toast: redo ? 'Redo' : 'Undo', ...expected })
+    const text = redo ? 'Nothing to redo' : 'Nothing to undo'
+    await this.browser.waitUntil(async () => (await this.browser.execute(() =>
+      document.querySelector('.toast[role="status"]')?.textContent.trim() ?? '')).includes(text), { timeout: 5000 })
+    await this.browser.waitUntil(async () => !await this.browser.execute(() =>
+      document.querySelector('.toast[role="status"]')?.getClientRects().length), { timeout: 10_000 })
+    await this.idle()
+  }
+
+  async expectedToast(pattern) {
+    let text
+    await this.browser.waitUntil(async () => {
+      text = await this.browser.execute(() => document.querySelector('.toast[role="status"]')?.textContent.trim() ?? '')
+      return pattern.test(text)
+    }, { timeout: 10_000, timeoutMsg: 'Expected explicit rejection feedback' })
+    assert.match(text, pattern)
+    await this.browser.waitUntil(async () => !await this.browser.execute(() =>
+      document.querySelector('.toast[role="status"]')?.getClientRects().length), { timeout: 10_000 })
+    await this.idle()
+  }
+
+  async propertiesOpen(base, paths, menu = false, { directories = [] } = {}) {
+    ownedPath(this.roots, base)
+    assert.ok(paths.length > 0 && paths.length <= 2 && new Set(paths).size === paths.length)
+    for (const raw of paths) ownedPath(this.roots, raw)
+    await this.navigate(base); await this.select(paths[0])
+    for (const raw of paths.slice(1)) await this.modifiedSelect(raw, 'Control')
+    await this.selection(base, paths, { directories })
+    if (menu) await this.menuAction('properties', paths[0])
+    else await this.chord('p')
+    await (await this.browser.$('.properties-modal')).waitForDisplayed({ timeout: 5000 })
+  }
+
+  async propertiesTab(tab) {
+    assert.ok(['Basic', 'Extra', 'Ownership', 'Permissions'].includes(tab))
+    await (await this.browser.$(`//div[contains(@class,"properties-modal")]//div[contains(@class,"tabs")]//button[normalize-space(.)="${tab}"]`)).click()
+    await this.browser.waitUntil(async () => !(await (await this.browser.$('.properties-modal')).getText()).includes('Loading…'), { timeout: 60_000 })
+  }
+
+  async propertiesRows() {
+    return this.browser.execute(() => Object.fromEntries([...document.querySelectorAll('.properties-modal .row')]
+      // Rows use display: contents; only their rendered children have boxes.
+      .filter(row => row.querySelector('.label')?.getClientRects().length && row.querySelector('.value')?.getClientRects().length)
+      .map(row => [row.querySelector('.label').textContent.trim(), row.querySelector('.value').textContent.replace(/\s+/g, ' ').trim()])))
+  }
+
+  async closeProperties(base) {
+    await this.browser.keys([Key.Escape]); await this.idle(); await this.waitPath(base)
+  }
+
+  async editingFocus(base, paths) {
+    for (const path of paths) ownedPath(this.roots, path)
+    await this.waitPath(base)
+    await this.browser.waitUntil(async () => await this.browser.execute(paths => {
+      const active = document.activeElement, collection = document.querySelector('.rows, .grid')
+      return active === collection || (collection?.contains(active) && paths.includes(active.closest('[data-path]')?.dataset.path))
+    }, paths), { timeout: 5000, timeoutMsg: 'Closing the dialog must restore focus to the owned collection or its selected trigger' })
+  }
+
   async remove(raw, cancel = false) {
     await this.navigate(raw.slice(0, raw.lastIndexOf('/')))
     await this.select(raw)

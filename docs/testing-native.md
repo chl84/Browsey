@@ -58,6 +58,10 @@ The [creation verification](operations/linux-release/runs/2026-10-05-native-crea
 records NT1-4 creation, input/collision rejection, preservation and focus checks,
 including the shared name validation and interactive cloud-folder collision fix.
 
+The [editing, history and Properties record](operations/linux-release/runs/2026-10-05-native-editing-history-properties.md)
+defines the NT1-5 through NT1-8 cases and records their native outcomes, application
+fixes and retained earlier attempts.
+
 The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
 stability, basic operations, transfer boundaries, failure safety and edge cases.
 It tracks suite work; accepted candidate outcomes stay in the daily-driver
@@ -162,6 +166,35 @@ treated as successful idle or suppressed as an unrelated application error.
 Escape follows the shared input behavior: first blur a focused text field, then
 close the modal with the next Escape. Creation-name checks run before IPC for
 both local and cloud paths, so rejection does not rely on the native-only guard.
+
+`--suite editing` combines NT1-5 through NT1-8: each selected provider runs eight
+mixed/no-selection file-operation parts, twelve rename parts and three Properties
+parts. Local disk additionally runs 108 history parts, including move, rename,
+supported permanent deletion, overwrite, redo invalidation, the 50-action limit
+and one owned candidate restart. `--suite fileops`, `--suite rename`,
+`--suite properties` and `--suite history` select those groups for diagnosis.
+History is local only and requires the selected local target. Its restart reuses
+the private profile and generated fixtures, persists every captured identity,
+and launches the next session only after all old owned teardown stages pass.
+An unconfirmed closure blocks the run without an automatic restart/retry.
+
+Properties opens through Ctrl+P or the context menu and checks file, non-empty
+folder and mixed selection, all four tabs and restored focus. Recursive item
+counts include the selected directory itself. Unmeasured cloud folder totals
+stay unknown; selected-file bytes alone are not a complete mixed-selection total.
+Ownership/permission capability checks do not change controls or approve system
+principal discovery. Exact generated-tree membership/kinds/bytes are checked
+after every editing attempt, including cancellations and expected rejections.
+The permanent-delete warning distinguishes supported local Undo in the current
+session from irreversible cloud/network deletion; it does not promise remote Undo.
+
+Tree verification runs at most two independent reads at once and waits for both
+started children before surfacing a failure. Cloud metadata readiness permits at
+most four successful tree enumerations, separated by one-second gaps, before
+reading any bytes; each CLI call retains its existing 45-second limit. Transport
+errors, corrupted bytes and mutation dispatch are never automatically retried.
+Unexpected directories are recorded but not traversed. Duplicate entries always
+fail verification, including MTP aliases; they are never silently deduplicated.
 
 The listing cases compare file order against independently read fixture sizes,
 modified minutes, names and extensions. They combine all four column filters,
@@ -368,7 +401,7 @@ Private profiles can contain OAuth tokens; securely handle retained runs.
 
 New runs register an ownership nonce and approved-local-root hash in private,
 ignored `target/native-test/.retention` metadata. Preflight reserves 128 MiB before
-creating an owned run. Limits are 40 registered runs and 512 MiB of accounted
+creating an owned run. Limits are 64 registered runs and 512 MiB of accounted
 local data/reservations, with 128 MiB, 10,000 entries, depth 32 and a checked
 10-second elapsed budget per local tree audit. These are fail-closed accounting
 guards, not filesystem quotas or hard deadlines for stalled filesystem calls.

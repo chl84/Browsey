@@ -19,12 +19,14 @@
   export let modalWidth: string | null = null
   export let initialFocusSelector: string | null = null
   export let selectTextOnFocus = true
+  export let restoreFocusToAncestor = false
 
   let overlayPointerDown = false
   const titleId = `browsey-dialog-title-${++nextDialogId}`
   let modalEl: HTMLDivElement | null = null
   let countedAsOpen = false
   let restoreFocusTarget: HTMLElement | null = null
+  let restoreFocusFallback: HTMLElement | null = null
   let destroyed = false
 
   const focusableSelectors = [
@@ -78,19 +80,25 @@
     if (typeof document === 'undefined') return
     const active = document.activeElement
     restoreFocusTarget = active instanceof HTMLElement ? active : null
+    restoreFocusFallback = restoreFocusTarget?.parentElement?.closest<HTMLElement>('[tabindex="0"]') ?? null
   }
 
   const restoreFocusAfterClose = () => {
     const target = restoreFocusTarget
+    const fallback = restoreFocusFallback
     restoreFocusTarget = null
-    if (!target) return
+    restoreFocusFallback = null
+    if (!target && !fallback) return
     void tick().then(() => {
-      if ((!destroyed && open) || !target.isConnected) return
+      if (!destroyed && open) return
+      const restore = restoreFocusToAncestor && fallback?.isConnected
+        ? fallback : target?.isConnected ? target : fallback?.isConnected ? fallback : null
+      if (!restore) return
       const active = typeof document !== 'undefined' ? document.activeElement : null
       if (active instanceof HTMLElement && active.isConnected && active !== document.body) {
         return
       }
-      target.focus()
+      restore.focus()
     })
   }
 

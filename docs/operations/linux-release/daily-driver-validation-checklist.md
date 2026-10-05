@@ -100,6 +100,14 @@ every attempt, owned accessibility and confirmed teardown/privacy. Invalid leaf
 names, cloud folder collisions and stale errors during corrected requests are
 fixed. The broader parent rows remain open.
 
+The [native editing, history and Properties verification](runs/2026-10-05-native-editing-history-properties.md)
+completes NT1-5 through NT1-8 with 223 distinct parts: rename, mixed file
+operations and Properties on all five providers, plus local history boundaries
+and an owned restart. Exact generated-tree readback, owned accessibility,
+confirmed teardown and fresh privacy audits passed. Failed full reports remain
+retained; unchanged USB/network scopes retain their original build identity.
+The broader parent rows remain open.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable

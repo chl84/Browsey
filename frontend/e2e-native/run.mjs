@@ -14,6 +14,8 @@ import { navigation, navigationManifest } from './navigation.mjs'
 import { listing, listingManifest } from './listing.mjs'
 import { selection, selectionManifest } from './selection.mjs'
 import { creation, creationManifest } from './creation.mjs'
+import { editing, editingManifest } from './editing.mjs'
+import { ownedRestart } from './restart.mjs'
 
 import { verifyCandidate, fileSha256 } from './candidate.mjs'
 import { createReport, recordSetup, recordCase, finishReport, summarizeProviders } from './report.mjs'
@@ -26,6 +28,10 @@ const exec = promisify(execFile)
 const suites = { foundation: { run: foundation, manifest: foundationManifest },
   navigation: { run: navigation, manifest: navigationManifest }, listing: { run: listing, manifest: listingManifest },
   selection: { run: selection, manifest: selectionManifest }, creation: { run: creation, manifest: creationManifest } }
+for (const group of ['editing', 'fileops', 'rename', 'properties', 'history']) suites[group] = {
+  run: (plan, fixture, ui, record) => editing(plan, fixture, ui, record, group),
+  manifest: plan => editingManifest(plan, group),
+}
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const candidate = path.join(repo, 'target/native-test/browsey')
 // Inherited by the scoped app/drivers only; no desktop/global permission change.
@@ -40,7 +46,7 @@ for (let i = 1; i < args.length; i++) {
   else if (args[i] === '--targets') options.targets = args[++i]?.split(',')
   else if (args[i] === '--suite') {
     options.suite = args[++i]
-    assert.ok(Object.hasOwn(suites, options.suite), 'Expected foundation, navigation, listing, selection or creation suite')
+    assert.ok(Object.hasOwn(suites, options.suite), 'Expected a supported native suite')
   }
   else if (args[i] === '--a11y') options.a11y = true
   else if (args[i] === '--fullscreen') options.fullscreen = true
@@ -137,7 +143,7 @@ async function main() {
   injectedLifecycleFault: options.fault, injectedReportFault: options.reportFault,
   notTested: ['Other keyboard layouts', 'Non-BMP Unicode text entry (native WebDriver drops emoji)',
     'Native drag/drop', 'Mount/connect/unplug', 'Trash/format', 'Progress/cancellation with large files',
-    'Archive/password/conflict handling', 'Other platforms/distributions', 'Watcher behavior (disabled in scoped candidate)'] })
+    'Archive/password and broader transfer-conflict handling', 'Other platforms/distributions', 'Watcher behavior (disabled in scoped candidate)'] })
   if (options.fault) report.notTested.push('All UI file-operation acceptance (lifecycle fault scope)')
   if (options.suite === 'selection') report.notTested.push('Large-list virtualization on USB/network/cloud/mobile (local representative only)',
     'Backend invocation receipts and repeated copy/paste submission (NT1-6)')
@@ -171,7 +177,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['candidate.mjs', 'cases.mjs', 'creation.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['candidate.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -212,7 +218,7 @@ async function main() {
     for (const target of plan.targets.filter(target => target.kind === 'cloud')) {
       await setup({ id: 'owned-run-cloud', providers: ['cloud'] }, () => fixture.ensureCloudRoot(target))
     }
-    await setup(shared('driver-startup'), async () => {
+    const startDriver = async () => {
       driver = spawn(tools.driver, ['--port', '4444', '--native-host', '127.0.0.1', '--native-port', '4445', '--native-driver', tools.webkit],
         { env, cwd: local.files, stdio: ['ignore', log.fd, log.fd] })
       trackChild(driver)
@@ -230,29 +236,53 @@ async function main() {
         report.driverIdentity.nativeStartTime = nativeDriverOwner.start
         return true
       } })
-    })
-    await setup(shared('webdriver-session'), async () => {
+    }
+    const startSession = async () => {
       const { remote } = await import('webdriverio')
       browser = await remote({ hostname: '127.0.0.1', port: 4444, logLevel: 'silent', connectionRetryCount: 0,
         connectionRetryTimeout: 60_000, capabilities: { 'tauri:options': { application: candidate } } })
-    })
+    }
+    await setup(shared('driver-startup'), startDriver)
+    await setup(shared('webdriver-session'), startSession)
     const ui = new NativeUi(browser, session.dataRoots)
-    const status = await setup(shared('candidate-identity'), async () => {
+    const captureIdentity = async () => {
+      ui.browser = browser
       const status = await ui.handshake(plan.runId)
       candidateOwner = await captureCandidate(status.pid, { executable: candidate, dataHome: `${profile}/data`, runId: plan.runId })
       report.identity = { pid: status.pid, startTime: candidateOwner.start, runId: status.runId, scope: status.scope, watcher: status.watcher }
       return status
-    })
+    }
+    let status = await setup(shared('candidate-identity'), captureIdentity)
     const a11yEnv = { ...env, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
       HYPRLAND_INSTANCE_SIGNATURE: process.env.HYPRLAND_INSTANCE_SIGNATURE }
-    if (options.fullscreen) await setup(shared('owned-window-fullscreen'), async () => {
+    const fullscreen = async () => {
       await owned()
       const result = await exec('/usr/bin/python3', [path.join(repo, 'tests/support/native_fixture_a11y.py'),
         String(status.pid), candidate, `${profile}/data`, 'fullscreen', '', ''],
       { env: a11yEnv, cwd: local.files, timeout: 15_000, maxBuffer: 1024 * 1024 })
       report.window = JSON.parse(result.stdout)
       await owned()
-    })
+    }
+    if (options.fullscreen) await setup(shared('owned-window-fullscreen'), fullscreen)
+    if (['editing', 'history'].includes(options.suite)) {
+      report.restarts = []
+      ui.restart = ownedRestart({ restarts: report.restarts, persist,
+        stop: async () => {
+          await owned()
+          const identity = { candidate: report.identity, driver: report.driverIdentity }
+          const result = await teardown({ browser, driver, nativeDriver: nativeDriverOwner, candidate: candidateOwner })
+          browser = undefined // Never submit a second deleteSession for this session.
+          return { ...identity, teardown: result }
+        },
+        start: async () => {
+          driver = undefined; nativeDriverOwner = undefined; candidateOwner = undefined
+          await checkPorts(); await verifyCandidate(repo, candidate)
+          await startDriver(); await startSession(); status = await captureIdentity()
+          await owned(); if (options.fullscreen) await fullscreen()
+          return { candidate: report.identity, driver: report.driverIdentity }
+        },
+      })
+    }
     if (options.fault) {
       await record('Native lifecycle: owned window identity', async () => {
         if (options.fault === 'candidate-exit') await stopCandidate(candidateOwner, { signal: pid => process.kill(pid, 'SIGKILL') })

@@ -12,6 +12,10 @@ export const applyClickSelection = (
   event: MouseEvent,
   prev: SelectionState,
 ): SelectionState => {
+  // WebKit can deliver a non-primary click around context-menu interaction.
+  // Context-menu policy selects an unselected target itself; clicking an
+  // already selected target must not collapse or toggle a mixed selection.
+  if (event.button !== 0) return prev
   const isToggle = event.ctrlKey || event.metaKey
   const isRange = event.shiftKey && prev.anchor !== null
 
