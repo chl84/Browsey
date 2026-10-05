@@ -13,7 +13,10 @@
     "lint:naming": "node scripts/check-naming-conventions.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:e2e:install": "playwright install chromium"
+    "test:e2e:install": "playwright install chromium",
+    "test:native:policy": "node --test e2e-native/*.test.mjs",
+    "test:native": "node e2e-native/run.mjs",
+    "lint:native": "eslint e2e-native/*.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.3",
@@ -32,7 +35,8 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^7.3.6",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "webdriverio": "10.0.0"
   },
   "dependencies": {
     "@tauri-apps/api": "=2.12.0"

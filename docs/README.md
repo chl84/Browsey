@@ -10,6 +10,7 @@ The docs web app lives in `../docs-site/` and is built/deployed separately.
 - [Installation](installation.md): packages, runtime dependencies, upgrades and the local installer.
 - [User guide](usage.md): shortcuts, drag/drop, cloud, archives, devices and recovery.
 - [Development](development.md): build prerequisites, pinned CLI, tests, architecture and release preparation.
+- [Native acceptance tests](testing-native.md): scoped real-WebKit/backend tests across approved storage targets.
 - [Release notes](releases/): version-specific artifacts, checksums and validation scope.
 
 ## Structure

@@ -30,6 +30,10 @@ node scripts/maintenance/check-pdfium.mjs
 For pinned native dependencies, audits and upgrades, see
 [dependency maintenance](maintenance/dependencies.md).
 
+For real WebKitGTK/backend validation with explicitly approved disposable folders,
+see the [scoped native acceptance suite](testing-native.md). It complements mock
+frontend E2E tests and does not operate on the installed app or personal files.
+
 ## Run and build
 
 Install the locked frontend dependencies and start the desktop development app:

@@ -719,7 +719,7 @@ import type { ActivityState } from '../../hooks/createActivity'
 
 </script>
 
-<main class="shell">
+<main class="shell" data-current-path={currentPath} aria-busy={loading} data-operation-active={Boolean(activity)}>
   <div class="layout" class:collapsed={sidebarCollapsed}>
     <Sidebar
       {places}

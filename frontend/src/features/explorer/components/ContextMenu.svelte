@@ -190,6 +190,7 @@
           {#if hasChildren(action)}
             <button
               role="menuitem"
+              data-action-id={action.id}
               aria-haspopup="menu"
               aria-expanded={submenuParentId === action.id}
               class:dangerous={action.dangerous}
@@ -217,6 +218,7 @@
           {:else}
             <button
               role="menuitem"
+              data-action-id={action.id}
               class:dangerous={action.dangerous}
               on:mouseenter={closeSubmenu}
               on:click={() => selectAction(action.id)}

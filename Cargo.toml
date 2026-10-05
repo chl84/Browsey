@@ -4,6 +4,10 @@ version = "1.0.4"
 edition = "2021"
 license = "MIT"
 
+[features]
+# Opt-in candidate only. Never enable in release/install workflows.
+native-test = []
+
 [workspace]
 members = ["tests/glib-regression"]
 default-members = ["."]

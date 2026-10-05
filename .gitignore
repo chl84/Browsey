@@ -47,3 +47,11 @@ pnpm-debug.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Native acceptance: machine-specific approvals/credentials and disposable runs.
+/frontend/e2e-native/config.local.json
+/frontend/e2e-native/*.local.json
+**/ai_agent_testfolder/
+**/.browsey-native-*/
+**/.bnt-*/
+/native-test-results/

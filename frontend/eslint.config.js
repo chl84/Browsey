@@ -68,6 +68,11 @@ export default [
     ignores: ['node_modules/**', 'dist/**', '.svelte-kit/**', 'coverage/**'],
   },
   {
+    files: ['e2e-native/*.mjs'],
+    languageOptions: { globals: { process: 'readonly', Buffer: 'readonly', URL: 'readonly',
+      console: 'readonly', fetch: 'readonly', AbortSignal: 'readonly', setTimeout: 'readonly' } },
+  },
+  {
     files: ['src/**/*.{ts,js}'],
     languageOptions: {
       parser: tseslint.parser,

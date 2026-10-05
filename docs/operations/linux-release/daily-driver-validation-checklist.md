@@ -46,6 +46,12 @@ or cross-distribution evidence.
 
 ## Run Discipline
 
+The [scoped native acceptance suite](../../testing-native.md) provides reusable
+foundation cases for local disk, USB, network, cloud and mobile. Its implementation
+or policy-test success does not check any acceptance row here. Record a real
+candidate run, provider outcomes and excluded watcher/device/large-file behavior
+before adding acceptance evidence; unavailable configured targets are BLOCKED.
+
 Copy this checklist into a candidate-specific run record. Record date, exact
 commit/build, installed versus test binary, tester, OS/distro/compositor, device
 or fixture, commands, observed outcomes and evidence links. Record each row as

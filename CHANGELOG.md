@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add an opt-in Linux native acceptance harness using WebDriver and the existing
+  AT-SPI helper, with shared small-file cases across explicitly approved storage
+  targets. Isolate the candidate's profile and enforce owned-path IPC limits;
+  exclude credentials, local approvals and runtime artifacts from Git. Native
+  device acceptance remains blocked until access/tool prerequisites are satisfied.
+
 - Keep the drag label mounted when moving between file rows/cards with a null
   `relatedTarget`; these are not webview exits. Publish listing drag inputs only
   when target, source count or dragging state changes, not for pointer position

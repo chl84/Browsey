@@ -18,6 +18,8 @@ mod metadata;
 mod mtp;
 #[cfg(target_os = "linux")]
 mod native_drag;
+#[cfg(any(test, feature = "native-test"))]
+mod native_test;
 mod path_guard;
 mod pdfium_runtime;
 #[cfg(all(test, target_os = "linux"))]
@@ -242,8 +244,12 @@ fn apply_webview_rendering_policy_from_settings() {
 fn apply_webview_rendering_policy_from_settings() {}
 
 fn main() {
-    if let Some(code) = maybe_run_ownership_helper_from_args() {
-        std::process::exit(code);
+    #[cfg(feature = "native-test")]
+    native_test::initialize().expect("native test candidate requires an isolated approved session");
+    if !cfg!(feature = "native-test") {
+        if let Some(code) = maybe_run_ownership_helper_from_args() {
+            std::process::exit(code);
+        }
     }
     init_logging();
     apply_webview_rendering_policy_from_settings();
@@ -256,7 +262,7 @@ fn main() {
         .manage(RuntimeLifecycle::default())
         .setup(|app| {
             #[cfg(target_os = "linux")]
-            {
+            if !cfg!(feature = "native-test") {
                 mtp::start(app.handle().clone());
                 let monitor = volume_monitor::VolumeMonitor::default();
                 if let Err(error) = monitor.start(app.handle().clone()) {
@@ -280,7 +286,7 @@ fn main() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(native_test_handler(tauri::generate_handler![
             about_info,
             get_window_control_policy,
             get_startup_path,
@@ -454,7 +460,7 @@ fn main() {
             get_thumbnail,
             clear_thumbnail_cache,
             clear_cloud_open_cache
-        ])
+        ]))
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
@@ -495,4 +501,19 @@ fn main() {
             );
         }
     });
+}
+
+fn native_test_handler<F>(handler: F) -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static
+where
+    F: Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static,
+{
+    move |invoke| {
+        #[cfg(feature = "native-test")]
+        match native_test::intercept(invoke) {
+            Some(invoke) => handler(invoke),
+            None => true,
+        }
+        #[cfg(not(feature = "native-test"))]
+        handler(invoke)
+    }
 }

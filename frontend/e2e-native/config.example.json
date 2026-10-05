@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "targets": {
+    "local": "/test/ai_agent_testfolder",
+    "usb": null,
+    "network": null,
+    "cloud": null,
+    "mobile": null
+  },
+  "matrix": "local-hub",
+  "rcloneConfig": null
+}
