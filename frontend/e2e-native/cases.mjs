@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { child } from './scope.mjs'
 import { payload } from './fixtures.mjs'
+import { recordPart } from './report.mjs'
 
 export function foundationManifest(plan) {
   const cases = [{ id: 'input-local', name: 'local: exact path/name input after modifier release', providers: ['local'] }]
@@ -34,12 +35,16 @@ async function transferCase(source, target, label, move, fixture, ui, record) {
     await fixture.mkdir(child(from, 'tree'))
     await fixture.write(child(child(from, 'tree'), 'nested.txt'))
     for (const leaf of ['sample.txt', 'tree']) {
-      result.phase = 'ui'
-      await ui.transfer(child(from, leaf), to, move)
-      result.phase = 'verification'
-      const relative = leaf === 'tree' ? 'tree/nested.txt' : leaf
-      assert.equal(await fixture.read(`${to}/${relative}`), payload)
-      assert.equal(await fixture.exists(child(from, leaf)), !move)
+      await recordPart(result, leaf === 'tree' ? 'directory' : 'file', async part => {
+        result.phase = 'ui'
+        part.ui = 'STARTED'
+        await ui.transfer(child(from, leaf), to, move)
+        part.ui = 'ACKNOWLEDGED'
+        result.phase = 'verification'
+        const relative = leaf === 'tree' ? 'tree/nested.txt' : leaf
+        assert.equal(await fixture.read(`${to}/${relative}`), payload)
+        assert.equal(await fixture.exists(child(from, leaf)), !move)
+      })
     }
   }, { id: label, providers: [...new Set([source.kind, target.kind])] })
 }
@@ -72,25 +77,36 @@ export async function foundation(plan, fixture, ui, record) {
       await fixture.write(child(base, 'source.txt'))
       result.phase = 'ui'
       await ui.create(base, 'created-folder', true)
+      result.phase = 'verification'
       assert.ok(await fixture.exists(child(base, 'created-folder')))
+      result.phase = 'ui'
       await ui.create(base, 'created.txt', false)
+      result.phase = 'verification'
       assert.equal(await fixture.read(child(base, 'created.txt')), '')
     }, { id: `create-${target.kind}`, providers: [target.kind] })
-    await record(`${target.kind}: file/folder rename`, async () => {
+    await record(`${target.kind}: file/folder rename`, async (result = {}) => {
       await ui.rename(child(base, 'source.txt'), 'renamed.txt')
+      result.phase = 'verification'
       assert.ok(!await fixture.exists(child(base, 'source.txt')))
       assert.equal(await fixture.read(child(base, 'renamed.txt')), payload)
+      result.phase = 'ui'
       await ui.rename(child(base, 'created-folder'), 'renamed-folder')
+      result.phase = 'verification'
       assert.ok(!await fixture.exists(child(base, 'created-folder')))
       assert.ok(await fixture.exists(child(base, 'renamed-folder')))
     }, { id: `rename-${target.kind}`, providers: [target.kind] })
-    await record(`${target.kind}: permanent delete/cancel`, async () => {
+    await record(`${target.kind}: permanent delete/cancel`, async (result = {}) => {
       const raw = child(base, 'renamed.txt')
       await ui.remove(raw, true)
+      result.phase = 'verification'
       assert.equal(await fixture.read(raw), payload)
+      result.phase = 'ui'
       await ui.remove(raw)
+      result.phase = 'verification'
       assert.ok(!await fixture.exists(raw))
+      result.phase = 'ui'
       await ui.remove(child(base, 'renamed-folder'))
+      result.phase = 'verification'
       assert.ok(!await fixture.exists(child(base, 'renamed-folder')))
     }, { id: `delete-${target.kind}`, providers: [target.kind] })
     for (const move of [false, true]) {

@@ -121,34 +121,46 @@ export class Fixtures {
   }
 }
 
-export async function createLocalSession(plan, config) {
+export async function createLocalSession(plan, config, { step = async (_metadata, action) => action(),
+  onOwned = async () => {} } = {}) {
   const local = plan.targets.find(target => target.kind === 'local')
   for (const target of plan.targets.filter(target => target.kind !== 'cloud')) {
-    await noLinks(target.path, fs)
-    assert.ok((await fs.lstat(target.path)).isDirectory(), 'Approved folders must already exist')
+    await step({ id: `approved-root-${target.kind}`, providers: [target.kind] }, async () => {
+      await noLinks(target.path, fs)
+      assert.ok((await fs.lstat(target.path)).isDirectory(), 'Approved folders must already exist')
+    })
   }
   let cloudConfig = ''
   if (config.rcloneConfig) {
-    assert.ok(inside(local.path, config.rcloneConfig))
-    const credential = await regularFile(config.rcloneConfig)
-    assert.equal(credential.stat.mode & 0o777, 0o600, 'Test credential config must have mode 600')
-    const sections = [...credential.text.matchAll(/^\[([^\]\r\n]+)\]\s*$/gm)].map(match => match[1])
-    const cloud = plan.targets.find(target => target.kind === 'cloud')
-    assert.deepEqual(sections, [cloud.path.slice(9).split('/')[0]], 'Only the explicitly approved remote may be present')
-    cloudConfig = credential.text
+    await step({ id: 'private-cloud-credentials', providers: ['cloud'] }, async () => {
+      assert.ok(inside(local.path, config.rcloneConfig))
+      const credential = await regularFile(config.rcloneConfig)
+      assert.equal(credential.stat.mode & 0o777, 0o600, 'Test credential config must have mode 600')
+      const sections = [...credential.text.matchAll(/^\[([^\]\r\n]+)\]\s*$/gm)].map(match => match[1])
+      const cloud = plan.targets.find(target => target.kind === 'cloud')
+      assert.deepEqual(sections, [cloud.path.slice(9).split('/')[0]], 'Only the explicitly approved remote may be present')
+      cloudConfig = credential.text
+    })
   }
   // Exclusive creation: no recursive mkdir of approved roots, no reused run/profile.
   for (const target of plan.targets.filter(target => target.kind !== 'cloud')) {
-    await fs.mkdir(target.run, { mode: 0o700 })
-    await fs.mkdir(target.files, { mode: 0o700 })
+    await step({ id: `owned-run-${target.kind}`, providers: [target.kind] }, async () => {
+      await fs.mkdir(target.run, { mode: 0o700 })
+      if (target.kind === 'local') {
+        await fs.writeFile(child(local.run, 'owner.json'), JSON.stringify({ schema: 1, runId: plan.runId }), { flag: 'wx', mode: 0o600 })
+        await onOwned()
+      }
+      await fs.mkdir(target.files, { mode: 0o700 })
+    })
   }
   const profile = child(local.run, 'profile')
-  await fs.mkdir(profile, { mode: 0o700 })
-  for (const leaf of ['data', 'config', 'cache', 'state', 'home']) {
-    await fs.mkdir(child(profile, leaf), { mode: 0o700 })
-  }
-  for (const leaf of ['r', 't']) await fs.mkdir(child(local.run, leaf), { mode: 0o700 })
-  await fs.writeFile(`${profile}/config/rclone.conf`, cloudConfig, { flag: 'wx', mode: 0o600 })
-  await fs.writeFile(child(local.run, 'owner.json'), JSON.stringify({ schema: 1, runId: plan.runId }), { flag: 'wx', mode: 0o600 })
+  await step({ id: 'private-profile', providers: plan.targets.map(target => target.kind) }, async () => {
+    await fs.mkdir(profile, { mode: 0o700 })
+    for (const leaf of ['data', 'config', 'cache', 'state', 'home']) {
+      await fs.mkdir(child(profile, leaf), { mode: 0o700 })
+    }
+    for (const leaf of ['r', 't']) await fs.mkdir(child(local.run, leaf), { mode: 0o700 })
+    await fs.writeFile(`${profile}/config/rclone.conf`, cloudConfig, { flag: 'wx', mode: 0o600 })
+  })
   return profile
 }

@@ -23,6 +23,11 @@ records NT0-4 policy regressions, five injected native failures and a fresh norm
 local foundation run. Fault reports retain FAIL/BLOCKED; passing fault assertions
 do not count as provider file-operation acceptance.
 
+The [case/provider reporting verification](operations/linux-release/runs/2026-10-05-native-reporting.md)
+records NT0-5 setup/partial-transfer regressions, scoped operation retests and
+explicitly blocked mobile preflight. Requirements describe the tested cases;
+they do not assume broad provider support.
+
 The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
 stability, basic operations, transfer boundaries, failure safety and edge cases.
 It tracks suite work; accepted candidate outcomes stay in the daily-driver
@@ -152,6 +157,57 @@ lists supported names. Other providers and `--a11y` are rejected in fault mode.
 Occupied-port, spawn-error, TERM-resistant process and unconfirmed-exit regressions
 use generated child processes/loopback listeners in `test:native:policy`.
 
+## Case and provider reports
+
+Report schema 3 declares every case before setup, including optional accessibility
+with a stable ID. Each case has required capabilities per provider. Transfer
+requirements distinguish source reads/removal from destination writes/creation;
+local undo and input remain local requirements. Provider summaries include setup
+steps, case counts, case/part results and capability `requiredBy`/`passedBy` IDs.
+Capability status covers those declared cases only. An unfinished required case
+cannot certify its capability; no provider is silently declared unsupported or
+given N/A without separate evidence.
+
+Setup records dependency/build identity, port checks, each approved root and owned
+run, private profile, artifacts, tool evidence, cloud initialization, driver,
+session and candidate identity. Approved-root metadata/credential checks still
+precede writes.
+Once exclusive local ownership is recorded, the report is created before other
+run/profile setup, preserving later setup failures. Failures before that point
+print a structured `Native preflight report` with BLOCKED and declared NOT_RUN
+cases, without claiming an artifact path. Invalid config/arguments that cannot
+produce an authorized plan still stop before a run is declared.
+
+File/tree transfer cases retain separate `file` and `directory` parts. Each begins
+NOT_RUN/NOT_SENT, records its UI attempt and acknowledgement, then independent
+verification. A completed file stays PASS if directory verification fails; later
+cases/parts stay NOT_RUN. UI STARTED/ACKNOWLEDGED describes the test's interaction
+and completion wait, not a backend write receipt. A failed or partial case/setup
+step cannot be run again by the recorder. The runner stops at the first failure.
+
+Failure evidence is explicit: `app-reported` is an observed Browsey error;
+`candidate-result` is an independent assertion mismatch; `candidate-process` is
+loss of the owned app. Setup/fixture/driver failures are `harness`; unclassified UI
+failures are `undetermined` and BLOCKED. A timeout alone does not establish an app
+defect. Result mismatches still require diagnosis before attributing a root cause.
+Completed unrelated cases remain visible, while unfinished provider scopes and
+uncertain teardown cannot be reported as accepted PASS.
+
+Run the opt-in local reporting regression with the staged candidate:
+
+```bash
+node frontend/e2e-native/report-acceptance.mjs
+```
+
+It verifies missing-driver preflight, injected private-profile setup failure and
+a fixture-read failure after the file/tree copy UI completes. The native reports
+remain BLOCKED, with completed work and recovery fixtures retained. The wrapper
+checks exact outcomes and owned process exit, and independently reads only those
+generated copy fixtures. Its ignored aggregate is `target/native-test/report-results.json`.
+Individual setup/partial-transfer injection uses `--run --targets local
+--report-fault NAME`; other providers, accessibility and lifecycle fault mode are
+rejected. These injections test reporting, not an observed Browsey defect.
+
 ## First-phase cases
 
 The same cases run against local disk, USB, network, cloud and mobile:
@@ -204,7 +260,8 @@ Each local owned run retains `report.json`, private profile, generated fixtures
 and window-only failure artifacts. Reports distinguish PASS/FAIL/BLOCKED,
 NOT_RUN/DEFERRED/NOT_CONFIGURED and explicitly list excluded acceptance. A PASS
 means only the selected small-file foundation cases, not release signoff.
-Preflight failures before run creation are printed, not presented as passing tests.
+Authorized-plan preflight failures before run creation print a structured BLOCKED
+report, not passing tests or an owned artifact path.
 There is no automatic recursive cleanup: inspect and remove only a verified owned
 UUID run, never the approved test root or unrelated files. Private profiles can
 contain OAuth tokens; securely handle retained runs.

@@ -61,6 +61,11 @@ records owned process exit after injected driver/app termination, timeout and
 session-closure failures, plus a normal local retest. It completes NT0-4 harness
 coverage; it does not accept device disconnect/reconnect or close parent rows.
 
+The [native case/provider reporting verification](runs/2026-10-05-native-reporting.md)
+adds NT0-5 setup/partial-result evidence, fresh local and local/USB passes and a
+separate blocked mobile preflight. Reports preserve completed parts and unrun
+cases; requirement declarations do not certify untested provider capabilities.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable

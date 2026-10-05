@@ -103,14 +103,19 @@ Complete these prerequisites before expanding the functional matrix.
   FAIL/BLOCKED. A normal local retest passed all eight cases and all four teardown
   steps. Ownership covers tauri-driver, its WebKit child and the scoped candidate;
   uncertain teardown blocks PASS without resending operations/session closure.
-- [ ] **NT0-5** Add per-case/provider capabilities and results, including setup
+- [x] **NT0-5** Add per-case/provider capabilities and results, including setup
   failures and partial batches. Distinguish harness failures from reproduced
   app defects; never automatically retry an uncertain mutation.
-  Partial progress: declared case IDs/provider dependencies, setup/UI/verification
-  phases, remaining NOT_RUN cases, fixture-I/O BLOCKED and app-error FAIL are
-  recorded. Transfers wait for current clipboard acknowledgement and destination
-  UI state before independent verification, without resending mutations.
-  Capability declarations and partial-batch/setup-report completeness remain open.
+  Verified 2026-10-05 in the
+  [reporting run](../operations/linux-release/runs/2026-10-05-native-reporting.md):
+  schema 3 declares per-case/provider requirements, setup stages, capability
+  evidence and separate file/tree parts. All 40 policy tests passed, including
+  partial provider setup, directional requirements on all five providers and
+  distinct app/result/harness/unknown failures. Missing-driver, setup and partial
+  copy faults retained BLOCKED/NOT_RUN and completed parts without retry. Normal
+  local and local/USB runs passed 8 and 17 cases; mobile preflight correctly
+  blocked all 17 planned cases before writes because its approved path was absent.
+  This completes reporting coverage, not new mobile/device lifecycle acceptance.
 - [ ] **NT0-6** Verify credential/artifact permissions and Git exclusions. Define
   bounded retention and explicit owned-run cleanup, preserving recovery data
   and never recursively cleaning an approved root.
