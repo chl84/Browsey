@@ -56,6 +56,11 @@ passed a fresh retest after fixing the harness wait. The original full report
 remains FAIL; its passing provider cases and the later local PASS are recorded
 separately. No parent row below is closed by this bounded case coverage.
 
+The [native startup/teardown fault verification](runs/2026-10-05-native-lifecycle.md)
+records owned process exit after injected driver/app termination, timeout and
+session-closure failures, plus a normal local retest. It completes NT0-4 harness
+coverage; it does not accept device disconnect/reconnect or close parent rows.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable

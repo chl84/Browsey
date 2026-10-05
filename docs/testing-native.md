@@ -18,6 +18,11 @@ record complete case coverage on all five providers and both local-hub direction
 plus the fresh local history retest. The full report remains FAIL for its history
 wait; the local retest is PASS. These separate scopes do not certify a release.
 
+The [startup/teardown fault verification](operations/linux-release/runs/2026-10-05-native-lifecycle.md)
+records NT0-4 policy regressions, five injected native failures and a fresh normal
+local foundation run. Fault reports retain FAIL/BLOCKED; passing fault assertions
+do not count as provider file-operation acceptance.
+
 The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
 stability, basic operations, transfer boundaries, failure safety and edge cases.
 It tracks suite work; accepted candidate outcomes stay in the daily-driver
@@ -105,6 +110,47 @@ Driver paths can be explicitly set with `BROWSEY_TAURI_DRIVER` and
 WebKit driver must be supplied separately. Ports 4444/4445 must be free.
 If a Cargo shim is unconfigured, `BROWSEY_CARGO=/absolute/path/to/cargo` selects a
 working toolchain for `--build` without modifying global tool settings.
+
+## Startup, teardown and fault verification
+
+Before creating fixtures, the runner checks both ports together and releases its
+reservations even when the second port is occupied. After spawning its own
+tauri-driver, it proves that port 4444 belongs to that process and port 4445 to
+its direct WebKit-driver child before probing readiness or creating a session.
+A listener racing preflight is not adopted. Driver startup is bounded at 15
+seconds, with readiness requests bounded at one second and no operation retries.
+
+The read-only handshake identifies Browsey before UI mutation. Captured WebKit
+and Browsey ownership requires the exact executable, private XDG data directory,
+run marker and Linux process start time. These are checked again before signals;
+an exited or reused PID is not signaled, and changed identity fails closed.
+Case boundaries check all three processes. Failure screenshots have a five-second
+limit and require the still-owned candidate window.
+
+Teardown attempts session deletion once, with a five-second limit, then separately
+confirms owned tauri-driver, WebKit-driver and Browsey exit. Tauri-driver gets
+TERM then KILL with three seconds for each; WebKit/Browsey get 1.5 seconds for
+each signal. Every teardown step runs even after an earlier failure, and its
+result is retained. Failed/uncertain closure or exit changes a would-be PASS to
+BLOCKED; an existing FAIL remains FAIL. No cleanup targets a foreign listener,
+installed Browsey or personal window.
+
+Run the explicit NT0-4 fault regression after building the scoped candidate:
+
+```bash
+node frontend/e2e-native/lifecycle-acceptance.mjs
+```
+
+It creates five separate owned local runs, with no UI file-operation mutations:
+driver termination, candidate fatal termination, a read-only case timeout,
+failed session closure and hanging session closure. It checks the exact expected
+failure and confirmed owned process exits. The native reports remain FAIL/BLOCKED
+and exit 1; the wrapper's PASS means the failure was handled as expected. It
+retains private reports and an ignored `target/native-test/lifecycle-results.json`.
+Individual injection uses `--run --targets local --lifecycle-fault NAME`; help
+lists supported names. Other providers and `--a11y` are rejected in fault mode.
+Occupied-port, spawn-error, TERM-resistant process and unconfirmed-exit regressions
+use generated child processes/loopback listeners in `test:native:policy`.
 
 ## First-phase cases
 

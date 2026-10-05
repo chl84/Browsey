@@ -91,13 +91,18 @@ Complete these prerequisites before expanding the functional matrix.
   explicitly press/release Shift for `_` and always release modifiers. Temporary
   US did not solve driver input; original Norwegian configuration was restored.
   Non-BMP emoji input remains excluded; NT4-1 is not accepted by this check.
-- [ ] **NT0-4** Harden startup/teardown for occupied ports, driver exit, candidate
+- [x] **NT0-4** Harden startup/teardown for occupied ports, driver exit, candidate
   crash, failed session closure and timeouts. Stop only owned processes/windows;
   uncertain teardown must not produce PASS.
-  Partial progress: bounded TERM/KILL shutdown and signaled-exit checks are
-  implemented; uncertain closure/candidate exit makes a would-be PASS BLOCKED.
-  Successful owned teardown was verified in the recorded native runs. The
-  requested failure-injection coverage remains open.
+  Verified 2026-10-05 in the
+  [lifecycle run](../operations/linux-release/runs/2026-10-05-native-lifecycle.md):
+  all 30 policy/orchestration tests passed, including occupied/foreign ports,
+  spawn/exit, startup timeout, TERM resistance, changed identity and unconfirmed
+  teardown. Five fresh local native fault runs caught their exact injected
+  failure and confirmed captured owned process exits; those reports retain
+  FAIL/BLOCKED. A normal local retest passed all eight cases and all four teardown
+  steps. Ownership covers tauri-driver, its WebKit child and the scoped candidate;
+  uncertain teardown blocks PASS without resending operations/session closure.
 - [ ] **NT0-5** Add per-case/provider capabilities and results, including setup
   failures and partial batches. Distinguish harness failures from reproduced
   app defects; never automatically retry an uncertain mutation.
