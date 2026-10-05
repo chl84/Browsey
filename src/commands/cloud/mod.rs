@@ -7,6 +7,7 @@ mod conflicts;
 mod error;
 mod events;
 mod limits;
+pub(crate) use limits::with_cloud_remote_permits;
 mod list;
 mod open;
 pub mod path;

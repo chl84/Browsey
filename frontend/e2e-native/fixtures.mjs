@@ -120,6 +120,32 @@ export class Fixtures {
     if (raw.startsWith('rclone://')) return this.#rclone(['cat', rclonePath(raw)])
     return (await regularFile(raw)).text
   }
+
+  async snapshot(raw) {
+    ownedPath(this.roots, raw)
+    const cloud = raw.startsWith('rclone://')
+    if (!cloud) await noLinks(raw, fs)
+    const items = cloud ? JSON.parse(await this.#rclone(['lsjson', rclonePath(raw)])) : await fs.readdir(raw)
+    assert.ok(Array.isArray(items) && items.length <= 32, 'Listing verification is limited to 32 generated children')
+    const result = []
+    for (const item of items) {
+      const name = cloud ? item.Name : item
+      const path = child(raw, name)
+      ownedPath(this.roots, path)
+      let kind, size, time
+      if (cloud) {
+        kind = item.IsDir ? 'dir' : 'file'; size = item.IsDir ? 0 : item.Size; time = Date.parse(item.ModTime)
+      } else {
+        await noLinks(path, fs)
+        const stat = await fs.lstat(path)
+        assert.ok(stat.isDirectory() || stat.isFile(), 'Only generated regular files/directories may be verified')
+        kind = stat.isDirectory() ? 'dir' : 'file'; size = stat.size; time = stat.mtimeMs
+      }
+      assert.ok(Number.isFinite(time) && Number.isSafeInteger(size) && size >= 0, 'Expected valid generated metadata')
+      result.push({ path, name, kind, size, modifiedMinute: Math.floor(time / 60_000) })
+    }
+    return result
+  }
 }
 
 export async function createLocalSession(plan, config, { step = async (_metadata, action) => action(),

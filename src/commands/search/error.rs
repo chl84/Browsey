@@ -10,6 +10,16 @@ pub(super) enum SearchErrorCode {
     InvalidQuery,
     InvalidPath,
     NotFound,
+    CloudDisabled,
+    Timeout,
+    NetworkError,
+    TlsCertificateError,
+    RateLimited,
+    AuthRequired,
+    PermissionDenied,
+    BinaryMissing,
+    InvalidConfig,
+    Cancelled,
     DatabaseOpenFailed,
     DatabaseReadFailed,
     TaskFailed,
@@ -23,6 +33,16 @@ impl ErrorCode for SearchErrorCode {
             Self::InvalidQuery => "invalid_query",
             Self::InvalidPath => "invalid_path",
             Self::NotFound => "not_found",
+            Self::CloudDisabled => "cloud_disabled",
+            Self::Timeout => "timeout",
+            Self::NetworkError => "network_error",
+            Self::TlsCertificateError => "tls_certificate_error",
+            Self::RateLimited => "rate_limited",
+            Self::AuthRequired => "auth_required",
+            Self::PermissionDenied => "permission_denied",
+            Self::BinaryMissing => "binary_missing",
+            Self::InvalidConfig => "invalid_config",
+            Self::Cancelled => "cancelled",
             Self::DatabaseOpenFailed => "database_open_failed",
             Self::DatabaseReadFailed => "database_read_failed",
             Self::TaskFailed => "task_failed",
@@ -76,6 +96,29 @@ impl From<crate::commands::fs::FsError> for SearchError {
             | crate::commands::fs::FsErrorCode::PathNotAbsolute => SearchErrorCode::InvalidPath,
             crate::commands::fs::FsErrorCode::NotFound => SearchErrorCode::NotFound,
             crate::commands::fs::FsErrorCode::TaskFailed => SearchErrorCode::TaskFailed,
+            _ => SearchErrorCode::UnknownError,
+        };
+        Self::new(code, error.to_string())
+    }
+}
+
+impl From<crate::commands::cloud::CloudCommandError> for SearchError {
+    fn from(error: crate::commands::cloud::CloudCommandError) -> Self {
+        use crate::commands::cloud::CloudCommandErrorCode as CloudCode;
+        let code = match error.code() {
+            CloudCode::CloudDisabled => SearchErrorCode::CloudDisabled,
+            CloudCode::InvalidPath => SearchErrorCode::InvalidPath,
+            CloudCode::NotFound => SearchErrorCode::NotFound,
+            CloudCode::Timeout => SearchErrorCode::Timeout,
+            CloudCode::NetworkError => SearchErrorCode::NetworkError,
+            CloudCode::TlsCertificateError => SearchErrorCode::TlsCertificateError,
+            CloudCode::RateLimited => SearchErrorCode::RateLimited,
+            CloudCode::AuthRequired => SearchErrorCode::AuthRequired,
+            CloudCode::PermissionDenied => SearchErrorCode::PermissionDenied,
+            CloudCode::BinaryMissing => SearchErrorCode::BinaryMissing,
+            CloudCode::InvalidConfig => SearchErrorCode::InvalidConfig,
+            CloudCode::Cancelled => SearchErrorCode::Cancelled,
+            CloudCode::TaskFailed => SearchErrorCode::TaskFailed,
             _ => SearchErrorCode::UnknownError,
         };
         Self::new(code, error.to_string())

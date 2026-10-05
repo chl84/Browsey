@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { get, writable } from 'svelte/store'
 import { createSearchSession } from './createSearchSession'
-import type { ListingFacets } from '../model/types'
+import type { Entry, ListingFacets } from '../model/types'
+import type { SearchProgressPayload } from './searchRuntimeHelpers'
 
 const listenMock = vi.fn()
 const searchStreamMock = vi.fn()
@@ -22,7 +23,7 @@ const emptyFacets = (): ListingFacets => ({
 })
 
 const makeDeps = () => {
-  const entries = writable([])
+  const entries = writable<Entry[]>([])
   const loading = writable(false)
   const error = writable('')
   const filter = writable('')
@@ -109,5 +110,23 @@ describe('createSearchSession recovery', () => {
     expect(get(stores.columnFacets)).toEqual(emptyFacets())
     expect(getCancelActiveSearch()).toBeNull()
     expect(getActiveSearchCancelId()).toBeNull()
+  })
+
+  it('ignores late results and completion after a draft invalidates the previous search', async () => {
+    let progress!: (event: { payload: SearchProgressPayload }) => void
+    const unlisten = vi.fn()
+    listenMock.mockImplementation(async (_event, listener) => { progress = listener; return unlisten })
+    searchStreamMock.mockResolvedValue(undefined)
+    const { deps, stores } = makeDeps()
+    const runSearch = createSearchSession(deps)
+    await runSearch('alpha')
+    deps.invalidateSearchRun()
+    stores.entries.set([])
+    const entry: Entry = { name: 'Alpha.TXT', path: '/tmp/nested/Alpha.TXT', kind: 'file', iconId: 0 }
+    progress({ payload: { entries: [entry], done: false } })
+    progress({ payload: { entries: [entry], done: true } })
+    expect(get(stores.entries)).toEqual([])
+    expect(unlisten).toHaveBeenCalledOnce()
+    expect(deps.onEntriesChanged).toHaveBeenCalledTimes(1)
   })
 })

@@ -27,6 +27,7 @@ type Deps = {
   isSearchSessionEnabled: () => boolean
   canUseSearch: () => boolean
   cancelSearch: () => void
+  clearSearchResults: () => void
   setSearchMode: (value: boolean) => void
   setFilterValue: (value: string) => void
   toggleMode: (enabled: boolean, opts?: { reloadOnDisable?: boolean }) => Promise<void>
@@ -65,7 +66,7 @@ export const useExplorerSearchSession = (deps: Deps) => {
 
   const markSearchResultsStale = (draftQuery: string) => {
     if (searchSession.clearedDraftQuery === draftQuery) return
-    deps.cancelSearch()
+    deps.clearSearchResults()
     deps.setFilterValue(searchSession.submittedQuery)
     patchSearchSession({ clearedDraftQuery: draftQuery })
   }
@@ -137,12 +138,15 @@ export const useExplorerSearchSession = (deps: Deps) => {
     await transitionToAddressMode({ path: deps.getCurrentPath() })
   }
 
-  const syncSearchSessionWithInput = () => {
-    if (!deps.isSearchSessionEnabled()) {
+  const syncSearchSessionWithInput = (
+    currentInput = deps.getPathInput(),
+    searchEnabled = deps.isSearchSessionEnabled(),
+  ) => {
+    if (!searchEnabled) {
       resetSearchSession()
       return
     }
-    const draftQuery = normalizeSearchQuery(deps.getPathInput())
+    const draftQuery = normalizeSearchQuery(currentInput)
     const stale = draftQuery !== searchSession.submittedQuery
     if (stale) {
       markSearchResultsStale(draftQuery)

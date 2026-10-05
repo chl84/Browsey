@@ -82,6 +82,12 @@ and mobile, including empty folders, breadcrumbs, history, menu Refresh and F5.
 It fixes stale explicit cloud refresh and verifies owned teardown/retention.
 These separate-candidate results do not close the broader parent rows below.
 
+The [native listing and recursive search verification](runs/2026-10-05-native-listing.md)
+completes NT1-2 on all five providers: 75 listing/filter/search parts, owned
+accessibility, independent file readback and confirmed teardown/retention passed.
+Recursive OneDrive search is implemented and verified; missing-root fallback
+and stale search-draft results are corrected. The broader parent rows remain open.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable

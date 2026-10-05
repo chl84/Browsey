@@ -518,6 +518,14 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     }
   }
 
+  const clearSearchResults = () => {
+    cancelSearch()
+    entries.set([])
+    error.set('')
+    clearFacetCache()
+    callbacks.onEntriesChanged?.()
+  }
+
   const handlePlace = (label: string, path: string) => {
     if (label === 'Recent') {
       void loadRecent()
@@ -808,6 +816,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     loadNetwork,
     loadTrash,
     cancelSearch,
+    clearSearchResults,
     runSearch,
     toggleMode,
     changeSort,

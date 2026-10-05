@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Search recursively inside cloud folders using the existing rclone provider,
+  streaming matching names and metadata from subfolders without downloading
+  file contents. Preserve provider errors and cancellation, and reject missing
+  search start directories instead of falling back to the home directory.
+  Clear old matches when a search draft changes without Enter, keeping the
+  current folder and requiring submission before displaying new results.
+  Add scoped native sort/filter/hidden-file/search cases for all five storage types.
+
 - Fetch a fresh cloud folder listing when explicitly refreshing through F5 or
   the main menu, including recently added OneDrive files. Prevent F5's WebView
   default before waiting for I/O. Add scoped native list/grid navigation coverage

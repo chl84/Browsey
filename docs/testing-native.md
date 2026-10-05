@@ -43,6 +43,12 @@ Refresh, F5, owned history/breadcrumbs and independent generated-file readback.
 It also records the shared OneDrive refresh correction and retained earlier
 blocked reports. Fullscreen acceptance covers the owned candidate only.
 
+The [listing and recursive search verification](operations/linux-release/runs/2026-10-05-native-listing.md)
+records NT1-2 passing all 75 parts across the five providers, including recursive
+OneDrive search, combined filters/reset, hidden files and list/grid transitions.
+It also records the missing-root and stale-search-draft fixes and retained
+earlier blocked attempts.
+
 The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
 stability, basic operations, transfer boundaries, failure safety and edge cases.
 It tracks suite work; accepted candidate outcomes stay in the daily-driver
@@ -127,7 +133,19 @@ approved roots. Optional `--targets local,usb` selects a bounded subset; exclude
 configured targets are DEFERRED. Configured but unavailable targets stop a run;
 there is no silent skip or fallback to the installed app.
 `--suite foundation` is the default; `--suite navigation` selects the separate
-NT1-1 navigation cases. Fault injections remain restricted to the foundation.
+NT1-1 navigation cases. `--suite listing` selects NT1-2 sorting, column filters,
+hidden generated files and scoped recursive search in both views on all selected
+providers, including cloud. Fault injections remain restricted to the foundation.
+
+The listing cases compare file order against independently read fixture sizes,
+modified minutes, names and extensions. They combine all four column filters,
+reset individual filters and all filters in grid, toggle hidden files and check
+case/extension queries, empty results, unsubmitted search drafts and view changes.
+A matching sibling fixture outside the search start directory must never appear.
+Final independent readback verifies every generated file remained intact.
+Cloud search walks live provider metadata below the start directory, using the
+same query language and cancellation token as filesystem search; it does not
+download file contents or use cached folder listings as completed search results.
 
 Driver paths can be explicitly set with `BROWSEY_TAURI_DRIVER` and
 `BROWSEY_WEBKIT_DRIVER`; otherwise only system tool directories and

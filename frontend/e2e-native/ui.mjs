@@ -124,10 +124,14 @@ export class NativeUi {
     assert.deepEqual(paths.sort(), [...this.roots].sort(), 'Only this session\'s owned bookmarks may be loaded')
   }
 
-  async listing(raw, view, paths) {
+  async listing(raw, view, paths, { fileOrder } = {}) {
     ownedPath(this.roots, raw)
     assert.ok(['list', 'grid'].includes(view))
     for (const path of paths) ownedPath(this.roots, path)
+    if (fileOrder) for (const path of fileOrder) {
+      ownedPath(this.roots, path)
+      assert.ok(paths.includes(path), 'Ordered files must belong to the expected listing')
+    }
     const expected = [...paths].sort()
     await this.idle()
     let state
@@ -137,20 +141,22 @@ export class NativeUi {
         const collection = [...document.querySelectorAll('.rows, .grid')].find(visible)
         return { current: document.querySelector('main.shell')?.dataset.currentPath,
           view: collection?.classList.contains('grid') ? 'grid' : 'list',
-          paths: collection ? [...collection.querySelectorAll('[data-path]')].filter(visible).map(node => node.dataset.path).sort() : [],
+          paths: collection ? [...collection.querySelectorAll('[data-path]')].filter(visible).map(node => node.dataset.path) : [],
           empty: collection?.textContent.includes('No items here.') ?? false }
       })
       // Resolve immediately on an outside observation, then throw outside the
       // WebDriver predicate so a scope failure cannot be swallowed/retried.
       if ([state.current, ...state.paths].filter(Boolean).some(path => !this.roots.some(root => inside(root, path)))) return true
-      return state.current === raw && state.view === view && JSON.stringify(state.paths) === JSON.stringify(expected)
+      return state.current === raw && state.view === view && JSON.stringify([...state.paths].sort()) === JSON.stringify(expected)
+        && (!fileOrder || JSON.stringify(state.paths.filter(path => fileOrder.includes(path))) === JSON.stringify(fileOrder))
         && (expected.length > 0 || state.empty)
     }, { timeout: 60_000, interval: 150, timeoutMsg: 'Owned folder contents/view did not match after navigation' })
     ownedPath(this.roots, state.current)
     for (const path of state.paths) ownedPath(this.roots, path)
     assert.equal(state.current, raw)
     assert.equal(state.view, view)
-    assert.deepEqual(state.paths, expected)
+    assert.deepEqual([...state.paths].sort(), expected)
+    if (fileOrder) assert.deepEqual(state.paths.filter(path => fileOrder.includes(path)), fileOrder)
     if (!expected.length) assert.ok(state.empty, 'Empty folder must show its empty state')
   }
 
@@ -190,15 +196,117 @@ export class NativeUi {
     await input.click()
     assert.ok(await input.isFocused(), 'Expected the owned input to have focus')
     await this.chord('a')
-    await this.browser.keys([Key.Backspace])
+    // Replace the selection directly. Backspace on a one-character folder
+    // filter intentionally exits that mode and blurs the field.
+    if (!value) await this.browser.keys([Key.Backspace])
     const action = this.browser.action('key')
     for (const character of value) {
       if (character === '_') action.down(Key.Shift).down('-').up('-').up(Key.Shift)
+      else if (/^[A-Z]$/.test(character)) action.down(Key.Shift).down(character.toLowerCase()).up(character.toLowerCase()).up(Key.Shift)
       else action.down(character).up(character)
     }
     try { await action.perform() } finally { await this.browser.releaseActions() }
     assert.equal(await input.getValue(), value, 'Native text input differed from the intended value')
     assert.ok(await input.isFocused(), 'Input lost focus before submission')
+  }
+
+  async sort(field, direction) {
+    assert.ok(['Name', 'Type', 'Modified', 'Size'].includes(field))
+    assert.ok(['asc', 'desc'].includes(direction))
+    const header = await this.browser.$(`//*[@role="columnheader"][.//button[@aria-label="Filter ${field}"]]`)
+    const expected = direction === 'asc' ? 'ascending' : 'descending'
+    const current = await header.getAttribute('aria-sort')
+    const clicks = current === expected ? 0 : current === 'none' && direction === 'desc' ? 2 : 1
+    for (let index = 0; index < clicks; index++) {
+      await (await header.$('button.header-btn')).click()
+      const next = index === 0 && clicks === 2 ? 'ascending' : expected
+      await this.browser.waitUntil(async () => await header.getAttribute('aria-sort') === next, { timeout: 5000 })
+      await this.idle()
+    }
+  }
+
+  async columnFilter(field, label, checked = true) {
+    assert.ok(['Name', 'Type', 'Modified', 'Size'].includes(field))
+    assert.ok(!label.includes('"'), 'Expected a generated filter label')
+    await (await this.browser.$(`[aria-label="Filter ${field}"]`)).click()
+    const option = await this.browser.$(`//div[contains(@class,"filter-card")]//label[.//span[contains(@class,"text") and normalize-space(.)="${label}"]]`)
+    await option.waitForDisplayed({ timeout: 60_000 })
+    const input = await option.$('input[type="checkbox"]')
+    if (await input.isSelected() !== checked) await option.click()
+    await this.browser.waitUntil(async () => await input.isSelected() === checked, { timeout: 5000 })
+    await this.browser.keys([Key.Escape])
+    await (await this.browser.$('.filter-layer')).waitForExist({ reverse: true, timeout: 5000 })
+    await this.idle()
+  }
+
+  async resetColumn(field) {
+    assert.ok(['Name', 'Type', 'Modified', 'Size'].includes(field))
+    const button = await this.browser.$(`[aria-label="Filter ${field}"]`)
+    assert.ok((await button.getAttribute('class')).split(' ').includes('active'))
+    await button.click({ button: 'right' })
+    const reset = await this.browser.$('[role="menuitem"][data-action-id="reset"]')
+    await reset.waitForDisplayed({ timeout: 5000 })
+    await reset.click()
+    await this.idle()
+  }
+
+  async resetColumns() {
+    await (await this.browser.$('[aria-label="Reset column filters"]')).click()
+    await (await this.browser.$('.grid-filter-indicator')).waitForExist({ reverse: true, timeout: 5000 })
+    await this.idle()
+  }
+
+  async hidden(value) {
+    await (await this.browser.$('[aria-label="Main menu"]')).click()
+    const toggle = await this.browser.$('//*[@role="menuitemcheckbox"][.//span[normalize-space(.)="Show Hidden Files"]]')
+    await toggle.waitForDisplayed({ timeout: 5000 })
+    if (await toggle.getAttribute('aria-checked') !== String(value)) await toggle.click()
+    const overlay = await this.browser.$('.menu-overlay')
+    if (await overlay.isExisting()) await overlay.click()
+    await overlay.waitForExist({ reverse: true, timeout: 5000 })
+    await this.idle()
+  }
+
+  async filter(raw, seed, query) {
+    ownedPath(this.roots, raw); ownedPath(this.roots, seed)
+    await this.waitPath(raw)
+    await this.select(seed)
+    await this.browser.keys(['a'])
+    const input = await this.browser.$('#explorer-path-input')
+    await this.browser.waitUntil(async () => await input.isFocused(), { timeout: 5000 })
+    await this.query(query, false)
+  }
+
+  async search(raw, query, recursive) {
+    ownedPath(this.roots, raw)
+    assert.equal(recursive, true, 'Search must recurse on all declared providers')
+    await this.waitPath(raw)
+    await (await this.browser.$('[aria-label="Main menu"]')).click()
+    const action = await this.browser.$('//*[@role="menu" and @aria-label="Main actions"]//button[@role="menuitem"][.//span[normalize-space(.)="Search"]]')
+    await action.waitForDisplayed({ timeout: 5000 })
+    await action.click()
+    await (await this.browser.$('.menu-overlay')).waitForExist({ reverse: true, timeout: 5000 })
+    const input = await this.browser.$('#explorer-path-input')
+    await this.browser.waitUntil(async () => await input.getAttribute('aria-label') === (recursive ? 'Search' : 'Path'), { timeout: 5000 })
+    await this.query(query, recursive)
+  }
+
+  async query(value, submit) {
+    await this.fill(await this.browser.$('#explorer-path-input'), value)
+    if (submit) await this.browser.keys([Key.Enter])
+    await this.idle()
+  }
+
+  async exitQuery(raw) {
+    ownedPath(this.roots, raw)
+    // Blur through a real control before Escape so the global mode handler runs.
+    await (await this.browser.$('[aria-label="Main menu"]')).click()
+    await (await this.browser.$('.menu-overlay')).click()
+    await this.browser.keys([Key.Escape])
+    const input = await this.browser.$('#explorer-path-input')
+    await this.browser.waitUntil(async () => await input.getAttribute('aria-label') === 'Path' && await input.getValue() === raw,
+      { timeout: 60_000, timeoutMsg: 'Search/filter did not return to the same folder address' })
+    await this.waitPath(raw)
   }
 
   async enterPath(raw) {

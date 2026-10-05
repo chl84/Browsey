@@ -109,7 +109,7 @@ test('independent byte verification rejects UI-reported success with corrupt out
 test('fixture I/O rejects every outside path before touching real filesystem or rclone', async () => {
   const fixture = new Fixtures(plan, {})
   for (const raw of ['/personal/file', `${plan.targets[0].files}-sibling/file`, 'rclone://Other/personal']) {
-    for (const method of ['read', 'exists', 'mkdir', 'write']) await assert.rejects(fixture[method](raw))
+    for (const method of ['read', 'exists', 'mkdir', 'write', 'snapshot']) await assert.rejects(fixture[method](raw))
   }
   await assert.rejects(fixture.ensureCloudRoot({ path: 'rclone://Other/personal' }))
 })

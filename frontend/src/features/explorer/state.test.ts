@@ -73,6 +73,28 @@ describe('createExplorerState sort refresh behavior', () => {
     })
   })
 
+  it('clears completed stale search results and facets without changing folder, mode, filters or making a listing request', () => {
+    const onEntriesChanged = vi.fn()
+    const state = createExplorerState({ onEntriesChanged })
+    state.current.set('/generated/owned')
+    state.searchMode.set(true)
+    state.entries.set([makeEntry('Alpha.TXT', '/generated/owned/nested/Alpha.TXT')])
+    state.error.set('old search error')
+    state.filter.set('alpha')
+    state.columnFilters.update(filters => ({ ...filters, type: new Set(['type:txt']) }))
+    state.columnFacets.set({ name: [], type: [{ id: 'type:txt', label: 'txt' }], size: [], modified: [] })
+    state.clearSearchResults()
+    expect(get(state.entries)).toEqual([])
+    expect(get(state.columnFacets)).toEqual({ name: [], type: [], size: [], modified: [] })
+    expect(get(state.error)).toBe('')
+    expect(get(state.current)).toBe('/generated/owned')
+    expect(get(state.searchMode)).toBe(true)
+    expect(get(state.filter)).toBe('alpha')
+    expect(get(state.columnFilters).type).toEqual(new Set(['type:txt']))
+    expect(onEntriesChanged).toHaveBeenCalledOnce()
+    expect(listDirMock).not.toHaveBeenCalled()
+  })
+
   it('explicit cloud refresh replaces a cached empty listing without adding navigation history', async () => {
     const state = createExplorerState()
     const path = 'rclone://Generated/fixtures'

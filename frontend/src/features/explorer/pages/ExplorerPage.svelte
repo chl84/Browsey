@@ -335,6 +335,7 @@
     loadNetwork: loadNetworkRaw,
     loadTrash: loadTrashRaw,
     cancelSearch,
+    clearSearchResults,
     runSearch,
     toggleMode,
     toggleShowHidden,
@@ -737,6 +738,7 @@
     isSearchSessionEnabled: () => isSearchSessionEnabled,
     canUseSearch: () => currentView === 'dir',
     cancelSearch,
+    clearSearchResults,
     setSearchMode: (value) => searchMode.set(value),
     setFilterValue: (value) => filter.set(value),
     toggleMode: (enabled, opts) => toggleMode(enabled, opts),
@@ -765,7 +767,7 @@
     }
   }
 
-  $: syncSearchSessionWithInput()
+  $: syncSearchSessionWithInput(pathInput, isSearchSessionEnabled)
 
   $: {
     const curr = $current

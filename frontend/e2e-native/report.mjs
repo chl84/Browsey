@@ -11,6 +11,8 @@ export function requirements(item) {
     navigation: ['directory-read', 'owned-navigation', 'history-navigation', 'breadcrumb-navigation', 'refresh',
       `ui-${item.id.split('-')[1]}-navigation`, 'view-switch'] }
   return Object.fromEntries(item.providers.map((provider, index) => {
+    if (operation === 'listing') return [provider, ['directory-read', 'ui-sort', 'ui-column-filters', 'ui-filter-reset',
+      'ui-hidden-files', 'ui-name-filter', 'view-switch', 'scoped-recursive-search']]
     if (operation !== 'copy' && operation !== 'move') return [provider, common[operation] ?? []]
     const source = item.providers.length === 1 || index === 0
     const destination = item.providers.length === 1 || index === 1

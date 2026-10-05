@@ -154,6 +154,7 @@ fn authorize(roots: &[String], command: &str, body: &Value) -> Result<Vec<String
     let file_command = matches!(
         command,
         "list_dir"
+            | "search_stream"
             | "list_facets"
             | "watch_dir"
             | "dir_sizes"
@@ -197,6 +198,13 @@ fn authorize(roots: &[String], command: &str, body: &Value) -> Result<Vec<String
     );
     if !private_settings && !file_command {
         return Err("Command is not permitted in the native foundation suite");
+    }
+    if command == "search_stream" {
+        let path = body
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or("Native-test search requires an explicit directory")?;
+        check_path(roots, path)?;
     }
     if matches!(command, "paste_clipboard_cmd" | "paste_clipboard_preview")
         && !body.get("input").is_some_and(Value::is_object)
@@ -578,6 +586,17 @@ mod tests {
         let roots = roots();
         let mut inspected = Vec::new();
         for (command, body) in [
+            ("search_stream", json!({})),
+            ("search_stream", json!({"path":null})),
+            ("search_stream", json!({"path":"/synthetic/outside"})),
+            (
+                "search_stream",
+                json!({"path":format!("{}/../file", roots[0])}),
+            ),
+            (
+                "search_stream",
+                json!({"path":"rclone://Generated/personal"}),
+            ),
             (
                 "copy_mixed_entries",
                 json!({"sources":[roots[0], "/synthetic/outside"], "destDir":roots[0]}),
@@ -616,6 +635,24 @@ mod tests {
             inspected.is_empty(),
             "Denied requests must not reach metadata I/O"
         );
+        authorize_io(
+            &roots,
+            "search_stream",
+            &json!({"path":roots[0], "query":"alpha"}),
+            |raw| {
+                inspected.push(raw.to_string());
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(inspected, vec![roots[0].clone()]);
+        authorize_io(
+            &roots,
+            "search_stream",
+            &json!({"path":roots[1], "query":"alpha"}),
+            |_| panic!("Cloud search must not reach local metadata I/O"),
+        )
+        .unwrap();
     }
 
     #[cfg(unix)]

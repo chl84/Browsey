@@ -1,5 +1,6 @@
 //! Streaming recursive search command that decorates entries with starred state.
 
+mod cloud;
 mod error;
 mod query;
 mod types;

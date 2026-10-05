@@ -147,9 +147,18 @@ Use shared cases for applicable providers and independently verify actual files.
   before awaiting refresh. All 65 harness tests, 650 frontend tests and 761 Rust
   tests passed (19 Rust tests ignored). Watchers, ancestor navigation, narrow
   layout and device lifecycle remain outside this scope.
-- [ ] **NT1-2** Verify sorting, column filters/reset, hidden generated files and
+- [x] **NT1-2** Verify sorting, column filters/reset, hidden generated files and
   in-scope search. Cover empty results, case/extension differences and mode
   changes without stale filters or lost folder identity.
+  Verified 2026-10-05 in the
+  [listing/search run](../operations/linux-release/runs/2026-10-05-native-listing.md):
+  all five providers passed 75 parts, owned accessibility, independent byte
+  readback and teardown/retention. Recursive OneDrive search is implemented and
+  verified alongside local/GVFS search. Missing start directories now fail
+  instead of searching home; unsubmitted drafts clear old results. All 71
+  harness tests, 654 frontend tests and 768 Rust tests passed (19 Rust tests
+  ignored). Watchers, large-search performance, timezone/date-range boundaries
+  and other cloud providers remain outside this scope.
 - [ ] **NT1-3** Verify single/multiple selection, Ctrl/Shift, arrows and select-all,
   virtualized rows, empty-space clicks and navigation. Operations must receive
   exactly the intended entries once.

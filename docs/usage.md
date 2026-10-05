@@ -38,6 +38,12 @@ Defaults are remappable in Settings:
 - `Ctrl+H` hidden files; `Ctrl+B` bookmarks; `Ctrl+T` terminal.
 - `Esc` exits search/filter contexts.
 
+Search starts in the current folder and includes its subfolders on local,
+mounted network/mobile and cloud storage. Enter submits the query. Changing
+the query clears previous results until it is submitted again. Cloud search
+reads names and metadata through rclone without downloading file contents;
+typing a folder filter only narrows the current folder's visible entries.
+
 In Settings and Properties dropdowns, arrow keys keep the highlighted option
 visible. Escape closes an open dropdown and returns focus to its button;
 press Escape again to close the dialog. The same behavior applies to searchable

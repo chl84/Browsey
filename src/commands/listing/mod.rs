@@ -7,6 +7,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 mod cloud;
+pub(crate) use cloud::fs_entry_from_cloud_entry;
 mod error;
 mod local;
 mod scope;

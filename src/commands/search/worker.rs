@@ -45,6 +45,52 @@ fn invalid_query_progress(error: impl ToString) -> SearchProgress {
     ))
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum SearchRoot {
+    Local(std::path::PathBuf),
+    Cloud(crate::commands::cloud::path::CloudPath),
+}
+
+fn resolve_search_root(path: Option<String>) -> super::error::SearchResult<SearchRoot> {
+    let raw = path
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            SearchError::new(
+                SearchErrorCode::InvalidInput,
+                "A search start directory is required",
+            )
+        })?;
+    if raw.starts_with("rclone://") {
+        return crate::commands::cloud::path::CloudPath::parse(&raw)
+            .map(SearchRoot::Cloud)
+            .map_err(|error| SearchError::new(SearchErrorCode::InvalidPath, error.to_string()));
+    }
+    let target = expand_path(Some(raw)).map_err(SearchError::from)?;
+    if !target.is_absolute() {
+        return Err(SearchError::new(
+            SearchErrorCode::InvalidPath,
+            "Search start directory must be absolute",
+        ));
+    }
+    let metadata = std::fs::metadata(&target).map_err(|error| {
+        SearchError::new(
+            if error.kind() == std::io::ErrorKind::NotFound {
+                SearchErrorCode::NotFound
+            } else {
+                SearchErrorCode::InvalidPath
+            },
+            format!("Cannot access search start directory: {error}"),
+        )
+    })?;
+    if !metadata.is_dir() {
+        return Err(SearchError::new(
+            SearchErrorCode::InvalidPath,
+            "Search start path is not a directory",
+        ));
+    }
+    Ok(SearchRoot::Local(target))
+}
+
 pub(super) fn run_search_stream(
     app: tauri::AppHandle,
     cancel_state: CancelState,
@@ -108,20 +154,10 @@ pub(super) fn run_search_stream(
     };
     let simple_name_contains_needle_lc = simple_name_contains_needle_lc(&parsed_query);
 
-    let target = match expand_path(path) {
-        Ok(p) if p.exists() => p,
-        Ok(_) => match dirs_next::home_dir() {
-            Some(h) => h,
-            None => {
-                send_error(SearchError::new(
-                    SearchErrorCode::NotFound,
-                    "Start directory not found",
-                ));
-                return;
-            }
-        },
-        Err(e) => {
-            send_error(SearchError::from(e));
+    let target = match resolve_search_root(path) {
+        Ok(target) => target,
+        Err(error) => {
+            send_error(error);
             return;
         }
     };
@@ -134,14 +170,40 @@ pub(super) fn run_search_stream(
         }
     };
 
-    scan_search(
-        target,
-        &parsed_query,
-        simple_name_contains_needle_lc.as_deref(),
-        &star_set,
-        || cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app),
-        send,
-    );
+    let cancelled =
+        || cancel_token.load(Ordering::Relaxed) || runtime_lifecycle::is_shutting_down(&app);
+    match target {
+        SearchRoot::Local(target) => scan_search(
+            target,
+            &parsed_query,
+            simple_name_contains_needle_lc.as_deref(),
+            &star_set,
+            cancelled,
+            send,
+        ),
+        SearchRoot::Cloud(target) => {
+            if let Err(error) = super::cloud::run_cloud_search(
+                target,
+                &parsed_query,
+                &star_set,
+                &cancel_token,
+                cancelled,
+                |payload| {
+                    send(
+                        payload.entries,
+                        payload.done,
+                        payload.error_code,
+                        payload.error,
+                        payload.facets,
+                    );
+                },
+            ) {
+                if !cancelled() {
+                    send_error(error);
+                }
+            }
+        }
+    }
 }
 
 fn scan_search(
@@ -241,7 +303,66 @@ mod measurements;
 
 #[cfg(test)]
 mod tests {
-    use super::{invalid_query_progress, SearchError, SearchErrorCode};
+    use super::{
+        invalid_query_progress, resolve_search_root, SearchError, SearchErrorCode, SearchRoot,
+    };
+
+    #[test]
+    fn search_root_rejects_implicit_relative_and_malformed_cloud_paths() {
+        for path in [
+            None,
+            Some(""),
+            Some("   "),
+            Some("relative"),
+            Some("rclone://Generated/owned/../outside"),
+        ] {
+            assert!(resolve_search_root(path.map(str::to_string)).is_err());
+        }
+        assert!(matches!(
+            resolve_search_root(Some("rclone://Generated/owned".to_string())).unwrap(),
+            SearchRoot::Cloud(_)
+        ));
+    }
+
+    #[test]
+    fn search_root_never_falls_back_when_directory_is_missing_or_a_file() {
+        let temp = std::env::temp_dir().join(format!(
+            "browsey-search-root-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&temp).unwrap();
+        assert_eq!(
+            resolve_search_root(Some(temp.to_string_lossy().into_owned())).unwrap(),
+            SearchRoot::Local(temp.clone())
+        );
+        let missing = temp.join("missing");
+        assert_eq!(
+            resolve_search_root(Some(missing.to_string_lossy().into_owned()))
+                .unwrap_err()
+                .code_str_value(),
+            "not_found"
+        );
+        let file = temp.join("generated.txt");
+        std::fs::write(&file, b"generated search fixture").unwrap();
+        assert_eq!(
+            resolve_search_root(Some(file.to_string_lossy().into_owned()))
+                .unwrap_err()
+                .code_str_value(),
+            "invalid_path"
+        );
+        std::fs::remove_file(file).unwrap();
+        std::fs::remove_dir(&temp).unwrap();
+        assert_eq!(
+            resolve_search_root(Some(temp.to_string_lossy().into_owned()))
+                .unwrap_err()
+                .code_str_value(),
+            "not_found"
+        );
+    }
 
     #[test]
     fn invalid_query_progress_matches_search_error_payload_shape() {

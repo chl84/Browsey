@@ -23,6 +23,15 @@ test('input mismatch or lost focus aborts before the caller can submit', async (
   await assert.rejects(ui.fill({ click: async () => {}, isFocused: async () => false }, '/owned/input_æøå'), /have focus/)
 })
 
+test('nonempty input replacement does not exit a one-character filter through Backspace', async () => {
+  const keys = []
+  const action = { down() { return this }, up() { return this }, perform: async () => {} }
+  const ui = new NativeUi({ releaseActions: async () => {}, action: () => action,
+    keys: async values => { keys.push(...values) } }, [])
+  await ui.fill({ click: async () => {}, isFocused: async () => true, getValue: async () => 'ALPHA' }, 'ALPHA')
+  assert.ok(!keys.includes(Key.Backspace))
+})
+
 test('an app-reported failure stops readiness even when the operation flag is idle', async () => {
   const ui = new NativeUi({ execute: async () => ({ idle: true, errors: ['Paste failed: Cloud operation failed.'] }),
     waitUntil: async predicate => assert.equal(await predicate(), true) }, [])
@@ -52,6 +61,10 @@ test('navigation helpers reject outside history/breadcrumb/folder/listing paths 
     await assert.rejects(ui.history('back', outside))
     await assert.rejects(ui.waitPath(outside))
     await assert.rejects(ui.listing('/owned/files', 'list', [outside]))
+    await assert.rejects(ui.listing('/owned/files', 'list', [], { fileOrder: [outside] }))
+    await assert.rejects(ui.search(outside, 'alpha', true))
+    await assert.rejects(ui.filter('/owned/files', outside, 'alpha'))
+    await assert.rejects(ui.exitQuery(outside))
   }
   await assert.rejects(ui.setView('unknown'))
 })

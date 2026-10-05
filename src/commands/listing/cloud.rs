@@ -15,7 +15,7 @@ pub(super) fn is_cloud_path(path: &str) -> bool {
     path.starts_with("rclone://")
 }
 
-pub(super) fn fs_entry_from_cloud_entry(entry: BrowseyCloudEntry) -> FsEntry {
+pub(crate) fn fs_entry_from_cloud_entry(entry: BrowseyCloudEntry) -> FsEntry {
     let is_dir = matches!(entry.kind, CloudEntryKind::Dir);
     let ext = if is_dir {
         None

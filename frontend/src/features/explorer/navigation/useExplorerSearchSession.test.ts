@@ -24,6 +24,7 @@ const makeDeps = () => {
     isSearchSessionEnabled: () => searchEnabled,
     canUseSearch: () => searchAllowed,
     cancelSearch: vi.fn(),
+    clearSearchResults: vi.fn(),
     setSearchMode: (value: boolean) => {
       searchEnabled = value
     },
@@ -64,6 +65,22 @@ describe('useExplorerSearchSession', () => {
     expect(getMode()).toBe('filter')
     expect(deps.setFilterValue).toHaveBeenCalledWith('')
     expect(deps.toggleMode).not.toHaveBeenCalled()
+    expect(deps.runSearch).not.toHaveBeenCalled()
+    expect(deps.getPathInput()).toBe('')
+    expect(deps.isSearchSessionEnabled()).toBe(false)
+  })
+
+  it('enters a supported search and exits with the same folder and a cleared filter', async () => {
+    const { deps, setCurrentPath, getMode } = makeDeps()
+    setCurrentPath('/generated/owned')
+    const session = useExplorerSearchSession(deps)
+    await session.setSearchModeState(true)
+    expect(deps.isSearchSessionEnabled()).toBe(true)
+    await session.transitionToAddressMode()
+    expect(deps.isSearchSessionEnabled()).toBe(false)
+    expect(deps.getPathInput()).toBe('/generated/owned')
+    expect(getMode()).toBe('address')
+    expect(deps.setFilterValue).toHaveBeenLastCalledWith('')
   })
 
   it('marks search results stale when draft input diverges from submitted query', async () => {
@@ -78,8 +95,23 @@ describe('useExplorerSearchSession', () => {
     setPathInput('invoice-final')
     session.syncSearchSessionWithInput()
 
-    expect(deps.cancelSearch).toHaveBeenCalledTimes(1)
+    expect(deps.clearSearchResults).toHaveBeenCalledTimes(1)
     expect(deps.setFilterValue).toHaveBeenCalledWith('invoice')
+    session.syncSearchSessionWithInput('  invoice-final  ', true)
+    expect(deps.clearSearchResults).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses explicit reactive input and mode values and never starts a search for an unsubmitted draft', () => {
+    const { deps, setPathInput } = makeDeps()
+    const session = useExplorerSearchSession(deps)
+    setPathInput('alpha')
+    session.submitSearch()
+    deps.runSearch.mockClear()
+    session.syncSearchSessionWithInput('unsubmitted', true)
+    expect(deps.clearSearchResults).toHaveBeenCalledOnce()
+    expect(deps.runSearch).not.toHaveBeenCalled()
+    session.syncSearchSessionWithInput('/generated/owned', false)
+    expect(deps.clearSearchResults).toHaveBeenCalledOnce()
   })
 
   it('navigates using trimmed path input on submitPath', () => {
