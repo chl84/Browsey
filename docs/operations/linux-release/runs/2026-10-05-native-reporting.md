@@ -107,6 +107,11 @@ BLOCKED, the failing approved-root-mobile setup stage and all 17 cases NOT_RUN.
 That is successful unavailable-provider reporting, not mobile operation acceptance.
 No device-root discovery, bridge restart or connection action was attempted.
 
+When that same approved folder became available, the later
+[mobile retest](2026-10-05-native-mobile-retest.md) passed all 17 local/mobile
+cases on clean committed code. The earlier preflight above retains BLOCKED;
+the successful fresh run is separate evidence.
+
 ## Limits and retention
 
 NT0-5 is checked for the delivered reporting and focused native verification.

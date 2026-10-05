@@ -115,7 +115,11 @@ Complete these prerequisites before expanding the functional matrix.
   copy faults retained BLOCKED/NOT_RUN and completed parts without retry. Normal
   local and local/USB runs passed 8 and 17 cases; mobile preflight correctly
   blocked all 17 planned cases before writes because its approved path was absent.
-  This completes reporting coverage, not new mobile/device lifecycle acceptance.
+  This completes reporting coverage. The later
+  [mobile retest](../operations/linux-release/runs/2026-10-05-native-mobile-retest.md)
+  passed all 17 local/mobile cases and 16 file/tree transfer parts on clean commit
+  `9868e129`, including copy/move in both directions. The earlier preflight remains
+  BLOCKED; device lifecycle acceptance remains outside this foundation scope.
 - [ ] **NT0-6** Verify credential/artifact permissions and Git exclusions. Define
   bounded retention and explicit owned-run cleanup, preserving recovery data
   and never recursively cleaning an approved root.

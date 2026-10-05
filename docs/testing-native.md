@@ -28,6 +28,11 @@ records NT0-5 setup/partial-transfer regressions, scoped operation retests and
 explicitly blocked mobile preflight. Requirements describe the tested cases;
 they do not assume broad provider support.
 
+The [mobile retest](operations/linux-release/runs/2026-10-05-native-mobile-retest.md)
+passed all 17 local/mobile foundation cases once the same approved folder became
+available. Its schema 3 provider/part results and owned teardown are PASS; the
+earlier unavailable-folder preflight remains a separate BLOCKED result.
+
 The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
 stability, basic operations, transfer boundaries, failure safety and edge cases.
 It tracks suite work; accepted candidate outcomes stay in the daily-driver

@@ -66,6 +66,11 @@ adds NT0-5 setup/partial-result evidence, fresh local and local/USB passes and a
 separate blocked mobile preflight. Reports preserve completed parts and unrun
 cases; requirement declarations do not certify untested provider capabilities.
 
+The [native mobile retest](runs/2026-10-05-native-mobile-retest.md) then passed all
+17 local/mobile cases, including file/tree copy and move in both directions, on
+clean committed code. Its report and owned teardown are PASS; the earlier mobile
+preflight remains separately BLOCKED. No parent row closes from this foundation.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable
