@@ -128,6 +128,23 @@ Private reports, credentials and machine paths remain Git-ignored. The installed
 or personal application was not controlled. The two earlier BLOCKED reports
 remain separate evidence.
 
+## Production build after commit and push
+
+Application changes, the native listing suite, regression tests and acceptance
+evidence were committed and pushed as `81c90316b70b48b0457fe9693e4688ba9488a5f6`.
+The subsequent normal production build uses the optimized release profile:
+
+```bash
+PATH=/absolute/path/to/rust/bin:$PATH frontend/node_modules/.bin/tauri build --no-bundle -- --locked
+```
+
+The build completed at 20:26:30 UTC. `target/release/browsey` is 29,347,744 bytes
+with SHA-256 `a2f83e0c18917705a498dd0573412fdd1febff72d507b00dcbe13eaef3cb6f8d`.
+The latest release Cargo fingerprint has `features=[]`, excluding `native-test`.
+Build inputs still match the accepted candidate's source hash. The binary remains
+Git-ignored and was not installed or launched. This is successful build evidence,
+not installed-build acceptance. The following commit adds only this build record.
+
 ## Limits
 
 This is small-fixture listing/search acceptance, not release or installed-build
