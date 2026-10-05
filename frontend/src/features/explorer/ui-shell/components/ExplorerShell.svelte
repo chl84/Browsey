@@ -117,6 +117,7 @@ import type { ActivityState } from '../../hooks/createActivity'
 
   let selectionText = ''
   let activity: ActivityState | null = null
+  export let transferPending = false
   let selectionActive = false
   let selectionRect: { x: number; y: number; width: number; height: number } = {
     x: 0,
@@ -719,7 +720,7 @@ import type { ActivityState } from '../../hooks/createActivity'
 
 </script>
 
-<main class="shell" data-current-path={currentPath} aria-busy={loading} data-operation-active={Boolean(activity)}>
+<main class="shell" data-current-path={currentPath} aria-busy={loading || transferPending} data-operation-active={Boolean(activity) || transferPending}>
   <div class="layout" class:collapsed={sidebarCollapsed}>
     <Sidebar
       {places}

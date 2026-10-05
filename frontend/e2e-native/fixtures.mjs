@@ -19,6 +19,24 @@ export async function regularFile(raw) {
   } finally { await handle.close() }
 }
 
+export async function localEntryExists(roots, raw, filesystem = fs) {
+  ownedPath(roots, raw)
+  assert.ok(!raw.startsWith('rclone://'), 'Local verifier requires a filesystem path')
+  await noLinks(raw, filesystem)
+  // GVFS/MTP can retain an old file-id mapping at a moved path. Its current
+  // parent listing is authoritative; never list above an owned data root.
+  const parent = raw.slice(0, raw.lastIndexOf('/'))
+  if (roots.some(root => inside(root, parent))) {
+    await noLinks(parent, filesystem)
+    try { return (await filesystem.readdir(parent)).includes(raw.slice(raw.lastIndexOf('/') + 1)) }
+    catch (error) { if (error.code === 'ENOENT') return false; throw error }
+  }
+  try { await filesystem.lstat(raw); return true } catch (error) {
+    if (error.code === 'ENOENT') return false
+    throw error
+  }
+}
+
 export function rclonePath(raw) {
   assert.ok(raw.startsWith('rclone://'))
   const tail = raw.slice(9)
@@ -42,7 +60,14 @@ export class Fixtures {
         '--retries', '1', '--low-level-retries', '1', '--timeout', '20s', '--contimeout', '10s', ...args],
       { env: this.env, cwd: this.local.files, timeout: 45_000, maxBuffer: 1024 * 1024 })
       return result.stdout
-    } catch { throw new Error('Scoped rclone operation failed; no automatic mutation retry') }
+    } catch (error) {
+      // Keep provider stderr private: it can include paths, URLs or credentials.
+      // Report only structured transport facts and the bounded operation name.
+      const operation = args[0]
+      const detail = error.killed ? 'timed out' : `exit ${Number.isInteger(error.code) ? error.code : 'unknown'}`
+      throw Object.assign(new Error(`Scoped rclone ${operation} failed (${detail}); no automatic mutation retry`),
+        { failureKind: 'FIXTURE_IO', operation })
+    }
   }
 
   async ensureCloudRoot(target) {
@@ -86,11 +111,7 @@ export class Fixtures {
       const items = JSON.parse(await this.#rclone(['lsjson', rclonePath(parent)]))
       return items.some(entry => entry.Name === raw.split('/').at(-1))
     }
-    await noLinks(raw, fs)
-    try { await fs.lstat(raw); return true } catch (error) {
-      if (error.code === 'ENOENT') return false
-      throw error
-    }
+    return localEntryExists(this.roots, raw)
   }
 
   async read(raw) {

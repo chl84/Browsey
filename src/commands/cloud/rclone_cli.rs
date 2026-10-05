@@ -44,6 +44,7 @@ pub enum RcloneSubcommand {
     DeleteFile,
     Purge,
     Rmdir,
+    Move,
     MoveTo,
     Copy,
     CopyTo,
@@ -62,6 +63,7 @@ impl RcloneSubcommand {
             Self::DeleteFile => "deletefile",
             Self::Purge => "purge",
             Self::Rmdir => "rmdir",
+            Self::Move => "move",
             Self::MoveTo => "moveto",
             Self::Copy => "copy",
             Self::CopyTo => "copyto",
@@ -77,7 +79,7 @@ impl RcloneSubcommand {
             Self::Mkdir => Duration::from_secs(45),
             Self::DeleteFile | Self::Rmdir => Duration::from_secs(120),
             Self::Purge => Duration::from_secs(300),
-            Self::MoveTo | Self::Copy | Self::CopyTo => Duration::from_secs(300),
+            Self::Move | Self::MoveTo | Self::Copy | Self::CopyTo => Duration::from_secs(300),
         }
     }
 }

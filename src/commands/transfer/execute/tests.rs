@@ -737,6 +737,68 @@ fn mixed_execute_local_to_cloud_partial_directory_move_invalidates_cache_and_kee
 
 #[cfg(unix)]
 #[test]
+fn mixed_move_source_root_cleanup_retains_replacements_new_contents_and_cancellation() {
+    let sandbox = FakeRcloneSandbox::new();
+    let source = sandbox.local_path("source");
+    fs::create_dir_all(&source).unwrap();
+    let identity = crate::fs_utils::FileIdentity::capture(&source).unwrap();
+    let arg = LocalOrCloudArg::Local(source.clone());
+    fs::rename(&source, sandbox.local_path("original-held")).unwrap();
+    fs::create_dir(&source).unwrap();
+    assert_eq!(
+        remove_moved_source_root(&sandbox.cli(), &arg, Some(&identity), None, None)
+            .unwrap_err()
+            .code_str(),
+        "task_failed"
+    );
+    assert!(source.is_dir(), "replacement root must be retained");
+
+    let current = crate::fs_utils::FileIdentity::capture(&source).unwrap();
+    fs::write(source.join("new.txt"), b"new source contents").unwrap();
+    assert!(remove_moved_source_root(&sandbox.cli(), &arg, Some(&current), None, None).is_err());
+    assert_eq!(
+        fs::read(source.join("new.txt")).unwrap(),
+        b"new source contents"
+    );
+    fs::remove_file(source.join("new.txt")).unwrap();
+    assert_eq!(
+        remove_moved_source_root(
+            &sandbox.cli(),
+            &arg,
+            Some(&current),
+            None,
+            Some(&AtomicBool::new(true))
+        )
+        .unwrap_err()
+        .code_str(),
+        "cancelled"
+    );
+    assert!(source.is_dir());
+    remove_moved_source_root(&sandbox.cli(), &arg, Some(&current), None, None).unwrap();
+    assert!(!source.exists());
+    remove_moved_source_root(&sandbox.cli(), &arg, Some(&current), None, None).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn mixed_move_cloud_source_root_cleanup_is_empty_only_and_never_purges() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "source/new.txt", "new source contents");
+    let source = LocalOrCloudArg::Cloud(sandbox.cloud_path("rclone://work/source"));
+    assert!(remove_moved_source_root(&sandbox.cli(), &source, None, Some("work"), None).is_err());
+    assert_eq!(
+        fs::read(sandbox.remote_path("work", "source/new.txt")).unwrap(),
+        b"new source contents"
+    );
+    fs::remove_file(sandbox.remote_path("work", "source/new.txt")).unwrap();
+    remove_moved_source_root(&sandbox.cli(), &source, None, Some("work"), None).unwrap();
+    assert!(!sandbox.remote_path("work", "source").exists());
+    let log = fs::read_to_string(sandbox.root.join("fake-rclone.log")).unwrap();
+    assert!(!log.contains("purge"));
+}
+
+#[cfg(unix)]
+#[test]
 fn mixed_execute_local_to_cloud_directory_copy_and_move_via_fake_rclone() {
     let _guard = fake_rclone_test_lock();
     let sandbox = FakeRcloneSandbox::new();
@@ -781,9 +843,12 @@ fn mixed_execute_local_to_cloud_directory_copy_and_move_via_fake_rclone() {
 
     let move_dir = sandbox.local_path("src/folder-move");
     fs::create_dir_all(move_dir.join("nested")).expect("mkdir local move dir");
+    fs::create_dir_all(move_dir.join("empty/nested-empty")).expect("mkdir empty moved directories");
+    let empty_move_dir = sandbox.local_path("src/empty-move");
+    fs::create_dir_all(&empty_move_dir).expect("mkdir empty move root");
     fs::write(move_dir.join("nested/file.txt"), b"move-dir").expect("write local nested move");
     let move_route = MixedTransferRoute::LocalToCloud {
-        sources: vec![move_dir.clone()],
+        sources: vec![move_dir.clone(), empty_move_dir.clone()],
         dest_dir: sandbox.cloud_path("rclone://work/dest"),
     };
     let move_out = execute_mixed_entries_blocking_with_cli(
@@ -798,8 +863,22 @@ fn mixed_execute_local_to_cloud_directory_copy_and_move_via_fake_rclone() {
         None,
     )
     .expect("move dir local->cloud");
-    assert_eq!(move_out, vec!["rclone://work/dest/folder-move".to_string()]);
+    assert_eq!(
+        move_out,
+        vec![
+            "rclone://work/dest/folder-move".to_string(),
+            "rclone://work/dest/empty-move".to_string()
+        ]
+    );
     assert!(!move_dir.exists(), "move should remove local source dir");
+    assert!(
+        !empty_move_dir.exists(),
+        "move should remove empty local root"
+    );
+    assert!(sandbox
+        .remote_path("work", "dest/folder-move/empty/nested-empty")
+        .is_dir());
+    assert!(sandbox.remote_path("work", "dest/empty-move").is_dir());
     assert_eq!(
         fs::read_to_string(sandbox.remote_path("work", "dest/folder-move/nested/file.txt"))
             .expect("read moved remote nested"),
@@ -933,6 +1012,8 @@ fn mixed_execute_cloud_to_local_directory_copy_and_move_via_fake_rclone() {
     sandbox.write_remote_file("work", "src/folder-copy/nested/file.txt", "copy-dir");
     sandbox.mkdir_remote("work", "src/folder-copy/empty/nested-empty");
     sandbox.write_remote_file("work", "src/folder-move/nested/file.txt", "move-dir");
+    sandbox.mkdir_remote("work", "src/folder-move/empty/nested-empty");
+    sandbox.mkdir_remote("work", "src/empty-move");
     let cli = sandbox.cli();
     let local_dest = sandbox.local_path("dest");
     fs::create_dir_all(&local_dest).expect("mkdir local dest");
@@ -974,7 +1055,10 @@ fn mixed_execute_cloud_to_local_directory_copy_and_move_via_fake_rclone() {
     );
 
     let move_route = MixedTransferRoute::CloudToLocal {
-        sources: vec![sandbox.cloud_path("rclone://work/src/folder-move")],
+        sources: vec![
+            sandbox.cloud_path("rclone://work/src/folder-move"),
+            sandbox.cloud_path("rclone://work/src/empty-move"),
+        ],
         dest_dir: local_dest.clone(),
     };
     let move_out = execute_mixed_entries_blocking_with_cli(
@@ -991,7 +1075,10 @@ fn mixed_execute_cloud_to_local_directory_copy_and_move_via_fake_rclone() {
     .expect("move dir cloud->local");
     assert_eq!(
         move_out,
-        vec![local_dest.join("folder-move").to_string_lossy().to_string()]
+        vec![
+            local_dest.join("folder-move").to_string_lossy().to_string(),
+            local_dest.join("empty-move").to_string_lossy().to_string()
+        ]
     );
     assert_eq!(
         fs::read_to_string(local_dest.join("folder-move/nested/file.txt"))
@@ -1002,6 +1089,9 @@ fn mixed_execute_cloud_to_local_directory_copy_and_move_via_fake_rclone() {
         !sandbox.remote_path("work", "src/folder-move").exists(),
         "move should remove remote source dir"
     );
+    assert!(!sandbox.remote_path("work", "src/empty-move").exists());
+    assert!(local_dest.join("folder-move/empty/nested-empty").is_dir());
+    assert!(local_dest.join("empty-move").is_dir());
 }
 
 #[cfg(unix)]
@@ -1584,7 +1674,7 @@ fn mixed_execute_local_to_cloud_directory_move_cancels_during_second_active_tran
     let _guard = fake_rclone_test_lock();
     let sandbox = FakeRcloneSandbox::new();
     sandbox.mkdir_remote("work", "dest");
-    sandbox.set_subcommand_delay("moveto", 2, 1500);
+    sandbox.set_subcommand_delay("move", 2, 1500);
     let cli = sandbox.cli();
     fs::create_dir_all(sandbox.local_path("src/dir-a/nested")).expect("mkdir dir a");
     fs::create_dir_all(sandbox.local_path("src/dir-b/nested")).expect("mkdir dir b");
@@ -1613,7 +1703,7 @@ fn mixed_execute_local_to_cloud_directory_move_cancels_during_second_active_tran
         )
     });
 
-    sandbox.wait_for_subcommand_delay("moveto", Duration::from_secs(3));
+    sandbox.wait_for_subcommand_delay("move", Duration::from_secs(3));
     cancel.store(true, Ordering::SeqCst);
     let err = worker
         .join()
@@ -1636,7 +1726,7 @@ fn mixed_execute_cloud_to_local_directory_move_cancels_during_second_active_tran
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "src/dir-a/nested/file.txt", "alpha");
     sandbox.write_remote_file("work", "src/dir-b/nested/file.txt", "beta");
-    sandbox.set_subcommand_delay("moveto", 2, 1500);
+    sandbox.set_subcommand_delay("move", 2, 1500);
     let cli = sandbox.cli();
     let local_dest = sandbox.local_path("dest");
     fs::create_dir_all(&local_dest).expect("mkdir local dest");
@@ -1664,7 +1754,7 @@ fn mixed_execute_cloud_to_local_directory_move_cancels_during_second_active_tran
         )
     });
 
-    sandbox.wait_for_subcommand_delay("moveto", Duration::from_secs(3));
+    sandbox.wait_for_subcommand_delay("move", Duration::from_secs(3));
     cancel.store(true, Ordering::SeqCst);
     let err = worker
         .join()

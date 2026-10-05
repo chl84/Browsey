@@ -1054,6 +1054,53 @@ fn fallback_move_without_output_receipt_keeps_source_and_completed_output() {
 }
 
 #[test]
+#[cfg(unix)]
+fn gvfs_fallback_move_uses_owned_writers_and_preserves_nested_contents() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("gvfs-owned-move");
+    let source = root.join("source");
+    let target = root.join("gvfs/provider/target");
+    write_file(&source.join("nested/file.txt"), b"generated payload");
+    fs::create_dir_all(source.join("empty")).unwrap();
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    let _scope = Scope::new(|_, _, phase, _| match phase {
+        Phase::Rename => Err(std::io::Error::from_raw_os_error(libc::EXDEV)),
+        Phase::SetPermissions => Err(std::io::Error::from(std::io::ErrorKind::Unsupported)),
+        _ => Ok(()),
+    });
+    move_entry(&source, &target, None, None, None).unwrap();
+    assert!(!source.exists());
+    assert_eq!(
+        fs::read(target.join("nested/file.txt")).unwrap(),
+        b"generated payload"
+    );
+    assert!(target.join("empty").is_dir());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn gvfs_fallback_move_readback_failure_keeps_both_sides_without_retry() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let root = uniq_path("gvfs-owned-move-readback");
+    let source = root.join("source.txt");
+    let target = root.join("gvfs/provider/target.txt");
+    write_file(&source, b"generated payload");
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    let _scope = Scope::new(|_, _, phase, _| match phase {
+        Phase::Rename => Err(std::io::Error::from_raw_os_error(libc::EXDEV)),
+        Phase::Readback => Err(std::io::Error::other("generated readback fault")),
+        Phase::BeforeSourceDelete => panic!("source must not be removed after failed verification"),
+        _ => Ok(()),
+    });
+    let error = move_entry(&source, &target, None, None, None).unwrap_err();
+    assert!(error.to_string().contains("verification failed"));
+    assert_eq!(fs::read(&source).unwrap(), b"generated payload");
+    assert_eq!(fs::read(&target).unwrap(), b"generated payload");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn local_move_cancelled_after_sync_retains_both_complete_copies() {
     use crate::fs_utils::copy_test_hooks::{Phase, Scope};
     let root = uniq_path("move-cancel-after-sync");
@@ -3277,6 +3324,59 @@ fn copy_preserves_private_and_executable_permissions() {
             .mode()
             & 0o777,
         0o600
+    );
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn copy_keeps_bytes_when_destination_permissions_are_unsupported() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let base = uniq_path("copy-unsupported-permissions");
+    let src = base.join("source");
+    let dst = base.join("target");
+    write_file(&src.join("nested/payload.txt"), b"generated payload");
+    let _scope = Scope::new(|_, _, phase, _| {
+        if phase == Phase::SetPermissions {
+            Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
+        } else {
+            Ok(())
+        }
+    });
+    copy_entry(&src, &dst, None, None, None).unwrap();
+    assert_eq!(
+        fs::read(dst.join("nested/payload.txt")).unwrap(),
+        b"generated payload"
+    );
+    assert_eq!(
+        fs::read(src.join("nested/payload.txt")).unwrap(),
+        b"generated payload"
+    );
+    fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn copy_permission_denial_remains_an_error_and_preserves_source() {
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let base = uniq_path("copy-denied-permissions");
+    let src = base.join("source");
+    let dst = base.join("target");
+    write_file(&src.join("payload.txt"), b"generated payload");
+    let _scope = Scope::new(|_, target, phase, _| {
+        if phase == Phase::SetPermissions && target.is_dir() {
+            Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+        } else {
+            Ok(())
+        }
+    });
+    let error = copy_entry(&src, &dst, None, None, None).unwrap_err();
+    assert!(error.to_string().contains("Set directory permissions"));
+    assert_eq!(
+        fs::read(src.join("payload.txt")).unwrap(),
+        b"generated payload"
+    );
+    assert!(
+        !dst.exists(),
+        "owned copied output should be cleaned on a real failure"
     );
     fs::remove_dir_all(base).unwrap();
 }

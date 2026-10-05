@@ -94,7 +94,7 @@ import { clipboardState, clearClipboardState, setClipboardPathsState } from './c
 import { useExplorerFileOps } from './useExplorerFileOps'
 
 type ActivityApi = {
-  start: (label: string, eventName: string, onCancel?: () => void) => Promise<void>
+  start: (label: string, eventName: string, onCancel?: () => void, options?: { completeOnReply?: boolean }) => Promise<void>
   requestCancel: (eventName: string) => Promise<void> | void
   hideSoon: () => void
   clearNow: () => void
@@ -558,6 +558,32 @@ describe('useExplorerFileOps local conflict preview', () => {
     pasteClipboardPreviewMock.mockResolvedValue([])
   })
 
+  it('stays busy through asynchronous preview and a late backend failure', async () => {
+    let resolvePreview!: (conflicts: never[]) => void
+    let rejectPaste!: (error: Error) => void
+    const preview = new Promise<never[]>(resolve => { resolvePreview = resolve })
+    const paste = new Promise<void>((_, reject) => { rejectPaste = reject })
+    pasteClipboardPreviewMock.mockReturnValueOnce(preview)
+    pasteClipboardCmdMock.mockReturnValueOnce(paste)
+    setClipboardPathsState('copy', ['/tmp/src/tree'])
+    const deps = createDeps()
+    deps.getCurrentPath = () => '/tmp/dest'
+    const ops = useExplorerFileOps(deps)
+    const pending = ops.pasteIntoCurrent()
+    expect(get(ops.pasteBusy)).toBe(true)
+    expect(await ops.pasteIntoCurrent()).toBe(false)
+    expect(pasteClipboardPreviewMock).toHaveBeenCalledTimes(1)
+    resolvePreview([])
+    await vi.waitFor(() => expect(pasteClipboardCmdMock).toHaveBeenCalledTimes(1))
+    expect(get(ops.pasteBusy)).toBe(true)
+    expect(activityApi.start).toHaveBeenCalledWith('Copying…', expect.any(String), expect.any(Function), { completeOnReply: true })
+    rejectPaste(new Error('Late directory metadata failure'))
+    expect(await pending).toBe(false)
+    expect(deps.showToast).toHaveBeenCalledWith(expect.stringContaining('Late directory metadata failure'))
+    expect(get(ops.pasteBusy)).toBe(false)
+    expect(pasteClipboardCmdMock).toHaveBeenCalledTimes(1)
+  })
+
   it('opens the local conflict modal when clipboard preview reports conflicts', async () => {
     setClipboardPathsState('copy', ['/tmp/src/report.txt'])
     pasteClipboardPreviewMock.mockResolvedValue([
@@ -943,6 +969,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       'Moving…',
       expect.stringMatching(/^cloud-cut-/),
       expect.any(Function),
+      { completeOnReply: true },
     )
   })
 
@@ -965,6 +992,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       'Copying…',
       expect.stringMatching(/^mixed-copy-/),
       expect.any(Function),
+      { completeOnReply: true },
     )
     expect(deps.reloadCurrent).not.toHaveBeenCalled()
   })
@@ -989,6 +1017,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       'Moving…',
       expect.stringMatching(/^mixed-cut-/),
       expect.any(Function),
+      { completeOnReply: true },
     )
     expect(deps.reloadCurrent).toHaveBeenCalledTimes(1)
     expect(get(clipboardState).mode).toBe('copy')
@@ -1194,6 +1223,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       'Moving…',
       expect.stringMatching(/^cut-progress-/),
       expect.any(Function),
+      { completeOnReply: true },
     )
   })
 
@@ -1239,6 +1269,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       'Moving…',
       expect.stringMatching(/^cut-progress-/),
       expect.any(Function),
+      { completeOnReply: true },
     )
   })
 
@@ -1268,6 +1299,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       'Copying…',
       expect.stringMatching(/^copy-progress-/),
       expect.any(Function),
+      { completeOnReply: true },
     )
   })
 })

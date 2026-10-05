@@ -80,6 +80,8 @@ fn collect_paths<'a>(
             | "target"
             | "parentPath"
             | "parent_path"
+            | "selectionPaths"
+            | "selection_paths"
     );
     match value {
         Value::String(raw)
@@ -201,6 +203,11 @@ fn authorize(roots: &[String], command: &str, body: &Value) -> Result<Vec<String
     {
         return Err("Native-test paste requires explicit owned sources");
     }
+    if command == "network_delete_entries"
+        && body.get("trash").and_then(Value::as_bool) != Some(false)
+    {
+        return Err("Native-test network deletion must explicitly avoid global trash");
+    }
     if command == "list_facets" && body.get("scope").and_then(Value::as_str) != Some("dir") {
         return Err("Native-test facets are directory-only");
     }
@@ -221,15 +228,87 @@ fn authorize(roots: &[String], command: &str, body: &Value) -> Result<Vec<String
     Ok(paths.into_iter().map(str::to_string).collect())
 }
 
+// Complete lexical/command authorization before any metadata or operation I/O.
+#[cfg(any(feature = "native-test", test))]
+fn authorize_io(
+    roots: &[String],
+    command: &str,
+    body: &Value,
+    mut inspect: impl FnMut(&str) -> Result<(), &'static str>,
+) -> Result<(), &'static str> {
+    let mut paths = authorize(roots, command, body)?;
+    if matches!(command, "undo_action" | "redo_action") {
+        paths.extend(roots.iter().cloned());
+    }
+    for raw in paths {
+        if !raw.starts_with("rclone://") {
+            inspect(&raw)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(any(feature = "native-test", test))]
+use std::{
+    fs,
+    path::{Component, Path},
+};
+
+// Check components without following a symlink, including absent creation targets.
+#[cfg(any(feature = "native-test", test))]
+fn no_links(path: &Path) -> Result<(), &'static str> {
+    let mut current = std::path::PathBuf::new();
+    for component in path.components() {
+        if !matches!(component, Component::RootDir | Component::Normal(_)) {
+            return Err("Invalid native-test path component");
+        }
+        current.push(component);
+        match fs::symlink_metadata(&current) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err("Native-test symlinks are forbidden")
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(_) => return Err("Cannot verify native-test path"),
+        }
+    }
+    Ok(())
+}
+
+// Recursive operations must not encounter links hidden under an approved directory.
+#[cfg(any(feature = "native-test", test))]
+fn no_tree_links(path: &Path, remaining: &mut usize) -> Result<(), &'static str> {
+    if *remaining == 0 {
+        return Err("Native-test tree exceeds the foundation limit");
+    }
+    *remaining -= 1;
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err("Cannot inspect owned native-test tree"),
+    };
+    if meta.file_type().is_symlink() {
+        return Err("Native-test symlinks are forbidden");
+    }
+    if meta.is_dir() {
+        for entry in fs::read_dir(path).map_err(|_| "Cannot inspect owned native-test directory")? {
+            no_tree_links(
+                &entry
+                    .map_err(|_| "Cannot inspect owned native-test entry")?
+                    .path(),
+                remaining,
+            )?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(feature = "native-test")]
 mod enabled {
     use super::*;
     use once_cell::sync::OnceCell;
     use serde::Deserialize;
-    use std::{
-        env, fs,
-        path::{Component, Path},
-    };
+    use std::env;
     use tauri::ipc::{Invoke, InvokeBody};
 
     #[derive(Deserialize)]
@@ -240,55 +319,6 @@ mod enabled {
         profile: String,
     }
     static SESSION: OnceCell<Session> = OnceCell::new();
-
-    // Check components without following a symlink, including absent creation targets.
-    fn no_links(path: &Path) -> Result<(), &'static str> {
-        let mut current = std::path::PathBuf::new();
-        for component in path.components() {
-            if !matches!(component, Component::RootDir | Component::Normal(_)) {
-                return Err("Invalid native-test path component");
-            }
-            current.push(component);
-            match fs::symlink_metadata(&current) {
-                Ok(meta) if meta.file_type().is_symlink() => {
-                    return Err("Native-test symlinks are forbidden")
-                }
-                Ok(_) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
-                Err(_) => return Err("Cannot verify native-test path"),
-            }
-        }
-        Ok(())
-    }
-
-    // Recursive operations must not encounter links hidden under an approved directory.
-    fn no_tree_links(path: &Path, remaining: &mut usize) -> Result<(), &'static str> {
-        if *remaining == 0 {
-            return Err("Native-test tree exceeds the foundation limit");
-        }
-        *remaining -= 1;
-        let meta = match fs::symlink_metadata(path) {
-            Ok(meta) => meta,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(_) => return Err("Cannot inspect owned native-test tree"),
-        };
-        if meta.file_type().is_symlink() {
-            return Err("Native-test symlinks are forbidden");
-        }
-        if meta.is_dir() {
-            for entry in
-                fs::read_dir(path).map_err(|_| "Cannot inspect owned native-test directory")?
-            {
-                no_tree_links(
-                    &entry
-                        .map_err(|_| "Cannot inspect owned native-test entry")?
-                        .path(),
-                    remaining,
-                )?;
-            }
-        }
-        Ok(())
-    }
 
     pub(crate) fn initialize() -> Result<(), &'static str> {
         let raw =
@@ -411,21 +441,12 @@ mod enabled {
             return None;
         }
         let result = match invoke.message.payload() {
-            InvokeBody::Json(body) => authorize(&session.data_roots, command, body),
+            InvokeBody::Json(body) => authorize_io(&session.data_roots, command, body, |raw| {
+                no_links(Path::new(raw))?;
+                no_tree_links(Path::new(raw), &mut 4096)
+            }),
             _ => Err("Native-test IPC must use JSON"),
-        }
-        .and_then(|mut paths| {
-            if matches!(command, "undo_action" | "redo_action") {
-                paths.extend(session.data_roots.iter().cloned());
-            }
-            for raw in paths {
-                if !raw.starts_with("rclone://") {
-                    no_links(Path::new(&raw))?;
-                    no_tree_links(Path::new(&raw), &mut 4096)?;
-                }
-            }
-            Ok(())
-        });
+        };
         if let Err(reason) = result {
             // No arguments, usernames, addresses, file contents or credentials in audit logs.
             tracing::warn!(command, "native-test scope rejected a command");
@@ -550,5 +571,93 @@ mod tests {
         }
         authorize(&roots, "load_shortcuts", &json!({})).unwrap();
         authorize(&roots, "undo_action", &json!({})).unwrap();
+    }
+
+    #[test]
+    fn native_scope_denies_entire_request_before_any_io() {
+        let roots = roots();
+        let mut inspected = Vec::new();
+        for (command, body) in [
+            (
+                "copy_mixed_entries",
+                json!({"sources":[roots[0], "/synthetic/outside"], "destDir":roots[0]}),
+            ),
+            (
+                "rename_entries",
+                json!({"entries":[{"path":roots[0], "newName":"../escape"}]}),
+            ),
+            (
+                "context_menu_actions",
+                json!({"count":1, "selectionPaths":["relative"]}),
+            ),
+            (
+                "list_dir",
+                json!({"path":format!("{}-sibling/file", roots[0])}),
+            ),
+            ("list_dir", json!({"path":format!("{}/../file", roots[0])})),
+            ("list_dir", json!({"path":"file:///synthetic/alias"})),
+            ("open_entry", json!({"path":roots[0]})),
+            (
+                "network_delete_entries",
+                json!({"paths":[roots[0]], "trash":true}),
+            ),
+            ("network_delete_entries", json!({"paths":[roots[0]]})),
+        ] {
+            assert!(
+                authorize_io(&roots, command, &body, |raw| {
+                    inspected.push(raw.to_string());
+                    Ok(())
+                })
+                .is_err(),
+                "{command} must be denied"
+            );
+        }
+        assert!(
+            inspected.is_empty(),
+            "Denied requests must not reach metadata I/O"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_scope_rechecks_replaced_and_nested_symlinks_before_dispatch() {
+        use std::os::unix::fs::symlink;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let temp = std::env::temp_dir().join(format!(
+            "browsey-native-scope-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let files = temp
+            .join(FOLDER)
+            .join(format!(".bnt-{}", ID.replace('-', "")))
+            .join("files");
+        fs::create_dir_all(files.join("source/nested")).unwrap();
+        fs::create_dir(files.join("referent")).unwrap();
+        fs::write(files.join("referent/keep.txt"), b"generated sentinel").unwrap();
+        let roots = vec![files.to_str().unwrap().to_string()];
+        let body = json!({"sources":[files.join("source").to_str().unwrap()], "destDir":roots[0]});
+        let check = |raw: &str| {
+            no_links(Path::new(raw))?;
+            no_tree_links(Path::new(raw), &mut 4096)
+        };
+        authorize_io(&roots, "copy_mixed_entries", &body, check).unwrap();
+        // Replacement between requests; no claim of atomic defense during I/O.
+        fs::remove_dir(files.join("source/nested")).unwrap();
+        symlink(files.join("referent"), files.join("source/nested")).unwrap();
+        assert!(authorize_io(&roots, "copy_mixed_entries", &body, check).is_err());
+        assert!(no_links(&files.join("source/nested/keep.txt")).is_err());
+        // Broken links are rejected as well, without following a referent.
+        symlink(files.join("missing"), files.join("broken")).unwrap();
+        assert!(no_tree_links(&files.join("broken"), &mut 4096).is_err());
+        assert!(no_tree_links(&files, &mut 0).is_err());
+        assert_eq!(
+            fs::read(files.join("referent/keep.txt")).unwrap(),
+            b"generated sentinel"
+        );
+        fs::remove_dir_all(temp).unwrap();
     }
 }

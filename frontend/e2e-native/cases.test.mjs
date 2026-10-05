@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { validateConfig, makePlan } from './scope.mjs'
-import { foundation } from './cases.mjs'
-import { Fixtures } from './fixtures.mjs'
+import { foundation, foundationManifest } from './cases.mjs'
+import { Fixtures, localEntryExists } from './fixtures.mjs'
 
 const id = '00000000-0000-4000-8000-000000000000'
 const plan = makePlan(validateConfig({ schema: 1, targets: { local: '/approved/ai_agent_testfolder',
@@ -38,6 +38,7 @@ function model(corrupt = false) {
       lastCopy = [raw, target]
     },
     idle: async () => {},
+    enterPath: async () => {},
     chord: async key => {
       if (key === 'z') items.delete(lastCopy[1])
       else if (key === 'y') relocate(...lastCopy, false)
@@ -50,10 +51,54 @@ function model(corrupt = false) {
 test('shared cases cover within-provider copy/move, both hub directions and local undo', async () => {
   const { fixture, ui } = model()
   const names = []
-  await foundation(plan, fixture, ui, async (name, action) => { await action(); names.push(name) })
-  assert.equal(names.length, 15)
+  const declared = []
+  await foundation(plan, fixture, ui, async (name, action, metadata) => { await action(); names.push(name); declared.push({name, ...metadata}) })
+  assert.deepEqual(declared, foundationManifest(plan))
+  assert.equal(names.length, 16)
   for (const name of ['copy-within-local', 'move-within-usb', 'copy-local-usb', 'copy-usb-local',
     'move-local-usb', 'move-usb-local', 'local: copy undo/redo']) assert.ok(names.includes(name))
+})
+
+test('setup failure belongs to the declared case and stops before UI mutations', async () => {
+  const { fixture, ui } = model()
+  let uiCalls = 0
+  ui.create = async () => { uiCalls++ }
+  fixture.mkdir = async () => { throw new Error('synthetic setup denial') }
+  const results = []
+  await assert.rejects(foundation(plan, fixture, ui, async (name, action, metadata) => {
+    const result = { name, ...metadata }
+    results.push(result)
+    await action(result)
+  }), /synthetic setup denial/)
+  assert.equal(uiCalls, 0)
+  assert.equal(results.length, 1)
+  assert.equal(results[0].phase, 'setup')
+  assert.equal(results[0].id, 'input-local')
+  assert.deepEqual(results[0].providers, ['local'])
+})
+
+test('redo waits for undo acknowledgement and the reconciled absent row', async () => {
+  const { fixture, ui } = model()
+  const chord = ui.chord
+  let undoPending = false
+  let redoAcknowledged = false
+  ui.chord = async key => {
+    if (key === 'z') undoPending = true
+    if (key === 'y') assert.equal(undoPending, false, 'Do not lose redo while history is busy')
+    await chord(key)
+  }
+  ui.idle = async expected => {
+    if (undoPending) {
+      assert.equal(expected?.toast, 'Undo')
+      assert.match(expected.absentPath, /\/undo-target\/undo.txt$/)
+      undoPending = false
+    } else if (expected?.toast === 'Redo') {
+      assert.match(expected.resultPath, /\/undo-target\/undo.txt$/)
+      redoAcknowledged = true
+    }
+  }
+  await foundation(plan, fixture, ui, async (_name, action) => action())
+  assert.equal(redoAcknowledged, true)
 })
 
 test('independent byte verification rejects UI-reported success with corrupt output', async () => {
@@ -67,4 +112,19 @@ test('fixture I/O rejects every outside path before touching real filesystem or 
     for (const method of ['read', 'exists', 'mkdir', 'write']) await assert.rejects(fixture[method](raw))
   }
   await assert.rejects(fixture.ensureCloudRoot({ path: 'rclone://Other/personal' }))
+})
+
+test('move verification rejects stale positive metadata and never lists above its owned root', async () => {
+  const roots = ['/owned/run/files']
+  const lists = []
+  const filesystem = { lstat: async () => ({ isSymbolicLink: () => false }),
+    readdir: async raw => { lists.push(raw); return ['unrelated-fixture.txt'] } }
+  assert.equal(await localEntryExists(roots, '/owned/run/files/source/moved.txt', filesystem), false)
+  assert.deepEqual(lists, ['/owned/run/files/source'])
+  assert.equal(await localEntryExists(roots, roots[0], filesystem), true)
+  assert.equal(lists.length, 1, 'Root checks must not list the parent outside this run')
+  await assert.rejects(localEntryExists(roots, '/personal/file', filesystem))
+  assert.equal(lists.length, 1)
+  filesystem.readdir = async () => ['moved.txt']
+  assert.equal(await localEntryExists(roots, '/owned/run/files/source/moved.txt', filesystem), true)
 })

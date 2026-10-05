@@ -301,11 +301,12 @@ case "$subcmd" in
     target="$(map_spec_path "${args[$idx]}")"
     rmdir -- "$target"
     ;;
-  copy|copyto|moveto)
+  copy|copyto|move|moveto)
     immutable=0
     ignore_existing=0
     error_on_no_transfer=0
     create_empty_dirs=0
+    delete_empty_dirs=0
     transfer_paths=()
     while [[ $idx -lt ${#args[@]} ]]; do
       case "${args[$idx]}" in
@@ -314,11 +315,19 @@ case "$subcmd" in
         --ignore-existing) ignore_existing=1; idx=$((idx + 1)) ;;
         --error-on-no-transfer) error_on_no_transfer=1; idx=$((idx + 1)) ;;
         --create-empty-src-dirs)
-          if [[ "$subcmd" != copy ]]; then
+          if [[ "$subcmd" != copy && "$subcmd" != move ]]; then
             echo "Error: unknown flag: --create-empty-src-dirs" >&2
             exit 2
           fi
           create_empty_dirs=1
+          idx=$((idx + 1))
+          ;;
+        --delete-empty-src-dirs)
+          if [[ "$subcmd" != move ]]; then
+            echo "Error: unknown flag: --delete-empty-src-dirs" >&2
+            exit 2
+          fi
+          delete_empty_dirs=1
           idx=$((idx + 1))
           ;;
         -*)
@@ -380,6 +389,24 @@ case "$subcmd" in
         cp -f -- "$src" "$dst/"
       else
         cp -f -- "$src" "$dst"
+      fi
+    elif [[ -d "$src" && ( "$subcmd" == move || "${transfer_paths[0]}" != *:* || "${transfer_paths[1]}" != *:* ) ]]; then
+      # A cross-backend move transfers files rather than renaming the root.
+      # moveto lacks empty-directory flags and retains emptied source dirs.
+      if [[ "$create_empty_dirs" -eq 1 ]]; then
+        mkdir -p -- "$dst"
+        while IFS= read -r -d '' source_dir; do
+          mkdir -p -- "$dst/${source_dir#"$src/"}"
+        done < <(find "$src" -mindepth 1 -type d -print0)
+      fi
+      while IFS= read -r -d '' source_file; do
+        relative_file="${source_file#"$src/"}"
+        mkdir -p -- "$(dirname -- "$dst/$relative_file")"
+        mv -f -- "$source_file" "$dst/$relative_file"
+      done < <(find "$src" -type f -print0)
+      if [[ "$delete_empty_dirs" -eq 1 ]]; then
+        # Like rclone, clean descendants but leave its filesystem root.
+        find "$src" -mindepth 1 -depth -type d -empty -delete
       fi
     else
       rm -rf -- "$dst"

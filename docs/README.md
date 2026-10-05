@@ -41,6 +41,10 @@ The docs web app lives in `../docs-site/` and is built/deployed separately.
 
 ## Current Work vs. Historical Evidence
 
+The [native test suite plan](todo/TODO_NATIVE_TEST_SUITE.md) tracks development
+and scoped real-WebKit verification of shared tests across approved storage
+targets. It complements the daily-driver acceptance checklist, not its signoff.
+
 The active [daily-driver completeness plan](todo/TODO_DAILY_DRIVER_COMPLETENESS.md)
 contains engineering follow-ups, not a checklist of missing features. Outstanding
 test requirements live in the separate

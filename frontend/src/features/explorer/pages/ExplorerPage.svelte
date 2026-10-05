@@ -1092,6 +1092,7 @@
     activityApi,
   }))
   const {
+    pasteBusy,
     conflictModalOpen,
     conflictList,
     computeDirStats,
@@ -1830,6 +1831,7 @@
   closeAbout={pageUiState.closeAbout}
 >
   <ExplorerShell
+    transferPending={$pasteBusy}
     bind:pathInput
     bind:pathInputEl
     bind:rowsEl={rowsElRef}

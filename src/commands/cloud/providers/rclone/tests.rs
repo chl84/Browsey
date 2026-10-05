@@ -1973,3 +1973,37 @@ fn fake_rclone_shim_skips_destination_stat_when_move_is_prechecked() {
     assert!(log.contains("moveto work:src/file.txt work:dst/moved.txt"));
     assert!(!log.contains("lsjson --stat work:dst/moved.txt"));
 }
+
+#[cfg(unix)]
+#[test]
+fn directories_bypass_file_only_rc_copy_and_move() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "source/tree/nested.txt", "generated payload");
+    let provider = sandbox.provider_with_forced_rc();
+    let src = cloud_path("rclone://work/source/tree");
+    let copied = cloud_path("rclone://work/target/copied");
+    let moved = cloud_path("rclone://work/target/moved");
+    provider
+        .copy_entry(&src, &copied, false, true, None)
+        .unwrap();
+    assert_eq!(
+        fs::read(sandbox.remote_path("work", "target/copied/nested.txt")).unwrap(),
+        b"generated payload"
+    );
+    assert!(sandbox
+        .remote_path("work", "source/tree/nested.txt")
+        .exists());
+    provider
+        .move_entry(&copied, &moved, false, true, None)
+        .unwrap();
+    assert!(!sandbox.remote_path("work", "target/copied").exists());
+    assert_eq!(
+        fs::read(sandbox.remote_path("work", "target/moved/nested.txt")).unwrap(),
+        b"generated payload"
+    );
+    let log = sandbox.read_log();
+    assert!(log.contains("copyto work:source/tree work:target/copied"));
+    assert!(log.contains("moveto work:target/copied work:target/moved"));
+    assert!(!log.contains("operations/copyfile"));
+    assert!(!log.contains("operations/movefile"));
+}

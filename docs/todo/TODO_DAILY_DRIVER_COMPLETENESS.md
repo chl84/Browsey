@@ -193,6 +193,61 @@ acceptance remains in the separate validation checklist.
   [guard procedure](../ERROR_HARDENING_EXCEPTION_POLICY.md#running-the-semgrep-guards).
   This is local verification, not a new GitHub CI or installed-app signoff.
 
+- [x] **VD-4** Fix OneDrive directory copy through native clipboard paste.
+  The [scoped native foundation run](../operations/linux-release/runs/2026-10-05-native-foundation.md)
+  copied an individual generated file correctly, then reported a cloud-operation
+  failure for a directory containing one generated child. Independent read-only
+  inspection found the destination directory absent and the source child intact.
+  Reuse the existing cloud transfer adapter and verify file/tree behavior;
+  do not automatically retry an uncertain write.
+  Resolved in the [native foundation follow-up](../operations/linux-release/runs/2026-10-05-native-foundation-fixes.md):
+  source metadata routes directories to the existing directory-aware CLI before
+  writing. File/tree copy and move within OneDrive passed through native controls,
+  with independent byte and source-preservation/removal checks. This does not
+  establish conflict, cancellation, disconnect or large-tree acceptance.
+- [x] **VD-5** Handle unsupported directory-permission preservation on MTP and
+  keep operation completion visible until the final backend result.
+  The same [native run record](../operations/linux-release/runs/2026-10-05-native-foundation.md)
+  records a folder-copy failure setting permissions (`Operation not supported`,
+  95), with a retained non-empty destination (39). The failure arrived after
+  destination content was visible and the activity indicator had disappeared.
+  Preserve source/recovery data and truthful failure feedback; verify generated
+  folder copies and moves before accepting mobile or either local/mobile route.
+  Resolved in the [native foundation follow-up](../operations/linux-release/runs/2026-10-05-native-foundation-fixes.md):
+  explicit Unsupported permission preservation is non-fatal; other errors still
+  fail. Paste stays busy until the command reply. The 17-case local/mobile run
+  passed within-provider and both-direction file/tree transfers, plus teardown.
+  Broader cancellation/disconnect and directory-size stress acceptance remains open.
+
+- [x] **VD-6** Enable verified fallback moves between local storage and GVFS/MTP
+  without weakening source-retention checks. The
+  [native foundation follow-up](../operations/linux-release/runs/2026-10-05-native-foundation-fixes.md)
+  reproduced a safe refusal of local-to-mobile source removal because the GIO
+  writer provided no ownership receipt. Select an exclusive owned writer before
+  copying, verify bytes/identity, then remove only unchanged source entries.
+  Failed readback or missing receipts must still preserve the source; never
+  retry an uncertain write just to obtain a receipt.
+  Resolved with the owned stream writer selected before a fallback move copy.
+  Writer identity and content verification provide the receipt; the missing-
+  receipt/source-retention guard remains active. New failure regressions pass,
+  and native local/mobile file/tree moves passed in both directions with verified
+  source removal and unchanged destination bytes. No uncertain write was retried.
+
+- [x] **VD-7** Remove empty source directories after mixed local/cloud moves
+  while preserving empty destination directories. The five-provider rerun in the
+  [native foundation follow-up](../operations/linux-release/runs/2026-10-05-native-foundation-fixes.md)
+  copied the nested bytes correctly but retained the empty local source tree.
+  Use rclone's directory `move` route with its empty-directory flags before any
+  write, preserving existing file routes and cancellation/source-retention rules.
+  Correct the fake provider's cross-backend directory semantics and verify native
+  file/tree moves in both directions before checking this item.
+  Resolved with directory-aware moves and a final empty-only source-root removal
+  after destination confirmation. Local source identity is captured before I/O
+  and rechecked; changed/nonempty/cancelled roots are retained. All 39 activated
+  mixed-transfer tests pass, including these failure cases. Native file/tree moves
+  local → OneDrive and OneDrive → local both passed with independently verified
+  source removal and destination bytes in the final five-provider run.
+
 ## Approved Cloud Integration Expansion
 
 Approved on 2026-10-03. Reuse the shared provider, transfer, archive, task and UI

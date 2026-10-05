@@ -264,12 +264,26 @@ fn execute_rclone_transfer(
         return result;
     }
 
-    let subcommand = match op {
-        MixedTransferOp::Copy if copy_source_is_directory(cli, &src, cancel)? => {
-            RcloneSubcommand::Copy
-        }
-        MixedTransferOp::Copy => RcloneSubcommand::CopyTo,
-        MixedTransferOp::Move => RcloneSubcommand::MoveTo,
+    let directory = transfer_source_is_directory(cli, &src, cancel)?;
+    let source_identity = if directory && op == MixedTransferOp::Move {
+        src.local_path()
+            .map(|path| {
+                crate::fs_utils::FileIdentity::capture(path).ok_or_else(|| {
+                    transfer_err(
+                        TransferErrorCode::TaskFailed,
+                        "Cannot identify source directory; move has not started",
+                    )
+                })
+            })
+            .transpose()?
+    } else {
+        None
+    };
+    let subcommand = match (op, directory) {
+        (MixedTransferOp::Copy, true) => RcloneSubcommand::Copy,
+        (MixedTransferOp::Copy, false) => RcloneSubcommand::CopyTo,
+        (MixedTransferOp::Move, true) => RcloneSubcommand::Move,
+        (MixedTransferOp::Move, false) => RcloneSubcommand::MoveTo,
     };
 
     let mut spec = RcloneCommandSpec::new(subcommand)
@@ -288,18 +302,98 @@ fn execute_rclone_transfer(
         // This flag belongs to `copy`, not `copyto` (even for directory sources).
         spec = spec.arg("--create-empty-src-dirs");
     }
+    if subcommand == RcloneSubcommand::Move {
+        // Cross-backend moveto moves files but leaves empty source directories.
+        // Only move exposes these flags: preserve empty destinations and let
+        // rclone remove empty source directories, never recursively delete data.
+        spec = spec
+            .arg("--create-empty-src-dirs")
+            .arg("--delete-empty-src-dirs");
+    }
 
     cli.run_capture_text_with_cancel(spec, cancel)
         .map_err(|error| map_rclone_cli_error(error, cloud_remote_for_error_mapping))?;
-    if subcommand == RcloneSubcommand::Copy {
-        // rclone copies directory contents; even --create-empty-src-dirs does
+    if directory {
+        // rclone transfers directory contents; even --create-empty-src-dirs does
         // not create the destination root when the source itself is empty.
-        ensure_copied_directory_root(cli, &dst, cloud_remote_for_error_mapping, cancel)?;
+        ensure_transferred_directory_root(cli, &dst, cloud_remote_for_error_mapping, cancel)?;
+        if op == MixedTransferOp::Move {
+            remove_moved_source_root(
+                cli,
+                &src,
+                source_identity.as_ref(),
+                cloud_remote_for_error_mapping,
+                cancel,
+            )?;
+        }
     }
     Ok(())
 }
 
-fn ensure_copied_directory_root(
+fn remove_moved_source_root(
+    cli: &RcloneCli,
+    src: &LocalOrCloudArg,
+    identity: Option<&crate::fs_utils::FileIdentity>,
+    cloud_remote: Option<&str>,
+    cancel: Option<&AtomicBool>,
+) -> TransferResult<()> {
+    if transfer_cancelled(cancel) {
+        return Err(transfer_err(
+            TransferErrorCode::Cancelled,
+            "Transfer cancelled; source root and destination retained",
+        ));
+    }
+    match src {
+        LocalOrCloudArg::Local(path) => {
+            match fs::symlink_metadata(path) {
+                Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+                Err(error) => {
+                    return Err(transfer_err(
+                        TransferErrorCode::IoError,
+                        format!("Cannot inspect moved source root; destination retained: {error}"),
+                    ))
+                }
+                Ok(_) => {}
+            }
+            if !identity.is_some_and(|identity| identity.matches(path)) {
+                return Err(transfer_err(
+                    TransferErrorCode::TaskFailed,
+                    "Source directory changed; source and destination retained",
+                ));
+            }
+            // Atomic empty-only removal. New contents, replaced directories and
+            // uncertain failures are retained; never recursively delete here.
+            match fs::remove_dir(path) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(transfer_err(
+                    TransferErrorCode::IoError,
+                    format!("Cannot remove empty moved source root; destination retained: {error}"),
+                )),
+            }
+        }
+        LocalOrCloudArg::Cloud(path) => {
+            // rclone's move flags clean descendants, leaving its filesystem root.
+            // rmdir removes only an empty root; purge is never used for cleanup.
+            match cli.run_capture_text_with_cancel(
+                RcloneCommandSpec::new(RcloneSubcommand::Rmdir).arg(path.to_rclone_remote_spec()),
+                cancel,
+            ) {
+                Ok(_) => Ok(()),
+                Err(error) => {
+                    let mapped = map_rclone_cli_error(error, cloud_remote);
+                    if mapped.code_str() == "not_found" {
+                        Ok(())
+                    } else {
+                        Err(mapped)
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn ensure_transferred_directory_root(
     cli: &RcloneCli,
     dst: &LocalOrCloudArg,
     cloud_remote: Option<&str>,
@@ -318,7 +412,10 @@ fn ensure_copied_directory_root(
                 ErrorKind::AlreadyExists => TransferErrorCode::DestinationExists,
                 _ => TransferErrorCode::IoError,
             };
-            transfer_err(code, format!("Failed to create copied directory: {error}"))
+            transfer_err(
+                code,
+                format!("Failed to create transferred directory: {error}"),
+            )
         }),
         LocalOrCloudArg::Cloud(path) => cli
             .run_capture_text_with_cancel(
@@ -330,7 +427,7 @@ fn ensure_copied_directory_root(
     }
 }
 
-fn copy_source_is_directory(
+fn transfer_source_is_directory(
     cli: &RcloneCli,
     src: &LocalOrCloudArg,
     cancel: Option<&AtomicBool>,

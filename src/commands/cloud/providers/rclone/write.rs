@@ -552,7 +552,15 @@ impl RcloneCloudProvider {
         }
         let mut fell_back_from_rc = false;
         let mut fallback_reason: Option<&'static str> = None;
-        if self.rc.is_write_enabled() && (cancel.is_none() || mode == TransferMode::Copy) {
+        // RC copyfile/movefile accept individual objects only. Decide from
+        // source metadata before starting a write; directory transfers use the
+        // existing CLI copyto/moveto route, never retry an uncertain RC write.
+        let use_rc = self.rc.is_write_enabled()
+            && (cancel.is_none() || mode == TransferMode::Copy)
+            && !self
+                .stat_path(src)?
+                .is_some_and(|entry| matches!(entry.kind, super::CloudEntryKind::Dir));
+        if use_rc {
             let src_fs = format!("{}:", src.remote());
             let dst_fs = format!("{}:", dst.remote());
             let rc_result = match mode {

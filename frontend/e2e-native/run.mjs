@@ -6,10 +6,12 @@ import { randomUUID, createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import net from 'node:net'
+import os from 'node:os'
 import { validateConfig, makePlan, candidateEnvironment, child, kinds, noLinks } from './scope.mjs'
 import { createLocalSession, Fixtures, regularFile } from './fixtures.mjs'
 import { NativeUi } from './ui.mjs'
-import { foundation } from './cases.mjs'
+import { foundation, foundationManifest } from './cases.mjs'
+import { verifyCandidate, fileSha256 } from './candidate.mjs'
 
 const exec = promisify(execFile)
 const repo = fileURLToPath(new URL('../..', import.meta.url))
@@ -38,16 +40,7 @@ async function dependencies() {
   assert.equal(process.platform, 'linux', 'Native suite targets Linux')
   const driver = await tool('tauri-driver', process.env.BROWSEY_TAURI_DRIVER)
   const webkit = await tool('WebKitWebDriver', process.env.BROWSEY_WEBKIT_DRIVER)
-  await noLinks(candidate, fs)
-  const binary = await fs.open(candidate, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW)
-  const build = JSON.parse((await regularFile(`${candidate}.json`)).text)
-  assert.equal(build.feature, 'native-test')
-  try {
-    assert.ok((await binary.stat()).isFile())
-    const hash = createHash('sha256')
-    for await (const chunk of binary.createReadStream({ autoClose: false })) hash.update(chunk)
-    assert.equal(build.sha256, hash.digest('hex'), 'Candidate changed after staging')
-  } finally { await binary.close() }
+  const build = await verifyCandidate(repo, candidate)
   return { driver, webkit, build }
 }
 
@@ -68,7 +61,7 @@ async function reservePorts() {
 async function waitDriver(childProcess) {
   const deadline = Date.now() + 15_000
   while (Date.now() < deadline) {
-    assert.equal(childProcess.exitCode, null, 'Owned tauri-driver exited during startup')
+    assert.ok(childProcess.exitCode === null && childProcess.signalCode === null, 'Owned tauri-driver exited during startup')
     try {
       const response = await fetch('http://127.0.0.1:4444/status', { signal: AbortSignal.timeout(1000) })
       if (response.ok) return
@@ -79,11 +72,14 @@ async function waitDriver(childProcess) {
 }
 
 async function stopDriver(driver) {
-  if (driver.exitCode !== null) return
+  if (driver.exitCode !== null || driver.signalCode !== null) return
   const exited = new Promise(resolve => driver.once('exit', resolve))
   driver.kill('SIGTERM')
   await Promise.race([exited, new Promise(resolve => setTimeout(resolve, 3000))])
-  if (driver.exitCode === null) { driver.kill('SIGKILL'); await exited }
+  if (driver.exitCode === null && driver.signalCode === null) {
+    driver.kill('SIGKILL')
+    await Promise.race([exited, new Promise((_, reject) => setTimeout(() => reject(new Error('Owned driver did not exit')), 3000))])
+  }
 }
 
 async function main() {
@@ -112,7 +108,10 @@ async function main() {
     }
     await check('tauri-driver', () => tool('tauri-driver', process.env.BROWSEY_TAURI_DRIVER))
     await check('WebKitWebDriver', () => tool('WebKitWebDriver', process.env.BROWSEY_WEBKIT_DRIVER))
-    await check('scoped candidate', () => fs.access(candidate, fs.constants.X_OK))
+    await check('scoped candidate identity', async () => {
+      await fs.access(candidate, fs.constants.X_OK)
+      await verifyCandidate(repo, candidate)
+    })
     for (const target of plan.targets.filter(target => target.kind !== 'cloud')) {
       await check(`${target.kind}: approved local path`, async () => {
         await noLinks(target.path, fs)
@@ -139,26 +138,41 @@ async function main() {
   await fs.mkdir(artifacts, { mode: 0o700 })
   const reportPath = child(local.run, 'report.json')
   const harnessHash = createHash('sha256')
-  for (const file of ['cases.mjs', 'fixtures.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+  for (const file of ['candidate.mjs', 'cases.mjs', 'fixtures.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
     harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
   }
   harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
-  const report = { schema: 1, runId: plan.runId, started: new Date().toISOString(), build: tools.build,
+  const report = { schema: 2, runId: plan.runId, started: new Date().toISOString(), build: tools.build,
     harnessSha256: harnessHash.digest('hex'),
+    host: { platform: process.platform, kernel: os.release(), arch: process.arch, node: process.version,
+      inputLayout: process.env.BROWSEY_NATIVE_INPUT_LAYOUT ?? 'NOT_RECORDED',
+      gtkWebkit: (await exec('/usr/bin/pkg-config', ['--modversion', 'gtk+-3.0', 'webkit2gtk-4.1'])).stdout.trim().split('\n') },
+    tools: { tauriDriverSha256: await fileSha256(await fs.realpath(tools.driver)),
+      webkitDriverSha256: await fileSha256(await fs.realpath(tools.webkit)) },
     scope: 'Generated data in owned runs only; no installed app or personal settings',
     targets: Object.fromEntries(kinds.map(kind => [kind, plan.targets.some(target => target.kind === kind)
       ? 'NOT_RUN' : configured.includes(kind) ? 'DEFERRED' : 'NOT_CONFIGURED'])),
-    cases: [], notTested: ['Address-entry keyboard layout', 'Native drag/drop', 'Mount/connect/unplug', 'Trash/format', 'Progress/cancellation with large files',
+    cases: foundationManifest(plan).map(item => ({ ...item, status: 'NOT_RUN' })),
+    notTested: ['Other keyboard layouts', 'Non-BMP Unicode text entry (native WebDriver drops emoji)',
+      'Native drag/drop', 'Mount/connect/unplug', 'Trash/format', 'Progress/cancellation with large files',
       'Archive/password/conflict handling', 'Other platforms/distributions', 'Watcher behavior (disabled in scoped candidate)'] }
   await fs.writeFile(reportPath, JSON.stringify(report, null, 2), { flag: 'wx', mode: 0o600 })
-  let browser, driver
+  let browser, driver, candidatePid
   const log = await fs.open(child(artifacts, 'driver.log'), 'wx', 0o600)
-  const record = async (name, action) => {
+  const record = async (name, action, metadata) => {
     console.log(`Native case: ${name}`)
-    const result = { name, status: 'RUNNING' }
-    report.cases.push(result)
-    try { await action(); result.status = 'PASS' }
-    catch (error) { result.status = 'FAIL'; result.error = error.message; throw error }
+    const result = metadata ? report.cases.find(item => item.id === metadata.id) : { name, providers: plan.targets.map(target => target.kind) }
+    assert.ok(result, 'Case must exist in the declared plan')
+    if (!metadata) report.cases.push(result)
+    result.status = 'RUNNING'
+    result.phase = 'ui'
+    try { await action(result); result.status = 'PASS' }
+    catch (error) {
+      result.status = result.phase === 'setup' || error.failureKind === 'FIXTURE_IO' ? 'BLOCKED' : 'FAIL'
+      result.failureKind = error.failureKind ?? (result.phase === 'setup' ? 'FIXTURE_SETUP' : 'UNCLASSIFIED_UI_OR_RESULT')
+      result.error = error.message
+      throw error
+    }
     finally { await fs.writeFile(reportPath, JSON.stringify(report, null, 2), { mode: 0o600 }) }
   }
   try {
@@ -174,6 +188,11 @@ async function main() {
       connectionRetryTimeout: 60_000, capabilities: { 'tauri:options': { application: candidate } } })
     const ui = new NativeUi(browser, session.dataRoots)
     const status = await ui.handshake(plan.runId)
+    candidatePid = status.pid
+    assert.equal(await fs.readlink(`/proc/${candidatePid}/exe`), candidate, 'Candidate PID must execute the staged binary')
+    const candidateEnv = (await fs.readFile(`/proc/${candidatePid}/environ`)).toString().split('\0')
+    assert.ok(candidateEnv.includes(`XDG_DATA_HOME=${profile}/data`), 'Candidate PID must own the private profile')
+    report.identity = { pid: candidatePid, runId: status.runId, scope: status.scope, watcher: status.watcher }
     if (options.a11y) {
       // Desktop-control socket discovery is separate from the candidate's
       // private runtime. Still no personal HOME/config/credential inheritance.
@@ -208,7 +227,28 @@ async function main() {
     if (browser) {
       try { await browser.deleteSession() } catch { report.teardown = 'WebDriver session close failed; inspect owned process' }
     }
-    if (driver) await stopDriver(driver)
+    if (driver) {
+      try { await stopDriver(driver) } catch { report.teardown = 'Owned driver stop failed; inspect owned processes' }
+    }
+    if (candidatePid) {
+      const deadline = Date.now() + 5000
+      let exited = false
+      while (Date.now() < deadline) {
+        try { await fs.readlink(`/proc/${candidatePid}/exe`) }
+        catch (error) { if (error.code === 'ENOENT') { exited = true; break } else break }
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      if (!exited) report.teardown = 'Owned candidate exit could not be confirmed; inspect owned process'
+    }
+    if (report.teardown) {
+      if (report.status === 'PASS') report.status = 'BLOCKED'
+      process.exitCode = 1
+    } else report.teardown = 'PASS: owned candidate and driver exited'
+    for (const target of plan.targets) {
+      const relevant = report.cases.filter(item => item.providers.includes(target.kind))
+      report.targets[target.kind] = relevant.some(item => item.status === 'FAIL') ? 'FAIL'
+        : relevant.every(item => item.status === 'PASS') && report.status === 'PASS' ? 'PASS' : 'BLOCKED'
+    }
     await log.close()
     report.finished = new Date().toISOString()
     await fs.writeFile(reportPath, JSON.stringify(report, null, 2), { mode: 0o600 })

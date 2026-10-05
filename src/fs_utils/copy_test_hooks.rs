@@ -22,6 +22,7 @@ pub(crate) enum Phase {
     OverwritePrepared,
     OverwriteBackedUp,
     Readback,
+    SetPermissions,
 }
 
 type Hook = Box<dyn FnMut(&Path, &Path, Phase, u64) -> io::Result<()>>;

@@ -75,15 +75,55 @@ fn emit_copy_progress(event: Option<&CopyProgress<'_>>, payload: CopyProgressPay
     }
 }
 
+fn preserve_copy_permissions(
+    _src: &Path,
+    _dest: &Path,
+    file: &fs::File,
+    permissions: fs::Permissions,
+    context: &str,
+) -> ClipboardResult<()> {
+    #[cfg(test)]
+    let result = crate::fs_utils::copy_test_hooks::hit(
+        _src,
+        _dest,
+        crate::fs_utils::copy_test_hooks::Phase::SetPermissions,
+        0,
+    )
+    .and_then(|()| file.set_permissions(permissions));
+    #[cfg(not(test))]
+    let result = file.set_permissions(permissions);
+    // MTP and other filesystems may have no Unix permission capability. Preserve
+    // modes where supported, but do not undo copied bytes for this refusal.
+    // Permission denial and all other errors still fail the operation.
+    match result {
+        Err(error) if error.kind() == ErrorKind::Unsupported => {
+            tracing::debug!("Copy destination does not support permission preservation");
+            Ok(())
+        }
+        result => result.map_err(|error| {
+            ClipboardError::from_io_error(ClipboardErrorCode::IoError, context, error)
+        }),
+    }
+}
+
 fn copy_dir(
     src: &Path,
     dest: &Path,
     app: Option<&tauri::AppHandle>,
     progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
+    require_receipt: bool,
 ) -> ClipboardResult<crate::undo::CopyReceipt> {
     let mut outputs = OwnedCopyPaths::default();
-    let result = copy_dir_tracked(src, dest, app, progress_event, cancel, &mut outputs);
+    let result = copy_dir_tracked(
+        src,
+        dest,
+        app,
+        progress_event,
+        cancel,
+        &mut outputs,
+        require_receipt,
+    );
     if let Err(error) = result {
         let retained = outputs.cleanup();
         return Err(if retained.is_empty() {
@@ -105,6 +145,7 @@ fn copy_dir_tracked(
     progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
     outputs: &mut OwnedCopyPaths,
+    require_receipt: bool,
 ) -> ClipboardResult<()> {
     let source_permissions = fs::metadata(src)
         .map_err(|e| {
@@ -160,7 +201,15 @@ fn copy_dir_tracked(
         let target = dest.join(entry.file_name());
         if meta.is_dir() {
             ensure_not_child(&path, &target)?;
-            copy_dir_tracked(&path, &target, app, progress_event, cancel, outputs)?;
+            copy_dir_tracked(
+                &path,
+                &target,
+                app,
+                progress_event,
+                cancel,
+                outputs,
+                require_receipt,
+            )?;
         } else {
             copy_file_tracked(
                 &path,
@@ -170,6 +219,7 @@ fn copy_dir_tracked(
                 cancel,
                 None,
                 Some(outputs),
+                require_receipt,
             )?;
         }
     }
@@ -203,9 +253,13 @@ fn copy_dir_tracked(
             "Copy destination directory changed; retained outputs",
         ));
     }
-    directory.set_permissions(source_permissions).map_err(|e| {
-        ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Set directory permissions", e)
-    })?;
+    preserve_copy_permissions(
+        src,
+        dest,
+        &directory,
+        source_permissions,
+        "Set directory permissions",
+    )?;
     Ok(())
 }
 
@@ -343,7 +397,7 @@ pub(super) fn merge_dir(
                 }
                 match mode {
                     ClipboardMode::Copy => {
-                        let receipt = copy_dir(&path, &target, app, progress_event, cancel)?;
+                        let receipt = copy_dir(&path, &target, app, progress_event, cancel, false)?;
                         actions.push(Action::Copy {
                             from: path.clone(),
                             to: target.clone(),
@@ -442,6 +496,17 @@ pub(super) fn copy_entry(
     progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<crate::undo::CopyReceipt> {
+    copy_entry_with_receipt(src, dest, app, progress_event, cancel, false)
+}
+
+fn copy_entry_with_receipt(
+    src: &Path,
+    dest: &Path,
+    app: Option<&tauri::AppHandle>,
+    progress_event: Option<&CopyProgress<'_>>,
+    cancel: Option<&AtomicBool>,
+    require_receipt: bool,
+) -> ClipboardResult<crate::undo::CopyReceipt> {
     let meta = fs::symlink_metadata(src).map_err(|e| {
         ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
@@ -457,7 +522,7 @@ pub(super) fn copy_entry(
     }
     if meta.is_dir() {
         ensure_not_child(src, dest)?;
-        copy_dir(src, dest, app, progress_event, cancel)
+        copy_dir(src, dest, app, progress_event, cancel, require_receipt)
     } else {
         if transfer_cancelled(cancel, app) {
             return Err(ClipboardError::cancelled());
@@ -472,6 +537,7 @@ pub(super) fn copy_entry(
             cancel,
             size_hint,
             Some(&mut outputs),
+            require_receipt,
         )?;
         Ok(outputs.receipt(dest))
     }
@@ -486,7 +552,16 @@ pub(super) fn copy_file_best_effort(
     cancel: Option<&AtomicBool>,
     total_hint: Option<u64>,
 ) -> ClipboardResult<u64> {
-    copy_file_tracked(src, dest, app, progress_event, cancel, total_hint, None)
+    copy_file_tracked(
+        src,
+        dest,
+        app,
+        progress_event,
+        cancel,
+        total_hint,
+        None,
+        false,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -498,13 +573,14 @@ fn copy_file_tracked(
     cancel: Option<&AtomicBool>,
     total_hint: Option<u64>,
     outputs: Option<&mut OwnedCopyPaths>,
+    _require_receipt: bool,
 ) -> ClipboardResult<u64> {
     if transfer_cancelled(cancel, app) {
         return Err(ClipboardError::cancelled());
     }
     #[cfg(not(target_os = "windows"))]
     {
-        if is_gvfs_path(src) || is_gvfs_path(dest) {
+        if !_require_receipt && (is_gvfs_path(src) || is_gvfs_path(dest)) {
             // GIO owns the output handle; a later path lookup is not an ownership
             // receipt. Retain uncertain outputs and never retry through local I/O.
             return super::gio_copy::copy(
@@ -610,9 +686,7 @@ fn copy_file_tracked(
                 }
             }
         }
-        writer.set_permissions(permissions).map_err(|e| {
-            ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Set file permissions", e)
-        })?;
+        preserve_copy_permissions(src, dest, &writer, permissions, "Set file permissions")?;
         let completed_state = crate::fs_utils::FileState::from_file(&writer).map_err(|error| {
             ClipboardError::from_io_error(
                 ClipboardErrorCode::IoError,
@@ -805,7 +879,10 @@ pub(super) fn move_entry(
                         error,
                     )
                 })?;
-            let receipt = copy_entry(src, dest, app, progress_event, cancel)?;
+            // Choose the owned stream writer before any fallback copy starts.
+            // GIO copy does not expose its writer identity; do not adopt a late
+            // path lookup as a receipt or retry a write to obtain one.
+            let receipt = copy_entry_with_receipt(src, dest, app, progress_event, cancel, true)?;
             if transfer_cancelled(cancel, app) {
                 return Err(ClipboardError::cancelled().with_context(format!(
                     "Copy retained at {}; source not removed",

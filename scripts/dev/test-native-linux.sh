@@ -13,6 +13,7 @@ if [[ "${1:---help}" == "--build" ]]; then
     # Optional explicit working Rust toolchain, e.g. when a mise shim is unset.
     export PATH="$(dirname -- "$BROWSEY_CARGO"):$PATH"
   fi
+  node frontend/e2e-native/stage.mjs --prepare
   frontend/node_modules/.bin/tauri build --debug --no-bundle --features native-test -- --locked
   node frontend/e2e-native/stage.mjs
 else

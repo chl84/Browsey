@@ -9,6 +9,20 @@ window's accessibility tree, reusing `tests/support/native_fixture_a11y.py`.
 Pointer/keyboard/accessibility interaction and independent file-content checks
 are complementary; neither alone proves all file-operation behavior.
 
+The [2026-10-05 foundation run](operations/linux-release/runs/2026-10-05-native-foundation.md)
+records the first scoped native results and input/guard stabilization. Functional
+TODO items remain open until their declared provider scope passes.
+
+The [foundation fixes and retests](operations/linux-release/runs/2026-10-05-native-foundation-fixes.md)
+record complete case coverage on all five providers and both local-hub directions,
+plus the fresh local history retest. The full report remains FAIL for its history
+wait; the local retest is PASS. These separate scopes do not certify a release.
+
+The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
+stability, basic operations, transfer boundaries, failure safety and edge cases.
+It tracks suite work; accepted candidate outcomes stay in the daily-driver
+validation checklist and its run records.
+
 ## Safety and ownership
 
 Only explicitly approved, **already existing** directories named exactly
@@ -111,6 +125,17 @@ UI mutations use real controls/shortcuts, not direct file-operation IPC or
 synthetic DOM events. One read-only test-only IPC handshake verifies the correct
 candidate/session before any UI mutation. File setup/verification uses guarded
 local filesystem operations or an explicit private-config rclone command.
+Paste verification waits up to 360 seconds for the one original request, covering
+the backend's 300-second transfer deadline and final listing reconciliation;
+ordinary readiness waits use 60 seconds. App errors fail immediately, and a
+timeout stops the run without resending the mutation.
+The shared input case checks `/`, `_` and `æøå` with exact value/focus checks before
+Enter, then independent file verification. W3C actions explicitly press/release
+Shift for `_`. Only one keyboard layout is required for the first increment;
+non-BMP emoji entry remains outside this input acceptance. Set
+`BROWSEY_NATIVE_INPUT_LAYOUT=no` (or the actually verified layout) to annotate a
+run; this variable does not change the desktop layout. Temporary desktop layout
+changes require maintainer authorization and restoration afterward.
 
 Not yet covered: native drag/drop and cross-instance behavior, large-file progress
 and cancellation, overwrite/recovery, archives/passwords, trash, formatting,
@@ -122,7 +147,11 @@ cases only after the foundation runs reliably.
 
 The shared build is staged under ignored `target/native-test`, not a worktree or
 build cache per run. Its manifest records commit, dirty state, build time, profile
-and executable SHA-256. Rebuild after source edits; a dirty build is not an exact
+and executable/build-input SHA-256. The build captures inputs before and after
+compilation, rejecting edits during the build. Preflight and runs reject a
+different commit, changed executable, changed build inputs or old manifests.
+Documentation and harness edits do not require recompiling the app; the report
+separately hashes the harness. Rebuild after source edits; a dirty build is not an exact
 committed-baseline acceptance run. No release/install binaries are staged here.
 
 Each local owned run retains `report.json`, private profile, generated fixtures

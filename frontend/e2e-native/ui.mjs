@@ -1,5 +1,6 @@
 /* global document, window */
 import assert from 'node:assert/strict'
+import { Key } from 'webdriverio'
 import { child, ownedPath } from './scope.mjs'
 
 // One UI driver and shared cases, not a second set of file-operation semantics.
@@ -17,12 +18,34 @@ export class NativeUi {
     return status
   }
 
-  async idle() {
+  async idle(expected = {}, timeout = 60_000) {
+    let reportedFailure
     await this.browser.waitUntil(async () => {
-      return await this.browser.execute(() => document.querySelector('main.shell[aria-busy="false"][data-operation-active="false"]') !== null
-        && ![...document.querySelectorAll('[role="dialog"]')].some(node => node.getClientRects().length)
-        && ![...document.querySelectorAll('.pill.error')].some(node => node.getClientRects().length))
-    }, { timeout: 60_000, interval: 150, timeoutMsg: 'Browsey did not finish without an error/dialog' })
+      const state = await this.browser.execute(expected => {
+        const visible = node => node.getClientRects().length > 0
+        const errors = [...document.querySelectorAll('.pill.error')].filter(visible).map(node => node.textContent.trim())
+        for (const node of [...document.querySelectorAll('.toast[role="status"]')].filter(visible)) {
+          const message = node.textContent.trim()
+          if (/^(?:(?:paste|copy|cut|move(?: to trash)?|rename|delete|create|undo|redo|refresh|load|navigation|search)\s+failed\b|failed to\b|could not\b|error\b)/i.test(message)) errors.push(message)
+        }
+        const rows = [...document.querySelectorAll('[data-path]')].filter(visible)
+        const acknowledged = (!expected.toast || [...document.querySelectorAll('.toast[role="status"]')]
+          .some(node => visible(node) && node.textContent.trim() === expected.toast))
+          && (!expected.cutPath || rows.some(node => node.dataset.path === expected.cutPath && node.classList.contains('cut')))
+          && (!expected.resultPath || rows.some(node => node.dataset.path === expected.resultPath))
+          && (!expected.absentPath || !rows.some(node => node.dataset.path === expected.absentPath))
+        return { errors, idle: document.querySelector('main.shell[aria-busy="false"][data-operation-active="false"]') !== null
+          && ![...document.querySelectorAll('[role="dialog"]')].some(visible) && acknowledged }
+      }, expected)
+      if (state.errors.length) {
+        reportedFailure = Object.assign(new Error(`Browsey reported failure: ${state.errors.join('; ')}`), { failureKind: 'APP_REPORTED_ERROR' })
+        // Resolve the readiness wait, then throw outside it so WebDriver does
+        // not swallow/retry the predicate error until the timeout expires.
+        return true
+      }
+      return state.idle
+    }, { timeout, interval: 150, timeoutMsg: 'Browsey did not finish without an error/dialog' })
+    if (reportedFailure) throw reportedFailure
   }
 
   async navigate(raw) {
@@ -62,19 +85,74 @@ export class NativeUi {
   async chord(key, modifier = 'Control') {
     // Explicit key-up ordering and action release avoid sticky modifiers in
     // native WebKit (notably Shift+Delete followed by typing a slash).
-    await this.browser.action('key').down(modifier).down(key).up(key).up(modifier).perform()
-    await this.browser.releaseActions()
+    const modifierValue = Key[modifier]
+    const keyValue = Key[key] ?? key
+    assert.ok(modifierValue, 'Expected a known WebDriver modifier')
+    try {
+      await this.browser.action('key').down(modifierValue).down(keyValue).up(keyValue).up(modifierValue).perform()
+    } finally { await this.browser.releaseActions() }
   }
 
   async refresh() { await this.browser.keys(['F5']); await this.idle() }
 
+  async fill(input, value) {
+    await this.browser.releaseActions()
+    await input.click()
+    assert.ok(await input.isFocused(), 'Expected the owned input to have focus')
+    await this.chord('a')
+    await this.browser.keys([Key.Backspace])
+    const action = this.browser.action('key')
+    for (const character of value) {
+      if (character === '_') action.down(Key.Shift).down('-').up('-').up(Key.Shift)
+      else action.down(character).up(character)
+    }
+    try { await action.perform() } finally { await this.browser.releaseActions() }
+    assert.equal(await input.getValue(), value, 'Native text input differed from the intended value')
+    assert.ok(await input.isFocused(), 'Input lost focus before submission')
+  }
+
+  async enterPath(raw) {
+    ownedPath(this.roots, raw)
+    await this.idle()
+    const input = await this.browser.$('#explorer-path-input')
+    // Long breadcrumbs can cover the field's edge. Inspect hit testing, then
+    // deliver a real pointer click to an exposed part of this exact input.
+    const point = await this.browser.execute(() => {
+      const field = document.querySelector('#explorer-path-input')
+      const rect = field.getBoundingClientRect()
+      const y = Math.floor(rect.top + rect.height / 2)
+      for (let x = Math.ceil(rect.left); x < Math.min(rect.right, window.innerWidth); x++) {
+        if (document.elementFromPoint(x, y) === field) return { x, y }
+      }
+      return null
+    })
+    assert.ok(point, 'Expected an exposed address-field click target')
+    await this.browser.action('pointer').move({ origin: 'viewport', ...point }).down().up().perform()
+    await input.waitForDisplayed({ timeout: 5000 })
+    await this.fill(input, raw)
+    await this.browser.keys(['Enter'])
+    await this.waitPath(raw)
+  }
+
   async transfer(src, dest, move = false) {
     await this.navigate(src.slice(0, src.lastIndexOf('/')))
     await this.select(src)
+    // Clipboard population awaits backend validation (notably slow on MTP).
+    // First let any old acknowledgement disappear, then observe this request's
+    // real toast/cut styling before navigating or pasting. Never resend it.
+    await this.browser.waitUntil(async () => !['Copied', 'Cut'].includes(await this.browser.execute(() =>
+      document.querySelector('.toast[role="status"]')?.textContent.trim())),
+    { timeout: 5000, timeoutMsg: 'Previous clipboard acknowledgement did not disappear' })
     await this.chord(move ? 'x' : 'c')
+    await this.idle({ toast: move ? 'Cut' : 'Copied', ...(move ? { cutPath: src } : {}) })
     await this.navigate(dest)
     await this.chord('v')
-    await this.idle()
+    // Paste preflight can await I/O before setting the operation flag. An idle
+    // frame alone does not prove this request completed.
+    // The provider's bounded copy/move command allows 300s, followed by listing
+    // reconciliation. Keep observing this one request, including late errors;
+    // a shorter UI deadline can stop a legitimate in-flight cloud transfer.
+    await this.idle({ resultPath: child(dest, src.slice(src.lastIndexOf('/') + 1)) }, 360_000)
   }
 
   async create(base, name, folder) {
@@ -89,8 +167,7 @@ export class NativeUi {
     await action.click()
     const input = await this.browser.$(folder ? '#new-folder-name' : '#new-file-name')
     await input.waitForDisplayed({ timeout: 5000 })
-    await input.setValue(name)
-    assert.equal(await input.getValue(), name, 'Native text input differed from the fixture name')
+    await this.fill(input, name)
     await this.browser.keys(['Enter'])
     await this.idle()
     await this.select(child(base, name))
@@ -102,8 +179,7 @@ export class NativeUi {
     await this.chord('r')
     const input = await this.browser.$('#rename-entry-name')
     await input.waitForDisplayed({ timeout: 5000 })
-    await input.setValue(name)
-    assert.equal(await input.getValue(), name, 'Native text input differed from the fixture name')
+    await this.fill(input, name)
     await this.browser.keys(['Enter'])
     await this.idle()
   }

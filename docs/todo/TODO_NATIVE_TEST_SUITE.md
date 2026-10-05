@@ -1,0 +1,291 @@
+# Browsey Native Test Suite TODO
+
+Created: 2026-10-05
+Status: Active suite development and scoped native verification.
+
+Goal: Build reusable tests of basic file operations and edge cases in a real
+Browsey window, using WebKitGTK, the Rust backend and independent checks of
+generated files. Start with local disk, USB, network, OneDrive and MTP.
+This is a test-suite execution plan, not a list of missing Browsey features.
+
+## Existing foundation and related documents
+
+The [native suite guide](../testing-native.md) covers the separate candidate,
+private profile, approved-root configuration, WebDriver, AT-SPI and reporting.
+Shared create, rename, permanent-delete, copy/move and local copy undo/redo cases
+already exist in `frontend/e2e-native/cases.mjs`. Extend these rather than building
+parallel suites for each provider. Policy tests and backend path-access checks
+have passed; a complete five-provider native UI run has not been accepted.
+
+Expected operation semantics remain in the
+[core operations matrix](../operations/core-operations/matrix.md) and its
+[release checklist](../operations/core-operations/release-checklist.md).
+Accepted candidate evidence belongs in the
+[daily-driver validation checklist](../operations/linux-release/daily-driver-validation-checklist.md)
+and linked run records. This plan does not redefine those contracts or close
+their parent rows automatically.
+
+## Safety and completion rules
+
+Only existing, explicitly approved roots named exactly `ai_agent_testfolder`
+may contain test data. Concrete approvals stay in the ignored local config,
+not this document. Generate fixtures inside an exclusive `.bnt-*` run; never
+discover roots, inspect personal files or reuse existing test-folder contents.
+Use private credentials and settings as described in the suite guide.
+
+This plan does not authorize formatting, filling, ejecting or disconnecting real
+devices; stopping shared GVFS/network services; controlling personal windows;
+changing desktop settings/MIME defaults; or inspecting/purging personal trash.
+Use bounded, fixture-contained fault injection where possible. Broader desktop
+and lifecycle tests remain BLOCKED until their separate scope is approved.
+Agree byte, entry-count and duration limits before large or repeated workloads;
+never exhaust a real disk, account quota or phone.
+
+Check a suite-development item when its deliverable and focused verification
+are complete. Check a functional item only after reusable coverage and real
+native verification for its declared provider scope are recorded. Mock passes,
+policy tests and delivered clicks are not native acceptance. Do not rebuild
+existing implementations merely because their acceptance remains incomplete.
+
+Record candidate commit/dirty state, binary/harness hashes, host/tool versions,
+item/case IDs, providers, results and exclusions. Each required provider/case
+needs its own PASS, FAIL or BLOCKED result. DEFERRED and NOT_CONFIGURED are not
+passes; N/A requires a capability-based reason and a tested explicit UI outcome.
+Partial verification leaves functional items open. Update boxes and evidence
+after each completed increment, not only after finishing a priority group.
+Raw reports, screenshots, tokens and machine-specific paths remain private;
+publish only redacted summaries in the repository.
+
+## Priority 0 Stabilize the existing harness
+
+Complete these prerequisites before expanding the functional matrix.
+
+- [x] **NT0-1** Rebuild the current candidate and complete the existing local
+  foundation, then all five approved providers. Verify binary/session identity
+  and reject stale artifacts; never fall back to installed Browsey.
+  Verified 2026-10-05 in the
+  [foundation follow-up](../operations/linux-release/runs/2026-10-05-native-foundation-fixes.md):
+  one five-provider run passed 43 cases, including every provider foundation and
+  all eight ordered local-hub file/tree copy/move routes, then failed the history
+  wait. After correcting only that wait, a fresh local run passed all eight cases,
+  including undo/redo, on the same binary/build inputs. Declared case coverage is
+  complete across these independent runs; the original full report remains FAIL,
+  not retroactively PASS. Identity checks reject stale source/executable/commit.
+- [x] **NT0-2** Extend scope regressions for traversal, prefix siblings, symlink
+  replacement, ambiguous paths and rejected commands. Verify denial before
+  outside I/O, using synthetic paths and owned fixtures only.
+  Verified 2026-10-05: all six Rust scope regressions and all nineteen Node policy/
+  orchestration regressions passed. Denied mixed requests reach zero metadata
+  callbacks; actual replaced/nested/broken links are rejected in generated
+  fixtures. Context-menu selections are checked and network trash is explicitly
+  denied. This does not claim atomic protection against concurrent path swaps.
+
+- [x] **NT0-3** Stabilize input with one keyboard layout (maintainer scope update
+  2026-10-05; both Norwegian and US are not required): verify exact
+  field values containing `/`, `_` and Unicode before submission, focus and
+  modifier release. Do not change the user's global layout without authorization;
+  the maintainer explicitly permits temporary US here, with restoration afterward.
+  Verified 2026-10-05 in the real scoped candidate with Norwegian: `input-local`
+  checks address `/`, `_`, `æøå`, modal creation/rename, exact values and focus
+  before Enter, then independent file bytes and old/new paths. W3C key actions
+  explicitly press/release Shift for `_` and always release modifiers. Temporary
+  US did not solve driver input; original Norwegian configuration was restored.
+  Non-BMP emoji input remains excluded; NT4-1 is not accepted by this check.
+- [ ] **NT0-4** Harden startup/teardown for occupied ports, driver exit, candidate
+  crash, failed session closure and timeouts. Stop only owned processes/windows;
+  uncertain teardown must not produce PASS.
+  Partial progress: bounded TERM/KILL shutdown and signaled-exit checks are
+  implemented; uncertain closure/candidate exit makes a would-be PASS BLOCKED.
+  Successful owned teardown was verified in the recorded native runs. The
+  requested failure-injection coverage remains open.
+- [ ] **NT0-5** Add per-case/provider capabilities and results, including setup
+  failures and partial batches. Distinguish harness failures from reproduced
+  app defects; never automatically retry an uncertain mutation.
+  Partial progress: declared case IDs/provider dependencies, setup/UI/verification
+  phases, remaining NOT_RUN cases, fixture-I/O BLOCKED and app-error FAIL are
+  recorded. Transfers wait for current clipboard acknowledgement and destination
+  UI state before independent verification, without resending mutations.
+  Capability declarations and partial-batch/setup-report completeness remain open.
+- [ ] **NT0-6** Verify credential/artifact permissions and Git exclusions. Define
+  bounded retention and explicit owned-run cleanup, preserving recovery data
+  and never recursively cleaning an approved root.
+
+## Priority 1 Basic operations and navigation
+
+Use shared cases for applicable providers and independently verify actual files.
+
+- [ ] **NT1-1** Navigate owned folders in list/grid, including empty folders,
+  in-scope breadcrumbs, back/forward, F5 and repeated visits. History/bookmarks
+  must not escape the owned session.
+- [ ] **NT1-2** Verify sorting, column filters/reset, hidden generated files and
+  in-scope search. Cover empty results, case/extension differences and mode
+  changes without stale filters or lost folder identity.
+- [ ] **NT1-3** Verify single/multiple selection, Ctrl/Shift, arrows and select-all,
+  virtualized rows, empty-space clicks and navigation. Operations must receive
+  exactly the intended entries once.
+- [ ] **NT1-4** Create files/folders with empty contents, duplicate names and
+  invalid input. Test Enter, Cancel/Escape and focus restoration; rejection
+  must leave existing fixtures unchanged.
+- [ ] **NT1-5** Rename files and non-empty folders, checking nested contents,
+  collisions, extensions, case-only changes, cancellation and repeated submission.
+  Verify old/new paths and preservation of unrelated fixture files.
+- [ ] **NT1-6** Revalidate copy/cut/paste and deletion through keyboard/context
+  menus: mixed/no selection, rapid repeated requests, permanent-delete warnings
+  and cancelled confirmation without duplicated operations.
+- [ ] **NT1-7** Expand local undo/redo to move, rename, supported deletion and
+  overwrite. Verify redo invalidation, the documented 50-action limit and restart
+  semantics; do not imply cloud undo or persistent history.
+- [ ] **NT1-8** Verify Properties for generated files/folders: correct selection,
+  size/type, ownership/permission capabilities, tabs and focus. Do not inspect
+  drive roots or personal metadata.
+
+## Priority 2 Transfer matrix and conflicts
+
+For five providers, the local hub has eight ordered cross-provider routes;
+all-pairs has twenty. Test copy and move separately for files and directory trees.
+
+- [ ] **NT2-1** Verify within-provider copy/move on every approved target with
+  empty folders, nested trees and mixed batches. Compare destination bytes/tree
+  and source preservation/removal independently of UI feedback.
+- [ ] **NT2-2** Run both directions between local disk and USB, network, cloud
+  and mobile. Successful reading does not establish writing or moving back.
+- [ ] **NT2-3** Add bounded all-pairs runs, including network/mobile and USB/cloud.
+  Record routing, staging and explicit refusals; an unrun route is not covered
+  by the local hub.
+- [ ] **NT2-4** Cover skip, overwrite, unique-name and cancel conflict choices:
+  files, directories, nested collisions and file-versus-directory conflicts.
+  Assert the documented policy and both sides' bytes after each result.
+- [ ] **NT2-5** Reject same-target operations, transfers into descendants and
+  aliases that would recurse or destroy sources. Verify deterministic errors
+  and bounded work, not only disabled controls.
+- [ ] **NT2-6** Exercise a failing entry in a batch: accurate completed/skipped/
+  failed counts, remaining sources, refresh and error messages. Success must
+  not hide a transfer or subsequent refresh failure.
+
+## Priority 3 Progress cancellation and failure safety
+
+Prioritize these data-safety cases before cosmetic UI coverage.
+
+- [ ] **NT3-1** Verify visible byte progress in both directions across boundaries:
+  files/folders, unknown totals, slow callbacks, zero-byte files and finalization.
+  Prevent misleading `1 B`, early completion and stale activity.
+- [ ] **NT3-2** Cancel copies before I/O, mid-file and between files. Independently
+  verify writes stop, sources survive, destination state and partial-result
+  messages are accurate, and listeners are released. Cancel is not rollback.
+- [ ] **NT3-3** Cancel/fail overwrite of a file with different existing bytes.
+  Verify the documented overwrite/recovery boundary: no silent loss or incomplete
+  output reported as complete. Inspect retained backups/diagnostics without
+  assuming transactional directory operations.
+- [ ] **NT3-4** Cancel/fail moves within/across providers. Remove sources only
+  for successfully completed entries and report partial batches truthfully,
+  without automatic destructive retries.
+- [ ] **NT3-5** Exercise read/write denial and read-only behavior on owned fixtures.
+  Require actionable errors and disabled unsupported chmod/chown controls,
+  rather than assuming every filesystem supports Unix permissions.
+- [ ] **NT3-6** Simulate full destination, unavailable provider and transient I/O
+  faults with bounded fixture-scoped injection or an approved sandbox. Never
+  fill physical media or stop shared services to reproduce failure.
+- [ ] **NT3-7** Change/remove sources or destinations during work using owned
+  fixture writers. Cover races, symlink swaps and late collisions; verify source
+  retention and truthful uncertainty without claiming complete atomicity.
+- [ ] **NT3-8** Interrupt/restart only the owned candidate during operations.
+  Inspect partial outputs and private recovery data; verify safe startup and
+  diagnostics, not power-loss protection or automatic resume.
+
+## Priority 4 Names files and directory edge cases
+
+- [ ] **NT4-1** Exercise spaces, Norwegian characters, emoji, combining Unicode,
+  quotes, `#`, `%`, `&`, `_`, leading dots/hyphens and valid trailing whitespace.
+  Verify URI encoding and byte/name preservation across operations.
+- [ ] **NT4-2** Cover reserved names, name/path-length limits and unsupported Unix
+  filename encodings where applicable. Require explicit rejection or documented
+  representation, never silent corruption.
+- [ ] **NT4-3** Use zero-byte, one-byte, generated binary and differently sized
+  files; verify digests/readback, not just size. Agree limits before large runs;
+  sparse local files do not establish remote transfer performance.
+- [ ] **NT4-4** Exercise empty/deep/wide trees and large owned listings within
+  entry/depth budgets. Verify bounded traversal, resource cleanup and UI response;
+  begin device stress with reduced fixtures.
+- [ ] **NT4-5** Add broken/relative symlink and hard-link cases where supported.
+  Referents must stay inside the owned run. Narrowly extend the currently
+  rejecting guard before functional link tests; never allow outside referents.
+
+## Priority 5 Provider specific behavior
+
+Shared cases remain authoritative. Path-access checks are prerequisites, not
+completed file-operation acceptance.
+
+- [ ] **NT5-1** USB: verify actual filesystem create/rename/transfer behavior,
+  errors and supported permissions. Record its type; one Btrfs result does not
+  certify exFAT/NTFS. Formatting is not authorized by this plan.
+- [ ] **NT5-2** Network: verify SFTP/GIO/FUSE consistency, large-file deletion
+  without content download, progress/cancellation and stale-path errors in the
+  approved folder. Service-loss tests need a separate isolated fault scope.
+- [ ] **NT5-3** Mobile: verify MTP operations, provider latency and late metadata/
+  thumbnails, stable ordering and source preservation on failure. Do not enumerate
+  personal camera folders.
+- [ ] **NT5-4** Cloud: verify OneDrive refresh, transfers, conflicts, working copies
+  and quota/rate/authentication errors using generated fixtures/private config.
+  Google Drive/Nextcloud need separately approved exact roots and credentials.
+- [ ] **NT5-5** Define a separately approved lifecycle mode for first connection,
+  locked phone, reconnect, disappearing mounts and busy/ejected media. Foundation
+  discovery/mount restrictions must not be silently removed; mounted-folder
+  success does not prove lifecycle behavior.
+
+## Priority 6 Native UI and desktop interaction
+
+Extend guards only for precise owned scope. Normal clipboard, global trash,
+external launches and discovery remain disabled by default.
+
+- [ ] **NT6-1** Test drag/drop within/between owned Browsey candidates, then a
+  separately scoped Nautilus fixture window. Cover multiple files, folders,
+  special names, modifiers, self-drops, cancel and teardown. Verify file effects;
+  reuse the [native drag guide](../testing-native-drag.md).
+- [ ] **NT6-2** Reproduce drag-label regressions over many rows/cards versus empty
+  space: responsive following, no stuck `Cannot drop here`, no duplicated transfer.
+  Measure native event/frame behavior, not mock render counts.
+- [ ] **NT6-3** Add clipboard and trash/restore/purge tests only after separately
+  approving and demonstrating desktop isolation. Private XDG directories alone
+  do not prove a shared trash/clipboard service is isolated.
+- [ ] **NT6-4** Verify keyboard navigation, Tab order, focused Escape handling,
+  modal focus restoration and accessible names through WebDriver/AT-SPI.
+  Cover interacting menus/dialogs/tooltips and slow operations.
+- [ ] **NT6-5** Validate private-profile themes/densities, grid zoom and generated
+  thumbnails under load: corrupt/unsupported images, late metadata, stable grid
+  order, filter Reset and progress/modal layout. No global theme changes.
+- [ ] **NT6-6** Add fixture-only watcher tests after eliminating home fallback and
+  broad discovery from that mode. Cover external fixture changes, refresh during
+  work and shutdown; disabled-watcher runs cannot certify watcher behavior.
+- [ ] **NT6-7** Add generated archive round trips: supported formats, passwords,
+  wrong password, Cancel, corruption, conflicts and partial batches. Cover local/
+  cloud staging and malicious entry paths without outside writes; reuse existing
+  archive/security tests rather than duplicating their bodies.
+- [ ] **NT6-8** Test Open With/default-program checkbox using a dummy handler and
+  isolated MIME state: spaced filenames, failed launches and cancellation.
+  Prove no personal association changes before enabling external launches.
+
+## Priority 7 Repeatability automation and acceptance
+
+- [ ] **NT7-1** Separate a short local smoke tier, provider foundation, edge cases
+  and opt-in stress/lifecycle tiers. Share helpers and distinguish policy, mock
+  and real native evidence without duplicate test bodies.
+- [ ] **NT7-2** Repeat accepted cases with fresh/reused private profiles. Investigate
+  timing/focus flakes, never hiding them with mutation retries, silent skips or
+  arbitrary timeout increases. Verify teardown and retained-run limits.
+- [ ] **NT7-3** Measure listing, first thumbnails, zoom, drag feedback and cancel
+  latency with bounded workloads, cache state and sample counts. Agree measured
+  host-specific budgets before introducing regression thresholds.
+- [ ] **NT7-4** Define isolated Linux CI smoke with matching GTK/WebKit/driver
+  versions and no personal accounts. Real device/provider checks remain opt-in
+  on approved hosts; compilation is not device coverage.
+- [ ] **NT7-5** Map case IDs to acceptance rows and maintain redacted run records.
+  Add only reproduced defects to the engineering backlog; archive this track
+  when its declared deliverables and verification scope are complete.
+
+## Recommended first increment
+
+Start with NT0-1 through NT0-5 and the existing foundation, fixing harness
+failures before adding cases. Next tackle NT1/NT2 and NT3, especially cross-boundary
+progress and cancelled overwrite. Continue with names/provider quirks and native
+interaction regressions. Broader desktop/lifecycle/CI work needs explicit scope
+decisions, not unattended expansion of authority.

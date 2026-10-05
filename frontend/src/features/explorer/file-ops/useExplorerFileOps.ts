@@ -135,7 +135,7 @@ type Deps = {
 
 export const useExplorerFileOps = (deps: Deps) => {
   let conflictOperation: PasteOperation | null = null
-  let pasteBusy = false
+  const pasteBusy = writable(false)
   let extracting = false
   let extractionCancelled = false
   let activeExtractionEvent: string | null = null
@@ -282,6 +282,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         pasteActivityLabel(state.mode),
         progressEvent,
         () => deps.activityApi.requestCancel(progressEvent),
+        { completeOnReply: true },
       )
       let reservedDestNames: Set<string> | null = null
       let provider: CloudProviderKind | null = null
@@ -367,6 +368,7 @@ export const useExplorerFileOps = (deps: Deps) => {
           pasteActivityLabel(state.mode),
           progressEvent,
           () => deps.activityApi.requestCancel(progressEvent),
+          { completeOnReply: true },
         )
 
         if (policy === 'rename') {
@@ -503,6 +505,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         pasteActivityLabel(mode),
         progressEvent,
         () => deps.activityApi.requestCancel(progressEvent),
+        { completeOnReply: true },
       )
       await pasteClipboardCmd(target, policy, progressEvent, state)
       try {
@@ -541,7 +544,7 @@ export const useExplorerFileOps = (deps: Deps) => {
   }
 
   const handlePasteOrMove = async (dest: string, input?: PasteSources) => {
-    if (pasteBusy || conflictOperation) {
+    if (get(pasteBusy) || conflictOperation) {
       deps.showToast('Finish or cancel the current transfer first')
       return false
     }
@@ -556,7 +559,7 @@ export const useExplorerFileOps = (deps: Deps) => {
       deps.showToast('Clipboard is empty')
       return false
     }
-    pasteBusy = true
+    pasteBusy.set(true)
     try {
       const route = classifyPasteRoute(operation)
       if (route === 'unsupported') {
@@ -594,7 +597,7 @@ export const useExplorerFileOps = (deps: Deps) => {
       deps.showToast(`Paste failed: ${getErrorMessage(err)}`)
       return false
     } finally {
-      pasteBusy = false
+      pasteBusy.set(false)
     }
   }
 
@@ -636,14 +639,14 @@ export const useExplorerFileOps = (deps: Deps) => {
   }
 
   const resolveConflicts = async (policy: 'rename' | 'overwrite') => {
-    if (pasteBusy || !conflictOperation) return
+    if (get(pasteBusy) || !conflictOperation) return
     const operation = conflictOperation
     clearConflictState()
-    pasteBusy = true
+    pasteBusy.set(true)
     try {
       await runPaste(operation, policy)
     } finally {
-      pasteBusy = false
+      pasteBusy.set(false)
     }
   }
 
@@ -1010,6 +1013,7 @@ export const useExplorerFileOps = (deps: Deps) => {
 
   return {
     archivePasswordModal,
+    pasteBusy,
     cancelExtraction,
     conflictModalOpen,
     conflictList,

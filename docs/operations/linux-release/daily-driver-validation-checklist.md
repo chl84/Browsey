@@ -44,6 +44,18 @@ marked passed. Existing automated evidence is in the
 Features can already work while still lacking fresh installed-build, real-device
 or cross-distribution evidence.
 
+The [2026-10-05 scoped native foundation run](runs/2026-10-05-native-foundation.md)
+records separate-candidate local operation and Norwegian input acceptance, plus
+scope/harness regressions. Provider results and exclusions are recorded there;
+this does not close any parent row below or certify the installed build.
+
+The [native foundation fixes and retests](runs/2026-10-05-native-foundation-fixes.md)
+add generated file/tree transfer acceptance on all five providers and both
+local-hub directions, including MTP and OneDrive source removal. Local undo/redo
+passed a fresh retest after fixing the harness wait. The original full report
+remains FAIL; its passing provider cases and the later local PASS are recorded
+separately. No parent row below is closed by this bounded case coverage.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable
