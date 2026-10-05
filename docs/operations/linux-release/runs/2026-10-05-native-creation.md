@@ -134,6 +134,24 @@ Earlier BLOCKED/FAIL reports and all provider recovery data remain retained.
 These byte counts cover registered local data, not remote provider storage.
 NT1-4 is checked only after this complete five-provider acceptance and audit.
 
+## Production build after commit and push
+
+Application fixes, the native creation suite and accepted evidence were committed
+and pushed as `8fbb0b7401d69d8ef057aeff6ab1dbecf0dc6c6f`. The clean checkout then
+built successfully with the optimized release profile using:
+
+```bash
+PATH=/absolute/path/to/rust/bin:$PATH frontend/node_modules/.bin/tauri build --no-bundle -- --locked
+```
+
+The executable was completed at 21:27:13 UTC. `target/release/browsey` is
+29,348,256 bytes with SHA-256
+`71e285c3e10c2dfcb566523454501c20970cafb9e28ab8c6d8c79c0bc1f87ff9`.
+The fresh release Cargo fingerprint has `features=[]`, excluding `native-test`.
+Build inputs match the final accepted candidate's source hash above. This is
+successful build evidence; the Git-ignored binary was not installed or launched,
+and this does not claim installed-build or release signoff.
+
 ## Limits
 
 This is generated small-fixture creation acceptance. Concurrent provider writers,
