@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import { child, noLinks, ownedPath, inside } from './scope.mjs'
+import { assertPrivateFile, makeOwner } from './privacy.mjs'
 
 const exec = promisify(execFile)
 export const payload = 'Browsey native fixture: generated, non-personal data.\n'.repeat(64)
@@ -122,7 +123,7 @@ export class Fixtures {
 }
 
 export async function createLocalSession(plan, config, { step = async (_metadata, action) => action(),
-  onOwned = async () => {} } = {}) {
+  onOwned = async () => {}, beforeOwned = async () => null } = {}) {
   const local = plan.targets.find(target => target.kind === 'local')
   for (const target of plan.targets.filter(target => target.kind !== 'cloud')) {
     await step({ id: `approved-root-${target.kind}`, providers: [target.kind] }, async () => {
@@ -134,6 +135,7 @@ export async function createLocalSession(plan, config, { step = async (_metadata
   if (config.rcloneConfig) {
     await step({ id: 'private-cloud-credentials', providers: ['cloud'] }, async () => {
       assert.ok(inside(local.path, config.rcloneConfig))
+      await assertPrivateFile(config.rcloneConfig)
       const credential = await regularFile(config.rcloneConfig)
       assert.equal(credential.stat.mode & 0o777, 0o600, 'Test credential config must have mode 600')
       const sections = [...credential.text.matchAll(/^\[([^\]\r\n]+)\]\s*$/gm)].map(match => match[1])
@@ -142,12 +144,14 @@ export async function createLocalSession(plan, config, { step = async (_metadata
       cloudConfig = credential.text
     })
   }
+  const reservation = await beforeOwned()
+  const owner = await makeOwner(plan, reservation?.nonce)
   // Exclusive creation: no recursive mkdir of approved roots, no reused run/profile.
   for (const target of plan.targets.filter(target => target.kind !== 'cloud')) {
     await step({ id: `owned-run-${target.kind}`, providers: [target.kind] }, async () => {
       await fs.mkdir(target.run, { mode: 0o700 })
       if (target.kind === 'local') {
-        await fs.writeFile(child(local.run, 'owner.json'), JSON.stringify({ schema: 1, runId: plan.runId }), { flag: 'wx', mode: 0o600 })
+        await fs.writeFile(child(local.run, 'owner.json'), JSON.stringify(owner), { flag: 'wx', mode: 0o600 })
         await onOwned()
       }
       await fs.mkdir(target.files, { mode: 0o700 })

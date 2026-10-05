@@ -71,6 +71,11 @@ The [native mobile retest](runs/2026-10-05-native-mobile-retest.md) then passed 
 clean committed code. Its report and owned teardown are PASS; the earlier mobile
 preflight remains separately BLOCKED. No parent row closes from this foundation.
 
+The [native privacy/retention verification](runs/2026-10-05-native-retention.md)
+completes NT0-6 with permission/Git guards, bounded accounting and explicit
+single-run cleanup verified on synthetic fixtures. Real recovery runs remain
+retained; this does not close any functional acceptance row.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable

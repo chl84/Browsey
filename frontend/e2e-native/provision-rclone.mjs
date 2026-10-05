@@ -6,6 +6,7 @@ import { validateConfig, child, noLinks } from './scope.mjs'
 // Explicit one-time credential exception, not automatic discovery/import.
 // The maintainer must approve reading this exact existing source config first.
 const [permission, source, local, remote] = process.argv.slice(2)
+process.umask(0o077)
 assert.equal(permission, '--approved-existing-config', 'Explicit approval of the existing config is required')
 const destination = child(local, 'rclone.conf')
 validateConfig({ schema: 1, targets: { local, cloud: `rclone://${remote}/ai_agent_testfolder` }, rcloneConfig: destination })

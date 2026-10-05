@@ -7,17 +7,21 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import os from 'node:os'
 import { validateConfig, makePlan, candidateEnvironment, child, noLinks } from './scope.mjs'
-import { createLocalSession, Fixtures, regularFile } from './fixtures.mjs'
+import { createLocalSession, Fixtures } from './fixtures.mjs'
 import { NativeUi } from './ui.mjs'
 import { foundation, foundationManifest } from './cases.mjs'
 import { verifyCandidate, fileSha256 } from './candidate.mjs'
 import { createReport, recordSetup, recordCase, finishReport, summarizeProviders } from './report.mjs'
+import { privateJson, assertPrivateFile, writePrivate, inspectTree, processStamp, retentionPolicy } from './privacy.mjs'
+import { RetentionStore } from './retention.mjs'
 import { bounded, trackChild, checkPorts, waitDriver, ownedNativeDriverPid, assertDriverAlive,
   captureCandidate, assertCandidateAlive, candidateState, stopCandidate, teardown, applyTeardown } from './lifecycle.mjs'
 
 const exec = promisify(execFile)
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const candidate = path.join(repo, 'target/native-test/browsey')
+// Inherited by the scoped app/drivers only; no desktop/global permission change.
+process.umask(0o077)
 const args = process.argv.slice(2)
 const mode = args[0] ?? '--help'
 const options = { config: path.join(repo, 'frontend/e2e-native/config.local.json'), targets: null, a11y: false, fault: null, reportFault: null }
@@ -68,7 +72,7 @@ async function main() {
   if (options.reportFault) assert.ok(mode === '--run' && !options.fault
     && options.targets?.length === 1 && options.targets[0] === 'local' && !options.a11y,
   'Report faults require --run --targets local without accessibility, lifecycle faults or other providers')
-  let config = validateConfig(JSON.parse((await regularFile(options.config)).text))
+  let config = validateConfig(await privateJson(options.config))
   const configured = config.targets.map(target => target.kind)
   if (options.targets) {
     assert.ok(options.targets.includes('local') && options.targets.every(kind => configured.includes(kind)), 'Select configured kinds including local')
@@ -99,8 +103,7 @@ async function main() {
       })
     }
     if (config.rcloneConfig) await check('cloud: private test credentials', async () => {
-      const credential = await regularFile(config.rcloneConfig)
-      assert.equal(credential.stat.mode & 0o777, 0o600)
+      await assertPrivateFile(config.rcloneConfig)
     })
     console.log(JSON.stringify({ mode, checks, note: 'Metadata only; no writes, connectivity test or native UI acceptance' }, null, 2))
     if (checks.some(check => check.status !== 'PASS')) process.exitCode = 1
@@ -122,11 +125,13 @@ async function main() {
     'Native drag/drop', 'Mount/connect/unplug', 'Trash/format', 'Progress/cancellation with large files',
     'Archive/password/conflict handling', 'Other platforms/distributions', 'Watcher behavior (disabled in scoped candidate)'] })
   if (options.fault) report.notTested.push('All UI file-operation acceptance (lifecycle fault scope)')
-  let browser, driver, nativeDriverOwner, candidateOwner, log, reportOwned = false
+  let browser, driver, nativeDriverOwner, candidateOwner, log, reportOwned = false, reservation, activeCreated = false
   let tools, profile, session, env, fixture
+  const retention = new RetentionStore(path.join(repo, 'target/native-test/.retention'))
+  const activePath = child(local.run, 'active.json')
   const persist = async () => {
     summarizeProviders(report)
-    if (reportOwned) await fs.writeFile(reportPath, JSON.stringify(report, null, 2), { mode: 0o600 })
+    if (reportOwned) await writePrivate(reportPath, JSON.stringify(report, null, 2))
   }
   const setup = (metadata, action) => recordSetup(report, metadata, async () => {
     if (options.reportFault === 'setup-failure' && metadata.id === 'private-profile') {
@@ -150,7 +155,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['candidate.mjs', 'cases.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'report.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['candidate.mjs', 'cases.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -159,9 +164,13 @@ async function main() {
     tools = await setup(shared('dependencies'), dependencies)
     report.build = tools.build
     await setup(shared('driver-ports'), checkPorts)
-    profile = await createLocalSession(plan, config, { step: setup, onOwned: async () => {
-      await fs.writeFile(reportPath, JSON.stringify(report, null, 2), { flag: 'wx', mode: 0o600 })
+    profile = await createLocalSession(plan, config, { step: setup,
+      beforeOwned: () => setup(shared('retention-budget'), async () => { reservation = await retention.reserve(plan); return reservation }),
+      onOwned: async () => {
+      await writePrivate(reportPath, JSON.stringify(report, null, 2), { exclusive: true })
       reportOwned = true
+      await writePrivate(activePath, JSON.stringify({ runId: plan.runId, nonce: reservation.nonce }), { exclusive: true })
+      activeCreated = true
     } })
     session = { runId: plan.runId, dataRoots: plan.targets.map(target => target.files), profile }
     env = candidateEnvironment(process.env, profile, session)
@@ -192,6 +201,8 @@ async function main() {
         { env, cwd: local.files, stdio: ['ignore', log.fd, log.fd] })
       trackChild(driver)
       report.driverIdentity = { pid: driver.pid ?? null }
+      assertDriverAlive(driver)
+      report.driverIdentity.startTime = (await processStamp(driver.pid)).start
       if (options.fault === 'driver-exit') driver.kill('SIGTERM')
       const webkitExecutable = await fs.realpath(tools.webkit)
       await waitDriver(driver, { listening: async () => {
@@ -271,6 +282,29 @@ async function main() {
     await log?.close()
     report.finished = new Date().toISOString()
     await persist()
+    if (reportOwned && reservation) {
+      try {
+        const audit = await inspectTree(local.run)
+        report.retention = { status: 'PASS', private: true, bytes: audit.bytes, entries: audit.entries.length,
+          policy: retentionPolicy, scope: 'This registered local run; failed/multi-provider recovery retained' }
+        await persist()
+        if (activeCreated && report.teardownDetails.status === 'PASS') {
+          const active = await privateJson(activePath)
+          assert.equal(active.runId, plan.runId)
+          assert.equal(active.nonce, reservation.nonce)
+          await fs.unlink(activePath)
+        }
+        await retention.complete(plan.runId, await inspectTree(local.run), report.status)
+      } catch (error) {
+        report.retention = { status: 'BLOCKED', error: error.message }
+        if (report.status === 'PASS') report.status = 'BLOCKED'
+        report.failureKind ??= 'PRIVACY_OR_RETENTION'
+        report.failureOrigin ??= 'harness'
+        process.exitCode = 1
+        await persist()
+        await retention.complete(plan.runId, null, report.status)
+      }
+    } else if (reservation) await retention.complete(plan.runId, null, 'BLOCKED')
     if (reportOwned) console.log(`Native report: ${reportPath}\n${report.status}; generated fixtures retained for inspection (no cleanup of existing files).`)
     else console.log(`Native preflight report: ${JSON.stringify(report)}\n${report.status}; no owned report path was established.`)
   }

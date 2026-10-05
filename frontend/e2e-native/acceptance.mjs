@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { validateConfig, noLinks } from './scope.mjs'
-import { regularFile } from './fixtures.mjs'
+import { privateJson } from './privacy.mjs'
 
 export const repo = fileURLToPath(new URL('../..', import.meta.url))
 const exec = promisify(execFile)
@@ -33,7 +33,7 @@ export async function preflightFailure() {
 
 export async function faultReport(flag, name, expected) {
   assert.ok(['--lifecycle-fault', '--report-fault'].includes(flag))
-  const config = validateConfig(JSON.parse((await regularFile(path.join(repo, 'frontend/e2e-native/config.local.json'))).text))
+  const config = validateConfig(await privateJson(path.join(repo, 'frontend/e2e-native/config.local.json')))
   const local = config.targets.find(target => target.kind === 'local')
   let output, code
   try {
@@ -45,9 +45,10 @@ export async function faultReport(flag, name, expected) {
   const raw = /^Native report: (.+)$/m.exec(output)?.[1]
   assert.ok(raw && /^\.bnt-[a-f0-9]{32}\/report\.json$/.test(path.relative(local.path, raw)), 'Read only this generated owned report')
   await noLinks(raw, fs)
-  const report = JSON.parse((await regularFile(raw)).text)
-  const owner = JSON.parse((await regularFile(path.join(path.dirname(raw), 'owner.json'))).text)
+  const report = await privateJson(raw)
+  const owner = await privateJson(path.join(path.dirname(raw), 'owner.json'))
   assert.equal(owner.runId, report.runId)
+  assert.equal(report.retention?.status, 'PASS', 'Fault evidence must retain verified private recovery data')
   assert.equal(path.basename(path.dirname(raw)), `.bnt-${report.runId.replaceAll('-', '')}`)
   assert.equal(flag === '--lifecycle-fault' ? report.injectedLifecycleFault : report.injectedReportFault, name)
   assert.ok(['FAIL', 'BLOCKED'].includes(report.status), 'Expected failure cannot be a native PASS')

@@ -33,6 +33,10 @@ passed all 17 local/mobile foundation cases once the same approved folder became
 available. Its schema 3 provider/part results and owned teardown are PASS; the
 earlier unavailable-folder preflight remains a separate BLOCKED result.
 
+The [privacy and retention verification](operations/linux-release/runs/2026-10-05-native-retention.md)
+records NT0-6 permission/Git regressions, explicit cleanup of synthetic owned
+runs and fresh native local/fault checks. Existing real recovery data is retained.
+
 The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
 stability, basic operations, transfer boundaries, failure safety and edge cases.
 It tracks suite work; accepted candidate outcomes stay in the daily-driver
@@ -82,6 +86,10 @@ Copy `frontend/e2e-native/config.example.json` to the ignored
 `frontend/e2e-native/config.local.json`. Enter only maintainer-approved absolute
 test-folder paths, or `rclone://Remote/ai_agent_testfolder` for cloud. Leave missing
 providers `null`; they remain NOT_CONFIGURED, not PASS. The local root is mandatory.
+Set this machine configuration to mode `600` before using the runner. Private
+metadata/credential files must be regular files owned by the current user with
+one hard link; symlinks, other owners and broader permissions are rejected before
+parsing. The runner does not silently chmod an existing configuration.
 
 For cloud, the maintainer must supply a **test-only** `rclone.conf` containing only
 the approved remote, inside the approved local folder, mode `600`. Set its path
@@ -267,9 +275,53 @@ NOT_RUN/DEFERRED/NOT_CONFIGURED and explicitly list excluded acceptance. A PASS
 means only the selected small-file foundation cases, not release signoff.
 Authorized-plan preflight failures before run creation print a structured BLOCKED
 report, not passing tests or an owned artifact path.
-There is no automatic recursive cleanup: inspect and remove only a verified owned
-UUID run, never the approved test root or unrelated files. Private profiles can
-contain OAuth tokens; securely handle retained runs.
+The runner and provisioning helper use process-local umask `077`, inherited by
+owned child processes. New local run/profile/artifact directories require `700`
+and regular files require `600`. A metadata-only post-teardown audit checks owner,
+type, modes, hard links and budgets inside exactly this UUID run. AT-SPI's Unix
+socket can have mode `777`; its audited `700` ancestor directories prevent other
+users from reaching it. This exception does not relax regular-file permissions.
+Private profiles can contain OAuth tokens; securely handle retained runs.
+
+New runs register an ownership nonce and approved-local-root hash in private,
+ignored `target/native-test/.retention` metadata. Preflight reserves 128 MiB before
+creating an owned run. Limits are 20 registered runs and 512 MiB of accounted
+local data/reservations, with 128 MiB, 10,000 entries, depth 32 and a checked
+10-second elapsed budget per local tree audit. These are fail-closed accounting
+guards, not filesystem quotas or hard deadlines for stalled filesystem calls.
+Remote fixture bytes and older unregistered runs are outside this accounting;
+no approved-root inventory is performed. An uncertain audit blocks new runs.
+
+Successful local-only runs must be retained for at least seven days before they
+can become eligible for explicit cleanup. Age never triggers automatic deletion.
+Failed, blocked, active, incompletely torn-down, legacy/unregistered and
+multi-provider runs preserve their data, including the local ownership anchor
+for remote recovery. This increment supplies no remote cleanup command.
+
+```bash
+node frontend/e2e-native/retain.mjs --audit RUN_UUID
+node frontend/e2e-native/retain.mjs --plan RUN_UUID
+node frontend/e2e-native/retain.mjs --cleanup RUN_UUID REVIEWED_PLAN_SHA256
+```
+
+Audit reads bounded metadata from the exact registered run. Plan additionally
+requires a matching private schema-2 owner, schema-3 native PASS report, passing
+cases, confirmed four-step teardown and expired minimum retention. The recorded
+runner/driver/candidate process identities must all be gone. Runtime sockets
+also prevent cleanup because sidecar process ownership has not been established.
+Cleanup rechecks
+the plan hash and each entry's identity, then unlinks entries in postorder,
+preserving owner/report metadata until other data is removed. It never deletes
+the approved root, adopts a legacy run or signals a process. Changed plans reject
+before deletion; an identity/I/O failure during deletion records uncertainty and
+stops without retry, potentially leaving a partial tree.
+
+For a specifically identified uncertain run, `--review RUN_UUID` can restore
+byte accounting after private-tree checks, confirmed teardown and proof that all
+recorded processes have exited. It clears only a matching inactive marker and
+updates the registry; the original report/status and all recovery files remain.
+It cannot adopt missing/legacy ownership or repair non-private data. Concurrent
+editing remains outside the trusted-session guard described above.
 
 Commit source, shared tests, example config, docs and dependency lockfiles. Do not
 commit machine approvals, credentials, binaries, raw reports, screenshots/logs or

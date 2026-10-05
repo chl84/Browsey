@@ -120,9 +120,16 @@ Complete these prerequisites before expanding the functional matrix.
   passed all 17 local/mobile cases and 16 file/tree transfer parts on clean commit
   `9868e129`, including copy/move in both directions. The earlier preflight remains
   BLOCKED; device lifecycle acceptance remains outside this foundation scope.
-- [ ] **NT0-6** Verify credential/artifact permissions and Git exclusions. Define
+- [x] **NT0-6** Verify credential/artifact permissions and Git exclusions. Define
   bounded retention and explicit owned-run cleanup, preserving recovery data
   and never recursively cleaning an approved root.
+  Verified 2026-10-05 in the
+  [privacy/retention run](../operations/linux-release/runs/2026-10-05-native-retention.md):
+  all 58 policy tests passed; fresh local acceptance passed eight cases and the
+  reporting/lifecycle fault assertions retained private recovery evidence.
+  Private metadata, bounded local accounting and explicit UUID/plan-hash cleanup
+  are enforced. Cleanup deletion passed only on synthetic fixtures; real old,
+  failed/blocked, multi-provider and runtime-socket runs remain retained.
 
 ## Priority 1 Basic operations and navigation
 
