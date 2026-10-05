@@ -22,5 +22,7 @@ test('shallow fixture metadata is independent and rejects symlinks and oversized
     await fs.unlink(`${files}/link`)
     for (let index = 0; index < 31; index++) await fixture.write(`${files}/generated-${index}.txt`, 'x')
     await assert.rejects(fixture.snapshot(files), /32 generated children/)
+    assert.equal((await fixture.snapshot(files, { maxChildren: 256 })).length, 33)
+    for (const maxChildren of [0, 257, Infinity, 1.5]) await assert.rejects(fixture.snapshot(files, { maxChildren }), /bound/)
   } finally { await fs.rm(temp, { recursive: true, force: true }) }
 })

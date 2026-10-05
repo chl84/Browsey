@@ -88,6 +88,12 @@ accessibility, independent file readback and confirmed teardown/retention passed
 Recursive OneDrive search is implemented and verified; missing-root fallback
 and stale search-draft results are corrected. The broader parent rows remain open.
 
+The [native selection verification](runs/2026-10-05-native-selection.md) completes
+NT1-3 with 60 list/grid parts on all five providers and five local virtualized
+selection parts using 200 generated files. Exact selected-copy membership/bytes,
+owned accessibility, teardown and privacy audits passed; final reporting changes
+passed a fresh local retest. This scope does not close the broader parent rows.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable

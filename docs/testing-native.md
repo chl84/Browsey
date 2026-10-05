@@ -49,6 +49,11 @@ OneDrive search, combined filters/reset, hidden files and list/grid transitions.
 It also records the missing-root and stale-search-draft fixes and retained
 earlier blocked attempts.
 
+The [selection verification](operations/linux-release/runs/2026-10-05-native-selection.md)
+records NT1-3 list/grid selection and exact selected-file copies on all five
+providers, plus a representative 200-file local virtualized list. It also
+documents the bounded retention-count increase without deleting recovery data.
+
 The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
 stability, basic operations, transfer boundaries, failure safety and edge cases.
 It tracks suite work; accepted candidate outcomes stay in the daily-driver
@@ -136,6 +141,13 @@ there is no silent skip or fallback to the installed app.
 NT1-1 navigation cases. `--suite listing` selects NT1-2 sorting, column filters,
 hidden generated files and scoped recursive search in both views on all selected
 providers, including cloud. Fault injections remain restricted to the foundation.
+`--suite selection` selects NT1-3 selection and exact-copy cases in both views
+on all five providers, plus a 200-file virtualized local list case. Large-list
+virtualization is represented by local disk; it is not separately certified on
+the remote providers. Ctrl toggles, Shift ranges, arrows, Escape, empty-space
+clicks, navigation restoration and filtered select-all use real input. Copies
+are sent once and independently checked for exact membership and bytes; these
+checks are not a backend invocation receipt. NT1-6 covers repeated requests.
 
 The listing cases compare file order against independently read fixture sizes,
 modified minutes, names and extensions. They combine all four column filters,
@@ -342,7 +354,7 @@ Private profiles can contain OAuth tokens; securely handle retained runs.
 
 New runs register an ownership nonce and approved-local-root hash in private,
 ignored `target/native-test/.retention` metadata. Preflight reserves 128 MiB before
-creating an owned run. Limits are 20 registered runs and 512 MiB of accounted
+creating an owned run. Limits are 40 registered runs and 512 MiB of accounted
 local data/reservations, with 128 MiB, 10,000 entries, depth 32 and a checked
 10-second elapsed budget per local tree audit. These are fail-closed accounting
 guards, not filesystem quotas or hard deadlines for stalled filesystem calls.

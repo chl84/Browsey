@@ -121,12 +121,14 @@ export class Fixtures {
     return (await regularFile(raw)).text
   }
 
-  async snapshot(raw) {
+  async snapshot(raw, { maxChildren = 32 } = {}) {
     ownedPath(this.roots, raw)
+    assert.ok(Number.isSafeInteger(maxChildren) && maxChildren > 0 && maxChildren <= 256,
+      'Generated snapshot bound must be between 1 and 256')
     const cloud = raw.startsWith('rclone://')
     if (!cloud) await noLinks(raw, fs)
     const items = cloud ? JSON.parse(await this.#rclone(['lsjson', rclonePath(raw)])) : await fs.readdir(raw)
-    assert.ok(Array.isArray(items) && items.length <= 32, 'Listing verification is limited to 32 generated children')
+    assert.ok(Array.isArray(items) && items.length <= maxChildren, `Listing verification is limited to ${maxChildren} generated children`)
     const result = []
     for (const item of items) {
       const name = cloud ? item.Name : item

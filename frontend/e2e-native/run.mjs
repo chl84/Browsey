@@ -12,6 +12,7 @@ import { NativeUi } from './ui.mjs'
 import { foundation, foundationManifest } from './cases.mjs'
 import { navigation, navigationManifest } from './navigation.mjs'
 import { listing, listingManifest } from './listing.mjs'
+import { selection, selectionManifest } from './selection.mjs'
 
 import { verifyCandidate, fileSha256 } from './candidate.mjs'
 import { createReport, recordSetup, recordCase, finishReport, summarizeProviders } from './report.mjs'
@@ -22,7 +23,8 @@ import { bounded, trackChild, checkPorts, waitDriver, ownedNativeDriverPid, asse
 
 const exec = promisify(execFile)
 const suites = { foundation: { run: foundation, manifest: foundationManifest },
-  navigation: { run: navigation, manifest: navigationManifest }, listing: { run: listing, manifest: listingManifest } }
+  navigation: { run: navigation, manifest: navigationManifest }, listing: { run: listing, manifest: listingManifest },
+  selection: { run: selection, manifest: selectionManifest } }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const candidate = path.join(repo, 'target/native-test/browsey')
 // Inherited by the scoped app/drivers only; no desktop/global permission change.
@@ -37,7 +39,7 @@ for (let i = 1; i < args.length; i++) {
   else if (args[i] === '--targets') options.targets = args[++i]?.split(',')
   else if (args[i] === '--suite') {
     options.suite = args[++i]
-    assert.ok(Object.hasOwn(suites, options.suite), 'Expected foundation, navigation or listing suite')
+    assert.ok(Object.hasOwn(suites, options.suite), 'Expected foundation, navigation, listing or selection suite')
   }
   else if (args[i] === '--a11y') options.a11y = true
   else if (args[i] === '--fullscreen') options.fullscreen = true
@@ -72,7 +74,7 @@ async function dependencies() {
 
 async function main() {
   if (mode === '--help') {
-    console.log('Native suite: --plan | --check | --run [--config PATH] [--targets local,usb,...] [--suite foundation|navigation|listing] [--a11y] [--fullscreen]\nFullscreen requires explicit maintainer approval; only the captured candidate window is targeted.\nLifecycle faults: --run --targets local --lifecycle-fault ' + faults.join('|') + '\nReport faults: --run --targets local --report-fault ' + reportFaults.join('|') + '\nBuild separately: bash scripts/dev/test-native-linux.sh --build\nOnly existing, explicitly approved ai_agent_testfolder roots are allowed.')
+    console.log('Native suite: --plan | --check | --run [--config PATH] [--targets local,usb,...] [--suite ' + Object.keys(suites).join('|') + '] [--a11y] [--fullscreen]\nFullscreen requires explicit maintainer approval; only the captured candidate window is targeted.\nLifecycle faults: --run --targets local --lifecycle-fault ' + faults.join('|') + '\nReport faults: --run --targets local --report-fault ' + reportFaults.join('|') + '\nBuild separately: bash scripts/dev/test-native-linux.sh --build\nOnly existing, explicitly approved ai_agent_testfolder roots are allowed.')
     return
   }
   assert.ok(['--plan', '--check', '--run'].includes(mode), 'Unknown native runner mode')
@@ -136,6 +138,8 @@ async function main() {
     'Native drag/drop', 'Mount/connect/unplug', 'Trash/format', 'Progress/cancellation with large files',
     'Archive/password/conflict handling', 'Other platforms/distributions', 'Watcher behavior (disabled in scoped candidate)'] })
   if (options.fault) report.notTested.push('All UI file-operation acceptance (lifecycle fault scope)')
+  if (options.suite === 'selection') report.notTested.push('Large-list virtualization on USB/network/cloud/mobile (local representative only)',
+    'Backend invocation receipts and repeated copy/paste submission (NT1-6)')
   let browser, driver, nativeDriverOwner, candidateOwner, log, reportOwned = false, reservation, activeCreated = false
   let tools, profile, session, env, fixture
   const retention = new RetentionStore(path.join(repo, 'target/native-test/.retention'))
@@ -166,7 +170,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['candidate.mjs', 'cases.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['candidate.mjs', 'cases.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))

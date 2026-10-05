@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:net'
 import { validateConfig, makePlan } from './scope.mjs'
 import { RetentionStore } from './retention.mjs'
-import { writePrivate, privateJson, inspectTree, processStamp } from './privacy.mjs'
+import { writePrivate, privateJson, inspectTree, processStamp, retentionPolicy } from './privacy.mjs'
 
 const now = Date.now()
 const old = new Date(now - 8 * 86400_000).toISOString()
@@ -38,6 +38,20 @@ async function fixture(t, { policy, providers = ['local'] } = {}) {
   const saveReport = () => writePrivate(`${run}/report.json`, JSON.stringify(report))
   return { store, plan, config, root, run, owner, report, record, temporary, saveOwner, saveReport }
 }
+
+test('expanded finite count preserves registered recovery while still stopping at the new limit', async t => {
+  const f = await fixture(t)
+  const registryPath = `${f.temporary}/registry/registry.json`
+  const registry = await privateJson(registryPath)
+  const original = { ...registry.runs[0] }
+  while (registry.runs.length < retentionPolicy.maxRuns - 1) registry.runs.push({ ...original, runId: randomUUID(), bytes: 0 })
+  await writePrivate(registryPath, JSON.stringify(registry))
+  await f.store.reserve(makePlan(f.config, randomUUID()))
+  await assert.rejects(f.store.reserve(makePlan(f.config, randomUUID())), /count budget/)
+  const after = await privateJson(registryPath)
+  assert.deepEqual(after.runs.slice(0, registry.runs.length), registry.runs)
+  assert.equal(await fs.readFile(`${f.run}/files/generated.txt`, 'utf8'), 'fixture recovery data')
+})
 
 test('reviewed cleanup removes only one eligible synthetic run, preserving its approved root and unrelated contents', async t => {
   const f = await fixture(t)

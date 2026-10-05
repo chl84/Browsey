@@ -15,6 +15,51 @@ test('native modifier actions use WebDriver key codes and release on failure', a
   assert.equal(released, 1)
 })
 
+test('modified selection rejects outside paths before input and releases a held modifier if click fails', async () => {
+  let released = 0, clicked = 0
+  const action = { down() { return this }, up() { return this }, perform: async () => {} }
+  const ui = new NativeUi({ releaseActions: async () => { released++ }, action: () => action,
+    $: async () => ({ waitForDisplayed: async () => {}, click: async () => { clicked++; throw new Error('synthetic pointer failure') } }) }, ['/owned/files'])
+  await assert.rejects(ui.modifiedSelect('/outside', 'Control'), /outside/)
+  assert.equal(released, 0); assert.equal(clicked, 0)
+  await assert.rejects(ui.modifiedSelect('/owned/files/generated.txt', 'Shift'), /pointer failure/)
+  assert.equal(clicked, 1); assert.equal(released, 2)
+})
+
+test('selected copy stops after one unacknowledged request without navigating or pasting', async () => {
+  const calls = []
+  const ui = new NativeUi({ execute: async () => undefined,
+    waitUntil: async predicate => assert.equal(await predicate(), true) }, ['/owned/files'])
+  ui.chord = async key => { calls.push(key) }
+  ui.navigate = async () => { calls.push('navigate') }
+  ui.idle = async () => { throw new Error('synthetic copy acknowledgement absent') }
+  await assert.rejects(ui.copySelection('/owned/files/dest', ['/owned/files/source/a.txt']), /acknowledgement absent/)
+  assert.deepEqual(calls, ['c'])
+})
+
+test('acknowledged selected copy submits one copy and one paste in order', async () => {
+  const calls = []
+  const ui = new NativeUi({ execute: async () => undefined,
+    waitUntil: async predicate => assert.equal(await predicate(), true) }, ['/owned/files'])
+  ui.chord = async key => { calls.push(key) }
+  ui.navigate = async dest => { calls.push(['navigate', dest]) }
+  ui.idle = async expected => { calls.push(expected) }
+  await ui.copySelection('/owned/files/dest', ['/owned/files/source/a.txt', '/owned/files/source/c.txt'])
+  assert.deepEqual(calls, ['c', { toast: 'Copied' }, ['navigate', '/owned/files/dest'], 'v',
+    { resultPath: '/owned/files/dest/a.txt' }])
+})
+
+test('selection rejects duplicate expected entries and an outside observation without swallowed retries', async () => {
+  let polls = 0
+  const ui = new NativeUi({ execute: async () => ({ current: '/owned/files', rows: [{ path: '/outside', selected: true }], text: '' }),
+    waitUntil: async predicate => { polls++; assert.equal(await predicate(), true) } }, ['/owned/files'])
+  ui.idle = async () => {}
+  await assert.rejects(ui.selection('/owned/files', ['/owned/files/a', '/owned/files/a']), /duplicates/)
+  assert.equal(polls, 0)
+  await assert.rejects(ui.selection('/owned/files', []), /outside/)
+  assert.equal(polls, 1)
+})
+
 test('input mismatch or lost focus aborts before the caller can submit', async () => {
   const action = { down() { return this }, up() { return this }, perform: async () => {} }
   const ui = new NativeUi({ releaseActions: async () => {}, action: () => action, keys: async () => {} }, [])

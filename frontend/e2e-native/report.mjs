@@ -13,6 +13,9 @@ export function requirements(item) {
   return Object.fromEntries(item.providers.map((provider, index) => {
     if (operation === 'listing') return [provider, ['directory-read', 'ui-sort', 'ui-column-filters', 'ui-filter-reset',
       'ui-hidden-files', 'ui-name-filter', 'view-switch', 'scoped-recursive-search']]
+    if (operation === 'selection') return [provider, ['ui-single-selection', 'ui-multiple-selection',
+      'ui-range-selection', 'ui-arrow-selection', 'ui-select-all', 'selected-copy-readback',
+      ...(item.id === 'selection-virtual-local' ? ['virtualized-selection'] : ['ui-empty-space', 'selection-navigation', 'view-switch'])]]
     if (operation !== 'copy' && operation !== 'move') return [provider, common[operation] ?? []]
     const source = item.providers.length === 1 || index === 0
     const destination = item.providers.length === 1 || index === 1

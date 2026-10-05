@@ -159,9 +159,17 @@ Use shared cases for applicable providers and independently verify actual files.
   harness tests, 654 frontend tests and 768 Rust tests passed (19 Rust tests
   ignored). Watchers, large-search performance, timezone/date-range boundaries
   and other cloud providers remain outside this scope.
-- [ ] **NT1-3** Verify single/multiple selection, Ctrl/Shift, arrows and select-all,
+- [x] **NT1-3** Verify single/multiple selection, Ctrl/Shift, arrows and select-all,
   virtualized rows, empty-space clicks and navigation. Operations must receive
   exactly the intended entries once.
+  Completed by the [native selection verification](../operations/linux-release/runs/2026-10-05-native-selection.md):
+  all 60 list/grid parts passed on local disk, USB, network, OneDrive and mobile,
+  plus five parts on a representative 200-file local virtualized list. Exact
+  selected-copy membership/bytes, source preservation, owned accessibility,
+  teardown and private audits passed. Final reporting changes passed a fresh
+  local retest. All 78 harness tests and 36 relevant frontend tests passed.
+  Remote large-list/grid virtualization and repeated operation requests remain
+  outside this scope; NT1-6 covers repeated dispatch. All real runs are retained.
 - [ ] **NT1-4** Create files/folders with empty contents, duplicate names and
   invalid input. Test Enter, Cancel/Escape and focus restoration; rejection
   must leave existing fixtures unchanged.

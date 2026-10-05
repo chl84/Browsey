@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { child, noLinks } from './scope.mjs'
 
 export const retentionPolicy = Object.freeze({ schema: 1, successDays: 7, maxRunBytes: 128 * 1024 * 1024,
-  maxTotalBytes: 512 * 1024 * 1024, maxRuns: 20, maxEntries: 10_000, maxDepth: 32, auditMs: 10_000 })
+  maxTotalBytes: 512 * 1024 * 1024, maxRuns: 40, maxEntries: 10_000, maxDepth: 32, auditMs: 10_000 })
 export const rootHash = root => createHash('sha256').update(root).digest('hex')
 
 export function privateStat(stat, directory = false) {

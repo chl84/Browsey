@@ -168,6 +168,111 @@ export class NativeUi {
     return row
   }
 
+  async modifiedSelect(raw, modifier) {
+    ownedPath(this.roots, raw)
+    assert.ok(['Control', 'Shift'].includes(modifier))
+    await this.browser.releaseActions()
+    const row = await this.browser.$(`[data-path=${JSON.stringify(raw)}]`)
+    await row.waitForDisplayed({ timeout: 5000 })
+    try {
+      await this.browser.action('key').down(Key[modifier]).perform(true)
+      await row.click({ button: 'left', skipRelease: true })
+      await this.browser.action('key').up(Key[modifier]).perform()
+    } finally { await this.browser.releaseActions() }
+  }
+
+  async selection(raw, paths, { directories = [] } = {}) {
+    ownedPath(this.roots, raw)
+    for (const path of [...paths, ...directories]) ownedPath(this.roots, path)
+    assert.equal(new Set(paths).size, paths.length, 'Expected selection cannot contain duplicates')
+    assert.ok(directories.every(path => paths.includes(path)))
+    await this.idle()
+    let state
+    await this.browser.waitUntil(async () => {
+      state = await this.browser.execute(() => {
+        const collection = [...document.querySelectorAll('.rows, .grid')].find(node => node.getClientRects().length)
+        return { current: document.querySelector('main.shell')?.dataset.currentPath,
+          rows: [...(collection?.querySelectorAll('[data-path]') ?? [])].map(node => ({ path: node.dataset.path,
+            selected: node.classList.contains('selected') })),
+          text: document.querySelector('.statusbar .status-text')?.textContent ?? '' }
+      })
+      if ([state.current, ...state.rows.map(row => row.path)].filter(Boolean).some(path => !this.roots.some(root => inside(root, path)))) return true
+      const counts = noun => Number(state.text.match(new RegExp(`(?:^|\\|\\s*)([0-9]+) ${noun}s? selected`))?.[1] ?? 0)
+      return state.current === raw && state.rows.every(row => row.selected === paths.includes(row.path))
+        && counts('file') === paths.length - directories.length && counts('folder') === directories.length
+    }, { timeout: 10_000, interval: 100, timeoutMsg: 'Rendered selection/status count did not match the intended entries' })
+    ownedPath(this.roots, state.current)
+    for (const row of state.rows) ownedPath(this.roots, row.path)
+  }
+
+  async selectionKey(key, modifier) {
+    assert.ok(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape'].includes(key))
+    if (modifier) await this.chord(key, modifier)
+    else { await this.browser.releaseActions(); await this.browser.keys([Key[key]]) }
+    await this.idle()
+  }
+
+  async emptySpace(raw) {
+    await this.waitPath(raw)
+    // Inspect hit testing only; selection is changed by a real pointer click.
+    const point = await this.browser.execute(() => {
+      const collection = [...document.querySelectorAll('.rows, .grid')].find(node => node.getClientRects().length)
+      const rect = collection.getBoundingClientRect()
+      for (let y = Math.floor(rect.bottom - 20); y > rect.top + 20; y -= 16) {
+        const x = Math.floor(rect.left + rect.width / 2)
+        if (document.elementFromPoint(x, y) === collection) return { x, y }
+      }
+      return null
+    })
+    assert.ok(point, 'Expected a hittable empty collection background')
+    try { await this.browser.action('pointer').move({ origin: 'viewport', ...point }).down().up().perform() }
+    finally { await this.browser.releaseActions() }
+  }
+
+  async copySelection(dest, paths) {
+    ownedPath(this.roots, dest)
+    assert.ok(paths.length)
+    for (const path of paths) ownedPath(this.roots, path)
+    await this.browser.waitUntil(async () => await this.browser.execute(() =>
+      document.querySelector('.toast[role="status"]')?.textContent.trim()) !== 'Copied', { timeout: 5000 })
+    await this.chord('c')
+    await this.idle({ toast: 'Copied' })
+    await this.navigate(dest)
+    await this.chord('v')
+    await this.idle({ resultPath: child(dest, paths[0].split('/').at(-1)) }, 360_000)
+  }
+
+  async virtualWindow(raw, allPaths, required) {
+    ownedPath(this.roots, raw)
+    for (const path of allPaths) ownedPath(this.roots, path)
+    assert.ok(allPaths.includes(required))
+    let state
+    await this.browser.waitUntil(async () => {
+      state = await this.browser.execute(() => {
+        const collection = document.querySelector('.rows')
+        return { current: document.querySelector('main.shell')?.dataset.currentPath,
+          paths: [...collection.querySelectorAll('[data-path]')].map(node => node.dataset.path),
+          height: collection.clientHeight, total: collection.scrollHeight }
+      })
+      if ([state.current, ...state.paths].some(path => !this.roots.some(root => inside(root, path)))) return true
+      return state.current === raw && state.paths.includes(required)
+    }, { timeout: 10_000, interval: 100 })
+    ownedPath(this.roots, state.current)
+    for (const path of state.paths) ownedPath(this.roots, path)
+    assert.ok(state.paths.length > 0 && state.paths.length < allPaths.length, 'Large fixture must actually be virtualized')
+    assert.ok(state.paths.every(path => allPaths.includes(path)), 'Virtual window must contain only generated entries')
+    assert.ok(state.total > state.height, 'Virtual fixture must exceed the viewport')
+  }
+
+  async arrowSteps(count, direction = 'ArrowDown') {
+    assert.ok(Number.isSafeInteger(count) && count > 0 && count <= 256)
+    assert.ok(['ArrowDown', 'ArrowUp'].includes(direction))
+    const action = this.browser.action('key')
+    for (let i = 0; i < count; i++) action.down(Key[direction]).up(Key[direction])
+    try { await action.perform() } finally { await this.browser.releaseActions() }
+    await this.idle()
+  }
+
   async chord(key, modifier = 'Control') {
     // Explicit key-up ordering and action release avoid sticky modifiers in
     // native WebKit (notably Shift+Delete followed by typing a slash).
