@@ -73,6 +73,24 @@ describe('createExplorerState sort refresh behavior', () => {
     })
   })
 
+  it('explicit cloud refresh replaces a cached empty listing without adding navigation history', async () => {
+    const state = createExplorerState()
+    const path = 'rclone://Generated/fixtures'
+    const entry = makeEntry('new.txt', `${path}/new.txt`)
+    listDirMock.mockImplementation(async (_path, _sort, _progress, forceRefresh) =>
+      ({ current: _path, entries: forceRefresh ? [entry] : [] }))
+    await state.load('/previous')
+    await state.load(path)
+    expect(get(state.entries)).toEqual([])
+    await state.load(path, { recordHistory: false, forceRefresh: true })
+    expect(get(state.entries)).toEqual([expect.objectContaining(entry)])
+    expect(listDirMock).toHaveBeenLastCalledWith(path, expect.anything(), undefined, true)
+    await state.goBack()
+    expect(get(state.current)).toBe('/previous')
+    await state.goForward()
+    expect(get(state.current)).toBe(path)
+  })
+
   it.each([true, false])('hands loading ownership to a silent replacement (old finishes first: %s)', async (oldFirst) => {
     vi.useFakeTimers()
     const state = createExplorerState()

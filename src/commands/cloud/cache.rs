@@ -59,27 +59,49 @@ pub(crate) fn list_cloud_dir_cached_with_refresh_event(
     path: &CloudPath,
     refresh_event_app: Option<tauri::AppHandle>,
 ) -> CloudCommandResult<Vec<CloudEntry>> {
-    list_cloud_dir_cached_with_request(path, refresh_event_app, None)
+    list_cloud_dir_cached_with_request(path, refresh_event_app, None, false)
 }
 
 pub(crate) fn list_cloud_dir_cached_interactive_with_refresh_event(
     path: &CloudPath,
     refresh_event_app: Option<tauri::AppHandle>,
     cancel: Option<&AtomicBool>,
+    force_refresh: bool,
 ) -> CloudCommandResult<Vec<CloudEntry>> {
-    list_cloud_dir_cached_with_request(path, refresh_event_app, cancel)
+    list_cloud_dir_cached_with_request(path, refresh_event_app, cancel, force_refresh)
 }
 
 fn list_cloud_dir_cached_with_request(
     path: &CloudPath,
     refresh_event_app: Option<tauri::AppHandle>,
     cancel: Option<&AtomicBool>,
+    force_refresh: bool,
+) -> CloudCommandResult<Vec<CloudEntry>> {
+    list_cloud_dir_cached_with_fetch(path, refresh_event_app, force_refresh, || {
+        if force_refresh || cancel.is_some() {
+            list_cloud_dir_interactive(path, cancel)
+        } else {
+            list_cloud_dir_with_retry(path)
+        }
+    })
+}
+
+fn list_cloud_dir_cached_with_fetch(
+    path: &CloudPath,
+    refresh_event_app: Option<tauri::AppHandle>,
+    force_refresh: bool,
+    fetch: impl FnOnce() -> CloudCommandResult<Vec<CloudEntry>>,
 ) -> CloudCommandResult<Vec<CloudEntry>> {
     let now = Instant::now();
     let key = path.to_string();
     if let Ok(mut guard) = cloud_dir_listing_cache().lock() {
         prune_cloud_dir_listing_cache_locked(&mut guard, now);
-        if let Some(cached) = lookup_cloud_dir_listing_cache_locked(&guard, &key, now) {
+        let cached = if force_refresh {
+            None
+        } else {
+            lookup_cloud_dir_listing_cache_locked(&guard, &key, now)
+        };
+        if let Some(cached) = cached {
             match cached {
                 CloudDirListingCacheLookup::Fresh(cached) => {
                     debug!(
@@ -112,10 +134,7 @@ fn list_cloud_dir_cached_with_request(
         }
     }
 
-    let entries = match cancel {
-        Some(cancel) => list_cloud_dir_interactive(path, Some(cancel))?,
-        None => list_cloud_dir_with_retry(path)?,
-    };
+    let entries = fetch()?;
     store_cloud_dir_listing_cache_entry(key, now, entries.clone());
     Ok(entries)
 }
@@ -489,6 +508,90 @@ mod tests {
 
         assert_eq!(refresh_calls.load(Ordering::SeqCst), 1);
 
+        clear_cloud_listing_test_state();
+    }
+
+    #[test]
+    fn explicit_refresh_bypasses_fresh_and_stale_cache_and_updates_only_requested_directory() {
+        let _guard = lock_cloud_listing_test_state();
+        clear_cloud_listing_test_state();
+        let path = CloudPath::parse("rclone://refresh/docs").unwrap();
+        let other = CloudPath::parse("rclone://refresh/other").unwrap();
+        for age in [
+            Duration::ZERO,
+            CLOUD_DIR_LISTING_CACHE_TTL + Duration::from_millis(5),
+        ] {
+            {
+                let mut cache = cloud_dir_listing_cache().lock().unwrap();
+                cache.insert(
+                    path.to_string(),
+                    CachedCloudDirListing {
+                        fetched_at: Instant::now() - age,
+                        entries: vec![],
+                    },
+                );
+            }
+            super::store_cloud_dir_listing_cache_entry_for_tests(
+                &other,
+                vec![sample_cloud_file(
+                    "rclone://refresh/other/keep.txt",
+                    "keep.txt",
+                )],
+            );
+            let mut calls = 0;
+            let result = super::list_cloud_dir_cached_with_fetch(&path, None, true, || {
+                calls += 1;
+                Ok(vec![sample_cloud_file(
+                    "rclone://refresh/docs/new.txt",
+                    "new.txt",
+                )])
+            })
+            .unwrap();
+            assert_eq!(calls, 1);
+            assert_eq!(result[0].name, "new.txt");
+            let cached = super::list_cloud_dir_cached_with_fetch(&path, None, false, || {
+                panic!("fresh result must be cached")
+            })
+            .unwrap();
+            assert_eq!(cached[0].name, "new.txt");
+            let untouched = super::list_cloud_dir_cached_with_fetch(&other, None, false, || {
+                panic!("unrelated cache must remain")
+            })
+            .unwrap();
+            assert_eq!(untouched[0].name, "keep.txt");
+        }
+        clear_cloud_listing_test_state();
+    }
+
+    #[test]
+    fn failed_or_cancelled_explicit_refresh_never_returns_cached_success() {
+        let _guard = lock_cloud_listing_test_state();
+        clear_cloud_listing_test_state();
+        let path = CloudPath::parse("rclone://refresh/failure").unwrap();
+        super::store_cloud_dir_listing_cache_entry_for_tests(
+            &path,
+            vec![sample_cloud_file(
+                "rclone://refresh/failure/old.txt",
+                "old.txt",
+            )],
+        );
+        for code in [
+            super::CloudCommandErrorCode::Timeout,
+            super::CloudCommandErrorCode::Cancelled,
+        ] {
+            let result = super::list_cloud_dir_cached_with_fetch(&path, None, true, || {
+                Err(super::CloudCommandError::new(
+                    code,
+                    "synthetic refresh failure",
+                ))
+            });
+            assert_eq!(result.unwrap_err().code(), code);
+        }
+        let retained = super::list_cloud_dir_cached_with_fetch(&path, None, false, || {
+            panic!("last good cache must remain")
+        })
+        .unwrap();
+        assert_eq!(retained[0].name, "old.txt");
         clear_cloud_listing_test_state();
     }
 }

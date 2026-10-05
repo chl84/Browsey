@@ -74,6 +74,7 @@ pub(super) async fn list_cloud_dir(
     raw_path: &str,
     sort: Option<SortSpec>,
     progress_event: Option<String>,
+    force_refresh: bool,
     cancel_state: crate::tasks::CancelState,
     app: tauri::AppHandle,
 ) -> ListingResult<DirListing> {
@@ -82,6 +83,7 @@ pub(super) async fn list_cloud_dir(
         app.clone(),
         cancel_state,
         progress_event,
+        force_refresh,
     )
     .await
     .map_err(|error| {
@@ -108,6 +110,7 @@ pub(super) async fn list_cloud_facets(
         app,
         CancelState::default(),
         None,
+        false,
     )
     .await
     .map_err(|error| {

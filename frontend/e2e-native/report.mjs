@@ -7,7 +7,9 @@ export function requirements(item) {
   const common = { input: ['exact-text-input', 'file-create', 'rename', 'delete-cancel'],
     create: ['file-create', 'directory-create'], rename: ['file-rename', 'directory-rename'],
     delete: ['delete-cancel', 'file-delete', 'directory-delete'], undo: ['local-copy-undo-redo'],
-    accessibility: ['owned-accessibility'], lifecycle: ['owned-window'] }
+    accessibility: ['owned-accessibility'], lifecycle: ['owned-window'],
+    navigation: ['directory-read', 'owned-navigation', 'history-navigation', 'breadcrumb-navigation', 'refresh',
+      `ui-${item.id.split('-')[1]}-navigation`, 'view-switch'] }
   return Object.fromEntries(item.providers.map((provider, index) => {
     if (operation !== 'copy' && operation !== 'move') return [provider, common[operation] ?? []]
     const source = item.providers.length === 1 || index === 0

@@ -135,9 +135,18 @@ Complete these prerequisites before expanding the functional matrix.
 
 Use shared cases for applicable providers and independently verify actual files.
 
-- [ ] **NT1-1** Navigate owned folders in list/grid, including empty folders,
-  in-scope breadcrumbs, back/forward, F5 and repeated visits. History/bookmarks
-  must not escape the owned session.
+- [x] **NT1-1** Navigate owned folders in list/grid, including empty folders,
+  in-scope breadcrumbs, back/forward, menu Refresh, F5 and repeated visits.
+  History/bookmarks must not escape the owned session.
+  Verified 2026-10-05 in the
+  [navigation run](../operations/linux-release/runs/2026-10-05-native-navigation.md):
+  all five providers passed both views, 80 recorded parts and independent
+  generated-file readback. Owned accessibility, fullscreen, process teardown
+  and private retention passed. Menu handling and stale OneDrive refresh were
+  corrected and retested; F5 remains enabled and prevents the WebView default
+  before awaiting refresh. All 65 harness tests, 650 frontend tests and 761 Rust
+  tests passed (19 Rust tests ignored). Watchers, ancestor navigation, narrow
+  layout and device lifecycle remain outside this scope.
 - [ ] **NT1-2** Verify sorting, column filters/reset, hidden generated files and
   in-scope search. Cover empty results, case/extension differences and mode
   changes without stale filters or lost folder identity.

@@ -76,6 +76,12 @@ completes NT0-6 with permission/Git guards, bounded accounting and explicit
 single-run cleanup verified on synthetic fixtures. Real recovery runs remain
 retained; this does not close any functional acceptance row.
 
+The [native owned-folder navigation verification](runs/2026-10-05-native-navigation.md)
+completes NT1-1 with list/grid navigation on local disk, USB, network, OneDrive
+and mobile, including empty folders, breadcrumbs, history, menu Refresh and F5.
+It fixes stale explicit cloud refresh and verifies owned teardown/retention.
+These separate-candidate results do not close the broader parent rows below.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable

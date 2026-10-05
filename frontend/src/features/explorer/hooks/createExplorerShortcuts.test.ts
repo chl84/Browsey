@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
 import { createExplorerShortcuts } from './createExplorerShortcuts'
+import { DEFAULT_SHORTCUTS, matchesShortcut } from '@/features/shortcuts'
 
 type UiState = { mode: 'address' | 'filter'; input: string; focused: boolean; search: boolean; view: CurrentView; bookmarkOpen: boolean }
 const folder: Entry = { path: '/mock/folder', name: 'folder', kind: 'dir', iconId: 0 }
@@ -37,6 +38,26 @@ const setup = (initial: Partial<UiState> = {}) => {
 const key = (value: string) => new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true })
 
 describe('Explorer shortcut composition', () => {
+  it.each([false, true])('prevents F5 browser reload before asynchronous folder refresh finishes (failure: %s)', async failure => {
+    const { deps } = setup()
+    let finish!: () => void
+    const pending = new Promise<void>((resolve, reject) => {
+      finish = () => failure ? reject(new Error('folder refresh failed')) : resolve()
+    })
+    deps.reloadCurrent.mockReturnValueOnce(pending)
+    const shortcuts = createExplorerShortcuts({ ...deps,
+      isShortcut: (event, id) => matchesShortcut(event, DEFAULT_SHORTCUTS, id),
+    })
+    const event = key('F5')
+    const handling = shortcuts.handleGlobalKeydown(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(deps.reloadCurrent).toHaveBeenCalledOnce()
+    finish()
+    if (failure) await expect(handling).rejects.toThrow('folder refresh failed')
+    else await handling
+    expect(event.defaultPrevented).toBe(true)
+  })
+
   it('switches typing to filter, appends subsequent characters and leaves focused addresses alone', async () => {
     const { shortcuts, ui, deps } = setup()
     const event = key('a')

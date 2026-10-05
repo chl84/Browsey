@@ -1,7 +1,7 @@
 /* global document, window */
 import assert from 'node:assert/strict'
 import { Key } from 'webdriverio'
-import { child, ownedPath } from './scope.mjs'
+import { child, ownedPath, inside } from './scope.mjs'
 
 // One UI driver and shared cases, not a second set of file-operation semantics.
 // Mutations go through real Browsey controls/shortcuts, never direct IPC calls.
@@ -69,9 +69,89 @@ export class NativeUi {
   }
 
   async waitPath(raw) {
+    ownedPath(this.roots, raw)
     await this.browser.waitUntil(async () => await (await this.browser.$('main.shell')).getAttribute('data-current-path') === raw,
       { timeout: 60_000, timeoutMsg: 'UI did not navigate to the owned fixture folder' })
     await this.idle()
+  }
+
+  async setView(view) {
+    assert.ok(['list', 'grid'].includes(view), 'Expected list or grid view')
+    await this.idle()
+    await (await this.browser.$('[aria-label="Main menu"]')).click()
+    const toggle = await this.browser.$('[role="switch"][aria-label="Toggle list or grid view"]')
+    await toggle.waitForDisplayed({ timeout: 5000 })
+    if (await toggle.getAttribute('aria-checked') !== String(view === 'grid')) await toggle.click()
+    // If the current mode already matches, focus stays on the menu opener;
+    // Escape would not reach the menu's key handler. Close via its real overlay.
+    const overlay = await this.browser.$('.menu-overlay')
+    if (await overlay.isExisting()) await overlay.click()
+    await overlay.waitForExist({ reverse: true, timeout: 5000 })
+    await (await this.browser.$(view === 'list' ? '.rows' : '.grid')).waitForDisplayed({ timeout: 5000 })
+    await this.idle()
+  }
+
+  async openFolder(raw) {
+    ownedPath(this.roots, raw)
+    await this.idle()
+    await this.browser.releaseActions()
+    await this.select(raw)
+    await this.browser.keys([Key.Enter])
+    await this.waitPath(raw)
+  }
+
+  async history(direction, expected) {
+    ownedPath(this.roots, expected)
+    assert.ok(['back', 'forward'].includes(direction), 'Expected back or forward')
+    await this.idle()
+    await (await this.browser.$(`[aria-label="Go ${direction}"]`)).click()
+    await this.waitPath(expected)
+  }
+
+  async breadcrumb(raw) {
+    ownedPath(this.roots, raw)
+    await this.idle()
+    const crumb = await this.browser.$(`.crumb[data-drop-path=${JSON.stringify(raw)}]`)
+    await crumb.waitForDisplayed({ timeout: 5000 })
+    await crumb.click()
+    await this.waitPath(raw)
+  }
+
+  async bookmarks() {
+    const paths = await this.browser.execute(() => [...document.querySelectorAll('.bookmark[data-drop-path]')]
+      .map(node => node.dataset.dropPath))
+    for (const raw of paths) ownedPath(this.roots, raw)
+    assert.deepEqual(paths.sort(), [...this.roots].sort(), 'Only this session\'s owned bookmarks may be loaded')
+  }
+
+  async listing(raw, view, paths) {
+    ownedPath(this.roots, raw)
+    assert.ok(['list', 'grid'].includes(view))
+    for (const path of paths) ownedPath(this.roots, path)
+    const expected = [...paths].sort()
+    await this.idle()
+    let state
+    await this.browser.waitUntil(async () => {
+      state = await this.browser.execute(() => {
+        const visible = node => node.getClientRects().length > 0
+        const collection = [...document.querySelectorAll('.rows, .grid')].find(visible)
+        return { current: document.querySelector('main.shell')?.dataset.currentPath,
+          view: collection?.classList.contains('grid') ? 'grid' : 'list',
+          paths: collection ? [...collection.querySelectorAll('[data-path]')].filter(visible).map(node => node.dataset.path).sort() : [],
+          empty: collection?.textContent.includes('No items here.') ?? false }
+      })
+      // Resolve immediately on an outside observation, then throw outside the
+      // WebDriver predicate so a scope failure cannot be swallowed/retried.
+      if ([state.current, ...state.paths].filter(Boolean).some(path => !this.roots.some(root => inside(root, path)))) return true
+      return state.current === raw && state.view === view && JSON.stringify(state.paths) === JSON.stringify(expected)
+        && (expected.length > 0 || state.empty)
+    }, { timeout: 60_000, interval: 150, timeoutMsg: 'Owned folder contents/view did not match after navigation' })
+    ownedPath(this.roots, state.current)
+    for (const path of state.paths) ownedPath(this.roots, path)
+    assert.equal(state.current, raw)
+    assert.equal(state.view, view)
+    assert.deepEqual(state.paths, expected)
+    if (!expected.length) assert.ok(state.empty, 'Empty folder must show its empty state')
   }
 
   async select(raw) {
@@ -93,7 +173,17 @@ export class NativeUi {
     } finally { await this.browser.releaseActions() }
   }
 
-  async refresh() { await this.browser.keys(['F5']); await this.idle() }
+  async refresh() { await this.browser.keys([Key.F5]); await this.idle() }
+
+  async menuRefresh() {
+    await this.idle()
+    await (await this.browser.$('[aria-label="Main menu"]')).click()
+    const action = await this.browser.$('//*[@role="menu" and @aria-label="Main actions"]//button[@role="menuitem" and normalize-space(.)="Refresh"]')
+    await action.waitForDisplayed({ timeout: 5000 })
+    await action.click()
+    await (await this.browser.$('.menu-overlay')).waitForExist({ reverse: true, timeout: 5000 })
+    await this.idle()
+  }
 
   async fill(input, value) {
     await this.browser.releaseActions()

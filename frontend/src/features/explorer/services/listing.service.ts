@@ -9,7 +9,8 @@ export const listDir = (
   path: string | undefined,
   sort: { field: SortField; direction: SortDirection },
   progressEvent?: string,
-) => invoke<Listing>('list_dir', { path, sort, progressEvent })
+  forceRefresh = false,
+) => invoke<Listing>('list_dir', { path, sort, progressEvent, forceRefresh })
 
 export const listRecent = (sort: { field: SortField; direction: SortDirection } | null) =>
   invoke<Listing>('list_recent', { sort })

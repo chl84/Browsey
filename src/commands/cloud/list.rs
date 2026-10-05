@@ -93,6 +93,7 @@ pub(super) async fn list_cloud_entries_impl(
     app: tauri::AppHandle,
     cancel_state: CancelState,
     progress_event: Option<String>,
+    force_refresh: bool,
 ) -> CloudCommandResult<Vec<CloudEntry>> {
     ensure_cloud_enabled()?;
     let started = Instant::now();
@@ -108,6 +109,7 @@ pub(super) async fn list_cloud_entries_impl(
             &path,
             Some(app),
             cancel_token.as_deref(),
+            force_refresh,
         )?;
         for entry in &mut entries {
             entry.capabilities = capabilities.clone();

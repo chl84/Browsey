@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fetch a fresh cloud folder listing when explicitly refreshing through F5 or
+  the main menu, including recently added OneDrive files. Prevent F5's WebView
+  default before waiting for I/O. Add scoped native list/grid navigation coverage
+  across local, USB, network, cloud and mobile test folders.
+
 - Recover the Linux GVFS FUSE bridge using distribution-specific executable
   locations and actual session mount readiness, rather than a permanently cached
   process check. Retry missing GVFS paths and verify network/phone mount paths

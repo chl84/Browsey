@@ -17,17 +17,37 @@ def validate():
     with open(f"/proc/{pid}/environ", "rb") as source:
         assert f"XDG_DATA_HOME={data}".encode() in source.read().split(b"\0"), "Not our private profile"
 
-def targeted_key(mods, key):
+def owned_client():
     validate()
-    clients = json.loads(subprocess.check_output(["hyprctl", "clients", "-j"], text=True))
-    client = next(client for client in clients if client["pid"] == pid)
+    clients = json.loads(subprocess.check_output(["hyprctl", "clients", "-j"], text=True, timeout=3))
+    matches = [client for client in clients if client["pid"] == pid]
+    assert len(matches) == 1, "Expected exactly one owned candidate window"
+    client = matches[0]
     address = client["address"]
     assert address.startswith("0x") and all(c in "0123456789abcdef" for c in address[2:])
     validate()
+    return client
+
+def targeted_key(mods, key):
+    address = owned_client()["address"]
     code = f"hl.dsp.send_shortcut({{ mods = {json.dumps(mods)}, key = {json.dumps(key)}, window = {json.dumps('address:' + address)} }})"
     assert subprocess.check_output(["hyprctl", "dispatch", code], text=True, timeout=3).strip() == "ok"
 
 validate()
+if command == "fullscreen":
+    client = owned_client()
+    code = f"hl.dsp.window.fullscreen({{window = {json.dumps('address:' + client['address'])}, mode = 'fullscreen', action = 'set'}})"
+    assert subprocess.check_output(["hyprctl", "dispatch", code], text=True, timeout=3).strip() == "ok"
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        current = owned_client()
+        assert current["address"] == client["address"], "Candidate window identity changed"
+        if current["fullscreen"] == 2:
+            print(json.dumps({"action": command, "pid": pid, "size": current["size"], "fullscreen": 2}))
+            sys.exit(0)
+        time.sleep(0.1)
+    raise AssertionError("Owned candidate did not become fullscreen")
+
 if command == "key":
     keys = {"enter": ("", "Return"), "context": ("SHIFT", "F10"), "escape": ("", "Escape")}
     targeted_key(*keys[name])

@@ -192,11 +192,11 @@ export const createGlobalShortcuts = ({
 
     if (isShortcut(event, 'refresh') && onRefresh) {
       if (editable) return
-      const handled = await onRefresh()
-      if (handled !== false) {
-        event.preventDefault()
-        event.stopPropagation()
-      }
+      // Cancel the WebView default synchronously, before waiting for folder I/O.
+      // A slow or failed refresh must never become a browser-page reload.
+      event.preventDefault()
+      event.stopPropagation()
+      await onRefresh()
       return
     }
 

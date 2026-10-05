@@ -190,6 +190,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       silent?: boolean
       progressEvent?: string
       showLoadingIndicator?: boolean
+      forceRefresh?: boolean
     } = {},
   ) => {
     const {
@@ -197,6 +198,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       silent = false,
       progressEvent,
       showLoadingIndicator = !silent,
+      forceRefresh = false,
     } = opts
     // A silent refresh can replace foreground work before the delayed indicator
     // is visible. Transfer ownership instead of leaving its requested state set.
@@ -214,7 +216,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
     const currentAtStart = get(current)
     const requestedSort = sortPayload()
     try {
-      const result = await listDir(path, requestedSort, progressEvent)
+      const result = await listDir(path, requestedSort, progressEvent, forceRefresh)
       if (directoryRequest !== request || request.id !== searchRunId) return { ok: false as const, code: 'cancelled', message: '' }
       const sameDirectory = result.current === get(current) && currentAtStart === result.current
       const stableRefresh = silent && sameDirectory && isGvfsPath(result.current)
@@ -261,6 +263,7 @@ export const createExplorerState = (callbacks: ExplorerCallbacks = {}) => {
       silent?: boolean
       progressEvent?: string
       showLoadingIndicator?: boolean
+      forceRefresh?: boolean
     } = {},
   ) => {
     await loadDetailed(path, opts)

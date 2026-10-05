@@ -37,6 +37,12 @@ The [privacy and retention verification](operations/linux-release/runs/2026-10-0
 records NT0-6 permission/Git regressions, explicit cleanup of synthetic owned
 runs and fresh native local/fault checks. Existing real recovery data is retained.
 
+The [owned-folder navigation verification](operations/linux-release/runs/2026-10-05-native-navigation.md)
+records NT1-1 passing list/grid cases on all five providers, including menu
+Refresh, F5, owned history/breadcrumbs and independent generated-file readback.
+It also records the shared OneDrive refresh correction and retained earlier
+blocked reports. Fullscreen acceptance covers the owned candidate only.
+
 The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
 stability, basic operations, transfer boundaries, failure safety and edge cases.
 It tracks suite work; accepted candidate outcomes stay in the daily-driver
@@ -120,6 +126,8 @@ tool availability without creating fixtures; it does not test cloud connectivity
 approved roots. Optional `--targets local,usb` selects a bounded subset; excluded
 configured targets are DEFERRED. Configured but unavailable targets stop a run;
 there is no silent skip or fallback to the installed app.
+`--suite foundation` is the default; `--suite navigation` selects the separate
+NT1-1 navigation cases. Fault injections remain restricted to the foundation.
 
 Driver paths can be explicitly set with `BROWSEY_TAURI_DRIVER` and
 `BROWSEY_WEBKIT_DRIVER`; otherwise only system tool directories and
@@ -252,6 +260,36 @@ non-BMP emoji entry remains outside this input acceptance. Set
 run; this variable does not change the desktop layout. Temporary desktop layout
 changes require maintainer authorization and restoration afterward.
 
+## Owned-folder navigation cases
+
+```bash
+bash scripts/dev/test-native-linux.sh --run --suite navigation --a11y
+# With explicit maintainer approval for the owned candidate's window geometry:
+bash scripts/dev/test-native-linux.sh --run --suite navigation --fullscreen --a11y
+```
+
+The navigation suite runs the same two list/grid cases on each selected provider,
+including mobile. Each uses four small generated folders and four text files.
+Eight recorded steps cover the owned bookmark, view selection, nested folders,
+back/forward, an in-scope breadcrumb, empty-folder/menu Refresh behavior, a new external
+fixture becoming visible after F5, repeated visits and switching views without
+changing folders. F5 retains its folder-refresh action in both production and
+native-test builds; it must not reload the WebView as a browser page. Each navigation checks the exact current path, active view
+and displayed entry paths/empty state. Independent readback verifies generated
+file bytes and directory preservation. Saved bookmarks must equal this session's
+owned roots; outside helper paths and observed paths fail closed. Only in-scope
+breadcrumbs are clicked. Ancestor breadcrumbs and personal Places are excluded.
+
+Long native paths can clip breadcrumbs in a tiled window. `--fullscreen` is an
+explicit opt-in for Hyprland: the existing helper validates the captured candidate
+PID, executable and private profile, requires one matching window address, sets
+that window fullscreen once, and checks its state. It uses the documented
+[Hyprland window dispatcher](https://wiki.hypr.land/Configuring/Basics/Dispatchers/).
+The runner checks owned process identities before and after. No desktop config,
+window rule or global shortcut is changed. Normal teardown closes the owned
+candidate. A full-window pass does not establish narrow-window breadcrumb layout
+acceptance; NT6 layout and keyboard-focus coverage remain separate.
+
 Not yet covered: native drag/drop and cross-instance behavior, large-file progress
 and cancellation, overwrite/recovery, archives/passwords, trash, formatting,
 disconnect/reconnect, normal watcher behavior and other distributions. Small-file
@@ -272,7 +310,8 @@ committed-baseline acceptance run. No release/install binaries are staged here.
 Each local owned run retains `report.json`, private profile, generated fixtures
 and window-only failure artifacts. Reports distinguish PASS/FAIL/BLOCKED,
 NOT_RUN/DEFERRED/NOT_CONFIGURED and explicitly list excluded acceptance. A PASS
-means only the selected small-file foundation cases, not release signoff.
+means only the declared cases in the selected suite, not release signoff or
+acceptance of a different suite/provider scope.
 Authorized-plan preflight failures before run creation print a structured BLOCKED
 report, not passing tests or an owned artifact path.
 The runner and provisioning helper use process-local umask `077`, inherited by

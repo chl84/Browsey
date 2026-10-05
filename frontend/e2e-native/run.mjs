@@ -10,6 +10,7 @@ import { validateConfig, makePlan, candidateEnvironment, child, noLinks } from '
 import { createLocalSession, Fixtures } from './fixtures.mjs'
 import { NativeUi } from './ui.mjs'
 import { foundation, foundationManifest } from './cases.mjs'
+import { navigation, navigationManifest } from './navigation.mjs'
 import { verifyCandidate, fileSha256 } from './candidate.mjs'
 import { createReport, recordSetup, recordCase, finishReport, summarizeProviders } from './report.mjs'
 import { privateJson, assertPrivateFile, writePrivate, inspectTree, processStamp, retentionPolicy } from './privacy.mjs'
@@ -24,13 +25,18 @@ const candidate = path.join(repo, 'target/native-test/browsey')
 process.umask(0o077)
 const args = process.argv.slice(2)
 const mode = args[0] ?? '--help'
-const options = { config: path.join(repo, 'frontend/e2e-native/config.local.json'), targets: null, a11y: false, fault: null, reportFault: null }
+const options = { config: path.join(repo, 'frontend/e2e-native/config.local.json'), targets: null, suite: 'foundation', fullscreen: false, a11y: false, fault: null, reportFault: null }
 const reportFaults = ['setup-failure', 'partial-transfer']
 const faults = ['driver-exit', 'candidate-exit', 'session-close', 'session-timeout', 'case-timeout']
 for (let i = 1; i < args.length; i++) {
   if (args[i] === '--config') options.config = path.resolve(args[++i])
   else if (args[i] === '--targets') options.targets = args[++i]?.split(',')
+  else if (args[i] === '--suite') {
+    options.suite = args[++i]
+    assert.ok(['foundation', 'navigation'].includes(options.suite), 'Expected foundation or navigation suite')
+  }
   else if (args[i] === '--a11y') options.a11y = true
+  else if (args[i] === '--fullscreen') options.fullscreen = true
   else if (args[i] === '--lifecycle-fault') {
     options.fault = args[++i]
     assert.ok(faults.includes(options.fault), 'Expected a supported lifecycle fault')
@@ -62,10 +68,11 @@ async function dependencies() {
 
 async function main() {
   if (mode === '--help') {
-    console.log('Native suite: --plan | --check | --run [--config PATH] [--targets local,usb,...] [--a11y]\nLifecycle faults: --run --targets local --lifecycle-fault ' + faults.join('|') + '\nReport faults: --run --targets local --report-fault ' + reportFaults.join('|') + '\nBuild separately: bash scripts/dev/test-native-linux.sh --build\nOnly existing, explicitly approved ai_agent_testfolder roots are allowed.')
+    console.log('Native suite: --plan | --check | --run [--config PATH] [--targets local,usb,...] [--suite foundation|navigation] [--a11y] [--fullscreen]\nFullscreen requires explicit maintainer approval; only the captured candidate window is targeted.\nLifecycle faults: --run --targets local --lifecycle-fault ' + faults.join('|') + '\nReport faults: --run --targets local --report-fault ' + reportFaults.join('|') + '\nBuild separately: bash scripts/dev/test-native-linux.sh --build\nOnly existing, explicitly approved ai_agent_testfolder roots are allowed.')
     return
   }
   assert.ok(['--plan', '--check', '--run'].includes(mode), 'Unknown native runner mode')
+  assert.ok(!(options.fault || options.reportFault) || options.suite === 'foundation', 'Fault injection requires the foundation suite')
   if (options.fault) assert.ok(mode === '--run' && faults.includes(options.fault)
     && options.targets?.length === 1 && options.targets[0] === 'local' && !options.a11y,
   'Lifecycle faults require --run --targets local without accessibility or other providers')
@@ -110,13 +117,13 @@ async function main() {
     return
   }
   const manifest = options.fault ? [{ id: 'lifecycle-owned-window', name: 'Native lifecycle: owned window identity', providers: ['local'] }]
-    : foundationManifest(plan)
+    : options.suite === 'navigation' ? navigationManifest(plan) : foundationManifest(plan)
   if (options.a11y) manifest.push({ id: 'accessibility-local', name: 'AT-SPI: owned candidate accessibility tree', providers: ['local'] })
   const report = createReport(plan, configured, manifest)
   const local = plan.targets.find(target => target.kind === 'local')
   const artifacts = child(local.run, 'artifacts')
   const reportPath = child(local.run, 'report.json')
-  Object.assign(report, { scope: options.fault ? 'Injected lifecycle fault in owned local session; no UI file operations'
+  Object.assign(report, { suite: options.suite, scope: options.fault ? 'Injected lifecycle fault in owned local session; no UI file operations'
     : 'Generated data in owned runs only; no installed app or personal settings',
   host: { platform: process.platform, kernel: os.release(), arch: process.arch, node: process.version,
     inputLayout: process.env.BROWSEY_NATIVE_INPUT_LAYOUT ?? 'NOT_RECORDED' },
@@ -155,7 +162,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['candidate.mjs', 'cases.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['candidate.mjs', 'cases.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'navigation.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -227,6 +234,16 @@ async function main() {
       report.identity = { pid: status.pid, startTime: candidateOwner.start, runId: status.runId, scope: status.scope, watcher: status.watcher }
       return status
     })
+    const a11yEnv = { ...env, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
+      HYPRLAND_INSTANCE_SIGNATURE: process.env.HYPRLAND_INSTANCE_SIGNATURE }
+    if (options.fullscreen) await setup(shared('owned-window-fullscreen'), async () => {
+      await owned()
+      const result = await exec('/usr/bin/python3', [path.join(repo, 'tests/support/native_fixture_a11y.py'),
+        String(status.pid), candidate, `${profile}/data`, 'fullscreen', '', ''],
+      { env: a11yEnv, cwd: local.files, timeout: 15_000, maxBuffer: 1024 * 1024 })
+      report.window = JSON.parse(result.stdout)
+      await owned()
+    })
     if (options.fault) {
       await record('Native lifecycle: owned window identity', async () => {
         if (options.fault === 'candidate-exit') await stopCandidate(candidateOwner, { signal: pid => process.kill(pid, 'SIGKILL') })
@@ -237,8 +254,6 @@ async function main() {
     if (options.a11y) {
       // Desktop-control socket discovery is separate from the candidate's
       // private runtime. Still no personal HOME/config/credential inheritance.
-      const a11yEnv = { ...env, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
-        HYPRLAND_INSTANCE_SIGNATURE: process.env.HYPRLAND_INSTANCE_SIGNATURE }
       ui.cancelDeleteAccessible = async () => {
         // Reuse the same case, with cancellation delivered through real AT-SPI.
         await exec('/usr/bin/python3', [path.join(repo, 'tests/support/native_fixture_a11y.py'),
@@ -254,7 +269,7 @@ async function main() {
         await fs.writeFile(child(artifacts, 'accessibility.json'), result.stdout, { flag: 'wx', mode: 0o600 })
       }, { id: 'accessibility-local', providers: ['local'] })
     }
-    if (!options.fault) await foundation(plan, fixture, ui, record)
+    if (!options.fault) await (options.suite === 'navigation' ? navigation : foundation)(plan, fixture, ui, record)
     assertDriverAlive(driver)
     await assertCandidateAlive(nativeDriverOwner)
     await assertCandidateAlive(candidateOwner)

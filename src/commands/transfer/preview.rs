@@ -78,6 +78,7 @@ async fn preview_local_to_cloud_conflicts(
         app,
         crate::tasks::CancelState::default(),
         None,
+        false,
     )
     .await?;
     build_local_to_cloud_conflicts_from_entries(local_sources, &dest, provider, &dest_entries)

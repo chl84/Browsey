@@ -281,7 +281,9 @@ pub async fn list_cloud_entries(
     cancel: tauri::State<'_, CancelState>,
     progress_event: Option<String>,
 ) -> ApiResult<Vec<CloudEntry>> {
-    map_api_result(list_cloud_entries_impl(path, app, cancel.inner().clone(), progress_event).await)
+    map_api_result(
+        list_cloud_entries_impl(path, app, cancel.inner().clone(), progress_event, false).await,
+    )
 }
 
 pub(crate) async fn list_cloud_entries_impl(
@@ -289,8 +291,9 @@ pub(crate) async fn list_cloud_entries_impl(
     app: tauri::AppHandle,
     cancel_state: CancelState,
     progress_event: Option<String>,
+    force_refresh: bool,
 ) -> CloudCommandResult<Vec<CloudEntry>> {
-    list::list_cloud_entries_impl(path, app, cancel_state, progress_event).await
+    list::list_cloud_entries_impl(path, app, cancel_state, progress_event, force_refresh).await
 }
 
 #[tauri::command]

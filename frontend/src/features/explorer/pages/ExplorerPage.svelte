@@ -952,7 +952,7 @@
       await loadTrash(false, { resetScroll: false })
       return
     }
-    await loadRaw($current, { recordHistory: false })
+    await loadRaw($current, { recordHistory: false, forceRefresh: true })
   }
 
   const emptyTrashModal = createEmptyTrashModal({
