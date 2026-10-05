@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Recover the Linux GVFS FUSE bridge using distribution-specific executable
+  locations and actual session mount readiness, rather than a permanently cached
+  process check. Retry missing GVFS paths and verify network/phone mount paths
+  before reporting a successful connection.
+
 - Add an opt-in Linux native acceptance harness using WebDriver and the existing
   AT-SPI helper, with shared small-file cases across explicitly approved storage
   targets. Isolate the candidate's profile and enforce owned-path IPC limits;

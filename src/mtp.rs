@@ -232,13 +232,35 @@ fn mount_on_main_thread(uri: String, app: tauri::AppHandle, sender: MountReply) 
 }
 
 pub(crate) async fn mount(uri: String, app: tauri::AppHandle) -> Result<String, String> {
+    // Start/recover the bridge on a worker, never block GTK's main thread.
+    tauri::async_runtime::spawn_blocking(
+        crate::commands::network::gio_mounts::ensure_gvfsd_fuse_running,
+    )
+    .await
+    .map_err(|_| unavailable_path())?;
     let (sender, receiver) = tokio::sync::oneshot::channel();
     let callback_app = app.clone();
     app.run_on_main_thread(move || mount_on_main_thread(uri, callback_app, sender))
         .map_err(|error| format!("Could not schedule phone connection: {error}"))?;
-    receiver
+    let path = receiver
         .await
-        .map_err(|_| "Phone connection was interrupted.".to_string())?
+        .map_err(|_| "Phone connection was interrupted.".to_string())??;
+    tauri::async_runtime::spawn_blocking(move || {
+        // GIO can advertise a path before FUSE exposes it. Wait for the exact
+        // returned directory instead of reporting a phantom successful mount.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if std::path::Path::new(&path).is_dir() {
+                return Ok(path);
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(unavailable_path());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    })
+    .await
+    .map_err(|_| unavailable_path())?
 }
 
 #[cfg(test)]

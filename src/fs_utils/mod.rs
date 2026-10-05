@@ -72,7 +72,20 @@ pub fn sanitize_path_follow(raw: &str, forbid_root: bool) -> FsUtilsResult<PathB
         "sanitize_follow start"
     );
 
-    let canon = match pb.canonicalize() {
+    let canonical = pb.canonicalize();
+    #[cfg(target_os = "linux")]
+    let canonical = match canonical {
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotConnected
+            ) && crate::commands::network::gvfs_fuse::recover_path(&pb) =>
+        {
+            pb.canonicalize()
+        }
+        result => result,
+    };
+    let canon = match canonical {
         Ok(c) => c,
         Err(e) => {
             debug!(path = %pb.display(), error = ?e, "canonicalize failed");

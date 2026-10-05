@@ -149,3 +149,9 @@ no WebDriver binaries and no cloud test config. Exact network/mobile GIO metadat
 queries succeeded while their reported local GVFS paths did not exist. No personal
 folders were searched. These are blocked acceptance scopes, not checked daily-driver
 rows. Resolve environment/access prerequisites before running those providers.
+
+Subsequent metadata-only checks identified a missing session FUSE bridge despite
+working GIO mounts. The backend recovery smoke test started the installed bridge
+and verified both explicitly approved network/mobile test directories through
+canonical local paths. This confirms path access only, not native UI or
+file-operation acceptance for those providers.

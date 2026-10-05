@@ -221,7 +221,10 @@ fn local_connection(
                 "Server mount lookup cancelled.",
             ));
         }
-        if let Some(path) = file.path().filter(|path| path.is_absolute()) {
+        if let Some(path) = file
+            .path()
+            .filter(|path| path.is_absolute() && path.is_dir())
+        {
             return Ok((effective_uri, path.to_string_lossy().into_owned()));
         }
         if std::time::Instant::now() >= deadline {

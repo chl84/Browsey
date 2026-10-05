@@ -4,6 +4,8 @@ pub mod entries;
 mod error;
 pub(crate) mod extra_metadata;
 pub mod gio_mounts;
+#[cfg(target_os = "linux")]
+pub(crate) mod gvfs_fuse;
 pub mod mounts;
 #[cfg(target_os = "linux")]
 pub(crate) mod native_mount;

@@ -31,92 +31,14 @@ fn gvfs_root() -> Option<PathBuf> {
     dirs_next::runtime_dir().map(|p| p.join("gvfs"))
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "linux")]
 pub fn ensure_gvfsd_fuse_running() {
-    #[derive(Clone, Copy)]
-    struct FuseState {
-        last_check: Instant,
-        ok: bool,
-    }
-    static STATE: OnceCell<Mutex<FuseState>> = OnceCell::new();
-    static LOG_STATE: OnceCell<Mutex<Instant>> = OnceCell::new();
-    let guard = STATE.get_or_init(|| {
-        Mutex::new(FuseState {
-            last_check: instant_ago(Duration::from_secs(60)),
-            ok: false,
-        })
-    });
+    super::gvfs_fuse::ensure_running();
+}
 
-    let mut lock = guard.lock().unwrap_or_else(|e| e.into_inner());
-
-    // Throttle to once every 30s if last attempt was OK; retry sooner if last was failure.
-    let retry_after = if lock.ok {
-        Duration::from_secs(30)
-    } else {
-        Duration::from_secs(10)
-    };
-
-    if lock.last_check.elapsed() < retry_after {
-        return;
-    }
-
-    // If we recently confirmed it's running, skip further checks
-    if lock.ok {
-        lock.last_check = Instant::now();
-        return;
-    }
-
-    let Some(root) = gvfs_root() else { return };
-
-    if Command::new("pgrep")
-        .arg("gvfsd-fuse")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-    {
-        lock.last_check = Instant::now();
-        lock.ok = true;
-        return;
-    }
-
-    let _ = fs::create_dir_all(&root);
-
-    let _ = Command::new("gvfsd-fuse")
-        .arg(&root)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .stdin(Stdio::null())
-        .spawn();
-
-    // Small wait to give gvfsd-fuse time to come up
-    std::thread::sleep(Duration::from_millis(150));
-
-    let ok = Command::new("pgrep")
-        .arg("gvfsd-fuse")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-
-    lock.last_check = Instant::now();
-    lock.ok = ok;
-
-    if !ok {
-        let log_guard = LOG_STATE
-            .get_or_init(|| Mutex::new(instant_ago(Duration::from_secs(600))))
-            .lock()
-            .map_err(|e| e.into_inner())
-            .ok();
-        if let Some(mut lg) = log_guard {
-            if lg.elapsed() >= Duration::from_secs(300) {
-                debug_log("gvfsd-fuse did not start successfully");
-                *lg = Instant::now();
-            }
-        }
-    }
+#[cfg(all(not(target_os = "windows"), not(target_os = "linux")))]
+pub fn ensure_gvfsd_fuse_running() {
+    // Linux's session FUSE bridge is not used on other platforms.
 }
 
 #[cfg(not(target_os = "windows"))]

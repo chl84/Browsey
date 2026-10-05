@@ -62,6 +62,11 @@ contain edits or backups still needed for recovery.
 - Video thumbnails: `ffmpeg` in PATH, or set `FFMPEG_BIN`.
 - GNOME Wayland file-clipboard interoperability: `xclip` in PATH; the app's
   internal clipboard does not require it.
+- Network locations and MTP phones require the session's GVFS FUSE bridge in
+  addition to the relevant GVFS backend. Browsey starts the installed bridge
+  when needed, including distributions that keep `gvfsd-fuse` outside PATH.
+  A location working in Nautilus through GIO does not by itself prove that its
+  local GVFS path is available. Browsey does not install missing system packages.
 - MTP phones: a GVFS MTP backend (`gvfs-mtp` on Arch/Fedora, or `gvfs-backends`
   on Ubuntu). Unlock the phone and enable USB file-transfer mode.
 - USB formatting: UDisks2, a working PolicyKit authentication agent, and the
