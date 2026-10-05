@@ -97,6 +97,23 @@ All 650 frontend tests and 65 native policy/orchestration tests passed. Type che
 passed. Frontend/native lint and strict documentation consistency passed. These automated
 results supplement the native run; they do not replace provider acceptance.
 
+## Production build after commit and push
+
+Application, harness, regression tests and acceptance evidence were committed
+and pushed as `31d2ea7325f90bb0e90219f073e81073d20ebf30`. The subsequent normal
+production build completed at 19:55:34 UTC with the optimized release profile:
+
+```bash
+PATH=/absolute/path/to/rust/bin:$PATH frontend/node_modules/.bin/tauri build --no-bundle -- --locked
+```
+
+The resulting `target/release/browsey` is 29,333,144 bytes with SHA-256
+`24c67e88df755f816248d5de8b813a710c4dbc2b262bff134ff31870fc33f668`.
+The release Cargo fingerprint has `features=[]`; the native-test feature is
+absent. The artifact remains Git-ignored. This records a successful build,
+not installed-build acceptance; the installed/personal application was not
+launched or replaced. The following commit adds only this build evidence.
+
 ## Limits
 
 This is bounded owned-folder navigation acceptance, not release or installed-app
