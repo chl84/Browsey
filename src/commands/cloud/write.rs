@@ -1,10 +1,43 @@
 use super::{
-    cache::invalidate_cloud_dir_listing_cache_for_write_paths, configured_rclone_provider,
-    ensure_cloud_enabled, error::CloudCommandResult, limits::with_cloud_remote_permits,
-    map_spawn_result, parse_cloud_path_arg, provider::CloudProvider, register_cloud_cancel,
+    cache::invalidate_cloud_dir_listing_cache_for_write_paths,
+    configured_rclone_provider, ensure_cloud_enabled,
+    error::{CloudCommandError, CloudCommandErrorCode, CloudCommandResult},
+    limits::with_cloud_remote_permits,
+    map_spawn_result, parse_cloud_path_arg,
+    provider::CloudProvider,
+    register_cloud_cancel,
 };
 use crate::tasks::CancelState;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
+
+// Interactive creation rejects existing names; provider mkdir remains idempotent
+// for transfer/setup callers that deliberately ensure a directory exists.
+pub(super) fn create_new_cloud_folder(
+    provider: &dyn CloudProvider,
+    path: &super::path::CloudPath,
+    cancel: Option<&AtomicBool>,
+) -> CloudCommandResult<()> {
+    let check_cancel = || {
+        if cancel.is_some_and(|token| token.load(Ordering::Relaxed)) {
+            Err(CloudCommandError::new(
+                CloudCommandErrorCode::Cancelled,
+                "Cloud folder creation cancelled",
+            ))
+        } else {
+            Ok(())
+        }
+    };
+    check_cancel()?;
+    if provider.stat_path(path)?.is_some() {
+        return Err(CloudCommandError::new(
+            CloudCommandErrorCode::DestinationExists,
+            "A file or directory with that name already exists",
+        ));
+    }
+    check_cancel()?;
+    provider.mkdir(path, cancel)
+}
 use tracing::debug;
 
 pub(super) async fn create_cloud_folder_impl(
@@ -24,7 +57,7 @@ pub(super) async fn create_cloud_folder_impl(
         with_cloud_remote_permits(vec![remote], || {
             let provider =
                 configured_rclone_provider().map_err(super::error::CloudCommandError::from)?;
-            provider.mkdir(&path, cancel_token.as_deref())
+            create_new_cloud_folder(&provider, &path, cancel_token.as_deref())
         })
     });
     let result = match task.await {

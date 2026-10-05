@@ -6,7 +6,9 @@ import { child, ownedPath, inside } from './scope.mjs'
 // One UI driver and shared cases, not a second set of file-operation semantics.
 // Mutations go through real Browsey controls/shortcuts, never direct IPC calls.
 export class NativeUi {
-  constructor(browser, roots) { this.browser = browser; this.roots = roots }
+  constructor(browser, roots, { inputLayout = process.env.BROWSEY_NATIVE_INPUT_LAYOUT } = {}) {
+    this.browser = browser; this.roots = roots; this.inputLayout = inputLayout
+  }
 
   async handshake(runId) {
     const status = await this.browser.execute(async () => {
@@ -307,6 +309,7 @@ export class NativeUi {
     const action = this.browser.action('key')
     for (const character of value) {
       if (character === '_') action.down(Key.Shift).down('-').up('-').up(Key.Shift)
+      else if (character === '/' && this.inputLayout === 'no') action.down(Key.Shift).down('7').up('7').up(Key.Shift)
       else if (/^[A-Z]$/.test(character)) action.down(Key.Shift).down(character.toLowerCase()).up(character.toLowerCase()).up(Key.Shift)
       else action.down(character).up(character)
     }
@@ -474,6 +477,60 @@ export class NativeUi {
     await this.browser.keys(['Enter'])
     await this.idle()
     await this.select(child(base, name))
+  }
+
+  async beginCreation(base, folder) {
+    ownedPath(this.roots, base)
+    await this.emptySpace(base)
+    const collection = await this.browser.$('.rows, .grid')
+    const size = await collection.getSize()
+    await collection.click({ button: 'right', x: 0, y: Math.max(0, Math.floor(size.height / 2) - 16) })
+    const action = await this.browser.$(`[role="menuitem"][data-action-id="${folder ? 'new-folder' : 'new-file'}"]`)
+    await action.waitForDisplayed({ timeout: 5000 })
+    await action.click()
+    const input = await this.browser.$(folder ? '#new-folder-name' : '#new-file-name')
+    await input.waitForDisplayed({ timeout: 5000 })
+    await this.browser.waitUntil(async () => await input.isFocused(), { timeout: 5000 })
+    assert.equal(await input.getValue(), folder ? 'New folder' : '', 'A fresh creation dialog must reset its name')
+    return input
+  }
+
+  async creationValue(folder, value) {
+    assert.ok(typeof value === 'string' && value.length <= 128 && !value.includes('\0'))
+    await this.fill(await this.browser.$(folder ? '#new-folder-name' : '#new-file-name'), value)
+  }
+
+  async submitCreation(folder, { button = false, error } = {}) {
+    const input = await this.browser.$(folder ? '#new-folder-name' : '#new-file-name')
+    assert.ok(await input.isFocused(), 'Expected the intended creation input before submission')
+    if (button) await (await this.browser.$('//*[@role="dialog"]//button[normalize-space(.)="Create"]')).click()
+    else await this.browser.keys([Key.Enter])
+    if (error) {
+      const pill = await this.browser.$('[role="dialog"] .pill.error')
+      await pill.waitForDisplayed({ timeout: 60_000 })
+      assert.match(await pill.getText(), error, 'Creation must explain the expected rejection')
+      assert.ok(await input.isDisplayed(), 'Rejected creation must keep its dialog open')
+    } else await this.idle()
+  }
+
+  async cancelCreation(folder, escape = false) {
+    const input = await this.browser.$(folder ? '#new-folder-name' : '#new-file-name')
+    if (escape) {
+      assert.ok(await input.isFocused(), 'First Escape must start in the creation input')
+      await this.browser.keys([Key.Escape])
+      assert.ok(await input.isDisplayed(), 'First Escape blurs a text input before closing its modal')
+      assert.ok(!await input.isFocused(), 'First Escape must blur the text input')
+      await this.browser.keys([Key.Escape])
+    } else await (await this.browser.$('//*[@role="dialog"]//button[normalize-space(.)="Cancel"]')).click()
+    await this.idle()
+  }
+
+  async creationFocus(base) {
+    await this.waitPath(base)
+    await this.browser.waitUntil(async () => await this.browser.execute(() => {
+      const collection = document.querySelector('.rows, .grid')
+      return collection && collection === document.activeElement
+    }), { timeout: 5000, timeoutMsg: 'Closing creation did not restore focus to its collection trigger' })
   }
 
   async rename(raw, name) {

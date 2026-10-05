@@ -49,6 +49,20 @@ describe('openEntry', () => {
 describe('cloud write and archive routing', () => {
   beforeEach(() => { invokeMock.mockReset() })
 
+  it('rejects invalid file and folder leaf names before any local or cloud mutation', async () => {
+    const { createFile, createFolder } = await import('./files.service')
+    const { createCloudFolder } = await import('@/features/network')
+    vi.mocked(createCloudFolder).mockClear()
+    for (const base of ['/generated/owned', 'rclone://work/generated']) {
+      for (const name of ['', ' ', '.', ' .. ', 'bad/name', 'bad\\name', 'bad\0name']) {
+        expect(() => createFile(base, name)).toThrow('Invalid file name')
+        await expect(createFolder(base, name)).rejects.toThrow('Invalid folder name')
+      }
+    }
+    expect(invokeMock).not.toHaveBeenCalled()
+    expect(createCloudFolder).not.toHaveBeenCalled()
+  })
+
   it('creates cloud files through the provider command and rejects escaping names', async () => {
     const { createFile } = await import('./files.service')
     invokeMock.mockResolvedValue('rclone://work/docs/new.txt')

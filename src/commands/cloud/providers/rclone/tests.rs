@@ -1417,6 +1417,70 @@ fn mkdir_uses_cli_path_without_rc_daemon() {
 
 #[cfg(unix)]
 #[test]
+fn interactive_folder_creation_rejects_existing_file_and_directory_without_mkdir() {
+    for directory in [false, true] {
+        let sandbox = FakeRcloneSandbox::new();
+        if directory {
+            sandbox.mkdir_remote("work", "existing");
+            sandbox.write_remote_file("work", "existing/sentinel.txt", "preserved");
+        } else {
+            sandbox.write_remote_file("work", "existing", "preserved");
+        }
+        let err = crate::commands::cloud::write::create_new_cloud_folder(
+            &sandbox.provider(),
+            &cloud_path("rclone://work/existing"),
+            None,
+        )
+        .expect_err("Interactive creation must reject an existing name");
+        assert_eq!(
+            err.code_str(),
+            CloudCommandErrorCode::DestinationExists.as_code_str()
+        );
+        assert!(!sandbox.read_log().contains("mkdir work:existing"));
+        let preserved = if directory {
+            "existing/sentinel.txt"
+        } else {
+            "existing"
+        };
+        assert_eq!(
+            std::fs::read_to_string(sandbox.remote_path("work", preserved)).unwrap(),
+            "preserved"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn interactive_folder_creation_creates_once_and_cancelled_creation_never_probes_or_writes() {
+    let sandbox = FakeRcloneSandbox::new();
+    let provider = sandbox.provider();
+    let cancelled = std::sync::atomic::AtomicBool::new(true);
+    let err = crate::commands::cloud::write::create_new_cloud_folder(
+        &provider,
+        &cloud_path("rclone://work/cancelled"),
+        Some(&cancelled),
+    )
+    .expect_err("Already cancelled creation must stop before provider I/O");
+    assert_eq!(
+        err.code_str(),
+        CloudCommandErrorCode::Cancelled.as_code_str()
+    );
+    assert!(sandbox.read_log().is_empty());
+    crate::commands::cloud::write::create_new_cloud_folder(
+        &provider,
+        &cloud_path("rclone://work/new-folder"),
+        None,
+    )
+    .expect("A new folder must be created");
+    assert!(sandbox.remote_path("work", "new-folder").is_dir());
+    assert_eq!(
+        sandbox.read_log().matches("mkdir work:new-folder").count(),
+        1
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn mkdir_retries_destination_exists_when_probe_shows_missing_target() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.mark_mkdir_destination_exists_once();

@@ -40,6 +40,7 @@ export const createNewFileModal = (deps: Deps) => {
     }
     if (busy) return null
     busy = true
+    state.update((s) => ({ ...s, error: '' }))
     try {
       const created: string = await createFile(base, trimmed)
       close()

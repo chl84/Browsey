@@ -77,6 +77,22 @@ test('nonempty input replacement does not exit a one-character filter through Ba
   assert.ok(!keys.includes(Key.Backspace))
 })
 
+test('Norwegian slash input explicitly presses/releases Shift+7 without changing other layouts', async () => {
+  for (const inputLayout of ['no', 'us']) {
+    const batches = []
+    const browser = { releaseActions: async () => {}, keys: async () => {}, action: () => {
+      const values = []
+      return { down(value) { values.push(['down', value]); return this },
+        up(value) { values.push(['up', value]); return this }, perform: async () => { batches.push(values) } }
+    } }
+    const ui = new NativeUi(browser, [], { inputLayout })
+    await ui.fill({ click: async () => {}, isFocused: async () => true, getValue: async () => '/' }, '/')
+    assert.deepEqual(batches.at(-1), inputLayout === 'no'
+      ? [['down', Key.Shift], ['down', '7'], ['up', '7'], ['up', Key.Shift]]
+      : [['down', '/'], ['up', '/']])
+  }
+})
+
 test('an app-reported failure stops readiness even when the operation flag is idle', async () => {
   const ui = new NativeUi({ execute: async () => ({ idle: true, errors: ['Paste failed: Cloud operation failed.'] }),
     waitUntil: async predicate => assert.equal(await predicate(), true) }, [])

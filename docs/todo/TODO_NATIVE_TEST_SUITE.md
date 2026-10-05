@@ -170,9 +170,17 @@ Use shared cases for applicable providers and independently verify actual files.
   local retest. All 78 harness tests and 36 relevant frontend tests passed.
   Remote large-list/grid virtualization and repeated operation requests remain
   outside this scope; NT1-6 covers repeated dispatch. All real runs are retained.
-- [ ] **NT1-4** Create files/folders with empty contents, duplicate names and
+- [x] **NT1-4** Create files/folders with empty contents, duplicate names and
   invalid input. Test Enter, Cancel/Escape and focus restoration; rejection
   must leave existing fixtures unchanged.
+  Completed by the [native creation verification](../operations/linux-release/runs/2026-10-05-native-creation.md):
+  all 120 parts passed on local disk, USB, network, OneDrive and mobile, including
+  independent contents/membership preservation, corrected drafts, modal focus,
+  owned accessibility, teardown and private audits. Invalid leaf names, cloud
+  folder collisions and stale retry errors are fixed. All 83 harness tests,
+  657 frontend tests and 770 Rust tests passed (19 Rust tests ignored). Concurrent
+  writers, platform-specific reserved names and other keyboard layouts remain
+  outside this scope; all real runs are retained.
 - [ ] **NT1-5** Rename files and non-empty folders, checking nested contents,
   collisions, extensions, case-only changes, cancellation and repeated submission.
   Verify old/new paths and preservation of unrelated fixture files.

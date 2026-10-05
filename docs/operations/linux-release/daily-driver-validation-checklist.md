@@ -94,6 +94,12 @@ selection parts using 200 generated files. Exact selected-copy membership/bytes,
 owned accessibility, teardown and privacy audits passed; final reporting changes
 passed a fresh local retest. This scope does not close the broader parent rows.
 
+The [native creation verification](runs/2026-10-05-native-creation.md) completes
+NT1-4 with 120 parts across all five providers, independent preservation after
+every attempt, owned accessibility and confirmed teardown/privacy. Invalid leaf
+names, cloud folder collisions and stale errors during corrected requests are
+fixed. The broader parent rows remain open.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable

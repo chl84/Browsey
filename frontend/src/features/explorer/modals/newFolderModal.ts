@@ -50,6 +50,7 @@ export const createNewFolderModal = (deps: Deps) => {
     }
     if (busy) return null
     busy = true
+    state.update((s) => ({ ...s, error: '' }))
     const progressEvent = `mkdir-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       if (activityApi) {

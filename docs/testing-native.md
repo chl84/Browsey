@@ -54,6 +54,10 @@ records NT1-3 list/grid selection and exact selected-file copies on all five
 providers, plus a representative 200-file local virtualized list. It also
 documents the bounded retention-count increase without deleting recovery data.
 
+The [creation verification](operations/linux-release/runs/2026-10-05-native-creation.md)
+records NT1-4 creation, input/collision rejection, preservation and focus checks,
+including the shared name validation and interactive cloud-folder collision fix.
+
 The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
 stability, basic operations, transfer boundaries, failure safety and edge cases.
 It tracks suite work; accepted candidate outcomes stay in the daily-driver
@@ -148,6 +152,16 @@ the remote providers. Ctrl toggles, Shift ranges, arrows, Escape, empty-space
 clicks, navigation restoration and filtered select-all use real input. Copies
 are sent once and independently checked for exact membership and bytes; these
 checks are not a backend invocation receipt. NT1-6 covers repeated requests.
+`--suite creation` selects NT1-4 on every selected provider. Each case records
+24 parts covering empty file/folder contents, Enter/Create, Cancel and Escape,
+empty/whitespace names, separators and dot components, same-kind and cross-kind
+collisions, focus restoration and correcting a rejected draft in grid. Every
+rejection independently verifies exact entry membership and existing/nested
+sentinel bytes. Expected modal rejection text is checked explicitly; it is not
+treated as successful idle or suppressed as an unrelated application error.
+Escape follows the shared input behavior: first blur a focused text field, then
+close the modal with the next Escape. Creation-name checks run before IPC for
+both local and cloud paths, so rejection does not rely on the native-only guard.
 
 The listing cases compare file order against independently read fixture sizes,
 modified minutes, names and extensions. They combine all four column filters,

@@ -10,6 +10,14 @@ const isCloudPath = (path: string) => path.startsWith('rclone://')
 
 const joinCloudPath = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`
 
+const creationName = (name: string, kind: 'file' | 'folder') => {
+  const trimmed = name.trim()
+  if (!trimmed || /[/\\\0]/.test(trimmed) || trimmed === '.' || trimmed === '..') {
+    throw new Error(`Invalid ${kind} name`)
+  }
+  return trimmed
+}
+
 const parentCloudPath = (path: string) => {
   const idx = path.lastIndexOf('/')
   return idx > 'rclone://'.length ? path.slice(0, idx) : path
@@ -73,20 +81,21 @@ export const previewRenameEntries = (
 }
 
 export const createFolder = async (base: string, name: string) => {
+  const leaf = creationName(name, 'folder')
   if (!isCloudPath(base)) {
-    return invoke<string>('create_folder', { path: base, name })
+    return invoke<string>('create_folder', { path: base, name: leaf })
   }
-  const created = joinCloudPath(base, name)
+  const created = joinCloudPath(base, leaf)
   await createCloudFolder(created)
   return created
 }
 
 export const createFile = (base: string, name: string) => {
+  const leaf = creationName(name, 'file')
   if (isCloudPath(base)) {
-    if (!name.trim() || /[/\\\0]/.test(name) || name === '.' || name === '..') throw new Error('Invalid file name')
-    return invoke<string>('create_cloud_file', { path: joinCloudPath(base, name.trim()) })
+    return invoke<string>('create_cloud_file', { path: joinCloudPath(base, leaf) })
   }
-  return invoke<string>('create_file', { path: base, name })
+  return invoke<string>('create_file', { path: base, name: leaf })
 }
 
 export type EntryKind = 'dir' | 'file'
