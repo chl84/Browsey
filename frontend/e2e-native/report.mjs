@@ -12,6 +12,7 @@ export function requirements(item) {
     navigation: ['directory-read', 'owned-navigation', 'history-navigation', 'breadcrumb-navigation', 'refresh',
       `ui-${item.id.split('-')[1]}-navigation`, 'view-switch'] }
   return Object.fromEntries(item.providers.map((provider, index) => {
+    if (operation === 'access') return [provider, ['owned-read-write-denial', 'supported-read-only-copy', 'actionable-error-feedback', 'independent-source-destination-trees']]
     if (operation === 'moves') return [provider, ['real-move-cancellation-failure', 'independent-source-destination-trees', 'successful-root-only-removal', 'truthful-partial-counts', 'released-task-callbacks']]
     if (operation === 'overwrite') return [provider, ['overwrite-cancel-failure', 'independent-source-destination-trees', 'protected-original-recovery', 'truthful-completion']]
     if (operation === 'cancel') return [provider, ['real-copy-cancellation', 'independent-source-destination-trees', 'quiescent-writes', 'released-task-callbacks']]

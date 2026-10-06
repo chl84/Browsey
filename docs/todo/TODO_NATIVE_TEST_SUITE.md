@@ -321,9 +321,14 @@ Prioritize these data-safety cases before cosmetic UI coverage.
   cancellation and representative USB/cloud failures. Exact trees, remaining
   cut selections, counts and released callbacks match. Local upload moves now
   recheck cancellation and original source version before unlinking. See the NT3 record.
-- [ ] **NT3-5** Exercise read/write denial and read-only behavior on owned fixtures.
+- [x] **NT3-5** Exercise read/write denial and read-only behavior on owned fixtures.
   Require actionable errors and disabled unsupported chmod/chown controls,
   rather than assuming every filesystem supports Unix permissions.
+  Scoped native PASS: 15 file/folder/mixed Properties parts across all five
+  providers, plus three actual local Unix read/write-denial/read-only-copy parts.
+  Exact bytes and unrelated sentinels match; unsupported ownership/access
+  controls and explanations are checked without changing ownership or mounts.
+  Unix denial is representative local coverage, not a claim for every provider.
 - [ ] **NT3-6** Simulate full destination, unavailable provider and transient I/O
   faults with bounded fixture-scoped injection or an approved sandbox. Never
   fill physical media or stop shared services to reproduce failure.

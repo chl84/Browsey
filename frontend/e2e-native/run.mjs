@@ -17,6 +17,7 @@ import { creation, creationManifest } from './creation.mjs'
 import { editing, editingManifest } from './editing.mjs'
 import { overwrites, overwriteManifest, overwriteProbes } from './overwrite.mjs'
 import { moves, moveManifest, moveProbes, moveFaults } from './moves.mjs'
+import { access, accessManifest } from './access.mjs'
 import { ownedRestart } from './restart.mjs'
 import { cancellations, cancellationManifest, cancellationProbes } from './cancellation.mjs'
 import { transfers, transferManifest } from './transfers.mjs'
@@ -55,6 +56,7 @@ suites.progress = { run: progress, manifest: progressManifest }
 suites.cancellation = { run: cancellations, manifest: cancellationManifest }
 suites.overwrite = { run: overwrites, manifest: overwriteManifest }
 suites.moves = { run: moves, manifest: moveManifest }
+suites.access = { run: access, manifest: accessManifest }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const candidate = path.join(repo, 'target/native-test/browsey')
 // Inherited by the scoped app/drivers only; no desktop/global permission change.
@@ -200,7 +202,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['candidate.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['candidate.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -273,7 +275,7 @@ async function main() {
     await setup(shared('driver-startup'), startDriver)
     await setup(shared('webdriver-session'), startSession)
     const ui = new NativeUi(browser, session.dataRoots)
-    if (['progress', 'cancellation', 'overwrite', 'moves'].includes(options.suite)) ui.waitTimeout = 180_000
+    if (['progress', 'cancellation', 'overwrite', 'moves', 'access'].includes(options.suite)) ui.waitTimeout = 180_000
     if (options.suite === 'transfers-pairs') ui.transferEvidence = routeEvidence(`${profile}/data/browsey/logs/browsey.log`)
     const captureIdentity = async () => {
       ui.browser = browser

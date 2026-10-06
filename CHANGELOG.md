@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Verify native Properties permission/ownership capabilities on local disk,
+  USB, network, cloud and mobile, plus real local read/write denial and copying
+  of a read-only file with its supported mode preserved.
+
 - Preserve local move sources when cancellation arrives after cloud upload or
   their file version changes during upload. Check cancellation before deleting
   a downloaded cloud source. Verify scoped native interrupted/failed moves on

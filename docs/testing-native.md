@@ -558,9 +558,15 @@ these clipboard operations. Provider-internal temporary files are outside this
 receipt claim. Missing/unknown routing evidence blocks acceptance.
 
 `--suite moves` verifies before-write cancellation within all five providers
-and across the local hub, with representative USB/cloud mid-file, pre-delete,
+and across the local hub, with a representative USB mid-file stop and USB/cloud pre-delete,
 between-file and partial-failure cases. A cloud failure is one exact-source
 candidate dispatch fault; no shared provider/service is stopped. Both generated
 trees, remaining cut selections, truthful counts and released registries are
 checked. Complete late-cancel destination copies may remain alongside sources;
 this is cancellation, not a promise of transaction rollback.
+
+`--suite access` reuses real Properties inspection on all five providers and adds
+actual local read/write denial and read-only source copy. Restrictive modes are
+changed/restored through original no-follow descriptors, only for matching
+owned inodes. Unsupported provider chmod/chown controls remain absent or disabled;
+no mount-wide restriction or ownership change is performed.
