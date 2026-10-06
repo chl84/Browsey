@@ -440,6 +440,7 @@ mod enabled {
     use serde::Deserialize;
     use std::env;
     use tauri::ipc::{Invoke, InvokeBody};
+    use tauri::Manager;
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -557,6 +558,7 @@ mod enabled {
             "native_test_status" => Some(serde_json::json!({"runId":session.run_id,
                 "pid":std::process::id(), "scope":"owned-files-only", "watcher":false,
                 "probes":probes::status(),
+                "cancelTasks":invoke.message.webview_ref().state::<crate::tasks::CancelState>().native_active_count(),
                 "faults":FAULTS.get().expect("faults initialized").iter().map(|fault| serde_json::json!({
                     "id":fault.plan.id, "uses":fault.used.load(std::sync::atomic::Ordering::SeqCst),
                     "armed":fault.armed.load(std::sync::atomic::Ordering::SeqCst)})).collect::<Vec<_>>()})),

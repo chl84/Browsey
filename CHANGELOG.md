@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Register mixed-transfer cancellation before asynchronous route validation,
+  so early cancellation reaches the task. Verify cancellation before writes
+  on all local-hub storage routes, with representative local mid-file and
+  local/cloud between-file cases, truthful partial counts and released callbacks.
+
 - Keep missing cloud transfer sizes indeterminate instead of reporting a
   fictional one-byte total. Show zero/unknown progress and actual completed
   file bytes through finalization. Verify visible progress and activity cleanup

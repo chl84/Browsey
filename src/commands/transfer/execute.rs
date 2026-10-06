@@ -98,6 +98,7 @@ pub(super) async fn execute_mixed_entries(
     let started = Instant::now();
     let source_count = sources.len();
     let route_hint = mixed_route_hint(&sources, &dest_dir);
+    let cancel_guard = register_mixed_cancel(&cancel_state, &progress_event)?;
     let route = match validate_mixed_transfer_route(sources, dest_dir).await {
         Ok(route) => route,
         Err(err) => {
@@ -106,7 +107,6 @@ pub(super) async fn execute_mixed_entries(
             return result;
         }
     };
-    let cancel_guard = register_mixed_cancel(&cancel_state, &progress_event)?;
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let progress = progress_event
         .clone()
@@ -139,6 +139,32 @@ pub(super) async fn execute_mixed_entry_to(
 ) -> TransferResult<String> {
     let started = Instant::now();
     let route_hint = mixed_route_hint(std::slice::from_ref(&src), &dst);
+    let cancel_guard = register_mixed_cancel(&cancel_state, &progress_event)?;
+    let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
+    #[cfg(feature = "native-test")]
+    {
+        let source = src.clone();
+        let target = dst.clone();
+        let token = cancel_token.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::native_test::probes::checkpoint(&source, &target, "validation", 0, || {
+                transfer_cancelled(token.as_deref())
+            });
+        })
+        .await
+        .map_err(|error| {
+            api_err(
+                "task_failed",
+                format!("Transfer checkpoint failed: {error}"),
+            )
+        })?;
+    }
+    if transfer_cancelled(cancel_token.as_deref()) {
+        return Err(transfer_err(
+            TransferErrorCode::Cancelled,
+            "Transfer cancelled",
+        ));
+    }
     let pair = match validate_mixed_transfer_pair(src, dst).await {
         Ok(pair) => pair,
         Err(err) => {
@@ -147,8 +173,6 @@ pub(super) async fn execute_mixed_entry_to(
             return result;
         }
     };
-    let cancel_guard = register_mixed_cancel(&cancel_state, &progress_event)?;
-    let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let progress = progress_event
         .clone()
         .map(|event_name| TransferProgressContext {

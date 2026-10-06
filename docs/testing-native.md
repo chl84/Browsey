@@ -481,6 +481,14 @@ mid-file callback cadence. The registered-run limit increased from 64 to 96
 to retain NT3 reports alongside prior evidence; byte and audit limits remain
 unchanged, and no retained recovery data is deleted.
 
+`--suite cancellation` adds real Cancel-button checks on every hub route before
+writing, a representative local mid-file stop and local/cloud between-file stops.
+Exact-path validation/write checkpoints hold at most five seconds and respond
+to the real cancellation token. Two independent readbacks after quiescence
+check preserved sources and truthful retained/rolled-back/completed outputs.
+Read-only inspection checks live Tauri callbacks; candidate status checks the
+actual task registry. Mid-file GIO/cloud timing is outside this native scope.
+
 Successful local-only runs must be retained for at least seven days before they
 can become eligible for explicit cleanup. Age never triggers automatic deletion.
 Failed, blocked, active, incompletely torn-down, legacy/unregistered and

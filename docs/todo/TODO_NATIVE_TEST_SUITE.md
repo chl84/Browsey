@@ -297,9 +297,14 @@ Prioritize these data-safety cases before cosmetic UI coverage.
   and bounded finalization pauses expose displayed state; unknown cloud totals
   remain indeterminate. Large files and universal mid-file callback cadence
   are excluded. See the [NT3 verification record](../operations/linux-release/runs/2026-10-06-native-failure-safety.md).
-- [ ] **NT3-2** Cancel copies before I/O, mid-file and between files. Independently
+- [x] **NT3-2** Cancel copies before I/O, mid-file and between files. Independently
   verify writes stop, sources survive, destination state and partial-result
   messages are accurate, and listeners are released. Cancel is not rollback.
+  Scoped native PASS: 13 cases, all nine hub routes before writing, a real
+  local 16 KiB mid-file stop, and local/bidirectional cloud between-file stops.
+  Two independent tree comparisons verify quiescence and source preservation;
+  actual task tokens and Tauri callbacks are released. Large-file and mid-file
+  GIO/cloud timing remain outside this representative scope. See the NT3 record.
 - [ ] **NT3-3** Cancel/fail overwrite of a file with different existing bytes.
   Verify the documented overwrite/recovery boundary: no silent loss or incomplete
   output reported as complete. Inspect retained backups/diagnostics without

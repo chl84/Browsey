@@ -26,6 +26,11 @@ pub struct CancelGuard {
 }
 
 impl CancelState {
+    #[cfg(feature = "native-test")]
+    pub(crate) fn native_active_count(&self) -> Option<usize> {
+        self.inner.lock().ok().map(|map| map.len())
+    }
+
     pub fn register(&self, id: String) -> TaskResult<CancelGuard> {
         let flag = Arc::new(AtomicBool::new(false));
         let mut map = self.inner.lock().map_err(|_| {

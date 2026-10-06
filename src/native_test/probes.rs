@@ -50,7 +50,10 @@ fn validate(roots: &[String], plans: Vec<Plan>) -> Result<Vec<Probe>, &'static s
                 .all(|b| b.is_ascii_alphanumeric() || b == b'-')
             || !ids.insert(&plan.id)
             || !pairs.insert((&plan.source, &plan.target))
-            || !matches!(plan.hold_phase.as_str(), "start" | "written" | "finalize")
+            || !matches!(
+                plan.hold_phase.as_str(),
+                "validation" | "start" | "written" | "finalize"
+            )
             || plan.hold_bytes > 65536
             || plan.hold_ms > 5000
             || plan.slow_ms > 500
