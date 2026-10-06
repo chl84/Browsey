@@ -66,6 +66,18 @@ pub(super) fn watch_dir_impl(
     state: tauri::State<WatchState>,
     app: tauri::AppHandle,
 ) -> ListingResult<()> {
+    #[cfg(feature = "native-test")]
+    if crate::native_test::watchers_enabled() {
+        // This mode never calls expand_path, home fallback or broad discovery.
+        let target = crate::native_test::owned_watch_path(path.as_deref())
+            .map_err(|message| ListingError::new(ListingErrorCode::WatchNotAllowed, message))?;
+        return watcher::start_watch(app, target, &state).map_err(|error| {
+            ListingError::new(
+                ListingErrorCode::TaskFailed,
+                format!("Owned watcher failed: {error}"),
+            )
+        });
+    }
     let base_path = crate::commands::fs::expand_path(path).map_err(ListingError::from)?;
     let target = match sanitize_path_follow(&base_path.to_string_lossy(), true) {
         Ok(p) if p.exists() => p,

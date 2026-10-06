@@ -24,6 +24,7 @@ import {startDesktop,fixtureLauncher} from './desktop.mjs'
 import {desktopApplications} from './desktop-apps.mjs'
 import {drag,dragManifest} from './drag.mjs'
 import {feedback,feedbackManifest} from './feedback.mjs'
+import {watchers,watchersManifest,watchersProbes} from './watchers.mjs'
 import {appearance,appearanceManifest,appearanceProbes} from './appearance.mjs'
 import {keyboard,keyboardManifest,keyboardProbes} from './keyboard.mjs'
 import {services,servicesManifest} from './desktop-services.mjs'
@@ -90,6 +91,7 @@ suites.mobile = { run: mobile, manifest: mobileManifest }
 suites.network = { run: network, manifest: networkManifest }
 suites.drag = {run:drag,manifest:dragManifest}
 suites['drag-feedback'] = {run:feedback,manifest:feedbackManifest}
+suites.watchers={run:watchers,manifest:watchersManifest}
 suites.appearance={run:appearance,manifest:appearanceManifest}
 suites.keyboard={run:keyboard,manifest:keyboardManifest}
 suites['desktop-services'] = {run:services,manifest:servicesManifest}
@@ -217,9 +219,11 @@ async function main() {
   if (options.suite === 'links') report.notTested.push('Link behavior on USB/network/cloud/mobile', 'Directory symlinks and outside referents (not authorized)')
   if (['drag','drag-feedback'].includes(options.suite)) report.notTested = report.notTested.filter(item => item !== 'Native drag/drop')
   if (options.suite === 'desktop-services') {report.notTested=report.notTested.filter(item=>item!=='Trash/format');report.notTested.push('Format and personal/global trash (outside isolated scope)', 'Clipboard on shared Wayland/desktop services')}
+  if (options.suite==='watchers')report.notTested=report.notTested.filter(item=>item!=='Watcher behavior (disabled in scoped candidate)')
   if (options.fault) report.notTested.push('All UI file-operation acceptance (lifecycle fault scope)')
   if (options.suite === 'selection') report.notTested.push('Large-list virtualization on USB/network/cloud/mobile (local representative only)',
     'Backend invocation receipts and repeated copy/paste submission (NT1-6)')
+  let driverPorts=[4444,4445]
   let browser, driver, nativeDriverOwner, candidateOwner, log, reportOwned = false, reservation, activeCreated = false
   let tools, profile, session, env, fixture, desktop
   const retention = new RetentionStore(path.join(repo, 'target/native-test/.retention'))
@@ -243,14 +247,14 @@ async function main() {
   const record = async (name, action, metadata) => {
     console.log(`Native case: ${name}`)
     return recordCase(report, metadata, action, { before: owned, after: owned, persist,
-      resolveFailure: async error => { try { await owned(); return error } catch (observed) { return observed } } })
+      resolveFailure: async error => { if(!driver||!nativeDriverOwner||!candidateOwner)return error;try { await owned(); return error } catch (observed) { return observed } } })
   }
   try {
     // Preflight still precedes writes. Failures before local ownership print a
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['../../tests/support/native_fixture_x11.py','appearance.mjs','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['../../tests/support/native_fixture_x11.py','watchers.mjs','appearance.mjs','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -268,10 +272,10 @@ async function main() {
       activeCreated = true
     } })
     session = { runId: plan.runId, dataRoots: plan.targets.map(target => target.files), profile,
-      ...(options.suite==='desktop-services'?{desktop:'desktop-services'}:{}),
+      ...(['desktop-services','watchers'].includes(options.suite)?{desktop:options.suite}:{}),
       ...(['cloud-provider','cloud-working'].includes(options.suite) ? { workspaceSource: cloudLocations(plan).source } : {}),
       ...(options.suite === 'links' ? { links: linkPlan(plan) } : {}),
-      ...(['cloud-provider','cloud-working'].includes(options.suite) ? { probes: cloudProbes(plan) } : options.suite === 'network' ? { probes: networkProbes(plan) } : options.suite === 'appearance' ? {probes:appearanceProbes(plan)} : options.suite === 'keyboard' ? {probes:keyboardProbes(plan)} : options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
+      ...(['cloud-provider','cloud-working'].includes(options.suite) ? { probes: cloudProbes(plan) } : options.suite === 'network' ? { probes: networkProbes(plan) } : options.suite === 'watchers' ? {probes:watchersProbes(plan)} : options.suite === 'appearance' ? {probes:appearanceProbes(plan)} : options.suite === 'keyboard' ? {probes:keyboardProbes(plan)} : options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
       ...(options.suite === 'batches' ? { faults: batchFaults(plan) } : options.suite === 'moves' ? { faults: moveFaults(plan) } : {}) }
     if (session.faults) report.faults = session.faults.map(fault => ({ id: fault.id,
       kind: fault.source ? 'owned-source-dispatch' : 'owned-list-refresh', status: 'NOT_RUN', uses: 0 }))
@@ -303,16 +307,16 @@ async function main() {
       await setup({ id: 'owned-run-cloud', providers: ['cloud'] }, () => fixture.ensureCloudRoot(target))
     }
     const startDriver = async () => {
-      driver = spawn(tools.driver, ['--port', '4444', '--native-host', '127.0.0.1', '--native-port', '4445', '--native-driver', tools.webkit],
+      driver = spawn(tools.driver, ['--port', String(driverPorts[0]), '--native-host', '127.0.0.1', '--native-port', String(driverPorts[1]), '--native-driver', tools.webkit],
         { env, cwd: local.files, stdio: ['ignore', log.fd, log.fd] })
       trackChild(driver)
-      report.driverIdentity = { pid: driver.pid ?? null }
+      report.driverIdentity = { pid: driver.pid ?? null, ports:driverPorts }
       assertDriverAlive(driver)
       report.driverIdentity.startTime = (await processStamp(driver.pid)).start
       if (options.fault === 'driver-exit') driver.kill('SIGTERM')
       const webkitExecutable = await fs.realpath(tools.webkit)
-      await waitDriver(driver, { listening: async () => {
-        const pid = await ownedNativeDriverPid(driver, webkitExecutable)
+      await waitDriver(driver, { probe:signal=>fetch(`http://127.0.0.1:${driverPorts[0]}/status`,{signal}),listening: async () => {
+        const pid = await ownedNativeDriverPid(driver, webkitExecutable,...driverPorts)
         if (!pid) return false
         nativeDriverOwner = await captureCandidate(pid, { executable: webkitExecutable, dataHome: `${profile}/data`,
           runId: plan.runId, role: 'native-driver' })
@@ -323,7 +327,7 @@ async function main() {
     }
     const startSession = async () => {
       const { remote } = await import('webdriverio')
-      browser = await remote({ hostname: '127.0.0.1', port: 4444, logLevel: 'silent', connectionRetryCount: 0,
+      browser = await remote({ hostname: '127.0.0.1', port: driverPorts[0], logLevel: 'silent', connectionRetryCount: 0,
         connectionRetryTimeout: 60_000, capabilities: { 'tauri:options': desktop?fixtureLauncher(repo,local.run,candidate):{ application: candidate } } })
     }
     await setup(shared('driver-startup'), startDriver)
@@ -354,7 +358,7 @@ async function main() {
       await owned()
     }
     if (options.fullscreen) await setup(shared('owned-window-fullscreen'), fullscreen)
-    if (['editing', 'history', 'interruption','drag'].includes(options.suite)) {
+    if (['editing', 'history', 'interruption','drag','watchers'].includes(options.suite)) {
       report.restarts = []
       let interrupted = false
       ui.restart = ownedRestart({ restarts: report.restarts, persist,
@@ -370,7 +374,8 @@ async function main() {
         },
         start: async () => {
           driver = undefined; nativeDriverOwner = undefined; candidateOwner = undefined
-          await checkPorts(); await verifyCandidate(repo, candidate)
+          // One fresh fixed port pair after confirmed teardown, without a launch retry.
+          driverPorts=[4448,4449];await checkPorts(driverPorts);await verifyCandidate(repo, candidate)
           await startDriver(); await startSession(); status = await captureIdentity()
           await owned(); if (options.fullscreen) await fullscreen()
           return { candidate: report.identity, driver: report.driverIdentity }

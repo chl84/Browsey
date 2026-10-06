@@ -478,7 +478,7 @@ external launches and discovery remain disabled by default.
 - [x] **NT6-5** Validate private-profile themes/densities, grid zoom and generated
   thumbnails under load: corrupt/unsupported images, late metadata, stable grid
   order, filter Reset and progress/modal layout. No global theme changes.
-- [ ] **NT6-6** Add fixture-only watcher tests after eliminating home fallback and
+- [x] **NT6-6** Add fixture-only watcher tests after eliminating home fallback and
   broad discovery from that mode. Cover external fixture changes, refresh during
   work and shutdown; disabled-watcher runs cannot certify watcher behavior.
 - [ ] **NT6-7** Add generated archive round trips: supported formats, passwords,

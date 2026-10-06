@@ -73,6 +73,11 @@ pub struct WatchState {
 }
 
 impl WatchState {
+    #[cfg(feature = "native-test")]
+    pub(crate) fn native_active(&self) -> bool {
+        self.inner.lock().is_ok_and(|guard| guard.is_some())
+    }
+
     pub fn replace(&self, watcher: Option<RecommendedWatcher>) -> WatcherResult<()> {
         let mut guard = self.inner.lock().map_err(|_| {
             WatcherError::new(WatcherErrorCode::StateLock, "Failed to lock watch state")

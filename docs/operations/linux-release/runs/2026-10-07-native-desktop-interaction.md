@@ -177,4 +177,35 @@ files/screenshots; the harness sent two Escape codes in one key sequence instead
 of separate presses for text blur and modal close. The corrected real input
 sequence passes in fresh runs. No report, permission or recovery data was altered.
 
+## NT6-6: fixture-only actual watchers
+
+Run `b099e54b-60a8-4c68-84a8-5206b91198c2` is native PASS: six parts plus
+accessibility. The separately identified mode installs an actual notify watcher
+on an explicit owned local directory. Real external create/edit/rename/delete
+produce actual dir-changed events; UI membership and changed byte-size metadata
+reconcile without F5. An external write during an actual five-second held copy
+and UI Refresh preserve both the copy and the external file. A new queued change
+followed by owned window/driver shutdown and one restart preserves all bytes;
+the fresh process installs its own watcher and lists the exact resulting files.
+Independent trees preserve the unrelated sentinel throughout. Both old and new
+four-step teardown, namespace exit and strict retention pass (55 entries,
+751,823 bytes); task/listener resources release.
+
+The native-only watch branch runs before expand_path, home fallback, disk/GVFS
+and bookmark discovery. Missing/relative/traversal/outside/cloud paths fail
+closed, and watcher-start failure is returned rather than silently acknowledged.
+Ordinary sessions retain disabled watchers. Twelve Rust native guard tests pass,
+including denial before filesystem I/O; native policy tests: 157 PASS.
+
+Retained BLOCKED run `5f26d6b5-6d7e-4af4-b2c4-26a5dd701634` passes its five
+functional parts and proves old-process teardown, but immediate same-port driver
+preflight reports EADDRINUSE. One deliberate restart now uses a fresh fixed,
+preflighted port pair (4448/4449) after confirmed old teardown; no case, mutation
+or launch is retried. Readiness and captured listener ownership use that pair.
+A further failed readiness run remains retained. Failure reporting also preserves
+the original startup error when no new driver/candidate identity exists, instead
+of replacing it with an undefined-process inspection error. The final native run
+proves the complete declared shutdown/restart scope; it does not certify old-port
+reuse timing. No normal application watcher policy was changed.
+
 Remaining NT6 parts are not accepted by this record yet.

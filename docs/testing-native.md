@@ -96,9 +96,13 @@ owned sibling leaf referents. Parent/directory links and outside referents stay
 forbidden. Unknown hard-link aliases are rejected.
 Automatic mount/mobile discovery, system clipboard import/export, global trash,
 formatting, connection/mount actions and external application launches are not
-allowed. The directory watcher is disabled because its normal discovery/fallback
-can leave the approved scope; tests explicitly refresh. Undo/redo recheck owned
-local trees. These restrictions are absent from normal builds.
+allowed by default. Separately approved isolated clipboard/trash and dummy
+handler scopes are defined in [the desktop contract](testing-native-desktop.md).
+The directory watcher stays disabled in ordinary sessions; the isolated `watchers`
+suite requires an explicit owned local directory and enters before normal path
+expansion, home fallback or root discovery. Its status reports both the mode and
+actual installed watcher state. Other suites explicitly refresh. Undo/redo
+recheck owned local trees. These restrictions are absent from normal builds.
 
 This is a guard for a trusted test session, **not an OS sandbox** against a
 malicious same-user process replacing paths during I/O. Do not concurrently edit

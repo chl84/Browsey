@@ -203,11 +203,11 @@ fn authorize(roots: &[String], command: &str, body: &Value) -> Result<Vec<String
     if !private_settings && !file_command {
         return Err("Command is not permitted in the native foundation suite");
     }
-    if command == "search_stream" {
+    if matches!(command, "search_stream" | "watch_dir") {
         let path = body
             .get("path")
             .and_then(Value::as_str)
-            .ok_or("Native-test search requires an explicit directory")?;
+            .ok_or("Native-test search/watch requires an explicit directory")?;
         check_path(roots, path)?;
     }
     if matches!(command, "paste_clipboard_cmd" | "paste_clipboard_preview")
@@ -587,7 +587,8 @@ mod enabled {
         let command = invoke.message.command();
         let override_value = match command {
             "native_test_status" => Some(serde_json::json!({"runId":session.run_id,
-                "pid":std::process::id(), "scope":"owned-files-only", "watcher":false, "desktopMode":session.desktop,
+                "pid":std::process::id(), "scope":"owned-files-only", "watcher":session.desktop.as_deref()==Some("watchers"),
+                "watcherActive":invoke.message.webview_ref().state::<crate::watcher::WatchState>().native_active(), "desktopMode":session.desktop,
                 "probes":probes::status(),
                 "cancelTasks":invoke.message.webview_ref().state::<crate::tasks::CancelState>().native_active_count(),
                 "faults":FAULTS.get().expect("faults initialized").iter().map(|fault| serde_json::json!({
@@ -610,7 +611,7 @@ mod enabled {
                 if session.desktop.as_deref() != Some("desktop-services") => Some(Value::Null),
             // The normal watcher has home-directory fallback/discovery. Keep it off;
             // the suite explicitly refreshes after fixture changes and navigation.
-            "watch_dir" => Some(Value::Null),
+            "watch_dir" if session.desktop.as_deref() != Some("watchers") => Some(Value::Null),
             "system_clipboard_paths" if session.desktop.as_deref() != Some("desktop-services") => Some(serde_json::json!({"mode":"copy", "paths":[]})),
             _ => None,
         };
@@ -679,12 +680,48 @@ mod enabled {
         }
         Ok(())
     }
+
+    pub(crate) fn watchers_enabled() -> bool {
+        SESSION
+            .get()
+            .is_some_and(|session| session.desktop.as_deref() == Some("watchers"))
+    }
+
+    pub(crate) fn owned_watch_path(path: Option<&str>) -> Result<std::path::PathBuf, &'static str> {
+        let session = SESSION.get().ok_or("Missing owned watcher session")?;
+        if !watchers_enabled() {
+            return Err("Owned watcher mode is disabled");
+        }
+        super::validate_owned_watch_path(&session.data_roots, path)
+    }
+}
+
+fn validate_owned_watch_path(
+    roots: &[String],
+    path: Option<&str>,
+) -> Result<std::path::PathBuf, &'static str> {
+    let raw = path.ok_or("Explicit owned watch directory required")?;
+    check_path(roots, raw)?;
+    if raw.starts_with("rclone://") {
+        return Err("Owned watcher mode is local-only");
+    }
+    let target = Path::new(raw);
+    no_links(target)?;
+    if !std::fs::metadata(target)
+        .map_err(|_| "Owned watch directory unavailable")?
+        .is_dir()
+    {
+        return Err("Owned watch target must be a directory");
+    }
+    Ok(target.to_path_buf())
 }
 
 #[cfg(feature = "native-test")]
 pub(crate) use enabled::check_desktop_clipboard_paths;
 #[cfg(feature = "native-test")]
 pub(crate) use enabled::{initialize, intercept, working_copies_enabled};
+#[cfg(feature = "native-test")]
+pub(crate) use enabled::{owned_watch_path, watchers_enabled};
 
 #[cfg(test)]
 mod tests {
@@ -696,6 +733,34 @@ mod tests {
             format!("/approved/{FOLDER}/.bnt-{}/files", ID.replace('-', "")),
             format!("rclone://Test/{FOLDER}/.bnt-{}/files", ID.replace('-', "")),
         ]
+    }
+
+    #[test]
+    fn watcher_scope_rejects_missing_cloud_outside_and_traversal_before_io() {
+        let roots = roots();
+        assert_eq!(
+            validate_owned_watch_path(&roots, None).unwrap_err(),
+            "Explicit owned watch directory required"
+        );
+        for path in [
+            "/personal/home",
+            "/approved/ai_agent_testfolder-sibling",
+            "relative",
+            "/approved/../home",
+        ] {
+            assert!(validate_owned_watch_path(&roots, Some(path)).is_err());
+        }
+        assert_eq!(
+            validate_owned_watch_path(&roots, Some(&roots[1])).unwrap_err(),
+            "Owned watcher mode is local-only"
+        );
+        for body in [
+            json!({}),
+            json!({"path":null}),
+            json!({"path":"/personal/home"}),
+        ] {
+            assert!(authorize(&roots, "watch_dir", &body).is_err());
+        }
     }
 
     #[test]

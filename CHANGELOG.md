@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Verify real fixture-only native watchers for external create/edit/rename/delete,
+  refresh during copying and queued-change shutdown/restart. The opt-in mode
+  requires explicit owned directories and bypasses home fallback and discovery.
+
 - Verify native private-profile light/dark styles and cozy/compact density,
   real Ctrl-wheel grid zoom, loaded/late decoded thumbnails, corrupt/unsupported
   image fallback, filter Reset and progress/dialog layout with preserved bytes.
