@@ -83,4 +83,41 @@ Every visible sampled frame matched its most recent actual input point plus
 the existing 12-pixel label offset on this screen. This checks native tracking;
 it does not measure input-device or compositor latency.
 
+## NT6-3: isolated clipboard and private trash
+
+Run `91ed4148-1bb1-44c5-9353-d6425ad9a73c` is native PASS: eight parts plus
+AT-SPI. Two actual Browsey processes exchange two generated files including a
+Unicode/spaced/URI-special name. Independent X selection reads agree with the
+real backend's paths and mode. Cut removes both sources and clears the actual
+selection; copy preserves both sources. Private trash checks cover mixed
+file/nonempty-folder trash, selected restore, purge Cancel/confirm and Empty
+Wastebasket Cancel/confirm. Original paths, exact catalog identifiers and stored
+bytes are independently checked; an unrelated sentinel is preserved throughout.
+All main/peer teardown checks and namespace exit pass. Strict retention passes
+(73 entries, 752,548 bytes). Personal trash and desktop services are absent.
+
+Runs `745ea1d4-de2f-46f0-9394-5e059c5797ce` and
+`c2be736b-4d86-4884-99ba-c8a717d34623` retain the actual cut-as-copy evidence.
+The GNOME parser previously accepted a URI-list comment as a copy header,
+losing cut mode (or the first path for plain URI lists). It now requires a real
+copy/cut header and otherwise falls back to the URI-list parser. X11 clear uses
+EOF input instead of waiting with its stdin pipe still open. Five clipboard
+unit tests pass, including two meaningful parser regressions; native acceptance
+also proves successful clearing and command completion.
+
+Earlier run `5405507e-80c1-4f1e-92fd-412278365e60` recorded successful file
+operations but its purge-warning assertion was too broad: the remote warning
+matched while the same dialog incorrectly promised local Undo. That raw PASS
+report is retained, but does not certify truthful purge wording. The strengthened
+native check and final rerun verify the corrected dedicated Wastebasket warning;
+four deletion-dialog unit tests pass. Native policy tests: 157 PASS.
+
+The existing separately approved namespace/display/bus contract gates real
+clipboard/trash dispatch; ordinary sessions retain disabled services. IDs and
+original paths must belong to the exact private catalog/owned roots, with no
+links. The local xclip dependency is the signature-verified Arch xclip 0.13-6
+binary, extracted only into ignored test tools (SHA-256
+`1a757a1ae88441c9fc6101c0750d86a1afb5cb7b2073a0ed98967c41dc292d20`);
+no system package or personal clipboard was changed.
+
 Remaining NT6 parts are not accepted by this record yet.

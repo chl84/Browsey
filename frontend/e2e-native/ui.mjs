@@ -547,7 +547,7 @@ export class NativeUi {
   }
 
   async menuAction(id, raw) {
-    assert.ok(['rename', 'copy', 'cut', 'paste', 'delete-permanent', 'properties'].includes(id))
+    assert.ok(['rename', 'copy', 'cut', 'paste', 'delete-permanent', 'properties','move-trash'].includes(id))
     const selected = raw ? await this.browser.execute(() => [...document.querySelectorAll('.rows [data-path].selected, .grid [data-path].selected')].map(node => node.dataset.path).sort()) : null
     if (raw) {
       ownedPath(this.roots, raw)

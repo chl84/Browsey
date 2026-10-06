@@ -3,6 +3,18 @@ import { afterEach, expect, it, vi } from 'vitest'
 import DeleteConfirmModal from './DeleteConfirmModal.svelte'
 
 const components: ReturnType<typeof mount>[] = []
+it('warns that purging the Wastebasket cannot be undone and allows cancellation', async () => {
+  const onCancel = vi.fn()
+  const onConfirm = vi.fn()
+  components.push(mount(DeleteConfirmModal, { target: document.body, props: { open: true, mode: 'trash', targetLabel: 'generated.txt', onCancel, onConfirm } }))
+  await tick()
+  expect(document.body.textContent).toContain('permanently removed from the Wastebasket')
+  expect(document.body.textContent).toContain('This cannot be undone')
+  expect(document.body.textContent).not.toContain('supported local deletions')
+  document.querySelector<HTMLButtonElement>('button.secondary')!.click()
+  expect(onCancel).toHaveBeenCalledOnce()
+  expect(onConfirm).not.toHaveBeenCalled()
+})
 it('distinguishes session-local Undo from irreversible remote deletion', async () => {
   components.push(mount(DeleteConfirmModal, { target: document.body, props: { open: true, targetLabel: 'generated.txt' } }))
   await tick()

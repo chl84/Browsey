@@ -27,7 +27,7 @@ export async function startDesktop(repo,plan,env) {
     evidence.services.push({name,pid:child.pid,start:(await processStamp(child.pid)).start})
     return child
   }
-  const displayEnv={...env,DISPLAY:':91',XAUTHORITY:auth,FONTCONFIG_FILE:fontConfig,ATSPI_DBUS_IMPLEMENTATION:'dbus-daemon',GDK_BACKEND:'x11',WEBKIT_DISABLE_DMABUF_RENDERER:'1',XDG_SESSION_TYPE:'x11',BROWSEY_NATIVE_ISOLATED:process.env.BROWSEY_NATIVE_ISOLATED}
+  const displayEnv={...env,PATH:path.join(repo,'target/native-tools/bin')+':/usr/bin:/bin',DISPLAY:':91',XAUTHORITY:auth,FONTCONFIG_FILE:fontConfig,ATSPI_DBUS_IMPLEMENTATION:'dbus-daemon',GDK_BACKEND:'x11',WEBKIT_DISABLE_DMABUF_RENDERER:'1',XDG_SESSION_TYPE:'x11',BROWSEY_NATIVE_ISOLATED:process.env.BROWSEY_NATIVE_ISOLATED}
   delete displayEnv.WAYLAND_DISPLAY
   try {
     await launch(path.join(repo,'target/native-tools/bin/Xvfb'),[':91','-screen','0','2000x1100x24','-auth',auth,'-nolisten','tcp','-noreset'],displayEnv,'xvfb')
@@ -49,6 +49,7 @@ export async function startDesktop(repo,plan,env) {
     Object.assign(displayEnv,{DBUS_SESSION_BUS_ADDRESS:bus,XDG_DATA_DIRS:env.XDG_DATA_HOME+':/usr/share',GSETTINGS_BACKEND:'memory'})
     evidence.cookieRequired=true;evidence.privateBus=true
     evidence.tools={xvfbSha256:await fileSha256(path.join(repo,'target/native-tools/bin/Xvfb')),bwrapSha256:await fileSha256('/usr/bin/bwrap')}
+    if(JSON.parse(env.BROWSEY_NATIVE_TEST_SESSION).desktop==='desktop-services')evidence.tools.xclipSha256=await fileSha256(path.join(repo,'target/native-tools/bin/xclip'))
     await writePrivate(path.join(local.run,'artifacts/isolation.json'),JSON.stringify(evidence,null,2))
     return {env:displayEnv,evidence,close:async()=>{for(const service of [...services].reverse()) await stopDriver(service);for(const log of logs)await log.close()}}
   } catch(error) {for(const service of [...services].reverse())await stopDriver(service);for(const log of logs)await log.close();throw error}

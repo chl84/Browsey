@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Preserve cut mode and all file paths when an X11 clipboard owner returns a
+  URI list for the GNOME target; clear X11 clipboard without waiting on an open
+  input pipe. Verify isolated two-window clipboard and private trash operations,
+  and warn accurately that purging the Wastebasket cannot be undone.
+
 - Verify native drag-label tracking across loaded lists/grids and empty space:
   stable feedback nodes, recovery from rejected file hovers, cleared feedback
   after cancellation/release and one independently verified copy per drop.

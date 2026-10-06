@@ -24,6 +24,7 @@ import {startDesktop,fixtureLauncher} from './desktop.mjs'
 import {desktopApplications} from './desktop-apps.mjs'
 import {drag,dragManifest} from './drag.mjs'
 import {feedback,feedbackManifest} from './feedback.mjs'
+import {services,servicesManifest} from './desktop-services.mjs'
 import {desktopSuites} from './isolated.mjs'
 import {cloudProvider,cloudManifest,cloudProbes,cloudLocations,cloudWorking} from './cloud-provider.mjs'
 import { linkPlan } from './link-policy.mjs'
@@ -87,6 +88,7 @@ suites.mobile = { run: mobile, manifest: mobileManifest }
 suites.network = { run: network, manifest: networkManifest }
 suites.drag = {run:drag,manifest:dragManifest}
 suites['drag-feedback'] = {run:feedback,manifest:feedbackManifest}
+suites['desktop-services'] = {run:services,manifest:servicesManifest}
 suites.usb = { run: usb, manifest: usbManifest }
 suites['usb-access'] = { run: (plan,fixture,ui,record)=>access(plan,fixture,ui,record,'usb'), manifest: plan=>{usbManifest(plan);return accessManifest(plan,'usb')} }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
@@ -209,7 +211,8 @@ async function main() {
   if (['cloud-provider','cloud-working'].includes(options.suite)) report.notTested.push('External editors (preparation only, launch disabled)', 'Real service quota/rate/auth outage (exact candidate faults only)', 'Google Drive/Nextcloud (no approved roots/credentials)')
   if (options.suite === 'cloud-working') report.notTested.push('Cloud-cloud copy/download and conflict Cancel/Skip prefix (explicitly outside this follow-up manifest)')
   if (options.suite === 'links') report.notTested.push('Link behavior on USB/network/cloud/mobile', 'Directory symlinks and outside referents (not authorized)')
-  if (options.suite === 'drag') report.notTested = report.notTested.filter(item => item !== 'Native drag/drop')
+  if (['drag','drag-feedback'].includes(options.suite)) report.notTested = report.notTested.filter(item => item !== 'Native drag/drop')
+  if (options.suite === 'desktop-services') {report.notTested=report.notTested.filter(item=>item!=='Trash/format');report.notTested.push('Format and personal/global trash (outside isolated scope)', 'Clipboard on shared Wayland/desktop services')}
   if (options.fault) report.notTested.push('All UI file-operation acceptance (lifecycle fault scope)')
   if (options.suite === 'selection') report.notTested.push('Large-list virtualization on USB/network/cloud/mobile (local representative only)',
     'Backend invocation receipts and repeated copy/paste submission (NT1-6)')
@@ -243,7 +246,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['../../tests/support/native_fixture_x11.py','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['../../tests/support/native_fixture_x11.py','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -261,6 +264,7 @@ async function main() {
       activeCreated = true
     } })
     session = { runId: plan.runId, dataRoots: plan.targets.map(target => target.files), profile,
+      ...(options.suite==='desktop-services'?{desktop:'desktop-services'}:{}),
       ...(['cloud-provider','cloud-working'].includes(options.suite) ? { workspaceSource: cloudLocations(plan).source } : {}),
       ...(options.suite === 'links' ? { links: linkPlan(plan) } : {}),
       ...(['cloud-provider','cloud-working'].includes(options.suite) ? { probes: cloudProbes(plan) } : options.suite === 'network' ? { probes: networkProbes(plan) } : options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),

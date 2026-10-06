@@ -1,6 +1,7 @@
 //! Fail-closed IPC boundary for opt-in native candidates, not a general sandbox.
 //! Production builds contain neither the test overrides nor the environment hook.
 use serde_json::Value;
+mod desktop;
 pub(crate) mod links;
 pub(crate) mod probes;
 mod workspaces;
@@ -471,6 +472,8 @@ mod enabled {
         links: links::Plan,
         #[serde(default)]
         workspace_source: Option<String>,
+        #[serde(default)]
+        desktop: Option<String>,
     }
     static SESSION: OnceCell<Session> = OnceCell::new();
     static FAULTS: OnceCell<Vec<OwnedFault>> = OnceCell::new();
@@ -513,6 +516,7 @@ mod enabled {
         if Path::new(&session.profile) != local_run.join("profile") {
             return Err("Profile is outside the owned local run");
         }
+        desktop::validate_isolation(session.desktop.as_deref(), &session.run_id, local_run)?;
         for (key, suffix) in [
             ("XDG_DATA_HOME", "data"),
             ("XDG_CONFIG_HOME", "config"),
@@ -583,7 +587,7 @@ mod enabled {
         let command = invoke.message.command();
         let override_value = match command {
             "native_test_status" => Some(serde_json::json!({"runId":session.run_id,
-                "pid":std::process::id(), "scope":"owned-files-only", "watcher":false,
+                "pid":std::process::id(), "scope":"owned-files-only", "watcher":false, "desktopMode":session.desktop,
                 "probes":probes::status(),
                 "cancelTasks":invoke.message.webview_ref().state::<crate::tasks::CancelState>().native_active_count(),
                 "faults":FAULTS.get().expect("faults initialized").iter().map(|fault| serde_json::json!({
@@ -602,11 +606,12 @@ mod enabled {
                 .iter()
                 .any(|p| p.starts_with("rclone://")))),
             "load_system_theme" => Some(Value::Null),
-            "copy_paths_to_system_clipboard" | "clear_system_clipboard" => Some(Value::Null),
+            "copy_paths_to_system_clipboard" | "clear_system_clipboard"
+                if session.desktop.as_deref() != Some("desktop-services") => Some(Value::Null),
             // The normal watcher has home-directory fallback/discovery. Keep it off;
             // the suite explicitly refreshes after fixture changes and navigation.
             "watch_dir" => Some(Value::Null),
-            "system_clipboard_paths" => Some(serde_json::json!({"mode":"copy", "paths":[]})),
+            "system_clipboard_paths" if session.desktop.as_deref() != Some("desktop-services") => Some(serde_json::json!({"mode":"copy", "paths":[]})),
             _ => None,
         };
         if let Some(value) = override_value {
@@ -614,16 +619,25 @@ mod enabled {
             return None;
         }
         let result = match invoke.message.payload() {
-            InvokeBody::Json(body) => workspaces::authorize(
+            InvokeBody::Json(body) => desktop::authorize(
                 &session.data_roots,
                 Path::new(&session.profile),
-                session.workspace_source.as_deref(),
+                session.desktop.as_deref(),
                 command,
                 body,
             )
             .unwrap_or_else(|| {
-                authorize_io(&session.data_roots, command, body, |raw| {
-                    links::inspect(&session.links, Path::new(raw))
+                workspaces::authorize(
+                    &session.data_roots,
+                    Path::new(&session.profile),
+                    session.workspace_source.as_deref(),
+                    command,
+                    body,
+                )
+                .unwrap_or_else(|| {
+                    authorize_io(&session.data_roots, command, body, |raw| {
+                        links::inspect(&session.links, Path::new(raw))
+                    })
                 })
             }),
             _ => Err("Native-test IPC must use JSON"),
@@ -650,8 +664,25 @@ mod enabled {
             Some(invoke)
         }
     }
+
+    pub(crate) fn check_desktop_clipboard_paths(paths: &[String]) -> Result<(), &'static str> {
+        let session = SESSION.get().ok_or("Missing owned clipboard session")?;
+        if session.desktop.as_deref() != Some("desktop-services") {
+            return Err("Native system clipboard is disabled");
+        }
+        for path in paths {
+            check_path(&session.data_roots, path)?;
+            if path.starts_with("rclone://") {
+                return Err("System clipboard requires owned local paths");
+            }
+            no_links(Path::new(path))?;
+        }
+        Ok(())
+    }
 }
 
+#[cfg(feature = "native-test")]
+pub(crate) use enabled::check_desktop_clipboard_paths;
 #[cfg(feature = "native-test")]
 pub(crate) use enabled::{initialize, intercept, working_copies_enabled};
 

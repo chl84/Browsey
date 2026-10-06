@@ -21,6 +21,8 @@
       <p class="muted">Some network items cannot be moved to trash. Delete those items permanently? Browsey cannot undo this and will not download a backup. Other items will be moved to trash where supported.</p>
     {:else if mode === 'network'}
       <p class="muted">Network items will be deleted directly on the server, without a local backup. Browsey cannot undo this.</p>
+    {:else if mode === 'trash'}
+      <p class="muted">Items will be permanently removed from the Wastebasket. This cannot be undone.</p>
     {:else}
       <p class="muted">Items bypass the Wastebasket. Browsey can undo supported local deletions only while this session is running. Cloud and network deletions cannot be undone.</p>
     {/if}

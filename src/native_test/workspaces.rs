@@ -13,7 +13,7 @@ pub(super) fn validate(roots: &[String], source: Option<&str>) -> Result<(), &'s
     Ok(())
 }
 
-fn private_file(path: &Path) -> Result<fs::File, &'static str> {
+pub(super) fn private_file(path: &Path) -> Result<fs::File, &'static str> {
     no_links(path)?;
     let file = crate::fs_utils::open_regular_file_nofollow(path)
         .map_err(|_| "Cannot open owned working-copy manifest")?;

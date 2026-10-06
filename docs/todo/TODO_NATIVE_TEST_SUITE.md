@@ -469,7 +469,7 @@ external launches and discovery remain disabled by default.
 - [x] **NT6-2** Reproduce drag-label regressions over many rows/cards versus empty
   space: responsive following, no stuck `Cannot drop here`, no duplicated transfer.
   Measure native event/frame behavior, not mock render counts.
-- [ ] **NT6-3** Add clipboard and trash/restore/purge tests only after separately
+- [x] **NT6-3** Add clipboard and trash/restore/purge tests only after separately
   approving and demonstrating desktop isolation. Private XDG directories alone
   do not prove a shared trash/clipboard service is isolated.
 - [ ] **NT6-4** Verify keyboard navigation, Tab order, focused Escape handling,

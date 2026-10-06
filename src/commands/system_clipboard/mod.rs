@@ -289,7 +289,12 @@ fn parse_uri_list(payload: &str) -> (Vec<String>, String) {
 fn parse_gnome_payload(payload: &str) -> Option<SystemClipboardContent> {
     let mut lines = payload.lines();
     let mode_line = lines.next()?.trim().to_lowercase();
-    let mode = if mode_line == "cut" { "cut" } else { "copy" }.to_string();
+    // Some X11 owners return their URI list for this target as well. Require
+    // the GNOME header so fallback parsing preserves #cut and the first URI.
+    let mode = match mode_line.as_str() {
+        "cut" | "copy" => mode_line,
+        _ => return None,
+    };
     let rest: Vec<&str> = lines.collect();
     let paths = rest
         .iter()
@@ -313,7 +318,14 @@ fn parse_gnome_payload(payload: &str) -> Option<SystemClipboardContent> {
 
 #[tauri::command]
 pub fn system_clipboard_paths() -> ApiResult<SystemClipboardContent> {
-    map_api_result(system_clipboard_paths_impl())
+    let result = system_clipboard_paths_impl();
+    #[cfg(feature = "native-test")]
+    let result = result.and_then(|content| {
+        crate::native_test::check_desktop_clipboard_paths(&content.paths)
+            .map_err(SystemClipboardError::invalid_input)?;
+        Ok(content)
+    });
+    map_api_result(result)
 }
 
 fn system_clipboard_paths_impl() -> SystemClipboardResult<SystemClipboardContent> {
@@ -400,9 +412,8 @@ fn clear_with_xclip() -> SystemClipboardResult<()> {
         .arg("-selection")
         .arg("clipboard")
         .arg("-i")
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .and_then(|mut child| child.wait())
+        .stdin(std::process::Stdio::null())
+        .status()
         .map_err(|e| {
             SystemClipboardError::new(
                 SystemClipboardErrorCode::ClipboardWriteFailed,
@@ -445,13 +456,34 @@ fn clear_system_clipboard_impl() -> SystemClipboardResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::should_avoid_wl_clipboard;
+    use super::{parse_gnome_payload, parse_uri_list, should_avoid_wl_clipboard};
     use std::env;
     use std::sync::{Mutex, OnceLock};
 
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    #[test]
+    fn gnome_headers_preserve_mode_and_every_uri() {
+        for mode in ["copy", "cut"] {
+            let payload = format!("{mode}\nfile:///tmp/first%20file\nfile:///tmp/second\n");
+            let content = parse_gnome_payload(&payload).unwrap();
+            assert_eq!(content.mode, mode);
+            assert_eq!(content.paths, ["/tmp/first file", "/tmp/second"]);
+        }
+    }
+
+    #[test]
+    fn uri_list_under_gnome_target_falls_back_without_losing_cut_or_first_path() {
+        for header in ["", "#cut\n"] {
+            let payload = format!("{header}file:///tmp/first%20file\nfile:///tmp/second\n");
+            assert!(parse_gnome_payload(&payload).is_none());
+            let (paths, mode) = parse_uri_list(&payload);
+            assert_eq!(paths, ["/tmp/first file", "/tmp/second"]);
+            assert_eq!(mode, if header.is_empty() { "copy" } else { "cut" });
+        }
     }
 
     fn with_clipboard_env(
