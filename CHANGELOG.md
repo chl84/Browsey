@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Verify native drag-label tracking across loaded lists/grids and empty space:
+  stable feedback nodes, recovery from rejected file hovers, cleared feedback
+  after cancellation/release and one independently verified copy per drop.
+
 - Preserve the internal drag action when WebKit ends its DOM source before
   Tauri delivers the matching native drop. Verify native file/folder and mixed
   drags, self-drop/cancellation, two owned Browsey windows, isolated Nautilus

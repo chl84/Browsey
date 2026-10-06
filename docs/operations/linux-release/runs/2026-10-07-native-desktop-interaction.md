@@ -53,4 +53,34 @@ read-only system caches; no retained permission was silently repaired. Finite
 retention limits were explicitly raised to 128 runs / 896 MiB for NT6 capacity,
 with the existing 128 MiB per-run and traversal/time limits unchanged.
 
+## NT6-2: native feedback under listing load
+
+Run `610329a6-50e5-4502-8811-c8bef18c7e83` is native PASS: four list/grid
+cancel/copy parts plus accessibility, each with 120 generated filler files.
+Actual XTest movement crosses at least ten visible rows/cards, real empty
+listing space and a valid destination. Trusted DOM/Tauri events and animation
+frame samples show multiple actual label positions, a stable feedback DOM node,
+rejected-file labels recovering to Copy and no stuck feedback after release.
+Exact independent source/destination trees prove cancelled work preserved every
+file and accepted drops created exactly one source copy. Native task/listener
+resources release. All four teardown steps, outside namespace exit and strict
+private retention pass (541 entries, 1,163,600 bytes).
+
+Timings/positions are descriptive host-specific observations, not a synthetic
+render count or an invented latency budget. An earlier observer-only failure
+(`97d81e4f-3551-4f0b-b1d7-57ca811609bf`) accessed the null native leave payload;
+the read-only observer was corrected and the failed report retained. No product
+change was needed for the accepted feedback scope.
+
+| Part | Native/DOM events | Visible label frames | Distinct label positions |
+| --- | ---: | ---: | ---: |
+| List/cancel | 77 | 130 | 38 |
+| List/copy | 103 | 177 | 50 |
+| Grid/cancel | 89 | 148 | 44 |
+| Grid/copy | 115 | 202 | 56 |
+
+Every visible sampled frame matched its most recent actual input point plus
+the existing 12-pixel label offset on this screen. This checks native tracking;
+it does not measure input-device or compositor latency.
+
 Remaining NT6 parts are not accepted by this record yet.

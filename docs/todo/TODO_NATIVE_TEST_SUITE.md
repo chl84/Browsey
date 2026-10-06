@@ -466,7 +466,7 @@ external launches and discovery remain disabled by default.
   records real X11 native acceptance, receiver copy policies and the independently
   verified file effects. Wayland/portal move and modifiers held before pointer
   press remain outside that accepted input scope.
-- [ ] **NT6-2** Reproduce drag-label regressions over many rows/cards versus empty
+- [x] **NT6-2** Reproduce drag-label regressions over many rows/cards versus empty
   space: responsive following, no stuck `Cannot drop here`, no duplicated transfer.
   Measure native event/frame behavior, not mock render counts.
 - [ ] **NT6-3** Add clipboard and trash/restore/purge tests only after separately
