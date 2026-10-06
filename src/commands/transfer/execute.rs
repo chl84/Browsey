@@ -276,6 +276,18 @@ fn execute_rclone_transfer(
         0,
         || transfer_cancelled(cancel),
     );
+    #[cfg(feature = "native-test")]
+    if let Some(error) = crate::native_test::probes::fault(
+        &native_probe_path(&src),
+        &native_probe_path(&dst),
+        "start",
+        0,
+    ) {
+        return Err(transfer_err(
+            TransferErrorCode::IoError,
+            format!("Owned transfer I/O fault: {error}"),
+        ));
+    }
     if transfer_cancelled(cancel) {
         return Err(transfer_err(
             TransferErrorCode::Cancelled,

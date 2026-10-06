@@ -15,6 +15,7 @@ vi.mock('../services/activity.service', () => ({
 }))
 
 import { createActivity } from './createActivity'
+import { cancelTask } from '../services/activity.service'
 
 describe('createActivity', () => {
   beforeEach(() => {
@@ -61,6 +62,30 @@ describe('createActivity', () => {
     expect(get(activityApi.activity)).toMatchObject({ label: 'Cancelling…', cancel: null })
     expect(activityApi.hasHideTimer()).toBe(false)
     await activityApi.cleanup()
+  })
+
+  it('keeps cancellation pending when a preparing or finishing task is not registered', async () => {
+    const onError = vi.fn()
+    const activityApi = createActivity({ onError })
+    await activityApi.start('Copying…', 'preparing', () => {}, { completeOnReply: true })
+    vi.mocked(cancelTask).mockRejectedValueOnce({ code: 'task_not_found', message: 'Task not found' })
+    await activityApi.requestCancel('preparing')
+    expect(get(activityApi.activity)).toMatchObject({ label: 'Cancelling…', cancelling: true })
+    expect(onError).not.toHaveBeenCalled()
+    expect(eventHandlers.has('preparing')).toBe(true)
+    await activityApi.cleanup()
+    expect(eventHandlers.has('preparing')).toBe(false)
+  })
+
+  it('still reports an unexpected cancellation failure and releases its listener', async () => {
+    const onError = vi.fn()
+    const activityApi = createActivity({ onError })
+    await activityApi.start('Copying…', 'broken', () => {})
+    vi.mocked(cancelTask).mockRejectedValueOnce({ code: 'registry_failed', message: 'Registry unavailable' })
+    await activityApi.requestCancel('broken')
+    expect(get(activityApi.activity)).toBe(null)
+    expect(onError).toHaveBeenCalledWith('Cancel failed: Registry unavailable')
+    expect(eventHandlers.has('broken')).toBe(false)
   })
 
   it('clears byte details while cancelling', async () => {

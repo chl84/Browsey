@@ -570,3 +570,13 @@ actual local read/write denial and read-only source copy. Restrictive modes are
 changed/restored through original no-follow descriptors, only for matching
 owned inodes. Unsupported provider chmod/chown controls remain absent or disabled;
 no mount-wide restriction or ownership change is performed.
+
+`--suite iofaults` declares five bounded I/O failures: no space before writing
+and after one actual 16 KiB write, transient I/O after one actual write, and
+unavailable-provider failures in both local/cloud directions. One-use faults
+match exact owned source/target pairs in the native candidate only. No physical
+media is filled and no shared provider is stopped. Four additional native parts
+cancel copy/cut during a bounded cloud destination-metadata delay, before the
+first mutation task exists. Metadata and controls remain real; only the owned
+candidate delay is instrumented. Exact trees are read twice after reply, retained
+prefixes and partial counts are checked, and callback/task registries must clear.

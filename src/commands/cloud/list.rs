@@ -102,6 +102,14 @@ pub(super) async fn list_cloud_entries_impl(
     let cancel_guard = register_cloud_cancel(&cancel_state, &progress_event)?;
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(feature = "native-test")]
+        if let Some(event) = progress_event.as_deref() {
+            crate::native_test::probes::preparation_checkpoint(&path.to_string(), event, || {
+                cancel_token
+                    .as_deref()
+                    .is_some_and(|token| token.load(std::sync::atomic::Ordering::Relaxed))
+            });
+        }
         let capabilities = super::cloud_provider_kind_for_remote(path.remote())
             .map(super::types::CloudCapabilities::v1_for_provider)
             .unwrap_or_else(super::types::CloudCapabilities::v1_core_rw);

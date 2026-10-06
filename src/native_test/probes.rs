@@ -8,6 +8,14 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum FaultKind {
+    NoSpace,
+    Unavailable,
+    Transient,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Plan {
@@ -18,6 +26,8 @@ pub(super) struct Plan {
     hold_bytes: u64,
     hold_ms: u64,
     slow_ms: u64,
+    #[serde(default)]
+    fault: Option<FaultKind>,
 }
 
 #[derive(Default, Serialize)]
@@ -31,6 +41,7 @@ struct Observation {
 struct Probe {
     plan: Plan,
     consumed: AtomicBool,
+    fault_used: AtomicBool,
     observation: Mutex<Observation>,
 }
 static PROBES: OnceCell<Vec<Probe>> = OnceCell::new();
@@ -52,11 +63,12 @@ fn validate(roots: &[String], plans: Vec<Plan>) -> Result<Vec<Probe>, &'static s
             || !pairs.insert((&plan.source, &plan.target))
             || !matches!(
                 plan.hold_phase.as_str(),
-                "validation" | "start" | "written" | "finalize"
+                "prepare" | "validation" | "start" | "written" | "finalize"
             )
             || plan.hold_bytes > 65536
             || plan.hold_ms > 5000
             || plan.slow_ms > 500
+            || (plan.fault.is_some() && !matches!(plan.hold_phase.as_str(), "start" | "written"))
         {
             return Err("Invalid bounded native transfer probe");
         }
@@ -75,6 +87,7 @@ fn validate(roots: &[String], plans: Vec<Plan>) -> Result<Vec<Probe>, &'static s
         .map(|plan| Probe {
             plan,
             consumed: AtomicBool::new(false),
+            fault_used: AtomicBool::new(false),
             observation: Mutex::new(Observation::default()),
         })
         .collect())
@@ -143,9 +156,64 @@ pub(crate) fn checkpoint(
     }
 }
 
+// One-use I/O faults follow actual exact-path checkpoints; no filesystem or
+// provider service is modified. This entire module is absent from production.
+fn fault_for(probe: &Probe, phase: &str, bytes: u64) -> Option<std::io::Error> {
+    let kind = probe.plan.fault?;
+    if phase != probe.plan.hold_phase
+        || bytes < probe.plan.hold_bytes
+        || probe.fault_used.swap(true, Ordering::SeqCst)
+    {
+        return None;
+    }
+    Some(match kind {
+        FaultKind::NoSpace => std::io::Error::from_raw_os_error(libc::ENOSPC),
+        FaultKind::Unavailable => std::io::Error::new(
+            std::io::ErrorKind::NotConnected,
+            "Owned provider unavailable (native fault)",
+        ),
+        FaultKind::Transient => std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "Owned transient I/O failure (native fault)",
+        ),
+    })
+}
+
+pub(crate) fn fault(source: &str, target: &str, phase: &str, bytes: u64) -> Option<std::io::Error> {
+    PROBES
+        .get()?
+        .iter()
+        .find(|p| p.plan.source == source && p.plan.target == target)
+        .and_then(|p| fault_for(p, phase, bytes))
+}
+
+fn matches_preparation(probe: &Probe, directory: &str, event: &str) -> bool {
+    ["mixed-copy-", "mixed-cut-", "cloud-copy-", "cloud-cut-"]
+        .iter()
+        .any(|prefix| event.starts_with(prefix))
+        && probe.plan.hold_phase == "prepare"
+        && probe
+            .plan
+            .target
+            .rsplit_once('/')
+            .is_some_and(|(parent, _)| parent == directory)
+}
+
+pub(crate) fn preparation_checkpoint(directory: &str, event: &str, abort: impl Fn() -> bool) {
+    if let Some(probes) = PROBES.get() {
+        if let Some(probe) = probes
+            .iter()
+            .find(|p| matches_preparation(p, directory, event))
+        {
+            observe(probe, "prepare", 0, &abort);
+        }
+    }
+}
+
 pub(super) fn status() -> serde_json::Value {
     serde_json::Value::Array(PROBES.get().into_iter().flatten().map(|probe| {
         serde_json::json!({"id":probe.plan.id, "consumed":probe.consumed.load(Ordering::SeqCst),
+            "faultUses":usize::from(probe.fault_used.load(Ordering::SeqCst)),
             "observation":*probe.observation.lock().expect("native transfer probe lock")})
     }).collect())
 }
@@ -181,6 +249,51 @@ mod tests {
         let mut p = plan();
         p.hold_bytes = 65537;
         assert!(validate(&roots, vec![p]).is_err());
+    }
+    #[test]
+    fn faults_require_actual_boundary_are_one_use_and_reject_finalize_or_prepare() {
+        let roots = ["/owned/files".to_owned()];
+        let mut p = plan();
+        p.fault = Some(FaultKind::NoSpace);
+        let probe = validate(&roots, vec![p]).unwrap().remove(0);
+        assert!(fault_for(&probe, "start", 0).is_none());
+        assert!(fault_for(&probe, "written", 8192).is_none());
+        assert_eq!(
+            fault_for(&probe, "written", 16384).unwrap().raw_os_error(),
+            Some(libc::ENOSPC)
+        );
+        assert!(fault_for(&probe, "written", 32768).is_none());
+        for phase in ["prepare", "finalize", "validation"] {
+            let mut p = plan();
+            p.fault = Some(FaultKind::Transient);
+            p.hold_phase = phase.to_owned();
+            assert!(validate(&roots, vec![p]).is_err());
+        }
+    }
+    #[test]
+    fn preparation_delay_ignores_navigation_and_other_owned_directories() {
+        let mut p = plan();
+        p.hold_phase = "prepare".to_owned();
+        let probe = validate(&["/owned/files".to_owned()], vec![p])
+            .unwrap()
+            .remove(0);
+        for event in ["mixed-copy-1", "mixed-cut-1", "cloud-copy-1", "cloud-cut-1"] {
+            assert!(matches_preparation(&probe, "/owned/files", event));
+            assert!(!matches_preparation(
+                &probe,
+                "/owned/files/elsewhere",
+                event
+            ));
+        }
+        for event in [
+            "cloud-list-1",
+            "cloud-probe-1",
+            "cloud-",
+            "mixed-list-1",
+            "",
+        ] {
+            assert!(!matches_preparation(&probe, "/owned/files", event));
+        }
     }
     #[test]
     fn checkpoint_requires_the_declared_phase_and_actual_byte_boundary() {

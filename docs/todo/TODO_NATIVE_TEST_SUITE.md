@@ -329,9 +329,16 @@ Prioritize these data-safety cases before cosmetic UI coverage.
   Exact bytes and unrelated sentinels match; unsupported ownership/access
   controls and explanations are checked without changing ownership or mounts.
   Unix denial is representative local coverage, not a claim for every provider.
-- [ ] **NT3-6** Simulate full destination, unavailable provider and transient I/O
+- [x] **NT3-6** Simulate full destination, unavailable provider and transient I/O
   faults with bounded fixture-scoped injection or an approved sandbox. Never
   fill physical media or stop shared services to reproduce failure.
+  Scoped native PASS: five exact-path, one-use local/USB/cloud I/O faults and
+  four real copy/cut cancellations during cloud destination preparation.
+  Sources and unrelated bytes match; exact retained 16 KiB prefixes, counts,
+  stopped writes and released task/callback registries are independently checked.
+  Cloud/mixed preparation now retains cancellation intent and uses a cancellable
+  metadata read. Actual outages/quota exhaustion and other provider fault phases
+  are outside this representative scope. See the NT3 record.
 - [ ] **NT3-7** Change/remove sources or destinations during work using owned
   fixture writers. Cover races, symlink swaps and late collisions; verify source
   retention and truthful uncertainty without claiming complete atomicity.

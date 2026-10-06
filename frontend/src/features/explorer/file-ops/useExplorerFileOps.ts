@@ -308,19 +308,23 @@ export const useExplorerFileOps = (deps: Deps) => {
 
     const completedSources: string[] = []
     let attemptedSources = 0
+    let cancelled = false
     const progressEvent = `cloud-${state.mode}-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       await deps.activityApi.start(
         pasteActivityLabel(state.mode),
         progressEvent,
-        () => deps.activityApi.requestCancel(progressEvent),
+        () => {
+          cancelled = true
+          void deps.activityApi.requestCancel(progressEvent)
+        },
         { completeOnReply: true },
       )
       let reservedDestNames: Set<string> | null = null
       let provider: CloudProviderKind | null = null
       if (policy === 'rename') {
         const [destEntries, destProvider] = await Promise.all([
-          listCloudEntries(target),
+          listCloudEntries(target, progressEvent),
           cloudProviderForPath(target),
         ])
         provider = destProvider
@@ -329,6 +333,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         )
       }
       for (const src of sources) {
+        if (cancelled) throw new Error('Transfer cancelled')
         attemptedSources += 1
         const leaf = cloudLeafName(src)
         if (!leaf) {
@@ -339,6 +344,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         if (policy === 'rename') {
           let idx = 0
           while (true) {
+            if (cancelled) throw new Error('Transfer cancelled')
             if (idx >= 50) throw new Error('No available unique name after 50 candidates')
             finalTarget = cloudRenameCandidate(targetBase, idx)
             const candidateLeaf = cloudLeafName(finalTarget)
@@ -394,6 +400,7 @@ export const useExplorerFileOps = (deps: Deps) => {
 
       const completedSources: string[] = []
       let attemptedSources = 0
+      let cancelled = false
       const progressEvent = `mixed-${state.mode}-${Date.now()}-${Math.random()
         .toString(16)
         .slice(2)}`
@@ -401,7 +408,10 @@ export const useExplorerFileOps = (deps: Deps) => {
         await deps.activityApi.start(
           pasteActivityLabel(state.mode),
           progressEvent,
-          () => deps.activityApi.requestCancel(progressEvent),
+          () => {
+            cancelled = true
+            void deps.activityApi.requestCancel(progressEvent)
+          },
           { completeOnReply: true },
         )
 
@@ -411,7 +421,7 @@ export const useExplorerFileOps = (deps: Deps) => {
           let reservedLocalDestPaths: Set<string> | null = null
           if (route === 'local_to_cloud') {
             const [destEntries, destProvider] = await Promise.all([
-              listCloudEntries(target),
+              listCloudEntries(target, progressEvent),
               cloudProviderForPath(target),
             ])
             cloudDestProvider = destProvider
@@ -423,6 +433,7 @@ export const useExplorerFileOps = (deps: Deps) => {
           }
 
           for (const src of sources) {
+            if (cancelled) throw new Error('Transfer cancelled')
             attemptedSources += 1
             const leaf = route === 'local_to_cloud' ? localLeafName(src) : cloudLeafName(src)
             if (!leaf) {
@@ -434,6 +445,7 @@ export const useExplorerFileOps = (deps: Deps) => {
             let idx = 0
             // Retry rename candidates on destination_exists until a slot is found.
             while (true) {
+              if (cancelled) throw new Error('Transfer cancelled')
               if (idx >= 50) throw new Error('No available unique name after 50 candidates')
               const finalTarget = cloudRenameCandidate(targetBase, idx)
               if (reservedCloudDestNames && route === 'local_to_cloud') {
@@ -485,6 +497,7 @@ export const useExplorerFileOps = (deps: Deps) => {
           }
         } else {
           for (const src of sources) {
+            if (cancelled) throw new Error('Transfer cancelled')
             attemptedSources += 1
             const leaf = route === 'local_to_cloud' ? localLeafName(src) : cloudLeafName(src)
             if (!leaf) throw new Error(`Invalid source path: ${src}`)

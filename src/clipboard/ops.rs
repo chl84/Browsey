@@ -522,6 +522,19 @@ fn copy_entry_with_receipt(
         0,
         || transfer_cancelled(cancel, app),
     );
+    #[cfg(feature = "native-test")]
+    if let Some(error) = crate::native_test::probes::fault(
+        &src.to_string_lossy(),
+        &dest.to_string_lossy(),
+        "start",
+        0,
+    ) {
+        return Err(ClipboardError::from_io_error(
+            ClipboardErrorCode::IoError,
+            "Owned transfer I/O fault",
+            error,
+        ));
+    }
     let meta = fs::symlink_metadata(src).map_err(|e| {
         ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
@@ -756,6 +769,19 @@ fn copy_file_tracked(
                 done,
                 || transfer_cancelled(cancel, app),
             );
+            #[cfg(feature = "native-test")]
+            if let Some(error) = crate::native_test::probes::fault(
+                &src.to_string_lossy(),
+                &dest.to_string_lossy(),
+                "written",
+                done,
+            ) {
+                return Err(ClipboardError::from_io_error(
+                    ClipboardErrorCode::IoError,
+                    "Owned transfer I/O fault",
+                    error,
+                ));
+            }
         }
         preserve_copy_permissions(src, dest, &writer, permissions, "Set file permissions")?;
         let completed_state = crate::fs_utils::FileState::from_file(&writer).map_err(|error| {

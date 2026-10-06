@@ -383,6 +383,31 @@ describe('immutable paste and drop operations', () => {
     expect(pasteClipboardCmdMock).toHaveBeenCalledOnce()
   })
 
+  it.each([
+    ['copy', '/fixture/source.txt'], ['cut', '/fixture/source.txt'],
+    ['copy', 'rclone://work/source.txt'], ['cut', 'rclone://work/source.txt'],
+  ] as const)('honours %s cancellation while cloud metadata is preparing for %s', async (mode, source) => {
+    const deps = createDeps()
+    const ops = useExplorerFileOps(deps)
+    let finishListing!: (entries: unknown[]) => void
+    listCloudEntriesMock.mockImplementationOnce(() => new Promise(resolve => { finishListing = resolve }))
+    listCloudRemotesMock.mockResolvedValue([])
+    setClipboardPathsState(mode, [source])
+    const pending = ops.handlePasteOrMove('rclone://work/dest')
+    await vi.waitFor(() => expect(listCloudEntriesMock).toHaveBeenCalled())
+    expect(listCloudEntriesMock).toHaveBeenCalledWith('rclone://work/dest', vi.mocked(activityApi.start).mock.calls[0][1])
+    const onCancel = vi.mocked(activityApi.start).mock.calls[0][2]
+    onCancel?.()
+    finishListing([])
+    expect(await pending).toBe(false)
+    for (const command of [copyCloudEntryMock, moveCloudEntryMock, copyMixedEntryToMock, moveMixedEntryToMock]) {
+      expect(command).not.toHaveBeenCalled()
+    }
+    expect(Array.from(get(clipboardState).paths)).toEqual([source])
+    expect(deps.showToast).toHaveBeenCalledWith(expect.stringMatching(/Transfer cancelled.*0 completed, 0 skipped, 0 failed, 1 not attempted/), 5000)
+    expect(activityApi.cleanup).toHaveBeenCalled()
+  })
+
   it('releases successful local paste listeners without cancelling the completion timer', async () => {
     const deps = createDeps()
     const ops = useExplorerFileOps(deps)

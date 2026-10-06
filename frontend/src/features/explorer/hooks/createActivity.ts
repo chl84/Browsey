@@ -1,6 +1,6 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { get, writable } from 'svelte/store'
-import { getErrorMessage } from '@/shared/lib/error'
+import { getErrorMessage, normalizeError } from '@/shared/lib/error'
 import { cancelTask } from '../services/activity.service'
 
 export type ActivityState = {
@@ -135,6 +135,10 @@ export const createActivity = (opts: Options = {}) => {
     try {
       await cancelTask(eventName)
     } catch (err) {
+      // The caller also records cancellation while preparing metadata or
+      // between roots. A task may not exist yet, or its reply may be pending.
+      // Keep the operation visible until that caller acknowledges completion.
+      if (normalizeError(err).code === 'task_not_found') return
       const msg = getErrorMessage(err)
       onError?.(`Cancel failed: ${msg}`)
       clearNow()

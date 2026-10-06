@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Honour clipboard cancellation during cloud destination preparation and
+  between selected roots. Make the metadata read cancellable with the transfer's
+  token and keep cancellation pending until the caller acknowledges its reply.
+  Verify bounded no-space, unavailable-provider and transient I/O failures with
+  preserved sources, retained partial output and released progress callbacks.
+
 - Verify native Properties permission/ownership capabilities on local disk,
   USB, network, cloud and mobile, plus real local read/write denial and copying
   of a read-only file with its supported mode preserved.
