@@ -321,3 +321,49 @@ source SHA-256 `792497c7d8d1b6dd032072823e97d54030d47a0a3a308cc0b24c37628da8546d
 candidate SHA-256 `8a8e4ceba75c20f090db633e27708d4ea98b81dce3602981e31ce397ff6b5f5f`,
 built at `2026-10-06T17:36:56.123Z`; harness SHA-256
 `0cff37e76de0fb66d3d3437614b7c38926c846154b6d86d80b136a554fabffc2`.
+
+## NT3-7: concurrent owned writers
+
+Declared scope: six real native races on generated local/USB/cloud paths.
+Same-size 64 KiB edits occur after an actual 16 KiB write during local copy and
+USB move. A local source is removed or swapped for a link to an owned sentinel
+while its original descriptor is open. A concurrent file appears after local
+overwrite backup but before target creation. A same-size local source edit occurs
+after completed cloud upload, before move-source deletion. Sources, mixed/full
+retained output, unrelated sentinels, foreign target bytes, cut selections,
+private recovery and truthful uncertainty are independently checked twice.
+
+Writers use original no-follow descriptors and verify matching inode/device,
+ownership, link count and 64 KiB bounds. A temporary owned-only source link is
+removed/restored only by its original writer after the reply, with matching link
+identity/referent and saved original inode. Removal is deliberate fixture-writer
+behavior, not a claim that the app can preserve data another process unlinked.
+No complete writer exclusion, network/mobile timing race or cloud-object CAS is
+claimed. I/O report requirement labels now distinguish preparation cancellation
+from injected I/O faults for each actual case; accepted NT3-6 actions are unchanged.
+
+Status: NOT_RUN pending native acceptance.
+
+Accepted run `ef49c10a-ecb2-4a75-9ee8-3c9cbd3f841f`,
+17:48:18–17:50:52 UTC, passed all six parts and accessibility. No part remains
+NOT_RUN. Local/USB same-size source edits retained the changed sources and exact
+mixed 64 KiB output with failure feedback. Deliberate removal/symlink swaps were
+detected without successful completion; unrelated bytes survived, and only the
+writer's temporary unchanged link was restored after task release. A late
+collision retained the concurrent destination and one exact marked old backup,
+reporting unknown completion instead of claiming rollback. After cloud upload,
+the changed same-size source and exact uploaded original both survived, with the
+cut selection retained. All six cases passed two independent tree comparisons,
+truthful feedback and released task/callback checks. NT3-7 is complete for this
+representative scope; no additional application fix was necessary.
+
+All four teardown stages passed, all captured identities were independently gone
+and a fresh retained audit passed. The report observed 5,518,246 bytes/87 entries.
+All 802 Rust tests pass (19 ignored), as do 130 native policy tests and native lint,
+including outside/oversized/replaced writer rejection and exact-link restoration.
+
+Baseline `37be45601ea3a92957cfa5bbdb09e4dc18feedeb`, dirty `true`;
+source SHA-256 `792497c7d8d1b6dd032072823e97d54030d47a0a3a308cc0b24c37628da8546d`;
+candidate SHA-256 `522bf4e28d14f72419a81e75b1b53f294a83eb3c2769fe246419734ee4ecb1b9`,
+built at `2026-10-06T17:47:14.601Z`; harness SHA-256
+`1ccf6a9b6623ee377c0112a2e8153515323b31cc15ae4dc90a4d3218daf0730e`.

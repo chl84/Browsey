@@ -12,7 +12,8 @@ export function requirements(item) {
     navigation: ['directory-read', 'owned-navigation', 'history-navigation', 'breadcrumb-navigation', 'refresh',
       `ui-${item.id.split('-')[1]}-navigation`, 'view-switch'] }
   return Object.fromEntries(item.providers.map((provider, index) => {
-    if (operation === 'iofaults') return [provider, ['bounded-owned-io-fault', 'preparation-cancellation', 'independent-source-destination-trees', 'truthful-partial-counts', 'released-task-callbacks']]
+    if (operation === 'races') return [provider, ['owned-concurrent-writer', 'independent-source-destination-trees', 'truthful-uncertainty', 'released-task-callbacks', ...(item.id.endsWith('late-collision') ? ['protected-original-recovery'] : [])]]
+    if (operation === 'iofaults') return [provider, [item.id.includes('-preparing-') ? 'preparation-cancellation' : 'bounded-owned-io-fault', 'independent-source-destination-trees', 'truthful-partial-counts', 'released-task-callbacks']]
     if (operation === 'access') return [provider, ['owned-read-write-denial', 'supported-read-only-copy', 'actionable-error-feedback', 'independent-source-destination-trees']]
     if (operation === 'moves') return [provider, ['real-move-cancellation-failure', 'independent-source-destination-trees', 'successful-root-only-removal', 'truthful-partial-counts', 'released-task-callbacks']]
     if (operation === 'overwrite') return [provider, ['overwrite-cancel-failure', 'independent-source-destination-trees', 'protected-original-recovery', 'truthful-completion']]

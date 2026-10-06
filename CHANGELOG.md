@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Verify native transfer safety with concurrent owned writers: same-size edits,
+  source removal/symlink swaps, late overwrite collisions and changed move
+  sources after cloud upload. Preserve uncertain output and protected originals,
+  and report failure rather than successful completion.
+
 - Honour clipboard cancellation during cloud destination preparation and
   between selected roots. Make the metadata read cancellable with the transfer's
   token and keep cancellation pending until the caller acknowledges its reply.

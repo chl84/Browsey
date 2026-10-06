@@ -580,3 +580,15 @@ cancel copy/cut during a bounded cloud destination-metadata delay, before the
 first mutation task exists. Metadata and controls remain real; only the owned
 candidate delay is instrumented. Exact trees are read twice after reply, retained
 prefixes and partial counts are checked, and callback/task registries must clear.
+
+`--suite races` uses synchronous owned writers while an exact candidate
+checkpoint holds work: same-size edits during local copy and USB move, local
+source removal, a local source symlink swap, a late local overwrite collision,
+and a same-size edit after cloud upload before move-source deletion. Helpers
+use original no-follow descriptors, bounded 64 KiB files and captured inode
+checks; a temporary symlink refers only to another generated file. The writer
+restores only its own unchanged link after the transfer reply. Externally removed
+fixture sources are explicitly expected absent; unrelated sources remain intact.
+Old overwrite recovery bytes, concurrent destination bytes and retained uncertain
+output must survive. This is representative detection, not atomic exclusion of
+all writers or provider compare-and-swap.

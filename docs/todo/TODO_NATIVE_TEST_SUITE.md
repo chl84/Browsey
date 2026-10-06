@@ -339,9 +339,16 @@ Prioritize these data-safety cases before cosmetic UI coverage.
   Cloud/mixed preparation now retains cancellation intent and uses a cancellable
   metadata read. Actual outages/quota exhaustion and other provider fault phases
   are outside this representative scope. See the NT3 record.
-- [ ] **NT3-7** Change/remove sources or destinations during work using owned
+- [x] **NT3-7** Change/remove sources or destinations during work using owned
   fixture writers. Cover races, symlink swaps and late collisions; verify source
   retention and truthful uncertainty without claiming complete atomicity.
+  Scoped native PASS: six local/USB/cloud writer races, including same-size
+  mid-copy/move edits, deliberate source removal, an owned source symlink swap,
+  a late overwrite collision and a source edit after completed cloud upload.
+  Exact changed/mixed/full bytes, unrelated sentinels, retained cut selections,
+  foreign destination bytes and marked original backups match independently.
+  The writer restores only its own temporary link after the task has stopped;
+  externally removed sources are expected absent. See the NT3 record.
 - [ ] **NT3-8** Interrupt/restart only the owned candidate during operations.
   Inspect partial outputs and private recovery data; verify safe startup and
   diagnostics, not power-loss protection or automatic resume.

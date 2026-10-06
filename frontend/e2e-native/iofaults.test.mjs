@@ -16,4 +16,8 @@ test('I/O faults declare exact bounded paths and separate pre-dispatch cancellat
     assert.ok(p.holdMs<=5000&&p.holdBytes<=65536&&p.slowMs<=500)
   }
   assert.ok(report.cases.every(c=>c.status==='NOT_RUN'))
+  for(const c of report.cases) for(const caps of Object.values(c.requirements)) {
+    assert.equal(caps.includes('preparation-cancellation'),c.id.includes('-preparing-'))
+    assert.equal(caps.includes('bounded-owned-io-fault'),!c.id.includes('-preparing-'))
+  }
 })
