@@ -82,6 +82,15 @@ pub(super) fn try_execute_cloud_to_local_file_transfer_with_progress(
                     },
                 )
                 .map_err(map_cloud_error_to_transfer)?;
+            #[cfg(feature = "native-test")]
+            crate::native_test::probes::checkpoint(
+                &src_path.to_string(), &dst_path.to_string_lossy(), "finalize", total,
+                || transfer_cancelled(cancel),
+            );
+            if transfer_cancelled(cancel) {
+                return Err(transfer_err(TransferErrorCode::Cancelled,
+                    "Move cancelled after download; downloaded output retained and cloud source not removed"));
+            }
             provider
                 .delete_file(src_path, cancel)
                 .map_err(map_cloud_error_to_transfer)
@@ -130,6 +139,9 @@ pub(super) fn try_execute_local_to_cloud_file_transfer_with_progress(
 
     let provider = mixed_cloud_provider_for_cli(cli);
     let total = metadata.len();
+    let source_snapshot = (op == MixedTransferOp::Move)
+        .then(|| snapshot_mixed_move_source(src_path))
+        .transpose()?;
     let on_progress = |bytes, total| emit_transfer_progress(progress, bytes, total, false);
     tracing::info!(
         op = if op == MixedTransferOp::Copy {
@@ -170,7 +182,11 @@ pub(super) fn try_execute_local_to_cloud_file_transfer_with_progress(
             || transfer_cancelled(cancel),
         );
         if op == MixedTransferOp::Move {
-            remove_local_source_after_mixed_file_move(src_path)?;
+            remove_local_source_after_mixed_file_move(
+                src_path,
+                source_snapshot.as_ref().expect("move source snapshot"),
+                cancel,
+            )?;
         }
         emit_transfer_progress(progress, total, total, true);
         Ok(())
@@ -264,6 +280,18 @@ pub(super) fn execute_cloud_to_local_file_transfer_with_aggregate_progress(
         })
         .map_err(map_cloud_error_to_transfer)?;
     if op == MixedTransferOp::Move {
+        #[cfg(feature = "native-test")]
+        crate::native_test::probes::checkpoint(
+            &src.to_string(),
+            &dst.to_string_lossy(),
+            "finalize",
+            file_size,
+            || transfer_cancelled(cancel),
+        );
+        if transfer_cancelled(cancel) {
+            return Err(transfer_err(TransferErrorCode::Cancelled,
+                "Move cancelled after download; downloaded output retained and cloud source not removed"));
+        }
         provider
             .delete_file(src, cancel)
             .map_err(map_cloud_error_to_transfer)?;
@@ -293,6 +321,9 @@ pub(super) fn execute_local_to_cloud_file_transfer_with_aggregate_progress(
         file_size,
     } = aggregate;
     let provider = mixed_cloud_provider_for_cli(cli);
+    let source_snapshot = (op == MixedTransferOp::Move)
+        .then(|| snapshot_mixed_move_source(src))
+        .transpose()?;
     let on_progress = |bytes: u64, _| {
         let aggregate = completed_before.saturating_add(bytes.min(file_size));
         emit_transfer_progress(progress, aggregate, total_bytes, false);
@@ -304,7 +335,19 @@ pub(super) fn execute_local_to_cloud_file_transfer_with_aggregate_progress(
     };
     upload.map_err(map_cloud_error_to_transfer)?;
     if op == MixedTransferOp::Move {
-        remove_local_source_after_mixed_file_move(src)?;
+        #[cfg(feature = "native-test")]
+        crate::native_test::probes::checkpoint(
+            &src.to_string_lossy(),
+            &dst.to_string(),
+            "finalize",
+            file_size,
+            || transfer_cancelled(cancel),
+        );
+        remove_local_source_after_mixed_file_move(
+            src,
+            source_snapshot.as_ref().expect("move source snapshot"),
+            cancel,
+        )?;
     }
     emit_transfer_progress(
         progress,

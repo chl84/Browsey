@@ -232,6 +232,18 @@ pub(super) async fn move_cloud_entry_impl(
     let cancel_guard = register_cloud_cancel(&cancel_state, &progress_event)?;
     let cancel_token = cancel_guard.as_ref().map(|guard| guard.token());
     let task = tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(feature = "native-test")]
+        crate::native_test::probes::checkpoint(
+            &src.to_string(),
+            &dst.to_string(),
+            "start",
+            0,
+            || {
+                cancel_token
+                    .as_ref()
+                    .is_some_and(|token| token.load(std::sync::atomic::Ordering::Relaxed))
+            },
+        );
         with_cloud_remote_permits(remotes, || {
             let provider =
                 configured_rclone_provider().map_err(super::error::CloudCommandError::from)?;

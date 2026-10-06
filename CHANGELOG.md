@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Preserve local move sources when cancellation arrives after cloud upload or
+  their file version changes during upload. Check cancellation before deleting
+  a downloaded cloud source. Verify scoped native interrupted/failed moves on
+  all five storage types, with source retention, truthful partial batches and
+  released progress callbacks.
+
 - Add scoped native overwrite-cancellation/failure checks: preserve original
   destination bytes, retain protected recovery backups for partial local/USB
   writes, and report uncertain rollback without claiming successful completion.

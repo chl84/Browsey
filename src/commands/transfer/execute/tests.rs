@@ -2127,3 +2127,50 @@ fn mixed_cross_kind_overwrite_refuses_before_any_write_even_when_prechecked() {
         }
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn completed_cloud_upload_deletes_only_unchanged_uncancelled_local_sources() {
+    for outcome in ["completed", "cancelled", "changed", "replaced"] {
+        let sandbox = FakeRcloneSandbox::new();
+        let original = "uploaded original bytes";
+        let source = sandbox.write_local_file("source.txt", original);
+        let snapshot = snapshot_mixed_move_source(&source).unwrap();
+        sandbox.write_remote_file("work", "uploaded.txt", original);
+        let cancel = AtomicBool::new(outcome == "cancelled");
+        if outcome == "changed" {
+            fs::write(&source, "new local bytes").unwrap();
+        } else if outcome == "replaced" {
+            fs::rename(&source, source.with_extension("saved")).unwrap();
+            fs::write(&source, "competing local bytes").unwrap();
+        }
+        let result = remove_local_source_after_mixed_file_move(&source, &snapshot, Some(&cancel));
+        assert_eq!(
+            fs::read(sandbox.remote_path("work", "uploaded.txt")).unwrap(),
+            original.as_bytes()
+        );
+        match outcome {
+            "completed" => {
+                result.unwrap();
+                assert!(!source.exists());
+            }
+            "cancelled" => {
+                assert_eq!(result.unwrap_err().code_str(), "cancelled");
+                assert_eq!(fs::read(&source).unwrap(), original.as_bytes());
+            }
+            "changed" => {
+                assert_eq!(result.unwrap_err().code_str(), "task_failed");
+                assert_eq!(fs::read(&source).unwrap(), b"new local bytes");
+            }
+            "replaced" => {
+                assert_eq!(result.unwrap_err().code_str(), "task_failed");
+                assert_eq!(fs::read(&source).unwrap(), b"competing local bytes");
+                assert_eq!(
+                    fs::read(source.with_extension("saved")).unwrap(),
+                    original.as_bytes()
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+}

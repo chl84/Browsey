@@ -556,3 +556,11 @@ private INFO log as well as independent exact source/destination readback.
 Dispatch alone is not success; no separate Browsey staging tree is allocated for
 these clipboard operations. Provider-internal temporary files are outside this
 receipt claim. Missing/unknown routing evidence blocks acceptance.
+
+`--suite moves` verifies before-write cancellation within all five providers
+and across the local hub, with representative USB/cloud mid-file, pre-delete,
+between-file and partial-failure cases. A cloud failure is one exact-source
+candidate dispatch fault; no shared provider/service is stopped. Both generated
+trees, remaining cut selections, truthful counts and released registries are
+checked. Complete late-cancel destination copies may remain alongside sources;
+this is cancellation, not a promise of transaction rollback.

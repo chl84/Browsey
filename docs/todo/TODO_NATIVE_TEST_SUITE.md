@@ -313,9 +313,14 @@ Prioritize these data-safety cases before cosmetic UI coverage.
   unreadable-source failures preserve original targets, while local/USB mid-file
   stops retain incomplete outputs and exact protected backups with diagnostics.
   No cloud/GIO mid-file rollback or directory transaction is claimed. See the NT3 record.
-- [ ] **NT3-4** Cancel/fail moves within/across providers. Remove sources only
+- [x] **NT3-4** Cancel/fail moves within/across providers. Remove sources only
   for successfully completed entries and report partial batches truthfully,
   without automatic destructive retries.
+  Scoped native PASS: 22 cases, all five providers within and all hub directions
+  before writes, USB mid-file and USB/cloud pre-delete stops, local/cloud batch
+  cancellation and representative USB/cloud failures. Exact trees, remaining
+  cut selections, counts and released callbacks match. Local upload moves now
+  recheck cancellation and original source version before unlinking. See the NT3 record.
 - [ ] **NT3-5** Exercise read/write denial and read-only behavior on owned fixtures.
   Require actionable errors and disabled unsupported chmod/chown controls,
   rather than assuming every filesystem supports Unix permissions.

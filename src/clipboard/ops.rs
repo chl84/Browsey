@@ -899,6 +899,14 @@ pub(super) fn move_entry(
     progress_event: Option<&CopyProgress<'_>>,
     cancel: Option<&AtomicBool>,
 ) -> ClipboardResult<()> {
+    #[cfg(feature = "native-test")]
+    crate::native_test::probes::checkpoint(
+        &src.to_string_lossy(),
+        &dest.to_string_lossy(),
+        "start",
+        0,
+        || transfer_cancelled(cancel, app),
+    );
     ensure_not_child(src, dest)?;
     if transfer_cancelled(cancel, app) {
         return Err(ClipboardError::cancelled());

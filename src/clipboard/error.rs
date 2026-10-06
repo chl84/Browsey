@@ -82,7 +82,7 @@ impl ClipboardError {
     }
 
     pub(crate) fn cancelled() -> Self {
-        Self::new(ClipboardErrorCode::Cancelled, "Copy cancelled")
+        Self::new(ClipboardErrorCode::Cancelled, "Transfer cancelled")
     }
 
     pub(crate) fn code(&self) -> ClipboardErrorCode {

@@ -693,7 +693,34 @@ fn map_cloud_error_to_transfer(
     error.into()
 }
 
-fn remove_local_source_after_mixed_file_move(path: &std::path::Path) -> TransferResult<()> {
+fn snapshot_mixed_move_source(
+    path: &std::path::Path,
+) -> TransferResult<crate::fs_utils::FileState> {
+    crate::fs_utils::open_regular_file_nofollow(path)
+        .and_then(|file| crate::fs_utils::FileState::from_file(&file))
+        .map_err(|error| {
+            transfer_err(
+                TransferErrorCode::IoError,
+                format!("Cannot snapshot local source before cloud move: {error}"),
+            )
+        })
+}
+
+fn remove_local_source_after_mixed_file_move(
+    path: &std::path::Path,
+    snapshot: &crate::fs_utils::FileState,
+    cancel: Option<&AtomicBool>,
+) -> TransferResult<()> {
+    if transfer_cancelled(cancel) {
+        return Err(transfer_err(
+            TransferErrorCode::Cancelled,
+            "Move cancelled after upload; uploaded output retained and local source not removed",
+        ));
+    }
+    if !snapshot.matches(path) {
+        return Err(transfer_err(TransferErrorCode::TaskFailed,
+            "Local source changed during cloud upload; uploaded output retained and source not removed; inspect affected paths before retrying"));
+    }
     fs::remove_file(path).map_err(|error| {
         transfer_err(
             TransferErrorCode::IoError,

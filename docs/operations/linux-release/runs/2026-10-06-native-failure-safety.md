@@ -166,3 +166,58 @@ source SHA-256 `1a1b60a66c4118d43ded0223b94dfac2f4867baad827c39efc329d0fe8bf1b9d
 candidate SHA-256 `c2acd8866e79c31b870b8481c769355e4f2aaca321ca237fa67cf3bad512b35e`,
 built at `2026-10-06T16:30:49.856Z`; accepted harness SHA-256
 `cb87ef6ee115424d6726d34a33bf9c3df37c21cb93ec550f73413889545e5005`.
+
+## NT3-4: interrupted/failed moves
+
+Declared scope: before-write cancellation on all nine hub routes plus within
+USB/network/cloud/mobile (13 cases); one actual local-to-USB 16 KiB stop; late
+cancellation after copied bytes but before source deletion on local-to-USB and
+both cloud hub directions; between-file cancellation locally and in both cloud
+directions; and partial batch failures on local-to-USB (owned unreadable file)
+and cloud-to-local (one exact-source candidate-only dispatch fault). There are
+22 cases/parts. No device/service outage is induced or certified.
+
+Sources and destinations are independently enumerated/read twice. Local batch
+rollback preserves completed source entries; cloud batches remove only completed
+roots and retain failed/unattempted roots, with exact partial counts. Late stops
+retain complete destination copies and their sources; mid-file stops retain
+incomplete source prefixes and intact sources. Actual cut-clipboard contents,
+task registry and live progress callbacks are checked after completion. No
+destructive retry is submitted after failure.
+
+Local-to-cloud moves previously removed the local path immediately after an
+upload reply, without rechecking cancellation or source version. The move now
+captures an original no-follow regular-file version and rechecks both before
+unlinking. Changed/replaced sources remain alongside uploaded output with an
+explicit error. Cloud-to-local moves likewise check cancellation before delete.
+These metadata/version checks are conservative detection, not atomic exclusion
+of a writer after the final check. The regression independently inspects the
+source and already-uploaded destination for normal, cancelled, changed and
+replaced-source outcomes. Cancellation text now says "Transfer cancelled" for
+both copy and move.
+
+Status: NOT_RUN pending native acceptance.
+
+Local/USB preparation run `19447a34-e5bf-4d97-8c52-ee8873ebd13a` passed all eight
+parts and accessibility. Accepted full run
+`4cf53192-27fa-4f9e-90b5-c372f12c483d`, 16:44:55–16:57:49 UTC, passed all 22
+parts and accessibility. No part remains NOT_RUN. Actual 16 KiB incomplete
+USB output and all three completed pre-delete copies retained their intact
+sources. Local partial batches restored earlier roots; cloud partial batches
+removed only their single completed root and preserved failed/unattempted roots.
+Two independent tree comparisons, exact remaining cut selections, truthful
+feedback and released task/callback registries passed in every case. The declared
+cloud-source fault was consumed exactly once. NT3-4 is complete for this scope.
+
+All four teardown stages passed, all three captured process identities were
+independently gone and a fresh retained audit passed. The report observed
+6,839,807 bytes/128 entries. All 800 Rust tests pass (19 ignored), including the
+four source-finalization outcomes, Clippy passes with warnings denied, 124 native
+policy tests/native lint pass, blocking Semgrep has no findings and the backend
+error-hardening guard passes.
+
+Baseline `36422d1387b1914bcf981775f963332ffef87baa`, dirty `true`;
+source SHA-256 `a8b80b1086cfa21cd8079bb434921e0d5193db971112a19af1e0016fe3112ebb`;
+candidate SHA-256 `2fb9325a41ef66ec3f5f96a8d58db410389a470382d3f2e9ab21ab5226c10552`,
+built at `2026-10-06T16:43:15.758Z`; harness SHA-256
+`35633a5cc60e760a1c755da998549c55f0ddfb3a85793cd204272a4f8c97ce0f`.
