@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Verify 18 native bounded-tree/listing parts across all five storage types:
+  reduced device fixtures, empty/deep/wide copies, recursive search with released
+  resources and exact 200-file local virtual selection/copy digests. Bound native
+  test dispatch traversal by both entry count and depth.
+
 - Release completed cloud and mixed-transfer progress listeners without losing
   the completion timer or transfer result. Verify 18 native binary copy/move
   parts across all local-hub storage routes using raw bytes and SHA-256 digests,

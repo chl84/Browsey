@@ -644,3 +644,13 @@ At most two reads run concurrently. Tree verification defaults to 128 entries
 and depth eight, with explicit hard ceilings of 256 entries/depth 16 for named
 cases. All reads and metadata stay inside the owned run. Large files, sparse-file
 remote performance and broader binary route certification are excluded.
+
+
+`--suite trees` starts with a reduced six-entry tree on every selected provider,
+then verifies a combined 25-entry empty/deep/wide shape (maximum depth eight),
+actual recursive search and normal listing/F5 response. Local-only virtual
+listing selects first/last rows, copies all 200 one-byte files and compares both
+whole byte/digest sets. Each stage checks released task/callback registries.
+Independent verification remains below 256 entries/depth eight; native dispatch
+traversal is limited to 4096 entries/depth 32. This is not an unbounded device
+stress or throughput claim.

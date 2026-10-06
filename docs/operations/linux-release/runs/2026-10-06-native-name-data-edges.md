@@ -160,3 +160,66 @@ harness SHA-256 `980b1ab237ca025b45590b9b83fe43b5047cf7967206910be9b1fa74912720d
 zero blocking Semgrep findings, error-hardening guard and strict documentation
 consistency pass. Rust sources remain at the verified NT4-2 baseline. NT4-3 is
 complete for the declared bounded binary scope.
+
+
+## NT4-4: bounded tree and listing response
+
+Declared scope: three parts per provider (15) plus three local virtual-list
+parts: 18 total. Each provider first copies a six-entry reduced tree containing
+empty folders and three tiny binary files, before adding a deeper/wider tree.
+The combined source/destination trees have 25 entries, deepest relative folder
+at depth eight, and 12 tiny file matches for the actual recursive Search UI.
+Exact byte/digest readback checks both trees; completed search/transfer callbacks
+and task registries must clear. Returning to normal listing and F5 must respond.
+
+Only local disk receives the 200-entry one-byte-file listing: actual first/last
+virtual selection, Ctrl+A and copy of all 200 files, independent byte/digest
+checks, then navigation back to the small tree. Verification explicitly stays
+under 256 entries/depth eight. This is a bounded representative test, not an
+unbounded stress/throughput certification. The native dispatch tree guard also
+receives an explicit depth-32 ceiling in addition to its existing 4096-entry
+budget. Acceptance evidence follows.
+
+
+Run `13453540-65f6-4491-bc9b-615b2720079f` passes all local/USB/network parts
+and both cloud copy parts (11), then stops BLOCKED on an immediate zero-task
+assertion after the full cloud match set is visible. This does not certify
+search completion or a product leak: matches stream before terminal completion,
+and completed/cancelled workers may still be ending. Their guard is released on
+worker exit. The observer now waits at most 180 seconds for actual task and
+search/transfer callback release, without replaying operations. Policy tests
+require both eventual release and refusal of a task that never clears.
+
+All four teardown stages/private retention pass on the stopped run; every captured
+process is gone and a fresh exact-run audit passes. Files/evidence remain retained.
+Declared fresh follow-up: local/cloud/mobile plus the local 200-entry case
+(12 parts), retaining the already accepted USB/network parts from the same
+application source/binary. App build inputs remain unchanged; only readiness
+observation changes. No product search defect is claimed from the early sample.
+
+
+Follow-up `08447a58-deaf-4e7c-abc0-f32657227301` passes all local/cloud/mobile
+parts and the local 200-entry case (12), including actual search task/callback
+release without replay. The earlier sample was premature cleanup observation;
+no product search change is needed. All teardown stages, independent process
+exit, private retention and a fresh exact-run audit pass. Final local-only run `75a9b8e4-720a-49cd-95d0-ba42881ca3f3` passes six parts
+with the finished harness after an unused import is removed; application
+source/binary remains identical. Teardown/private retention, independent exact
+process exit and a fresh exact-run audit pass here as well.
+
+
+These three retained reports establish 18 unique declared NT4-4 parts across all
+five providers: USB/network three each in the initial report, local/cloud/mobile
+three each plus the three local virtual-list parts in the passing follow-up.
+No incomplete cloud search observation counts as acceptance.
+
+Baseline `c75a6ffd2358570f19f4346f6070ed518e36b6ad`, dirty true; source SHA-256
+`e03c352a5742211ec7457f066ea2c3a5b7ff01a394af420eb1daa4974b49e5ab`;
+candidate SHA-256 `ee36bce7b7182ab041b0d51d641ff34fdf338651d7860a4ee2fd9542ea09825b`.
+Initial harness SHA-256 `2b585cfa464fa2ba68b2883d9a549a24198338c3a6f902cdd412cda21f3a2b21`;
+passing local/cloud/mobile harness SHA-256 `8237d5904b9b97ad2d61e274004522545c69e46d4ae436ba7b7945935cdcdf34`;
+finished local harness SHA-256 `c26d308a528101432b61d210512db5f2f5ef93f7e13e53690109e8e6d98593cc`.
+807 Rust tests pass (19 ignored), 137 native policy tests, native lint, formatting,
+Clippy with warnings denied, zero blocking Semgrep findings, error-hardening guard
+and strict documentation consistency pass. Frontend app sources retain the 703-test
+verified NT4-3 baseline. NT4-4 is complete for the declared bounded scope.

@@ -287,6 +287,18 @@ fn no_links(path: &Path) -> Result<(), &'static str> {
 // Recursive operations must not encounter links hidden under an approved directory.
 #[cfg(any(feature = "native-test", test))]
 fn no_tree_links(path: &Path, remaining: &mut usize) -> Result<(), &'static str> {
+    no_tree_links_at_depth(path, remaining, 0)
+}
+
+#[cfg(any(feature = "native-test", test))]
+fn no_tree_links_at_depth(
+    path: &Path,
+    remaining: &mut usize,
+    depth: usize,
+) -> Result<(), &'static str> {
+    if depth > 32 {
+        return Err("Native-test tree depth budget exceeded");
+    }
     if *remaining == 0 {
         return Err("Native-test tree exceeds the foundation limit");
     }
@@ -301,11 +313,12 @@ fn no_tree_links(path: &Path, remaining: &mut usize) -> Result<(), &'static str>
     }
     if meta.is_dir() {
         for entry in fs::read_dir(path).map_err(|_| "Cannot inspect owned native-test directory")? {
-            no_tree_links(
+            no_tree_links_at_depth(
                 &entry
                     .map_err(|_| "Cannot inspect owned native-test entry")?
                     .path(),
                 remaining,
+                depth + 1,
             )?;
         }
     }
@@ -802,6 +815,25 @@ mod tests {
             |_| panic!("Cloud search must not reach local metadata I/O"),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn native_scope_tree_depth_is_bounded_before_recursive_dispatch() {
+        let temp = std::env::temp_dir().join(format!(
+            "browsey-native-depth-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let root = temp.join("owned");
+        let deep = (0..33).fold(root.clone(), |p, _| p.join("d"));
+        fs::create_dir_all(&deep).unwrap();
+        let rejected = no_tree_links(&root, &mut 4096).is_err();
+        no_tree_links(&deep, &mut 4096).unwrap();
+        fs::remove_dir_all(temp).unwrap();
+        assert!(rejected);
     }
 
     #[cfg(unix)]

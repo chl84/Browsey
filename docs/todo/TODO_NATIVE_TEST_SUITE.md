@@ -386,9 +386,15 @@ Prioritize these data-safety cases before cosmetic UI coverage.
   membership, unrelated sentinels and previous copies pass. Successful cloud/mixed
   transfers now release their progress listeners. No large-file/performance claim.
   See the NT4 record.
-- [ ] **NT4-4** Exercise empty/deep/wide trees and large owned listings within
+- [x] **NT4-4** Exercise empty/deep/wide trees and large owned listings within
   entry/depth budgets. Verify bounded traversal, resource cleanup and UI response;
   begin device stress with reduced fixtures.
+  Scoped native PASS: 18 unique parts across all five providers, with a reduced
+  six-entry tree first, combined 25-entry/depth-eight trees, exact binary digests,
+  recursive search and task/callback release. Local virtual listing selects
+  first/last and copies all 200 one-byte files. Completed USB/network parts and
+  fresh local/cloud/mobile/local follow-ups use the same app source/binary.
+  Dispatch traversal stays bounded to 4096 entries/depth 32. See the NT4 record.
 - [ ] **NT4-5** Add broken/relative symlink and hard-link cases where supported.
   Referents must stay inside the owned run. Narrowly extend the currently
   rejecting guard before functional link tests; never allow outside referents.
