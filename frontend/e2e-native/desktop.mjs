@@ -65,7 +65,7 @@ export function fixtureLauncher(repo,run,program,args=[]) {
   } else assert.deepEqual(args,[],'Candidate takes no arbitrary launch arguments')
   return {application:'/usr/bin/bwrap',args:['--die-with-parent','--unshare-user','--unshare-ipc','--unshare-uts',
     '--ro-bind','/usr','/usr','--symlink','usr/bin','/bin','--symlink','usr/lib','/lib','--symlink','usr/lib','/lib64',
-    '--ro-bind','/etc/passwd','/etc/passwd','--ro-bind','/etc/group','/etc/group','--ro-bind','/etc/machine-id','/etc/machine-id','--ro-bind','/etc/fonts','/etc/fonts','--ro-bind','/var/cache/fontconfig','/var/cache/fontconfig','--ro-bind','/etc/ld.so.cache','/etc/ld.so.cache','--ro-bind','/etc/ssl','/etc/ssl','--ro-bind','/etc/resolv.conf','/etc/resolv.conf',
+    '--ro-bind','/etc/passwd','/etc/passwd','--ro-bind','/etc/group','/etc/group','--ro-bind','/etc/machine-id','/etc/machine-id','--ro-bind','/etc/fonts','/etc/fonts','--ro-bind','/var/cache/fontconfig','/var/cache/fontconfig','--ro-bind','/etc/ld.so.cache','/etc/ld.so.cache','--ro-bind','/etc/ssl','/etc/ssl','--ro-bind','/etc/ca-certificates','/etc/ca-certificates','--ro-bind','/etc/resolv.conf','/etc/resolv.conf',
     '--proc','/proc','--dev','/dev','--bind','/tmp','/tmp','--ro-bind',repo,repo,'--bind',run,run,
     '--tmpfs','/usr/share/applications','--tmpfs','/usr/local','--dir','/usr/local/share','--dir','/usr/local/share/applications','--chdir',path.join(run,'files'),'--',program,...args]}
 }

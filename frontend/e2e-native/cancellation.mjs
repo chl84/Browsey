@@ -29,7 +29,7 @@ export async function transferListeners(ui) {
   return ui.browser.execute(()=>{
     const listeners=window.__internal_unstable_listeners_object_id__,callbacks=window.__TAURI_INTERNALS__?.callbacks
     if(!listeners||typeof callbacks?.has!=='function') throw Error('Native event registries are unavailable')
-    return Object.getOwnPropertyNames(listeners).filter(name=>/^(copy-progress-|cut-progress-|mixed-(copy|cut)-|cloud-(copy|cut)-)/.test(name))
+    return Object.getOwnPropertyNames(listeners).filter(name=>/^(copy-progress-|cut-progress-|mixed-(copy|cut)-|cloud-(copy|cut)-|compress-progress-|extract-progress-)/.test(name))
       .flatMap(name=>Object.getOwnPropertyNames(listeners[name]).map(id=>listeners[name][id].handlerId)
         .filter(id=>callbacks.has(id)).map(id=>({event:name,handler:id})))
   })

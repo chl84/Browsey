@@ -763,3 +763,22 @@ failure follow-ups. The 128 MiB per-run reservation, private audit limits and
 no-automatic-cleanup policy remain unchanged. The existing preservation/count
 regression checks every prior registration survives and the new cap still blocks
 another reservation. No earlier run or recovery data is removed.
+
+
+## Isolated native archives
+
+```bash
+node frontend/e2e-native/isolated.mjs --suite archives --targets local,cloud --a11y
+```
+
+The separately proven `archives` mode permits only bounded explicit generated
+inputs, safe output leaves and owned local/cloud paths. Ordinary sessions keep
+archive IPC denied. In-memory fixture generation covers all twelve extraction
+kinds without borrowed sample archives; the real UI creates encrypted ZIP and
+checks passwords, cancellation, collisions and partial batches. Independent
+byte checks verify malicious entries stay inside the output and preserve parent
+sentinels. Actual OneDrive staging is retained in the private profile and checked
+alongside independently read cloud originals and uploaded extraction results.
+Existing Rust archive/security bodies cover broader codecs and resource limits.
+See the [desktop interaction record](operations/linux-release/runs/2026-10-07-native-desktop-interaction.md)
+for the precise accepted scope and retained failures.

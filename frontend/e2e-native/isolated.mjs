@@ -25,7 +25,7 @@ export function sandboxArgs(repo,local,network=false) {
   assert.ok(path.isAbsolute(repo)&&path.isAbsolute(local))
   return ['--die-with-parent','--unshare-user','--unshare-pid','--unshare-ipc','--unshare-uts',...(network?[]:['--unshare-net']),
     '--ro-bind','/usr','/usr','--ro-bind',process.execPath,'/native-node','--symlink','usr/bin','/bin','--symlink','usr/lib','/lib','--symlink','usr/lib','/lib64',
-    '--ro-bind','/etc/fonts','/etc/fonts','--ro-bind','/var/cache/fontconfig','/var/cache/fontconfig','--ro-bind','/etc/ld.so.cache','/etc/ld.so.cache','--ro-bind','/etc/ssl','/etc/ssl',
+    '--ro-bind','/etc/fonts','/etc/fonts','--ro-bind','/var/cache/fontconfig','/var/cache/fontconfig','--ro-bind','/etc/ld.so.cache','/etc/ld.so.cache','--ro-bind','/etc/ssl','/etc/ssl','--ro-bind','/etc/ca-certificates','/etc/ca-certificates',
     '--ro-bind','/etc/resolv.conf','/etc/resolv.conf','--proc','/proc','--dev','/dev','--tmpfs','/tmp','--dir','/run',
     '--ro-bind',repo,repo,'--bind',path.join(repo,'target/native-test/.retention'),path.join(repo,'target/native-test/.retention'),
     '--bind',local,local,'--chdir',repo]

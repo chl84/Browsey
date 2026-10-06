@@ -13,6 +13,7 @@ test('desktop mount plan excludes shared display, bus and personal home; app lau
   const whole=sandboxArgs(repo,local)
   assert.ok(whole.includes('--unshare-pid')&&whole.includes('--unshare-net')&&whole.includes('--unshare-user'))
   assert.ok(!whole.includes('/home')&&!whole.includes('/run/user')&&!whole.includes('/tmp/.X11-unix'))
+  assert.ok(whole.includes('/etc/ca-certificates'),'HTTPS trust bundle symlink referents must be visible read-only')
   const launcher=fixtureLauncher(repo,run,repo+'/target/native-test/browsey')
   const binds=launcher.args.flatMap((arg,i)=>arg==='--bind'?[launcher.args.slice(i+1,i+3)]:[])
   assert.deepEqual(binds,[['/tmp','/tmp'],[run,run]])

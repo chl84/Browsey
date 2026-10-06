@@ -12,7 +12,7 @@ pub(super) fn validate_isolation(
     let Some(mode) = mode else {
         return Ok(());
     };
-    if !matches!(mode, "desktop-services" | "watchers") {
+    if !matches!(mode, "desktop-services" | "watchers" | "archives") {
         return Err("Unknown approved desktop mode");
     }
     let raw =

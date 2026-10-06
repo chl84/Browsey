@@ -1,6 +1,7 @@
 //! Fail-closed IPC boundary for opt-in native candidates, not a general sandbox.
 //! Production builds contain neither the test overrides nor the environment hook.
 use serde_json::Value;
+mod archives;
 mod desktop;
 pub(crate) mod links;
 pub(crate) mod probes;
@@ -620,24 +621,32 @@ mod enabled {
             return None;
         }
         let result = match invoke.message.payload() {
-            InvokeBody::Json(body) => desktop::authorize(
+            InvokeBody::Json(body) => archives::authorize(
                 &session.data_roots,
-                Path::new(&session.profile),
                 session.desktop.as_deref(),
                 command,
                 body,
             )
             .unwrap_or_else(|| {
-                workspaces::authorize(
+                desktop::authorize(
                     &session.data_roots,
                     Path::new(&session.profile),
-                    session.workspace_source.as_deref(),
+                    session.desktop.as_deref(),
                     command,
                     body,
                 )
                 .unwrap_or_else(|| {
-                    authorize_io(&session.data_roots, command, body, |raw| {
-                        links::inspect(&session.links, Path::new(raw))
+                    workspaces::authorize(
+                        &session.data_roots,
+                        Path::new(&session.profile),
+                        session.workspace_source.as_deref(),
+                        command,
+                        body,
+                    )
+                    .unwrap_or_else(|| {
+                        authorize_io(&session.data_roots, command, body, |raw| {
+                            links::inspect(&session.links, Path::new(raw))
+                        })
                     })
                 })
             }),

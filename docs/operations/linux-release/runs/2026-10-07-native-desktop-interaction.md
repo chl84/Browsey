@@ -208,4 +208,51 @@ of replacing it with an undefined-process inspection error. The final native run
 proves the complete declared shutdown/restart scope; it does not certify old-port
 reuse timing. No normal application watcher policy was changed.
 
-Remaining NT6 parts are not accepted by this record yet.
+## NT6-7: generated archives and actual cloud staging
+
+Run `030ae108-db3f-4c16-89a9-065f493c1c9e` is native PASS: 22 parts plus
+accessibility. Generated in-memory ZIP, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, TAR.ZST,
+7z, stored RAR4 and standalone GZ/BZ2/XZ/ZST payloads extract through actual
+Browsey context menus. Independent exact tree/byte/digest checks preserve each
+original archive. The application creates an AES-256 ZIP; wrong-password feedback
+returns an empty password field, a correct entry completes extraction, and
+password cancellation preserves the existing output. Compression-dialog Cancel,
+unique extraction destinations protecting an existing sentinel, and a corrupt
+ZIP mixed with a good archive verify cancellation and truthful 1-success/1-failure
+batch feedback.
+
+Hostile ZIP/TAR entries cannot write outside the destination or change the parent
+sentinel. ZIP 8.6 safely normalizes an absolute entry to a relative name inside the
+output and skips both traversal entries; TAR skips all three unsafe paths and one
+symlink. The earlier raw FAIL `26e3cedc-2eca-4f98-bb9c-3ef8858abfec` expected
+ZIP to skip the safely normalized name as well; that incorrect assertion was
+corrected without changing product extraction behavior. Its original report and
+all generated data remain retained.
+
+Actual OneDrive compression downloads the generated source into the private
+workspace and uploads the new ZIP; extraction downloads it, extracts locally and
+uploads a fresh suffixed folder. Exact independent source/archive/output bytes
+match. A repeated archive name reports an existing-destination error and preserves
+both originals. The two compression stages and one extraction stage, including
+all four materialized payload files, remain independently inspected and retained.
+Six-hundred-second operation and 180-second UI waits accommodate cloud work.
+No file operation is automatically retried.
+
+Initial setup `a92da4d9-3380-4e19-8a97-1401990ee16a` is BLOCKED: system CA
+bundle symlink referents were absent from the namespace. A bounded read-only
+provider diagnostic confirmed certificate failure. Both isolation layers now
+expose only the system CA trust directory read-only; private credentials and
+personal desktop services retain their existing boundaries. The fresh complete
+run proves connectivity and all declared effects. All four teardown stages,
+namespace exit and strict retention pass (158 entries, 808,079 bytes); archive
+progress callbacks and actual cancel tasks release.
+
+Existing Rust decoder/security tests are reused: 44 extraction and 10 compression
+tests pass, plus the new archive-scope denial test. Native policy: 157 PASS.
+Native encrypted UI coverage is ZIP; encrypted 7z/RAR/codecs and resource caps
+remain covered by the existing Rust tests, not new duplicated native bodies.
+Large-archive cancellation, every encrypted codec/provider and concurrent hostile
+writers are outside this bounded native acceptance. No product archive change
+was required.
+
+NT6-8 is not accepted by this record yet.

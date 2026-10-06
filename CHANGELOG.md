@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Verify 22 native archive parts: all 12 extraction formats, generated AES-ZIP
+  passwords/cancel/conflicts/partial batches, malicious paths and actual OneDrive
+  staging round trips. Gate archive IPC on isolated owned inputs; expose system
+  HTTPS trust-bundle referents read-only in the desktop sandbox.
+
 - Verify real fixture-only native watchers for external create/edit/rename/delete,
   refresh during copying and queued-change shutdown/restart. The opt-in mode
   requires explicit owned directories and bypasses home fallback and discovery.

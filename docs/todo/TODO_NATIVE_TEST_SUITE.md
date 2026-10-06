@@ -481,7 +481,7 @@ external launches and discovery remain disabled by default.
 - [x] **NT6-6** Add fixture-only watcher tests after eliminating home fallback and
   broad discovery from that mode. Cover external fixture changes, refresh during
   work and shutdown; disabled-watcher runs cannot certify watcher behavior.
-- [ ] **NT6-7** Add generated archive round trips: supported formats, passwords,
+- [x] **NT6-7** Add generated archive round trips: supported formats, passwords,
   wrong password, Cancel, corruption, conflicts and partial batches. Cover local/
   cloud staging and malicious entry paths without outside writes; reuse existing
   archive/security tests rather than duplicating their bodies.
