@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Keep missing cloud transfer sizes indeterminate instead of reporting a
+  fictional one-byte total. Show zero/unknown progress and actual completed
+  file bytes through finalization. Verify visible progress and activity cleanup
+  in 27 scoped native parts across local disk, USB, network, cloud and mobile;
+  large-file throughput and universal mid-file callback cadence remain outside
+  this small-fixture acceptance.
+
 - Preserve empty cloud folders and nested empty directories during copy and
   overwrite-move merges, removing source directories only after a successful
   move. Allow cloud-to-phone transfers when MTP cannot set file timestamps,

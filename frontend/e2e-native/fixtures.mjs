@@ -58,8 +58,8 @@ export class Fixtures {
     // No inherited credentials/config overrides, shell, discovery or unbounded retries.
     try {
       const result = await exec('/usr/bin/rclone', ['--config', this.env.RCLONE_CONFIG,
-        '--retries', '1', '--low-level-retries', '1', '--timeout', '20s', '--contimeout', '10s', ...args],
-      { env: this.env, cwd: this.local.files, timeout: 45_000, maxBuffer: 1024 * 1024 })
+        '--retries', '1', '--low-level-retries', '1', '--timeout', '60s', '--contimeout', '15s', ...args],
+      { env: this.env, cwd: this.local.files, timeout: 120_000, maxBuffer: 1024 * 1024 })
       return result.stdout
     } catch (error) {
       // Keep provider stderr private: it can include paths, URLs or credentials.

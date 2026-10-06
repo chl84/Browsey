@@ -12,6 +12,7 @@ export function requirements(item) {
     navigation: ['directory-read', 'owned-navigation', 'history-navigation', 'breadcrumb-navigation', 'refresh',
       `ui-${item.id.split('-')[1]}-navigation`, 'view-switch'] }
   return Object.fromEntries(item.providers.map((provider, index) => {
+    if (operation === 'progress') return [provider, ['visible-byte-progress', 'unknown-zero-totals', 'command-owned-completion', 'independent-source-destination-trees']]
     if (operation === 'batch') return [provider, ['batch-outcome-counts', 'batch-error-preservation', 'remaining-source-preservation', 'independent-source-destination-trees', 'refresh-reconciliation']]
     if (operation === 'guards') return [provider, ['unsafe-transfer-rejection', 'same-target-rejection', 'descendant-rejection', 'bounded-work', 'independent-preservation']]
     if (item.id.includes('-conflicts-')) return [provider, ['conflict-choice', 'nested-conflict-preservation', 'cross-kind-conflict-policy', 'independent-source-destination-trees']]

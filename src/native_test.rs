@@ -1,6 +1,7 @@
 //! Fail-closed IPC boundary for opt-in native candidates, not a general sandbox.
 //! Production builds contain neither the test overrides nor the environment hook.
 use serde_json::Value;
+pub(crate) mod probes;
 
 const FOLDER: &str = "ai_agent_testfolder";
 
@@ -448,6 +449,8 @@ mod enabled {
         profile: String,
         #[serde(default)]
         faults: Vec<FaultPlan>,
+        #[serde(default)]
+        probes: Vec<probes::Plan>,
     }
     static SESSION: OnceCell<Session> = OnceCell::new();
     static FAULTS: OnceCell<Vec<OwnedFault>> = OnceCell::new();
@@ -481,6 +484,7 @@ mod enabled {
             }
         }
         let faults = validate_faults(&session.data_roots, std::mem::take(&mut session.faults))?;
+        probes::initialize(&session.data_roots, std::mem::take(&mut session.probes))?;
         let local_run = Path::new(&session.data_roots[0])
             .parent()
             .ok_or("Missing local run")?;
@@ -552,6 +556,7 @@ mod enabled {
         let override_value = match command {
             "native_test_status" => Some(serde_json::json!({"runId":session.run_id,
                 "pid":std::process::id(), "scope":"owned-files-only", "watcher":false,
+                "probes":probes::status(),
                 "faults":FAULTS.get().expect("faults initialized").iter().map(|fault| serde_json::json!({
                     "id":fault.plan.id, "uses":fault.used.load(std::sync::atomic::Ordering::SeqCst),
                     "armed":fault.armed.load(std::sync::atomic::Ordering::SeqCst)})).collect::<Vec<_>>()})),

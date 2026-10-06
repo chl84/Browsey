@@ -148,6 +148,35 @@ impl Drop for FakeRcloneSandbox {
 }
 
 #[cfg(unix)]
+#[test]
+fn unknown_cloud_metadata_never_becomes_a_one_byte_batch_total() {
+    let _guard = fake_rclone_test_lock();
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "src/a.txt", "actual content");
+    sandbox.write_remote_file("work", "src/b.txt", "other actual content");
+    let script = fs::read_to_string(&sandbox.script_path).unwrap();
+    let unknown = script.replace(
+        "size=\"$(wc -c < \"$path\" | tr -d '[:space:]')\"",
+        "size=-1",
+    );
+    assert_ne!(script, unknown);
+    fs::write(&sandbox.script_path, unknown).unwrap();
+    let sources = [
+        sandbox.cloud_path("rclone://work/src/a.txt"),
+        sandbox.cloud_path("rclone://work/src/b.txt"),
+    ];
+    assert!(
+        progress::build_cloud_to_local_batch_progress_plan(&sandbox.cli(), &sources)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        fs::read_to_string(sandbox.remote_path("work", "src/a.txt")).unwrap(),
+        "actual content"
+    );
+}
+
+#[cfg(unix)]
 fn fake_rclone_test_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: Mutex<()> = Mutex::new(());
     LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())

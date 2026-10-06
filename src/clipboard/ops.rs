@@ -514,6 +514,14 @@ fn copy_entry_with_receipt(
     cancel: Option<&AtomicBool>,
     require_receipt: bool,
 ) -> ClipboardResult<crate::undo::CopyReceipt> {
+    #[cfg(feature = "native-test")]
+    crate::native_test::probes::checkpoint(
+        &src.to_string_lossy(),
+        &dest.to_string_lossy(),
+        "start",
+        0,
+        || transfer_cancelled(cancel, app),
+    );
     let meta = fs::symlink_metadata(src).map_err(|e| {
         ClipboardError::from_io_error(
             ClipboardErrorCode::IoError,
@@ -527,7 +535,7 @@ fn copy_entry_with_receipt(
             "Refusing to copy symlinks",
         ));
     }
-    if meta.is_dir() {
+    let result = if meta.is_dir() {
         ensure_not_child(src, dest)?;
         copy_dir(src, dest, app, progress_event, cancel, require_receipt)
     } else {
@@ -547,7 +555,18 @@ fn copy_entry_with_receipt(
             require_receipt,
         )?;
         Ok(outputs.receipt(dest))
+    };
+    #[cfg(feature = "native-test")]
+    if result.is_ok() {
+        crate::native_test::probes::checkpoint(
+            &src.to_string_lossy(),
+            &dest.to_string_lossy(),
+            "finalize",
+            if meta.is_file() { meta.len() } else { 0 },
+            || transfer_cancelled(cancel, app),
+        );
     }
+    result
 }
 
 #[cfg(test)]
@@ -682,7 +701,18 @@ fn copy_file_tracked(
                 );
                 return Err(ClipboardError::cancelled());
             }
-            let n = reader.read(&mut buf).map_err(|e| {
+            #[cfg(feature = "native-test")]
+            let chunk = if crate::native_test::probes::selected(
+                &src.to_string_lossy(),
+                &dest.to_string_lossy(),
+            ) {
+                buf.len().min(16384)
+            } else {
+                buf.len()
+            };
+            #[cfg(not(feature = "native-test"))]
+            let chunk = buf.len();
+            let n = reader.read(&mut buf[..chunk]).map_err(|e| {
                 ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Read failed", e)
             })?;
             if n == 0 {
@@ -695,7 +725,15 @@ fn copy_file_tracked(
             done = done.saturating_add(n as u64);
             if progress_event.is_some() {
                 let elapsed = last_time.elapsed();
-                if done.saturating_sub(last_emit) >= 64 * 1024
+                #[cfg(feature = "native-test")]
+                let observed = crate::native_test::probes::selected(
+                    &src.to_string_lossy(),
+                    &dest.to_string_lossy(),
+                );
+                #[cfg(not(feature = "native-test"))]
+                let observed = false;
+                if observed
+                    || done.saturating_sub(last_emit) >= 64 * 1024
                     || elapsed >= std::time::Duration::from_millis(200)
                 {
                     emit_copy_progress(
@@ -710,6 +748,14 @@ fn copy_file_tracked(
                     last_time = std::time::Instant::now();
                 }
             }
+            #[cfg(feature = "native-test")]
+            crate::native_test::probes::checkpoint(
+                &src.to_string_lossy(),
+                &dest.to_string_lossy(),
+                "written",
+                done,
+                || transfer_cancelled(cancel, app),
+            );
         }
         preserve_copy_permissions(src, dest, &writer, permissions, "Set file permissions")?;
         let completed_state = crate::fs_utils::FileState::from_file(&writer).map_err(|error| {

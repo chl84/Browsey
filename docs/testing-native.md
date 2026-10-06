@@ -251,7 +251,8 @@ Normal production builds exclude the injection machinery.
 Tree verification runs at most two independent reads at once and waits for both
 started children before surfacing a failure. Cloud metadata readiness permits at
 most four successful tree enumerations, separated by one-second gaps, before
-reading any bytes; each CLI call retains its existing 45-second limit. Transport
+reading any bytes; each fixture CLI call has a 120-second limit, with a
+60-second I/O timeout and a 15-second connection timeout. Transport
 errors, corrupted bytes and mutation dispatch are never automatically retried.
 Unexpected directories are recorded but not traversed. Duplicate entries always
 fail verification, including MTP aliases; they are never silently deduplicated.
@@ -461,12 +462,24 @@ Private profiles can contain OAuth tokens; securely handle retained runs.
 
 New runs register an ownership nonce and approved-local-root hash in private,
 ignored `target/native-test/.retention` metadata. Preflight reserves 128 MiB before
-creating an owned run. Limits are 64 registered runs and 512 MiB of accounted
+creating an owned run. Limits are 96 registered runs and 512 MiB of accounted
 local data/reservations, with 128 MiB, 10,000 entries, depth 32 and a checked
 10-second elapsed budget per local tree audit. These are fail-closed accounting
 guards, not filesystem quotas or hard deadlines for stalled filesystem calls.
 Remote fixture bytes and older unregistered runs are outside this accounting;
 no approved-root inventory is performed. An uncertain audit blocks new runs.
+
+The NT3 progress suite uses at most 64 KiB per generated file and exact,
+one-use candidate-only checkpoints. A checkpoint holds real finalization for
+1.8 seconds; selected local stream writes report actual 16 KiB increments
+and pause for 250 ms. Checkpoints accept only generated source/destination
+children, at most 32 plans, five seconds per hold and 500 ms per write pause.
+They neither invent transferred bytes nor run in production builds. Cloud
+readiness may wait 180 seconds and operation completion 600 seconds. These
+small fixtures do not establish large-file throughput or every provider's
+mid-file callback cadence. The registered-run limit increased from 64 to 96
+to retain NT3 reports alongside prior evidence; byte and audit limits remain
+unchanged, and no retained recovery data is deleted.
 
 Successful local-only runs must be retained for at least seven days before they
 can become eligible for explicit cleanup. Age never triggers automatic deletion.

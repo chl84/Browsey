@@ -57,7 +57,7 @@ pub(super) fn try_execute_cloud_to_local_file_transfer_with_progress(
         staging = "direct",
         "transfer dispatch"
     );
-    let total = entry.size.unwrap_or(1);
+    let total = entry.size.unwrap_or(0);
     let result = match op {
         MixedTransferOp::Copy => provider
             .download_file_with_progress(
@@ -88,6 +88,15 @@ pub(super) fn try_execute_cloud_to_local_file_transfer_with_progress(
         }
     }
     .map(|_| {
+        emit_transfer_progress(progress, total, total, false);
+        #[cfg(feature = "native-test")]
+        crate::native_test::probes::checkpoint(
+            &src_path.to_string(),
+            &dst_path.to_string_lossy(),
+            "finalize",
+            total,
+            || transfer_cancelled(cancel),
+        );
         emit_transfer_progress(progress, total, total, true);
     });
 
@@ -151,6 +160,15 @@ pub(super) fn try_execute_local_to_cloud_file_transfer_with_progress(
         )
     };
     let result = upload.map_err(map_cloud_error_to_transfer).and_then(|_| {
+        emit_transfer_progress(progress, total, total, false);
+        #[cfg(feature = "native-test")]
+        crate::native_test::probes::checkpoint(
+            &src_path.to_string_lossy(),
+            &dst_path.to_string(),
+            "finalize",
+            total,
+            || transfer_cancelled(cancel),
+        );
         if op == MixedTransferOp::Move {
             remove_local_source_after_mixed_file_move(src_path)?;
         }
@@ -181,7 +199,9 @@ pub(super) fn build_cloud_to_local_batch_progress_plan(
         if !matches!(entry.kind, CloudEntryKind::File) {
             return Ok(None);
         }
-        let size = entry.size.unwrap_or(1);
+        let Some(size) = entry.size else {
+            return Ok(None);
+        };
         file_sizes.push(size);
         total_bytes = total_bytes.saturating_add(size);
     }

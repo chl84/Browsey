@@ -289,9 +289,14 @@ all-pairs has twenty. Test copy and move separately for files and directory tree
 
 Prioritize these data-safety cases before cosmetic UI coverage.
 
-- [ ] **NT3-1** Verify visible byte progress in both directions across boundaries:
+- [x] **NT3-1** Verify visible byte progress in both directions across boundaries:
   files/folders, unknown totals, slow callbacks, zero-byte files and finalization.
   Prevent misleading `1 B`, early completion and stale activity.
+  Scoped native PASS: nine local-hub routes, 27 file/folder/zero-byte parts,
+  including both cloud and mobile directions. Real local stream increments
+  and bounded finalization pauses expose displayed state; unknown cloud totals
+  remain indeterminate. Large files and universal mid-file callback cadence
+  are excluded. See the [NT3 verification record](../operations/linux-release/runs/2026-10-06-native-failure-safety.md).
 - [ ] **NT3-2** Cancel copies before I/O, mid-file and between files. Independently
   verify writes stop, sources survive, destination state and partial-result
   messages are accurate, and listeners are released. Cancel is not rollback.

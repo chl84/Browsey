@@ -78,6 +78,14 @@ struct RcloneTransferContext<'a> {
     progress: Option<&'a TransferProgressContext>,
 }
 
+#[cfg(feature = "native-test")]
+fn native_probe_path(arg: &LocalOrCloudArg) -> String {
+    match arg {
+        LocalOrCloudArg::Local(path) => path.to_string_lossy().into_owned(),
+        LocalOrCloudArg::Cloud(path) => path.to_string(),
+    }
+}
+
 pub(super) async fn execute_mixed_entries(
     op: MixedTransferOp,
     sources: Vec<String>,
@@ -236,6 +244,14 @@ fn execute_rclone_transfer(
         cancel,
         progress,
     } = ctx;
+    #[cfg(feature = "native-test")]
+    crate::native_test::probes::checkpoint(
+        &native_probe_path(&src),
+        &native_probe_path(&dst),
+        "start",
+        0,
+        || transfer_cancelled(cancel),
+    );
     if transfer_cancelled(cancel) {
         return Err(transfer_err(
             TransferErrorCode::Cancelled,
@@ -277,6 +293,9 @@ fn execute_rclone_transfer(
     }
 
     let directory = transfer_source_is_directory(cli, &src, cancel)?;
+    if let Some(progress) = progress {
+        emit_transfer_progress(progress, 0, 0, false);
+    }
     let source_identity = if directory && op == MixedTransferOp::Move {
         src.local_path()
             .map(|path| {
@@ -339,6 +358,14 @@ fn execute_rclone_transfer(
     );
     cli.run_capture_text_with_cancel(spec, cancel)
         .map_err(|error| map_rclone_cli_error(error, cloud_remote_for_error_mapping))?;
+    #[cfg(feature = "native-test")]
+    crate::native_test::probes::checkpoint(
+        &native_probe_path(&src),
+        &native_probe_path(&dst),
+        "finalize",
+        0,
+        || transfer_cancelled(cancel),
+    );
     if directory {
         // rclone transfers directory contents; even --create-empty-src-dirs does
         // not create the destination root when the source itself is empty.
@@ -622,9 +649,6 @@ fn emit_transfer_progress(
     total: u64,
     finished: bool,
 ) {
-    if total == 0 {
-        return;
-    }
     let Some(app) = progress.app.as_ref() else {
         return;
     };

@@ -20,7 +20,7 @@ export class NativeUi {
     return status
   }
 
-  async idle(expected = {}, timeout = 60_000) {
+  async idle(expected = {}, timeout = this.waitTimeout ?? 60_000) {
     let reportedFailure
     await this.browser.waitUntil(async () => {
       const state = await this.browser.execute(expected => {
@@ -73,7 +73,7 @@ export class NativeUi {
   async waitPath(raw) {
     ownedPath(this.roots, raw)
     await this.browser.waitUntil(async () => await (await this.browser.$('main.shell')).getAttribute('data-current-path') === raw,
-      { timeout: 60_000, timeoutMsg: 'UI did not navigate to the owned fixture folder' })
+      { timeout: this.waitTimeout ?? 60_000, timeoutMsg: 'UI did not navigate to the owned fixture folder' })
     await this.idle()
   }
 
