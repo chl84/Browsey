@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+- Preserve empty cloud folders and nested empty directories during copy and
+  overwrite-move merges, removing source directories only after a successful
+  move. Allow cloud-to-phone transfers when MTP cannot set file timestamps,
+  without changing timestamp handling for other destinations.
+
+- Add Skip to transfer conflict choices alongside Overwrite, Auto-rename and
+  Cancel. Keep skipped and failed cut sources in the clipboard, and preserve a
+  newer clipboard selection when an older transfer finishes. Explicitly refuse
+  cloud or mixed file/directory overwrite when safe replacement is unsupported.
+
+- Reject same-parent cuts and unsafe self, descendant or source-ancestor targets,
+  including case-insensitive cloud aliases. Keep valid same-parent copies under
+  distinct names, and bound cloud/mixed unique-name attempts to 50 candidates
+  without replaying unknown write failures.
+
+- Report completed, skipped, failed and unattempted roots after a partial paste.
+  Preserve local rollback behavior and show unknown counts when rollback cannot
+  be verified. Keep the original transfer error visible through activity cleanup
+  and subsequent refresh failures, and observe listing errors before claiming
+  refresh success.
+
+- Complete scoped NT2 native copy/move acceptance within and between local disk,
+  USB, network, cloud and mobile, including conflict choices and unsafe targets.
+  Independently verify both generated trees and retained sources. Batch-failure
+  coverage uses representative local/USB/cloud cases and bounded candidate-only
+  faults; it does not certify provider outages or network/mobile failure modes.
+  See the [NT2 verification record](docs/operations/linux-release/runs/2026-10-06-native-transfers.md)
+  for accepted scopes and retained failed reports.
+
+- Convert cloud search path errors through a typed adapter, preserving invalid
+  path diagnostics while satisfying the blocking Semgrep error-boundary checks.
+
 - Search recursively inside cloud folders using the existing rclone provider,
   streaming matching names and metadata from subfolders without downloading
   file contents. Preserve provider errors and cancellation, and reject missing
@@ -23,8 +55,9 @@
 - Add an opt-in Linux native acceptance harness using WebDriver and the existing
   AT-SPI helper, with shared small-file cases across explicitly approved storage
   targets. Isolate the candidate's profile and enforce owned-path IPC limits;
-  exclude credentials, local approvals and runtime artifacts from Git. Native
-  device acceptance remains blocked until access/tool prerequisites are satisfied.
+  exclude credentials, local approvals and runtime artifacts from Git. Device
+  lifecycle and large-transfer acceptance remain separate from the small-fixture
+  native runs.
 
 - Keep the drag label mounted when moving between file rows/cards with a null
   `relatedTarget`; these are not webview exits. Publish listing drag inputs only
