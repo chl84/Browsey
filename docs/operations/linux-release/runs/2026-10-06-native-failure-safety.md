@@ -110,3 +110,59 @@ source SHA-256 `1a1b60a66c4118d43ded0223b94dfac2f4867baad827c39efc329d0fe8bf1b9d
 candidate SHA-256 `a4c3a1976eea9cd9fd8450bf725ea9247c671635d6b74cd1222ab5c48c6a1fbd`,
 built at `2026-10-06T16:20:12.467Z`; harness SHA-256
 `75c49d2f9c9555486c92ec2cfd8e2206534d114053f1f8f49b29c8347e167732`.
+
+## NT3-3: interrupted/failed overwrite
+
+Declared scope: local and USB destinations with different original bytes,
+cancelling before new writes, cancelling after an actual 16 KiB write and failing
+on an owned unreadable source. Cloud coverage cancels before writes in both hub
+directions and fails a local-to-cloud overwrite on an unreadable source. Nine
+cases/parts use sources up to 64 KiB and a distinct 8 KiB existing target;
+permission-denial sources stay within the existing 4 KiB denial-helper limit. Cloud/GIO
+mid-file overwrite, directory transactions and provider-internal backups are
+excluded from this representative scope.
+
+Real conflict controls choose Overwrite; real Cancel controls stop held work.
+Independent full-tree checks require exact source bytes and unrelated sentinels.
+Pre-write cancellation/failure must preserve or restore the exact old target.
+Mid-file cancellation must retain an incomplete source prefix with truthful
+unknown rollback/completion, plus one exact old target in the candidate's private
+undo store and an explicit recovery-required diagnostic. The bounded recovery
+reader inspects only this run's undo store, no credentials or other profile data.
+Owned source permissions are restored through the original captured descriptor
+after command completion, without replaying the paste.
+
+Preparation: 123 native policy tests and native lint pass. The recovery verifier
+rejects symlinks and distinguishes exact old bytes from unrelated profile data.
+Status: NOT_RUN pending native acceptance.
+
+First local/USB run `54f023f6-9ad4-4612-a327-51467a2391f6` remains BLOCKED:
+local pre-write and mid-file cancellation passed, including protected exact
+old bytes and recovery diagnostics. Denial setup then rejected its 64 KiB
+source because the existing descriptor-based denial helper is limited to
+4 KiB; no denial or paste was dispatched for that part. Later parts remained
+NOT_RUN. The corrected harness uses 4 KiB only for denial cases, preserving
+the helper's limit. This is a fresh-run retest, not replay in the failed subtree.
+
+That first run's four teardown stages passed, all three process identities were
+independently gone and its fresh retained audit passed. Its report/recovery
+remains BLOCKED and unchanged; the audit observed 5,238,326 bytes/75 entries.
+
+Accepted fresh run `229e35eb-0c31-4156-a018-a0def4a85c8a`,
+16:32:54–16:36:44 UTC, passed all nine parts and accessibility. Both partial
+local/USB outputs retained exact incomplete source prefixes, with one exact
+8 KiB original backup each and valid recovery-required diagnostics. Feedback
+reported unknown completion/rollback. All seven pre-write/denial cases preserved
+exact original targets, including both cloud directions and real cloud overwrite
+denial. No part remains NOT_RUN. NT3-3 is complete for this declared scope.
+
+All four teardown stages passed, all three captured identities were independently
+gone and a fresh retained audit passed. The report observed 5,480,772 bytes/106
+entries. Native lint and 123 policy tests pass; application inputs are unchanged
+from NT3-2 and no application fix was required for this overwrite boundary.
+
+Baseline `077b97b2555107786ce0af4a0021504f5ff6e5ac`, dirty `true`;
+source SHA-256 `1a1b60a66c4118d43ded0223b94dfac2f4867baad827c39efc329d0fe8bf1b9d`;
+candidate SHA-256 `c2acd8866e79c31b870b8481c769355e4f2aaca321ca237fa67cf3bad512b35e`,
+built at `2026-10-06T16:30:49.856Z`; accepted harness SHA-256
+`cb87ef6ee115424d6726d34a33bf9c3df37c21cb93ec550f73413889545e5005`.

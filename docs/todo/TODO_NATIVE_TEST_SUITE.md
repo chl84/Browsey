@@ -305,10 +305,14 @@ Prioritize these data-safety cases before cosmetic UI coverage.
   Two independent tree comparisons verify quiescence and source preservation;
   actual task tokens and Tauri callbacks are released. Large-file and mid-file
   GIO/cloud timing remain outside this representative scope. See the NT3 record.
-- [ ] **NT3-3** Cancel/fail overwrite of a file with different existing bytes.
+- [x] **NT3-3** Cancel/fail overwrite of a file with different existing bytes.
   Verify the documented overwrite/recovery boundary: no silent loss or incomplete
   output reported as complete. Inspect retained backups/diagnostics without
   assuming transactional directory operations.
+  Scoped native PASS: nine local/USB/cloud cases; pre-write cancellation and
+  unreadable-source failures preserve original targets, while local/USB mid-file
+  stops retain incomplete outputs and exact protected backups with diagnostics.
+  No cloud/GIO mid-file rollback or directory transaction is claimed. See the NT3 record.
 - [ ] **NT3-4** Cancel/fail moves within/across providers. Remove sources only
   for successfully completed entries and report partial batches truthfully,
   without automatic destructive retries.

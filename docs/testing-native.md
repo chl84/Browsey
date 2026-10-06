@@ -489,6 +489,13 @@ check preserved sources and truthful retained/rolled-back/completed outputs.
 Read-only inspection checks live Tauri callbacks; candidate status checks the
 actual task registry. Mid-file GIO/cloud timing is outside this native scope.
 
+`--suite overwrite` verifies distinct old/new bytes on interrupted or denied
+file overwrites. Local/USB mid-file cases inspect exact protected originals and
+recovery diagnostics under only the candidate's private `undo-sessions` store.
+Pre-write cloud cases verify original targets in both directions. Source-denial
+fixtures keep the existing 4 KiB descriptor-helper bound. This suite does not
+claim cloud/GIO mid-file rollback or transactional directory replacement.
+
 Successful local-only runs must be retained for at least seven days before they
 can become eligible for explicit cleanup. Age never triggers automatic deletion.
 Failed, blocked, active, incompletely torn-down, legacy/unregistered and

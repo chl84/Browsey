@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add scoped native overwrite-cancellation/failure checks: preserve original
+  destination bytes, retain protected recovery backups for partial local/USB
+  writes, and report uncertain rollback without claiming successful completion.
+
 - Register mixed-transfer cancellation before asynchronous route validation,
   so early cancellation reaches the task. Verify cancellation before writes
   on all local-hub storage routes, with representative local mid-file and
