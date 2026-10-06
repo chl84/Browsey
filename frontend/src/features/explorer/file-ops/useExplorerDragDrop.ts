@@ -51,6 +51,9 @@ export const useExplorerDragDrop = (deps: Deps) => {
   let hoverOpenedAt: DropPosition | null = null
   let highlighted: HTMLElement | null = null
   let listening = false
+  // WebKitGTK can finish the DOM source before Tauri delivers its native drop.
+  // Keep only a successful same-window completion, never an abandoned offer.
+  let completedDrop: { paths: string[]; dest: string; point: DropPosition; mode: Mode | null; expires: number } | null = null
   const modeCache = new Map<string, Promise<Mode>>()
   const resolvedModes = new Map<string, Mode>()
   const blocked = () => deps.isBlocked() || navigating || transferring
@@ -83,6 +86,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
   })
 
   const handleRowDragEnd = () => {
+    completedDrop = null
     session += 1
     dragPaths = []
     external = false
@@ -185,7 +189,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     else navigation.update(point, !hoverOpenedAt && allowed && allowed.path !== deps.currentPath() ? allowed : null)
   }
 
-  const performDrop = async (dest: string | null, paths: string[], keys: Modifiers, native: boolean) => {
+  const performDrop = async (dest: string | null, paths: string[], keys: Modifiers, native: boolean, completedMode?: Mode | null) => {
     if (transferring) return
     const accepted = dest !== null && canDrop(paths, dest)
     const token = session
@@ -196,7 +200,7 @@ export const useExplorerDragDrop = (deps: Deps) => {
     }
     transferring = true
     try {
-      const mode = await resolveMode(paths, dest, keys, native)
+      const mode = completedMode ?? await resolveMode(paths, dest, keys, native)
       if (token !== session || deps.isBlocked()) return
       // Snapshot destination, sources and action before entering conflict/paste orchestration.
       await deps.handlePasteOrMove(dest, { paths, mode })
@@ -235,6 +239,14 @@ export const useExplorerDragDrop = (deps: Deps) => {
     onDrop: async (paths, point) => {
       if (transferring) return
       const dest = blocked() ? null : targetAt(point)?.path ?? null
+      const completed = completedDrop
+      completedDrop = null
+      if (completed && completed.expires >= Date.now() && dest === completed.dest
+        && point.x === completed.point.x && point.y === completed.point.y
+        && paths.length === completed.paths.length && paths.every((path, i) => path === completed.paths[i])) {
+        await performDrop(dest, [...paths], noModifiers, false, completed.mode)
+        return
+      }
       if (dragPaths.length && !external) {
         // URI exports can re-enter this same webview through Tauri's native drop
         // interceptor. Preserve internal modifiers and route exactly once.
@@ -321,12 +333,23 @@ export const useExplorerDragDrop = (deps: Deps) => {
     modifiers = event
     if (lastPoint) updateAt(lastPoint)
   }
-  const endUnlessTransferring = () => { if (!transferring) handleRowDragEnd() }
+  const endUnlessTransferring = (event?: DragEvent) => {
+    if (transferring || !dragPaths.length) return
+    const dest = get(dragState).target
+    const successful = !external && dest && lastPoint && event?.dataTransfer?.dropEffect !== 'none'
+      && event?.dataTransfer?.dropEffect !== undefined
+    const completed = successful ? { paths: [...dragPaths], dest, point: { ...lastPoint! },
+      mode: sourceMode ?? (modifiers.ctrlKey || modifiers.metaKey ? 'copy' : modifiers.shiftKey ? 'cut'
+        : resolvedModes.get(JSON.stringify([dragPaths, dest])) ?? null), expires: Date.now() + 2000 } : null
+    handleRowDragEnd()
+    completedDrop = completed
+  }
   // A fresh press/release can clear abandoned state when DOM dragend was lost.
   // Movement alone (even with buttons === 0) does not prove native DND ended:
   // clearing its source makes the next native hover external and ignores DOM
   // dragover positions, also losing the explicit copy/move action.
   const handlePointerInput = (event: MouseEvent) => {
+    if (event.type.endsWith('down')) completedDrop = null
     if (!dragPaths.length || transferring) return
     if (event.type.endsWith('down') || event.buttons === 0) handleRowDragEnd()
   }

@@ -471,7 +471,7 @@ Private profiles can contain OAuth tokens; securely handle retained runs.
 
 New runs register an ownership nonce and approved-local-root hash in private,
 ignored `target/native-test/.retention` metadata. Preflight reserves 128 MiB before
-creating an owned run. Limits are 96 registered runs and 640 MiB of accounted
+creating an owned run. Limits are 128 registered runs and 896 MiB of accounted
 local data/reservations, with 128 MiB, 10,000 entries, depth 32 and a checked
 10-second elapsed budget per local tree audit. These are fail-closed accounting
 guards, not filesystem quotas or hard deadlines for stalled filesystem calls.
@@ -750,3 +750,12 @@ media without enabling those actions in ordinary foundation sessions. The
 definition is complete; real device/service transitions remain NOT_RUN until
 one exact scenario and action plan are separately approved. Mounted-folder
 provider PASS does not certify these transitions.
+
+## NT6 reservation budget
+
+NT6 starts with 96 retained registrations. Extend the finite count cap to 128
+and accounted/reserved local bytes to 896 MiB for eight new parts and fresh
+failure follow-ups. The 128 MiB per-run reservation, private audit limits and
+no-automatic-cleanup policy remain unchanged. The existing preservation/count
+regression checks every prior registration survives and the new cap still blocks
+another reservation. No earlier run or recovery data is removed.

@@ -352,6 +352,46 @@ describe('drop policy and destination safety', () => {
     expect(deps.handlePasteOrMove).toHaveBeenCalledWith('/tmp/dest', { paths: ['/tmp/source.txt'], mode })
   })
 
+  it.each([['copy', { ctrlKey: true }, 'copy'], ['move', { shiftKey: true }, 'cut']] as const)(
+    'preserves a successful %s source when DOM dragend precedes the matching native drop', async (effect, keys, mode) => {
+      const { hook, deps } = setup()
+      await hook.startNativeDrop()
+      target('/tmp/dest')
+      hook.handleRowDragStart(source, createDragEvent(keys))
+      onNativeHover(['/tmp/source.txt'], point)
+      const end = createDragEvent()
+      end.dataTransfer!.dropEffect = effect
+      const dispatched = new Event('dragend', { bubbles: true })
+      Object.defineProperty(dispatched, 'dataTransfer', { value: end.dataTransfer })
+      document.dispatchEvent(dispatched)
+      // A component can receive the same bubbling dragend after document capture.
+      hook.handleRowDragEnd(end)
+      expect(get(hook.dragState).dragging).toBe(false)
+      expect(get(hook.dragGhostVisible)).toBe(false)
+      await onNativeDrop(['/tmp/source.txt'], point)
+      expect(deps.handlePasteOrMove).toHaveBeenCalledExactlyOnceWith('/tmp/dest', { paths: ['/tmp/source.txt'], mode })
+    },
+  )
+
+  it.each(['cancel', 'escape', 'new-press', 'expired', 'different-point', 'different-path'])(
+    'does not apply a completed move action to a later external drop after %s', async reason => {
+      const { hook, deps } = setup()
+      await hook.startNativeDrop()
+      target('/tmp/dest')
+      hook.handleRowDragStart(source, createDragEvent({ shiftKey: true }))
+      onNativeHover(['/tmp/source.txt'], point)
+      const end = createDragEvent()
+      end.dataTransfer!.dropEffect = reason === 'cancel' ? 'none' : 'move'
+      hook.handleRowDragEnd(end)
+      if (reason === 'escape') document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      if (reason === 'new-press') document.dispatchEvent(new MouseEvent('pointerdown', { buttons: 1 }))
+      if (reason === 'expired') await vi.advanceTimersByTimeAsync(2001)
+      const paths = reason === 'different-path' ? ['/other/file'] : ['/tmp/source.txt']
+      await onNativeDrop(paths, reason === 'different-point' ? { x: point.x + 1, y: point.y } : point)
+      expect(deps.handlePasteOrMove).toHaveBeenCalledExactlyOnceWith('/tmp/dest', { paths, mode: 'copy' })
+    },
+  )
+
   it('does not replace an active internal source with an unrelated native selection', async () => {
     const { hook, deps } = setup()
     target('/tmp/dest')

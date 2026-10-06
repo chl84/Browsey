@@ -68,6 +68,14 @@ feedback without being cancelled or repeated. These mocked checks do not establi
 acceptance for the missing-`dragend` sequence; verify it in the installed app by
 dragging outside, cancelling or dropping, then returning and trying another drop.
 
+The scoped NT6 X11 candidate also reproduces DOM `dragend` before Tauri's matching
+native drop. Successful same-window completion now retains its exact paths,
+destination, point and action for up to two seconds, consumed once. Cancellation,
+Escape, a fresh press, expiry or a mismatched offer cannot reuse the action.
+The [NT6 record](operations/linux-release/runs/2026-10-07-native-desktop-interaction.md)
+contains independently verified native file/folder moves after the fix, plus
+owned two-window copies, Nautilus copies and active-drag teardown.
+
 Zero-button mouse/pointer motion must not end an internal drag or convert its next
 native hover into an external offer. Targeted frontend regressions verify that
 subsequent DOM `dragover` coordinates still position the label and that a native

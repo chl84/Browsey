@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Preserve the internal drag action when WebKit ends its DOM source before
+  Tauri delivers the matching native drop. Verify native file/folder and mixed
+  drags, self-drop/cancellation, two owned Browsey windows, isolated Nautilus
+  copies and teardown during an active drag on a private X11 desktop.
+
 - Define a separate approval/isolation contract for provider connection, locked
   phones, reconnect, disappearing mounts and busy/ejected media. Keep ordinary
   native-session restrictions; real lifecycle transitions remain separately scoped.

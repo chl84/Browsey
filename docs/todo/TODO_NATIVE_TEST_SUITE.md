@@ -458,10 +458,14 @@ completed file-operation acceptance.
 Extend guards only for precise owned scope. Normal clipboard, global trash,
 external launches and discovery remain disabled by default.
 
-- [ ] **NT6-1** Test drag/drop within/between owned Browsey candidates, then a
+- [x] **NT6-1** Test drag/drop within/between owned Browsey candidates, then a
   separately scoped Nautilus fixture window. Cover multiple files, folders,
   special names, modifiers, self-drops, cancel and teardown. Verify file effects;
   reuse the [native drag guide](../testing-native-drag.md).
+  The [desktop interaction record](../operations/linux-release/runs/2026-10-07-native-desktop-interaction.md)
+  records real X11 native acceptance, receiver copy policies and the independently
+  verified file effects. Wayland/portal move and modifiers held before pointer
+  press remain outside that accepted input scope.
 - [ ] **NT6-2** Reproduce drag-label regressions over many rows/cards versus empty
   space: responsive following, no stuck `Cannot drop here`, no duplicated transfer.
   Measure native event/frame behavior, not mock render counts.

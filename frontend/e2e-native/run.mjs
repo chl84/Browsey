@@ -20,6 +20,10 @@ import { contents, contentsManifest } from './contents.mjs'
 import { trees, treesManifest } from './trees.mjs'
 import { links, linksManifest } from './links.mjs'
 import { usb, usbManifest, network, networkManifest, networkProbes, mobile, mobileManifest } from './providers.mjs'
+import {startDesktop,fixtureLauncher} from './desktop.mjs'
+import {desktopApplications} from './desktop-apps.mjs'
+import {drag,dragManifest} from './drag.mjs'
+import {desktopSuites} from './isolated.mjs'
 import {cloudProvider,cloudManifest,cloudProbes,cloudLocations,cloudWorking} from './cloud-provider.mjs'
 import { linkPlan } from './link-policy.mjs'
 import { editing, editingManifest } from './editing.mjs'
@@ -80,6 +84,7 @@ suites['cloud-working'] = { run: cloudWorking, manifest: plan=>cloudManifest(pla
 suites['cloud-provider'] = { run: cloudProvider, manifest: cloudManifest }
 suites.mobile = { run: mobile, manifest: mobileManifest }
 suites.network = { run: network, manifest: networkManifest }
+suites.drag = {run:drag,manifest:dragManifest}
 suites.usb = { run: usb, manifest: usbManifest }
 suites['usb-access'] = { run: (plan,fixture,ui,record)=>access(plan,fixture,ui,record,'usb'), manifest: plan=>{usbManifest(plan);return accessManifest(plan,'usb')} }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
@@ -88,7 +93,7 @@ const candidate = path.join(repo, 'target/native-test/browsey')
 process.umask(0o077)
 const args = process.argv.slice(2)
 const mode = args[0] ?? '--help'
-const options = { config: path.join(repo, 'frontend/e2e-native/config.local.json'), targets: null, suite: 'foundation', fullscreen: false, a11y: false, fault: null, reportFault: null }
+const options = { config: path.join(repo, 'frontend/e2e-native/config.local.json'), targets: null, suite: 'foundation', fullscreen: false, a11y: false, fault: null, reportFault: null, runId: null }
 const reportFaults = ['setup-failure', 'partial-transfer']
 const faults = ['driver-exit', 'candidate-exit', 'session-close', 'session-timeout', 'case-timeout']
 for (let i = 1; i < args.length; i++) {
@@ -98,6 +103,7 @@ for (let i = 1; i < args.length; i++) {
     options.suite = args[++i]
     assert.ok(Object.hasOwn(suites, options.suite), 'Expected a supported native suite')
   }
+  else if (args[i] === '--run-id') options.runId = args[++i]
   else if (args[i] === '--a11y') options.a11y = true
   else if (args[i] === '--fullscreen') options.fullscreen = true
   else if (args[i] === '--lifecycle-fault') {
@@ -153,7 +159,7 @@ async function main() {
     'Owned process interruption requires --targets local without provider subprocesses')
   if (options.suite === 'links') assert.deepEqual(config.targets.map(t => t.kind), ['local'],
     'Owned leaf-link acceptance requires --targets local; other providers are deferred')
-  const plan = makePlan(config, randomUUID())
+  const plan = makePlan(config, options.runId??randomUUID())
   if (mode === '--plan') {
     console.log(JSON.stringify({ ...plan, note: 'Plan only: no target files were inspected or changed' }, null, 2))
     return
@@ -201,11 +207,12 @@ async function main() {
   if (['cloud-provider','cloud-working'].includes(options.suite)) report.notTested.push('External editors (preparation only, launch disabled)', 'Real service quota/rate/auth outage (exact candidate faults only)', 'Google Drive/Nextcloud (no approved roots/credentials)')
   if (options.suite === 'cloud-working') report.notTested.push('Cloud-cloud copy/download and conflict Cancel/Skip prefix (explicitly outside this follow-up manifest)')
   if (options.suite === 'links') report.notTested.push('Link behavior on USB/network/cloud/mobile', 'Directory symlinks and outside referents (not authorized)')
+  if (options.suite === 'drag') report.notTested = report.notTested.filter(item => item !== 'Native drag/drop')
   if (options.fault) report.notTested.push('All UI file-operation acceptance (lifecycle fault scope)')
   if (options.suite === 'selection') report.notTested.push('Large-list virtualization on USB/network/cloud/mobile (local representative only)',
     'Backend invocation receipts and repeated copy/paste submission (NT1-6)')
   let browser, driver, nativeDriverOwner, candidateOwner, log, reportOwned = false, reservation, activeCreated = false
-  let tools, profile, session, env, fixture
+  let tools, profile, session, env, fixture, desktop
   const retention = new RetentionStore(path.join(repo, 'target/native-test/.retention'))
   const activePath = child(local.run, 'active.json')
   const persist = async () => {
@@ -234,7 +241,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['../../tests/support/native_fixture_x11.py','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -274,6 +281,9 @@ async function main() {
       await fs.mkdir(artifacts, { mode: 0o700 })
       log = await fs.open(child(artifacts, 'driver.log'), 'wx', 0o600)
     })
+    if(desktopSuites.includes(options.suite)) {
+      desktop=await setup(shared('desktop-isolation'),()=>startDesktop(repo,plan,env));env=desktop.env;fixture.env=env;report.desktop=desktop.evidence
+    }
     await setup(shared('host-tool-evidence'), async () => {
       report.host.gtkWebkit = (await exec('/usr/bin/pkg-config', ['--modversion', 'gtk+-3.0', 'webkit2gtk-4.1'])).stdout.trim().split('\n')
       report.tools = { tauriDriverSha256: await fileSha256(await fs.realpath(tools.driver)),
@@ -304,11 +314,15 @@ async function main() {
     const startSession = async () => {
       const { remote } = await import('webdriverio')
       browser = await remote({ hostname: '127.0.0.1', port: 4444, logLevel: 'silent', connectionRetryCount: 0,
-        connectionRetryTimeout: 60_000, capabilities: { 'tauri:options': { application: candidate } } })
+        connectionRetryTimeout: 60_000, capabilities: { 'tauri:options': desktop?fixtureLauncher(repo,local.run,candidate):{ application: candidate } } })
     }
     await setup(shared('driver-startup'), startDriver)
     await setup(shared('webdriver-session'), startSession)
     const ui = new NativeUi(browser, session.dataRoots)
+    if(desktop) {
+      ui.desktop={repo,plan,local,env,candidate}
+      Object.assign(ui,desktopApplications({repo,plan,local,env,candidate,tools,report,persist}))
+    }
     if (['progress', 'cancellation', 'overwrite', 'moves', 'access', 'iofaults', 'races', 'interruption'].includes(options.suite)) ui.waitTimeout = 180_000
     if (options.suite === 'transfers-pairs') ui.transferEvidence = routeEvidence(`${profile}/data/browsey/logs/browsey.log`)
     const captureIdentity = async () => {
@@ -319,7 +333,7 @@ async function main() {
       return status
     }
     let status = await setup(shared('candidate-identity'), captureIdentity)
-    const a11yEnv = { ...env, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
+    const a11yEnv = desktop?env:{ ...env, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
       HYPRLAND_INSTANCE_SIGNATURE: process.env.HYPRLAND_INSTANCE_SIGNATURE }
     const fullscreen = async () => {
       await owned()
@@ -330,7 +344,7 @@ async function main() {
       await owned()
     }
     if (options.fullscreen) await setup(shared('owned-window-fullscreen'), fullscreen)
-    if (['editing', 'history', 'interruption'].includes(options.suite)) {
+    if (['editing', 'history', 'interruption','drag'].includes(options.suite)) {
       report.restarts = []
       let interrupted = false
       ui.restart = ownedRestart({ restarts: report.restarts, persist,
@@ -341,6 +355,7 @@ async function main() {
           const identity = { candidate: report.identity, driver: report.driverIdentity }
           const result = await teardown({ browser, driver, nativeDriver: nativeDriverOwner, candidate: candidateOwner })
           browser = undefined // Never submit a second deleteSession for this session.
+          if(ui.afterRestartStop)await ui.afterRestartStop()
           return { ...identity, teardown: result }
         },
         start: async () => {
@@ -418,6 +433,9 @@ async function main() {
     if (report.teardownDetails.status !== 'PASS' && !report.failureKind) {
       report.failureKind = report.teardownDetails.steps.find(step => step.status !== 'PASS').failureKind
       report.failureOrigin = 'harness'
+    }
+    if(desktop) {
+      try {await desktop.close();report.desktop.teardown='PASS'} catch(error) {report.desktop.teardown='BLOCKED';report.status='BLOCKED';report.error=error.message;process.exitCode=1}
     }
     await log?.close()
     report.finished = new Date().toISOString()
