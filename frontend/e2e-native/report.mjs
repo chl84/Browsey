@@ -12,6 +12,7 @@ export function requirements(item) {
     navigation: ['directory-read', 'owned-navigation', 'history-navigation', 'breadcrumb-navigation', 'refresh',
       `ui-${item.id.split('-')[1]}-navigation`, 'view-switch'] }
   return Object.fromEntries(item.providers.map((provider, index) => {
+    if (operation === 'contents') return [provider, ['zero-one-byte-binary-readback', 'sha256-byte-digests', 'real-copy-move', 'independent-source-destination-trees', 'released-task-callbacks', ...(item.providers.length === 1 || index === 0 ? ['successful-root-only-removal'] : [])]]
     if (operation === 'limits') return [provider, ['reserved-name-outcome', 'overlong-name-rejection', 'rename-component-rejection', 'independent-preservation', ...(provider === 'local' ? ['utf8-byte-name-limit', 'path-byte-limit', 'unsupported-filename-encoding-rejection'] : [])]]
     if (operation === 'names') return [provider, ['exact-name-list-grid', 'literal-uri-navigation', 'special-name-copy-move', 'independent-name-byte-preservation', 'emoji-source-rename', ...(provider === 'local' ? ['significant-whitespace-create-rename'] : [])]]
     if (operation === 'interruption') return [provider, ['owned-mid-operation-process-exit', 'independent-source-destination-trees', 'protected-original-recovery', 'safe-startup-empty-history', 'read-only-recovery-diagnostics']]

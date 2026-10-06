@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Release completed cloud and mixed-transfer progress listeners without losing
+  the completion timer or transfer result. Verify 18 native binary copy/move
+  parts across all local-hub storage routes using raw bytes and SHA-256 digests,
+  including zero/one-byte files and preserved unrelated data.
+
 - Reject unsupported Unix filename encoding explicitly in directory listing and
   recursive search, preserving the original files instead of exposing lossy
   aliases. Validate single/batch rename leaf names before mutation and explain

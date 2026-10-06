@@ -417,6 +417,22 @@ describe('immutable paste and drop operations', () => {
     expect(activityApi.clearNow).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['cloud', 'rclone://work/source/file.bin', 'rclone://work/destination'],
+    ['upload', '/owned/source/file.bin', 'rclone://work/destination'],
+    ['download', 'rclone://work/source/file.bin', '/owned/destination'],
+  ])('releases successful %s copy listeners before another activity starts', async (_route, source, destination) => {
+    listCloudEntriesMock.mockResolvedValue([])
+    listCloudRemotesMock.mockResolvedValue([])
+    const deps = createDeps()
+    const ops = useExplorerFileOps(deps)
+    expect(await ops.handlePasteOrMove(destination, { paths: [source], mode: 'copy' })).toBe(true)
+    expect(activityApi.cleanup).toHaveBeenCalledExactlyOnceWith(true)
+    expect(activityApi.hideSoon).toHaveBeenCalledOnce()
+    expect(activityApi.clearNow).not.toHaveBeenCalled()
+    expect(deps.showToast).not.toHaveBeenCalled()
+  })
+
   it('does not retry or report successful paste as failed when listener cleanup fails', async () => {
     const deps = createDeps()
     vi.mocked(activityApi.cleanup).mockRejectedValueOnce(new Error('listener unavailable'))

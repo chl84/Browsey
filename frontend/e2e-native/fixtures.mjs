@@ -16,7 +16,8 @@ export async function regularFile(raw) {
   try {
     const stat = await handle.stat()
     assert.ok(stat.isFile() && stat.size <= 1024 * 1024, 'Expected a bounded regular file')
-    return { text: await handle.readFile('utf8'), stat }
+    const bytes = await handle.readFile()
+    return { text: bytes.toString('utf8'), bytes, stat }
   } finally { await handle.close() }
 }
 
@@ -54,12 +55,12 @@ export class Fixtures {
     this.env = env
   }
 
-  async #rclone(args) {
+  async #rclone(args, { binary = false } = {}) {
     // No inherited credentials/config overrides, shell, discovery or unbounded retries.
     try {
       const result = await exec('/usr/bin/rclone', ['--config', this.env.RCLONE_CONFIG,
         '--retries', '1', '--low-level-retries', '1', '--timeout', '60s', '--contimeout', '15s', ...args],
-      { env: this.env, cwd: this.local.files, timeout: 120_000, maxBuffer: 1024 * 1024 })
+      { env: this.env, cwd: this.local.files, timeout: 120_000, maxBuffer: 1024 * 1024, encoding: binary ? 'buffer' : 'utf8' })
       return result.stdout
     } catch (error) {
       // Keep provider stderr private: it can include paths, URLs or credentials.
@@ -119,6 +120,12 @@ export class Fixtures {
     ownedPath(this.roots, raw)
     if (raw.startsWith('rclone://')) return this.#rclone(['cat', rclonePath(raw)])
     return (await regularFile(raw)).text
+  }
+
+  async readBytes(raw) {
+    ownedPath(this.roots, raw)
+    if (raw.startsWith('rclone://')) return this.#rclone(['cat', rclonePath(raw)], { binary: true })
+    return (await regularFile(raw)).bytes
   }
 
   async snapshot(raw, { maxChildren = 32 } = {}) {

@@ -86,7 +86,7 @@ owned subtrees, not existing test-folder contents. Private HOME/XDG directories,
 undo storage, credentials, logs and screenshots live in the local run. Short
 `r/` and `t/` runtime/temp directories avoid native Unix socket path-length limits.
 Fixtures
-are small generated text files, not personal data. No installed app is launched,
+are small generated text/binary files, not personal data. No installed app is launched,
 replaced, restarted or controlled.
 
 The opt-in Cargo feature `native-test` adds a fail-closed IPC command/path guard.
@@ -634,3 +634,13 @@ in actual listing/search. One literal invalid byte is seeded only below an
 owned local parent; after UI observation, unchanged bytes/inode are retained
 under a UTF-8 name with original-name hex recorded. No recovery is discarded and
 no unsupported name is silently converted into an actionable alias.
+
+`--suite contents` drives copy/move on the nine local-hub routes with zero-byte,
+one-byte (`ff`), 4097-byte and 64 KiB generated binary files. The shared raw-byte
+reader uses no-follow local descriptors or bounded private-config rclone cat
+without UTF-8 decoding. Both whole sides and unrelated sentinels are compared
+byte-for-byte and by SHA-256; successful moves remove only requested roots.
+At most two reads run concurrently. Tree verification defaults to 128 entries
+and depth eight, with explicit hard ceilings of 256 entries/depth 16 for named
+cases. All reads and metadata stay inside the owned run. Large files, sparse-file
+remote performance and broader binary route certification are excluded.

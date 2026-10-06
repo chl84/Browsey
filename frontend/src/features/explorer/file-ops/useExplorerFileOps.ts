@@ -207,6 +207,15 @@ export const useExplorerFileOps = (deps: Deps) => {
     return false
   }
 
+  const releasePasteActivity = async () => {
+    try {
+      await deps.activityApi.cleanup(true)
+    } catch {
+      // Keep the completion timer and the actual transfer result even when
+      // releasing the progress listener fails.
+    }
+  }
+
   type PasteRoute = 'local' | 'cloud' | 'local_to_cloud' | 'cloud_to_local' | 'unsupported'
 
   const classifyPasteRoute = ({ dest, input: { paths: sources } }: PasteOperation): PasteRoute => {
@@ -378,6 +387,7 @@ export const useExplorerFileOps = (deps: Deps) => {
 
       deps.activityApi.hideSoon()
       await clearCutClipboardAfterMoveSuccess(operation)
+      await releasePasteActivity()
       refreshCloudViewAfterWrite('Paste')
       return true
     } catch (err) {
@@ -512,6 +522,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         if (route === 'local_to_cloud') {
           deps.activityApi.hideSoon()
           await clearCutClipboardAfterMoveSuccess(operation)
+          await releasePasteActivity()
           refreshCloudViewAfterWrite('Paste')
           return true
         }
@@ -523,6 +534,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         }
         deps.activityApi.hideSoon()
         await clearCutClipboardAfterMoveSuccess(operation)
+        await releasePasteActivity()
         return true
       } catch (err) {
         return reconcilePasteFailure(operation, err, completedSources, attemptedSources)
@@ -553,12 +565,7 @@ export const useExplorerFileOps = (deps: Deps) => {
     } catch (err) {
       return reconcilePasteFailure(operation, err)
     } finally {
-      try {
-        await deps.activityApi.cleanup(true)
-      } catch {
-        // Listener cleanup must not reclassify a completed transfer or hide
-        // the original cancellation/partial-output error.
-      }
+      await releasePasteActivity()
     }
   }
 
