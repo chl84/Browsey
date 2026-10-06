@@ -485,7 +485,7 @@ external launches and discovery remain disabled by default.
   wrong password, Cancel, corruption, conflicts and partial batches. Cover local/
   cloud staging and malicious entry paths without outside writes; reuse existing
   archive/security tests rather than duplicating their bodies.
-- [ ] **NT6-8** Test Open With/default-program checkbox using a dummy handler and
+- [x] **NT6-8** Test Open With/default-program checkbox using a dummy handler and
   isolated MIME state: spaced filenames, failed launches and cancellation.
   Prove no personal association changes before enabling external launches.
 

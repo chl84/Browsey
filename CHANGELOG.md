@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Verify private native Open With/default-program behavior with two exact generated
+  handlers: spaced filename arguments, failed launch, checkbox cancellation and
+  private MIME changes. Complete NT6-1–NT6-8 with 73 accepted native parts and
+  preserved test/recovery data; external launches stay denied in ordinary sessions.
+
 - Verify 22 native archive parts: all 12 extraction formats, generated AES-ZIP
   passwords/cancel/conflicts/partial batches, malicious paths and actual OneDrive
   staging round trips. Gate archive IPC on isolated owned inputs; expose system

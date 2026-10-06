@@ -4,6 +4,7 @@ use serde_json::Value;
 mod archives;
 mod desktop;
 pub(crate) mod links;
+mod open_with;
 pub(crate) mod probes;
 mod workspaces;
 
@@ -627,7 +628,16 @@ mod enabled {
                 command,
                 body,
             )
-            .unwrap_or_else(|| {
+            .or_else(|| {
+                open_with::authorize(
+                    &session.data_roots,
+                    Path::new(&session.profile),
+                    session.desktop.as_deref(),
+                    command,
+                    body,
+                )
+            })
+            .or_else(|| {
                 desktop::authorize(
                     &session.data_roots,
                     Path::new(&session.profile),
@@ -635,19 +645,19 @@ mod enabled {
                     command,
                     body,
                 )
-                .unwrap_or_else(|| {
-                    workspaces::authorize(
-                        &session.data_roots,
-                        Path::new(&session.profile),
-                        session.workspace_source.as_deref(),
-                        command,
-                        body,
-                    )
-                    .unwrap_or_else(|| {
-                        authorize_io(&session.data_roots, command, body, |raw| {
-                            links::inspect(&session.links, Path::new(raw))
-                        })
-                    })
+            })
+            .or_else(|| {
+                workspaces::authorize(
+                    &session.data_roots,
+                    Path::new(&session.profile),
+                    session.workspace_source.as_deref(),
+                    command,
+                    body,
+                )
+            })
+            .unwrap_or_else(|| {
+                authorize_io(&session.data_roots, command, body, |raw| {
+                    links::inspect(&session.links, Path::new(raw))
                 })
             }),
             _ => Err("Native-test IPC must use JSON"),

@@ -255,4 +255,52 @@ Large-archive cancellation, every encrypted codec/provider and concurrent hostil
 writers are outside this bounded native acceptance. No product archive change
 was required.
 
-NT6-8 is not accepted by this record yet.
+## NT6-8: private dummy handlers and MIME associations
+
+Run `57e1ea1a-1053-4aa9-b4b7-7886af643a79` is native PASS: six parts plus
+accessibility. Before launch, actual namespace/display/bus proof, unavailable
+personal config and the exact private association bytes are verified. The
+native-only guard requires one explicit owned local regular file, the two exact
+generated desktop entries, matching opaque path-derived IDs, private/single-link
+program files with exact approved bytes, hidden system application directories
+and only generated text/plain MIME associations. System-default launches and
+unknown handlers remain denied. The dummy program records the exact spaced and
+hash-containing filename argument, parent PID, interpreter, process start and
+independent content digest; both actual subprocesses finish and are verified gone.
+
+Checking Set as default then Cancel launches nothing and preserves initial MIME
+bytes. An unchecked successful Open preserves those associations. The controlled
+nonexecutable generated handler produces actionable unavailable-application
+feedback, keeps the modal usable and changes neither launch count nor associations.
+Checked successful Open changes only the private text/plain default and launches
+exactly once. A later Cancel preserves that saved association. The generated file
+retains exact independent bytes, all task/listener resources release, all four
+teardown steps and namespace exit pass, and strict retention passes (56 entries,
+750,886 bytes). No personal MIME/desktop state is mounted or written.
+
+Raw FAIL `92bc2bcc-2127-4cb0-8e51-9035c88f29a4` retains its valid observed
+launches and MIME update: the assertion wrongly required a trailing semicolon
+for a single default value. GIO's valid newline-terminated serialization is now
+accepted without weakening the exact handler check. The fresh complete run
+passes; no product Open With change was needed. Real external applications,
+system-default launching and cloud Open With are outside this dummy-handler scope.
+
+## Completed NT6 verification
+
+All eight TODO sections are checked against their distinct accepted native reports:
+73 parts, with native WebKitGTK/Rust file effects and the scoped AT-SPI supplement.
+Each section has a separate commit. Application defects corrected in this loop
+are the late native move handoff, clipboard URI-list cut/path parsing, clipboard
+clear stdin hang, irreversible-trash confirmation wording and menu/Properties
+focus/accessibility behavior. Harness failures and corrected test assumptions stay
+identified separately in this record; original reports and recovery data remain.
+
+Final standard checks pass: Rust application 825 tests (19 ignored), plus the
+workspace GLib regression; frontend 715; native policy 157; frontend/native lint,
+type checking, formatting and all-feature Clippy. Blocking Semgrep reports zero
+findings on its 161 command targets and a separate explicit scan of the four
+changed native guard files with the same three blocking rules. Backend error
+hardening and strict docs consistency pass. The final production build/push
+receipt is recorded after the clean committed baseline under ignored
+`target/native-test/production-build.json`; native evidence here describes each
+part's separately staged candidate rather than a production installation.

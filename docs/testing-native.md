@@ -106,8 +106,10 @@ recheck owned local trees. These restrictions are absent from normal builds.
 
 This is a guard for a trusted test session, **not an OS sandbox** against a
 malicious same-user process replacing paths during I/O. Do not concurrently edit
-the owned run. Desktop libraries, system packages and the existing D-Bus services
-are still used. Do not enable this feature in installation/release workflows.
+the owned run. Ordinary sessions use desktop libraries/system dependencies under these IPC
+restrictions. Separately approved NT6 suites additionally require demonstrated
+mount/PID isolation, a private bus/display and unavailable personal services.
+Do not enable this feature in installation/release workflows.
 
 ## Setup
 
@@ -436,11 +438,13 @@ window rule or global shortcut is changed. Normal teardown closes the owned
 candidate. A full-window pass does not establish narrow-window breadcrumb layout
 acceptance; NT6 layout and keyboard-focus coverage remain separate.
 
-Not yet covered: native drag/drop and cross-instance behavior, large-file progress
-and cancellation, overwrite/recovery, archives/passwords, trash, formatting,
-disconnect/reconnect, normal watcher behavior and other distributions. Small-file
-success does **not** prove visible progress or cancellation. Expand these in shared
-cases only after the foundation runs reliably.
+The [desktop interaction record](operations/linux-release/runs/2026-10-07-native-desktop-interaction.md)
+now covers scoped drag/cross-instance behavior, private clipboard/trash, keyboard,
+appearance, fixture-only actual watchers, archives and dummy Open With handlers.
+Earlier failure-safety suites cover bounded progress/cancellation and recovery.
+Large-file throughput/cancellation, formatting, device/service lifecycle changes,
+broad production watcher discovery and other distributions remain outside this
+accepted scope. Small-file success does **not** establish large-file behavior.
 
 ## Evidence, Git and retention
 
@@ -782,3 +786,19 @@ alongside independently read cloud originals and uploaded extraction results.
 Existing Rust archive/security bodies cover broader codecs and resource limits.
 See the [desktop interaction record](operations/linux-release/runs/2026-10-07-native-desktop-interaction.md)
 for the precise accepted scope and retained failures.
+
+
+## Isolated native Open With
+
+```bash
+node frontend/e2e-native/isolated.mjs --suite open-with --targets local --a11y
+```
+
+The approved dummy-handler mode validates private MIME state, hidden system
+applications, exact generated desktop entries/program bytes and the selected
+opaque ID before allowing dispatch. Personal desktop associations are unmounted.
+The normal system-default route remains denied. Actual UI tests verify a spaced
+filename argument, two recorded subprocesses, failure feedback, default-checkbox
+changes and cancellation without association changes. Independent content/MIME
+checks and exact subprocess exit evidence complement owned application teardown.
+All NT6 results and limitations are recorded in the linked desktop interaction run.
