@@ -22,7 +22,7 @@ fn build_rename_target(from: &Path, new_name: &str) -> RenameResult<PathBuf> {
     let parent = from
         .parent()
         .ok_or_else(|| RenameError::new(RenameErrorCode::RenameFailed, "Cannot rename root"))?;
-    Ok(parent.join(new_name.trim()))
+    Ok(parent.join(new_name))
 }
 
 fn prepare_rename_pair(path: &str, new_name: &str) -> RenameResult<(PathBuf, PathBuf)> {

@@ -42,7 +42,7 @@ export const createNewFileModal = (deps: Deps) => {
     busy = true
     state.update((s) => ({ ...s, error: '' }))
     try {
-      const created: string = await createFile(base, trimmed)
+      const created: string = await createFile(base, name)
       close()
       try { await loadPath(base) }
       catch { showToast('File created, but refresh failed. Press F5 to refresh.') }

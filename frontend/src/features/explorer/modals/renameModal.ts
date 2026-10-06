@@ -79,7 +79,7 @@ export const createRenameModal = (deps: Deps) => {
       if (activityApi) {
         await activityApi.start('Renaming…', progressEvent)
       }
-      await renameEntry(current.target.path, trimmed)
+      await renameEntry(current.target.path, name)
       const refreshPath = parentPath(current.target.path)
       if (isCloudPath(current.target.path)) {
         void (async () => {

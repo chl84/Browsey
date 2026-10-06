@@ -7,6 +7,16 @@ const services = vi.hoisted(() => ({ createFile: vi.fn(), createFolder: vi.fn() 
 vi.mock('../services/files.service', () => services)
 
 describe('correcting a rejected creation draft', () => {
+  it.each(['file', 'folder'] as const)('preserves significant whitespace in a new %s name', async kind => {
+    const create = kind === 'file' ? services.createFile : services.createFolder
+    create.mockReset().mockResolvedValueOnce('/generated/owned/ name ')
+    const modal = (kind === 'file' ? createNewFileModal : createNewFolderModal)({
+      getCurrentPath: () => '/generated/owned', loadPath: vi.fn(async () => {}), showToast: vi.fn(),
+    })
+    modal.open()
+    expect(await modal.confirm(' name ')).toBe('/generated/owned/ name ')
+    expect(create).toHaveBeenCalledExactlyOnceWith('/generated/owned', ' name ')
+  })
   it.each(['file', 'folder'] as const)('clears the stale %s error before awaiting a corrected request', async kind => {
     const create = kind === 'file' ? services.createFile : services.createFolder
     create.mockReset()

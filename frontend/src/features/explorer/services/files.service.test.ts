@@ -49,6 +49,17 @@ describe('openEntry', () => {
 describe('cloud write and archive routing', () => {
   beforeEach(() => { invokeMock.mockReset() })
 
+  it('preserves whitespace and literal URI characters in creation requests', async () => {
+    const { createFile, createFolder } = await import('./files.service')
+    const name = ' æøå # %26 &_.txt '
+    await createFile('/generated/owned', name)
+    expect(invokeMock).toHaveBeenLastCalledWith('create_file', { path: '/generated/owned', name })
+    await createFolder('/generated/owned', name)
+    expect(invokeMock).toHaveBeenLastCalledWith('create_folder', { path: '/generated/owned', name })
+    await createFile('rclone://work/generated', name)
+    expect(invokeMock).toHaveBeenLastCalledWith('create_cloud_file', { path: `rclone://work/generated/${name}` })
+  })
+
   it('rejects invalid file and folder leaf names before any local or cloud mutation', async () => {
     const { createFile, createFolder } = await import('./files.service')
     const { createCloudFolder } = await import('@/features/network')

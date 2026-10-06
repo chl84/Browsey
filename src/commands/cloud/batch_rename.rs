@@ -32,7 +32,7 @@ pub(super) fn rename_batch(
             )
         })?;
         let target = parent
-            .child_path(entry.new_name.trim())
+            .child_path(&entry.new_name)
             .map_err(super::map_cloud_path_error)?;
         let provider_kind = remotes
             .iter()

@@ -462,7 +462,7 @@ Private profiles can contain OAuth tokens; securely handle retained runs.
 
 New runs register an ownership nonce and approved-local-root hash in private,
 ignored `target/native-test/.retention` metadata. Preflight reserves 128 MiB before
-creating an owned run. Limits are 96 registered runs and 512 MiB of accounted
+creating an owned run. Limits are 96 registered runs and 640 MiB of accounted
 local data/reservations, with 128 MiB, 10,000 entries, depth 32 and a checked
 10-second elapsed budget per local tree audit. These are fail-closed accounting
 guards, not filesystem quotas or hard deadlines for stalled filesystem calls.
@@ -602,3 +602,26 @@ partial target bytes, old protected backup/marker, idle startup, empty new-sessi
 undo/redo and real Settings recovery diagnostics are checked independently.
 There is no operation replay, automatic resume, disk-power-loss simulation or
 control of the installed application.
+
+## NT4 bounded names and data cases
+
+`--suite names` exercises eight generated special-name files and one non-empty
+folder on local/USB/network/cloud; mobile uses seven supported names and an
+actual UI rejection of a double-quoted name: spaces, Norwegian characters, emoji,
+combining Unicode, both quotes, literal `#`, `%26`, `&`, `_`, dots and hyphens.
+List/grid, special-folder navigation, batch copy/move and renaming an existing
+emoji source use real controls. Exact membership and text bytes are independently
+compared. Emoji is seeded; native emoji text entry remains excluded. Local Unix
+creation and rename additionally preserve valid leading/trailing whitespace;
+remote whitespace acceptance is not inferred. Cloud readiness allows 180 seconds
+and transfers 600 seconds, with no mutation retry.
+
+NT4 retains the existing 64 KiB fixture cap and all per-run/audit limits. With
+77 prior reports accounting for 383,956,256 bytes, the total retained/reserved
+budget increases once from 512 to 640 MiB to accommodate five new parts and
+diagnostic runs while preserving prior evidence. No automatic cleanup or
+large-file/performance test is authorized by this adjustment.
+
+The [NT4 name and data record](operations/linux-release/runs/2026-10-06-native-name-data-edges.md)
+records the accepted provider scopes, explicit MTP quoted-name restriction and
+retained earlier attempts. NT4-1 covers 29 unique parts in two candidate runs.

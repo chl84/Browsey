@@ -12,6 +12,7 @@ export function requirements(item) {
     navigation: ['directory-read', 'owned-navigation', 'history-navigation', 'breadcrumb-navigation', 'refresh',
       `ui-${item.id.split('-')[1]}-navigation`, 'view-switch'] }
   return Object.fromEntries(item.providers.map((provider, index) => {
+    if (operation === 'names') return [provider, ['exact-name-list-grid', 'literal-uri-navigation', 'special-name-copy-move', 'independent-name-byte-preservation', 'emoji-source-rename', ...(provider === 'local' ? ['significant-whitespace-create-rename'] : [])]]
     if (operation === 'interruption') return [provider, ['owned-mid-operation-process-exit', 'independent-source-destination-trees', 'protected-original-recovery', 'safe-startup-empty-history', 'read-only-recovery-diagnostics']]
     if (operation === 'races') return [provider, ['owned-concurrent-writer', 'independent-source-destination-trees', 'truthful-uncertainty', 'released-task-callbacks', ...(item.id.endsWith('late-collision') ? ['protected-original-recovery'] : [])]]
     if (operation === 'iofaults') return [provider, [item.id.includes('-preparing-') ? 'preparation-cancellation' : 'bounded-owned-io-fault', 'independent-source-destination-trees', 'truthful-partial-counts', 'released-task-callbacks']]

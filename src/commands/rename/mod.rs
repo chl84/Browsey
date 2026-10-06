@@ -212,6 +212,25 @@ mod tests {
     }
 
     #[test]
+    fn rename_preserves_significant_whitespace_through_undo_redo() {
+        let dir = uniq_path("whitespace");
+        fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("before.txt");
+        let target = dir.join(" after.txt ");
+        write_file(&source, b"exact bytes");
+        let state = UndoState::default();
+        let renamed = rename_entry_impl(source.to_str().unwrap(), " after.txt ", &state).unwrap();
+        assert_eq!(PathBuf::from(renamed), target);
+        assert_eq!(fs::read(&target).unwrap(), b"exact bytes");
+        assert!(!dir.join("after.txt").exists());
+        state.undo().unwrap();
+        assert_eq!(fs::read(&source).unwrap(), b"exact bytes");
+        state.redo().unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"exact bytes");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn rename_entry_impl_supports_undo_redo() {
         let dir = uniq_path("single");
         let _ = fs::create_dir_all(&dir);

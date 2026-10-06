@@ -15,7 +15,7 @@ const creationName = (name: string, kind: 'file' | 'folder') => {
   if (!trimmed || /[/\\\0]/.test(trimmed) || trimmed === '.' || trimmed === '..') {
     throw new Error(`Invalid ${kind} name`)
   }
-  return trimmed
+  return name
 }
 
 const parentCloudPath = (path: string) => {

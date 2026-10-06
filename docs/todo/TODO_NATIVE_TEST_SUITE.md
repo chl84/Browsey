@@ -361,9 +361,15 @@ Prioritize these data-safety cases before cosmetic UI coverage.
 
 ## Priority 4 Names files and directory edge cases
 
-- [ ] **NT4-1** Exercise spaces, Norwegian characters, emoji, combining Unicode,
+- [x] **NT4-1** Exercise spaces, Norwegian characters, emoji, combining Unicode,
   quotes, `#`, `%`, `&`, `_`, leading dots/hyphens and valid trailing whitespace.
   Verify URI encoding and byte/name preservation across operations.
+  Scoped native PASS: 29 unique parts across all five providers, using the same
+  candidate in a full run and a fresh local/mobile follow-up. Exact name/byte
+  readback covers copy/move and existing emoji rename; local creation/rename
+  preserves significant whitespace. This MTP device explicitly rejects quoted
+  names without side effects. Emoji typing remains excluded. See the
+  [NT4 record](../operations/linux-release/runs/2026-10-06-native-name-data-edges.md).
 - [ ] **NT4-2** Cover reserved names, name/path-length limits and unsupported Unix
   filename encodings where applicable. Require explicit rejection or documented
   representation, never silent corruption.

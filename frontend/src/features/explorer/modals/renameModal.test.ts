@@ -1,8 +1,17 @@
 import { get } from 'svelte/store'
-import { expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 import { createRenameModal } from './renameModal'
 const service = vi.hoisted(() => ({ renameEntry: vi.fn() }))
 vi.mock('../services/files.service', () => service)
+beforeEach(() => service.renameEntry.mockReset())
+
+it('preserves significant leading and trailing whitespace in a rename', async () => {
+  service.renameEntry.mockResolvedValueOnce('/owned/ renamed.txt ')
+  const modal = createRenameModal({ loadPath: vi.fn(async () => {}), parentPath: () => '/owned' })
+  modal.open({ name: 'old.txt', path: '/owned/old.txt', kind: 'file', iconId: 0 })
+  expect(await modal.confirm(' renamed.txt ')).toBe(true)
+  expect(service.renameEntry).toHaveBeenLastCalledWith('/owned/old.txt', ' renamed.txt ')
+})
 
 it('clears a rejected rename error before a corrected request and suppresses repeated submission', async () => {
   service.renameEntry.mockRejectedValueOnce(new Error('Target already exists'))

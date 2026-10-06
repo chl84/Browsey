@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Preserve significant whitespace in created and renamed filenames instead of
+  silently trimming it. Verify 29 scoped native name/URI parts on all five
+  storage types, including emoji/combining Unicode, literal URI characters and
+  explicit quoted-name rejection on the tested MTP device.
+
 - Verify safe native startup after interrupting an owned overwrite process:
   retain exact partial output and protected originals, keep recovery markers
   across restart, start with empty undo history and expose read-only backup

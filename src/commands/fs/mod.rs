@@ -336,7 +336,7 @@ fn create_folder_impl(
             "Folder name cannot contain path separators",
         ));
     }
-    let target = base.join(trimmed);
+    let target = base.join(&name);
     if target.exists() {
         return Err(FsError::new(
             FsErrorCode::TargetExists,
@@ -386,7 +386,7 @@ fn create_file_impl(
         ));
     }
 
-    let target = base.join(trimmed);
+    let target = base.join(&name);
     if target.exists() {
         return Err(FsError::new(
             FsErrorCode::TargetExists,

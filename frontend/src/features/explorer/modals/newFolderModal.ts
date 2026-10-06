@@ -56,7 +56,7 @@ export const createNewFolderModal = (deps: Deps) => {
       if (activityApi) {
         await activityApi.start('Creating folder…', progressEvent)
       }
-      const created: string = await createFolder(base, trimmed)
+      const created: string = await createFolder(base, name)
       if (isCloudPath(base)) {
         void (async () => {
           if (getCurrentPath() !== base) {

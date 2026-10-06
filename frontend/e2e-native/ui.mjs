@@ -311,6 +311,7 @@ export class NativeUi {
       if (character === '_') action.down(Key.Shift).down('-').up('-').up(Key.Shift)
       else if (character === ':' && this.inputLayout === 'no') action.down(Key.Shift).down('.').up('.').up(Key.Shift)
       else if (character === '/' && this.inputLayout === 'no') action.down(Key.Shift).down('7').up('7').up(Key.Shift)
+      else if (character === '"' && this.inputLayout === 'no') action.down(Key.Shift).down('2').up('2').up(Key.Shift)
       else if (/^[A-Z]$/.test(character)) action.down(Key.Shift).down(character.toLowerCase()).up(character.toLowerCase()).up(Key.Shift)
       else action.down(character).up(character)
     }
@@ -628,8 +629,8 @@ export class NativeUi {
       await dialog.waitForDisplayed({ timeout: 60_000 })
       await (await dialog.$(`.//button[normalize-space(.)="${conflict}"]`)).click()
     }
-    if (expectedError) return this.expectedToast(expectedError, 360_000, { refresh: expectedRefresh })
-    await this.idle(conflict === 'Cancel' || (conflict === 'Skip' && firstPath === dest) ? {} : { resultPath: firstPath }, 360_000)
+    if (expectedError) return this.expectedToast(expectedError, this.transferTimeout ?? 360_000, { refresh: expectedRefresh })
+    await this.idle(conflict === 'Cancel' || (conflict === 'Skip' && firstPath === dest) ? {} : { resultPath: firstPath }, this.transferTimeout ?? 360_000)
   }
 
   async deleteSelection({ menu = false, raw, cancel = false, escape = false, repeat = false } = {}) {
