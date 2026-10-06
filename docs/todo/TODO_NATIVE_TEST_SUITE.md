@@ -443,10 +443,15 @@ completed file-operation acceptance.
   new-name upload and changed-original handling pass. Quota/rate/auth are exact
   prewrite candidate faults; live outages and external editors remain excluded.
   Failed attempts and their actual outcomes remain retained. See the NT5 record.
-- [ ] **NT5-5** Define a separately approved lifecycle mode for first connection,
+- [x] **NT5-5** Define a separately approved lifecycle mode for first connection,
   locked phone, reconnect, disappearing mounts and busy/ejected media. Foundation
   discovery/mount restrictions must not be silently removed; mounted-folder
   success does not prove lifecycle behavior.
+  The [lifecycle contract](../testing-native-provider-lifecycle.md) defines exact
+  one-scenario approval, device/service identity, action plan, finite budgets,
+  one-use guard exceptions, state/preservation evidence and owned recovery.
+  This definition deliverable is complete; no lifecycle runner is enabled and
+  all real device/service transitions remain NOT_RUN pending separate scope.
 
 ## Priority 6 Native UI and desktop interaction
 

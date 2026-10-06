@@ -142,6 +142,22 @@ GTK `3.24.52`, WebKitGTK `2.52.6`, Norwegian input. Driver SHA-256 values and
 per-run tool evidence remain in the private reports. Final harness SHA-256 is
 `bae6dd55dfb501eb8151f8c22efcfccfca11c06eb9c9089f203c798798bfdc06`.
 
+## NT5-5: separately approved provider lifecycle definition
+
+The [provider lifecycle contract](../../../testing-native-provider-lifecycle.md)
+completes the requested definition for first connection, locked phones,
+reconnection, disappearing mounts and busy/ejected media. It specifies one exact
+scenario/device/service identity and reviewed action plan, private expiring
+approval bound to candidate/harness hashes, one-use guard exceptions, bounded
+fixtures/state waits and independent state/byte preservation evidence. Ordinary
+foundation commands retain their discovery/mount restrictions.
+
+This increment delivers a specification; it does not enable a lifecycle runner.
+All actual device/service transitions are NOT_RUN pending their separate scenario
+scope. No phone lock, disconnect, mount/eject, shared-service stop or personal
+window manipulation is performed. Mounted USB/SFTP/MTP/OneDrive acceptance above
+does not prove these transitions. Strict docs consistency and diff checks pass.
+
 ## Recorded candidate identities for completed provider parts
 
 All entries are separately staged debug `native-test` builds with dirty source

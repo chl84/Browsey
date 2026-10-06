@@ -740,3 +740,13 @@ and changed-original handling, plus the three owned cloud error probes. The
 cloud-cloud copy/download and Cancel/Skip prefix is excluded from this manifest,
 never marked PASS by omission. Prior completed scopes remain in their retained
 reports; no fixture, mutation or partially completed case is replayed in place.
+
+## Provider lifecycle contract
+
+NT5-5 defines the separate approval/isolation contract in
+[provider lifecycle mode](testing-native-provider-lifecycle.md). It covers first
+connection, locked phones, reconnect, disappearing mounts and busy/ejected
+media without enabling those actions in ordinary foundation sessions. The
+definition is complete; real device/service transitions remain NOT_RUN until
+one exact scenario and action plan are separately approved. Mounted-folder
+provider PASS does not certify these transitions.

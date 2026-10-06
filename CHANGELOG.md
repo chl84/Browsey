@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Define a separate approval/isolation contract for provider connection, locked
+  phones, reconnect, disappearing mounts and busy/ejected media. Keep ordinary
+  native-session restrictions; real lifecycle transitions remain separately scoped.
+
 - Honour explicit cloud overwrite even when source and destination have equal
   sizes and modification times. Force requested replacement in rclone CLI and
   per-call RC transfers while preserving new-file conflict protections.
