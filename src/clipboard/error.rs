@@ -37,10 +37,21 @@ impl ErrorCode for ClipboardErrorCode {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ClipboardBatchOutcome {
+    pub completed: Option<usize>,
+    pub skipped: usize,
+    pub failed: usize,
+    pub not_attempted: usize,
+    pub rolled_back: Option<usize>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ClipboardError {
     code: ClipboardErrorCode,
     message: String,
+    batch: Option<ClipboardBatchOutcome>,
 }
 
 impl ClipboardError {
@@ -48,6 +59,7 @@ impl ClipboardError {
         Self {
             code,
             message: message.into(),
+            batch: None,
         }
     }
 
@@ -77,8 +89,16 @@ impl ClipboardError {
         self.code
     }
 
+    pub(crate) fn with_batch(mut self, batch: ClipboardBatchOutcome) -> Self {
+        self.batch = Some(batch);
+        self
+    }
+
     pub(crate) fn with_context(self, context: impl AsRef<str>) -> Self {
-        Self::new(self.code, format!("{}: {}", context.as_ref(), self.message))
+        Self {
+            message: format!("{}: {}", context.as_ref(), self.message),
+            ..self
+        }
     }
 }
 
@@ -91,6 +111,16 @@ impl fmt::Display for ClipboardError {
 impl std::error::Error for ClipboardError {}
 
 impl DomainError for ClipboardError {
+    fn to_api_error(&self) -> crate::errors::api_error::ApiError {
+        let error = crate::errors::api_error::ApiError::new(self.code_str(), self.message());
+        match &self.batch {
+            Some(batch) => {
+                error.with_details(serde_json::to_value(batch).expect("batch counters serialize"))
+            }
+            None => error,
+        }
+    }
+
     fn code_str(&self) -> &'static str {
         self.code.as_code_str()
     }
@@ -167,5 +197,33 @@ mod tests {
         let clipboard =
             ClipboardError::from_io_error(ClipboardErrorCode::IoError, "copy failed", io_error);
         assert_eq!(clipboard.code(), ClipboardErrorCode::DestinationExists);
+    }
+
+    #[test]
+    fn api_batch_details_survive_context_without_changing_legacy_error_shape() {
+        use crate::errors::domain::DomainError;
+        let plain = crate::errors::api_error::ApiError::new("io_error", "original error");
+        assert_eq!(
+            serde_json::to_value(plain).unwrap(),
+            serde_json::json!({"code":"io_error","message":"original error"})
+        );
+        let error =
+            super::ClipboardError::new(super::ClipboardErrorCode::IoError, "original read failure")
+                .with_batch(super::ClipboardBatchOutcome {
+                    completed: Some(0),
+                    skipped: 0,
+                    failed: 1,
+                    not_attempted: 1,
+                    rolled_back: Some(1),
+                })
+                .with_context("Paste failed");
+        let api = error.to_api_error();
+        assert_eq!(api.message, "Paste failed: original read failure");
+        assert_eq!(
+            api.details,
+            Some(
+                serde_json::json!({"completed":0,"skipped":0,"failed":1,"notAttempted":1,"rolledBack":1})
+            )
+        );
     }
 }

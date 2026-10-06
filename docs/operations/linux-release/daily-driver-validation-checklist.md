@@ -125,7 +125,12 @@ and owned teardown passed. NT2-5 completed all 47 unsafe-target/unique-copy part
 on the same app/binary. A new 29-part local/cloud/mobile run and the unchanged
 USB/network parts pass, with exact trees, accessibility and private teardown
 audits. Its original cloud-fixture setup failure remains BLOCKED and retained.
-NT2-6 and the broader parent rows remain open.
+NT2-6 passed eight representative local/USB/cloud batch cases, including genuine
+local read denial, exact partial counts, remaining cut paths and combined transfer/
+refresh errors. Bounded cloud-source injection tests reconciliation rather than
+provider outages; network/mobile failure modes remain separate. Exact trees,
+accessibility and owned teardown/private audits pass. NT2-1 through NT2-6 are
+complete within their declared scopes; broader parent rows remain open.
 
 ## Run Discipline
 

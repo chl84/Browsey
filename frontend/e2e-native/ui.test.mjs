@@ -211,3 +211,29 @@ test('Norwegian cloud-scheme colon uses Shift+period and remains verified before
   await ui.fill({ click: async () => {}, isFocused: async () => true, getValue: async () => ':' }, ':')
   assert.deepEqual(batches.at(-1), [['down', Key.Shift], ['down', '.'], ['up', '.'], ['up', Key.Shift]])
 })
+
+test('refresh reconciliation accepts captured warning without a persistent pill and refuses unrelated pills', async () => {
+  const original = globalThis.document
+  const message = 'Paste completed, but refresh failed. Press F5 to refresh.'
+  try {
+    for (const errors of [[], ['Unrelated provider failure']]) {
+      let toastVisible = true, refreshes = 0
+      globalThis.document = {
+        querySelector: selector => selector.startsWith('.toast')
+          ? { textContent: message, getClientRects: () => toastVisible ? [{}] : [] } : {},
+        querySelectorAll: () => errors.map(textContent => ({ textContent, getClientRects: () => [{}] })),
+      }
+      const ui = new NativeUi({ execute: async action => action(), waitUntil: async predicate => {
+        if (!await predicate()) { toastVisible = false; assert.equal(await predicate(), true) }
+      } }, [])
+      ui.refresh = async () => { refreshes++ }; ui.idle = async () => {}
+      if (errors.length) {
+        await assert.rejects(ui.expectedToast(/Paste completed, but refresh failed/, 100, { refresh: true }), /Only the declared refresh failure/)
+        assert.equal(refreshes, 0)
+      } else {
+        assert.equal(await ui.expectedToast(/Paste completed, but refresh failed/, 100, { refresh: true }), message)
+        assert.equal(refreshes, 1)
+      }
+    }
+  } finally { globalThis.document = original }
+})

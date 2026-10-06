@@ -17,6 +17,7 @@ import { creation, creationManifest } from './creation.mjs'
 import { editing, editingManifest } from './editing.mjs'
 import { ownedRestart } from './restart.mjs'
 import { transfers, transferManifest } from './transfers.mjs'
+import { batches, batchManifest, batchFaults } from './batch.mjs'
 import { guards, guardManifest } from './guards.mjs'
 import { conflicts, conflictManifest } from './conflicts.mjs'
 import { routeEvidence } from './routing.mjs'
@@ -43,6 +44,7 @@ suites['transfers-pairs'] = { run: (plan, fixture, ui, record) => transfers(plan
   manifest: plan => transferManifest(plan, 'pairs') }
 suites['guards-aliases-mobile'] = { run: (plan, fixture, ui, record) => guards(plan, fixture, ui, record, 'remaining'),
   manifest: plan => guardManifest(plan, 'remaining') }
+suites.batches = { run: batches, manifest: batchManifest }
 suites.guards = { run: guards, manifest: guardManifest }
 suites.conflicts = { run: conflicts, manifest: conflictManifest }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
@@ -190,7 +192,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['candidate.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['candidate.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -207,7 +209,10 @@ async function main() {
       await writePrivate(activePath, JSON.stringify({ runId: plan.runId, nonce: reservation.nonce }), { exclusive: true })
       activeCreated = true
     } })
-    session = { runId: plan.runId, dataRoots: plan.targets.map(target => target.files), profile }
+    session = { runId: plan.runId, dataRoots: plan.targets.map(target => target.files), profile,
+      ...(options.suite === 'batches' ? { faults: batchFaults(plan) } : {}) }
+    if (session.faults) report.faults = session.faults.map(fault => ({ id: fault.id,
+      kind: fault.source ? 'owned-source-dispatch' : 'owned-list-refresh', status: 'NOT_RUN', uses: 0 }))
     env = candidateEnvironment(process.env, profile, session)
     if (options.suite === 'transfers-pairs') env.RUST_LOG = 'browsey=info'
     fixture = new Fixtures(plan, env)
@@ -324,6 +329,12 @@ async function main() {
       }, { id: 'accessibility-local', providers: ['local'] })
     }
     if (!options.fault) await suites[options.suite].run(plan, fixture, ui, record)
+    if (session.faults) {
+      const status = await ui.handshake(plan.runId)
+      report.faults = report.faults.map(fault => ({ ...fault, status: 'USED',
+        uses: status.faults.find(observed => observed.id === fault.id)?.uses ?? 0 }))
+      assert.ok(report.faults.every(fault => fault.uses === 1), 'Every declared native fault must be consumed exactly once')
+    }
     assertDriverAlive(driver)
     await assertCandidateAlive(nativeDriverOwner)
     await assertCandidateAlive(candidateOwner)

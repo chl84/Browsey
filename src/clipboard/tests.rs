@@ -3580,3 +3580,74 @@ fn canonical_destination_parent_alias_cannot_recurse_or_destroy_source() {
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[cfg(unix)]
+#[test]
+fn batch_failure_counts_completed_roots_rolled_back_and_unattempted_sources() {
+    use crate::errors::domain::DomainError;
+    use crate::fs_utils::copy_test_hooks::{Phase, Scope};
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    for rollback_fails in [false, true] {
+        let root = uniq_path("batch-counters");
+        let source = root.join("source");
+        let dest = root.join("dest");
+        for name in ["a-good.txt", "b-failed.txt", "c-after.txt"] {
+            write_file(&source.join(name), name.as_bytes());
+        }
+        write_file(&dest.join("unrelated.txt"), b"unchanged");
+        let bad = source.join("b-failed.txt");
+        let _scope = Scope::new(move |src, _, phase, _| {
+            if src == bad && phase == Phase::Write {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "injected read permission failure",
+                ))
+            } else {
+                Ok(())
+            }
+        });
+        if rollback_fails {
+            let target = dest.join("a-good.txt");
+            set_after_paste_item_test_hook(Some(Box::new(move || {
+                fs::write(&target, b"foreign edit").unwrap();
+            })));
+        }
+        let error = paste_entries_core(
+            None,
+            dest.to_string_lossy().into_owned(),
+            Some("rename".into()),
+            UndoState::default().clone_inner(),
+            CancelState::default(),
+            None,
+            Some(ClipboardInput {
+                paths: ["a-good.txt", "b-failed.txt", "c-after.txt"]
+                    .iter()
+                    .map(|name| source.join(name).to_string_lossy().into_owned())
+                    .collect(),
+                mode: "copy".into(),
+            }),
+        )
+        .unwrap_err();
+        set_after_paste_item_test_hook(None);
+        assert!(error.to_string().contains("permission"));
+        let details = error.to_api_error().details.unwrap();
+        assert_eq!(details["failed"], 1);
+        assert_eq!(details["notAttempted"], 1);
+        assert_eq!(details["skipped"], 0);
+        if rollback_fails {
+            assert!(details["completed"].is_null() && details["rolledBack"].is_null());
+            assert_eq!(fs::read(dest.join("a-good.txt")).unwrap(), b"foreign edit");
+        } else {
+            assert_eq!(details["completed"], 0);
+            assert_eq!(details["rolledBack"], 1);
+            assert!(!dest.join("a-good.txt").exists());
+        }
+        for name in ["a-good.txt", "b-failed.txt", "c-after.txt"] {
+            assert_eq!(fs::read(source.join(name)).unwrap(), name.as_bytes());
+        }
+        assert_eq!(fs::read(dest.join("unrelated.txt")).unwrap(), b"unchanged");
+        assert!(!dest.join("c-after.txt").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+}

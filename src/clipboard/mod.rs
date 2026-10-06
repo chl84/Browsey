@@ -411,138 +411,156 @@ fn paste_entries_core(
 
     let mut created = Vec::new();
     let mut performed: Vec<Action> = Vec::with_capacity(state.entries.len() * 4);
-    for src in state.entries.iter() {
-        if transfer_cancelled(cancel_flag.as_deref(), app) {
-            return Err(rollback_performed_actions(
-                &performed,
-                ClipboardError::cancelled(),
-            ));
-        }
-        let src_meta = match fs::symlink_metadata(src) {
-            Ok(meta) => meta,
-            Err(e) => {
+    let mut attempted = 0;
+    let execution: ClipboardResult<()> = (|| {
+        for src in state.entries.iter() {
+            attempted += 1;
+            if transfer_cancelled(cancel_flag.as_deref(), app) {
                 return Err(rollback_performed_actions(
                     &performed,
-                    ClipboardError::from_io_error(
-                        ClipboardErrorCode::IoError,
-                        &format!("Failed to read metadata for {}", src.display()),
-                        e,
-                    ),
-                ))
+                    ClipboardError::cancelled(),
+                ));
             }
-        };
-        if src_meta.file_type().is_symlink() {
-            return Err(rollback_performed_actions(
-                &performed,
-                ClipboardError::new(
-                    ClipboardErrorCode::SymlinkUnsupported,
-                    "Symlinks are not supported in clipboard",
-                ),
-            ));
-        }
-
-        let name = src.file_name().ok_or_else(|| {
-            rollback_performed_actions(
-                &performed,
-                ClipboardError::invalid_input("Invalid source path"),
-            )
-        })?;
-        let target_base = dest.join(name);
-        let mut rename_attempt = 0usize;
-        let mut target = match policy {
-            ConflictPolicy::Rename => rename_candidate(&target_base, rename_attempt),
-            ConflictPolicy::Overwrite => target_base.clone(),
-        };
-
-        if matches!(policy, ConflictPolicy::Overwrite) {
-            if let Some(target_meta) = metadata_if_exists_nofollow(&target)? {
-                if target_meta.file_type().is_symlink() {
+            let src_meta = match fs::symlink_metadata(src) {
+                Ok(meta) => meta,
+                Err(e) => {
                     return Err(rollback_performed_actions(
                         &performed,
-                        ClipboardError::new(
-                            ClipboardErrorCode::SymlinkUnsupported,
-                            "Refusing to overwrite symlinks",
+                        ClipboardError::from_io_error(
+                            ClipboardErrorCode::IoError,
+                            &format!("Failed to read metadata for {}", src.display()),
+                            e,
                         ),
-                    ));
+                    ))
                 }
-                // Prevent deleting parent/ancestor of the source.
-                if src.starts_with(&target) {
-                    return Err(rollback_performed_actions(
-                        &performed,
-                        ClipboardError::invalid_input(
-                            "Cannot overwrite a parent directory of the source item",
-                        ),
-                    ));
-                }
-                // If both are dirs, merge instead of deleting target (Windows Explorer behavior).
-                if src_meta.is_dir() && target_meta.is_dir() {
-                    if let Err(err) = merge_dir(
-                        src,
-                        &target,
-                        state.mode,
-                        &mut performed,
-                        app,
-                        progress.as_ref(),
-                        cancel_flag.as_deref(),
-                    ) {
+            };
+            if src_meta.file_type().is_symlink() {
+                return Err(rollback_performed_actions(
+                    &performed,
+                    ClipboardError::new(
+                        ClipboardErrorCode::SymlinkUnsupported,
+                        "Symlinks are not supported in clipboard",
+                    ),
+                ));
+            }
+
+            let name = src.file_name().ok_or_else(|| {
+                rollback_performed_actions(
+                    &performed,
+                    ClipboardError::invalid_input("Invalid source path"),
+                )
+            })?;
+            let target_base = dest.join(name);
+            let mut rename_attempt = 0usize;
+            let mut target = match policy {
+                ConflictPolicy::Rename => rename_candidate(&target_base, rename_attempt),
+                ConflictPolicy::Overwrite => target_base.clone(),
+            };
+
+            if matches!(policy, ConflictPolicy::Overwrite) {
+                if let Some(target_meta) = metadata_if_exists_nofollow(&target)
+                    .map_err(|error| rollback_performed_actions(&performed, error))?
+                {
+                    if target_meta.file_type().is_symlink() {
+                        return Err(rollback_performed_actions(
+                            &performed,
+                            ClipboardError::new(
+                                ClipboardErrorCode::SymlinkUnsupported,
+                                "Refusing to overwrite symlinks",
+                            ),
+                        ));
+                    }
+                    // Prevent deleting parent/ancestor of the source.
+                    if src.starts_with(&target) {
+                        return Err(rollback_performed_actions(
+                            &performed,
+                            ClipboardError::invalid_input(
+                                "Cannot overwrite a parent directory of the source item",
+                            ),
+                        ));
+                    }
+                    // If both are dirs, merge instead of deleting target (Windows Explorer behavior).
+                    if src_meta.is_dir() && target_meta.is_dir() {
+                        if let Err(err) = merge_dir(
+                            src,
+                            &target,
+                            state.mode,
+                            &mut performed,
+                            app,
+                            progress.as_ref(),
+                            cancel_flag.as_deref(),
+                        ) {
+                            return Err(rollback_performed_actions(&performed, err));
+                        }
+                        created.push(target.to_string_lossy().to_string());
+                        continue;
+                    }
+                    if let Err(err) = backup_existing_target(&target, &mut performed) {
                         return Err(rollback_performed_actions(&performed, err));
                     }
-                    created.push(target.to_string_lossy().to_string());
-                    continue;
-                }
-                if let Err(err) = backup_existing_target(&target, &mut performed) {
-                    return Err(rollback_performed_actions(&performed, err));
                 }
             }
-        }
 
-        let receipt = loop {
-            let result = match state.mode {
-                ClipboardMode::Copy => {
-                    copy_entry(src, &target, app, progress.as_ref(), cancel_flag.as_deref())
-                }
-                ClipboardMode::Cut => {
-                    move_entry(src, &target, app, progress.as_ref(), cancel_flag.as_deref())
-                        .map(|()| crate::undo::CopyReceipt::default())
+            let receipt = loop {
+                let result = match state.mode {
+                    ClipboardMode::Copy => {
+                        copy_entry(src, &target, app, progress.as_ref(), cancel_flag.as_deref())
+                    }
+                    ClipboardMode::Cut => {
+                        move_entry(src, &target, app, progress.as_ref(), cancel_flag.as_deref())
+                            .map(|()| crate::undo::CopyReceipt::default())
+                    }
+                };
+
+                match result {
+                    Ok(receipt) => {
+                        break receipt;
+                    }
+                    Err(err) => {
+                        if matches!(policy, ConflictPolicy::Rename)
+                            && is_destination_exists_error(&err)
+                            && rename_attempt < 50
+                        {
+                            rename_attempt += 1;
+                            target = rename_candidate(&target_base, rename_attempt);
+                            continue;
+                        }
+                        return Err(rollback_performed_actions(
+                            &performed,
+                            err.with_context(format!("Paste failed for {}", src.display())),
+                        ));
+                    }
                 }
             };
 
-            match result {
-                Ok(receipt) => {
-                    break receipt;
-                }
-                Err(err) => {
-                    if matches!(policy, ConflictPolicy::Rename)
-                        && is_destination_exists_error(&err)
-                        && rename_attempt < 50
-                    {
-                        rename_attempt += 1;
-                        target = rename_candidate(&target_base, rename_attempt);
-                        continue;
-                    }
-                    return Err(rollback_performed_actions(
-                        &performed,
-                        err.with_context(format!("Paste failed for {}", src.display())),
-                    ));
-                }
-            }
-        };
+            let action = match state.mode {
+                ClipboardMode::Copy => Action::Copy {
+                    from: src.clone(),
+                    to: target.clone(),
+                    receipt,
+                },
+                ClipboardMode::Cut => Action::Move {
+                    from: src.clone(),
+                    to: target.clone(),
+                },
+            };
+            performed.push(action);
+            created.push(target.to_string_lossy().to_string());
+            #[cfg(test)]
+            run_after_paste_item_test_hook();
+        }
 
-        let action = match state.mode {
-            ClipboardMode::Copy => Action::Copy {
-                from: src.clone(),
-                to: target.clone(),
-                receipt,
-            },
-            ClipboardMode::Cut => Action::Move {
-                from: src.clone(),
-                to: target.clone(),
-            },
-        };
-        performed.push(action);
-        created.push(target.to_string_lossy().to_string());
-        #[cfg(test)]
-        run_after_paste_item_test_hook();
+        Ok(())
+    })();
+    if let Err(error) = execution {
+        let uncertain = error.code() == ClipboardErrorCode::RollbackFailed;
+        return Err(error.with_batch(error::ClipboardBatchOutcome {
+            completed: (!uncertain).then_some(0),
+            skipped: 0,
+            failed: usize::from(attempted > 0),
+            not_attempted: state.entries.len().saturating_sub(attempted),
+            rolled_back: (!uncertain).then_some(created.len()),
+        }));
     }
 
     if !performed.is_empty() {

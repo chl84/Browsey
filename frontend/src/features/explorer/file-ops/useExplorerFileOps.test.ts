@@ -486,7 +486,7 @@ describe('immutable paste and drop operations', () => {
     } else if (route === 'cloud') {
       expect(copyCloudEntryMock).toHaveBeenCalledWith(src, `${dest}/a.txt`, expect.objectContaining({ overwrite: true }))
     } else {
-      expect(copyMixedEntriesMock).toHaveBeenCalledWith([src], dest, expect.objectContaining({ overwrite: true }))
+      expect(copyMixedEntryToMock).toHaveBeenCalledWith(src, `${dest}/a.txt`, expect.objectContaining({ overwrite: true }))
     }
     expect(moveCloudEntryMock).not.toHaveBeenCalled()
     expect(moveMixedEntriesMock).not.toHaveBeenCalled()
@@ -1065,11 +1065,10 @@ describe('useExplorerFileOps cloud conflict preview', () => {
       const ok = await fileOps.handlePasteOrMove('rclone://work/dest')
 
       expect(ok).toBe(false)
-      expect(deps.reloadCurrent).not.toHaveBeenCalled()
       await vi.advanceTimersByTimeAsync(250)
       await Promise.resolve()
       expect(deps.reloadCurrent).toHaveBeenCalledTimes(1)
-      expect(deps.showToast).toHaveBeenCalledWith('Paste failed: second source failed')
+      expect(deps.showToast).toHaveBeenCalledWith('Paste failed: second source failed 1 completed, 0 skipped, 1 failed, 0 not attempted.', 5000)
     } finally {
       vi.useRealTimers()
     }
@@ -1091,7 +1090,7 @@ describe('useExplorerFileOps cloud conflict preview', () => {
 
     expect(ok).toBe(false)
     expect(deps.reloadCurrent).toHaveBeenCalledTimes(1)
-    expect(deps.showToast).toHaveBeenCalledWith('Paste failed: second source failed')
+    expect(deps.showToast).toHaveBeenCalledWith('Paste failed: second source failed 1 completed, 0 skipped, 1 failed, 0 not attempted.', 5000)
   })
 
   it('resolves mixed local-to-cloud rename-on-conflict by retrying explicit target candidates', async () => {
@@ -1397,5 +1396,72 @@ describe('unsafe paste and bounded unique names', () => {
       expect(copyMixedEntryToMock).toHaveBeenCalledTimes(collision ? 50 : 1)
       expect([...get(clipboardState).paths]).toEqual(['rclone://work/src/a.txt'])
     }
+  })
+})
+
+describe('partial batch outcomes and reconciliation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks(); clearClipboardState()
+    for (const mock of [pasteClipboardPreviewMock, previewCloudConflictsMock, previewMixedTransferConflictsMock,
+      pasteClipboardCmdMock, copyCloudEntryMock, moveCloudEntryMock, copyMixedEntryToMock, moveMixedEntryToMock,
+      listCloudEntriesMock, listCloudRemotesMock, clearSystemClipboardMock]) mock.mockReset()
+    listCloudEntriesMock.mockResolvedValue([]); listCloudRemotesMock.mockResolvedValue([])
+    clearSystemClipboardMock.mockResolvedValue(undefined)
+  })
+  it.each(['cloud','mixed'] as const)('reports exact %s partial counts, retains cut sources and preserves both failures', async route => {
+    for (const mode of ['copy','cut'] as const) {
+      vi.clearAllMocks()
+      const source=route==='cloud'?'rclone://work/source':'/source',dest='rclone://work/dest'
+      const paths=['a-good.txt','b-failed.txt','c-after.txt','d-skipped.txt'].map(name=>`${source}/${name}`)
+      const deps=createDeps();deps.getCurrentPath=()=>dest
+      deps.reloadCurrent.mockRejectedValue(new Error('refresh failure'))
+      vi.mocked(deps.activityApi.clearNow).mockImplementationOnce(() => { throw new Error('activity clearing failure') })
+      vi.mocked(deps.activityApi.cleanup).mockRejectedValueOnce(new Error('listener cleanup failure'))
+      setClipboardPathsState(mode,paths)
+      const preview=[{src:paths[3],target:`${dest}/d-skipped.txt`,isDir:false}]
+      previewCloudConflictsMock.mockResolvedValue(preview);previewMixedTransferConflictsMock.mockResolvedValue(preview)
+      const writer=route==='cloud'?(mode==='cut'?moveCloudEntryMock:copyCloudEntryMock):(mode==='cut'?moveMixedEntryToMock:copyMixedEntryToMock)
+      writer.mockReset();writer.mockImplementation(async(src:string)=>{if(src===paths[1]) throw {code:'io_error',message:'original read failure'}})
+      const ops=useExplorerFileOps(deps);await ops.handlePasteOrMove(dest);await ops.resolveConflicts('skip')
+      expect(writer.mock.calls.map(call=>call[0])).toEqual(paths.slice(0,2))
+      expect([...get(clipboardState).paths]).toEqual(mode==='cut'?paths.slice(1):paths)
+      expect(deps.showToast).toHaveBeenLastCalledWith(expect.stringContaining('original read failure'),5000)
+      const message=deps.showToast.mock.lastCall?.[0] as string
+      expect(message).toContain('1 completed, 1 skipped, 1 failed, 1 not attempted')
+      expect(message).toContain('Refresh also failed');expect(message).not.toContain('listener cleanup failure');expect(message).not.toContain('activity clearing failure')
+      expect(deps.reloadCurrent).toHaveBeenCalledOnce()
+    }
+  })
+  it('adds skip counts to local rollback details without dropping the original or refresh error', async () => {
+    const deps=createDeps();deps.getCurrentPath=()=>'/dest';deps.reloadCurrent.mockRejectedValue(new Error('refresh'))
+    setClipboardPathsState('cut',['/source/good','/source/bad','/source/after','/source/skipped'])
+    pasteClipboardPreviewMock.mockResolvedValue([{src:'/source/skipped',target:'/dest/skipped',is_dir:false}])
+    pasteClipboardCmdMock.mockRejectedValue({code:'io_error',message:'original permission error',details:{completed:0,skipped:0,failed:1,notAttempted:1,rolledBack:1}})
+    const ops=useExplorerFileOps(deps);await ops.handlePasteOrMove('/dest');await ops.resolveConflicts('skip')
+    const message=deps.showToast.mock.lastCall?.[0] as string
+    expect(message).toContain('original permission error');expect(message).toContain('0 completed, 1 skipped, 1 failed, 1 not attempted, 1 rolled back')
+    expect(message).toContain('Refresh also failed');expect([...get(clipboardState).paths]).toHaveLength(4)
+    expect(pasteClipboardCmdMock).toHaveBeenCalledOnce()
+  })
+  it('does not invent completed or rollback counts when rollback is uncertain', async () => {
+    const deps=createDeps();deps.getCurrentPath=()=>'/dest';setClipboardPathsState('cut',['/source/good','/source/bad'])
+    pasteClipboardPreviewMock.mockResolvedValue([])
+    pasteClipboardCmdMock.mockRejectedValue({code:'rollback_failed',message:'copies retained',details:{completed:null,skipped:0,failed:1,notAttempted:0,rolledBack:null}})
+    const ops=useExplorerFileOps(deps);await ops.handlePasteOrMove('/dest')
+    expect(deps.showToast.mock.lastCall?.[0]).toContain('Unknown completed count')
+    expect(deps.showToast.mock.lastCall?.[0]).toContain('unknown rollback count')
+    expect([...get(clipboardState).paths]).toEqual(['/source/good','/source/bad'])
+  })
+})
+
+describe('invalid batch metadata is not reported as completion evidence', () => {
+  it.each([-1, 0.5, 9007199254740991])('rejects invalid counter %s and preserves the primary error', async completed => {
+    vi.clearAllMocks();clearClipboardState()
+    const deps=createDeps();deps.getCurrentPath=()=>'/dest';setClipboardPathsState('cut',['/source/file'])
+    pasteClipboardPreviewMock.mockResolvedValue([])
+    pasteClipboardCmdMock.mockRejectedValue({code:'io_error',message:'original failure',details:{completed,skipped:0,failed:1,notAttempted:0,rolledBack:0}})
+    const ops=useExplorerFileOps(deps);await ops.handlePasteOrMove('/dest')
+    expect(deps.showToast).toHaveBeenLastCalledWith('Paste failed: original failure')
+    expect([...get(clipboardState).paths]).toEqual(['/source/file'])
   })
 })

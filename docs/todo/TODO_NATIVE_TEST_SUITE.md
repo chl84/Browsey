@@ -272,9 +272,18 @@ all-pairs has twenty. Test copy and move separately for files and directory tree
   valid same-parent copies remain unique. Source-alias and bounded-work regressions,
   private audits, accessibility and owned teardown pass. The initial cloud-fixture
   setup failure remains BLOCKED and retained separately.
-- [ ] **NT2-6** Exercise a failing entry in a batch: accurate completed/skipped/
+- [x] **NT2-6** Exercise a failing entry in a batch: accurate completed/skipped/
   failed counts, remaining sources, refresh and error messages. Success must
   not hide a transfer or subsequent refresh failure.
+
+  The [native batch verification](../operations/linux-release/runs/2026-10-06-native-transfers.md)
+  passed eight representative cases on local, USB and cloud: actual generated
+  local read denial, partial upload/cut, bounded cloud-source failure and exact
+  one-use refresh failures after success and failure. Counts, skipped/unattempted
+  roots, whole trees, remaining cut paths and combined error feedback pass.
+  Cloud injection verifies reconciliation rather than provider I/O outages;
+  network/mobile failure modes remain outside this scope. Private audits,
+  accessibility, owned teardown and production-core checks pass.
 
 ## Priority 3 Progress cancellation and failure safety
 

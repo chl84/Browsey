@@ -1075,7 +1075,11 @@
     },
     shouldOpenDestAfterExtract: () => get(openDestAfterExtract),
     loadPath: (path, opts) => loadRaw(path, opts),
-    reloadCurrent,
+    reloadCurrent: async () => {
+      await reloadCurrent()
+      const message = get(error)
+      if (message) throw new Error(message)
+    },
     getDuplicateScanInput: () => {
       const state = get(checkDuplicatesState)
       return {

@@ -617,7 +617,7 @@ export class NativeUi {
     await this.idle({ toast: move ? 'Cut' : 'Copied', ...(move ? { cutPath: paths[0] } : {}) })
   }
 
-  async paste(dest, firstPath, { menu = false, repeat = false, conflict, expectedError, alreadyAt = false } = {}) {
+  async paste(dest, firstPath, { menu = false, repeat = false, conflict, expectedError, expectedRefresh = false, alreadyAt = false } = {}) {
     ownedPath(this.roots, dest); ownedPath(this.roots, firstPath)
     if (alreadyAt) await this.waitPath(dest); else await this.navigate(dest)
     await this.emptySpace(dest)
@@ -628,7 +628,7 @@ export class NativeUi {
       await dialog.waitForDisplayed({ timeout: 60_000 })
       await (await dialog.$(`.//button[normalize-space(.)="${conflict}"]`)).click()
     }
-    if (expectedError) return this.expectedToast(expectedError, 360_000)
+    if (expectedError) return this.expectedToast(expectedError, 360_000, { refresh: expectedRefresh })
     await this.idle(conflict === 'Cancel' || (conflict === 'Skip' && firstPath === dest) ? {} : { resultPath: firstPath }, 360_000)
   }
 
@@ -658,7 +658,7 @@ export class NativeUi {
     await this.idle()
   }
 
-  async expectedToast(pattern, timeout = 10_000) {
+  async expectedToast(pattern, timeout = 10_000, { refresh = false } = {}) {
     let text
     await this.browser.waitUntil(async () => {
       text = await this.browser.execute(() => document.querySelector('.toast[role="status"]')?.textContent.trim() ?? '')
@@ -668,8 +668,26 @@ export class NativeUi {
     assert.match(text, pattern)
     await this.browser.waitUntil(async () => !await this.browser.execute(() =>
       document.querySelector('.toast[role="status"]')?.getClientRects().length), { timeout: 10_000 })
+    await this.browser.waitUntil(async () => this.browser.execute(() =>
+      document.querySelector('main.shell[aria-busy="false"][data-operation-active="false"]') !== null), { timeout: 60_000 })
+    if (refresh) {
+      const errors = await this.browser.execute(() => [...document.querySelectorAll('.pill.error')]
+        .filter(node => node.getClientRects().length).map(node => node.textContent.trim()))
+      assert.match(text, /refresh (?:also )?failed/i, 'Captured feedback must preserve the refresh failure')
+      assert.ok(errors.every(message => /Injected owned refresh failure/.test(message)), 'Only the declared refresh failure may reconcile')
+      await this.refresh()
+    }
     await this.idle()
     return text
+  }
+
+  async cutClipboard(base, expected) {
+    ownedPath(this.roots, base); for (const raw of expected) ownedPath(this.roots, raw)
+    await this.navigate(base)
+    const observed = await this.browser.execute(() => [...document.querySelectorAll('[data-path].cut')]
+      .filter(node => node.getClientRects().length).map(node => node.dataset.path))
+    for (const raw of observed) ownedPath(this.roots, raw)
+    assert.deepEqual([...new Set(observed)].sort(), [...expected].sort(), 'Remaining cut clipboard must match retained source roots')
   }
 
   async propertiesOpen(base, paths, menu = false, { directories = [] } = {}) {

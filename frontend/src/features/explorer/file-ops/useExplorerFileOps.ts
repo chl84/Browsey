@@ -20,9 +20,7 @@ import {
 } from '../services/clipboard.service'
 import {
   copyMixedEntryTo,
-  copyMixedEntries,
   moveMixedEntryTo,
-  moveMixedEntries,
   previewMixedTransferConflicts,
 } from '../services/transfer.service'
 import {
@@ -48,6 +46,7 @@ type ConflictItem = {
 
 type PasteOperation = Readonly<{
   dest: string
+  skipped?: number
   input: PasteSources
   clipboard: { mode: 'copy' | 'cut'; paths: Set<string> } | null
 }>
@@ -179,6 +178,35 @@ export const useExplorerFileOps = (deps: Deps) => {
     }
   }
 
+  const reconcilePasteFailure = async (operation: PasteOperation, error: unknown, completedSources?: string[], attemptedSources = 0) => {
+    try { deps.activityApi.clearNow() } catch { /* Preserve the transfer error. */ }
+    try { await deps.activityApi.cleanup() } catch { /* Preserve the transfer error. */ }
+    if (completedSources?.length) {
+      await clearCutClipboardAfterMoveSuccess({ ...operation,
+        input: { mode: operation.input.mode, paths: completedSources } })
+    }
+    let counts = ''
+    if (completedSources) {
+      counts = ` ${completedSources.length} completed, ${operation.skipped ?? 0} skipped, ${Number(attemptedSources > completedSources.length)} failed, ${operation.input.paths.length - attemptedSources} not attempted.`
+    } else {
+      const details = normalizeError(error).details
+      if (details && typeof details === 'object') {
+        const d = details as Record<string, unknown>
+        const count = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= operation.input.paths.length
+        if ((d.completed === null || count(d.completed)) && count(d.skipped) && count(d.failed)
+          && count(d.notAttempted) && (d.rolledBack === null || count(d.rolledBack))) {
+          counts = ` ${d.completed === null ? 'Unknown completed count' : `${d.completed} completed`}, ${(d.skipped as number) + (operation.skipped ?? 0)} skipped, ${d.failed} failed, ${d.notAttempted} not attempted, ${d.rolledBack === null ? 'unknown rollback count' : `${d.rolledBack} rolled back`}.`
+        }
+      }
+    }
+    let refreshWarning = ''
+    try { await deps.reloadCurrent() } catch { refreshWarning = '. Refresh also failed. Press F5 to refresh.' }
+    const message = `Paste failed: ${getErrorMessage(error)}${counts}${refreshWarning}`
+    if (counts) deps.showToast(message, 5000)
+    else deps.showToast(message)
+    return false
+  }
+
   type PasteRoute = 'local' | 'cloud' | 'local_to_cloud' | 'cloud_to_local' | 'unsupported'
 
   const classifyPasteRoute = ({ dest, input: { paths: sources } }: PasteOperation): PasteRoute => {
@@ -278,6 +306,8 @@ export const useExplorerFileOps = (deps: Deps) => {
       return false
     }
 
+    const completedSources: string[] = []
+    let attemptedSources = 0
     const progressEvent = `cloud-${state.mode}-${Date.now()}-${Math.random().toString(16).slice(2)}`
     try {
       await deps.activityApi.start(
@@ -299,6 +329,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         )
       }
       for (const src of sources) {
+        attemptedSources += 1
         const leaf = cloudLeafName(src)
         if (!leaf) {
           throw new Error(`Invalid cloud source path: ${src}`)
@@ -336,6 +367,7 @@ export const useExplorerFileOps = (deps: Deps) => {
             progressEvent,
           })
         }
+        completedSources.push(src)
       }
 
       deps.activityApi.hideSoon()
@@ -343,10 +375,7 @@ export const useExplorerFileOps = (deps: Deps) => {
       refreshCloudViewAfterWrite('Paste')
       return true
     } catch (err) {
-      deps.activityApi.clearNow()
-      await deps.activityApi.cleanup()
-      deps.showToast(`Paste failed: ${getErrorMessage(err)}`)
-      return false
+      return reconcilePasteFailure(operation, err, completedSources, attemptedSources)
     }
   }
 
@@ -363,6 +392,8 @@ export const useExplorerFileOps = (deps: Deps) => {
         return false
       }
 
+      const completedSources: string[] = []
+      let attemptedSources = 0
       const progressEvent = `mixed-${state.mode}-${Date.now()}-${Math.random()
         .toString(16)
         .slice(2)}`
@@ -392,6 +423,7 @@ export const useExplorerFileOps = (deps: Deps) => {
           }
 
           for (const src of sources) {
+            attemptedSources += 1
             const leaf = route === 'local_to_cloud' ? localLeafName(src) : cloudLeafName(src)
             if (!leaf) {
               throw new Error(`Invalid source path: ${src}`)
@@ -449,19 +481,19 @@ export const useExplorerFileOps = (deps: Deps) => {
                 throw normalized
               }
             }
+            completedSources.push(src)
           }
-        } else if (state.mode === 'cut') {
-          await moveMixedEntries(sources, target, {
-            overwrite: true,
-            prechecked: true,
-            progressEvent,
-          })
         } else {
-          await copyMixedEntries(sources, target, {
-            overwrite: true,
-            prechecked: true,
-            progressEvent,
-          })
+          for (const src of sources) {
+            attemptedSources += 1
+            const leaf = route === 'local_to_cloud' ? localLeafName(src) : cloudLeafName(src)
+            if (!leaf) throw new Error(`Invalid source path: ${src}`)
+            const finalTarget = route === 'local_to_cloud' ? cloudJoin(target, leaf) : localJoin(target, leaf)
+            const opts = { overwrite: true, prechecked: true, progressEvent }
+            if (state.mode === 'cut') await moveMixedEntryTo(src, finalTarget, opts)
+            else await copyMixedEntryTo(src, finalTarget, opts)
+            completedSources.push(src)
+          }
         }
 
         if (route === 'local_to_cloud') {
@@ -480,22 +512,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         await clearCutClipboardAfterMoveSuccess(operation)
         return true
       } catch (err) {
-        deps.activityApi.clearNow()
-        await deps.activityApi.cleanup()
-        if (route === 'local_to_cloud') {
-          // Mixed local->cloud may fail after partial writes; trigger a delayed cloud refresh
-          // so the current listing converges even when the operation returns an error.
-          refreshCloudViewAfterWrite('Paste')
-        } else {
-          // Mixed cloud->local may leave partial local writes on error.
-          try {
-            await deps.reloadCurrent()
-          } catch {
-            // Best effort only; keep the original operation error as primary signal.
-          }
-        }
-        deps.showToast(`Paste failed: ${getErrorMessage(err)}`)
-        return false
+        return reconcilePasteFailure(operation, err, completedSources, attemptedSources)
       }
     }
     if (route === 'unsupported') {
@@ -521,22 +538,7 @@ export const useExplorerFileOps = (deps: Deps) => {
       await clearCutClipboardAfterMoveSuccess(operation)
       return true
     } catch (err) {
-      deps.activityApi.clearNow()
-      try {
-        await deps.activityApi.cleanup()
-      } catch {
-        // Listener cleanup must not suppress the operation error or reconciliation.
-      }
-      let refreshWarning = ''
-      try {
-        // Rollback may fail or deliberately retain copies: reconcile the listing
-        // without retrying the operation or discarding the original error.
-        await deps.reloadCurrent()
-      } catch {
-        refreshWarning = '. Refresh also failed. Press F5 to refresh.'
-      }
-      deps.showToast(`Paste failed: ${getErrorMessage(err)}${refreshWarning}`)
-      return false
+      return reconcilePasteFailure(operation, err)
     } finally {
       try {
         await deps.activityApi.cleanup(true)
@@ -660,7 +662,7 @@ export const useExplorerFileOps = (deps: Deps) => {
           deps.showToast(`Skipped ${skipped.size} conflicting item${skipped.size === 1 ? '' : 's'}`)
           return
         }
-        const filtered: PasteOperation = Object.freeze({ ...operation,
+        const filtered: PasteOperation = Object.freeze({ ...operation, skipped: skipped.size,
           input: Object.freeze({ mode: operation.input.mode, paths: Object.freeze(paths) }) })
         deps.showToast(`Skipped ${skipped.size} conflicting item${skipped.size === 1 ? '' : 's'}`)
         await runPaste(filtered, 'rename')

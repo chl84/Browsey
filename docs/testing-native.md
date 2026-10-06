@@ -239,6 +239,15 @@ mobile parts for a scoped follow-up; it does not imply the omitted parts passed.
 Norwegian native cloud URI input explicitly uses Shift+period for colon and
 verifies the complete input before submission.
 
+`--suite batches` selects eight representative NT2-6 cases on local disk,
+local→USB, local→cloud and within cloud. Newly generated local files can use a
+held-inode read denial, independently proved and restored after one paste.
+Cloud source and local refresh cases use bounded candidate-only exact-path,
+one-use faults, authorized before use. They test reconciliation rather than
+provider outages. Both entire trees, counts, skipped/unattempted roots and
+remaining cut paths are checked; refresh failures preserve the original error.
+Normal production builds exclude the injection machinery.
+
 Tree verification runs at most two independent reads at once and waits for both
 started children before surfacing a failure. Cloud metadata readiness permits at
 most four successful tree enumerations, separated by one-second gaps, before

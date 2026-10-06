@@ -311,6 +311,127 @@ fn no_tree_links(path: &Path, remaining: &mut usize) -> Result<(), &'static str>
     Ok(())
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FaultPlan {
+    id: String,
+    operation: String,
+    source: Option<String>,
+    refresh_target: Option<String>,
+    arm_source: Option<String>,
+}
+struct OwnedFault {
+    plan: FaultPlan,
+    armed: std::sync::atomic::AtomicBool,
+    used: std::sync::atomic::AtomicUsize,
+}
+impl OwnedFault {
+    fn new(plan: FaultPlan) -> Self {
+        Self {
+            plan,
+            armed: std::sync::atomic::AtomicBool::new(false),
+            used: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+    fn consume(&self) -> bool {
+        self.used
+            .compare_exchange(
+                0,
+                1,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .is_ok()
+    }
+}
+fn validate_faults(
+    roots: &[String],
+    plans: Vec<FaultPlan>,
+) -> Result<Vec<OwnedFault>, &'static str> {
+    if plans.len() > 8 {
+        return Err("Native-test fault plan is too large");
+    }
+    let mut ids = std::collections::HashSet::new();
+    for plan in &plans {
+        if plan.id.is_empty()
+            || plan.id.len() > 64
+            || !plan
+                .id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            || !ids.insert(plan.id.as_str())
+            || !matches!(plan.operation.as_str(), "copy" | "move")
+        {
+            return Err("Invalid native-test fault identity/operation");
+        }
+        match (&plan.source, &plan.refresh_target, &plan.arm_source) {
+            (Some(source), None, None) if source.starts_with("rclone://") => {}
+            (None, Some(target), Some(source))
+                if !target.starts_with("rclone://") && !source.starts_with("rclone://") => {}
+            _ => return Err("Invalid native-test fault shape"),
+        }
+        for raw in [&plan.source, &plan.refresh_target, &plan.arm_source]
+            .into_iter()
+            .flatten()
+        {
+            check_path(roots, raw)?;
+            if roots.contains(raw) {
+                return Err("Native-test faults need exact generated children");
+            }
+            if !raw.starts_with("rclone://") {
+                no_links(std::path::Path::new(raw))?;
+            }
+        }
+    }
+    Ok(plans.into_iter().map(OwnedFault::new).collect())
+}
+fn apply_faults(faults: &[OwnedFault], command: &str, body: &Value) -> Option<&'static str> {
+    use std::sync::atomic::Ordering;
+    for fault in faults {
+        let copy = fault.plan.operation == "copy";
+        let transfer = if copy {
+            command == "copy_cloud_entry" || command == "copy_mixed_entry_to"
+        } else {
+            command == "move_cloud_entry" || command == "move_mixed_entry_to"
+        };
+        let source = body.get("src").and_then(Value::as_str);
+        if transfer && fault.plan.source.as_deref() == source && source.is_some() && fault.consume()
+        {
+            return Some("Injected owned source failure");
+        }
+        let batch = command == "paste_clipboard_cmd"
+            && body
+                .get("input")
+                .and_then(|v| v.get("mode"))
+                .and_then(Value::as_str)
+                == Some(if copy { "copy" } else { "cut" });
+        let batch_match = batch
+            && body
+                .get("input")
+                .and_then(|v| v.get("paths"))
+                .and_then(Value::as_array)
+                .is_some_and(|paths| {
+                    paths
+                        .iter()
+                        .any(|p| p.as_str() == fault.plan.arm_source.as_deref())
+                });
+        if fault.plan.arm_source.is_some()
+            && ((transfer && source == fault.plan.arm_source.as_deref()) || batch_match)
+        {
+            fault.armed.store(true, Ordering::SeqCst);
+        }
+        if command == "list_dir"
+            && body.get("path").and_then(Value::as_str) == fault.plan.refresh_target.as_deref()
+            && fault.plan.refresh_target.is_some()
+            && fault.armed.load(Ordering::SeqCst)
+            && fault.consume()
+        {
+            return Some("Injected owned refresh failure");
+        }
+    }
+    None
+}
+
 #[cfg(feature = "native-test")]
 mod enabled {
     use super::*;
@@ -325,8 +446,11 @@ mod enabled {
         run_id: String,
         data_roots: Vec<String>,
         profile: String,
+        #[serde(default)]
+        faults: Vec<FaultPlan>,
     }
     static SESSION: OnceCell<Session> = OnceCell::new();
+    static FAULTS: OnceCell<Vec<OwnedFault>> = OnceCell::new();
 
     pub(crate) fn initialize() -> Result<(), &'static str> {
         let raw =
@@ -334,7 +458,7 @@ mod enabled {
         if raw.len() > 32_768 {
             return Err("Native-test session is too large");
         }
-        let session: Session =
+        let mut session: Session =
             serde_json::from_str(&raw).map_err(|_| "Invalid native-test session")?;
         if session.run_id.len() != 36
             || !session
@@ -356,6 +480,7 @@ mod enabled {
                 }
             }
         }
+        let faults = validate_faults(&session.data_roots, std::mem::take(&mut session.faults))?;
         let local_run = Path::new(&session.data_roots[0])
             .parent()
             .ok_or("Missing local run")?;
@@ -411,6 +536,9 @@ mod enabled {
         .map_err(|_| "Cannot configure private cloud setting")?;
         crate::db::set_setting_string(&conn, "defaultView", "list")
             .map_err(|_| "Cannot configure private view setting")?;
+        FAULTS
+            .set(faults)
+            .map_err(|_| "Native-test faults already initialized")?;
         SESSION
             .set(session)
             .map_err(|_| "Native-test session already initialized")
@@ -423,7 +551,10 @@ mod enabled {
         let command = invoke.message.command();
         let override_value = match command {
             "native_test_status" => Some(serde_json::json!({"runId":session.run_id,
-                "pid":std::process::id(), "scope":"owned-files-only", "watcher":false})),
+                "pid":std::process::id(), "scope":"owned-files-only", "watcher":false,
+                "faults":FAULTS.get().expect("faults initialized").iter().map(|fault| serde_json::json!({
+                    "id":fault.plan.id, "uses":fault.used.load(std::sync::atomic::Ordering::SeqCst),
+                    "armed":fault.armed.load(std::sync::atomic::Ordering::SeqCst)})).collect::<Vec<_>>()})),
             "get_startup_path" | "load_start_dir" => Some(serde_json::json!(session.data_roots[0])),
             // Only disposable roots, never the user's saved bookmarks.
             "get_bookmarks" => Some(Value::Array(session.data_roots.iter().enumerate()
@@ -463,6 +594,17 @@ mod enabled {
                 .reject(serde_json::json!({"code":"native_test_scope_denied", "message":reason}));
             None
         } else {
+            // Scope/path authorization above always precedes any one-use fault.
+            if let InvokeBody::Json(body) = invoke.message.payload() {
+                if let Some(reason) =
+                    apply_faults(FAULTS.get().expect("faults initialized"), command, body)
+                {
+                    invoke
+                        .resolver
+                        .reject(serde_json::json!({"code":"io_error", "message":reason}));
+                    return None;
+                }
+            }
             Some(invoke)
         }
     }
@@ -696,5 +838,124 @@ mod tests {
             b"generated sentinel"
         );
         fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn native_fault_plans_are_bounded_owned_and_deny_unknown_fields() {
+        let roots = roots();
+        let plan = |id: &str, source: &str| {
+            serde_json::from_value::<FaultPlan>(json!({"id":id,"operation":"copy","source":source}))
+                .unwrap()
+        };
+        let owned = format!("{}/failed.txt", roots[1]);
+        assert!(validate_faults(&roots, vec![plan("one", &owned)]).is_ok());
+        for source in ["rclone://Test/outside/failed.txt", roots[1].as_str()] {
+            assert!(validate_faults(&roots, vec![plan("one", source)]).is_err());
+        }
+        assert!(validate_faults(
+            &roots,
+            (0..9)
+                .map(|i| plan(&format!("fault-{i}"), &owned))
+                .collect()
+        )
+        .is_err());
+        assert!(validate_faults(&roots, vec![plan("same", &owned), plan("same", &owned)]).is_err());
+        assert!(serde_json::from_value::<FaultPlan>(
+            json!({"id":"one","operation":"copy","source":owned,"arbitrary":true})
+        )
+        .is_err());
+        assert!(validate_faults(
+            &roots,
+            vec![FaultPlan {
+                id: "one".into(),
+                operation: "delete".into(),
+                source: Some(owned),
+                refresh_target: None,
+                arm_source: None
+            }]
+        )
+        .is_err());
+    }
+    #[test]
+    fn native_source_fault_requires_exact_operation_command_and_single_use() {
+        let roots = roots();
+        let source = format!("{}/failed.txt", roots[1]);
+        let faults = validate_faults(
+            &roots,
+            vec![serde_json::from_value(
+                json!({"id":"source-fault","operation":"copy","source":source}),
+            )
+            .unwrap()],
+        )
+        .unwrap();
+        for command in [
+            "move_cloud_entry",
+            "list_cloud_entries",
+            "delete_cloud_file",
+            "unknown",
+        ] {
+            assert!(apply_faults(&faults, command, &json!({"src":source})).is_none());
+        }
+        assert!(apply_faults(
+            &faults,
+            "copy_cloud_entry",
+            &json!({"src":format!("{}/other.txt",roots[1])})
+        )
+        .is_none());
+        assert_eq!(
+            apply_faults(&faults, "copy_cloud_entry", &json!({"src":source})),
+            Some("Injected owned source failure")
+        );
+        assert!(apply_faults(&faults, "copy_cloud_entry", &json!({"src":source})).is_none());
+        assert_eq!(faults[0].used.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+    #[test]
+    fn native_refresh_fault_cannot_fire_during_navigation_or_before_exact_transfer() {
+        let roots = roots();
+        let source = format!("{}/good.txt", roots[0]);
+        let target = format!("{}/target", roots[0]);
+        let faults=validate_faults(&roots,vec![serde_json::from_value(json!({"id":"refresh-fault","operation":"copy","refreshTarget":target,"armSource":source})).unwrap()]).unwrap();
+        let listing = json!({"path":target});
+        assert!(apply_faults(&faults, "list_dir", &listing).is_none());
+        assert!(apply_faults(
+            &faults,
+            "paste_clipboard_cmd",
+            &json!({"input":{"mode":"cut","paths":[source]}})
+        )
+        .is_none());
+        assert!(apply_faults(&faults, "list_dir", &listing).is_none());
+        assert!(apply_faults(
+            &faults,
+            "paste_clipboard_cmd",
+            &json!({"input":{"mode":"copy","paths":[source]}})
+        )
+        .is_none());
+        assert!(apply_faults(&faults, "list_dir", &json!({"path":roots[0]})).is_none());
+        assert_eq!(
+            apply_faults(&faults, "list_dir", &listing),
+            Some("Injected owned refresh failure")
+        );
+        assert!(apply_faults(&faults, "list_dir", &listing).is_none());
+        assert_eq!(faults[0].used.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+    #[test]
+    fn unauthorized_fault_request_cannot_consume_or_arm_an_owned_plan() {
+        let roots = roots();
+        let source = format!("{}/failed.txt", roots[1]);
+        let faults = validate_faults(
+            &roots,
+            vec![serde_json::from_value(
+                json!({"id":"source-fault","operation":"copy","source":source}),
+            )
+            .unwrap()],
+        )
+        .unwrap();
+        let body = json!({"src":source,"dst":"/unapproved/target"});
+        let authorized = authorize_io(&roots, "copy_cloud_entry", &body, |_| Ok(()));
+        assert!(authorized.is_err());
+        if authorized.is_ok() {
+            apply_faults(&faults, "copy_cloud_entry", &body);
+        }
+        assert_eq!(faults[0].used.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 }
