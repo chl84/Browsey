@@ -411,9 +411,13 @@ Prioritize these data-safety cases before cosmetic UI coverage.
 Shared cases remain authoritative. Path-access checks are prerequisites, not
 completed file-operation acceptance.
 
-- [ ] **NT5-1** USB: verify actual filesystem create/rename/transfer behavior,
+- [x] **NT5-1** USB: verify actual filesystem create/rename/transfer behavior,
   errors and supported permissions. Record its type; one Btrfs result does not
   certify exFAT/NTFS. Formatting is not authorized by this plan.
+  Scoped native PASS on the mounted ext4 USB: file/folder operations, both
+  local transfer directions, all Properties tabs, real read/write denials and
+  mode-preserving read-only copy. A harness-only setup failure is retained;
+  the access cases pass in a fresh run. See the NT5 provider record.
 - [ ] **NT5-2** Network: verify SFTP/GIO/FUSE consistency, large-file deletion
   without content download, progress/cancellation and stale-path errors in the
   approved folder. Service-loss tests need a separate isolated fault scope.

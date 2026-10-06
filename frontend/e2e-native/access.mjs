@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import {constants} from 'node:fs'
+import {execFile} from 'node:child_process'
+import {promisify} from 'node:util'
 import {child,ownedPath,noLinks} from './scope.mjs'
 import {editing,editingManifest,propertiesParts,verifyTree} from './editing.mjs'
 import {recordPart} from './report.mjs'
@@ -8,8 +10,8 @@ import {denyOwnedRead} from './batch.mjs'
 import {beginPaste,endTransferObservation,waitActivityGone} from './progress.mjs'
 import {transferListeners} from './cancellation.mjs'
 
-export const accessManifest=plan=>[...editingManifest(plan,'properties').map(c=>({...c,partIds:propertiesParts})),{id:'access-local',name:'Owned local access denials and read-only source',
-  providers:['local'],partIds:['read-denied','write-denied','read-only-copy']}]
+export const accessManifest=(plan,kind='local')=>[...editingManifest(plan,'properties').map(c=>({...c,partIds:propertiesParts})),{id:`access-${kind}`,name:`Owned ${kind} access denials and read-only source`,
+  providers:[kind],partIds:['read-denied','write-denied','read-only-copy']}]
 export async function ownedMode(roots,raw,mode,{directory=false,filesystem=fs}={}) {
   ownedPath(roots,raw);assert.ok(!raw.startsWith('rclone://'));await noLinks(raw,filesystem)
   assert.ok([0o400,0o500].includes(mode),'Only declared restrictive modes are allowed')
@@ -26,13 +28,18 @@ export async function ownedMode(roots,raw,mode,{directory=false,filesystem=fs}={
     } finally {await handle.close()}
   }
 }
-export async function access(plan,fixture,ui,record) {
+export async function access(plan,fixture,ui,record,kind='local') {
+  assert.ok(['local','usb'].includes(kind),'Real Unix mode enforcement requires a selected local/USB target')
   await editing(plan,fixture,ui,record,'properties')
-  await record('Owned local access denials and read-only source',async result=>{
+  await record(`Owned ${kind} access denials and read-only source`,async result=>{
+    const providerTarget=plan.targets.find(t=>t.kind===kind),filesystem=await fs.statfs(providerTarget.files)
+    const {stdout}=await promisify(execFile)('/usr/bin/findmnt',['-n','-o','FSTYPE','-T',providerTarget.files],{timeout:5000,maxBuffer:1024})
+    const name=stdout.trim();assert.match(name,/^[a-z0-9._-]{1,64}$/i,'Expected one filesystem type for this exact owned path')
+    result.filesystem={type:filesystem.type,name}
     await ui.setView('list')
     for(const point of ['read-denied','write-denied','read-only-copy']) await recordPart(result,point,async part=>{
       result.phase='setup'
-      const root=plan.targets.find(t=>t.kind==='local').files,from=child(root,`access-${point}-source`),to=child(root,`access-${point}-target`),
+      const root=providerTarget.files,from=child(root,`access-${point}-source`),to=child(root,`access-${point}-target`),
         source=child(from,'body.txt'),target=child(to,'body.txt'),content=`access-${point}\nsource\n`,
         expectedSource=new Map([['body.txt',content],['sentinel.txt','unrelated source\n']]),expectedTarget=new Map([['sentinel.txt','unrelated target\n']])
       await fixture.mkdir(from);await fixture.mkdir(to)
@@ -59,5 +66,5 @@ export async function access(plan,fixture,ui,record) {
       assert.equal((await ui.handshake(plan.runId)).cancelTasks,0);assert.deepEqual(await transferListeners(ui),[])
       part.verification='INDEPENDENT_MATCH'
     })
-  },{id:'access-local',providers:['local']})
+  },{id:`access-${kind}`,providers:[kind]})
 }

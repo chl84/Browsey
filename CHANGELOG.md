@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Verify native USB behavior on the actual ext4 mount: file/folder operations,
+  transfers in both local directions, Properties capabilities, real access
+  denials and copying a read-only file with its supported mode preserved.
+
 - Verify five native local Unix link cases: relative/broken link listing and
   explicit clipboard rejection, independent hard-link copy and same-inode alias
   move. Restrict test-only exceptions to exact owned paths/known aliases, capture
