@@ -118,3 +118,16 @@ describe('cloud write and archive routing', () => {
     expect(invokeMock).toHaveBeenCalledTimes(2)
   })
 })
+
+it('rejects unsafe single and batch rename leaf names before any IPC', async () => {
+  const { renameEntry, renameEntries } = await import('./files.service')
+  const { renameCloudEntry } = await import('@/features/network')
+  invokeMock.mockClear(); vi.mocked(renameCloudEntry).mockClear()
+  for (const path of ['/generated/owned/source', 'rclone://work/generated/source']) {
+    for (const newName of ['invalid/name', 'bad\\name', '.', '..', 'bad\0name', ' ']) {
+      await expect(renameEntry(path, newName)).rejects.toThrow(/Invalid.*name/)
+      await expect(renameEntries([{ path, newName }])).rejects.toThrow(/Invalid.*name/)
+    }
+  }
+  expect(invokeMock).not.toHaveBeenCalled(); expect(renameCloudEntry).not.toHaveBeenCalled()
+})

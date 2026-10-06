@@ -625,3 +625,12 @@ large-file/performance test is authorized by this adjustment.
 The [NT4 name and data record](operations/linux-release/runs/2026-10-06-native-name-data-edges.md)
 records the accepted provider scopes, explicit MTP quoted-name restriction and
 retained earlier attempts. NT4-1 covers 29 unique parts in two candidate runs.
+
+`--suite limits` runs reserved-name outcomes, explicit 512-character-name
+rejection and invalid rename-leaf rejection on all selected providers. Local
+Unix cases distinguish a 255-byte UTF-8 name from 256 bytes, reject an over-limit
+4096-byte pathname below 20 owned levels, and reject unsupported filename bytes
+in actual listing/search. One literal invalid byte is seeded only below an
+owned local parent; after UI observation, unchanged bytes/inode are retained
+under a UTF-8 name with original-name hex recorded. No recovery is discarded and
+no unsupported name is silently converted into an actionable alias.

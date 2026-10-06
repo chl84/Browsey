@@ -61,3 +61,56 @@ Preparation/final checks: 803 Rust tests pass (19 ignored), 699 frontend tests,
 131 native policy tests, native/frontend lint, type checking, Clippy with
 warnings denied, zero blocking Semgrep findings, error-hardening guard and strict
 documentation consistency pass. NT4-1 is complete for the declared scope.
+
+
+## NT4-2: name limits and representation
+
+Declared scope: reserved `CON`, a 512-character name rejection and a rename
+separator rejection on all five providers (15 parts). Reserved names may be
+accepted exactly where valid; failures require explicit modal feedback and
+unchanged independently read trees. This does not infer identical limits across
+providers or certify Windows. Five additional local parts cover a valid 255-byte
+UTF-8 name, rejection at 256 bytes, a pathname exceeding the actual Linux 4096-byte
+limit, and explicit rejection of invalid UTF-8 filename bytes in listing/search.
+The pathname fixture stays below 20 owned levels; files remain tiny.
+
+Invalid-encoding fixtures use one literal `ff` byte below an owned local folder.
+After observing the real UI error, the same unchanged inode/bytes are relabelled
+under an exact UTF-8 recovery name, including on failure. Original name hex is
+recorded; no recovery is deleted. A changed inode/bytes refuses relabelling.
+
+Regressions reproduce lossy listing/search aliases and unvalidated rename leaf
+names. Directory listing and recursive search now explicitly reject unsupported
+filename encoding with `unsupported_filename_encoding` instead of inventing an
+actionable replacement-character path. Single/batch rename validate the complete
+leaf before IPC; backend single/batch rename also refuses separators, NUL and dot
+components. Cloud child construction refuses NUL.
+
+Runs `4b83d76f-6238-4cc6-a0b5-2fad7fe5a7cb` and
+`6182b46c-49ef-4b01-9974-e964937fb714` retain six passing local parts each
+and stop BLOCKED on the encoding-error observer. Diagnosis: the global Notice
+uses `.notice-error`, and its slide transition can initially make WebDriver's
+visible text empty. The observer now waits for readable actual text. A meaningful
+red/green policy regression also makes shared readiness refuse a visible global
+error notice even when the shell is otherwise idle. This is a harness correction;
+neither incomplete run counts as encoding acceptance. Their data, unchanged
+relabelled invalid-name files, reports and screenshots remain retained.
+
+Accepted run `3fa19c02-1ac0-43e1-bf79-d780c6a38b24`, 2026-10-06T18:39:35.263Z–2026-10-06T18:41:50.833Z,
+passes all five cases/20 parts and accessibility. `CON` is accepted or explicitly
+rejected according to the tested provider; no normalization is silently substituted.
+The 512-character attempts and slash rename are explicitly rejected everywhere.
+Actual local 255/256 UTF-8 byte and >4096-byte path boundaries are verified. Both
+actual UI encoding errors are readable; independent readback preserves original
+bytes under known recovery names, and subsequent refresh/search succeeds.
+
+All four teardown stages and private retention pass; all three captured process
+identities are independently gone and a fresh exact-run audit passes. Baseline
+`3e86b3424ea0b4526171a5eac623a09faa0ce7bb`, dirty true; source SHA-256
+`1fde73e7c18c78416c7d50ef641b0cb5a2dc56341792188b1711e72bcfdab2c0`; candidate SHA-256 `24f7530f9509165302a26d09da6087d9e2ee3742d1c2b289a0169fb53df07228`;
+harness SHA-256 `37c0507961cc657a286a6cf8534f6b6520525399190706367a980c66efd6ab1f`.
+
+806 Rust tests pass (19 ignored), 700 frontend tests, 132 native policy tests,
+lint/type checks, Clippy with warnings denied, zero blocking Semgrep findings,
+error-hardening guard and strict documentation consistency pass. NT4-2 is complete
+for this declared Linux/provider scope.

@@ -93,3 +93,22 @@ fn large_directory_workloads() {
         );
     }
 }
+
+#[test]
+fn directory_rejects_unsupported_filename_encoding_without_lossy_aliases() {
+    use std::os::unix::ffi::OsStrExt;
+    let fixture = Fixture::new("invalid-filename");
+    let root = fixture.entries(1, false);
+    let raw = root.join(std::ffi::OsStr::from_bytes(b"invalid-\xff"));
+    fs::write(&raw, b"invalid-name bytes").unwrap();
+    fs::write(root.join("invalid-\u{fffd}"), b"different valid filename").unwrap();
+    let error = collect_directory(&root, &HashSet::new(), None)
+        .err()
+        .expect("No lossy listing");
+    assert!(error.to_string().contains("filename is not valid UTF-8"));
+    assert_eq!(fs::read(raw).unwrap(), b"invalid-name bytes");
+    assert_eq!(
+        fs::read(root.join("invalid-\u{fffd}")).unwrap(),
+        b"different valid filename"
+    );
+}

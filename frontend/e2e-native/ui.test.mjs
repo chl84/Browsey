@@ -237,3 +237,17 @@ test('refresh reconciliation accepts captured warning without a persistent pill 
     }
   } finally { globalThis.document = original }
 })
+
+test('readiness refuses a visible global error notice even when the shell is idle', async () => {
+  const original = globalThis.document
+  const notice = { textContent: 'Error: A filename is not valid UTF-8', getClientRects: () => [{}] }
+  globalThis.document = {
+    querySelectorAll: selector => selector.includes('.notice-error') ? [notice] : [],
+    querySelector: selector => selector.startsWith('main.shell') ? {} : null,
+  }
+  try {
+    const ui = new NativeUi({ execute: async (action, expected) => action(expected),
+      waitUntil: async predicate => assert.equal(await predicate(), true) }, [])
+    await assert.rejects(ui.idle(), error => error.failureKind === 'APP_REPORTED_ERROR' && /UTF-8/.test(error.message))
+  } finally { globalThis.document = original }
+})

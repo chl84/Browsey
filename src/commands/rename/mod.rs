@@ -212,6 +212,48 @@ mod tests {
     }
 
     #[test]
+    fn unsafe_rename_leaf_is_rejected_before_any_batch_mutation() {
+        let dir = uniq_path("invalid-leaf");
+        fs::create_dir_all(dir.join("nested")).unwrap();
+        let first = dir.join("first.txt");
+        let second = dir.join("second.txt");
+        write_file(&first, b"first bytes");
+        write_file(&second, b"second bytes");
+        let state = UndoState::default();
+        for name in ["nested/renamed.txt", "bad\\name", ".", "..", "bad\0name"] {
+            assert!(rename_entry_impl(second.to_str().unwrap(), name, &state)
+                .unwrap_err()
+                .to_string()
+                .contains("single filename"));
+            assert!(rename_entries_impl(
+                vec![
+                    RenameEntryRequest {
+                        path: first.to_str().unwrap().into(),
+                        new_name: "safe.txt".into()
+                    },
+                    RenameEntryRequest {
+                        path: second.to_str().unwrap().into(),
+                        new_name: name.into()
+                    },
+                ],
+                &state
+            )
+            .is_err());
+            assert_eq!(fs::read(&first).unwrap(), b"first bytes");
+            assert_eq!(fs::read(&second).unwrap(), b"second bytes");
+            assert!(!dir.join("safe.txt").exists());
+            assert!(!dir.join("nested/renamed.txt").exists());
+        }
+        assert!(rename_entry_impl(
+            second.to_str().unwrap(),
+            dir.join("absolute.txt").to_str().unwrap(),
+            &state
+        )
+        .is_err());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn rename_preserves_significant_whitespace_through_undo_redo() {
         let dir = uniq_path("whitespace");
         fs::create_dir_all(&dir).unwrap();

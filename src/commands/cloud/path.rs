@@ -59,9 +59,9 @@ impl CloudPath {
                 "Cloud entry name must not be empty",
             ));
         }
-        if name.contains('/') || name.contains('\\') {
+        if name.contains(['/', '\\', '\0']) {
             return Err(CloudPathParseError::new(
-                "Cloud entry name must not contain path separators",
+                "Cloud entry name must not contain path separators or NUL",
             ));
         }
         if name == "." || name == ".." {
@@ -288,6 +288,7 @@ mod tests {
         );
         assert!(root.child_path("nested/name").is_err());
         assert!(root.child_path(r"nested\\name").is_err());
+        assert!(root.child_path("invalid\0name").is_err());
     }
 
     #[test]

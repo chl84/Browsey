@@ -68,10 +68,12 @@ export const createRenameModal = (deps: Deps) => {
   }
 
   const confirm = async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed) return false
     const current = get(state)
     if (!current.target || busy) return false
+    if (!name.trim()) {
+      state.update(s => ({ ...s, error: 'New name cannot be empty' }))
+      return false
+    }
     busy = true
     state.update((s) => ({ ...s, error: '' }))
     const progressEvent = `rename-progress-${Date.now()}-${Math.random().toString(16).slice(2)}`

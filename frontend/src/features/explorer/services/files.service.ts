@@ -10,7 +10,7 @@ const isCloudPath = (path: string) => path.startsWith('rclone://')
 
 const joinCloudPath = (dir: string, name: string) => `${dir.replace(/\/+$/, '')}/${name}`
 
-const creationName = (name: string, kind: 'file' | 'folder') => {
+const entryName = (name: string, kind: 'file' | 'folder' | 'entry') => {
   const trimmed = name.trim()
   if (!trimmed || /[/\\\0]/.test(trimmed) || trimmed === '.' || trimmed === '..') {
     throw new Error(`Invalid ${kind} name`)
@@ -31,6 +31,7 @@ export const openEntry = (entry: Entry, options?: { progressEvent?: string }) =>
 }
 
 export const renameEntry = async (path: string, newName: string) => {
+  newName = entryName(newName, 'entry')
   if (!isCloudPath(path)) {
     return invoke<string>('rename_entry', { path, newName })
   }
@@ -40,6 +41,7 @@ export const renameEntry = async (path: string, newName: string) => {
 }
 
 export const renameEntries = async (entries: Array<{ path: string; newName: string }>) => {
+  entries = entries.map(entry => ({ ...entry, newName: entryName(entry.newName, 'entry') }))
   if (entries.some((entry) => isCloudPath(entry.path))) {
     if (!entries.every((entry) => isCloudPath(entry.path))) throw new Error('Rename local and cloud entries separately')
     const result = await invoke<{ renamed: string[]; error: string | null }>('rename_cloud_entries', { entries })
@@ -81,7 +83,7 @@ export const previewRenameEntries = (
 }
 
 export const createFolder = async (base: string, name: string) => {
-  const leaf = creationName(name, 'folder')
+  const leaf = entryName(name, 'folder')
   if (!isCloudPath(base)) {
     return invoke<string>('create_folder', { path: base, name: leaf })
   }
@@ -91,7 +93,7 @@ export const createFolder = async (base: string, name: string) => {
 }
 
 export const createFile = (base: string, name: string) => {
-  const leaf = creationName(name, 'file')
+  const leaf = entryName(name, 'file')
   if (isCloudPath(base)) {
     return invoke<string>('create_cloud_file', { path: joinCloudPath(base, leaf) })
   }

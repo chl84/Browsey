@@ -246,6 +246,20 @@ fn scan_search(
             }
 
             let path = entry.path();
+            if path.to_str().is_none() {
+                let error = SearchError::new(
+                    SearchErrorCode::UnsupportedFilenameEncoding,
+                    "A filename is not valid UTF-8; Browsey cannot represent it safely",
+                );
+                send(
+                    Vec::new(),
+                    true,
+                    Some(error.code_str_value().to_string()),
+                    Some(error.to_string()),
+                    None,
+                );
+                return;
+            }
             let file_type = match entry.file_type() {
                 Ok(ft) => ft,
                 Err(_) => continue,

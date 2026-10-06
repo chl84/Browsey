@@ -289,6 +289,12 @@ fn collect_directory(
             }
         };
         let path = entry.path();
+        if path.to_str().is_none() {
+            return Err(ListingError::new(
+                ListingErrorCode::UnsupportedFilenameEncoding,
+                "A filename is not valid UTF-8; Browsey cannot represent it safely",
+            ));
+        }
         let key = normalize_key_for_db(&path);
         let starred = star_set.contains(&key);
         let file_type = entry.file_type().ok();

@@ -370,9 +370,14 @@ Prioritize these data-safety cases before cosmetic UI coverage.
   preserves significant whitespace. This MTP device explicitly rejects quoted
   names without side effects. Emoji typing remains excluded. See the
   [NT4 record](../operations/linux-release/runs/2026-10-06-native-name-data-edges.md).
-- [ ] **NT4-2** Cover reserved names, name/path-length limits and unsupported Unix
+- [x] **NT4-2** Cover reserved names, name/path-length limits and unsupported Unix
   filename encodings where applicable. Require explicit rejection or documented
   representation, never silent corruption.
+  Scoped native PASS: 20 parts on all five providers, with actual reserved-name
+  outcomes and explicit overlong-name/rename-component rejection. Local cases
+  verify 255/256 UTF-8 bytes, >4096-byte paths and readable listing/search errors
+  for unsupported name bytes. Invalid names never become actionable lossy aliases;
+  unchanged recovery bytes are retained under recorded UTF-8 names. See the NT4 record.
 - [ ] **NT4-3** Use zero-byte, one-byte, generated binary and differently sized
   files; verify digests/readback, not just size. Agree limits before large runs;
   sparse local files do not establish remote transfer performance.

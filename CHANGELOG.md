@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Reject unsupported Unix filename encoding explicitly in directory listing and
+  recursive search, preserving the original files instead of exposing lossy
+  aliases. Validate single/batch rename leaf names before mutation and explain
+  empty rename drafts. Verify 20 scoped native reserved-name, encoding and
+  name/path-boundary parts across all five storage types.
+
 - Preserve significant whitespace in created and renamed filenames instead of
   silently trimming it. Verify 29 scoped native name/URI parts on all five
   storage types, including emoji/combining Unicode, literal URI characters and

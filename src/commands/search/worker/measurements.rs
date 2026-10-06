@@ -113,3 +113,38 @@ fn recursive_search_workloads() {
         );
     }
 }
+
+#[test]
+fn recursive_search_rejects_unsupported_filename_encoding_without_aliasing() {
+    use std::os::unix::ffi::OsStrExt;
+    let fixture = Fixture::new("invalid-search-filename");
+    let root = fixture.entries(1, false);
+    let raw = root.join(std::ffi::OsStr::from_bytes(b"invalid-\xff"));
+    std::fs::write(&raw, b"invalid-name bytes").unwrap();
+    let query = parse_query("invalid").unwrap();
+    let mut terminal = Vec::new();
+    scan_search(
+        root,
+        &query,
+        Some("invalid"),
+        &HashSet::new(),
+        || false,
+        |entries, done, code, error, _| {
+            assert!(entries.iter().all(|entry| !entry.path.contains('\u{fffd}')));
+            if done {
+                terminal.push((code, error));
+            }
+        },
+    );
+    assert_eq!(terminal.len(), 1);
+    assert_eq!(
+        terminal[0].0.as_deref(),
+        Some("unsupported_filename_encoding")
+    );
+    assert!(terminal[0]
+        .1
+        .as_deref()
+        .unwrap()
+        .contains("filename is not valid UTF-8"));
+    assert_eq!(std::fs::read(raw).unwrap(), b"invalid-name bytes");
+}

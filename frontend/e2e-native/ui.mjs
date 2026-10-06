@@ -25,7 +25,7 @@ export class NativeUi {
     await this.browser.waitUntil(async () => {
       const state = await this.browser.execute(expected => {
         const visible = node => node.getClientRects().length > 0
-        const errors = [...document.querySelectorAll('.pill.error')].filter(visible).map(node => node.textContent.trim())
+        const errors = [...document.querySelectorAll('.pill.error, .notice-error')].filter(visible).map(node => node.textContent.trim())
         for (const node of [...document.querySelectorAll('.toast[role="status"]')].filter(visible)) {
           const message = node.textContent.trim()
           if (/^(?:(?:paste|copy|cut|move(?: to trash)?|rename|delete|create|undo|redo|refresh|load|navigation|search)\s+failed\b|failed to\b|could not\b|error\b)/i.test(message)) errors.push(message)

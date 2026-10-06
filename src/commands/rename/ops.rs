@@ -19,6 +19,11 @@ fn build_rename_target(from: &Path, new_name: &str) -> RenameResult<PathBuf> {
     if new_name.trim().is_empty() {
         return Err(RenameError::invalid_input("New name cannot be empty"));
     }
+    if new_name.contains(['/', '\\', '\0']) || matches!(new_name.trim(), "." | "..") {
+        return Err(RenameError::invalid_input(
+            "New name must be a single filename without path separators or relative segments",
+        ));
+    }
     let parent = from
         .parent()
         .ok_or_else(|| RenameError::new(RenameErrorCode::RenameFailed, "Cannot rename root"))?;
