@@ -12,6 +12,7 @@ export function requirements(item) {
     navigation: ['directory-read', 'owned-navigation', 'history-navigation', 'breadcrumb-navigation', 'refresh',
       `ui-${item.id.split('-')[1]}-navigation`, 'view-switch'] }
   return Object.fromEntries(item.providers.map((provider, index) => {
+    if (operation === 'provider') return [provider, ['owned-provider-behavior', 'independent-source-preservation', 'explicit-refresh', 'bounded-fixtures']]
     if (operation === 'links') return [provider, ['owned-relative-broken-link-list-grid', 'explicit-symlink-clipboard-rejection', 'independent-hardlink-copy', 'same-inode-hardlink-move', 'owned-link-identity-digests', 'released-task-callbacks']]
     if (operation === 'trees') return [provider, item.id === 'trees-virtual-local' ? ['bounded-200-entry-list', 'virtualized-selection', 'all-selected-copy-digests', 'return-small-response', 'released-task-callbacks'] : ['reduced-device-fixture-first', 'empty-deep-wide-copy', 'bounded-independent-tree-digests', 'recursive-search-response', 'released-task-callbacks']]
     if (operation === 'contents') return [provider, ['zero-one-byte-binary-readback', 'sha256-byte-digests', 'real-copy-move', 'independent-source-destination-trees', 'released-task-callbacks', ...(item.providers.length === 1 || index === 0 ? ['successful-root-only-removal'] : [])]]

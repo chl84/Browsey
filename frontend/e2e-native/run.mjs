@@ -19,7 +19,7 @@ import { limits, limitsManifest } from './limits.mjs'
 import { contents, contentsManifest } from './contents.mjs'
 import { trees, treesManifest } from './trees.mjs'
 import { links, linksManifest } from './links.mjs'
-import { usb, usbManifest } from './providers.mjs'
+import { usb, usbManifest, network, networkManifest, networkProbes } from './providers.mjs'
 import { linkPlan } from './link-policy.mjs'
 import { editing, editingManifest } from './editing.mjs'
 import { overwrites, overwriteManifest, overwriteProbes } from './overwrite.mjs'
@@ -75,6 +75,7 @@ suites.limits = { run: limits, manifest: limitsManifest }
 suites.contents = { run: contents, manifest: contentsManifest }
 suites.trees = { run: trees, manifest: treesManifest }
 suites.links = { run: links, manifest: linksManifest }
+suites.network = { run: network, manifest: networkManifest }
 suites.usb = { run: usb, manifest: usbManifest }
 suites['usb-access'] = { run: (plan,fixture,ui,record)=>access(plan,fixture,ui,record,'usb'), manifest: plan=>{usbManifest(plan);return accessManifest(plan,'usb')} }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
@@ -227,7 +228,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -246,7 +247,7 @@ async function main() {
     } })
     session = { runId: plan.runId, dataRoots: plan.targets.map(target => target.files), profile,
       ...(options.suite === 'links' ? { links: linkPlan(plan) } : {}),
-      ...(options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
+      ...(options.suite === 'network' ? { probes: networkProbes(plan) } : options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
       ...(options.suite === 'batches' ? { faults: batchFaults(plan) } : options.suite === 'moves' ? { faults: moveFaults(plan) } : {}) }
     if (session.faults) report.faults = session.faults.map(fault => ({ id: fault.id,
       kind: fault.source ? 'owned-source-dispatch' : 'owned-list-refresh', status: 'NOT_RUN', uses: 0 }))

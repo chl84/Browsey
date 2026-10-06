@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Verify native SFTP/GVFS/FUSE operations, byte progress, cancellation and stale
+  paths. Permanently delete a bounded generated 32 MiB file without a local undo
+  content copy, preserving it when confirmation is cancelled.
+
 - Verify native USB behavior on the actual ext4 mount: file/folder operations,
   transfers in both local directions, Properties capabilities, real access
   denials and copying a read-only file with its supported mode preserved.

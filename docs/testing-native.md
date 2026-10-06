@@ -678,3 +678,22 @@ without locating/following outside aliases. Regular fixture APIs retain their
 single-link/no-symlink policy; the narrow hard-link reader validates known inode,
 owner and alias count before bounded byte reads. USB/network/cloud/mobile link
 behavior is deferred; directory links/outside referents are not authorized.
+
+
+## NT5 provider scope
+
+`--suite usb --targets local,usb` reuses authoritative foundation and Properties
+cases and checks supported real Unix access denial on the selected USB. Exact
+owned-path statfs/findmnt records its filesystem; no formatting is enabled.
+
+`--suite network --targets local,network` reuses foundation, progress and Cancel
+cases, and adds one exclusive generated **32 MiB** deletion fixture. Only this
+network deletion writer exceeds the normal 64 KiB cap: sequential 64 KiB blocks,
+60-second checked elapsed budget, no sparse/truncate operation, and partial data
+retained on failure. No content read/download is allowed for this fixture. Native
+permanent deletion and its cancelled confirmation are independently checked by
+owned-parent membership, sentinel bytes and unchanged private undo metadata.
+The source-bound GIO delete implementation uses metadata enumeration and delete,
+without opening file contents. This is no throughput or service-loss test. All
+normal fixture, read, retention and audit caps remain unchanged. Stale-path rename
+uses one externally renamed generated source with independent byte preservation.

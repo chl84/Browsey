@@ -13,3 +13,16 @@ test('USB acceptance requires a real selected USB, declares Unix access separate
   assert.ok(report.cases.some(c=>c.id==='move-usb-local'))
   for(const selected of [['local'],['local','usb','mobile']]) assert.throws(()=>usbManifest(makePlan(config(selected),plan.runId)))
 })
+
+test('network acceptance declares bounded large deletion and both progress/Cancel routes',async()=>{
+  const {networkManifest,networkProbes}=await import('./providers.mjs')
+  const plan=makePlan(config(['local','network']),'23456789-1234-4234-9234-123456789abc')
+  const report=createReport(plan,kinds,networkManifest(plan))
+  assert.deepEqual(report.cases.find(c=>c.id==='provider-network').parts.map(p=>p.id),['large-delete-cancel','large-delete-confirm','stale-rename','fresh-metadata'])
+  for(const direction of ['local-network','network-local']) {
+    assert.ok(report.cases.some(c=>c.id===`progress-${direction}`))
+    assert.ok(report.cases.some(c=>c.id===`cancel-${direction}-before`))
+  }
+  assert.ok(networkProbes(plan).every(p=>p.holdMs<=5000&&p.holdBytes<=65536))
+  assert.throws(()=>networkManifest(makePlan(config(['local','network','mobile']),plan.runId)))
+})

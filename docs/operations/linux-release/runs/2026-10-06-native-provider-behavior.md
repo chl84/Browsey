@@ -26,3 +26,32 @@ four teardown stages and private retention PASS; independent exact PID/start
 checks confirm all captured candidate/driver processes gone, and fresh exact-run
 retention audits pass. Failed evidence and every recovery file remain retained.
 Native policy tests (144), native lint and diff checks pass.
+
+## NT5-2: mounted SFTP/GVFS/FUSE behavior
+
+Run `052e69d7-f7c3-4f45-b5c8-d4d14fc7d394` is native PASS: foundation file/folder
+operations, local/network copy and move in both directions, nine progress parts,
+five real Cancel parts and four network-specific parts. The selected approved
+path identifies SFTP through GVFS/FUSE; no mount/account inventory is used.
+One exclusive generated 32 MiB `.bin` file is written in sequential 64 KiB blocks
+with a checked 60-second write budget. The default writer's 64 KiB cap stays
+unchanged. The large file is never opened for content read, preview or download.
+
+Cancelled permanent-delete confirmation preserves its size and owned-parent
+membership. Confirmed delete removes it from the independent FUSE parent and
+fresh UI. Private undo metadata remains exactly unchanged, with no content
+backup. Complementary source inspection ties this native operation to GIO's
+metadata/postorder-delete implementation, which has no file-content read. These
+checks do not measure network traffic, large-file throughput or mid-file Cancel.
+
+Renaming a source externally after opening its rename modal reproduces an actual
+stale-path error. Browsey rejects the operation explicitly, preserves the renamed
+source's bytes and sentinel, creates no requested output and refreshes to exact
+independent membership. Transfer task/callback resources release. Provider
+service loss, credentials changes and reconnect remain excluded.
+
+All four teardown stages, private retention and fresh exact-run audit pass;
+captured candidate/driver PID/start identities are independently confirmed gone.
+No fixture/recovery cleanup is performed. Native policy tests (148), native lint
+and strict docs checks pass. Candidate application source remains the NT4 final
+source; native harness changes are independently hashed in the private report.

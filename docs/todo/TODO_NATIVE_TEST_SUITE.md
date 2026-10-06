@@ -418,9 +418,14 @@ completed file-operation acceptance.
   local transfer directions, all Properties tabs, real read/write denials and
   mode-preserving read-only copy. A harness-only setup failure is retained;
   the access cases pass in a fresh run. See the NT5 provider record.
-- [ ] **NT5-2** Network: verify SFTP/GIO/FUSE consistency, large-file deletion
+- [x] **NT5-2** Network: verify SFTP/GIO/FUSE consistency, large-file deletion
   without content download, progress/cancellation and stale-path errors in the
   approved folder. Service-loss tests need a separate isolated fault scope.
+  Native PASS on configured SFTP/GVFS/FUSE: foundation operations, both transfer
+  directions, byte progress and real Cancel. A generated 32 MiB file survives
+  cancelled delete, then disappears without a local undo copy. Stale rename
+  fails explicitly with preserved moved-source bytes and correct refreshed
+  listing. Service loss remains outside this scope. See the NT5 record.
 - [ ] **NT5-3** Mobile: verify MTP operations, provider latency and late metadata/
   thumbnails, stable ordering and source preservation on failure. Do not enumerate
   personal camera folders.
