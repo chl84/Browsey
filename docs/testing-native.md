@@ -707,3 +707,36 @@ decode with non-zero dimensions. Complete grid samples preserve Name ascending
 order. File Properties matches independent PNG size/type/name, and every source
 image is verified byte-for-byte/SHA-256 afterwards. Recorded timings describe
 this mounted device, not a throughput threshold or locked-phone acceptance.
+
+`--suite cloud-provider --targets local,cloud` uses only the approved OneDrive
+root and copied private config. It checks F5 refresh, local/cloud/cloud transfer
+routes, four file-conflict choices and actual working-copy preparation/upload
+controls. `workspaceSource` declares one exact generated cloud file. Only this
+mode permits its materialization and bounded private working-copy inspection;
+local open/external editor launch stays denied. Upload authorization validates
+the private manifest, exact source/id/local-path binding and single-link owned
+file before dispatch. No other cloud file can be materialized by this exception.
+Generated local edits are explicitly uploaded under new names; original/source
+changes and local copies are preserved. The source-change case uses equal-size
+versions. All working storage/cache files stay in the private candidate profile.
+Explicit overwrite is checked by independent content reads, including equal-size
+versions with near-identical timestamps; an acknowledged transfer alone is
+insufficient. Replacement uses rclone's ignore-times option, scoped to each
+requested CLI/RC operation. New-file upload conflict protections remain enabled.
+
+Three exact-pair, one-use validation probes inject quota/rate/auth error messages
+through the existing provider classifier before writes. Real clipboard cut/paste
+controls must show failure, preserve sources/destinations, perform no mutation
+retry and release callbacks/tasks. Quota and rate messages currently classify as
+`rate_limited`; authentication as `auth_required`. This tests candidate error
+handling, not exhaustion of real quota, a live authentication outage or HTTP
+retry behavior. No remote credentials or service are changed. Normal production
+builds contain neither these probes nor the working-copy exception. Google
+Drive/Nextcloud and external editor behavior remain separately scoped.
+
+`--suite cloud-working --targets local,cloud` is an explicit fresh follow-up
+manifest: refresh/upload, Auto-rename, working-copy preparation/upload, overwrite
+and changed-original handling, plus the three owned cloud error probes. The
+cloud-cloud copy/download and Cancel/Skip prefix is excluded from this manifest,
+never marked PASS by omission. Prior completed scopes remain in their retained
+reports; no fixture, mutation or partially completed case is replayed in place.

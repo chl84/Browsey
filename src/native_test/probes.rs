@@ -14,6 +14,18 @@ enum FaultKind {
     NoSpace,
     Unavailable,
     Transient,
+    CloudQuota,
+    CloudRateLimited,
+    CloudAuthRequired,
+}
+
+impl FaultKind {
+    fn cloud(self) -> bool {
+        matches!(
+            self,
+            Self::CloudQuota | Self::CloudRateLimited | Self::CloudAuthRequired
+        )
+    }
 }
 
 #[derive(Deserialize)]
@@ -37,6 +49,8 @@ struct Observation {
     bytes: u64,
     held: bool,
     checkpoints: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fault_code: Option<String>,
 }
 struct Probe {
     plan: Plan,
@@ -68,7 +82,15 @@ fn validate(roots: &[String], plans: Vec<Plan>) -> Result<Vec<Probe>, &'static s
             || plan.hold_bytes > 65536
             || plan.hold_ms > 5000
             || plan.slow_ms > 500
-            || (plan.fault.is_some() && !matches!(plan.hold_phase.as_str(), "start" | "written"))
+            || plan.fault.is_some_and(|fault| {
+                if fault.cloud() {
+                    plan.hold_phase != "validation"
+                        || plan.hold_bytes != 0
+                        || !plan.target.starts_with("rclone://")
+                } else {
+                    !matches!(plan.hold_phase.as_str(), "start" | "written")
+                }
+            })
         {
             return Err("Invalid bounded native transfer probe");
         }
@@ -160,7 +182,8 @@ pub(crate) fn checkpoint(
 // provider service is modified. This entire module is absent from production.
 fn fault_for(probe: &Probe, phase: &str, bytes: u64) -> Option<std::io::Error> {
     let kind = probe.plan.fault?;
-    if phase != probe.plan.hold_phase
+    if kind.cloud()
+        || phase != probe.plan.hold_phase
         || bytes < probe.plan.hold_bytes
         || probe.fault_used.swap(true, Ordering::SeqCst)
     {
@@ -172,11 +195,51 @@ fn fault_for(probe: &Probe, phase: &str, bytes: u64) -> Option<std::io::Error> {
             std::io::ErrorKind::NotConnected,
             "Owned provider unavailable (native fault)",
         ),
+        FaultKind::CloudQuota | FaultKind::CloudRateLimited | FaultKind::CloudAuthRequired => {
+            return None
+        }
         FaultKind::Transient => std::io::Error::new(
             std::io::ErrorKind::ConnectionReset,
             "Owned transient I/O failure (native fault)",
         ),
     })
+}
+
+fn cloud_fault_for(probe: &Probe) -> Option<crate::commands::cloud::CloudCommandError> {
+    let kind = probe.plan.fault?;
+    if !kind.cloud()
+        || !probe.consumed.load(Ordering::SeqCst)
+        || probe.fault_used.swap(true, Ordering::SeqCst)
+    {
+        return None;
+    }
+    let message = match kind {
+        FaultKind::CloudQuota => "Quota exceeded (owned native provider fault)",
+        FaultKind::CloudRateLimited => "Rate limit exceeded (owned native provider fault)",
+        FaultKind::CloudAuthRequired => "Authentication failed (owned native provider fault)",
+        _ => return None,
+    };
+    let code =
+        crate::commands::cloud::providers::rclone::classify_rclone_failure_code(None, message);
+    probe
+        .observation
+        .lock()
+        .expect("native fault observation lock")
+        .fault_code = Some(crate::errors::domain::ErrorCode::as_code_str(code).to_owned());
+    Some(crate::commands::cloud::CloudCommandError::new(
+        code, message,
+    ))
+}
+
+pub(crate) fn cloud_fault(
+    source: &str,
+    target: &str,
+) -> Option<crate::commands::cloud::CloudCommandError> {
+    PROBES
+        .get()?
+        .iter()
+        .find(|probe| probe.plan.source == source && probe.plan.target == target)
+        .and_then(cloud_fault_for)
 }
 
 pub(crate) fn fault(source: &str, target: &str, phase: &str, bytes: u64) -> Option<std::io::Error> {
@@ -308,5 +371,44 @@ mod tests {
         observe(&probe, "written", 32768, &|| false);
         assert_eq!(probe.observation.lock().unwrap().bytes, 32768);
         assert!(!probe.observation.lock().unwrap().held);
+    }
+    #[test]
+    fn cloud_faults_are_exact_owned_prewrite_once_and_use_real_error_classification() {
+        let roots = vec!["/owned".to_owned(), "rclone://Test/owned".to_owned()];
+        for (fault, expected) in [
+            (
+                "cloud-quota",
+                crate::commands::cloud::CloudCommandErrorCode::RateLimited,
+            ),
+            (
+                "cloud-rate-limited",
+                crate::commands::cloud::CloudCommandErrorCode::RateLimited,
+            ),
+            (
+                "cloud-auth-required",
+                crate::commands::cloud::CloudCommandErrorCode::AuthRequired,
+            ),
+        ] {
+            let mut value = serde_json::json!({"id":"cloud-error","source":"/owned/source","target":"rclone://Test/owned/target","holdPhase":"validation","holdBytes":0,"holdMs":0,"slowMs":0,"fault":fault});
+            let probes =
+                validate(&roots, vec![serde_json::from_value(value.clone()).unwrap()]).unwrap();
+            let probe = &probes[0];
+            assert!(cloud_fault_for(probe).is_none());
+            observe(probe, "validation", 0, &|| false);
+            assert_eq!(cloud_fault_for(probe).unwrap().code(), expected);
+            assert!(cloud_fault_for(probe).is_none());
+            value["target"] = serde_json::json!("/owned/local-target");
+            assert!(
+                validate(&roots, vec![serde_json::from_value(value.clone()).unwrap()]).is_err()
+            );
+            value["target"] = serde_json::json!("rclone://Test/owned/target");
+            value["holdPhase"] = serde_json::json!("written");
+            assert!(
+                validate(&roots, vec![serde_json::from_value(value.clone()).unwrap()]).is_err()
+            );
+            value["holdPhase"] = serde_json::json!("validation");
+            value["source"] = serde_json::json!("/outside/file");
+            assert!(validate(&roots, vec![serde_json::from_value(value).unwrap()]).is_err());
+        }
     }
 }

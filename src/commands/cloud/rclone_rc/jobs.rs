@@ -289,6 +289,7 @@ mod tests {
                 "src/file.txt",
                 "work:",
                 "dst/file.txt",
+                false,
                 Some(&cancel),
             )
             .expect_err("forced copy job/status error should fail");

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Honour explicit cloud overwrite even when source and destination have equal
+  sizes and modification times. Force requested replacement in rclone CLI and
+  per-call RC transfers while preserving new-file conflict protections.
+
+- Verify native OneDrive refresh, transfers, all four file conflict choices and
+  private working-copy preparation/upload, including an equal-size changed
+  original. Check preserved cut sources and truthful failure with bounded,
+  candidate-only quota/rate/authentication faults.
+
 - Verify native MTP operations and source preservation on provider name failure,
   plus decoded cold/late image thumbnails, stable ordering, explicit refresh and
   generated-file metadata in the approved mobile test folder.

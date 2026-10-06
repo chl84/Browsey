@@ -237,6 +237,10 @@ impl RcloneCloudProvider {
                 .arg("--checksum")
                 .arg("--ignore-existing")
                 .arg("--error-on-no-transfer");
+        } else {
+            // Explicit replacement must not skip different content just
+            // because its size and modification time match the destination.
+            spec = spec.arg("--ignore-times");
         }
         self.cli
             .run_capture_text_with_cancel(spec, cancel)
@@ -365,6 +369,7 @@ impl RcloneCloudProvider {
                 RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
                     .arg(src.to_rclone_remote_spec())
                     .arg(local_dest.as_os_str())
+                    .arg("--ignore-times")
                     .local_destination_options(local_dest),
                 cancel,
             )
@@ -646,6 +651,7 @@ impl RcloneCloudProvider {
                     src.rel_path(),
                     &dst_fs,
                     dst.rel_path(),
+                    overwrite,
                     cancel,
                 ),
             };
@@ -692,6 +698,9 @@ impl RcloneCloudProvider {
         spec = spec
             .arg(src.to_rclone_remote_spec())
             .arg(dst.to_rclone_remote_spec());
+        if overwrite {
+            spec = spec.arg("--ignore-times");
+        }
         if (source_is_directory && mode == TransferMode::Copy) || merge_directory_move {
             spec = spec
                 .arg("--retries")

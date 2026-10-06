@@ -434,9 +434,15 @@ completed file-operation acceptance.
   preservation, cold/late generated image thumbnails, stable grid/list order
   and refreshed file Properties. No personal camera enumeration or locked-phone
   lifecycle claim. See the NT5 record.
-- [ ] **NT5-4** Cloud: verify OneDrive refresh, transfers, conflicts, working copies
+- [x] **NT5-4** Cloud: verify OneDrive refresh, transfers, conflicts, working copies
   and quota/rate/authentication errors using generated fixtures/private config.
   Google Drive/Nextcloud need separately approved exact roots and credentials.
+  Fresh OneDrive native PASS covers all fourteen declared parts. Fix explicit
+  overwrite skipping different equal-size/time content, verified by byte
+  readback and red/green backend regressions. Private working-copy preparation,
+  new-name upload and changed-original handling pass. Quota/rate/auth are exact
+  prewrite candidate faults; live outages and external editors remain excluded.
+  Failed attempts and their actual outcomes remain retained. See the NT5 record.
 - [ ] **NT5-5** Define a separately approved lifecycle mode for first connection,
   locked phone, reconnect, disappearing mounts and busy/ejected media. Foundation
   discovery/mount restrictions must not be silently removed; mounted-folder

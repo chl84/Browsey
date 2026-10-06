@@ -20,6 +20,7 @@ import { contents, contentsManifest } from './contents.mjs'
 import { trees, treesManifest } from './trees.mjs'
 import { links, linksManifest } from './links.mjs'
 import { usb, usbManifest, network, networkManifest, networkProbes, mobile, mobileManifest } from './providers.mjs'
+import {cloudProvider,cloudManifest,cloudProbes,cloudLocations,cloudWorking} from './cloud-provider.mjs'
 import { linkPlan } from './link-policy.mjs'
 import { editing, editingManifest } from './editing.mjs'
 import { overwrites, overwriteManifest, overwriteProbes } from './overwrite.mjs'
@@ -75,6 +76,8 @@ suites.limits = { run: limits, manifest: limitsManifest }
 suites.contents = { run: contents, manifest: contentsManifest }
 suites.trees = { run: trees, manifest: treesManifest }
 suites.links = { run: links, manifest: linksManifest }
+suites['cloud-working'] = { run: cloudWorking, manifest: plan=>cloudManifest(plan,'working') }
+suites['cloud-provider'] = { run: cloudProvider, manifest: cloudManifest }
 suites.mobile = { run: mobile, manifest: mobileManifest }
 suites.network = { run: network, manifest: networkManifest }
 suites.usb = { run: usb, manifest: usbManifest }
@@ -195,6 +198,8 @@ async function main() {
   notTested: ['Other keyboard layouts', 'Non-BMP Unicode text entry (native WebDriver drops emoji)',
     'Native drag/drop', 'Mount/connect/unplug', 'Trash/format', 'Progress/cancellation with large files',
     'Archive/password and broader transfer-conflict handling', 'Other platforms/distributions', 'Watcher behavior (disabled in scoped candidate)'] })
+  if (['cloud-provider','cloud-working'].includes(options.suite)) report.notTested.push('External editors (preparation only, launch disabled)', 'Real service quota/rate/auth outage (exact candidate faults only)', 'Google Drive/Nextcloud (no approved roots/credentials)')
+  if (options.suite === 'cloud-working') report.notTested.push('Cloud-cloud copy/download and conflict Cancel/Skip prefix (explicitly outside this follow-up manifest)')
   if (options.suite === 'links') report.notTested.push('Link behavior on USB/network/cloud/mobile', 'Directory symlinks and outside referents (not authorized)')
   if (options.fault) report.notTested.push('All UI file-operation acceptance (lifecycle fault scope)')
   if (options.suite === 'selection') report.notTested.push('Large-list virtualization on USB/network/cloud/mobile (local representative only)',
@@ -229,7 +234,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -247,8 +252,9 @@ async function main() {
       activeCreated = true
     } })
     session = { runId: plan.runId, dataRoots: plan.targets.map(target => target.files), profile,
+      ...(['cloud-provider','cloud-working'].includes(options.suite) ? { workspaceSource: cloudLocations(plan).source } : {}),
       ...(options.suite === 'links' ? { links: linkPlan(plan) } : {}),
-      ...(options.suite === 'network' ? { probes: networkProbes(plan) } : options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
+      ...(['cloud-provider','cloud-working'].includes(options.suite) ? { probes: cloudProbes(plan) } : options.suite === 'network' ? { probes: networkProbes(plan) } : options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
       ...(options.suite === 'batches' ? { faults: batchFaults(plan) } : options.suite === 'moves' ? { faults: moveFaults(plan) } : {}) }
     if (session.faults) report.faults = session.faults.map(fault => ({ id: fault.id,
       kind: fault.source ? 'owned-source-dispatch' : 'owned-list-refresh', status: 'NOT_RUN', uses: 0 }))

@@ -3,6 +3,7 @@
 use serde_json::Value;
 pub(crate) mod links;
 pub(crate) mod probes;
+mod workspaces;
 
 const FOLDER: &str = "ai_agent_testfolder";
 
@@ -468,6 +469,8 @@ mod enabled {
         probes: Vec<probes::Plan>,
         #[serde(default)]
         links: links::Plan,
+        #[serde(default)]
+        workspace_source: Option<String>,
     }
     static SESSION: OnceCell<Session> = OnceCell::new();
     static FAULTS: OnceCell<Vec<OwnedFault>> = OnceCell::new();
@@ -501,6 +504,7 @@ mod enabled {
             }
         }
         links::validate(&session.data_roots, &session.links)?;
+        workspaces::validate(&session.data_roots, session.workspace_source.as_deref())?;
         let faults = validate_faults(&session.data_roots, std::mem::take(&mut session.faults))?;
         probes::initialize(&session.data_roots, std::mem::take(&mut session.probes))?;
         let local_run = Path::new(&session.data_roots[0])
@@ -566,6 +570,12 @@ mod enabled {
             .map_err(|_| "Native-test session already initialized")
     }
 
+    pub(crate) fn working_copies_enabled() -> bool {
+        SESSION
+            .get()
+            .is_some_and(|session| session.workspace_source.is_some())
+    }
+
     pub(crate) fn intercept(invoke: Invoke) -> Option<Invoke> {
         let session = SESSION
             .get()
@@ -604,8 +614,17 @@ mod enabled {
             return None;
         }
         let result = match invoke.message.payload() {
-            InvokeBody::Json(body) => authorize_io(&session.data_roots, command, body, |raw| {
-                links::inspect(&session.links, Path::new(raw))
+            InvokeBody::Json(body) => workspaces::authorize(
+                &session.data_roots,
+                Path::new(&session.profile),
+                session.workspace_source.as_deref(),
+                command,
+                body,
+            )
+            .unwrap_or_else(|| {
+                authorize_io(&session.data_roots, command, body, |raw| {
+                    links::inspect(&session.links, Path::new(raw))
+                })
             }),
             _ => Err("Native-test IPC must use JSON"),
         };
@@ -634,7 +653,7 @@ mod enabled {
 }
 
 #[cfg(feature = "native-test")]
-pub(crate) use enabled::{initialize, intercept};
+pub(crate) use enabled::{initialize, intercept, working_copies_enabled};
 
 #[cfg(test)]
 mod tests {

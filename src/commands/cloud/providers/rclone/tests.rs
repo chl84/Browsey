@@ -2593,3 +2593,98 @@ fn cloud_root_entries_reject_without_listing_or_mutating_remote_contents() {
         }
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn explicit_upload_overwrites_equal_size_time_content() {
+    let sandbox = FakeRcloneSandbox::new();
+    fs::write(sandbox.root.join("metadata-fast-check"), b"enabled").unwrap();
+    let source = sandbox.root.join("local-source.txt");
+    fs::write(&source, b"new-0000").unwrap();
+    sandbox.write_remote_file("work", "dst/file.txt", "old-0000");
+    let destination = sandbox.remote_path("work", "dst/file.txt");
+    for path in [&source, &destination] {
+        fs::File::open(path)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
+            )
+            .unwrap();
+    }
+    sandbox
+        .provider()
+        .upload_file_with_progress(
+            &source,
+            &cloud_path("rclone://work/dst/file.txt"),
+            "overwrite",
+            None,
+            |_, _| {},
+        )
+        .unwrap();
+    assert_eq!(fs::read(&destination).unwrap(), b"new-0000");
+    assert_eq!(fs::read(&source).unwrap(), b"new-0000");
+    let error = sandbox
+        .provider()
+        .upload_new_file(&source, &cloud_path("rclone://work/dst/file.txt"), None)
+        .unwrap_err();
+    assert_eq!(error.code(), CloudCommandErrorCode::DestinationExists);
+    assert_eq!(fs::read(destination).unwrap(), b"new-0000");
+}
+#[cfg(unix)]
+#[test]
+fn explicit_cloud_copy_overwrites_equal_size_time_content() {
+    let sandbox = FakeRcloneSandbox::new();
+    fs::write(sandbox.root.join("metadata-fast-check"), b"enabled").unwrap();
+    sandbox.write_remote_file("work", "src/file.txt", "new-0000");
+    sandbox.write_remote_file("work", "dst/file.txt", "old-0000");
+    let source = sandbox.remote_path("work", "src/file.txt");
+    let destination = sandbox.remote_path("work", "dst/file.txt");
+    for path in [&source, &destination] {
+        fs::File::open(path)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
+            )
+            .unwrap();
+    }
+    sandbox
+        .provider()
+        .copy_entry(
+            &cloud_path("rclone://work/src/file.txt"),
+            &cloud_path("rclone://work/dst/file.txt"),
+            true,
+            false,
+            None,
+        )
+        .unwrap();
+    assert_eq!(fs::read(destination).unwrap(), b"new-0000");
+    assert_eq!(fs::read(source).unwrap(), b"new-0000");
+}
+#[cfg(unix)]
+#[test]
+fn explicit_download_replaces_equal_size_time_content() {
+    let sandbox = FakeRcloneSandbox::new();
+    fs::write(sandbox.root.join("metadata-fast-check"), b"enabled").unwrap();
+    sandbox.write_remote_file("work", "src/file.txt", "new-0000");
+    let source = sandbox.remote_path("work", "src/file.txt");
+    let destination = sandbox.root.join("local-target.txt");
+    fs::write(&destination, b"old-0000").unwrap();
+    for path in [&source, &destination] {
+        fs::File::open(path)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
+            )
+            .unwrap();
+    }
+    sandbox
+        .provider()
+        .download_file(
+            &cloud_path("rclone://work/src/file.txt"),
+            &destination,
+            None,
+        )
+        .unwrap();
+    assert_eq!(fs::read(destination).unwrap(), b"new-0000");
+    assert_eq!(fs::read(source).unwrap(), b"new-0000");
+}

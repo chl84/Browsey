@@ -363,6 +363,42 @@ fn mixed_execute_entirely_empty_directory_copy_preserves_roots_in_both_direction
 
 #[cfg(unix)]
 #[test]
+fn mixed_dispatch_overwrites_equal_size_time_content() {
+    let sandbox = FakeRcloneSandbox::new();
+    fs::write(sandbox.root.join("metadata-fast-check"), b"enabled").unwrap();
+    let source = sandbox.write_local_file("same-source.txt", "new-0000");
+    let target = sandbox.write_local_file("same-target.txt", "old-0000");
+    for path in [&source, &target] {
+        fs::File::open(path)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
+            )
+            .unwrap();
+    }
+    // Exercise the production CLI dispatch without accessing an account.
+    execute_rclone_transfer(
+        RcloneTransferContext {
+            cli: &sandbox.cli(),
+            cloud_remote_for_error_mapping: None,
+            cancel: None,
+            progress: None,
+        },
+        MixedTransferOp::Copy,
+        LocalOrCloudArg::Local(source.clone()),
+        LocalOrCloudArg::Local(target.clone()),
+        MixedTransferWriteOptions {
+            overwrite: true,
+            prechecked: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(fs::read(target).unwrap(), b"new-0000");
+    assert_eq!(fs::read(source).unwrap(), b"new-0000");
+}
+
+#[cfg(unix)]
+#[test]
 #[ignore = "requires real rclone; operates only on newly allocated local temporary files"]
 fn real_rclone_copy_command_contract_preserves_renames_and_empty_directories() {
     let sandbox = FakeRcloneSandbox::new();
@@ -409,6 +445,35 @@ fn real_rclone_copy_command_contract_preserves_renames_and_empty_directories() {
     );
     assert!(empty_target.is_dir());
     assert!(source.exists() && dir.exists() && empty_source.exists());
+
+    fs::write(&source, b"new-0000").unwrap();
+    fs::write(&target, b"old-0000").unwrap();
+    for path in [&source, &target] {
+        fs::File::open(path)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
+            )
+            .unwrap();
+    }
+    execute_rclone_transfer(
+        RcloneTransferContext {
+            cli: &cli,
+            cloud_remote_for_error_mapping: None,
+            cancel: None,
+            progress: None,
+        },
+        MixedTransferOp::Copy,
+        LocalOrCloudArg::Local(source.clone()),
+        LocalOrCloudArg::Local(target.clone()),
+        MixedTransferWriteOptions {
+            overwrite: true,
+            prechecked: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(fs::read(target).unwrap(), b"new-0000");
+    assert_eq!(fs::read(source).unwrap(), b"new-0000");
 }
 
 #[cfg(unix)]

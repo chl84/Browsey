@@ -165,6 +165,10 @@ pub(super) async fn execute_mixed_entry_to(
             "Transfer cancelled",
         ));
     }
+    #[cfg(feature = "native-test")]
+    if let Some(error) = crate::native_test::probes::cloud_fault(&src, &dst) {
+        return Err(map_cloud_error_to_transfer(error));
+    }
     let pair = match validate_mixed_transfer_pair(src, dst).await {
         Ok(pair) => pair,
         Err(err) => {
@@ -358,6 +362,9 @@ fn execute_rclone_transfer(
         .arg(dst.to_os_arg());
     if let Some(destination) = dst.local_path() {
         spec = spec.local_destination_options(destination);
+    }
+    if options.overwrite {
+        spec = spec.arg("--ignore-times");
     }
     if op == MixedTransferOp::Copy && dst.cloud_path().is_some() && !options.overwrite {
         // A destination can appear after our preflight. This is an additional

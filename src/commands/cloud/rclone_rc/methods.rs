@@ -32,6 +32,8 @@ fn local_upload_payload(spec: &RcCopyFileFromLocalProgressSpec<'_>) -> Value {
     if spec.refuse_replace {
         // Per-call config only: never change the daemon's global options.
         payload["_config"] = json!({"Immutable": true, "CheckSum": true, "IgnoreExisting": true});
+    } else {
+        payload["_config"] = json!({"IgnoreTimes": true});
     }
     payload
 }
@@ -48,7 +50,23 @@ fn local_download_payload(
         // Never modify the daemon's global flags or replay a failed write.
         destination["no_set_modtime"] = json!("true");
     }
-    json!({"srcFs": src_fs, "srcRemote": src_remote, "dstFs": destination, "dstRemote":dst_remote})
+    json!({"srcFs": src_fs, "srcRemote": src_remote, "dstFs": destination, "dstRemote":dst_remote,
+        "_config": {"IgnoreTimes": true}})
+}
+
+fn cloud_copy_payload(
+    src_fs: &str,
+    src_remote: &str,
+    dst_fs: &str,
+    dst_remote: &str,
+    overwrite: bool,
+) -> Value {
+    let mut payload =
+        json!({"srcFs": src_fs, "srcRemote": src_remote, "dstFs": dst_fs, "dstRemote": dst_remote});
+    if overwrite {
+        payload["_config"] = json!({"IgnoreTimes": true});
+    }
+    payload
 }
 
 impl RcloneRcClient {
@@ -177,14 +195,10 @@ impl RcloneRcClient {
         src_remote: &str,
         dst_fs: &str,
         dst_remote: &str,
+        overwrite: bool,
         cancel_token: Option<&AtomicBool>,
     ) -> Result<Value, RcloneCliError> {
-        let payload = json!({
-            "srcFs": src_fs,
-            "srcRemote": src_remote,
-            "dstFs": dst_fs,
-            "dstRemote": dst_remote,
-        });
+        let payload = cloud_copy_payload(src_fs, src_remote, dst_fs, dst_remote, overwrite);
         self.run_method_async_if_cancelable(
             RcloneRcMethod::OperationsCopyFile,
             payload,
@@ -289,7 +303,20 @@ mod tests {
         );
         assert_eq!(protected["dstRemote"], "target.txt");
         spec.refuse_replace = false;
-        assert!(local_upload_payload(&spec).get("_config").is_none());
+        assert_eq!(
+            local_upload_payload(&spec)["_config"],
+            json!({"IgnoreTimes": true})
+        );
+    }
+
+    #[test]
+    fn cloud_copy_force_is_per_call_and_only_for_explicit_overwrite() {
+        assert!(cloud_copy_payload("work:", "src", "work:", "dst", false)
+            .get("_config")
+            .is_none());
+        let overwrite = cloud_copy_payload("work:", "src", "work:", "dst", true);
+        assert_eq!(overwrite["_config"], json!({"IgnoreTimes": true}));
+        assert_eq!(overwrite["dstRemote"], "dst");
     }
 }
 
@@ -304,7 +331,7 @@ fn mtp_destination_rc_options_are_strings_scoped_to_the_destination_filesystem()
     );
     assert_eq!(mtp["dstFs"]["no_set_modtime"], "true");
     assert_eq!(mtp["srcFs"], "work:");
-    assert!(mtp.get("_config").is_none());
+    assert_eq!(mtp["_config"], json!({"IgnoreTimes": true}));
     let normal = local_download_payload("work:", "file", "/tmp/generated", "output");
     assert!(normal["dstFs"].get("no_set_modtime").is_none());
 }

@@ -321,6 +321,7 @@ PY_ALIAS
     ;;
   copy|copyto|move|moveto)
     immutable=0
+    ignore_times=0
     ignore_existing=0
     error_on_no_transfer=0
     create_empty_dirs=0
@@ -329,6 +330,7 @@ PY_ALIAS
     while [[ $idx -lt ${#args[@]} ]]; do
       case "${args[$idx]}" in
         --immutable) immutable=1; idx=$((idx + 1)) ;;
+        --ignore-times) ignore_times=1; idx=$((idx + 1)) ;;
         --checksum) idx=$((idx + 1)) ;;
         --retries|--low-level-retries) idx=$((idx + 2)) ;;
         --ignore-existing) ignore_existing=1; idx=$((idx + 1)) ;;
@@ -394,6 +396,12 @@ PY_ALIAS
     if [[ ! -e "$src" ]]; then
       echo "object not found" >&2
       exit 3
+    fi
+    # Opt-in regression model of rclone's size/mtime quick check, not a fake content check.
+    if [[ -f "$script_dir/metadata-fast-check" && "$ignore_times" -eq 0 && -f "$src" && -f "$dst" && ( "$subcmd" == copy || "$subcmd" == copyto ) ]]; then
+      if [[ "$(stat -c '%s:%Y' -- "$src")" == "$(stat -c '%s:%Y' -- "$dst")" ]]; then
+        exit 0
+      fi
     fi
     mkdir -p -- "$(dirname -- "$dst")"
     if [[ "$subcmd" == copy || "$subcmd" == copyto ]]; then

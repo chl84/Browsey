@@ -3,7 +3,7 @@ import {test} from 'node:test'
 import {makePlan,validateConfig,kinds} from './scope.mjs'
 import {createReport} from './report.mjs'
 import {usbManifest} from './providers.mjs'
-const config=selected=>validateConfig({schema:1,targets:Object.fromEntries(kinds.map(k=>[k,selected.includes(k)?`/${k}/ai_agent_testfolder`:null])),rcloneConfig:null})
+const config=selected=>validateConfig({schema:1,targets:Object.fromEntries(kinds.map(k=>[k,selected.includes(k)?k==='cloud'?'rclone://test/ai_agent_testfolder':`/${k}/ai_agent_testfolder`:null])),rcloneConfig:selected.includes('cloud')?'/local/ai_agent_testfolder/rclone.conf':null})
 test('USB acceptance requires a real selected USB, declares Unix access separately and refuses other providers',()=>{
   const plan=makePlan(config(['local','usb']),'23456789-1234-4234-9234-123456789abc')
   const report=createReport(plan,kinds,usbManifest(plan))
@@ -33,4 +33,13 @@ test('MTP acceptance declares thumbnail/metadata behavior plus source preservati
   assert.deepEqual(report.cases.find(c=>c.id==='provider-mobile').providers,['mobile'])
   assert.ok(report.cases.find(c=>c.id==='names-mobile').parts.some(p=>p.id==='quoted-name-rejection'))
   assert.throws(()=>mobileManifest(makePlan(config(['local','mobile','usb']),plan.runId)))
+})
+
+test('cloud provider acceptance binds working-copy source and candidate error probes to the selected generated paths',async()=>{
+  const {cloudManifest,cloudProbes,cloudLocations}=await import('./cloud-provider.mjs'),plan=makePlan(config(['local','cloud']),'23456789-1234-4234-9234-123456789abc')
+  const report=createReport(plan,kinds,cloudManifest(plan));assert.equal(report.cases.flatMap(c=>c.parts).length,14)
+  const probes=cloudProbes(plan),p=cloudLocations(plan);assert.equal(probes.length,3)
+  assert.ok(probes.every(probe=>probe.source.startsWith(p.errors+'/')&&probe.target.startsWith(p.to+'/')&&probe.holdPhase==='validation'&&probe.holdBytes===0))
+  assert.ok(p.source.startsWith(p.to+'/'))
+  assert.throws(()=>cloudManifest(makePlan(config(['local','cloud','mobile']),plan.runId)))
 })

@@ -124,6 +124,10 @@ fn materialize_and_open_cloud_file(
     cancel: Option<&AtomicBool>,
 ) -> CloudCommandResult<()> {
     let copy = prepare_working_copy(path, app, progress_event, cancel)?;
+    #[cfg(feature = "native-test")]
+    if crate::native_test::working_copies_enabled() {
+        return Ok(()); // Real preparation; this explicit owned mode never launches an editor.
+    }
     open_path_without_recent(std::path::Path::new(&copy.local_path)).map_err(|error| {
         CloudCommandError::new(
             CloudCommandErrorCode::TaskFailed,
