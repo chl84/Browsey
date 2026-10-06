@@ -223,3 +223,51 @@ finished local harness SHA-256 `c26d308a528101432b61d210512db5f2f5ef93f7e13e5369
 Clippy with warnings denied, zero blocking Semgrep findings, error-hardening guard
 and strict documentation consistency pass. Frontend app sources retain the 703-test
 verified NT4-3 baseline. NT4-4 is complete for the declared bounded scope.
+
+
+## NT4-5: exact owned local leaf links
+
+Declared representative scope: local Unix only, five parts: list/grid relative
+and broken link rendering, explicit clipboard copy rejection of each symlink,
+hard-link copy to an independent inode, and hard-link alias move retaining the
+original inode. Other providers' link capabilities remain DEFERRED; no directory
+or outside referent is authorized. These tests verify Browsey's existing
+unsupported-symlink clipboard feedback, not a new symlink transfer feature.
+
+The native-only guard is extended before functional fixtures: at most four
+symlink/group declarations, exact owned local paths, single-component sibling
+relative referents, no parent links, and exactly two known hard-link aliases
+(including one predeclared move slot). Owner/referent state, link spelling and
+all alias device/inode/counts are rechecked; unknown outside aliases fail from
+the link count without discovering/reading their paths. Traversal remains
+4096-entry/depth-32 bounded. Production builds exclude this guard.
+
+Fixtures contain a tiny owned text referent, a missing sibling referent, and six
+binary bytes under two known hard-link names. Independent no-follow metadata,
+whole membership and byte/digest checks preserve both link targets and unrelated
+source names after every part. Private captured link identities support exact-run
+post-teardown auditing. Default regular readers/metadata/credentials remain
+single-link/no-symlink; a narrow captured-group reader handles the two approved
+hard aliases. Presence of link-policy metadata refuses automated deletion,
+regardless of run age/status. No retained link/referent/recovery is deleted.
+Accepted run `867ce419-ebe2-44e0-bba6-99f6163b11bc`,
+2026-10-06T19:52:02.040Z–2026-10-06T19:52:21.551Z, passes all five declared parts and accessibility.
+Actual list columns identify both symlinks as Link; both clipboard attempts give
+Browsey's explicit unsupported-symlink feedback and preserve whole membership,
+referent/alias bytes and empty destinations. Hard-link copy creates a distinct
+single-link inode; moving the approved alias preserves the original inode and
+exactly two known names. All four teardown stages/private retention pass; every
+captured process is independently gone and a fresh exact-run link-aware audit passes.
+
+Baseline `e3335ff9fb9d07da692200457ee5a5aa3f2e4589`, dirty true; source SHA-256
+`d8a896228ce4205c83475d0fcb865ceec77272c7918408a02376e71fac709e0b`;
+candidate SHA-256 `1a32eb0e7d234ae861fd32da37b815192795bf6fb4440af73ae8955f2e4f563e`;
+harness SHA-256 `0e2bab84857b4f2561394efd777a06fe2918f39ba7ae0309da0e18b4006c598e`.
+811 Rust tests pass (19 ignored), 143 native policy tests, native lint/formatting,
+Clippy with warnings denied, zero blocking Semgrep findings including the newly
+tracked guard module, error-hardening guard and strict documentation consistency
+pass. Frontend app sources retain the verified 703-test baseline. NT4-5 is complete
+for the declared local Unix scope. The five NT4 sections establish 90 unique
+native parts; duplicated follow-up checks and stopped observations are not added
+to that count. Normal production build/push are recorded separately in the local
+ignored production artifact receipt.

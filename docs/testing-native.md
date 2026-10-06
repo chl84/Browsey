@@ -90,7 +90,10 @@ are small generated text/binary files, not personal data. No installed app is la
 replaced, restarted or controlled.
 
 The opt-in Cargo feature `native-test` adds a fail-closed IPC command/path guard.
-Unknown commands, implicit paths, traversal and local symlinks are rejected.
+Unknown commands, implicit paths and traversal are rejected. Local symlinks are
+rejected by default; only the explicit local `links` suite may declare exact
+owned sibling leaf referents. Parent/directory links and outside referents stay
+forbidden. Unknown hard-link aliases are rejected.
 Automatic mount/mobile discovery, system clipboard import/export, global trash,
 formatting, connection/mount actions and external application launches are not
 allowed. The directory watcher is disabled because its normal discovery/fallback
@@ -232,7 +235,8 @@ OneDrive descendant aliases (47 parts on all five providers). Unsafe transfers
 must show an explicit error within a bounded observation, and leave the entire
 generated tree unchanged. Same-parent copies create distinct targets. Synthetic
 production-core regressions cover canonical local parent aliases separately;
-real native fixtures never introduce symlinks. Cloud name reservation and mixed
+that guard suite does not introduce symlinks. The separate opt-in local link
+suite verifies exact generated leaf links without relaxing its default refusal. Cloud name reservation and mixed
 collision handling stop after 50 candidates; unknown writes never replay.
 `--suite guards-aliases-mobile` selects only both cloud aliases and the nine
 mobile parts for a scoped follow-up; it does not imply the omitted parts passed.
@@ -458,6 +462,11 @@ and regular files require `600`. A metadata-only post-teardown audit checks owne
 type, modes, hard links and budgets inside exactly this UUID run. AT-SPI's Unix
 socket can have mode `777`; its audited `700` ancestor directories prevent other
 users from reaching it. This exception does not relax regular-file permissions.
+The exact opt-in link suite additionally audits captured leaf-link inode/device,
+spelling, owner and owned referent state, and requires exactly two known hard-link
+aliases. Symlink mode 777 is confined below the private generated-data directories;
+metadata/credentials remain private regular single-link files. Link-policy runs
+are never eligible for automated cleanup.
 Private profiles can contain OAuth tokens; securely handle retained runs.
 
 New runs register an ownership nonce and approved-local-root hash in private,
@@ -513,6 +522,8 @@ requires a matching private schema-2 owner, schema-3 native PASS report, passing
 cases, confirmed four-step teardown and expired minimum retention. The recorded
 runner/driver/candidate process identities must all be gone. Runtime sockets
 also prevent cleanup because sidecar process ownership has not been established.
+Presence of `link-policy.json` prevents automated cleanup regardless of age/status;
+all captured links and their referents remain retained for explicit manual review.
 Cleanup rechecks
 the plan hash and each entry's identity, then unlinks entries in postorder,
 preserving owner/report metadata until other data is removed. It never deletes
@@ -654,3 +665,16 @@ whole byte/digest sets. Each stage checks released task/callback registries.
 Independent verification remains below 256 entries/depth eight; native dispatch
 traversal is limited to 4096 entries/depth 32. This is not an unbounded device
 stress or throughput claim.
+
+
+`--suite links --targets local` verifies list/grid rendering of two exact relative
+leaf links (one broken), explicit real clipboard rejection of each, independent
+hard-link copy and an alias move preserving the original inode/two known names.
+Referents and all approved alias slots stay below this run's local `files/`.
+The native IPC plan allows only those exact local paths/spellings; unknown links,
+parent links, changed/broken referent state and extra hard aliases remain refused.
+A private captured `link-policy.json` supports no-follow post-teardown auditing
+without locating/following outside aliases. Regular fixture APIs retain their
+single-link/no-symlink policy; the narrow hard-link reader validates known inode,
+owner and alias count before bounded byte reads. USB/network/cloud/mobile link
+behavior is deferred; directory links/outside referents are not authorized.

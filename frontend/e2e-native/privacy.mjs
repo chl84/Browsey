@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import * as fs from 'node:fs/promises'
 import { createHash, randomUUID } from 'node:crypto'
 import { child, noLinks } from './scope.mjs'
+import { validateLinkPolicy, verifyOwnedSymlink, verifyOwnedHardlink } from './link-policy.mjs'
 
 export const retentionPolicy = Object.freeze({ schema: 1, successDays: 7, maxRunBytes: 128 * 1024 * 1024,
   maxTotalBytes: 640 * 1024 * 1024, maxRuns: 96, maxEntries: 10_000, maxDepth: 32, auditMs: 10_000 })
@@ -69,15 +70,22 @@ function identity(stat, type) {
 
 export async function inspectTree(run, { policy = retentionPolicy, now = Date.now } = {}) {
   await noLinks(run, fs)
+  let linkPolicy = null
+  try { linkPolicy = validateLinkPolicy(run, await privateJson(child(run, 'link-policy.json'))) }
+  catch (error) { if (error.code !== 'ENOENT') throw error }
   const entries = []
   const deadline = now() + policy.auditMs
   let bytes = 0
   const walk = async (raw, relative, depth) => {
     assert.ok(now() <= deadline && depth <= policy.maxDepth && entries.length < policy.maxEntries,
       'Native audit depth/entry/time budget exceeded')
-    await noLinks(raw, fs)
+    await noLinks(relative ? raw.slice(0, raw.lastIndexOf('/')) : raw, fs)
     const stat = await fs.lstat(raw, { bigint: true })
-    assert.ok(!stat.isSymbolicLink(), 'Owned-run audit refuses symlinks')
+    if (stat.isSymbolicLink()) {
+      await verifyOwnedSymlink(linkPolicy, raw, stat)
+      entries.push({ path: relative, ...identity(stat, 'symlink') })
+      return
+    }
     assert.equal(Number(stat.uid), process.getuid(), 'Owned-run entry has a different owner')
     const type = stat.isDirectory() ? 'directory' : stat.isFile() ? 'file' : stat.isSocket() ? 'socket' : 'unsupported'
     assert.notEqual(type, 'unsupported', 'Owned-run audit refuses devices/FIFOs and unknown entry types')
@@ -90,7 +98,10 @@ export async function inspectTree(run, { policy = retentionPolicy, now = Date.no
       // Every containing directory (including files/) stays
       // mode 700; generated data remains inaccessible to other users. Metadata,
       // credentials, screenshots and profile files retain strict mode 600.
-      assert.equal(Number(stat.nlink), 1, 'Generated files cannot have other hard links')
+      if (Number(stat.nlink) > 1 || linkPolicy?.hardlinks.some(group => group.paths.includes(raw))) {
+        assert.ok(relative.startsWith('files/'), 'Only generated owned data may use declared hard links')
+        await verifyOwnedHardlink(linkPolicy, raw, stat)
+      } else assert.equal(Number(stat.nlink), 1, 'Generated files cannot have other hard links')
       assert.equal(Number(stat.mode) & 0o7000, 0, 'Generated files cannot have special permission bits')
     } else if (type !== 'socket') privateStat(stat, type === 'directory')
     // AT-SPI creates a mode-777 Unix socket even with umask 077. It contains

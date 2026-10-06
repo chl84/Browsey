@@ -18,6 +18,8 @@ import { names, namesManifest } from './names.mjs'
 import { limits, limitsManifest } from './limits.mjs'
 import { contents, contentsManifest } from './contents.mjs'
 import { trees, treesManifest } from './trees.mjs'
+import { links, linksManifest } from './links.mjs'
+import { linkPlan } from './link-policy.mjs'
 import { editing, editingManifest } from './editing.mjs'
 import { overwrites, overwriteManifest, overwriteProbes } from './overwrite.mjs'
 import { moves, moveManifest, moveProbes, moveFaults } from './moves.mjs'
@@ -71,6 +73,7 @@ suites.names = { run: names, manifest: namesManifest }
 suites.limits = { run: limits, manifest: limitsManifest }
 suites.contents = { run: contents, manifest: contentsManifest }
 suites.trees = { run: trees, manifest: treesManifest }
+suites.links = { run: links, manifest: linksManifest }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const candidate = path.join(repo, 'target/native-test/browsey')
 // Inherited by the scoped app/drivers only; no desktop/global permission change.
@@ -140,6 +143,8 @@ async function main() {
   }
   if (options.suite === 'interruption') assert.deepEqual(config.targets.map(t => t.kind), ['local'],
     'Owned process interruption requires --targets local without provider subprocesses')
+  if (options.suite === 'links') assert.deepEqual(config.targets.map(t => t.kind), ['local'],
+    'Owned leaf-link acceptance requires --targets local; other providers are deferred')
   const plan = makePlan(config, randomUUID())
   if (mode === '--plan') {
     console.log(JSON.stringify({ ...plan, note: 'Plan only: no target files were inspected or changed' }, null, 2))
@@ -185,6 +190,7 @@ async function main() {
   notTested: ['Other keyboard layouts', 'Non-BMP Unicode text entry (native WebDriver drops emoji)',
     'Native drag/drop', 'Mount/connect/unplug', 'Trash/format', 'Progress/cancellation with large files',
     'Archive/password and broader transfer-conflict handling', 'Other platforms/distributions', 'Watcher behavior (disabled in scoped candidate)'] })
+  if (options.suite === 'links') report.notTested.push('Link behavior on USB/network/cloud/mobile', 'Directory symlinks and outside referents (not authorized)')
   if (options.fault) report.notTested.push('All UI file-operation acceptance (lifecycle fault scope)')
   if (options.suite === 'selection') report.notTested.push('Large-list virtualization on USB/network/cloud/mobile (local representative only)',
     'Backend invocation receipts and repeated copy/paste submission (NT1-6)')
@@ -218,7 +224,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -236,6 +242,7 @@ async function main() {
       activeCreated = true
     } })
     session = { runId: plan.runId, dataRoots: plan.targets.map(target => target.files), profile,
+      ...(options.suite === 'links' ? { links: linkPlan(plan) } : {}),
       ...(options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
       ...(options.suite === 'batches' ? { faults: batchFaults(plan) } : options.suite === 'moves' ? { faults: moveFaults(plan) } : {}) }
     if (session.faults) report.faults = session.faults.map(fault => ({ id: fault.id,

@@ -1,6 +1,7 @@
 //! Fail-closed IPC boundary for opt-in native candidates, not a general sandbox.
 //! Production builds contain neither the test overrides nor the environment hook.
 use serde_json::Value;
+pub(crate) mod links;
 pub(crate) mod probes;
 
 const FOLDER: &str = "ai_agent_testfolder";
@@ -285,12 +286,12 @@ fn no_links(path: &Path) -> Result<(), &'static str> {
 }
 
 // Recursive operations must not encounter links hidden under an approved directory.
-#[cfg(any(feature = "native-test", test))]
+#[cfg(test)]
 fn no_tree_links(path: &Path, remaining: &mut usize) -> Result<(), &'static str> {
     no_tree_links_at_depth(path, remaining, 0)
 }
 
-#[cfg(any(feature = "native-test", test))]
+#[cfg(test)]
 fn no_tree_links_at_depth(
     path: &Path,
     remaining: &mut usize,
@@ -465,6 +466,8 @@ mod enabled {
         faults: Vec<FaultPlan>,
         #[serde(default)]
         probes: Vec<probes::Plan>,
+        #[serde(default)]
+        links: links::Plan,
     }
     static SESSION: OnceCell<Session> = OnceCell::new();
     static FAULTS: OnceCell<Vec<OwnedFault>> = OnceCell::new();
@@ -497,6 +500,7 @@ mod enabled {
                 }
             }
         }
+        links::validate(&session.data_roots, &session.links)?;
         let faults = validate_faults(&session.data_roots, std::mem::take(&mut session.faults))?;
         probes::initialize(&session.data_roots, std::mem::take(&mut session.probes))?;
         let local_run = Path::new(&session.data_roots[0])
@@ -601,8 +605,7 @@ mod enabled {
         }
         let result = match invoke.message.payload() {
             InvokeBody::Json(body) => authorize_io(&session.data_roots, command, body, |raw| {
-                no_links(Path::new(raw))?;
-                no_tree_links(Path::new(raw), &mut 4096)
+                links::inspect(&session.links, Path::new(raw))
             }),
             _ => Err("Native-test IPC must use JSON"),
         };

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Verify five native local Unix link cases: relative/broken link listing and
+  explicit clipboard rejection, independent hard-link copy and same-inode alias
+  move. Restrict test-only exceptions to exact owned paths/known aliases, capture
+  private link identities for no-follow audit and retain all link fixtures.
+  Complete the scoped NT4 names/data/tree/link run (90 unique native parts).
+
 - Verify 18 native bounded-tree/listing parts across all five storage types:
   reduced device fixtures, empty/deep/wide copies, recursive search with released
   resources and exact 200-file local virtual selection/copy digests. Bound native

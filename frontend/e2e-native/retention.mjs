@@ -149,6 +149,8 @@ export class RetentionStore {
   async #snapshot(config, runId, now) {
     const owned = await this.#owned(config, runId)
     const { target, owner, record } = owned
+    try { await fs.lstat(child(target.run, 'link-policy.json')); throw new Error('Owned link fixtures require explicit manual retention review; automated cleanup is refused') }
+    catch (error) { if (error.code !== 'ENOENT') throw error }
     assert.equal(record.state, 'RETAINED', 'Pending/uncertain runs preserve recovery data')
     assert.deepEqual(owner.selectedProviders, ['local'], 'Multi-provider recovery data and its local ownership anchor are retained')
     try { await fs.lstat(child(target.run, 'active.json')); throw new Error('Active run marker prevents cleanup') }

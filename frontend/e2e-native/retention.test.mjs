@@ -187,3 +187,12 @@ test('explicit uncertain-run review requires stopped processes and valid privacy
   await assert.rejects(f.store.plan(f.config, f.plan.runId, { now }), /Failed\/blocked/)
   await f.store.reserve(makePlan(f.config, randomUUID()))
 })
+
+
+test('link-policy runs retain every fixture and are never eligible for automated cleanup', async t => {
+  const f = await fixture(t)
+  await writePrivate(`${f.run}/link-policy.json`, '{}', { exclusive: true })
+  await assert.rejects(f.store.plan(f.config, f.plan.runId, { now }), /link fixtures.*cleanup is refused/)
+  assert.equal(await fs.readFile(`${f.run}/files/generated.txt`, 'utf8'), 'fixture recovery data')
+  assert.equal(await fs.readFile(`${f.run}/link-policy.json`, 'utf8'), '{}')
+})

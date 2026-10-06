@@ -395,9 +395,16 @@ Prioritize these data-safety cases before cosmetic UI coverage.
   first/last and copies all 200 one-byte files. Completed USB/network parts and
   fresh local/cloud/mobile/local follow-ups use the same app source/binary.
   Dispatch traversal stays bounded to 4096 entries/depth 32. See the NT4 record.
-- [ ] **NT4-5** Add broken/relative symlink and hard-link cases where supported.
+- [x] **NT4-5** Add broken/relative symlink and hard-link cases where supported.
   Referents must stay inside the owned run. Narrowly extend the currently
   rejecting guard before functional link tests; never allow outside referents.
+  Scoped native PASS: five local Unix parts verify list/grid Link representation,
+  explicit relative/broken-symlink clipboard rejection, independent hard-link
+  copy and same-inode alias move. Exact owned paths/targets and two known aliases
+  remain guarded; private captured identities support fresh no-follow audit.
+  Unknown/outside aliases and parent links are refused. Link-policy runs retain
+  every fixture and cannot be automatically cleaned up. Other providers' link
+  behavior remains deferred. See the NT4 record.
 
 ## Priority 5 Provider specific behavior
 
