@@ -24,6 +24,7 @@ import {startDesktop,fixtureLauncher} from './desktop.mjs'
 import {desktopApplications} from './desktop-apps.mjs'
 import {drag,dragManifest} from './drag.mjs'
 import {feedback,feedbackManifest} from './feedback.mjs'
+import {appearance,appearanceManifest,appearanceProbes} from './appearance.mjs'
 import {keyboard,keyboardManifest,keyboardProbes} from './keyboard.mjs'
 import {services,servicesManifest} from './desktop-services.mjs'
 import {desktopSuites} from './isolated.mjs'
@@ -89,6 +90,7 @@ suites.mobile = { run: mobile, manifest: mobileManifest }
 suites.network = { run: network, manifest: networkManifest }
 suites.drag = {run:drag,manifest:dragManifest}
 suites['drag-feedback'] = {run:feedback,manifest:feedbackManifest}
+suites.appearance={run:appearance,manifest:appearanceManifest}
 suites.keyboard={run:keyboard,manifest:keyboardManifest}
 suites['desktop-services'] = {run:services,manifest:servicesManifest}
 suites.usb = { run: usb, manifest: usbManifest }
@@ -248,7 +250,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['../../tests/support/native_fixture_x11.py','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['../../tests/support/native_fixture_x11.py','appearance.mjs','keyboard.mjs','desktop-services.mjs','feedback.mjs','desktop-apps.mjs','desktop-bootstrap.mjs','isolated.mjs','desktop.mjs','drag.mjs','cloud-provider.mjs', 'cloud-workspaces.mjs', 'mobile-thumbnails.mjs', 'provider-images.mjs', 'provider-fixtures.mjs', 'providers.mjs', 'links.mjs', 'link-policy.mjs', 'resources.mjs', 'trees.mjs', 'byte-tree.mjs', 'contents.mjs', 'limits.mjs', 'names.mjs', 'candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -269,7 +271,7 @@ async function main() {
       ...(options.suite==='desktop-services'?{desktop:'desktop-services'}:{}),
       ...(['cloud-provider','cloud-working'].includes(options.suite) ? { workspaceSource: cloudLocations(plan).source } : {}),
       ...(options.suite === 'links' ? { links: linkPlan(plan) } : {}),
-      ...(['cloud-provider','cloud-working'].includes(options.suite) ? { probes: cloudProbes(plan) } : options.suite === 'network' ? { probes: networkProbes(plan) } : options.suite === 'keyboard' ? {probes:keyboardProbes(plan)} : options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
+      ...(['cloud-provider','cloud-working'].includes(options.suite) ? { probes: cloudProbes(plan) } : options.suite === 'network' ? { probes: networkProbes(plan) } : options.suite === 'appearance' ? {probes:appearanceProbes(plan)} : options.suite === 'keyboard' ? {probes:keyboardProbes(plan)} : options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
       ...(options.suite === 'batches' ? { faults: batchFaults(plan) } : options.suite === 'moves' ? { faults: moveFaults(plan) } : {}) }
     if (session.faults) report.faults = session.faults.map(fault => ({ id: fault.id,
       kind: fault.source ? 'owned-source-dispatch' : 'owned-list-refresh', status: 'NOT_RUN', uses: 0 }))

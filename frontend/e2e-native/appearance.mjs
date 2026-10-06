@@ -1,0 +1,56 @@
+/* global document, getComputedStyle, innerWidth, innerHeight */
+import assert from 'node:assert/strict'
+import fs from 'node:fs/promises'
+import {createHash} from 'node:crypto'
+import {Key} from 'webdriverio'
+import {child} from './scope.mjs'
+import {recordPart} from './report.mjs'
+import {providerImages} from './provider-images.mjs'
+import {startThumbnailObservation,finishThumbnailObservation,waitThumbnails,assertThumbnailSnapshots} from './mobile-thumbnails.mjs'
+import {verifyByteTree} from './byte-tree.mjs'
+import {verifyTree} from './editing.mjs'
+import {ownedWindow,nativeInput} from './drag.mjs'
+import {progressLocations,progressProbes,beginPaste,endTransferObservation,waitActivityGone} from './progress.mjs'
+import {releasedResources} from './resources.mjs'
+const parts=['cold-loaded-grid','corrupt-unsupported-fallback','themes-densities','grid-zoom','late-image-metadata','grid-filter-reset','progress-modal-layout','preserved-images']
+export const appearanceManifest=plan=>{assert.deepEqual(plan.targets.map(t=>t.kind),['local']);return [{id:'desktop-appearance',name:'Private appearance and generated thumbnails',providers:['local'],partIds:parts}]}
+export const appearanceProbes=plan=>[{...progressProbes(plan)[0],holdMs:5000,slowMs:0}]
+async function captureThumbnails(ui,part) {
+  const samples=await finishThumbnailObservation(ui),raw=JSON.stringify(samples),artifact=part.id+'-thumbnails.json'
+  assert.ok(Buffer.byteLength(raw)<=1024*1024,'Bounded raw thumbnail artifact required')
+  await fs.writeFile(child(child(ui.desktop.local.run,'artifacts'),artifact),raw,{flag:'wx',mode:0o600})
+  part.observations={artifact,sha256:createHash('sha256').update(raw).digest('hex'),states:samples.length,pendingStates:samples.filter(s=>s.images.some(i=>!i.path.includes('/bad-')&&(!i.decoded||!i.thumbnail))).length}
+  return samples
+}
+async function settingsChoice(ui,filter,label) {
+  await ui.chord('s');const modal=await ui.browser.$('.settings-modal');await modal.waitForDisplayed({timeout:5000});await ui.fill(await modal.$('.settings-filter'),filter)
+  const combo=await modal.$('.combo-btn');await combo.waitForDisplayed({timeout:5000});assert.equal((await modal.$$('.combo-btn')).length,1,'A unique filtered setting is required');await combo.click();await(await modal.$(`.//li[@role="option" and normalize-space(.)="${label}"]`)).click()
+  await ui.browser.keys([Key.Escape]);if(await modal.isExisting())await ui.browser.keys([Key.Escape]);await modal.waitForExist({reverse:true,timeout:5000});await ui.idle()
+}
+async function geometry(ui,selector) {
+  const state=await ui.browser.execute(selector=>{const n=document.querySelector(selector),r=n.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height,viewport:[innerWidth,innerHeight],density:document.body.className,theme:document.documentElement.dataset.theme,source:document.documentElement.dataset.themeSource,background:getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()}},selector)
+  assert.ok(state.width>0&&state.height>0&&state.left>=0&&state.top>=0&&state.right<=state.viewport[0]+1&&state.bottom<=state.viewport[1]+1,'Visible layout must fit the native viewport');return state
+}
+async function zoom(ui,direction) {
+  const w=await ownedWindow(ui),s=await ui.handshake(ui.desktop.plan.runId),point=await ui.browser.execute(()=>{const r=document.querySelector('.grid').getBoundingClientRect();return [Math.round(r.left+r.width/2),Math.round(r.top+r.height/2)]})
+  return nativeInput(ui,'wheel',{pid:s.pid,executable:ui.desktop.candidate,data:ui.desktop.env.XDG_DATA_HOME,point:point.map((n,i)=>n+w.origin[i]),direction})
+}
+async function gridSize(ui) {return Number(await ui.browser.execute(()=>getComputedStyle(document.querySelector('.grid-container')).getPropertyValue('--grid-thumb-size').replace('px','')))}
+export async function appearance(plan,fixture,ui,record) {
+  await record('Private appearance and generated thumbnails',async result=>{
+    result.phase='setup';const base=child(plan.targets[0].files,'appearance'),expected=new Map()
+    for(let i=0;i<48;i++)expected.set(`image-${String(i).padStart(2,'0')}.png`,providerImages[i%2])
+    expected.set('bad-corrupt.png',Buffer.from('broken PNG\n'));expected.set('bad-unsupported.png',Buffer.from('716f696600000001000000010300fe1122330000000000000001','hex'))
+    await fixture.mkdir(base);for(const [name,bytes]of expected)await fixture.write(child(base,name),bytes)
+    await ownedWindow(ui,[0,0,1800,1000]);await ui.navigate(base);await ui.setView('list');await ui.sort('Name','asc')
+    const ordered=()=>[...expected.keys()].sort().map(n=>child(base,n)),images=()=>ordered().filter(p=>!p.includes('/bad-'))
+    await recordPart(result,'cold-loaded-grid',async part=>{result.phase='ui';await startThumbnailObservation(ui);const started=Date.now();try{await ui.setView('grid');await ui.listing(base,'grid',ordered(),{fileOrder:ordered()});await waitThumbnails(ui,images())}catch(e){await captureThumbnails(ui,part);throw e}const samples=await captureThumbnails(ui,part);part.elapsedMs=Date.now()-started;result.phase='verification';assertThumbnailSnapshots(samples,ordered(),images());assert.ok(samples.some(s=>s.images.some(i=>!i.path.includes('/bad-')&&(!i.decoded||!i.thumbnail))),'Actual pending thumbnail states must be observed');part.ui='ACKNOWLEDGED'})
+    await recordPart(result,'corrupt-unsupported-fallback',async part=>{result.phase='verification';part.fallbacks=await ui.browser.execute(()=>[...document.querySelectorAll('.grid [data-path]')].filter(n=>n.dataset.path.includes('/bad-')).map(n=>{const i=n.querySelector('img.icon');return {path:n.dataset.path,source:decodeURIComponent(i.src),decoded:i.complete&&i.naturalWidth>0}}));assert.equal(part.fallbacks.length,2);for(const f of part.fallbacks){assert.ok(f.decoded);assert.ok(!f.source.includes('/browsey/thumbs/'))}part.ui='ACKNOWLEDGED'})
+    await recordPart(result,'themes-densities',async part=>{result.phase='ui';part.layouts=[];for(const theme of ['Light','Dark'])for(const density of ['Compact','Cozy']){await settingsChoice(ui,'Style',theme);await settingsChoice(ui,'Density',density);const state=await geometry(ui,'.grid');assert.equal(state.theme,theme.toLowerCase());assert.equal(state.source,theme.toLowerCase());assert.ok(state.density.includes('density-'+density.toLowerCase()));await ui.listing(base,'grid',ordered(),{fileOrder:ordered()});part.layouts.push(state);await ui.browser.saveScreenshot(child(ui.desktop.local.run,'artifacts')+`/appearance-${theme}-${density}.png`)}assert.notEqual(part.layouts[0].background,part.layouts[2].background);part.ui='ACKNOWLEDGED'})
+    await recordPart(result,'grid-zoom',async part=>{result.phase='ui';const initial=await gridSize(ui);assert.equal(initial,96);part.sizes=[initial];for(const size of [128,160,192]){await zoom(ui,1);await ui.browser.waitUntil(async()=>await gridSize(ui)===size,{timeout:5000});part.sizes.push(await gridSize(ui));await geometry(ui,'.grid')}for(const size of [160,128,96]){await zoom(ui,-1);await ui.browser.waitUntil(async()=>await gridSize(ui)===size,{timeout:5000});part.sizes.push(await gridSize(ui))}await ui.listing(base,'grid',ordered(),{fileOrder:ordered()});await waitThumbnails(ui,images());part.ui='ACKNOWLEDGED'})
+    await recordPart(result,'late-image-metadata',async part=>{result.phase='setup';const name='image-48-late.png',raw=child(base,name);await fixture.write(raw,providerImages[1]);expected.set(name,providerImages[1]);result.phase='ui';await startThumbnailObservation(ui);try{await ui.refresh();await ui.listing(base,'grid',ordered(),{fileOrder:ordered()});await waitThumbnails(ui,images())}catch(e){await captureThumbnails(ui,part);throw e}const samples=await captureThumbnails(ui,part);assertThumbnailSnapshots(samples,ordered(),images());await ui.propertiesOpen(base,[raw]);let rows;await ui.browser.waitUntil(async()=>{rows=await ui.propertiesRows();return rows.Size?.includes(`${providerImages[1].length} B`)},{timeout:60_000});assert.equal(rows.Name,name);assert.equal(rows.Type,'file');part.metadata=rows;part.layout=await geometry(ui,'.properties-modal');await ui.closeProperties(base);part.ui='ACKNOWLEDGED'})
+    await recordPart(result,'grid-filter-reset',async part=>{result.phase='ui';await ui.setView('list');await ui.columnFilter('Name','A–F');await ui.listing(base,'list',ordered().filter(p=>p.includes('/bad-')));await ui.setView('grid');assert.ok(await(await ui.browser.$('[aria-label="Reset column filters"]')).isDisplayed());await ui.resetColumns();await ui.listing(base,'grid',ordered(),{fileOrder:ordered()});part.ui='ACKNOWLEDGED'})
+    await recordPart(result,'progress-modal-layout',async part=>{result.phase='setup';const p=progressLocations(plan,{from:'local',to:'local'},'file');await fixture.mkdir(p.from);await fixture.mkdir(p.to);await fixture.write(p.source,'layout\n');await ui.populateClipboard(p.from,[p.source],false);result.phase='ui';await beginPaste(ui,p.to);await(await ui.browser.$('.pill.progress')).waitForDisplayed({timeout:5000});part.progressLayout=await geometry(ui,'.pill.progress');await ui.chord('s');const modal=await ui.browser.$('.settings-modal');await modal.waitForDisplayed({timeout:5000});part.modalLayout=await geometry(ui,'.settings-modal');await ui.browser.keys([Key.Escape]);if(await modal.isExisting())await ui.browser.keys([Key.Escape]);await modal.waitForExist({reverse:true,timeout:5000});await ui.idle({resultPath:p.target});await waitActivityGone(ui);part.progress=await endTransferObservation(ui);assert.ok((await ui.handshake(plan.runId)).probes.find(x=>x.id===p.id)?.consumed);await verifyTree(fixture,p.from,new Map([[p.name,'layout\n']]));await verifyTree(fixture,p.to,new Map([[p.name,'layout\n']]));part.ui='ACKNOWLEDGED'})
+    await recordPart(result,'preserved-images',async part=>{result.phase='verification';part.tree=await verifyByteTree(fixture,base,expected);await releasedResources(ui,plan.runId);part.verification='INDEPENDENT_BINARY_DIGESTS';part.ui='NOT_SENT'})
+  },{id:'desktop-appearance',providers:['local']})
+}

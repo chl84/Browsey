@@ -53,7 +53,7 @@ def geometry(window):
     return {'id':window,'origin':[px.value,py.value],'size':[w.value,h.value]}
 
 try:
-    if command in ('window','place'):
+    if command in ('window','place','wheel'):
         p=payload['pid'];assert isinstance(p,int) and p>0
         assert os.path.realpath(f'/proc/{p}/exe') == payload['executable']
         with open(f'/proc/{p}/environ','rb') as f:assert ('XDG_DATA_HOME='+payload['data']).encode() in f.read().split(b'\0')
@@ -63,6 +63,18 @@ try:
         if command=='place':
             px,py,w,h=payload['bounds'];assert 0<=px<2000 and 0<=py<1100 and 300<=w<=2000 and 300<=h<=1100
             x.XMoveResizeWindow(d,window,px,py,w,h);x.XSetInputFocus(d,window,1,0);x.XSync(d,False);time.sleep(.15)
+        elif command=='wheel':
+            g=geometry(window);px,py=payload['point'];direction=payload['direction']
+            assert isinstance(px,int) and isinstance(py,int) and direction in (-1,1)
+            assert g['origin'][0]<=px<g['origin'][0]+g['size'][0] and g['origin'][1]<=py<g['origin'][1]+g['size'][1]
+            key=x.XKeysymToKeycode(d,0xffe3)
+            try:
+                x.XSetInputFocus(d,window,1,0);t.XTestFakeMotionEvent(d,-1,px,py,0)
+                t.XTestFakeKeyEvent(d,key,1,0);x.XFlush(d);time.sleep(.05)
+                button=4 if direction>0 else 5
+                t.XTestFakeButtonEvent(d,button,1,0);t.XTestFakeButtonEvent(d,button,0,0);x.XFlush(d);time.sleep(.2)
+            finally:
+                t.XTestFakeKeyEvent(d,key,0,0);x.XFlush(d)
         print(json.dumps(geometry(window)))
     elif command in ('drag','hold','release'):
         points=payload.get('points',[]);assert len(points)<=128

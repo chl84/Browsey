@@ -147,4 +147,34 @@ The final check follows the actual policy: focused Escape closes/restores the
 menu, and selecting a view closes it while the transfer continues. No view-switch
 focus policy was changed. One US keyboard layout is the accepted input scope.
 
+## NT6-5: private appearance, zoom and thumbnails
+
+Run `db4ffc74-3ad2-43a4-83c7-d423e320aba9` is native PASS: eight parts plus
+accessibility. A cold private cache displays 48 generated PNGs; actual pending
+valid-image states transition to decoded cache thumbnails without changing sorted
+order. Corrupt PNG bytes and a generated QOI stream under a PNG name retain
+usable fallback icons. Four real Settings combinations cover light/dark style
+and cozy/compact density, with observed classes/palette and retained screenshots.
+The XTest helper validates the exact app PID/executable/profile/window before
+real Ctrl-wheel input: sizes 96→128→160→192→160→128→96 are independently read
+from actual layout. No synthetic wheel event is used.
+
+A later generated PNG and explicit refresh verify stable order, decoded thumbnail
+and Properties name/type/independent byte size. Grid filter Reset restores every
+entry. Progress and Settings bounds fit the native 1800×1000 viewport during an
+actual declared slow transfer; it completes with exact preserved source and
+copied bytes. All 51 image/fallback files retain exact binary digests. Task and
+callback resources release. Teardown/namespace exit and strict retention pass
+(278 entries, 11,883,252 bytes). Native policy tests: 157 PASS. No product change
+was needed for this appearance scope; no global theme was read or changed.
+
+Cold-grid completion was observed after 435 ms on this host with this small
+workload; it is descriptive, not a regression budget. Raw thumbnail observations
+remain in bounded private artifacts with SHA-256 references, keeping the report
+below its existing one-MiB read limit. Earlier BLOCKED run
+`f15ce777-d325-46b1-934a-7fa6ae8058b4` retains its larger original report and all
+files/screenshots; the harness sent two Escape codes in one key sequence instead
+of separate presses for text blur and modal close. The corrected real input
+sequence passes in fresh runs. No report, permission or recovery data was altered.
+
 Remaining NT6 parts are not accepted by this record yet.

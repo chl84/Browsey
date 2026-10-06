@@ -475,7 +475,7 @@ external launches and discovery remain disabled by default.
 - [x] **NT6-4** Verify keyboard navigation, Tab order, focused Escape handling,
   modal focus restoration and accessible names through WebDriver/AT-SPI.
   Cover interacting menus/dialogs/tooltips and slow operations.
-- [ ] **NT6-5** Validate private-profile themes/densities, grid zoom and generated
+- [x] **NT6-5** Validate private-profile themes/densities, grid zoom and generated
   thumbnails under load: corrupt/unsupported images, late metadata, stable grid
   order, filter Reset and progress/modal layout. No global theme changes.
 - [ ] **NT6-6** Add fixture-only watcher tests after eliminating home fallback and

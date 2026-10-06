@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Verify native private-profile light/dark styles and cozy/compact density,
+  real Ctrl-wheel grid zoom, loaded/late decoded thumbnails, corrupt/unsupported
+  image fallback, filter Reset and progress/dialog layout with preserved bytes.
+
 - Give Properties a concise accessible dialog name and focus the main menu
   when it opens. Restore its opener before opening another dialog and handle
   Escape once. Verify native keyboard/focus behavior during a real transfer.
