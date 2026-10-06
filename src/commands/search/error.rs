@@ -102,6 +102,12 @@ impl From<crate::commands::fs::FsError> for SearchError {
     }
 }
 
+impl From<crate::commands::cloud::path::CloudPathParseError> for SearchError {
+    fn from(error: crate::commands::cloud::path::CloudPathParseError) -> Self {
+        Self::new(SearchErrorCode::InvalidPath, error.to_string())
+    }
+}
+
 impl From<crate::commands::cloud::CloudCommandError> for SearchError {
     fn from(error: crate::commands::cloud::CloudCommandError) -> Self {
         use crate::commands::cloud::CloudCommandErrorCode as CloudCode;

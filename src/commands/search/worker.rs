@@ -63,7 +63,7 @@ fn resolve_search_root(path: Option<String>) -> super::error::SearchResult<Searc
     if raw.starts_with("rclone://") {
         return crate::commands::cloud::path::CloudPath::parse(&raw)
             .map(SearchRoot::Cloud)
-            .map_err(|error| SearchError::new(SearchErrorCode::InvalidPath, error.to_string()));
+            .map_err(SearchError::from);
     }
     let target = expand_path(Some(raw)).map_err(SearchError::from)?;
     if !target.is_absolute() {
