@@ -120,4 +120,31 @@ binary, extracted only into ignored test tools (SHA-256
 `1a757a1ae88441c9fc6101c0750d86a1afb5cb7b2073a0ed98967c41dc292d20`);
 no system package or personal clipboard was changed.
 
+## NT6-4: keyboard, focus and accessible names
+
+Run `132ade44-9475-464d-8376-14935ad1e485` is native PASS: eight parts plus
+accessibility. Actual keys verify list/grid navigation, range selection and
+Escape, complete forward/reverse modal Tab cycles, first-Escape text blur then
+modal close, focus restoration, context-menu arrows/Home/Escape, Properties
+names via dynamic AT-SPI snapshots, tooltip Escape and main-menu Escape during
+an actual owned transfer. A declared five-second finalization hold keeps that
+real transfer observable; independent trees and a consumed checkpoint prove
+its result, and all task/listener resources release. All teardown, namespace
+exit and strict retention pass (55 entries, 755,124 bytes).
+
+Properties formerly exposed its entire tab strip as its accessible dialog name
+(raw run `56e90e9b-320e-47cc-a64e-03374f6566f4`). ModalShell now accepts an
+explicit accessible name for rich headers; Properties exposes exactly
+“Properties” while retaining individually named tabs. The main menu now focuses
+a control on opening, restores the opener before launching another dialog and
+stops Escape propagation so closing is requested once. Six focused unit tests
+pass; lint and frontend type checking pass.
+
+Intermediate slow-operation assertions wrongly assumed the menu remains open
+after changing view. Topbar intentionally closes it; those BLOCKED reports
+remain preserved, and their assertions do not establish a focus-stealing defect.
+The final check follows the actual policy: focused Escape closes/restores the
+menu, and selecting a view closes it while the transfer continues. No view-switch
+focus policy was changed. One US keyboard layout is the accepted input scope.
+
 Remaining NT6 parts are not accepted by this record yet.

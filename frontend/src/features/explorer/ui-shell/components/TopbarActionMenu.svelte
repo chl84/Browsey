@@ -23,6 +23,23 @@ import CheckboxIndicator from '../../../../shared/ui/CheckboxIndicator.svelte'
   let menuEl: HTMLDivElement | null = null
   let posX = 0
   let posY = 0
+  let wasOpen = false
+  let restoreTarget: HTMLElement | null = null
+
+  $: if (open && !wasOpen) {
+    wasOpen = true
+    restoreTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    void tick().then(() => {
+      if (open) menuEl?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+    })
+  } else if (!open && wasOpen) {
+    wasOpen = false
+    const target = restoreTarget
+    restoreTarget = null
+    void tick().then(() => {
+      if (target?.isConnected && document.activeElement === document.body) target.focus()
+    })
+  }
 
   const actions: Array<{ id: TopbarActionId; label: string; shortcut?: string }> = [
     { id: 'open-settings', label: 'Settings…', shortcut: 'Ctrl+S' },
@@ -34,6 +51,7 @@ import CheckboxIndicator from '../../../../shared/ui/CheckboxIndicator.svelte'
   ]
 
   const select = (id: TopbarActionId) => {
+    if (restoreTarget?.isConnected) restoreTarget.focus()
     onSelect(id)
   }
 
@@ -80,6 +98,7 @@ import CheckboxIndicator from '../../../../shared/ui/CheckboxIndicator.svelte'
       on:keydown={(e) => {
         if (e.key === 'Escape') {
           e.preventDefault()
+          e.stopPropagation()
           onClose()
         }
       }}

@@ -2,6 +2,17 @@ import { mount, unmount, tick } from 'svelte'
 import { expect, it } from 'vitest'
 import ModalShell from './ModalShell.svelte'
 
+it('uses an explicit accessible name without also labelling the dialog from its header', async () => {
+  const target = document.createElement('div'); document.body.append(target)
+  const modal = mount(ModalShell, { target, props: { open: true, title: 'Rich header', accessibleName: 'Properties' } })
+  await tick()
+  const dialog = target.querySelector('[role="dialog"]')!
+  expect(dialog.getAttribute('aria-label')).toBe('Properties')
+  expect(dialog.hasAttribute('aria-labelledby')).toBe(false)
+  expect(dialog.textContent).toContain('Rich header')
+  await unmount(modal); target.remove()
+})
+
 it('keeps focus on a stable collection while the old trigger awaits asynchronous removal', async () => {
   const collection = document.createElement('div'); collection.tabIndex = 0
   const trigger = document.createElement('button'), target = document.createElement('div')

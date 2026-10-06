@@ -152,7 +152,7 @@
 </script>
 
 {#if open}
-  <ModalShell open={open} onClose={onClose} modalClass="properties-modal" modalWidth="392px">
+  <ModalShell open={open} onClose={onClose} accessibleName="Properties" modalClass="properties-modal" modalWidth="392px">
     <svelte:fragment slot="header">
       <div class="properties-header-block">
         <div class="properties-header-title">Properties</div>

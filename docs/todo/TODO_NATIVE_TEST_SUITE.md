@@ -472,7 +472,7 @@ external launches and discovery remain disabled by default.
 - [x] **NT6-3** Add clipboard and trash/restore/purge tests only after separately
   approving and demonstrating desktop isolation. Private XDG directories alone
   do not prove a shared trash/clipboard service is isolated.
-- [ ] **NT6-4** Verify keyboard navigation, Tab order, focused Escape handling,
+- [x] **NT6-4** Verify keyboard navigation, Tab order, focused Escape handling,
   modal focus restoration and accessible names through WebDriver/AT-SPI.
   Cover interacting menus/dialogs/tooltips and slow operations.
 - [ ] **NT6-5** Validate private-profile themes/densities, grid zoom and generated

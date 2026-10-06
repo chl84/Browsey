@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Give Properties a concise accessible dialog name and focus the main menu
+  when it opens. Restore its opener before opening another dialog and handle
+  Escape once. Verify native keyboard/focus behavior during a real transfer.
+
 - Preserve cut mode and all file paths when an X11 clipboard owner returns a
   URI list for the GNOME target; clear X11 clipboard without waiting on an open
   input pipe. Verify isolated two-window clipboard and private trash operations,

@@ -10,6 +10,7 @@
 
   export let open = false
   export let title: string | null = null
+  export let accessibleName: string | null = null
   export let onClose: () => void = () => {}
   export let closeOnEscape = true
   export let closeOnOverlay = true
@@ -185,8 +186,8 @@
       class={`modal ${modalClass}`.trim()}
       role="dialog"
       aria-modal="true"
-      aria-labelledby={title || $$slots.header ? titleId : undefined}
-      aria-label={title || $$slots.header ? undefined : 'Dialog'}
+      aria-labelledby={accessibleName ? undefined : title || $$slots.header ? titleId : undefined}
+      aria-label={accessibleName ?? (title || $$slots.header ? undefined : 'Dialog')}
       tabindex="0"
       style={modalWidth ? `--modal-width: ${modalWidth};` : undefined}
       on:click|stopPropagation
