@@ -233,8 +233,14 @@ all-pairs has twenty. Test copy and move separately for files and directory tree
   audit passed. Empty cloud directory copies are fixed and retested; the original
   blocked report remains retained. Rust passed 779 tests (19 ignored), native
   policy passed 99, and Clippy/native lint/docs checks passed.
-- [ ] **NT2-2** Run both directions between local disk and USB, network, cloud
+- [x] **NT2-2** Run both directions between local disk and USB, network, cloud
   and mobile. Successful reading does not establish writing or moving back.
+  The [accepted hub run](../operations/linux-release/runs/2026-10-06-native-transfers.md)
+  passed all 16 mixed file/empty-folder/nested-tree operations across all eight
+  ordered routes. Both exact trees, source preservation/removal, accessibility,
+  owned teardown and a fresh audit passed. The generated-file permission audit
+  preserves inherited copy modes under private parents; all 103 policy tests
+  and native lint pass. The original blocked audit report remains retained.
 - [ ] **NT2-3** Add bounded all-pairs runs, including network/mobile and USB/cloud.
   Record routing, staging and explicit refusals; an unrun route is not covered
   by the local hub.

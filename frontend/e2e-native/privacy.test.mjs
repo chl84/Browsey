@@ -85,6 +85,44 @@ test('audit byte, entry, depth and elapsed-time budgets stop traversal without m
   assert.equal(await fs.readFile(`${root}/nested/data`, 'utf8'), 'generated data')
 })
 
+test('generated transfer files may retain copy modes under private directories while metadata and all directory modes stay strict', async t => {
+  const root = await directory(t)
+  await fs.mkdir(`${root}/files`, { mode: 0o700 })
+  await fs.mkdir(`${root}/files/copied`, { mode: 0o700 })
+  await writePrivate(`${root}/files/copied/generated.txt`, 'generated transfer bytes', { exclusive: true })
+  const data = `${root}/files/copied/generated.txt`
+  for (const mode of [0o644, 0o640, 0o755]) {
+    await fs.chmod(data, mode)
+    const entry = (await inspectTree(root)).entries.find(e => e.path === 'files/copied/generated.txt')
+    assert.equal(entry.mode, mode)
+  }
+  await fs.chmod(`${root}/files`, 0o755)
+  await assert.rejects(inspectTree(root), /mode 700\/600/)
+  await fs.chmod(`${root}/files`, 0o700)
+  await fs.mkdir(`${root}/profile`, { mode: 0o700 })
+  await writePrivate(`${root}/profile/rclone.conf`, 'synthetic credential', { exclusive: true })
+  await fs.chmod(`${root}/profile/rclone.conf`, 0o644)
+  await assert.rejects(inspectTree(root), /mode 700\/600/)
+  await fs.chmod(`${root}/profile/rclone.conf`, 0o600)
+  await fs.mkdir(`${root}/files-sibling`, { mode: 0o700 })
+  await writePrivate(`${root}/files-sibling/data.txt`, 'outside data exception', { exclusive: true })
+  await fs.chmod(`${root}/files-sibling/data.txt`, 0o644)
+  await assert.rejects(inspectTree(root), /mode 700\/600/)
+})
+
+test('generated transfer permission allowance never admits hardlinks or special file permission bits', async t => {
+  const root = await directory(t)
+  await fs.mkdir(`${root}/files`, { mode: 0o700 })
+  const raw = `${root}/files/generated.txt`
+  await writePrivate(raw, 'generated only', { exclusive: true })
+  await fs.chmod(raw, 0o644)
+  await fs.link(raw, `${root}/files/alias.txt`)
+  await assert.rejects(inspectTree(root), /hard links/)
+  await fs.unlink(`${root}/files/alias.txt`)
+  await fs.chmod(raw, 0o4755)
+  await assert.rejects(inspectTree(root), /special permission bits/)
+})
+
 test('AT-SPI-style sockets remain confined by private run directories without relaxing file permissions', async t => {
   const root = await directory(t)
   await fs.mkdir(`${root}/runtime`, { mode: 0o700 })

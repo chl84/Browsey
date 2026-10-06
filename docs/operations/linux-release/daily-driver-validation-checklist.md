@@ -114,6 +114,9 @@ empty roots/descendants and mixed batches. Both entire generated trees/bytes,
 owned accessibility, teardown and fresh privacy audit passed after fixing empty
 cloud directory copies. The earlier blocked report remains retained. Cross-provider
 matrix/conflict points and broader parent rows remain open.
+NT2-2 also passed all 16 copy/move mixed-tree parts across the eight local-hub
+routes, including mobile both ways. Independent trees, teardown and fresh audit
+passed; NT2-3 through NT2-6 remain open.
 
 ## Run Discipline
 

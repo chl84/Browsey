@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { transfers, transferManifest, transferPartIds } from './transfers.mjs'
+import { transfers, transferManifest, transferPartIds, transferRoutes } from './transfers.mjs'
 import { makePlan, validateConfig, kinds, ownedPath } from './scope.mjs'
 import { createReport, recordCase, finishReport } from './report.mjs'
 
@@ -53,6 +53,54 @@ test('transfer acceptance checks both trees after each UI acknowledgement and st
       await assert.rejects(run, /Exact generated paths/); finishReport(report, Error('Observed mismatch'))
       assert.equal(report.status, 'FAIL'); assert.ok(report.cases.slice(1).every(c => c.status === 'NOT_RUN'))
       assert.equal(dispatches, defect === 'damaged-nested' ? 3 : 1)
+    }
+  }
+})
+
+test('local-hub declares both directions and operations for every external provider with mixed-tree verification', () => {
+  const routes = transferRoutes(plan, 'hub'), report = createReport(plan, kinds, transferManifest(plan, 'hub'))
+  assert.equal(routes.length, 8); assert.equal(report.cases.length, 16)
+  for (const kind of kinds.filter(kind => kind !== 'local')) for (const [from, to] of [['local', kind], [kind, 'local']]) {
+    assert.ok(routes.some(route => route.from === from && route.to === to))
+    for (const op of ['copy', 'move']) {
+      const item = report.cases.find(c => c.id === `${op}-rich-${from}-${to}`)
+      assert.deepEqual(item.providers, [from, to]); assert.deepEqual(item.parts.map(p => p.id), ['mixed-batch'])
+      assert.ok(item.requirements[from].includes('directory-read'))
+      assert.ok(item.requirements[to].includes('directory-create'))
+      assert.equal(item.requirements[from].includes('source-removal'), op === 'move')
+    }
+  }
+})
+
+test('hub rejects stale contents from a previous route and moves which leave empty source directories', async () => {
+  const selectedPlan = { ...plan, targets: plan.targets.filter(t => ['local', 'usb'].includes(t.kind)) }
+  for (const defect of ['none', 'stale-copy', 'move-files-only']) {
+    const roots = selectedPlan.targets.map(t => t.files), items = new Map()
+    const fixture = { mkdir: async path => { ownedPath(roots, path); items.set(path, null) },
+      write: async (path, bytes) => { ownedPath(roots, path); items.set(path, bytes) },
+      read: async path => items.get(path), snapshot: async path => [...items].filter(([key]) => key.slice(0, key.lastIndexOf('/')) === path)
+        .map(([path, value]) => ({ path, kind: value === null ? 'dir' : 'file' })) }
+    let paths, cut, previousCopyBytes, dispatches = 0
+    const ui = { setView: async () => {}, populateClipboard: async (_base, selected, move) => { paths = selected; cut = move },
+      paste: async target => {
+        dispatches++
+        for (const [path, bytes] of [...items]) {
+          const source = paths.find(src => src === path || path.startsWith(`${src}/`))
+          if (!source) continue
+          const relative = `${source.slice(source.lastIndexOf('/') + 1)}${path.slice(source.length)}`
+          const stale = defect === 'stale-copy' && !cut && previousCopyBytes && relative === 'mixed.txt'
+          items.set(`${target}/${relative}`, stale ? previousCopyBytes : bytes)
+          if (!cut && relative === 'mixed.txt' && !previousCopyBytes) previousCopyBytes = bytes
+          if (cut && !(defect === 'move-files-only' && bytes === null)) items.delete(path)
+        }
+      } }
+    const report = createReport(selectedPlan, ['local', 'usb'], transferManifest(selectedPlan, 'hub'))
+    const run = transfers(selectedPlan, fixture, ui, (_name, action, metadata) => recordCase(report, metadata, action), 'hub')
+    if (defect === 'none') { await run; finishReport(report); assert.equal(report.status, 'PASS'); assert.equal(dispatches, 4) }
+    else {
+      await assert.rejects(run, /Exact generated paths/); finishReport(report, Error('Observed mismatch'))
+      assert.equal(report.status, 'FAIL'); assert.equal(dispatches, defect === 'stale-copy' ? 3 : 2)
+      assert.ok(report.cases.slice(dispatches).every(c => c.status === 'NOT_RUN'))
     }
   }
 })

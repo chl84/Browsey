@@ -34,6 +34,8 @@ for (const group of ['editing', 'fileops', 'rename', 'properties', 'history']) s
   manifest: plan => editingManifest(plan, group),
 }
 suites['transfers-within'] = { run: transfers, manifest: transferManifest }
+suites['transfers-hub'] = { run: (plan, fixture, ui, record) => transfers(plan, fixture, ui, record, 'hub'),
+  manifest: plan => transferManifest(plan, 'hub') }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const candidate = path.join(repo, 'target/native-test/browsey')
 // Inherited by the scoped app/drivers only; no desktop/global permission change.

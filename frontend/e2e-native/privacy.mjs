@@ -81,10 +81,18 @@ export async function inspectTree(run, { policy = retentionPolicy, now = Date.no
     assert.equal(Number(stat.uid), process.getuid(), 'Owned-run entry has a different owner')
     const type = stat.isDirectory() ? 'directory' : stat.isFile() ? 'file' : stat.isSocket() ? 'socket' : 'unsupported'
     assert.notEqual(type, 'unsupported', 'Owned-run audit refuses devices/FIFOs and unknown entry types')
-    if (type !== 'socket') privateStat(stat, type === 'directory')
+    if (type === 'file' && relative.startsWith('files/')) {
+      // GIO can preserve/default copied-file permissions independently of the
+      // candidate's umask. Every containing directory (including files/) stays
+      // mode 700; generated data remains inaccessible to other users. Metadata,
+      // credentials, screenshots and profile files retain strict mode 600.
+      assert.equal(Number(stat.nlink), 1, 'Generated files cannot have other hard links')
+      assert.equal(Number(stat.mode) & 0o7000, 0, 'Generated files cannot have special permission bits')
+    } else if (type !== 'socket') privateStat(stat, type === 'directory')
     // AT-SPI creates a mode-777 Unix socket even with umask 077. It contains
     // no persisted file data; the audited mode-700 run and every parent
-    // directory prevent other users from reaching it. Never relax file modes.
+    // directory prevent other users from reaching it. Profile/artifact/metadata
+    // file modes stay strict; only generated files above retain copied modes.
     if (type === 'file') bytes += Number(stat.size)
     assert.ok(bytes <= policy.maxRunBytes, 'Native per-run byte budget exceeded')
     entries.push({ path: relative, ...identity(stat, type) })
