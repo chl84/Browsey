@@ -46,6 +46,17 @@ pub(super) fn try_execute_cloud_to_local_file_transfer_with_progress(
         return Ok(None);
     }
 
+    tracing::info!(
+        op = if op == MixedTransferOp::Copy {
+            "copy"
+        } else {
+            "move"
+        },
+        backend = "rclone-provider-download",
+        kind = "file",
+        staging = "direct",
+        "transfer dispatch"
+    );
     let total = entry.size.unwrap_or(1);
     let result = match op {
         MixedTransferOp::Copy => provider
@@ -111,6 +122,17 @@ pub(super) fn try_execute_local_to_cloud_file_transfer_with_progress(
     let provider = mixed_cloud_provider_for_cli(cli);
     let total = metadata.len();
     let on_progress = |bytes, total| emit_transfer_progress(progress, bytes, total, false);
+    tracing::info!(
+        op = if op == MixedTransferOp::Copy {
+            "copy"
+        } else {
+            "move"
+        },
+        backend = "rclone-provider-upload",
+        kind = "file",
+        staging = "direct",
+        "transfer dispatch"
+    );
     let upload = if op == MixedTransferOp::Copy && !options.overwrite {
         provider.upload_new_file_with_progress(
             src_path,

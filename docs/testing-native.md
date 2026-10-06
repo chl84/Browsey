@@ -483,3 +483,11 @@ working GIO mounts. The backend recovery smoke test started the installed bridge
 and verified both explicitly approved network/mobile test directories through
 canonical local paths. This confirms path access only, not native UI or
 file-operation acceptance for those providers.
+
+The `transfers-pairs` suite explicitly tests all twenty ordered cross-provider
+routes (forty copy/move mixed-tree parts), including the local hub again.
+Each part retains bounded, sanitized routing receipts from its owned candidate's
+private INFO log as well as independent exact source/destination readback.
+Dispatch alone is not success; no separate Browsey staging tree is allocated for
+these clipboard operations. Provider-internal temporary files are outside this
+receipt claim. Missing/unknown routing evidence blocks acceptance.

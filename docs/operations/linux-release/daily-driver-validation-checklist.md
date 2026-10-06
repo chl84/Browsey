@@ -112,11 +112,12 @@ The [native transfer verification](runs/2026-10-06-native-transfers.md) complete
 NT2-1 with 40 within-provider copy/move parts across all five targets, including
 empty roots/descendants and mixed batches. Both entire generated trees/bytes,
 owned accessibility, teardown and fresh privacy audit passed after fixing empty
-cloud directory copies. The earlier blocked report remains retained. Cross-provider
-matrix/conflict points and broader parent rows remain open.
+cloud directory copies. The earlier blocked report remains retained. Conflict points and broader parent rows remain open.
 NT2-2 also passed all 16 copy/move mixed-tree parts across the eight local-hub
 routes, including mobile both ways. Independent trees, teardown and fresh audit
-passed; NT2-3 through NT2-6 remain open.
+passed. NT2-3 also passed all 40 all-pairs copy/move parts on one candidate, with
+selected routing receipts and independent trees across all 20 directions.
+NT2-4 through NT2-6 and the broader parent rows remain open.
 
 ## Run Discipline
 

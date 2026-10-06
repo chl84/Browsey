@@ -128,6 +128,75 @@ as the first hub run above; accepted harness SHA-256 is
 `410c5645d013413cc34439c0a548c0844f86e27277fe8eb214b186918ba7ae14`.
 NT2-2 is complete; historical BLOCKED evidence remains retained unchanged.
 
+## NT2-3: bounded all-pairs
+
+Declared scope: all 20 ordered cross-provider routes, each with copy and move
+separately (40 mixed file/empty-folder/nested-tree parts). The eight accepted hub
+routes are rerun on the same candidate as the twelve remaining directions; hub
+success alone does not cover network/mobile, USB/cloud or other direct pairs.
+Every source/destination byte is route-stamped; entire trees are verified after
+each single real native paste, without automatic mutation retries.
+
+Small INFO dispatch receipts record the backend actually selected: GIO,
+filesystem directory/rename, owned stream/receipt fallback, rclone CLI or provider
+upload/download. They contain operation, entry kind and direct-destination policy,
+without paths or credentials. The runner reads only its captured candidate's
+private, bounded log, between each operation's markers, and rejects missing,
+unknown, rotated or excessive receipts. Receipts establish dispatch; independent
+source/destination checks establish outcome. Browsey does not allocate a separate
+staging tree for these clipboard transfers; provider-internal temporary files
+are not certified. Explicit refusals retain both sides and do not certify writes.
+The suite does not turn an unexpected failure into an accepted refusal.
+
+All 105 native policy tests/native lint and 779 Rust tests (19 ignored) pass.
+First all-pairs run `fb3cbade-898f-421b-8ad8-61aaa455e25b`, 00:41:51–01:00:08 UTC,
+retains FAIL: 30 operation parts passed, then cloud→mobile copy reported an RC
+job failure setting the destination partial file's time (`chtimes`, operation
+not supported). Nine later operations remain NOT_RUN, including this boundary's
+move and reverse route. No failure is reclassified as an accepted refusal.
+All four teardown stages passed and all three captured processes are gone;
+a fresh retained audit observed 5,210,173 bytes/166 entries.
+Read-only independent inspection verified the entire failed copy's cloud source
+exactly preserved and its mobile target containing only the original unrelated
+sentinel. No app/fixture mutation retry or recovery cleanup was attempted.
+
+Baseline `48e7f8d1ab5fdf16fb34b249ed24e8e702bcccb3`, dirty `true`;
+source `e098e66a97363708da4ac1865dd4584126f913f60ea010ce512be21bf417b402`, candidate
+`4baac25b3394f3e872db5e1e98b5f43f807d7ffa337d163811a5f3f815eef1eb` built `2026-10-06T00:41:48.255Z`;
+harness `2e47d959ff4e96e462eaafd95642eb649dfec53129a42f4a40857c7b39aa33af`.
+
+MTP destination options now disable setting file time for each RC local-filesystem
+object and CLI transfer, and disable CLI directory time updates. Other local/
+network destinations keep their original timestamp policy. These options are
+selected before dispatch; no daemon/global configuration or after-failure retry
+is introduced. MTP timestamp preservation is outside this bytes/tree claim.
+The [local backend option](https://rclone.org/local/#local-no-set-modtime) and
+[RC filesystem-object format](https://rclone.org/rc/#specifying-remotes-to-work-on)
+are documented by rclone; RC backend option values are strings.
+Three regressions failed before correction: mount classification, file/directory
+CLI options and per-destination RC options. The corrected full Rust suite passed
+782 tests (19 ignored); Clippy, 105 native policy tests and native lint passed. The full all-pairs retest prioritizes
+cloud/mobile in both directions without removing any of the twenty routes.
+Accepted all-pairs run `f907e15e-82cc-40a1-bb54-79553a381495`, 2026-10-06T01:04:15.993Z to
+2026-10-06T01:27:25.340Z, passed all 40 operation parts, accessibility and four
+teardown stages. All 20 ordered routes ran on this one candidate, including
+network/mobile and USB/cloud in both directions. No route was refused or left
+unrun. All three captured process identities are gone; a fresh retained audit
+observed 5,146,682 bytes/186 entries.
+
+Candidate baseline `48e7f8d1ab5fdf16fb34b249ed24e8e702bcccb3`, dirty `true`,
+source SHA-256 `cc58e242278f2743aa3193bbb47de69fd552a3469c29856f08b77d7ddfc8db8c`,
+binary `95f4bfe691919aa685db7ed22c7548819e2fe29265090d91069efafc07e10b7d` built at
+`2026-10-06T01:04:09.303Z`; harness
+`f9cb6b7c2c3786a47b1180d0f70320b1700d0fc638c4008dbd2cab57a05236ea`.
+
+Actual routing receipts show GIO or owned-stream files plus filesystem directory
+creation for non-cloud copies. Moves selected filesystem rename where available,
+and copy/verify/delete for cross-filesystem or unsupported atomic renames. Cloud-bound
+files use the provider upload route, cloud-origin files use provider download;
+cloud directory transfers use rclone CLI. All record direct destination writes,
+with the provider-internal temporary-file limitation above. NT2-3 is complete.
+
 ## Delivery
 
 Each completed NT2 point receives its own commit. No intermediate push or

@@ -18,6 +18,36 @@ pub(crate) use file_state::{FileState, TreeSnapshot};
 
 pub use error::{FsUtilsError, FsUtilsErrorCode, FsUtilsResult};
 
+/// GVFS MTP mounts cannot reliably set file/directory modification times.
+/// This selects transfer options before writing; it never probes by mutation.
+pub(crate) fn is_mtp_destination(path: &Path) -> bool {
+    if !path.starts_with("/run/user") {
+        return false;
+    }
+    let mut after_gvfs = false;
+    for component in path.components() {
+        if after_gvfs {
+            return component.as_os_str().to_string_lossy().starts_with("mtp:");
+        }
+        after_gvfs = component.as_os_str() == "gvfs";
+    }
+    false
+}
+
+#[cfg(test)]
+#[test]
+fn mtp_destination_is_a_gvfs_mount_not_an_ordinary_filename_or_network_mount() {
+    assert!(is_mtp_destination(Path::new(
+        "/run/user/123/gvfs/mtp:host=test/folder/file"
+    )));
+    assert!(!is_mtp_destination(Path::new(
+        "/run/user/123/gvfs/smb-share:server=test/folder/file"
+    )));
+    assert!(!is_mtp_destination(Path::new("/tmp/mtp:host=test/file")));
+    assert!(!is_mtp_destination(Path::new("/run/user/123/gvfs")));
+    assert!(!is_mtp_destination(Path::new("/tmp/file.txt")));
+}
+
 /// Open a regular input without following a replacement symlink at the leaf.
 /// Unix nonblocking open prevents a replaced FIFO from hanging before validation.
 /// Callers must still validate parent components according to their operation.

@@ -22,10 +22,13 @@ const matrixSourceEntries = [
 const at = (base, relative) => relative.split('/').reduce((parent, name) => child(parent, name), base)
 
 export function transferRoutes(plan, group = 'within') {
-  assert.ok(['within', 'hub'].includes(group), 'Expected a supported transfer group')
+  assert.ok(['within', 'hub', 'pairs'].includes(group), 'Expected a supported transfer group')
   if (group === 'within') return plan.targets.map(target => ({ from: target.kind, to: target.kind }))
-  return plan.targets.flatMap(from => plan.targets.filter(to => from !== to
-    && (from.kind === 'local' || to.kind === 'local')).map(to => ({ from: from.kind, to: to.kind })))
+  const routes = plan.targets.flatMap(from => plan.targets.filter(to => from !== to
+    && (group === 'pairs' || from.kind === 'local' || to.kind === 'local')).map(to => ({ from: from.kind, to: to.kind })))
+  // Run the reproduced cloud/MTP boundary first, without dropping any routes.
+  return group === 'pairs' ? routes.sort((a, b) => Number([b.from, b.to].includes('cloud') && [b.from, b.to].includes('mobile'))
+    - Number([a.from, a.to].includes('cloud') && [a.from, a.to].includes('mobile'))) : routes
 }
 
 export function transferManifest(plan, group = 'within') {
@@ -62,6 +65,7 @@ async function transferCase(source, target, operation, partIds, fixture, ui, res
     const directories = names.filter(name => expectedSource.get(name) === null).map(name => at(from, name))
     const menu = id === 'empty-folder' || id === 'mixed-batch'
     await ui.populateClipboard(from, paths, move, menu, { directories })
+    const routeStart = await ui.transferEvidence?.mark()
     await ui.paste(to, at(to, names[0]), { menu })
     part.ui = 'ACKNOWLEDGED'; result.phase = 'verification'
     for (const [relative, bytes] of [...expectedSource]) {
@@ -73,6 +77,7 @@ async function transferCase(source, target, operation, partIds, fixture, ui, res
     // A destination success cannot conceal premature source removal or extras.
     await verifyTree(fixture, from, expectedSource)
     await verifyTree(fixture, to, expectedTarget)
+    if (ui.transferEvidence) part.routing = await ui.transferEvidence.read(routeStart, operation)
   })
 }
 

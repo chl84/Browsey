@@ -107,6 +107,21 @@ impl RcloneCommandSpec {
     }
 
     #[allow(dead_code)]
+    pub(crate) fn local_destination_options(self, destination: &std::path::Path) -> Self {
+        if crate::fs_utils::is_mtp_destination(destination) {
+            // Select before any write, without changing config or retrying a
+            // failed transfer. MTP does not promise modtime preservation.
+            self.arg("--local-no-set-modtime")
+                .arg("--no-update-dir-modtime")
+                .arg("--retries")
+                .arg("1")
+                .arg("--low-level-retries")
+                .arg("1")
+        } else {
+            self
+        }
+    }
+
     pub fn argv(&self) -> Vec<OsString> {
         let mut argv = Vec::with_capacity(2 + self.args.len());
         argv.push(OsString::from(self.subcommand.as_str()));
@@ -835,5 +850,34 @@ mod tests {
                 ..
             })
         ));
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn mtp_destination_cli_options_are_scoped_before_file_and_directory_writes() {
+    for operation in [
+        RcloneSubcommand::Copy,
+        RcloneSubcommand::CopyTo,
+        RcloneSubcommand::Move,
+        RcloneSubcommand::MoveTo,
+    ] {
+        let original = RcloneCommandSpec::new(operation)
+            .arg("work:source")
+            .arg("generated-target");
+        let selected = original
+            .clone()
+            .local_destination_options(std::path::Path::new(
+                "/run/user/123/gvfs/mtp:host=test/folder",
+            ));
+        let args = selected.argv();
+        assert!(args.contains(&OsString::from("--local-no-set-modtime")));
+        assert!(args.contains(&OsString::from("--no-update-dir-modtime")));
+        assert_eq!(
+            original
+                .clone()
+                .local_destination_options(std::path::Path::new("/tmp/target")),
+            original
+        );
     }
 }

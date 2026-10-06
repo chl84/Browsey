@@ -364,7 +364,8 @@ impl RcloneCloudProvider {
             .run_capture_text_with_cancel(
                 RcloneCommandSpec::new(RcloneSubcommand::CopyTo)
                     .arg(src.to_rclone_remote_spec())
-                    .arg(local_dest.as_os_str()),
+                    .arg(local_dest.as_os_str())
+                    .local_destination_options(local_dest),
                 cancel,
             )
             .map_err(|error| map_rclone_error_for_remote(src.remote(), error))?;

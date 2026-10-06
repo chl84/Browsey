@@ -36,6 +36,21 @@ fn local_upload_payload(spec: &RcCopyFileFromLocalProgressSpec<'_>) -> Value {
     payload
 }
 
+fn local_download_payload(
+    src_fs: &str,
+    src_remote: &str,
+    dst_dir: &str,
+    dst_remote: &str,
+) -> Value {
+    let mut destination = json!({"type":"local", "_root":dst_dir});
+    if crate::fs_utils::is_mtp_destination(std::path::Path::new(dst_dir)) {
+        // Backend options in fs objects are strings, scoped to this destination.
+        // Never modify the daemon's global flags or replay a failed write.
+        destination["no_set_modtime"] = json!("true");
+    }
+    json!({"srcFs": src_fs, "srcRemote": src_remote, "dstFs": destination, "dstRemote":dst_remote})
+}
+
 impl RcloneRcClient {
     pub fn core_stats(&self, group: Option<&str>, short: bool) -> Result<Value, RcloneCliError> {
         let mut payload = json!({ "short": short });
@@ -193,15 +208,7 @@ impl RcloneRcClient {
             group,
             cancel_token,
         } = spec;
-        let payload = json!({
-            "srcFs": src_fs,
-            "srcRemote": src_remote,
-            "dstFs": {
-                "type": "local",
-                "_root": dst_dir,
-            },
-            "dstRemote": dst_remote,
-        });
+        let payload = local_download_payload(src_fs, src_remote, dst_dir, dst_remote);
         self.run_method_async_with_job_control_and_progress(
             RcloneRcMethod::OperationsCopyFile,
             payload,
@@ -284,4 +291,20 @@ mod tests {
         spec.refuse_replace = false;
         assert!(local_upload_payload(&spec).get("_config").is_none());
     }
+}
+
+#[cfg(test)]
+#[test]
+fn mtp_destination_rc_options_are_strings_scoped_to_the_destination_filesystem() {
+    let mtp = local_download_payload(
+        "work:",
+        "file",
+        "/run/user/123/gvfs/mtp:host=test/folder",
+        "output",
+    );
+    assert_eq!(mtp["dstFs"]["no_set_modtime"], "true");
+    assert_eq!(mtp["srcFs"], "work:");
+    assert!(mtp.get("_config").is_none());
+    let normal = local_download_payload("work:", "file", "/tmp/generated", "output");
+    assert!(normal["dstFs"].get("no_set_modtime").is_none());
 }

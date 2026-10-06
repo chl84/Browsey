@@ -289,6 +289,9 @@ fn execute_rclone_transfer(
     let mut spec = RcloneCommandSpec::new(subcommand)
         .arg(src.to_os_arg())
         .arg(dst.to_os_arg());
+    if let Some(destination) = dst.local_path() {
+        spec = spec.local_destination_options(destination);
+    }
     if op == MixedTransferOp::Copy && dst.cloud_path().is_some() && !options.overwrite {
         // A destination can appear after our preflight. This is an additional
         // rclone guard, not an atomic provider compare-and-swap transaction.
@@ -311,6 +314,17 @@ fn execute_rclone_transfer(
             .arg("--delete-empty-src-dirs");
     }
 
+    tracing::info!(
+        op = if op == MixedTransferOp::Copy {
+            "copy"
+        } else {
+            "move"
+        },
+        backend = "rclone-cli",
+        kind = if directory { "directory" } else { "file" },
+        staging = "direct",
+        "transfer dispatch"
+    );
     cli.run_capture_text_with_cancel(spec, cancel)
         .map_err(|error| map_rclone_cli_error(error, cloud_remote_for_error_mapping))?;
     if directory {

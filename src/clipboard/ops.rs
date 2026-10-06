@@ -147,6 +147,13 @@ fn copy_dir_tracked(
     outputs: &mut OwnedCopyPaths,
     require_receipt: bool,
 ) -> ClipboardResult<()> {
+    tracing::info!(
+        op = "copy",
+        backend = "filesystem-directory",
+        kind = "directory",
+        staging = "direct",
+        "transfer dispatch"
+    );
     let source_permissions = fs::metadata(src)
         .map_err(|e| {
             ClipboardError::from_io_error(ClipboardErrorCode::IoError, "Read source permissions", e)
@@ -583,6 +590,13 @@ fn copy_file_tracked(
         if !_require_receipt && (is_gvfs_path(src) || is_gvfs_path(dest)) {
             // GIO owns the output handle; a later path lookup is not an ownership
             // receipt. Retain uncertain outputs and never retry through local I/O.
+            tracing::info!(
+                op = "copy",
+                backend = "gio",
+                kind = "file",
+                staging = "direct",
+                "transfer dispatch"
+            );
             return super::gio_copy::copy(
                 src,
                 dest,
@@ -593,6 +607,17 @@ fn copy_file_tracked(
         }
     }
 
+    tracing::info!(
+        op = "copy",
+        backend = if _require_receipt {
+            "owned-stream-receipt"
+        } else {
+            "owned-stream"
+        },
+        kind = "file",
+        staging = "direct",
+        "transfer dispatch"
+    );
     // Fallback: manual chunked copy with progress
     #[cfg_attr(test, allow(unused_mut))]
     let mut reader = crate::fs_utils::open_regular_file_nofollow(src).map_err(|e| {
@@ -853,7 +878,16 @@ pub(super) fn move_entry(
     // A prior existence check is only advisory: another process can create the
     // destination before rename. Reuse the undo engine's native no-replace move.
     match crate::undo::rename_nofollow_io(src, dest) {
-        Ok(_) => Ok(()),
+        Ok(_) => {
+            tracing::info!(
+                op = "move",
+                backend = "filesystem-rename",
+                kind = "entry",
+                staging = "direct",
+                "transfer dispatch"
+            );
+            Ok(())
+        }
         Err(error)
             if matches!(
                 error.code(),
@@ -861,6 +895,13 @@ pub(super) fn move_entry(
                     | crate::undo::UndoErrorCode::AtomicRenameUnsupported
             ) =>
         {
+            tracing::info!(
+                op = "move",
+                backend = "copy-verify-delete",
+                kind = "entry",
+                staging = "direct",
+                "transfer dispatch"
+            );
             let check = || {
                 if transfer_cancelled(cancel, app) {
                     Err(std::io::Error::from(ErrorKind::Interrupted))

@@ -241,9 +241,16 @@ all-pairs has twenty. Test copy and move separately for files and directory tree
   owned teardown and a fresh audit passed. The generated-file permission audit
   preserves inherited copy modes under private parents; all 103 policy tests
   and native lint pass. The original blocked audit report remains retained.
-- [ ] **NT2-3** Add bounded all-pairs runs, including network/mobile and USB/cloud.
+- [x] **NT2-3** Add bounded all-pairs runs, including network/mobile and USB/cloud.
   Record routing, staging and explicit refusals; an unrun route is not covered
   by the local hub.
+  The [all-pairs native run](../operations/linux-release/runs/2026-10-06-native-transfers.md)
+  passed all 40 copy/move mixed-tree parts across all 20 ordered routes on one
+  candidate. Every part retains selected-backend/direct-destination receipts
+  plus exact independent source/destination trees. No route is refused/unrun;
+  accessibility, owned teardown and fresh privacy audit passed. Provider-internal
+  temporary files are outside the routing claim. Policy 105/Rust 782 tests and
+  Clippy/native lint passed.
 - [ ] **NT2-4** Cover skip, overwrite, unique-name and cancel conflict choices:
   files, directories, nested collisions and file-versus-directory conflicts.
   Assert the documented policy and both sides' bytes after each result.
