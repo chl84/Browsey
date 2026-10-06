@@ -34,7 +34,7 @@ import {
 } from '../services/files.service'
 import { checkDuplicatesStream, type DuplicateScanProgress } from '../services/duplicates.service'
 import { cancelTask } from '../services/activity.service'
-import { clipboardState, setClipboardState, clearClipboardState } from './clipboard.store'
+import { clipboardState, setClipboardState, setClipboardPathsState, clearClipboardState } from './clipboard.store'
 import { normalizePath, parentPath } from '../utils'
 import type { Entry } from '../model/types'
 import type { CurrentView } from '../context/createContextActions'
@@ -168,8 +168,10 @@ export const useExplorerFileOps = (deps: Deps) => {
     // A drop does not own the clipboard. A completed paste must not clear a newer selection.
     if (operation.input.mode !== 'cut' || !operation.clipboard
       || get(clipboardState) !== operation.clipboard) return
-    clearClipboardState()
-    deps.setClipboardPaths(new Set())
+    const remaining = new Set([...operation.clipboard.paths].filter(path => !operation.input.paths.includes(path)))
+    if (remaining.size) setClipboardPathsState('cut', remaining)
+    else clearClipboardState()
+    deps.setClipboardPaths(remaining)
     try {
       await clearSystemClipboard()
     } catch {
@@ -638,13 +640,24 @@ export const useExplorerFileOps = (deps: Deps) => {
     return ok
   }
 
-  const resolveConflicts = async (policy: 'rename' | 'overwrite') => {
+  const resolveConflicts = async (policy: 'rename' | 'overwrite' | 'skip') => {
     if (get(pasteBusy) || !conflictOperation) return
     const operation = conflictOperation
+    const skipped = new Set(get(conflictList).map(item => item.src))
     clearConflictState()
     pasteBusy.set(true)
     try {
-      await runPaste(operation, policy)
+      if (policy === 'skip') {
+        const paths = operation.input.paths.filter(path => !skipped.has(path))
+        if (!paths.length) {
+          deps.showToast(`Skipped ${skipped.size} conflicting item${skipped.size === 1 ? '' : 's'}`)
+          return
+        }
+        const filtered: PasteOperation = Object.freeze({ ...operation,
+          input: Object.freeze({ mode: operation.input.mode, paths: Object.freeze(paths) }) })
+        deps.showToast(`Skipped ${skipped.size} conflicting item${skipped.size === 1 ? '' : 's'}`)
+        await runPaste(filtered, 'rename')
+      } else await runPaste(operation, policy)
     } finally {
       pasteBusy.set(false)
     }

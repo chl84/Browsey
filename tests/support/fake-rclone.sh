@@ -301,6 +301,9 @@ PY_ALIAS
   rmdir)
     while [[ $idx -lt ${#args[@]} ]]; do
       case "${args[$idx]}" in
+        --retries|--low-level-retries)
+          idx=$((idx + 2))
+          ;;
         --onedrive-hard-delete|--drive-use-trash=false)
           idx=$((idx + 1))
           ;;
@@ -358,6 +361,10 @@ PY_ALIAS
       exit 2
     fi
     maybe_delay_subcommand "$subcmd"
+    if [[ "$subcmd" == move && -f "$script_dir/move-fail-invocation" && "$(cat "$script_dir/move-count")" == "$(cat "$script_dir/move-fail-invocation")" ]]; then
+      echo "forced move failure" >&2
+      exit 3
+    fi
     if [[ "$subcmd" == moveto && -f "$script_dir/moveto-fail-invocation" && "$(cat "$script_dir/moveto-count")" == "$(cat "$script_dir/moveto-fail-invocation")" ]]; then
       echo "forced moveto failure" >&2
       exit 3

@@ -26,6 +26,7 @@
   export let conflictModalOpen = false
   export let conflictList: ConflictEntry[] = []
   export let cancelConflicts: () => void = () => {}
+  export let skipConflicts: () => void = () => {}
   export let renameAllConflicts: () => void = () => {}
   export let overwriteConflicts: () => void = () => {}
 
@@ -55,6 +56,7 @@
   open={conflictModalOpen}
   conflicts={conflictList}
   onCancel={cancelConflicts}
+  onSkip={skipConflicts}
   onRenameAll={renameAllConflicts}
   onOverwrite={overwriteConflicts}
 />

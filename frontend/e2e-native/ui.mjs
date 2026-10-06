@@ -616,9 +616,10 @@ export class NativeUi {
     await this.idle({ toast: move ? 'Cut' : 'Copied', ...(move ? { cutPath: paths[0] } : {}) })
   }
 
-  async paste(dest, firstPath, { menu = false, repeat = false, conflict } = {}) {
+  async paste(dest, firstPath, { menu = false, repeat = false, conflict, expectedError, alreadyAt = false } = {}) {
     ownedPath(this.roots, dest); ownedPath(this.roots, firstPath)
-    await this.navigate(dest); await this.emptySpace(dest)
+    if (alreadyAt) await this.waitPath(dest); else await this.navigate(dest)
+    await this.emptySpace(dest)
     if (menu) await this.menuAction('paste')
     else await this.burst('v', repeat ? 3 : 1)
     if (conflict) {
@@ -626,7 +627,8 @@ export class NativeUi {
       await dialog.waitForDisplayed({ timeout: 60_000 })
       await (await dialog.$(`.//button[normalize-space(.)="${conflict}"]`)).click()
     }
-    await this.idle(conflict === 'Cancel' ? {} : { resultPath: firstPath }, 360_000)
+    if (expectedError) return this.expectedToast(expectedError, 360_000)
+    await this.idle(conflict === 'Cancel' || (conflict === 'Skip' && firstPath === dest) ? {} : { resultPath: firstPath }, 360_000)
   }
 
   async deleteSelection({ menu = false, raw, cancel = false, escape = false, repeat = false } = {}) {
@@ -655,16 +657,18 @@ export class NativeUi {
     await this.idle()
   }
 
-  async expectedToast(pattern) {
+  async expectedToast(pattern, timeout = 10_000) {
     let text
     await this.browser.waitUntil(async () => {
       text = await this.browser.execute(() => document.querySelector('.toast[role="status"]')?.textContent.trim() ?? '')
-      return pattern.test(text)
-    }, { timeout: 10_000, timeoutMsg: 'Expected explicit rejection feedback' })
+      return pattern.test(text) || /^(Paste failed|Copy failed|Move failed)/i.test(text)
+    }, { timeout, timeoutMsg: 'Expected explicit rejection feedback' })
+    if (!pattern.test(text)) throw Object.assign(new Error(`Unexpected application rejection: ${text}`), { failureKind: 'APP_REPORTED_ERROR' })
     assert.match(text, pattern)
     await this.browser.waitUntil(async () => !await this.browser.execute(() =>
       document.querySelector('.toast[role="status"]')?.getClientRects().length), { timeout: 10_000 })
     await this.idle()
+    return text
   }
 
   async propertiesOpen(base, paths, menu = false, { directories = [] } = {}) {

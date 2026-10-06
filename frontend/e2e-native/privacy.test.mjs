@@ -180,3 +180,53 @@ test('Git excludes machine approvals, credentials, reports, screenshots, profile
     await assert.rejects(exec('git', ['check-ignore', '--no-index', '--quiet', '--', raw], { cwd: repo }), error => error.code === 1)
   }
 })
+
+test('owned undo backup data retain inherited modes only under the exact private session/bucket layout', async t => {
+  const root = await directory(t)
+  const relative = 'profile/data/browsey/undo-sessions/session-42-123456789-0/0123456789abcdef-1/folder/nested.txt'
+  const data = `${root}/${relative}`
+  await fs.mkdir(data.slice(0, data.lastIndexOf('/')), { recursive: true, mode: 0o700 })
+  await writePrivate(data, 'generated network overwrite recovery bytes', { exclusive: true })
+  for (const mode of [0o644, 0o640, 0o755]) {
+    await fs.chmod(data, mode)
+    assert.equal((await inspectTree(root)).entries.find(entry => entry.path === relative).mode, mode)
+    assert.equal(await fs.readFile(data, 'utf8'), 'generated network overwrite recovery bytes')
+  }
+  for (const relative of [
+    'profile/config/rclone.conf',
+    'profile/data/browsey/undo-sessions/session-42-123456789-0.lock',
+    'profile/data/browsey/undo-sessions/session-42-123456789-0/0123456789abcdef-1.recovery-required',
+    'profile/data/browsey/undo-sessions/session-42-123456789-0/metadata.json',
+    'profile/data/browsey/undo-sessions/session-invalid/0123456789abcdef-1/item',
+    'profile/data/browsey/undo-sessions/session-42-123456789-0/not-a-bucket/item',
+    'profile/data/browsey/undo-sessions-sibling/session-42-123456789-0/0123456789abcdef-1/item',
+  ]) {
+    const raw = `${root}/${relative}`
+    await fs.mkdir(raw.slice(0, raw.lastIndexOf('/')), { recursive: true, mode: 0o700 })
+    await writePrivate(raw, 'synthetic metadata boundary', { exclusive: true })
+    await fs.chmod(raw, 0o644)
+    await assert.rejects(inspectTree(root), /mode 700\/600/)
+    assert.equal((await fs.stat(raw)).mode & 0o777, 0o644)
+    await fs.chmod(raw, 0o600)
+  }
+  await fs.chmod(`${root}/profile/data/browsey/undo-sessions`, 0o755)
+  await assert.rejects(inspectTree(root), /mode 700\/600/)
+})
+
+test('owned undo backup data reject links and special permission bits without changing retained recovery', async t => {
+  const root = await directory(t)
+  const bucket = `${root}/profile/data/browsey/undo-sessions/session-42-123456789-0/0123456789abcdef-1`
+  await fs.mkdir(bucket, { recursive: true, mode: 0o700 })
+  const data = `${bucket}/item`
+  await writePrivate(data, 'retained generated recovery', { exclusive: true })
+  await fs.chmod(data, 0o644)
+  await fs.link(data, `${bucket}/alias`)
+  await assert.rejects(inspectTree(root), /hard links/)
+  await fs.unlink(`${bucket}/alias`)
+  await fs.chmod(data, 0o4755)
+  await assert.rejects(inspectTree(root), /special permission bits/)
+  await fs.chmod(data, 0o644)
+  await fs.symlink(data, `${bucket}/alias`)
+  await assert.rejects(inspectTree(root), /symlinks/)
+  assert.equal(await fs.readFile(data, 'utf8'), 'retained generated recovery')
+})

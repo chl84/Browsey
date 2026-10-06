@@ -81,9 +81,13 @@ export async function inspectTree(run, { policy = retentionPolicy, now = Date.no
     assert.equal(Number(stat.uid), process.getuid(), 'Owned-run entry has a different owner')
     const type = stat.isDirectory() ? 'directory' : stat.isFile() ? 'file' : stat.isSocket() ? 'socket' : 'unsupported'
     assert.notEqual(type, 'unsupported', 'Owned-run audit refuses devices/FIFOs and unknown entry types')
-    if (type === 'file' && relative.startsWith('files/')) {
+    const backupData = /^profile\/data\/browsey\/undo-sessions\/session-\d+-\d+-\d+\/[0-9a-f]{16}-\d+\/.+$/.test(relative)
+    if (type === 'file' && (relative.startsWith('files/') || backupData)) {
       // GIO can preserve/default copied-file permissions independently of the
-      // candidate's umask. Every containing directory (including files/) stays
+      // candidate's umask. Exact undo session/bucket data may inherit the same
+      // modes when backing up an authorized generated overwrite target; session
+      // locks, recovery markers and other profile metadata are outside this layout.
+      // Every containing directory (including files/) stays
       // mode 700; generated data remains inaccessible to other users. Metadata,
       // credentials, screenshots and profile files retain strict mode 600.
       assert.equal(Number(stat.nlink), 1, 'Generated files cannot have other hard links')
@@ -92,7 +96,7 @@ export async function inspectTree(run, { policy = retentionPolicy, now = Date.no
     // AT-SPI creates a mode-777 Unix socket even with umask 077. It contains
     // no persisted file data; the audited mode-700 run and every parent
     // directory prevent other users from reaching it. Profile/artifact/metadata
-    // file modes stay strict; only generated files above retain copied modes.
+    // file modes stay strict; only generated data/backup files retain copied modes.
     if (type === 'file') bytes += Number(stat.size)
     assert.ok(bytes <= policy.maxRunBytes, 'Native per-run byte budget exceeded')
     entries.push({ path: relative, ...identity(stat, type) })

@@ -1303,3 +1303,60 @@ describe('useExplorerFileOps cloud conflict preview', () => {
     )
   })
 })
+
+describe('conflict skip preserves immutable inputs and remaining cut sources', () => {
+  beforeEach(() => {
+    vi.clearAllMocks(); clearClipboardState()
+    for (const mock of [pasteClipboardPreviewMock, previewCloudConflictsMock, previewMixedTransferConflictsMock,
+      pasteClipboardCmdMock, copyCloudEntryMock, moveCloudEntryMock, copyMixedEntryToMock, moveMixedEntryToMock,
+      listCloudEntriesMock, listCloudRemotesMock, clearSystemClipboardMock]) mock.mockReset()
+    listCloudEntriesMock.mockResolvedValue([]); listCloudRemotesMock.mockResolvedValue([])
+    pasteClipboardCmdMock.mockResolvedValue([]); copyCloudEntryMock.mockResolvedValue(undefined)
+    moveCloudEntryMock.mockResolvedValue(undefined); copyMixedEntryToMock.mockResolvedValue(undefined)
+    moveMixedEntryToMock.mockResolvedValue(undefined); clearSystemClipboardMock.mockResolvedValue(undefined)
+  })
+
+  it.each(['local', 'cloud', 'mixed'] as const)('skips only conflicting roots on %s and transfers the fresh root', async route => {
+    const src = route === 'cloud' ? 'rclone://work/src' : '/src'
+    const dest = route === 'local' ? '/dest' : 'rclone://work/dest'
+    const deps = createDeps(); deps.getCurrentPath = () => dest
+    setClipboardPathsState('copy', [`${src}/blocked`, `${src}/fresh`])
+    const preview = { src: `${src}/blocked`, target: `${dest}/blocked`, is_dir: true, isDir: true }
+    pasteClipboardPreviewMock.mockResolvedValue([preview]); previewCloudConflictsMock.mockResolvedValue([preview])
+    previewMixedTransferConflictsMock.mockResolvedValue([preview])
+    const ops = useExplorerFileOps(deps)
+    await ops.handlePasteOrMove(dest); await ops.resolveConflicts('skip')
+    const mock = route === 'local' ? pasteClipboardCmdMock : route === 'cloud' ? copyCloudEntryMock : copyMixedEntryToMock
+    expect(mock).toHaveBeenCalledTimes(1)
+    if (route === 'local') expect(mock).toHaveBeenCalledWith(dest, 'rename', expect.any(String), { mode: 'copy', paths: [`${src}/fresh`] })
+    else expect(mock).toHaveBeenCalledWith(`${src}/fresh`, `${dest}/fresh`, expect.objectContaining({ overwrite: false }))
+    expect(deps.showToast).toHaveBeenCalledWith('Skipped 1 conflicting item')
+    expect(get(ops.conflictModalOpen)).toBe(false)
+    expect([...get(clipboardState).paths]).toEqual([`${src}/blocked`, `${src}/fresh`])
+  })
+
+  it('keeps skipped cut sources on the clipboard and never clears a newer selection', async () => {
+    for (const newer of [false, true]) {
+      vi.clearAllMocks()
+      const deps = createDeps(); deps.getCurrentPath = () => '/dest'
+      setClipboardPathsState('cut', ['/src/blocked', '/src/fresh'])
+      pasteClipboardPreviewMock.mockResolvedValue([{ src: '/src/blocked', target: '/dest/blocked', is_dir: true }])
+      pasteClipboardCmdMock.mockImplementationOnce(async () => { if (newer) setClipboardPathsState('copy', ['/new/selection']); return [] })
+      const ops = useExplorerFileOps(deps)
+      await ops.handlePasteOrMove('/dest'); await ops.resolveConflicts('skip')
+      expect([...get(clipboardState).paths]).toEqual(newer ? ['/new/selection'] : ['/src/blocked'])
+      expect(clearSystemClipboardMock).toHaveBeenCalledTimes(newer ? 0 : 1)
+    }
+  })
+
+  it('does not start a transfer or consume the cut clipboard when every root is skipped', async () => {
+    const deps = createDeps(); deps.getCurrentPath = () => '/dest'
+    setClipboardPathsState('cut', ['/src/blocked'])
+    pasteClipboardPreviewMock.mockResolvedValue([{ src: '/src/blocked', target: '/dest/blocked', is_dir: false }])
+    const ops = useExplorerFileOps(deps)
+    await ops.handlePasteOrMove('/dest'); await ops.resolveConflicts('skip')
+    expect(pasteClipboardCmdMock).not.toHaveBeenCalled(); expect(deps.activityApi.start).not.toHaveBeenCalled()
+    expect([...get(clipboardState).paths]).toEqual(['/src/blocked'])
+    expect(deps.showToast).toHaveBeenCalledWith('Skipped 1 conflicting item')
+  })
+})

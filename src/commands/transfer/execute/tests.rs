@@ -1,4 +1,5 @@
 use super::*;
+use crate::errors::domain::ErrorCode;
 #[cfg(target_os = "linux")]
 mod active_onedrive;
 #[cfg(target_os = "linux")]
@@ -2015,4 +2016,85 @@ fn mixed_execute_uses_invalid_config_for_bad_rclone_path() {
     );
     set_rclone_path_override_for_tests(None);
     let _ = fs::remove_dir_all(&source_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn mixed_cross_kind_overwrite_refuses_before_any_write_even_when_prechecked() {
+    for cloud_source in [false, true] {
+        for source_directory in [false, true] {
+            for operation in [MixedTransferOp::Copy, MixedTransferOp::Move] {
+                let sandbox = FakeRcloneSandbox::new();
+                let source = if cloud_source {
+                    LocalOrCloudArg::Cloud(sandbox.cloud_path("rclone://work/source"))
+                } else {
+                    LocalOrCloudArg::Local(sandbox.local_path("source"))
+                };
+                let destination = if cloud_source {
+                    LocalOrCloudArg::Local(sandbox.local_path("target"))
+                } else {
+                    LocalOrCloudArg::Cloud(sandbox.cloud_path("rclone://work/target"))
+                };
+                let source_path = if cloud_source {
+                    sandbox.remote_path("work", "source")
+                } else {
+                    sandbox.local_path("source")
+                };
+                let destination_path = if cloud_source {
+                    sandbox.local_path("target")
+                } else {
+                    sandbox.remote_path("work", "target")
+                };
+                fs::create_dir_all(source_path.parent().unwrap()).unwrap();
+                fs::create_dir_all(destination_path.parent().unwrap()).unwrap();
+                if source_directory {
+                    fs::create_dir_all(source_path.join("empty")).unwrap();
+                    fs::write(source_path.join("nested.txt"), "source bytes").unwrap();
+                    fs::write(&destination_path, "old destination").unwrap();
+                } else {
+                    fs::write(&source_path, "source bytes").unwrap();
+                    fs::create_dir_all(destination_path.join("empty")).unwrap();
+                    fs::write(destination_path.join("nested.txt"), "old destination").unwrap();
+                }
+                let error = execute_rclone_transfer(
+                    RcloneTransferContext {
+                        cli: &sandbox.cli(),
+                        cloud_remote_for_error_mapping: Some("work"),
+                        cancel: None,
+                        progress: None,
+                    },
+                    operation,
+                    source,
+                    destination,
+                    MixedTransferWriteOptions {
+                        overwrite: true,
+                        prechecked: true,
+                    },
+                )
+                .unwrap_err();
+                assert_eq!(
+                    error.code_str(),
+                    TransferErrorCode::Unsupported.as_code_str()
+                );
+                assert_eq!(
+                    fs::read_to_string(if source_directory {
+                        source_path.join("nested.txt")
+                    } else {
+                        source_path
+                    })
+                    .unwrap(),
+                    "source bytes"
+                );
+                assert_eq!(
+                    fs::read_to_string(if source_directory {
+                        destination_path
+                    } else {
+                        destination_path.join("nested.txt")
+                    })
+                    .unwrap(),
+                    "old destination"
+                );
+            }
+        }
+    }
 }

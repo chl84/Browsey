@@ -1827,6 +1827,7 @@
   conflictModalOpen={$conflictModalOpen}
   conflictList={$conflictList}
   {cancelConflicts}
+  skipConflicts={() => resolveConflicts('skip')}
   renameAllConflicts={() => resolveConflicts('rename')}
   overwriteConflicts={() => resolveConflicts('overwrite')}
   {aboutOpen}

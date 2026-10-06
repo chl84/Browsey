@@ -252,6 +252,18 @@ fn execute_rclone_transfer(
         ));
     }
 
+    // Without a recovery receipt, replacing a directory with a file (or vice
+    // versa) must not recursively delete the original destination. Even an
+    // explicitly prechecked name still needs this current kind check.
+    if options.overwrite
+        && mixed_target_exists(cli, &dst, cloud_remote_for_error_mapping, cancel)?
+        && transfer_source_is_directory(cli, &src, cancel)?
+            != transfer_source_is_directory(cli, &dst, cancel)?
+    {
+        return Err(transfer_err(TransferErrorCode::Unsupported,
+            "Cannot overwrite a file with a folder or a folder with a file on this route; use Auto-rename or Skip"));
+    }
+
     if let Some(result) = progress::try_execute_cloud_to_local_file_transfer_with_progress(
         cli, op, &src, &dst, cancel, progress,
     )? {

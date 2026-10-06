@@ -567,6 +567,21 @@ impl RcloneCloudProvider {
         let source_is_directory = self
             .stat_path(src)?
             .is_some_and(|entry| matches!(entry.kind, super::CloudEntryKind::Dir));
+        // Cross-kind overwrite has no provider recovery receipt. Refuse before
+        // dispatch rather than deleting a directory tree to replace its type.
+        // UI prechecked names do not waive this kind check.
+        let mut merge_directory_move = false;
+        if overwrite && !same_entry_alias {
+            if let Some(destination) = self.stat_path(dst)? {
+                if source_is_directory != matches!(destination.kind, super::CloudEntryKind::Dir) {
+                    return Err(CloudCommandError::new(
+                        CloudCommandErrorCode::Unsupported,
+                        "Cannot overwrite a file with a folder or a folder with a file on this route; use Auto-rename or Skip",
+                    ));
+                }
+                merge_directory_move = source_is_directory && mode == TransferMode::Move;
+            }
+        }
         if same_entry_alias && source_is_directory {
             return self.rename_directory_case_only(src, dst, cancel);
         }
@@ -621,7 +636,13 @@ impl RcloneCloudProvider {
                 }
             }
         }
-        let mut spec = if source_is_directory && mode == TransferMode::Copy {
+        let mut spec = if merge_directory_move {
+            // An existing directory needs a merge, preserving destination-only
+            // data and empty folders. Never replay an uncertain move.
+            RcloneCommandSpec::new(RcloneSubcommand::Move)
+                .arg("--create-empty-src-dirs")
+                .arg("--delete-empty-src-dirs")
+        } else if source_is_directory && mode == TransferMode::Copy {
             // copyto ignores empty descendants. The directory copy command
             // preserves them; its empty source root still needs finalization.
             RcloneCommandSpec::new(RcloneSubcommand::Copy).arg("--create-empty-src-dirs")
@@ -631,7 +652,7 @@ impl RcloneCloudProvider {
         spec = spec
             .arg(src.to_rclone_remote_spec())
             .arg(dst.to_rclone_remote_spec());
-        if source_is_directory && mode == TransferMode::Copy {
+        if (source_is_directory && mode == TransferMode::Copy) || merge_directory_move {
             spec = spec
                 .arg("--retries")
                 .arg("1")
@@ -641,7 +662,7 @@ impl RcloneCloudProvider {
         self.cli
             .run_capture_text_with_cancel(spec, cancel)
             .map_err(|error| map_rclone_error_for_paths(&[src, dst], error))?;
-        if source_is_directory && mode == TransferMode::Copy {
+        if (source_is_directory && mode == TransferMode::Copy) || merge_directory_move {
             // This is one planned, idempotent directory finalization after a
             // successful copy, never a retry after an uncertain write.
             self.cli.run_capture_text_with_cancel(
@@ -650,9 +671,35 @@ impl RcloneCloudProvider {
             ).map_err(|error| {
                 let mapped = map_rclone_error_for_paths(&[src, dst], error);
                 CloudCommandError::new(mapped.code(), format!(
-                    "Directory copy output may be retained at {dst}. Destination directory finalization failed: {mapped}"
+                    "Directory transfer output may be retained at {dst}. Destination directory finalization failed: {mapped}"
                 ))
             })?;
+        }
+        if merge_directory_move {
+            // Empty-only removal of the moved source root after successful
+            // transfer/finalization. Never purge remaining or uncertain data.
+            let policy = cloud_delete_policy_args(
+                self.resolve_provider_kind_for_write_policy(src.remote())?,
+            );
+            let spec = policy
+                .iter()
+                .fold(
+                    RcloneCommandSpec::new(RcloneSubcommand::Rmdir),
+                    |spec, flag| spec.arg(*flag),
+                )
+                .arg("--retries")
+                .arg("1")
+                .arg("--low-level-retries")
+                .arg("1")
+                .arg(src.to_rclone_remote_spec());
+            if let Err(error) = self.cli.run_capture_text_with_cancel(spec, cancel) {
+                let mapped = map_rclone_error_for_paths(&[src, dst], error);
+                if mapped.code() != CloudCommandErrorCode::NotFound {
+                    return Err(CloudCommandError::new(mapped.code(), format!(
+                        "Moved directory output retained at {dst}; cannot remove the empty source root at {src}: {mapped}"
+                    )));
+                }
+            }
         }
         log_backend_selected(
             mode.op_name(),

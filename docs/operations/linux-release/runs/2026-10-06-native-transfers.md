@@ -197,6 +197,109 @@ files use the provider upload route, cloud-origin files use provider download;
 cloud directory transfers use rclone CLI. All record direct destination writes,
 with the provider-internal temporary-file limitation above. NT2-3 is complete.
 
+## NT2-4: conflict choices
+
+Declared scope: all four Skip/Overwrite/Auto-rename/Cancel choices on each of the
+five providers, plus both local/cloud directions. Copy covers same-kind file and
+nested-directory collisions and both file-versus-directory shapes; move covers
+the same-kind mixed tree. There are 56 cases/112 independently verified parts.
+Reserved `-1` names force Auto-rename to select `-2`; unrelated and destination-only
+nested bytes stay unchanged. Skip transfers only nonconflicting roots; a cut
+clipboard keeps skipped sources and never clears a newer clipboard selection.
+Cancel leaves both exact trees unchanged. Local cross-kind overwrite uses the
+existing protected undo backup. Cloud/mixed cross-kind overwrite refuses before
+any write because it has no provider recovery receipt; this is an explicit
+refusal with exact preservation, not certification of a cross-kind write.
+
+The native baseline confirmed the missing Skip action. The application now wires
+Skip through the conflict modal and immutable operation snapshot. Five meaningful
+frontend regressions failed before the fix. Both provider and mixed-route Rust
+cross-kind tests failed before their guards, covering copy/move and prechecked
+inputs without writes. The first Rust attempt had a test-import compilation
+error; only the subsequent runnable failures count as regression evidence.
+After the guards, Rust passed 784 tests (19 ignored) and Clippy with denied
+warnings. Native policy passed 107 tests, including corruption/preservation checks.
+
+The next native run passed the cloud same-kind directory merge, then observed
+that the frontend replaced the cross-kind refusal with generic unsupported
+feedback. The wrapper now preserves actionable unsupported/invalid-path messages
+and typed metadata while retaining friendly connection feedback; it never retries
+a rejected write. The native harness retains unexpected feedback verbatim in its
+private report instead of replacing it with an opaque rejection label.
+
+Retained BLOCKED run `6d285623-115f-45f0-b588-76df8f7eda48`, `2026-10-06T01:29:50.506Z`–`2026-10-06T01:29:59.795Z`: 0 accepted parts; later cases remain NOT_RUN. All four owned teardown stages passed and three captured process identities are gone. Fresh private audit: 5,074,093 bytes/64 entries. Baseline `db817cf1dbe40aa9d3550bfe823ebe47b52f1108`, dirty `true`, source `cc58e242278f2743aa3193bbb47de69fd552a3469c29856f08b77d7ddfc8db8c`, candidate `95f4bfe691919aa685db7ed22c7548819e2fe29265090d91069efafc07e10b7d` built `2026-10-06T01:29:44.293Z`; harness `3707cd48c675efa527763e8668233509e91d44356da1e5aeb56200d866a494a3`.
+
+Retained BLOCKED run `f88047f2-20c0-462a-b2ef-84631726f1c2`, `2026-10-06T01:33:30.939Z`–`2026-10-06T01:37:39.670Z`: 1 accepted parts; later cases remain NOT_RUN. All four owned teardown stages passed and three captured process identities are gone. Fresh private audit: 5,095,694 bytes/65 entries. Baseline `db817cf1dbe40aa9d3550bfe823ebe47b52f1108`, dirty `true`, source `59b3c55ac7c37eb34e9a353152e966cd85f6e68a8617ba99b72cd481b7506d19`, candidate `19e57c0a47bdcb26c8db0237a0e35f2b521a0a6bebb7f38b9802b3d8bd7b8463` built `2026-10-06T01:33:29.936Z`; harness `3707cd48c675efa527763e8668233509e91d44356da1e5aeb56200d866a494a3`.
+
+Retained FAIL run `4393260d-c275-4310-b90d-4cbc9cd1a580`, `2026-10-06T01:39:58.845Z`–`2026-10-06T01:48:19.161Z`,
+passed all three cloud-copy overwrite parts, then failed independent verification
+of the cloud move despite GUI completion. Read-only post-teardown inspection
+confirmed that new file/nested bytes and destination-only bytes were correct,
+but `folder/empty` remained in the source and was absent from the destination.
+No write was retried or recovery source reconstructed. All four teardown stages
+passed, three captured processes are gone, and the fresh audit after readback
+observed 5,078,651 bytes/79 entries. Candidate baseline
+`db817cf1dbe40aa9d3550bfe823ebe47b52f1108`, dirty `true`, source `1899598e5ea3f73785e5fb0773406b253c8f0c5841b133324002bf5552a38149`,
+binary `a7c4db09f9d20482ae46e81546214d9485bc277217d9b284cad491c1775118d8` built `2026-10-06T01:39:57.856Z`; harness `dc2dfdf58f771ec73c6eb8f33dd2037f0360ae0454c8434de65db24be78d9491`.
+
+Existing cloud-directory overwrite moves now use `move` with empty-directory
+creation/deletion flags, one destination-root finalization and an empty-only
+source-root `rmdir` with the provider's delete policy. New-target and deliberate
+case-only rename routes remain separate. No recursive purge is used. A failed
+move never retries or finalizes either side. The merge regression failed before
+this correction; successful nested/empty merges and failure-preservation tests
+pass with RC forced/disabled. Rust now passes 786 tests (19 ignored), Clippy with
+denied warnings, frontend 678 tests, type checking/lint and native policy 107.
+Part status and independent verification determine acceptance; GUI completion
+labels alone never establish it.
+
+The full conflict run also exposed inherited mode 644 on six generated network
+originals copied into protected local undo backup buckets. Their complete parent
+chain remained mode 700. Retention now recognizes regular copied backup data
+only beneath the exact private undo session/hash-bucket layout; session locks,
+recovery markers, credentials and all other profile metadata remain mode 600.
+Current ownership, one hard link, no special bits and private directories are
+still required. No retained file is chmodded or deleted. Two regressions failed
+before this correction and pass after it, including metadata/sibling boundaries,
+private parents, hardlink/symlink and special-bit refusal. Earlier BLOCKED reports
+keep their original status; explicit review clears only an inactive run marker.
+A fresh local/network conflict run and a corrected independent audit of the
+complete retained run are required before NT2-4 acceptance. Application/build
+inputs are unchanged by this harness-only correction.
+
+Run `5aa57bfd-9b4a-4727-85f7-95129681ed85`, `2026-10-06T01:52:16.101Z`–`2026-10-06T03:09:38.410Z`, completed all 56
+cases/112 parts on all seven declared routes. Every functional case and provider
+is PASS, including all mobile choices, both local/cloud directions and the
+corrected cloud empty-directory move. All four teardown stages passed and the
+three captured process identities are gone. Its overall status remains BLOCKED
+for the original inherited-backup-mode audit, with no unrun cases. After the
+harness correction, an independent audit observed 5,110,731 bytes/743
+entries and passed. Explicit review retained its original report/recovery data,
+clearing only the inactive marker. No retained file permission was changed.
+
+Baseline `db817cf1dbe40aa9d3550bfe823ebe47b52f1108`, dirty `true`, source
+`5cb07ebb5b83d621bfe0437da8c00bd9831058795c440ec5ab865d94a339efb7`, binary `42c56d357ed63f57a38867c3198fe8e1037cc22ef3501fe3c32492747b66a1b5` built `2026-10-06T01:52:15.215Z`;
+original harness `dc2dfdf58f771ec73c6eb8f33dd2037f0360ae0454c8434de65db24be78d9491`. The application inputs and binary are unchanged;
+the additional native local/network scope specifically retests creation/auditing
+of the copied recovery data. All 109 native policy tests and native lint pass.
+
+Native integration retest `4ee0ad41-6661-4591-9c25-12f5f104619e`, `2026-10-06T03:10:24.387Z`–`2026-10-06T03:12:37.895Z`,
+passed all 16 local/network cases/32 parts, including inherited recovery-file
+modes from new network overwrites. Accessibility and all four owned teardown
+stages passed; three captured process identities are gone. The fresh private
+audit passed with 4,976,199 bytes/284 entries. It uses the identical
+application source/binary above and corrected harness `f7ca03f29e1fd7edc353b08cc6d48cd1fc7d22815f13996004508b99cc4989af`.
+
+NT2-4 acceptance combines the complete 56-case/112-part native functional scope,
+its corrected independent privacy audit, and this fresh 32-part integration run.
+Both source/destination trees, nested/unrelated bytes, reserved unique names,
+source retention/removal and all four choices passed across all five providers
+and both local/cloud directions. Six cross-kind cloud-boundary refusals preserve
+both sides explicitly. The original overall BLOCKED/FAIL reports and recovery
+data remain retained unchanged; no declared functional case is unrun. NT2-4 is
+complete. Frontend 678/Rust 786/native-policy 109 tests, type checks, both linters,
+Clippy and strict documentation checks pass.
+
 ## Delivery
 
 Each completed NT2 point receives its own commit. No intermediate push or

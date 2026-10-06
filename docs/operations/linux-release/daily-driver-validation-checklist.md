@@ -117,7 +117,12 @@ NT2-2 also passed all 16 copy/move mixed-tree parts across the eight local-hub
 routes, including mobile both ways. Independent trees, teardown and fresh audit
 passed. NT2-3 also passed all 40 all-pairs copy/move parts on one candidate, with
 selected routing receipts and independent trees across all 20 directions.
-NT2-4 through NT2-6 and the broader parent rows remain open.
+NT2-4 completed all 56 conflict cases/112 parts, including Skip, cloud directory
+merge cleanup and explicit cross-kind refusals. Its corrected independent audit
+and a fresh 32-part local/network integration run pass on the same app/binary;
+the original audit-blocked report retains its status. Exact trees, accessibility
+and owned teardown passed. NT2-5 through NT2-6 and the broader parent rows remain
+open.
 
 ## Run Discipline
 

@@ -3,6 +3,7 @@
 
   export let open = false
   export let conflicts: { src: string; target: string; is_dir: boolean }[] = []
+  export let onSkip: () => void = () => {}
   export let onOverwrite: () => void = () => {}
   export let onRenameAll: () => void = () => {}
   export let onCancel: () => void = () => {}
@@ -30,6 +31,7 @@
     </div>
     <div slot="actions">
       <button class="secondary" type="button" on:click={onCancel}>Cancel</button>
+      <button class="secondary" type="button" on:click={onSkip}>Skip</button>
       <button class="secondary" type="button" data-default-action="1" on:click={onRenameAll}>Auto-rename</button>
       <button class="danger" type="button" on:click={onOverwrite}>Overwrite</button>
     </div>

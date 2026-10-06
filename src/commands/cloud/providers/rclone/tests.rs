@@ -2304,3 +2304,174 @@ fn directories_bypass_file_only_rc_copy_and_move() {
     assert!(!log.contains("operations/copyfile"));
     assert!(!log.contains("operations/movefile"));
 }
+
+#[cfg(unix)]
+#[test]
+fn cross_kind_overwrite_refuses_before_copy_or_move_even_when_prechecked() {
+    for source_directory in [false, true] {
+        for move_source in [false, true] {
+            for prechecked in [false, true] {
+                let sandbox = FakeRcloneSandbox::new();
+                if source_directory {
+                    sandbox.write_remote_file("work", "source/nested.txt", "source bytes");
+                    fs::create_dir_all(sandbox.remote_path("work", "source/empty")).unwrap();
+                    sandbox.write_remote_file("work", "target", "original destination bytes");
+                } else {
+                    sandbox.write_remote_file("work", "source", "source bytes");
+                    sandbox.write_remote_file(
+                        "work",
+                        "target/nested.txt",
+                        "original destination bytes",
+                    );
+                    fs::create_dir_all(sandbox.remote_path("work", "target/empty")).unwrap();
+                }
+                let provider = sandbox.provider();
+                let (source, destination) = (
+                    cloud_path("rclone://work/source"),
+                    cloud_path("rclone://work/target"),
+                );
+                let error = if move_source {
+                    provider.move_entry(&source, &destination, true, prechecked, None)
+                } else {
+                    provider.copy_entry(&source, &destination, true, prechecked, None)
+                }
+                .unwrap_err();
+                assert_eq!(
+                    error.code_str(),
+                    CloudCommandErrorCode::Unsupported.as_code_str()
+                );
+                let source_file = if source_directory {
+                    "source/nested.txt"
+                } else {
+                    "source"
+                };
+                let destination_file = if source_directory {
+                    "target"
+                } else {
+                    "target/nested.txt"
+                };
+                assert_eq!(
+                    fs::read_to_string(sandbox.remote_path("work", source_file)).unwrap(),
+                    "source bytes"
+                );
+                assert_eq!(
+                    fs::read_to_string(sandbox.remote_path("work", destination_file)).unwrap(),
+                    "original destination bytes"
+                );
+                assert!(sandbox
+                    .remote_path(
+                        "work",
+                        if source_directory {
+                            "source/empty"
+                        } else {
+                            "target/empty"
+                        }
+                    )
+                    .is_dir());
+                let log = sandbox.read_log();
+                assert!(
+                    !log.contains("copyto ")
+                        && !log.contains("moveto ")
+                        && !log.contains("copy work:")
+                        && !log.contains("move work:")
+                );
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn overwrite_directory_move_merges_nested_bytes_preserves_empty_folders_and_removes_source_root() {
+    for force_rc in [false, true] {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "source/tree/nested.txt", "new nested bytes");
+        fs::create_dir_all(sandbox.remote_path("work", "source/tree/empty")).unwrap();
+        sandbox.write_remote_file("work", "source/unrelated.txt", "unrelated source");
+        sandbox.write_remote_file("work", "target/tree/nested.txt", "old nested bytes");
+        sandbox.write_remote_file(
+            "work",
+            "target/tree/target-only.txt",
+            "unchanged destination",
+        );
+        sandbox.write_remote_file("work", "target/unrelated.txt", "unrelated target");
+        let provider = if force_rc {
+            sandbox.provider_with_forced_rc()
+        } else {
+            sandbox.provider()
+        };
+        provider
+            .move_entry(
+                &cloud_path("rclone://work/source/tree"),
+                &cloud_path("rclone://work/target/tree"),
+                true,
+                true,
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "target/tree/nested.txt")).unwrap(),
+            "new nested bytes"
+        );
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "target/tree/target-only.txt")).unwrap(),
+            "unchanged destination"
+        );
+        assert!(sandbox.remote_path("work", "target/tree/empty").is_dir());
+        assert!(!sandbox.remote_path("work", "source/tree").exists());
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "source/unrelated.txt")).unwrap(),
+            "unrelated source"
+        );
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "target/unrelated.txt")).unwrap(),
+            "unrelated target"
+        );
+        let log = sandbox.read_log();
+        assert_eq!(
+            log.lines().filter(|line| line.contains(" move ")).count(),
+            1
+        );
+        assert!(!log.contains(" moveto ") && !log.contains(" purge "));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn failed_directory_merge_move_never_retries_or_finalizes_source_or_destination() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "source/tree/nested.txt", "original source bytes");
+    fs::create_dir_all(sandbox.remote_path("work", "source/tree/empty")).unwrap();
+    sandbox.write_remote_file(
+        "work",
+        "target/tree/nested.txt",
+        "original destination bytes",
+    );
+    fs::write(sandbox.root.join("move-fail-invocation"), "1").unwrap();
+    let error = sandbox
+        .provider()
+        .move_entry(
+            &cloud_path("rclone://work/source/tree"),
+            &cloud_path("rclone://work/target/tree"),
+            true,
+            true,
+            None,
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("forced move failure"));
+    assert_eq!(
+        fs::read_to_string(sandbox.remote_path("work", "source/tree/nested.txt")).unwrap(),
+        "original source bytes"
+    );
+    assert_eq!(
+        fs::read_to_string(sandbox.remote_path("work", "target/tree/nested.txt")).unwrap(),
+        "original destination bytes"
+    );
+    assert!(sandbox.remote_path("work", "source/tree/empty").is_dir());
+    let log = sandbox.read_log();
+    assert_eq!(
+        log.lines().filter(|line| line.contains(" move ")).count(),
+        1
+    );
+    assert!(!log.contains(" mkdir ") && !log.contains(" rmdir ") && !log.contains(" purge "));
+}

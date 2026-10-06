@@ -251,9 +251,17 @@ all-pairs has twenty. Test copy and move separately for files and directory tree
   accessibility, owned teardown and fresh privacy audit passed. Provider-internal
   temporary files are outside the routing claim. Policy 105/Rust 782 tests and
   Clippy/native lint passed.
-- [ ] **NT2-4** Cover skip, overwrite, unique-name and cancel conflict choices:
+- [x] **NT2-4** Cover skip, overwrite, unique-name and cancel conflict choices:
   files, directories, nested collisions and file-versus-directory conflicts.
   Assert the documented policy and both sides' bytes after each result.
+  The [native conflict verification](../operations/linux-release/runs/2026-10-06-native-transfers.md)
+  completed all 56 cases/112 parts on the five providers and both local/cloud
+  directions. All four choices preserve the documented source/destination trees;
+  cloud/mixed cross-kind overwrite explicitly refuses, and cloud folder moves
+  retain empty destinations and remove their empty source roots. A corrected
+  independent audit and fresh 32-part local/network integration run pass on the
+  same app/binary; the original audit-blocked report retains its status. Owned
+  teardown/accessibility and frontend 678/Rust 786/policy 109 checks pass.
 - [ ] **NT2-5** Reject same-target operations, transfers into descendants and
   aliases that would recurse or destroy sources. Verify deterministic errors
   and bounded work, not only disabled controls.
