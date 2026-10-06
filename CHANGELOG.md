@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Verify native MTP operations and source preservation on provider name failure,
+  plus decoded cold/late image thumbnails, stable ordering, explicit refresh and
+  generated-file metadata in the approved mobile test folder.
+
 - Verify native SFTP/GVFS/FUSE operations, byte progress, cancellation and stale
   paths. Permanently delete a bounded generated 32 MiB file without a local undo
   content copy, preserving it when confirmation is cancelled.

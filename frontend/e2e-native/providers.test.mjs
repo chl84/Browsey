@@ -26,3 +26,11 @@ test('network acceptance declares bounded large deletion and both progress/Cance
   assert.ok(networkProbes(plan).every(p=>p.holdMs<=5000&&p.holdBytes<=65536))
   assert.throws(()=>networkManifest(makePlan(config(['local','network','mobile']),plan.runId)))
 })
+
+test('MTP acceptance declares thumbnail/metadata behavior plus source preservation after provider name failure',async()=>{
+  const {mobileManifest}=await import('./providers.mjs'),plan=makePlan(config(['local','mobile']),'23456789-1234-4234-9234-123456789abc')
+  const report=createReport(plan,kinds,mobileManifest(plan))
+  assert.deepEqual(report.cases.find(c=>c.id==='provider-mobile').providers,['mobile'])
+  assert.ok(report.cases.find(c=>c.id==='names-mobile').parts.some(p=>p.id==='quoted-name-rejection'))
+  assert.throws(()=>mobileManifest(makePlan(config(['local','mobile','usb']),plan.runId)))
+})

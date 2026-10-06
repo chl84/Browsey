@@ -426,9 +426,14 @@ completed file-operation acceptance.
   cancelled delete, then disappears without a local undo copy. Stale rename
   fails explicitly with preserved moved-source bytes and correct refreshed
   listing. Service loss remains outside this scope. See the NT5 record.
-- [ ] **NT5-3** Mobile: verify MTP operations, provider latency and late metadata/
+- [x] **NT5-3** Mobile: verify MTP operations, provider latency and late metadata/
   thumbnails, stable ordering and source preservation on failure. Do not enumerate
   personal camera folders.
+  Native PASS on the mounted MTP test folder: file/folder operations and both
+  local transfer directions, explicit quoted-name rejection with source-byte
+  preservation, cold/late generated image thumbnails, stable grid/list order
+  and refreshed file Properties. No personal camera enumeration or locked-phone
+  lifecycle claim. See the NT5 record.
 - [ ] **NT5-4** Cloud: verify OneDrive refresh, transfers, conflicts, working copies
   and quota/rate/authentication errors using generated fixtures/private config.
   Google Drive/Nextcloud need separately approved exact roots and credentials.

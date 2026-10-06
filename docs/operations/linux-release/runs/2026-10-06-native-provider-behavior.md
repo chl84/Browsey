@@ -55,3 +55,27 @@ captured candidate/driver PID/start identities are independently confirmed gone.
 No fixture/recovery cleanup is performed. Native policy tests (148), native lint
 and strict docs checks pass. Candidate application source remains the NT4 final
 source; native harness changes are independently hashed in the private report.
+
+## NT5-3: mounted mobile/MTP and thumbnails
+
+Run `515c8887-3561-4134-a1d4-58998c39f009` is native PASS: all foundation operations
+in the owned mobile folder and both local transfer directions, six mobile
+special-name parts and four thumbnail/metadata parts. A double-quoted filename
+is explicitly rejected by the real creation modal on this MTP device; all
+existing names/bytes remain unchanged. This is a device restriction, not a
+universal MTP rule. No personal camera/device-root enumeration is performed.
+
+Tiny generated 128x96 RGB PNG files produce decoded native private-cache images
+in the actual grid. Read-only samples capture cold completion and a third image
+added later; actual F5 and list/grid controls refresh metadata. Complete grid
+samples maintain Name ascending order, and list order matches independently
+known names. Properties reports the late file's independently known size, name
+and type. Final raw-byte tree digests preserve all three images and sentinel.
+Measured operation timings are retained in the report; no performance threshold
+or synthetic late-metadata event is invented. This does not cover a locked
+phone, disconnect/reconnect or an unavailable provider mid-file.
+
+All four teardown stages, private retention and fresh exact-run audit pass.
+Independent exact PID/start checks confirm all captured processes gone. Native
+policy tests (150), native lint and strict docs consistency pass. Fixtures and
+private cache/recovery data remain retained; no production build is installed.

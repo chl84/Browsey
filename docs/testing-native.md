@@ -697,3 +697,13 @@ The source-bound GIO delete implementation uses metadata enumeration and delete,
 without opening file contents. This is no throughput or service-loss test. All
 normal fixture, read, retention and audit caps remain unchanged. Stale-path rename
 uses one externally renamed generated source with independent byte preservation.
+
+`--suite mobile --targets local,mobile` reuses foundation and mobile special-name
+cases. Three tiny generated 128x96 RGB PNGs are the only thumbnail inputs. A
+read-only MutationObserver records grid order during cold thumbnail completion
+and after adding a late image through the bounded fixture writer. Actual F5
+refresh and view controls expose new entries; loaded native cache images must
+decode with non-zero dimensions. Complete grid samples preserve Name ascending
+order. File Properties matches independent PNG size/type/name, and every source
+image is verified byte-for-byte/SHA-256 afterwards. Recorded timings describe
+this mounted device, not a throughput threshold or locked-phone acceptance.
