@@ -2172,6 +2172,107 @@ fn fake_rclone_shim_skips_destination_stat_when_move_is_prechecked() {
 
 #[cfg(unix)]
 #[test]
+fn directory_copy_preserves_empty_root_and_nested_empty_directories() {
+    for force_rc in [false, true] {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.mkdir_remote("work", "source/empty");
+        sandbox.mkdir_remote("work", "source/tree/deep/empty");
+        sandbox.write_remote_file("work", "source/tree/deep/nested.txt", "nested payload");
+        sandbox.write_remote_file("work", "source/unrelated.txt", "unrelated source");
+        sandbox.write_remote_file("work", "target/unrelated.txt", "unrelated target");
+        let provider = if force_rc {
+            sandbox.provider_with_forced_rc()
+        } else {
+            sandbox.provider()
+        };
+        for name in ["empty", "tree"] {
+            provider
+                .copy_entry(
+                    &cloud_path(&format!("rclone://work/source/{name}")),
+                    &cloud_path(&format!("rclone://work/target/{name}")),
+                    false,
+                    false,
+                    None,
+                )
+                .unwrap();
+        }
+        assert!(sandbox.remote_path("work", "target/empty").is_dir());
+        assert!(sandbox
+            .remote_path("work", "target/tree/deep/empty")
+            .is_dir());
+        assert!(sandbox.remote_path("work", "source/empty").is_dir());
+        assert!(sandbox
+            .remote_path("work", "source/tree/deep/empty")
+            .is_dir());
+        for name in ["source/tree/deep/nested.txt", "target/tree/deep/nested.txt"] {
+            assert_eq!(
+                fs::read(sandbox.remote_path("work", name)).unwrap(),
+                b"nested payload"
+            );
+        }
+        assert_eq!(
+            fs::read(sandbox.remote_path("work", "source/unrelated.txt")).unwrap(),
+            b"unrelated source"
+        );
+        assert_eq!(
+            fs::read(sandbox.remote_path("work", "target/unrelated.txt")).unwrap(),
+            b"unrelated target"
+        );
+        let log = sandbox.read_log();
+        assert_eq!(
+            log.lines()
+                .filter(|line| line.contains("copy --create-empty-src-dirs "))
+                .count(),
+            2
+        );
+        assert!(!log.contains("operations/copyfile"));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn failed_directory_copy_preserves_source_without_finalizing_or_retrying() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.mkdir_remote("work", "source/tree/empty");
+    sandbox.write_remote_file("work", "source/tree/nested.txt", "source payload");
+    sandbox.write_remote_file("work", "target/unrelated.txt", "unrelated target");
+    fs::write(
+        sandbox.root.join("transfer-failure"),
+        "forced directory-copy failure",
+    )
+    .unwrap();
+    let provider = sandbox.provider();
+    provider
+        .copy_entry(
+            &cloud_path("rclone://work/source/tree"),
+            &cloud_path("rclone://work/target/tree"),
+            false,
+            false,
+            None,
+        )
+        .expect_err("The failed write must remain a failure");
+    assert_eq!(
+        fs::read(sandbox.remote_path("work", "source/tree/nested.txt")).unwrap(),
+        b"source payload"
+    );
+    assert!(sandbox.remote_path("work", "source/tree/empty").is_dir());
+    assert!(!sandbox.remote_path("work", "target/tree").exists());
+    assert_eq!(
+        fs::read(sandbox.remote_path("work", "target/unrelated.txt")).unwrap(),
+        b"unrelated target"
+    );
+    let log = sandbox.read_log();
+    assert_eq!(
+        log.lines()
+            .filter(|line| line.contains("copy --create-empty-src-dirs "))
+            .count(),
+        1
+    );
+    assert!(!log.contains("mkdir work:target/tree"));
+}
+
+#[cfg(unix)]
+#[test]
 fn directories_bypass_file_only_rc_copy_and_move() {
     let sandbox = FakeRcloneSandbox::new();
     sandbox.write_remote_file("work", "source/tree/nested.txt", "generated payload");
@@ -2198,7 +2299,7 @@ fn directories_bypass_file_only_rc_copy_and_move() {
         b"generated payload"
     );
     let log = sandbox.read_log();
-    assert!(log.contains("copyto work:source/tree work:target/copied"));
+    assert!(log.contains("copy --create-empty-src-dirs work:source/tree work:target/copied"));
     assert!(log.contains("moveto work:target/copied work:target/moved"));
     assert!(!log.contains("operations/copyfile"));
     assert!(!log.contains("operations/movefile"));

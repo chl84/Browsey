@@ -62,6 +62,9 @@ The [editing, history and Properties record](operations/linux-release/runs/2026-
 defines the NT1-5 through NT1-8 cases and records their native outcomes, application
 fixes and retained earlier attempts.
 
+The [transfer matrix and conflict record](operations/linux-release/runs/2026-10-06-native-transfers.md)
+tracks NT2-1 through NT2-6, with separate acceptance and commits for each point.
+
 The [native test suite TODO](todo/TODO_NATIVE_TEST_SUITE.md) prioritizes harness
 stability, basic operations, transfer boundaries, failure safety and edge cases.
 It tracks suite work; accepted candidate outcomes stay in the daily-driver
@@ -187,6 +190,12 @@ principal discovery. Exact generated-tree membership/kinds/bytes are checked
 after every editing attempt, including cancellations and expected rejections.
 The permanent-delete warning distinguishes supported local Undo in the current
 session from irreversible cloud/network deletion; it does not promise remote Undo.
+
+`--suite transfers-within` selects NT2-1: copy and move on every selected provider,
+each with file, empty-folder, nested-tree and mixed-batch parts. Ten cases/40 parts
+cover all five targets. Both generated sides are independently checked after
+every part, including unrelated sentinels, empty directories and source
+preservation/removal. These cases are separate from the smaller foundation cases.
 
 Tree verification runs at most two independent reads at once and waits for both
 started children before surfacing a failure. Cloud metadata readiness permits at

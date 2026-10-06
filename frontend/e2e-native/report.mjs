@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { kinds } from './scope.mjs'
+const partPersistence = Symbol('partPersistence')
 
 // Requirements describe this bounded case, not assumed filesystem support.
 export function requirements(item) {
@@ -30,7 +31,9 @@ export function requirements(item) {
     const source = item.providers.length === 1 || index === 0
     const destination = item.providers.length === 1 || index === 1
     return [provider, [...(source ? ['file-read', 'directory-read', ...(operation === 'move' ? ['source-removal'] : [])] : []),
-      ...(destination ? ['file-write', 'directory-create'] : []), `ui-${operation}`]]
+      ...(destination ? ['file-write', 'directory-create'] : []), `ui-${operation}`,
+      ...(item.id.startsWith(`${operation}-rich-`) ? ['empty-directory-transfer', 'nested-tree-transfer',
+        'mixed-batch-transfer', 'independent-source-destination-trees'] : [])]]
   }))
 }
 
@@ -40,13 +43,17 @@ export function createReport(plan, configured, manifest) {
     assert.ok(item.providers.length && item.providers.every(kind => plan.targets.some(target => target.kind === kind)),
       'Case providers must belong to the selected plan')
     assert.ok(Object.values(requirements(item)).every(caps => caps.length), 'Every case must declare requirements')
+    if (item.partIds) assert.ok(Array.isArray(item.partIds) && item.partIds.length > 0 && item.partIds.length <= 128
+      && item.partIds.every(id => typeof id === 'string' && id.length > 0)
+      && new Set(item.partIds).size === item.partIds.length, 'Unique bounded declared parts required')
   }
   return { schema: 3, runId: plan.runId, started: new Date().toISOString(), status: 'RUNNING',
     retryPolicy: 'No automatic case, mutation or session-closure retry', setup: [],
     targets: Object.fromEntries(kinds.map(kind => [kind, plan.targets.some(target => target.kind === kind)
       ? 'NOT_RUN' : configured.includes(kind) ? 'DEFERRED' : 'NOT_CONFIGURED'])),
     cases: manifest.map(item => ({ ...item, requirements: requirements(item), status: 'NOT_RUN',
-      parts: /^(copy|move)-/.test(item.id) ? ['file', 'directory'].map(id => ({ id, status: 'NOT_RUN', ui: 'NOT_SENT' })) : [] })) }
+      parts: (item.partIds ?? (/^(copy|move)-/.test(item.id) ? ['file', 'directory'] : []))
+        .map(id => ({ id, status: 'NOT_RUN', ui: 'NOT_SENT' })) })) }
 }
 
 export function failure(error, phase) {
@@ -84,6 +91,7 @@ export async function recordCase(report, metadata, action, { before = async () =
   assert.deepEqual(metadata.providers, result.providers, 'Runtime providers must match declared direction')
   result.status = 'RUNNING'
   result.phase = 'ownership'
+  result[partPersistence] = persist
   await persist()
   try {
     await before()
@@ -96,7 +104,7 @@ export async function recordCase(report, metadata, action, { before = async () =
     const observed = await resolveFailure(error)
     failed(result, observed, result.phase)
     throw observed
-  } finally { await persist() }
+  } finally { delete result[partPersistence]; await persist() }
 }
 
 export async function recordPart(result, id, action) {
@@ -104,8 +112,10 @@ export async function recordPart(result, id, action) {
   if (part) assert.equal(part.status, 'NOT_RUN', 'A partial operation must not be retried')
   else { part = { id, status: 'NOT_RUN', ui: 'NOT_SENT' }; (result.parts ??= []).push(part) }
   part.status = 'RUNNING'
+  await result[partPersistence]?.()
   try { await action(part); part.status = 'PASS'; part.phase = result.phase }
   catch (error) { failed(part, error, result.phase); throw error }
+  finally { await result[partPersistence]?.() }
 }
 
 export function finishReport(report, error) {

@@ -16,6 +16,22 @@ const fresh = (items = manifest) => createReport(plan, kinds, items)
 const metadata = id => manifest.find(item => item.id === id)
 const injected = (failureKind, code) => Object.assign(new Error('synthetic failure'), { failureKind, code })
 
+test('each part persists started and completed outcomes before its whole case finishes', async () => {
+  const item = { ...metadata('copy-within-local'), partIds: ['first', 'second', 'later'] }
+  const report = fresh([item]), snapshots = []
+  const persist = async () => snapshots.push(JSON.parse(JSON.stringify(report.cases[0])))
+  await assert.rejects(recordCase(report, item, async result => {
+    await recordPart(result, 'first', async () => {})
+    await recordPart(result, 'second', async () => { throw injected('APP_REPORTED_ERROR') })
+  }, { persist }), /synthetic failure/)
+  assert.ok(snapshots.some(c => c.status === 'RUNNING' && c.parts[0].status === 'RUNNING'))
+  assert.ok(snapshots.some(c => c.status === 'RUNNING' && c.parts[0].status === 'PASS' && c.parts[1].status === 'NOT_RUN'))
+  assert.ok(snapshots.some(c => c.status === 'RUNNING' && c.parts[1].status === 'FAIL'))
+  assert.equal(snapshots.at(-1).status, 'FAIL')
+  assert.equal(snapshots.at(-1).parts[2].status, 'NOT_RUN')
+  assert.ok(!JSON.stringify(report).includes('partPersistence'))
+})
+
 test('all five providers declare directional requirements without assuming support or N/A', () => {
   const report = fresh()
   const outward = report.cases.find(item => item.id === 'move-local-mobile')

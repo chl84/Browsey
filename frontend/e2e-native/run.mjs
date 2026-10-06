@@ -16,6 +16,7 @@ import { selection, selectionManifest } from './selection.mjs'
 import { creation, creationManifest } from './creation.mjs'
 import { editing, editingManifest } from './editing.mjs'
 import { ownedRestart } from './restart.mjs'
+import { transfers, transferManifest } from './transfers.mjs'
 
 import { verifyCandidate, fileSha256 } from './candidate.mjs'
 import { createReport, recordSetup, recordCase, finishReport, summarizeProviders } from './report.mjs'
@@ -32,6 +33,7 @@ for (const group of ['editing', 'fileops', 'rename', 'properties', 'history']) s
   run: (plan, fixture, ui, record) => editing(plan, fixture, ui, record, group),
   manifest: plan => editingManifest(plan, group),
 }
+suites['transfers-within'] = { run: transfers, manifest: transferManifest }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const candidate = path.join(repo, 'target/native-test/browsey')
 // Inherited by the scoped app/drivers only; no desktop/global permission change.
@@ -177,7 +179,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['candidate.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['candidate.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))

@@ -223,9 +223,16 @@ Use shared cases for applicable providers and independently verify actual files.
 For five providers, the local hub has eight ordered cross-provider routes;
 all-pairs has twenty. Test copy and move separately for files and directory trees.
 
-- [ ] **NT2-1** Verify within-provider copy/move on every approved target with
+- [x] **NT2-1** Verify within-provider copy/move on every approved target with
   empty folders, nested trees and mixed batches. Compare destination bytes/tree
   and source preservation/removal independently of UI feedback.
+  Completed by the [native transfer verification](../operations/linux-release/runs/2026-10-06-native-transfers.md):
+  all 40 file/empty-folder/nested-tree/mixed-batch parts passed on local, USB,
+  network, OneDrive and mobile for both copy and move. Exact source/destination
+  trees, nested/unrelated bytes, accessibility, owned teardown and fresh privacy
+  audit passed. Empty cloud directory copies are fixed and retested; the original
+  blocked report remains retained. Rust passed 779 tests (19 ignored), native
+  policy passed 99, and Clippy/native lint/docs checks passed.
 - [ ] **NT2-2** Run both directions between local disk and USB, network, cloud
   and mobile. Successful reading does not establish writing or moving back.
 - [ ] **NT2-3** Add bounded all-pairs runs, including network/mobile and USB/cloud.

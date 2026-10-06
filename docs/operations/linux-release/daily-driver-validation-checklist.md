@@ -108,6 +108,13 @@ confirmed teardown and fresh privacy audits passed. Failed full reports remain
 retained; unchanged USB/network scopes retain their original build identity.
 The broader parent rows remain open.
 
+The [native transfer verification](runs/2026-10-06-native-transfers.md) completes
+NT2-1 with 40 within-provider copy/move parts across all five targets, including
+empty roots/descendants and mixed batches. Both entire generated trees/bytes,
+owned accessibility, teardown and fresh privacy audit passed after fixing empty
+cloud directory copies. The earlier blocked report remains retained. Cross-provider
+matrix/conflict points and broader parent rows remain open.
+
 ## Run Discipline
 
 The [scoped native acceptance suite](../../testing-native.md) provides reusable

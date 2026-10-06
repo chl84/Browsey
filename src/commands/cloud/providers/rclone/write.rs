@@ -563,23 +563,20 @@ impl RcloneCloudProvider {
         if !prechecked && !same_entry_alias {
             ensure_destination_overwrite_policy(self, src, dst, overwrite)?;
         }
-        if same_entry_alias
-            && self
-                .stat_path(src)?
-                .is_some_and(|entry| matches!(entry.kind, super::CloudEntryKind::Dir))
-        {
+        let source_is_directory = self
+            .stat_path(src)?
+            .is_some_and(|entry| matches!(entry.kind, super::CloudEntryKind::Dir));
+        if same_entry_alias && source_is_directory {
             return self.rename_directory_case_only(src, dst, cancel);
         }
         let mut fell_back_from_rc = false;
         let mut fallback_reason: Option<&'static str> = None;
         // RC copyfile/movefile accept individual objects only. Decide from
         // source metadata before starting a write; directory transfers use the
-        // existing CLI copyto/moveto route, never retry an uncertain RC write.
+        // CLI directory-copy/moveto route, never retry an uncertain RC write.
         let use_rc = self.rc.is_write_enabled()
             && (cancel.is_none() || mode == TransferMode::Copy)
-            && !self
-                .stat_path(src)?
-                .is_some_and(|entry| matches!(entry.kind, super::CloudEntryKind::Dir));
+            && !source_is_directory;
         if use_rc {
             let src_fs = format!("{}:", src.remote());
             let dst_fs = format!("{}:", dst.remote());
@@ -623,14 +620,39 @@ impl RcloneCloudProvider {
                 }
             }
         }
+        let mut spec = if source_is_directory && mode == TransferMode::Copy {
+            // copyto ignores empty descendants. The directory copy command
+            // preserves them; its empty source root still needs finalization.
+            RcloneCommandSpec::new(RcloneSubcommand::Copy).arg("--create-empty-src-dirs")
+        } else {
+            RcloneCommandSpec::new(mode.cli_subcommand())
+        };
+        spec = spec
+            .arg(src.to_rclone_remote_spec())
+            .arg(dst.to_rclone_remote_spec());
+        if source_is_directory && mode == TransferMode::Copy {
+            spec = spec
+                .arg("--retries")
+                .arg("1")
+                .arg("--low-level-retries")
+                .arg("1");
+        }
         self.cli
-            .run_capture_text_with_cancel(
-                RcloneCommandSpec::new(mode.cli_subcommand())
-                    .arg(src.to_rclone_remote_spec())
-                    .arg(dst.to_rclone_remote_spec()),
-                cancel,
-            )
+            .run_capture_text_with_cancel(spec, cancel)
             .map_err(|error| map_rclone_error_for_paths(&[src, dst], error))?;
+        if source_is_directory && mode == TransferMode::Copy {
+            // This is one planned, idempotent directory finalization after a
+            // successful copy, never a retry after an uncertain write.
+            self.cli.run_capture_text_with_cancel(
+                RcloneCommandSpec::new(RcloneSubcommand::Mkdir).arg(dst.to_rclone_remote_spec())
+                    .arg("--retries").arg("1").arg("--low-level-retries").arg("1"), cancel,
+            ).map_err(|error| {
+                let mapped = map_rclone_error_for_paths(&[src, dst], error);
+                CloudCommandError::new(mapped.code(), format!(
+                    "Directory copy output may be retained at {dst}. Destination directory finalization failed: {mapped}"
+                ))
+            })?;
+        }
         log_backend_selected(
             mode.op_name(),
             "cli",
