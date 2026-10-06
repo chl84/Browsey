@@ -465,6 +465,15 @@ fn paste_entries_core(
                         ),
                     ));
                 }
+                // Prevent deleting parent/ancestor of the source.
+                if src.starts_with(&target) {
+                    return Err(rollback_performed_actions(
+                        &performed,
+                        ClipboardError::invalid_input(
+                            "Cannot overwrite a parent directory of the source item",
+                        ),
+                    ));
+                }
                 // If both are dirs, merge instead of deleting target (Windows Explorer behavior).
                 if src_meta.is_dir() && target_meta.is_dir() {
                     if let Err(err) = merge_dir(
@@ -480,15 +489,6 @@ fn paste_entries_core(
                     }
                     created.push(target.to_string_lossy().to_string());
                     continue;
-                }
-                // Prevent deleting parent/ancestor of the source.
-                if src.starts_with(&target) {
-                    return Err(rollback_performed_actions(
-                        &performed,
-                        ClipboardError::invalid_input(
-                            "Cannot overwrite a parent directory of the source item",
-                        ),
-                    ));
                 }
                 if let Err(err) = backup_existing_target(&target, &mut performed) {
                     return Err(rollback_performed_actions(&performed, err));

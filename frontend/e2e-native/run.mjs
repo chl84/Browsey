@@ -17,6 +17,7 @@ import { creation, creationManifest } from './creation.mjs'
 import { editing, editingManifest } from './editing.mjs'
 import { ownedRestart } from './restart.mjs'
 import { transfers, transferManifest } from './transfers.mjs'
+import { guards, guardManifest } from './guards.mjs'
 import { conflicts, conflictManifest } from './conflicts.mjs'
 import { routeEvidence } from './routing.mjs'
 
@@ -40,6 +41,9 @@ suites['transfers-hub'] = { run: (plan, fixture, ui, record) => transfers(plan, 
   manifest: plan => transferManifest(plan, 'hub') }
 suites['transfers-pairs'] = { run: (plan, fixture, ui, record) => transfers(plan, fixture, ui, record, 'pairs'),
   manifest: plan => transferManifest(plan, 'pairs') }
+suites['guards-aliases-mobile'] = { run: (plan, fixture, ui, record) => guards(plan, fixture, ui, record, 'remaining'),
+  manifest: plan => guardManifest(plan, 'remaining') }
+suites.guards = { run: guards, manifest: guardManifest }
 suites.conflicts = { run: conflicts, manifest: conflictManifest }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const candidate = path.join(repo, 'target/native-test/browsey')
@@ -186,7 +190,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['candidate.mjs', 'conflicts.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['candidate.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))

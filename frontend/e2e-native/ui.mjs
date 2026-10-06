@@ -309,6 +309,7 @@ export class NativeUi {
     const action = this.browser.action('key')
     for (const character of value) {
       if (character === '_') action.down(Key.Shift).down('-').up('-').up(Key.Shift)
+      else if (character === ':' && this.inputLayout === 'no') action.down(Key.Shift).down('.').up('.').up(Key.Shift)
       else if (character === '/' && this.inputLayout === 'no') action.down(Key.Shift).down('7').up('7').up(Key.Shift)
       else if (/^[A-Z]$/.test(character)) action.down(Key.Shift).down(character.toLowerCase()).up(character.toLowerCase()).up(Key.Shift)
       else action.down(character).up(character)

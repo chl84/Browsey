@@ -3523,3 +3523,60 @@ fn startup_cleanup_preserves_existing_undo() {
     clear_clipboard();
     fs::remove_dir_all(base).unwrap();
 }
+
+#[cfg(unix)]
+#[test]
+fn canonical_destination_parent_alias_cannot_recurse_or_destroy_source() {
+    let _guard = lock_clipboard_test();
+    let _ = ensure_undo_dir();
+    let root = uniq_path("canonical-descendant-alias");
+    let source = root.join("source");
+    fs::create_dir_all(source.join("sub")).unwrap();
+    write_file(&source.join("nested.txt"), b"original bytes");
+    let alias = root.join("alias");
+    symlink(&source, &alias).unwrap();
+    for mode in ["copy", "cut"] {
+        let result = paste_entries_core(
+            None,
+            alias.join("sub").to_string_lossy().into_owned(),
+            Some("rename".into()),
+            std::sync::Arc::new(std::sync::Mutex::new(crate::undo::UndoManager::new())),
+            CancelState::default(),
+            None,
+            Some(ClipboardInput {
+                paths: vec![source.to_string_lossy().into_owned()],
+                mode: mode.into(),
+            }),
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read(source.join("nested.txt")).unwrap(),
+            b"original bytes"
+        );
+        assert!(!source.join("sub/source").exists());
+    }
+    let ancestor = root.join("Folder");
+    let nested = ancestor.join("Folder");
+    write_file(&nested.join("preserve.txt"), b"nested bytes");
+    for mode in ["copy", "cut"] {
+        let result = paste_entries_core(
+            None,
+            root.to_string_lossy().into_owned(),
+            Some("overwrite".into()),
+            UndoState::default().clone_inner(),
+            CancelState::default(),
+            None,
+            Some(ClipboardInput {
+                paths: vec![nested.to_string_lossy().into_owned()],
+                mode: mode.into(),
+            }),
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read(nested.join("preserve.txt")).unwrap(),
+            b"nested bytes"
+        );
+        assert!(!ancestor.join("preserve.txt").exists());
+    }
+    fs::remove_dir_all(root).unwrap();
+}

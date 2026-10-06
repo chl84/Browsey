@@ -2475,3 +2475,121 @@ fn failed_directory_merge_move_never_retries_or_finalizes_source_or_destination(
     );
     assert!(!log.contains(" mkdir ") && !log.contains(" rmdir ") && !log.contains(" purge "));
 }
+
+#[cfg(unix)]
+#[test]
+fn unsafe_cloud_transfer_pairs_reject_before_writes_even_when_prechecked() {
+    for provider_type in ["onedrive", "nextcloud"] {
+        let remote = format!("guard-{provider_type}");
+        for move_source in [false, true] {
+            for (source, destination, overwrite) in [
+                ("Folder", "Folder", false),
+                ("Folder", "Folder/sub/Folder", false),
+                ("Folder/nested.txt", "Folder/nested.txt", true),
+                ("Folder/sub", "Folder", true),
+            ] {
+                let sandbox = FakeRcloneSandbox::new();
+                sandbox.set_remote_provider_type(&remote, provider_type);
+                sandbox.write_remote_file(&remote, "Folder/nested.txt", "source bytes");
+                sandbox.write_remote_file(&remote, "Folder/sub/preserved.txt", "child bytes");
+                let provider = sandbox.provider();
+                let src = cloud_path(&format!("rclone://{remote}/{source}"));
+                let dst = cloud_path(&format!("rclone://{remote}/{destination}"));
+                let error = if move_source {
+                    provider.move_entry(&src, &dst, overwrite, true, None)
+                } else {
+                    provider.copy_entry(&src, &dst, overwrite, true, None)
+                }
+                .unwrap_err();
+                assert_eq!(error.code(), CloudCommandErrorCode::InvalidPath);
+                assert_eq!(
+                    fs::read_to_string(sandbox.remote_path(&remote, "Folder/nested.txt")).unwrap(),
+                    "source bytes"
+                );
+                assert_eq!(
+                    fs::read_to_string(sandbox.remote_path(&remote, "Folder/sub/preserved.txt"))
+                        .unwrap(),
+                    "child bytes"
+                );
+                assert!(!sandbox.remote_path(&remote, "Folder/sub/Folder").exists());
+                assert!(!sandbox.read_log().lines().any(|line| [
+                    " copy ", " copyto ", " move ", " moveto ", " mkdir ", " rmdir ", " purge "
+                ]
+                .iter()
+                .any(|op| line.contains(op))));
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn cloud_casefold_descendants_reject_but_sibling_prefixes_remain_valid() {
+    for move_source in [false, true] {
+        let sandbox = FakeRcloneSandbox::new();
+        sandbox.write_remote_file("work", "Folder/nested.txt", "source bytes");
+        let provider = sandbox.provider();
+        let src = cloud_path("rclone://work/Folder");
+        let dst = cloud_path("rclone://work/folder/sub/Folder");
+        let error = if move_source {
+            provider.move_entry(&src, &dst, false, true, None)
+        } else {
+            provider.copy_entry(&src, &dst, false, true, None)
+        }
+        .unwrap_err();
+        assert_eq!(error.code(), CloudCommandErrorCode::InvalidPath);
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "Folder/nested.txt")).unwrap(),
+            "source bytes"
+        );
+        assert!(!sandbox.read_log().contains(" copy ") && !sandbox.read_log().contains(" moveto "));
+        provider
+            .copy_entry(
+                &src,
+                &cloud_path("rclone://work/Folder2"),
+                false,
+                true,
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            fs::read_to_string(sandbox.remote_path("work", "Folder2/nested.txt")).unwrap(),
+            "source bytes"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn cloud_root_entries_reject_without_listing_or_mutating_remote_contents() {
+    for move_source in [false, true] {
+        for source_root in [false, true] {
+            let sandbox = FakeRcloneSandbox::new();
+            sandbox.write_remote_file("work", "Folder/preserve.txt", "original bytes");
+            let provider = sandbox.provider();
+            let root = cloud_path("rclone://work");
+            let folder = cloud_path("rclone://work/Folder");
+            let (src, dst) = if source_root {
+                (&root, &folder)
+            } else {
+                (&folder, &root)
+            };
+            let error = if move_source {
+                provider.move_entry(src, dst, true, true, None)
+            } else {
+                provider.copy_entry(src, dst, true, true, None)
+            }
+            .unwrap_err();
+            assert_eq!(error.code(), CloudCommandErrorCode::InvalidPath);
+            assert_eq!(
+                fs::read_to_string(sandbox.remote_path("work", "Folder/preserve.txt")).unwrap(),
+                "original bytes"
+            );
+            assert!(!sandbox.read_log().lines().any(|line| [
+                " lsjson ", " copy ", " copyto ", " move ", " moveto ", " mkdir ", " rmdir "
+            ]
+            .iter()
+            .any(|op| line.contains(op))));
+        }
+    }
+}

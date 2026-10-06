@@ -199,3 +199,15 @@ test('menu refresh clicks the owned main action and waits for its overlay to clo
   assert.deepEqual(calls, ['idle', '[aria-label="Main menu"]',
     '//*[@role="menu" and @aria-label="Main actions"]//button[@role="menuitem" and normalize-space(.)="Refresh"]', 'closed', 'idle'])
 })
+
+test('Norwegian cloud-scheme colon uses Shift+period and remains verified before submission', async () => {
+  const batches = []
+  const browser = { releaseActions: async () => {}, keys: async () => {}, action: () => {
+    const values = []
+    return { down(value) { values.push(['down', value]); return this },
+      up(value) { values.push(['up', value]); return this }, perform: async () => { batches.push(values) } }
+  } }
+  const ui = new NativeUi(browser, [], { inputLayout: 'no' })
+  await ui.fill({ click: async () => {}, isFocused: async () => true, getValue: async () => ':' }, ':')
+  assert.deepEqual(batches.at(-1), [['down', Key.Shift], ['down', '.'], ['up', '.'], ['up', Key.Shift]])
+})

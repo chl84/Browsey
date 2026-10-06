@@ -548,6 +548,12 @@ impl RcloneCloudProvider {
         if is_cancelled(cancel) {
             return Err(cloud_write_cancelled_error());
         }
+        if src.is_root() || dst.is_root() {
+            return Err(CloudCommandError::new(
+                CloudCommandErrorCode::InvalidPath,
+                "Cloud roots cannot be copied or moved as entries",
+            ));
+        }
         // On case-insensitive providers the destination stat of a case-only
         // rename resolves the source itself. Only a same-parent move can use
         // that alias; copies and all other existing destinations still reject.
@@ -567,6 +573,40 @@ impl RcloneCloudProvider {
         let source_is_directory = self
             .stat_path(src)?
             .is_some_and(|entry| matches!(entry.kind, super::CloudEntryKind::Dir));
+        let case_insensitive = crate::commands::cloud::policy::provider_policy(
+            self.resolve_provider_kind_for_write_policy(src.remote())?,
+        )
+        .conflict_case_insensitive;
+        let source_key = if case_insensitive {
+            src.rel_path().to_lowercase()
+        } else {
+            src.rel_path().to_owned()
+        };
+        let destination_key = if case_insensitive {
+            dst.rel_path().to_lowercase()
+        } else {
+            dst.rel_path().to_owned()
+        };
+        if src.remote() == dst.remote() && !same_entry_alias {
+            if source_key == destination_key {
+                return Err(CloudCommandError::new(
+                    CloudCommandErrorCode::InvalidPath,
+                    "Source and destination are the same",
+                ));
+            }
+            if source_is_directory && destination_key.starts_with(&format!("{source_key}/")) {
+                return Err(CloudCommandError::new(
+                    CloudCommandErrorCode::InvalidPath,
+                    "Cannot transfer a folder into itself or its descendant",
+                ));
+            }
+            if overwrite && source_key.starts_with(&format!("{destination_key}/")) {
+                return Err(CloudCommandError::new(
+                    CloudCommandErrorCode::InvalidPath,
+                    "Cannot overwrite a parent directory of the source item",
+                ));
+            }
+        }
         // Cross-kind overwrite has no provider recovery receipt. Refuse before
         // dispatch rather than deleting a directory tree to replace its type.
         // UI prechecked names do not waive this kind check.

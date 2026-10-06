@@ -300,6 +300,69 @@ data remain retained unchanged; no declared functional case is unrun. NT2-4 is
 complete. Frontend 678/Rust 786/native-policy 109 tests, type checks, both linters,
 Clippy and strict documentation checks pass.
 
+## NT2-5: unsafe targets and bounded aliases
+
+Declared native scope: nine parts on each of the five providers, plus two
+OneDrive case-insensitive descendant aliases (five cases/47 parts). Cut in the
+same parent, copy/move into the source itself, descendants and an existing
+ancestor must reject visibly within a bounded observation. Both entire generated
+trees, nested/empty directories and unrelated bytes must remain exact. Copy in
+the same parent remains valid only by creating a distinct unique target. Typed
+cloud aliases are entered through the real path editor; no unsafe native symlink
+fixture is introduced.
+
+The frontend rejects any cut source already in the destination before preview
+or dispatch. Cloud writes recheck exact/case-folded source and target relations
+even for prechecked inputs, and reject remote roots as entries. Local overwrite
+checks ancestors before directory merge. Canonical local parent aliases are
+covered separately by a production-core regression on synthetic temporary data.
+Cloud name reservation and mixed destination collision handling stop after
+50 candidates; unknown write failures are never replayed. Existing legitimate
+case-only rename and sibling names remain covered by regressions.
+
+Runnable regressions confirmed two frontend same-parent cut failures, an unsafe
+cloud pair with generic failure instead of early invalid-path rejection, and a
+local overwrite merge into its source ancestor. The canonical descendant alias
+check already rejected safely; the ancestor assertion was the failing part.
+After correction, frontend 682/Rust 790/native-policy 111 tests, type checks,
+both linters and Clippy with warnings denied passed before native verification.
+
+Initial run `c87847af-ab29-41f5-a4ae-169fca9ca649`, `2026-10-06T03:16:30.854Z`–`2026-10-06T03:27:19.295Z`,
+remains BLOCKED after 33 successful parts: all nine local, USB and network parts,
+and the first six cloud parts. A scoped rclone mkdir failed while creating the
+cloud ancestor fixture, before its GUI operation. Read-only inspection confirmed
+the generated base existed and its `Folder` child did not; the original stderr
+was unavailable, so no provider cause is inferred. No failed mutation was
+retried in that subtree. All four teardown stages passed, three captured process
+identities are gone, and its refreshed private audit passed with 5,024,468
+bytes/139 entries. Its original report and generated data remain retained.
+
+Second run `754c57d4-6955-4420-94b2-f7f3ac5659b2`, `2026-10-06T03:32:53.026Z`–`2026-10-06T03:47:27.358Z`,
+remains BLOCKED after all nine local and all nine ordinary cloud parts passed.
+It stopped before submitting the cloud alias path: native Norwegian input sent
+period instead of the intended colon in the cloud URI. No alias paste was sent.
+The harness now explicitly presses Shift+period for colon and verifies the value
+before Enter; global keyboard configuration remains untouched. All four teardown
+stages and the fresh private audit (5,001,449 bytes/
+153 entries) passed, and three captured process identities
+are gone. No app source/binary change was needed for this harness correction.
+
+Fresh independent run `3aad44f2-c9ee-4399-b51f-a558e98f2efd`, `2026-10-06T03:48:10.730Z`–`2026-10-06T03:52:25.327Z`,
+passed both cloud alias parts and all nine mobile parts. Together with all nine
+ordinary cloud parts in the second run and the unchanged local/USB/network parts
+in the first run, all 47 declared functional parts passed on identical app source
+and binary; the last run uses the corrected input harness. Accessibility and all four teardown stages passed; three
+captured process identities are gone. The fresh private audit passed with
+4,947,073 bytes/56 entries. Candidate commit `82373894d6dc29fe28d26a48ab3a04590d619051`
+(dirty scoped NT2-5 fixes), source `70cd60190d0db9381582c1f26f4d62cf53be8bfd914f2269d9435b88cf9448be`, binary
+`c741085f1e6dae834846c4d619d38895a41626790702b40afb1e4fcb15cd1b62`, built `2026-10-06T03:16:29.794Z`, harness `3259cf29300ad4d9257d15742131c54193d956d4f974ef572d8a4f1ecd431328`.
+
+Frontend 682/Rust 790/native-policy 113 tests, type checks, both linters and
+Clippy pass. Before fixes, real regressions exposed same-parent cut dispatch,
+cloud unsafe targets and local ancestor overwrite ordering. Canonical descendant
+aliases were already safe. NT2-5 is complete; the original setup-blocked run
+retains its status.
+
 ## Delivery
 
 Each completed NT2 point receives its own commit. No intermediate push or

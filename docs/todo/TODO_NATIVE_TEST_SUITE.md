@@ -262,9 +262,16 @@ all-pairs has twenty. Test copy and move separately for files and directory tree
   independent audit and fresh 32-part local/network integration run pass on the
   same app/binary; the original audit-blocked report retains its status. Owned
   teardown/accessibility and frontend 678/Rust 786/policy 109 checks pass.
-- [ ] **NT2-5** Reject same-target operations, transfers into descendants and
+- [x] **NT2-5** Reject same-target operations, transfers into descendants and
   aliases that would recurse or destroy sources. Verify deterministic errors
   and bounded work, not only disabled controls.
+  The [native guard verification](../operations/linux-release/runs/2026-10-06-native-transfers.md)
+  passed all 47 declared parts across local, USB, network, cloud and mobile, combining
+  unchanged USB/network results with the nine ordinary cloud parts plus a fresh 11-part cloud-alias/mobile run on
+  the same app/binary. Unsafe operations reject visibly and preserve whole trees;
+  valid same-parent copies remain unique. Source-alias and bounded-work regressions,
+  private audits, accessibility and owned teardown pass. The initial cloud-fixture
+  setup failure remains BLOCKED and retained separately.
 - [ ] **NT2-6** Exercise a failing entry in a batch: accurate completed/skipped/
   failed counts, remaining sources, refresh and error messages. Success must
   not hide a transfer or subsequent refresh failure.

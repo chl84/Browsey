@@ -12,6 +12,7 @@ export function requirements(item) {
     navigation: ['directory-read', 'owned-navigation', 'history-navigation', 'breadcrumb-navigation', 'refresh',
       `ui-${item.id.split('-')[1]}-navigation`, 'view-switch'] }
   return Object.fromEntries(item.providers.map((provider, index) => {
+    if (operation === 'guards') return [provider, ['unsafe-transfer-rejection', 'same-target-rejection', 'descendant-rejection', 'bounded-work', 'independent-preservation']]
     if (item.id.includes('-conflicts-')) return [provider, ['conflict-choice', 'nested-conflict-preservation', 'cross-kind-conflict-policy', 'independent-source-destination-trees']]
     if (item.id.startsWith('rename-edge-')) return [provider, ['file-rename', 'nonempty-directory-rename',
       'rename-collision', 'rename-extension', 'rename-case-only', 'rename-cancel', 'rename-repeat', 'rename-preservation']]

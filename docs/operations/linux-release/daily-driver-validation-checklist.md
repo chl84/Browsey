@@ -121,8 +121,11 @@ NT2-4 completed all 56 conflict cases/112 parts, including Skip, cloud directory
 merge cleanup and explicit cross-kind refusals. Its corrected independent audit
 and a fresh 32-part local/network integration run pass on the same app/binary;
 the original audit-blocked report retains its status. Exact trees, accessibility
-and owned teardown passed. NT2-5 through NT2-6 and the broader parent rows remain
-open.
+and owned teardown passed. NT2-5 completed all 47 unsafe-target/unique-copy parts across the five providers
+on the same app/binary. A new 29-part local/cloud/mobile run and the unchanged
+USB/network parts pass, with exact trees, accessibility and private teardown
+audits. Its original cloud-fixture setup failure remains BLOCKED and retained.
+NT2-6 and the broader parent rows remain open.
 
 ## Run Discipline
 

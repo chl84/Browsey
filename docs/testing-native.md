@@ -226,6 +226,19 @@ overwrite explicitly refuses before any write. Existing cloud directories merge
 without losing destination-only bytes or empty source descendants. Failed jobs
 never replay; source-root cleanup is empty-only after a successful move.
 
+`--suite guards` selects NT2-5: nine same-target/self/descendant/ancestor and
+valid unique-copy parts per selected provider, plus two typed case-insensitive
+OneDrive descendant aliases (47 parts on all five providers). Unsafe transfers
+must show an explicit error within a bounded observation, and leave the entire
+generated tree unchanged. Same-parent copies create distinct targets. Synthetic
+production-core regressions cover canonical local parent aliases separately;
+real native fixtures never introduce symlinks. Cloud name reservation and mixed
+collision handling stop after 50 candidates; unknown writes never replay.
+`--suite guards-aliases-mobile` selects only both cloud aliases and the nine
+mobile parts for a scoped follow-up; it does not imply the omitted parts passed.
+Norwegian native cloud URI input explicitly uses Shift+period for colon and
+verifies the complete input before submission.
+
 Tree verification runs at most two independent reads at once and waits for both
 started children before surfacing a failure. Cloud metadata readiness permits at
 most four successful tree enumerations, separated by one-second gaps, before

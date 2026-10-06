@@ -308,6 +308,7 @@ export const useExplorerFileOps = (deps: Deps) => {
         if (policy === 'rename') {
           let idx = 0
           while (true) {
+            if (idx >= 50) throw new Error('No available unique name after 50 candidates')
             finalTarget = cloudRenameCandidate(targetBase, idx)
             const candidateLeaf = cloudLeafName(finalTarget)
             if (!candidateLeaf) {
@@ -401,6 +402,7 @@ export const useExplorerFileOps = (deps: Deps) => {
             let idx = 0
             // Retry rename candidates on destination_exists until a slot is found.
             while (true) {
+              if (idx >= 50) throw new Error('No available unique name after 50 candidates')
               const finalTarget = cloudRenameCandidate(targetBase, idx)
               if (reservedCloudDestNames && route === 'local_to_cloud') {
                 const candidateLeaf = cloudLeafName(finalTarget)
@@ -566,6 +568,11 @@ export const useExplorerFileOps = (deps: Deps) => {
       const route = classifyPasteRoute(operation)
       if (route === 'unsupported') {
         deps.showToast('Mixed local/cloud paste is not supported yet')
+        return false
+      }
+
+      if (operation.input.mode === 'cut' && operation.input.paths.some(src => normalizePath(parentPath(src)) === normalizePath(dest))) {
+        deps.showToast('Paste failed: Source and destination are the same')
         return false
       }
 

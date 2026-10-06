@@ -1360,3 +1360,42 @@ describe('conflict skip preserves immutable inputs and remaining cut sources', (
     expect(deps.showToast).toHaveBeenCalledWith('Skipped 1 conflicting item')
   })
 })
+
+describe('unsafe paste and bounded unique names', () => {
+  beforeEach(() => {
+    vi.clearAllMocks(); clearClipboardState()
+    for (const mock of [pasteClipboardPreviewMock, previewCloudConflictsMock, previewMixedTransferConflictsMock,
+      pasteClipboardCmdMock, copyCloudEntryMock, moveCloudEntryMock, copyMixedEntryToMock, moveMixedEntryToMock,
+      listCloudEntriesMock, listCloudRemotesMock]) mock.mockReset()
+    listCloudEntriesMock.mockResolvedValue([]); listCloudRemotesMock.mockResolvedValue([])
+    pasteClipboardPreviewMock.mockResolvedValue([]); previewCloudConflictsMock.mockResolvedValue([])
+    previewMixedTransferConflictsMock.mockResolvedValue([])
+  })
+  it.each(['/same', 'rclone://work/same'])('rejects cut in the same parent before preview on %s', async dest => {
+    const deps = createDeps(); deps.getCurrentPath = () => dest
+    setClipboardPathsState('cut', [`${dest}/source`])
+    const ops = useExplorerFileOps(deps); expect(await ops.handlePasteOrMove(dest)).toBe(false)
+    expect(deps.showToast).toHaveBeenCalledWith('Paste failed: Source and destination are the same')
+    expect(pasteClipboardPreviewMock).not.toHaveBeenCalled(); expect(previewCloudConflictsMock).not.toHaveBeenCalled()
+    expect(deps.activityApi.start).not.toHaveBeenCalled(); expect([...get(clipboardState).paths]).toEqual([`${dest}/source`])
+  })
+  it('bounds exhausted cloud name reservation without dispatching a write', async () => {
+    const deps = createDeps(); deps.getCurrentPath = () => 'rclone://work/dest'
+    setClipboardPathsState('copy', ['rclone://work/src/a.txt'])
+    listCloudEntriesMock.mockResolvedValue(Array.from({ length: 50 }, (_, i) => ({ name: i ? `a-${i}.txt` : 'a.txt' })))
+    const ops = useExplorerFileOps(deps); await ops.handlePasteOrMove('rclone://work/dest')
+    expect(copyCloudEntryMock).not.toHaveBeenCalled()
+    expect(deps.showToast.mock.lastCall?.[0]).toContain('No available unique name after 50 candidates')
+  })
+  it('bounds cloud-to-local destination collisions and never retries an unknown write error', async () => {
+    for (const collision of [true, false]) {
+      vi.clearAllMocks(); copyMixedEntryToMock.mockReset()
+      copyMixedEntryToMock.mockRejectedValue({ code: collision ? 'destination_exists' : 'io_error', message: 'failure' })
+      const deps = createDeps(); deps.getCurrentPath = () => '/dest'
+      setClipboardPathsState('copy', ['rclone://work/src/a.txt'])
+      const ops = useExplorerFileOps(deps); await ops.handlePasteOrMove('/dest')
+      expect(copyMixedEntryToMock).toHaveBeenCalledTimes(collision ? 50 : 1)
+      expect([...get(clipboardState).paths]).toEqual(['rclone://work/src/a.txt'])
+    }
+  })
+})
