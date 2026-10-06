@@ -349,9 +349,15 @@ Prioritize these data-safety cases before cosmetic UI coverage.
   foreign destination bytes and marked original backups match independently.
   The writer restores only its own temporary link after the task has stopped;
   externally removed sources are expected absent. See the NT3 record.
-- [ ] **NT3-8** Interrupt/restart only the owned candidate during operations.
+- [x] **NT3-8** Interrupt/restart only the owned candidate during operations.
   Inspect partial outputs and private recovery data; verify safe startup and
   diagnostics, not power-loss protection or automatic resume.
+  Scoped native PASS: one local overwrite interrupted by SIGKILL after 16 KiB,
+  followed by confirmed owned teardown and one restart of the same private profile.
+  Three parts preserve exact source/partial target/original backup/marker bytes,
+  check idle startup with empty history and no replay, and exercise the actual
+  read-only Settings recovery panel. Old/new captured process identities are gone.
+  No provider/service/installed-app process is interrupted. See the NT3 record.
 
 ## Priority 4 Names files and directory edge cases
 

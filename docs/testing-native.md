@@ -592,3 +592,13 @@ fixture sources are explicitly expected absent; unrelated sources remain intact.
 Old overwrite recovery bytes, concurrent destination bytes and retained uncertain
 output must survive. This is representative detection, not atomic exclusion of
 all writers or provider compare-and-swap.
+
+`--suite interruption --targets local` interrupts only the captured candidate
+with SIGKILL after an actual 16 KiB overwrite write. Other provider plans are
+rejected before fixture creation; no provider subprocess is interrupted. The
+same private profile is deliberately restarted once, after confirmed owned
+session/driver/candidate teardown. Unconfirmed closure blocks restart. Sources,
+partial target bytes, old protected backup/marker, idle startup, empty new-session
+undo/redo and real Settings recovery diagnostics are checked independently.
+There is no operation replay, automatic resume, disk-power-loss simulation or
+control of the installed application.

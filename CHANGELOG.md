@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Verify safe native startup after interrupting an owned overwrite process:
+  retain exact partial output and protected originals, keep recovery markers
+  across restart, start with empty undo history and expose read-only backup
+  diagnostics. Complete the scoped NT3 failure-safety run (107 native parts).
+
 - Verify native transfer safety with concurrent owned writers: same-size edits,
   source removal/symlink swaps, late overwrite collisions and changed move
   sources after cloud upload. Preserve uncertain output and protected originals,

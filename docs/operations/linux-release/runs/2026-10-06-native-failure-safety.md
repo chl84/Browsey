@@ -134,7 +134,7 @@ after command completion, without replaying the paste.
 
 Preparation: 123 native policy tests and native lint pass. The recovery verifier
 rejects symlinks and distinguishes exact old bytes from unrelated profile data.
-Status: NOT_RUN pending native acceptance.
+Preparation: initially NOT_RUN; native acceptance follows.
 
 First local/USB run `54f023f6-9ad4-4612-a327-51467a2391f6` remains BLOCKED:
 local pre-write and mid-file cancellation passed, including protected exact
@@ -285,7 +285,7 @@ reply; unexpected registry errors still report failure and release listeners.
 The real destination listing now receives the same progress-event token, making
 its read cancellable rather than waiting for a transfer command to exist.
 
-Status: NOT_RUN pending native acceptance.
+Preparation: initially NOT_RUN; native acceptance follows.
 
 Two preparation-instrumentation runs were retained as BLOCKED:
 `85a098f2-f008-45e3-9445-14cd0e2f88d9` and
@@ -342,7 +342,7 @@ No complete writer exclusion, network/mobile timing race or cloud-object CAS is
 claimed. I/O report requirement labels now distinguish preparation cancellation
 from injected I/O faults for each actual case; accepted NT3-6 actions are unchanged.
 
-Status: NOT_RUN pending native acceptance.
+Preparation: initially NOT_RUN; native acceptance follows.
 
 Accepted run `ef49c10a-ecb2-4a75-9ee8-3c9cbd3f841f`,
 17:48:18–17:50:52 UTC, passed all six parts and accessibility. No part remains
@@ -367,3 +367,59 @@ source SHA-256 `792497c7d8d1b6dd032072823e97d54030d47a0a3a308cc0b24c37628da8546d
 candidate SHA-256 `522bf4e28d14f72419a81e75b1b53f294a83eb3c2769fe246419734ee4ecb1b9`,
 built at `2026-10-06T17:47:14.601Z`; harness SHA-256
 `1ccf6a9b6623ee377c0112a2e8153515323b31cc15ae4dc90a4d3218daf0730e`.
+
+## NT3-8: owned process interruption and safe restart
+
+Declared scope: three parts in one local-only owned session. An actual local
+file overwrite is paused after 16 KiB, after the exact old 8 KiB target has been
+protected by a durable private recovery marker. Only the captured candidate
+PID/start/executable/private-profile/run identity is signalled with SIGKILL. All
+owned session/driver/candidate exits must be confirmed before one deliberate
+restart of the same private profile. Failed closure prohibits restart or retry.
+Other provider plans are rejected before fixture writes; no provider process,
+shared service or installed Browsey process is terminated.
+
+Independent tree/recovery checks inspect the unchanged source/sentinels, actual
+partial output and exact protected original after restart. Startup must be idle
+with empty new-session undo/redo and no resumed transfer or stale callbacks/task
+tokens. The real Settings backup panel is filtered, refreshed and expanded to
+verify marked-session information and read-only recovery guidance without
+restoring, purging or changing its private recovery data. This exercises process
+exit with the filesystem powered, not power-loss durability or automatic resume.
+
+Preparation: initially NOT_RUN; native acceptance follows.
+
+Accepted local-only run `6f441489-839e-40ca-87ce-7d08050ea713`,
+17:52:58–17:53:14 UTC, passed all three parts and accessibility. No part remains
+NOT_RUN. The deliberately killed candidate stopped at an actual 16 KiB write;
+restart kept that exact incomplete prefix, the unchanged 64 KiB source, unrelated
+sentinels and one exact old 8 KiB backup with its recovery marker. The new process
+had no resumed transfer, task/callback registrations or old undo/redo history.
+The real Settings panel reported its marked session, refreshed measurements and
+showed read-only recovery guidance and the correct private backup directory.
+Repeated independent tree/recovery checks confirmed diagnostics made no changes.
+NT3-8 is complete for this process-interruption scope; no application fix was needed.
+
+The restart's four teardown stages and final four teardown stages all passed.
+All six old/new captured candidate/driver identities were independently gone,
+and a fresh retained audit passed. The report observed 5,029,028 bytes/61 entries.
+All 131 native policy tests/native lint pass, including early provider-plan
+rejection and the existing one-attempt restart/unconfirmed-teardown regressions.
+Final blocking Semgrep has zero findings, the backend error guard passes, and
+format/docs checks pass. Application inputs remain those accepted in NT3-6/7.
+
+Baseline `5cd1d0d1178b242899694396a43bd7bb95803f3f`, dirty `true`;
+source SHA-256 `792497c7d8d1b6dd032072823e97d54030d47a0a3a308cc0b24c37628da8546d`;
+candidate SHA-256 `6ae28549d64a972013de5b5770c59d5bdecbf4220142ad2fd921aa691d41025d`,
+built at `2026-10-06T17:52:18.892Z`; harness SHA-256
+`f4b6ce5239fc7ca9583881fd078b2ce0bf19a8988397722a0e4e836a9d3816df`.
+
+## Completed native scope
+
+The eight accepted reports independently contain 27/13/9/22/18/9/6/3 passed
+parts: **107 native parts**, plus accessibility in each full run. All accepted
+reports have PASS overall, teardown and retained-data audits. Preparation and
+blocked harness runs remain retained separately and are not counted as acceptance.
+Each TODO part has a separate commit; normal production compilation without
+`native-test` and pushing the eight commits are the final release steps. A build
+alone does not install or restart the user's installed application.

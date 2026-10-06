@@ -20,6 +20,7 @@ import { moves, moveManifest, moveProbes, moveFaults } from './moves.mjs'
 import { access, accessManifest } from './access.mjs'
 import { ioFaults, ioFaultManifest, ioFaultProbes } from './iofaults.mjs'
 import { races, raceManifest, raceProbes } from './races.mjs'
+import { interruption, interruptionManifest, interruptionProbes } from './interruption.mjs'
 import { ownedRestart } from './restart.mjs'
 import { cancellations, cancellationManifest, cancellationProbes } from './cancellation.mjs'
 import { transfers, transferManifest } from './transfers.mjs'
@@ -61,6 +62,7 @@ suites.moves = { run: moves, manifest: moveManifest }
 suites.access = { run: access, manifest: accessManifest }
 suites.iofaults = { run: ioFaults, manifest: ioFaultManifest }
 suites.races = { run: races, manifest: raceManifest }
+suites.interruption = { run: interruption, manifest: interruptionManifest }
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const candidate = path.join(repo, 'target/native-test/browsey')
 // Inherited by the scoped app/drivers only; no desktop/global permission change.
@@ -128,6 +130,8 @@ async function main() {
     config = { ...config, targets: config.targets.filter(target => options.targets.includes(target.kind)) }
     if (!options.targets.includes('cloud')) config.rcloneConfig = null
   }
+  if (options.suite === 'interruption') assert.deepEqual(config.targets.map(t => t.kind), ['local'],
+    'Owned process interruption requires --targets local without provider subprocesses')
   const plan = makePlan(config, randomUUID())
   if (mode === '--plan') {
     console.log(JSON.stringify({ ...plan, note: 'Plan only: no target files were inspected or changed' }, null, 2))
@@ -206,7 +210,7 @@ async function main() {
     // structured report; failures afterward retain it in the owned local run.
     await setup(shared('harness-identity'), async () => {
       const harnessHash = createHash('sha256')
-      for (const file of ['candidate.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
+      for (const file of ['candidate.mjs', 'interruption.mjs', 'races.mjs', 'iofaults.mjs', 'access.mjs', 'moves.mjs', 'overwrite.mjs', 'recovery.mjs', 'cancellation.mjs', 'progress.mjs', 'batch.mjs', 'conflicts.mjs', 'guards.mjs', 'cases.mjs', 'creation.mjs', 'editing.mjs', 'restart.mjs', 'routing.mjs', 'transfers.mjs', 'fixtures.mjs', 'lifecycle.mjs', 'listing.mjs', 'navigation.mjs', 'selection.mjs', 'privacy.mjs', 'report.mjs', 'retention.mjs', 'run.mjs', 'scope.mjs', 'ui.mjs']) {
         harnessHash.update(file).update(await fs.readFile(path.join(repo, 'frontend/e2e-native', file)))
       }
       harnessHash.update(await fs.readFile(path.join(repo, 'tests/support/native_fixture_a11y.py')))
@@ -224,7 +228,7 @@ async function main() {
       activeCreated = true
     } })
     session = { runId: plan.runId, dataRoots: plan.targets.map(target => target.files), profile,
-      ...(options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : {}),
+      ...(options.suite === 'progress' ? { probes: progressProbes(plan) } : options.suite === 'cancellation' ? { probes: cancellationProbes(plan) } : options.suite === 'overwrite' ? { probes: overwriteProbes(plan) } : options.suite === 'moves' ? { probes: moveProbes(plan) } : options.suite === 'iofaults' ? { probes: ioFaultProbes(plan) } : options.suite === 'races' ? { probes: raceProbes(plan) } : options.suite === 'interruption' ? { probes: interruptionProbes(plan) } : {}),
       ...(options.suite === 'batches' ? { faults: batchFaults(plan) } : options.suite === 'moves' ? { faults: moveFaults(plan) } : {}) }
     if (session.faults) report.faults = session.faults.map(fault => ({ id: fault.id,
       kind: fault.source ? 'owned-source-dispatch' : 'owned-list-refresh', status: 'NOT_RUN', uses: 0 }))
@@ -279,7 +283,7 @@ async function main() {
     await setup(shared('driver-startup'), startDriver)
     await setup(shared('webdriver-session'), startSession)
     const ui = new NativeUi(browser, session.dataRoots)
-    if (['progress', 'cancellation', 'overwrite', 'moves', 'access', 'iofaults', 'races'].includes(options.suite)) ui.waitTimeout = 180_000
+    if (['progress', 'cancellation', 'overwrite', 'moves', 'access', 'iofaults', 'races', 'interruption'].includes(options.suite)) ui.waitTimeout = 180_000
     if (options.suite === 'transfers-pairs') ui.transferEvidence = routeEvidence(`${profile}/data/browsey/logs/browsey.log`)
     const captureIdentity = async () => {
       ui.browser = browser
@@ -300,11 +304,14 @@ async function main() {
       await owned()
     }
     if (options.fullscreen) await setup(shared('owned-window-fullscreen'), fullscreen)
-    if (['editing', 'history'].includes(options.suite)) {
+    if (['editing', 'history', 'interruption'].includes(options.suite)) {
       report.restarts = []
+      let interrupted = false
       ui.restart = ownedRestart({ restarts: report.restarts, persist,
         stop: async () => {
-          await owned()
+          if (interrupted) assert.equal(await candidateState(candidateOwner), 'exited',
+            'Confirm the deliberately interrupted candidate is gone before restart teardown')
+          else await owned()
           const identity = { candidate: report.identity, driver: report.driverIdentity }
           const result = await teardown({ browser, driver, nativeDriver: nativeDriverOwner, candidate: candidateOwner })
           browser = undefined // Never submit a second deleteSession for this session.
@@ -318,6 +325,17 @@ async function main() {
           return { candidate: report.identity, driver: report.driverIdentity }
         },
       })
+      if (options.suite === 'interruption') ui.interruptAndRestart = async () => {
+        await owned()
+        assert.equal(interrupted, false, 'Only one owned process interruption is allowed')
+        report.interruption = { candidate: report.identity, signal: 'SIGKILL', status: 'RUNNING' }
+        await persist()
+        await stopCandidate(candidateOwner, { signal: pid => process.kill(pid, 'SIGKILL') })
+        interrupted = true
+        report.interruption.status = 'EXIT_CONFIRMED'
+        await persist()
+        await ui.restart()
+      }
     }
     if (options.fault) {
       await record('Native lifecycle: owned window identity', async () => {
