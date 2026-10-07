@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Let productive rclone copy/move transfers continue beyond five minutes. Use a
+  five-minute inactivity limit with operation-local byte/file counters for CLI
+  and async RC jobs, retain bounded request timeouts and cancellation, and avoid
+  replaying a stalled write.
+
+- Record bounded native storage/thumbnail medians, prepared OneDrive copies to
+  isolated Nautilus, a competing destination writer and a user-confirmed web
+  recycle-bin restore. Keep broader cold-device and genuine quota/rate-limit
+  acceptance separate.
+
 - Accept valid rclone remote names containing spaces, Unicode letters/numbers,
   `+`, `@` and leading dots. Preserve names unchanged during cloud navigation
   and provider calls, fixing rejected remotes such as `Google Disk`.

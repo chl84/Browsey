@@ -262,7 +262,7 @@ impl RcloneRcClient {
         dst_fs: &str,
         dst_remote: &str,
     ) -> Result<Value, RcloneCliError> {
-        self.run_method(
+        self.run_method_async_if_cancelable(
             RcloneRcMethod::OperationsMoveFile,
             json!({
                 "srcFs": src_fs,
@@ -270,6 +270,7 @@ impl RcloneRcClient {
                 "dstFs": dst_fs,
                 "dstRemote": dst_remote,
             }),
+            None,
         )
     }
 

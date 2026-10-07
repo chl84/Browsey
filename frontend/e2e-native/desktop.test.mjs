@@ -6,6 +6,8 @@ import {fixtureLauncher} from './desktop.mjs'
 test('desktop entry rejects other providers and arbitrary launch arguments before a process or fixture exists',()=>{
   assert.deepEqual(desktopArguments(['--suite','drag','--targets','local','--a11y']),{suite:'drag',providers:'local'})
   assert.deepEqual(desktopArguments(['--suite','archives','--targets','local,cloud']),{suite:'archives',providers:'local,cloud'})
+  assert.deepEqual(desktopArguments(['--suite','cloud-export','--targets','local,cloud']),{suite:'cloud-export',providers:'local,cloud'})
+  assert.deepEqual(desktopArguments(['--suite','cloud-trash','--targets','local,cloud']),{suite:'cloud-trash',providers:'local,cloud'})
   for(const args of [[],['--suite','foundation'],['--suite','drag','--targets','local,usb'],['--suite','drag','--targets','local,cloud'],['--suite','open-with','--exec','/outside/handler']])assert.throws(()=>desktopArguments(args))
 })
 test('desktop mount plan excludes shared display, bus and personal home; app launcher narrows writes to this run',()=>{

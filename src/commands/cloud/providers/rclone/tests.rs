@@ -302,6 +302,22 @@ fn maps_rclone_timeout_to_cloud_timeout_error_code() {
 }
 
 #[test]
+fn stalled_transfer_is_a_timeout_without_replaying_the_write() {
+    let stalled = RcloneCliError::Stalled {
+        subcommand: RcloneSubcommand::Rc,
+        timeout: Duration::from_secs(300),
+    };
+    assert!(!should_fallback_to_cli_after_rc_error(&stalled));
+    let error = map_rclone_error(stalled);
+    assert_eq!(
+        error.code_str(),
+        CloudCommandErrorCode::Timeout.as_code_str()
+    );
+    assert!(error.to_string().contains("without transfer progress"));
+    assert!(error.to_string().contains("verify the destination"));
+}
+
+#[test]
 fn maps_rclone_nonzero_stderr_to_cloud_error_code() {
     let err = map_rclone_error(RcloneCliError::NonZero {
         status: fake_exit_status(1),
@@ -2091,6 +2107,34 @@ fn copy_does_not_fallback_to_cli_when_rc_async_status_is_unknown() {
         !log.contains("copyto work:src/file.txt work:dst/copied.txt"),
         "CLI copyto must not run after unknown async rc state, log:\n{log}"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn move_does_not_replay_cli_after_submitting_an_async_rc_job() {
+    let sandbox = FakeRcloneSandbox::new();
+    sandbox.write_remote_file("work", "src/file.txt", "original");
+    let mut provider = sandbox.provider();
+    provider.rc = RcloneRcClient::new(sandbox.script_path.as_os_str())
+        .with_enabled_override_for_tests(true)
+        .with_forced_async_status_error_on_move_for_tests(std::io::ErrorKind::ConnectionReset);
+    let error = provider
+        .move_entry(
+            &cloud_path("rclone://work/src/file.txt"),
+            &cloud_path("rclone://work/dst/file.txt"),
+            false,
+            false,
+            None,
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("status is unknown"));
+    assert_eq!(provider.rc.forced_job_stop_calls_for_tests(), 1);
+    assert_eq!(
+        fs::read(sandbox.remote_path("work", "src/file.txt")).unwrap(),
+        b"original"
+    );
+    assert!(!sandbox.remote_path("work", "dst/file.txt").exists());
+    assert!(!sandbox.read_log().contains("moveto"));
 }
 
 #[cfg(unix)]

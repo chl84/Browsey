@@ -635,6 +635,7 @@ fn map_rclone_cli_error(
                 cloud::rclone_cli::sanitize_failure_message(reason.trim())
             ),
         ),
+        error @ RcloneCliError::Stalled { .. } => api_err("timeout", error.to_string()),
         RcloneCliError::Timeout {
             subcommand,
             timeout,

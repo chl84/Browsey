@@ -2,7 +2,9 @@
 //! Production builds contain neither the test overrides nor the environment hook.
 use serde_json::Value;
 mod archives;
+mod cloud_trash;
 mod desktop;
+mod export;
 pub(crate) mod links;
 mod open_with;
 pub(crate) mod probes;
@@ -628,6 +630,23 @@ mod enabled {
                 command,
                 body,
             )
+            .or_else(|| {
+                cloud_trash::authorize(
+                    &session.data_roots,
+                    session.desktop.as_deref(),
+                    &session.run_id,
+                    command,
+                    body,
+                )
+            })
+            .or_else(|| {
+                export::authorize(
+                    &session.data_roots,
+                    session.desktop.as_deref(),
+                    command,
+                    body,
+                )
+            })
             .or_else(|| {
                 open_with::authorize(
                     &session.data_roots,

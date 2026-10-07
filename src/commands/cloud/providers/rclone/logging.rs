@@ -22,6 +22,7 @@ pub(super) fn classify_rc_fallback_reason(error: &RcloneCliError) -> &'static st
         RcloneCliError::AsyncJobFailed { .. } => "rc_job_failed",
         RcloneCliError::OutputLimit { .. } => "rc_output_limit",
         RcloneCliError::Timeout { .. } => "rc_timeout",
+        RcloneCliError::Stalled { .. } => "rc_stalled",
         RcloneCliError::Shutdown { .. } => "rc_shutdown",
         RcloneCliError::Cancelled { .. } => "rc_cancelled",
         RcloneCliError::AsyncJobStateUnknown { .. } => "rc_async_job_unknown",

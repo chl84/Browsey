@@ -663,10 +663,7 @@ impl RcloneCloudProvider {
                 Err(RcloneCliError::Cancelled { .. }) if mode == TransferMode::Copy => {
                     return Err(cloud_write_cancelled_error());
                 }
-                Err(error)
-                    if mode == TransferMode::Copy
-                        && !should_fallback_to_cli_after_rc_error(&error) =>
-                {
+                Err(error) if !should_fallback_to_cli_after_rc_error(&error) => {
                     return Err(map_rclone_error_for_paths(&[src, dst], error));
                 }
                 Err(error) => {

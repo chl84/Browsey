@@ -13,7 +13,23 @@ exposes read-only system/code dependencies and the approved test directory.
 Each GUI application gets a second filesystem boundary exposing only its exact
 owned UUID run for writes. Personal HOME, desktop sockets, associations and trash
 are absent from this mount tree. Network is isolated except explicit OneDrive
-archive cases using the copied private provider configuration.
+archive, cloud-export and cloud-trash cases using the copied private provider configuration.
+The 2026-10-07 daily-driver follow-up reuses the approved isolated Nautilus scope
+for two generated OneDrive files: prepare copies, cancel a drag, receive an
+actual copy and independently verify cloud originals, retained staging and
+receiver bytes. It enables only `prepare_cloud_external_copy` for that dedicated
+mode; external launch IPC, personal paths and ordinary-session exceptions stay
+disabled. The requested daily-driver tests authorize this bounded follow-up.
+
+The same follow-up authorizes `cloud-trash`: normal Browsey upload and trash of
+one generated `browsey-web-restore-<run UUID>.txt` in that run's exact cloud
+subfolder. Only `trash_cloud_entries` for this one path is enabled; roots,
+directories, other runs, extra inputs and ordinary modes are rejected. The
+maintainer restores that exact file in the provider's web recycle bin. A finite
+ten-minute read-only wait and independent original-path/size/SHA-256 checks
+record restoration. No web account inventory, restore-all or bin purge is used.
+The shared web session stays outside the isolated native desktop; the test does
+not claim to automate or isolate the provider's web UI.
 
 The prepared wrapper is `frontend/e2e-native/isolated.mjs`; namespace bootstrap
 and service lifecycle are in `desktop-bootstrap.mjs` and `desktop.mjs`. Proof

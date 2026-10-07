@@ -6,7 +6,7 @@ import {acceptanceRows} from './acceptance-map.mjs'
 import {makePlan, validateConfig} from './scope.mjs'
 import {createReport} from './report.mjs'
 const roots = {local: '/test/ai_agent_testfolder', usb: '/usb/ai_agent_testfolder', network: '/network/ai_agent_testfolder', cloud: 'rclone://Test/ai_agent_testfolder', mobile: '/mobile/ai_agent_testfolder'}
-const specific = {usb: ['local', 'usb'], 'usb-access': ['local', 'usb'], network: ['local', 'network'], mobile: ['local', 'mobile'], 'cloud-provider': ['local', 'cloud'], 'cloud-working': ['local', 'cloud']}
+const specific = {usb: ['local', 'usb'], 'usb-access': ['local', 'usb'], network: ['local', 'network'], mobile: ['local', 'mobile'], 'cloud-provider': ['local', 'cloud'], 'cloud-working': ['local', 'cloud'], 'storage-performance': ['local', 'usb', 'mobile', 'cloud'], 'cloud-export': ['local', 'cloud'], 'cloud-scale': ['local', 'cloud'], 'cloud-race': ['local', 'cloud'], 'cloud-trash': ['local', 'cloud']}
 const local = ['smoke', 'repeatability', 'measurements', 'interruption', 'links', 'drag', 'drag-feedback', 'desktop-services', 'keyboard', 'appearance', 'watchers', 'archives', 'open-with']
 test('every executable suite has a tier and every declared case maps to valid acceptance rows', () => {
   const ids = new Set()

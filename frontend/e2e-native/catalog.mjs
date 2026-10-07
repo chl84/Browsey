@@ -3,6 +3,11 @@ import {foundation, foundationManifest} from './cases.mjs'
 import {smoke, smokeManifest} from './tiers.mjs'
 import {repeatability, repeatabilityManifest} from './repeatability.mjs'
 import {measurements, measurementManifest} from './measurements.mjs'
+import {storagePerformance, storageManifest} from './storage-performance.mjs'
+import {cloudExport,cloudExportManifest} from './cloud-export.mjs'
+import {cloudScale,cloudScaleManifest} from './cloud-scale.mjs'
+import {cloudRace,cloudRaceManifest} from './cloud-race.mjs'
+import {cloudTrash,cloudTrashManifest} from './cloud-trash.mjs'
 import {navigation, navigationManifest} from './navigation.mjs'
 import {listing, listingManifest} from './listing.mjs'
 import {selection, selectionManifest} from './selection.mjs'
@@ -40,6 +45,11 @@ export const suites = { smoke: {run: smoke, manifest: smokeManifest}, foundation
   navigation: { run: navigation, manifest: navigationManifest }, listing: { run: listing, manifest: listingManifest },
   selection: { run: selection, manifest: selectionManifest }, creation: { run: creation, manifest: creationManifest } }
 suites.measurements = {run: measurements, manifest: measurementManifest}
+suites['storage-performance'] = {run: storagePerformance, manifest: storageManifest}
+suites['cloud-export'] = {run:cloudExport,manifest:cloudExportManifest}
+suites['cloud-scale'] = {run:cloudScale,manifest:cloudScaleManifest}
+suites['cloud-race'] = {run:cloudRace,manifest:cloudRaceManifest}
+suites['cloud-trash'] = {run:cloudTrash,manifest:cloudTrashManifest}
 suites.repeatability = {run: repeatability, manifest: repeatabilityManifest}
 for (const group of ['editing', 'fileops', 'rename', 'properties', 'history']) suites[group] = {
   run: (plan, fixture, ui, record) => editing(plan, fixture, ui, record, group),

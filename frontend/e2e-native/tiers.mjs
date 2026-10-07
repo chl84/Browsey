@@ -15,8 +15,8 @@ export async function smoke(plan, fixture, ui, record) {
 export const tiers = Object.freeze({
   smoke: ['smoke', 'repeatability'],
   provider: ['foundation', 'transfers-within', 'transfers-hub', 'transfers-pairs', 'usb', 'usb-access', 'network', 'mobile', 'cloud-provider', 'cloud-working'],
-  edge: ['navigation', 'listing', 'selection', 'creation', 'editing', 'fileops', 'rename', 'properties', 'history', 'guards', 'guards-aliases-mobile', 'batches', 'conflicts', 'progress', 'cancellation', 'overwrite', 'moves', 'access', 'iofaults', 'races', 'names', 'links', 'drag', 'drag-feedback', 'keyboard', 'appearance', 'watchers', 'archives', 'open-with', 'desktop-services'],
-  stress: ['measurements', 'contents', 'trees', 'limits'],
+  edge: ['navigation', 'listing', 'selection', 'creation', 'editing', 'fileops', 'rename', 'properties', 'history', 'guards', 'guards-aliases-mobile', 'batches', 'conflicts', 'progress', 'cancellation', 'overwrite', 'moves', 'access', 'iofaults', 'races', 'names', 'links', 'drag', 'drag-feedback', 'keyboard', 'appearance', 'watchers', 'archives', 'open-with', 'desktop-services', 'cloud-export', 'cloud-race', 'cloud-trash'],
+  stress: ['measurements', 'storage-performance', 'cloud-scale', 'contents', 'trees', 'limits'],
   lifecycle: ['interruption'],
 })
 export function selectTier(tier, suite, fault = null) {

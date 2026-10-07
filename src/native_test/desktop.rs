@@ -14,7 +14,7 @@ pub(super) fn validate_isolation(
     };
     if !matches!(
         mode,
-        "desktop-services" | "watchers" | "archives" | "open-with"
+        "desktop-services" | "watchers" | "archives" | "open-with" | "cloud-export" | "cloud-trash"
     ) {
         return Err("Unknown approved desktop mode");
     }

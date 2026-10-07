@@ -4,6 +4,12 @@ const partPersistence = Symbol('partPersistence')
 
 // Requirements describe this bounded case, not assumed filesystem support.
 export function requirements(item) {
+  if(item.id==='provider-cloud-web-restore')return Object.fromEntries(item.providers.map(provider=>[provider,
+    ['native-generated-upload', 'native-cloud-trash', 'manual-provider-web-restore', 'exact-original-path-and-byte-digests', 'owned-teardown']]))
+  if(item.id==='provider-cloud-scale')return Object.fromEntries(item.providers.map(provider=>[provider,
+    ['bounded-mixed-size-tree', 'native-upload-download', 'independent-remote-sha256', 'exact-local-tree-digests', 'empty-directory-preservation', 'descriptive-transfer-timing']]))
+  if (item.id.startsWith('storage-performance-')) return Object.fromEntries(item.providers.map(provider => [provider,
+    ['native-directory-opening-timing', 'first-decoded-thumbnail-timing', 'cache-state-observation', 'independent-image-preservation']]))
   const operation = item.id.split('-')[0]
   const common = { input: ['exact-text-input', 'file-create', 'rename', 'delete-cancel'],
     create: ['file-create', 'directory-create'], rename: ['file-rename', 'directory-rename'],

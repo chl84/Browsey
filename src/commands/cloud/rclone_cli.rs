@@ -13,6 +13,7 @@ use wait_timeout::ChildExt;
 
 mod capture;
 mod output;
+pub(crate) mod progress;
 use output::{scrub_log_text, truncate_failure_output};
 
 pub(crate) fn sanitize_failure_message(raw: &str) -> String {
@@ -21,8 +22,11 @@ pub(crate) fn sanitize_failure_message(raw: &str) -> String {
 
 pub(crate) const NO_TRANSFER_MESSAGE: &str = "No file was transferred; the destination may have appeared during upload. Refresh and verify the destination before retrying";
 
-const RCLONE_DEFAULT_GLOBAL_ARGS: &[&str] =
-    &["--retries", "2", "--low-level-retries", "2", "--stats", "0"];
+const RCLONE_DEFAULT_GLOBAL_ARGS: &[(&str, &str)] = &[
+    ("--retries", "2"),
+    ("--low-level-retries", "2"),
+    ("--stats", "0"),
+];
 const RCLONE_SHUTDOWN_POLL_SLICE_MS: u64 = 100;
 const RCLONE_SPAWN_ETXTBSY_RETRY_BACKOFFS_MS: &[u64] = &[10, 25, 50];
 
@@ -51,6 +55,9 @@ pub enum RcloneSubcommand {
 }
 
 impl RcloneSubcommand {
+    pub(crate) fn is_transfer(self) -> bool {
+        matches!(self, Self::Move | Self::MoveTo | Self::Copy | Self::CopyTo)
+    }
     #[allow(dead_code)]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -79,6 +86,7 @@ impl RcloneSubcommand {
             Self::Mkdir => Duration::from_secs(45),
             Self::DeleteFile | Self::Rmdir => Duration::from_secs(120),
             Self::Purge => Duration::from_secs(300),
+            // Transfers use this as an inactivity limit, not a total deadline.
             Self::Move | Self::MoveTo | Self::Copy | Self::CopyTo => Duration::from_secs(300),
         }
     }
@@ -186,6 +194,10 @@ pub enum RcloneCliError {
         stdout: String,
         stderr: String,
     },
+    Stalled {
+        subcommand: RcloneSubcommand,
+        timeout: Duration,
+    },
     NonZero {
         status: ExitStatus,
         stdout: String,
@@ -230,6 +242,9 @@ impl std::fmt::Display for RcloneCliError {
             Self::Cancelled { subcommand } => {
                 write!(f, "rclone {} cancelled", subcommand.as_str())
             }
+            Self::Stalled { subcommand, timeout } => write!(f,
+                "rclone {} stopped after {}s without transfer progress; refresh and verify the destination before retrying",
+                subcommand.as_str(), timeout.as_secs()),
             Self::AsyncJobStateUnknown {
                 subcommand,
                 operation,
@@ -369,11 +384,27 @@ impl RcloneCli {
     #[allow(dead_code)]
     pub fn command(&self, spec: RcloneCommandSpec) -> Command {
         let mut command = Command::new(&self.binary);
-        for arg in RCLONE_DEFAULT_GLOBAL_ARGS {
-            command.arg(arg);
+        for &(flag, value) in RCLONE_DEFAULT_GLOBAL_ARGS {
+            command
+                .arg(flag)
+                .arg(if spec.subcommand.is_transfer() && flag == "--stats" {
+                    "1s"
+                } else {
+                    value
+                });
         }
         for arg in spec.argv() {
             command.arg(arg);
+        }
+        if spec.subcommand.is_transfer() {
+            // Scope telemetry to this child, independent of inherited logging
+            // settings. Keep stdout untouched and capture JSON stats on stderr.
+            command
+                .env("RCLONE_STATS_LOG_LEVEL", "NOTICE")
+                .env("RCLONE_LOG_LEVEL", "NOTICE")
+                .env("RCLONE_USE_JSON_LOG", "true")
+                .env("RCLONE_LOG_FILE", "")
+                .env("RCLONE_SYSLOG", "false");
         }
         command
     }
@@ -407,13 +438,15 @@ impl RcloneCli {
         }
         let timeout = timeout_override.unwrap_or_else(|| subcommand.default_timeout());
         let started = Instant::now();
+        let activity = (subcommand.is_transfer() && timeout_override.is_none())
+            .then(|| Arc::new(Mutex::new(progress::TransferActivity::new(started))));
         debug!(command = subcommand.as_str(), "running rclone command");
         let mut command = self.command(spec);
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
         let mut process =
             spawn_with_etxtbsy_retry(&mut command, subcommand).map_err(RcloneCliError::Io)?;
-        let pipes = match capture::Pipes::start(&mut process) {
+        let pipes = match capture::Pipes::start(&mut process, activity.clone()) {
             Ok(pipes) => pipes,
             Err(error) => {
                 let _ = process.kill();
@@ -423,8 +456,14 @@ impl RcloneCli {
         };
         let child = Arc::new(Mutex::new(Some(process)));
         let _registration = RunningChildRegistration::register(child.clone());
-        let outcome =
-            wait_for_child_output_or_cancel(&child, subcommand, timeout, started, cancel_token);
+        let outcome = wait_for_child_output_or_cancel(
+            &child,
+            subcommand,
+            timeout,
+            started,
+            cancel_token,
+            activity.as_deref(),
+        );
         if matches!(&outcome, Err(RcloneCliError::Io(_))) {
             let _ = child_kill(&child);
             let _ = child_wait_with_output(&child);
@@ -558,6 +597,7 @@ fn wait_for_child_output_or_cancel(
     timeout: Duration,
     started: Instant,
     cancel_token: Option<&AtomicBool>,
+    activity: Option<&Mutex<progress::TransferActivity>>,
 ) -> Result<Output, RcloneCliError> {
     let poll = Duration::from_millis(RCLONE_SHUTDOWN_POLL_SLICE_MS);
     loop {
@@ -575,10 +615,29 @@ fn wait_for_child_output_or_cancel(
             return Err(RcloneCliError::Cancelled { subcommand });
         }
 
-        let elapsed = started.elapsed();
+        let elapsed = activity.map_or_else(
+            || started.elapsed(),
+            |activity| {
+                activity
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .idle_for(Instant::now())
+            },
+        );
         if elapsed >= timeout {
             let _ = child_kill(child);
             let output = child_wait_with_output(child).map_err(RcloneCliError::Io)?;
+            if activity.is_some() {
+                warn!(
+                    command = subcommand.as_str(),
+                    idle_ms = elapsed.as_millis() as u64,
+                    "rclone transfer stopped without progress"
+                );
+                return Err(RcloneCliError::Stalled {
+                    subcommand,
+                    timeout,
+                });
+            }
             let stdout =
                 truncate_failure_output(String::from_utf8_lossy(&output.stdout).into_owned());
             let stderr =
@@ -742,6 +801,83 @@ mod tests {
         assert_eq!(RcloneSubcommand::Purge.default_timeout().as_secs(), 300);
         assert_eq!(RcloneSubcommand::CopyTo.default_timeout().as_secs(), 300);
         assert_eq!(RcloneSubcommand::Copy.default_timeout().as_secs(), 300);
+    }
+
+    #[cfg(unix)]
+    fn controlled_transfer(
+        writes: &str,
+        timeout: std::time::Duration,
+        idle: bool,
+        cancel: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<std::process::Output, super::RcloneCliError> {
+        use std::sync::{Arc, Mutex};
+        let started = std::time::Instant::now();
+        let activity = Arc::new(Mutex::new(super::progress::TransferActivity::new(started)));
+        let mut child = std::process::Command::new("python3")
+            .args(["-c", writes])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let pipes = super::capture::Pipes::start(&mut child, Some(activity.clone())).unwrap();
+        let child = Arc::new(Mutex::new(Some(child)));
+        let result = super::wait_for_child_output_or_cancel(
+            &child,
+            RcloneSubcommand::Copy,
+            timeout,
+            started,
+            cancel,
+            idle.then_some(activity.as_ref()),
+        );
+        let (_, stderr) = pipes.finish().unwrap();
+        assert!(
+            stderr.bytes.is_empty(),
+            "stats must not exhaust diagnostic capture"
+        );
+        assert!(
+            child.lock().unwrap().is_none(),
+            "child must be reaped on all exits"
+        );
+        result
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn productive_child_outlives_total_limit_but_heartbeats_still_stall() {
+        let timeout = std::time::Duration::from_millis(500);
+        let advancing = "import json,sys,time\nfor i in range(12):\n print(json.dumps({'level':'notice','stats':{'bytes':i+1}}),file=sys.stderr,flush=True)\n time.sleep(.1)\n";
+        assert!(controlled_transfer(advancing, timeout, true, None)
+            .unwrap()
+            .status
+            .success());
+        assert!(matches!(
+            controlled_transfer(advancing, timeout, false, None),
+            Err(super::RcloneCliError::Timeout { .. })
+        ));
+        let stalled = "import json,sys,time\nfor i in range(30):\n print(json.dumps({'level':'notice','stats':{'bytes':1,'errors':i,'elapsedTime':i}}),file=sys.stderr,flush=True)\n time.sleep(.1)\n";
+        assert!(matches!(
+            controlled_transfer(stalled, timeout, true, None),
+            Err(super::RcloneCliError::Stalled { .. })
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancel_still_reaps_a_productive_transfer_promptly() {
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+            });
+            let start = std::time::Instant::now();
+            let result = controlled_transfer("import json,sys,time\nfor i in range(100):\n print(json.dumps({'level':'notice','stats':{'bytes':i+1}}),file=sys.stderr,flush=True)\n time.sleep(.1)\n", std::time::Duration::from_secs(2), true, Some(&cancel));
+            assert!(matches!(
+                result,
+                Err(super::RcloneCliError::Cancelled { .. })
+            ));
+            assert!(start.elapsed() < std::time::Duration::from_secs(1));
+        });
     }
 
     #[test]

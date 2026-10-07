@@ -26,6 +26,7 @@ pub(super) fn should_fallback_to_cli_after_rc_error(error: &RcloneCliError) -> b
     !matches!(
         error,
         RcloneCliError::AsyncJobStateUnknown { .. }
+            | RcloneCliError::Stalled { .. }
             | RcloneCliError::AsyncJobFailed { .. }
             | RcloneCliError::WriteStateUnknown { .. }
             | RcloneCliError::OutputLimit { .. }

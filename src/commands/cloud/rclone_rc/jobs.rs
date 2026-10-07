@@ -1,4 +1,5 @@
 use super::{RcloneCliError, RcloneRcClient, RcloneRcMethod, RcloneSubcommand};
+use crate::commands::cloud::rclone_cli::progress::TransferActivity;
 #[cfg(test)]
 use serde_json::json;
 use serde_json::Value;
@@ -13,8 +14,9 @@ use tracing::warn;
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ForcedAsyncStatusErrorMode {
-    CopyFile,
-    DeleteFile,
+    Copy,
+    Move,
+    Delete,
 }
 
 #[cfg(test)]
@@ -28,12 +30,21 @@ pub(super) struct ForcedAsyncStatusErrorState {
 
 impl RcloneRcClient {
     #[cfg(test)]
+    pub fn with_forced_async_status_error_on_move_for_tests(
+        self,
+        status_error_kind: io::ErrorKind,
+    ) -> Self {
+        let mut client = self.with_forced_async_status_error_on_copy_for_tests(status_error_kind);
+        client.forced_async_status_error.as_mut().unwrap().mode = ForcedAsyncStatusErrorMode::Move;
+        client
+    }
+    #[cfg(test)]
     pub fn with_forced_async_status_error_on_copy_for_tests(
         mut self,
         status_error_kind: io::ErrorKind,
     ) -> Self {
         self.forced_async_status_error = Some(ForcedAsyncStatusErrorState {
-            mode: ForcedAsyncStatusErrorMode::CopyFile,
+            mode: ForcedAsyncStatusErrorMode::Copy,
             job_id: 9101,
             status_error_kind,
             job_stop_calls: Arc::new(AtomicUsize::new(0)),
@@ -47,7 +58,7 @@ impl RcloneRcClient {
         status_error_kind: io::ErrorKind,
     ) -> Self {
         self.forced_async_status_error = Some(ForcedAsyncStatusErrorState {
-            mode: ForcedAsyncStatusErrorMode::DeleteFile,
+            mode: ForcedAsyncStatusErrorMode::Delete,
             job_id: 9102,
             status_error_kind,
             job_stop_calls: Arc::new(AtomicUsize::new(0)),
@@ -69,7 +80,7 @@ impl RcloneRcClient {
         payload: Value,
         cancel_token: Option<&AtomicBool>,
     ) -> Result<Value, RcloneCliError> {
-        if cancel_token.is_none() {
+        if cancel_token.is_none() && !method.is_transfer() {
             return self.run_method(method, payload);
         }
         self.run_method_async_with_job_control(method, payload, cancel_token)
@@ -126,8 +137,13 @@ impl RcloneRcClient {
                 )
             })?;
 
-        let total_timeout = super::async_method_total_timeout(method);
-        let deadline = Instant::now() + total_timeout;
+        let timeout_limit = super::async_method_timeout_limit(method);
+        let started = Instant::now();
+        let mut activity = TransferActivity::new(started);
+        // Never read aggregate daemon stats: another job must not hide a stall.
+        let stats_group = group
+            .map(str::to_owned)
+            .or_else(|| method.is_transfer().then(|| format!("job/{job_id}")));
 
         loop {
             if is_cancelled(cancel_token) {
@@ -144,8 +160,9 @@ impl RcloneRcClient {
                 });
             }
 
-            if let Some(group) = group {
+            if let Some(group) = stats_group.as_deref() {
                 if let Ok(stats) = self.core_stats(Some(group), true) {
+                    activity.observe(&stats, Instant::now());
                     on_progress(stats);
                 }
             }
@@ -175,7 +192,7 @@ impl RcloneRcClient {
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             if finished {
-                if let Some(group) = group {
+                if let Some(group) = stats_group.as_deref() {
                     if let Ok(stats) = self.core_stats(Some(group), true) {
                         on_progress(stats);
                     }
@@ -200,7 +217,12 @@ impl RcloneRcClient {
                 });
             }
 
-            if Instant::now() >= deadline {
+            let elapsed = if method.is_transfer() {
+                activity.idle_for(Instant::now())
+            } else {
+                started.elapsed()
+            };
+            if elapsed >= timeout_limit {
                 if let Err(error) = self.job_stop(job_id) {
                     warn!(
                         method = method.as_str(),
@@ -208,10 +230,29 @@ impl RcloneRcClient {
                         error = %error,
                         "failed to stop timed-out rclone rc job"
                     );
+                    return Err(RcloneCliError::AsyncJobStateUnknown {
+                        subcommand: RcloneSubcommand::Rc,
+                        operation: method.as_str().to_owned(),
+                        job_id,
+                        reason: format!(
+                            "Job exceeded its {} limit and stop was not confirmed: {error}",
+                            if method.is_transfer() {
+                                "inactivity"
+                            } else {
+                                "time"
+                            }
+                        ),
+                    });
+                }
+                if method.is_transfer() {
+                    return Err(RcloneCliError::Stalled {
+                        subcommand: RcloneSubcommand::Rc,
+                        timeout: timeout_limit,
+                    });
                 }
                 return Err(RcloneCliError::Timeout {
                     subcommand: RcloneSubcommand::Rc,
-                    timeout: total_timeout,
+                    timeout: timeout_limit,
                     stdout: String::new(),
                     stderr: format!("rclone rc {} async job {job_id} timed out", method.as_str()),
                 });
@@ -229,8 +270,13 @@ impl RcloneRcClient {
     ) -> Option<Result<Value, RcloneCliError>> {
         let state = self.forced_async_status_error.as_ref()?;
         match method {
+            RcloneRcMethod::OperationsMoveFile
+                if state.mode == ForcedAsyncStatusErrorMode::Move =>
+            {
+                Some(Ok(json!({ "jobid": state.job_id })))
+            }
             RcloneRcMethod::OperationsCopyFile
-                if state.mode == ForcedAsyncStatusErrorMode::CopyFile =>
+                if state.mode == ForcedAsyncStatusErrorMode::Copy =>
             {
                 if payload.get("_async").and_then(Value::as_bool) == Some(true) {
                     Some(Ok(json!({ "jobid": state.job_id })))
@@ -241,7 +287,7 @@ impl RcloneRcClient {
                 }
             }
             RcloneRcMethod::OperationsDeleteFile
-                if state.mode == ForcedAsyncStatusErrorMode::DeleteFile =>
+                if state.mode == ForcedAsyncStatusErrorMode::Delete =>
             {
                 if payload.get("_async").and_then(Value::as_bool) == Some(true) {
                     Some(Ok(json!({ "jobid": state.job_id })))
@@ -259,6 +305,7 @@ impl RcloneRcClient {
                 state.job_stop_calls.fetch_add(1, Ordering::SeqCst);
                 Some(Ok(json!({ "stopped": true })))
             }
+            RcloneRcMethod::CoreStats => Some(Ok(json!({ "bytes": 0, "transfers": 0 }))),
             _ => None,
         }
     }

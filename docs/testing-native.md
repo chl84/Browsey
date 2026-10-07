@@ -89,6 +89,15 @@ Fixtures
 are small generated text/binary files, not personal data. No installed app is launched,
 replaced, restarted or controlled.
 
+The bounded [daily-driver follow-up](operations/linux-release/runs/2026-10-07-daily-driver-followup.md)
+also measures generated image folders and a mixed-size OneDrive tree. Its special
+owned streaming writer accepts only four fixed filenames/sizes (128 KiB, 512 KiB,
+2 MiB and 8 MiB); ordinary fixture writer/read limits remain unchanged. The tree
+contains 1028 files in eight groups and stays below 16 MiB. Cloud verification
+reads only that exact generated subtree. Productive copy/move has an inactivity
+limit; automation still has a finite per-case observation bound and preserves
+incomplete results as failures.
+
 The opt-in Cargo feature `native-test` adds a fail-closed IPC command/path guard.
 Unknown commands, implicit paths and traversal are rejected. Local symlinks are
 rejected by default; only the explicit local `links` suite may declare exact

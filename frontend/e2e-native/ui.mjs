@@ -457,10 +457,9 @@ export class NativeUi {
     await this.chord('v')
     // Paste preflight can await I/O before setting the operation flag. An idle
     // frame alone does not prove this request completed.
-    // The provider's bounded copy/move command allows 300s, followed by listing
-    // reconciliation. Keep observing this one request, including late errors;
-    // a shorter UI deadline can stop a legitimate in-flight cloud transfer.
-    await this.idle({ resultPath: child(dest, src.slice(src.lastIndexOf('/') + 1)) }, 360_000)
+    // Keep observing this one request, including late errors. Productive cloud
+    // transfers have no total deadline; each native case has a finite UI bound.
+    await this.idle({ resultPath: child(dest, src.slice(src.lastIndexOf('/') + 1)) }, this.transferTimeout ?? 360_000)
   }
 
   async create(base, name, folder) {
@@ -547,7 +546,7 @@ export class NativeUi {
   }
 
   async menuAction(id, raw) {
-    assert.ok(['rename', 'copy', 'cut', 'paste', 'delete-permanent', 'properties','move-trash','compress','extract','open-with'].includes(id))
+    assert.ok(['rename', 'copy', 'cut', 'paste', 'delete-permanent', 'properties','move-trash','compress','extract','open-with','cloud-export'].includes(id))
     const selected = raw ? await this.browser.execute(() => [...document.querySelectorAll('.rows [data-path].selected, .grid [data-path].selected')].map(node => node.dataset.path).sort()) : null
     if (raw) {
       ownedPath(this.roots, raw)

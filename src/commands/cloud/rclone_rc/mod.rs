@@ -60,6 +60,9 @@ pub enum RcloneRcMethod {
 }
 
 impl RcloneRcMethod {
+    fn is_transfer(self) -> bool {
+        matches!(self, Self::OperationsCopyFile | Self::OperationsMoveFile)
+    }
     pub fn as_str(self) -> &'static str {
         match self {
             Self::CoreNoop => "rc/noop",
@@ -114,7 +117,7 @@ fn method_is_retry_safe(method: RcloneRcMethod) -> bool {
     )
 }
 
-fn async_method_total_timeout(method: RcloneRcMethod) -> Duration {
+fn async_method_timeout_limit(method: RcloneRcMethod) -> Duration {
     match method {
         RcloneRcMethod::OperationsCopyFile | RcloneRcMethod::OperationsMoveFile => {
             Duration::from_secs(300)
@@ -147,6 +150,7 @@ fn is_retryable_rc_error(error: &RcloneCliError) -> bool {
         | RcloneCliError::WriteStateUnknown { .. }
         | RcloneCliError::AsyncJobFailed { .. }
         | RcloneCliError::OutputLimit { .. }
+        | RcloneCliError::Stalled { .. }
         | RcloneCliError::NonZero { .. } => false,
     }
 }
@@ -258,9 +262,9 @@ impl RcloneRcClient {
         }
         let method_enabled = match method {
             RcloneRcMethod::CoreNoop => self.is_enabled(),
-            RcloneRcMethod::CoreStats
-            | RcloneRcMethod::CoreStatsDelete
-            | RcloneRcMethod::ConfigListRemotes
+            // Write-only RC configurations still need operation-local progress.
+            RcloneRcMethod::CoreStats | RcloneRcMethod::CoreStatsDelete => self.is_enabled(),
+            RcloneRcMethod::ConfigListRemotes
             | RcloneRcMethod::ConfigDump
             | RcloneRcMethod::OperationsList
             | RcloneRcMethod::OperationsStat => self.is_read_enabled(),

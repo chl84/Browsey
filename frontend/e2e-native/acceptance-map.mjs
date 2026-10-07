@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 // Links express bounded supporting evidence, never broad-row signoff.
 export const acceptanceRules = Object.freeze([
+  {family: 'cloud web restore', pattern: /^provider-cloud-web-restore$/, rows: ['A0-2', 'A4-3']},
+  {family: 'cloud export', pattern: /^desktop-cloud-export$/, rows: ['A1-1', 'A4-1']},
+  {family: 'cloud mixed-size scale', pattern: /^provider-cloud-scale$/, rows: ['A0-2', 'A4-4']},
+  {family: 'storage performance', pattern: /^storage-performance-(local|usb|mobile|cloud)$/, rows: ['A2-3', 'A4-4']},
   {family: 'desktop-drag', pattern: /^desktop-drag$/, rows: ['A1-1', 'A2-1', 'A2-6']},
   {family: 'desktop-feedback', pattern: /^desktop-feedback$/, rows: ['A1-1', 'A2-3', 'A2-5']},
   {family: 'desktop-services', pattern: /^desktop-services$/, rows: ['A0-2', 'A1-2']},

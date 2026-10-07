@@ -16,13 +16,17 @@ New unknown case families stop report generation instead of silently acquiring
 acceptance. `run.mjs --plan --targets local --tier smoke` previews declared IDs
 and row mappings without target inspection or writes.
 
-The policy test checks all 47 executable suites against synthetic
+The policy test checks all 52 executable suites against synthetic
 provider configurations and all-pairs declarations, including report requirements,
 parts and tier membership. This is catalogue/policy verification, not execution
 of all those cases or a new five-provider native pass.
 
 | Case family | Case-ID pattern | Supporting rows |
 | --- | --- | --- |
+| cloud web restore | `^provider-cloud-web-restore$` | A0-2, A4-3 |
+| cloud export | `^desktop-cloud-export$` | A1-1, A4-1 |
+| cloud mixed-size scale | `^provider-cloud-scale$` | A0-2, A4-4 |
+| storage performance | `^storage-performance-(local\|usb\|mobile\|cloud)$` | A2-3, A4-4 |
 | desktop-drag | `^desktop-drag$` | A1-1, A2-1, A2-6 |
 | desktop-feedback | `^desktop-feedback$` | A1-1, A2-3, A2-5 |
 | desktop-services | `^desktop-services$` | A0-2, A1-2 |
@@ -78,6 +82,10 @@ of all those cases or a new five-provider native pass.
 - Fresh/reused smoke and performance samples:
   [NT7 records](runs/2026-10-07-native-repeatability.md). Host budgets remain
   NOT_AGREED; dedicated external CI execution remains NOT_RUN.
+- Additional bounded storage performance and OneDrive follow-ups:
+  [daily-driver record](runs/2026-10-07-daily-driver-followup.md). Completed
+  measurements distinguish verified host source-data eviction from uncontrolled
+  device/provider caches. Prepared suites require their own native results.
 
 Actual PASS needs the declared case/part/provider scope, independent effects,
 owned executable/profile/process identity, resource release where required, and

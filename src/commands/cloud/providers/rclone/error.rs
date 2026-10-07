@@ -117,6 +117,8 @@ fn map_rclone_error_for_providers(
                 crate::commands::cloud::rclone_cli::sanitize_failure_message(reason.trim())
             ),
         ),
+        error @ RcloneCliError::Stalled { .. } => CloudCommandError::new(
+            CloudCommandErrorCode::Timeout, error.to_string()),
         RcloneCliError::Timeout {
             subcommand,
             timeout,

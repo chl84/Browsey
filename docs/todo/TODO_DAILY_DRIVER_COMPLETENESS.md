@@ -2,6 +2,7 @@
 
 Created: 2026-10-03
 Reorganized: 2026-10-03
+Evidence updated: 2026-10-07, after completion of the bounded NT0–NT7 native suite.
 Status: Active engineering follow-up; acceptance is tracked separately.
 Baseline: Browsey 1.0.3, verified implementation through `0bf3ff6`.
 
@@ -18,6 +19,10 @@ are not implementation TODOs.
 - [Daily-driver validation checklist](../operations/linux-release/daily-driver-validation-checklist.md):
   outstanding installed-build, platform, device, UI, accessibility and remote checks.
   An unchecked test means unverified, not unimplemented or a confirmed bug.
+- [Completed native suite](../todo-archive/TODO_NATIVE_TEST_SUITE.md) and
+  [case-to-acceptance index](../operations/linux-release/native-case-acceptance.md):
+  bounded native candidate evidence; completion does not close broader installed,
+  device or provider acceptance requirements.
 - [README](../../README.md) and [1.0.3 release notes](../releases/1.0.3.md):
   existing capabilities, published scope and release-specific limitations.
 
@@ -79,15 +84,61 @@ Inspect current code and evidence before adding or replacing behavior.
   [validation checklist](../operations/linux-release/daily-driver-validation-checklist.md#a2-interaction-and-feedback);
   installed WebKit, real thumbnail I/O and the open performance rows below
   are not signed off by those mock measurements.
+- [x] Measure bounded local native listing, first displayed thumbnails, zoom,
+  drag feedback and cancellation. The
+  [NT7-3 record](../operations/linux-release/runs/2026-10-07-native-repeatability.md#nt7-3-measured-bounded-local-baseline)
+  records a 50-entry workload, 128 ms to the first decoded thumbnail and actual
+  input/UI observations. The private app/thumbnail cache was fresh, while the
+  generated files and OS page cache were warm. These are descriptive observations,
+  not cold-storage measurements or agreed performance budgets.
+- [x] Measure bounded native opening and first decoded thumbnails on local,
+  USB, MTP and OneDrive with independent source-byte preservation and explicit
+  cache-state evidence. The
+  [daily-driver follow-up](../operations/linux-release/runs/2026-10-07-daily-driver-followup.md#storage-opening-and-thumbnails)
+  records five samples per provider, local/USB source-data eviction, and
+  uncontrolled device/provider caches. It does not close the broader cold/slow
+  storage rows below; the maintainer-approved budget scope is defined separately.
 - [ ] Measure real cold/slow-storage opening and first displayed native
-  thumbnails on representative local/USB/MTP/cloud inputs. Mock display and
-  fresh profiles are not substitutes; device/provider approval is required.
-- [ ] Agree measured performance budgets; investigate the slowest path first.
+  thumbnails on representative local storage.
+  Bounded five-sample native opening/decoded-thumbnail measurements and verified
+  source-data page eviction now pass in the
+  [daily-driver follow-up](../operations/linux-release/runs/2026-10-07-daily-driver-followup.md#storage-opening-and-thumbnails).
+  Directory metadata and physical firmware cold state remain uncontrolled.
+- [ ] Measure opening and first displayed native thumbnails on representative
+  cold/slow USB storage within an approved device scope.
+  The same record adds five completed USB samples, verified source-data page
+  eviction and independent preservation; physical cold device state is unverified.
+- [ ] Measure cold/slow-storage opening and first displayed native thumbnails
+  on representative MTP inputs within an approved device scope.
+  Five native samples and independent image bytes pass on the approved phone.
+  This small generated workload was fast; device/GVFS caches and a controlled
+  slow-device condition remain unverified.
+- [ ] Measure cold/slow-storage opening and first displayed native thumbnails
+  on representative cloud inputs within an approved provider scope. Functional
+  thumbnail tests are not representative storage-performance measurements.
+  Five real OneDrive samples and independent readbacks pass, including a 9.2 s
+  first-thumbnail outlier. Provider caches are uncontrolled; the linked record
+  distinguishes slow real network I/O from fully cold provider state.
+  Mock display, fresh profiles and fresh thumbnail caches do not substitute for
+  real cold/slow-storage evidence in these four remaining rows.
+- [x] Record an initial host-specific native timing baseline and its measurement
+  boundaries. NT7-3 separates delivered-pointer/layout observations and actual
+  cancel acknowledgement/completion from driver overhead and toast expiry.
+  No hard CI timing thresholds were introduced.
+- [x] Agree measured performance budgets for the bounded storage workload;
+  investigate the slowest path first.
   Add regression thresholds only where the environment is stable enough to
   avoid flaky CI. Do not assume that more workers improve MTP/cloud performance.
-  Provisional, host-specific review targets are documented; user latency
-  requirements and cold/device budgets remain unagreed. CI uses semantic and
-  structural bounds, not workstation timing thresholds.
+  The maintainer approved five-sample median review targets on this host:
+  local/USB/MTP opening and first decoded thumbnail ≤200 ms each; OneDrive
+  opening ≤3 s and first thumbnail ≤5 s. These apply to 12 generated PNGs and
+  thumbnails timed from the grid toggle. All measured medians meet the targets;
+  the 9.2 s OneDrive maximum remains visible. The
+  [follow-up](../operations/linux-release/runs/2026-10-07-daily-driver-followup.md#slowest-path-and-budgets)
+  investigates the slowest cloud path and its cache/network boundaries.
+  Broader physical-cold and mixed-large-tree budgets remain separate; earlier
+  warm engine targets stay provisional. CI uses semantic/structural checks,
+  not workstation latency gates.
 
 These measurements also cover the extra output read pass introduced by local
 copy content verification. The existing warm-tmpfs result is evidence for that
@@ -298,9 +349,47 @@ layers. Engineering completion and real-provider acceptance are separate.
     207/77 seconds within existing transfer limits. All five real-provider
     tests passed serially on `ed109fb` in 810 seconds with owned-child cleanup.
     This is not an unlimited-scale or mixed-large-file performance budget.
-  - [ ] OneDrive remaining acceptance: native external GTK receiver, broader
-    scale/mixed-large-file budgets, dedicated-account quota/rate limits,
-    server-side concurrent destination races and web recycle-bin restore.
+  - [x] OneDrive native refresh, upload, cloud copy, download and file conflicts:
+    Cancel, Skip, Auto-rename and Overwrite, with independent exact-byte checks.
+    [NT5-4](../operations/linux-release/runs/2026-10-06-native-provider-behavior.md#nt5-4-onedrive-operations-working-copies-and-bounded-errors)
+    also verifies working-copy preparation, Save as new and detection of an
+    equal-size changed original. External-editor launch was outside this scope.
+  - [x] OneDrive bounded native quota/rate/authentication error feedback and
+    source retention: NT5-4 injects failures before writes and verifies unchanged
+    sources/cloud trees, truthful counts and released tasks. This checks the
+    application response, not real account quota, throttling or a live outage.
+  - [x] OneDrive native archive staging round trip and archive-name conflict:
+    [NT6-7](../operations/linux-release/runs/2026-10-07-native-desktop-interaction.md#nt6-7-generated-archives-and-actual-cloud-staging)
+    verifies actual cloud compression/extraction, refreshed output, exact bytes
+    and preservation of both originals when the archive destination is occupied.
+  - [x] OneDrive prepared cloud-file export to a native external GTK receiver.
+    The [daily-driver follow-up](../operations/linux-release/runs/2026-10-07-daily-driver-followup.md#prepared-cloud-copies-to-nautilus)
+    records actual isolated Nautilus copy, cancelled drag, special filenames and
+    independent cloud/staging/receiver bytes. Private X11 copy does not certify
+    shared Wayland receivers or move semantics.
+  - [x] OneDrive bounded native mixed-size tree upload/download: 1028 files,
+    16 directories, eight empty leaves and 11.4 MB of generated bytes. The
+    [daily-driver follow-up](../operations/linux-release/runs/2026-10-07-daily-driver-followup.md#mixed-size-tree-and-transfer-deadline-correction)
+    records independent cloud SHA-256 and complete source/download preservation.
+    The fixed five-minute transfer deadline was corrected to an inactivity
+    limit; the fresh upload/download workflows completed in 408/428 seconds.
+    Earlier partial data and the failed report remain retained.
+  - [ ] OneDrive repeated broader-scale/mixed-large-file performance measurements
+    and agreed budgets; single complete-workflow observations do not establish
+    distribution estimates or these budgets.
+  - [ ] OneDrive dedicated-account real quota/rate-limit acceptance. The
+    pre-write injected errors above do not close this provider requirement.
+  - [x] OneDrive server-side concurrent destination race: the
+    [daily-driver follow-up](../operations/linux-release/runs/2026-10-07-daily-driver-followup.md#server-side-destination-writer)
+    records an actual competing rclone write after upload and before client
+    completion, with independent bytes. This bounded checkpoint supports the
+    stable-destination boundary; it does not certify arbitrary during-upload
+    writers, compare-and-swap or transactional tree operations.
+  - [x] OneDrive web recycle-bin restore of generated test data. The
+    [daily-driver follow-up](../operations/linux-release/runs/2026-10-07-daily-driver-followup.md#native-trash-and-manual-web-restore)
+    records real native upload/trash, maintainer-confirmed web restoration and
+    independent exact original-path/size/SHA-256 verification of one generated
+    file. No personal data or bin-wide action was used.
   - [ ] Google Drive: obtain an approved disposable remote/folder and run
     the expanded real-provider checklist.
   - [ ] Nextcloud: obtain an approved disposable remote/folder and run
@@ -320,7 +409,16 @@ Verification on 2026-10-03: strict maintenance suite passed (641 backend tests,
 6 opt-in tests ignored in the ordinary run; 317 frontend tests; 62 browser
 tests). Clippy deny-warnings, blocking Semgrep, both frontend/docs builds and
 20 strict documentation checks passed. The real OneDrive opt-in test was run
-separately and passed; native external-receiver acceptance remains pending.
+separately and passed; native cloud-export external-receiver acceptance remains
+pending.
+
+Native follow-up on 2026-10-07: the archived NT0–NT7 suite and linked run records
+add bounded real WebKitGTK/Rust evidence to the checked subtasks above. C6 remains
+open for the listed OneDrive requirements and separately approved Google Drive/
+Nextcloud acceptance. Real provider lifecycle transitions and external CI execution
+remain NOT_RUN; broader cold-device/mixed-tree budgets remain NOT_AGREED.
+The bounded 12-image storage median targets above are maintainer-approved.
+No broader parent acceptance requirement is closed by this evidence update.
 
 ## Optional Decisions, Not Required Work
 
